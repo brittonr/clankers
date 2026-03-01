@@ -117,8 +117,6 @@ clankers join <node-id> <key>       # join from another machine
 clankers daemon                     # headless daemon accepting remote prompts
 ```
 
-Also bridges to [Matrix](https://matrix.org) for async agent-to-agent messaging.
-
 ## Skills
 
 Skills are reusable prompt snippets that teach the agent domain-specific knowledge. Put them in `.clankers/skills/` or install with `clankers skill install`.
