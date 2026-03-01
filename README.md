@@ -101,7 +101,7 @@ clankers session list               # list recent sessions
 
 ## Subagents
 
-Delegate work to ephemeral sub-instances that run in parallel. The agent spawns them automatically or you can use the `subagent` tool directly. Each gets its own context and tool access. Integrates with [Zellij](https://zellij.dev) for visual pane management.
+Delegate work to ephemeral sub-instances that run in parallel. The agent spawns them automatically or you can use the `subagent` tool directly. Each gets its own context and tool access, with a built-in panel for live output.
 
 ## Worktree Isolation
 
