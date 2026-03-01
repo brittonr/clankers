@@ -89,6 +89,36 @@ Headless mode works in CI, cron jobs, scripts — anywhere without a terminal.
 - **OpenAI-compatible proxy** — exposes the router as an OpenAI API endpoint, so Cursor, aider, Continue, etc. can use your credentials and routing
 - **P2P tunnel** — QUIC-based remote access via [iroh](https://iroh.computer), no port forwarding needed
 
+## Sessions
+
+Conversations persist as JSONL. Pick up where you left off.
+
+```
+clankers --continue                 # resume last session
+clankers --resume <id>              # resume a specific session
+clankers session list               # list recent sessions
+```
+
+## Subagents
+
+Delegate work to ephemeral sub-instances that run in parallel. The agent spawns them automatically or you can use the `subagent` tool directly. Each gets its own context and tool access. Integrates with [Zellij](https://zellij.dev) for visual pane management.
+
+## Worktree Isolation
+
+Each session runs in its own git worktree by default, so parallel agents can't step on each other. Includes LLM-powered merge conflict resolution when merging back. Disable with `--no-worktree`.
+
+## P2P
+
+Share sessions over the network via [iroh](https://iroh.computer) QUIC tunnels.
+
+```
+clankers share                      # get a node ID + key
+clankers join <node-id> <key>       # join from another machine
+clankers daemon                     # headless daemon accepting remote prompts
+```
+
+Also bridges to [Matrix](https://matrix.org) for async agent-to-agent messaging.
+
 ## Skills
 
 Skills are reusable prompt snippets that teach the agent domain-specific knowledge. Put them in `.clankers/skills/` or install with `clankers skill install`.
