@@ -1,0 +1,126 @@
+//! AgentEvent enum (lifecycle, tool, message events)
+
+use serde_json::Value;
+
+use crate::provider::Usage;
+use crate::provider::message::AgentMessage;
+use crate::provider::message::AssistantMessage;
+use crate::provider::message::Content;
+use crate::provider::message::MessageId;
+use crate::tools::ToolResult;
+
+/// All lifecycle events emitted by the agent during execution.
+/// Consumed by TUI, JSON mode, print mode, plugins, etc.
+#[derive(Debug, Clone)]
+pub enum AgentEvent {
+    // Session lifecycle
+    SessionStart {
+        session_id: String,
+    },
+    SessionShutdown {
+        session_id: String,
+    },
+
+    // Agent lifecycle
+    AgentStart,
+    AgentEnd {
+        messages: Vec<AgentMessage>,
+    },
+
+    // Turn lifecycle
+    TurnStart {
+        index: u32,
+    },
+    TurnEnd {
+        index: u32,
+        message: AssistantMessage,
+        tool_results: Vec<crate::provider::message::ToolResultMessage>,
+    },
+
+    // Message streaming
+    MessageStart {
+        message: AgentMessage,
+    },
+    /// A new content block has started streaming
+    ContentBlockStart {
+        index: usize,
+        content_block: Content,
+    },
+    /// Incremental delta for a content block
+    MessageUpdate {
+        index: usize,
+        delta: crate::provider::streaming::StreamDelta,
+    },
+    /// A content block has finished streaming
+    ContentBlockStop {
+        index: usize,
+    },
+    MessageEnd {
+        message: AgentMessage,
+    },
+
+    // Tool events
+    ToolCall {
+        tool_name: String,
+        call_id: String,
+        input: Value,
+    },
+    ToolExecutionStart {
+        call_id: String,
+        tool_name: String,
+    },
+    ToolExecutionUpdate {
+        call_id: String,
+        partial: ToolResult,
+    },
+    ToolExecutionEnd {
+        call_id: String,
+        result: ToolResult,
+        is_error: bool,
+    },
+    ToolResultEvent {
+        tool_name: String,
+        call_id: String,
+        content: Vec<Content>,
+        details: Option<Value>,
+    },
+
+    // Context
+    BeforeAgentStart {
+        prompt: String,
+        system_prompt: String,
+    },
+    Context {
+        messages: Vec<AgentMessage>,
+    },
+
+    // Session events
+    SessionBranch {
+        from_id: MessageId,
+        branch_id: MessageId,
+    },
+    SessionCompaction {
+        compacted_count: usize,
+        tokens_saved: usize,
+    },
+
+    // Model events
+    ModelChange {
+        from: String,
+        to: String,
+    },
+
+    // Input events
+    UserInput {
+        text: String,
+        /// Number of agent messages *before* this user message was appended
+        agent_msg_count: usize,
+    },
+    UserCancel,
+
+    // Cost tracking
+    UsageUpdate {
+        turn_usage: Usage,
+        cumulative_usage: Usage,
+    },
+}

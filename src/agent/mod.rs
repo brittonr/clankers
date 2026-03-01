@@ -1,0 +1,313 @@
+//! Agent struct and state
+
+pub mod compaction;
+pub mod context;
+pub mod events;
+pub mod system_prompt;
+pub mod ttsr;
+pub mod turn;
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use chrono::Utc;
+use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
+
+use self::events::AgentEvent;
+use self::turn::TurnConfig;
+use crate::config::settings::Settings;
+use crate::db::Db;
+use crate::error::Result;
+use crate::provider::Provider;
+use crate::provider::ThinkingConfig;
+use crate::provider::ThinkingLevel;
+use crate::provider::message::*;
+use crate::tools::Tool;
+
+/// The main agent that manages the conversation loop
+pub struct Agent {
+    /// The LLM provider
+    provider: Arc<dyn Provider>,
+    /// Available tools by name
+    tools: HashMap<String, Arc<dyn Tool>>,
+    /// Conversation messages
+    messages: Vec<AgentMessage>,
+    /// Event broadcast channel
+    event_tx: broadcast::Sender<AgentEvent>,
+    /// Cancellation token for the current operation
+    cancel: CancellationToken,
+    /// Settings
+    settings: Settings,
+    /// Current model ID
+    model: String,
+    /// System prompt
+    system_prompt: String,
+    /// Extended thinking configuration
+    thinking: Option<ThinkingConfig>,
+    /// Current thinking level
+    thinking_level: ThinkingLevel,
+    /// Persistent database handle (memory, usage, history, etc.)
+    db: Option<Db>,
+}
+
+impl Agent {
+    /// Create a new agent with the given provider and tools
+    pub fn new(
+        provider: Arc<dyn Provider>,
+        tools: Vec<Arc<dyn Tool>>,
+        settings: Settings,
+        model: String,
+        system_prompt: String,
+    ) -> Self {
+        let (event_tx, _) = broadcast::channel(1024);
+        let tool_map: HashMap<String, Arc<dyn Tool>> =
+            tools.into_iter().map(|t| (t.definition().name.clone(), t)).collect();
+
+        Self {
+            provider,
+            tools: tool_map,
+            messages: Vec::new(),
+            event_tx,
+            cancel: CancellationToken::new(),
+            settings,
+            model,
+            system_prompt,
+            thinking: None,
+            thinking_level: ThinkingLevel::Off,
+            db: None,
+        }
+    }
+
+    /// Attach a database handle to this agent.
+    ///
+    /// When set, the agent will:
+    /// - Inject relevant memories into the system prompt each turn
+    /// - Record per-turn token usage
+    pub fn with_db(mut self, db: Db) -> Self {
+        self.db = Some(db);
+        self
+    }
+
+    /// Get the database handle, if attached.
+    pub fn db(&self) -> Option<&Db> {
+        self.db.as_ref()
+    }
+
+    /// Subscribe to agent events
+    pub fn subscribe(&self) -> broadcast::Receiver<AgentEvent> {
+        self.event_tx.subscribe()
+    }
+
+    /// Get a clone of the event sender (for wiring up tools that emit progress events)
+    pub fn event_sender(&self) -> broadcast::Sender<AgentEvent> {
+        self.event_tx.clone()
+    }
+
+    /// Replace the agent's tools (consuming self and returning a new Agent)
+    pub fn with_tools(mut self, tools: Vec<Arc<dyn Tool>>) -> Self {
+        self.tools = tools.into_iter().map(|t| (t.definition().name.clone(), t)).collect();
+        self
+    }
+
+    /// Run the agent with a user prompt and optional image content blocks
+    pub async fn prompt_with_images(&mut self, text: &str, images: Vec<Content>) -> Result<()> {
+        let mut content = vec![Content::Text { text: text.to_string() }];
+        content.extend(images);
+        self.prompt_with_content(text, content).await
+    }
+
+    /// Run the agent with a user prompt
+    pub async fn prompt(&mut self, text: &str) -> Result<()> {
+        let content = vec![Content::Text { text: text.to_string() }];
+        self.prompt_with_content(text, content).await
+    }
+
+    /// Internal: run agent with arbitrary user content blocks
+    async fn prompt_with_content(&mut self, text: &str, content: Vec<Content>) -> Result<()> {
+        // Create user message
+        let user_msg = AgentMessage::User(UserMessage {
+            id: MessageId::generate(),
+            content,
+            timestamp: Utc::now(),
+        });
+
+        let agent_msg_count = self.messages.len();
+        let _ = self.event_tx.send(AgentEvent::UserInput {
+            text: text.to_string(),
+            agent_msg_count,
+        });
+        self.messages.push(user_msg);
+
+        let _ = self.event_tx.send(AgentEvent::AgentStart);
+
+        // Build context — inject memories from redb if available
+        let model_info = self.provider.models().iter().find(|m| m.id == self.model).cloned();
+        let max_input = model_info.map(|m| m.max_input_tokens).unwrap_or(200_000);
+
+        let system_prompt_with_memory = self.system_prompt_with_memory();
+        let ctx = context::build_context(&self.messages, &system_prompt_with_memory, max_input);
+
+        let _ = self.event_tx.send(AgentEvent::BeforeAgentStart {
+            prompt: text.to_string(),
+            system_prompt: ctx.system_prompt.clone(),
+        });
+
+        // Run turn loop
+        let config = TurnConfig {
+            model: self.model.clone(),
+            system_prompt: ctx.system_prompt,
+            max_tokens: Some(self.settings.max_tokens),
+            temperature: None,
+            thinking: self.thinking.clone(),
+            max_turns: 25, // default max turns
+        };
+
+        let result = turn::run_turn_loop(
+            self.provider.as_ref(),
+            &self.tools,
+            &mut self.messages,
+            &config,
+            &self.event_tx,
+            self.cancel.clone(),
+        )
+        .await;
+
+        let _ = self.event_tx.send(AgentEvent::AgentEnd {
+            messages: self.messages.clone(),
+        });
+
+        result
+    }
+
+    /// Build the system prompt with memories appended (if db is available).
+    ///
+    /// Reads global + project-scoped memories from redb and appends them
+    /// to the base system prompt. This is called every turn so newly saved
+    /// memories appear immediately.
+    fn system_prompt_with_memory(&self) -> String {
+        let Some(db) = &self.db else {
+            return self.system_prompt.clone();
+        };
+
+        // Derive project path from cwd (best-effort)
+        let cwd = std::env::current_dir().ok();
+        let cwd_str = cwd.as_ref().and_then(|p| p.to_str());
+
+        match db.memory().context_for(cwd_str) {
+            Ok(memory_context) if !memory_context.is_empty() => {
+                format!("{}\n\n{}", self.system_prompt, memory_context)
+            }
+            _ => self.system_prompt.clone(),
+        }
+    }
+
+    /// Abort the current operation
+    pub fn abort(&self) {
+        self.cancel.cancel();
+    }
+
+    /// Get a clone of the current cancellation token.
+    ///
+    /// This allows external code to cancel operations directly (e.g. from
+    /// a `tokio::select!` branch) without going through the command channel.
+    pub fn cancel_token(&self) -> CancellationToken {
+        self.cancel.clone()
+    }
+
+    /// Get a new cancellation token (resets abort state)
+    pub fn reset_cancel(&mut self) {
+        self.cancel = CancellationToken::new();
+    }
+
+    /// Get the current conversation messages
+    pub fn messages(&self) -> &[AgentMessage] {
+        &self.messages
+    }
+
+    /// Get the current model ID
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    /// Change the model
+    pub fn set_model(&mut self, model: String) {
+        let old = std::mem::replace(&mut self.model, model.clone());
+        let _ = self.event_tx.send(AgentEvent::ModelChange { from: old, to: model });
+    }
+
+    /// Seed the agent with pre-existing messages (for session resume)
+    pub fn seed_messages(&mut self, messages: Vec<AgentMessage>) {
+        self.messages = messages;
+    }
+
+    /// Clear conversation history
+    pub fn clear_messages(&mut self) {
+        self.messages.clear();
+    }
+
+    /// Truncate conversation history to the first `n` messages.
+    /// Used when branching to rewind to a fork point.
+    pub fn truncate_messages(&mut self, n: usize) {
+        self.messages.truncate(n);
+    }
+
+    /// Toggle extended thinking on/off. Returns the new state.
+    pub fn toggle_thinking(&mut self, budget_tokens: usize) -> bool {
+        if self.thinking.as_ref().is_some_and(|t| t.enabled) {
+            self.thinking = None;
+            self.thinking_level = ThinkingLevel::Off;
+            false
+        } else {
+            self.thinking = Some(ThinkingConfig {
+                enabled: true,
+                budget_tokens: Some(budget_tokens),
+            });
+            self.thinking_level = ThinkingLevel::from_budget(budget_tokens);
+            true
+        }
+    }
+
+    /// Set thinking to a specific level. Returns the new level.
+    pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> ThinkingLevel {
+        self.thinking_level = level;
+        self.thinking = level.to_config();
+        level
+    }
+
+    /// Cycle to the next thinking level. Returns the new level.
+    pub fn cycle_thinking_level(&mut self) -> ThinkingLevel {
+        let next = self.thinking_level.next();
+        self.set_thinking_level(next)
+    }
+
+    /// Get the current thinking level
+    pub fn thinking_level(&self) -> ThinkingLevel {
+        self.thinking_level
+    }
+
+    /// Check if thinking is currently enabled
+    pub fn is_thinking_enabled(&self) -> bool {
+        self.thinking_level.is_enabled()
+    }
+
+    /// Get the current system prompt
+    pub fn system_prompt(&self) -> &str {
+        &self.system_prompt
+    }
+
+    /// Replace the system prompt
+    pub fn set_system_prompt(&mut self, prompt: String) {
+        self.system_prompt = prompt;
+    }
+
+    /// Get available tool definitions
+    pub fn tool_definitions(&self) -> Vec<crate::tools::ToolDefinition> {
+        self.tools.values().map(|t| t.definition().clone()).collect()
+    }
+
+    /// Get a reference to the provider (e.g. to reload credentials after login).
+    pub fn provider(&self) -> &Arc<dyn Provider> {
+        &self.provider
+    }
+}

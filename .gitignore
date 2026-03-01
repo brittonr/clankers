@@ -1,0 +1,36 @@
+# Build
+target/
+coverage/
+doc/
+
+# Nix
+result*
+.direnv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Agent / editor state
+.pi/
+.pirs/
+
+# Runtime
+*.redb
+*.sock
+data/
+
+# Markdown (except project docs and READMEs)
+*.md
+!README.md
+!**/README.md
+!CHANGES.md
+!TODO.md
+!CONTRIBUTING.md
+
+# Scratch / generated test files
+*.rlib
+.pirs/exports
+.clankers/exports

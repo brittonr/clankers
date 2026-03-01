@@ -1,0 +1,43 @@
+{
+  "name": "clankers-test-plugin",
+  "version": "0.1.0",
+  "description": "Test plugin for exercising the clankers WASM plugin system",
+  "wasm": "clankers_test_plugin.wasm",
+  "kind": "extism",
+  "permissions": ["fs:read"],
+  "tools": ["test_echo", "test_reverse"],
+  "commands": ["test"],
+  "events": ["agent_start", "agent_end", "tool_call"],
+  "tool_definitions": [
+    {
+      "name": "test_echo",
+      "description": "Echoes input text back unchanged. Useful for testing plugin tool invocation.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text to echo back"
+          }
+        },
+        "required": ["text"]
+      }
+    },
+    {
+      "name": "test_reverse",
+      "description": "Reverses the input text. Useful for testing plugin string processing.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text to reverse"
+          }
+        },
+        "required": ["text"]
+      }
+    }
+  ]
+}

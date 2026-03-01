@@ -1,0 +1,29 @@
+layout {
+    tab name="tests" focus=true {
+        pane split_direction="vertical" {
+            pane size="60%" name="runner" focus=true {
+                command "bash"
+            }
+            pane size="40%" name="log" {
+                command "bash"
+                args "-c" "echo 'waiting for log...'; sleep 1; tail -f /tmp/clankers-test.log 2>/dev/null || echo 'no log yet — run tests first'"
+            }
+        }
+    }
+    tab name="interactive" {
+        pane name="clankers-tui" {
+            command "bash"
+            args "-c" "echo 'press Enter to launch clankers interactive TUI'; read; cd /home/brittonr/git/clankers/clankers && nix develop --command cargo run"
+        }
+    }
+    tab name="print" {
+        pane split_direction="horizontal" {
+            pane size="50%" name="print-test" {
+                command "bash"
+            }
+            pane size="50%" name="tool-test" {
+                command "bash"
+            }
+        }
+    }
+}

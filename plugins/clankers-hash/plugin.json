@@ -1,0 +1,58 @@
+{
+  "name": "clankers-hash",
+  "version": "0.1.0",
+  "description": "Cryptographic hash and encoding utilities — compute SHA-256, MD5, Base64, Hex conversions without spawning external processes",
+  "wasm": "clankers_hash.wasm",
+  "kind": "extism",
+  "permissions": [],
+  "tools": ["hash_text", "encode_text"],
+  "commands": [],
+  "events": ["agent_start", "agent_end"],
+  "tool_definitions": [
+    {
+      "name": "hash_text",
+      "description": "Compute a cryptographic hash of the given text. Supports SHA-256 (default) and MD5 algorithms. Returns the hex-encoded hash digest.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text to hash"
+          },
+          "algorithm": {
+            "type": "string",
+            "enum": ["sha256", "md5"],
+            "description": "Hash algorithm to use (default: sha256)"
+          }
+        },
+        "required": ["text"]
+      }
+    },
+    {
+      "name": "encode_text",
+      "description": "Encode or decode text using Base64 or Hex encoding. Use 'encode' direction to encode, 'decode' to decode.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text to encode or decode"
+          },
+          "encoding": {
+            "type": "string",
+            "enum": ["base64", "hex"],
+            "description": "Encoding format (default: base64)"
+          },
+          "direction": {
+            "type": "string",
+            "enum": ["encode", "decode"],
+            "description": "Whether to encode or decode (default: encode)"
+          }
+        },
+        "required": ["text"]
+      }
+    }
+  ]
+}

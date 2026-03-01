@@ -1,0 +1,193 @@
+{
+  "name": "clankers-self-validate",
+  "version": "0.1.0",
+  "description": "Self-validating development plugin — spawns a separate clankers instance to validate code changes, run tests, and review work",
+  "wasm": "clankers_self_validate.wasm",
+  "kind": "extism",
+  "permissions": ["fs:read", "fs:write", "exec"],
+  "tools": ["validate", "validate_review", "validate_test", "validate_check", "validate_visual", "validate_tui"],
+  "commands": ["validate"],
+  "events": ["tool_call", "tool_result", "agent_start", "agent_end"],
+  "tool_definitions": [
+    {
+      "name": "validate",
+      "description": "Spawn a validator clankers instance to perform a custom validation task. The validator runs in a separate process with its own context and tools, and returns its findings. Use this for ad-hoc validation of any aspect of the current work.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "task": {
+            "type": "string",
+            "description": "The validation task to perform. Be specific about what to check, e.g. 'verify the changes in src/tools/mod.rs compile correctly and the new function signatures match the trait'"
+          },
+          "context": {
+            "type": "string",
+            "description": "Additional context about what was changed or what to focus on. Optional but helps the validator understand scope."
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Working directory for the validator (defaults to current directory)"
+          },
+          "agent": {
+            "type": "string",
+            "description": "Agent definition to use for the validator instance"
+          },
+          "severity": {
+            "type": "string",
+            "enum": ["strict", "normal", "lenient"],
+            "description": "How strict the validation should be. 'strict' fails on warnings, 'normal' is default, 'lenient' only fails on errors."
+          }
+        },
+        "required": ["task"]
+      }
+    },
+    {
+      "name": "validate_review",
+      "description": "Spawn a validator to review code changes. The validator will examine modified files (via git diff or explicit file list), check for bugs, style issues, correctness, and return a structured review.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Specific files to review. If empty, reviews all uncommitted changes."
+          },
+          "focus": {
+            "type": "string",
+            "description": "What to focus the review on, e.g. 'error handling', 'performance', 'API compatibility', 'security'"
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Working directory for the validator"
+          }
+        }
+      }
+    },
+    {
+      "name": "validate_test",
+      "description": "Spawn a validator to run tests and report results. Can run specific test commands or auto-detect the test runner.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "Specific test command to run, e.g. 'cargo test', 'npm test', 'pytest'. Auto-detected if not specified."
+          },
+          "filter": {
+            "type": "string",
+            "description": "Test filter/pattern to run a subset of tests, e.g. 'test_plugin' to only run plugin tests"
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Working directory for running tests"
+          },
+          "fix": {
+            "type": "boolean",
+            "description": "If true, the validator will attempt to suggest fixes for failing tests"
+          }
+        }
+      }
+    },
+    {
+      "name": "validate_check",
+      "description": "Run a quick validation check — compile check, lint, type check, or format check without running full tests.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": ["compile", "lint", "format", "types", "all"]
+            },
+            "description": "Which checks to run. Defaults to ['compile']."
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Working directory"
+          }
+        }
+      }
+    },
+    {
+      "name": "validate_tui",
+      "description": "Spawn clankers in a PTY, execute a sequence of TUI interactions (keystrokes, slash commands), and verify screen content against assertions. Use this to validate TUI features like panels, keybindings, rendering, and navigation.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "Human-readable description of what this test validates"
+          },
+          "steps": {
+            "type": "array",
+            "description": "Sequence of interaction steps",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "object",
+                  "description": "Action to perform. type is one of: type (type text), key (send named key: enter, esc, backtick, up, down, left, right, tab, backspace, space, ctrl+c, alt+enter), wait (wait ms), slash_command (enter insert, type command, submit)",
+                  "properties": {
+                    "type": { "type": "string", "enum": ["type", "key", "wait", "slash_command"] },
+                    "text": { "type": "string" },
+                    "name": { "type": "string" },
+                    "ms": { "type": "number" },
+                    "command": { "type": "string" }
+                  },
+                  "required": ["type"]
+                },
+                "wait_for": { "type": "string", "description": "Text to wait for on screen after action" },
+                "assert_visible": { "type": "string", "description": "Text that must be on screen" },
+                "assert_absent": { "type": "string", "description": "Text that must NOT be on screen" },
+                "capture": { "type": "boolean", "description": "Include screen capture in output" },
+                "timeout_ms": { "type": "number", "description": "Timeout in ms (default 3000)" }
+              },
+              "required": ["action"]
+            }
+          },
+          "rows": { "type": "number", "description": "PTY rows (default 24)" },
+          "cols": { "type": "number", "description": "PTY cols (default 120)" }
+        },
+        "required": ["steps"]
+      }
+    },
+    {
+      "name": "validate_visual",
+      "description": "Spawn a validator to visually inspect the terminal/TUI by taking a screenshot and analyzing the rendering. The validator captures the screen, examines the image, and reports any visual issues like layout corruption, misaligned elements, or rendering artifacts.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "description": {
+            "type": "string",
+            "description": "What the screen should look like — describe the expected visual state so the validator knows what to check for."
+          },
+          "target": {
+            "type": "string",
+            "enum": ["screen", "window"],
+            "description": "What to capture. 'screen' = full screen, 'window' = focused terminal window. Default: 'screen'."
+          },
+          "checks": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Specific visual checks to perform, e.g. ['no rendering corruption', 'panel visible on right side', 'status bar shows correct model']"
+          },
+          "delay": {
+            "type": "number",
+            "description": "Seconds to wait before capturing (default 1). Lets the TUI settle."
+          },
+          "cwd": {
+            "type": "string",
+            "description": "Working directory for the validator"
+          }
+        },
+        "required": ["description"]
+      }
+    }
+  ]
+}

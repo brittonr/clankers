@@ -1,0 +1,177 @@
+//! Settings loading (global + project JSON)
+
+use std::path::Path;
+
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::agents::definition::AgentScope;
+use crate::config::keybindings::KeymapConfig;
+use crate::config::model_roles::ModelRolesConfig;
+
+/// Full settings, merged from global + project
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Settings {
+    /// Default model to use
+    #[serde(default = "default_model")]
+    pub model: String,
+
+    /// Default max tokens for output
+    #[serde(default = "default_max_tokens")]
+    pub max_tokens: usize,
+
+    /// Agent scope for discovery
+    #[serde(default)]
+    pub agent_scope: AgentScope,
+
+    /// Whether to confirm before running project agents
+    #[serde(default = "default_true")]
+    pub confirm_project_agents: bool,
+
+    /// Whether to create git worktrees for sessions
+    #[serde(default = "default_true")]
+    pub use_worktrees: bool,
+
+    /// Custom system prompt prefix
+    #[serde(default)]
+    pub system_prompt_prefix: Option<String>,
+
+    /// Custom system prompt suffix
+    #[serde(default)]
+    pub system_prompt_suffix: Option<String>,
+
+    /// Theme name
+    #[serde(default)]
+    pub theme: Option<String>,
+
+    /// Max output lines before truncation
+    #[serde(default = "default_max_lines")]
+    pub max_output_lines: usize,
+
+    /// Max output bytes before truncation
+    #[serde(default = "default_max_bytes")]
+    pub max_output_bytes: usize,
+
+    /// Bash command timeout in seconds (0 = no timeout)
+    #[serde(default)]
+    pub bash_timeout: u64,
+
+    /// Auto-launch inside Zellij when available
+    #[serde(default)]
+    pub zellij: Option<bool>,
+
+    /// Keymap configuration (preset + overrides)
+    #[serde(default)]
+    pub keymap: KeymapConfig,
+
+    /// Model roles — route different tasks to different models
+    #[serde(default, rename = "modelRoles")]
+    pub model_roles: ModelRolesConfig,
+
+    /// Whether plan mode is enabled by default
+    #[serde(default)]
+    pub plan_mode: bool,
+}
+
+fn default_model() -> String {
+    "claude-sonnet-4-5".to_string()
+}
+fn default_max_tokens() -> usize {
+    16384
+}
+fn default_true() -> bool {
+    true
+}
+fn default_max_lines() -> usize {
+    2000
+}
+fn default_max_bytes() -> usize {
+    50 * 1024
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            model: default_model(),
+            max_tokens: default_max_tokens(),
+            agent_scope: AgentScope::default(),
+            confirm_project_agents: true,
+            use_worktrees: true,
+            system_prompt_prefix: None,
+            system_prompt_suffix: None,
+            theme: None,
+            max_output_lines: default_max_lines(),
+            max_output_bytes: default_max_bytes(),
+            bash_timeout: 0,
+            zellij: None,
+            keymap: KeymapConfig::default(),
+            model_roles: ModelRolesConfig::default(),
+            plan_mode: false,
+        }
+    }
+}
+
+impl Settings {
+    /// Load settings by merging pi fallback, global, and project files.
+    /// Priority (highest wins): project > global (~/.clankers) > pi fallback (~/.pi)
+    pub fn load(global_path: &Path, project_path: &Path) -> Self {
+        Self::load_with_pi_fallback(None, global_path, project_path)
+    }
+
+    /// Load settings with an optional ~/.pi/agent/settings.json fallback.
+    /// Priority (highest wins): project > global (~/.clankers) > pi fallback (~/.pi)
+    pub fn load_with_pi_fallback(pi_settings_path: Option<&Path>, global_path: &Path, project_path: &Path) -> Self {
+        let pi = pi_settings_path.and_then(Self::load_file).map(Self::normalize_pi_settings);
+        let global = Self::load_file(global_path);
+        let project = Self::load_file(project_path);
+        Self::merge_layers(pi, global, project)
+    }
+
+    /// Map pi-specific setting names to clankers equivalents.
+    /// e.g. pi uses "defaultModel" while clankers uses "model".
+    fn normalize_pi_settings(mut value: serde_json::Value) -> serde_json::Value {
+        if let Some(obj) = value.as_object_mut() {
+            // Map defaultModel -> model
+            if let Some(model) = obj.remove("defaultModel") {
+                obj.entry("model").or_insert(model);
+            }
+        }
+        value
+    }
+
+    fn load_file(path: &Path) -> Option<serde_json::Value> {
+        let content = std::fs::read_to_string(path).ok()?;
+        serde_json::from_str(&content).ok()
+    }
+
+    /// Merge up to three layers of settings: pi fallback < global < project
+    fn merge_layers(
+        pi: Option<serde_json::Value>,
+        global: Option<serde_json::Value>,
+        project: Option<serde_json::Value>,
+    ) -> Self {
+        let mut base = pi.unwrap_or_else(|| serde_json::json!({}));
+
+        // Merge global on top of pi fallback
+        if let Some(g) = global {
+            Self::merge_into(&mut base, &g);
+        }
+
+        // Merge project on top
+        if let Some(p) = project {
+            Self::merge_into(&mut base, &p);
+        }
+
+        serde_json::from_value(base).unwrap_or_default()
+    }
+
+    /// Merge source object fields into target object
+    fn merge_into(target: &mut serde_json::Value, source: &serde_json::Value) {
+        if let (Some(target_obj), Some(source_obj)) = (target.as_object_mut(), source.as_object()) {
+            for (key, value) in source_obj {
+                target_obj.insert(key.clone(), value.clone());
+            }
+        }
+    }
+}

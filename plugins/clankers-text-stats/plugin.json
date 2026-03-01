@@ -1,0 +1,51 @@
+{
+  "name": "clankers-text-stats",
+  "version": "0.1.0",
+  "description": "Text analysis utilities — word/char/line counts, character frequency analysis, and readability scoring without external dependencies",
+  "wasm": "clankers_text_stats.wasm",
+  "kind": "extism",
+  "permissions": [],
+  "tools": ["text_stats", "char_freq"],
+  "commands": [],
+  "events": ["agent_start", "agent_end"],
+  "tool_definitions": [
+    {
+      "name": "text_stats",
+      "description": "Compute statistics about a block of text: word count, character count, line count, sentence count, average word length, and Flesch-Kincaid readability grade level.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text to analyze"
+          }
+        },
+        "required": ["text"]
+      }
+    },
+    {
+      "name": "char_freq",
+      "description": "Compute character frequency distribution for the given text. Returns the top N most frequent characters with counts and percentages. Useful for analyzing patterns in text, code, or data.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "text": {
+            "type": "string",
+            "description": "The text to analyze"
+          },
+          "top_n": {
+            "type": "number",
+            "description": "Number of top characters to return (default: 10)"
+          },
+          "ignore_whitespace": {
+            "type": "boolean",
+            "description": "Whether to exclude whitespace characters from the analysis (default: false)"
+          }
+        },
+        "required": ["text"]
+      }
+    }
+  ]
+}

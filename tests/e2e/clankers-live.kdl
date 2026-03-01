@@ -1,0 +1,26 @@
+layout {
+    tab name="clankers" focus=true {
+        pane split_direction="vertical" {
+            pane size="60%" name="clankers-tui" focus=true {
+                command "bash"
+                args "-c" "cd /home/brittonr/git/clankers/clankers && nix develop --command cargo run 2>/tmp/clankers-stderr.log"
+            }
+            pane size="40%" name="clankers-log" {
+                command "bash"
+                args "-c" "sleep 2; tail -f /tmp/clankers-stderr.log"
+            }
+        }
+    }
+    tab name="test" {
+        pane split_direction="vertical" {
+            pane size="60%" name="test-runner" focus=true {
+                command "bash"
+                args "-c" "cd /home/brittonr/git/clankers/clankers && nix develop --command bash tests/e2e/run-tests.sh all; exec bash"
+            }
+            pane size="40%" name="manual" {
+                command "bash"
+                args "-c" "cd /home/brittonr/git/clankers/clankers && nix develop; exec bash"
+            }
+        }
+    }
+}

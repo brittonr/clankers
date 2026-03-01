@@ -1,0 +1,14 @@
+[package]
+name = "clankers-hash"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+clankers-plugin-sdk = { path = "../../crates/clankers-plugin-sdk" }
+extism-pdk = "1"
+
+# Opt out of the parent workspace — this crate targets wasm32-unknown-unknown
+[workspace]
