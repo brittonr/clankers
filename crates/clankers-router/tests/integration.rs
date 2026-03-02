@@ -16,6 +16,12 @@ use clankers_router::auth::resolve_credential;
 use clankers_router::error::Error;
 use clankers_router::model::Model;
 use clankers_router::model::ModelAliases;
+use clankers_router::model_switch::ModelSwitchReason;
+use clankers_router::multi::MultiRequest;
+use clankers_router::multi::MultiStrategy;
+use clankers_router::quorum::ConsensusStrategy;
+use clankers_router::quorum::QuorumRequest;
+use clankers_router::quorum::QuorumTarget;
 use clankers_router::provider::CompletionRequest;
 use clankers_router::provider::Provider;
 use clankers_router::provider::ThinkingConfig;
@@ -30,6 +36,7 @@ use clankers_router::streaming::ContentBlock;
 use clankers_router::streaming::ContentDelta;
 use clankers_router::streaming::MessageMetadata;
 use clankers_router::streaming::StreamEvent;
+use clankers_router::streaming::TaggedStreamEvent;
 use serde_json::json;
 use tokio::sync::mpsc;
 
@@ -1313,4 +1320,665 @@ fn test_cache_eviction_cleans_expired_entries() {
     let removed = cache.evict_expired().unwrap();
     assert_eq!(removed, 5);
     assert_eq!(cache.len().unwrap(), 0);
+}
+
+// ── Multi-model dispatch tests ──────────────────────────────────────────
+
+/// Helper: a slow mock provider that sleeps before responding.
+struct SlowMockProvider {
+    name: String,
+    models: Vec<Model>,
+    delay_ms: u64,
+}
+
+impl SlowMockProvider {
+    fn new(name: &str, models: Vec<Model>, delay_ms: u64) -> Arc<Self> {
+        Arc::new(Self {
+            name: name.to_string(),
+            models,
+            delay_ms,
+        })
+    }
+}
+
+#[async_trait]
+impl Provider for SlowMockProvider {
+    async fn complete(
+        &self,
+        request: CompletionRequest,
+        tx: mpsc::Sender<StreamEvent>,
+    ) -> clankers_router::Result<()> {
+        tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
+
+        let _ = tx
+            .send(StreamEvent::MessageStart {
+                message: MessageMetadata {
+                    id: "slow-id".into(),
+                    model: request.model.clone(),
+                    role: "assistant".into(),
+                },
+            })
+            .await;
+        let _ = tx
+            .send(StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: ContentDelta::TextDelta {
+                    text: format!("from {}", self.name),
+                },
+            })
+            .await;
+        let _ = tx
+            .send(StreamEvent::MessageDelta {
+                stop_reason: Some("end_turn".into()),
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    ..Default::default()
+                },
+            })
+            .await;
+        let _ = tx.send(StreamEvent::MessageStop).await;
+        Ok(())
+    }
+
+    fn models(&self) -> &[Model] {
+        &self.models
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+#[tokio::test]
+async fn test_multi_race_picks_first_success() {
+    let mut router = Router::new("model-fast");
+    // "fast" provider responds after 10ms, "slow" after 200ms
+    router.register_provider(SlowMockProvider::new(
+        "fast-provider",
+        vec![make_model("model-fast", "fast-provider")],
+        10,
+    ));
+    router.register_provider(SlowMockProvider::new(
+        "slow-provider",
+        vec![make_model("model-slow", "slow-provider")],
+        200,
+    ));
+
+    let multi_req = MultiRequest {
+        request: simple_request("ignored"),
+        models: vec!["model-fast".into(), "model-slow".into()],
+        strategy: MultiStrategy::Race,
+    };
+
+    let result = router.complete_multi(multi_req).await.unwrap();
+    assert!(result.winner.is_some(), "race should have a winner");
+
+    let winner = result.winning_response().unwrap();
+    assert_eq!(winner.model, "model-fast");
+    assert!(winner.is_ok());
+    assert!(winner.text().contains("from fast-provider"));
+}
+
+#[tokio::test]
+async fn test_multi_all_collects_every_response() {
+    let mut router = Router::new("model-a");
+    router.register_provider(SlowMockProvider::new(
+        "provider-a",
+        vec![make_model("model-a", "provider-a")],
+        10,
+    ));
+    router.register_provider(SlowMockProvider::new(
+        "provider-b",
+        vec![make_model("model-b", "provider-b")],
+        20,
+    ));
+
+    let multi_req = MultiRequest {
+        request: simple_request("ignored"),
+        models: vec!["model-a".into(), "model-b".into()],
+        strategy: MultiStrategy::All,
+    };
+
+    let result = router.complete_multi(multi_req).await.unwrap();
+    assert!(result.winner.is_none(), "All strategy should have no winner");
+    assert_eq!(result.responses.len(), 2);
+    assert_eq!(result.successful().len(), 2);
+
+    // Both should have content
+    let texts: Vec<String> = result.responses.iter().map(|r| r.text()).collect();
+    assert!(texts.iter().any(|t| t.contains("provider-a")));
+    assert!(texts.iter().any(|t| t.contains("provider-b")));
+
+    // Total usage is aggregated
+    let total = result.total_usage();
+    assert_eq!(total.input_tokens, 20); // 10 + 10
+    assert_eq!(total.output_tokens, 10); // 5 + 5
+}
+
+#[tokio::test]
+async fn test_multi_fastest_returns_after_n() {
+    let mut router = Router::new("model-a");
+    router.register_provider(SlowMockProvider::new(
+        "provider-a",
+        vec![make_model("model-a", "provider-a")],
+        10,
+    ));
+    router.register_provider(SlowMockProvider::new(
+        "provider-b",
+        vec![make_model("model-b", "provider-b")],
+        20,
+    ));
+    router.register_provider(SlowMockProvider::new(
+        "provider-c",
+        vec![make_model("model-c", "provider-c")],
+        500,
+    ));
+
+    let multi_req = MultiRequest {
+        request: simple_request("ignored"),
+        models: vec!["model-a".into(), "model-b".into(), "model-c".into()],
+        strategy: MultiStrategy::Fastest(2),
+    };
+
+    let result = router.complete_multi(multi_req).await.unwrap();
+    assert!(result.winner.is_some());
+    // At least 2 successful responses
+    assert!(result.successful().len() >= 2);
+}
+
+#[tokio::test]
+async fn test_multi_race_with_one_failing() {
+    let mut router = Router::new("model-a");
+    router.register_provider(MockProvider::failing(
+        "failing-provider",
+        vec![make_model("model-fail", "failing-provider")],
+        "boom",
+    ));
+    router.register_provider(SlowMockProvider::new(
+        "ok-provider",
+        vec![make_model("model-ok", "ok-provider")],
+        10,
+    ));
+
+    let multi_req = MultiRequest {
+        request: simple_request("ignored"),
+        models: vec!["model-fail".into(), "model-ok".into()],
+        strategy: MultiStrategy::Race,
+    };
+
+    let result = router.complete_multi(multi_req).await.unwrap();
+    assert!(result.winner.is_some());
+    assert_eq!(result.winning_response().unwrap().model, "model-ok");
+    assert_eq!(result.failed().len(), 1);
+}
+
+#[tokio::test]
+async fn test_multi_empty_models_returns_error() {
+    let router = Router::new("model-a");
+    let multi_req = MultiRequest {
+        request: simple_request("ignored"),
+        models: vec![],
+        strategy: MultiStrategy::All,
+    };
+
+    let err = router.complete_multi(multi_req).await.unwrap_err();
+    assert!(matches!(err, Error::Config { .. }));
+}
+
+#[tokio::test]
+async fn test_multi_records_usage_to_db() {
+    use clankers_router::db::RouterDb;
+
+    let dir = tempfile::tempdir().unwrap();
+    let db = RouterDb::open(&dir.path().join("multi-usage.db")).unwrap();
+    let mut router = Router::with_db("model-a", db);
+    router.register_provider(SlowMockProvider::new(
+        "provider-a",
+        vec![make_model("model-a", "provider-a")],
+        5,
+    ));
+    router.register_provider(SlowMockProvider::new(
+        "provider-b",
+        vec![make_model("model-b", "provider-b")],
+        5,
+    ));
+
+    let multi_req = MultiRequest {
+        request: simple_request("ignored"),
+        models: vec!["model-a".into(), "model-b".into()],
+        strategy: MultiStrategy::All,
+    };
+
+    router.complete_multi(multi_req).await.unwrap();
+
+    let db = router.db().unwrap();
+    let today = db.usage().today().unwrap().unwrap();
+    // Two models each with 10 input + 5 output
+    assert_eq!(today.requests, 2);
+    assert_eq!(today.input_tokens, 20);
+    assert_eq!(today.output_tokens, 10);
+
+    let log = db.request_log().recent(10).unwrap();
+    assert_eq!(log.len(), 2);
+}
+
+#[tokio::test]
+async fn test_multi_race_streaming() {
+    let mut router = Router::new("model-fast");
+    router.register_provider(SlowMockProvider::new(
+        "fast-provider",
+        vec![make_model("model-fast", "fast-provider")],
+        10,
+    ));
+    router.register_provider(SlowMockProvider::new(
+        "slow-provider",
+        vec![make_model("model-slow", "slow-provider")],
+        200,
+    ));
+
+    let (tx, mut rx) = mpsc::channel::<TaggedStreamEvent>(64);
+
+    router
+        .complete_race_streaming(
+            simple_request("ignored"),
+            vec!["model-fast".into(), "model-slow".into()],
+            tx,
+        )
+        .await
+        .unwrap();
+
+    // Should receive tagged events from the winner
+    let mut got_events = false;
+    while let Some(tagged) = rx.recv().await {
+        assert_eq!(tagged.model, "model-fast");
+        assert_eq!(tagged.provider, "fast-provider");
+        got_events = true;
+    }
+    assert!(got_events);
+}
+
+// ── Model switch tracking tests ─────────────────────────────────────────
+
+#[test]
+fn test_router_switch_model() {
+    let mut router = Router::new("claude-sonnet-4-5-20250514");
+    router.register_provider(MockProvider::new(
+        "anthropic",
+        vec![make_model("claude-sonnet-4-5-20250514", "anthropic")],
+    ));
+    router.register_provider(MockProvider::new(
+        "openai",
+        vec![make_model("gpt-4o", "openai")],
+    ));
+
+    assert_eq!(router.active_model(), "claude-sonnet-4-5-20250514");
+
+    let old = router.switch_model("gpt-4o", ModelSwitchReason::UserRequest);
+    assert_eq!(old, Some("claude-sonnet-4-5-20250514".to_string()));
+    assert_eq!(router.active_model(), "gpt-4o");
+    assert_eq!(router.default_model(), "gpt-4o");
+}
+
+#[test]
+fn test_router_switch_model_resolves_alias() {
+    let mut router = Router::new("claude-sonnet-4-5-20250514");
+    router.register_provider(MockProvider::new(
+        "anthropic",
+        vec![make_model("claude-sonnet-4-5-20250514", "anthropic")],
+    ));
+    router.register_provider(MockProvider::new(
+        "openai",
+        vec![make_model("gpt-4o", "openai")],
+    ));
+
+    // "sonnet" alias should resolve to the full ID
+    let old = router.switch_model("sonnet", ModelSwitchReason::UserRequest);
+    assert_eq!(old, None); // same model, noop
+    assert_eq!(router.active_model(), "claude-sonnet-4-5-20250514");
+
+    // Switch to a different one via alias
+    let old = router.switch_model("4o", ModelSwitchReason::UserRequest);
+    assert_eq!(old, Some("claude-sonnet-4-5-20250514".to_string()));
+    assert_eq!(router.active_model(), "gpt-4o");
+}
+
+#[test]
+fn test_router_switch_back() {
+    let mut router = Router::new("claude-sonnet-4-5-20250514");
+    router.register_provider(MockProvider::new(
+        "anthropic",
+        vec![make_model("claude-sonnet-4-5-20250514", "anthropic")],
+    ));
+    router.register_provider(MockProvider::new(
+        "openai",
+        vec![make_model("gpt-4o", "openai")],
+    ));
+
+    router.switch_model("gpt-4o", ModelSwitchReason::UserRequest);
+    assert_eq!(router.active_model(), "gpt-4o");
+
+    let old = router.switch_back();
+    assert_eq!(old, Some("gpt-4o".to_string()));
+    assert_eq!(router.active_model(), "claude-sonnet-4-5-20250514");
+}
+
+#[test]
+fn test_router_switch_tracker_history() {
+    let mut router = Router::new("model-a");
+    router.register_provider(MockProvider::new("p", vec![
+        make_model("model-a", "p"),
+        make_model("model-b", "p"),
+        make_model("model-c", "p"),
+    ]));
+
+    router.switch_model("model-b", ModelSwitchReason::UserRequest);
+    router.switch_model("model-c", ModelSwitchReason::RoleSwitch {
+        role: "smol".into(),
+    });
+
+    let tracker = router.switch_tracker();
+    assert_eq!(tracker.total_switches(), 2);
+
+    let history = tracker.history();
+    assert_eq!(history.len(), 3); // initial + 2 switches
+    assert_eq!(history[1].from, "model-a");
+    assert_eq!(history[1].to, "model-b");
+    assert_eq!(history[1].reason, ModelSwitchReason::UserRequest);
+    assert_eq!(history[2].from, "model-b");
+    assert_eq!(history[2].to, "model-c");
+    assert_eq!(
+        history[2].reason,
+        ModelSwitchReason::RoleSwitch {
+            role: "smol".into()
+        }
+    );
+}
+
+#[test]
+fn test_router_switch_same_model_noop() {
+    let mut router = Router::new("model-a");
+    router.register_provider(MockProvider::new("p", vec![make_model("model-a", "p")]));
+
+    let old = router.switch_model("model-a", ModelSwitchReason::UserRequest);
+    assert!(old.is_none());
+    assert_eq!(router.switch_tracker().total_switches(), 0);
+}
+
+#[test]
+fn test_tagged_stream_event() {
+    let event = StreamEvent::ContentBlockDelta {
+        index: 0,
+        delta: ContentDelta::TextDelta {
+            text: "hello".into(),
+        },
+    };
+
+    let tagged = TaggedStreamEvent::new("gpt-4o", "openai", event.clone());
+    assert_eq!(tagged.model, "gpt-4o");
+    assert_eq!(tagged.provider, "openai");
+
+    // into_inner unwraps
+    let inner = tagged.into_inner();
+    assert!(matches!(
+        inner,
+        StreamEvent::ContentBlockDelta {
+            delta: ContentDelta::TextDelta { .. },
+            ..
+        }
+    ));
+}
+
+// ── Quorum dispatch tests ───────────────────────────────────────────────
+
+/// A deterministic mock that always returns a specific text.
+struct TextMockProvider {
+    name: String,
+    models: Vec<Model>,
+    response_text: String,
+}
+
+impl TextMockProvider {
+    fn new(name: &str, model_id: &str, text: &str) -> Arc<Self> {
+        Arc::new(Self {
+            name: name.to_string(),
+            models: vec![make_model(model_id, name)],
+            response_text: text.to_string(),
+        })
+    }
+}
+
+#[async_trait]
+impl Provider for TextMockProvider {
+    async fn complete(
+        &self,
+        request: CompletionRequest,
+        tx: mpsc::Sender<StreamEvent>,
+    ) -> clankers_router::Result<()> {
+        let _ = tx
+            .send(StreamEvent::MessageStart {
+                message: MessageMetadata {
+                    id: "q-id".into(),
+                    model: request.model.clone(),
+                    role: "assistant".into(),
+                },
+            })
+            .await;
+        let _ = tx
+            .send(StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: ContentBlock::Text { text: String::new() },
+            })
+            .await;
+        let _ = tx
+            .send(StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: ContentDelta::TextDelta {
+                    text: self.response_text.clone(),
+                },
+            })
+            .await;
+        let _ = tx.send(StreamEvent::ContentBlockStop { index: 0 }).await;
+        let _ = tx
+            .send(StreamEvent::MessageDelta {
+                stop_reason: Some("end_turn".into()),
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    ..Default::default()
+                },
+            })
+            .await;
+        let _ = tx.send(StreamEvent::MessageStop).await;
+        Ok(())
+    }
+
+    fn models(&self) -> &[Model] {
+        &self.models
+    }
+
+    fn name(&self) -> &str {
+        &self.name
+    }
+}
+
+#[tokio::test]
+async fn test_quorum_majority_cross_model() {
+    let mut router = Router::new("model-a");
+    // Two agree ("42"), one disagrees (completely different text)
+    router.register_provider(TextMockProvider::new("p-a", "model-a", "the answer is 42"));
+    router.register_provider(TextMockProvider::new("p-b", "model-b", "the answer is 42"));
+    router.register_provider(TextMockProvider::new("p-c", "model-c", "I cannot determine the result from the given information"));
+
+    let quorum_req = QuorumRequest {
+        request: simple_request("ignored"),
+        targets: QuorumTarget::models(["model-a", "model-b", "model-c"]),
+        consensus: ConsensusStrategy::Majority {
+            similarity_threshold: 0.7,
+        },
+        min_agree: 2,
+    };
+
+    let result = router.complete_quorum(quorum_req).await.unwrap();
+    assert_eq!(result.all_responses.len(), 3);
+    assert_eq!(result.agreeing_count, 2);
+    assert!(result.quorum_met);
+    assert!(result.winner.text().contains("42"));
+    assert!(result.agreement > 0.5);
+}
+
+#[tokio::test]
+async fn test_quorum_unanimous_all_agree() {
+    let mut router = Router::new("model-a");
+    router.register_provider(TextMockProvider::new("p-a", "model-a", "yes"));
+    router.register_provider(TextMockProvider::new("p-b", "model-b", "yes"));
+    router.register_provider(TextMockProvider::new("p-c", "model-c", "yes"));
+
+    let quorum_req = QuorumRequest {
+        request: simple_request("ignored"),
+        targets: QuorumTarget::models(["model-a", "model-b", "model-c"]),
+        consensus: ConsensusStrategy::Unanimous {
+            similarity_threshold: 0.8,
+        },
+        min_agree: 3,
+    };
+
+    let result = router.complete_quorum(quorum_req).await.unwrap();
+    assert_eq!(result.agreeing_count, 3);
+    assert!(result.quorum_met);
+    assert!((result.agreement - 1.0).abs() < f64::EPSILON);
+}
+
+#[tokio::test]
+async fn test_quorum_unanimous_broken() {
+    let mut router = Router::new("model-a");
+    router.register_provider(TextMockProvider::new("p-a", "model-a", "yes definitely"));
+    router.register_provider(TextMockProvider::new("p-b", "model-b", "no absolutely not"));
+
+    let quorum_req = QuorumRequest {
+        request: simple_request("ignored"),
+        targets: QuorumTarget::models(["model-a", "model-b"]),
+        consensus: ConsensusStrategy::Unanimous {
+            similarity_threshold: 0.8,
+        },
+        min_agree: 2,
+    };
+
+    let result = router.complete_quorum(quorum_req).await.unwrap();
+    assert_eq!(result.agreeing_count, 1); // unanimity broken
+    assert!(!result.quorum_met);
+}
+
+#[tokio::test]
+async fn test_quorum_replicas_same_model() {
+    let mut router = Router::new("model-a");
+    // Same provider, same model, queried 3 times
+    router.register_provider(TextMockProvider::new("p-a", "model-a", "the answer is 42"));
+
+    let quorum_req = QuorumRequest {
+        request: simple_request("ignored"),
+        targets: QuorumTarget::replicas("model-a", 3),
+        consensus: ConsensusStrategy::Majority {
+            similarity_threshold: 0.7,
+        },
+        min_agree: 2,
+    };
+
+    let result = router.complete_quorum(quorum_req).await.unwrap();
+    assert_eq!(result.all_responses.len(), 3);
+    // All replicas return the same text
+    assert_eq!(result.agreeing_count, 3);
+    assert!(result.quorum_met);
+}
+
+#[tokio::test]
+async fn test_quorum_collect_no_consensus() {
+    let mut router = Router::new("model-a");
+    router.register_provider(TextMockProvider::new("p-a", "model-a", "alpha"));
+    router.register_provider(TextMockProvider::new("p-b", "model-b", "beta"));
+
+    let quorum_req = QuorumRequest {
+        request: simple_request("ignored"),
+        targets: QuorumTarget::models(["model-a", "model-b"]),
+        consensus: ConsensusStrategy::Collect,
+        min_agree: 0,
+    };
+
+    let result = router.complete_quorum(quorum_req).await.unwrap();
+    assert_eq!(result.all_responses.len(), 2);
+    // Collect has no winner logic; agreement is 0
+    assert!((result.agreement - 0.0).abs() < f64::EPSILON);
+    // quorum_met is true because min_agree=0 and agreeing_count >= 0
+    assert!(result.quorum_met);
+}
+
+#[tokio::test]
+async fn test_quorum_with_failures() {
+    let mut router = Router::new("model-a");
+    router.register_provider(TextMockProvider::new("p-a", "model-a", "the answer is 42"));
+    router.register_provider(MockProvider::failing(
+        "p-fail",
+        vec![make_model("model-fail", "p-fail")],
+        "crash",
+    ));
+    router.register_provider(TextMockProvider::new("p-c", "model-c", "the answer is 42"));
+
+    let quorum_req = QuorumRequest {
+        request: simple_request("ignored"),
+        targets: QuorumTarget::models(["model-a", "model-fail", "model-c"]),
+        consensus: ConsensusStrategy::Majority {
+            similarity_threshold: 0.7,
+        },
+        min_agree: 2,
+    };
+
+    let result = router.complete_quorum(quorum_req).await.unwrap();
+    assert_eq!(result.all_responses.len(), 3);
+    // 2 succeed with matching text, 1 failed
+    assert_eq!(result.agreeing_count, 2);
+    assert!(result.quorum_met);
+    assert!(result.winner.is_ok());
+}
+
+#[tokio::test]
+async fn test_quorum_empty_targets_error() {
+    let router = Router::new("model-a");
+    let quorum_req = QuorumRequest {
+        request: simple_request("ignored"),
+        targets: QuorumTarget { slots: vec![] },
+        consensus: ConsensusStrategy::Collect,
+        min_agree: 0,
+    };
+
+    let err = router.complete_quorum(quorum_req).await.unwrap_err();
+    assert!(matches!(err, Error::Config { .. }));
+}
+
+#[tokio::test]
+async fn test_quorum_temperature_spread() {
+    // Verify the temperature spread builder works end-to-end
+    let target = QuorumTarget::replicas("model-a", 5).with_temperature_spread(0.0, 1.0);
+    assert_eq!(target.slots.len(), 5);
+    assert!((target.slots[0].temperature.unwrap() - 0.0).abs() < f64::EPSILON);
+    assert!((target.slots[2].temperature.unwrap() - 0.5).abs() < f64::EPSILON);
+    assert!((target.slots[4].temperature.unwrap() - 1.0).abs() < f64::EPSILON);
+}
+
+#[tokio::test]
+async fn test_quorum_total_usage() {
+    let mut router = Router::new("model-a");
+    router.register_provider(TextMockProvider::new("p-a", "model-a", "hello"));
+    router.register_provider(TextMockProvider::new("p-b", "model-b", "hello"));
+
+    let quorum_req = QuorumRequest {
+        request: simple_request("ignored"),
+        targets: QuorumTarget::models(["model-a", "model-b"]),
+        consensus: ConsensusStrategy::Collect,
+        min_agree: 0,
+    };
+
+    let result = router.complete_quorum(quorum_req).await.unwrap();
+    // Each mock returns 10 input + 5 output
+    assert_eq!(result.total_usage.input_tokens, 20);
+    assert_eq!(result.total_usage.output_tokens, 10);
 }

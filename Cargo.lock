@@ -1130,6 +1130,8 @@ dependencies = [
  "crossterm",
  "dirs",
  "fs4",
+ "futures-buffered",
+ "futures-lite",
  "hex",
  "iroh",
  "libc",

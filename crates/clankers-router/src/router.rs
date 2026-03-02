@@ -21,11 +21,18 @@ use crate::db::request_log::LogEntry;
 use crate::db::usage::RequestUsage;
 use crate::error::Result;
 use crate::model::Model;
+use crate::model_switch::ModelSwitchReason;
+use crate::model_switch::ModelSwitchTracker;
+use crate::multi::MultiRequest;
+use crate::multi::MultiResult;
+use crate::multi::MultiStrategy;
+
 use crate::provider::CompletionRequest;
 use crate::provider::Provider;
 use crate::provider::Usage;
 use crate::registry::ModelRegistry;
 use crate::streaming::StreamEvent;
+use crate::streaming::TaggedStreamEvent;
 
 // ── Fallback configuration ──────────────────────────────────────────────
 
@@ -111,6 +118,8 @@ pub struct Router {
     cache_enabled: bool,
     /// Fallback chain configuration
     fallbacks: FallbackConfig,
+    /// Model switch tracker (active model + switch history + usage stats)
+    switch_tracker: ModelSwitchTracker,
 }
 
 impl std::fmt::Debug for Router {
@@ -127,10 +136,12 @@ impl std::fmt::Debug for Router {
 impl Router {
     /// Create a new empty router.
     pub fn new(default_model: impl Into<String>) -> Self {
+        let model: String = default_model.into();
         Self {
             providers: HashMap::new(),
             registry: ModelRegistry::new(),
-            default_model: default_model.into(),
+            switch_tracker: ModelSwitchTracker::new(model.clone()),
+            default_model: model,
             db: None,
             cache_enabled: false,
             fallbacks: FallbackConfig::new(),
@@ -139,10 +150,12 @@ impl Router {
 
     /// Create a new router backed by a persistent database.
     pub fn with_db(default_model: impl Into<String>, db: RouterDb) -> Self {
+        let model: String = default_model.into();
         Self {
             providers: HashMap::new(),
             registry: ModelRegistry::new(),
-            default_model: default_model.into(),
+            switch_tracker: ModelSwitchTracker::new(model.clone()),
+            default_model: model,
             db: Some(db),
             cache_enabled: false,
             fallbacks: FallbackConfig::new(),
@@ -316,6 +329,496 @@ impl Router {
 
         // All models exhausted
         Err(last_error.unwrap_or_else(|| crate::Error::NoProvider { model: original_model }))
+    }
+
+    // ── Multi-model dispatch ────────────────────────────────────────
+
+    /// Send the same request to multiple models simultaneously.
+    ///
+    /// Each model is resolved through the registry (aliases work) and
+    /// dispatched to its provider. The `MultiStrategy` controls how
+    /// results are collected:
+    ///
+    /// - `Race` — first success wins, remaining tasks are cancelled
+    /// - `All`  — fan out to all and collect every response
+    /// - `Fastest(n)` — return after `n` models succeed
+    ///
+    /// Usage, rate limits, and request logs are recorded for each model
+    /// that completes (success or failure).
+    pub async fn complete_multi(&self, multi_req: MultiRequest) -> Result<MultiResult> {
+        let models = &multi_req.models;
+        if models.is_empty() {
+            return Err(crate::Error::Config {
+                message: "multi-model request has no target models".into(),
+            });
+        }
+
+        info!(
+            "multi-model dispatch: {} models, strategy={}",
+            models.len(),
+            multi_req.strategy
+        );
+
+        // ── Spawn one provider task per model ───────────────────────
+        let mut tasks = Vec::with_capacity(models.len());
+
+        for model_name in models {
+            // Resolve the model to a concrete ID and provider
+            let resolved_id = self
+                .registry
+                .resolve(model_name)
+                .map(|m| m.id.clone())
+                .unwrap_or_else(|| model_name.clone());
+
+            let (_provider, provider_name) = match self.resolve_provider_for_model(&resolved_id) {
+                Some(p) => p,
+                None => {
+                    warn!("multi-model: no provider for {model_name}, skipping");
+                    continue;
+                }
+            };
+
+            // Build per-model request
+            let mut req = multi_req.request.clone();
+            req.model = resolved_id.clone();
+
+            // Create a channel for this model's stream
+            let (tx, rx) = mpsc::channel::<StreamEvent>(256);
+
+            // Wrap provider in Arc so we can send it into the spawned task
+            let provider_name_owned = provider_name.clone();
+            let model_id = resolved_id.clone();
+
+            // We need to get an Arc<dyn Provider> to move into the task
+            let provider_arc = self.providers.get(&provider_name).cloned();
+
+            let handle = tokio::spawn(async move {
+                if let Some(provider) = provider_arc {
+                    provider.complete(req, tx).await
+                } else {
+                    Err(crate::Error::NoProvider { model: model_id })
+                }
+            });
+
+            tasks.push((resolved_id, provider_name_owned, rx, handle));
+        }
+
+        if tasks.is_empty() {
+            return Err(crate::Error::Config {
+                message: "multi-model: no models could be resolved to providers".into(),
+            });
+        }
+
+        // ── Dispatch with the chosen strategy ───────────────────────
+        let result = match multi_req.strategy {
+            MultiStrategy::Race => crate::multi::dispatch_race(tasks).await,
+            MultiStrategy::All => crate::multi::dispatch_all(tasks).await,
+            MultiStrategy::Fastest(n) => crate::multi::dispatch_fastest(tasks, n).await,
+        };
+
+        // ── Record usage/logs for each completed model ──────────────
+        if let Some(ref db) = self.db {
+            for resp in &result.responses {
+                if resp.is_ok() {
+                    let model_def = self.registry.resolve(&resp.model);
+                    let cost = model_def
+                        .and_then(|m| m.estimate_cost(resp.usage.input_tokens, resp.usage.output_tokens));
+                    let req_usage = RequestUsage::from_provider_usage(
+                        &resp.provider,
+                        &resp.model,
+                        &resp.usage,
+                        cost,
+                    );
+                    let _ = db.usage().record(&req_usage);
+
+                    let total_tokens = (resp.usage.input_tokens + resp.usage.output_tokens) as u64;
+                    let _ = db.rate_limits().record_success(&resp.provider, &resp.model, total_tokens);
+
+                    let entry = LogEntry::success(
+                        &resp.provider,
+                        &resp.model,
+                        None,
+                        resp.usage.input_tokens as u64,
+                        resp.usage.output_tokens as u64,
+                        resp.duration_ms,
+                    )
+                    .with_cost(cost.unwrap_or(0.0));
+                    let _ = db.request_log().append(&entry);
+                } else if let Some(ref err) = resp.error {
+                    let entry = LogEntry::error(&resp.provider, &resp.model, resp.duration_ms, err);
+                    let _ = db.request_log().append(&entry);
+                }
+            }
+        }
+
+        Ok(result)
+    }
+
+    /// Stream a multi-model race to a single channel with tagged events.
+    ///
+    /// Unlike `complete_multi()` which collects all events, this method
+    /// streams [`TaggedStreamEvent`]s as they arrive from the winning model.
+    /// Only the race winner's events are forwarded; losers are cancelled.
+    pub async fn complete_race_streaming(
+        &self,
+        request: CompletionRequest,
+        models: Vec<String>,
+        tx: mpsc::Sender<TaggedStreamEvent>,
+    ) -> Result<()> {
+        let multi_req = MultiRequest {
+            request,
+            models,
+            strategy: MultiStrategy::Race,
+        };
+
+        let result = self.complete_multi(multi_req).await?;
+
+        if let Some(winner) = result.winning_response() {
+            for event in &winner.events {
+                let tagged = TaggedStreamEvent::new(
+                    winner.model.clone(),
+                    winner.provider.clone(),
+                    event.clone(),
+                );
+                if tx.send(tagged).await.is_err() {
+                    break;
+                }
+            }
+            Ok(())
+        } else {
+            Err(crate::Error::NoProvider {
+                model: "all models failed in race".into(),
+            })
+        }
+    }
+
+    // ── Quorum dispatch ───────────────────────────────────────────────
+
+    /// Fan out the same prompt to a quorum of models/replicas and determine
+    /// a consensus result.
+    ///
+    /// This builds on [`complete_multi`](Self::complete_multi) for the fan-out
+    /// phase and then applies the configured [`ConsensusStrategy`] to pick
+    /// a winner:
+    ///
+    /// - `Unanimous` / `Majority` — cluster by text similarity
+    /// - `Judge` — make a second LLM call to evaluate candidates
+    /// - `Collect` — return all responses, no winner
+    ///
+    /// For the `Judge` strategy, an additional completion request is sent
+    /// to the configured judge model. The judge's token usage is included
+    /// in `QuorumResult::total_usage`.
+    pub async fn complete_quorum(
+        &self,
+        quorum_req: crate::quorum::QuorumRequest,
+    ) -> Result<crate::quorum::QuorumResult> {
+        use crate::quorum::*;
+
+        if quorum_req.targets.is_empty() {
+            return Err(crate::Error::Config {
+                message: "quorum request has no targets".into(),
+            });
+        }
+
+        let slot_count = quorum_req.targets.len();
+        info!(
+            "quorum dispatch: {} slots, consensus={}",
+            slot_count, quorum_req.consensus
+        );
+
+        // ── Build per-slot requests and fan out ─────────────────────
+        let mut tasks: Vec<crate::multi::ProviderTask> = Vec::with_capacity(slot_count);
+
+        for (i, slot) in quorum_req.targets.slots.iter().enumerate() {
+            let resolved_id = self
+                .registry
+                .resolve(&slot.model)
+                .map(|m| m.id.clone())
+                .unwrap_or_else(|| slot.model.clone());
+
+            let (_provider, provider_name) = match self.resolve_provider_for_model(&resolved_id) {
+                Some(p) => p,
+                None => {
+                    warn!("quorum slot {i}: no provider for {}, skipping", slot.model);
+                    continue;
+                }
+            };
+
+            let mut req = quorum_req.request.clone();
+            req.model = resolved_id.clone();
+            if let Some(temp) = slot.temperature {
+                req.temperature = Some(temp);
+            }
+
+            let (tx, rx) = mpsc::channel::<StreamEvent>(256);
+            let provider_arc = self.providers.get(&provider_name).cloned();
+            let model_id = resolved_id.clone();
+            let label = slot.label.clone().unwrap_or_else(|| resolved_id.clone());
+
+            let handle = tokio::spawn(async move {
+                if let Some(provider) = provider_arc {
+                    provider.complete(req, tx).await
+                } else {
+                    Err(crate::Error::NoProvider { model: model_id })
+                }
+            });
+
+            tasks.push((label, provider_name.clone(), rx, handle));
+        }
+
+        if tasks.is_empty() {
+            return Err(crate::Error::Config {
+                message: "quorum: no targets could be resolved to providers".into(),
+            });
+        }
+
+        // ── Collect all responses ───────────────────────────────────
+        let multi_result = crate::multi::dispatch_all(tasks).await;
+        let responses = multi_result.responses;
+
+        // ── Record usage for fan-out responses ──────────────────────
+        if let Some(ref db) = self.db {
+            for resp in &responses {
+                if resp.is_ok() {
+                    // Resolve back to the real model ID for DB recording
+                    let real_model = self
+                        .registry
+                        .resolve(&resp.model)
+                        .map(|m| m.id.as_str())
+                        .unwrap_or(&resp.model);
+                    let model_def = self.registry.resolve(real_model);
+                    let cost = model_def
+                        .and_then(|m| m.estimate_cost(resp.usage.input_tokens, resp.usage.output_tokens));
+                    let req_usage = RequestUsage::from_provider_usage(
+                        &resp.provider,
+                        real_model,
+                        &resp.usage,
+                        cost,
+                    );
+                    let _ = db.usage().record(&req_usage);
+                }
+            }
+        }
+
+        // ── Apply consensus strategy ────────────────────────────────
+        let successful_count = responses.iter().filter(|r| r.is_ok()).count();
+        let min_agree = quorum_req.min_agree;
+
+        let (winner_index, agreeing_count, agreement, judge_reasoning) = match &quorum_req.consensus {
+            ConsensusStrategy::Unanimous { similarity_threshold } => {
+                let (w, a, ag) = evaluate_unanimous(&responses, *similarity_threshold, min_agree);
+                (w, a, ag, None)
+            }
+            ConsensusStrategy::Majority { similarity_threshold } => {
+                let (w, a, ag) = evaluate_majority(&responses, *similarity_threshold, min_agree);
+                (w, a, ag, None)
+            }
+            ConsensusStrategy::Judge {
+                judge_model,
+                criteria,
+            } => {
+                self.run_judge_consensus(&quorum_req.request, &responses, judge_model, criteria)
+                    .await
+            }
+            ConsensusStrategy::Collect => {
+                // No consensus; pick the first successful response
+                let first_ok = responses.iter().position(|r| r.is_ok()).unwrap_or(0);
+                (first_ok, successful_count, 0.0, None)
+            }
+        };
+
+        let quorum_met = agreeing_count >= min_agree;
+
+        // ── Compute total usage (fan-out + optional judge) ──────────
+        let mut total_usage = Usage::default();
+        for r in &responses {
+            total_usage.input_tokens += r.usage.input_tokens;
+            total_usage.output_tokens += r.usage.output_tokens;
+            total_usage.cache_creation_input_tokens += r.usage.cache_creation_input_tokens;
+            total_usage.cache_read_input_tokens += r.usage.cache_read_input_tokens;
+        }
+
+        let winner = responses
+            .get(winner_index)
+            .cloned()
+            .unwrap_or_else(|| responses.first().cloned().unwrap_or_else(|| {
+                crate::multi::MultiResponse {
+                    model: "none".into(),
+                    provider: "none".into(),
+                    events: vec![],
+                    usage: Usage::default(),
+                    duration_ms: 0,
+                    error: Some("no responses".into()),
+                }
+            }));
+
+        info!(
+            "quorum result: winner={} agreeing={}/{} agreement={:.0}% met={}",
+            winner.model,
+            agreeing_count,
+            successful_count,
+            agreement * 100.0,
+            quorum_met
+        );
+
+        Ok(QuorumResult {
+            winner,
+            winner_index,
+            all_responses: responses,
+            agreeing_count,
+            agreement,
+            quorum_met,
+            consensus: quorum_req.consensus,
+            judge_reasoning,
+            total_usage,
+        })
+    }
+
+    /// Run the Judge consensus: send all candidate responses to a judge model
+    /// and parse its verdict.
+    async fn run_judge_consensus(
+        &self,
+        original_request: &CompletionRequest,
+        responses: &[crate::multi::MultiResponse],
+        judge_model: &str,
+        criteria: &str,
+    ) -> (usize, usize, f64, Option<String>) {
+        use crate::quorum::*;
+
+        // Build the candidates list (only successful responses)
+        let ok_indices: Vec<usize> = responses
+            .iter()
+            .enumerate()
+            .filter(|(_, r)| r.is_ok())
+            .map(|(i, _)| i)
+            .collect();
+
+        if ok_indices.is_empty() {
+            return (0, 0, 0.0, Some("no successful responses to judge".into()));
+        }
+
+        // Collect texts first, then build candidate tuples with references
+        let texts: Vec<String> = ok_indices.iter().map(|&i| responses[i].text()).collect();
+        let candidates: Vec<(usize, &str, &str)> = ok_indices
+            .iter()
+            .enumerate()
+            .map(|(display_idx, &resp_idx)| {
+                (display_idx, responses[resp_idx].model.as_str(), texts[display_idx].as_str())
+            })
+            .collect();
+
+        // Extract the original user prompt from the request messages
+        let user_prompt = original_request
+            .messages
+            .last()
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("[prompt not available]");
+
+        let judge_prompt = build_judge_prompt(user_prompt, &candidates, criteria);
+
+        // Send the judge request
+        let resolved_judge = self
+            .registry
+            .resolve(judge_model)
+            .map(|m| m.id.clone())
+            .unwrap_or_else(|| judge_model.to_string());
+
+        let judge_request = CompletionRequest {
+            model: resolved_judge.clone(),
+            messages: vec![serde_json::json!({"role": "user", "content": judge_prompt})],
+            system_prompt: Some("You are a careful evaluator of LLM responses. Always respond with valid JSON.".into()),
+            max_tokens: Some(1024),
+            temperature: Some(0.0),
+            tools: vec![],
+            thinking: None,
+        };
+
+        let (tx, mut rx) = mpsc::channel::<StreamEvent>(64);
+        let judge_result = self.complete(judge_request, tx).await;
+
+        // Collect judge response text
+        let mut judge_text = String::new();
+        while let Some(event) = rx.recv().await {
+            if let StreamEvent::ContentBlockDelta {
+                delta: crate::streaming::ContentDelta::TextDelta { text },
+                ..
+            } = event
+            {
+                judge_text.push_str(&text);
+            }
+        }
+
+        if let Err(e) = judge_result {
+            warn!("judge model failed: {e}");
+            // Fall back to majority
+            let (w, a, ag) = evaluate_majority(responses, 0.7, 0);
+            return (w, a, ag, Some(format!("judge failed: {e}, fell back to majority")));
+        }
+
+        // Parse the verdict
+        match parse_judge_response(&judge_text) {
+            Some((winner_display_idx, reasoning, agreement)) => {
+                // Map display index back to response index
+                let winner_resp_idx = ok_indices
+                    .get(winner_display_idx)
+                    .copied()
+                    .unwrap_or(ok_indices[0]);
+                let agreeing = ((agreement * ok_indices.len() as f64).round() as usize).max(1);
+                (winner_resp_idx, agreeing, agreement, Some(reasoning))
+            }
+            None => {
+                warn!("failed to parse judge response: {judge_text}");
+                let (w, a, ag) = evaluate_majority(responses, 0.7, 0);
+                (w, a, ag, Some("judge parse failed, fell back to majority".to_string()))
+            }
+        }
+    }
+
+    // ── Model switching ─────────────────────────────────────────────
+
+    /// Switch the active model with tracking.
+    ///
+    /// Records the switch in the tracker with a reason and returns
+    /// the previous model ID, or `None` if it was already active.
+    pub fn switch_model(&mut self, model: impl Into<String>, reason: ModelSwitchReason) -> Option<String> {
+        let model = model.into();
+        // Also resolve aliases so we track the canonical ID
+        let resolved = self
+            .registry
+            .resolve(&model)
+            .map(|m| m.id.clone())
+            .unwrap_or(model);
+
+        let old = self.switch_tracker.switch(resolved.clone(), reason);
+        if old.is_some() {
+            self.default_model = resolved;
+        }
+        old
+    }
+
+    /// Switch back to the previously active model.
+    ///
+    /// Returns `None` if there's no previous model to switch back to.
+    pub fn switch_back(&mut self) -> Option<String> {
+        let old = self.switch_tracker.switch_back()?;
+        self.default_model = self.switch_tracker.current_model().to_string();
+        Some(old)
+    }
+
+    /// Get the currently active model (from the switch tracker).
+    pub fn active_model(&self) -> &str {
+        self.switch_tracker.current_model()
+    }
+
+    /// Get a reference to the model switch tracker.
+    pub fn switch_tracker(&self) -> &ModelSwitchTracker {
+        &self.switch_tracker
+    }
+
+    /// Get a mutable reference to the model switch tracker.
+    pub fn switch_tracker_mut(&mut self) -> &mut ModelSwitchTracker {
+        &mut self.switch_tracker
     }
 
     // ── Internal: single provider attempt ───────────────────────────

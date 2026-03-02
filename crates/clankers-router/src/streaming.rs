@@ -26,6 +26,38 @@ pub enum StreamEvent {
     Error { error: String },
 }
 
+// ── Tagged stream events (for multi-model dispatch) ─────────────────────
+
+/// A stream event tagged with the model and provider that produced it.
+///
+/// Used by [`multi::MultiRequest`](crate::multi::MultiRequest) dispatch
+/// to interleave events from multiple models on a single channel.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TaggedStreamEvent {
+    /// The model ID that produced this event.
+    pub model: String,
+    /// The provider name that served this model.
+    pub provider: String,
+    /// The underlying stream event.
+    pub event: StreamEvent,
+}
+
+impl TaggedStreamEvent {
+    /// Wrap a bare event with model/provider tags.
+    pub fn new(model: impl Into<String>, provider: impl Into<String>, event: StreamEvent) -> Self {
+        Self {
+            model: model.into(),
+            provider: provider.into(),
+            event,
+        }
+    }
+
+    /// Unwrap into the inner `StreamEvent`, discarding the tags.
+    pub fn into_inner(self) -> StreamEvent {
+        self.event
+    }
+}
+
 /// Metadata about a streaming message
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MessageMetadata {
