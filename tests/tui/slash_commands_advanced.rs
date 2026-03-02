@@ -66,7 +66,7 @@ fn slash_shell_stderr_output() {
 
 #[test]
 fn slash_export_default_filename() {
-    let mut h = TuiTestHarness::spawn(24, 120);
+    let mut h = TuiTestHarness::spawn(24, 200);
 
     // Create content first
     run_slash(&mut h, "/version");

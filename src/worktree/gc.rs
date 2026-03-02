@@ -4,12 +4,17 @@
 //!
 //! 1. Remove worktree directories for branches that are fully merged.
 //! 2. Delete fully-merged `clankers/*` git branches.
-//! 3. Reconcile the redb registry against actual git state.
-//! 4. Run `git gc` when enough garbage has accumulated.
+//! 3. Clean up legacy `pirs/*` worktrees and branches from the rename.
+//! 4. Reconcile the redb registry against actual git state.
+//! 5. Run `git gc` when enough garbage has accumulated.
 //!
 //! This prevents the 17 GB orphaned-worktree problem by design: every
 //! session exit path calls `gc_after_session`, and every startup calls
 //! `gc_on_startup`.
+//!
+//! Legacy cleanup: the project was renamed from `pirs` to `clankers`.
+//! Any leftover `pirs/*` branches and `.git/pirs-worktrees/` directories
+//! are cleaned up automatically on startup.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -96,13 +101,19 @@ pub fn gc_after_session(db: &Db, repo_root: &Path, branch: &str) -> GcReport {
 
 /// Full GC on startup.
 ///
-/// Scans for all orphaned `clankers/*` worktrees and branches, reconciles
-/// the registry, and optionally runs `git gc`.
+/// Scans for all orphaned `clankers/*` worktrees and branches, cleans up
+/// any legacy `pirs/*` leftovers, reconciles the registry, and optionally
+/// runs `git gc`.
 pub fn gc_on_startup(db: &Db, repo_root: &Path) -> GcReport {
     let start = Instant::now();
     let mut report = GcReport::default();
 
     info!("gc: startup scan for {}", repo_root.display());
+
+    // 0. Clean up legacy pirs/* worktrees and branches from the rename
+    let legacy = cleanup_legacy_worktrees(repo_root);
+    report.worktrees_removed += legacy.0;
+    report.branches_deleted += legacy.1;
 
     // 1. Discover all clankers/* worktrees on disk
     let live_worktrees = list_clankers_worktrees(repo_root);
@@ -131,13 +142,19 @@ pub fn gc_on_startup(db: &Db, repo_root: &Path) -> GcReport {
         }
     }
 
-    // 6. Reconcile registry: remove entries for branches that no longer exist
+    // 6. Prune git's internal worktree tracking for any that lost their directory
+    prune_worktree_refs(repo_root);
+
+    // 7. Reconcile registry: remove entries for branches that no longer exist
     let remaining_branches: HashSet<String> = list_clankers_branches(repo_root).into_iter().collect();
     report.registry_pruned += prune_against_git(db, &remaining_branches);
 
-    // 7. Run git gc if we cleaned up a lot
-    if report.branches_deleted >= 50 {
-        info!("gc: running git gc (cleaned {} branches)", report.branches_deleted);
+    // 8. Run git gc if we cleaned up enough to warrant it
+    if report.branches_deleted >= 10 || report.worktrees_removed >= 10 {
+        info!(
+            "gc: running git gc (cleaned {} branches, {} worktrees)",
+            report.branches_deleted, report.worktrees_removed
+        );
         run_git_gc(repo_root);
         report.git_gc_ran = true;
     }
@@ -155,6 +172,105 @@ pub fn gc_on_startup(db: &Db, repo_root: &Path) -> GcReport {
 /// delay the TUI appearing.
 pub fn spawn_startup_gc(db: Db, repo_root: PathBuf) -> tokio::task::JoinHandle<GcReport> {
     tokio::task::spawn_blocking(move || gc_on_startup(&db, &repo_root))
+}
+
+// ── Legacy cleanup ──────────────────────────────────────────────────────
+
+/// Legacy project name prefixes to clean up. The project was renamed from
+/// `pirs` to `clankers` — any leftover worktrees/branches use these.
+const LEGACY_PREFIXES: &[&str] = &["pirs"];
+
+/// Remove legacy worktree directories and branches from before the rename.
+///
+/// Returns (worktrees_removed, branches_deleted).
+fn cleanup_legacy_worktrees(repo_root: &Path) -> (usize, usize) {
+    let mut wt_removed = 0;
+    let mut br_deleted = 0;
+
+    for prefix in LEGACY_PREFIXES {
+        // Remove the legacy worktree directory tree (e.g. .git/pirs-worktrees/)
+        let legacy_wt_dir = repo_root.join(".git").join(format!("{prefix}-worktrees"));
+        if legacy_wt_dir.is_dir() {
+            let size = dir_size_approx(&legacy_wt_dir);
+            info!("gc: removing legacy {prefix}-worktrees/ ({:.1} MB)", size as f64 / 1_048_576.0);
+            match std::fs::remove_dir_all(&legacy_wt_dir) {
+                Ok(()) => {
+                    wt_removed += 1; // counted as one bulk removal
+                    // Prune git's worktree refs now that the dirs are gone
+                    prune_worktree_refs(repo_root);
+                }
+                Err(e) => warn!("gc: failed to remove {}: {e}", legacy_wt_dir.display()),
+            }
+        }
+
+        // Delete all legacy branches in bulk
+        let branches = list_branches_with_prefix(repo_root, &format!("{prefix}/"));
+        if !branches.is_empty() {
+            info!("gc: deleting {} legacy {prefix}/* branches", branches.len());
+            for chunk in branches.chunks(100) {
+                let mut cmd = std::process::Command::new("git");
+                cmd.arg("branch").arg("-D");
+                for b in chunk {
+                    cmd.arg(b);
+                }
+                match cmd.current_dir(repo_root).output() {
+                    Ok(o) if o.status.success() => br_deleted += chunk.len(),
+                    Ok(o) => {
+                        // Some may have failed; count successes from output
+                        let out = String::from_utf8_lossy(&o.stdout);
+                        br_deleted += out.lines().filter(|l| l.starts_with("Deleted")).count();
+                        debug!("gc: some branch deletes failed: {}", String::from_utf8_lossy(&o.stderr).trim());
+                    }
+                    Err(e) => warn!("gc: git branch -D failed: {e}"),
+                }
+            }
+        }
+    }
+
+    (wt_removed, br_deleted)
+}
+
+/// List all branch names matching a prefix (e.g. "pirs/").
+fn list_branches_with_prefix(repo_root: &Path, prefix: &str) -> Vec<String> {
+    let pattern = format!("{prefix}*");
+    let output = std::process::Command::new("git")
+        .args(["branch", "--list", &pattern, "--format=%(refname:short)"])
+        .current_dir(repo_root)
+        .output();
+    match output {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .lines()
+            .filter(|l| !l.is_empty())
+            .map(|s| s.to_string())
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Quick approximate directory size via `du -sb`. Returns 0 on failure.
+fn dir_size_approx(path: &Path) -> u64 {
+    std::process::Command::new("du")
+        .args(["-sb"])
+        .arg(path)
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .split_whitespace()
+                .next()
+                .and_then(|s| s.parse().ok())
+        })
+        .unwrap_or(0)
+}
+
+/// Run `git worktree prune` to clean stale worktree tracking refs.
+fn prune_worktree_refs(repo_root: &Path) {
+    match std::process::Command::new("git").args(["worktree", "prune"]).current_dir(repo_root).output() {
+        Ok(o) if o.status.success() => debug!("gc: pruned worktree refs"),
+        Ok(o) => debug!("gc: git worktree prune: {}", String::from_utf8_lossy(&o.stderr).trim()),
+        Err(e) => warn!("gc: failed to run git worktree prune: {e}"),
+    }
 }
 
 // ── Git operations (low level) ──────────────────────────────────────────
