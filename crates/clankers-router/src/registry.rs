@@ -12,6 +12,8 @@ use crate::model::ModelAliases;
 #[derive(Debug, Default)]
 pub struct ModelRegistry {
     models: HashMap<String, Model>,
+    /// Dynamic aliases loaded from config (checked before hardcoded aliases)
+    dynamic_aliases: HashMap<String, String>,
 }
 
 impl ModelRegistry {
@@ -24,6 +26,12 @@ impl ModelRegistry {
         for model in models {
             self.models.insert(model.id.clone(), model.clone());
         }
+    }
+
+    /// Register dynamic aliases (from config file).
+    /// These take priority over hardcoded `ModelAliases`.
+    pub fn register_aliases(&mut self, aliases: &std::collections::HashMap<String, String>) {
+        self.dynamic_aliases.extend(aliases.iter().map(|(k, v)| (k.clone(), v.clone())));
     }
 
     /// Look up a model by exact ID
@@ -43,14 +51,21 @@ impl ModelRegistry {
             return Some(model);
         }
 
-        // 2. Alias resolution
+        // 2. Dynamic alias resolution (from config file — highest priority)
+        if let Some(resolved_id) = self.dynamic_aliases.get(name)
+            && let Some(model) = self.models.get(resolved_id.as_str())
+        {
+            return Some(model);
+        }
+
+        // 3. Hardcoded alias resolution
         if let Some(resolved_id) = ModelAliases::resolve(name)
             && let Some(model) = self.models.get(resolved_id)
         {
             return Some(model);
         }
 
-        // 3. Substring match
+        // 4. Substring match
         let lower = name.to_lowercase();
         self.models.values().find(|m| m.id.to_lowercase().contains(&lower))
     }

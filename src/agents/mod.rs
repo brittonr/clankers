@@ -2,6 +2,7 @@
 
 pub mod definition;
 pub mod discovery;
+pub mod identity;
 pub mod security;
 
 use std::collections::HashMap;

@@ -732,6 +732,7 @@ impl Router {
             temperature: Some(0.0),
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
 
         let (tx, mut rx) = mpsc::channel::<StreamEvent>(64);
@@ -1233,6 +1234,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
 
         router.complete(request, tx).await.unwrap();
@@ -1405,6 +1407,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
 
         // Should succeed via fallback to model-b
@@ -1432,6 +1435,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
 
         // Should fail immediately — auth errors are not retryable
@@ -1463,6 +1467,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
 
         // model-a fails (retryable), model-b in cooldown, model-c succeeds
@@ -1495,6 +1500,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
 
         // model-a skipped (cooldown), model-b succeeds
@@ -1522,6 +1528,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
 
         // Both fail → returns last error
@@ -1544,6 +1551,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
 
         let err = router.complete(request, tx).await.unwrap_err();
@@ -1648,6 +1656,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
         router.complete(request, tx).await.unwrap();
         while rx.recv().await.is_some() {}
@@ -1672,6 +1681,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
         router.complete(request, tx).await.unwrap();
         while rx.recv().await.is_some() {}
@@ -1698,6 +1708,7 @@ mod tests {
             temperature: Some(0.0),
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
         router.complete(request.clone(), tx1).await.unwrap();
         let mut first_events = Vec::new();
@@ -1748,6 +1759,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
 
         router.complete(request, tx).await.unwrap();

@@ -119,6 +119,7 @@ pub mod review;
 pub mod screenshot;
 pub mod subagent;
 pub mod todo;
+pub mod watchdog;
 pub mod truncation;
 #[cfg(feature = "tui-validate")]
 pub mod validate_tui;

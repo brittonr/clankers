@@ -69,6 +69,15 @@ pub struct CompletionRequest {
 
     /// Extended thinking configuration
     pub thinking: Option<ThinkingConfig>,
+
+    /// Extra provider-specific parameters passed through verbatim.
+    ///
+    /// Parameters like `response_format`, `seed`, `top_p`, `frequency_penalty`,
+    /// `presence_penalty`, `logprobs`, `top_logprobs`, `n`, `stop`, etc. are
+    /// forwarded as-is to the upstream provider. This avoids silently dropping
+    /// parameters that clients (Cursor, aider, Continue) send.
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub extra_params: std::collections::HashMap<String, serde_json::Value>,
 }
 
 /// Configuration for extended thinking mode.

@@ -164,6 +164,7 @@ fn simple_request(model: &str) -> CompletionRequest {
         temperature: None,
         tools: vec![],
         thinking: None,
+        extra_params: Default::default(),
     }
 }
 
@@ -1061,6 +1062,7 @@ fn test_completion_request_with_all_fields() {
             enabled: true,
             budget_tokens: Some(10_000),
         }),
+        extra_params: Default::default(),
     };
 
     // Serialize and deserialize

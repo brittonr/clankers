@@ -377,6 +377,7 @@ async fn submit_message(app: &mut App, stream_tx: mpsc::Sender<StreamEvent>) {
         temperature: None,
         tools: vec![],
         thinking: None,
+            extra_params: Default::default(),
     };
 
     app.streaming = true;

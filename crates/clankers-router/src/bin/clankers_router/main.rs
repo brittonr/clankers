@@ -441,6 +441,7 @@ async fn run_ask(
         temperature,
         tools: vec![],
         thinking: None,
+            extra_params: Default::default(),
     };
 
     let (tx, mut rx) = mpsc::channel(64);

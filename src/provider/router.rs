@@ -58,6 +58,7 @@ impl Provider for RouterCompatAdapter {
                 enabled: t.enabled,
                 budget_tokens: t.budget_tokens,
             }),
+            extra_params: Default::default(),
         };
 
         // Create a channel for router StreamEvents and translate them

@@ -14,5 +14,6 @@ pub mod specs;
 pub mod tools;
 pub mod tui;
 pub mod util;
+pub mod work;
 pub mod worktree;
 pub mod zellij;

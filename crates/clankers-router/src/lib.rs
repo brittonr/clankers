@@ -68,6 +68,7 @@
 
 pub mod auth;
 pub mod backends;
+pub mod catalog;
 pub mod credential;
 pub mod db;
 pub mod error;
@@ -109,4 +110,5 @@ pub use quorum::ConsensusStrategy;
 pub use quorum::QuorumRequest;
 pub use quorum::QuorumResult;
 pub use quorum::QuorumTarget;
+pub use catalog::ModelCatalog;
 pub use streaming::TaggedStreamEvent;

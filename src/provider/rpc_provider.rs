@@ -110,6 +110,7 @@ impl Provider for RpcProvider {
                 enabled: t.enabled,
                 budget_tokens: t.budget_tokens,
             }),
+            extra_params: Default::default(),
         };
 
         // Send to daemon and translate streaming events

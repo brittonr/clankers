@@ -293,6 +293,9 @@ struct OpenAIRequest {
     #[serde(skip_serializing_if = "Option::is_none")]
     tools: Option<Vec<OpenAITool>>,
     stream_options: StreamOptions,
+    /// Extra params forwarded verbatim (response_format, seed, top_p, etc.)
+    #[serde(flatten)]
+    extra: std::collections::HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Serialize)]
@@ -386,6 +389,7 @@ fn build_openai_request(request: &CompletionRequest) -> OpenAIRequest {
         temperature: request.temperature,
         tools,
         stream_options: StreamOptions { include_usage: true },
+        extra: request.extra_params.clone(),
     }
 }
 
@@ -1165,6 +1169,7 @@ mod tests {
                 input_schema: json!({"type": "object", "properties": {"command": {"type": "string"}}}),
             }],
             thinking: None,
+            extra_params: Default::default(),
         };
 
         let oai_req = build_openai_request(&request);
@@ -1187,6 +1192,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
+            extra_params: Default::default(),
         };
         let oai_req = build_openai_request(&request);
         assert!(oai_req.tools.is_none());

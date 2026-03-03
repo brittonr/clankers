@@ -87,6 +87,11 @@ struct ChatCompletionRequest {
     tools: Option<Vec<OpenAITool>>,
     #[serde(default)]
     stream_options: Option<StreamOptions>,
+    /// All other parameters (response_format, seed, top_p, frequency_penalty,
+    /// presence_penalty, logprobs, top_logprobs, n, stop, etc.) forwarded
+    /// verbatim to the upstream provider.
+    #[serde(flatten)]
+    extra: std::collections::HashMap<String, Value>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -349,6 +354,8 @@ fn convert_request(req: ChatCompletionRequest) -> CompletionRequest {
         temperature: req.temperature,
         tools,
         thinking: None,
+            extra_params: Default::default(),
+        extra_params: req.extra,
     }
 }
 
@@ -1141,6 +1148,7 @@ mod tests {
             temperature: None,
             tools: None,
             stream_options: None,
+            extra: Default::default(),
         };
 
         let converted = convert_request(req);
@@ -1166,6 +1174,7 @@ mod tests {
                 }),
             }]),
             stream_options: None,
+            extra: Default::default(),
         };
 
         let converted = convert_request(req);
