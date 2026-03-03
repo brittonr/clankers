@@ -91,6 +91,17 @@ pub struct DisplayMessage {
     pub content: String,
     pub tool_name: Option<String>,
     pub is_error: bool,
+    /// Optional inline images (base64 data + media type) for terminal rendering
+    pub images: Vec<DisplayImage>,
+}
+
+/// An image attached to a display message for inline terminal rendering
+#[derive(Debug, Clone)]
+pub struct DisplayImage {
+    /// Base64-encoded image data
+    pub data: String,
+    /// MIME type (e.g. "image/png")
+    pub media_type: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -368,6 +379,7 @@ impl App {
             content,
             tool_name: None,
             is_error,
+            images: Vec::new(),
         }));
         self.scroll.scroll_to_bottom();
     }
@@ -415,6 +427,7 @@ impl App {
                     content,
                     tool_name: None,
                     is_error: false,
+                    images: Vec::new(),
                 });
             }
         }
@@ -430,6 +443,7 @@ impl App {
                     content,
                     tool_name: None,
                     is_error: false,
+                    images: Vec::new(),
                 });
             }
         }
@@ -504,6 +518,7 @@ impl App {
                         content: tool_name.to_string(),
                         tool_name: Some(tool_name.clone()),
                         is_error: false,
+                        images: Vec::new(),
                     });
                 }
                 // Track file activity from tool calls
@@ -549,6 +564,7 @@ impl App {
                             content: text,
                             tool_name: Some(call_id.clone()),
                             is_error: false,
+                            images: Vec::new(),
                         });
                     }
                 }
@@ -564,6 +580,8 @@ impl App {
             } => {
                 // Remove from active tools
                 self.active_tools.remove(call_id.as_str());
+
+                // Collect text content
                 let display = result
                     .content
                     .iter()
@@ -573,6 +591,19 @@ impl App {
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
+
+                // Collect image content (no longer silently dropped)
+                let images: Vec<DisplayImage> = result
+                    .content
+                    .iter()
+                    .filter_map(|c| match c {
+                        crate::tools::ToolResultContent::Image { media_type, data } => Some(DisplayImage {
+                            data: data.clone(),
+                            media_type: media_type.clone(),
+                        }),
+                        _ => None,
+                    })
+                    .collect();
 
                 if let Some(ref mut block) = self.active_block {
                     let found = block
@@ -584,12 +615,14 @@ impl App {
                         msg.content = display;
                         msg.is_error = *is_error;
                         msg.tool_name = None;
+                        msg.images = images;
                     } else {
                         block.responses.push(DisplayMessage {
                             role: MessageRole::ToolResult,
                             content: display,
                             tool_name: None,
                             is_error: *is_error,
+                            images,
                         });
                     }
                 }

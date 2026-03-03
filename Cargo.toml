@@ -70,7 +70,7 @@ iroh-blobs = "0.98"
 extism = "1.13"
 ignore = "0.4"
 arboard = { version = "3", features = ["image-data"] }
-image = { version = "0.25", default-features = false, features = ["png"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 open = "5"
 
 # PTY support for TUI validation tool

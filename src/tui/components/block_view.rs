@@ -240,6 +240,28 @@ fn render_response_message<'a>(
                         Span::styled(format!("  → {}", line), Style::default().fg(color)),
                     ]));
                 }
+
+                // Render inline image placeholders
+                for (i, img) in msg.images.iter().enumerate() {
+                    let size_bytes = img.data.len() * 3 / 4; // approximate decoded size
+                    let size_str = if size_bytes >= 1024 * 1024 {
+                        format!("{:.1} MB", size_bytes as f64 / (1024.0 * 1024.0))
+                    } else if size_bytes >= 1024 {
+                        format!("{:.1} KB", size_bytes as f64 / 1024.0)
+                    } else {
+                        format!("{} bytes", size_bytes)
+                    };
+                    let label = format!(
+                        "  🖼 [image {}: {}, {}]",
+                        i + 1,
+                        img.media_type,
+                        size_str,
+                    );
+                    lines.push(Line::from(vec![
+                        Span::styled("│ ", border_style),
+                        Span::styled(label, Style::default().fg(Color::Cyan)),
+                    ]));
+                }
             }
         }
         MessageRole::Thinking => {
@@ -685,6 +707,7 @@ mod tests {
             content: (1..=20).map(|i| format!("line {}", i)).collect::<Vec<_>>().join("\n"),
             tool_name: Some("call_123".to_string()),
             is_error: false,
+            images: Vec::new(),
         };
 
         // Create an active tool entry
@@ -724,6 +747,7 @@ mod tests {
             content: "line 1\nline 2\nline 3".to_string(),
             tool_name: None, // completed
             is_error: false,
+            images: Vec::new(),
         };
 
         let active_tools = HashMap::new();
@@ -746,6 +770,7 @@ mod tests {
             content: "short output".to_string(),
             tool_name: Some("call_456".to_string()),
             is_error: false,
+            images: Vec::new(),
         };
 
         let mut active_tools = HashMap::new();

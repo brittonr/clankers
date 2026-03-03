@@ -2558,13 +2558,36 @@ fn handle_input_with_plugins(
         execute_slash_command(app, action, &args, cmd_tx, plugin_manager, panel_tx, db);
     } else {
         let _ = cmd_tx.send(AgentCommand::ResetCancel);
-        let images = app.take_pending_images();
-        if images.is_empty() {
-            let _ = cmd_tx.send(AgentCommand::Prompt(text.to_string()));
+        let mut pending_images = app.take_pending_images();
+
+        // Expand @file references — text files are inlined, images become Content blocks
+        let expanded = crate::util::at_file::expand_at_refs_with_images(text, &app.cwd);
+        let prompt_text = expanded.text;
+
+        // Convert @file images into PendingImage and merge with clipboard-pasted images
+        let at_file_images: Vec<crate::tui::app::PendingImage> = expanded
+            .images
+            .into_iter()
+            .filter_map(|c| match c {
+                crate::provider::message::Content::Image {
+                    source: crate::provider::message::ImageSource::Base64 { media_type, data },
+                } => {
+                    let size = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &data)
+                        .map(|b| b.len())
+                        .unwrap_or(0);
+                    Some(crate::tui::app::PendingImage { data, media_type, size })
+                }
+                _ => None,
+            })
+            .collect();
+        pending_images.extend(at_file_images);
+
+        if pending_images.is_empty() {
+            let _ = cmd_tx.send(AgentCommand::Prompt(prompt_text));
         } else {
             let _ = cmd_tx.send(AgentCommand::PromptWithImages {
-                text: text.to_string(),
-                images,
+                text: prompt_text,
+                images: pending_images,
             });
         }
     }
@@ -4178,6 +4201,7 @@ fn execute_slash_command(
                     content,
                     tool_name: None,
                     is_error: false,
+                    images: Vec::new(),
                 });
                 block.streaming = false;
             }
@@ -4338,6 +4362,7 @@ fn restore_display_blocks(app: &mut App, messages: &[crate::provider::message::A
                                     content: text.clone(),
                                     tool_name: None,
                                     is_error: false,
+                                    images: Vec::new(),
                                 });
                             }
                         }
@@ -4348,6 +4373,7 @@ fn restore_display_blocks(app: &mut App, messages: &[crate::provider::message::A
                                     content: name.clone(),
                                     tool_name: Some(name.clone()),
                                     is_error: false,
+                                    images: Vec::new(),
                                 });
                             }
                         }
@@ -4358,6 +4384,7 @@ fn restore_display_blocks(app: &mut App, messages: &[crate::provider::message::A
                                     content: thinking.clone(),
                                     tool_name: None,
                                     is_error: false,
+                                    images: Vec::new(),
                                 });
                             }
                         }
@@ -4375,12 +4402,27 @@ fn restore_display_blocks(app: &mut App, messages: &[crate::provider::message::A
                     })
                     .collect::<Vec<_>>()
                     .join("\n");
+                // Extract images from tool result Content::Image blocks
+                let images: Vec<crate::tui::app::DisplayImage> = tool_result
+                    .content
+                    .iter()
+                    .filter_map(|c| match c {
+                        Content::Image {
+                            source: crate::provider::message::ImageSource::Base64 { media_type, data },
+                        } => Some(crate::tui::app::DisplayImage {
+                            data: data.clone(),
+                            media_type: media_type.clone(),
+                        }),
+                        _ => None,
+                    })
+                    .collect();
                 if let Some(ref mut block) = app.active_block {
                     block.responses.push(DisplayMessage {
                         role: MessageRole::ToolResult,
                         content: display,
                         tool_name: None,
                         is_error: tool_result.is_error,
+                        images,
                     });
                 }
             }
