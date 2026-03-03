@@ -43,6 +43,7 @@
 
         buildInputs = with pkgs; [
           openssl
+          sqlite
         ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
           pkgs.darwin.apple_sdk.frameworks.Security
           pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
@@ -173,6 +174,7 @@
           # Put cargo build output on PATH so clankers can auto-start clankers-router
           shellHook = ''
             export PATH="$PWD/target/debug:$PATH"
+            export LIBRARY_PATH="${pkgs.sqlite.out}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"
           '';
         };
       }

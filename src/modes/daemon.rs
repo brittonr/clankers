@@ -24,6 +24,7 @@ use serde_json::json;
 use tokio::sync::Mutex;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
+use tracing::error;
 use tracing::info;
 use tracing::warn;
 
@@ -99,7 +100,6 @@ struct LiveSession {
 
 /// Identifies a session by transport + sender.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
-#[allow(dead_code)] // Matrix variant only constructed with `matrix` feature
 enum SessionKey {
     /// iroh peer identified by public key
     Iroh(String),
@@ -321,12 +321,12 @@ pub async fn run_daemon(
     });
 
     // ── Matrix bridge (optional) ────────────────────────────────────
-    #[cfg(feature = "matrix")]
     let matrix_handle = if config.enable_matrix {
         let matrix_store = Arc::clone(&store);
         let matrix_cancel = cancel.clone();
+        let matrix_paths = paths.clone();
         Some(tokio::spawn(async move {
-            if let Err(e) = run_matrix_bridge(matrix_store, matrix_cancel, paths).await {
+            if let Err(e) = run_matrix_bridge(matrix_store, matrix_cancel, &matrix_paths).await {
                 error!("Matrix bridge error: {e}");
             }
         }))
@@ -373,7 +373,6 @@ pub async fn run_daemon(
     cancel.cancel();
 
     iroh_handle.await.ok();
-    #[cfg(feature = "matrix")]
     if let Some(h) = matrix_handle {
         h.await.ok();
     }
@@ -663,7 +662,6 @@ async fn run_session_prompt(
 
 // ── Matrix bridge ───────────────────────────────────────────────────────────
 
-#[cfg(feature = "matrix")]
 async fn run_matrix_bridge(
     store: Arc<RwLock<SessionStore>>,
     cancel: CancellationToken,
@@ -722,7 +720,7 @@ async fn run_matrix_bridge(
 
                         // Send response back to the room
                         let client = client.read().await;
-                        if let Ok(rid) = ::matrix_sdk::ruma::RoomId::parse(&room_id) {
+                        if let Ok(rid) = clankers_matrix::ruma::RoomId::parse(&room_id) {
                             if let Err(e) = client.send_text(&rid, &response).await {
                                 error!("Matrix send failed: {e}");
                             }
@@ -737,7 +735,7 @@ async fn run_matrix_bridge(
                         let response = run_matrix_prompt(Arc::clone(&store), key, body).await;
 
                         let client = client.read().await;
-                        if let Ok(rid) = ::matrix_sdk::ruma::RoomId::parse(&room_id) {
+                        if let Ok(rid) = clankers_matrix::ruma::RoomId::parse(&room_id) {
                             if let Err(e) = client.send_text(&rid, &response).await {
                                 error!("Matrix send failed: {e}");
                             }
@@ -757,7 +755,6 @@ async fn run_matrix_bridge(
 }
 
 /// Run a prompt for a Matrix message and collect the full text response.
-#[cfg(feature = "matrix")]
 async fn run_matrix_prompt(store: Arc<RwLock<SessionStore>>, key: SessionKey, text: String) -> String {
     // Get conversation history
     let (mut agent, history) = {
