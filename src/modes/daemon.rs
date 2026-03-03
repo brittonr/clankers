@@ -72,6 +72,17 @@ pub struct DaemonConfig {
     /// Matrix user allowlist (empty = allow all). Overridden by
     /// `CLANKERS_MATRIX_ALLOWED_USERS` env var (comma-separated).
     pub matrix_allowed_users: Vec<String>,
+    /// Per-session heartbeat interval in seconds (0 = disabled).
+    /// The daemon periodically reads each session's `HEARTBEAT.md`
+    /// and prompts the agent with its contents. If the agent responds
+    /// with "HEARTBEAT_OK", the response is suppressed.
+    pub session_heartbeat_secs: u64,
+    /// Prompt text prepended to HEARTBEAT.md contents.
+    pub heartbeat_prompt: String,
+    /// Enable per-session trigger pipes. When enabled, a FIFO at
+    /// `{session_dir}/trigger.pipe` lets external processes inject
+    /// prompts into the agent session.
+    pub trigger_pipe_enabled: bool,
 }
 
 impl Default for DaemonConfig {
@@ -87,8 +98,21 @@ impl Default for DaemonConfig {
             max_sessions: 32,
             idle_timeout_secs: 1800, // 30 minutes
             matrix_allowed_users: Vec::new(),
+            session_heartbeat_secs: 300, // 5 minutes
+            heartbeat_prompt: "Check your HEARTBEAT.md for pending tasks. \
+                If nothing needs attention, respond with HEARTBEAT_OK."
+                .to_string(),
+            trigger_pipe_enabled: true,
         }
     }
+}
+
+/// Config subset passed to the Matrix bridge for proactive agent features.
+#[derive(Debug, Clone)]
+struct ProactiveConfig {
+    session_heartbeat_secs: u64,
+    heartbeat_prompt: String,
+    trigger_pipe_enabled: bool,
 }
 
 // ── Session tracking ────────────────────────────────────────────────────────
@@ -104,6 +128,10 @@ struct LiveSession {
     last_active: chrono::DateTime<Utc>,
     /// Number of turns so far
     turn_count: usize,
+    /// Deterministic working directory for this session
+    session_dir: PathBuf,
+    /// Cancellation token for the trigger pipe reader task
+    trigger_cancel: Option<CancellationToken>,
 }
 
 /// Identifies a session by transport + sender.
@@ -120,6 +148,28 @@ impl std::fmt::Display for SessionKey {
         match self {
             Self::Iroh(id) => write!(f, "iroh:{}", &id[..12.min(id.len())]),
             Self::Matrix { user_id, room_id } => write!(f, "matrix:{}@{}", user_id, room_id),
+        }
+    }
+}
+
+impl SessionKey {
+    /// Deterministic directory name for this session's working files.
+    fn dir_name(&self) -> String {
+        match self {
+            Self::Iroh(id) => format!("daemon_iroh_{}", &id[..12.min(id.len())]),
+            Self::Matrix { user_id, room_id } => {
+                let user = user_id.replace(':', "_").replace('@', "");
+                let room = room_id.replace(':', "_").replace('!', "");
+                format!("daemon_matrix_{}_{}", user, room)
+            }
+        }
+    }
+
+    /// Extract the Matrix room_id if this is a Matrix session.
+    fn matrix_room_id(&self) -> Option<&str> {
+        match self {
+            Self::Matrix { room_id, .. } => Some(room_id),
+            _ => None,
         }
     }
 }
@@ -187,13 +237,21 @@ impl SessionStore {
             let session_mgr =
                 SessionManager::create(&self.sessions_dir, "daemon", &self.model, Some("daemon"), None, None).ok();
 
-            info!("Created new session for {}", key);
+            // Create a deterministic session directory for heartbeat/trigger files
+            let session_dir = self.sessions_dir.join(key.dir_name());
+            if let Err(e) = std::fs::create_dir_all(&session_dir) {
+                warn!("Failed to create session dir {}: {e}", session_dir.display());
+            }
+
+            info!("Created new session for {} (dir: {})", key, session_dir.display());
 
             self.sessions.insert(key.clone(), LiveSession {
                 agent,
                 session_mgr,
                 last_active: Utc::now(),
                 turn_count: 0,
+                session_dir,
+                trigger_cancel: None,
             });
         }
 
@@ -232,6 +290,19 @@ impl SessionStore {
 
         let count = stale.len();
         for key in &stale {
+            if let Some(session) = self.sessions.get(key) {
+                // Cancel trigger pipe reader
+                if let Some(ref cancel) = session.trigger_cancel {
+                    cancel.cancel();
+                }
+                // Clean up trigger pipe file
+                let pipe_path = session.session_dir.join("trigger.pipe");
+                if pipe_path.exists() {
+                    if let Err(e) = std::fs::remove_file(&pipe_path) {
+                        warn!("Failed to remove trigger pipe {}: {e}", pipe_path.display());
+                    }
+                }
+            }
             info!("Reaping idle session: {}", key);
             self.sessions.remove(key);
             self.prompt_locks.remove(key);
@@ -354,8 +425,15 @@ pub async fn run_daemon(
         let matrix_cancel = cancel.clone();
         let matrix_paths = paths.clone();
         let matrix_allowed = config.matrix_allowed_users.clone();
+        let proactive_config = ProactiveConfig {
+            session_heartbeat_secs: config.session_heartbeat_secs,
+            heartbeat_prompt: config.heartbeat_prompt.clone(),
+            trigger_pipe_enabled: config.trigger_pipe_enabled,
+        };
         Some(tokio::spawn(async move {
-            if let Err(e) = run_matrix_bridge(matrix_store, matrix_cancel, &matrix_paths, matrix_allowed).await {
+            if let Err(e) =
+                run_matrix_bridge(matrix_store, matrix_cancel, &matrix_paths, matrix_allowed, proactive_config).await
+            {
                 error!("Matrix bridge error: {e}");
             }
         }))
@@ -744,6 +822,7 @@ async fn run_matrix_bridge(
     cancel: CancellationToken,
     paths: &ClankersPaths,
     daemon_allowed_users: Vec<String>,
+    proactive: ProactiveConfig,
 ) -> Result<()> {
     use clankers_matrix::MatrixConfig;
     use clankers_matrix::bridge::BridgeEvent;
@@ -782,6 +861,22 @@ async fn run_matrix_bridge(
     bridge.start(event_rx, &our_user_id);
 
     info!("Matrix bridge started for {}", our_user_id);
+
+    // ── Heartbeat scheduler ─────────────────────────────────────────
+    if proactive.session_heartbeat_secs > 0 {
+        let hb_store = Arc::clone(&store);
+        let hb_client = Arc::clone(&client);
+        let hb_cancel = cancel.clone();
+        let hb_interval = std::time::Duration::from_secs(proactive.session_heartbeat_secs);
+        let hb_prompt = proactive.heartbeat_prompt.clone();
+        tokio::spawn(async move {
+            run_session_heartbeat(hb_store, hb_client, hb_interval, hb_prompt, hb_cancel).await;
+        });
+        info!(
+            "Session heartbeat scheduler started (interval: {}s)",
+            proactive.session_heartbeat_secs
+        );
+    }
 
     loop {
         tokio::select! {
@@ -910,6 +1005,20 @@ async fn run_matrix_bridge(
                         let c = client.read().await;
                         if let Err(e) = c.send_markdown(&room_id_parsed, &response).await {
                             error!("Matrix send failed: {e}");
+                        }
+
+                        // ── Trigger pipe setup ──────────────────────
+                        if proactive.trigger_pipe_enabled {
+                            let tp_key = SessionKey::Matrix {
+                                user_id: sender.clone(),
+                                room_id: room_id.clone(),
+                            };
+                            ensure_trigger_pipe(
+                                Arc::clone(&store),
+                                &tp_key,
+                                Arc::clone(&client),
+                            )
+                            .await;
                         }
                     }
                     BridgeEvent::MediaMessage {
@@ -1101,6 +1210,20 @@ async fn run_matrix_bridge(
                         let c = client.read().await;
                         if let Err(e) = c.send_markdown(&room_id_parsed, &response).await {
                             error!("Matrix send failed: {e}");
+                        }
+
+                        // ── Trigger pipe setup ──────────────────────
+                        if proactive.trigger_pipe_enabled {
+                            let tp_key = SessionKey::Matrix {
+                                user_id: sender.clone(),
+                                room_id: room_id.clone(),
+                            };
+                            ensure_trigger_pipe(
+                                Arc::clone(&store),
+                                &tp_key,
+                                Arc::clone(&client),
+                            )
+                            .await;
                         }
                     }
                     BridgeEvent::PeerUpdate(peer) => {
@@ -1429,6 +1552,346 @@ async fn run_matrix_prompt_with_images(
     }
 }
 
+// ── Proactive agent: heartbeat + trigger pipes ──────────────────────────────
+
+/// Check whether a response signals "nothing to report".
+fn is_heartbeat_ok(response: &str) -> bool {
+    let upper = response.to_uppercase();
+    upper.contains("HEARTBEAT_OK") || upper.contains("HEARTBEAT OK")
+}
+
+/// Run a prompt against a session without updating `last_active`.
+/// Used for heartbeat and trigger prompts — these shouldn't prevent
+/// idle reaping.
+async fn run_proactive_prompt(
+    store: Arc<RwLock<SessionStore>>,
+    key: SessionKey,
+    text: String,
+) -> String {
+    // Serialize via prompt lock
+    let prompt_lock = {
+        let mut store = store.write().await;
+        store.prompt_lock(&key)
+    };
+    let _prompt_guard = prompt_lock.lock().await;
+
+    let (mut agent, history) = {
+        let mut store = store.write().await;
+        let session = match store.sessions.get_mut(&key) {
+            Some(s) => s,
+            None => return String::new(), // session gone
+        };
+        // Deliberately do NOT update last_active or turn_count
+        let messages = session.agent.messages().to_vec();
+        let agent = Agent::new(
+            Arc::clone(&store.provider),
+            store.tools.clone(),
+            store.settings.clone(),
+            store.model.clone(),
+            store.system_prompt.clone(),
+        );
+        (agent, messages)
+    };
+
+    agent.seed_messages(history);
+
+    let mut rx = agent.subscribe();
+
+    let collector = tokio::spawn(async move {
+        let mut collected = String::new();
+        while let Ok(event) = rx.recv().await {
+            if let AgentEvent::MessageUpdate {
+                delta: ContentDelta::TextDelta { ref text },
+                ..
+            } = event
+            {
+                collected.push_str(text);
+            }
+            if matches!(event, AgentEvent::AgentEnd { .. }) {
+                break;
+            }
+        }
+        collected
+    });
+
+    let result = agent.prompt(&text).await;
+    let collected = collector.await.unwrap_or_default();
+
+    // Save updated messages back
+    let messages = agent.messages().to_vec();
+    {
+        let mut store = store.write().await;
+        if let Some(session) = store.sessions.get_mut(&key) {
+            session.agent.seed_messages(messages);
+        }
+    }
+
+    match result {
+        Ok(()) => collected,
+        Err(e) => format!("Error: {e}"),
+    }
+}
+
+/// Ensure a trigger pipe reader is running for a Matrix session.
+/// No-op if the session already has one or the key is not Matrix.
+async fn ensure_trigger_pipe(
+    store: Arc<RwLock<SessionStore>>,
+    key: &SessionKey,
+    matrix_client: Arc<tokio::sync::RwLock<clankers_matrix::MatrixClient>>,
+) {
+    if key.matrix_room_id().is_none() {
+        return;
+    }
+    let needs_spawn = {
+        let store = store.read().await;
+        match store.sessions.get(key) {
+            Some(s) => s.trigger_cancel.is_none(),
+            None => false,
+        }
+    };
+
+    if !needs_spawn {
+        return;
+    }
+
+    let session_dir = {
+        let store = store.read().await;
+        match store.sessions.get(key) {
+            Some(s) => s.session_dir.clone(),
+            None => return,
+        }
+    };
+
+    let cancel = spawn_trigger_reader(
+        &session_dir,
+        key.clone(),
+        Arc::clone(&store),
+        matrix_client,
+    );
+
+    if let Some(cancel) = cancel {
+        let mut store = store.write().await;
+        if let Some(session) = store.sessions.get_mut(key) {
+            session.trigger_cancel = Some(cancel);
+        }
+    }
+}
+
+/// Run the per-session heartbeat scheduler.
+///
+/// Iterates all active Matrix sessions, checks for HEARTBEAT.md,
+/// and prompts the agent if the file is non-empty. Responses
+/// containing "HEARTBEAT_OK" are suppressed.
+async fn run_session_heartbeat(
+    store: Arc<RwLock<SessionStore>>,
+    matrix_client: Arc<tokio::sync::RwLock<clankers_matrix::MatrixClient>>,
+    interval: std::time::Duration,
+    heartbeat_prompt: String,
+    cancel: CancellationToken,
+) {
+    let mut ticker = tokio::time::interval(interval);
+    ticker.tick().await; // skip the immediate first tick
+
+    loop {
+        tokio::select! {
+            _ = ticker.tick() => {}
+            _ = cancel.cancelled() => break,
+        }
+
+        // Snapshot all Matrix sessions that have a HEARTBEAT.md
+        let targets: Vec<(SessionKey, PathBuf, String)> = {
+            let store = store.read().await;
+            store
+                .sessions
+                .iter()
+                .filter_map(|(key, session)| {
+                    let room_id = key.matrix_room_id()?.to_string();
+                    let hb_path = session.session_dir.join("HEARTBEAT.md");
+                    Some((key.clone(), hb_path, room_id))
+                })
+                .collect()
+        };
+
+        for (key, hb_path, room_id) in targets {
+            // Read heartbeat file
+            let contents = match tokio::fs::read_to_string(&hb_path).await {
+                Ok(c) if !c.trim().is_empty() => c,
+                _ => continue, // missing or empty — skip
+            };
+
+            info!("[{}] heartbeat: found {} bytes in HEARTBEAT.md", key, contents.len());
+
+            let prompt = format!("{}\n\n---\n\n{}", heartbeat_prompt, contents);
+
+            // Start typing
+            let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(&room_id) {
+                Ok(rid) => rid.to_owned(),
+                Err(_) => continue,
+            };
+            {
+                let c = matrix_client.read().await;
+                let _ = c.set_typing(&room_id_parsed, true).await;
+            }
+
+            // Prompt the agent (without updating last_active)
+            let response = run_proactive_prompt(
+                Arc::clone(&store),
+                key.clone(),
+                prompt,
+            )
+            .await;
+
+            // Stop typing
+            {
+                let c = matrix_client.read().await;
+                let _ = c.set_typing(&room_id_parsed, false).await;
+            }
+
+            // Suppress HEARTBEAT_OK responses
+            if is_heartbeat_ok(&response) {
+                info!("[{}] heartbeat: OK (suppressed)", key);
+                continue;
+            }
+
+            if response.trim().is_empty() {
+                info!("[{}] heartbeat: empty response (suppressed)", key);
+                continue;
+            }
+
+            // Send response to Matrix
+            let c = matrix_client.read().await;
+            if let Err(e) = c.send_markdown(&room_id_parsed, &response).await {
+                error!("[{}] heartbeat send failed: {e}", key);
+            } else {
+                info!("[{}] heartbeat: sent response ({} bytes)", key, response.len());
+            }
+        }
+    }
+}
+
+/// Create a named pipe (FIFO) at the given path.
+/// Returns Ok(()) if created or already exists, Err on failure.
+fn create_fifo(path: &std::path::Path) -> std::io::Result<()> {
+    if path.exists() {
+        return Ok(());
+    }
+
+    let c_path = std::ffi::CString::new(path.to_string_lossy().as_bytes())
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidInput, e))?;
+
+    // Mode 0o660: owner+group read/write
+    let result = unsafe { libc::mkfifo(c_path.as_ptr(), 0o660) };
+    if result == 0 {
+        Ok(())
+    } else {
+        Err(std::io::Error::last_os_error())
+    }
+}
+
+/// Spawn a trigger pipe reader task for a session.
+///
+/// Creates a FIFO at `{session_dir}/trigger.pipe` and reads lines from it.
+/// Each line becomes a prompt to the agent; responses go to the Matrix room.
+/// Returns the cancellation token used to stop the reader.
+fn spawn_trigger_reader(
+    session_dir: &std::path::Path,
+    key: SessionKey,
+    store: Arc<RwLock<SessionStore>>,
+    matrix_client: Arc<tokio::sync::RwLock<clankers_matrix::MatrixClient>>,
+) -> Option<CancellationToken> {
+    let room_id = key.matrix_room_id()?.to_string();
+    let pipe_path = session_dir.join("trigger.pipe");
+
+    if let Err(e) = create_fifo(&pipe_path) {
+        error!("[{}] failed to create trigger pipe {}: {e}", key, pipe_path.display());
+        return None;
+    }
+
+    info!("[{}] trigger pipe: {}", key, pipe_path.display());
+
+    let cancel = CancellationToken::new();
+    let cancel_clone = cancel.clone();
+
+    tokio::spawn(async move {
+        use tokio::io::AsyncBufReadExt;
+
+        loop {
+            // Open the FIFO — this blocks until a writer opens the other end.
+            // When the writer closes, we get EOF and re-open.
+            let file = tokio::select! {
+                f = tokio::fs::File::open(&pipe_path) => {
+                    match f {
+                        Ok(f) => f,
+                        Err(e) => {
+                            warn!("[{}] trigger pipe open failed: {e}", key);
+                            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                            continue;
+                        }
+                    }
+                }
+                _ = cancel_clone.cancelled() => break,
+            };
+
+            let reader = tokio::io::BufReader::new(file);
+            let mut lines = reader.lines();
+
+            loop {
+                let line = tokio::select! {
+                    l = lines.next_line() => l,
+                    _ = cancel_clone.cancelled() => break,
+                };
+
+                match line {
+                    Ok(Some(text)) if !text.trim().is_empty() => {
+                        info!("[{}] trigger: {}", key, &text[..80.min(text.len())]);
+
+                        let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(&room_id) {
+                            Ok(rid) => rid.to_owned(),
+                            Err(_) => continue,
+                        };
+
+                        // Typing indicator
+                        {
+                            let c = matrix_client.read().await;
+                            let _ = c.set_typing(&room_id_parsed, true).await;
+                        }
+
+                        let response = run_proactive_prompt(
+                            Arc::clone(&store),
+                            key.clone(),
+                            text,
+                        )
+                        .await;
+
+                        {
+                            let c = matrix_client.read().await;
+                            let _ = c.set_typing(&room_id_parsed, false).await;
+                        }
+
+                        if is_heartbeat_ok(&response) || response.trim().is_empty() {
+                            info!("[{}] trigger: suppressed (ok/empty)", key);
+                            continue;
+                        }
+
+                        let c = matrix_client.read().await;
+                        if let Err(e) = c.send_markdown(&room_id_parsed, &response).await {
+                            error!("[{}] trigger send failed: {e}", key);
+                        }
+                    }
+                    Ok(Some(_)) => {} // empty line, skip
+                    Ok(None) => break, // EOF — writer closed, re-open
+                    Err(e) => {
+                        warn!("[{}] trigger pipe read error: {e}", key);
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    Some(cancel)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1494,5 +1957,71 @@ mod tests {
         assert_eq!(guess_mime(std::path::Path::new("code.rs")), mime::TEXT_PLAIN);
         assert_eq!(guess_mime(std::path::Path::new("data.bin")), mime::APPLICATION_OCTET_STREAM);
         assert_eq!(guess_mime(std::path::Path::new("noext")), mime::APPLICATION_OCTET_STREAM);
+    }
+
+    // ── Proactive agent tests ───────────────────────────────────────
+
+    #[test]
+    fn heartbeat_ok_detection() {
+        assert!(is_heartbeat_ok("HEARTBEAT_OK"));
+        assert!(is_heartbeat_ok("heartbeat_ok"));
+        assert!(is_heartbeat_ok("Nothing to do. HEARTBEAT_OK."));
+        assert!(is_heartbeat_ok("All clear — HEARTBEAT OK"));
+        assert!(is_heartbeat_ok("Heartbeat_Ok"));
+        assert!(!is_heartbeat_ok("I found some issues to report."));
+        assert!(!is_heartbeat_ok("The heartbeat file is empty."));
+        assert!(!is_heartbeat_ok(""));
+    }
+
+    #[test]
+    fn session_key_dir_name_matrix() {
+        let key = SessionKey::Matrix {
+            user_id: "@alice:example.com".to_string(),
+            room_id: "!abc123:example.com".to_string(),
+        };
+        let name = key.dir_name();
+        assert_eq!(name, "daemon_matrix_alice_example.com_abc123_example.com");
+        assert!(!name.contains(':'));
+        assert!(!name.contains('@'));
+        assert!(!name.contains('!'));
+    }
+
+    #[test]
+    fn session_key_dir_name_iroh() {
+        let key = SessionKey::Iroh("abcdef123456789".to_string());
+        assert_eq!(key.dir_name(), "daemon_iroh_abcdef123456");
+    }
+
+    #[test]
+    fn session_key_matrix_room_id() {
+        let key = SessionKey::Matrix {
+            user_id: "@alice:example.com".to_string(),
+            room_id: "!room:example.com".to_string(),
+        };
+        assert_eq!(key.matrix_room_id(), Some("!room:example.com"));
+
+        let key = SessionKey::Iroh("abc".to_string());
+        assert_eq!(key.matrix_room_id(), None);
+    }
+
+    #[test]
+    fn create_fifo_in_tempdir() {
+        let dir = tempfile::tempdir().unwrap();
+        let pipe_path = dir.path().join("test.pipe");
+
+        // First create should succeed
+        create_fifo(&pipe_path).unwrap();
+        assert!(pipe_path.exists());
+
+        // Second create should be a no-op (already exists)
+        create_fifo(&pipe_path).unwrap();
+    }
+
+    #[test]
+    fn proactive_config_defaults() {
+        let config = DaemonConfig::default();
+        assert_eq!(config.session_heartbeat_secs, 300);
+        assert!(config.trigger_pipe_enabled);
+        assert!(config.heartbeat_prompt.contains("HEARTBEAT"));
     }
 }
