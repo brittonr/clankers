@@ -161,7 +161,7 @@ fn slash_plugin_then_status() {
 
 #[test]
 fn slash_tools_lists_builtin_tools() {
-    let mut h = TuiTestHarness::spawn(50, 200);
+    let mut h = TuiTestHarness::spawn(70, 200);
     run_slash(&mut h, "/tools");
     h.wait_for_text("Available tools:", TIMEOUT);
     assert!(h.screen_contains("read"), "Should list read tool.\nScreen:\n{}", h.screen_text());
@@ -175,7 +175,7 @@ fn slash_tools_lists_builtin_tools() {
 
 #[test]
 fn slash_tools_lists_plugin_tools() {
-    let mut h = TuiTestHarness::spawn(50, 200);
+    let mut h = TuiTestHarness::spawn(70, 200);
     run_slash(&mut h, "/tools");
     h.wait_for_text("Available tools:", TIMEOUT);
     assert!(h.screen_contains("test_echo"), "Should list test_echo plugin tool.\nScreen:\n{}", h.screen_text());

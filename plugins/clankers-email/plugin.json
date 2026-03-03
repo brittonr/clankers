@@ -8,7 +8,8 @@
   "allowed_hosts": ["api.fastmail.com"],
   "config_env": {
     "jmap_token": "FASTMAIL_API_TOKEN",
-    "default_from": "CLANKERS_EMAIL_FROM"
+    "default_from": "CLANKERS_EMAIL_FROM",
+    "allowed_recipients": "CLANKERS_EMAIL_ALLOWED_RECIPIENTS"
   },
   "tools": ["send_email", "list_mailboxes"],
   "commands": [],
@@ -16,7 +17,7 @@
   "tool_definitions": [
     {
       "name": "send_email",
-      "description": "Send an email via Fastmail JMAP. Requires FASTMAIL_API_TOKEN env var. Returns confirmation or error.",
+      "description": "Send an email via Fastmail JMAP. Requires FASTMAIL_API_TOKEN env var. Recipients are restricted to addresses matching CLANKERS_EMAIL_ALLOWED_RECIPIENTS (comma-separated emails or @domain patterns). Returns confirmation or error.",
       "handler": "handle_tool_call",
       "input_schema": {
         "type": "object",

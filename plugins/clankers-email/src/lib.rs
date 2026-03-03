@@ -148,6 +148,75 @@ fn get_config(key: &str) -> Option<String> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  Recipient allowlist
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Check whether an email address is permitted by the allowlist.
+///
+/// Each entry in `rules` is either:
+/// - A full address: `alice@example.com` (exact match, case-insensitive)
+/// - A domain pattern: `@example.com` (matches any address at that domain)
+fn is_recipient_allowed(addr: &str, rules: &[&str]) -> bool {
+    let addr = addr.trim().to_lowercase();
+    for rule in rules {
+        let rule = rule.trim().to_lowercase();
+        if rule.starts_with('@') {
+            // Domain pattern
+            if addr.ends_with(&rule) {
+                return true;
+            }
+        } else if addr == rule {
+            return true;
+        }
+    }
+    false
+}
+
+/// Validate all recipients (to + cc) against the allowlist.
+/// Returns Ok(()) if all are permitted, or an error listing the rejected addresses.
+fn check_allowed_recipients(to: &str, cc: Option<&str>) -> Result<(), String> {
+    let allowlist = match get_config("allowed_recipients") {
+        Some(list) => list,
+        None => return Err(
+            "No recipient allowlist configured. Set CLANKERS_EMAIL_ALLOWED_RECIPIENTS \
+             (comma-separated emails or @domain patterns, e.g. \"alice@example.com, @mycompany.com\")."
+                .to_string(),
+        ),
+    };
+
+    let rules: Vec<&str> = allowlist.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    if rules.is_empty() {
+        return Err("CLANKERS_EMAIL_ALLOWED_RECIPIENTS is set but empty.".to_string());
+    }
+
+    let mut rejected = Vec::new();
+
+    for addr in to.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+        if !is_recipient_allowed(addr, &rules) {
+            rejected.push(addr.to_string());
+        }
+    }
+
+    if let Some(cc_str) = cc {
+        for addr in cc_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            if !is_recipient_allowed(addr, &rules) {
+                rejected.push(addr.to_string());
+            }
+        }
+    }
+
+    if rejected.is_empty() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Recipients not in allowlist: {}. Allowed: {}",
+            rejected.join(", "),
+            allowlist,
+        ))
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  send_email
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -165,6 +234,9 @@ fn handle_send_email(args: &Value) -> Result<String, String> {
 
     let cc = args.get_str("cc");
 
+    // Enforce recipient allowlist before doing any network calls
+    check_allowed_recipients(to, cc)?;
+
     let token = require_config("jmap_token")?;
     let session = get_session(&token)?;
 
@@ -172,7 +244,7 @@ fn handle_send_email(args: &Value) -> Result<String, String> {
     let drafts_id = find_mailbox_id(&token, &session, "Drafts")?;
 
     // Find the identity ID (needed for EmailSubmission/set)
-    let identity_id = find_identity_id(&token, &session)?;
+    let identity_id = find_identity_id(&token, &session, &from)?;
 
     // Build the email object
     let to_list = parse_address_list(to);
@@ -423,8 +495,45 @@ fn find_mailbox_id(token: &str, session: &Session, name: &str) -> Result<String,
     Err(format!("Mailbox '{name}' not found"))
 }
 
-/// Find the primary identity ID for the account.
-fn find_identity_id(token: &str, session: &Session) -> Result<String, String> {
+/// Match a `from` address against a list of JMAP identity objects.
+///
+/// Returns the `id` of the best matching identity, or None.
+/// Matching order: exact → wildcard (`*@domain`) → first in list.
+fn match_identity<'a>(identities: &'a [Value], from: &str) -> Option<&'a str> {
+    let from_lower = from.to_lowercase();
+    let from_domain = from_lower.rsplit_once('@').map(|(_, d)| d);
+
+    // Exact match
+    for id in identities {
+        let email = id.get("email").and_then(|v| v.as_str()).unwrap_or("");
+        if email.eq_ignore_ascii_case(from) {
+            return id.get("id").and_then(|v| v.as_str());
+        }
+    }
+
+    // Wildcard match: *@domain
+    if let Some(domain) = from_domain {
+        for id in identities {
+            let email = id.get("email").and_then(|v| v.as_str()).unwrap_or("");
+            if let Some((local, id_domain)) = email.rsplit_once('@') {
+                if local == "*" && id_domain.eq_ignore_ascii_case(domain) {
+                    return id.get("id").and_then(|v| v.as_str());
+                }
+            }
+        }
+    }
+
+    // Fallback: first identity
+    identities.first().and_then(|id| id.get("id")).and_then(|v| v.as_str())
+}
+
+/// Find the identity ID that matches the given `from` address.
+///
+/// Matching order:
+/// 1. Exact match — identity email == from
+/// 2. Wildcard — identity email is `*@domain` and from is `anything@domain`
+/// 3. Fallback — first identity in the list
+fn find_identity_id(token: &str, session: &Session, from: &str) -> Result<String, String> {
     let method_calls = serde_json::json!([
         [
             "Identity/get",
@@ -456,11 +565,7 @@ fn find_identity_id(token: &str, session: &Session) -> Result<String, String> {
         .and_then(|v| v.as_array())
         .ok_or("Failed to get identity list")?;
 
-    // Return the first identity
-    identities
-        .first()
-        .and_then(|id| id.get("id"))
-        .and_then(|v| v.as_str())
+    match_identity(identities, from)
         .map(|s| s.to_string())
         .ok_or_else(|| "No identities found in account".to_string())
 }
@@ -562,5 +667,132 @@ mod tests {
     fn check_jmap_errors_empty_responses() {
         let responses: Vec<Value> = vec![];
         assert!(check_jmap_errors(&responses).is_ok());
+    }
+
+    // ── Recipient allowlist ────────────────────────────────────────
+
+    #[test]
+    fn allowlist_exact_match() {
+        let rules = vec!["alice@example.com"];
+        assert!(is_recipient_allowed("alice@example.com", &rules));
+    }
+
+    #[test]
+    fn allowlist_exact_match_case_insensitive() {
+        let rules = vec!["Alice@Example.COM"];
+        assert!(is_recipient_allowed("alice@example.com", &rules));
+        assert!(is_recipient_allowed("ALICE@EXAMPLE.COM", &rules));
+    }
+
+    #[test]
+    fn allowlist_exact_no_match() {
+        let rules = vec!["alice@example.com"];
+        assert!(!is_recipient_allowed("bob@example.com", &rules));
+    }
+
+    #[test]
+    fn allowlist_domain_match() {
+        let rules = vec!["@example.com"];
+        assert!(is_recipient_allowed("alice@example.com", &rules));
+        assert!(is_recipient_allowed("bob@example.com", &rules));
+        assert!(is_recipient_allowed("anyone@example.com", &rules));
+    }
+
+    #[test]
+    fn allowlist_domain_no_match() {
+        let rules = vec!["@example.com"];
+        assert!(!is_recipient_allowed("alice@other.com", &rules));
+    }
+
+    #[test]
+    fn allowlist_domain_case_insensitive() {
+        let rules = vec!["@Example.COM"];
+        assert!(is_recipient_allowed("alice@example.com", &rules));
+    }
+
+    #[test]
+    fn allowlist_mixed_rules() {
+        let rules = vec!["specific@other.com", "@example.com"];
+        assert!(is_recipient_allowed("anyone@example.com", &rules));
+        assert!(is_recipient_allowed("specific@other.com", &rules));
+        assert!(!is_recipient_allowed("random@other.com", &rules));
+    }
+
+    #[test]
+    fn allowlist_empty_rules_rejects_all() {
+        let rules: Vec<&str> = vec![];
+        assert!(!is_recipient_allowed("alice@example.com", &rules));
+    }
+
+    #[test]
+    fn allowlist_trims_whitespace() {
+        let rules = vec!["  alice@example.com  ", "  @other.com  "];
+        assert!(is_recipient_allowed("alice@example.com", &rules));
+        assert!(is_recipient_allowed("bob@other.com", &rules));
+    }
+
+    // ── Identity matching ───────────────────────────────────────────
+
+    fn make_identities() -> Vec<Value> {
+        vec![
+            serde_json::json!({"id": "100", "email": "alice@example.com"}),
+            serde_json::json!({"id": "200", "email": "*@example.com"}),
+            serde_json::json!({"id": "300", "email": "bob@other.com"}),
+        ]
+    }
+
+    #[test]
+    fn identity_exact_match() {
+        let ids = make_identities();
+        assert_eq!(match_identity(&ids, "alice@example.com"), Some("100"));
+    }
+
+    #[test]
+    fn identity_exact_match_case_insensitive() {
+        let ids = make_identities();
+        assert_eq!(match_identity(&ids, "Alice@Example.COM"), Some("100"));
+    }
+
+    #[test]
+    fn identity_wildcard_match() {
+        let ids = make_identities();
+        // "noreply@example.com" doesn't match alice exactly, falls through to *@example.com
+        assert_eq!(match_identity(&ids, "noreply@example.com"), Some("200"));
+    }
+
+    #[test]
+    fn identity_wildcard_case_insensitive() {
+        let ids = make_identities();
+        assert_eq!(match_identity(&ids, "Anything@EXAMPLE.COM"), Some("200"));
+    }
+
+    #[test]
+    fn identity_no_match_falls_back_to_first() {
+        let ids = make_identities();
+        // "someone@unknown.org" matches nothing — falls back to first
+        assert_eq!(match_identity(&ids, "someone@unknown.org"), Some("100"));
+    }
+
+    #[test]
+    fn identity_exact_beats_wildcard() {
+        let ids = make_identities();
+        // alice@example.com matches exactly, even though *@example.com also covers it
+        assert_eq!(match_identity(&ids, "alice@example.com"), Some("100"));
+    }
+
+    #[test]
+    fn identity_empty_list() {
+        let ids: Vec<Value> = vec![];
+        assert_eq!(match_identity(&ids, "anyone@example.com"), None);
+    }
+
+    #[test]
+    fn identity_wildcard_different_domain_no_match() {
+        let ids = make_identities();
+        // *@example.com should NOT match someone@other.com
+        // bob@other.com is exact, so it matches
+        assert_eq!(match_identity(&ids, "bob@other.com"), Some("300"));
+        // unknown@other.com has no exact or wildcard, falls back to first
+        assert_eq!(match_identity(&ids, "unknown@other.com"), Some("100"));
     }
 }

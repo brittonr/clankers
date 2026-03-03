@@ -1578,30 +1578,42 @@ mod tests {
         assert!(parsed["message"].as_str().unwrap().contains("JMAP"));
     }
 
-    #[test]
-    fn email_send_without_config_returns_error() {
+    /// Load the email plugin WASM directly with no config injected,
+    /// bypassing PluginManager::load_wasm's config_env resolution.
+    fn load_email_plugin_no_config() -> PluginManager {
         let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        let wasm_path = plugins_dir.join("clankers-email/clankers_email.wasm");
+
+        // Create bare Extism manifest — no config, no allowed_hosts
+        let manifest = extism::Manifest::new([extism::Wasm::file(&wasm_path)]);
+        let plugin = extism::Plugin::new(manifest, [], true).expect("load WASM");
+
         let mut mgr = PluginManager::new(plugins_dir, None);
         mgr.discover();
-        mgr.load_wasm("clankers-email").expect("load");
-        // Include "from" so we hit the jmap_token config check
-        let input = r#"{"tool":"send_email","args":{"to":"test@example.com","subject":"Test","body":"Hello","from":"x@x.com"}}"#;
-        let result = mgr.call_plugin("clankers-email", "handle_tool_call", input).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
-        // Should error because no JMAP token is configured
-        assert_ne!(parsed["status"], "ok", "Should fail without token: {:?}", parsed);
-        let result_text = parsed["result"].as_str().unwrap_or("");
-        assert!(result_text.contains("config") || result_text.contains("jmap_token"),
-            "Error should mention missing config: {}", result_text);
+        mgr.instances.insert("clankers-email".to_string(), Mutex::new(plugin));
+        if let Some(info) = mgr.plugins.get_mut("clankers-email") {
+            info.state = PluginState::Active;
+        }
+        mgr
     }
 
     #[test]
-    fn email_send_without_from_returns_error() {
-        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
-        let mut mgr = PluginManager::new(plugins_dir, None);
-        mgr.discover();
-        mgr.load_wasm("clankers-email").expect("load");
-        // No "from" param and no CLANKERS_EMAIL_FROM config
+    fn email_send_without_config_rejects() {
+        let mgr = load_email_plugin_no_config();
+        let input = r#"{"tool":"send_email","args":{"to":"test@example.com","subject":"Test","body":"Hello","from":"x@x.com"}}"#;
+        let result = mgr.call_plugin("clankers-email", "handle_tool_call", input).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_ne!(parsed["status"], "ok", "Should fail without config: {:?}", parsed);
+        // First check hit is the allowlist (no config = no allowlist)
+        let result_text = parsed["result"].as_str().unwrap_or("");
+        assert!(result_text.contains("allowlist"),
+            "Error should mention missing allowlist: {}", result_text);
+    }
+
+    #[test]
+    fn email_send_without_from_rejects() {
+        let mgr = load_email_plugin_no_config();
+        // No "from" param and no CLANKERS_EMAIL_FROM config — hits from check before allowlist
         let input = r#"{"tool":"send_email","args":{"to":"test@example.com","subject":"Test","body":"Hello"}}"#;
         let result = mgr.call_plugin("clankers-email", "handle_tool_call", input).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
@@ -1613,10 +1625,7 @@ mod tests {
 
     #[test]
     fn email_list_mailboxes_without_token_returns_config_error() {
-        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
-        let mut mgr = PluginManager::new(plugins_dir, None);
-        mgr.discover();
-        mgr.load_wasm("clankers-email").expect("load");
+        let mgr = load_email_plugin_no_config();
         let input = r#"{"tool":"list_mailboxes","args":{}}"#;
         let result = mgr.call_plugin("clankers-email", "handle_tool_call", input).unwrap();
         let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
