@@ -46,12 +46,20 @@ pub fn verify_basic(change_dir: &std::path::Path) -> VerifyReport {
     // Check tasks.md completion
     let tasks_path = change_dir.join("tasks.md");
     if let Ok(content) = std::fs::read_to_string(&tasks_path) {
-        let total = content.matches("[ ]").count() + content.matches("[x]").count() + content.matches("[X]").count();
+        let total = content.matches("[ ]").count()
+            + content.matches("[~]").count()
+            + content.matches("[x]").count()
+            + content.matches("[X]").count();
         let done = content.matches("[x]").count() + content.matches("[X]").count();
+        let wip = content.matches("[~]").count();
         if total > 0 && done < total {
+            let mut msg = format!("Tasks incomplete: {}/{} done", done, total);
+            if wip > 0 {
+                msg.push_str(&format!(", {} in progress", wip));
+            }
             report.items.push(VerifyItem {
                 severity: Severity::Warning,
-                message: format!("Tasks incomplete: {}/{} done", done, total),
+                message: msg,
                 context: Some(tasks_path.display().to_string()),
             });
         }

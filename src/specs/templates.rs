@@ -60,6 +60,8 @@ Describe data flow for complex interactions.
 
 pub const TASKS_TEMPLATE: &str = r#"# {{change_name}} — Tasks
 
+> **Legend:** `[ ]` not started · `[~]` in progress ⏱ · `[x]` done ✅ `<duration>`
+
 ## Phase 1
 
 - [ ] Task 1
