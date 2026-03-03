@@ -70,6 +70,10 @@ pub mod args;
 pub mod dispatch;
 pub mod types;
 
+/// HTTP client for plugins with "net" permission.
+#[cfg(feature = "http")]
+pub mod http;
+
 /// Convenient re-exports for plugin authors.
 ///
 /// ```ignore

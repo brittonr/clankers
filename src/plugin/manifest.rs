@@ -1,5 +1,6 @@
 //! Plugin manifest (plugin.json)
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use serde::Deserialize;
@@ -27,6 +28,15 @@ pub struct PluginManifest {
     /// When present, these are used instead of calling `describe` on the plugin.
     #[serde(default)]
     pub tool_definitions: Vec<ToolManifest>,
+    /// Optional host allowlist for HTTP access.
+    /// Only takes effect when plugin also has "net" permission.
+    #[serde(default)]
+    pub allowed_hosts: Option<Vec<String>>,
+
+    /// Maps plugin config keys to environment variable names.
+    /// At load time, each env var is resolved and passed to the plugin via Extism config.
+    #[serde(default)]
+    pub config_env: HashMap<String, String>,
 }
 
 /// A tool definition inside the plugin manifest, providing metadata

@@ -1,0 +1,62 @@
+{
+  "name": "clankers-email",
+  "version": "0.1.0",
+  "description": "Send and read emails via Fastmail JMAP — no third-party services needed",
+  "wasm": "clankers_email.wasm",
+  "kind": "extism",
+  "permissions": ["net"],
+  "allowed_hosts": ["api.fastmail.com"],
+  "config_env": {
+    "jmap_token": "FASTMAIL_API_TOKEN",
+    "default_from": "CLANKERS_EMAIL_FROM"
+  },
+  "tools": ["send_email", "list_mailboxes"],
+  "commands": [],
+  "events": ["agent_start"],
+  "tool_definitions": [
+    {
+      "name": "send_email",
+      "description": "Send an email via Fastmail JMAP. Requires FASTMAIL_API_TOKEN env var. Returns confirmation or error.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": "string",
+            "description": "Recipient email address"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Subject line"
+          },
+          "body": {
+            "type": "string",
+            "description": "Email body (plain text unless html=true)"
+          },
+          "from": {
+            "type": "string",
+            "description": "Sender address (defaults to CLANKERS_EMAIL_FROM env var)"
+          },
+          "cc": {
+            "type": "string",
+            "description": "CC recipients, comma-separated"
+          },
+          "html": {
+            "type": "boolean",
+            "description": "If true, body is treated as HTML (default: false)"
+          }
+        },
+        "required": ["to", "subject", "body"]
+      }
+    },
+    {
+      "name": "list_mailboxes",
+      "description": "List Fastmail mailboxes (folders) for the account. Useful for verifying config works.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {}
+      }
+    }
+  ]
+}

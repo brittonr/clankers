@@ -81,7 +81,29 @@ impl PluginManager {
             return Err(format!("WASM file not found: {}", wasm_path.display()));
         }
 
-        let manifest = extism::Manifest::new([extism::Wasm::file(&wasm_path)]);
+        let has_net = sandbox::has_permission(&info.manifest.permissions, sandbox::Permission::Net);
+        let mut manifest = extism::Manifest::new([extism::Wasm::file(&wasm_path)]);
+
+        // HTTP sandboxing: only plugins with "net" permission get allowed_hosts
+        if has_net {
+            let hosts = info.manifest.allowed_hosts
+                .clone()
+                .unwrap_or_else(|| vec!["*".to_string()]);
+            manifest = manifest.with_allowed_hosts(hosts.into_iter());
+        }
+
+        // Config injection: resolve env var names from manifest → Extism config
+        for (config_key, env_var) in &info.manifest.config_env {
+            if let Ok(val) = std::env::var(env_var) {
+                manifest = manifest.with_config_key(config_key, val);
+            }
+        }
+
+        // Timeout for network plugins
+        if has_net {
+            manifest = manifest.with_timeout(std::time::Duration::from_secs(30));
+        }
+
         match extism::Plugin::new(manifest, [], true) {
             Ok(plugin) => {
                 self.instances.insert(name.to_string(), Mutex::new(plugin));
@@ -1473,5 +1495,142 @@ mod tests {
         let names: Vec<String> = tools.iter().map(|t| t.definition().name.clone()).collect();
         assert!(names.contains(&"hash_text".to_string()), "Should have hash_text tool");
         assert!(names.contains(&"encode_text".to_string()), "Should have encode_text tool");
+    }
+
+    // ── Email plugin discovery and loading ──────────────────────────
+
+    #[test]
+    fn discover_finds_email_plugin() {
+        let mgr = manager_with_test_plugin();
+        assert!(mgr.get("clankers-email").is_some(), "Email plugin should be discovered");
+    }
+
+    #[test]
+    fn email_plugin_manifest_has_net_permission() {
+        let mgr = manager_with_test_plugin();
+        let info = mgr.get("clankers-email").unwrap();
+        assert!(info.manifest.permissions.contains(&"net".to_string()));
+    }
+
+    #[test]
+    fn email_plugin_manifest_has_allowed_hosts() {
+        let mgr = manager_with_test_plugin();
+        let info = mgr.get("clankers-email").unwrap();
+        let hosts = info.manifest.allowed_hosts.as_ref().expect("should have allowed_hosts");
+        assert!(hosts.contains(&"api.fastmail.com".to_string()));
+    }
+
+    #[test]
+    fn email_plugin_manifest_has_config_env() {
+        let mgr = manager_with_test_plugin();
+        let info = mgr.get("clankers-email").unwrap();
+        assert_eq!(info.manifest.config_env.get("jmap_token").map(|s| s.as_str()), Some("FASTMAIL_API_TOKEN"));
+        assert_eq!(info.manifest.config_env.get("default_from").map(|s| s.as_str()), Some("CLANKERS_EMAIL_FROM"));
+    }
+
+    #[test]
+    fn load_email_wasm_transitions_to_active() {
+        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        let mut mgr = PluginManager::new(plugins_dir, None);
+        mgr.discover();
+        mgr.load_wasm("clankers-email").expect("Failed to load email plugin WASM");
+        let info = mgr.get("clankers-email").unwrap();
+        assert_eq!(info.state, PluginState::Active);
+    }
+
+    #[test]
+    fn email_plugin_has_expected_functions() {
+        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        let mut mgr = PluginManager::new(plugins_dir, None);
+        mgr.discover();
+        mgr.load_wasm("clankers-email").expect("Failed to load email plugin WASM");
+        assert!(mgr.has_function("clankers-email", "handle_tool_call"));
+        assert!(mgr.has_function("clankers-email", "on_event"));
+        assert!(mgr.has_function("clankers-email", "describe"));
+    }
+
+    #[test]
+    fn email_plugin_describe() {
+        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        let mut mgr = PluginManager::new(plugins_dir, None);
+        mgr.discover();
+        mgr.load_wasm("clankers-email").expect("load");
+        let result = mgr.call_plugin("clankers-email", "describe", "null").unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed["name"], "clankers-email");
+        assert_eq!(parsed["version"], "0.1.0");
+        let tools = parsed["tools"].as_array().unwrap();
+        assert_eq!(tools.len(), 2);
+        assert_eq!(tools[0]["name"], "send_email");
+        assert_eq!(tools[1]["name"], "list_mailboxes");
+    }
+
+    #[test]
+    fn email_plugin_on_event_agent_start() {
+        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        let mut mgr = PluginManager::new(plugins_dir, None);
+        mgr.discover();
+        mgr.load_wasm("clankers-email").expect("load");
+        let input = r#"{"event":"agent_start","data":{}}"#;
+        let result = mgr.call_plugin("clankers-email", "on_event", input).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed["handled"], true);
+        assert!(parsed["message"].as_str().unwrap().contains("JMAP"));
+    }
+
+    #[test]
+    fn email_send_without_config_returns_error() {
+        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        let mut mgr = PluginManager::new(plugins_dir, None);
+        mgr.discover();
+        mgr.load_wasm("clankers-email").expect("load");
+        // Include "from" so we hit the jmap_token config check
+        let input = r#"{"tool":"send_email","args":{"to":"test@example.com","subject":"Test","body":"Hello","from":"x@x.com"}}"#;
+        let result = mgr.call_plugin("clankers-email", "handle_tool_call", input).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        // Should error because no JMAP token is configured
+        assert_ne!(parsed["status"], "ok", "Should fail without token: {:?}", parsed);
+        let result_text = parsed["result"].as_str().unwrap_or("");
+        assert!(result_text.contains("config") || result_text.contains("jmap_token"),
+            "Error should mention missing config: {}", result_text);
+    }
+
+    #[test]
+    fn email_send_without_from_returns_error() {
+        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        let mut mgr = PluginManager::new(plugins_dir, None);
+        mgr.discover();
+        mgr.load_wasm("clankers-email").expect("load");
+        // No "from" param and no CLANKERS_EMAIL_FROM config
+        let input = r#"{"tool":"send_email","args":{"to":"test@example.com","subject":"Test","body":"Hello"}}"#;
+        let result = mgr.call_plugin("clankers-email", "handle_tool_call", input).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_ne!(parsed["status"], "ok");
+        let result_text = parsed["result"].as_str().unwrap_or("");
+        assert!(result_text.contains("from") || result_text.contains("CLANKERS_EMAIL_FROM"),
+            "Error should mention missing from: {}", result_text);
+    }
+
+    #[test]
+    fn email_list_mailboxes_without_token_returns_config_error() {
+        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        let mut mgr = PluginManager::new(plugins_dir, None);
+        mgr.discover();
+        mgr.load_wasm("clankers-email").expect("load");
+        let input = r#"{"tool":"list_mailboxes","args":{}}"#;
+        let result = mgr.call_plugin("clankers-email", "handle_tool_call", input).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_ne!(parsed["status"], "ok");
+    }
+
+    #[test]
+    fn build_plugin_tools_includes_email_tools() {
+        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        let manager = crate::modes::common::init_plugin_manager(&plugins_dir, None, &[]);
+        let tools = crate::modes::common::build_plugin_tools(&manager, None);
+
+        let names: Vec<String> = tools.iter().map(|t| t.definition().name.clone()).collect();
+        assert!(names.contains(&"send_email".to_string()), "Should have send_email tool, got: {:?}", names);
+        assert!(names.contains(&"list_mailboxes".to_string()), "Should have list_mailboxes tool, got: {:?}", names);
     }
 }
