@@ -253,12 +253,22 @@ pub async fn run_interactive(
     }
     let event_tx = agent.event_sender();
     let (bash_confirm_tx, mut bash_confirm_rx) = crate::tools::bash::confirm_channel();
+
+    // Create and start the process monitor
+    let process_monitor = {
+        let config = crate::procmon::ProcessMonitorConfig::default();
+        let monitor = std::sync::Arc::new(crate::procmon::ProcessMonitor::new(config, Some(event_tx.clone())));
+        monitor.clone().start();
+        Some(monitor)
+    };
+
     let tools = crate::modes::common::build_all_tools(
         Some(event_tx),
         Some(panel_tx),
         Some(todo_tx),
         plugin_manager.as_ref(),
         Some(bash_confirm_tx),
+        process_monitor,
     );
 
     // Populate tool info for /tools slash command
@@ -1027,6 +1037,10 @@ async fn run_event_loop(
                                         PanelTab::Peers
                                     }
                                     PanelTab::Peers => {
+                                        app.right_panel_tab = PanelTab::Processes;
+                                        PanelTab::Processes
+                                    }
+                                    PanelTab::Processes => {
                                         app.right_panel_tab = PanelTab::Subagents;
                                         PanelTab::Subagents
                                     }
@@ -1094,6 +1108,9 @@ async fn run_event_loop(
                             }
                             PanelTab::Files => {
                                 // File activity panel — navigation only
+                            }
+                            PanelTab::Processes => {
+                                // Process panel — navigation and sorting handled via Panel trait
                             }
                             PanelTab::Peers => {
                                 match (key.code, key.modifiers) {
@@ -1288,6 +1305,10 @@ fn handle_action(
                             PanelTab::Peers
                         }
                         PanelTab::Peers => {
+                            app.right_panel_tab = PanelTab::Processes;
+                            PanelTab::Processes
+                        }
+                        PanelTab::Processes => {
                             app.right_panel_tab = PanelTab::Subagents;
                             PanelTab::Subagents
                         }
@@ -1355,6 +1376,9 @@ fn handle_action(
                         _ => return,
                     },
                     PanelTab::Files => {
+                        return;
+                    }
+                    PanelTab::Processes => {
                         return;
                     }
                     PanelTab::Peers => match action {
@@ -2302,6 +2326,7 @@ fn panel_id_to_tab(id: crate::tui::panel::PanelId) -> crate::tui::app::PanelTab 
         PanelId::Files => PanelTab::Files,
         PanelId::Subagents => PanelTab::Subagents,
         PanelId::Peers => PanelTab::Peers,
+        PanelId::Processes => PanelTab::Processes,
         PanelId::Environment => PanelTab::Todo, // fallback
     }
 }
@@ -3524,6 +3549,7 @@ fn execute_slash_command(
                         None,
                         Some(&ptx),
                         signal,
+                        None,
                     )
                     .await;
                 });

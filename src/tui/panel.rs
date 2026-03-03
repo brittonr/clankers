@@ -33,6 +33,7 @@ pub enum PanelId {
     Files,
     Subagents,
     Peers,
+    Processes,
     Environment,
 }
 
@@ -43,6 +44,7 @@ impl PanelId {
             PanelId::Files => "Files",
             PanelId::Subagents => "Subagents",
             PanelId::Peers => "Peers",
+            PanelId::Processes => "Processes",
             PanelId::Environment => "Environment",
         }
     }
@@ -53,6 +55,7 @@ impl PanelId {
         PanelId::Files,
         PanelId::Subagents,
         PanelId::Peers,
+        PanelId::Processes,
         PanelId::Environment,
     ];
 }

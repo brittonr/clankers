@@ -123,4 +123,22 @@ pub enum AgentEvent {
         turn_usage: Usage,
         cumulative_usage: Usage,
     },
+
+    // Process monitoring events
+    ProcessSpawn {
+        pid: u32,
+        meta: crate::procmon::ProcessMeta,
+    },
+    ProcessSample {
+        pid: u32,
+        cpu_percent: f32,
+        rss_bytes: u64,
+        children: Vec<u32>,
+    },
+    ProcessExit {
+        pid: u32,
+        exit_code: Option<i32>,
+        wall_time: std::time::Duration,
+        peak_rss: u64,
+    },
 }

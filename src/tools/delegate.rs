@@ -45,6 +45,8 @@ pub struct DelegateTool {
     identity_path: Option<PathBuf>,
     /// Persistent endpoint shared across all remote delegations
     shared_endpoint: SharedEndpoint,
+    /// Process monitor for tracking spawned workers
+    process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
 }
 
 #[allow(dead_code)]
@@ -66,6 +68,7 @@ impl DelegateTool {
         Self {
             shared_endpoint: Arc::new(tokio::sync::OnceCell::new()),
             panel_tx: None,
+            process_monitor: None,
             definition: ToolDefinition {
                 name: "delegate_task".to_string(),
                 description: "Delegate a task to a worker. Can route to a local subprocess or a remote clankers peer via iroh P2P.\n\nRouting:\n- Specify 'peer' (name or node_id) to target a specific remote peer\n- Specify 'tag' to auto-find a peer with that capability tag\n- Otherwise runs locally as a subprocess".to_string(),
@@ -115,6 +118,12 @@ impl DelegateTool {
     pub fn with_peer_routing(mut self, registry_path: PathBuf, identity_path: PathBuf) -> Self {
         self.peer_registry_path = Some(registry_path);
         self.identity_path = Some(identity_path);
+        self
+    }
+
+    /// Attach a process monitor to track spawned workers.
+    pub fn with_process_monitor(mut self, monitor: crate::procmon::ProcessMonitorHandle) -> Self {
+        self.process_monitor = Some(monitor);
         self
     }
 
@@ -234,7 +243,7 @@ impl Tool for DelegateTool {
                 });
             }
 
-            run_worker_subprocess(&worker_name, &task, agent.as_deref(), cwd.as_deref(), self.panel_tx.as_ref(), signal)
+            run_worker_subprocess(&worker_name, &task, agent.as_deref(), cwd.as_deref(), self.panel_tx.as_ref(), signal, self.process_monitor.as_ref())
                 .await
         }
     }
@@ -459,6 +468,7 @@ pub async fn run_worker_subprocess(
     cwd: Option<&str>,
     panel_tx: Option<&PanelTx>,
     signal: CancellationToken,
+    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
 ) -> ToolResult {
     use tokio::io::AsyncBufReadExt;
     use tokio::io::BufReader;
@@ -500,6 +510,18 @@ pub async fn run_worker_subprocess(
         Err(e) => return ToolResult::error(format!("Failed to spawn worker '{}': {}", worker_name, e)),
     };
     let child_pid = child.id();
+
+    // Register process with monitor
+    if let Some(monitor) = process_monitor {
+        if let Some(pid) = child_pid {
+            let task_preview_full: String = task.chars().take(200).collect();
+            monitor.register(pid, crate::procmon::ProcessMeta {
+                tool_name: "delegate".to_string(),
+                command: format!("worker:{} {}", worker_name, task_preview_full),
+                call_id: format!("worker:{}", worker_name),
+            });
+        }
+    }
 
     if let Some(tx) = panel_tx {
         let _ = tx.send(SubagentEvent::Started {

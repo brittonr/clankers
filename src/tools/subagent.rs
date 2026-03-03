@@ -19,6 +19,7 @@ type PanelTx = tokio::sync::mpsc::UnboundedSender<SubagentEvent>;
 pub struct SubagentTool {
     definition: ToolDefinition,
     panel_tx: Option<PanelTx>,
+    process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
 }
 
 impl Default for SubagentTool {
@@ -31,12 +32,19 @@ impl SubagentTool {
     pub fn new() -> Self {
         Self {
             panel_tx: None,
+            process_monitor: None,
             definition: Self::make_definition(),
         }
     }
 
     pub fn with_panel_tx(mut self, tx: PanelTx) -> Self {
         self.panel_tx = Some(tx);
+        self
+    }
+
+    /// Attach a process monitor to track spawned subagents.
+    pub fn with_process_monitor(mut self, monitor: crate::procmon::ProcessMonitorHandle) -> Self {
+        self.process_monitor = Some(monitor);
         self
     }
 
@@ -101,17 +109,18 @@ impl Tool for SubagentTool {
         let panel_tx = self.panel_tx.clone();
         let call_id = ctx.call_id.clone();
         let signal = ctx.signal.clone();
+        let process_monitor = self.process_monitor.as_ref();
 
         if let Some(task) = params.get("task").and_then(|v| v.as_str()) {
             let preview: String = task.chars().take(80).collect();
             ctx.emit_progress(&format!("subagent: {}", preview));
-            run_single(task, default_agent.as_deref(), cwd.as_deref(), panel_tx.as_ref(), &call_id, signal).await
+            run_single(task, default_agent.as_deref(), cwd.as_deref(), panel_tx.as_ref(), &call_id, signal, process_monitor).await
         } else if let Some(tasks) = params.get("tasks").and_then(|v| v.as_array()) {
             ctx.emit_progress(&format!("subagent: {} parallel tasks", tasks.len()));
-            run_parallel(tasks, default_agent.as_deref(), cwd.as_deref(), panel_tx.as_ref(), &call_id, signal).await
+            run_parallel(tasks, default_agent.as_deref(), cwd.as_deref(), panel_tx.as_ref(), &call_id, signal, process_monitor).await
         } else if let Some(chain) = params.get("chain").and_then(|v| v.as_array()) {
             ctx.emit_progress(&format!("subagent: {} chained steps", chain.len()));
-            run_chain(chain, default_agent.as_deref(), cwd.as_deref(), panel_tx.as_ref(), &call_id, signal).await
+            run_chain(chain, default_agent.as_deref(), cwd.as_deref(), panel_tx.as_ref(), &call_id, signal, process_monitor).await
         } else {
             ToolResult::error("Must provide exactly one of: task, tasks, or chain")
         }
@@ -127,8 +136,9 @@ async fn run_single(
     panel_tx: Option<&PanelTx>,
     call_id: &str,
     signal: CancellationToken,
+    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
 ) -> ToolResult {
-    match spawn_subprocess(task, agent, cwd, panel_tx, call_id, signal).await {
+    match spawn_subprocess(task, agent, cwd, panel_tx, call_id, signal, process_monitor).await {
         Ok(output) => ToolResult::text(output),
         Err(e) => ToolResult::error(format!("Subagent failed: {}", e)),
     }
@@ -143,6 +153,7 @@ async fn run_parallel(
     panel_tx: Option<&PanelTx>,
     call_id: &str,
     signal: CancellationToken,
+    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
 ) -> ToolResult {
     if tasks.len() > 8 {
         return ToolResult::error("Maximum 8 parallel tasks allowed");
@@ -165,11 +176,12 @@ async fn run_parallel(
         let sem = semaphore.clone();
         let sig = signal.clone();
         let ptx = panel_tx.cloned();
+        let pmon = process_monitor.cloned();
         let cid = format!("{}:parallel:{}", call_id, i);
 
         handles.push(tokio::spawn(async move {
             let _permit = sem.acquire().await;
-            spawn_subprocess(&task_text, agent.as_deref(), cwd.as_deref(), ptx.as_ref(), &cid, sig).await
+            spawn_subprocess(&task_text, agent.as_deref(), cwd.as_deref(), ptx.as_ref(), &cid, sig, pmon.as_ref()).await
         }));
     }
 
@@ -194,6 +206,7 @@ async fn run_chain(
     panel_tx: Option<&PanelTx>,
     call_id: &str,
     signal: CancellationToken,
+    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
 ) -> ToolResult {
     let mut previous_output = String::new();
 
@@ -206,7 +219,7 @@ async fn run_chain(
         let agent = step.get("agent").and_then(|v| v.as_str()).or(default_agent);
         let step_cid = format!("{}:chain:{}", call_id, i);
 
-        match spawn_subprocess(&task_text, agent, cwd, panel_tx, &step_cid, signal.clone()).await {
+        match spawn_subprocess(&task_text, agent, cwd, panel_tx, &step_cid, signal.clone(), process_monitor).await {
             Ok(output) => previous_output = output,
             Err(e) => return ToolResult::error(format!("Chain step {} failed: {}", i, e)),
         }
@@ -229,6 +242,7 @@ async fn spawn_subprocess(
     panel_tx: Option<&PanelTx>,
     call_id: &str,
     signal: CancellationToken,
+    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
 ) -> Result<String, String> {
     use tokio::io::AsyncBufReadExt;
     use tokio::io::BufReader;
@@ -269,6 +283,18 @@ async fn spawn_subprocess(
 
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn: {}", e))?;
     let child_pid = child.id();
+
+    // Register process with monitor
+    if let Some(monitor) = process_monitor {
+        if let Some(pid) = child_pid {
+            let task_preview_full: String = task.chars().take(200).collect();
+            monitor.register(pid, crate::procmon::ProcessMeta {
+                tool_name: "subagent".to_string(),
+                command: format!("subagent: {}", task_preview_full),
+                call_id: call_id.to_string(),
+            });
+        }
+    }
 
     if let Some(tx) = panel_tx {
         let _ = tx.send(SubagentEvent::Started {

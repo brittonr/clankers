@@ -49,6 +49,7 @@ pub enum PanelTab {
     Files,
     Subagents,
     Peers,
+    Processes,
 }
 
 impl PanelTab {
@@ -57,9 +58,9 @@ impl PanelTab {
         matches!(self, PanelTab::Todo | PanelTab::Files)
     }
 
-    /// Is this a right-column panel (Subagents or Peers)?
+    /// Is this a right-column panel (Subagents, Peers, or Processes)?
     pub fn is_right(self) -> bool {
-        matches!(self, PanelTab::Subagents | PanelTab::Peers)
+        matches!(self, PanelTab::Subagents | PanelTab::Peers | PanelTab::Processes)
     }
 
     /// Convert to the new PanelId system.
@@ -69,6 +70,7 @@ impl PanelTab {
             PanelTab::Files => super::panel::PanelId::Files,
             PanelTab::Subagents => super::panel::PanelId::Subagents,
             PanelTab::Peers => super::panel::PanelId::Peers,
+            PanelTab::Processes => super::panel::PanelId::Processes,
         }
     }
 }
@@ -179,6 +181,8 @@ pub struct App {
     pub file_activity_panel: super::components::file_activity_panel::FileActivityPanel,
     /// Peers panel (swarm peer status)
     pub peers_panel: super::components::peers_panel::PeersPanel,
+    /// Process monitor panel (CPU/memory tracking)
+    pub process_panel: super::components::process_panel::ProcessPanel,
     /// Context window gauge (token usage vs model limit)
     pub context_gauge: super::components::context_gauge::ContextGauge,
     /// Git status (branch + dirty indicator)
@@ -292,6 +296,7 @@ impl App {
             todo_panel: super::components::todo_panel::TodoPanel::new(),
             file_activity_panel: super::components::file_activity_panel::FileActivityPanel::new(),
             peers_panel: super::components::peers_panel::PeersPanel::new(),
+            process_panel: super::components::process_panel::ProcessPanel::new(),
             context_gauge,
             git_status,
             panel_tab: PanelTab::Todo,
@@ -331,6 +336,7 @@ impl App {
             PanelId::Files => &self.file_activity_panel,
             PanelId::Subagents => &self.subagent_panel,
             PanelId::Peers => &self.peers_panel,
+            PanelId::Processes => &self.process_panel,
             PanelId::Environment => &self.todo_panel, // placeholder until env panel gets the trait
         }
     }
@@ -343,6 +349,7 @@ impl App {
             PanelId::Files => &mut self.file_activity_panel,
             PanelId::Subagents => &mut self.subagent_panel,
             PanelId::Peers => &mut self.peers_panel,
+            PanelId::Processes => &mut self.process_panel,
             PanelId::Environment => &mut self.todo_panel, // placeholder
         }
     }

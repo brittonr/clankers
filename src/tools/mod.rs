@@ -114,6 +114,7 @@ pub mod ls;
 pub mod matrix;
 pub mod nix;
 pub mod plugin_tool;
+pub mod procmon;
 pub mod read;
 pub mod review;
 pub mod sandbox;

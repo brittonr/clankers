@@ -48,6 +48,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         app.file_activity_panel.cwd.clone_from(&app.cwd);
     }
 
+    // Refresh process panel entries from monitor
+    app.process_panel.refresh_entries();
+
     // ── Split terminal via layout engine ────────────────────────────
 
     let regions = app.panel_layout.split(frame.area());
@@ -238,6 +241,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
     let plugin_spans = widget_host::plugin_status_spans(&app.plugin_ui);
     let context_span = app.context_gauge.status_bar_span();
     let git_span = app.git_status.status_bar_span();
+    let process_span = app.process_panel.status_bar_span();
     let status_data = StatusBarData {
         cwd: &app.cwd,
         model: &app.model,
@@ -251,6 +255,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         plugin_spans,
         context_span,
         git_span,
+        process_span,
         active_account: &app.active_account,
         router_status: app.router_status,
     };

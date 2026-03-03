@@ -2128,7 +2128,7 @@ async fn main() -> Result<()> {
                     Vec::new()
                 } else {
                     let all_tools =
-                        clankers::modes::common::build_all_tools(None, None, None, Some(&plugin_manager), None);
+                        clankers::modes::common::build_all_tools(None, None, None, Some(&plugin_manager), None, None);
                     if let Some(ref allowed) = cli.tools {
                         let allowed_set: std::collections::HashSet<&str> =
                             allowed.split(',').map(|s| s.trim()).collect();

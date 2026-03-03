@@ -5,6 +5,7 @@ pub mod db;
 pub mod error;
 pub mod modes;
 pub mod plugin;
+pub mod procmon;
 pub mod prompts;
 pub mod provider;
 pub mod session;

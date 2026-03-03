@@ -24,7 +24,7 @@ use crate::tools::validator_tool::ValidatorTool;
 
 /// Build the default set of tools
 pub fn build_default_tools() -> Vec<Arc<dyn Tool>> {
-    build_tools_with_events(None, None, None, None)
+    build_tools_with_events(None, None, None, None, None)
 }
 
 /// Build the default set of tools, optionally wiring up event channels
@@ -38,16 +38,23 @@ pub fn build_tools_with_events(
     panel_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>>,
     todo_tx: Option<crate::tools::todo::TodoTx>,
     bash_confirm_tx: Option<crate::tools::bash::ConfirmTx>,
+    process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
 ) -> Vec<Arc<dyn Tool>> {
-    let bash_tool = if let Some(tx) = bash_confirm_tx {
+    let mut bash_tool = if let Some(tx) = bash_confirm_tx {
         crate::tools::bash::BashTool::with_confirm(tx)
     } else {
         crate::tools::bash::BashTool::new()
     };
+    if let Some(ref pm) = process_monitor {
+        bash_tool = bash_tool.with_process_monitor(pm.clone());
+    }
 
     let mut subagent_tool = crate::tools::subagent::SubagentTool::new();
     if let Some(ref ptx) = panel_tx {
         subagent_tool = subagent_tool.with_panel_tx(ptx.clone());
+    }
+    if let Some(ref pm) = process_monitor {
+        subagent_tool = subagent_tool.with_process_monitor(pm.clone());
     }
 
     let mut delegate_tool = crate::tools::delegate::DelegateTool::new();
@@ -61,10 +68,18 @@ pub fn build_tools_with_events(
         let identity_path = crate::modes::rpc::iroh::identity_path(&paths);
         delegate_tool = delegate_tool.with_peer_routing(registry_path, identity_path);
     }
+    if let Some(ref pm) = process_monitor {
+        delegate_tool = delegate_tool.with_process_monitor(pm.clone());
+    }
 
     let mut todo_tool = crate::tools::todo::TodoTool::new();
     if let Some(tx) = todo_tx {
         todo_tool = todo_tool.with_tx(tx);
+    }
+
+    let mut procmon_tool = crate::tools::procmon::ProcmonTool::new();
+    if let Some(ref pm) = process_monitor {
+        procmon_tool = procmon_tool.with_monitor(pm.clone());
     }
 
     vec![
@@ -86,6 +101,7 @@ pub fn build_tools_with_events(
         Arc::new(crate::tools::image_gen::ImageGenTool::new()),
         #[cfg(feature = "tui-validate")]
         Arc::new(crate::tools::validate_tui::ValidateTuiTool::new()),
+        Arc::new(procmon_tool),
         // Matrix tools (always registered; they return helpful errors when not connected)
         Arc::new(crate::tools::matrix::MatrixSendTool::new()),
         Arc::new(crate::tools::matrix::MatrixReadTool::new()),
@@ -164,6 +180,7 @@ pub fn build_plugin_tools(
         "ask",
         "image_gen",
         "validate_tui",
+        "procmon",
     ]
     .into_iter()
     .collect();
@@ -252,8 +269,9 @@ pub fn build_all_tools(
     todo_tx: Option<crate::tools::todo::TodoTx>,
     plugin_manager: Option<&Arc<Mutex<PluginManager>>>,
     bash_confirm_tx: Option<crate::tools::bash::ConfirmTx>,
+    process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
 ) -> Vec<Arc<dyn Tool>> {
-    let mut tools = build_tools_with_events(event_tx, panel_tx.clone(), todo_tx, bash_confirm_tx);
+    let mut tools = build_tools_with_events(event_tx, panel_tx.clone(), todo_tx, bash_confirm_tx, process_monitor);
     if let Some(manager) = plugin_manager {
         tools.extend(build_plugin_tools(manager, panel_tx.as_ref()));
     }

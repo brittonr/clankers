@@ -57,6 +57,7 @@ pub fn check_dangerous(command: &str) -> Option<&'static str> {
 pub struct BashTool {
     definition: ToolDefinition,
     confirm_tx: Option<ConfirmTx>,
+    process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
 }
 
 impl BashTool {
@@ -81,6 +82,7 @@ impl BashTool {
                 }),
             },
             confirm_tx: None,
+            process_monitor: None,
         }
     }
 
@@ -89,6 +91,12 @@ impl BashTool {
         let mut tool = Self::new();
         tool.confirm_tx = Some(confirm_tx);
         tool
+    }
+
+    /// Attach a process monitor to track spawned processes.
+    pub fn with_process_monitor(mut self, monitor: crate::procmon::ProcessMonitorHandle) -> Self {
+        self.process_monitor = Some(monitor);
+        self
     }
 }
 
@@ -172,6 +180,18 @@ impl Tool for BashTool {
             Ok(c) => c,
             Err(e) => return ToolResult::error(format!("Failed to spawn bash: {}", e)),
         };
+
+        // Register process with monitor
+        if let Some(ref monitor) = self.process_monitor {
+            if let Some(pid) = child.id() {
+                let command_preview: String = command.chars().take(200).collect();
+                monitor.register(pid, crate::procmon::ProcessMeta {
+                    tool_name: "bash".to_string(),
+                    command: command_preview,
+                    call_id: ctx.call_id.clone(),
+                });
+            }
+        }
 
         let stdout = match child.stdout.take() {
             Some(s) => s,

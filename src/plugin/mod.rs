@@ -1210,7 +1210,7 @@ mod tests {
     fn build_all_tools_includes_plugin_tools() {
         let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
         let manager = crate::modes::common::init_plugin_manager(&plugins_dir, None, &[]);
-        let tools = crate::modes::common::build_all_tools(None, None, None, Some(&manager), None);
+        let tools = crate::modes::common::build_all_tools(None, None, None, Some(&manager), None, None);
 
         let names: Vec<String> = tools.iter().map(|t| t.definition().name.clone()).collect();
         // Built-in tools

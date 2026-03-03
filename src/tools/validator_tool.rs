@@ -113,6 +113,7 @@ impl Tool for ValidatorTool {
             cwd,
             self.panel_tx.as_ref(),
             ctx.signal.clone(),
+            None,
         )
         .await
     }

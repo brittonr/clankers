@@ -31,6 +31,8 @@ pub struct StatusBarData<'a> {
     pub context_span: Span<'a>,
     /// Git status span (None if not in a repo)
     pub git_span: Option<Span<'a>>,
+    /// Process stats span (None if no active processes)
+    pub process_span: Option<Span<'a>>,
     /// Active account name (empty if none)
     pub active_account: &'a str,
     /// Router daemon connection status
@@ -124,6 +126,11 @@ pub fn render_status_bar(frame: &mut Frame, data: &StatusBarData, theme: &Theme,
     // Git status
     if let Some(ref git) = data.git_span {
         spans.push(git.clone());
+    }
+
+    // Process stats
+    if let Some(ref proc) = data.process_span {
+        spans.push(proc.clone());
     }
 
     // Plugin status segments

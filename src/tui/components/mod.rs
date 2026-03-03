@@ -21,6 +21,7 @@ pub mod model_selector;
 pub mod notification;
 pub mod output_search;
 pub mod peers_panel;
+pub mod process_panel;
 pub mod select_list;
 pub mod session_panel;
 pub mod session_selector;

@@ -89,6 +89,7 @@ grep-regex = "0.1.14"
 grep-searcher = "0.1.16"
 grep-matcher = "0.1.8"
 similar = "2.7"
+sysinfo = "0.34"
 
 [dev-dependencies]
 pretty_assertions = "1.0"
