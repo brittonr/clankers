@@ -19,9 +19,9 @@
 
 ## Phase 3: Formatted responses (needs pulldown-cmark or comrak)
 
-- [ ] Add markdown→HTML conversion
-- [ ] Switch `send_text` to `text_html(plain, html)` in daemon Matrix responses
-- [ ] Long response chunking at paragraph/code-block boundaries
+- [x] Add markdown→HTML conversion
+- [x] Switch `send_text` to `text_html(plain, html)` in daemon Matrix responses
+- [x] Long response chunking at paragraph/code-block boundaries
 
 ## Phase 4: Proactive agent
 

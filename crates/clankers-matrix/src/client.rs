@@ -353,6 +353,22 @@ impl MatrixClient {
         Ok(())
     }
 
+    /// Send a markdown-formatted message to a room.
+    ///
+    /// Converts markdown to HTML for rich rendering in Matrix clients,
+    /// with the original markdown as the plain-text fallback. Long
+    /// responses are automatically chunked at paragraph boundaries.
+    pub async fn send_markdown(&self, room_id: &RoomId, text: &str) -> Result<(), MatrixError> {
+        use crate::markdown::{chunk_response, md_to_html, MAX_MESSAGE_BYTES};
+
+        let chunks = chunk_response(text, MAX_MESSAGE_BYTES);
+        for chunk in &chunks {
+            let html = md_to_html(chunk);
+            self.send_html(room_id, chunk, &html).await?;
+        }
+        Ok(())
+    }
+
     /// Send a clankers announcement to a room.
     pub async fn send_announce(&self, room_id: &RoomId, announce: &Announce) -> Result<(), MatrixError> {
         self.send_custom_event(room_id, EVENT_ANNOUNCE, announce).await

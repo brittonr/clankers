@@ -1103,6 +1103,7 @@ dependencies = [
  "hostname",
  "matrix-sdk",
  "mime",
+ "pulldown-cmark",
  "ruma",
  "serde",
  "serde_json",

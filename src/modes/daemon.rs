@@ -817,7 +817,7 @@ async fn run_matrix_bridge(
                                 Arc::clone(&store),
                             ).await;
                             let c = client.read().await;
-                            if let Err(e) = c.send_text(&room_id_parsed, &response).await {
+                            if let Err(e) = c.send_markdown(&room_id_parsed, &response).await {
                                 error!("Matrix send failed: {e}");
                             }
                             continue;
@@ -908,7 +908,7 @@ async fn run_matrix_bridge(
 
                         // ── Send response ───────────────────────────
                         let c = client.read().await;
-                        if let Err(e) = c.send_text(&room_id_parsed, &response).await {
+                        if let Err(e) = c.send_markdown(&room_id_parsed, &response).await {
                             error!("Matrix send failed: {e}");
                         }
                     }
@@ -977,7 +977,7 @@ async fn run_matrix_bridge(
                                 typing_cancel.cancel();
                                 let c = client.read().await;
                                 let _ = c.set_typing(&room_id_parsed, false).await;
-                                let _ = c.send_text(&room_id_parsed, &format!(
+                                let _ = c.send_markdown(&room_id_parsed, &format!(
                                     "Failed to download attachment: {e}"
                                 )).await;
                                 continue;
@@ -1099,7 +1099,7 @@ async fn run_matrix_bridge(
 
                         // ── Send response ───────────────────────────
                         let c = client.read().await;
-                        if let Err(e) = c.send_text(&room_id_parsed, &response).await {
+                        if let Err(e) = c.send_markdown(&room_id_parsed, &response).await {
                             error!("Matrix send failed: {e}");
                         }
                     }

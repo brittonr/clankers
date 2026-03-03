@@ -29,6 +29,7 @@
 pub mod bridge;
 pub mod client;
 pub mod config;
+pub mod markdown;
 pub mod protocol;
 pub mod room;
 
