@@ -29,6 +29,7 @@ data/
 !CHANGES.md
 !TODO.md
 !CONTRIBUTING.md
+!openspec/**/*.md
 
 # Scratch / generated test files
 *.rlib

@@ -1,0 +1,6 @@
+schema: spec-driven
+context: |
+  clankers is a terminal coding agent in Rust. It has a daemon mode that
+  listens on iroh QUIC and Matrix for incoming messages, routes them to
+  per-sender agent sessions, and sends responses back. The Matrix integration
+  uses the matrix-sdk crate via the clankers-matrix crate.
