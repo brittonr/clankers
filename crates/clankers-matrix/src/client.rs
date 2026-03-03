@@ -216,7 +216,7 @@ impl MatrixClient {
         let user_id = self.user_id.clone();
 
         // Register the event handler for room messages
-        client.add_event_handler(move |ev: OriginalSyncRoomMessageEvent, _room: Room| {
+        client.add_event_handler(move |ev: OriginalSyncRoomMessageEvent, room: Room| {
             let tx = event_tx.clone();
             let my_user_id = user_id.clone();
             async move {
@@ -225,7 +225,8 @@ impl MatrixClient {
                     return;
                 }
 
-                let clankers_event = parse_room_message(&ev);
+                let room_id = room.room_id().as_str();
+                let clankers_event = parse_room_message(&ev, room_id);
                 if let Some(event) = clankers_event {
                     if tx.send(event).is_err() {
                         debug!("No subscribers for Matrix event");
@@ -279,6 +280,54 @@ impl MatrixClient {
         let client = self.client.as_ref().ok_or(MatrixError::NotLoggedIn)?;
         let room = client.get_room(room_id).ok_or_else(|| MatrixError::RoomNotFound(room_id.to_string()))?;
         room.typing_notice(typing).await.map_err(MatrixError::from)?;
+        Ok(())
+    }
+
+    // ── Media download / upload ────────────────────────────────────
+
+    /// Download media content from a Matrix media source.
+    ///
+    /// Returns the raw bytes of the file. Works with both encrypted and
+    /// unencrypted media.
+    pub async fn download_media(
+        &self,
+        source: &ruma::events::room::MediaSource,
+    ) -> Result<Vec<u8>, MatrixError> {
+        let client = self.client.as_ref().ok_or(MatrixError::NotLoggedIn)?;
+        let request = matrix_sdk::media::MediaRequestParameters {
+            source: source.clone(),
+            format: matrix_sdk::media::MediaFormat::File,
+        };
+        client
+            .media()
+            .get_media_content(&request, true)
+            .await
+            .map_err(MatrixError::from)
+    }
+
+    /// Send a file as a Matrix attachment.
+    ///
+    /// Automatically determines message type from the MIME type:
+    /// images -> m.image, audio -> m.audio, video -> m.video, else -> m.file.
+    pub async fn send_file(
+        &self,
+        room_id: &RoomId,
+        filename: &str,
+        content_type: &mime::Mime,
+        data: Vec<u8>,
+    ) -> Result<(), MatrixError> {
+        let client = self.client.as_ref().ok_or(MatrixError::NotLoggedIn)?;
+        let room = client
+            .get_room(room_id)
+            .ok_or_else(|| MatrixError::RoomNotFound(room_id.to_string()))?;
+        room.send_attachment(
+            filename,
+            content_type,
+            data,
+            matrix_sdk::attachment::AttachmentConfig::new(),
+        )
+        .await
+        .map_err(|e| MatrixError::Sdk(format!("Failed to send attachment: {e}")))?;
         Ok(())
     }
 
@@ -481,43 +530,94 @@ impl MatrixClient {
 // ── Event parsing ──────────────────────────────────────────────────
 
 /// Parse a Matrix room message into a ClankersEvent.
-fn parse_room_message(ev: &OriginalSyncRoomMessageEvent) -> Option<ClankersEvent> {
-    let body = match &ev.content.msgtype {
-        MessageType::Text(text) => &text.body,
-        _ => return None,
-    };
-
+fn parse_room_message(ev: &OriginalSyncRoomMessageEvent, room_id: &str) -> Option<ClankersEvent> {
     let sender = ev.sender.to_string();
     let timestamp =
         chrono::DateTime::from_timestamp(ev.origin_server_ts.as_secs().into(), 0).unwrap_or_else(|| chrono::Utc::now());
 
-    // Try to parse as a clankers-tagged message: [clankers:<type>] <json>
-    if let Some(rest) = body.strip_prefix("[clankers:") {
-        if let Some(bracket_end) = rest.find(']') {
-            let event_type = &rest[..bracket_end];
-            let json_str = rest[bracket_end + 1..].trim();
+    match &ev.content.msgtype {
+        MessageType::Text(text) => {
+            let body = &text.body;
 
-            return match event_type {
-                EVENT_ANNOUNCE => serde_json::from_str::<Announce>(json_str).ok().map(ClankersEvent::Announce),
-                EVENT_RPC_REQUEST => serde_json::from_str::<RpcRequest>(json_str).ok().map(ClankersEvent::RpcRequest),
-                EVENT_RPC_RESPONSE => {
-                    serde_json::from_str::<RpcResponse>(json_str).ok().map(ClankersEvent::RpcResponse)
+            // Try to parse as a clankers-tagged message: [clankers:<type>] <json>
+            if let Some(rest) = body.strip_prefix("[clankers:") {
+                if let Some(bracket_end) = rest.find(']') {
+                    let event_type = &rest[..bracket_end];
+                    let json_str = rest[bracket_end + 1..].trim();
+
+                    return match event_type {
+                        EVENT_ANNOUNCE => serde_json::from_str::<Announce>(json_str).ok().map(ClankersEvent::Announce),
+                        EVENT_RPC_REQUEST => serde_json::from_str::<RpcRequest>(json_str).ok().map(ClankersEvent::RpcRequest),
+                        EVENT_RPC_RESPONSE => {
+                            serde_json::from_str::<RpcResponse>(json_str).ok().map(ClankersEvent::RpcResponse)
+                        }
+                        EVENT_CHAT => serde_json::from_str::<ChatMessage>(json_str).ok().map(ClankersEvent::Chat),
+                        _ => {
+                            debug!("Unknown clankers event type: {}", event_type);
+                            None
+                        }
+                    };
                 }
-                EVENT_CHAT => serde_json::from_str::<ChatMessage>(json_str).ok().map(ClankersEvent::Chat),
-                _ => {
-                    debug!("Unknown clankers event type: {}", event_type);
-                    None
-                }
-            };
+            }
+
+            // Regular text message
+            Some(ClankersEvent::Text {
+                sender,
+                body: body.clone(),
+                room_id: room_id.to_string(),
+                timestamp,
+            })
         }
+        MessageType::Image(img) => {
+            let filename = img.filename.clone().unwrap_or_else(|| img.body.clone());
+            Some(ClankersEvent::Media {
+                sender,
+                room_id: room_id.to_string(),
+                body: img.body.clone(),
+                filename,
+                media_type: "image".to_string(),
+                source: img.source.clone(),
+                timestamp,
+            })
+        }
+        MessageType::File(file) => {
+            let filename = file.filename.clone().unwrap_or_else(|| file.body.clone());
+            Some(ClankersEvent::Media {
+                sender,
+                room_id: room_id.to_string(),
+                body: file.body.clone(),
+                filename,
+                media_type: "file".to_string(),
+                source: file.source.clone(),
+                timestamp,
+            })
+        }
+        MessageType::Audio(audio) => {
+            let filename = audio.filename.clone().unwrap_or_else(|| audio.body.clone());
+            Some(ClankersEvent::Media {
+                sender,
+                room_id: room_id.to_string(),
+                body: audio.body.clone(),
+                filename,
+                media_type: "audio".to_string(),
+                source: audio.source.clone(),
+                timestamp,
+            })
+        }
+        MessageType::Video(video) => {
+            let filename = video.filename.clone().unwrap_or_else(|| video.body.clone());
+            Some(ClankersEvent::Media {
+                sender,
+                room_id: room_id.to_string(),
+                body: video.body.clone(),
+                filename,
+                media_type: "video".to_string(),
+                source: video.source.clone(),
+                timestamp,
+            })
+        }
+        _ => None,
     }
-
-    // Regular text message from a human or non-clankers client
-    Some(ClankersEvent::Text {
-        sender,
-        body: body.clone(),
-        timestamp,
-    })
 }
 
 /// Summary info about a joined room.

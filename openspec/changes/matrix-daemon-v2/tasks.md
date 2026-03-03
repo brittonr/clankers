@@ -11,10 +11,10 @@
 
 ## Phase 2: Files (needs matrix-sdk media API)
 
-- [ ] File receiving — handle `m.image`/`m.file`/`m.audio`/`m.video` events in the Matrix client
-- [ ] Download attachments to `<session-dir>/attachments/`
-- [ ] Prompt agent with file path (and base64 image block for vision models)
-- [ ] File sending — scan response for `<sendfile>` tags, upload via `Room::send_attachment()`
+- [x] File receiving — handle `m.image`/`m.file`/`m.audio`/`m.video` events in the Matrix client
+- [x] Download attachments to `<session-dir>/attachments/`
+- [x] Prompt agent with file path (and base64 image block for vision models)
+- [x] File sending — scan response for `<sendfile>` tags, upload via `Room::send_attachment()`
 - [ ] Path validation against sandbox policy
 
 ## Phase 3: Formatted responses (needs pulldown-cmark or comrak)

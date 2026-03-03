@@ -90,6 +90,16 @@ pub enum BridgeEvent {
         room_id: String,
     },
 
+    /// A media message (image, file, audio, video) from a user
+    MediaMessage {
+        sender: String,
+        body: String,
+        filename: String,
+        media_type: String,
+        source: ruma::events::room::MediaSource,
+        room_id: String,
+    },
+
     /// An RPC request addressed to us
     IncomingRpc { request: RpcRequest, room_id: String },
 }
@@ -224,7 +234,7 @@ impl MatrixBridge {
                 });
             }
 
-            ClankersEvent::Text { sender, body, .. } => {
+            ClankersEvent::Text { sender, body, room_id, .. } => {
                 if sender == our_user_id {
                     return;
                 }
@@ -232,7 +242,30 @@ impl MatrixBridge {
                 let _ = agent_tx.send(BridgeEvent::TextMessage {
                     sender: sender.clone(),
                     body: body.clone(),
-                    room_id: String::new(),
+                    room_id: room_id.clone(),
+                });
+            }
+
+            ClankersEvent::Media {
+                sender,
+                room_id,
+                body,
+                filename,
+                media_type,
+                source,
+                ..
+            } => {
+                if sender == our_user_id {
+                    return;
+                }
+
+                let _ = agent_tx.send(BridgeEvent::MediaMessage {
+                    sender: sender.clone(),
+                    body: body.clone(),
+                    filename: filename.clone(),
+                    media_type: media_type.clone(),
+                    source: source.clone(),
+                    room_id: room_id.clone(),
                 });
             }
         }

@@ -238,6 +238,21 @@ pub enum ClankersEvent {
     Text {
         sender: String,
         body: String,
+        room_id: String,
+        timestamp: DateTime<Utc>,
+    },
+    /// Media message (image, file, audio, video)
+    Media {
+        sender: String,
+        room_id: String,
+        /// Display name / caption from the message body
+        body: String,
+        /// Resolved filename (from filename field, falls back to body)
+        filename: String,
+        /// Media type: "image", "file", "audio", "video"
+        media_type: String,
+        /// The media source for downloading
+        source: ruma::events::room::MediaSource,
         timestamp: DateTime<Utc>,
     },
 }

@@ -19,4 +19,5 @@ url = "2"
 dirs = "6"
 uuid = { version = "1", features = ["v4"] }
 hostname = "0.4"
+mime = "0.3"
 ruma = "0.12"

@@ -38,6 +38,7 @@ use crate::modes::rpc::iroh::write_frame;
 use crate::modes::rpc::protocol::Request;
 use crate::modes::rpc::protocol::Response;
 use crate::provider::Provider;
+use crate::provider::message::{Content, ImageSource};
 use crate::provider::streaming::ContentDelta;
 use crate::session::SessionManager;
 use crate::tools::Tool;
@@ -893,6 +894,209 @@ async fn run_matrix_bridge(
                             let _ = c.set_typing(&room_id_parsed, false).await;
                         }
 
+                        // ── Sendfile extraction + upload ─────────────
+                        let (cleaned, sendfiles) = extract_sendfile_tags(&response);
+                        response = cleaned;
+
+                        if !sendfiles.is_empty() {
+                            let errors = upload_sendfiles(&client, &room_id_parsed, &sendfiles).await;
+                            for err in errors {
+                                response.push('\n');
+                                response.push_str(&err);
+                            }
+                        }
+
+                        // ── Send response ───────────────────────────
+                        let c = client.read().await;
+                        if let Err(e) = c.send_text(&room_id_parsed, &response).await {
+                            error!("Matrix send failed: {e}");
+                        }
+                    }
+                    BridgeEvent::MediaMessage {
+                        sender,
+                        body,
+                        filename,
+                        media_type,
+                        source,
+                        room_id,
+                    } => {
+                        // ── Allowlist check ─────────────────────────
+                        if !is_user_allowed(&allowlist, &sender) {
+                            info!("Matrix: denied media from {}", sender);
+                            continue;
+                        }
+
+                        let key = SessionKey::Matrix {
+                            user_id: sender.clone(),
+                            room_id: room_id.clone(),
+                        };
+
+                        info!("[{}] media: {} ({})", key, filename, media_type);
+
+                        let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(&room_id) {
+                            Ok(rid) => rid.to_owned(),
+                            Err(_) => continue,
+                        };
+
+                        // ── Typing indicator: start ─────────────────
+                        {
+                            let c = client.read().await;
+                            if let Err(e) = c.set_typing(&room_id_parsed, true).await {
+                                warn!("Typing indicator start failed: {e}");
+                            }
+                        }
+
+                        let typing_cancel = CancellationToken::new();
+                        let typing_client = Arc::clone(&client);
+                        let typing_room = room_id_parsed.clone();
+                        let typing_token = typing_cancel.clone();
+                        tokio::spawn(async move {
+                            let mut interval = tokio::time::interval(std::time::Duration::from_secs(25));
+                            interval.tick().await;
+                            loop {
+                                tokio::select! {
+                                    _ = interval.tick() => {
+                                        let c = typing_client.read().await;
+                                        let _ = c.set_typing(&typing_room, true).await;
+                                    }
+                                    _ = typing_token.cancelled() => break,
+                                }
+                            }
+                        });
+
+                        // ── Download the attachment ─────────────────
+                        let download_result = {
+                            let c = client.read().await;
+                            c.download_media(&source).await
+                        };
+
+                        let file_bytes = match download_result {
+                            Ok(bytes) => bytes,
+                            Err(e) => {
+                                error!("Failed to download media {}: {e}", filename);
+                                typing_cancel.cancel();
+                                let c = client.read().await;
+                                let _ = c.set_typing(&room_id_parsed, false).await;
+                                let _ = c.send_text(&room_id_parsed, &format!(
+                                    "Failed to download attachment: {e}"
+                                )).await;
+                                continue;
+                            }
+                        };
+
+                        // ── Save to session attachments dir ─────────
+                        let attachments_dir = paths
+                            .global_sessions_dir
+                            .join(format!(
+                                "matrix_{}_{}",
+                                sender.replace(':', "_"),
+                                room_id.replace(':', "_")
+                            ))
+                            .join("attachments");
+                        if let Err(e) = std::fs::create_dir_all(&attachments_dir) {
+                            error!("Failed to create attachments dir: {e}");
+                        }
+
+                        let save_path = attachments_dir.join(&filename);
+                        if let Err(e) = std::fs::write(&save_path, &file_bytes) {
+                            error!("Failed to save attachment {}: {e}", save_path.display());
+                        }
+
+                        // ── Build prompt with image if applicable ───
+                        let caption = if body != filename { &body } else { "" };
+                        let is_image = media_type == "image";
+
+                        let mut response = if is_image {
+                            // Pass image as base64 content block for vision
+                            let b64 = base64::Engine::encode(
+                                &base64::engine::general_purpose::STANDARD,
+                                &file_bytes,
+                            );
+                            let mime_str = guess_mime(&save_path).to_string();
+
+                            let image_content = Content::Image {
+                                source: ImageSource::Base64 {
+                                    media_type: mime_str,
+                                    data: b64,
+                                },
+                            };
+
+                            let prompt_text = if caption.is_empty() {
+                                format!(
+                                    "User sent an image: {} (saved to {})",
+                                    filename,
+                                    save_path.display()
+                                )
+                            } else {
+                                format!(
+                                    "User sent an image with caption \"{}\": {} (saved to {})",
+                                    caption, filename, save_path.display()
+                                )
+                            };
+
+                            run_matrix_prompt_with_images(
+                                Arc::clone(&store),
+                                key,
+                                prompt_text,
+                                vec![image_content],
+                            )
+                            .await
+                        } else {
+                            let prompt_text = if caption.is_empty() {
+                                format!(
+                                    "User sent a {} file: {} (saved to {})",
+                                    media_type, filename, save_path.display()
+                                )
+                            } else {
+                                format!(
+                                    "User sent a {} file with caption \"{}\": {} (saved to {})",
+                                    media_type, caption, filename, save_path.display()
+                                )
+                            };
+
+                            run_matrix_prompt(Arc::clone(&store), key, prompt_text).await
+                        };
+
+                        // ── Empty response re-prompt ────────────────
+                        if response.trim().is_empty() {
+                            let re_key = SessionKey::Matrix {
+                                user_id: sender.clone(),
+                                room_id: room_id.clone(),
+                            };
+                            let retry = run_matrix_prompt(
+                                Arc::clone(&store),
+                                re_key,
+                                "You processed a file but your response contained no text. \
+                                 Briefly summarize what you did."
+                                    .to_string(),
+                            )
+                            .await;
+                            response = if retry.trim().is_empty() {
+                                "(processed file — no summary available)".to_string()
+                            } else {
+                                retry
+                            };
+                        }
+
+                        // ── Sendfile extraction + upload ────────────
+                        let (cleaned, sendfiles) = extract_sendfile_tags(&response);
+                        response = cleaned;
+
+                        if !sendfiles.is_empty() {
+                            let errors = upload_sendfiles(&client, &room_id_parsed, &sendfiles).await;
+                            for err in errors {
+                                response.push('\n');
+                                response.push_str(&err);
+                            }
+                        }
+
+                        // ── Typing indicator: stop ──────────────────
+                        typing_cancel.cancel();
+                        {
+                            let c = client.read().await;
+                            let _ = c.set_typing(&room_id_parsed, false).await;
+                        }
+
                         // ── Send response ───────────────────────────
                         let c = client.read().await;
                         if let Err(e) = c.send_text(&room_id_parsed, &response).await {
@@ -1009,6 +1213,105 @@ async fn handle_bot_command(
     }
 }
 
+// ── Sendfile tag extraction ──────────────────────────────────────────────
+
+/// A file the agent wants to send back to the user.
+struct SendfileTag {
+    /// Absolute path to the file
+    path: String,
+}
+
+/// Extract `<sendfile>/path</sendfile>` tags from response text.
+/// Returns the cleaned text (tags stripped) and a list of file paths.
+fn extract_sendfile_tags(text: &str) -> (String, Vec<SendfileTag>) {
+    let mut cleaned = String::with_capacity(text.len());
+    let mut tags = Vec::new();
+    let mut remaining = text;
+
+    while let Some(start) = remaining.find("<sendfile>") {
+        // Copy text before the tag
+        cleaned.push_str(&remaining[..start]);
+
+        let after_open = &remaining[start + "<sendfile>".len()..];
+        if let Some(end) = after_open.find("</sendfile>") {
+            let path = after_open[..end].trim().to_string();
+            if !path.is_empty() {
+                tags.push(SendfileTag { path });
+            }
+            remaining = &after_open[end + "</sendfile>".len()..];
+        } else {
+            // Unclosed tag — keep it as-is (prefix already pushed above)
+            cleaned.push_str("<sendfile>");
+            remaining = after_open;
+        }
+    }
+    cleaned.push_str(remaining);
+
+    (cleaned, tags)
+}
+
+/// Guess MIME type from file extension.
+fn guess_mime(path: &std::path::Path) -> mime::Mime {
+    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+    match ext.to_lowercase().as_str() {
+        "png" => mime::IMAGE_PNG,
+        "jpg" | "jpeg" => mime::IMAGE_JPEG,
+        "gif" => mime::IMAGE_GIF,
+        "webp" => "image/webp".parse().unwrap_or(mime::APPLICATION_OCTET_STREAM),
+        "svg" => mime::IMAGE_SVG,
+        "mp4" => "video/mp4".parse().unwrap_or(mime::APPLICATION_OCTET_STREAM),
+        "webm" => "video/webm".parse().unwrap_or(mime::APPLICATION_OCTET_STREAM),
+        "mp3" => "audio/mpeg".parse().unwrap_or(mime::APPLICATION_OCTET_STREAM),
+        "ogg" => "audio/ogg".parse().unwrap_or(mime::APPLICATION_OCTET_STREAM),
+        "wav" => "audio/wav".parse().unwrap_or(mime::APPLICATION_OCTET_STREAM),
+        "pdf" => mime::APPLICATION_PDF,
+        "txt" | "md" | "rs" | "py" | "js" | "ts" | "toml" | "yaml" | "yml" | "json" => mime::TEXT_PLAIN,
+        _ => mime::APPLICATION_OCTET_STREAM,
+    }
+}
+
+/// Upload sendfile tags to Matrix and return error annotations for failures.
+async fn upload_sendfiles(
+    client: &tokio::sync::RwLock<clankers_matrix::MatrixClient>,
+    room_id: &clankers_matrix::ruma::OwnedRoomId,
+    tags: &[SendfileTag],
+) -> Vec<String> {
+    let mut errors = Vec::new();
+
+    for tag in tags {
+        let path = std::path::Path::new(&tag.path);
+
+        if !path.exists() || !path.is_file() {
+            errors.push(format!("(failed to send file {}: file not found)", tag.path));
+            continue;
+        }
+
+        let data = match std::fs::read(path) {
+            Ok(d) => d,
+            Err(e) => {
+                errors.push(format!(
+                    "(failed to send file {}: {})",
+                    path.file_name().unwrap_or_default().to_string_lossy(),
+                    e
+                ));
+                continue;
+            }
+        };
+
+        let filename = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let content_type = guess_mime(path);
+
+        let c = client.read().await;
+        if let Err(e) = c.send_file(room_id, &filename, &content_type, data).await {
+            errors.push(format!("(failed to send file {}: {})", filename, e));
+        } else {
+            info!("Uploaded file to Matrix: {}", filename);
+        }
+    }
+
+    errors
+}
+
 /// Run a prompt for a Matrix message and collect the full text response.
 async fn run_matrix_prompt(store: Arc<RwLock<SessionStore>>, key: SessionKey, text: String) -> String {
     // Get conversation history
@@ -1063,5 +1366,133 @@ async fn run_matrix_prompt(store: Arc<RwLock<SessionStore>>, key: SessionKey, te
     match result {
         Ok(()) => collected,
         Err(e) => format!("Error: {e}"),
+    }
+}
+
+/// Run a prompt with image content blocks (for vision models).
+async fn run_matrix_prompt_with_images(
+    store: Arc<RwLock<SessionStore>>,
+    key: SessionKey,
+    text: String,
+    images: Vec<Content>,
+) -> String {
+    let (mut agent, history) = {
+        let mut store = store.write().await;
+        let session = store.get_or_create(&key);
+        session.turn_count += 1;
+        let messages = session.agent.messages().to_vec();
+        let agent = Agent::new(
+            Arc::clone(&store.provider),
+            store.tools.clone(),
+            store.settings.clone(),
+            store.model.clone(),
+            store.system_prompt.clone(),
+        );
+        (agent, messages)
+    };
+
+    agent.seed_messages(history);
+
+    let mut rx = agent.subscribe();
+
+    let collector = tokio::spawn(async move {
+        let mut collected = String::new();
+        while let Ok(event) = rx.recv().await {
+            if let AgentEvent::MessageUpdate {
+                delta: ContentDelta::TextDelta { ref text },
+                ..
+            } = event
+            {
+                collected.push_str(text);
+            }
+            if matches!(event, AgentEvent::AgentEnd { .. }) {
+                break;
+            }
+        }
+        collected
+    });
+
+    let result = agent.prompt_with_images(&text, images).await;
+    let collected = collector.await.unwrap_or_default();
+
+    let messages = agent.messages().to_vec();
+    {
+        let mut store = store.write().await;
+        if let Some(session) = store.sessions.get_mut(&key) {
+            session.agent.seed_messages(messages);
+        }
+    }
+
+    match result {
+        Ok(()) => collected,
+        Err(e) => format!("Error: {e}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extract_sendfile_single_tag() {
+        let text = "Here is the file: <sendfile>/tmp/output.png</sendfile> done.";
+        let (cleaned, tags) = extract_sendfile_tags(text);
+        assert_eq!(cleaned, "Here is the file:  done.");
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].path, "/tmp/output.png");
+    }
+
+    #[test]
+    fn extract_sendfile_multiple_tags() {
+        let text = "Files: <sendfile>/a.png</sendfile> and <sendfile>/b.txt</sendfile>.";
+        let (cleaned, tags) = extract_sendfile_tags(text);
+        assert_eq!(cleaned, "Files:  and .");
+        assert_eq!(tags.len(), 2);
+        assert_eq!(tags[0].path, "/a.png");
+        assert_eq!(tags[1].path, "/b.txt");
+    }
+
+    #[test]
+    fn extract_sendfile_no_tags() {
+        let text = "No files here.";
+        let (cleaned, tags) = extract_sendfile_tags(text);
+        assert_eq!(cleaned, "No files here.");
+        assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn extract_sendfile_unclosed_tag() {
+        let text = "Broken: <sendfile>/tmp/lost";
+        let (cleaned, tags) = extract_sendfile_tags(text);
+        assert_eq!(cleaned, "Broken: <sendfile>/tmp/lost");
+        assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn extract_sendfile_whitespace_in_path() {
+        let text = "<sendfile>  /tmp/with spaces.png  </sendfile>";
+        let (cleaned, tags) = extract_sendfile_tags(text);
+        assert_eq!(cleaned, "");
+        assert_eq!(tags.len(), 1);
+        assert_eq!(tags[0].path, "/tmp/with spaces.png");
+    }
+
+    #[test]
+    fn extract_sendfile_empty_path_skipped() {
+        let text = "Empty: <sendfile>  </sendfile> end.";
+        let (cleaned, tags) = extract_sendfile_tags(text);
+        assert_eq!(cleaned, "Empty:  end.");
+        assert!(tags.is_empty());
+    }
+
+    #[test]
+    fn guess_mime_common_types() {
+        assert_eq!(guess_mime(std::path::Path::new("photo.png")), mime::IMAGE_PNG);
+        assert_eq!(guess_mime(std::path::Path::new("photo.jpg")), mime::IMAGE_JPEG);
+        assert_eq!(guess_mime(std::path::Path::new("photo.JPEG")), mime::IMAGE_JPEG);
+        assert_eq!(guess_mime(std::path::Path::new("doc.pdf")), mime::APPLICATION_PDF);
+        assert_eq!(guess_mime(std::path::Path::new("code.rs")), mime::TEXT_PLAIN);
+        assert_eq!(guess_mime(std::path::Path::new("data.bin")), mime::APPLICATION_OCTET_STREAM);
+        assert_eq!(guess_mime(std::path::Path::new("noext")), mime::APPLICATION_OCTET_STREAM);
     }
 }
