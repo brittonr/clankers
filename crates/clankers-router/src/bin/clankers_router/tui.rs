@@ -6,6 +6,10 @@
 use std::io;
 use std::sync::Arc;
 
+use clankers_router::Router;
+use clankers_router::provider::CompletionRequest;
+use clankers_router::streaming::ContentDelta;
+use clankers_router::streaming::StreamEvent;
 use crossterm::event::Event;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
@@ -16,10 +20,6 @@ use crossterm::terminal::EnterAlternateScreen;
 use crossterm::terminal::LeaveAlternateScreen;
 use crossterm::terminal::disable_raw_mode;
 use crossterm::terminal::enable_raw_mode;
-use clankers_router::Router;
-use clankers_router::provider::CompletionRequest;
-use clankers_router::streaming::ContentDelta;
-use clankers_router::streaming::StreamEvent;
 use ratatui::Frame;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
@@ -377,7 +377,7 @@ async fn submit_message(app: &mut App, stream_tx: mpsc::Sender<StreamEvent>) {
         temperature: None,
         tools: vec![],
         thinking: None,
-            extra_params: Default::default(),
+        extra_params: Default::default(),
     };
 
     app.streaming = true;

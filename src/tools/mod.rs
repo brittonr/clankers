@@ -104,7 +104,6 @@ impl ToolResult {
 pub mod ask;
 pub mod bash;
 pub mod commit;
-pub mod sandbox;
 pub mod delegate;
 pub mod diff;
 pub mod edit;
@@ -113,18 +112,19 @@ pub mod grep;
 pub mod image_gen;
 pub mod ls;
 pub mod matrix;
+pub mod nix;
 pub mod plugin_tool;
 pub mod read;
 pub mod review;
+pub mod sandbox;
 pub mod screenshot;
 pub mod subagent;
 pub mod todo;
-pub mod watchdog;
-pub mod nix;
 pub mod truncation;
 #[cfg(feature = "tui-validate")]
 pub mod validate_tui;
 pub mod validator_tool;
+pub mod watchdog;
 pub mod web;
 pub mod write;
 

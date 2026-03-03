@@ -1,8 +1,9 @@
-use std::{
-    env, fs,
-    path::{Path, PathBuf},
-    process::{Command, ExitCode},
-};
+use std::env;
+use std::fs;
+use std::path::Path;
+use std::path::PathBuf;
+use std::process::Command;
+use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let args: Vec<String> = env::args().skip(1).collect();
@@ -115,9 +116,7 @@ fn build_plugins(filter: Option<&str>) -> ExitCode {
             }
         }
 
-        let src = dir
-            .join("target/wasm32-unknown-unknown/release")
-            .join(format!("{wasm_stem}.wasm"));
+        let src = dir.join("target/wasm32-unknown-unknown/release").join(format!("{wasm_stem}.wasm"));
         let dst = dir.join(format!("{wasm_stem}.wasm"));
 
         if let Err(e) = fs::copy(&src, &dst) {

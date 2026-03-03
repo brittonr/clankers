@@ -27,11 +27,11 @@ use tracing::warn;
 use crate::config::MatrixConfig;
 use crate::protocol::Announce;
 use crate::protocol::ChatMessage;
+use crate::protocol::ClankersEvent;
 use crate::protocol::EVENT_ANNOUNCE;
 use crate::protocol::EVENT_CHAT;
 use crate::protocol::EVENT_RPC_REQUEST;
 use crate::protocol::EVENT_RPC_RESPONSE;
-use crate::protocol::ClankersEvent;
 use crate::protocol::RpcRequest;
 use crate::protocol::RpcResponse;
 
@@ -476,7 +476,9 @@ fn parse_room_message(ev: &OriginalSyncRoomMessageEvent) -> Option<ClankersEvent
             return match event_type {
                 EVENT_ANNOUNCE => serde_json::from_str::<Announce>(json_str).ok().map(ClankersEvent::Announce),
                 EVENT_RPC_REQUEST => serde_json::from_str::<RpcRequest>(json_str).ok().map(ClankersEvent::RpcRequest),
-                EVENT_RPC_RESPONSE => serde_json::from_str::<RpcResponse>(json_str).ok().map(ClankersEvent::RpcResponse),
+                EVENT_RPC_RESPONSE => {
+                    serde_json::from_str::<RpcResponse>(json_str).ok().map(ClankersEvent::RpcResponse)
+                }
                 EVENT_CHAT => serde_json::from_str::<ChatMessage>(json_str).ok().map(ClankersEvent::Chat),
                 _ => {
                     debug!("Unknown clankers event type: {}", event_type);

@@ -26,7 +26,6 @@ use crate::model_switch::ModelSwitchTracker;
 use crate::multi::MultiRequest;
 use crate::multi::MultiResult;
 use crate::multi::MultiStrategy;
-
 use crate::provider::CompletionRequest;
 use crate::provider::Provider;
 use crate::provider::Usage;
@@ -353,22 +352,15 @@ impl Router {
             });
         }
 
-        info!(
-            "multi-model dispatch: {} models, strategy={}",
-            models.len(),
-            multi_req.strategy
-        );
+        info!("multi-model dispatch: {} models, strategy={}", models.len(), multi_req.strategy);
 
         // ── Spawn one provider task per model ───────────────────────
         let mut tasks = Vec::with_capacity(models.len());
 
         for model_name in models {
             // Resolve the model to a concrete ID and provider
-            let resolved_id = self
-                .registry
-                .resolve(model_name)
-                .map(|m| m.id.clone())
-                .unwrap_or_else(|| model_name.clone());
+            let resolved_id =
+                self.registry.resolve(model_name).map(|m| m.id.clone()).unwrap_or_else(|| model_name.clone());
 
             let (_provider, provider_name) = match self.resolve_provider_for_model(&resolved_id) {
                 Some(p) => p,
@@ -421,14 +413,9 @@ impl Router {
             for resp in &result.responses {
                 if resp.is_ok() {
                     let model_def = self.registry.resolve(&resp.model);
-                    let cost = model_def
-                        .and_then(|m| m.estimate_cost(resp.usage.input_tokens, resp.usage.output_tokens));
-                    let req_usage = RequestUsage::from_provider_usage(
-                        &resp.provider,
-                        &resp.model,
-                        &resp.usage,
-                        cost,
-                    );
+                    let cost =
+                        model_def.and_then(|m| m.estimate_cost(resp.usage.input_tokens, resp.usage.output_tokens));
+                    let req_usage = RequestUsage::from_provider_usage(&resp.provider, &resp.model, &resp.usage, cost);
                     let _ = db.usage().record(&req_usage);
 
                     let total_tokens = (resp.usage.input_tokens + resp.usage.output_tokens) as u64;
@@ -475,11 +462,7 @@ impl Router {
 
         if let Some(winner) = result.winning_response() {
             for event in &winner.events {
-                let tagged = TaggedStreamEvent::new(
-                    winner.model.clone(),
-                    winner.provider.clone(),
-                    event.clone(),
-                );
+                let tagged = TaggedStreamEvent::new(winner.model.clone(), winner.provider.clone(), event.clone());
                 if tx.send(tagged).await.is_err() {
                     break;
                 }
@@ -521,20 +504,14 @@ impl Router {
         }
 
         let slot_count = quorum_req.targets.len();
-        info!(
-            "quorum dispatch: {} slots, consensus={}",
-            slot_count, quorum_req.consensus
-        );
+        info!("quorum dispatch: {} slots, consensus={}", slot_count, quorum_req.consensus);
 
         // ── Build per-slot requests and fan out ─────────────────────
         let mut tasks: Vec<crate::multi::ProviderTask> = Vec::with_capacity(slot_count);
 
         for (i, slot) in quorum_req.targets.slots.iter().enumerate() {
-            let resolved_id = self
-                .registry
-                .resolve(&slot.model)
-                .map(|m| m.id.clone())
-                .unwrap_or_else(|| slot.model.clone());
+            let resolved_id =
+                self.registry.resolve(&slot.model).map(|m| m.id.clone()).unwrap_or_else(|| slot.model.clone());
 
             let (_provider, provider_name) = match self.resolve_provider_for_model(&resolved_id) {
                 Some(p) => p,
@@ -581,20 +558,11 @@ impl Router {
             for resp in &responses {
                 if resp.is_ok() {
                     // Resolve back to the real model ID for DB recording
-                    let real_model = self
-                        .registry
-                        .resolve(&resp.model)
-                        .map(|m| m.id.as_str())
-                        .unwrap_or(&resp.model);
+                    let real_model = self.registry.resolve(&resp.model).map(|m| m.id.as_str()).unwrap_or(&resp.model);
                     let model_def = self.registry.resolve(real_model);
-                    let cost = model_def
-                        .and_then(|m| m.estimate_cost(resp.usage.input_tokens, resp.usage.output_tokens));
-                    let req_usage = RequestUsage::from_provider_usage(
-                        &resp.provider,
-                        real_model,
-                        &resp.usage,
-                        cost,
-                    );
+                    let cost =
+                        model_def.and_then(|m| m.estimate_cost(resp.usage.input_tokens, resp.usage.output_tokens));
+                    let req_usage = RequestUsage::from_provider_usage(&resp.provider, real_model, &resp.usage, cost);
                     let _ = db.usage().record(&req_usage);
                 }
             }
@@ -613,12 +581,8 @@ impl Router {
                 let (w, a, ag) = evaluate_majority(&responses, *similarity_threshold, min_agree);
                 (w, a, ag, None)
             }
-            ConsensusStrategy::Judge {
-                judge_model,
-                criteria,
-            } => {
-                self.run_judge_consensus(&quorum_req.request, &responses, judge_model, criteria)
-                    .await
+            ConsensusStrategy::Judge { judge_model, criteria } => {
+                self.run_judge_consensus(&quorum_req.request, &responses, judge_model, criteria).await
             }
             ConsensusStrategy::Collect => {
                 // No consensus; pick the first successful response
@@ -638,19 +602,16 @@ impl Router {
             total_usage.cache_read_input_tokens += r.usage.cache_read_input_tokens;
         }
 
-        let winner = responses
-            .get(winner_index)
-            .cloned()
-            .unwrap_or_else(|| responses.first().cloned().unwrap_or_else(|| {
-                crate::multi::MultiResponse {
-                    model: "none".into(),
-                    provider: "none".into(),
-                    events: vec![],
-                    usage: Usage::default(),
-                    duration_ms: 0,
-                    error: Some("no responses".into()),
-                }
-            }));
+        let winner = responses.get(winner_index).cloned().unwrap_or_else(|| {
+            responses.first().cloned().unwrap_or_else(|| crate::multi::MultiResponse {
+                model: "none".into(),
+                provider: "none".into(),
+                events: vec![],
+                usage: Usage::default(),
+                duration_ms: 0,
+                error: Some("no responses".into()),
+            })
+        });
 
         info!(
             "quorum result: winner={} agreeing={}/{} agreement={:.0}% met={}",
@@ -686,12 +647,7 @@ impl Router {
         use crate::quorum::*;
 
         // Build the candidates list (only successful responses)
-        let ok_indices: Vec<usize> = responses
-            .iter()
-            .enumerate()
-            .filter(|(_, r)| r.is_ok())
-            .map(|(i, _)| i)
-            .collect();
+        let ok_indices: Vec<usize> = responses.iter().enumerate().filter(|(_, r)| r.is_ok()).map(|(i, _)| i).collect();
 
         if ok_indices.is_empty() {
             return (0, 0, 0.0, Some("no successful responses to judge".into()));
@@ -718,11 +674,8 @@ impl Router {
         let judge_prompt = build_judge_prompt(user_prompt, &candidates, criteria);
 
         // Send the judge request
-        let resolved_judge = self
-            .registry
-            .resolve(judge_model)
-            .map(|m| m.id.clone())
-            .unwrap_or_else(|| judge_model.to_string());
+        let resolved_judge =
+            self.registry.resolve(judge_model).map(|m| m.id.clone()).unwrap_or_else(|| judge_model.to_string());
 
         let judge_request = CompletionRequest {
             model: resolved_judge.clone(),
@@ -761,10 +714,7 @@ impl Router {
         match parse_judge_response(&judge_text) {
             Some((winner_display_idx, reasoning, agreement)) => {
                 // Map display index back to response index
-                let winner_resp_idx = ok_indices
-                    .get(winner_display_idx)
-                    .copied()
-                    .unwrap_or(ok_indices[0]);
+                let winner_resp_idx = ok_indices.get(winner_display_idx).copied().unwrap_or(ok_indices[0]);
                 let agreeing = ((agreement * ok_indices.len() as f64).round() as usize).max(1);
                 (winner_resp_idx, agreeing, agreement, Some(reasoning))
             }
@@ -785,11 +735,7 @@ impl Router {
     pub fn switch_model(&mut self, model: impl Into<String>, reason: ModelSwitchReason) -> Option<String> {
         let model = model.into();
         // Also resolve aliases so we track the canonical ID
-        let resolved = self
-            .registry
-            .resolve(&model)
-            .map(|m| m.id.clone())
-            .unwrap_or(model);
+        let resolved = self.registry.resolve(&model).map(|m| m.id.clone()).unwrap_or(model);
 
         let old = self.switch_tracker.switch(resolved.clone(), reason);
         if old.is_some() {

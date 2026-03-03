@@ -253,8 +253,13 @@ pub async fn run_interactive(
     }
     let event_tx = agent.event_sender();
     let (bash_confirm_tx, mut bash_confirm_rx) = crate::tools::bash::confirm_channel();
-    let tools =
-        crate::modes::common::build_all_tools(Some(event_tx), Some(panel_tx), Some(todo_tx), plugin_manager.as_ref(), Some(bash_confirm_tx));
+    let tools = crate::modes::common::build_all_tools(
+        Some(event_tx),
+        Some(panel_tx),
+        Some(todo_tx),
+        plugin_manager.as_ref(),
+        Some(bash_confirm_tx),
+    );
 
     // Populate tool info for /tools slash command
     {
@@ -669,11 +674,21 @@ async fn run_event_loop(
 
                     // ── Audit log: record tool calls ────────────────────
                     // Track when tool calls start (for duration measurement)
-                    if let AgentEvent::ToolCall { ref call_id, ref tool_name, ref input } = event {
-                        audit_pending.insert(call_id.clone(), (tool_name.clone(), input.clone(), std::time::Instant::now()));
+                    if let AgentEvent::ToolCall {
+                        ref call_id,
+                        ref tool_name,
+                        ref input,
+                    } = event
+                    {
+                        audit_pending
+                            .insert(call_id.clone(), (tool_name.clone(), input.clone(), std::time::Instant::now()));
                     }
                     // Record completed tool calls to the audit log
-                    if let AgentEvent::ToolExecutionEnd { ref call_id, ref result, is_error } = event
+                    if let AgentEvent::ToolExecutionEnd {
+                        ref call_id,
+                        ref result,
+                        is_error,
+                    } = event
                         && let Some(ref db) = db
                         && !app.session_id.is_empty()
                     {
@@ -683,7 +698,9 @@ async fn run_event_loop(
                         let duration_ms = started_at.elapsed().as_millis() as u64;
 
                         // Extract result preview (first 500 chars of text content)
-                        let result_preview: String = result.content.iter()
+                        let result_preview: String = result
+                            .content
+                            .iter()
                             .filter_map(|c| match c {
                                 crate::tools::ToolResultContent::Text { text } => Some(text.as_str()),
                                 _ => None,
@@ -3025,7 +3042,8 @@ fn execute_slash_command(
                     }
                 }
             } else {
-                // No in-memory verifier — try recovering from disk (e.g. login started in another clankers instance)
+                // No in-memory verifier — try recovering from disk (e.g. login started in another clankers
+                // instance)
                 let paths = crate::config::ClankersPaths::resolve();
                 let verifier_path = paths.global_config_dir.join(".login_verifier");
                 if let Ok(verifier) = std::fs::read_to_string(&verifier_path) {
@@ -3289,7 +3307,15 @@ fn execute_slash_command(
                             subcmd_args.to_string()
                         };
                         let login_args = format!("--account {}", account_name);
-                        execute_slash_command(app, SlashAction::Login, &login_args, cmd_tx, plugin_manager, panel_tx, db);
+                        execute_slash_command(
+                            app,
+                            SlashAction::Login,
+                            &login_args,
+                            cmd_tx,
+                            plugin_manager,
+                            panel_tx,
+                            db,
+                        );
                     }
                     "logout" => {
                         let name = if subcmd_args.is_empty() {
@@ -3718,201 +3744,198 @@ fn execute_slash_command(
         }
         SlashAction::Memory => {
             if let Some(db) = &db {
-                    let mem = db.memory();
-                    if args.is_empty() || args == "list" {
-                        match mem.list(None) {
-                            Ok(entries) if entries.is_empty() => {
-                                app.push_system(
-                                    "No memories stored.\n\nUse `/memory add <text>` to save one.".to_string(),
-                                    false,
-                                );
-                            }
-                            Ok(entries) => {
-                                let mut out = format!("**Memories** ({} total):\n\n", entries.len());
-                                for e in &entries {
-                                    let scope_label = match &e.scope {
-                                        crate::db::memory::MemoryScope::Global => "global".to_string(),
-                                        crate::db::memory::MemoryScope::Project { path } => format!("project:{}", path),
-                                    };
-                                    let tags = if e.tags.is_empty() {
-                                        String::new()
-                                    } else {
-                                        format!(" [{}]", e.tags.join(", "))
-                                    };
-                                    out.push_str(&format!("  `{}` ({}) {}{}\n", e.id, scope_label, e.text, tags));
-                                }
-                                out.push_str(
-                                    "\nUse `/memory edit <id> <new text>` to modify, `/memory remove <id>` to delete.",
-                                );
-                                app.push_system(out, false);
-                            }
-                            Err(e) => {
-                                app.push_system(format!("Failed to list memories: {}", e), true);
-                            }
+                let mem = db.memory();
+                if args.is_empty() || args == "list" {
+                    match mem.list(None) {
+                        Ok(entries) if entries.is_empty() => {
+                            app.push_system(
+                                "No memories stored.\n\nUse `/memory add <text>` to save one.".to_string(),
+                                false,
+                            );
                         }
-                    } else {
-                        let parts: Vec<&str> = args.splitn(2, char::is_whitespace).collect();
-                        let subcmd = parts[0].trim();
-                        let subcmd_args = parts.get(1).map(|s| s.trim()).unwrap_or("");
-
-                        match subcmd {
-                            "add" => {
-                                if subcmd_args.is_empty() {
-                                    app.push_system("Usage: /memory add [--project] <text>".to_string(), true);
+                        Ok(entries) => {
+                            let mut out = format!("**Memories** ({} total):\n\n", entries.len());
+                            for e in &entries {
+                                let scope_label = match &e.scope {
+                                    crate::db::memory::MemoryScope::Global => "global".to_string(),
+                                    crate::db::memory::MemoryScope::Project { path } => format!("project:{}", path),
+                                };
+                                let tags = if e.tags.is_empty() {
+                                    String::new()
                                 } else {
-                                    let (scope, text) = if subcmd_args.starts_with("--project") {
-                                        let rest = subcmd_args.trim_start_matches("--project").trim();
-                                        if rest.is_empty() {
-                                            app.push_system("Usage: /memory add --project <text>".to_string(), true);
-                                            return;
-                                        }
-                                        (
-                                            crate::db::memory::MemoryScope::Project { path: app.cwd.clone() },
-                                            rest.to_string(),
-                                        )
-                                    } else {
-                                        (crate::db::memory::MemoryScope::Global, subcmd_args.to_string())
-                                    };
-
-                                    let entry = crate::db::memory::MemoryEntry::new(&text, scope.clone())
-                                        .with_source(crate::db::memory::MemorySource::User);
-                                    let id = entry.id;
-                                    match mem.save(&entry) {
-                                        Ok(()) => {
-                                            app.push_system(
-                                                format!("Memory saved (id: `{}`, scope: {}):\n  {}", id, scope, text),
-                                                false,
-                                            );
-                                        }
-                                        Err(e) => {
-                                            app.push_system(format!("Failed to save memory: {}", e), true);
-                                        }
-                                    }
-                                }
+                                    format!(" [{}]", e.tags.join(", "))
+                                };
+                                out.push_str(&format!("  `{}` ({}) {}{}\n", e.id, scope_label, e.text, tags));
                             }
-                            "edit" | "update" => {
-                                if subcmd_args.is_empty() {
-                                    app.push_system("Usage: /memory edit <id> <new text>".to_string(), true);
-                                } else {
-                                    let edit_parts: Vec<&str> = subcmd_args.splitn(2, char::is_whitespace).collect();
-                                    let id_str = edit_parts[0].trim();
-                                    let new_text = edit_parts.get(1).map(|s| s.trim()).unwrap_or("");
+                            out.push_str(
+                                "\nUse `/memory edit <id> <new text>` to modify, `/memory remove <id>` to delete.",
+                            );
+                            app.push_system(out, false);
+                        }
+                        Err(e) => {
+                            app.push_system(format!("Failed to list memories: {}", e), true);
+                        }
+                    }
+                } else {
+                    let parts: Vec<&str> = args.splitn(2, char::is_whitespace).collect();
+                    let subcmd = parts[0].trim();
+                    let subcmd_args = parts.get(1).map(|s| s.trim()).unwrap_or("");
 
-                                    if new_text.is_empty() {
-                                        app.push_system("Usage: /memory edit <id> <new text>".to_string(), true);
-                                    } else if let Ok(id) = id_str.parse::<u64>() {
-                                        match mem.get(id) {
-                                            Ok(Some(mut entry)) => {
-                                                let old_text = entry.text.clone();
-                                                entry.text = new_text.to_string();
-                                                match mem.update(&entry) {
-                                                    Ok(true) => {
-                                                        app.push_system(
-                                                            format!(
-                                                                "Memory `{}` updated:\n  ~~{}~~\n  → {}",
-                                                                id, old_text, new_text
-                                                            ),
-                                                            false,
-                                                        );
-                                                    }
-                                                    Ok(false) => {
-                                                        app.push_system(format!("Memory `{}` not found.", id), true);
-                                                    }
-                                                    Err(e) => {
-                                                        app.push_system(
-                                                            format!("Failed to update memory: {}", e),
-                                                            true,
-                                                        );
-                                                    }
-                                                }
-                                            }
-                                            Ok(None) => {
-                                                app.push_system(format!("No memory with id `{}`.", id), true);
-                                            }
-                                            Err(e) => {
-                                                app.push_system(format!("Failed to read memory: {}", e), true);
-                                            }
-                                        }
-                                    } else {
+                    match subcmd {
+                        "add" => {
+                            if subcmd_args.is_empty() {
+                                app.push_system("Usage: /memory add [--project] <text>".to_string(), true);
+                            } else {
+                                let (scope, text) = if subcmd_args.starts_with("--project") {
+                                    let rest = subcmd_args.trim_start_matches("--project").trim();
+                                    if rest.is_empty() {
+                                        app.push_system("Usage: /memory add --project <text>".to_string(), true);
+                                        return;
+                                    }
+                                    (
+                                        crate::db::memory::MemoryScope::Project { path: app.cwd.clone() },
+                                        rest.to_string(),
+                                    )
+                                } else {
+                                    (crate::db::memory::MemoryScope::Global, subcmd_args.to_string())
+                                };
+
+                                let entry = crate::db::memory::MemoryEntry::new(&text, scope.clone())
+                                    .with_source(crate::db::memory::MemorySource::User);
+                                let id = entry.id;
+                                match mem.save(&entry) {
+                                    Ok(()) => {
                                         app.push_system(
-                                            format!("Invalid memory ID: '{}'. Use `/memory list` to see IDs.", id_str),
-                                            true,
+                                            format!("Memory saved (id: `{}`, scope: {}):\n  {}", id, scope, text),
+                                            false,
                                         );
                                     }
+                                    Err(e) => {
+                                        app.push_system(format!("Failed to save memory: {}", e), true);
+                                    }
                                 }
                             }
-                            "remove" | "rm" | "delete" => {
-                                if subcmd_args.is_empty() {
-                                    app.push_system("Usage: /memory remove <id>".to_string(), true);
-                                } else if let Ok(id) = subcmd_args.parse::<u64>() {
-                                    match mem.remove(id) {
-                                        Ok(true) => {
-                                            app.push_system(format!("Memory `{}` removed.", id), false);
+                        }
+                        "edit" | "update" => {
+                            if subcmd_args.is_empty() {
+                                app.push_system("Usage: /memory edit <id> <new text>".to_string(), true);
+                            } else {
+                                let edit_parts: Vec<&str> = subcmd_args.splitn(2, char::is_whitespace).collect();
+                                let id_str = edit_parts[0].trim();
+                                let new_text = edit_parts.get(1).map(|s| s.trim()).unwrap_or("");
+
+                                if new_text.is_empty() {
+                                    app.push_system("Usage: /memory edit <id> <new text>".to_string(), true);
+                                } else if let Ok(id) = id_str.parse::<u64>() {
+                                    match mem.get(id) {
+                                        Ok(Some(mut entry)) => {
+                                            let old_text = entry.text.clone();
+                                            entry.text = new_text.to_string();
+                                            match mem.update(&entry) {
+                                                Ok(true) => {
+                                                    app.push_system(
+                                                        format!(
+                                                            "Memory `{}` updated:\n  ~~{}~~\n  → {}",
+                                                            id, old_text, new_text
+                                                        ),
+                                                        false,
+                                                    );
+                                                }
+                                                Ok(false) => {
+                                                    app.push_system(format!("Memory `{}` not found.", id), true);
+                                                }
+                                                Err(e) => {
+                                                    app.push_system(format!("Failed to update memory: {}", e), true);
+                                                }
+                                            }
                                         }
-                                        Ok(false) => {
+                                        Ok(None) => {
                                             app.push_system(format!("No memory with id `{}`.", id), true);
                                         }
                                         Err(e) => {
-                                            app.push_system(format!("Failed to remove memory: {}", e), true);
+                                            app.push_system(format!("Failed to read memory: {}", e), true);
                                         }
                                     }
                                 } else {
                                     app.push_system(
-                                        format!("Invalid memory ID: '{}'. Use `/memory list` to see IDs.", subcmd_args),
+                                        format!("Invalid memory ID: '{}'. Use `/memory list` to see IDs.", id_str),
                                         true,
                                     );
                                 }
                             }
-                            "search" | "find" => {
-                                if subcmd_args.is_empty() {
-                                    app.push_system("Usage: /memory search <query>".to_string(), true);
-                                } else {
-                                    match mem.search(subcmd_args) {
-                                        Ok(results) if results.is_empty() => {
-                                            app.push_system(format!("No memories matching '{}'.", subcmd_args), false);
-                                        }
-                                        Ok(results) => {
-                                            let mut out = format!(
-                                                "**Search results** for '{}' ({} found):\n\n",
-                                                subcmd_args,
-                                                results.len()
-                                            );
-                                            for e in &results {
-                                                let scope_label = match &e.scope {
-                                                    crate::db::memory::MemoryScope::Global => "global".to_string(),
-                                                    crate::db::memory::MemoryScope::Project { path } => {
-                                                        format!("project:{}", path)
-                                                    }
-                                                };
-                                                out.push_str(&format!("  `{}` ({}) {}\n", e.id, scope_label, e.text));
-                                            }
-                                            app.push_system(out, false);
-                                        }
-                                        Err(e) => {
-                                            app.push_system(format!("Search failed: {}", e), true);
-                                        }
+                        }
+                        "remove" | "rm" | "delete" => {
+                            if subcmd_args.is_empty() {
+                                app.push_system("Usage: /memory remove <id>".to_string(), true);
+                            } else if let Ok(id) = subcmd_args.parse::<u64>() {
+                                match mem.remove(id) {
+                                    Ok(true) => {
+                                        app.push_system(format!("Memory `{}` removed.", id), false);
+                                    }
+                                    Ok(false) => {
+                                        app.push_system(format!("No memory with id `{}`.", id), true);
+                                    }
+                                    Err(e) => {
+                                        app.push_system(format!("Failed to remove memory: {}", e), true);
                                     }
                                 }
-                            }
-                            "clear" => match mem.clear() {
-                                Ok(count) => {
-                                    app.push_system(format!("Cleared {} memory/memories.", count), false);
-                                }
-                                Err(e) => {
-                                    app.push_system(format!("Failed to clear memories: {}", e), true);
-                                }
-                            },
-                            _ => {
+                            } else {
                                 app.push_system(
-                                    format!(
-                                        "Unknown subcommand '{}'. Available: list, add, edit, remove, search, clear",
-                                        subcmd
-                                    ),
+                                    format!("Invalid memory ID: '{}'. Use `/memory list` to see IDs.", subcmd_args),
                                     true,
                                 );
                             }
                         }
+                        "search" | "find" => {
+                            if subcmd_args.is_empty() {
+                                app.push_system("Usage: /memory search <query>".to_string(), true);
+                            } else {
+                                match mem.search(subcmd_args) {
+                                    Ok(results) if results.is_empty() => {
+                                        app.push_system(format!("No memories matching '{}'.", subcmd_args), false);
+                                    }
+                                    Ok(results) => {
+                                        let mut out = format!(
+                                            "**Search results** for '{}' ({} found):\n\n",
+                                            subcmd_args,
+                                            results.len()
+                                        );
+                                        for e in &results {
+                                            let scope_label = match &e.scope {
+                                                crate::db::memory::MemoryScope::Global => "global".to_string(),
+                                                crate::db::memory::MemoryScope::Project { path } => {
+                                                    format!("project:{}", path)
+                                                }
+                                            };
+                                            out.push_str(&format!("  `{}` ({}) {}\n", e.id, scope_label, e.text));
+                                        }
+                                        app.push_system(out, false);
+                                    }
+                                    Err(e) => {
+                                        app.push_system(format!("Search failed: {}", e), true);
+                                    }
+                                }
+                            }
+                        }
+                        "clear" => match mem.clear() {
+                            Ok(count) => {
+                                app.push_system(format!("Cleared {} memory/memories.", count), false);
+                            }
+                            Err(e) => {
+                                app.push_system(format!("Failed to clear memories: {}", e), true);
+                            }
+                        },
+                        _ => {
+                            app.push_system(
+                                format!(
+                                    "Unknown subcommand '{}'. Available: list, add, edit, remove, search, clear",
+                                    subcmd
+                                ),
+                                true,
+                            );
+                        }
                     }
+                }
             } else {
                 app.push_system("Memory database not available (opened without --db).".to_string(), true);
             }
@@ -4091,7 +4114,8 @@ fn execute_slash_command(
                     "server" => match subcmd_args {
                         "on" | "start" => {
                             app.push_system(
-                                "Use `clankers rpc start` to run the RPC server (embedded server coming soon).".to_string(),
+                                "Use `clankers rpc start` to run the RPC server (embedded server coming soon)."
+                                    .to_string(),
                                 false,
                             );
                         }
@@ -4226,9 +4250,8 @@ fn execute_slash_command(
         SlashAction::PromptTemplate(ref template_name) => {
             // Look up the prompt template from the discovered resources
             let global_dir = crate::config::paths::ClankersPaths::resolve().global_prompts_dir;
-            let project_dir = crate::config::paths::ProjectPaths::resolve(
-                &std::env::current_dir().unwrap_or_default()
-            ).prompts_dir;
+            let project_dir =
+                crate::config::paths::ProjectPaths::resolve(&std::env::current_dir().unwrap_or_default()).prompts_dir;
             let prompts = crate::prompts::discover_prompts(&global_dir, Some(&project_dir));
             if let Some(template) = prompts.iter().find(|p| p.name == *template_name) {
                 let mut vars = std::collections::HashMap::new();
@@ -4239,10 +4262,7 @@ fn execute_slash_command(
                 app.push_system(format!("/{} — {}", template_name, template.description), false);
                 app.queued_prompt = Some(prompt);
             } else {
-                app.push_system(
-                    format!("Unknown command or prompt template: /{}", template_name),
-                    true,
-                );
+                app.push_system(format!("Unknown command or prompt template: /{}", template_name), true);
             }
         }
     }

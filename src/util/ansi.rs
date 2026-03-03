@@ -174,7 +174,9 @@ pub fn split_strip_lines(s: &str) -> (Vec<String>, Vec<&str>) {
 /// Supports: bold (1), dim (2), reset (0), and basic foreground colors
 /// (30-37, 90-97).  Unknown codes are silently ignored.
 pub fn ansi_to_spans(s: &str) -> Vec<ratatui::text::Span<'static>> {
-    use ratatui::style::{Color, Modifier, Style};
+    use ratatui::style::Color;
+    use ratatui::style::Modifier;
+    use ratatui::style::Style;
     use ratatui::text::Span;
 
     let mut spans: Vec<Span<'static>> = Vec::new();

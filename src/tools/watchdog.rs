@@ -152,10 +152,7 @@ pub fn spawn_watchdog(
                     if let Some(ref tx) = panel_tx {
                         let _ = tx.send(SubagentEvent::Error {
                             id: tracker.id().to_string(),
-                            message: format!(
-                                "Watchdog: no output for {:.0}s, killing subagent",
-                                idle.as_secs_f64()
-                            ),
+                            message: format!("Watchdog: no output for {:.0}s, killing subagent", idle.as_secs_f64()),
                         });
                         let _ = tx.send(SubagentEvent::KillRequest {
                             id: tracker.id().to_string(),
@@ -167,20 +164,13 @@ pub fn spawn_watchdog(
 
             // Check stall timeout
             if idle >= config.stall_timeout && !stall_notified {
-                warn!(
-                    "subagent {} stalled: no output for {:.0}s",
-                    tracker.id(),
-                    idle.as_secs_f64()
-                );
+                warn!("subagent {} stalled: no output for {:.0}s", tracker.id(), idle.as_secs_f64());
                 *tracker.state.lock() = HealthState::Stalled;
                 stall_notified = true;
                 if let Some(ref tx) = panel_tx {
                     let _ = tx.send(SubagentEvent::Output {
                         id: tracker.id().to_string(),
-                        line: format!(
-                            "⚠️  WATCHDOG: no output for {:.0}s — subagent may be stuck",
-                            idle.as_secs_f64()
-                        ),
+                        line: format!("⚠️  WATCHDOG: no output for {:.0}s — subagent may be stuck", idle.as_secs_f64()),
                     });
                 }
             }

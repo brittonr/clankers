@@ -192,14 +192,11 @@ impl ActivityTracker {
     }
 
     fn start(&mut self, id: u64, text: String, activity_type: ActivityType) {
-        self.activities.insert(
-            id,
-            TrackedActivity {
-                text,
-                activity_type,
-                phase: None,
-            },
-        );
+        self.activities.insert(id, TrackedActivity {
+            text,
+            activity_type,
+            phase: None,
+        });
     }
 
     fn stop(&mut self, id: u64) {
@@ -284,11 +281,7 @@ impl Tool for NixTool {
         let args: Vec<String> = params
             .get("args")
             .and_then(|v| v.as_array())
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                    .collect()
-            })
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
             .unwrap_or_default();
 
         let timeout_secs = params.get("timeout").and_then(|v| v.as_u64()).unwrap_or(0);
@@ -452,14 +445,7 @@ impl Tool for NixTool {
 
         // Build the result
         let exit_code = status.code().unwrap_or(-1);
-        let output = format_nix_result(
-            &subcommand,
-            exit_code,
-            &stdout_lines,
-            &build_log_lines,
-            &messages,
-            &errors,
-        );
+        let output = format_nix_result(&subcommand, exit_code, &stdout_lines, &build_log_lines, &messages, &errors);
 
         // Apply truncation
         const MAX_LINES: usize = 2000;
@@ -575,10 +561,8 @@ fn process_nix_line(
                         if let Some(phase) = event.fields.first().and_then(|v| v.as_str()) {
                             tracker.set_phase(event.id, phase.to_string());
                             // Get the activity name for context
-                            let activity_name = tracker
-                                .get(event.id)
-                                .map(|a| shorten_drv_path(&a.text))
-                                .unwrap_or_default();
+                            let activity_name =
+                                tracker.get(event.id).map(|a| shorten_drv_path(&a.text)).unwrap_or_default();
                             let msg = format!("  ▸ phase: {} ({})", phase, activity_name);
                             ctx.emit_progress(&msg);
                             messages.push(msg);
@@ -592,10 +576,8 @@ fn process_nix_line(
                             let expected = event.fields[1].as_u64().unwrap_or(0);
                             if expected > 0 && done > 0 {
                                 // Look up what activity this belongs to
-                                let label = tracker
-                                    .get(event.id)
-                                    .map(|a| a.activity_type.label())
-                                    .unwrap_or("progress");
+                                let label =
+                                    tracker.get(event.id).map(|a| a.activity_type.label()).unwrap_or("progress");
                                 let msg = format!("  {} {}/{}", label, done, expected);
                                 if last_progress_text.as_deref() != Some(&msg) {
                                     ctx.emit_progress(&msg);
@@ -751,10 +733,7 @@ mod tests {
 
     #[test]
     fn shorten_store_path_strips_hash() {
-        assert_eq!(
-            shorten_store_path("/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1-hello-2.12"),
-            "hello-2.12"
-        );
+        assert_eq!(shorten_store_path("/nix/store/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1-hello-2.12"), "hello-2.12");
     }
 
     #[test]
@@ -780,7 +759,8 @@ mod tests {
 
     #[test]
     fn shorten_url_github() {
-        let url = "https://github.com/NixOS/nixpkgs/archive/abc123def456abc123def456abc123def456abc123def456abc123.tar.gz";
+        let url =
+            "https://github.com/NixOS/nixpkgs/archive/abc123def456abc123def456abc123def456abc123def456abc123.tar.gz";
         let short = shorten_url(url);
         assert!(short.len() < url.len());
         assert!(short.starts_with("github:"));
@@ -827,14 +807,7 @@ mod tests {
 
     #[test]
     fn format_result_failure_with_errors() {
-        let result = format_nix_result(
-            "build",
-            1,
-            &[],
-            &["make: error".into()],
-            &[],
-            &["builder failed".into()],
-        );
+        let result = format_nix_result("build", 1, &[], &["make: error".into()], &[], &["builder failed".into()]);
         assert!(result.contains("failed (exit code 1)"));
         assert!(result.contains("Build log:"));
         assert!(result.contains("make: error"));

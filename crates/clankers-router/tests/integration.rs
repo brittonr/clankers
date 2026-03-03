@@ -19,14 +19,14 @@ use clankers_router::model::ModelAliases;
 use clankers_router::model_switch::ModelSwitchReason;
 use clankers_router::multi::MultiRequest;
 use clankers_router::multi::MultiStrategy;
-use clankers_router::quorum::ConsensusStrategy;
-use clankers_router::quorum::QuorumRequest;
-use clankers_router::quorum::QuorumTarget;
 use clankers_router::provider::CompletionRequest;
 use clankers_router::provider::Provider;
 use clankers_router::provider::ThinkingConfig;
 use clankers_router::provider::ToolDefinition;
 use clankers_router::provider::Usage;
+use clankers_router::quorum::ConsensusStrategy;
+use clankers_router::quorum::QuorumRequest;
+use clankers_router::quorum::QuorumTarget;
 use clankers_router::registry::ModelRegistry;
 use clankers_router::retry::RetryConfig;
 use clankers_router::retry::is_retryable_error;
@@ -1345,11 +1345,7 @@ impl SlowMockProvider {
 
 #[async_trait]
 impl Provider for SlowMockProvider {
-    async fn complete(
-        &self,
-        request: CompletionRequest,
-        tx: mpsc::Sender<StreamEvent>,
-    ) -> clankers_router::Result<()> {
+    async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> clankers_router::Result<()> {
         tokio::time::sleep(std::time::Duration::from_millis(self.delay_ms)).await;
 
         let _ = tx
@@ -1425,16 +1421,8 @@ async fn test_multi_race_picks_first_success() {
 #[tokio::test]
 async fn test_multi_all_collects_every_response() {
     let mut router = Router::new("model-a");
-    router.register_provider(SlowMockProvider::new(
-        "provider-a",
-        vec![make_model("model-a", "provider-a")],
-        10,
-    ));
-    router.register_provider(SlowMockProvider::new(
-        "provider-b",
-        vec![make_model("model-b", "provider-b")],
-        20,
-    ));
+    router.register_provider(SlowMockProvider::new("provider-a", vec![make_model("model-a", "provider-a")], 10));
+    router.register_provider(SlowMockProvider::new("provider-b", vec![make_model("model-b", "provider-b")], 20));
 
     let multi_req = MultiRequest {
         request: simple_request("ignored"),
@@ -1461,21 +1449,9 @@ async fn test_multi_all_collects_every_response() {
 #[tokio::test]
 async fn test_multi_fastest_returns_after_n() {
     let mut router = Router::new("model-a");
-    router.register_provider(SlowMockProvider::new(
-        "provider-a",
-        vec![make_model("model-a", "provider-a")],
-        10,
-    ));
-    router.register_provider(SlowMockProvider::new(
-        "provider-b",
-        vec![make_model("model-b", "provider-b")],
-        20,
-    ));
-    router.register_provider(SlowMockProvider::new(
-        "provider-c",
-        vec![make_model("model-c", "provider-c")],
-        500,
-    ));
+    router.register_provider(SlowMockProvider::new("provider-a", vec![make_model("model-a", "provider-a")], 10));
+    router.register_provider(SlowMockProvider::new("provider-b", vec![make_model("model-b", "provider-b")], 20));
+    router.register_provider(SlowMockProvider::new("provider-c", vec![make_model("model-c", "provider-c")], 500));
 
     let multi_req = MultiRequest {
         request: simple_request("ignored"),
@@ -1497,11 +1473,7 @@ async fn test_multi_race_with_one_failing() {
         vec![make_model("model-fail", "failing-provider")],
         "boom",
     ));
-    router.register_provider(SlowMockProvider::new(
-        "ok-provider",
-        vec![make_model("model-ok", "ok-provider")],
-        10,
-    ));
+    router.register_provider(SlowMockProvider::new("ok-provider", vec![make_model("model-ok", "ok-provider")], 10));
 
     let multi_req = MultiRequest {
         request: simple_request("ignored"),
@@ -1535,16 +1507,8 @@ async fn test_multi_records_usage_to_db() {
     let dir = tempfile::tempdir().unwrap();
     let db = RouterDb::open(&dir.path().join("multi-usage.db")).unwrap();
     let mut router = Router::with_db("model-a", db);
-    router.register_provider(SlowMockProvider::new(
-        "provider-a",
-        vec![make_model("model-a", "provider-a")],
-        5,
-    ));
-    router.register_provider(SlowMockProvider::new(
-        "provider-b",
-        vec![make_model("model-b", "provider-b")],
-        5,
-    ));
+    router.register_provider(SlowMockProvider::new("provider-a", vec![make_model("model-a", "provider-a")], 5));
+    router.register_provider(SlowMockProvider::new("provider-b", vec![make_model("model-b", "provider-b")], 5));
 
     let multi_req = MultiRequest {
         request: simple_request("ignored"),
@@ -1582,11 +1546,7 @@ async fn test_multi_race_streaming() {
     let (tx, mut rx) = mpsc::channel::<TaggedStreamEvent>(64);
 
     router
-        .complete_race_streaming(
-            simple_request("ignored"),
-            vec!["model-fast".into(), "model-slow".into()],
-            tx,
-        )
+        .complete_race_streaming(simple_request("ignored"), vec!["model-fast".into(), "model-slow".into()], tx)
         .await
         .unwrap();
 
@@ -1605,14 +1565,9 @@ async fn test_multi_race_streaming() {
 #[test]
 fn test_router_switch_model() {
     let mut router = Router::new("claude-sonnet-4-5-20250514");
-    router.register_provider(MockProvider::new(
-        "anthropic",
-        vec![make_model("claude-sonnet-4-5-20250514", "anthropic")],
-    ));
-    router.register_provider(MockProvider::new(
-        "openai",
-        vec![make_model("gpt-4o", "openai")],
-    ));
+    router
+        .register_provider(MockProvider::new("anthropic", vec![make_model("claude-sonnet-4-5-20250514", "anthropic")]));
+    router.register_provider(MockProvider::new("openai", vec![make_model("gpt-4o", "openai")]));
 
     assert_eq!(router.active_model(), "claude-sonnet-4-5-20250514");
 
@@ -1625,14 +1580,9 @@ fn test_router_switch_model() {
 #[test]
 fn test_router_switch_model_resolves_alias() {
     let mut router = Router::new("claude-sonnet-4-5-20250514");
-    router.register_provider(MockProvider::new(
-        "anthropic",
-        vec![make_model("claude-sonnet-4-5-20250514", "anthropic")],
-    ));
-    router.register_provider(MockProvider::new(
-        "openai",
-        vec![make_model("gpt-4o", "openai")],
-    ));
+    router
+        .register_provider(MockProvider::new("anthropic", vec![make_model("claude-sonnet-4-5-20250514", "anthropic")]));
+    router.register_provider(MockProvider::new("openai", vec![make_model("gpt-4o", "openai")]));
 
     // "sonnet" alias should resolve to the full ID
     let old = router.switch_model("sonnet", ModelSwitchReason::UserRequest);
@@ -1648,14 +1598,9 @@ fn test_router_switch_model_resolves_alias() {
 #[test]
 fn test_router_switch_back() {
     let mut router = Router::new("claude-sonnet-4-5-20250514");
-    router.register_provider(MockProvider::new(
-        "anthropic",
-        vec![make_model("claude-sonnet-4-5-20250514", "anthropic")],
-    ));
-    router.register_provider(MockProvider::new(
-        "openai",
-        vec![make_model("gpt-4o", "openai")],
-    ));
+    router
+        .register_provider(MockProvider::new("anthropic", vec![make_model("claude-sonnet-4-5-20250514", "anthropic")]));
+    router.register_provider(MockProvider::new("openai", vec![make_model("gpt-4o", "openai")]));
 
     router.switch_model("gpt-4o", ModelSwitchReason::UserRequest);
     assert_eq!(router.active_model(), "gpt-4o");
@@ -1675,9 +1620,7 @@ fn test_router_switch_tracker_history() {
     ]));
 
     router.switch_model("model-b", ModelSwitchReason::UserRequest);
-    router.switch_model("model-c", ModelSwitchReason::RoleSwitch {
-        role: "smol".into(),
-    });
+    router.switch_model("model-c", ModelSwitchReason::RoleSwitch { role: "smol".into() });
 
     let tracker = router.switch_tracker();
     assert_eq!(tracker.total_switches(), 2);
@@ -1689,12 +1632,7 @@ fn test_router_switch_tracker_history() {
     assert_eq!(history[1].reason, ModelSwitchReason::UserRequest);
     assert_eq!(history[2].from, "model-b");
     assert_eq!(history[2].to, "model-c");
-    assert_eq!(
-        history[2].reason,
-        ModelSwitchReason::RoleSwitch {
-            role: "smol".into()
-        }
-    );
+    assert_eq!(history[2].reason, ModelSwitchReason::RoleSwitch { role: "smol".into() });
 }
 
 #[test]
@@ -1711,9 +1649,7 @@ fn test_router_switch_same_model_noop() {
 fn test_tagged_stream_event() {
     let event = StreamEvent::ContentBlockDelta {
         index: 0,
-        delta: ContentDelta::TextDelta {
-            text: "hello".into(),
-        },
+        delta: ContentDelta::TextDelta { text: "hello".into() },
     };
 
     let tagged = TaggedStreamEvent::new("gpt-4o", "openai", event.clone());
@@ -1722,13 +1658,10 @@ fn test_tagged_stream_event() {
 
     // into_inner unwraps
     let inner = tagged.into_inner();
-    assert!(matches!(
-        inner,
-        StreamEvent::ContentBlockDelta {
-            delta: ContentDelta::TextDelta { .. },
-            ..
-        }
-    ));
+    assert!(matches!(inner, StreamEvent::ContentBlockDelta {
+        delta: ContentDelta::TextDelta { .. },
+        ..
+    }));
 }
 
 // ── Quorum dispatch tests ───────────────────────────────────────────────
@@ -1752,11 +1685,7 @@ impl TextMockProvider {
 
 #[async_trait]
 impl Provider for TextMockProvider {
-    async fn complete(
-        &self,
-        request: CompletionRequest,
-        tx: mpsc::Sender<StreamEvent>,
-    ) -> clankers_router::Result<()> {
+    async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> clankers_router::Result<()> {
         let _ = tx
             .send(StreamEvent::MessageStart {
                 message: MessageMetadata {
@@ -1810,7 +1739,11 @@ async fn test_quorum_majority_cross_model() {
     // Two agree ("42"), one disagrees (completely different text)
     router.register_provider(TextMockProvider::new("p-a", "model-a", "the answer is 42"));
     router.register_provider(TextMockProvider::new("p-b", "model-b", "the answer is 42"));
-    router.register_provider(TextMockProvider::new("p-c", "model-c", "I cannot determine the result from the given information"));
+    router.register_provider(TextMockProvider::new(
+        "p-c",
+        "model-c",
+        "I cannot determine the result from the given information",
+    ));
 
     let quorum_req = QuorumRequest {
         request: simple_request("ignored"),
@@ -1918,11 +1851,7 @@ async fn test_quorum_collect_no_consensus() {
 async fn test_quorum_with_failures() {
     let mut router = Router::new("model-a");
     router.register_provider(TextMockProvider::new("p-a", "model-a", "the answer is 42"));
-    router.register_provider(MockProvider::failing(
-        "p-fail",
-        vec![make_model("model-fail", "p-fail")],
-        "crash",
-    ));
+    router.register_provider(MockProvider::failing("p-fail", vec![make_model("model-fail", "p-fail")], "crash"));
     router.register_provider(TextMockProvider::new("p-c", "model-c", "the answer is 42"));
 
     let quorum_req = QuorumRequest {

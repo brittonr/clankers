@@ -151,13 +151,7 @@ impl<'db> AuditLog<'db> {
                 "✅ OK"
             };
 
-            out.push_str(&format!(
-                "{}. **{}** {} ({}ms)\n",
-                e.seq + 1,
-                e.tool,
-                status,
-                e.duration_ms,
-            ));
+            out.push_str(&format!("{}. **{}** {} ({}ms)\n", e.seq + 1, e.tool, status, e.duration_ms,));
 
             // Show key parameters
             match e.tool.as_str() {
@@ -194,9 +188,7 @@ impl<'db> AuditLog<'db> {
         let blocked = entries.iter().filter(|e| e.sandbox_blocked.is_some()).count();
         let total_ms: u64 = entries.iter().map(|e| e.duration_ms).sum();
 
-        out.push_str(&format!(
-            "---\n{total} calls, {errors} errors, {blocked} blocked, {total_ms}ms total\n"
-        ));
+        out.push_str(&format!("---\n{total} calls, {errors} errors, {blocked} blocked, {total_ms}ms total\n"));
 
         Ok(out)
     }

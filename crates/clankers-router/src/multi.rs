@@ -2,14 +2,14 @@
 //!
 //! Supports three strategies:
 //!
-//! - **Race** — First successful response wins; remaining tasks are cancelled.
-//!   Ideal for latency-sensitive paths where you want the fastest provider.
+//! - **Race** — First successful response wins; remaining tasks are cancelled. Ideal for
+//!   latency-sensitive paths where you want the fastest provider.
 //!
-//! - **All** — Fan out to every target model and collect all responses.
-//!   Useful for comparison, consensus voting, or ensemble approaches.
+//! - **All** — Fan out to every target model and collect all responses. Useful for comparison,
+//!   consensus voting, or ensemble approaches.
 //!
-//! - **Fastest(n)** — Return after `n` models have responded successfully.
-//!   A middle ground: get some diversity without waiting for the slowest.
+//! - **Fastest(n)** — Return after `n` models have responded successfully. A middle ground: get
+//!   some diversity without waiting for the slowest.
 //!
 //! Uses [`futures-buffered`] and [`futures-lite`] from the n0/iroh ecosystem
 //! for efficient, bounded concurrent dispatch.
@@ -294,12 +294,7 @@ pub(crate) async fn dispatch_race(tasks: Vec<ProviderTask>) -> MultiResult {
         let is_success = resp.is_ok();
         let resp_idx = responses.len();
 
-        info!(
-            "race: {} {} in {}ms",
-            resp.model,
-            if is_success { "succeeded" } else { "failed" },
-            resp.duration_ms
-        );
+        info!("race: {} {} in {}ms", resp.model, if is_success { "succeeded" } else { "failed" }, resp.duration_ms);
         responses.push(resp);
 
         if is_success {
@@ -436,15 +431,11 @@ mod tests {
             events: vec![
                 StreamEvent::ContentBlockDelta {
                     index: 0,
-                    delta: ContentDelta::TextDelta {
-                        text: "Hello ".into(),
-                    },
+                    delta: ContentDelta::TextDelta { text: "Hello ".into() },
                 },
                 StreamEvent::ContentBlockDelta {
                     index: 0,
-                    delta: ContentDelta::TextDelta {
-                        text: "world!".into(),
-                    },
+                    delta: ContentDelta::TextDelta { text: "world!".into() },
                 },
             ],
             usage: Usage::default(),

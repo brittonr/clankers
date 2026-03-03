@@ -433,11 +433,7 @@ fn check_tool_paths(input: &Value) -> Option<String> {
 
     // Direct path parameters used by read, write, edit, ls, find, grep, etc.
     for key in ["path", "file", "directory", "cwd"] {
-        if let Some(reason) = input
-            .get(key)
-            .and_then(|v| v.as_str())
-            .and_then(check_path)
-        {
+        if let Some(reason) = input.get(key).and_then(|v| v.as_str()).and_then(check_path) {
             return Some(reason);
         }
     }

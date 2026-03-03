@@ -204,7 +204,9 @@ impl IdentityStore {
 
         // Ensure table exists
         let txn = db.begin_write().map_err(|e| format!("begin_write: {e}"))?;
-        { let _ = txn.open_table(IDENTITY_TABLE).map_err(|e| format!("open_table: {e}"))?; }
+        {
+            let _ = txn.open_table(IDENTITY_TABLE).map_err(|e| format!("open_table: {e}"))?;
+        }
         txn.commit().map_err(|e| format!("commit: {e}"))?;
 
         Ok(Self { db })
@@ -264,10 +266,7 @@ impl IdentityStore {
     pub fn best_for_tag(&self, tag: &str) -> Result<Option<AgentIdentity>, String> {
         let mut candidates = self.find_by_tag(tag)?;
         candidates.sort_by(|a, b| {
-            b.stats
-                .success_rate()
-                .partial_cmp(&a.stats.success_rate())
-                .unwrap_or(std::cmp::Ordering::Equal)
+            b.stats.success_rate().partial_cmp(&a.stats.success_rate()).unwrap_or(std::cmp::Ordering::Equal)
         });
         Ok(candidates.into_iter().next())
     }
@@ -318,12 +317,7 @@ mod tests {
     fn test_work_history_capped() {
         let mut agent = AgentIdentity::new("worker", "default");
         for i in 0..150 {
-            agent.record_work(
-                &format!("task {i}"),
-                WorkOutcome::Success,
-                Duration::from_secs(1),
-                None,
-            );
+            agent.record_work(&format!("task {i}"), WorkOutcome::Success, Duration::from_secs(1), None);
         }
         assert_eq!(agent.work_history.len(), 100);
         assert_eq!(agent.stats.total_tasks, 150);

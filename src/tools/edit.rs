@@ -43,8 +43,6 @@ impl EditTool {
 
         Self { definition }
     }
-
-
 }
 
 impl Default for EditTool {

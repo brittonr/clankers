@@ -8,9 +8,6 @@ mod tui;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use clap::Parser;
-use clap::Subcommand;
-use clap::ValueEnum;
 use clankers_router::Router;
 use clankers_router::auth::AuthStore;
 use clankers_router::auth::StoredCredential;
@@ -27,6 +24,9 @@ use clankers_router::provider::CompletionRequest;
 use clankers_router::provider::Provider;
 use clankers_router::streaming::ContentDelta;
 use clankers_router::streaming::StreamEvent;
+use clap::Parser;
+use clap::Subcommand;
+use clap::ValueEnum;
 use tokio::sync::mpsc;
 
 // ── CLI definition ──────────────────────────────────────────────────────
@@ -573,7 +573,7 @@ async fn run_ask(
         temperature,
         tools: vec![],
         thinking: None,
-            extra_params: Default::default(),
+        extra_params: Default::default(),
     };
 
     let (tx, mut rx) = mpsc::channel(64);
@@ -1344,97 +1344,96 @@ async fn run_hf(cli: &Cli, auth_store: &AuthStore, action: &HfAction) {
     let hub = HubClient::new(token);
 
     match action {
-        HfAction::Search { query, limit, json } => {
-            match hub.search(query, Some(*limit)).await {
-                Ok(models) => {
-                    if models.is_empty() {
-                        eprintln!("No models found for '{}'", query);
-                        return;
-                    }
-                    if *json {
-                        println!("{}", serde_json::to_string_pretty(&models).unwrap());
-                    } else {
+        HfAction::Search { query, limit, json } => match hub.search(query, Some(*limit)).await {
+            Ok(models) => {
+                if models.is_empty() {
+                    eprintln!("No models found for '{}'", query);
+                    return;
+                }
+                if *json {
+                    println!("{}", serde_json::to_string_pretty(&models).unwrap());
+                } else {
+                    println!("{:<50} {:>10} {:>6} {:<20} {}", "MODEL", "DOWNLOADS", "LIKES", "PIPELINE", "GATED");
+                    println!("{}", "─".repeat(100));
+                    for m in &models {
                         println!(
                             "{:<50} {:>10} {:>6} {:<20} {}",
-                            "MODEL", "DOWNLOADS", "LIKES", "PIPELINE", "GATED"
-                        );
-                        println!("{}", "─".repeat(100));
-                        for m in &models {
-                            println!(
-                                "{:<50} {:>10} {:>6} {:<20} {}",
-                                truncate_str(&m.model_id, 50),
-                                m.downloads_display(),
-                                m.likes,
-                                m.pipeline_tag.as_deref().unwrap_or("—"),
-                                if m.is_gated() { "🔒" } else { "" },
-                            );
-                        }
-                        println!("\n{} model(s) found", models.len());
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Search failed: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
-        HfAction::Info { model } => {
-            match hub.model_info(model).await {
-                Ok(info) => {
-                    println!("Model:     {}", info.model_id);
-                    if let Some(ref author) = info.author {
-                        println!("Author:    {}", author);
-                    }
-                    println!("Downloads: {}", info.downloads);
-                    println!("Likes:     {}", info.likes);
-                    if let Some(ref pipeline) = info.pipeline_tag {
-                        println!("Pipeline:  {}", pipeline);
-                    }
-                    if let Some(ref lib) = info.library_name {
-                        println!("Library:   {}", lib);
-                    }
-                    if !info.tags.is_empty() {
-                        println!("Tags:      {}", info.tags.join(", "));
-                    }
-                    let gguf_count = info.siblings.iter().filter(|s| s.filename.ends_with(".gguf")).count();
-                    if gguf_count > 0 {
-                        println!("GGUF files: {} (run `clankers-router hf files {}` to list)", gguf_count, model);
-                    }
-                }
-                Err(e) => {
-                    eprintln!("Failed to get model info: {}", e);
-                    std::process::exit(1);
-                }
-            }
-        }
-        HfAction::Files { model } => {
-            match hub.list_gguf_files(model).await {
-                Ok(files) => {
-                    if files.is_empty() {
-                        eprintln!("No GGUF files found in {}", model);
-                        eprintln!("Hint: Try a GGUF-specific repo (e.g., bartowski/{}-GGUF)", model.split('/').last().unwrap_or(model));
-                        return;
-                    }
-                    println!("{:<50} {:>10} {:<10}", "FILENAME", "SIZE", "QUANT");
-                    println!("{}", "─".repeat(74));
-                    for f in &files {
-                        println!(
-                            "{:<50} {:>10} {:<10}",
-                            truncate_str(&f.filename, 50),
-                            format_hf_bytes(f.size_bytes),
-                            f.quantization.as_deref().unwrap_or("—"),
+                            truncate_str(&m.model_id, 50),
+                            m.downloads_display(),
+                            m.likes,
+                            m.pipeline_tag.as_deref().unwrap_or("—"),
+                            if m.is_gated() { "🔒" } else { "" },
                         );
                     }
-                    println!("\n{} GGUF file(s)", files.len());
-                    println!("\nPull with: clankers-router hf pull {} --quant Q4_K_M", model);
-                }
-                Err(e) => {
-                    eprintln!("Failed to list files: {}", e);
-                    std::process::exit(1);
+                    println!("\n{} model(s) found", models.len());
                 }
             }
-        }
-        HfAction::Pull { model, quant, ollama, ollama_name } => {
+            Err(e) => {
+                eprintln!("Search failed: {}", e);
+                std::process::exit(1);
+            }
+        },
+        HfAction::Info { model } => match hub.model_info(model).await {
+            Ok(info) => {
+                println!("Model:     {}", info.model_id);
+                if let Some(ref author) = info.author {
+                    println!("Author:    {}", author);
+                }
+                println!("Downloads: {}", info.downloads);
+                println!("Likes:     {}", info.likes);
+                if let Some(ref pipeline) = info.pipeline_tag {
+                    println!("Pipeline:  {}", pipeline);
+                }
+                if let Some(ref lib) = info.library_name {
+                    println!("Library:   {}", lib);
+                }
+                if !info.tags.is_empty() {
+                    println!("Tags:      {}", info.tags.join(", "));
+                }
+                let gguf_count = info.siblings.iter().filter(|s| s.filename.ends_with(".gguf")).count();
+                if gguf_count > 0 {
+                    println!("GGUF files: {} (run `clankers-router hf files {}` to list)", gguf_count, model);
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to get model info: {}", e);
+                std::process::exit(1);
+            }
+        },
+        HfAction::Files { model } => match hub.list_gguf_files(model).await {
+            Ok(files) => {
+                if files.is_empty() {
+                    eprintln!("No GGUF files found in {}", model);
+                    eprintln!(
+                        "Hint: Try a GGUF-specific repo (e.g., bartowski/{}-GGUF)",
+                        model.split('/').last().unwrap_or(model)
+                    );
+                    return;
+                }
+                println!("{:<50} {:>10} {:<10}", "FILENAME", "SIZE", "QUANT");
+                println!("{}", "─".repeat(74));
+                for f in &files {
+                    println!(
+                        "{:<50} {:>10} {:<10}",
+                        truncate_str(&f.filename, 50),
+                        format_hf_bytes(f.size_bytes),
+                        f.quantization.as_deref().unwrap_or("—"),
+                    );
+                }
+                println!("\n{} GGUF file(s)", files.len());
+                println!("\nPull with: clankers-router hf pull {} --quant Q4_K_M", model);
+            }
+            Err(e) => {
+                eprintln!("Failed to list files: {}", e);
+                std::process::exit(1);
+            }
+        },
+        HfAction::Pull {
+            model,
+            quant,
+            ollama,
+            ollama_name,
+        } => {
             let do_ollama = *ollama || ollama_name.is_some();
             eprintln!("Pulling {} ...", model);
 
@@ -1442,12 +1441,7 @@ async fn run_hf(cli: &Cli, auth_store: &AuthStore, action: &HfAction) {
             let progress = Box::new(|downloaded: u64, total: u64| {
                 if total > 0 {
                     let pct = (downloaded as f64 / total as f64 * 100.0) as u32;
-                    eprint!(
-                        "\r  {} / {} ({}%)",
-                        format_hf_bytes(downloaded),
-                        format_hf_bytes(total),
-                        pct,
-                    );
+                    eprint!("\r  {} / {} ({}%)", format_hf_bytes(downloaded), format_hf_bytes(total), pct,);
                 }
             });
 
@@ -1506,40 +1500,36 @@ async fn run_hf(cli: &Cli, auth_store: &AuthStore, action: &HfAction) {
             }
             println!("\nCache dir: {}", hub.cache_dir().display());
         }
-        HfAction::Remove { model } => {
-            match hub.remove_cached(model) {
-                Ok(removed) => {
-                    if removed.is_empty() {
-                        eprintln!("No cached files found for {}", model);
-                    } else {
-                        for f in &removed {
-                            println!("Removed: {}", f.display());
-                        }
-                        println!("\nRemoved {} file(s)", removed.len());
+        HfAction::Remove { model } => match hub.remove_cached(model) {
+            Ok(removed) => {
+                if removed.is_empty() {
+                    eprintln!("No cached files found for {}", model);
+                } else {
+                    for f in &removed {
+                        println!("Removed: {}", f.display());
                     }
-                }
-                Err(e) => {
-                    eprintln!("Remove failed: {}", e);
-                    std::process::exit(1);
+                    println!("\nRemoved {} file(s)", removed.len());
                 }
             }
-        }
+            Err(e) => {
+                eprintln!("Remove failed: {}", e);
+                std::process::exit(1);
+            }
+        },
         HfAction::Ollama { model, name } => {
             let cached = hub.list_cached();
             let pulled = cached.iter().find(|m| m.model_id == *model);
             match pulled {
-                Some(pulled) => {
-                    match hub.register_with_ollama(pulled, name.as_deref()).await {
-                        Ok(ollama_name) => {
-                            println!("Registered with Ollama as: {}", ollama_name);
-                            println!("Run with:  ollama run {}", ollama_name);
-                        }
-                        Err(e) => {
-                            eprintln!("Failed to register with Ollama: {}", e);
-                            std::process::exit(1);
-                        }
+                Some(pulled) => match hub.register_with_ollama(pulled, name.as_deref()).await {
+                    Ok(ollama_name) => {
+                        println!("Registered with Ollama as: {}", ollama_name);
+                        println!("Run with:  ollama run {}", ollama_name);
                     }
-                }
+                    Err(e) => {
+                        eprintln!("Failed to register with Ollama: {}", e);
+                        std::process::exit(1);
+                    }
+                },
                 None => {
                     eprintln!("Model '{}' not found in cache.", model);
                     eprintln!("Pull it first: clankers-router hf pull {}", model);

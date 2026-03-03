@@ -255,12 +255,7 @@ fn dir_size_approx(path: &Path) -> u64 {
         .output()
         .ok()
         .filter(|o| o.status.success())
-        .and_then(|o| {
-            String::from_utf8_lossy(&o.stdout)
-                .split_whitespace()
-                .next()
-                .and_then(|s| s.parse().ok())
-        })
+        .and_then(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().next().and_then(|s| s.parse().ok()))
         .unwrap_or(0)
 }
 
@@ -324,7 +319,13 @@ fn list_clankers_branches(repo_root: &Path) -> Vec<String> {
 /// List `clankers/*` branches that are fully merged into HEAD.
 fn list_merged_clankers_branches(repo_root: &Path) -> HashSet<String> {
     let output = std::process::Command::new("git")
-        .args(["branch", "--merged", "--list", "clankers/*", "--format=%(refname:short)"])
+        .args([
+            "branch",
+            "--merged",
+            "--list",
+            "clankers/*",
+            "--format=%(refname:short)",
+        ])
         .current_dir(repo_root)
         .output();
     match output {

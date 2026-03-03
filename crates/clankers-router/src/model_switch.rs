@@ -3,8 +3,8 @@
 //! Tracks when and why the active model was changed, providing:
 //!
 //! - **History** — Ordered log of all model switches with timestamps
-//! - **Reason tagging** — Each switch is annotated with why it happened
-//!   (user request, rate-limit fallback, role routing, etc.)
+//! - **Reason tagging** — Each switch is annotated with why it happened (user request, rate-limit
+//!   fallback, role routing, etc.)
 //! - **Undo** — Revert to the previous model with `switch_back()`
 //! - **Statistics** — How often each model has been used, time spent per model
 //!
@@ -320,9 +320,7 @@ mod tests {
         let mut tracker = ModelSwitchTracker::new("model-a");
         tracker.switch("model-b", ModelSwitchReason::UserRequest);
         tracker.switch("model-c", ModelSwitchReason::RateLimitFallback);
-        tracker.switch("model-d", ModelSwitchReason::RoleSwitch {
-            role: "smol".into(),
-        });
+        tracker.switch("model-d", ModelSwitchReason::RoleSwitch { role: "smol".into() });
 
         let recent = tracker.recent_history(2);
         assert_eq!(recent.len(), 2);
@@ -361,13 +359,7 @@ mod tests {
     fn test_reason_display() {
         assert_eq!(ModelSwitchReason::UserRequest.to_string(), "user request");
         assert_eq!(ModelSwitchReason::RateLimitFallback.to_string(), "rate-limit fallback");
-        assert_eq!(
-            ModelSwitchReason::RoleSwitch {
-                role: "smol".into()
-            }
-            .to_string(),
-            "role:smol"
-        );
+        assert_eq!(ModelSwitchReason::RoleSwitch { role: "smol".into() }.to_string(), "role:smol");
         assert_eq!(ModelSwitchReason::MultiModelWinner.to_string(), "multi-model winner");
     }
 }

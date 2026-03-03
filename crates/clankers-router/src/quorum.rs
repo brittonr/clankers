@@ -8,16 +8,16 @@
 //!
 //! - **`Unanimous`** — all successful responses must agree (text similarity ≥ threshold)
 //! - **`Majority`** — cluster by text similarity, pick the largest cluster
-//! - **`Judge`** — fan out a second LLM call that evaluates all responses and
-//!   picks the best one, returning structured reasoning
+//! - **`Judge`** — fan out a second LLM call that evaluates all responses and picks the best one,
+//!   returning structured reasoning
 //! - **`Collect`** — no consensus; just return all responses for the caller to handle
 //!
 //! # Targets
 //!
 //! A [`QuorumTarget`] can specify:
 //! - A **different model** for each slot (cross-model quorum)
-//! - The **same model** repeated N times (replica quorum) with optional per-slot
-//!   temperature jitter to encourage diversity
+//! - The **same model** repeated N times (replica quorum) with optional per-slot temperature jitter
+//!   to encourage diversity
 //!
 //! # Example
 //!
@@ -315,9 +315,8 @@ pub fn cluster_representative(texts: &[&str], cluster: &[usize]) -> usize {
     let mut best_avg = 0.0f64;
 
     for &i in cluster {
-        let avg: f64 =
-            cluster.iter().filter(|&&j| j != i).map(|&j| text_similarity(texts[i], texts[j])).sum::<f64>()
-                / (cluster.len() - 1) as f64;
+        let avg: f64 = cluster.iter().filter(|&&j| j != i).map(|&j| text_similarity(texts[i], texts[j])).sum::<f64>()
+            / (cluster.len() - 1) as f64;
         if avg > best_avg {
             best_avg = avg;
             best_idx = i;
@@ -372,11 +371,7 @@ pub(crate) fn evaluate_unanimous(
 }
 
 /// Apply the `Majority` strategy: cluster by similarity, pick the largest cluster.
-pub(crate) fn evaluate_majority(
-    responses: &[MultiResponse],
-    threshold: f64,
-    _min_agree: usize,
-) -> (usize, usize, f64) {
+pub(crate) fn evaluate_majority(responses: &[MultiResponse], threshold: f64, _min_agree: usize) -> (usize, usize, f64) {
     let ok: Vec<usize> = responses.iter().enumerate().filter(|(_, r)| r.is_ok()).map(|(i, _)| i).collect();
     if ok.is_empty() {
         return (0, 0, 0.0);
@@ -681,7 +676,8 @@ mod tests {
 
     #[test]
     fn test_parse_judge_response_with_markdown_fences() {
-        let text = "Here is my evaluation:\n```json\n{\"winner\": 1, \"reasoning\": \"correct\", \"agreement\": 0.9}\n```";
+        let text =
+            "Here is my evaluation:\n```json\n{\"winner\": 1, \"reasoning\": \"correct\", \"agreement\": 0.9}\n```";
         let (winner, _, _) = parse_judge_response(text).unwrap();
         assert_eq!(winner, 0); // 1-based → 0-based
     }
@@ -697,6 +693,12 @@ mod tests {
     #[test]
     fn test_strategy_display() {
         assert!(ConsensusStrategy::Collect.to_string().contains("collect"));
-        assert!(ConsensusStrategy::Majority { similarity_threshold: 0.7 }.to_string().contains("majority"));
+        assert!(
+            ConsensusStrategy::Majority {
+                similarity_threshold: 0.7
+            }
+            .to_string()
+            .contains("majority")
+        );
     }
 }

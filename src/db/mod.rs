@@ -116,9 +116,7 @@ impl Db {
     /// Errors are logged via `tracing::warn` rather than returned.
     /// Ideal for non-critical writes like usage recording.
     pub fn spawn_write<F>(&self, f: F)
-    where
-        F: FnOnce(&Db) + Send + 'static,
-    {
+    where F: FnOnce(&Db) + Send + 'static {
         let db = self.clone();
         tokio::task::spawn_blocking(move || f(&db));
     }

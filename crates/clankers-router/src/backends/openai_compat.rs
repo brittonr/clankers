@@ -208,7 +208,11 @@ pub struct OpenAICompatProvider {
 impl OpenAICompatProvider {
     pub fn new(config: OpenAICompatConfig) -> Arc<Self> {
         let client = Client::builder().timeout(config.timeout).build().expect("failed to build HTTP client");
-        Arc::new(Self { config, client, pool: None })
+        Arc::new(Self {
+            config,
+            client,
+            pool: None,
+        })
     }
 
     /// Create a provider with a credential pool for load balancing.
@@ -216,7 +220,11 @@ impl OpenAICompatProvider {
     /// When one API key hits rate limits, the provider rotates to the next.
     pub fn with_pool(config: OpenAICompatConfig, pool: CredentialPool) -> Arc<Self> {
         let client = Client::builder().timeout(config.timeout).build().expect("failed to build HTTP client");
-        Arc::new(Self { config, client, pool: Some(pool) })
+        Arc::new(Self {
+            config,
+            client,
+            pool: Some(pool),
+        })
     }
 
     /// Get a reference to the credential pool, if configured.
@@ -280,10 +288,7 @@ impl OpenAICompatProvider {
             let api_key = lease.token();
 
             if i > 0 {
-                info!(
-                    "rotating to {} account '{}' ({}/{})",
-                    self.config.name, lease.account(), i + 1, num_creds,
-                );
+                info!("rotating to {} account '{}' ({}/{})", self.config.name, lease.account(), i + 1, num_creds,);
             }
 
             match self.do_request_with_retry(api_key, &api_request, &request.model, tx.clone()).await {
@@ -298,7 +303,9 @@ impl OpenAICompatProvider {
                     if e.is_retryable() {
                         warn!(
                             "{} account '{}' returned {} — trying next credential",
-                            self.config.name, lease.account(), status,
+                            self.config.name,
+                            lease.account(),
+                            status,
                         );
                         last_error = Some(e);
                         continue;

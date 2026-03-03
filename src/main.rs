@@ -1,8 +1,8 @@
+use clankers::error::ConfigSnafu;
+use clankers::error::Result;
 use clap::Parser;
 use clap::Subcommand;
 use clap::ValueEnum;
-use clankers::error::ConfigSnafu;
-use clankers::error::Result;
 use tracing::info;
 
 #[derive(Parser, Debug)]
@@ -944,10 +944,12 @@ async fn main() -> Result<()> {
                 let verifier_path = paths.global_config_dir.join(".login_verifier");
                 let verifier =
                     std::fs::read_to_string(&verifier_path).map_err(|_| clankers::error::Error::ProviderAuth {
-                        message: "No login in progress. Run `clankers auth login` first to get the auth URL.".to_string(),
+                        message: "No login in progress. Run `clankers auth login` first to get the auth URL."
+                            .to_string(),
                     })?;
 
-                let creds = clankers::provider::anthropic::oauth::exchange_code(&code_str, &state_str, &verifier).await?;
+                let creds =
+                    clankers::provider::anthropic::oauth::exchange_code(&code_str, &state_str, &verifier).await?;
 
                 // Clean up verifier file
                 std::fs::remove_file(&verifier_path).ok();
@@ -1586,7 +1588,8 @@ async fn main() -> Result<()> {
                                     }
                                 };
                                 print!("  Probing {}... ", name);
-                                let request = clankers::modes::rpc::protocol::Request::new("status", serde_json::json!({}));
+                                let request =
+                                    clankers::modes::rpc::protocol::Request::new("status", serde_json::json!({}));
                                 match clankers::modes::rpc::iroh::send_rpc(&endpoint, remote, &request).await {
                                     Ok(response) => {
                                         if let Some(result) = response.ok {
@@ -1832,7 +1835,8 @@ async fn main() -> Result<()> {
                     });
                     let endpoint = clankers::modes::rpc::iroh::start_endpoint(&identity).await?;
                     println!("Downloading '{}' from {} → {}...", remote_path, remote.fmt_short(), local_path.display());
-                    let total = clankers::modes::rpc::iroh::recv_file(&endpoint, remote, &remote_path, &local_path).await?;
+                    let total =
+                        clankers::modes::rpc::iroh::recv_file(&endpoint, remote, &remote_path, &local_path).await?;
                     println!("✓ Received {} bytes → {}", total, local_path.display());
                 }
             }
@@ -1992,10 +1996,11 @@ async fn main() -> Result<()> {
                         eprintln!("No plugin.json found at: {}", manifest_path.display());
                         std::process::exit(1);
                     }
-                    let manifest = clankers::plugin::manifest::PluginManifest::load(&manifest_path).unwrap_or_else(|| {
-                        eprintln!("Failed to parse plugin.json at: {}", manifest_path.display());
-                        std::process::exit(1);
-                    });
+                    let manifest =
+                        clankers::plugin::manifest::PluginManifest::load(&manifest_path).unwrap_or_else(|| {
+                            eprintln!("Failed to parse plugin.json at: {}", manifest_path.display());
+                            std::process::exit(1);
+                        });
                     let dest_dir = if project {
                         project_paths.plugins_dir.join(&manifest.name)
                     } else {
@@ -2122,7 +2127,8 @@ async fn main() -> Result<()> {
                 let tools = if cli.tools.as_deref() == Some("none") || cli.tools.as_deref() == Some("") {
                     Vec::new()
                 } else {
-                    let all_tools = clankers::modes::common::build_all_tools(None, None, None, Some(&plugin_manager), None);
+                    let all_tools =
+                        clankers::modes::common::build_all_tools(None, None, None, Some(&plugin_manager), None);
                     if let Some(ref allowed) = cli.tools {
                         let allowed_set: std::collections::HashSet<&str> =
                             allowed.split(',').map(|s| s.trim()).collect();
@@ -2238,11 +2244,8 @@ async fn main() -> Result<()> {
                     no_session: cli.no_session,
                 };
                 // Register prompt templates for slash command completions
-                let template_names: Vec<(String, String)> = resources
-                    .prompts
-                    .iter()
-                    .map(|p| (p.name.clone(), p.description.clone()))
-                    .collect();
+                let template_names: Vec<(String, String)> =
+                    resources.prompts.iter().map(|p| (p.name.clone(), p.description.clone())).collect();
                 clankers::slash_commands::register_prompt_templates(&template_names);
 
                 clankers::modes::interactive::run_interactive(

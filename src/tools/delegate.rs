@@ -192,7 +192,11 @@ impl Tool for DelegateTool {
         let target_peer = self.resolve_peer(peer.as_deref(), tag.as_deref(), agent.as_deref());
 
         if let Some(node_id) = target_peer {
-            ctx.emit_progress(&format!("delegating '{}' to remote peer {}", worker_name, &node_id[..12.min(node_id.len())]));
+            ctx.emit_progress(&format!(
+                "delegating '{}' to remote peer {}",
+                worker_name,
+                &node_id[..12.min(node_id.len())]
+            ));
             // Remote delegation via iroh RPC
             {
                 let mut workers = self.workers.lock().await;

@@ -2,13 +2,11 @@
 //!
 //! Provides two capabilities:
 //!
-//! 1. **Inference API** — Cloud-hosted models via HuggingFace's OpenAI-compatible
-//!    endpoint at `https://api-inference.huggingface.co/v1/chat/completions`.
+//! 1. **Inference API** — Cloud-hosted models via HuggingFace's OpenAI-compatible endpoint at `https://api-inference.huggingface.co/v1/chat/completions`.
 //!    Works with any model available on HF Serverless Inference.
 //!
-//! 2. **Hub client** — Browse, search, and pull models from the HuggingFace Hub.
-//!    Downloaded GGUF models can be served locally via Ollama or any compatible
-//!    runtime.
+//! 2. **Hub client** — Browse, search, and pull models from the HuggingFace Hub. Downloaded GGUF
+//!    models can be served locally via Ollama or any compatible runtime.
 //!
 //! # Usage
 //!
@@ -33,10 +31,9 @@ use serde::Serialize;
 use tracing::info;
 use tracing::warn;
 
+use super::openai_compat::OpenAICompatConfig;
 use crate::error::Result;
 use crate::model::Model;
-
-use super::openai_compat::OpenAICompatConfig;
 
 // ── Inference API (OpenAI-compatible) ───────────────────────────────────
 
@@ -227,11 +224,9 @@ impl HubClient {
         );
         let resp = self.authed_get(&url).await?;
         let body = resp.text().await?;
-        let models: Vec<HubModelInfo> = serde_json::from_str(&body).map_err(|e| {
-            crate::Error::Provider {
-                message: format!("failed to parse HF Hub response: {e}"),
-                status: None,
-            }
+        let models: Vec<HubModelInfo> = serde_json::from_str(&body).map_err(|e| crate::Error::Provider {
+            message: format!("failed to parse HF Hub response: {e}"),
+            status: None,
         })?;
         Ok(models)
     }
@@ -243,10 +238,7 @@ impl HubClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::provider_with_status(
-                status.as_u16(),
-                format!("HF Hub: {body}"),
-            ));
+            return Err(crate::Error::provider_with_status(status.as_u16(), format!("HF Hub: {body}")));
         }
         let body = resp.text().await?;
         let info: HubModelDetail = serde_json::from_str(&body).map_err(|e| crate::Error::Provider {
@@ -265,10 +257,7 @@ impl HubClient {
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::provider_with_status(
-                status.as_u16(),
-                format!("HF Hub: {body}"),
-            ));
+            return Err(crate::Error::provider_with_status(status.as_u16(), format!("HF Hub: {body}")));
         }
         let body = resp.text().await?;
         let files: Vec<HubFile> = serde_json::from_str(&body).map_err(|e| crate::Error::Provider {
@@ -335,17 +324,10 @@ impl HubClient {
             let quant_upper = quant.to_uppercase();
             gguf_files
                 .iter()
-                .find(|f| {
-                    f.quantization
-                        .as_ref()
-                        .map(|q| q.to_uppercase() == quant_upper)
-                        .unwrap_or(false)
-                })
+                .find(|f| f.quantization.as_ref().map(|q| q.to_uppercase() == quant_upper).unwrap_or(false))
                 .or_else(|| {
                     // Fuzzy match: try contains
-                    gguf_files.iter().find(|f| {
-                        f.filename.to_uppercase().contains(&quant_upper)
-                    })
+                    gguf_files.iter().find(|f| f.filename.to_uppercase().contains(&quant_upper))
                 })
                 .ok_or_else(|| crate::Error::Provider {
                     message: format!(
@@ -397,18 +379,12 @@ impl HubClient {
         }
 
         // Download
-        let download_url = format!(
-            "https://huggingface.co/{}/resolve/main/{}",
-            model_id, selected.filename,
-        );
+        let download_url = format!("https://huggingface.co/{}/resolve/main/{}", model_id, selected.filename,);
         let resp = self.authed_get(&download_url).await?;
         let status = resp.status();
         if !status.is_success() {
             let body = resp.text().await.unwrap_or_default();
-            return Err(crate::Error::provider_with_status(
-                status.as_u16(),
-                format!("download failed: {body}"),
-            ));
+            return Err(crate::Error::provider_with_status(status.as_u16(), format!("download failed: {body}")));
         }
 
         let total_size = resp.content_length().unwrap_or(selected.size_bytes);
@@ -433,11 +409,7 @@ impl HubClient {
         }
         file.flush().await?;
 
-        info!(
-            "downloaded {} to {}",
-            format_bytes(downloaded),
-            local_path.display()
-        );
+        info!("downloaded {} to {}", format_bytes(downloaded), local_path.display());
 
         Ok(PulledModel {
             model_id: model_id.to_string(),
@@ -468,7 +440,8 @@ impl HubClient {
                             parts[0].as_os_str().to_string_lossy(),
                             parts[1].as_os_str().to_string_lossy(),
                         );
-                        let filename = parts[2..].iter().map(|p| p.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
+                        let filename =
+                            parts[2..].iter().map(|p| p.as_os_str().to_string_lossy()).collect::<Vec<_>>().join("/");
                         let size = std::fs::metadata(&entry).map(|m| m.len()).unwrap_or(0);
                         let quant = parse_quantization(&filename);
                         models.push(PulledModel {
@@ -511,16 +484,9 @@ impl HubClient {
     ///
     /// Creates a Modelfile and runs `ollama create` to make the model
     /// available for local inference.
-    pub async fn register_with_ollama(
-        &self,
-        pulled: &PulledModel,
-        ollama_name: Option<&str>,
-    ) -> Result<String> {
+    pub async fn register_with_ollama(&self, pulled: &PulledModel, ollama_name: Option<&str>) -> Result<String> {
         // Check if ollama is available
-        let ollama_check = tokio::process::Command::new("ollama")
-            .arg("--version")
-            .output()
-            .await;
+        let ollama_check = tokio::process::Command::new("ollama").arg("--version").output().await;
 
         if ollama_check.is_err() {
             return Err(crate::Error::Config {
@@ -534,10 +500,7 @@ impl HubClient {
             .unwrap_or_else(|| generate_ollama_name(&pulled.model_id, pulled.quantization.as_deref()));
 
         // Create a Modelfile
-        let modelfile_content = format!(
-            "FROM {}\n",
-            pulled.local_path.display(),
-        );
+        let modelfile_content = format!("FROM {}\n", pulled.local_path.display(),);
         let modelfile_path = pulled.local_path.with_extension("Modelfile");
         std::fs::write(&modelfile_path, &modelfile_content)?;
 
@@ -624,10 +587,7 @@ pub struct HubModelInfo {
 impl HubModelInfo {
     /// Whether the model requires accepting a license before access
     pub fn is_gated(&self) -> bool {
-        self.gated
-            .as_ref()
-            .map(|v| !v.is_null() && v.as_bool() != Some(false))
-            .unwrap_or(false)
+        self.gated.as_ref().map(|v| !v.is_null() && v.as_bool() != Some(false)).unwrap_or(false)
     }
 
     /// Format download count for display
@@ -753,10 +713,7 @@ impl PulledModel {
 ///
 /// Uses `$XDG_CACHE_HOME/clankers-router/models` or `~/.cache/clankers-router/models`.
 fn default_cache_dir() -> PathBuf {
-    dirs::cache_dir()
-        .unwrap_or_else(|| PathBuf::from(".cache"))
-        .join("clankers-router")
-        .join("models")
+    dirs::cache_dir().unwrap_or_else(|| PathBuf::from(".cache")).join("clankers-router").join("models")
 }
 
 /// Parse quantization level from a GGUF filename.
@@ -765,16 +722,9 @@ fn default_cache_dir() -> PathBuf {
 fn parse_quantization(filename: &str) -> Option<String> {
     // Common GGUF quantization patterns
     let patterns = [
-        "IQ1_M", "IQ1_S", "IQ2_M", "IQ2_S", "IQ2_XS", "IQ2_XXS",
-        "IQ3_M", "IQ3_S", "IQ3_XS", "IQ3_XXS",
-        "IQ4_NL", "IQ4_XS",
-        "Q2_K", "Q2_K_S",
-        "Q3_K_L", "Q3_K_M", "Q3_K_S",
-        "Q4_0", "Q4_1", "Q4_K_L", "Q4_K_M", "Q4_K_S",
-        "Q5_0", "Q5_1", "Q5_K_L", "Q5_K_M", "Q5_K_S",
-        "Q6_K", "Q6_K_L",
-        "Q8_0",
-        "F16", "F32", "BF16",
+        "IQ1_M", "IQ1_S", "IQ2_M", "IQ2_S", "IQ2_XS", "IQ2_XXS", "IQ3_M", "IQ3_S", "IQ3_XS", "IQ3_XXS", "IQ4_NL",
+        "IQ4_XS", "Q2_K", "Q2_K_S", "Q3_K_L", "Q3_K_M", "Q3_K_S", "Q4_0", "Q4_1", "Q4_K_L", "Q4_K_M", "Q4_K_S", "Q5_0",
+        "Q5_1", "Q5_K_L", "Q5_K_M", "Q5_K_S", "Q6_K", "Q6_K_L", "Q8_0", "F16", "F32", "BF16",
     ];
 
     let upper = filename.to_uppercase();
@@ -851,11 +801,7 @@ pub fn hub_models_to_catalog(hub_models: &[HubModelInfo]) -> Vec<Model> {
         .filter(|m| m.pipeline_tag.as_deref() == Some("text-generation"))
         .map(|m| Model {
             id: m.model_id.clone(),
-            name: format!(
-                "{} (HF, {} downloads)",
-                m.model_id,
-                m.downloads_display()
-            ),
+            name: format!("{} (HF, {} downloads)", m.model_id, m.downloads_display()),
             provider: "huggingface".into(),
             max_input_tokens: 128_000, // conservative default
             max_output_tokens: 8_192,
@@ -907,10 +853,7 @@ mod tests {
             generate_ollama_name("bartowski/Llama-3.3-70B-Instruct-GGUF", Some("Q4_K_M")),
             "llama-3.3-70b-instruct:q4_k_m"
         );
-        assert_eq!(
-            generate_ollama_name("TheBloke/Mistral-7B-v0.1-GGUF", None),
-            "mistral-7b-v0.1"
-        );
+        assert_eq!(generate_ollama_name("TheBloke/Mistral-7B-v0.1-GGUF", None), "mistral-7b-v0.1");
     }
 
     #[test]
@@ -935,10 +878,16 @@ mod tests {
         };
         assert!(info.is_gated());
 
-        let info2 = HubModelInfo { gated: None, ..info.clone() };
+        let info2 = HubModelInfo {
+            gated: None,
+            ..info.clone()
+        };
         assert!(!info2.is_gated());
 
-        let info3 = HubModelInfo { gated: Some(serde_json::json!(false)), ..info };
+        let info3 = HubModelInfo {
+            gated: Some(serde_json::json!(false)),
+            ..info
+        };
         assert!(!info3.is_gated());
     }
 
@@ -957,7 +906,10 @@ mod tests {
         };
         assert_eq!(info.downloads_display(), "1.5M");
 
-        let info2 = HubModelInfo { downloads: 42_000, ..info.clone() };
+        let info2 = HubModelInfo {
+            downloads: 42_000,
+            ..info.clone()
+        };
         assert_eq!(info2.downloads_display(), "42.0K");
 
         let info3 = HubModelInfo { downloads: 500, ..info };

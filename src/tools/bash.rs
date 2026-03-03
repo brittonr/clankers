@@ -168,8 +168,7 @@ impl Tool for BashTool {
             }
         }
 
-        let mut child = match cmd.spawn()
-        {
+        let mut child = match cmd.spawn() {
             Ok(c) => c,
             Err(e) => return ToolResult::error(format!("Failed to spawn bash: {}", e)),
         };
@@ -304,9 +303,8 @@ impl Tool for BashTool {
 
 #[cfg(test)]
 mod tests {
-    use crate::util::ansi::strip_ansi;
-
     use super::check_dangerous;
+    use crate::util::ansi::strip_ansi;
 
     #[test]
     fn strip_plain_text_unchanged() {

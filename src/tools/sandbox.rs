@@ -2,14 +2,14 @@
 //!
 //! Two concerns, cleanly separated:
 //!
-//! 1. **Path policy** — which filesystem paths any tool may access.
-//!    Enforced once in the tool dispatch layer (`turn.rs`), not per-tool.
+//! 1. **Path policy** — which filesystem paths any tool may access. Enforced once in the tool
+//!    dispatch layer (`turn.rs`), not per-tool.
 //!
-//! 2. **Bash child sandbox** — environment scrubbing and optional
-//!    kernel-level restrictions applied to spawned shell commands.
-//!    This is where the real attack surface lives.
+//! 2. **Bash child sandbox** — environment scrubbing and optional kernel-level restrictions applied
+//!    to spawned shell commands. This is where the real attack surface lives.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 use tracing::info;
 
@@ -56,12 +56,7 @@ static SENSITIVE_PATHS: &[&str] = &[
     ".local/share/fish/fish_history",
 ];
 
-static SENSITIVE_SYSTEM_PATHS: &[&str] = &[
-    "/etc/shadow",
-    "/etc/sudoers",
-    "/etc/ssh",
-    "/root",
-];
+static SENSITIVE_SYSTEM_PATHS: &[&str] = &["/etc/shadow", "/etc/sudoers", "/etc/ssh", "/root"];
 
 /// Resolved deny-list, built once at startup.
 #[derive(Debug, Clone)]
@@ -105,9 +100,7 @@ impl PathPolicy {
         let absolute = if path.is_absolute() {
             path.to_path_buf()
         } else {
-            std::env::current_dir()
-                .unwrap_or_else(|_| PathBuf::from("."))
-                .join(path)
+            std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")).join(path)
         };
 
         // Canonicalize (follow symlinks). Try the file itself, then its parent
@@ -125,11 +118,7 @@ impl PathPolicy {
 
         for denied in &self.denied {
             if canonical.starts_with(denied) {
-                return Some(format!(
-                    "blocked: {} is inside sensitive path {}",
-                    raw_path,
-                    denied.display()
-                ));
+                return Some(format!("blocked: {} is inside sensitive path {}", raw_path, denied.display()));
             }
         }
 
@@ -212,8 +201,7 @@ static SCRUBBED_ENV_VARS: &[&str] = &[
 /// patterns (*_SECRET, *_TOKEN, *_PASSWORD, *_API_KEY, etc.).
 /// Sets `CLANKERS_SANDBOX=1` so scripts can detect sandboxed execution.
 pub fn sanitized_env() -> Vec<(String, String)> {
-    let scrubbed: std::collections::HashSet<&str> =
-        SCRUBBED_ENV_VARS.iter().copied().collect();
+    let scrubbed: std::collections::HashSet<&str> = SCRUBBED_ENV_VARS.iter().copied().collect();
 
     let mut env: Vec<(String, String)> = std::env::vars()
         .filter(|(key, _)| {
@@ -271,9 +259,16 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
     const RULE_PATH_BENEATH: i32 = 1;
 
     const ALL_READ: u64 = FS_EXECUTE | FS_READ_FILE | FS_READ_DIR;
-    const ALL_WRITE: u64 = FS_WRITE_FILE | FS_REMOVE_DIR | FS_REMOVE_FILE
-        | FS_MAKE_CHAR | FS_MAKE_DIR | FS_MAKE_REG
-        | FS_MAKE_SOCK | FS_MAKE_FIFO | FS_MAKE_BLOCK | FS_MAKE_SYM;
+    const ALL_WRITE: u64 = FS_WRITE_FILE
+        | FS_REMOVE_DIR
+        | FS_REMOVE_FILE
+        | FS_MAKE_CHAR
+        | FS_MAKE_DIR
+        | FS_MAKE_REG
+        | FS_MAKE_SOCK
+        | FS_MAKE_FIFO
+        | FS_MAKE_BLOCK
+        | FS_MAKE_SYM;
     const ALL_ACCESS: u64 = ALL_READ | ALL_WRITE;
 
     #[repr(C)]
@@ -294,18 +289,11 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
         handled_access_net: 0,
     };
     let fd = unsafe {
-        libc::syscall(
-            LANDLOCK_CREATE_RULESET,
-            &attr as *const RulesetAttr,
-            std::mem::size_of::<RulesetAttr>(),
-            0u32,
-        )
+        libc::syscall(LANDLOCK_CREATE_RULESET, &attr as *const RulesetAttr, std::mem::size_of::<RulesetAttr>(), 0u32)
     };
     if fd < 0 {
         let err = std::io::Error::last_os_error();
-        if err.raw_os_error() == Some(libc::ENOSYS)
-            || err.raw_os_error() == Some(libc::EOPNOTSUPP)
-        {
+        if err.raw_os_error() == Some(libc::ENOSYS) || err.raw_os_error() == Some(libc::EOPNOTSUPP) {
             return Ok(false); // kernel doesn't support landlock
         }
         return Err(format!("landlock_create_ruleset: {}", err));
@@ -317,15 +305,13 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
         if !path.exists() {
             return Ok(());
         }
-        let file = std::fs::File::open(path)
-            .map_err(|e| format!("open {}: {}", path.display(), e))?;
+        let file = std::fs::File::open(path).map_err(|e| format!("open {}: {}", path.display(), e))?;
         let rule = PathBeneathAttr {
             allowed_access: access,
             parent_fd: file.as_raw_fd(),
         };
-        let ret = unsafe {
-            libc::syscall(LANDLOCK_ADD_RULE, fd, RULE_PATH_BENEATH, &rule as *const PathBeneathAttr, 0u32)
-        };
+        let ret =
+            unsafe { libc::syscall(LANDLOCK_ADD_RULE, fd, RULE_PATH_BENEATH, &rule as *const PathBeneathAttr, 0u32) };
         // Keep file open until after syscall (fd must be valid)
         std::mem::forget(file);
         if ret < 0 {
@@ -336,11 +322,7 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
 
     // Read-write paths
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/homeless"));
-    let rw_paths = [
-        project_root.to_path_buf(),
-        std::env::temp_dir(),
-        PathBuf::from("/tmp"),
-    ];
+    let rw_paths = [project_root.to_path_buf(), std::env::temp_dir(), PathBuf::from("/tmp")];
     for p in &rw_paths {
         let _ = add_rule(p, ALL_ACCESS);
     }
@@ -368,9 +350,13 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
     }
 
     // Restrict
-    unsafe { libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); }
+    unsafe {
+        libc::prctl(libc::PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0);
+    }
     let ret = unsafe { libc::syscall(LANDLOCK_RESTRICT_SELF, fd, 0u32) };
-    unsafe { libc::close(fd); }
+    unsafe {
+        libc::close(fd);
+    }
 
     if ret < 0 {
         Err(format!("landlock_restrict_self: {}", std::io::Error::last_os_error()))
@@ -461,18 +447,26 @@ mod tests {
 
     #[test]
     fn scrubs_known_secrets() {
-        unsafe { std::env::set_var("TEST_CLANKERS_API_KEY", "secret"); }
+        unsafe {
+            std::env::set_var("TEST_CLANKERS_API_KEY", "secret");
+        }
         let env = sanitized_env();
         assert!(!env.iter().any(|(k, _)| k == "TEST_CLANKERS_API_KEY"));
-        unsafe { std::env::remove_var("TEST_CLANKERS_API_KEY"); }
+        unsafe {
+            std::env::remove_var("TEST_CLANKERS_API_KEY");
+        }
     }
 
     #[test]
     fn scrubs_heuristic_patterns() {
-        unsafe { std::env::set_var("MY_APP_SECRET", "x"); }
+        unsafe {
+            std::env::set_var("MY_APP_SECRET", "x");
+        }
         let env = sanitized_env();
         assert!(!env.iter().any(|(k, _)| k == "MY_APP_SECRET"));
-        unsafe { std::env::remove_var("MY_APP_SECRET"); }
+        unsafe {
+            std::env::remove_var("MY_APP_SECRET");
+        }
     }
 
     #[test]
@@ -533,10 +527,7 @@ mod tests {
             let target = home.join(".ssh");
             if std::os::unix::fs::symlink(&target, &link).is_ok() {
                 let via_link = link.join("id_rsa");
-                assert!(
-                    policy.check(via_link.to_str().unwrap()).is_some(),
-                    "symlink to ~/.ssh should be blocked"
-                );
+                assert!(policy.check(via_link.to_str().unwrap()).is_some(), "symlink to ~/.ssh should be blocked");
             }
         }
     }
@@ -561,10 +552,7 @@ mod tests {
         let policy = PathPolicy::new();
         let dir = tempfile::tempdir().unwrap();
         let p = dir.path().join("does-not-exist.rs");
-        assert!(
-            policy.check(p.to_str().unwrap()).is_none(),
-            "nonexistent file in temp dir should be allowed"
-        );
+        assert!(policy.check(p.to_str().unwrap()).is_none(), "nonexistent file in temp dir should be allowed");
     }
 
     // ── Path message content ────────────────────────────────────────
@@ -584,68 +572,100 @@ mod tests {
 
     #[test]
     fn scrubs_token_suffix() {
-        unsafe { std::env::set_var("CLANKERS_TEST_MY_TOKEN", "t"); }
+        unsafe {
+            std::env::set_var("CLANKERS_TEST_MY_TOKEN", "t");
+        }
         let env = sanitized_env();
         assert!(!env.iter().any(|(k, _)| k == "CLANKERS_TEST_MY_TOKEN"));
-        unsafe { std::env::remove_var("CLANKERS_TEST_MY_TOKEN"); }
+        unsafe {
+            std::env::remove_var("CLANKERS_TEST_MY_TOKEN");
+        }
     }
 
     #[test]
     fn scrubs_password_suffix() {
-        unsafe { std::env::set_var("CLANKERS_TEST_DB_PASSWORD", "p"); }
+        unsafe {
+            std::env::set_var("CLANKERS_TEST_DB_PASSWORD", "p");
+        }
         let env = sanitized_env();
         assert!(!env.iter().any(|(k, _)| k == "CLANKERS_TEST_DB_PASSWORD"));
-        unsafe { std::env::remove_var("CLANKERS_TEST_DB_PASSWORD"); }
+        unsafe {
+            std::env::remove_var("CLANKERS_TEST_DB_PASSWORD");
+        }
     }
 
     #[test]
     fn scrubs_credentials_suffix() {
-        unsafe { std::env::set_var("CLANKERS_TEST_CLOUD_CREDENTIALS", "c"); }
+        unsafe {
+            std::env::set_var("CLANKERS_TEST_CLOUD_CREDENTIALS", "c");
+        }
         let env = sanitized_env();
         assert!(!env.iter().any(|(k, _)| k == "CLANKERS_TEST_CLOUD_CREDENTIALS"));
-        unsafe { std::env::remove_var("CLANKERS_TEST_CLOUD_CREDENTIALS"); }
+        unsafe {
+            std::env::remove_var("CLANKERS_TEST_CLOUD_CREDENTIALS");
+        }
     }
 
     #[test]
     fn scrubs_private_key_suffix() {
-        unsafe { std::env::set_var("CLANKERS_TEST_SIGNING_PRIVATE_KEY", "k"); }
+        unsafe {
+            std::env::set_var("CLANKERS_TEST_SIGNING_PRIVATE_KEY", "k");
+        }
         let env = sanitized_env();
         assert!(!env.iter().any(|(k, _)| k == "CLANKERS_TEST_SIGNING_PRIVATE_KEY"));
-        unsafe { std::env::remove_var("CLANKERS_TEST_SIGNING_PRIVATE_KEY"); }
+        unsafe {
+            std::env::remove_var("CLANKERS_TEST_SIGNING_PRIVATE_KEY");
+        }
     }
 
     #[test]
     fn scrubs_explicit_anthropic_key() {
-        unsafe { std::env::set_var("ANTHROPIC_API_KEY", "sk-test"); }
+        unsafe {
+            std::env::set_var("ANTHROPIC_API_KEY", "sk-test");
+        }
         let env = sanitized_env();
         assert!(!env.iter().any(|(k, _)| k == "ANTHROPIC_API_KEY"));
-        unsafe { std::env::remove_var("ANTHROPIC_API_KEY"); }
+        unsafe {
+            std::env::remove_var("ANTHROPIC_API_KEY");
+        }
     }
 
     #[test]
     fn scrubs_explicit_github_token() {
-        unsafe { std::env::set_var("GITHUB_TOKEN", "ghp_test"); }
+        unsafe {
+            std::env::set_var("GITHUB_TOKEN", "ghp_test");
+        }
         let env = sanitized_env();
         assert!(!env.iter().any(|(k, _)| k == "GITHUB_TOKEN"));
-        unsafe { std::env::remove_var("GITHUB_TOKEN"); }
+        unsafe {
+            std::env::remove_var("GITHUB_TOKEN");
+        }
     }
 
     #[test]
     fn scrubs_ssh_auth_sock() {
-        unsafe { std::env::set_var("SSH_AUTH_SOCK", "/tmp/agent.123"); }
+        unsafe {
+            std::env::set_var("SSH_AUTH_SOCK", "/tmp/agent.123");
+        }
         let env = sanitized_env();
         assert!(!env.iter().any(|(k, _)| k == "SSH_AUTH_SOCK"));
-        unsafe { std::env::remove_var("SSH_AUTH_SOCK"); }
+        unsafe {
+            std::env::remove_var("SSH_AUTH_SOCK");
+        }
     }
 
     // ── Heuristic is case-insensitive ───────────────────────────────
 
     #[test]
     fn scrubs_mixed_case_suffix() {
-        unsafe { std::env::set_var("clankers_test_My_Secret", "s"); }
+        unsafe {
+            std::env::set_var("clankers_test_My_Secret", "s");
+        }
         let env = sanitized_env();
         assert!(!env.iter().any(|(k, _)| k == "clankers_test_My_Secret"));
-        unsafe { std::env::remove_var("clankers_test_My_Secret"); }
+        unsafe {
+            std::env::remove_var("clankers_test_My_Secret");
+        }
     }
 
     // ── Preserves non-secret vars ───────────────────────────────────
@@ -684,11 +704,7 @@ mod tests {
     fn blocks_all_system_paths() {
         let policy = PathPolicy::new();
         for path in SENSITIVE_SYSTEM_PATHS {
-            assert!(
-                policy.check(path).is_some(),
-                "system path {} should be blocked",
-                path
-            );
+            assert!(policy.check(path).is_some(), "system path {} should be blocked", path);
         }
     }
 

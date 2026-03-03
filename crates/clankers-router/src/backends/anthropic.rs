@@ -88,10 +88,7 @@ impl AnthropicProvider {
     ///
     /// When one account hits rate limits, the provider automatically rotates to
     /// the next healthy credential.
-    pub fn with_pool(
-        pool: CredentialPool,
-        base_url: Option<String>,
-    ) -> Arc<dyn Provider> {
+    pub fn with_pool(pool: CredentialPool, base_url: Option<String>) -> Arc<dyn Provider> {
         // Use the first credential as the legacy fallback
         let fallback = Credential::ApiKey(String::new());
         Arc::new(Self {
@@ -184,12 +181,7 @@ impl AnthropicProvider {
             };
 
             if i > 0 {
-                info!(
-                    "rotating to Anthropic account '{}' ({}/{})",
-                    lease.account(),
-                    i + 1,
-                    num_creds,
-                );
+                info!("rotating to Anthropic account '{}' ({}/{})", lease.account(), i + 1, num_creds,);
             }
 
             match self.do_request_with_retry(&cred, &body, &tx).await {
@@ -203,10 +195,7 @@ impl AnthropicProvider {
 
                     // Only rotate to next credential on retryable errors
                     if e.is_retryable() {
-                        warn!(
-                            "Anthropic account '{}' returned {} — trying next credential",
-                            lease.account(), status,
-                        );
+                        warn!("Anthropic account '{}' returned {} — trying next credential", lease.account(), status,);
                         last_error = Some(e);
                         continue;
                     }

@@ -55,8 +55,7 @@ impl WorkStore {
         let table = txn.open_table(WORK_TABLE).map_err(|e| format!("open_table: {e}"))?;
         match table.get(id).map_err(|e| format!("get: {e}"))? {
             Some(bytes) => {
-                let item: WorkItem =
-                    serde_json::from_slice(bytes.value()).map_err(|e| format!("deserialize: {e}"))?;
+                let item: WorkItem = serde_json::from_slice(bytes.value()).map_err(|e| format!("deserialize: {e}"))?;
                 Ok(Some(item))
             }
             None => Ok(None),
@@ -70,8 +69,7 @@ impl WorkStore {
         let mut items = Vec::new();
         for entry in table.iter().map_err(|e| format!("iter: {e}"))? {
             let (_, value) = entry.map_err(|e| format!("entry: {e}"))?;
-            let item: WorkItem =
-                serde_json::from_slice(value.value()).map_err(|e| format!("deserialize: {e}"))?;
+            let item: WorkItem = serde_json::from_slice(value.value()).map_err(|e| format!("deserialize: {e}"))?;
             items.push(item);
         }
         Ok(items)
@@ -95,8 +93,7 @@ impl WorkStore {
         let all = self.list_all()?;
 
         // Build status lookup (owned keys to avoid borrow conflict)
-        let status_map: HashMap<String, Status> =
-            all.iter().map(|i| (i.id.clone(), i.status)).collect();
+        let status_map: HashMap<String, Status> = all.iter().map(|i| (i.id.clone(), i.status)).collect();
 
         let mut ready: Vec<WorkItem> = all
             .into_iter()
@@ -106,10 +103,7 @@ impl WorkStore {
                 }
                 // Check all blockers are terminal
                 item.blocked_by.iter().all(|dep_id| {
-                    status_map
-                        .get(dep_id)
-                        .map(|s| s.is_terminal())
-                        .unwrap_or(true) // unknown dep = assume satisfied
+                    status_map.get(dep_id).map(|s| s.is_terminal()).unwrap_or(true) // unknown dep = assume satisfied
                 })
             })
             .collect();
@@ -125,14 +119,10 @@ impl WorkStore {
         let result = {
             let mut table = txn.open_table(WORK_TABLE).map_err(|e| format!("open_table: {e}"))?;
             // Read → deserialize → drop borrow before writing
-            let existing: Option<Vec<u8>> = table
-                .get(id)
-                .map_err(|e| format!("get: {e}"))?
-                .map(|v| v.value().to_vec());
+            let existing: Option<Vec<u8>> = table.get(id).map_err(|e| format!("get: {e}"))?.map(|v| v.value().to_vec());
             match existing {
                 Some(bytes) => {
-                    let mut item: WorkItem =
-                        serde_json::from_slice(&bytes).map_err(|e| format!("deserialize: {e}"))?;
+                    let mut item: WorkItem = serde_json::from_slice(&bytes).map_err(|e| format!("deserialize: {e}"))?;
                     if item.status != Status::Open {
                         debug!("claim rejected: {} is {:?}", id, item.status);
                         None
@@ -155,14 +145,10 @@ impl WorkStore {
         let txn = self.db.begin_write().map_err(|e| format!("begin_write: {e}"))?;
         let result = {
             let mut table = txn.open_table(WORK_TABLE).map_err(|e| format!("open_table: {e}"))?;
-            let existing: Option<Vec<u8>> = table
-                .get(id)
-                .map_err(|e| format!("get: {e}"))?
-                .map(|v| v.value().to_vec());
+            let existing: Option<Vec<u8>> = table.get(id).map_err(|e| format!("get: {e}"))?.map(|v| v.value().to_vec());
             match existing {
                 Some(bytes) => {
-                    let mut item: WorkItem =
-                        serde_json::from_slice(&bytes).map_err(|e| format!("deserialize: {e}"))?;
+                    let mut item: WorkItem = serde_json::from_slice(&bytes).map_err(|e| format!("deserialize: {e}"))?;
                     match status {
                         Status::Done => item.complete(notes),
                         Status::Failed => item.fail(notes.unwrap_or("failed")),
@@ -189,11 +175,7 @@ impl WorkStore {
 
     /// Get children of a parent item (epic → tasks).
     pub fn children_of(&self, parent_id: &str) -> Result<Vec<WorkItem>, String> {
-        Ok(self
-            .list_all()?
-            .into_iter()
-            .filter(|i| i.parent_id.as_deref() == Some(parent_id))
-            .collect())
+        Ok(self.list_all()?.into_iter().filter(|i| i.parent_id.as_deref() == Some(parent_id)).collect())
     }
 
     /// Get items assigned to a specific agent.
@@ -208,10 +190,8 @@ impl WorkStore {
     /// Check for dependency cycles (returns true if adding dep would create a cycle).
     pub fn would_cycle(&self, item_id: &str, dep_id: &str) -> Result<bool, String> {
         let all = self.list_all()?;
-        let deps: HashMap<&str, Vec<&str>> = all
-            .iter()
-            .map(|i| (i.id.as_str(), i.blocked_by.iter().map(|s| s.as_str()).collect()))
-            .collect();
+        let deps: HashMap<&str, Vec<&str>> =
+            all.iter().map(|i| (i.id.as_str(), i.blocked_by.iter().map(|s| s.as_str()).collect())).collect();
 
         // DFS from dep_id — can we reach item_id?
         let mut visited = HashSet::new();
@@ -238,14 +218,11 @@ impl WorkStore {
         let txn = self.db.begin_write().map_err(|e| format!("begin_write: {e}"))?;
         {
             let mut table = txn.open_table(WORK_TABLE).map_err(|e| format!("open_table: {e}"))?;
-            let existing: Option<Vec<u8>> = table
-                .get(item_id)
-                .map_err(|e| format!("get: {e}"))?
-                .map(|v| v.value().to_vec());
+            let existing: Option<Vec<u8>> =
+                table.get(item_id).map_err(|e| format!("get: {e}"))?.map(|v| v.value().to_vec());
             match existing {
                 Some(bytes) => {
-                    let mut item: WorkItem =
-                        serde_json::from_slice(&bytes).map_err(|e| format!("deserialize: {e}"))?;
+                    let mut item: WorkItem = serde_json::from_slice(&bytes).map_err(|e| format!("deserialize: {e}"))?;
                     if !item.blocked_by.contains(&blocked_by_id.to_string()) {
                         item.blocked_by.push(blocked_by_id.to_string());
                         item.updated_at = chrono::Utc::now();

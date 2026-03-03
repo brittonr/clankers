@@ -157,10 +157,7 @@ impl SessionStore {
 
     /// Get or create a per-session lock for serializing prompt execution.
     fn prompt_lock(&mut self, key: &SessionKey) -> Arc<Mutex<()>> {
-        self.prompt_locks
-            .entry(key.clone())
-            .or_insert_with(|| Arc::new(Mutex::new(())))
-            .clone()
+        self.prompt_locks.entry(key.clone()).or_insert_with(|| Arc::new(Mutex::new(()))).clone()
     }
 
     /// Get or create a session for the given key.

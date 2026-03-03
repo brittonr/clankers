@@ -31,7 +31,11 @@ mod tests {
 
     #[async_trait]
     impl Provider for EchoProvider {
-        async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> clankers::error::Result<()> {
+        async fn complete(
+            &self,
+            request: CompletionRequest,
+            tx: mpsc::Sender<StreamEvent>,
+        ) -> clankers::error::Result<()> {
             // Extract the last user message
             let user_text = request
                 .messages

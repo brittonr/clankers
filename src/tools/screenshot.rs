@@ -117,7 +117,8 @@ impl Tool for ScreenshotTool {
         // Scale down if needed
         ctx.emit_progress(&format!("scaling to {:.0}%", scale * 100.0));
         let output_path = if (scale - 1.0).abs() > 0.01 {
-            let scaled_path = std::env::temp_dir().join(format!("clankers-screenshot-{}-scaled.jpg", std::process::id()));
+            let scaled_path =
+                std::env::temp_dir().join(format!("clankers-screenshot-{}-scaled.jpg", std::process::id()));
             match scale_image(&tmp_path, &scaled_path, scale).await {
                 Ok(()) => {
                     let _ = tokio::fs::remove_file(&tmp_path).await;

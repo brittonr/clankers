@@ -7,8 +7,8 @@
 //! # Strategies
 //!
 //! - **RoundRobin** — Rotate through credentials evenly on each request.
-//! - **Failover** — Use the primary credential until it fails, then switch
-//!   to the next healthy one. (Default)
+//! - **Failover** — Use the primary credential until it fails, then switch to the next healthy one.
+//!   (Default)
 //!
 //! # Per-credential health tracking
 //!
@@ -234,10 +234,7 @@ impl CredentialPool {
     ///
     /// `credentials` is a list of `(account_name, credential)` pairs.
     /// The first credential is considered the "primary" for Failover strategy.
-    pub fn new(
-        credentials: Vec<(String, StoredCredential)>,
-        strategy: SelectionStrategy,
-    ) -> Self {
+    pub fn new(credentials: Vec<(String, StoredCredential)>, strategy: SelectionStrategy) -> Self {
         assert!(!credentials.is_empty(), "CredentialPool requires at least one credential");
         let slots = credentials
             .into_iter()
@@ -382,10 +379,7 @@ impl CredentialPool {
             let idx = (start + i) % self.slots.len();
             if self.slots[idx].health.read().await.is_available() {
                 if i > 0 {
-                    debug!(
-                        "round-robin skipped {} unavailable slot(s), using '{}'",
-                        i, self.slots[idx].account
-                    );
+                    debug!("round-robin skipped {} unavailable slot(s), using '{}'", i, self.slots[idx].account);
                 }
                 return Some(CredentialLease {
                     pool: self,
@@ -403,10 +397,7 @@ impl CredentialPool {
         for (idx, slot) in self.slots.iter().enumerate() {
             if slot.health.read().await.is_available() {
                 if idx > 0 {
-                    info!(
-                        "failing over from '{}' to '{}'",
-                        self.slots[0].account, slot.account
-                    );
+                    info!("failing over from '{}' to '{}'", self.slots[0].account, slot.account);
                 }
                 return Some(CredentialLease {
                     pool: self,
@@ -448,8 +439,7 @@ impl std::fmt::Display for SlotSummary {
         write!(
             f,
             "[{}] {} ({}) — {} | ok:{} err:{}",
-            self.index, self.account, kind, status,
-            self.success_count, self.failure_count,
+            self.index, self.account, kind, status, self.success_count, self.failure_count,
         )?;
         if self.in_cooldown {
             write!(f, " | cooldown: {}s remaining", self.cooldown_remaining_secs)?;
@@ -584,10 +574,7 @@ mod tests {
     #[tokio::test]
     async fn test_all_exhausted_returns_none() {
         let pool = CredentialPool::new(
-            vec![
-                ("a".into(), api_key("key-a")),
-                ("b".into(), api_key("key-b")),
-            ],
+            vec![("a".into(), api_key("key-a")), ("b".into(), api_key("key-b"))],
             SelectionStrategy::Failover,
         );
 
@@ -662,10 +649,7 @@ mod tests {
     #[tokio::test]
     async fn test_reset_health() {
         let pool = CredentialPool::new(
-            vec![
-                ("a".into(), api_key("key-a")),
-                ("b".into(), api_key("key-b")),
-            ],
+            vec![("a".into(), api_key("key-a")), ("b".into(), api_key("key-b"))],
             SelectionStrategy::Failover,
         );
 
