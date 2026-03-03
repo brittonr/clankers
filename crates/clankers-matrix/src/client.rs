@@ -268,6 +268,20 @@ impl MatrixClient {
         Ok(())
     }
 
+    // ── Typing indicators ────────────────────────────────────────────
+
+    /// Send a typing indicator to a room.
+    ///
+    /// When `typing` is `true`, the server shows this user as typing for
+    /// ~30 seconds (automatically expires). Call with `false` to stop
+    /// the indicator immediately.
+    pub async fn set_typing(&self, room_id: &RoomId, typing: bool) -> Result<(), MatrixError> {
+        let client = self.client.as_ref().ok_or(MatrixError::NotLoggedIn)?;
+        let room = client.get_room(room_id).ok_or_else(|| MatrixError::RoomNotFound(room_id.to_string()))?;
+        room.typing_notice(typing).await.map_err(MatrixError::from)?;
+        Ok(())
+    }
+
     // ── Message sending ────────────────────────────────────────────
 
     /// Send a text message to a room.
@@ -276,6 +290,16 @@ impl MatrixClient {
         let room = client.get_room(room_id).ok_or_else(|| MatrixError::RoomNotFound(room_id.to_string()))?;
 
         let content = RoomMessageEventContent::text_plain(text);
+        room.send(content).await.map_err(MatrixError::from)?;
+        Ok(())
+    }
+
+    /// Send an HTML-formatted message to a room (with plain text fallback).
+    pub async fn send_html(&self, room_id: &RoomId, plain: &str, html: &str) -> Result<(), MatrixError> {
+        let client = self.client.as_ref().ok_or(MatrixError::NotLoggedIn)?;
+        let room = client.get_room(room_id).ok_or_else(|| MatrixError::RoomNotFound(room_id.to_string()))?;
+
+        let content = RoomMessageEventContent::text_html(plain, html);
         room.send(content).await.map_err(MatrixError::from)?;
         Ok(())
     }

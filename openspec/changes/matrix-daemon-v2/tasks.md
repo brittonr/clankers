@@ -2,12 +2,12 @@
 
 ## Phase 1: Quick wins (no new deps)
 
-- [ ] Typing indicators — spawn refresh task in `run_matrix_bridge`, cancel on response
-- [ ] User allowlist — add `allowed_users` to `MatrixConfig`, check in bridge event loop
-- [ ] Bot commands — dispatch `!restart`, `!status`, `!skills`, `!compact`, `!model`, `!help`
-- [ ] Empty response re-prompt — check collected text in `run_matrix_prompt`, retry once
-- [ ] Idle session reaping — background task in daemon, check `last_active` every 60s
-- [ ] Stop ignoring slash commands — only skip `/` messages, not `!` messages (already done by above)
+- [x] Typing indicators — spawn refresh task in `run_matrix_bridge`, cancel on response
+- [x] User allowlist — add `allowed_users` to `MatrixConfig`, check in bridge event loop
+- [x] Bot commands — dispatch `!restart`, `!status`, `!skills`, `!compact`, `!model`, `!help`
+- [x] Empty response re-prompt — check collected text in `run_matrix_prompt`, retry once
+- [x] Idle session reaping — background task in daemon, check `last_active` every 60s
+- [x] Stop ignoring slash commands — only skip `/` messages, not `!` messages (already done by above)
 
 ## Phase 2: Files (needs matrix-sdk media API)
 

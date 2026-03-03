@@ -66,6 +66,11 @@ pub struct DaemonConfig {
     pub heartbeat_secs: u64,
     /// Maximum concurrent sessions
     pub max_sessions: usize,
+    /// Idle session timeout in seconds (0 = disabled)
+    pub idle_timeout_secs: u64,
+    /// Matrix user allowlist (empty = allow all). Overridden by
+    /// `CLANKERS_MATRIX_ALLOWED_USERS` env var (comma-separated).
+    pub matrix_allowed_users: Vec<String>,
 }
 
 impl Default for DaemonConfig {
@@ -79,6 +84,8 @@ impl Default for DaemonConfig {
             enable_matrix: false,
             heartbeat_secs: 60,
             max_sessions: 32,
+            idle_timeout_secs: 1800, // 30 minutes
+            matrix_allowed_users: Vec::new(),
         }
     }
 }
@@ -207,6 +214,29 @@ impl SessionStore {
     fn len(&self) -> usize {
         self.sessions.len()
     }
+
+    /// Reap sessions that have been idle longer than `max_idle`.
+    /// Returns the number of reaped sessions.
+    fn reap_idle(&mut self, max_idle: std::time::Duration) -> usize {
+        let now = Utc::now();
+        let stale: Vec<SessionKey> = self
+            .sessions
+            .iter()
+            .filter(|(_, s)| {
+                let idle = now.signed_duration_since(s.last_active);
+                idle.to_std().unwrap_or_default() > max_idle
+            })
+            .map(|(k, _)| k.clone())
+            .collect();
+
+        let count = stale.len();
+        for key in &stale {
+            info!("Reaping idle session: {}", key);
+            self.sessions.remove(key);
+            self.prompt_locks.remove(key);
+        }
+        count
+    }
 }
 
 // ── Daemon entry point ──────────────────────────────────────────────────────
@@ -322,8 +352,9 @@ pub async fn run_daemon(
         let matrix_store = Arc::clone(&store);
         let matrix_cancel = cancel.clone();
         let matrix_paths = paths.clone();
+        let matrix_allowed = config.matrix_allowed_users.clone();
         Some(tokio::spawn(async move {
-            if let Err(e) = run_matrix_bridge(matrix_store, matrix_cancel, &matrix_paths).await {
+            if let Err(e) = run_matrix_bridge(matrix_store, matrix_cancel, &matrix_paths, matrix_allowed).await {
                 error!("Matrix bridge error: {e}");
             }
         }))
@@ -359,6 +390,27 @@ pub async fn run_daemon(
             }
         }
     });
+
+    // ── Idle session reaper ─────────────────────────────────────────
+    if config.idle_timeout_secs > 0 {
+        let reaper_store = Arc::clone(&store);
+        let reaper_cancel = cancel.clone();
+        let idle_timeout = std::time::Duration::from_secs(config.idle_timeout_secs);
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                tokio::select! {
+                    _ = interval.tick() => {
+                        let reaped = reaper_store.write().await.reap_idle(idle_timeout);
+                        if reaped > 0 {
+                            info!("Reaped {} idle session(s)", reaped);
+                        }
+                    }
+                    _ = reaper_cancel.cancelled() => break,
+                }
+            }
+        });
+    }
 
     println!("\nListening... (Ctrl+C to stop)\n");
     println!("Chat:  clankers rpc prompt {} \"hello\"", node_id);
@@ -659,10 +711,38 @@ async fn run_session_prompt(
 
 // ── Matrix bridge ───────────────────────────────────────────────────────────
 
+/// Resolve the Matrix user allowlist from (in priority order):
+/// 1. `CLANKERS_MATRIX_ALLOWED_USERS` env var (comma-separated)
+/// 2. `allowed_users` from `matrix.json`
+/// 3. `matrix_allowed_users` from `DaemonConfig`
+///
+/// Empty = allow all.
+fn resolve_matrix_allowlist(
+    matrix_config: &clankers_matrix::MatrixConfig,
+    daemon_allowed: &[String],
+) -> Vec<String> {
+    if let Ok(env_val) = std::env::var("CLANKERS_MATRIX_ALLOWED_USERS") {
+        let users: Vec<String> = env_val.split(',').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect();
+        if !users.is_empty() {
+            return users;
+        }
+    }
+    if !matrix_config.allowed_users.is_empty() {
+        return matrix_config.allowed_users.clone();
+    }
+    daemon_allowed.to_vec()
+}
+
+/// Check if a user is in the allowlist (empty = allow all).
+fn is_user_allowed(allowlist: &[String], user_id: &str) -> bool {
+    allowlist.is_empty() || allowlist.iter().any(|u| u == user_id)
+}
+
 async fn run_matrix_bridge(
     store: Arc<RwLock<SessionStore>>,
     cancel: CancellationToken,
     paths: &ClankersPaths,
+    daemon_allowed_users: Vec<String>,
 ) -> Result<()> {
     use clankers_matrix::MatrixConfig;
     use clankers_matrix::bridge::BridgeEvent;
@@ -672,6 +752,14 @@ async fn run_matrix_bridge(
     let config = MatrixConfig::load(&config_path).ok_or_else(|| crate::error::Error::Config {
         message: format!("Matrix config not found at {}. Run `clankers matrix login` first.", config_path.display()),
     })?;
+
+    // Resolve allowlist
+    let allowlist = resolve_matrix_allowlist(&config, &daemon_allowed_users);
+    if allowlist.is_empty() {
+        info!("Matrix allowlist: open (all users accepted)");
+    } else {
+        info!("Matrix allowlist: {} user(s)", allowlist.len());
+    }
 
     let store_path = config.resolve_store_path(&paths.global_config_dir);
     let mut client = clankers_matrix::MatrixClient::new(config, "clankers-daemon");
@@ -699,9 +787,38 @@ async fn run_matrix_bridge(
             event = agent_rx.recv() => {
                 let Some(event) = event else { break };
                 match event {
-                    BridgeEvent::TextMessage { sender, body, room_id } => {
-                        // Skip slash commands (could dispatch them later)
+                    BridgeEvent::TextMessage { sender, body, room_id }
+                    | BridgeEvent::ChatMessage { sender, body, room_id, .. } => {
+                        // ── Allowlist check ─────────────────────────
+                        if !is_user_allowed(&allowlist, &sender) {
+                            info!("Matrix: denied message from {}", sender);
+                            continue;
+                        }
+
+                        // ── Skip client slash commands ──────────────
                         if body.starts_with('/') {
+                            continue;
+                        }
+
+                        // ── Bot command dispatch ────────────────────
+                        if body.starts_with('!') {
+                            let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(&room_id) {
+                                Ok(rid) => rid.to_owned(),
+                                Err(_) => continue,
+                            };
+                            let key = SessionKey::Matrix {
+                                user_id: sender.clone(),
+                                room_id: room_id.clone(),
+                            };
+                            let response = handle_bot_command(
+                                &body,
+                                &key,
+                                Arc::clone(&store),
+                            ).await;
+                            let c = client.read().await;
+                            if let Err(e) = c.send_text(&room_id_parsed, &response).await {
+                                error!("Matrix send failed: {e}");
+                            }
                             continue;
                         }
 
@@ -712,30 +829,74 @@ async fn run_matrix_bridge(
 
                         info!("[{}] message: {}", key, &body[..80.min(body.len())]);
 
-                        // Run prompt and collect response
-                        let response = run_matrix_prompt(Arc::clone(&store), key, body).await;
-
-                        // Send response back to the room
-                        let client = client.read().await;
-                        if let Ok(rid) = clankers_matrix::ruma::RoomId::parse(&room_id) {
-                            if let Err(e) = client.send_text(&rid, &response).await {
-                                error!("Matrix send failed: {e}");
-                            }
-                        }
-                    }
-                    BridgeEvent::ChatMessage { sender, body, room_id, .. } => {
-                        let key = SessionKey::Matrix {
-                            user_id: sender,
-                            room_id: room_id.clone(),
+                        let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(&room_id) {
+                            Ok(rid) => rid.to_owned(),
+                            Err(_) => continue,
                         };
 
-                        let response = run_matrix_prompt(Arc::clone(&store), key, body).await;
-
-                        let client = client.read().await;
-                        if let Ok(rid) = clankers_matrix::ruma::RoomId::parse(&room_id) {
-                            if let Err(e) = client.send_text(&rid, &response).await {
-                                error!("Matrix send failed: {e}");
+                        // ── Typing indicator: start ─────────────────
+                        {
+                            let c = client.read().await;
+                            if let Err(e) = c.set_typing(&room_id_parsed, true).await {
+                                warn!("Typing indicator start failed: {e}");
                             }
+                        }
+
+                        // Spawn a typing refresh task (re-sends every 25s)
+                        let typing_cancel = CancellationToken::new();
+                        let typing_client = Arc::clone(&client);
+                        let typing_room = room_id_parsed.clone();
+                        let typing_token = typing_cancel.clone();
+                        tokio::spawn(async move {
+                            let mut interval = tokio::time::interval(std::time::Duration::from_secs(25));
+                            interval.tick().await; // skip the immediate tick
+                            loop {
+                                tokio::select! {
+                                    _ = interval.tick() => {
+                                        let c = typing_client.read().await;
+                                        let _ = c.set_typing(&typing_room, true).await;
+                                    }
+                                    _ = typing_token.cancelled() => break,
+                                }
+                            }
+                        });
+
+                        // ── Run prompt ──────────────────────────────
+                        let mut response = run_matrix_prompt(
+                            Arc::clone(&store), key, body,
+                        ).await;
+
+                        // ── Empty response re-prompt ────────────────
+                        if response.trim().is_empty() {
+                            info!("Empty response, re-prompting for summary");
+                            let re_key = SessionKey::Matrix {
+                                user_id: sender.clone(),
+                                room_id: room_id.clone(),
+                            };
+                            let retry = run_matrix_prompt(
+                                Arc::clone(&store),
+                                re_key,
+                                "You completed some actions but your response contained \
+                                 no text. Briefly summarize what you did.".to_string(),
+                            ).await;
+                            if retry.trim().is_empty() {
+                                response = "(completed actions — no summary available)".to_string();
+                            } else {
+                                response = retry;
+                            }
+                        }
+
+                        // ── Typing indicator: stop ──────────────────
+                        typing_cancel.cancel();
+                        {
+                            let c = client.read().await;
+                            let _ = c.set_typing(&room_id_parsed, false).await;
+                        }
+
+                        // ── Send response ───────────────────────────
+                        let c = client.read().await;
+                        if let Err(e) = c.send_text(&room_id_parsed, &response).await {
+                            error!("Matrix send failed: {e}");
                         }
                     }
                     BridgeEvent::PeerUpdate(peer) => {
@@ -749,6 +910,103 @@ async fn run_matrix_bridge(
     }
 
     Ok(())
+}
+
+// ── Bot commands ────────────────────────────────────────────────────────────
+
+/// Handle a `!command` from a Matrix user. Returns the response text.
+async fn handle_bot_command(
+    body: &str,
+    key: &SessionKey,
+    store: Arc<RwLock<SessionStore>>,
+) -> String {
+    let parts: Vec<&str> = body.trim().splitn(2, char::is_whitespace).collect();
+    let command = parts[0].to_lowercase();
+    let args = parts.get(1).unwrap_or(&"").trim();
+
+    match command.as_str() {
+        "!help" => {
+            "**Available commands:**\n\
+             • `!help` — Show this message\n\
+             • `!status` — Session info (model, turns, uptime)\n\
+             • `!restart` — Clear session history and start fresh\n\
+             • `!compact` — Trigger context compaction\n\
+             • `!model <name>` — Switch model for this session\n\
+             • `!skills` — List loaded skills"
+                .to_string()
+        }
+        "!status" => {
+            let store = store.read().await;
+            if let Some(session) = store.sessions.get(key) {
+                let idle = Utc::now().signed_duration_since(session.last_active);
+                let idle_secs = idle.num_seconds().max(0);
+                let idle_str = if idle_secs < 60 {
+                    format!("{}s", idle_secs)
+                } else if idle_secs < 3600 {
+                    format!("{}m{}s", idle_secs / 60, idle_secs % 60)
+                } else {
+                    format!("{}h{}m", idle_secs / 3600, (idle_secs % 3600) / 60)
+                };
+                format!(
+                    "**Session status:**\n\
+                     • Model: `{}`\n\
+                     • Turns: {}\n\
+                     • Idle: {}\n\
+                     • Messages in context: {}",
+                    store.model,
+                    session.turn_count,
+                    idle_str,
+                    session.agent.messages().len(),
+                )
+            } else {
+                "No active session. Send a message to start one.".to_string()
+            }
+        }
+        "!restart" => {
+            let mut store = store.write().await;
+            store.sessions.remove(key);
+            store.prompt_locks.remove(key);
+            "Session cleared. Next message starts a fresh conversation.".to_string()
+        }
+        "!compact" => {
+            // Trigger compaction by running a prompt that asks the agent to compact
+            let response = run_matrix_prompt(
+                Arc::clone(&store),
+                key.clone(),
+                "/compact".to_string(),
+            )
+            .await;
+            if response.trim().is_empty() {
+                "Context compacted.".to_string()
+            } else {
+                format!("Compaction result: {}", response)
+            }
+        }
+        "!model" => {
+            if args.is_empty() {
+                let store = store.read().await;
+                format!("Current model: `{}`. Usage: `!model <name>`", store.model)
+            } else {
+                let mut store = store.write().await;
+                let old_model = store.model.clone();
+                store.model = args.to_string();
+                format!("Model switched: `{}` → `{}`", old_model, args)
+            }
+        }
+        "!skills" => {
+            let store = store.read().await;
+            let tool_names: Vec<String> = store.tools.iter().map(|t| t.definition().name.clone()).collect();
+            if tool_names.is_empty() {
+                "No tools loaded.".to_string()
+            } else {
+                format!("**Loaded tools ({}):**\n{}", tool_names.len(), tool_names.iter().map(|n| format!("• `{}`", n)).collect::<Vec<_>>().join("\n"))
+            }
+        }
+        _ => {
+            // Unknown ! command — pass to agent as a normal prompt
+            run_matrix_prompt(Arc::clone(&store), key.clone(), body.to_string()).await
+        }
+    }
 }
 
 /// Run a prompt for a Matrix message and collect the full text response.

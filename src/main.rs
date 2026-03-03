@@ -1867,6 +1867,7 @@ async fn main() -> Result<()> {
                 enable_matrix: matrix,
                 heartbeat_secs: heartbeat,
                 max_sessions,
+                ..Default::default()
             };
 
             clankers::modes::daemon::run_daemon(provider, tools, config, &paths).await?;

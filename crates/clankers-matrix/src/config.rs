@@ -45,6 +45,11 @@ pub struct MatrixConfig {
     #[serde(default)]
     pub rpc_allowlist: Vec<String>,
 
+    /// Users allowed to interact with the daemon (empty = allow all).
+    /// Supports exact Matrix user IDs like `@alice:matrix.org`.
+    #[serde(default)]
+    pub allowed_users: Vec<String>,
+
     /// Directory for Matrix SDK state/crypto store
     #[serde(skip_serializing_if = "Option::is_none")]
     pub store_path: Option<PathBuf>,
@@ -71,6 +76,7 @@ impl Default for MatrixConfig {
             announce_on_join: true,
             accept_rpc: true,
             rpc_allowlist: Vec::new(),
+            allowed_users: Vec::new(),
             store_path: None,
         }
     }
