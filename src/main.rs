@@ -1333,7 +1333,13 @@ async fn main() -> Result<()> {
                             paths.pi_auth.as_deref(),
                             cli.account.as_deref(),
                         )?;
-                        let tools = clankers::modes::common::build_default_tools();
+                        let rpc_process_monitor = {
+                            let config = clankers::procmon::ProcessMonitorConfig::default();
+                            let monitor = std::sync::Arc::new(clankers::procmon::ProcessMonitor::new(config, None));
+                            monitor.clone().start();
+                            monitor
+                        };
+                        let tools = clankers::modes::common::build_tools_with_events(None, None, None, None, Some(rpc_process_monitor));
                         Some(clankers::modes::rpc::iroh::RpcContext {
                             provider,
                             tools,
@@ -1856,7 +1862,13 @@ async fn main() -> Result<()> {
                 cli.account.as_deref(),
             )?;
 
-            let tools = clankers::modes::common::build_default_tools();
+            let process_monitor = {
+                let config = clankers::procmon::ProcessMonitorConfig::default();
+                let monitor = std::sync::Arc::new(clankers::procmon::ProcessMonitor::new(config, None));
+                monitor.clone().start();
+                monitor
+            };
+            let tools = clankers::modes::common::build_tools_with_events(None, None, None, None, Some(process_monitor));
 
             let config = clankers::modes::daemon::DaemonConfig {
                 model: model.clone(),
@@ -2125,11 +2137,17 @@ async fn main() -> Result<()> {
                     paths.pi_auth.as_deref(),
                     cli.account.as_deref(),
                 )?;
+                let headless_process_monitor = {
+                    let config = clankers::procmon::ProcessMonitorConfig::default();
+                    let monitor = std::sync::Arc::new(clankers::procmon::ProcessMonitor::new(config, None));
+                    monitor.clone().start();
+                    monitor
+                };
                 let tools = if cli.tools.as_deref() == Some("none") || cli.tools.as_deref() == Some("") {
                     Vec::new()
                 } else {
                     let all_tools =
-                        clankers::modes::common::build_all_tools(None, None, None, Some(&plugin_manager), None, None);
+                        clankers::modes::common::build_all_tools(None, None, None, Some(&plugin_manager), None, Some(headless_process_monitor));
                     if let Some(ref allowed) = cli.tools {
                         let allowed_set: std::collections::HashSet<&str> =
                             allowed.split(',').map(|s| s.trim()).collect();

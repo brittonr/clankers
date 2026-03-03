@@ -3,7 +3,6 @@
 //! Shows CPU/memory usage for tracked processes, allowing users to see
 //! what child processes (bash, subagents, etc.) are running and their resource usage.
 
-use std::sync::Arc;
 use std::time::Duration;
 
 use crossterm::event::KeyCode;
@@ -18,7 +17,6 @@ use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
 
-use crate::procmon::ProcessMonitor;
 use crate::procmon::ProcessMonitorHandle;
 use crate::procmon::ProcessState;
 use crate::tui::panel::DrawContext;
@@ -67,6 +65,7 @@ enum EntryState {
 
 /// A process entry for display
 #[derive(Debug, Clone)]
+#[allow(dead_code)] // tool_name used in future detail view
 struct ProcessEntry {
     pid: u32,
     cpu_percent: f32,
@@ -329,7 +328,7 @@ impl Panel for ProcessPanel {
                 entry.command.clone()
             };
 
-            let mut spans = vec![
+            let spans = vec![
                 self.nav.prefix_span(i, ctx.focused),
                 Span::styled(format!("{:>6}", entry.pid), Style::default().fg(ctx.theme.fg)),
                 Span::raw("  "),
@@ -381,7 +380,7 @@ impl Panel for ProcessPanel {
                 };
 
                 let index = offset + i;
-                let mut spans = vec![
+                let spans = vec![
                     self.nav.prefix_span(index, ctx.focused),
                     Span::styled(format!("{:>6}", entry.pid), Style::default().fg(Color::DarkGray)),
                     Span::raw("  "),

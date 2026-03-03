@@ -259,8 +259,12 @@ pub async fn run_interactive(
         let config = crate::procmon::ProcessMonitorConfig::default();
         let monitor = std::sync::Arc::new(crate::procmon::ProcessMonitor::new(config, Some(event_tx.clone())));
         monitor.clone().start();
-        Some(monitor)
+        monitor
     };
+
+    // Wire process monitor into the TUI panel
+    app.process_panel = crate::tui::components::process_panel::ProcessPanel::new()
+        .with_monitor(process_monitor.clone());
 
     let tools = crate::modes::common::build_all_tools(
         Some(event_tx),
@@ -268,7 +272,7 @@ pub async fn run_interactive(
         Some(todo_tx),
         plugin_manager.as_ref(),
         Some(bash_confirm_tx),
-        process_monitor,
+        Some(process_monitor),
     );
 
     // Populate tool info for /tools slash command
