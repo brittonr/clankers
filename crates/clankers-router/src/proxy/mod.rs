@@ -354,7 +354,6 @@ fn convert_request(req: ChatCompletionRequest) -> CompletionRequest {
         temperature: req.temperature,
         tools,
         thinking: None,
-            extra_params: Default::default(),
         extra_params: req.extra,
     }
 }

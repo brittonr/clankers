@@ -13,8 +13,10 @@ use serde_json::json;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tracing::debug;
+use tracing::info;
 use tracing::warn;
 
+use crate::credential_pool::CredentialPool;
 use crate::error::Error;
 use crate::error::Result;
 use crate::model::Model;
@@ -32,10 +34,16 @@ const BASE_URL: &str = "https://api.anthropic.com";
 const API_VERSION: &str = "2023-06-01";
 
 /// Anthropic Messages API provider.
+///
+/// Supports multiple credentials (accounts) via a [`CredentialPool`].
+/// When one account is rate-limited, automatically fails over to the next.
 pub struct AnthropicProvider {
     client: Client,
     base_url: String,
+    /// Legacy single-credential field (used when pool is None)
     credential: RwLock<Credential>,
+    /// Multi-credential pool (preferred when present)
+    pool: Option<CredentialPool>,
     models: Vec<Model>,
     retry: RetryConfig,
 }
@@ -48,18 +56,49 @@ pub enum Credential {
 }
 
 impl Credential {
-    fn is_oauth(&self) -> bool {
+    /// Whether this credential is an OAuth token.
+    pub fn is_oauth(&self) -> bool {
         matches!(self, Credential::OAuth(_))
+    }
+
+    /// Get the raw token string.
+    pub fn token(&self) -> &str {
+        match self {
+            Credential::ApiKey(k) => k,
+            Credential::OAuth(t) => t,
+        }
     }
 }
 
 impl AnthropicProvider {
+    /// Create a provider with a single credential (backwards compatible).
     #[allow(clippy::new_ret_no_self)]
     pub fn new(credential: Credential, base_url: Option<String>) -> Arc<dyn Provider> {
         Arc::new(Self {
             client: Client::builder().timeout(Duration::from_secs(300)).build().expect("Failed to build HTTP client"),
             base_url: base_url.unwrap_or_else(|| BASE_URL.to_string()),
             credential: RwLock::new(credential),
+            pool: None,
+            models: default_models(),
+            retry: RetryConfig::default(),
+        })
+    }
+
+    /// Create a provider with multiple credentials for load balancing / failover.
+    ///
+    /// When one account hits rate limits, the provider automatically rotates to
+    /// the next healthy credential.
+    pub fn with_pool(
+        pool: CredentialPool,
+        base_url: Option<String>,
+    ) -> Arc<dyn Provider> {
+        // Use the first credential as the legacy fallback
+        let fallback = Credential::ApiKey(String::new());
+        Arc::new(Self {
+            client: Client::builder().timeout(Duration::from_secs(300)).build().expect("Failed to build HTTP client"),
+            base_url: base_url.unwrap_or_else(|| BASE_URL.to_string()),
+            credential: RwLock::new(fallback),
+            pool: Some(pool),
             models: default_models(),
             retry: RetryConfig::default(),
         })
@@ -69,15 +108,129 @@ impl AnthropicProvider {
     pub async fn update_credential(&self, cred: Credential) {
         *self.credential.write().await = cred;
     }
+
+    /// Get a reference to the credential pool, if configured.
+    pub fn pool(&self) -> Option<&CredentialPool> {
+        self.pool.as_ref()
+    }
 }
 
 #[async_trait]
 impl Provider for AnthropicProvider {
     async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
+        // If we have a credential pool, use pool-aware dispatch with auto-rotation.
+        // Otherwise, fall back to single-credential path.
+        if let Some(ref pool) = self.pool {
+            return self.complete_with_pool(pool, request, tx).await;
+        }
+
         let is_oauth = self.credential.read().await.is_oauth();
         let body = build_request_body(&request, is_oauth)?;
         let cred = self.credential.read().await.clone();
 
+        self.do_request_with_retry(&cred, &body, &tx).await
+    }
+
+    fn models(&self) -> &[Model] {
+        &self.models
+    }
+
+    fn name(&self) -> &str {
+        "anthropic"
+    }
+
+    async fn is_available(&self) -> bool {
+        // If we have a pool, check if any credential is available
+        if let Some(ref pool) = self.pool {
+            return pool.select().await.is_some();
+        }
+
+        let cred = self.credential.read().await;
+        match &*cred {
+            Credential::ApiKey(key) => !key.is_empty(),
+            Credential::OAuth(token) => !token.is_empty(),
+        }
+    }
+}
+
+impl AnthropicProvider {
+    /// Complete a request using the credential pool, rotating on rate-limit errors.
+    async fn complete_with_pool(
+        &self,
+        pool: &CredentialPool,
+        request: CompletionRequest,
+        tx: mpsc::Sender<StreamEvent>,
+    ) -> Result<()> {
+        let leases = pool.select_all_available().await;
+
+        if leases.is_empty() {
+            return Err(Error::Provider {
+                message: "all Anthropic credentials exhausted (rate-limited)".into(),
+                status: Some(429),
+            });
+        }
+
+        let num_creds = leases.len();
+        let mut last_error: Option<Error> = None;
+
+        for (i, lease) in leases.iter().enumerate() {
+            let is_oauth = lease.is_oauth();
+            let body = build_request_body(&request, is_oauth)?;
+
+            let cred = if is_oauth {
+                Credential::OAuth(lease.token().to_string())
+            } else {
+                Credential::ApiKey(lease.token().to_string())
+            };
+
+            if i > 0 {
+                info!(
+                    "rotating to Anthropic account '{}' ({}/{})",
+                    lease.account(),
+                    i + 1,
+                    num_creds,
+                );
+            }
+
+            match self.do_request_with_retry(&cred, &body, &tx).await {
+                Ok(()) => {
+                    lease.report_success().await;
+                    return Ok(());
+                }
+                Err(e) => {
+                    let status = e.status_code().unwrap_or(0);
+                    lease.report_failure(status).await;
+
+                    // Only rotate to next credential on retryable errors
+                    if e.is_retryable() {
+                        warn!(
+                            "Anthropic account '{}' returned {} — trying next credential",
+                            lease.account(), status,
+                        );
+                        last_error = Some(e);
+                        continue;
+                    }
+
+                    // Non-retryable errors (auth, bad request) stop immediately
+                    return Err(e);
+                }
+            }
+        }
+
+        // All credentials exhausted
+        Err(last_error.unwrap_or_else(|| Error::Provider {
+            message: "all Anthropic credentials exhausted".into(),
+            status: Some(429),
+        }))
+    }
+
+    /// Send a request to the Anthropic API with retries (single credential).
+    async fn do_request_with_retry(
+        &self,
+        cred: &Credential,
+        body: &Value,
+        tx: &mpsc::Sender<StreamEvent>,
+    ) -> Result<()> {
         let url = format!("{}/v1/messages", self.base_url);
 
         let mut attempt = 0;
@@ -90,7 +243,7 @@ impl Provider for AnthropicProvider {
                 .header("content-type", "application/json")
                 .header("anthropic-version", API_VERSION);
 
-            match &cred {
+            match cred {
                 Credential::OAuth(token) => {
                     builder = builder
                         .header("authorization", format!("Bearer {}", token))
@@ -106,14 +259,14 @@ impl Provider for AnthropicProvider {
                 }
             };
 
-            let resp = builder.json(&body).send().await.map_err(|e| Error::Provider {
+            let resp = builder.json(body).send().await.map_err(|e| Error::Provider {
                 message: format!("Anthropic request failed: {}", e),
                 status: None,
             })?;
 
             let status = resp.status();
             if status.is_success() {
-                return parse_sse_stream(resp, &tx).await;
+                return parse_sse_stream(resp, tx).await;
             }
 
             let status_code = status.as_u16();
@@ -145,22 +298,6 @@ impl Provider for AnthropicProvider {
                 status_code,
                 format!("Anthropic API error {}: {}", status_code, truncate(&body_text, 500)),
             ));
-        }
-    }
-
-    fn models(&self) -> &[Model] {
-        &self.models
-    }
-
-    fn name(&self) -> &str {
-        "anthropic"
-    }
-
-    async fn is_available(&self) -> bool {
-        let cred = self.credential.read().await;
-        match &*cred {
-            Credential::ApiKey(key) => !key.is_empty(),
-            Credential::OAuth(token) => !token.is_empty(),
         }
     }
 }

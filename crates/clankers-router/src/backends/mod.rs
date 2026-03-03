@@ -4,4 +4,5 @@
 //! for a specific LLM API.
 
 pub mod anthropic;
+pub mod huggingface;
 pub mod openai_compat;

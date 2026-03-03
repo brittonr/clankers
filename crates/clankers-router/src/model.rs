@@ -68,6 +68,11 @@ impl ModelAliases {
             "gemini-flash" | "gemini-2.5-flash" => Some("gemini-2.5-flash-preview-05-20"),
             "deepseek" | "deepseek-v3" => Some("deepseek-chat"),
             "deepseek-r1" => Some("deepseek-reasoner"),
+            "llama-70b" | "hf-llama" => Some("meta-llama/Llama-3.3-70B-Instruct"),
+            "qwen-72b" | "hf-qwen" => Some("Qwen/Qwen2.5-72B-Instruct"),
+            "qwen-coder" | "hf-coder" => Some("Qwen/Qwen2.5-Coder-32B-Instruct"),
+            "phi-4" | "hf-phi" => Some("microsoft/Phi-4"),
+            "gemma-27b" | "hf-gemma" => Some("google/gemma-2-27b-it"),
             _ => None,
         }
     }

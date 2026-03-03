@@ -16,8 +16,11 @@ use clankers_router::auth::AuthStore;
 use clankers_router::auth::StoredCredential;
 use clankers_router::auth::env_var_for_provider;
 use clankers_router::auth::resolve_credential;
+use clankers_router::backends::huggingface::HubClient;
 use clankers_router::backends::openai_compat::OpenAICompatConfig;
 use clankers_router::backends::openai_compat::OpenAICompatProvider;
+use clankers_router::credential_pool::CredentialPool;
+use clankers_router::credential_pool::SelectionStrategy;
 use clankers_router::model::ModelAliases;
 use clankers_router::oauth;
 use clankers_router::provider::CompletionRequest;
@@ -121,6 +124,11 @@ enum Commands {
         #[arg(long)]
         json: bool,
     },
+    /// HuggingFace Hub — search, pull, and serve models
+    Hf {
+        #[command(subcommand)]
+        action: HfAction,
+    },
     /// Run the router as an RPC daemon + OpenAI-compatible proxy
     Serve {
         /// Run in background (detach from terminal)
@@ -183,6 +191,60 @@ enum AuthAction {
     },
 }
 
+#[derive(Subcommand)]
+enum HfAction {
+    /// Search HuggingFace Hub for text-generation models
+    Search {
+        /// Search query (model name, author, or keywords)
+        query: String,
+        /// Max results (default: 20)
+        #[arg(long, default_value_t = 20)]
+        limit: usize,
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Show details about a specific model on the Hub
+    Info {
+        /// Model ID (e.g., "meta-llama/Llama-3.3-70B-Instruct")
+        model: String,
+    },
+    /// List available GGUF files for a model
+    Files {
+        /// Model ID (e.g., "bartowski/Llama-3.3-70B-Instruct-GGUF")
+        model: String,
+    },
+    /// Pull (download) a GGUF model from HuggingFace Hub
+    Pull {
+        /// Model ID (e.g., "bartowski/Llama-3.3-70B-Instruct-GGUF")
+        model: String,
+        /// Quantization to download (e.g., Q4_K_M, Q8_0). Defaults to smallest.
+        #[arg(short, long)]
+        quant: Option<String>,
+        /// Register with Ollama after download
+        #[arg(long)]
+        ollama: bool,
+        /// Custom Ollama model name (implies --ollama)
+        #[arg(long)]
+        ollama_name: Option<String>,
+    },
+    /// List locally cached (pulled) models
+    List,
+    /// Remove a cached model
+    Remove {
+        /// Model ID to remove
+        model: String,
+    },
+    /// Register a previously pulled model with Ollama
+    Ollama {
+        /// Model ID (must be already pulled)
+        model: String,
+        /// Custom Ollama name
+        #[arg(long)]
+        name: Option<String>,
+    },
+}
+
 #[derive(ValueEnum, Clone, Copy)]
 enum OutputFormat {
     /// Plain text (streamed tokens)
@@ -208,97 +270,164 @@ fn resolve_auth_path(cli: &Cli) -> PathBuf {
 fn build_providers(cli: &Cli, auth_store: &AuthStore) -> Vec<Arc<dyn Provider>> {
     let mut providers: Vec<Arc<dyn Provider>> = Vec::new();
 
-    // Helper: resolve credential for a provider
-    let cred_for = |name: &str| -> Option<StoredCredential> {
-        // CLI override applies to the selected provider only
+    // ── Helpers ──────────────────────────────────────────────────────
+
+    // Collect all credentials for a provider (multi-account pool).
+    // Returns: Vec<(account_name, StoredCredential)> with active first.
+    // Also checks env var as an additional source.
+    let all_creds_for = |name: &str| -> Vec<(String, StoredCredential)> {
+        let mut creds = auth_store.all_credentials(name);
+
+        // CLI override replaces the pool entirely
         if cli.provider.as_deref() == Some(name) {
             if let Some(ref k) = cli.api_key {
-                return Some(StoredCredential::ApiKey {
+                return vec![("cli-override".into(), StoredCredential::ApiKey {
                     api_key: k.clone(),
                     label: Some("cli-override".into()),
-                });
+                })];
             }
         }
-        resolve_credential(name, None, auth_store, None)
+
+        // Add env var as an extra source (if not already present)
+        if let Some(env_var) = env_var_for_provider(name)
+            && let Ok(key) = std::env::var(env_var)
+            && !key.is_empty()
+        {
+            let env_label = format!("env:{}", env_var);
+            let already_has = creds.iter().any(|(_, c)| c.token() == key);
+            if !already_has {
+                creds.push((env_label.clone(), StoredCredential::ApiKey {
+                    api_key: key,
+                    label: Some(env_label),
+                }));
+            }
+        }
+
+        creds
     };
 
-    // Anthropic (native Messages API)
-    if let Some(cred) = cred_for("anthropic") {
-        use clankers_router::backends::anthropic::AnthropicProvider;
-        use clankers_router::backends::anthropic::Credential;
-        let base_url = if cli.provider.as_deref() == Some("anthropic") {
-            cli.api_base.clone()
-        } else {
-            None
-        };
-        let anthropic_cred = if cred.is_oauth() {
-            Credential::OAuth(cred.token().to_string())
-        } else {
-            Credential::ApiKey(cred.token().to_string())
-        };
-        providers.push(AnthropicProvider::new(anthropic_cred, base_url));
-    }
+    // Helper: build an OpenAI-compat provider with optional pool
+    let build_openai_compat = |name: &str, config_fn: fn(String) -> OpenAICompatConfig| -> Option<Arc<dyn Provider>> {
+        let creds = all_creds_for(name);
+        if creds.is_empty() {
+            return None;
+        }
+        let primary_key = creds[0].1.token().to_string();
+        let config = config_fn(primary_key);
 
-    // Helper that returns just the token string
-    let key_for = |name: &str| -> Option<String> { cred_for(name).map(|c| c.token().to_string()) };
+        if creds.len() > 1 {
+            let pool = CredentialPool::new(creds, SelectionStrategy::Failover);
+            tracing::info!("{}: {} account(s) in pool", name, pool.len());
+            Some(OpenAICompatProvider::with_pool(config, pool))
+        } else {
+            Some(OpenAICompatProvider::new(config))
+        }
+    };
 
-    // OpenAI
-    if let Some(key) = key_for("openai") {
-        let mut config = OpenAICompatConfig::openai(key);
-        if cli.provider.as_deref() == Some("openai") {
-            if let Some(ref base) = cli.api_base {
-                config.base_url = base.clone();
+    // ── Anthropic (native Messages API) ─────────────────────────────
+
+    {
+        let creds = all_creds_for("anthropic");
+        if !creds.is_empty() {
+            use clankers_router::backends::anthropic::AnthropicProvider;
+            use clankers_router::backends::anthropic::Credential;
+            let base_url = if cli.provider.as_deref() == Some("anthropic") {
+                cli.api_base.clone()
+            } else {
+                None
+            };
+
+            if creds.len() > 1 {
+                // Multi-account: build a credential pool
+                let pool = CredentialPool::new(creds, SelectionStrategy::Failover);
+                tracing::info!("anthropic: {} account(s) in pool", pool.len());
+                providers.push(AnthropicProvider::with_pool(pool, base_url));
+            } else {
+                // Single account: legacy path
+                let cred = &creds[0].1;
+                let anthropic_cred = if cred.is_oauth() {
+                    Credential::OAuth(cred.token().to_string())
+                } else {
+                    Credential::ApiKey(cred.token().to_string())
+                };
+                providers.push(AnthropicProvider::new(anthropic_cred, base_url));
             }
         }
-        providers.push(OpenAICompatProvider::new(config));
     }
 
-    // Groq
-    if let Some(key) = key_for("groq") {
-        providers.push(OpenAICompatProvider::new(OpenAICompatConfig::groq(key)));
+    // ── OpenAI ──────────────────────────────────────────────────────
+
+    {
+        let creds = all_creds_for("openai");
+        if !creds.is_empty() {
+            let primary_key = creds[0].1.token().to_string();
+            let mut config = OpenAICompatConfig::openai(primary_key);
+            if cli.provider.as_deref() == Some("openai") {
+                if let Some(ref base) = cli.api_base {
+                    config.base_url = base.clone();
+                }
+            }
+            if creds.len() > 1 {
+                let pool = CredentialPool::new(creds, SelectionStrategy::Failover);
+                tracing::info!("openai: {} account(s) in pool", pool.len());
+                providers.push(OpenAICompatProvider::with_pool(config, pool));
+            } else {
+                providers.push(OpenAICompatProvider::new(config));
+            }
+        }
     }
 
-    // DeepSeek
-    if let Some(key) = key_for("deepseek") {
-        providers.push(OpenAICompatProvider::new(OpenAICompatConfig::deepseek(key)));
+    // ── Simple OpenAI-compat providers (single-function setup) ──────
+
+    if let Some(p) = build_openai_compat("groq", OpenAICompatConfig::groq) {
+        providers.push(p);
+    }
+    if let Some(p) = build_openai_compat("deepseek", OpenAICompatConfig::deepseek) {
+        providers.push(p);
+    }
+    if let Some(p) = build_openai_compat("openrouter", OpenAICompatConfig::openrouter) {
+        providers.push(p);
+    }
+    if let Some(p) = build_openai_compat("mistral", OpenAICompatConfig::mistral) {
+        providers.push(p);
+    }
+    if let Some(p) = build_openai_compat("together", OpenAICompatConfig::together) {
+        providers.push(p);
+    }
+    if let Some(p) = build_openai_compat("fireworks", OpenAICompatConfig::fireworks) {
+        providers.push(p);
+    }
+    if let Some(p) = build_openai_compat("perplexity", OpenAICompatConfig::perplexity) {
+        providers.push(p);
+    }
+    if let Some(p) = build_openai_compat("xai", OpenAICompatConfig::xai) {
+        providers.push(p);
+    }
+    if let Some(p) = build_openai_compat("huggingface", OpenAICompatConfig::huggingface) {
+        providers.push(p);
     }
 
-    // OpenRouter
-    if let Some(key) = key_for("openrouter") {
-        providers.push(OpenAICompatProvider::new(OpenAICompatConfig::openrouter(key)));
+    // ── Google/Gemini (check both provider names) ───────────────────
+
+    {
+        let mut creds = all_creds_for("google");
+        if creds.is_empty() {
+            creds = all_creds_for("gemini");
+        }
+        if !creds.is_empty() {
+            let primary_key = creds[0].1.token().to_string();
+            let config = OpenAICompatConfig::google(primary_key);
+            if creds.len() > 1 {
+                let pool = CredentialPool::new(creds, SelectionStrategy::Failover);
+                providers.push(OpenAICompatProvider::with_pool(config, pool));
+            } else {
+                providers.push(OpenAICompatProvider::new(config));
+            }
+        }
     }
 
-    // Google/Gemini (try "google" key first, then "gemini" alias)
-    if let Some(key) = key_for("google").or_else(|| key_for("gemini")) {
-        providers.push(OpenAICompatProvider::new(OpenAICompatConfig::google(key)));
-    }
+    // ── Local (always available if --api-base points to local) ──────
 
-    // Mistral
-    if let Some(key) = key_for("mistral") {
-        providers.push(OpenAICompatProvider::new(OpenAICompatConfig::mistral(key)));
-    }
-
-    // Together
-    if let Some(key) = key_for("together") {
-        providers.push(OpenAICompatProvider::new(OpenAICompatConfig::together(key)));
-    }
-
-    // Fireworks
-    if let Some(key) = key_for("fireworks") {
-        providers.push(OpenAICompatProvider::new(OpenAICompatConfig::fireworks(key)));
-    }
-
-    // Perplexity
-    if let Some(key) = key_for("perplexity") {
-        providers.push(OpenAICompatProvider::new(OpenAICompatConfig::perplexity(key)));
-    }
-
-    // xAI (Grok)
-    if let Some(key) = key_for("xai") {
-        providers.push(OpenAICompatProvider::new(OpenAICompatConfig::xai(key)));
-    }
-
-    // Local (always available if --api-base points to local)
     if cli.provider.as_deref() == Some("local") {
         let base = cli.api_base.clone().unwrap_or_else(|| "http://localhost:11434/v1".into());
         let models = vec![clankers_router::Model {
@@ -402,6 +531,9 @@ async fn main() {
         }
         Some(Commands::Usage { days, total, json }) => {
             run_usage(*days, *total, *json);
+        }
+        Some(Commands::Hf { action }) => {
+            run_hf(&cli, &auth_store, action).await;
         }
         Some(Commands::Serve {
             daemon,
@@ -561,6 +693,7 @@ async fn run_auth(auth_path: &PathBuf, action: &AuthAction) {
                     "anthropic",
                     "openai",
                     "openrouter",
+                    "huggingface",
                     "groq",
                     "deepseek",
                     "mistral",
@@ -1192,6 +1325,248 @@ mod scopeguard {
                 f(v);
             }
         }
+    }
+}
+
+// ── HuggingFace Hub ─────────────────────────────────────────────────────
+
+fn resolve_hf_token(cli: &Cli, auth_store: &AuthStore) -> Option<String> {
+    // CLI override
+    if let Some(ref key) = cli.api_key {
+        return Some(key.clone());
+    }
+    // Auth store or env (HF_TOKEN)
+    resolve_credential("huggingface", None, auth_store, None).map(|c| c.token().to_string())
+}
+
+async fn run_hf(cli: &Cli, auth_store: &AuthStore, action: &HfAction) {
+    let token = resolve_hf_token(cli, auth_store);
+    let hub = HubClient::new(token);
+
+    match action {
+        HfAction::Search { query, limit, json } => {
+            match hub.search(query, Some(*limit)).await {
+                Ok(models) => {
+                    if models.is_empty() {
+                        eprintln!("No models found for '{}'", query);
+                        return;
+                    }
+                    if *json {
+                        println!("{}", serde_json::to_string_pretty(&models).unwrap());
+                    } else {
+                        println!(
+                            "{:<50} {:>10} {:>6} {:<20} {}",
+                            "MODEL", "DOWNLOADS", "LIKES", "PIPELINE", "GATED"
+                        );
+                        println!("{}", "─".repeat(100));
+                        for m in &models {
+                            println!(
+                                "{:<50} {:>10} {:>6} {:<20} {}",
+                                truncate_str(&m.model_id, 50),
+                                m.downloads_display(),
+                                m.likes,
+                                m.pipeline_tag.as_deref().unwrap_or("—"),
+                                if m.is_gated() { "🔒" } else { "" },
+                            );
+                        }
+                        println!("\n{} model(s) found", models.len());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Search failed: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        HfAction::Info { model } => {
+            match hub.model_info(model).await {
+                Ok(info) => {
+                    println!("Model:     {}", info.model_id);
+                    if let Some(ref author) = info.author {
+                        println!("Author:    {}", author);
+                    }
+                    println!("Downloads: {}", info.downloads);
+                    println!("Likes:     {}", info.likes);
+                    if let Some(ref pipeline) = info.pipeline_tag {
+                        println!("Pipeline:  {}", pipeline);
+                    }
+                    if let Some(ref lib) = info.library_name {
+                        println!("Library:   {}", lib);
+                    }
+                    if !info.tags.is_empty() {
+                        println!("Tags:      {}", info.tags.join(", "));
+                    }
+                    let gguf_count = info.siblings.iter().filter(|s| s.filename.ends_with(".gguf")).count();
+                    if gguf_count > 0 {
+                        println!("GGUF files: {} (run `clankers-router hf files {}` to list)", gguf_count, model);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Failed to get model info: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        HfAction::Files { model } => {
+            match hub.list_gguf_files(model).await {
+                Ok(files) => {
+                    if files.is_empty() {
+                        eprintln!("No GGUF files found in {}", model);
+                        eprintln!("Hint: Try a GGUF-specific repo (e.g., bartowski/{}-GGUF)", model.split('/').last().unwrap_or(model));
+                        return;
+                    }
+                    println!("{:<50} {:>10} {:<10}", "FILENAME", "SIZE", "QUANT");
+                    println!("{}", "─".repeat(74));
+                    for f in &files {
+                        println!(
+                            "{:<50} {:>10} {:<10}",
+                            truncate_str(&f.filename, 50),
+                            format_hf_bytes(f.size_bytes),
+                            f.quantization.as_deref().unwrap_or("—"),
+                        );
+                    }
+                    println!("\n{} GGUF file(s)", files.len());
+                    println!("\nPull with: clankers-router hf pull {} --quant Q4_K_M", model);
+                }
+                Err(e) => {
+                    eprintln!("Failed to list files: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        HfAction::Pull { model, quant, ollama, ollama_name } => {
+            let do_ollama = *ollama || ollama_name.is_some();
+            eprintln!("Pulling {} ...", model);
+
+            // Progress callback
+            let progress = Box::new(|downloaded: u64, total: u64| {
+                if total > 0 {
+                    let pct = (downloaded as f64 / total as f64 * 100.0) as u32;
+                    eprint!(
+                        "\r  {} / {} ({}%)",
+                        format_hf_bytes(downloaded),
+                        format_hf_bytes(total),
+                        pct,
+                    );
+                }
+            });
+
+            match hub.pull(model, quant.as_deref(), Some(progress)).await {
+                Ok(pulled) => {
+                    eprintln!();
+                    println!("Downloaded: {}", pulled.local_path.display());
+                    println!("Size:       {}", format_hf_bytes(pulled.size_bytes));
+                    if let Some(ref q) = pulled.quantization {
+                        println!("Quant:      {}", q);
+                    }
+
+                    if do_ollama {
+                        match hub.register_with_ollama(&pulled, ollama_name.as_deref()).await {
+                            Ok(name) => {
+                                println!("\nRegistered with Ollama as: {}", name);
+                                println!("Run with:  ollama run {}", name);
+                                println!("Or route:  clankers-router --provider local --model {} ask \"hello\"", name);
+                            }
+                            Err(e) => {
+                                eprintln!("\nFailed to register with Ollama: {}", e);
+                                eprintln!("You can register manually later:");
+                                eprintln!("  clankers-router hf ollama {}", model);
+                            }
+                        }
+                    } else {
+                        println!("\nTo serve with Ollama:");
+                        println!("  clankers-router hf pull {} --ollama", model);
+                        println!("Or register an existing pull:");
+                        println!("  clankers-router hf ollama {}", model);
+                    }
+                }
+                Err(e) => {
+                    eprintln!("\nPull failed: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        HfAction::List => {
+            let cached = hub.list_cached();
+            if cached.is_empty() {
+                println!("No cached models.");
+                println!("Pull a model with: clankers-router hf pull <model-id>");
+                return;
+            }
+            println!("{:<45} {:<30} {:>10} {:<10}", "MODEL", "FILE", "SIZE", "QUANT");
+            println!("{}", "─".repeat(99));
+            for m in &cached {
+                println!(
+                    "{:<45} {:<30} {:>10} {:<10}",
+                    truncate_str(&m.model_id, 45),
+                    truncate_str(&m.filename, 30),
+                    format_hf_bytes(m.size_bytes),
+                    m.quantization.as_deref().unwrap_or("—"),
+                );
+            }
+            println!("\nCache dir: {}", hub.cache_dir().display());
+        }
+        HfAction::Remove { model } => {
+            match hub.remove_cached(model) {
+                Ok(removed) => {
+                    if removed.is_empty() {
+                        eprintln!("No cached files found for {}", model);
+                    } else {
+                        for f in &removed {
+                            println!("Removed: {}", f.display());
+                        }
+                        println!("\nRemoved {} file(s)", removed.len());
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Remove failed: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        HfAction::Ollama { model, name } => {
+            let cached = hub.list_cached();
+            let pulled = cached.iter().find(|m| m.model_id == *model);
+            match pulled {
+                Some(pulled) => {
+                    match hub.register_with_ollama(pulled, name.as_deref()).await {
+                        Ok(ollama_name) => {
+                            println!("Registered with Ollama as: {}", ollama_name);
+                            println!("Run with:  ollama run {}", ollama_name);
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to register with Ollama: {}", e);
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                None => {
+                    eprintln!("Model '{}' not found in cache.", model);
+                    eprintln!("Pull it first: clankers-router hf pull {}", model);
+                    std::process::exit(1);
+                }
+            }
+        }
+    }
+}
+
+fn truncate_str(s: &str, max_len: usize) -> String {
+    if s.len() <= max_len {
+        s.to_string()
+    } else {
+        format!("{}…", &s[..max_len - 1])
+    }
+}
+
+fn format_hf_bytes(bytes: u64) -> String {
+    if bytes >= 1_073_741_824 {
+        format!("{:.1} GB", bytes as f64 / 1_073_741_824.0)
+    } else if bytes >= 1_048_576 {
+        format!("{:.1} MB", bytes as f64 / 1_048_576.0)
+    } else if bytes >= 1024 {
+        format!("{:.1} KB", bytes as f64 / 1024.0)
+    } else {
+        format!("{} B", bytes)
     }
 }
 

@@ -286,6 +286,33 @@ impl AuthStore {
             .collect()
     }
 
+    /// Get all non-expired credentials for a provider (for credential pools).
+    ///
+    /// Returns `(account_name, credential)` pairs ordered with the active
+    /// account first.
+    pub fn all_credentials(&self, provider: &str) -> Vec<(String, StoredCredential)> {
+        let Some(prov) = self.providers.get(provider) else {
+            return Vec::new();
+        };
+
+        let active = prov.active_account.as_deref().unwrap_or("default");
+        let mut creds: Vec<(String, StoredCredential)> = prov
+            .accounts
+            .iter()
+            .filter(|(_, cred)| !cred.is_expired())
+            .map(|(name, cred)| (name.clone(), cred.clone()))
+            .collect();
+
+        // Sort: active account first, then alphabetical
+        creds.sort_by(|(a, _), (b, _)| {
+            let a_active = a == active;
+            let b_active = b == active;
+            b_active.cmp(&a_active).then_with(|| a.cmp(b))
+        });
+
+        creds
+    }
+
     /// Summary string for all configured credentials
     pub fn summary(&self) -> String {
         let providers = self.configured_providers();
@@ -328,6 +355,7 @@ pub fn env_var_for_provider(provider: &str) -> Option<&'static str> {
         "openai" => Some("OPENAI_API_KEY"),
         "openrouter" => Some("OPENROUTER_API_KEY"),
         "google" | "gemini" => Some("GOOGLE_API_KEY"),
+        "huggingface" | "hf" => Some("HF_TOKEN"),
         "mistral" => Some("MISTRAL_API_KEY"),
         "groq" => Some("GROQ_API_KEY"),
         "deepseek" => Some("DEEPSEEK_API_KEY"),
@@ -569,5 +597,70 @@ mod tests {
 
         let loaded = AuthStore::load(&path);
         assert_eq!(loaded.active_credential("anthropic").unwrap().token(), "test-key");
+    }
+
+    #[test]
+    fn test_all_credentials_empty() {
+        let store = AuthStore::default();
+        assert!(store.all_credentials("anthropic").is_empty());
+    }
+
+    #[test]
+    fn test_all_credentials_single() {
+        let mut store = AuthStore::default();
+        store.set_credential("anthropic", "default", StoredCredential::ApiKey {
+            api_key: "key-1".into(),
+            label: None,
+        });
+        let creds = store.all_credentials("anthropic");
+        assert_eq!(creds.len(), 1);
+        assert_eq!(creds[0].0, "default");
+        assert_eq!(creds[0].1.token(), "key-1");
+    }
+
+    #[test]
+    fn test_all_credentials_multi_account_active_first() {
+        let mut store = AuthStore::default();
+        store.set_credential("anthropic", "personal", StoredCredential::ApiKey {
+            api_key: "key-personal".into(),
+            label: None,
+        });
+        store.set_credential("anthropic", "work", StoredCredential::ApiKey {
+            api_key: "key-work".into(),
+            label: None,
+        });
+        store.set_credential("anthropic", "backup", StoredCredential::ApiKey {
+            api_key: "key-backup".into(),
+            label: None,
+        });
+
+        // "personal" is active (first set is auto-activated)
+        let creds = store.all_credentials("anthropic");
+        assert_eq!(creds.len(), 3);
+        assert_eq!(creds[0].0, "personal"); // active first
+
+        // Switch active to "work"
+        store.switch_account("anthropic", "work");
+        let creds = store.all_credentials("anthropic");
+        assert_eq!(creds[0].0, "work"); // now work is first
+    }
+
+    #[test]
+    fn test_all_credentials_filters_expired() {
+        let mut store = AuthStore::default();
+        store.set_credential("anthropic", "valid", StoredCredential::ApiKey {
+            api_key: "key-1".into(),
+            label: None,
+        });
+        store.set_credential("anthropic", "expired", StoredCredential::OAuth {
+            access_token: "expired-token".into(),
+            refresh_token: "rt".into(),
+            expires_at_ms: 0, // expired
+            label: None,
+        });
+
+        let creds = store.all_credentials("anthropic");
+        assert_eq!(creds.len(), 1);
+        assert_eq!(creds[0].0, "valid");
     }
 }

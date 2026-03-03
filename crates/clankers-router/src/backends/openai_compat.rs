@@ -23,8 +23,10 @@ use serde::Serialize;
 use serde_json::Value;
 use serde_json::json;
 use tokio::sync::mpsc;
+use tracing::info;
 use tracing::warn;
 
+use crate::credential_pool::CredentialPool;
 use crate::error::Result;
 use crate::model::Model;
 use crate::provider::CompletionRequest;
@@ -192,23 +194,134 @@ impl OpenAICompatConfig {
     }
 }
 
-/// OpenAI-compatible provider implementation
+/// OpenAI-compatible provider implementation.
+///
+/// Supports multiple API keys via a [`CredentialPool`] for load balancing
+/// and automatic failover when one key is rate-limited.
 pub struct OpenAICompatProvider {
     config: OpenAICompatConfig,
     client: Client,
+    /// Optional credential pool for multi-key load balancing
+    pool: Option<CredentialPool>,
 }
 
 impl OpenAICompatProvider {
     pub fn new(config: OpenAICompatConfig) -> Arc<Self> {
         let client = Client::builder().timeout(config.timeout).build().expect("failed to build HTTP client");
-        Arc::new(Self { config, client })
+        Arc::new(Self { config, client, pool: None })
+    }
+
+    /// Create a provider with a credential pool for load balancing.
+    ///
+    /// When one API key hits rate limits, the provider rotates to the next.
+    pub fn with_pool(config: OpenAICompatConfig, pool: CredentialPool) -> Arc<Self> {
+        let client = Client::builder().timeout(config.timeout).build().expect("failed to build HTTP client");
+        Arc::new(Self { config, client, pool: Some(pool) })
+    }
+
+    /// Get a reference to the credential pool, if configured.
+    pub fn pool(&self) -> Option<&CredentialPool> {
+        self.pool.as_ref()
     }
 }
 
 #[async_trait]
 impl Provider for OpenAICompatProvider {
     async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
+        // If we have a credential pool, use pool-aware dispatch with auto-rotation.
+        if let Some(ref pool) = self.pool {
+            return self.complete_with_pool(pool, request, tx).await;
+        }
+
         let api_request = build_openai_request(&request);
+        self.do_request_with_retry(&self.config.api_key, &api_request, &request.model, tx).await
+    }
+
+    fn models(&self) -> &[Model] {
+        &self.config.models
+    }
+
+    fn name(&self) -> &str {
+        &self.config.name
+    }
+
+    async fn is_available(&self) -> bool {
+        // If we have a pool, check if any credential is available
+        if let Some(ref pool) = self.pool {
+            return pool.select().await.is_some();
+        }
+        // Local providers don't need auth; others need a non-empty key
+        self.config.name == "local" || !self.config.api_key.is_empty()
+    }
+}
+
+impl OpenAICompatProvider {
+    /// Complete using the credential pool, rotating on rate-limit errors.
+    async fn complete_with_pool(
+        &self,
+        pool: &CredentialPool,
+        request: CompletionRequest,
+        tx: mpsc::Sender<StreamEvent>,
+    ) -> Result<()> {
+        let leases = pool.select_all_available().await;
+
+        if leases.is_empty() {
+            return Err(crate::Error::Provider {
+                message: format!("all {} credentials exhausted (rate-limited)", self.config.name),
+                status: Some(429),
+            });
+        }
+
+        let api_request = build_openai_request(&request);
+        let num_creds = leases.len();
+        let mut last_error: Option<crate::Error> = None;
+
+        for (i, lease) in leases.iter().enumerate() {
+            let api_key = lease.token();
+
+            if i > 0 {
+                info!(
+                    "rotating to {} account '{}' ({}/{})",
+                    self.config.name, lease.account(), i + 1, num_creds,
+                );
+            }
+
+            match self.do_request_with_retry(api_key, &api_request, &request.model, tx.clone()).await {
+                Ok(()) => {
+                    lease.report_success().await;
+                    return Ok(());
+                }
+                Err(e) => {
+                    let status = e.status_code().unwrap_or(0);
+                    lease.report_failure(status).await;
+
+                    if e.is_retryable() {
+                        warn!(
+                            "{} account '{}' returned {} — trying next credential",
+                            self.config.name, lease.account(), status,
+                        );
+                        last_error = Some(e);
+                        continue;
+                    }
+                    return Err(e);
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| crate::Error::Provider {
+            message: format!("all {} credentials exhausted", self.config.name),
+            status: Some(429),
+        }))
+    }
+
+    /// Send a single request with retries (one credential).
+    async fn do_request_with_retry(
+        &self,
+        api_key: &str,
+        api_request: &OpenAIRequest,
+        model: &str,
+        tx: mpsc::Sender<StreamEvent>,
+    ) -> Result<()> {
         let url = format!("{}/chat/completions", self.config.base_url);
         let retry_config = RetryConfig::default();
 
@@ -220,15 +333,15 @@ impl Provider for OpenAICompatProvider {
                 .header("content-type", "application/json")
                 .header("accept", "text/event-stream");
 
-            if !self.config.api_key.is_empty() {
-                builder = builder.header("authorization", format!("Bearer {}", self.config.api_key));
+            if !api_key.is_empty() {
+                builder = builder.header("authorization", format!("Bearer {}", api_key));
             }
 
             for (key, value) in &self.config.extra_headers {
                 builder = builder.header(key.as_str(), value.as_str());
             }
 
-            let result = builder.json(&api_request).send().await;
+            let result = builder.json(api_request).send().await;
 
             match result {
                 Ok(resp) if resp.status().is_success() => break resp,
@@ -262,20 +375,7 @@ impl Provider for OpenAICompatProvider {
         };
 
         // Parse SSE stream
-        parse_openai_sse(response, &request.model, tx).await
-    }
-
-    fn models(&self) -> &[Model] {
-        &self.config.models
-    }
-
-    fn name(&self) -> &str {
-        &self.config.name
-    }
-
-    async fn is_available(&self) -> bool {
-        // Local providers don't need auth; others need a non-empty key
-        self.config.name == "local" || !self.config.api_key.is_empty()
+        parse_openai_sse(response, model, tx).await
     }
 }
 
