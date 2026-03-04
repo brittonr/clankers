@@ -1,6 +1,7 @@
 [workspace]
 members = [
     ".",
+    "crates/clankers-auth",
     "crates/clankers-merge",
     "crates/clankers-matrix",
     "crates/clankers-router",
@@ -27,6 +28,7 @@ name = "clankers"
 path = "src/main.rs"
 
 [dependencies]
+clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
 clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
 clankers-router = { version = "0.1.0", path = "crates/clankers-router", features = ["rpc"] }

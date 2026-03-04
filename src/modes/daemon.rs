@@ -43,6 +43,10 @@ use crate::provider::streaming::ContentDelta;
 use crate::session::SessionManager;
 use crate::tools::Tool;
 
+use clankers_auth::{
+    Capability, CapabilityToken, TokenVerifier, RevocationStore, RedbRevocationStore,
+};
+
 /// Chat ALPN — conversational sessions with persistent memory.
 pub const ALPN_CHAT: &[u8] = b"clankers/chat/1";
 
@@ -117,6 +121,100 @@ struct ProactiveConfig {
 
 // ── Session tracking ────────────────────────────────────────────────────────
 
+// ── Auth layer ──────────────────────────────────────────────────────────────
+
+/// Shared auth state for token verification + user→token mappings.
+struct AuthLayer {
+    /// Verifier with the daemon owner's key as trusted root
+    verifier: TokenVerifier,
+    /// Persistent revocation store (redb-backed, used for runtime revocation checks)
+    #[allow(dead_code)]
+    revocation_store: RedbRevocationStore,
+    /// redb database for token storage
+    db: Arc<redb::Database>,
+}
+
+impl AuthLayer {
+    /// Look up a stored token for a user ID (Matrix user ID or iroh pubkey).
+    fn lookup_token(&self, user_id: &str) -> Option<CapabilityToken> {
+        let read_txn = self.db.begin_read().ok()?;
+        let table = read_txn
+            .open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE)
+            .ok()?;
+        let guard = table.get(user_id).ok()??;
+        let bytes = guard.value().to_vec();
+        CapabilityToken::decode(&bytes).ok()
+    }
+
+    /// Store a token for a user ID.
+    fn store_token(&self, user_id: &str, token: &CapabilityToken) {
+        let encoded = match token.encode() {
+            Ok(e) => e,
+            Err(e) => {
+                warn!("Failed to encode token for storage: {e}");
+                return;
+            }
+        };
+        if let Ok(tx) = self.db.begin_write() {
+            {
+                if let Ok(mut table) = tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE) {
+                    let _ = table.insert(user_id, encoded.as_slice());
+                }
+            }
+            if let Err(e) = tx.commit() {
+                warn!("Failed to store token: {e}");
+            }
+        }
+    }
+
+    /// Verify a token and return its capabilities, or an error message.
+    fn verify_token(&self, token: &CapabilityToken) -> std::result::Result<Vec<Capability>, String> {
+        self.verifier
+            .verify(token, None)
+            .map_err(|e| format!("{e}"))?;
+        Ok(token.capabilities.clone())
+    }
+
+    /// Resolve capabilities for a user: token → verify → capabilities,
+    /// or None if no token (fall back to allowlist).
+    fn resolve_capabilities(&self, user_id: &str) -> Option<std::result::Result<Vec<Capability>, String>> {
+        let token = self.lookup_token(user_id)?;
+        Some(self.verify_token(&token))
+    }
+}
+
+/// Filter a tool set based on capability tokens.
+///
+/// If capabilities include `ToolUse { "*" }`, all tools are kept.
+/// Otherwise, only tools whose name appears in the ToolUse pattern are kept.
+fn filter_tools_by_capabilities(
+    tools: &[Arc<dyn Tool>],
+    capabilities: &[Capability],
+) -> Vec<Arc<dyn Tool>> {
+    // Find the ToolUse capability (if any)
+    let tool_pattern = capabilities.iter().find_map(|c| {
+        if let Capability::ToolUse { tool_pattern } = c {
+            Some(tool_pattern.as_str())
+        } else {
+            None
+        }
+    });
+
+    match tool_pattern {
+        None => Vec::new(), // No ToolUse capability → no tools
+        Some("*") => tools.to_vec(), // Wildcard → all tools
+        Some(pattern) => {
+            let allowed: std::collections::HashSet<&str> =
+                pattern.split(',').map(|s| s.trim()).collect();
+            tools
+                .iter()
+                .filter(|t| allowed.contains(t.definition().name.as_str()))
+                .cloned()
+                .collect()
+        }
+    }
+}
+
 /// A live agent session for a specific sender.
 struct LiveSession {
     /// The agent with conversation history
@@ -132,6 +230,11 @@ struct LiveSession {
     session_dir: PathBuf,
     /// Cancellation token for the trigger pipe reader task
     trigger_cancel: Option<CancellationToken>,
+    /// Capabilities from the user's token (None = full access via allowlist)
+    #[allow(dead_code)]
+    capabilities: Option<Vec<Capability>>,
+    /// Tools available to this session (filtered by capabilities)
+    session_tools: Vec<Arc<dyn Tool>>,
 }
 
 /// Identifies a session by transport + sender.
@@ -188,6 +291,8 @@ struct SessionStore {
     model: String,
     system_prompt: String,
     sessions_dir: PathBuf,
+    /// Shared auth layer for token verification
+    auth: Option<Arc<AuthLayer>>,
 }
 
 impl SessionStore {
@@ -199,6 +304,7 @@ impl SessionStore {
         system_prompt: String,
         sessions_dir: PathBuf,
         max_sessions: usize,
+        auth: Option<Arc<AuthLayer>>,
     ) -> Self {
         Self {
             sessions: HashMap::new(),
@@ -210,6 +316,7 @@ impl SessionStore {
             model,
             system_prompt,
             sessions_dir,
+            auth,
         }
     }
 
@@ -219,16 +326,29 @@ impl SessionStore {
     }
 
     /// Get or create a session for the given key.
-    fn get_or_create(&mut self, key: &SessionKey) -> &mut LiveSession {
+    ///
+    /// If `capabilities` is Some, tools are filtered based on the token's
+    /// ToolUse capability. If None, all tools are available (allowlist user).
+    fn get_or_create(
+        &mut self,
+        key: &SessionKey,
+        capabilities: Option<&[Capability]>,
+    ) -> &mut LiveSession {
         if !self.sessions.contains_key(key) {
             // Evict oldest session if at capacity
             if self.sessions.len() >= self.max_sessions {
                 self.evict_oldest();
             }
 
+            // Filter tools based on capabilities (or use all if no token)
+            let session_tools = match capabilities {
+                Some(caps) => filter_tools_by_capabilities(&self.tools, caps),
+                None => self.tools.clone(),
+            };
+
             let agent = Agent::new(
                 Arc::clone(&self.provider),
-                self.tools.clone(),
+                session_tools.clone(),
                 self.settings.clone(),
                 self.model.clone(),
                 self.system_prompt.clone(),
@@ -243,7 +363,12 @@ impl SessionStore {
                 warn!("Failed to create session dir {}: {e}", session_dir.display());
             }
 
-            info!("Created new session for {} (dir: {})", key, session_dir.display());
+            let tool_count = if capabilities.is_some() {
+                format!(" ({} tools)", session_tools.len())
+            } else {
+                " (full access)".to_string()
+            };
+            info!("Created new session for {}{} (dir: {})", key, tool_count, session_dir.display());
 
             self.sessions.insert(key.clone(), LiveSession {
                 agent,
@@ -252,6 +377,8 @@ impl SessionStore {
                 turn_count: 0,
                 session_dir,
                 trigger_cancel: None,
+                capabilities: capabilities.map(|c| c.to_vec()),
+                session_tools,
             });
         }
 
@@ -322,6 +449,59 @@ pub async fn run_daemon(
 ) -> Result<()> {
     let cancel = CancellationToken::new();
 
+    // ── iroh identity (needed for auth layer trusted root) ──────────
+    let identity_path = iroh::identity_path(paths);
+    let identity = iroh::Identity::load_or_generate(&identity_path);
+
+    // ── Auth layer (UCAN tokens) ───────────────────────────────────
+    let auth_layer = {
+        let db_path = paths.global_config_dir.join("clankers.db");
+        std::fs::create_dir_all(&paths.global_config_dir).ok();
+        match redb::Database::create(&db_path) {
+            Ok(db) => {
+                let db = Arc::new(db);
+                // Ensure auth tables exist
+                if let Ok(tx) = db.begin_write() {
+                    let _ = tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE);
+                    let _ = tx.open_table(clankers_auth::revocation::REVOKED_TOKENS_TABLE);
+                    let _ = tx.commit();
+                }
+
+                let revocation_store = match RedbRevocationStore::new(Arc::clone(&db)) {
+                    Ok(s) => s,
+                    Err(e) => {
+                        warn!("Failed to init revocation store: {e}");
+                        // Continue without auth
+                        RedbRevocationStore::new(Arc::clone(&db)).expect("retry")
+                    }
+                };
+
+                // Load revoked tokens into the verifier
+                let revoked = revocation_store.load_all();
+                let verifier = TokenVerifier::new()
+                    .with_trusted_root(identity.public_key());
+                if !revoked.is_empty() {
+                    if let Err(e) = verifier.load_revoked(&revoked) {
+                        warn!("Failed to load revoked tokens: {e}");
+                    }
+                    info!("Loaded {} revoked token(s)", revoked.len());
+                }
+
+                let layer = Arc::new(AuthLayer {
+                    verifier,
+                    revocation_store,
+                    db,
+                });
+                info!("Auth layer initialized (trusted root: {})", identity.public_key().fmt_short());
+                Some(layer)
+            }
+            Err(e) => {
+                warn!("Failed to open auth database: {e} — running without token auth");
+                None
+            }
+        }
+    };
+
     // Build the session store
     let store = Arc::new(RwLock::new(SessionStore::new(
         Arc::clone(&provider),
@@ -331,11 +511,10 @@ pub async fn run_daemon(
         config.system_prompt.clone(),
         paths.global_sessions_dir.clone(),
         config.max_sessions,
+        auth_layer.clone(),
     )));
 
     // ── iroh endpoint ───────────────────────────────────────────────
-    let identity_path = iroh::identity_path(paths);
-    let identity = iroh::Identity::load_or_generate(&identity_path);
     let node_id = identity.public_key();
 
     // Build endpoint that accepts both ALPNs
@@ -363,12 +542,13 @@ pub async fn run_daemon(
 
     println!("clankers daemon started");
     println!("  Node ID:  {}", node_id);
-    println!("  Auth:     {}", if config.allow_all { "open" } else { "allowlist" });
+    println!("  Auth:     {}", if config.allow_all { "open" } else { "allowlist + UCAN tokens" });
     println!("  Model:    {}", config.model);
     println!("  Sessions: 0/{}", config.max_sessions);
     if !config.tags.is_empty() {
         println!("  Tags:     {}", config.tags.join(", "));
     }
+    println!("  Tokens:   create with `clankers token create`");
 
     // ── iroh accept loop ────────────────────────────────────────────
     let iroh_store = Arc::clone(&store);
@@ -561,8 +741,15 @@ async fn handle_iroh_connection(
 ///   Client → Server: `{ "text": "...", "session_hint": "..." }`
 ///   Server → Client: N × notification frames (text deltas, tool events)
 ///   Server → Client: 1 × final response frame
+///
+/// Optional auth frame (first frame on connection):
+///   `{ "type": "auth", "token": "<base64>" }`
+///   If present, the token is verified and capabilities are used for the session.
+///   If absent, falls back to allowlist (backwards compatible).
 async fn handle_chat_connection(conn: ::iroh::endpoint::Connection, store: Arc<RwLock<SessionStore>>, peer_id: &str) {
     let key = SessionKey::Iroh(peer_id.to_string());
+    let mut auth_capabilities: Option<Vec<Capability>> = None;
+    let mut first_frame = true;
 
     loop {
         let (send, mut recv) = match conn.accept_bi().await {
@@ -580,6 +767,39 @@ async fn handle_chat_connection(conn: ::iroh::endpoint::Connection, store: Arc<R
             Err(_) => continue,
         };
 
+        // Check for optional auth frame (first frame only)
+        if first_frame {
+            first_frame = false;
+            if request.get("type").and_then(|v| v.as_str()) == Some("auth") {
+                if let Some(token_b64) = request.get("token").and_then(|v| v.as_str()) {
+                    let store_guard = store.read().await;
+                    if let Some(ref auth) = store_guard.auth {
+                        match CapabilityToken::from_base64(token_b64) {
+                            Ok(token) => match auth.verify_token(&token) {
+                                Ok(caps) => {
+                                    info!("[{}] authenticated with {} capabilities", key, caps.len());
+                                    auth_capabilities = Some(caps);
+                                    // Store token for this peer
+                                    auth.store_token(peer_id, &token);
+                                }
+                                Err(e) => {
+                                    warn!("[{}] token verification failed: {e}", key);
+                                    let err = json!({ "type": "error", "message": format!("Token rejected: {e}") });
+                                    let mut send = send;
+                                    let _ = write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await;
+                                    let _ = send.finish();
+                                }
+                            },
+                            Err(e) => {
+                                warn!("[{}] invalid token encoding: {e}", key);
+                            }
+                        }
+                    }
+                }
+                continue; // auth frame is consumed, not treated as a prompt
+            }
+        }
+
         let text = match request.get("text").and_then(|v| v.as_str()) {
             Some(t) => t.to_string(),
             None => continue,
@@ -590,8 +810,9 @@ async fn handle_chat_connection(conn: ::iroh::endpoint::Connection, store: Arc<R
         // Run the prompt in the session
         let store_clone = Arc::clone(&store);
         let key_clone = key.clone();
+        let caps = auth_capabilities.clone();
         tokio::spawn(async move {
-            run_session_prompt(store_clone, key_clone, text, send).await;
+            run_session_prompt(store_clone, key_clone, text, send, caps.as_deref()).await;
         });
     }
 }
@@ -667,6 +888,7 @@ async fn run_session_prompt(
     key: SessionKey,
     text: String,
     mut send: ::iroh::endpoint::SendStream,
+    capabilities: Option<&[Capability]>,
 ) {
     // Serialize prompts per session to prevent concurrent prompts from
     // racing on conversation history. Acquire the per-session lock before
@@ -680,21 +902,15 @@ async fn run_session_prompt(
     // Acquire the session (briefly hold write lock to get/create)
     let (mut agent, history) = {
         let mut store = store.write().await;
-        let session = store.get_or_create(&key);
+        let session = store.get_or_create(&key, capabilities);
         session.turn_count += 1;
-        // We can't move the agent out of the HashMap, so create a fresh
-        // agent seeded with the session's conversation history. The
-        // per-session prompt_lock above ensures only one prompt runs at
-        // a time, preventing history from being overwritten by a
-        // concurrent prompt.
         let messages = session.agent.messages().to_vec();
-        let agent = Agent::new(
-            Arc::clone(&store.provider),
-            store.tools.clone(),
-            store.settings.clone(),
-            store.model.clone(),
-            store.system_prompt.clone(),
-        );
+        let tools = session.session_tools.clone();
+        let provider = Arc::clone(&store.provider);
+        let settings = store.settings.clone();
+        let model = store.model.clone();
+        let system_prompt = store.system_prompt.clone();
+        let agent = Agent::new(provider, tools, settings, model, system_prompt);
         (agent, messages)
     };
 
@@ -885,11 +1101,45 @@ async fn run_matrix_bridge(
                 match event {
                     BridgeEvent::TextMessage { sender, body, room_id }
                     | BridgeEvent::ChatMessage { sender, body, room_id, .. } => {
-                        // ── Allowlist check ─────────────────────────
-                        if !is_user_allowed(&allowlist, &sender) {
-                            info!("Matrix: denied message from {}", sender);
-                            continue;
-                        }
+                        // ── Auth check: token → allowlist fallback ──
+                        let sender_capabilities: Option<Vec<Capability>> = {
+                            let store_guard = store.read().await;
+                            if let Some(ref auth) = store_guard.auth {
+                                match auth.resolve_capabilities(&sender) {
+                                    Some(Ok(caps)) => Some(caps),
+                                    Some(Err(e)) => {
+                                        // Token exists but is invalid (expired, revoked, etc.)
+                                        warn!("Matrix: token error for {}: {e}", sender);
+                                        let room_id_parsed = clankers_matrix::ruma::RoomId::parse(&room_id).ok();
+                                        if let Some(rid) = room_id_parsed {
+                                            let c = client.read().await;
+                                            let msg = format!(
+                                                "Your access token is invalid: {e}\n\
+                                                 Request a new one from the daemon owner, \
+                                                 or register with `!token <base64>`."
+                                            );
+                                            let _ = c.send_markdown(&rid, &msg).await;
+                                        }
+                                        continue;
+                                    }
+                                    None => {
+                                        // No token — fall back to allowlist
+                                        if !is_user_allowed(&allowlist, &sender) {
+                                            info!("Matrix: denied message from {} (no token, not on allowlist)", sender);
+                                            continue;
+                                        }
+                                        None // Full access via allowlist
+                                    }
+                                }
+                            } else {
+                                // No auth layer — use allowlist only
+                                if !is_user_allowed(&allowlist, &sender) {
+                                    info!("Matrix: denied message from {}", sender);
+                                    continue;
+                                }
+                                None
+                            }
+                        };
 
                         // ── Skip client slash commands ──────────────
                         if body.starts_with('/') {
@@ -960,6 +1210,7 @@ async fn run_matrix_bridge(
                         // ── Run prompt ──────────────────────────────
                         let mut response = run_matrix_prompt(
                             Arc::clone(&store), key, body,
+                            sender_capabilities.as_deref(),
                         ).await;
 
                         // ── Empty response re-prompt ────────────────
@@ -974,6 +1225,7 @@ async fn run_matrix_bridge(
                                 re_key,
                                 "You completed some actions but your response contained \
                                  no text. Briefly summarize what you did.".to_string(),
+                                sender_capabilities.as_deref(),
                             ).await;
                             if retry.trim().is_empty() {
                                 response = "(completed actions — no summary available)".to_string();
@@ -1029,11 +1281,32 @@ async fn run_matrix_bridge(
                         source,
                         room_id,
                     } => {
-                        // ── Allowlist check ─────────────────────────
-                        if !is_user_allowed(&allowlist, &sender) {
-                            info!("Matrix: denied media from {}", sender);
-                            continue;
-                        }
+                        // ── Auth check: token → allowlist fallback ──
+                        let sender_capabilities: Option<Vec<Capability>> = {
+                            let store_guard = store.read().await;
+                            if let Some(ref auth) = store_guard.auth {
+                                match auth.resolve_capabilities(&sender) {
+                                    Some(Ok(caps)) => Some(caps),
+                                    Some(Err(_)) => {
+                                        info!("Matrix: denied media from {} (invalid token)", sender);
+                                        continue;
+                                    }
+                                    None => {
+                                        if !is_user_allowed(&allowlist, &sender) {
+                                            info!("Matrix: denied media from {}", sender);
+                                            continue;
+                                        }
+                                        None
+                                    }
+                                }
+                            } else {
+                                if !is_user_allowed(&allowlist, &sender) {
+                                    info!("Matrix: denied media from {}", sender);
+                                    continue;
+                                }
+                                None
+                            }
+                        };
 
                         let key = SessionKey::Matrix {
                             user_id: sender.clone(),
@@ -1148,6 +1421,7 @@ async fn run_matrix_bridge(
                                 key,
                                 prompt_text,
                                 vec![image_content],
+                                sender_capabilities.as_deref(),
                             )
                             .await
                         } else {
@@ -1163,7 +1437,7 @@ async fn run_matrix_bridge(
                                 )
                             };
 
-                            run_matrix_prompt(Arc::clone(&store), key, prompt_text).await
+                            run_matrix_prompt(Arc::clone(&store), key, prompt_text, sender_capabilities.as_deref()).await
                         };
 
                         // ── Empty response re-prompt ────────────────
@@ -1178,6 +1452,7 @@ async fn run_matrix_bridge(
                                 "You processed a file but your response contained no text. \
                                  Briefly summarize what you did."
                                     .to_string(),
+                                sender_capabilities.as_deref(),
                             )
                             .await;
                             response = if retry.trim().is_empty() {
@@ -1259,7 +1534,8 @@ async fn handle_bot_command(
              • `!restart` — Clear session history and start fresh\n\
              • `!compact` — Trigger context compaction\n\
              • `!model <name>` — Switch model for this session\n\
-             • `!skills` — List loaded skills"
+             • `!skills` — List loaded skills\n\
+             • `!token <base64>` — Register an access token"
                 .to_string()
         }
         "!status" => {
@@ -1301,6 +1577,7 @@ async fn handle_bot_command(
                 Arc::clone(&store),
                 key.clone(),
                 "/compact".to_string(),
+                None, // compaction uses existing session capabilities
             )
             .await;
             if response.trim().is_empty() {
@@ -1329,9 +1606,75 @@ async fn handle_bot_command(
                 format!("**Loaded tools ({}):**\n{}", tool_names.len(), tool_names.iter().map(|n| format!("• `{}`", n)).collect::<Vec<_>>().join("\n"))
             }
         }
+        "!token" => {
+            if args.is_empty() {
+                return "Usage: `!token <base64-encoded-token>`\n\n\
+                        Register an access token to get daemon capabilities.\n\
+                        Get a token from the daemon owner: `clankers token create`".to_string();
+            }
+
+            let store_guard = store.read().await;
+            let Some(ref auth) = store_guard.auth else {
+                return "Token auth is not enabled on this daemon.".to_string();
+            };
+
+            // Decode and verify the token
+            let token = match CapabilityToken::from_base64(args) {
+                Ok(t) => t,
+                Err(e) => return format!("Invalid token: {e}"),
+            };
+
+            match auth.verify_token(&token) {
+                Ok(caps) => {
+                    // Extract the user ID from the session key
+                    let user_id = match key {
+                        SessionKey::Matrix { user_id, .. } => user_id.clone(),
+                        SessionKey::Iroh(id) => id.clone(),
+                    };
+
+                    // Store the token mapped to the user ID
+                    auth.store_token(&user_id, &token);
+
+                    // Restart the session so it picks up the new capabilities
+                    drop(store_guard);
+                    {
+                        let mut store = store.write().await;
+                        store.sessions.remove(key);
+                        store.prompt_locks.remove(key);
+                    }
+
+                    let cap_names: Vec<&str> = caps.iter().map(|c| match c {
+                        Capability::Prompt => "Prompt",
+                        Capability::ToolUse { .. } => "ToolUse",
+                        Capability::ShellExecute { .. } => "ShellExecute",
+                        Capability::FileAccess { .. } => "FileAccess",
+                        Capability::BotCommand { .. } => "BotCommand",
+                        Capability::SessionManage => "SessionManage",
+                        Capability::ModelSwitch => "ModelSwitch",
+                        Capability::Delegate => "Delegate",
+                    }).collect();
+
+                    let expires = chrono::DateTime::from_timestamp(token.expires_at as i64, 0)
+                        .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+
+                    format!(
+                        "**Token accepted** ✓\n\n\
+                         • Capabilities: {}\n\
+                         • Expires: {}\n\
+                         • Depth: {}\n\n\
+                         Your session has been restarted with the new capabilities.",
+                        cap_names.join(", "),
+                        expires,
+                        token.delegation_depth,
+                    )
+                }
+                Err(e) => format!("**Token rejected:** {e}"),
+            }
+        }
         _ => {
             // Unknown ! command — pass to agent as a normal prompt
-            run_matrix_prompt(Arc::clone(&store), key.clone(), body.to_string()).await
+            run_matrix_prompt(Arc::clone(&store), key.clone(), body.to_string(), None).await
         }
     }
 }
@@ -1515,20 +1858,27 @@ async fn upload_sendfiles(
 }
 
 /// Run a prompt for a Matrix message and collect the full text response.
-async fn run_matrix_prompt(store: Arc<RwLock<SessionStore>>, key: SessionKey, text: String) -> String {
+///
+/// If `capabilities` is Some, the session is created with filtered tools.
+/// If None, full access (allowlist user).
+async fn run_matrix_prompt(
+    store: Arc<RwLock<SessionStore>>,
+    key: SessionKey,
+    text: String,
+    capabilities: Option<&[Capability]>,
+) -> String {
     // Get conversation history
     let (mut agent, history) = {
         let mut store = store.write().await;
-        let session = store.get_or_create(&key);
+        let session = store.get_or_create(&key, capabilities);
         session.turn_count += 1;
         let messages = session.agent.messages().to_vec();
-        let agent = Agent::new(
-            Arc::clone(&store.provider),
-            store.tools.clone(),
-            store.settings.clone(),
-            store.model.clone(),
-            store.system_prompt.clone(),
-        );
+        let tools = session.session_tools.clone();
+        let provider = Arc::clone(&store.provider);
+        let settings = store.settings.clone();
+        let model = store.model.clone();
+        let system_prompt = store.system_prompt.clone();
+        let agent = Agent::new(provider, tools, settings, model, system_prompt);
         (agent, messages)
     };
 
@@ -1577,19 +1927,19 @@ async fn run_matrix_prompt_with_images(
     key: SessionKey,
     text: String,
     images: Vec<Content>,
+    capabilities: Option<&[Capability]>,
 ) -> String {
     let (mut agent, history) = {
         let mut store = store.write().await;
-        let session = store.get_or_create(&key);
+        let session = store.get_or_create(&key, capabilities);
         session.turn_count += 1;
         let messages = session.agent.messages().to_vec();
-        let agent = Agent::new(
-            Arc::clone(&store.provider),
-            store.tools.clone(),
-            store.settings.clone(),
-            store.model.clone(),
-            store.system_prompt.clone(),
-        );
+        let tools = session.session_tools.clone();
+        let provider = Arc::clone(&store.provider);
+        let settings = store.settings.clone();
+        let model = store.model.clone();
+        let system_prompt = store.system_prompt.clone();
+        let agent = Agent::new(provider, tools, settings, model, system_prompt);
         (agent, messages)
     };
 
@@ -1662,13 +2012,12 @@ async fn run_proactive_prompt(
         };
         // Deliberately do NOT update last_active or turn_count
         let messages = session.agent.messages().to_vec();
-        let agent = Agent::new(
-            Arc::clone(&store.provider),
-            store.tools.clone(),
-            store.settings.clone(),
-            store.model.clone(),
-            store.system_prompt.clone(),
-        );
+        let tools = session.session_tools.clone();
+        let provider = Arc::clone(&store.provider);
+        let settings = store.settings.clone();
+        let model = store.model.clone();
+        let system_prompt = store.system_prompt.clone();
+        let agent = Agent::new(provider, tools, settings, model, system_prompt);
         (agent, messages)
     };
 

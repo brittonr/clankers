@@ -1037,6 +1037,7 @@ dependencies = [
  "bolero-generator",
  "bytes",
  "chrono",
+ "clankers-auth",
  "clankers-matrix",
  "clankers-merge",
  "clankers-router",
@@ -1092,6 +1093,24 @@ dependencies = [
  "url",
  "uuid",
  "vt100",
+]
+
+[[package]]
+name = "clankers-auth"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "blake3",
+ "hex",
+ "iroh",
+ "postcard",
+ "rand 0.9.2",
+ "redb",
+ "serde",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
