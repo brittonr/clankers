@@ -304,8 +304,8 @@ mod tests {
     fn test_list_open() {
         let (_tmp, store) = make_store();
 
-        let mut t1 = WorkItem::new("task 1", Priority::P2);
-        let mut t2 = WorkItem::new("task 2", Priority::P0);
+        let t1 = WorkItem::new("task 1", Priority::P2);
+        let t2 = WorkItem::new("task 2", Priority::P0);
         let mut t3 = WorkItem::new("task 3 done", Priority::P1);
         t3.complete(None);
 
@@ -484,7 +484,7 @@ mod tests {
     fn test_stats() {
         let (_tmp, store) = make_store();
 
-        let mut t1 = WorkItem::new("open", Priority::P1);
+        let t1 = WorkItem::new("open", Priority::P1);
         let mut t2 = WorkItem::new("done", Priority::P1);
         t2.complete(None);
         let mut t3 = WorkItem::new("failed", Priority::P1);
