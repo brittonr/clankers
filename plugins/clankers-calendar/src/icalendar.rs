@@ -445,14 +445,6 @@ pub fn parse_human_duration(s: &str) -> Option<String> {
         }
     }
 
-    // Trailing digits with no unit — treat as minutes (most common implicit unit)
-    if !num_buf.is_empty() {
-        if let Ok(n) = num_buf.parse::<u64>() {
-            minutes = n;
-            found_any = true;
-        }
-    }
-
     if !found_any {
         return None;
     }
@@ -579,7 +571,7 @@ fn add_days_to_date(date_str: &str, days: u64) -> String {
     format!("{:04}{:02}{:02}", y, m, d)
 }
 
-pub fn add_days(mut year: u32, mut month: u32, mut day: u32, mut extra_days: u32) -> (u32, u32, u32) {
+fn add_days(mut year: u32, mut month: u32, mut day: u32, mut extra_days: u32) -> (u32, u32, u32) {
     while extra_days > 0 {
         let days_in_month = days_in_month(year, month);
         let remaining = days_in_month - day;
@@ -599,7 +591,7 @@ pub fn add_days(mut year: u32, mut month: u32, mut day: u32, mut extra_days: u32
     (year, month, day)
 }
 
-pub fn days_in_month(year: u32, month: u32) -> u32 {
+fn days_in_month(year: u32, month: u32) -> u32 {
     match month {
         1 => 31,
         2 => {
@@ -1061,18 +1053,6 @@ END:VCALENDAR";
     #[test]
     fn human_duration_full() {
         assert_eq!(parse_human_duration("1d2h30m"), Some("P1DT2H30M".to_string()));
-    }
-
-    #[test]
-    fn human_duration_trailing_digits_as_minutes() {
-        // "1h30" → the 30 has no unit suffix, treated as minutes
-        assert_eq!(parse_human_duration("1h30"), Some("PT1H30M".to_string()));
-    }
-
-    #[test]
-    fn human_duration_bare_number_as_minutes() {
-        // "45" → no unit at all, treated as minutes
-        assert_eq!(parse_human_duration("45"), Some("PT45M".to_string()));
     }
 
     #[test]

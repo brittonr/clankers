@@ -10,6 +10,7 @@ crate-type = ["cdylib"]
 clankers-plugin-sdk = { path = "../../crates/clankers-plugin-sdk" }
 extism-pdk = "1"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 # Opt out of the parent workspace — this crate targets wasm32-unknown-unknown
 [workspace]
