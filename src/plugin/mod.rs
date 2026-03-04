@@ -99,6 +99,20 @@ impl PluginManager {
             }
         }
 
+        // Always inject current UTC time so plugins can do time-aware work.
+        // Format: ISO 8601 / CalDAV-compatible "YYYYMMDDTHHMMSSZ"
+        {
+            let now = chrono::Utc::now();
+            manifest = manifest.with_config_key(
+                "current_time",
+                now.format("%Y%m%dT%H%M%SZ").to_string(),
+            );
+            manifest = manifest.with_config_key(
+                "current_time_unix",
+                now.timestamp().to_string(),
+            );
+        }
+
         // Timeout for network plugins
         if has_net {
             manifest = manifest.with_timeout(std::time::Duration::from_secs(30));
