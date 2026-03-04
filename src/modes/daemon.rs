@@ -1394,6 +1394,78 @@ fn guess_mime(path: &std::path::Path) -> mime::Mime {
 }
 
 /// Upload sendfile tags to Matrix and return error annotations for failures.
+/// Check whether a path is safe to send over Matrix.
+///
+/// Blocks known sensitive directories and files to prevent the agent from
+/// accidentally exfiltrating credentials, keys, or system secrets.
+fn is_sendfile_path_allowed(path: &std::path::Path) -> std::result::Result<(), String> {
+    // Canonicalize to resolve symlinks and ../ tricks
+    let canonical = path
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve path: {e}"))?;
+    let s = canonical.to_string_lossy();
+
+    // Blocked directory prefixes (home-relative)
+    if let Some(home) = dirs::home_dir() {
+        let home_str = home.to_string_lossy();
+        let blocked_dirs = [
+            ".ssh",
+            ".gnupg",
+            ".gpg",
+            ".aws",
+            ".azure",
+            ".config/gcloud",
+            ".kube",
+            ".docker",
+            ".npmrc",
+            ".pypirc",
+            ".netrc",
+            ".clankers/matrix.json",
+        ];
+        for dir in &blocked_dirs {
+            let blocked = format!("{}/{}", home_str, dir);
+            if s.starts_with(&blocked) {
+                return Err(format!("blocked: path inside ~/{dir}"));
+            }
+        }
+    }
+
+    // Blocked system paths
+    let blocked_system = [
+        "/etc/shadow",
+        "/etc/gshadow",
+        "/etc/master.passwd",
+        "/etc/sudoers",
+    ];
+    for bp in &blocked_system {
+        if s.as_ref() == *bp || s.starts_with(&format!("{bp}.")) {
+            return Err(format!("blocked: sensitive system file {bp}"));
+        }
+    }
+
+    // Block private key files by name pattern
+    let filename = canonical
+        .file_name()
+        .map(|f| f.to_string_lossy().to_string())
+        .unwrap_or_default();
+    let blocked_names = [
+        "id_rsa",
+        "id_ed25519",
+        "id_ecdsa",
+        "id_dsa",
+        ".env",
+        ".env.local",
+        ".env.production",
+    ];
+    for bn in &blocked_names {
+        if filename == *bn {
+            return Err(format!("blocked: sensitive file name {bn}"));
+        }
+    }
+
+    Ok(())
+}
+
 async fn upload_sendfiles(
     client: &tokio::sync::RwLock<clankers_matrix::MatrixClient>,
     room_id: &clankers_matrix::ruma::OwnedRoomId,
@@ -1406,6 +1478,13 @@ async fn upload_sendfiles(
 
         if !path.exists() || !path.is_file() {
             errors.push(format!("(failed to send file {}: file not found)", tag.path));
+            continue;
+        }
+
+        // Path validation: block sensitive files
+        if let Err(reason) = is_sendfile_path_allowed(path) {
+            warn!("Sendfile blocked: {} ({})", tag.path, reason);
+            errors.push(format!("(refused to send file {}: {})", tag.path, reason));
             continue;
         }
 
@@ -2023,5 +2102,64 @@ mod tests {
         assert_eq!(config.session_heartbeat_secs, 300);
         assert!(config.trigger_pipe_enabled);
         assert!(config.heartbeat_prompt.contains("HEARTBEAT"));
+    }
+
+    // ── Path validation tests ───────────────────────────────────────
+
+    #[test]
+    fn sendfile_allows_normal_tmp_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("output.png");
+        std::fs::write(&file, "fake png").unwrap();
+        assert!(is_sendfile_path_allowed(&file).is_ok());
+    }
+
+    #[test]
+    fn sendfile_blocks_ssh_keys() {
+        let home = dirs::home_dir().unwrap();
+        let ssh_key = home.join(".ssh/id_rsa");
+        if ssh_key.exists() {
+            assert!(is_sendfile_path_allowed(&ssh_key).is_err());
+        }
+        // Even if file doesn't exist, canonicalize will fail — that's fine
+    }
+
+    #[test]
+    fn sendfile_blocks_dot_env() {
+        let dir = tempfile::tempdir().unwrap();
+        let env_file = dir.path().join(".env");
+        std::fs::write(&env_file, "SECRET=hunter2").unwrap();
+        assert!(is_sendfile_path_allowed(&env_file).is_err());
+    }
+
+    #[test]
+    fn sendfile_blocks_env_local() {
+        let dir = tempfile::tempdir().unwrap();
+        let env_file = dir.path().join(".env.local");
+        std::fs::write(&env_file, "SECRET=hunter2").unwrap();
+        assert!(is_sendfile_path_allowed(&env_file).is_err());
+    }
+
+    #[test]
+    fn sendfile_blocks_env_production() {
+        let dir = tempfile::tempdir().unwrap();
+        let env_file = dir.path().join(".env.production");
+        std::fs::write(&env_file, "SECRET=hunter2").unwrap();
+        assert!(is_sendfile_path_allowed(&env_file).is_err());
+    }
+
+    #[test]
+    fn sendfile_rejects_nonexistent_path() {
+        let result = is_sendfile_path_allowed(std::path::Path::new("/no/such/file"));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("cannot resolve"));
+    }
+
+    #[test]
+    fn sendfile_allows_regular_project_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("report.txt");
+        std::fs::write(&file, "report contents").unwrap();
+        assert!(is_sendfile_path_allowed(&file).is_ok());
     }
 }

@@ -332,7 +332,15 @@ nix run nixpkgs#python3 -- script.py
 nix run nixpkgs#nodejs -- --version
 ```
 
-This keeps the system clean while providing access to any package when needed."#
+This keeps the system clean while providing access to any package when needed.
+
+## HEARTBEAT.md (daemon mode)
+
+You have a file called HEARTBEAT.md in your session directory. A background
+scheduler reads this file periodically and prompts you with its contents.
+Use it for reminders and recurring tasks. When asked to remember or schedule
+something, write it to HEARTBEAT.md. When you act on a task, mark it done
+or remove it."#
 }
 
 #[cfg(test)]

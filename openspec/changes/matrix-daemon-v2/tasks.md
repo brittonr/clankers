@@ -15,7 +15,7 @@
 - [x] Download attachments to `<session-dir>/attachments/`
 - [x] Prompt agent with file path (and base64 image block for vision models)
 - [x] File sending — scan response for `<sendfile>` tags, upload via `Room::send_attachment()`
-- [ ] Path validation against sandbox policy
+- [x] Path validation against sandbox policy
 
 ## Phase 3: Formatted responses (needs pulldown-cmark or comrak)
 
@@ -25,9 +25,9 @@
 
 ## Phase 4: Proactive agent
 
-- [ ] Heartbeat scheduler — background task, reads HEARTBEAT.md, prompts agent
-- [ ] HEARTBEAT_OK suppression
-- [ ] Heartbeat system prompt additions
-- [ ] Trigger pipe — FIFO creation, reader task, prompt delivery
-- [ ] Trigger pipe cleanup on session reap
-- [ ] DaemonConfig fields: `heartbeat_interval`, `heartbeat_prompt`, `trigger_prompt`
+- [x] Heartbeat scheduler — background task, reads HEARTBEAT.md, prompts agent
+- [x] HEARTBEAT_OK suppression
+- [x] Heartbeat system prompt additions
+- [x] Trigger pipe — FIFO creation, reader task, prompt delivery
+- [x] Trigger pipe cleanup on session reap
+- [x] DaemonConfig fields: `heartbeat_interval`, `heartbeat_prompt`, `trigger_prompt`
