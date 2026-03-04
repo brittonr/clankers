@@ -65,17 +65,23 @@ enum EntryState {
 
 /// A process entry for display
 #[derive(Debug, Clone)]
-#[allow(dead_code)] // tool_name used in future detail view
 struct ProcessEntry {
     pid: u32,
     cpu_percent: f32,
     rss_bytes: u64,
     command: String,
     tool_name: String,
+    call_id: String,
     elapsed: Duration,
     depth: u8,
     state: EntryState,
     peak_rss: u64,
+    /// CPU% history for sparkline
+    cpu_history: Vec<f32>,
+    /// RSS history for sparkline
+    mem_history: Vec<f32>,
+    /// Child PIDs
+    children: Vec<u32>,
 }
 
 // ── Panel state ─────────────────────────────────────────────────────────────
@@ -87,6 +93,8 @@ pub struct ProcessPanel {
     show_completed: bool,
     monitor: Option<ProcessMonitorHandle>,
     sort_mode: SortMode,
+    /// When set, show detail view for this PID instead of the list
+    detail_pid: Option<u32>,
 }
 
 impl Default for ProcessPanel {
@@ -97,6 +105,7 @@ impl Default for ProcessPanel {
             show_completed: false,
             monitor: None,
             sort_mode: SortMode::Cpu,
+            detail_pid: None,
         }
     }
 }
@@ -131,17 +140,23 @@ impl ProcessPanel {
             };
 
             let elapsed = tracked.start_time.elapsed();
-            
+            let cpu_history: Vec<f32> = tracked.snapshots.iter().map(|s| s.cpu_percent).collect();
+            let mem_history: Vec<f32> = tracked.snapshots.iter().map(|s| s.rss_bytes as f32).collect();
+
             self.entries.push(ProcessEntry {
                 pid,
                 cpu_percent,
                 rss_bytes,
                 command: tracked.meta.command.clone(),
                 tool_name: tracked.meta.tool_name.clone(),
+                call_id: tracked.meta.call_id.clone(),
                 elapsed,
                 depth: 0,
                 state: EntryState::Running,
                 peak_rss: tracked.peak_rss,
+                cpu_history,
+                mem_history,
+                children: tracked.children.clone(),
             });
 
             // Add children with depth=1
@@ -152,10 +167,14 @@ impl ProcessPanel {
                     rss_bytes: 0,
                     command: format!("child of {}", pid),
                     tool_name: tracked.meta.tool_name.clone(),
+                    call_id: String::new(),
                     elapsed: Duration::ZERO,
                     depth: 1,
                     state: EntryState::Running,
                     peak_rss: 0,
+                    cpu_history: Vec::new(),
+                    mem_history: Vec::new(),
+                    children: Vec::new(),
                 });
             }
         }
@@ -176,16 +195,23 @@ impl ProcessPanel {
                     ProcessState::Exited { code, wall_time } => (*wall_time, *code),
                 };
 
+                let cpu_history: Vec<f32> = tracked.snapshots.iter().map(|s| s.cpu_percent).collect();
+                let mem_history: Vec<f32> = tracked.snapshots.iter().map(|s| s.rss_bytes as f32).collect();
+
                 self.entries.push(ProcessEntry {
                     pid,
                     cpu_percent,
                     rss_bytes,
                     command: tracked.meta.command.clone(),
                     tool_name: tracked.meta.tool_name.clone(),
+                    call_id: tracked.meta.call_id.clone(),
                     elapsed,
                     depth: 0,
                     state: EntryState::Exited { code },
                     peak_rss: tracked.peak_rss,
+                    cpu_history,
+                    mem_history,
+                    children: tracked.children.clone(),
                 });
             }
         }
@@ -229,7 +255,11 @@ impl Panel for ProcessPanel {
     }
 
     fn focus_hints(&self) -> &'static str {
-        " j/k s:sort c:completed "
+        if self.detail_pid.is_some() {
+            " esc:back "
+        } else {
+            " j/k s:sort c:completed ↵:detail "
+        }
     }
 
     fn is_empty(&self) -> bool {
@@ -241,6 +271,17 @@ impl Panel for ProcessPanel {
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<PanelAction> {
+        // Detail mode: Esc goes back to list, other keys ignored
+        if self.detail_pid.is_some() {
+            return match key.code {
+                KeyCode::Esc => {
+                    self.detail_pid = None;
+                    Some(PanelAction::Consumed)
+                }
+                _ => None,
+            };
+        }
+
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
                 self.nav.next(self.entries.len());
@@ -257,6 +298,14 @@ impl Panel for ProcessPanel {
             KeyCode::Char('c') => {
                 self.show_completed = !self.show_completed;
                 Some(PanelAction::Consumed)
+            }
+            KeyCode::Enter => {
+                if let Some(entry) = self.entries.get(self.nav.selected) {
+                    self.detail_pid = Some(entry.pid);
+                    Some(PanelAction::Consumed)
+                } else {
+                    None
+                }
             }
             KeyCode::Esc => Some(PanelAction::Unfocus),
             _ => None,
@@ -275,64 +324,68 @@ impl Panel for ProcessPanel {
     }
 
     fn draw(&self, frame: &mut Frame, area: Rect, ctx: &DrawContext) {
-        // Refresh is const since we use interior mutability in the monitor
-        // But we can't call it here since draw takes &self. Instead, the caller
-        // should call refresh() before draw in the render loop.
-        
+        if let Some(pid) = self.detail_pid {
+            self.draw_detail(frame, area, ctx, pid);
+        } else {
+            self.draw_list(frame, area, ctx);
+        }
+    }
+}
+
+impl ProcessPanel {
+    /// Refresh entries - called from render loop
+    pub fn refresh_entries(&mut self) {
+        self.refresh();
+    }
+
+    fn draw_list(&self, frame: &mut Frame, area: Rect, ctx: &DrawContext) {
         let mut lines = Vec::new();
 
         // Header row
-        lines.push(Line::from(vec![
-            Span::styled(
-                format!("{:>6}  {:>6}  {:>8}  {:>8}  {}", "PID", "CPU%", "MEM(MB)", "TIME", "COMMAND"),
-                Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
+        lines.push(Line::from(vec![Span::styled(
+            format!(
+                "{:>6}  {:>6}  {:>8}  {:>8}  {:>8}  {}",
+                "PID", "CPU%", "SPARK", "MEM(MB)", "TIME", "COMMAND"
             ),
-        ]));
+            Style::default()
+                .fg(Color::DarkGray)
+                .add_modifier(Modifier::BOLD),
+        )]));
 
-        let active_entries: Vec<_> = self.entries.iter().filter(|e| matches!(e.state, EntryState::Running)).collect();
-        let completed_entries: Vec<_> = self.entries.iter().filter(|e| matches!(e.state, EntryState::Exited { .. })).collect();
+        let active_entries: Vec<_> = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| matches!(e.state, EntryState::Running))
+            .collect();
+        let completed_entries: Vec<_> = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| matches!(e.state, EntryState::Exited { .. }))
+            .collect();
 
         // Render active processes
-        for (i, entry) in active_entries.iter().enumerate() {
+        for (display_idx, (global_idx, entry)) in active_entries.iter().enumerate() {
+            let _ = display_idx;
             let mem_mb = entry.rss_bytes as f64 / (1024.0 * 1024.0);
-            let elapsed_secs = entry.elapsed.as_secs();
-            let time_str = if elapsed_secs >= 3600 {
-                format!("{}h{}m", elapsed_secs / 3600, (elapsed_secs % 3600) / 60)
-            } else if elapsed_secs >= 60 {
-                format!("{}m{}s", elapsed_secs / 60, elapsed_secs % 60)
-            } else {
-                format!("{}s", elapsed_secs)
-            };
+            let time_str = format_elapsed(entry.elapsed);
 
-            // Color coding
-            let cpu_color = if entry.cpu_percent > 80.0 {
-                Color::Red
-            } else if entry.cpu_percent > 50.0 {
-                Color::Yellow
-            } else {
-                ctx.theme.fg
-            };
+            let cpu_color = cpu_color(entry.cpu_percent, ctx.theme.fg);
+            let mem_color = mem_color(mem_mb, ctx.theme.fg);
 
-            let mem_color = if mem_mb > 1024.0 {
-                Color::Red
-            } else if mem_mb > 512.0 {
-                Color::Yellow
-            } else {
-                ctx.theme.fg
-            };
+            let spark = sparkline(&entry.cpu_history, 100.0, 8);
 
             let prefix = if entry.depth > 0 { " └─" } else { "" };
-            let command_display = if entry.command.len() > 40 {
-                format!("{}...", &entry.command[..37])
-            } else {
-                entry.command.clone()
-            };
+            let command_display = truncate_command(&entry.command, 40);
 
             let spans = vec![
-                self.nav.prefix_span(i, ctx.focused),
+                self.nav.prefix_span(*global_idx, ctx.focused),
                 Span::styled(format!("{:>6}", entry.pid), Style::default().fg(ctx.theme.fg)),
                 Span::raw("  "),
                 Span::styled(format!("{:>6.1}", entry.cpu_percent), Style::default().fg(cpu_color)),
+                Span::raw("  "),
+                Span::styled(format!("{:>8}", spark), Style::default().fg(Color::Green)),
                 Span::raw("  "),
                 Span::styled(format!("{:>8.1}", mem_mb), Style::default().fg(mem_color)),
                 Span::raw("  "),
@@ -340,7 +393,8 @@ impl Panel for ProcessPanel {
                 Span::raw("  "),
                 Span::styled(
                     format!("{}{}", prefix, command_display),
-                    self.nav.item_style(i, ctx.focused, Style::default().fg(ctx.theme.fg)),
+                    self.nav
+                        .item_style(*global_idx, ctx.focused, Style::default().fg(ctx.theme.fg)),
                 ),
             ];
 
@@ -354,18 +408,9 @@ impl Panel for ProcessPanel {
                 Style::default().fg(Color::DarkGray),
             )));
 
-            // Render completed processes
-            let offset = active_entries.len();
-            for (i, entry) in completed_entries.iter().enumerate() {
+            for (_display_idx, (global_idx, entry)) in completed_entries.iter().enumerate() {
                 let mem_mb = entry.peak_rss as f64 / (1024.0 * 1024.0);
-                let elapsed_secs = entry.elapsed.as_secs();
-                let time_str = if elapsed_secs >= 3600 {
-                    format!("{}h{}m", elapsed_secs / 3600, (elapsed_secs % 3600) / 60)
-                } else if elapsed_secs >= 60 {
-                    format!("{}m{}s", elapsed_secs / 60, elapsed_secs % 60)
-                } else {
-                    format!("{}s", elapsed_secs)
-                };
+                let time_str = format_elapsed(entry.elapsed);
 
                 let code_str = if let EntryState::Exited { code: Some(c) } = entry.state {
                     format!("exit:{}", c)
@@ -373,18 +418,15 @@ impl Panel for ProcessPanel {
                     "exit".to_string()
                 };
 
-                let command_display = if entry.command.len() > 35 {
-                    format!("{}...", &entry.command[..32])
-                } else {
-                    entry.command.clone()
-                };
+                let command_display = truncate_command(&entry.command, 35);
 
-                let index = offset + i;
                 let spans = vec![
-                    self.nav.prefix_span(index, ctx.focused),
+                    self.nav.prefix_span(*global_idx, ctx.focused),
                     Span::styled(format!("{:>6}", entry.pid), Style::default().fg(Color::DarkGray)),
                     Span::raw("  "),
-                    Span::styled(code_str, Style::default().fg(Color::DarkGray)),
+                    Span::styled(format!("{:>6}", code_str), Style::default().fg(Color::DarkGray)),
+                    Span::raw("  "),
+                    Span::styled("        ", Style::default()), // spark placeholder
                     Span::raw("  "),
                     Span::styled(format!("{:>8.1}", mem_mb), Style::default().fg(Color::DarkGray)),
                     Span::raw("  "),
@@ -392,7 +434,9 @@ impl Panel for ProcessPanel {
                     Span::raw("  "),
                     Span::styled(
                         command_display,
-                        Style::default().fg(Color::DarkGray).add_modifier(Modifier::CROSSED_OUT),
+                        Style::default()
+                            .fg(Color::DarkGray)
+                            .add_modifier(Modifier::CROSSED_OUT),
                     ),
                 ];
 
@@ -401,15 +445,128 @@ impl Panel for ProcessPanel {
         }
 
         let scroll = self.nav.scroll_offset(area.height as usize, 1);
-        let para = Paragraph::new(lines).scroll((scroll, 0)).wrap(Wrap { trim: false });
+        let para = Paragraph::new(lines)
+            .scroll((scroll, 0))
+            .wrap(Wrap { trim: false });
         frame.render_widget(para, area);
     }
-}
 
-impl ProcessPanel {
-    /// Refresh entries - called from render loop
-    pub fn refresh_entries(&mut self) {
-        self.refresh();
+    fn draw_detail(&self, frame: &mut Frame, area: Rect, ctx: &DrawContext, pid: u32) {
+        let entry = self.entries.iter().find(|e| e.pid == pid);
+        let Some(entry) = entry else {
+            let para = Paragraph::new(Line::from(Span::styled(
+                format!("Process {} not found", pid),
+                Style::default().fg(Color::Red),
+            )));
+            frame.render_widget(para, area);
+            return;
+        };
+
+        let label_style = Style::default()
+            .fg(Color::DarkGray)
+            .add_modifier(Modifier::BOLD);
+        let val_style = Style::default().fg(ctx.theme.fg);
+
+        let mut lines = Vec::new();
+
+        let state_str = match entry.state {
+            EntryState::Running => "Running".to_string(),
+            EntryState::Exited { code } => {
+                let c = code.map(|c| c.to_string()).unwrap_or_else(|| "?".to_string());
+                format!("Exited (code {})", c)
+            }
+        };
+
+        let mem_mb = entry.rss_bytes as f64 / (1024.0 * 1024.0);
+        let peak_mb = entry.peak_rss as f64 / (1024.0 * 1024.0);
+
+        // Metadata
+        lines.push(Line::from(vec![
+            Span::styled("Command:   ", label_style),
+            Span::styled(&entry.command, val_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("PID:       ", label_style),
+            Span::styled(format!("{}", entry.pid), val_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Tool:      ", label_style),
+            Span::styled(&entry.tool_name, val_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Call ID:   ", label_style),
+            Span::styled(&entry.call_id, val_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("State:     ", label_style),
+            Span::styled(
+                &state_str,
+                Style::default().fg(if matches!(entry.state, EntryState::Running) {
+                    Color::Green
+                } else {
+                    Color::DarkGray
+                }),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Wall time: ", label_style),
+            Span::styled(format_elapsed(entry.elapsed), val_style),
+        ]));
+
+        lines.push(Line::default()); // blank line
+
+        // Resource stats
+        lines.push(Line::from(vec![
+            Span::styled("CPU:       ", label_style),
+            Span::styled(
+                format!("{:.1}%", entry.cpu_percent),
+                Style::default().fg(cpu_color(entry.cpu_percent, ctx.theme.fg)),
+            ),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("RSS:       ", label_style),
+            Span::styled(format!("{:.1} MB", mem_mb), val_style),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Peak RSS:  ", label_style),
+            Span::styled(format!("{:.1} MB", peak_mb), val_style),
+        ]));
+
+        lines.push(Line::default());
+
+        // Sparklines — use available width (area minus label)
+        let spark_width = (area.width as usize).saturating_sub(14);
+        let cpu_spark = sparkline(&entry.cpu_history, 100.0, spark_width);
+        let mem_spark = sparkline(&entry.mem_history, entry.peak_rss as f32, spark_width);
+
+        lines.push(Line::from(vec![
+            Span::styled("CPU hist:  ", label_style),
+            Span::styled(cpu_spark, Style::default().fg(Color::Cyan)),
+        ]));
+        lines.push(Line::from(vec![
+            Span::styled("Mem hist:  ", label_style),
+            Span::styled(mem_spark, Style::default().fg(Color::Magenta)),
+        ]));
+
+        // Children
+        if !entry.children.is_empty() {
+            lines.push(Line::default());
+            lines.push(Line::from(vec![
+                Span::styled("Children:  ", label_style),
+                Span::styled(
+                    entry
+                        .children
+                        .iter()
+                        .map(|c| c.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                    val_style,
+                ),
+            ]));
+        }
+
+        let para = Paragraph::new(lines).wrap(Wrap { trim: false });
+        frame.render_widget(para, area);
     }
 
     /// Generate a status bar span showing process count
@@ -424,6 +581,72 @@ impl ProcessPanel {
             text,
             Style::default().fg(Color::Black).bg(Color::Blue).add_modifier(Modifier::BOLD),
         ))
+    }
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+/// Render values as a Unicode sparkline using block characters.
+fn sparkline(values: &[f32], max_val: f32, width: usize) -> String {
+    const BLOCKS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
+
+    if values.is_empty() {
+        return " ".repeat(width.max(1));
+    }
+
+    let start = values.len().saturating_sub(width);
+    let slice = &values[start..];
+
+    slice
+        .iter()
+        .map(|&v| {
+            if max_val <= 0.0 {
+                BLOCKS[0]
+            } else {
+                let ratio = (v / max_val).clamp(0.0, 1.0);
+                let idx = (ratio * 7.0).round() as usize;
+                BLOCKS[idx.min(7)]
+            }
+        })
+        .collect()
+}
+
+fn format_elapsed(d: Duration) -> String {
+    let secs = d.as_secs();
+    if secs >= 3600 {
+        format!("{}h{}m", secs / 3600, (secs % 3600) / 60)
+    } else if secs >= 60 {
+        format!("{}m{}s", secs / 60, secs % 60)
+    } else {
+        format!("{}s", secs)
+    }
+}
+
+fn cpu_color(pct: f32, default: Color) -> Color {
+    if pct > 80.0 {
+        Color::Red
+    } else if pct > 50.0 {
+        Color::Yellow
+    } else {
+        default
+    }
+}
+
+fn mem_color(mb: f64, default: Color) -> Color {
+    if mb > 1024.0 {
+        Color::Red
+    } else if mb > 512.0 {
+        Color::Yellow
+    } else {
+        default
+    }
+}
+
+fn truncate_command(cmd: &str, max: usize) -> String {
+    if cmd.len() > max {
+        format!("{}...", &cmd[..max.saturating_sub(3)])
+    } else {
+        cmd.to_string()
     }
 }
 
@@ -474,5 +697,114 @@ mod tests {
     fn test_is_empty() {
         let panel = ProcessPanel::new();
         assert!(panel.is_empty());
+    }
+
+    // ── sparkline tests ─────────────────────────────────────────────
+
+    #[test]
+    fn test_sparkline_empty_returns_spaces() {
+        let s = sparkline(&[], 100.0, 8);
+        assert_eq!(s, "        ");
+    }
+
+    #[test]
+    fn test_sparkline_all_zeros() {
+        let s = sparkline(&[0.0; 4], 100.0, 10);
+        assert_eq!(s, "▁▁▁▁");
+    }
+
+    #[test]
+    fn test_sparkline_all_max() {
+        let s = sparkline(&[100.0; 3], 100.0, 10);
+        assert_eq!(s, "███");
+    }
+
+    #[test]
+    fn test_sparkline_ascending() {
+        let vals = vec![0.0, 50.0, 100.0];
+        let s = sparkline(&vals, 100.0, 10);
+        let chars: Vec<char> = s.chars().collect();
+        assert_eq!(chars[0], '▁');
+        assert_eq!(chars[2], '█');
+    }
+
+    #[test]
+    fn test_sparkline_truncates_to_width() {
+        let vals: Vec<f32> = (0..20).map(|i| i as f32).collect();
+        let s = sparkline(&vals, 19.0, 5);
+        assert_eq!(s.chars().count(), 5);
+    }
+
+    #[test]
+    fn test_sparkline_zero_max() {
+        let s = sparkline(&[50.0, 100.0], 0.0, 10);
+        assert_eq!(s, "▁▁");
+    }
+
+    // ── detail view tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_enter_sets_detail_pid() {
+        let mut panel = ProcessPanel::new();
+        panel.entries.push(ProcessEntry {
+            pid: 42,
+            cpu_percent: 10.0,
+            rss_bytes: 1000,
+            command: "test".to_string(),
+            tool_name: "bash".to_string(),
+            call_id: "c1".to_string(),
+            elapsed: Duration::from_secs(5),
+            depth: 0,
+            state: EntryState::Running,
+            peak_rss: 2000,
+            cpu_history: vec![],
+            mem_history: vec![],
+            children: vec![],
+        });
+
+        let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        assert_eq!(panel.handle_key_event(key), Some(PanelAction::Consumed));
+        assert_eq!(panel.detail_pid, Some(42));
+    }
+
+    #[test]
+    fn test_esc_in_detail_returns_to_list() {
+        let mut panel = ProcessPanel::new();
+        panel.detail_pid = Some(42);
+
+        let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        assert_eq!(panel.handle_key_event(key), Some(PanelAction::Consumed));
+        assert_eq!(panel.detail_pid, None);
+    }
+
+    #[test]
+    fn test_esc_in_list_unfocuses() {
+        let mut panel = ProcessPanel::new();
+        assert_eq!(panel.detail_pid, None);
+
+        let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+        assert_eq!(panel.handle_key_event(key), Some(PanelAction::Unfocus));
+    }
+
+    #[test]
+    fn test_focus_hints_change_with_mode() {
+        let mut panel = ProcessPanel::new();
+        assert!(panel.focus_hints().contains("detail"));
+
+        panel.detail_pid = Some(1);
+        assert!(panel.focus_hints().contains("back"));
+        assert!(!panel.focus_hints().contains("detail"));
+    }
+
+    #[test]
+    fn test_nav_disabled_in_detail_mode() {
+        let mut panel = ProcessPanel::new();
+        panel.detail_pid = Some(42);
+
+        let key = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
+        assert_eq!(panel.handle_key_event(key), None);
+
+        let key = KeyEvent::new(KeyCode::Char('s'), KeyModifiers::NONE);
+        assert_eq!(panel.handle_key_event(key), None);
     }
 }

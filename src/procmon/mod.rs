@@ -339,6 +339,46 @@ impl ProcessMonitor {
 
         children
     }
+
+    // ── Test helpers ──────────────────────────────────────────────────────
+
+    /// Inject a resource snapshot for a tracked process (test-only).
+    #[cfg(test)]
+    pub fn inject_snapshot(&self, pid: u32, snapshot: ResourceSnapshot) {
+        let mut inner = self.inner.write();
+        if let Some(tracked) = inner.tracked.get_mut(&pid) {
+            if snapshot.rss_bytes > tracked.peak_rss {
+                tracked.peak_rss = snapshot.rss_bytes;
+            }
+            tracked.snapshots.push(snapshot);
+        }
+    }
+
+    /// Mark a tracked process as exited and move it to history (test-only).
+    #[cfg(test)]
+    pub fn mark_exited(&self, pid: u32, code: Option<i32>) {
+        let mut inner = self.inner.write();
+        let wall_time = inner
+            .tracked
+            .get(&pid)
+            .map(|t| t.start_time.elapsed())
+            .unwrap_or_default();
+        if let Some(tracked) = inner.tracked.get_mut(&pid) {
+            tracked.state = ProcessState::Exited { code, wall_time };
+        }
+        if let Some(tracked) = inner.tracked.remove(&pid) {
+            inner.history.push((pid, tracked));
+        }
+    }
+
+    /// Add a child PID to a tracked process (test-only).
+    #[cfg(test)]
+    pub fn add_child(&self, parent_pid: u32, child_pid: u32) {
+        let mut inner = self.inner.write();
+        if let Some(tracked) = inner.tracked.get_mut(&parent_pid) {
+            tracked.children.push(child_pid);
+        }
+    }
 }
 
 #[cfg(test)]
