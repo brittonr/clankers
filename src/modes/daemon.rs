@@ -44,7 +44,7 @@ use crate::session::SessionManager;
 use crate::tools::Tool;
 
 use clankers_auth::{
-    Capability, CapabilityToken, TokenVerifier, RevocationStore, RedbRevocationStore,
+    Capability, CapabilityToken, TokenBuilder, TokenVerifier, RevocationStore, RedbRevocationStore,
 };
 
 /// Chat ALPN — conversational sessions with persistent memory.
@@ -132,6 +132,8 @@ struct AuthLayer {
     revocation_store: RedbRevocationStore,
     /// redb database for token storage
     db: Arc<redb::Database>,
+    /// Daemon owner's secret key (for signing delegated child tokens)
+    owner_key: ::iroh::SecretKey,
 }
 
 impl AuthLayer {
@@ -491,6 +493,7 @@ pub async fn run_daemon(
                     verifier,
                     revocation_store,
                     db,
+                    owner_key: identity.secret_key.clone(),
                 });
                 info!("Auth layer initialized (trusted root: {})", identity.public_key().fmt_short());
                 Some(layer)
@@ -1535,7 +1538,8 @@ async fn handle_bot_command(
              • `!compact` — Trigger context compaction\n\
              • `!model <name>` — Switch model for this session\n\
              • `!skills` — List loaded skills\n\
-             • `!token <base64>` — Register an access token"
+             • `!token <base64>` — Register an access token\n\
+             • `!delegate [opts]` — Create a child token from yours"
                 .to_string()
         }
         "!status" => {
@@ -1672,11 +1676,205 @@ async fn handle_bot_command(
                 Err(e) => format!("**Token rejected:** {e}"),
             }
         }
+        "!delegate" => {
+            if args.is_empty() {
+                return "**Delegate a child token from yours**\n\n\
+                        Usage: `!delegate [options]`\n\n\
+                        Options:\n\
+                        • `--tools <pattern>` — comma-separated tool names or `*`\n\
+                        • `--read-only` — shorthand for `--tools read,grep,find,ls`\n\
+                        • `--expire <duration>` — e.g. `1h`, `7d`, `30m`\n\
+                        • `--shell` — include ShellExecute capability\n\
+                        • `--no-delegate` — child cannot further delegate\n\n\
+                        Your token must have the Delegate capability.\n\
+                        Child tokens cannot exceed your own permissions."
+                    .to_string();
+            }
+
+            let store_guard = store.read().await;
+            let Some(ref auth) = store_guard.auth else {
+                return "Token auth is not enabled on this daemon.".to_string();
+            };
+
+            // Look up the sender's token
+            let user_id = match key {
+                SessionKey::Matrix { user_id, .. } => user_id.clone(),
+                SessionKey::Iroh(id) => id.clone(),
+            };
+
+            let parent_token = match auth.lookup_token(&user_id) {
+                Some(t) => t,
+                None => return "You don't have a registered token. Use `!token <base64>` first.".to_string(),
+            };
+
+            // Verify the parent token is still valid
+            if let Err(e) = auth.verify_token(&parent_token) {
+                return format!("Your token is invalid: {e}");
+            }
+
+            // Check that the parent has Delegate capability
+            if !parent_token.capabilities.contains(&Capability::Delegate) {
+                return "Your token does not have the Delegate capability.".to_string();
+            }
+
+            // Parse !delegate flags
+            let parts: Vec<&str> = args.split_whitespace().collect();
+            let mut tools_pattern: Option<String> = None;
+            let mut expire_str: Option<&str> = None;
+            let mut include_shell = false;
+            let mut allow_delegate = true;
+            let mut read_only = false;
+            let mut i = 0;
+
+            while i < parts.len() {
+                match parts[i] {
+                    "--tools" => {
+                        if i + 1 < parts.len() {
+                            tools_pattern = Some(parts[i + 1].to_string());
+                            i += 2;
+                        } else {
+                            return "`--tools` requires a pattern (e.g. `read,grep` or `*`)".to_string();
+                        }
+                    }
+                    "--expire" => {
+                        if i + 1 < parts.len() {
+                            expire_str = Some(parts[i + 1]);
+                            i += 2;
+                        } else {
+                            return "`--expire` requires a duration (e.g. `1h`, `7d`)".to_string();
+                        }
+                    }
+                    "--shell" => {
+                        include_shell = true;
+                        i += 1;
+                    }
+                    "--no-delegate" => {
+                        allow_delegate = false;
+                        i += 1;
+                    }
+                    "--read-only" => {
+                        read_only = true;
+                        i += 1;
+                    }
+                    other => {
+                        return format!("Unknown flag: `{other}`. See `!delegate` for usage.");
+                    }
+                }
+            }
+
+            if read_only {
+                tools_pattern = Some("read,grep,find,ls".to_string());
+            }
+
+            // Default to 1h if no expiry specified
+            let lifetime = match expire_str {
+                Some(s) => match parse_delegate_duration(s) {
+                    Some(d) => d,
+                    None => return format!("Invalid duration: `{s}`. Use e.g. `30m`, `1h`, `7d`, `1y`."),
+                },
+                None => std::time::Duration::from_secs(3600),
+            };
+
+            // Cap child lifetime to parent's remaining lifetime
+            let now = clankers_auth::utils::current_time_secs();
+            let parent_remaining = parent_token.expires_at.saturating_sub(now);
+            let lifetime = lifetime.min(std::time::Duration::from_secs(parent_remaining));
+
+            // Build capabilities for the child token
+            let mut child_caps = vec![Capability::Prompt];
+
+            if let Some(pattern) = tools_pattern {
+                child_caps.push(Capability::ToolUse {
+                    tool_pattern: pattern,
+                });
+            }
+
+            if include_shell {
+                child_caps.push(Capability::ShellExecute {
+                    command_pattern: "*".into(),
+                    working_dir: None,
+                });
+            }
+
+            if allow_delegate {
+                child_caps.push(Capability::Delegate);
+            }
+
+            // Build the child token (signed by daemon owner key)
+            let builder = TokenBuilder::new(auth.owner_key.clone())
+                .delegated_from(parent_token)
+                .with_capabilities(child_caps)
+                .with_lifetime(lifetime)
+                .with_random_nonce();
+
+            match builder.build() {
+                Ok(child_token) => {
+                    let b64 = match child_token.to_base64() {
+                        Ok(b) => b,
+                        Err(e) => return format!("Failed to encode child token: {e}"),
+                    };
+
+                    let cap_names: Vec<&str> = child_token.capabilities.iter().map(|c| match c {
+                        Capability::Prompt => "Prompt",
+                        Capability::ToolUse { .. } => "ToolUse",
+                        Capability::ShellExecute { .. } => "ShellExecute",
+                        Capability::FileAccess { .. } => "FileAccess",
+                        Capability::BotCommand { .. } => "BotCommand",
+                        Capability::SessionManage => "SessionManage",
+                        Capability::ModelSwitch => "ModelSwitch",
+                        Capability::Delegate => "Delegate",
+                    }).collect();
+
+                    let expires = chrono::DateTime::from_timestamp(child_token.expires_at as i64, 0)
+                        .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
+                        .unwrap_or_else(|| "unknown".to_string());
+
+                    format!(
+                        "**Child token created** ✓\n\n\
+                         • Capabilities: {}\n\
+                         • Expires: {}\n\
+                         • Depth: {}\n\n\
+                         ```\n{}\n```\n\n\
+                         Share this with the recipient. They register it with `!token <token>`.",
+                        cap_names.join(", "),
+                        expires,
+                        child_token.delegation_depth,
+                        b64,
+                    )
+                }
+                Err(e) => format!("**Delegation failed:** {e}"),
+            }
+        }
         _ => {
             // Unknown ! command — pass to agent as a normal prompt
             run_matrix_prompt(Arc::clone(&store), key.clone(), body.to_string(), None).await
         }
     }
+}
+
+/// Parse duration strings like "30m", "1h", "7d", "1y" into `std::time::Duration`.
+fn parse_delegate_duration(s: &str) -> Option<std::time::Duration> {
+    let s = s.trim();
+    let (num_str, unit) = if s.ends_with('m') {
+        (&s[..s.len() - 1], 'm')
+    } else if s.ends_with('h') {
+        (&s[..s.len() - 1], 'h')
+    } else if s.ends_with('d') {
+        (&s[..s.len() - 1], 'd')
+    } else if s.ends_with('y') {
+        (&s[..s.len() - 1], 'y')
+    } else {
+        return None;
+    };
+    let num: u64 = num_str.parse().ok()?;
+    let secs = match unit {
+        'm' => num * 60,
+        'h' => num * 3600,
+        'd' => num * 86400,
+        'y' => num * 86400 * 365,
+        _ => return None,
+    };
+    Some(std::time::Duration::from_secs(secs))
 }
 
 // ── Sendfile tag extraction ──────────────────────────────────────────────

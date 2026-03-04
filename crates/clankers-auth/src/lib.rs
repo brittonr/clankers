@@ -34,7 +34,7 @@ pub mod constants;
 mod error;
 pub mod revocation;
 mod token;
-mod utils;
+pub mod utils;
 mod verifier;
 
 pub use builder::generate_root_token;
