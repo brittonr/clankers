@@ -15,6 +15,7 @@
 pub mod audit;
 pub mod history;
 pub mod memory;
+pub mod schema;
 pub mod session_index;
 pub mod usage;
 
@@ -40,6 +41,9 @@ pub struct Db {
 
 impl Db {
     /// Open (or create) the database at the given path.
+    ///
+    /// Runs schema migrations on first open to ensure all tables exist
+    /// and the schema is up to date. See [`schema`] for details.
     pub fn open(path: &Path) -> Result<Self> {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| crate::error::Error::Database {
@@ -51,9 +55,9 @@ impl Db {
             message: format!("failed to open database: {e}"),
         })?;
 
-        let this = Self { inner: Arc::new(db) };
-        this.init_tables()?;
-        Ok(this)
+        schema::migrate(&db)?;
+
+        Ok(Self { inner: Arc::new(db) })
     }
 
     /// Open an in-memory database (for tests).
@@ -64,22 +68,15 @@ impl Db {
                 message: format!("failed to create in-memory database: {e}"),
             }
         })?;
-        let this = Self { inner: Arc::new(db) };
-        this.init_tables()?;
-        Ok(this)
+
+        schema::migrate(&db)?;
+
+        Ok(Self { inner: Arc::new(db) })
     }
 
-    /// Create all tables if they don't exist yet.
-    fn init_tables(&self) -> Result<()> {
-        let tx = self.inner.begin_write().map_err(db_err)?;
-        tx.open_table(audit::TABLE).map_err(db_err)?;
-        tx.open_table(memory::TABLE).map_err(db_err)?;
-        tx.open_table(session_index::TABLE).map_err(db_err)?;
-        tx.open_table(history::TABLE).map_err(db_err)?;
-        tx.open_table(usage::TABLE).map_err(db_err)?;
-        tx.open_table(crate::worktree::registry::TABLE).map_err(db_err)?;
-        tx.commit().map_err(db_err)?;
-        Ok(())
+    /// Current schema version of this database.
+    pub fn schema_version(&self) -> Result<u32> {
+        schema::version(&self.inner)
     }
 
     /// Raw read transaction (for advanced queries).
