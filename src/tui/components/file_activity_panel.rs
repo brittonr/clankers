@@ -19,6 +19,7 @@ use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
 
+use crate::tui::components::diff_view::DiffView;
 use crate::tui::panel::DrawContext;
 use crate::tui::panel::ListNav;
 use crate::tui::panel::Panel;
@@ -76,6 +77,21 @@ pub struct FileEntry {
     pub op_count: usize,
     /// When the file was last touched
     pub last_touched: Instant,
+    /// Snapshot of the file content captured on first read.
+    /// `None` for files created by the agent (no prior content).
+    pub original_content: Option<String>,
+}
+
+// ── View mode ───────────────────────────────────────────────────────────────
+
+/// Which view the file activity panel is showing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FileView {
+    /// The file list (default)
+    #[default]
+    List,
+    /// Viewing an in-process diff for the selected file
+    Diff,
 }
 
 // ── Panel state ─────────────────────────────────────────────────────────────
@@ -90,6 +106,10 @@ pub struct FileActivityPanel {
     pub nav: ListNav,
     /// CWD for path display (set by the app)
     pub cwd: String,
+    /// Current view mode
+    pub view: FileView,
+    /// Active diff view (populated when `view == FileView::Diff`)
+    pub diff_view: Option<DiffView>,
 }
 
 impl FileActivityPanel {
@@ -97,7 +117,11 @@ impl FileActivityPanel {
         Self::default()
     }
 
-    /// Record a file operation
+    /// Record a file operation.
+    ///
+    /// On the first encounter of a file (typically a Read), the current
+    /// content is snapshotted so that later diffs show exactly what the
+    /// agent changed.  For Create operations the snapshot is `None`.
     pub fn record(&mut self, path: String, op: FileOp) {
         let now = Instant::now();
         if let Some(entry) = self.files.get_mut(&path) {
@@ -108,11 +132,23 @@ impl FileActivityPanel {
             self.order.retain(|p| p != &path);
             self.order.push(path);
         } else {
+            // First time seeing this file — snapshot current content
+            let original_content = if op == FileOp::Create {
+                // Agent is creating this file; no prior content
+                None
+            } else {
+                // Read the file as it exists *right now* (before the agent
+                // modifies it). For Read ops this is the content being read;
+                // for Edit/Write ops that arrive without a prior Read it's
+                // the content just before the first mutation.
+                std::fs::read_to_string(&path).ok()
+            };
             self.files.insert(path.clone(), FileEntry {
                 path: path.clone(),
                 last_op: op,
                 op_count: 1,
                 last_touched: now,
+                original_content,
             });
             self.order.push(path);
         }
@@ -148,6 +184,34 @@ impl FileActivityPanel {
         self.nav.selected = 0;
     }
 
+    /// Open the diff view for the currently selected file.
+    ///
+    /// Uses `similar` to diff the snapshotted original against the file's
+    /// current content on disk. No external processes.
+    pub fn open_diff(&mut self) {
+        if self.order.is_empty() {
+            return;
+        }
+        // Display order is reversed (most recent first), so map selected → path
+        let display_idx = self.nav.selected;
+        let actual_idx = self.order.len().saturating_sub(1).saturating_sub(display_idx);
+        if let Some(path) = self.order.get(actual_idx).cloned() {
+            let original = self
+                .files
+                .get(&path)
+                .and_then(|e| e.original_content.as_deref());
+            let diff = DiffView::compute(&path, original);
+            self.diff_view = Some(diff);
+            self.view = FileView::Diff;
+        }
+    }
+
+    /// Close the diff view and return to the file list.
+    pub fn close_diff(&mut self) {
+        self.view = FileView::List;
+        self.diff_view = None;
+    }
+
     /// Get a summary string
     pub fn summary(&self) -> String {
         if self.files.is_empty() {
@@ -171,16 +235,39 @@ impl Panel for FileActivityPanel {
     }
 
     fn title(&self) -> String {
-        let count = self.file_count();
-        let ops = self.total_ops();
-        format!("Files ({}, {} ops)", count, ops)
+        match self.view {
+            FileView::List => {
+                let count = self.file_count();
+                let ops = self.total_ops();
+                format!("Files ({count}, {ops} ops)")
+            }
+            FileView::Diff => {
+                if let Some(ref dv) = self.diff_view {
+                    let display = Self::display_path(&dv.file_path, &self.cwd);
+                    if dv.empty {
+                        format!("Diff: {display} — no changes")
+                    } else {
+                        format!("Diff: {display} +{} −{}", dv.additions, dv.deletions)
+                    }
+                } else {
+                    "Diff".to_string()
+                }
+            }
+        }
     }
 
     fn focus_hints(&self) -> &'static str {
-        " j/k Tab "
+        match self.view {
+            FileView::List => " j/k Enter:diff ",
+            FileView::Diff => " j/k Esc:back g/G:top/bot ",
+        }
     }
 
     fn is_empty(&self) -> bool {
+        // Diff view handles its own empty state internally
+        if self.view == FileView::Diff {
+            return false;
+        }
         self.files.is_empty()
     }
 
@@ -189,32 +276,97 @@ impl Panel for FileActivityPanel {
     }
 
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<PanelAction> {
-        match key.code {
-            KeyCode::Char('j') | KeyCode::Down => {
-                self.nav.next(self.order.len());
-                Some(PanelAction::Consumed)
-            }
-            KeyCode::Char('k') | KeyCode::Up => {
-                self.nav.prev(self.order.len());
-                Some(PanelAction::Consumed)
-            }
-            KeyCode::Esc => Some(PanelAction::Unfocus),
-            _ => None,
+        match self.view {
+            FileView::List => match key.code {
+                KeyCode::Char('j') | KeyCode::Down => {
+                    self.nav.next(self.order.len());
+                    Some(PanelAction::Consumed)
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    self.nav.prev(self.order.len());
+                    Some(PanelAction::Consumed)
+                }
+                KeyCode::Enter | KeyCode::Char('d') => {
+                    self.open_diff();
+                    Some(PanelAction::Consumed)
+                }
+                KeyCode::Esc => Some(PanelAction::Unfocus),
+                _ => None,
+            },
+            FileView::Diff => match key.code {
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    self.close_diff();
+                    Some(PanelAction::Consumed)
+                }
+                KeyCode::Char('j') | KeyCode::Down => {
+                    if let Some(ref dv) = self.diff_view {
+                        dv.scroll_down(1);
+                    }
+                    Some(PanelAction::Consumed)
+                }
+                KeyCode::Char('k') | KeyCode::Up => {
+                    if let Some(ref dv) = self.diff_view {
+                        dv.scroll_up(1);
+                    }
+                    Some(PanelAction::Consumed)
+                }
+                KeyCode::Char('g') => {
+                    if let Some(ref dv) = self.diff_view {
+                        dv.scroll_to_top();
+                    }
+                    Some(PanelAction::Consumed)
+                }
+                KeyCode::Char('G') => {
+                    if let Some(ref dv) = self.diff_view {
+                        dv.scroll_to_bottom();
+                    }
+                    Some(PanelAction::Consumed)
+                }
+                _ => None,
+            },
         }
     }
 
     fn handle_scroll(&mut self, up: bool, lines: u16) {
-        let len = self.order.len();
-        for _ in 0..lines {
-            if up {
-                self.nav.prev(len);
-            } else {
-                self.nav.next(len);
+        match self.view {
+            FileView::List => {
+                let len = self.order.len();
+                for _ in 0..lines {
+                    if up {
+                        self.nav.prev(len);
+                    } else {
+                        self.nav.next(len);
+                    }
+                }
+            }
+            FileView::Diff => {
+                if let Some(ref dv) = self.diff_view {
+                    if up {
+                        dv.scroll_up(lines);
+                    } else {
+                        dv.scroll_down(lines);
+                    }
+                }
             }
         }
     }
 
     fn draw(&self, frame: &mut Frame, area: Rect, ctx: &DrawContext) {
+        match self.view {
+            FileView::List => self.draw_list(frame, area, ctx),
+            FileView::Diff => {
+                if let Some(ref dv) = self.diff_view {
+                    dv.draw(frame, area, ctx.theme);
+                }
+            }
+        }
+    }
+}
+
+// ── Private rendering helpers ───────────────────────────────────────────────
+
+impl FileActivityPanel {
+    fn draw_list(&self, frame: &mut Frame, area: Rect, ctx: &DrawContext) {
         // Show files in reverse order (most recent first)
         let mut lines = Vec::new();
         let display_order: Vec<&String> = self.order.iter().rev().collect();
@@ -366,5 +518,170 @@ mod tests {
         assert_eq!(panel.title(), "Files (0, 0 ops)");
         panel.record("a.rs".to_string(), FileOp::Read);
         assert_eq!(panel.title(), "Files (1, 1 ops)");
+    }
+
+    // ── Snapshot & diff tests ───────────────────────────────────────
+
+    #[test]
+    fn test_record_snapshots_on_first_read() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("snap.txt");
+        std::fs::write(&path, "original content\n").unwrap();
+
+        let mut panel = FileActivityPanel::new();
+        panel.record(path.to_str().unwrap().to_string(), FileOp::Read);
+
+        let entry = panel.files.get(path.to_str().unwrap()).unwrap();
+        assert_eq!(entry.original_content.as_deref(), Some("original content\n"));
+    }
+
+    #[test]
+    fn test_record_create_has_no_snapshot() {
+        let mut panel = FileActivityPanel::new();
+        panel.record("/tmp/__no_snapshot_test__".to_string(), FileOp::Create);
+
+        let entry = panel.files.get("/tmp/__no_snapshot_test__").unwrap();
+        assert!(entry.original_content.is_none());
+    }
+
+    #[test]
+    fn test_snapshot_only_on_first_encounter() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("once.txt");
+        std::fs::write(&path, "version 1\n").unwrap();
+
+        let mut panel = FileActivityPanel::new();
+        panel.record(path.to_str().unwrap().to_string(), FileOp::Read);
+
+        // Mutate the file and record again
+        std::fs::write(&path, "version 2\n").unwrap();
+        panel.record(path.to_str().unwrap().to_string(), FileOp::Edit);
+
+        // Original snapshot should still be version 1
+        let entry = panel.files.get(path.to_str().unwrap()).unwrap();
+        assert_eq!(entry.original_content.as_deref(), Some("version 1\n"));
+    }
+
+    #[test]
+    fn test_view_starts_as_list() {
+        let panel = FileActivityPanel::new();
+        assert_eq!(panel.view, FileView::List);
+        assert!(panel.diff_view.is_none());
+    }
+
+    #[test]
+    fn test_open_diff_computes_in_process() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("diff_me.txt");
+        std::fs::write(&path, "line1\nline2\n").unwrap();
+
+        let mut panel = FileActivityPanel::new();
+        panel.record(path.to_str().unwrap().to_string(), FileOp::Read);
+
+        // Mutate the file
+        std::fs::write(&path, "line1\nmodified\nline2\n").unwrap();
+        panel.record(path.to_str().unwrap().to_string(), FileOp::Edit);
+
+        panel.open_diff();
+        assert_eq!(panel.view, FileView::Diff);
+        let dv = panel.diff_view.as_ref().unwrap();
+        assert_eq!(dv.additions, 1);
+        assert_eq!(dv.deletions, 0);
+        assert!(!dv.empty);
+    }
+
+    #[test]
+    fn test_open_diff_unchanged_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("unchanged.txt");
+        std::fs::write(&path, "same\n").unwrap();
+
+        let mut panel = FileActivityPanel::new();
+        panel.record(path.to_str().unwrap().to_string(), FileOp::Read);
+        // File is unchanged — diff should be empty
+        panel.open_diff();
+        assert_eq!(panel.view, FileView::Diff);
+        assert!(panel.diff_view.as_ref().unwrap().empty);
+    }
+
+    #[test]
+    fn test_close_diff_returns_to_list() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("close.txt");
+        std::fs::write(&path, "x\n").unwrap();
+
+        let mut panel = FileActivityPanel::new();
+        panel.record(path.to_str().unwrap().to_string(), FileOp::Read);
+        panel.open_diff();
+        assert_eq!(panel.view, FileView::Diff);
+        panel.close_diff();
+        assert_eq!(panel.view, FileView::List);
+        assert!(panel.diff_view.is_none());
+    }
+
+    #[test]
+    fn test_open_diff_on_empty_panel_is_noop() {
+        let mut panel = FileActivityPanel::new();
+        panel.open_diff();
+        assert_eq!(panel.view, FileView::List);
+        assert!(panel.diff_view.is_none());
+    }
+
+    #[test]
+    fn test_is_empty_false_in_diff_view() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("empty_check.txt");
+        std::fs::write(&path, "x\n").unwrap();
+
+        let mut panel = FileActivityPanel::new();
+        panel.record(path.to_str().unwrap().to_string(), FileOp::Read);
+        panel.open_diff();
+        assert!(!panel.is_empty());
+    }
+
+    #[test]
+    fn test_diff_title_shows_stats() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("titled.txt");
+        std::fs::write(&path, "old\n").unwrap();
+
+        let mut panel = FileActivityPanel::new();
+        panel.cwd = dir.path().to_str().unwrap().to_string();
+        panel.record(path.to_str().unwrap().to_string(), FileOp::Read);
+        std::fs::write(&path, "new\n").unwrap();
+        panel.open_diff();
+        let title = panel.title();
+        assert!(title.starts_with("Diff:"), "title was: {title}");
+        assert!(title.contains("+1"), "title was: {title}");
+        assert!(title.contains("−1"), "title was: {title}");
+    }
+
+    #[test]
+    fn test_focus_hints_change_with_view() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("hints.txt");
+        std::fs::write(&path, "x\n").unwrap();
+
+        let mut panel = FileActivityPanel::new();
+        assert!(panel.focus_hints().contains("Enter:diff"));
+        panel.record(path.to_str().unwrap().to_string(), FileOp::Read);
+        panel.open_diff();
+        assert!(panel.focus_hints().contains("Esc:back"));
+    }
+
+    #[test]
+    fn test_diff_for_created_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("created.txt");
+        std::fs::write(&path, "brand new\ncontent\n").unwrap();
+
+        let mut panel = FileActivityPanel::new();
+        panel.record(path.to_str().unwrap().to_string(), FileOp::Create);
+        panel.open_diff();
+
+        let dv = panel.diff_view.as_ref().unwrap();
+        assert_eq!(dv.additions, 2);
+        assert_eq!(dv.deletions, 0);
+        assert!(!dv.empty);
     }
 }

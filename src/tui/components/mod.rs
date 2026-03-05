@@ -5,6 +5,7 @@ pub mod block;
 pub mod block_view;
 pub mod confirm;
 pub mod context_gauge;
+pub mod diff_view;
 pub mod editor;
 pub mod environment_panel;
 pub mod file_activity_panel;

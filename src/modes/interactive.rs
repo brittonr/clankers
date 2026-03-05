@@ -1108,7 +1108,67 @@ async fn run_event_loop(
                                 }
                             }
                             PanelTab::Files => {
-                                // File activity panel — navigation only
+                                use crate::tui::components::file_activity_panel::FileView;
+                                match app.file_activity_panel.view {
+                                    FileView::List => match key.code {
+                                        KeyCode::Enter => {
+                                            app.file_activity_panel.open_diff();
+                                            continue;
+                                        }
+                                        KeyCode::Char('d') if key.modifiers.is_empty() => {
+                                            app.file_activity_panel.open_diff();
+                                            continue;
+                                        }
+                                        _ => {}
+                                    },
+                                    FileView::Diff => match key.code {
+                                        KeyCode::Esc => {
+                                            app.file_activity_panel.close_diff();
+                                            continue;
+                                        }
+                                        KeyCode::Char('q') if key.modifiers.is_empty() => {
+                                            app.file_activity_panel.close_diff();
+                                            continue;
+                                        }
+                                        KeyCode::Char('j') | KeyCode::Down => {
+                                            if let Some(ref dv) = app.file_activity_panel.diff_view {
+                                                dv.scroll_down(1);
+                                            }
+                                            continue;
+                                        }
+                                        KeyCode::Char('k') | KeyCode::Up => {
+                                            if let Some(ref dv) = app.file_activity_panel.diff_view {
+                                                dv.scroll_up(1);
+                                            }
+                                            continue;
+                                        }
+                                        KeyCode::Char('g') if key.modifiers.is_empty() => {
+                                            if let Some(ref dv) = app.file_activity_panel.diff_view {
+                                                dv.scroll_to_top();
+                                            }
+                                            continue;
+                                        }
+                                        KeyCode::Char('G') => {
+                                            if let Some(ref dv) = app.file_activity_panel.diff_view {
+                                                dv.scroll_to_bottom();
+                                            }
+                                            continue;
+                                        }
+                                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                            if let Some(ref dv) = app.file_activity_panel.diff_view {
+                                                dv.scroll_down(10);
+                                            }
+                                            continue;
+                                        }
+                                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
+                                            if let Some(ref dv) = app.file_activity_panel.diff_view {
+                                                dv.scroll_up(10);
+                                            }
+                                            continue;
+                                        }
+                                        _ => {}
+                                    },
+                                }
                             }
                             PanelTab::Processes => {
                                 // Process panel — navigation and sorting handled via Panel trait
@@ -1261,12 +1321,18 @@ fn handle_action(
                     if app.panel_tab == PanelTab::Subagents {
                         app.subagent_panel.close_detail();
                     }
+                    if app.panel_tab == PanelTab::Files {
+                        app.file_activity_panel.close_diff();
+                    }
                     app.panel_focused = false;
                     return;
                 }
                 Action::EnterInsert => {
                     if app.panel_tab == PanelTab::Subagents {
                         app.subagent_panel.close_detail();
+                    }
+                    if app.panel_tab == PanelTab::Files {
+                        app.file_activity_panel.close_diff();
                     }
                     app.panel_focused = false;
                     app.input_mode = InputMode::Insert;
@@ -1275,6 +1341,9 @@ fn handle_action(
                 Action::EnterCommand => {
                     if app.panel_tab == PanelTab::Subagents {
                         app.subagent_panel.close_detail();
+                    }
+                    if app.panel_tab == PanelTab::Files {
+                        app.file_activity_panel.close_diff();
                     }
                     app.panel_focused = false;
                     // Don't return — fall through to main handler for "/" prefix setup
@@ -1378,7 +1447,59 @@ fn handle_action(
                         _ => return,
                     },
                     PanelTab::Files => {
-                        return;
+                        use crate::tui::components::file_activity_panel::FileView;
+                        match app.file_activity_panel.view {
+                            FileView::List => match action {
+                                Action::Submit => {
+                                    app.file_activity_panel.open_diff();
+                                    return;
+                                }
+                                _ => return,
+                            },
+                            FileView::Diff => match action {
+                                Action::Unfocus => {
+                                    app.file_activity_panel.close_diff();
+                                    return;
+                                }
+                                Action::ScrollUp => {
+                                    if let Some(ref dv) = app.file_activity_panel.diff_view {
+                                        dv.scroll_up(1);
+                                    }
+                                    return;
+                                }
+                                Action::ScrollDown => {
+                                    if let Some(ref dv) = app.file_activity_panel.diff_view {
+                                        dv.scroll_down(1);
+                                    }
+                                    return;
+                                }
+                                Action::ScrollPageUp => {
+                                    if let Some(ref dv) = app.file_activity_panel.diff_view {
+                                        dv.scroll_up(10);
+                                    }
+                                    return;
+                                }
+                                Action::ScrollPageDown => {
+                                    if let Some(ref dv) = app.file_activity_panel.diff_view {
+                                        dv.scroll_down(10);
+                                    }
+                                    return;
+                                }
+                                Action::ScrollToTop => {
+                                    if let Some(ref dv) = app.file_activity_panel.diff_view {
+                                        dv.scroll_to_top();
+                                    }
+                                    return;
+                                }
+                                Action::ScrollToBottom => {
+                                    if let Some(ref dv) = app.file_activity_panel.diff_view {
+                                        dv.scroll_to_bottom();
+                                    }
+                                    return;
+                                }
+                                _ => return,
+                            },
+                        }
                     }
                     PanelTab::Processes => {
                         return;
