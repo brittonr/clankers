@@ -22,6 +22,7 @@ use crate::tools::Tool;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
 use crate::tools::ToolResult as ToolExecResult;
+use crate::tools::progress::ToolResultAccumulator;
 
 /// Configuration for a turn loop run
 pub struct TurnConfig {
@@ -393,8 +394,49 @@ async fn execute_tools_parallel(
                 tool_name: tool_name.clone(),
             });
 
+            // Subscribe to event bus BEFORE tool execution to capture all chunks
+            let mut chunk_rx = event_tx.subscribe();
+            let accumulator = Arc::new(parking_lot::Mutex::new(ToolResultAccumulator::new()));
+            let acc_clone = accumulator.clone();
+            let call_id_for_collector = call_id.clone();
+
+            // Spawn collector task that feeds ToolResultChunk events into accumulator
+            let collector = tokio::spawn(async move {
+                loop {
+                    match chunk_rx.recv().await {
+                        Ok(AgentEvent::ToolResultChunk { call_id: cid, chunk })
+                            if cid == call_id_for_collector =>
+                        {
+                            acc_clone.lock().push(chunk);
+                        }
+                        Ok(_) => {} // ignore other events
+                        Err(broadcast::error::RecvError::Closed) => break,
+                        Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                    }
+                }
+            });
+
+            // Execute tool
             let ctx = ToolContext::new(call_id.clone(), cancel, Some(event_tx.clone()));
-            let result = tool.execute(&ctx, input).await;
+            let direct_result = tool.execute(&ctx, input).await;
+
+            // Stop collector and decide which result to use
+            collector.abort();
+            let _ = collector.await;
+
+            let result = {
+                let acc = std::mem::take(&mut *accumulator.lock());
+                if acc.total_bytes() > 0 {
+                    // Chunks were collected — use accumulated (truncated) result
+                    let mut accumulated = acc.finalize();
+                    // Preserve error status from the direct result
+                    accumulated.is_error = direct_result.is_error;
+                    accumulated
+                } else {
+                    // No chunks emitted — use tool's direct return (backward compat)
+                    direct_result
+                }
+            };
 
             let _ = event_tx.send(AgentEvent::ToolExecutionEnd {
                 call_id: call_id.clone(),
@@ -472,9 +514,14 @@ fn tool_result_content_to_message_content(tool_content: &[crate::tools::ToolResu
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
     use serde_json::json;
 
     use super::*;
+    use crate::tools::progress::ResultChunk;
+    use crate::tools::ToolDefinition;
 
     // -----------------------------------------------------------------------
     // parse_stop_reason
@@ -680,5 +727,143 @@ mod tests {
     fn test_tool_result_empty_content() {
         let result = tool_result_content_to_message_content(&[]);
         assert!(result.is_empty());
+    }
+
+    // -----------------------------------------------------------------------
+    // Phase 4: Accumulator integration in execute_tools_parallel
+    // -----------------------------------------------------------------------
+
+    /// A tool that emits result chunks during execution
+    struct ChunkEmittingTool {
+        def: ToolDefinition,
+    }
+
+    impl ChunkEmittingTool {
+        fn new() -> Self {
+            Self {
+                def: ToolDefinition {
+                    name: "chunk_tool".to_string(),
+                    description: "Emits result chunks".to_string(),
+                    input_schema: json!({"type": "object", "properties": {}}),
+                },
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Tool for ChunkEmittingTool {
+        fn definition(&self) -> &ToolDefinition {
+            &self.def
+        }
+
+        async fn execute(&self, ctx: &ToolContext, _params: Value) -> ToolExecResult {
+            // Emit several chunks
+            ctx.emit_result_chunk(ResultChunk::text("line 1\nline 2"));
+            ctx.emit_result_chunk(ResultChunk::text("line 3\nline 4"));
+            ctx.emit_result_chunk(ResultChunk::text("line 5"));
+
+            // Yield to let collector process events
+            tokio::task::yield_now().await;
+
+            // Return a direct result (should be ignored in favor of accumulated)
+            ToolExecResult::text("direct result (should be overridden)")
+        }
+    }
+
+    /// A tool that returns a direct result without emitting chunks
+    struct DirectResultTool {
+        def: ToolDefinition,
+    }
+
+    impl DirectResultTool {
+        fn new() -> Self {
+            Self {
+                def: ToolDefinition {
+                    name: "direct_tool".to_string(),
+                    description: "Returns direct result".to_string(),
+                    input_schema: json!({"type": "object", "properties": {}}),
+                },
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Tool for DirectResultTool {
+        fn definition(&self) -> &ToolDefinition {
+            &self.def
+        }
+
+        async fn execute(&self, _ctx: &ToolContext, _params: Value) -> ToolExecResult {
+            ToolExecResult::text("direct output")
+        }
+    }
+
+    #[tokio::test]
+    async fn accumulator_collects_chunks_from_tool() {
+        let tool: Arc<dyn Tool> = Arc::new(ChunkEmittingTool::new());
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("chunk_tool".to_string(), tool);
+
+        let (event_tx, _rx) = broadcast::channel(256);
+        let cancel = CancellationToken::new();
+
+        let tool_calls = vec![(
+            "call-1".to_string(),
+            "chunk_tool".to_string(),
+            json!({}),
+        )];
+
+        let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel).await;
+
+        assert_eq!(results.len(), 1);
+        let msg = &results[0];
+        assert!(!msg.is_error);
+
+        // Should contain accumulated text, not "direct result"
+        let text = match &msg.content[0] {
+            Content::Text { text } => text,
+            other => panic!("expected Text, got {:?}", other),
+        };
+        assert!(text.contains("line 1"), "expected accumulated text, got: {}", text);
+        assert!(text.contains("line 5"), "expected accumulated text, got: {}", text);
+        assert!(!text.contains("direct result"), "should use accumulated, not direct");
+
+        // Should have details with accumulator metadata
+        let details = msg.details.as_ref().expect("expected details");
+        assert_eq!(details["chunks"], 3);
+        assert!(details["total_lines"].as_u64().unwrap() >= 5);
+        assert!(!details["truncated"].as_bool().unwrap());
+    }
+
+    #[tokio::test]
+    async fn direct_result_used_when_no_chunks() {
+        let tool: Arc<dyn Tool> = Arc::new(DirectResultTool::new());
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("direct_tool".to_string(), tool);
+
+        let (event_tx, _rx) = broadcast::channel(256);
+        let cancel = CancellationToken::new();
+
+        let tool_calls = vec![(
+            "call-2".to_string(),
+            "direct_tool".to_string(),
+            json!({}),
+        )];
+
+        let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel).await;
+
+        assert_eq!(results.len(), 1);
+        let msg = &results[0];
+        assert!(!msg.is_error);
+
+        // Should contain the direct result text
+        let text = match &msg.content[0] {
+            Content::Text { text } => text,
+            other => panic!("expected Text, got {:?}", other),
+        };
+        assert_eq!(text, "direct output");
+
+        // No details (direct result has no accumulator metadata)
+        assert!(msg.details.is_none());
     }
 }
