@@ -278,7 +278,7 @@ pub async fn run_polling(
             Err(e) => eprintln!("[merge-daemon] Cycle error: {}", e),
         }
         tokio::select! {
-            _ = tokio::time::sleep(std::time::Duration::from_secs(interval_secs)) => {}
+            () = tokio::time::sleep(std::time::Duration::from_secs(interval_secs)) => {}
             _ = tokio::signal::ctrl_c() => {
                 println!("\nMerge daemon stopped.");
                 break;

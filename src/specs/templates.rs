@@ -1,7 +1,7 @@
 //! Built-in schemas and default artifact templates
 
 /// Default proposal.md template
-pub const PROPOSAL_TEMPLATE: &str = r#"# {{change_name}}
+pub const PROPOSAL_TEMPLATE: &str = r"# {{change_name}}
 
 ## Intent
 
@@ -20,9 +20,9 @@ What problem does this change solve? Why now?
 ## Approach
 
 High-level approach to implementing this change.
-"#;
+";
 
-pub const SPEC_TEMPLATE: &str = r#"# {{change_name}} — Spec
+pub const SPEC_TEMPLATE: &str = r"# {{change_name}} — Spec
 
 ## Purpose
 
@@ -37,9 +37,9 @@ The system MUST ...
 GIVEN precondition
 WHEN action
 THEN expected outcome
-"#;
+";
 
-pub const DESIGN_TEMPLATE: &str = r#"# {{change_name}} — Design
+pub const DESIGN_TEMPLATE: &str = r"# {{change_name}} — Design
 
 ## Decisions
 
@@ -56,9 +56,9 @@ Describe the technical architecture.
 ## Data Flow
 
 Describe data flow for complex interactions.
-"#;
+";
 
-pub const TASKS_TEMPLATE: &str = r#"# {{change_name}} — Tasks
+pub const TASKS_TEMPLATE: &str = r"# {{change_name}} — Tasks
 
 > **Legend:** `[ ]` not started · `[~]` in progress ⏱ · `[x]` done ✅ `<duration>`
 
@@ -71,7 +71,7 @@ pub const TASKS_TEMPLATE: &str = r#"# {{change_name}} — Tasks
 
 - [ ] Task 3
 - [ ] Task 4
-"#;
+";
 
 /// Expand template variables
 pub fn expand_template(template: &str, change_name: &str, context: &str, rules: &[String]) -> String {

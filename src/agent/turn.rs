@@ -151,7 +151,7 @@ pub async fn run_turn_loop(
 
         let (complete_result, collected) = tokio::select! {
             biased;
-            _ = cancel.cancelled() => {
+            () = cancel.cancelled() => {
                 return Err(Error::Cancelled);
             }
             result = async { tokio::join!(complete_fut, collect_fut) } => result,

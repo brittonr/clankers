@@ -268,10 +268,9 @@ pub async fn send_rpc_streaming(
                 message: format!("Failed to parse response: {}", e),
             })?;
             return Ok((notifications, response));
-        } else {
-            on_notification(&value);
-            notifications.push(value);
         }
+        on_notification(&value);
+        notifications.push(value);
     }
 }
 
@@ -794,7 +793,7 @@ pub async fn handle_prompt_streaming_pub(request: &Request, state: &ServerState,
 
     // Send the final response
     let response = match agent_result {
-        Ok(_) => Response::success(json!({
+        Ok(()) => Response::success(json!({
             "text": collected_text,
             "status": "complete"
         })),
@@ -820,8 +819,8 @@ pub async fn run_heartbeat(
     info!("Heartbeat started (interval: {:?})", interval);
     loop {
         tokio::select! {
-            _ = tokio::time::sleep(interval) => {}
-            _ = cancel.cancelled() => {
+            () = tokio::time::sleep(interval) => {}
+            () = cancel.cancelled() => {
                 info!("Heartbeat stopped");
                 return;
             }
@@ -920,7 +919,7 @@ pub async fn discover_mdns_peers(
 
     loop {
         tokio::select! {
-            _ = &mut deadline => break,
+            () = &mut deadline => break,
             event = stream.next() => {
                 match event {
                     Some(DiscoveryEvent::Discovered { endpoint_info, .. }) => {

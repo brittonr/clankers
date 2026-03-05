@@ -285,8 +285,8 @@ async fn spawn_subprocess(
     let child_pid = child.id();
 
     // Register process with monitor
-    if let Some(monitor) = process_monitor {
-        if let Some(pid) = child_pid {
+    if let Some(monitor) = process_monitor
+        && let Some(pid) = child_pid {
             let task_preview_full: String = task.chars().take(200).collect();
             monitor.register(pid, crate::procmon::ProcessMeta {
                 tool_name: "subagent".to_string(),
@@ -294,7 +294,6 @@ async fn spawn_subprocess(
                 call_id: call_id.to_string(),
             });
         }
-    }
 
     if let Some(tx) = panel_tx {
         let _ = tx.send(SubagentEvent::Started {
@@ -331,7 +330,7 @@ async fn spawn_subprocess(
                     Err(e) => return Err(format!("Read error: {}", e)),
                 }
             }
-            _ = signal.cancelled() => {
+            () = signal.cancelled() => {
                 let _ = child.kill().await;
                 if let Some(tx) = panel_tx {
                     let _ = tx.send(SubagentEvent::Error { id: sub_id, message: "Cancelled".into() });

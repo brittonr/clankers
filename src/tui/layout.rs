@@ -244,7 +244,7 @@ impl PanelLayout {
     pub fn toggle_panel(&mut self, id: PanelId) {
         for col in &mut self.columns {
             if let Some(slot) = col.column.slots.iter_mut().find(|s| s.id == id) {
-                slot.weight = if slot.weight == 0 { 1 } else { 0 };
+                slot.weight = u16::from(slot.weight == 0);
                 return;
             }
         }
@@ -264,7 +264,7 @@ fn split_column_vertical(column: &Column, area: Rect) -> Vec<(&PanelSlot, Rect)>
     }
 
     let constraints: Vec<Constraint> =
-        visible.iter().map(|s| Constraint::Ratio(s.weight as u32, total_weight as u32)).collect();
+        visible.iter().map(|s| Constraint::Ratio(u32::from(s.weight), u32::from(total_weight))).collect();
 
     let rects = Layout::default().direction(Direction::Vertical).constraints(constraints).split(area);
 

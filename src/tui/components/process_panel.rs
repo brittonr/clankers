@@ -222,10 +222,10 @@ impl ProcessPanel {
                 self.entries.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap_or(std::cmp::Ordering::Equal));
             }
             SortMode::Memory => {
-                self.entries.sort_by(|a, b| b.rss_bytes.cmp(&a.rss_bytes));
+                self.entries.sort_by_key(|e| std::cmp::Reverse(e.rss_bytes));
             }
             SortMode::Time => {
-                self.entries.sort_by(|a, b| b.elapsed.cmp(&a.elapsed));
+                self.entries.sort_by_key(|e| std::cmp::Reverse(e.elapsed));
             }
             SortMode::Name => {
                 self.entries.sort_by(|a, b| a.command.cmp(&b.command));
@@ -408,7 +408,7 @@ impl ProcessPanel {
                 Style::default().fg(Color::DarkGray),
             )));
 
-            for (_display_idx, (global_idx, entry)) in completed_entries.iter().enumerate() {
+            for (global_idx, entry) in &completed_entries {
                 let mem_mb = entry.peak_rss as f64 / (1024.0 * 1024.0);
                 let time_str = format_elapsed(entry.elapsed);
 

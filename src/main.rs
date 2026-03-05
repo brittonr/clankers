@@ -2290,7 +2290,7 @@ async fn main() -> Result<()> {
                         match cap {
                             clankers_auth::Capability::Prompt => println!("    - Prompt"),
                             clankers_auth::Capability::ToolUse { tool_pattern } => {
-                                println!("    - ToolUse: {}", tool_pattern)
+                                println!("    - ToolUse: {}", tool_pattern);
                             }
                             clankers_auth::Capability::ShellExecute {
                                 command_pattern,
@@ -2307,7 +2307,7 @@ async fn main() -> Result<()> {
                                 println!("    - FileAccess: {} ({})", prefix, mode);
                             }
                             clankers_auth::Capability::BotCommand { command_pattern } => {
-                                println!("    - BotCommand: {}", command_pattern)
+                                println!("    - BotCommand: {}", command_pattern);
                             }
                             clankers_auth::Capability::SessionManage => println!("    - SessionManage"),
                             clankers_auth::Capability::ModelSwitch => println!("    - ModelSwitch"),

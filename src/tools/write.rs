@@ -89,7 +89,7 @@ impl Tool for WriteTool {
 
         // Write the file
         match fs::write(path, content).await {
-            Ok(_) => {
+            Ok(()) => {
                 let byte_count = content.len();
                 if old_content.is_empty() {
                     ToolResult::text(format!("Created {} ({} bytes)", path_str, byte_count))

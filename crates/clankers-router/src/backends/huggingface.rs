@@ -289,7 +289,7 @@ impl HubClient {
                 }
             })
             .collect();
-        gguf_files.sort_by(|a, b| a.size_bytes.cmp(&b.size_bytes));
+        gguf_files.sort_by_key(|a| a.size_bytes);
         Ok(gguf_files)
     }
 
@@ -730,7 +730,7 @@ fn parse_quantization(filename: &str) -> Option<String> {
     let upper = filename.to_uppercase();
     // Try longest patterns first
     let mut sorted_patterns = patterns.to_vec();
-    sorted_patterns.sort_by(|a, b| b.len().cmp(&a.len()));
+    sorted_patterns.sort_by_key(|p| std::cmp::Reverse(p.len()));
 
     for pattern in sorted_patterns {
         if upper.contains(pattern) {
@@ -745,7 +745,7 @@ fn generate_ollama_name(model_id: &str, quantization: Option<&str>) -> String {
     // "bartowski/Llama-3.3-70B-Instruct-GGUF" → "llama-3.3-70b-instruct"
     let name = model_id
         .split('/')
-        .last()
+        .next_back()
         .unwrap_or(model_id)
         .to_lowercase()
         .replace("-gguf", "")

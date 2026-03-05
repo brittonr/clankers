@@ -232,7 +232,7 @@ impl Tool for AskTool {
                         Err(_) => ToolResult::error("Failed to receive user response"),
                     }
                 }
-                _ = ctx.signal.cancelled() => {
+                () = ctx.signal.cancelled() => {
                     ToolResult::error("Ask cancelled")
                 }
             }

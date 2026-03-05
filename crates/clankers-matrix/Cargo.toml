@@ -22,3 +22,6 @@ hostname = "0.4"
 mime = "0.3"
 ruma = "0.12"
 pulldown-cmark = "0.12"
+
+[lints]
+workspace = true

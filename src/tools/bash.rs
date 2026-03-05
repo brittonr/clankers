@@ -182,8 +182,8 @@ impl Tool for BashTool {
         };
 
         // Register process with monitor
-        if let Some(ref monitor) = self.process_monitor {
-            if let Some(pid) = child.id() {
+        if let Some(ref monitor) = self.process_monitor
+            && let Some(pid) = child.id() {
                 let command_preview: String = command.chars().take(200).collect();
                 monitor.register(pid, crate::procmon::ProcessMeta {
                     tool_name: "bash".to_string(),
@@ -191,7 +191,6 @@ impl Tool for BashTool {
                     call_id: ctx.call_id.clone(),
                 });
             }
-        }
 
         let stdout = match child.stdout.take() {
             Some(s) => s,
@@ -226,7 +225,7 @@ impl Tool for BashTool {
             }
 
             tokio::select! {
-                _ = ctx.signal.cancelled() => {
+                () = ctx.signal.cancelled() => {
                     let _ = child.start_kill();
                     return ToolResult::error("Command cancelled");
                 }

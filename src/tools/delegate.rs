@@ -333,8 +333,8 @@ async fn run_remote_worker(
                 });
             }
             tokio::select! {
-                _ = tokio::time::sleep(backoff) => {}
-                _ = signal.cancelled() => {
+                () = tokio::time::sleep(backoff) => {}
+                () = signal.cancelled() => {
                     if let Some(tx) = panel_tx {
                         let _ = tx.send(SubagentEvent::Error { id: sub_id, message: "Cancelled".into() });
                     }
@@ -402,7 +402,7 @@ async fn run_remote_worker(
                     }
                 }
             }) => res.map(|(_, response)| response),
-            _ = signal.cancelled() => {
+            () = signal.cancelled() => {
                 if let Some(tx) = panel_tx {
                     let _ = tx.send(SubagentEvent::Error { id: sub_id, message: "Cancelled".into() });
                 }
@@ -430,9 +430,8 @@ async fn run_remote_worker(
                         });
                     }
                     return ToolResult::error(msg);
-                } else {
-                    return ToolResult::error("Empty response from remote peer");
                 }
+                return ToolResult::error("Empty response from remote peer");
             }
             Err(e) => {
                 // Connection-level errors are retryable
@@ -512,8 +511,8 @@ pub async fn run_worker_subprocess(
     let child_pid = child.id();
 
     // Register process with monitor
-    if let Some(monitor) = process_monitor {
-        if let Some(pid) = child_pid {
+    if let Some(monitor) = process_monitor
+        && let Some(pid) = child_pid {
             let task_preview_full: String = task.chars().take(200).collect();
             monitor.register(pid, crate::procmon::ProcessMeta {
                 tool_name: "delegate".to_string(),
@@ -521,7 +520,6 @@ pub async fn run_worker_subprocess(
                 call_id: format!("worker:{}", worker_name),
             });
         }
-    }
 
     if let Some(tx) = panel_tx {
         let _ = tx.send(SubagentEvent::Started {
@@ -561,7 +559,7 @@ pub async fn run_worker_subprocess(
                     Err(e) => return ToolResult::error(format!("Worker '{}' read error: {}", worker_name, e)),
                 }
             }
-            _ = signal.cancelled() => {
+            () = signal.cancelled() => {
                 let _ = child.kill().await;
                 if let Some(tx) = panel_tx {
                     let _ = tx.send(SubagentEvent::Error { id: sub_id, message: "Cancelled".into() });

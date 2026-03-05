@@ -522,7 +522,7 @@ impl App {
                 if let Some(ref mut block) = self.active_block {
                     block.responses.push(DisplayMessage {
                         role: MessageRole::ToolCall,
-                        content: tool_name.to_string(),
+                        content: tool_name.clone(),
                         tool_name: Some(tool_name.clone()),
                         is_error: false,
                         images: Vec::new(),

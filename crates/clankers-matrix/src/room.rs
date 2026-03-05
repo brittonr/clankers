@@ -10,6 +10,7 @@ use crate::client::MatrixError;
 ///
 /// Sets up a private room with E2E encryption enabled and a descriptive
 /// topic indicating it's used for clankers inter-agent communication.
+#[allow(clippy::unused_async)] // Will use await once room creation is implemented.
 pub async fn create_clankers_room(
     _client: &MatrixClient,
     _name: &str,

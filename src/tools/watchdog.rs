@@ -128,8 +128,8 @@ pub fn spawn_watchdog(
 
         loop {
             tokio::select! {
-                _ = tokio::time::sleep(config.check_interval) => {}
-                _ = kill_signal.cancelled() => break,
+                () = tokio::time::sleep(config.check_interval) => {}
+                () = kill_signal.cancelled() => break,
             }
 
             let state = tracker.state();
@@ -140,8 +140,8 @@ pub fn spawn_watchdog(
             let idle = tracker.idle_duration();
 
             // Check kill timeout first
-            if let Some(kill_timeout) = config.kill_timeout {
-                if idle >= kill_timeout {
+            if let Some(kill_timeout) = config.kill_timeout
+                && idle >= kill_timeout {
                     warn!(
                         "subagent {} unresponsive for {:.0}s (kill timeout {:.0}s), killing",
                         tracker.id(),
@@ -160,7 +160,6 @@ pub fn spawn_watchdog(
                     }
                     break;
                 }
-            }
 
             // Check stall timeout
             if idle >= config.stall_timeout && !stall_notified {

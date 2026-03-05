@@ -45,7 +45,7 @@ impl PlanState {
 }
 
 /// System prompt suffix added when plan mode is active
-pub const PLAN_MODE_PROMPT: &str = r#"
+pub const PLAN_MODE_PROMPT: &str = r"
 ## Plan Mode Active
 
 You are currently in PLAN MODE. In this mode:
@@ -84,10 +84,10 @@ Format your plan as:
 ```
 
 After presenting the plan, ask the user if they want to proceed with implementation.
-"#;
+";
 
 /// System prompt for execution phase (after plan approval)
-pub const PLAN_EXECUTE_PROMPT: &str = r#"
+pub const PLAN_EXECUTE_PROMPT: &str = r"
 ## Executing Approved Plan
 
 The user has approved your implementation plan. Now execute it step by step:
@@ -95,7 +95,7 @@ The user has approved your implementation plan. Now execute it step by step:
 2. Create/modify files as outlined
 3. Report progress after each step
 4. If you encounter issues, explain them before deviating from the plan
-"#;
+";
 
 /// Get the restricted tool set for plan mode (read-only tools)
 pub fn plan_mode_tools() -> Vec<&'static str> {

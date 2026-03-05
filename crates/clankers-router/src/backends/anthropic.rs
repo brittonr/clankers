@@ -246,7 +246,7 @@ impl AnthropicProvider {
                         .header("x-api-key", key)
                         .header("anthropic-beta", "prompt-caching-2024-07-31,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14");
                 }
-            };
+            }
 
             let resp = builder.json(body).send().await.map_err(|e| Error::Provider {
                 message: format!("Anthropic request failed: {}", e),

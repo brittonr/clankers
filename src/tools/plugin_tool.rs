@@ -71,9 +71,8 @@ impl Tool for PluginTool {
                     let result = parsed.get("result").and_then(|r| r.as_str()).unwrap_or(&output);
                     if status == "ok" {
                         return ToolResult::text(result.to_string());
-                    } else {
-                        return ToolResult::error(result.to_string());
                     }
+                    return ToolResult::error(result.to_string());
                 }
                 // Fallback: return raw output as text
                 ToolResult::text(output)

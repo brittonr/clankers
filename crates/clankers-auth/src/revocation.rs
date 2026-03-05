@@ -65,6 +65,7 @@ impl RedbRevocationStore {
     /// # Errors
     ///
     /// Returns an error if the database tables cannot be created.
+    #[allow(clippy::result_large_err)]
     pub fn new(db: Arc<Database>) -> Result<Self, redb::Error> {
         // Create tables if they don't exist
         let write_txn = db.begin_write()?;
@@ -97,10 +98,7 @@ impl RevocationStore for RedbRevocationStore {
         };
 
         // Check if the hash exists in the table
-        match table.get(token_hash.as_slice()) {
-            Ok(Some(_)) => true,
-            _ => false,
-        }
+        matches!(table.get(token_hash.as_slice()), Ok(Some(_)))
     }
 
     fn revoke(&self, hash: [u8; 32], timestamp: u64) {

@@ -36,7 +36,7 @@ impl AgentRegistry {
 
     pub fn names(&self) -> Vec<&str> {
         let mut names: Vec<_> = self.agents.keys().map(|s| s.as_str()).collect();
-        names.sort();
+        names.sort_unstable();
         names
     }
 

@@ -77,7 +77,7 @@ impl CapabilityToken {
         if bytes.len() > MAX_TOKEN_SIZE as usize {
             return Err(AuthError::TokenTooLarge {
                 size_bytes: bytes.len() as u64,
-                max_bytes: MAX_TOKEN_SIZE as u64,
+                max_bytes: u64::from(MAX_TOKEN_SIZE),
             });
         }
         Ok(bytes)
@@ -88,7 +88,7 @@ impl CapabilityToken {
         if bytes.len() > MAX_TOKEN_SIZE as usize {
             return Err(AuthError::TokenTooLarge {
                 size_bytes: bytes.len() as u64,
-                max_bytes: MAX_TOKEN_SIZE as u64,
+                max_bytes: u64::from(MAX_TOKEN_SIZE),
             });
         }
         Ok(postcard::from_bytes(bytes)?)

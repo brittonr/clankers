@@ -94,7 +94,7 @@ impl Tool for FindTool {
 
         loop {
             tokio::select! {
-                _ = ctx.signal.cancelled() => {
+                () = ctx.signal.cancelled() => {
                     let _ = child.start_kill();
                     return ToolResult::error("Search cancelled");
                 }

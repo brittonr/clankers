@@ -61,3 +61,6 @@ pretty_assertions = "1.0"
 tempfile = "3"
 tokio-test = "0.4"
 tower = { version = "0.5", features = ["util"] }
+
+[lints]
+workspace = true

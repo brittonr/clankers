@@ -365,15 +365,14 @@ impl Tool for NixTool {
 
         // Stream and parse output
         loop {
-            if let Some(dl) = deadline {
-                if tokio::time::Instant::now() >= dl {
+            if let Some(dl) = deadline
+                && tokio::time::Instant::now() >= dl {
                     let _ = child.start_kill();
                     return ToolResult::error(format!("nix {} timed out after {}s", subcommand, timeout_secs));
                 }
-            }
 
             tokio::select! {
-                _ = ctx.signal.cancelled() => {
+                () = ctx.signal.cancelled() => {
                     let _ = child.start_kill();
                     return ToolResult::error("nix command cancelled");
                 }
@@ -714,11 +713,10 @@ fn shorten_drv_path(text: &str) -> String {
 /// Shorten a URL for display
 fn shorten_url(url: &str) -> String {
     // For github URLs, show just the relevant part
-    if let Some(rest) = url.strip_prefix("https://github.com/") {
-        if rest.len() > 60 {
+    if let Some(rest) = url.strip_prefix("https://github.com/")
+        && rest.len() > 60 {
             return format!("github:{}", &rest[..57].rsplit_once('/').map(|(l, _)| l).unwrap_or(&rest[..57]));
         }
-    }
     // Trim long URLs
     if url.len() > 80 {
         format!("{}...", &url[..77])

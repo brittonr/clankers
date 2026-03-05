@@ -81,11 +81,10 @@ fn build_plugins(filter: Option<&str>) -> ExitCode {
             }
         };
 
-        if let Some(f) = filter {
-            if !name.contains(f) {
+        if let Some(f) = filter
+            && !name.contains(f) {
                 continue;
             }
-        }
 
         let dir = manifest.parent().unwrap();
         let wasm_stem = name.replace('-', "_");

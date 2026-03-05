@@ -68,7 +68,7 @@ impl OAuthCredentials {
                 refresh: refresh_token.clone(),
                 expires: *expires_at_ms,
             }),
-            _ => None,
+            crate::auth::StoredCredential::ApiKey { .. } => None,
         }
     }
 }

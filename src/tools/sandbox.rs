@@ -289,7 +289,7 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
         handled_access_net: 0,
     };
     let fd = unsafe {
-        libc::syscall(LANDLOCK_CREATE_RULESET, &attr as *const RulesetAttr, std::mem::size_of::<RulesetAttr>(), 0u32)
+        libc::syscall(LANDLOCK_CREATE_RULESET, &raw const attr, std::mem::size_of::<RulesetAttr>(), 0u32)
     };
     if fd < 0 {
         let err = std::io::Error::last_os_error();
@@ -311,7 +311,7 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
             parent_fd: file.as_raw_fd(),
         };
         let ret =
-            unsafe { libc::syscall(LANDLOCK_ADD_RULE, fd, RULE_PATH_BENEATH, &rule as *const PathBeneathAttr, 0u32) };
+            unsafe { libc::syscall(LANDLOCK_ADD_RULE, fd, RULE_PATH_BENEATH, &raw const rule, 0u32) };
         // Keep file open until after syscall (fd must be valid)
         std::mem::forget(file);
         if ret < 0 {

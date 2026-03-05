@@ -227,11 +227,10 @@ impl MatrixClient {
 
                 let room_id = room.room_id().as_str();
                 let clankers_event = parse_room_message(&ev, room_id);
-                if let Some(event) = clankers_event {
-                    if tx.send(event).is_err() {
+                if let Some(event) = clankers_event
+                    && tx.send(event).is_err() {
                         debug!("No subscribers for Matrix event");
                     }
-                }
             }
         });
 
@@ -258,11 +257,10 @@ impl MatrixClient {
         if self.config.announce_on_join {
             let announce = Announce::new(&self.instance_name, self.config.user_id.as_str());
             for room_id_str in &self.config.auto_join_rooms {
-                if let Ok(room_id) = RoomId::parse(room_id_str.as_str()) {
-                    if let Err(e) = self.send_announce(&room_id, &announce).await {
+                if let Ok(room_id) = RoomId::parse(room_id_str.as_str())
+                    && let Err(e) = self.send_announce(&room_id, &announce).await {
                         warn!("Failed to announce in {}: {}", room_id, e);
                     }
-                }
             }
         }
 
@@ -493,8 +491,8 @@ impl MatrixClient {
             let raw: &Raw<AnySyncTimelineEvent> = timeline_event.raw();
 
             // Deserialize to get sender, timestamp, and body
-            if let Ok(event) = raw.deserialize() {
-                if let AnySyncTimelineEvent::MessageLike(msg_event) = event {
+            if let Ok(event) = raw.deserialize()
+                && let AnySyncTimelineEvent::MessageLike(msg_event) = event {
                     use matrix_sdk::ruma::events::AnySyncMessageLikeEvent;
                     if let AnySyncMessageLikeEvent::RoomMessage(
                         matrix_sdk::ruma::events::SyncMessageLikeEvent::Original(original),
@@ -526,7 +524,6 @@ impl MatrixClient {
                         });
                     }
                 }
-            }
         }
 
         Ok(messages)
@@ -549,15 +546,15 @@ impl MatrixClient {
 fn parse_room_message(ev: &OriginalSyncRoomMessageEvent, room_id: &str) -> Option<ClankersEvent> {
     let sender = ev.sender.to_string();
     let timestamp =
-        chrono::DateTime::from_timestamp(ev.origin_server_ts.as_secs().into(), 0).unwrap_or_else(|| chrono::Utc::now());
+        chrono::DateTime::from_timestamp(ev.origin_server_ts.as_secs().into(), 0).unwrap_or_else(chrono::Utc::now);
 
     match &ev.content.msgtype {
         MessageType::Text(text) => {
             let body = &text.body;
 
             // Try to parse as a clankers-tagged message: [clankers:<type>] <json>
-            if let Some(rest) = body.strip_prefix("[clankers:") {
-                if let Some(bracket_end) = rest.find(']') {
+            if let Some(rest) = body.strip_prefix("[clankers:")
+                && let Some(bracket_end) = rest.find(']') {
                     let event_type = &rest[..bracket_end];
                     let json_str = rest[bracket_end + 1..].trim();
 
@@ -574,7 +571,6 @@ fn parse_room_message(ev: &OriginalSyncRoomMessageEvent, room_id: &str) -> Optio
                         }
                     };
                 }
-            }
 
             // Regular text message
             Some(ClankersEvent::Text {

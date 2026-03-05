@@ -68,6 +68,7 @@ pub enum SelectionStrategy {
 
 /// Health state for a single credential slot.
 #[derive(Debug)]
+#[derive(Default)]
 struct SlotHealth {
     /// Whether the slot is currently in cooldown (rate-limited/exhausted).
     in_cooldown: bool,
@@ -85,19 +86,6 @@ struct SlotHealth {
     last_used: Option<Instant>,
 }
 
-impl Default for SlotHealth {
-    fn default() -> Self {
-        Self {
-            in_cooldown: false,
-            cooldown_until: None,
-            consecutive_errors: 0,
-            last_error_status: None,
-            success_count: 0,
-            failure_count: 0,
-            last_used: None,
-        }
-    }
-}
 
 impl SlotHealth {
     /// Whether this slot is healthy enough to try.

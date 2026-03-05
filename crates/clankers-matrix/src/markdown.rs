@@ -120,13 +120,11 @@ fn split_into_blocks(text: &str) -> Vec<String> {
 
             // If we just closed a code block, finalize it as its own block
             if !in_code_block {
-                // Continue collecting until we hit a blank line or end
-                while let Some(next_line) = lines.peek() {
-                    if next_line.trim().is_empty() {
-                        lines.next(); // consume blank line
-                        break;
-                    }
-                    break;
+                // Consume a trailing blank line after closing the code block, if any.
+                if let Some(next_line) = lines.peek()
+                    && next_line.trim().is_empty()
+                {
+                    lines.next();
                 }
                 blocks.push(current.trim().to_string());
                 current.clear();
@@ -144,8 +142,8 @@ fn split_into_blocks(text: &str) -> Vec<String> {
             // Outside code block
             if line.trim().is_empty() {
                 // Blank line — check if next line is also blank (paragraph boundary)
-                if let Some(next) = lines.peek() {
-                    if next.trim().is_empty() {
+                if let Some(next) = lines.peek()
+                    && next.trim().is_empty() {
                         // Double blank → finalize current block
                         if !current.is_empty() {
                             blocks.push(current.trim().to_string());
@@ -153,7 +151,6 @@ fn split_into_blocks(text: &str) -> Vec<String> {
                         }
                         continue;
                     }
-                }
                 // Single blank within a paragraph
                 if !current.is_empty() {
                     current.push('\n');

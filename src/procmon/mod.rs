@@ -218,7 +218,7 @@ impl ProcessMonitor {
 
         loop {
             tokio::select! {
-                _ = cancel.cancelled() => {
+                () = cancel.cancelled() => {
                     break;
                 }
                 _ = interval.tick() => {
@@ -330,11 +330,10 @@ impl ProcessMonitor {
         let parent_sys_pid = Pid::from_u32(parent_pid);
 
         for (pid, process) in system.processes() {
-            if let Some(ppid) = process.parent() {
-                if ppid == parent_sys_pid {
+            if let Some(ppid) = process.parent()
+                && ppid == parent_sys_pid {
                     children.push(pid.as_u32());
                 }
-            }
         }
 
         children

@@ -112,7 +112,7 @@ impl CredentialManager {
                             let delay_ms = (refresh_at_ms - now_ms).max(0) as u64;
                             Duration::from_millis(delay_ms)
                         }
-                        _ => return, // Not OAuth, stop the task
+                        StoredCredential::ApiKey { .. } => return, // Not OAuth, stop the task
                     }
                 };
 

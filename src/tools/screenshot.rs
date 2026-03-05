@@ -84,8 +84,8 @@ impl Tool for ScreenshotTool {
         // Optional delay
         if delay > 0.0 {
             tokio::select! {
-                _ = tokio::time::sleep(std::time::Duration::from_secs_f64(delay)) => {}
-                _ = ctx.signal.cancelled() => {
+                () = tokio::time::sleep(std::time::Duration::from_secs_f64(delay)) => {}
+                () = ctx.signal.cancelled() => {
                     return ToolResult::error("Cancelled during delay");
                 }
             }

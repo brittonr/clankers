@@ -253,7 +253,7 @@ impl IdentityStore {
             identities.push(identity);
         }
 
-        identities.sort_by(|a, b| b.last_active.cmp(&a.last_active));
+        identities.sort_by_key(|i| std::cmp::Reverse(i.last_active));
         Ok(identities)
     }
 

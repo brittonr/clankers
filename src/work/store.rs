@@ -200,11 +200,10 @@ impl WorkStore {
             if current == item_id {
                 return Ok(true);
             }
-            if visited.insert(current) {
-                if let Some(current_deps) = deps.get(current) {
+            if visited.insert(current)
+                && let Some(current_deps) = deps.get(current) {
                     stack.extend(current_deps.iter());
                 }
-            }
         }
         Ok(false)
     }

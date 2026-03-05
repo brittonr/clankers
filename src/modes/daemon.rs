@@ -426,11 +426,10 @@ impl SessionStore {
                 }
                 // Clean up trigger pipe file
                 let pipe_path = session.session_dir.join("trigger.pipe");
-                if pipe_path.exists() {
-                    if let Err(e) = std::fs::remove_file(&pipe_path) {
+                if pipe_path.exists()
+                    && let Err(e) = std::fs::remove_file(&pipe_path) {
                         warn!("Failed to remove trigger pipe {}: {e}", pipe_path.display());
                     }
-                }
             }
             info!("Reaping idle session: {}", key);
             self.sessions.remove(key);
@@ -597,7 +596,7 @@ pub async fn run_daemon(
                         }
                     });
                 }
-                _ = iroh_cancel.cancelled() => break,
+                () = iroh_cancel.cancelled() => break,
             }
         }
     });
@@ -648,7 +647,7 @@ pub async fn run_daemon(
                     let store = status_store.read().await;
                     info!("daemon status: {} active session(s)", store.len());
                 }
-                _ = status_cancel.cancelled() => break,
+                () = status_cancel.cancelled() => break,
             }
         }
     });
@@ -668,7 +667,7 @@ pub async fn run_daemon(
                             info!("Reaped {} idle session(s)", reaped);
                         }
                     }
-                    _ = reaper_cancel.cancelled() => break,
+                    () = reaper_cancel.cancelled() => break,
                 }
             }
         });
@@ -1152,7 +1151,7 @@ async fn run_matrix_bridge(
                         // ── Bot command dispatch ────────────────────
                         if body.starts_with('!') {
                             let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(&room_id) {
-                                Ok(rid) => rid.to_owned(),
+                                Ok(rid) => rid.clone(),
                                 Err(_) => continue,
                             };
                             let key = SessionKey::Matrix {
@@ -1179,7 +1178,7 @@ async fn run_matrix_bridge(
                         info!("[{}] message: {}", key, &body[..80.min(body.len())]);
 
                         let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(&room_id) {
-                            Ok(rid) => rid.to_owned(),
+                            Ok(rid) => rid.clone(),
                             Err(_) => continue,
                         };
 
@@ -1205,7 +1204,7 @@ async fn run_matrix_bridge(
                                         let c = typing_client.read().await;
                                         let _ = c.set_typing(&typing_room, true).await;
                                     }
-                                    _ = typing_token.cancelled() => break,
+                                    () = typing_token.cancelled() => break,
                                 }
                             }
                         });
@@ -1319,7 +1318,7 @@ async fn run_matrix_bridge(
                         info!("[{}] media: {} ({})", key, filename, media_type);
 
                         let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(&room_id) {
-                            Ok(rid) => rid.to_owned(),
+                            Ok(rid) => rid.clone(),
                             Err(_) => continue,
                         };
 
@@ -1344,7 +1343,7 @@ async fn run_matrix_bridge(
                                         let c = typing_client.read().await;
                                         let _ = c.set_typing(&typing_room, true).await;
                                     }
-                                    _ = typing_token.cancelled() => break,
+                                    () = typing_token.cancelled() => break,
                                 }
                             }
                         });
@@ -1510,7 +1509,7 @@ async fn run_matrix_bridge(
                     _ => {}
                 }
             }
-            _ = cancel.cancelled() => break,
+            () = cancel.cancelled() => break,
         }
     }
 
@@ -2321,7 +2320,7 @@ async fn run_session_heartbeat(
     loop {
         tokio::select! {
             _ = ticker.tick() => {}
-            _ = cancel.cancelled() => break,
+            () = cancel.cancelled() => break,
         }
 
         // Snapshot all Matrix sessions that have a HEARTBEAT.md
@@ -2351,7 +2350,7 @@ async fn run_session_heartbeat(
 
             // Start typing
             let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(&room_id) {
-                Ok(rid) => rid.to_owned(),
+                Ok(rid) => rid.clone(),
                 Err(_) => continue,
             };
             {
@@ -2455,7 +2454,7 @@ fn spawn_trigger_reader(
                         }
                     }
                 }
-                _ = cancel_clone.cancelled() => break,
+                () = cancel_clone.cancelled() => break,
             };
 
             let reader = tokio::io::BufReader::new(file);
@@ -2464,7 +2463,7 @@ fn spawn_trigger_reader(
             loop {
                 let line = tokio::select! {
                     l = lines.next_line() => l,
-                    _ = cancel_clone.cancelled() => break,
+                    () = cancel_clone.cancelled() => break,
                 };
 
                 match line {
@@ -2472,7 +2471,7 @@ fn spawn_trigger_reader(
                         info!("[{}] trigger: {}", key, &text[..80.min(text.len())]);
 
                         let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(&room_id) {
-                            Ok(rid) => rid.to_owned(),
+                            Ok(rid) => rid.clone(),
                             Err(_) => continue,
                         };
 

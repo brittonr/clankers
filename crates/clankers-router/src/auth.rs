@@ -131,7 +131,7 @@ impl StoredCredential {
     pub fn refresh_token(&self) -> Option<&str> {
         match self {
             Self::OAuth { refresh_token, .. } => Some(refresh_token),
-            _ => None,
+            Self::ApiKey { .. } => None,
         }
     }
 

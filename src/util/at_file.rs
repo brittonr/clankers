@@ -261,7 +261,7 @@ pub fn complete_at_path(partial: &str, cwd: &str) -> Vec<String> {
             if name.starts_with(&prefix) {
                 let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
                 let path = if partial.contains('/') {
-                    let dir_part = &partial[..partial.rfind('/').unwrap_or(0) + 1];
+                    let dir_part = &partial[..=partial.rfind('/').unwrap_or(0)];
                     format!("@{}{}{}", dir_part, name, if is_dir { "/" } else { "" })
                 } else {
                     format!("@{}{}", name, if is_dir { "/" } else { "" })

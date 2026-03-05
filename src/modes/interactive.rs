@@ -1030,28 +1030,25 @@ async fn run_event_loop(
                         use crate::tui::app::PanelTab;
 
                         // Tab / Shift+Tab cycles sub-panels within the current column
-                        match (key.code, key.modifiers) {
-                            (KeyCode::Tab, _) | (KeyCode::BackTab, _) => {
-                                // Toggle between sub-panels in the same column
-                                app.panel_tab = match app.panel_tab {
-                                    PanelTab::Todo => PanelTab::Files,
-                                    PanelTab::Files => PanelTab::Todo,
-                                    PanelTab::Subagents => {
-                                        app.right_panel_tab = PanelTab::Peers;
-                                        PanelTab::Peers
-                                    }
-                                    PanelTab::Peers => {
-                                        app.right_panel_tab = PanelTab::Processes;
-                                        PanelTab::Processes
-                                    }
-                                    PanelTab::Processes => {
-                                        app.right_panel_tab = PanelTab::Subagents;
-                                        PanelTab::Subagents
-                                    }
-                                };
-                                continue;
-                            }
-                            _ => {}
+                        if let (KeyCode::Tab | KeyCode::BackTab, _) = (key.code, key.modifiers) {
+                            // Toggle between sub-panels in the same column
+                            app.panel_tab = match app.panel_tab {
+                                PanelTab::Todo => PanelTab::Files,
+                                PanelTab::Files => PanelTab::Todo,
+                                PanelTab::Subagents => {
+                                    app.right_panel_tab = PanelTab::Peers;
+                                    PanelTab::Peers
+                                }
+                                PanelTab::Peers => {
+                                    app.right_panel_tab = PanelTab::Processes;
+                                    PanelTab::Processes
+                                }
+                                PanelTab::Processes => {
+                                    app.right_panel_tab = PanelTab::Subagents;
+                                    PanelTab::Subagents
+                                }
+                            };
+                            continue;
                         }
 
                         match app.panel_tab {
@@ -1852,7 +1849,7 @@ fn handle_session_popup_key(app: &mut App, key: &crossterm::event::KeyEvent, key
 
     match action {
         // Close on Esc, 's' toggle, or 'q'
-        Some(Action::Unfocus) | Some(Action::ToggleSessionPopup) | Some(Action::Quit) => {
+        Some(Action::Unfocus | Action::ToggleSessionPopup | Action::Quit) => {
             app.session_popup_visible = false;
             true
         }
@@ -1908,7 +1905,7 @@ fn handle_session_popup_key(app: &mut App, key: &crossterm::event::KeyEvent, key
             true
         }
         // Switch to insert mode closes popup
-        Some(Action::EnterInsert) | Some(Action::EnterCommand) => {
+        Some(Action::EnterInsert | Action::EnterCommand) => {
             app.session_popup_visible = false;
             // Don't consume — let the main handler process it
             false
@@ -4772,7 +4769,7 @@ pub async fn start_embedded_rpc(
                     tracing::warn!("Embedded RPC server error: {}", e);
                 }
             }
-            _ = cancel_clone.cancelled() => {
+            () = cancel_clone.cancelled() => {
                 tracing::info!("Embedded RPC server shut down");
             }
         }

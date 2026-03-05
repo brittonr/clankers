@@ -100,7 +100,7 @@ impl Tool for MatrixSendTool {
 
         let client = state.client.read().await;
         let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(room_id) {
-            Ok(room_id) => room_id.to_owned(),
+            Ok(room_id) => room_id.clone(),
             Err(e) => return ToolResult::error(format!("Invalid room ID: {e}")),
         };
 
@@ -181,7 +181,7 @@ impl Tool for MatrixReadTool {
         let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20).min(100) as usize;
 
         let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(room_id) {
-            Ok(id) => id.to_owned(),
+            Ok(id) => id.clone(),
             Err(e) => return ToolResult::error(format!("Invalid room ID: {e}")),
         };
 

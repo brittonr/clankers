@@ -134,7 +134,7 @@ fn render_kitty(data: &[u8], max_width: u16, max_height: u16) -> io::Result<usiz
     for (i, chunk) in chunks.iter().enumerate() {
         let is_first = i == 0;
         let is_last = i == total_chunks - 1;
-        let more = if is_last { 0 } else { 1 };
+        let more = i32::from(!is_last);
 
         if is_first {
             // First chunk: include format/action/size params
@@ -195,8 +195,8 @@ fn render_sixel(data: &[u8], max_width: u16, max_height: u16) -> io::Result<usiz
     // Assume ~8px per cell width, ~16px per cell height (common terminal font metrics).
     let cell_width_px = 8u32;
     let cell_height_px = 16u32;
-    let max_px_w = max_width as u32 * cell_width_px;
-    let max_px_h = max_height as u32 * cell_height_px;
+    let max_px_w = u32::from(max_width) * cell_width_px;
+    let max_px_h = u32::from(max_height) * cell_height_px;
 
     let img = img.resize(max_px_w, max_px_h, image::imageops::FilterType::Triangle);
     let rgba = img.to_rgba8();
@@ -230,9 +230,9 @@ fn render_sixel(data: &[u8], max_width: u16, max_height: u16) -> io::Result<usiz
 
     // Define palette entries: #n;2;r%;g%;b%
     for (i, color) in palette.iter().enumerate() {
-        let r_pct = (color[0] as u32 * 100) / 255;
-        let g_pct = (color[1] as u32 * 100) / 255;
-        let b_pct = (color[2] as u32 * 100) / 255;
+        let r_pct = (u32::from(color[0]) * 100) / 255;
+        let g_pct = (u32::from(color[1]) * 100) / 255;
+        let b_pct = (u32::from(color[2]) * 100) / 255;
         sixel.push_str(&format!("#{};2;{};{};{}", i, r_pct, g_pct, b_pct));
     }
 
@@ -294,7 +294,7 @@ fn render_sixel(data: &[u8], max_width: u16, max_height: u16) -> io::Result<usiz
     tty.flush()?;
 
     // Estimate terminal lines used
-    let lines_used = ((height as f64) / (cell_height_px as f64)).ceil() as usize;
+    let lines_used = (f64::from(height) / f64::from(cell_height_px)).ceil() as usize;
     Ok(lines_used)
 }
 
@@ -340,9 +340,9 @@ fn nearest_color(rgb: &[u8; 3], palette: &[[u8; 3]], lookup: &HashMap<[u8; 3], u
     let mut best_idx = 0;
     let mut best_dist = u32::MAX;
     for (i, color) in palette.iter().enumerate() {
-        let dr = rgb[0] as i32 - color[0] as i32;
-        let dg = rgb[1] as i32 - color[1] as i32;
-        let db = rgb[2] as i32 - color[2] as i32;
+        let dr = i32::from(rgb[0]) - i32::from(color[0]);
+        let dg = i32::from(rgb[1]) - i32::from(color[1]);
+        let db = i32::from(rgb[2]) - i32::from(color[2]);
         let dist = (dr * dr + dg * dg + db * db) as u32;
         if dist < best_dist {
             best_dist = dist;

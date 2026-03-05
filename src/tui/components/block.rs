@@ -64,9 +64,7 @@ impl ConversationBlock {
         let text_preview: String = self
             .responses
             .iter()
-            .filter(|m| m.role == MessageRole::Assistant)
-            .flat_map(|m| m.content.lines().next())
-            .next()
+            .filter(|m| m.role == MessageRole::Assistant).find_map(|m| m.content.lines().next())
             .unwrap_or("...")
             .chars()
             .take(60)
