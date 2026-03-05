@@ -22,6 +22,6 @@
 
 ## 🔵 Next Up (specced, not started)
 
-- [ ] **Streaming Tools** — Progressive output for long-running tools: structured progress events (bytes/lines/percentage), back-pressure with ring buffer, head/tail truncation windows, cancellation UX. Elevates `emit_progress` to a first-class protocol. (`openspec/changes/streaming-tools/`)
+- [x] **Streaming Tools** — Progressive output for long-running tools: structured progress events (bytes/lines/percentage), back-pressure with ring buffer, head/tail truncation windows, cancellation UX. Elevates `emit_progress` to a first-class protocol. (`openspec/changes/streaming-tools/`)
 - [ ] **Multi-Model Conversations** — Dynamic model routing within a session: complexity-based auto-selection, cost tracking with budget thresholds, agent-initiated model switching, orchestration patterns (propose/validate, plan/execute). Builds on existing `ModelRole` + `clankers-router`. (`openspec/changes/multi-model/`)
 - [ ] **Session Forking** — Branch conversations to explore alternatives: `/fork`, `/rewind`, `/branches` commands, branch navigation UI, comparison and merge. Exposes the existing `SessionTree` DAG to users. (`openspec/changes/session-forking/`)
