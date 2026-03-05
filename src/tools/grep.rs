@@ -22,6 +22,7 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
+use super::progress::{ResultChunk, ToolProgress};
 
 pub struct GrepTool {
     definition: ToolDefinition,
@@ -94,6 +95,16 @@ impl Tool for GrepTool {
         let result = tokio::task::spawn_blocking(move || {
             search_files(&pattern, &path, glob.as_deref(), case_sensitive, &cancel, |msg| {
                 progress_ctx.emit_progress(msg);
+                // Extract match count from "path (N matches)" format for structured progress
+                if let Some(start) = msg.rfind('(')
+                    && let Some(end) = msg.rfind(" matches)")
+                    && let Ok(count) = msg[start + 1..end].parse::<u64>()
+                {
+                    progress_ctx.emit_structured_progress(
+                        ToolProgress::lines(count, None)
+                            .with_message("Searching"),
+                    );
+                }
             })
         })
         .await;
@@ -103,6 +114,9 @@ impl Tool for GrepTool {
                 if output.is_empty() {
                     return ToolResult::text("No matches found");
                 }
+
+                // Emit the full output as a result chunk for the accumulator
+                ctx.emit_result_chunk(ResultChunk::text(&output));
 
                 // Apply truncation
                 const MAX_LINES: usize = 2000;
@@ -117,7 +131,12 @@ impl Tool for GrepTool {
                 }
                 result
             }
-            Ok(Err(e)) => ToolResult::error(e),
+            Ok(Err(e)) => {
+                if e.contains("cancelled") {
+                    ctx.emit_structured_progress(ToolProgress::phase("Cancelling", 1, Some(1)));
+                }
+                ToolResult::error(e)
+            }
             Err(e) => ToolResult::error(format!("Search task panicked: {}", e)),
         }
     }

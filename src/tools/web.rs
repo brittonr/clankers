@@ -13,6 +13,7 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
+use super::progress::{ResultChunk, ToolProgress};
 
 /// Environment variable for the Kagi API key
 const KAGI_API_KEY_ENV: &str = "KAGI_API_KEY";
@@ -79,6 +80,7 @@ impl WebTool {
             }
         };
 
+        ctx.emit_structured_progress(ToolProgress::phase("Searching", 1, Some(2)));
         ctx.emit_progress(&format!("querying Kagi: {}", query));
 
         let client = reqwest::Client::new();
@@ -96,10 +98,12 @@ impl WebTool {
                     let body = response.text().await.unwrap_or_default();
                     return ToolResult::error(format!("Kagi search API error ({}): {}", status, body));
                 }
+                ctx.emit_structured_progress(ToolProgress::phase("Parsing results", 2, Some(2)));
                 ctx.emit_progress("parsing results...");
                 match response.json::<Value>().await {
                     Ok(json) => {
                         let results = format_search_results_streaming(&json, max_results, ctx);
+                        ctx.emit_result_chunk(ResultChunk::text(&results));
                         ToolResult::text(results)
                     }
                     Err(e) => ToolResult::error(format!("Failed to parse Kagi response: {}", e)),
@@ -111,6 +115,7 @@ impl WebTool {
 
     async fn fetch(&self, ctx: &ToolContext, url: &str) -> ToolResult {
         // Try Kagi Summarizer first for clean content extraction
+        ctx.emit_structured_progress(ToolProgress::phase("Fetching", 1, Some(2)));
         if let Some(api_key) = Self::get_api_key() {
             ctx.emit_progress(&format!("summarizing via Kagi: {}", url));
             let client = reqwest::Client::new();
@@ -126,11 +131,14 @@ impl WebTool {
                 && let Ok(json) = response.json::<Value>().await
                 && let Some(output) = json["data"]["output"].as_str()
             {
+                ctx.emit_structured_progress(ToolProgress::phase("Processing", 2, Some(2)));
                 ctx.emit_progress(&format!("summarized: {} chars", output.len()));
-                return ToolResult::text(format!(
+                let result_text = format!(
                     "# Content from {}\n\n{}\n\n---\n*Summarized via Kagi Universal Summarizer*",
                     url, output
-                ));
+                );
+                ctx.emit_result_chunk(ResultChunk::text(&result_text));
+                return ToolResult::text(result_text);
             }
             ctx.emit_progress("Kagi summarizer unavailable, falling back to raw fetch");
         }
@@ -153,11 +161,16 @@ impl WebTool {
 
                 let content_length = response.content_length();
                 if let Some(len) = content_length {
+                    ctx.emit_structured_progress(
+                        ToolProgress::bytes(0, Some(len))
+                            .with_message("Downloading"),
+                    );
                     ctx.emit_progress(&format!("downloading: {} bytes", len));
                 }
 
                 match response.text().await {
                     Ok(body) => {
+                        ctx.emit_structured_progress(ToolProgress::phase("Processing", 2, Some(2)));
                         ctx.emit_progress(&format!("received: {} bytes, extracting text...", body.len()));
                         let clean = if content_type.contains("text/html") {
                             extract_text_from_html(&body)
@@ -166,19 +179,21 @@ impl WebTool {
                         };
                         // Truncate to avoid blowing context
                         let max_chars = 50_000;
-                        if clean.len() > max_chars {
+                        let result_text = if clean.len() > max_chars {
                             let truncated = &clean[..max_chars];
                             ctx.emit_progress(&format!("truncated: {} → {} chars", clean.len(), max_chars));
-                            ToolResult::text(format!(
+                            format!(
                                 "# Content from {}\n\n{}...\n\n[Truncated: {} chars total]",
                                 url,
                                 truncated,
                                 clean.len()
-                            ))
+                            )
                         } else {
                             ctx.emit_progress(&format!("done: {} chars", clean.len()));
-                            ToolResult::text(format!("# Content from {}\n\n{}", url, clean))
-                        }
+                            format!("# Content from {}\n\n{}", url, clean)
+                        };
+                        ctx.emit_result_chunk(ResultChunk::text(&result_text));
+                        ToolResult::text(result_text)
                     }
                     Err(e) => ToolResult::error(format!("Failed to read response body: {}", e)),
                 }

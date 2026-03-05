@@ -13,6 +13,7 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
+use super::progress::{ResultChunk, ToolProgress};
 use crate::util::ansi::strip_ansi;
 
 /// Confirmation channel for dangerous commands.
@@ -221,12 +222,14 @@ impl Tool for BashTool {
                 && tokio::time::Instant::now() >= dl
             {
                 let _ = child.start_kill();
+                ctx.emit_structured_progress(ToolProgress::phase("Timeout", 1, Some(1)));
                 return ToolResult::error(format!("Command timeout after {}s", timeout_secs));
             }
 
             tokio::select! {
                 () = ctx.signal.cancelled() => {
                     let _ = child.start_kill();
+                    ctx.emit_structured_progress(ToolProgress::phase("Cancelling", 1, Some(1)));
                     return ToolResult::error("Command cancelled");
                 }
                 line = stdout_reader.next_line() => {
@@ -234,22 +237,26 @@ impl Tool for BashTool {
                         Ok(Some(raw)) => {
                             let line = strip_ansi(&raw);
                             ctx.emit_progress(&line);
+                            ctx.emit_result_chunk(ResultChunk::text(&line));
                             if !collected.is_empty() {
                                 collected.push('\n');
                             }
                             collected.push_str(&line);
                             line_count += 1;
+                            ctx.emit_structured_progress(ToolProgress::lines(line_count as u64, None));
                         }
                         Ok(None) => {
                             // stdout closed — drain remaining stderr then break
                             while let Ok(Some(raw)) = stderr_reader.next_line().await {
                                 let line = strip_ansi(&raw);
                                 ctx.emit_progress(&line);
+                                ctx.emit_result_chunk(ResultChunk::text(&line));
                                 if !collected.is_empty() {
                                     collected.push('\n');
                                 }
                                 collected.push_str(&line);
                                 line_count += 1;
+                                ctx.emit_structured_progress(ToolProgress::lines(line_count as u64, None));
                             }
                             break;
                         }
@@ -261,22 +268,26 @@ impl Tool for BashTool {
                         Ok(Some(raw)) => {
                             let line = strip_ansi(&raw);
                             ctx.emit_progress(&line);
+                            ctx.emit_result_chunk(ResultChunk::text(&line));
                             if !collected.is_empty() {
                                 collected.push('\n');
                             }
                             collected.push_str(&line);
                             line_count += 1;
+                            ctx.emit_structured_progress(ToolProgress::lines(line_count as u64, None));
                         }
                         Ok(None) => {
                             // stderr closed — drain remaining stdout then break
                             while let Ok(Some(raw)) = stdout_reader.next_line().await {
                                 let line = strip_ansi(&raw);
                                 ctx.emit_progress(&line);
+                                ctx.emit_result_chunk(ResultChunk::text(&line));
                                 if !collected.is_empty() {
                                     collected.push('\n');
                                 }
                                 collected.push_str(&line);
                                 line_count += 1;
+                                ctx.emit_structured_progress(ToolProgress::lines(line_count as u64, None));
                             }
                             break;
                         }

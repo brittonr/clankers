@@ -12,6 +12,7 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
+use super::progress::{ResultChunk, ToolProgress};
 
 pub struct FindTool {
     definition: ToolDefinition,
@@ -96,12 +97,16 @@ impl Tool for FindTool {
             tokio::select! {
                 () = ctx.signal.cancelled() => {
                     let _ = child.start_kill();
+                    ctx.emit_structured_progress(ToolProgress::phase("Cancelling", 1, Some(1)));
                     return ToolResult::error("Search cancelled");
                 }
                 line = reader.next_line() => {
                     match line {
                         Ok(Some(line)) => {
-                            ctx.emit_progress(&format!("{} ({})", line, collected.len() + 1));
+                            let count = collected.len() as u64 + 1;
+                            ctx.emit_progress(&format!("{} ({})", line, count));
+                            ctx.emit_result_chunk(ResultChunk::text(&line));
+                            ctx.emit_structured_progress(ToolProgress::items(count, None));
                             collected.push(line);
                         }
                         Ok(None) => break,
