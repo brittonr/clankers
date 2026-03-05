@@ -840,18 +840,22 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     // Determine if we're in headless mode (non-interactive output)
-    let is_headless = cli.print.is_some() || cli.stdin || !matches!(cli.mode, OutputMode::Interactive);
-
-    // Set up logging — headless mode defaults to WARN to avoid polluting
-    // stdout/stderr with INFO-level noise.
+    // Set up logging. In TUI mode any stderr output corrupts the alternate
+    // screen (lines leak into the input field), so suppress everything unless
+    // a log file is configured.
+    let is_tui = matches!(cli.mode, OutputMode::Interactive) && cli.print.is_none() && !cli.stdin;
+    let has_log_file = cli.log_file.is_some();
     let log_level = if let Some(ref level) = cli.log_level {
         level.parse().unwrap_or(tracing::Level::INFO)
     } else if cli.verbose {
         tracing::Level::DEBUG
-    } else if is_headless {
-        tracing::Level::WARN
-    } else {
+    } else if has_log_file {
         tracing::Level::INFO
+    } else if is_tui {
+        // Nothing goes to stderr in TUI mode
+        tracing::Level::ERROR
+    } else {
+        tracing::Level::WARN
     };
 
     // Respect RUST_LOG if explicitly set; otherwise use our default log level.

@@ -3,6 +3,8 @@
 //! When the graggle algorithm produces conflict markers, we ask the LLM to
 //! resolve them. The LLM sees the base version, each branch's version, and
 //! the conflict-marked output, then returns the resolved file.
+//!
+//! Uses in-process git2 operations instead of shelling out to git CLI.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -164,15 +166,13 @@ pub async fn resolve_conflicts_batch(
     (resolved, unresolved)
 }
 
-/// Get file content from a specific git ref
+/// Get file content from a specific git ref using in-process git2
 fn git_show(repo_root: &Path, ref_name: &str, file_path: &Path) -> Option<String> {
+    let repo = git2::Repository::open(repo_root).ok()?;
     let spec = format!("{}:{}", ref_name, file_path.display());
-    let output = std::process::Command::new("git").args(["show", &spec]).current_dir(repo_root).output().ok()?;
-    if output.status.success() {
-        Some(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        None
-    }
+    let obj = repo.revparse_single(&spec).ok()?;
+    let blob = obj.peel_to_blob().ok()?;
+    std::str::from_utf8(blob.content()).ok().map(|s| s.to_string())
 }
 
 #[cfg(test)]

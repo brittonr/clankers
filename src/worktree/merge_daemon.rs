@@ -4,6 +4,8 @@
 //! branches back to the parent. Uses conflict_graph for smart ordering,
 //! merge_strategy for graggle-based resolution, and LLM for conflict
 //! resolution when graggle can't auto-merge.
+//!
+//! Uses in-process git2 operations instead of shelling out to git CLI.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -182,16 +184,55 @@ impl MergeDaemon {
         Ok(merged_count)
     }
 
-    /// Commit merged files and clean up worktrees
+    /// Commit merged files and clean up worktrees using in-process git2
     fn commit_and_cleanup(&self, db: &Db, branches: &[String], label: &str) -> Result<()> {
         info!(label, "committing merged files");
 
-        let _ = std::process::Command::new("git").args(["add", "-A"]).current_dir(&self.repo_root).output();
-        let _ = std::process::Command::new("git")
-            .args(["commit", "-m", &format!("Merge branches: {}", branches.join(", "))])
-            .current_dir(&self.repo_root)
-            .output();
+        let repo = git2::Repository::open(&self.repo_root).map_err(|e| crate::error::Error::Worktree {
+            message: format!("Failed to open repository: {}", e),
+        })?;
 
+        // Stage all changes (git add -A)
+        let mut index = repo.index().map_err(|e| crate::error::Error::Worktree {
+            message: format!("Failed to get index: {}", e),
+        })?;
+
+        index
+            .add_all(["."].iter(), git2::IndexAddOption::DEFAULT, None)
+            .map_err(|e| crate::error::Error::Worktree {
+                message: format!("Failed to add files: {}", e),
+            })?;
+
+        index.write().map_err(|e| crate::error::Error::Worktree {
+            message: format!("Failed to write index: {}", e),
+        })?;
+
+        // Create commit
+        let sig = repo.signature().map_err(|e| crate::error::Error::Worktree {
+            message: format!("Failed to get signature: {}", e),
+        })?;
+
+        let tree_id = index.write_tree().map_err(|e| crate::error::Error::Worktree {
+            message: format!("Failed to write tree: {}", e),
+        })?;
+        let tree = repo.find_tree(tree_id).map_err(|e| crate::error::Error::Worktree {
+            message: format!("Failed to find tree: {}", e),
+        })?;
+
+        let head_commit = repo
+            .head()
+            .and_then(|h| h.peel_to_commit())
+            .map_err(|e| crate::error::Error::Worktree {
+                message: format!("Failed to get HEAD commit: {}", e),
+            })?;
+
+        let message = format!("Merge branches: {}", branches.join(", "));
+        repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&head_commit])
+            .map_err(|e| crate::error::Error::Worktree {
+                message: format!("Failed to create commit: {}", e),
+            })?;
+
+        // Clean up worktrees
         let manager = WorktreeManager::new(self.repo_root.clone());
         let reg = db.worktrees();
         for branch in branches {

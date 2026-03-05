@@ -367,7 +367,7 @@ pub async fn commit(message: String) -> Result<CommitResult> {
 
         let oid = repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &parent_refs)?;
 
-        let short_hash = format!("{}", &oid.to_string()[..7]);
+        let short_hash = oid.to_string()[..7].to_string();
         let files_changed = {
             let stats = if parent_refs.is_empty() {
                 // Initial commit — diff tree to empty
@@ -640,16 +640,16 @@ pub mod sync {
                 Some(n) => n,
                 None => continue,
             };
-            if let Ok(wt) = repo.find_worktree(name) {
-                if wt.path() == worktree_path {
-                    // Prune (force remove) this worktree
-                    let mut prune_opts = WorktreePruneOptions::new();
-                    prune_opts.working_tree(true);
-                    prune_opts.valid(true);
-                    prune_opts.locked(true);
-                    if wt.prune(Some(&mut prune_opts)).is_ok() {
-                        return true;
-                    }
+            if let Ok(wt) = repo.find_worktree(name)
+                && wt.path() == worktree_path
+            {
+                // Prune (force remove) this worktree
+                let mut prune_opts = WorktreePruneOptions::new();
+                prune_opts.working_tree(true);
+                prune_opts.valid(true);
+                prune_opts.locked(true);
+                if wt.prune(Some(&mut prune_opts)).is_ok() {
+                    return true;
                 }
             }
         }
@@ -684,12 +684,12 @@ pub mod sync {
                 Some(n) => n,
                 None => continue,
             };
-            if let Ok(wt) = repo.find_worktree(name) {
-                if !wt.validate().is_ok() {
-                    let mut opts = WorktreePruneOptions::new();
-                    opts.working_tree(true);
-                    let _ = wt.prune(Some(&mut opts));
-                }
+            if let Ok(wt) = repo.find_worktree(name)
+                && wt.validate().is_err()
+            {
+                let mut opts = WorktreePruneOptions::new();
+                opts.working_tree(true);
+                let _ = wt.prune(Some(&mut opts));
             }
         }
     }
@@ -770,10 +770,10 @@ pub mod sync {
             .filter_map(|entry| {
                 let (branch, _) = entry.ok()?;
                 let name = branch.name().ok()??;
-                if let Some(ref g) = glob {
-                    if !g.matches(name) {
-                        return None;
-                    }
+                if let Some(ref g) = glob
+                    && !g.matches(name)
+                {
+                    return None;
                 }
                 Some(name.to_string())
             })
@@ -805,10 +805,10 @@ pub mod sync {
             .filter_map(|entry| {
                 let (branch, _) = entry.ok()?;
                 let name = branch.name().ok()??.to_string();
-                if let Some(ref g) = glob {
-                    if !g.matches(&name) {
-                        return None;
-                    }
+                if let Some(ref g) = glob
+                    && !g.matches(&name)
+                {
+                    return None;
                 }
                 // Branch is "merged" if its tip is an ancestor of HEAD
                 let branch_oid = branch.get().target()?;
@@ -848,10 +848,10 @@ pub mod sync {
         };
         let mut count = 0;
         for name in branch_names {
-            if let Ok(mut branch) = repo.find_branch(name, BranchType::Local) {
-                if branch.delete().is_ok() {
-                    count += 1;
-                }
+            if let Ok(mut branch) = repo.find_branch(name, BranchType::Local)
+                && branch.delete().is_ok()
+            {
+                count += 1;
             }
         }
         count
@@ -879,10 +879,10 @@ pub mod sync {
 
         let mut files = HashSet::new();
         for delta_idx in 0..diff.deltas().len() {
-            if let Some(delta) = diff.get_delta(delta_idx) {
-                if let Some(path) = delta.new_file().path() {
-                    files.insert(path.to_path_buf());
-                }
+            if let Some(delta) = diff.get_delta(delta_idx)
+                && let Some(path) = delta.new_file().path()
+            {
+                files.insert(path.to_path_buf());
             }
         }
         Some(files)

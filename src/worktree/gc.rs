@@ -136,12 +136,13 @@ pub fn gc_on_startup(db: &Db, repo_root: &Path) -> GcReport {
 
     // 4. Remove worktrees for fully-merged branches that aren't active
     for entry in &live_worktrees {
-        if let Some(ref branch) = entry.branch {
-            if merged_branches.contains(branch) && !active_branches.contains(branch.as_str()) {
-                debug!("gc: removing merged worktree {branch}");
-                if git_ops::sync::worktree_remove(repo_root, &entry.path) {
-                    report.worktrees_removed += 1;
-                }
+        if let Some(ref branch) = entry.branch
+            && merged_branches.contains(branch)
+            && !active_branches.contains(branch.as_str())
+        {
+            debug!("gc: removing merged worktree {branch}");
+            if git_ops::sync::worktree_remove(repo_root, &entry.path) {
+                report.worktrees_removed += 1;
             }
         }
     }

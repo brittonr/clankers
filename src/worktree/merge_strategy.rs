@@ -1,6 +1,7 @@
 //! Merge strategy: graggle -> rerere -> LLM -> human
 //!
 //! Tiered merge resolution using clankers-merge's order-independent graggle algorithm.
+//! Uses in-process git2 operations instead of shelling out to git CLI.
 
 use std::collections::HashSet;
 use std::path::Path;
@@ -64,39 +65,133 @@ pub fn merge_file(
 }
 
 /// Apply a trivial branch merge (no overlapping files with other branches).
-/// Uses git merge --ff-only or git merge --no-ff.
+/// Uses in-process git2 merge operations.
 pub fn apply_trivial_merge(repo_root: &Path, branch: &str, _target: &str) -> Result<MergeResult> {
-    // Try fast-forward first
-    let output = std::process::Command::new("git")
-        .args(["merge", "--ff-only", branch])
-        .current_dir(repo_root)
-        .output()
+    let repo = git2::Repository::open(repo_root).map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to open repository: {}", e),
+    })?;
+
+    // Resolve the branch to merge
+    let branch_ref = repo
+        .find_branch(branch, git2::BranchType::Local)
+        .or_else(|_| {
+            // Try as remote branch or raw ref
+            repo.find_reference(&format!("refs/heads/{}", branch))
+                .or_else(|_| repo.find_reference(branch))
+                .map(git2::Branch::wrap)
+        })
         .map_err(|e| crate::error::Error::Worktree {
-            message: format!("git merge failed: {}", e),
+            message: format!("Branch '{}' not found: {}", branch, e),
         })?;
 
-    if output.status.success() {
+    let branch_commit = branch_ref.get().peel_to_commit().map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to get commit for branch '{}': {}", branch, e),
+    })?;
+
+    let annotated = repo
+        .reference_to_annotated_commit(branch_ref.get())
+        .map_err(|e| crate::error::Error::Worktree {
+            message: format!("Failed to create annotated commit: {}", e),
+        })?;
+
+    // Check merge analysis (can we fast-forward?)
+    let (analysis, _pref) = repo.merge_analysis(&[&annotated]).map_err(|e| crate::error::Error::Worktree {
+        message: format!("Merge analysis failed: {}", e),
+    })?;
+
+    if analysis.is_up_to_date() {
         return Ok(MergeResult::Clean);
     }
 
-    // If ff fails, try regular merge
-    let output = std::process::Command::new("git")
-        .args(["merge", "--no-ff", "-m", &format!("Merge branch '{}'", branch), branch])
-        .current_dir(repo_root)
-        .output()
+    if analysis.is_fast_forward() {
+        // Fast-forward merge
+        let mut head_ref = repo.head().map_err(|e| crate::error::Error::Worktree {
+            message: format!("Failed to get HEAD: {}", e),
+        })?;
+        head_ref
+            .set_target(branch_commit.id(), &format!("merge {}: Fast-forward", branch))
+            .map_err(|e| crate::error::Error::Worktree {
+                message: format!("Fast-forward failed: {}", e),
+            })?;
+
+        // Checkout the new commit
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
+            .map_err(|e| crate::error::Error::Worktree {
+                message: format!("Checkout after fast-forward failed: {}", e),
+            })?;
+
+        return Ok(MergeResult::Clean);
+    }
+
+    // Try normal merge
+    let mut merge_opts = git2::MergeOptions::new();
+    merge_opts.file_favor(git2::FileFavor::Normal);
+
+    repo.merge(&[&annotated], Some(&mut merge_opts), None).map_err(|e| {
+        // Clean up merge state on error
+        let _ = repo.cleanup_state();
+        crate::error::Error::Worktree {
+            message: format!("Merge failed: {}", e),
+        }
+    })?;
+
+    // Check if there are conflicts
+    let mut index = repo.index().map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to get index: {}", e),
+    })?;
+
+    if index.has_conflicts() {
+        // Abort the merge
+        repo.cleanup_state().map_err(|e| crate::error::Error::Worktree {
+            message: format!("Failed to cleanup merge state: {}", e),
+        })?;
+        repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
+            .map_err(|e| crate::error::Error::Worktree {
+                message: format!("Failed to checkout HEAD after conflict: {}", e),
+            })?;
+
+        return Ok(MergeResult::NeedsHuman {
+            conflicting_files: vec![],
+        });
+    }
+
+    // No conflicts - create merge commit
+    let sig = repo.signature().map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to get signature: {}", e),
+    })?;
+
+    let tree_id = index.write_tree().map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to write tree: {}", e),
+    })?;
+    let tree = repo.find_tree(tree_id).map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to find tree: {}", e),
+    })?;
+
+    let head_commit = repo.head()
+        .and_then(|h| h.peel_to_commit())
         .map_err(|e| crate::error::Error::Worktree {
-            message: format!("git merge failed: {}", e),
+            message: format!("Failed to get HEAD commit: {}", e),
         })?;
 
-    if output.status.success() {
-        Ok(MergeResult::Clean)
-    } else {
-        // Abort the failed merge
-        let _ = std::process::Command::new("git").args(["merge", "--abort"]).current_dir(repo_root).output();
-        Ok(MergeResult::NeedsHuman {
-            conflicting_files: vec![],
-        })
-    }
+    let message = format!("Merge branch '{}'", branch);
+    repo.commit(
+        Some("HEAD"),
+        &sig,
+        &sig,
+        &message,
+        &tree,
+        &[&head_commit, &branch_commit],
+    )
+    .map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to create merge commit: {}", e),
+    })?;
+
+    // Clean up merge state
+    repo.cleanup_state().map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to cleanup merge state: {}", e),
+    })?;
+
+    Ok(MergeResult::Clean)
 }
 
 /// Apply an overlapping merge using graggle algorithm for conflicting files.
@@ -147,30 +242,25 @@ pub fn apply_graggle_merge(
     }
 }
 
-/// Ensure git rerere is enabled for the repo
+/// Ensure git rerere is enabled for the repo using in-process git2
 pub fn ensure_rerere_enabled(repo_root: &Path) -> Result<()> {
-    let output = std::process::Command::new("git")
-        .args(["config", "rerere.enabled", "true"])
-        .current_dir(repo_root)
-        .output()
-        .map_err(|e| crate::error::Error::Worktree {
-            message: format!("Failed to enable rerere: {}", e),
-        })?;
-    if !output.status.success() {
-        return Err(crate::error::Error::Worktree {
-            message: "Failed to enable git rerere".to_string(),
-        });
-    }
+    let repo = git2::Repository::open(repo_root).map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to open repository: {}", e),
+    })?;
+    let mut config = repo.config().map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to get config: {}", e),
+    })?;
+    config.set_bool("rerere.enabled", true).map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to enable rerere: {}", e),
+    })?;
     Ok(())
 }
 
-/// Get file content from a specific git ref
+/// Get file content from a specific git ref using in-process git2
 fn git_show(repo_root: &Path, ref_name: &str, file_path: &Path) -> Option<String> {
+    let repo = git2::Repository::open(repo_root).ok()?;
     let spec = format!("{}:{}", ref_name, file_path.display());
-    let output = std::process::Command::new("git").args(["show", &spec]).current_dir(repo_root).output().ok()?;
-    if output.status.success() {
-        Some(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        None
-    }
+    let obj = repo.revparse_single(&spec).ok()?;
+    let blob = obj.peel_to_blob().ok()?;
+    std::str::from_utf8(blob.content()).ok().map(|s| s.to_string())
 }

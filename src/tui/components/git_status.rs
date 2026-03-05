@@ -1,13 +1,13 @@
 //! Git status — shows branch name and working tree status
 //!
-//! Rendered as a status bar segment. Refreshes periodically by shelling
-//! out to `git` (non-blocking, cached).
+//! Rendered as a status bar segment. Refreshes periodically via git2
+//! (non-blocking, cached).
 
 use std::path::Path;
-use std::process::Command;
 use std::time::Duration;
 use std::time::Instant;
 
+use git2::{Repository, StatusOptions};
 use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
@@ -65,30 +65,15 @@ impl GitStatus {
         }
     }
 
-    /// Force a refresh by running git commands
+    /// Force a refresh using git2
     pub fn refresh(&mut self) {
         self.last_refresh = Instant::now();
         let cwd = Path::new(&self.cwd);
 
-        // Get branch name
-        match Command::new("git").args(["rev-parse", "--abbrev-ref", "HEAD"]).current_dir(cwd).output() {
-            Ok(output) if output.status.success() => {
-                self.is_repo = true;
-                let branch = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                self.branch = if branch == "HEAD" {
-                    // Detached HEAD — get short sha
-                    Command::new("git")
-                        .args(["rev-parse", "--short", "HEAD"])
-                        .current_dir(cwd)
-                        .output()
-                        .ok()
-                        .filter(|o| o.status.success())
-                        .map(|o| format!(":{}", String::from_utf8_lossy(&o.stdout).trim()))
-                } else {
-                    Some(branch)
-                };
-            }
-            _ => {
+        // Try to discover and open the git repository
+        let repo = match Repository::discover(cwd) {
+            Ok(r) => r,
+            Err(_) => {
                 self.is_repo = false;
                 self.branch = None;
                 self.dirty_count = 0;
@@ -96,38 +81,60 @@ impl GitStatus {
                 self.untracked_count = 0;
                 return;
             }
-        }
+        };
 
-        // Get porcelain status
-        match Command::new("git").args(["status", "--porcelain=v1"]).current_dir(cwd).output() {
-            Ok(output) if output.status.success() => {
-                let text = String::from_utf8_lossy(&output.stdout);
-                self.dirty_count = 0;
-                self.staged_count = 0;
-                self.untracked_count = 0;
-                for line in text.lines() {
-                    if line.len() < 2 {
-                        continue;
-                    }
-                    let bytes = line.as_bytes();
-                    let index = bytes[0];
-                    let worktree = bytes[1];
-                    if index == b'?' {
-                        self.untracked_count += 1;
-                    } else {
-                        if index != b' ' && index != b'?' {
-                            self.staged_count += 1;
-                        }
-                        if worktree != b' ' && worktree != b'?' {
-                            self.dirty_count += 1;
-                        }
-                    }
+        self.is_repo = true;
+
+        // Get branch name or short OID for detached HEAD
+        self.branch = match repo.head() {
+            Ok(head) => {
+                if head.is_branch() {
+                    head.shorthand().map(|s| s.to_string())
+                } else {
+                    // Detached HEAD — format as :shortsha
+                    head.target().map(|oid| format!(":{}", &oid.to_string()[..7]))
                 }
             }
-            _ => {
-                self.dirty_count = 0;
-                self.staged_count = 0;
-                self.untracked_count = 0;
+            Err(_) => None,
+        };
+
+        // Get file status counts
+        let mut opts = StatusOptions::new();
+        opts.include_untracked(true);
+        opts.recurse_untracked_dirs(true);
+
+        self.dirty_count = 0;
+        self.staged_count = 0;
+        self.untracked_count = 0;
+
+        if let Ok(statuses) = repo.statuses(Some(&mut opts)) {
+            for entry in statuses.iter() {
+                let status = entry.status();
+
+                // Untracked files
+                if status.is_wt_new() {
+                    self.untracked_count += 1;
+                    continue;
+                }
+
+                // Staged changes (index)
+                if status.is_index_new()
+                    || status.is_index_modified()
+                    || status.is_index_deleted()
+                    || status.is_index_renamed()
+                    || status.is_index_typechange()
+                {
+                    self.staged_count += 1;
+                }
+
+                // Working tree changes
+                if status.is_wt_modified()
+                    || status.is_wt_deleted()
+                    || status.is_wt_typechange()
+                    || status.is_wt_renamed()
+                {
+                    self.dirty_count += 1;
+                }
             }
         }
     }
