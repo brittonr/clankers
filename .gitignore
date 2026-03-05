@@ -35,3 +35,7 @@ data/
 *.rlib
 .pirs/exports
 .clankers/exports
+
+# Embedded repos (worktree artifacts)
+diff/
+session/
