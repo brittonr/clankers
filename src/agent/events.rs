@@ -85,6 +85,18 @@ pub enum AgentEvent {
         details: Option<Value>,
     },
 
+    // Structured progress and result streaming
+    /// Structured progress update from a tool
+    ToolProgressUpdate {
+        call_id: String,
+        progress: crate::tools::progress::ToolProgress,
+    },
+    /// Result chunk streamed from a tool
+    ToolResultChunk {
+        call_id: String,
+        chunk: crate::tools::progress::ResultChunk,
+    },
+
     // Context
     BeforeAgentStart {
         prompt: String,

@@ -19,3 +19,9 @@
 - [x] **Prompt History Search** — `Ctrl+R` search across sessions (`src/tui/components/history_search.rs`, JSONL-backed store)
 - [x] **`@file` Auto-Read** — Type `@path` in prompt to inject file contents inline, with line ranges and directory listing (`src/util/at_file.rs`)
 - [x] **Native Performance Modules** — ripgrep-powered grep, syntect highlighting, ANSI-aware text utils (`src/tools/grep.rs` uses `ignore`+`grep-regex`+`grep-searcher` in-process; `src/util/syntax.rs` uses `syntect`; `src/util/ansi.rs` provides `strip_ansi`/`visible_width`/`truncate_visible`)
+
+## 🔵 Next Up (specced, not started)
+
+- [ ] **Streaming Tools** — Progressive output for long-running tools: structured progress events (bytes/lines/percentage), back-pressure with ring buffer, head/tail truncation windows, cancellation UX. Elevates `emit_progress` to a first-class protocol. (`openspec/changes/streaming-tools/`)
+- [ ] **Multi-Model Conversations** — Dynamic model routing within a session: complexity-based auto-selection, cost tracking with budget thresholds, agent-initiated model switching, orchestration patterns (propose/validate, plan/execute). Builds on existing `ModelRole` + `clankers-router`. (`openspec/changes/multi-model/`)
+- [ ] **Session Forking** — Branch conversations to explore alternatives: `/fork`, `/rewind`, `/branches` commands, branch navigation UI, comparison and merge. Exposes the existing `SessionTree` DAG to users. (`openspec/changes/session-forking/`)
