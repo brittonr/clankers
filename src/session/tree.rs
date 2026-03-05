@@ -122,6 +122,105 @@ impl SessionTree {
     pub fn message_count(&self) -> usize {
         self.index.len()
     }
+
+    /// Find all leaf nodes (messages with no children) by doing a DFS from all roots.
+    pub fn find_all_leaves(&self) -> Vec<&MessageEntry> {
+        let mut leaves = Vec::new();
+        let mut visited = std::collections::HashSet::new();
+        
+        // Start DFS from all root messages
+        let roots = self.get_children(&None);
+        for root in roots {
+            self.dfs_collect_leaves(root, &mut leaves, &mut visited);
+        }
+        
+        leaves
+    }
+
+    /// Helper for DFS traversal to collect leaf nodes
+    fn dfs_collect_leaves<'a>(
+        &'a self,
+        node: &'a MessageEntry,
+        leaves: &mut Vec<&'a MessageEntry>,
+        visited: &mut std::collections::HashSet<MessageId>,
+    ) {
+        if visited.contains(&node.id) {
+            return;
+        }
+        visited.insert(node.id.clone());
+        
+        let children = self.get_children(&Some(node.id.clone()));
+        if children.is_empty() {
+            // This is a leaf
+            leaves.push(node);
+        } else {
+            // Recurse into children
+            for child in children {
+                self.dfs_collect_leaves(child, leaves, visited);
+            }
+        }
+    }
+
+    /// Returns true if the message has more than one child (is a branch point).
+    pub fn is_branch_point(&self, message_id: &MessageId) -> bool {
+        self.get_children(&Some(message_id.clone())).len() > 1
+    }
+
+    /// Find the last common ancestor (divergence point) of two branches.
+    /// Returns the message where the two branches diverged.
+    pub fn find_divergence_point(
+        &self,
+        leaf_a: &MessageId,
+        leaf_b: &MessageId,
+    ) -> Option<&MessageEntry> {
+        // Walk both branches to root
+        let branch_a = self.walk_branch(leaf_a);
+        let branch_b = self.walk_branch(leaf_b);
+        
+        if branch_a.is_empty() || branch_b.is_empty() {
+            return None;
+        }
+        
+        // Find the last common message by walking from root
+        let mut last_common: Option<&MessageEntry> = None;
+        let min_len = branch_a.len().min(branch_b.len());
+        
+        for i in 0..min_len {
+            if branch_a[i].id == branch_b[i].id {
+                last_common = Some(branch_a[i]);
+            } else {
+                break;
+            }
+        }
+        
+        last_common
+    }
+
+    /// Find messages unique to a branch (after divergence from nearest sibling).
+    /// Walks from leaf to root, finding where this branch diverged from others.
+    pub fn find_branch_messages(&self, leaf_id: &MessageId) -> Vec<&MessageEntry> {
+        let branch = self.walk_branch(leaf_id);
+        if branch.is_empty() {
+            return vec![];
+        }
+        
+        // Walk backward from leaf to find the divergence point
+        // The divergence point is where the parent has multiple children
+        let mut divergence_idx = 0;
+        
+        for (i, msg) in branch.iter().enumerate() {
+            if let Some(parent_id) = &msg.parent_id
+                && self.is_branch_point(parent_id)
+            {
+                // This message is where the branch starts (first message after fork)
+                divergence_idx = i;
+                break;
+            }
+        }
+        
+        // Return messages from divergence point to leaf
+        branch[divergence_idx..].to_vec()
+    }
 }
 
 #[cfg(test)]
@@ -352,5 +451,307 @@ mod tests {
         ];
         let tree = SessionTree::build(entries);
         assert_eq!(tree.message_count(), 2);
+    }
+
+    #[test]
+    fn test_find_all_leaves_empty_tree() {
+        let tree = SessionTree::build(vec![]);
+        let leaves = tree.find_all_leaves();
+        assert_eq!(leaves.len(), 0);
+    }
+
+    #[test]
+    fn test_find_all_leaves_single_message() {
+        let id = MessageId::new("msg-1");
+        let entries = vec![make_message(id.clone(), None, "Hello")];
+        let tree = SessionTree::build(entries);
+
+        let leaves = tree.find_all_leaves();
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].id, id);
+    }
+
+    #[test]
+    fn test_find_all_leaves_linear_tree() {
+        let id1 = MessageId::new("msg-1");
+        let id2 = MessageId::new("msg-2");
+        let id3 = MessageId::new("msg-3");
+
+        let entries = vec![
+            make_message(id1.clone(), None, "First"),
+            make_message(id2.clone(), Some(id1.clone()), "Second"),
+            make_message(id3.clone(), Some(id2.clone()), "Third"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        let leaves = tree.find_all_leaves();
+        assert_eq!(leaves.len(), 1);
+        assert_eq!(leaves[0].id, id3);
+    }
+
+    #[test]
+    fn test_find_all_leaves_branching_tree() {
+        let id1 = MessageId::new("root");
+        let id2a = MessageId::new("branch-a");
+        let id2b = MessageId::new("branch-b");
+        let id3a = MessageId::new("branch-a-child");
+        let id3b = MessageId::new("branch-b-child");
+
+        let entries = vec![
+            make_message(id1.clone(), None, "Root"),
+            make_message(id2a.clone(), Some(id1.clone()), "Branch A"),
+            make_message(id2b.clone(), Some(id1.clone()), "Branch B"),
+            make_message(id3a.clone(), Some(id2a.clone()), "Branch A continued"),
+            make_message(id3b.clone(), Some(id2b.clone()), "Branch B continued"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        let leaves = tree.find_all_leaves();
+        assert_eq!(leaves.len(), 2);
+        let leaf_ids: Vec<_> = leaves.iter().map(|l| l.id.clone()).collect();
+        assert!(leaf_ids.contains(&id3a));
+        assert!(leaf_ids.contains(&id3b));
+    }
+
+    #[test]
+    fn test_find_all_leaves_multiple_roots() {
+        let id1 = MessageId::new("root-1");
+        let id2 = MessageId::new("root-2");
+        let id3 = MessageId::new("child-1");
+
+        let entries = vec![
+            make_message(id1.clone(), None, "Root 1"),
+            make_message(id2.clone(), None, "Root 2"),
+            make_message(id3.clone(), Some(id1.clone()), "Child of Root 1"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        let leaves = tree.find_all_leaves();
+        assert_eq!(leaves.len(), 2);
+        let leaf_ids: Vec<_> = leaves.iter().map(|l| l.id.clone()).collect();
+        assert!(leaf_ids.contains(&id2));
+        assert!(leaf_ids.contains(&id3));
+    }
+
+    #[test]
+    fn test_is_branch_point_no_children() {
+        let id = MessageId::new("leaf");
+        let entries = vec![make_message(id.clone(), None, "Leaf")];
+        let tree = SessionTree::build(entries);
+
+        assert!(!tree.is_branch_point(&id));
+    }
+
+    #[test]
+    fn test_is_branch_point_one_child() {
+        let id1 = MessageId::new("parent");
+        let id2 = MessageId::new("child");
+
+        let entries = vec![
+            make_message(id1.clone(), None, "Parent"),
+            make_message(id2.clone(), Some(id1.clone()), "Child"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        assert!(!tree.is_branch_point(&id1));
+    }
+
+    #[test]
+    fn test_is_branch_point_multiple_children() {
+        let id1 = MessageId::new("parent");
+        let id2a = MessageId::new("child-a");
+        let id2b = MessageId::new("child-b");
+
+        let entries = vec![
+            make_message(id1.clone(), None, "Parent"),
+            make_message(id2a.clone(), Some(id1.clone()), "Child A"),
+            make_message(id2b.clone(), Some(id1.clone()), "Child B"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        assert!(tree.is_branch_point(&id1));
+        assert!(!tree.is_branch_point(&id2a));
+        assert!(!tree.is_branch_point(&id2b));
+    }
+
+    #[test]
+    fn test_is_branch_point_nonexistent() {
+        let tree = SessionTree::build(vec![]);
+        assert!(!tree.is_branch_point(&MessageId::new("fake")));
+    }
+
+    #[test]
+    fn test_find_divergence_point_empty_tree() {
+        let tree = SessionTree::build(vec![]);
+        let result = tree.find_divergence_point(&MessageId::new("a"), &MessageId::new("b"));
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_divergence_point_same_message() {
+        let id = MessageId::new("msg");
+        let entries = vec![make_message(id.clone(), None, "Message")];
+        let tree = SessionTree::build(entries);
+
+        let result = tree.find_divergence_point(&id, &id);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().id, id);
+    }
+
+    #[test]
+    fn test_find_divergence_point_linear_chain() {
+        let id1 = MessageId::new("msg-1");
+        let id2 = MessageId::new("msg-2");
+        let id3 = MessageId::new("msg-3");
+
+        let entries = vec![
+            make_message(id1.clone(), None, "First"),
+            make_message(id2.clone(), Some(id1.clone()), "Second"),
+            make_message(id3.clone(), Some(id2.clone()), "Third"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        // Two points on same linear chain — divergence is the earlier one
+        let result = tree.find_divergence_point(&id2, &id3);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().id, id2);
+
+        let result = tree.find_divergence_point(&id1, &id3);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().id, id1);
+    }
+
+    #[test]
+    fn test_find_divergence_point_branching() {
+        let id1 = MessageId::new("root");
+        let id2a = MessageId::new("branch-a");
+        let id2b = MessageId::new("branch-b");
+        let id3a = MessageId::new("branch-a-child");
+        let id3b = MessageId::new("branch-b-child");
+
+        let entries = vec![
+            make_message(id1.clone(), None, "Root"),
+            make_message(id2a.clone(), Some(id1.clone()), "Branch A"),
+            make_message(id2b.clone(), Some(id1.clone()), "Branch B"),
+            make_message(id3a.clone(), Some(id2a.clone()), "Branch A continued"),
+            make_message(id3b.clone(), Some(id2b.clone()), "Branch B continued"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        // Two leaves from different branches should diverge at root
+        let result = tree.find_divergence_point(&id3a, &id3b);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().id, id1);
+
+        // Leaf and intermediate node on different branches
+        let result = tree.find_divergence_point(&id2a, &id3b);
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().id, id1);
+    }
+
+    #[test]
+    fn test_find_divergence_point_no_common_ancestor() {
+        let id1 = MessageId::new("root-1");
+        let id2 = MessageId::new("root-2");
+
+        let entries = vec![
+            make_message(id1.clone(), None, "Root 1"),
+            make_message(id2.clone(), None, "Root 2"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        // Two separate root messages have no common ancestor
+        let result = tree.find_divergence_point(&id1, &id2);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn test_find_branch_messages_empty_tree() {
+        let tree = SessionTree::build(vec![]);
+        let result = tree.find_branch_messages(&MessageId::new("fake"));
+        assert_eq!(result.len(), 0);
+    }
+
+    #[test]
+    fn test_find_branch_messages_no_branching() {
+        let id1 = MessageId::new("msg-1");
+        let id2 = MessageId::new("msg-2");
+        let id3 = MessageId::new("msg-3");
+
+        let entries = vec![
+            make_message(id1.clone(), None, "First"),
+            make_message(id2.clone(), Some(id1.clone()), "Second"),
+            make_message(id3.clone(), Some(id2.clone()), "Third"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        // No branching, so all messages in the path are "unique" to this branch
+        let result = tree.find_branch_messages(&id3);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].id, id1);
+        assert_eq!(result[1].id, id2);
+        assert_eq!(result[2].id, id3);
+    }
+
+    #[test]
+    fn test_find_branch_messages_after_fork() {
+        let id1 = MessageId::new("root");
+        let id2a = MessageId::new("branch-a");
+        let id2b = MessageId::new("branch-b");
+        let id3a = MessageId::new("branch-a-child");
+
+        let entries = vec![
+            make_message(id1.clone(), None, "Root"),
+            make_message(id2a.clone(), Some(id1.clone()), "Branch A"),
+            make_message(id2b.clone(), Some(id1.clone()), "Branch B"),
+            make_message(id3a.clone(), Some(id2a.clone()), "Branch A continued"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        // Branch A messages after the fork should be id2a and id3a
+        let result = tree.find_branch_messages(&id3a);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].id, id2a);
+        assert_eq!(result[1].id, id3a);
+
+        // Branch B has only one message after the fork
+        let result = tree.find_branch_messages(&id2b);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, id2b);
+    }
+
+    #[test]
+    fn test_find_branch_messages_nested_branching() {
+        let id1 = MessageId::new("root");
+        let id2 = MessageId::new("middle");
+        let id3a = MessageId::new("branch-a");
+        let id3b = MessageId::new("branch-b");
+        let id4a = MessageId::new("branch-a-child");
+
+        let entries = vec![
+            make_message(id1.clone(), None, "Root"),
+            make_message(id2.clone(), Some(id1.clone()), "Middle"),
+            make_message(id3a.clone(), Some(id2.clone()), "Branch A"),
+            make_message(id3b.clone(), Some(id2.clone()), "Branch B"),
+            make_message(id4a.clone(), Some(id3a.clone()), "Branch A continued"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        // Messages unique to branch A after the fork at id2
+        let result = tree.find_branch_messages(&id4a);
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].id, id3a);
+        assert_eq!(result[1].id, id4a);
+    }
+
+    #[test]
+    fn test_find_branch_messages_root_only() {
+        let id = MessageId::new("root");
+        let entries = vec![make_message(id.clone(), None, "Root")];
+        let tree = SessionTree::build(entries);
+
+        let result = tree.find_branch_messages(&id);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].id, id);
     }
 }

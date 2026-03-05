@@ -16,6 +16,16 @@ use crate::error::Result;
 use crate::provider::message::AgentMessage;
 use crate::provider::message::MessageId;
 
+#[derive(Debug, Clone)]
+pub struct BranchInfo {
+    pub leaf_id: MessageId,
+    pub name: String,
+    pub message_count: usize,
+    pub last_activity: chrono::DateTime<chrono::Utc>,
+    pub divergence_point: Option<MessageId>,
+    pub is_active: bool,
+}
+
 pub struct SessionManager {
     session_id: String,
     file_path: PathBuf,
@@ -191,6 +201,190 @@ impl SessionManager {
     }
     pub fn worktree_branch(&self) -> Option<&str> {
         self.worktree_branch.as_deref()
+    }
+
+    /// Find all branches in the session and return their metadata
+    pub fn find_branches(&self) -> Result<Vec<BranchInfo>> {
+        let tree = self.load_tree()?;
+        let leaves = tree.find_all_leaves();
+        let entries = store::read_entries(&self.file_path)?;
+
+        let mut branches = Vec::new();
+
+        for leaf in leaves {
+            let leaf_id = leaf.id.clone();
+            let branch_messages = tree.walk_branch(&leaf_id);
+            let message_count = branch_messages.len();
+            let last_activity = leaf.timestamp;
+            let is_active = self.active_leaf_id.as_ref() == Some(&leaf_id);
+
+            // Resolve branch name
+            let name = self.resolve_branch_name(&leaf_id, &branch_messages, &entries);
+
+            // Find divergence point
+            let divergence_point = self.find_divergence_point(&branch_messages, &tree);
+
+            branches.push(BranchInfo {
+                leaf_id,
+                name,
+                message_count,
+                last_activity,
+                divergence_point,
+                is_active,
+            });
+        }
+
+        Ok(branches)
+    }
+
+    /// Resolve a branch name from BranchEntry, LabelEntry, or generate a fallback
+    fn resolve_branch_name(
+        &self,
+        leaf_id: &MessageId,
+        branch_messages: &[&entry::MessageEntry],
+        entries: &[SessionEntry],
+    ) -> String {
+        // Build set of message IDs in this branch for quick lookup
+        let branch_ids: std::collections::HashSet<_> = branch_messages.iter().map(|m| &m.id).collect();
+
+        // Look for labels targeting messages in this branch
+        for entry in entries.iter().rev() {
+            if let SessionEntry::Label(label) = entry
+                && (branch_ids.contains(&label.target_message_id) || &label.target_message_id == leaf_id)
+            {
+                return label.label.clone();
+            }
+        }
+
+        // Look for branch entries that might name this branch
+        for entry in entries.iter().rev() {
+            if let SessionEntry::Branch(branch) = entry
+                && branch_ids.contains(&branch.from_message_id)
+            {
+                // Use the branch reason as the name if it's short enough
+                if !branch.reason.is_empty() && branch.reason.len() < 50 {
+                    return branch.reason.clone();
+                }
+            }
+        }
+
+        // Fallback: generate a name from timestamp
+        format!("branch-{}", leaf_id.0.chars().take(8).collect::<String>())
+    }
+
+    /// Find the divergence point where this branch split from others
+    fn find_divergence_point(
+        &self,
+        branch_messages: &[&entry::MessageEntry],
+        tree: &SessionTree,
+    ) -> Option<MessageId> {
+        // Walk backwards through the branch to find where it diverged
+        for msg in branch_messages.iter().rev() {
+            if let Some(parent_id) = &msg.parent_id {
+                // Check if the parent has multiple children
+                let siblings = tree.get_children(&Some(parent_id.clone()));
+                if siblings.len() > 1 {
+                    // This is a branch point
+                    return Some(parent_id.clone());
+                }
+            }
+        }
+        None
+    }
+
+    /// Set the active head to a specific message ID
+    pub fn set_active_head(&mut self, message_id: MessageId) -> Result<()> {
+        // Verify the message exists
+        let tree = self.load_tree()?;
+        tree.find_message_public(&message_id).ok_or_else(|| crate::error::Error::Session {
+            message: format!("Message not found: {}", message_id.0),
+        })?;
+
+        self.active_leaf_id = Some(message_id);
+        Ok(())
+    }
+
+    /// Rewind the active branch by a number of messages
+    pub fn rewind(&mut self, offset: usize) -> Result<MessageId> {
+        let tree = self.load_tree()?;
+        let current_leaf = self.active_leaf_id.as_ref().ok_or_else(|| crate::error::Error::Session {
+            message: "No active branch to rewind".to_string(),
+        })?;
+
+        let branch = tree.walk_branch(current_leaf);
+        if offset >= branch.len() {
+            return Err(crate::error::Error::Session {
+                message: format!("Cannot rewind {} messages from a branch of length {}", offset, branch.len()),
+            });
+        }
+
+        let target_index = branch.len() - offset - 1;
+        let new_head = branch[target_index].id.clone();
+        self.active_leaf_id = Some(new_head.clone());
+        Ok(new_head)
+    }
+
+    /// Resolve a target string to a MessageId
+    pub fn resolve_target(&self, target: &str) -> Result<MessageId> {
+        let tree = self.load_tree()?;
+        let entries = store::read_entries(&self.file_path)?;
+
+        // Try matching as message ID directly first (most specific)
+        if tree.find_message_public(&MessageId::new(target)).is_some() {
+            return Ok(MessageId::new(target));
+        }
+
+        // Try parsing as numeric offset (for small numbers, reasonable offsets)
+        if let Ok(offset) = target.parse::<usize>()
+            && offset < 1000  // Sanity check - offsets shouldn't be huge
+        {
+            let current_leaf = self.active_leaf_id.as_ref().ok_or_else(|| crate::error::Error::Session {
+                message: "No active branch for offset resolution".to_string(),
+            })?;
+            let branch = tree.walk_branch(current_leaf);
+            if offset < branch.len() {
+                let target_index = branch.len() - offset - 1;
+                return Ok(branch[target_index].id.clone());
+            }
+        }
+
+        // Try matching as a label
+        for entry in entries.iter().rev() {
+            if let SessionEntry::Label(label) = entry
+                && label.label == target
+            {
+                return Ok(label.target_message_id.clone());
+            }
+        }
+
+        // Try matching as branch name
+        let branches = self.find_branches()?;
+        for branch in branches {
+            if branch.name == target {
+                return Ok(branch.leaf_id);
+            }
+        }
+
+        Err(crate::error::Error::Session {
+            message: format!("Could not resolve target: {}", target),
+        })
+    }
+
+    /// Record a label for the current active leaf
+    pub fn record_label(&mut self, label: &str) -> Result<()> {
+        let target_id = self.active_leaf_id.as_ref().ok_or_else(|| crate::error::Error::Session {
+            message: "No active leaf to label".to_string(),
+        })?;
+
+        let entry = SessionEntry::Label(LabelEntry {
+            id: MessageId::generate(),
+            target_message_id: target_id.clone(),
+            label: label.to_string(),
+            timestamp: Utc::now(),
+        });
+
+        store::append_entry(&self.file_path, &entry)?;
+        Ok(())
     }
 }
 
@@ -497,5 +691,364 @@ mod tests {
         assert_eq!(context[0].id(), &root);
         assert_eq!(context[1].id(), &branch_b);
         assert_eq!(context[2].id(), &branch_b2);
+    }
+
+    #[test]
+    fn test_find_branches_linear() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        // Create a linear conversation
+        let id1 = MessageId::generate();
+        let id2 = MessageId::generate();
+        let msg1 = AgentMessage::User(UserMessage {
+            id: id1.clone(),
+            content: vec![Content::Text { text: "First".to_string() }],
+            timestamp: Utc::now(),
+        });
+        let msg2 = AgentMessage::User(UserMessage {
+            id: id2.clone(),
+            content: vec![Content::Text { text: "Second".to_string() }],
+            timestamp: Utc::now(),
+        });
+        mgr.append_message(msg1, None).unwrap();
+        mgr.append_message(msg2, Some(id1.clone())).unwrap();
+
+        let branches = mgr.find_branches().unwrap();
+        assert_eq!(branches.len(), 1);
+        assert_eq!(branches[0].leaf_id, id2);
+        assert_eq!(branches[0].message_count, 2);
+        assert!(branches[0].is_active);
+        assert!(branches[0].divergence_point.is_none());
+    }
+
+    #[test]
+    fn test_find_branches_with_fork() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        // Create: root -> branch_a, root -> branch_b
+        let root = MessageId::generate();
+        let branch_a = MessageId::generate();
+        let branch_b = MessageId::generate();
+
+        let msg_root = AgentMessage::User(UserMessage {
+            id: root.clone(),
+            content: vec![Content::Text { text: "Root".to_string() }],
+            timestamp: Utc::now(),
+        });
+        let msg_a = AgentMessage::User(UserMessage {
+            id: branch_a.clone(),
+            content: vec![Content::Text { text: "Branch A".to_string() }],
+            timestamp: Utc::now(),
+        });
+        let msg_b = AgentMessage::User(UserMessage {
+            id: branch_b.clone(),
+            content: vec![Content::Text { text: "Branch B".to_string() }],
+            timestamp: Utc::now(),
+        });
+
+        mgr.append_message(msg_root, None).unwrap();
+        mgr.append_message(msg_a, Some(root.clone())).unwrap();
+        mgr.append_message(msg_b, Some(root.clone())).unwrap();
+
+        let branches = mgr.find_branches().unwrap();
+        assert_eq!(branches.len(), 2);
+
+        // Both branches should have the root as divergence point
+        for branch in &branches {
+            assert_eq!(branch.message_count, 2);
+            assert_eq!(branch.divergence_point, Some(root.clone()));
+        }
+
+        // The last branch created (branch_b) should be active
+        assert!(branches.iter().any(|b| b.leaf_id == branch_b && b.is_active));
+    }
+
+    #[test]
+    fn test_find_branches_with_labels() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let id1 = MessageId::generate();
+        let msg1 = AgentMessage::User(UserMessage {
+            id: id1.clone(),
+            content: vec![Content::Text { text: "Message".to_string() }],
+            timestamp: Utc::now(),
+        });
+        mgr.append_message(msg1, None).unwrap();
+
+        // Add a label
+        mgr.record_label("my-checkpoint").unwrap();
+
+        let branches = mgr.find_branches().unwrap();
+        assert_eq!(branches.len(), 1);
+        assert_eq!(branches[0].name, "my-checkpoint");
+    }
+
+    #[test]
+    fn test_set_active_head() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let id1 = MessageId::generate();
+        let id2 = MessageId::generate();
+        let msg1 = AgentMessage::User(UserMessage {
+            id: id1.clone(),
+            content: vec![Content::Text { text: "First".to_string() }],
+            timestamp: Utc::now(),
+        });
+        let msg2 = AgentMessage::User(UserMessage {
+            id: id2.clone(),
+            content: vec![Content::Text { text: "Second".to_string() }],
+            timestamp: Utc::now(),
+        });
+        mgr.append_message(msg1, None).unwrap();
+        mgr.append_message(msg2, Some(id1.clone())).unwrap();
+
+        // Switch back to first message
+        mgr.set_active_head(id1.clone()).unwrap();
+        assert_eq!(mgr.active_leaf_id(), Some(&id1));
+
+        // Build context should only have the first message
+        let context = mgr.build_context().unwrap();
+        assert_eq!(context.len(), 1);
+        assert_eq!(context[0].id(), &id1);
+    }
+
+    #[test]
+    fn test_set_active_head_invalid() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let fake_id = MessageId::new("nonexistent");
+        let result = mgr.set_active_head(fake_id);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_rewind() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        // Create 3 messages
+        let mut ids: Vec<MessageId> = Vec::new();
+        for i in 0..3 {
+            let id = MessageId::generate();
+            let msg = AgentMessage::User(UserMessage {
+                id: id.clone(),
+                content: vec![Content::Text { text: format!("Message {}", i) }],
+                timestamp: Utc::now(),
+            });
+            let parent = if i == 0 { None } else { Some(ids[i - 1].clone()) };
+            mgr.append_message(msg, parent).unwrap();
+            ids.push(id);
+        }
+
+        // Rewind by 1 message
+        let new_head = mgr.rewind(1).unwrap();
+        assert_eq!(new_head, ids[1]);
+        assert_eq!(mgr.active_leaf_id(), Some(&ids[1]));
+
+        // Context should have 2 messages
+        let context = mgr.build_context().unwrap();
+        assert_eq!(context.len(), 2);
+    }
+
+    #[test]
+    fn test_rewind_too_far() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let id = MessageId::generate();
+        let msg = AgentMessage::User(UserMessage {
+            id: id.clone(),
+            content: vec![Content::Text { text: "Only message".to_string() }],
+            timestamp: Utc::now(),
+        });
+        mgr.append_message(msg, None).unwrap();
+
+        // Try to rewind past the beginning
+        let result = mgr.rewind(1);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_resolve_target_numeric() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let mut ids: Vec<MessageId> = Vec::new();
+        for i in 0..3 {
+            let id = MessageId::generate();
+            let msg = AgentMessage::User(UserMessage {
+                id: id.clone(),
+                content: vec![Content::Text { text: format!("Message {}", i) }],
+                timestamp: Utc::now(),
+            });
+            let parent = if i == 0 { None } else { Some(ids[i - 1].clone()) };
+            mgr.append_message(msg, parent).unwrap();
+            ids.push(id);
+        }
+
+        // Resolve offset 1 (should be second-to-last message)
+        let resolved = mgr.resolve_target("1").unwrap();
+        assert_eq!(resolved, ids[1]);
+
+        // Resolve offset 0 (should be last message)
+        let resolved = mgr.resolve_target("0").unwrap();
+        assert_eq!(resolved, ids[2]);
+    }
+
+    #[test]
+    fn test_resolve_target_message_id() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let id = MessageId::generate();
+        let msg = AgentMessage::User(UserMessage {
+            id: id.clone(),
+            content: vec![Content::Text { text: "Message".to_string() }],
+            timestamp: Utc::now(),
+        });
+        mgr.append_message(msg, None).unwrap();
+
+        // Resolve by exact message ID
+        let resolved = mgr.resolve_target(&id.0).unwrap();
+        assert_eq!(resolved, id);
+    }
+
+    #[test]
+    fn test_resolve_target_label() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let id = MessageId::generate();
+        let msg = AgentMessage::User(UserMessage {
+            id: id.clone(),
+            content: vec![Content::Text { text: "Message".to_string() }],
+            timestamp: Utc::now(),
+        });
+        mgr.append_message(msg, None).unwrap();
+        mgr.record_label("checkpoint").unwrap();
+
+        // Resolve by label
+        let resolved = mgr.resolve_target("checkpoint").unwrap();
+        assert_eq!(resolved, id);
+    }
+
+    #[test]
+    fn test_resolve_target_branch_name() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let root = MessageId::generate();
+        let branch_a = MessageId::generate();
+
+        let msg_root = AgentMessage::User(UserMessage {
+            id: root.clone(),
+            content: vec![Content::Text { text: "Root".to_string() }],
+            timestamp: Utc::now(),
+        });
+        let msg_a = AgentMessage::User(UserMessage {
+            id: branch_a.clone(),
+            content: vec![Content::Text { text: "Branch A".to_string() }],
+            timestamp: Utc::now(),
+        });
+
+        mgr.append_message(msg_root, None).unwrap();
+        mgr.append_message(msg_a, Some(root.clone())).unwrap();
+        mgr.record_label("feature-branch").unwrap();
+
+        // Resolve by branch name (label)
+        let resolved = mgr.resolve_target("feature-branch").unwrap();
+        assert_eq!(resolved, branch_a);
+    }
+
+    #[test]
+    fn test_resolve_target_invalid() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let result = mgr.resolve_target("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_record_label() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let id = MessageId::generate();
+        let msg = AgentMessage::User(UserMessage {
+            id: id.clone(),
+            content: vec![Content::Text { text: "Message".to_string() }],
+            timestamp: Utc::now(),
+        });
+        mgr.append_message(msg, None).unwrap();
+
+        // Record a label
+        mgr.record_label("test-label").unwrap();
+
+        // Re-open and verify the label was persisted
+        let mgr2 = SessionManager::open(mgr.file_path().to_path_buf()).unwrap();
+        let entries = store::read_entries(mgr2.file_path()).unwrap();
+        let has_label = entries.iter().any(|e| {
+            if let SessionEntry::Label(label) = e {
+                label.label == "test-label" && label.target_message_id == id
+            } else {
+                false
+            }
+        });
+        assert!(has_label);
+    }
+
+    #[test]
+    fn test_record_label_no_active_leaf() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        // Try to record a label without any messages
+        let result = mgr.record_label("test");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_branch_name_from_branch_entry() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        // Create root and first branch
+        let root = MessageId::generate();
+        let branch_a = MessageId::generate();
+        let msg_root = AgentMessage::User(UserMessage {
+            id: root.clone(),
+            content: vec![Content::Text { text: "Root".to_string() }],
+            timestamp: Utc::now(),
+        });
+        let msg_a = AgentMessage::User(UserMessage {
+            id: branch_a.clone(),
+            content: vec![Content::Text { text: "Branch A".to_string() }],
+            timestamp: Utc::now(),
+        });
+        mgr.append_message(msg_root, None).unwrap();
+        mgr.append_message(msg_a, Some(root.clone())).unwrap();
+
+        // Record a branch with a reason
+        mgr.record_branch(root.clone(), "alternate-approach").unwrap();
+
+        // Create second branch
+        let branch_b = MessageId::generate();
+        let msg_b = AgentMessage::User(UserMessage {
+            id: branch_b.clone(),
+            content: vec![Content::Text { text: "Branch B".to_string() }],
+            timestamp: Utc::now(),
+        });
+        mgr.append_message(msg_b, Some(root.clone())).unwrap();
+
+        let branches = mgr.find_branches().unwrap();
+        // One of the branches should have the name from the branch entry
+        let has_named_branch = branches.iter().any(|b| b.name == "alternate-approach");
+        assert!(has_named_branch);
     }
 }

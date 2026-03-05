@@ -107,6 +107,16 @@ pub enum SlashAction {
     Peers,
     /// Switch panel layout
     Layout,
+    /// Fork conversation to explore alternatives
+    Fork,
+    /// Jump back to an earlier message
+    Rewind,
+    /// List conversation branches
+    Branches,
+    /// Switch to a different branch
+    Switch,
+    /// Label the current message
+    Label,
     /// Run a user-defined prompt template
     PromptTemplate(String),
 }
@@ -535,6 +545,61 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             ],
         },
         SlashCommand {
+            name: "fork",
+            description: "Fork conversation to explore alternatives",
+            help: "Create a new branch from the current message.\n\n\
+                   Usage:\n  \
+                   /fork                — fork with auto-generated name\n  \
+                   /fork <reason>       — fork with a descriptive name",
+            accepts_args: true,
+            action: SlashAction::Fork,
+            subcommands: vec![],
+        },
+        SlashCommand {
+            name: "rewind",
+            description: "Jump back to an earlier message",
+            help: "Rewind the conversation to an earlier point.\n\n\
+                   Usage:\n  \
+                   /rewind <N>            — go back N messages\n  \
+                   /rewind <message-id>   — jump to specific message\n  \
+                   /rewind <label>        — jump to a labeled message",
+            accepts_args: true,
+            action: SlashAction::Rewind,
+            subcommands: vec![],
+        },
+        SlashCommand {
+            name: "branches",
+            description: "List conversation branches",
+            help: "List all branches in the current session.\n\n\
+                   Usage:\n  \
+                   /branches              — list all branches\n  \
+                   /branches --verbose    — show detailed branch tree",
+            accepts_args: true,
+            action: SlashAction::Branches,
+            subcommands: vec![],
+        },
+        SlashCommand {
+            name: "switch",
+            description: "Switch to a different branch",
+            help: "Switch to a different conversation branch.\n\n\
+                   Usage:\n  \
+                   /switch <branch-name>  — switch by branch name\n  \
+                   /switch <message-id>   — switch to specific message",
+            accepts_args: true,
+            action: SlashAction::Switch,
+            subcommands: vec![],
+        },
+        SlashCommand {
+            name: "label",
+            description: "Label the current message",
+            help: "Add a human-readable label to the current message.\n\n\
+                   Usage: /label <name>\n\n\
+                   Labels can be used with /rewind and /switch for easy navigation.",
+            accepts_args: true,
+            action: SlashAction::Label,
+            subcommands: vec![],
+        },
+        SlashCommand {
             name: "quit",
             description: "Quit clankers",
             help: "Exit the application.",
@@ -925,5 +990,69 @@ mod tests {
     fn test_no_subcommands_for_clear() {
         let results = completions("/clear ");
         assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_parse_fork() {
+        let (action, args) = parse_command("/fork").unwrap();
+        assert_eq!(action, SlashAction::Fork);
+        assert_eq!(args, "");
+    }
+
+    #[test]
+    fn test_parse_fork_with_args() {
+        let (action, args) = parse_command("/fork try different approach").unwrap();
+        assert_eq!(action, SlashAction::Fork);
+        assert_eq!(args, "try different approach");
+    }
+
+    #[test]
+    fn test_parse_rewind() {
+        let (action, args) = parse_command("/rewind 5").unwrap();
+        assert_eq!(action, SlashAction::Rewind);
+        assert_eq!(args, "5");
+    }
+
+    #[test]
+    fn test_parse_branches() {
+        let (action, args) = parse_command("/branches").unwrap();
+        assert_eq!(action, SlashAction::Branches);
+        assert_eq!(args, "");
+    }
+
+    #[test]
+    fn test_parse_switch() {
+        let (action, args) = parse_command("/switch main").unwrap();
+        assert_eq!(action, SlashAction::Switch);
+        assert_eq!(args, "main");
+    }
+
+    #[test]
+    fn test_parse_label() {
+        let (action, args) = parse_command("/label checkpoint").unwrap();
+        assert_eq!(action, SlashAction::Label);
+        assert_eq!(args, "checkpoint");
+    }
+
+    #[test]
+    fn test_completions_fork() {
+        let results = completions("/fo");
+        assert!(results.iter().any(|c| c.display == "fork"), "results: {:?}", results);
+    }
+
+    #[test]
+    fn test_completions_branches() {
+        let results = completions("/br");
+        assert!(results.iter().any(|c| c.display == "branches"), "results: {:?}", results);
+    }
+
+    #[test]
+    fn test_help_text_includes_branch_commands() {
+        let text = help_text();
+        assert!(text.contains("/fork"));
+        assert!(text.contains("/rewind"));
+        assert!(text.contains("/branches"));
+        assert!(text.contains("/switch"));
+        assert!(text.contains("/label"));
     }
 }

@@ -924,7 +924,7 @@ async fn run_event_loop(
                     }
                     // Dispatch queued prompt if one is waiting
                     if let Some(text) = app.queued_prompt.take() {
-                        handle_input_with_plugins(app, &text, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db);
+                        handle_input_with_plugins(app, &text, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
                     }
                 }
                 TaskResult::PromptDone(None) => {
@@ -932,7 +932,7 @@ async fn run_event_loop(
                     // so the user can keep typing without pressing 'i' again.
                     // Dispatch queued prompt if one is waiting
                     if let Some(text) = app.queued_prompt.take() {
-                        handle_input_with_plugins(app, &text, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db);
+                        handle_input_with_plugins(app, &text, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
                     }
                 }
                 TaskResult::LoginDone(Ok(msg)) => app.push_system(msg, false),
@@ -1004,7 +1004,7 @@ async fn run_event_loop(
                     // ── Leader menu intercept ────────────────────
                     if app.leader_menu.visible {
                         if let Some(leader_action) = app.leader_menu.handle_key(&key) {
-                            handle_leader_action(app, leader_action, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db);
+                            handle_leader_action(app, leader_action, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
                         }
                         continue;
                     }
@@ -1018,7 +1018,7 @@ async fn run_event_loop(
                     // ── Slash menu intercept (only in insert mode) ────
                     if app.input_mode == InputMode::Insert
                         && app.slash_menu.visible
-                        && handle_slash_menu_key(app, &key, &keymap, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db)
+                        && handle_slash_menu_key(app, &key, &keymap, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager)
                     {
                         continue;
                     }
@@ -1157,7 +1157,7 @@ async fn run_event_loop(
                             continue;
                         }
 
-                        handle_action(app, action, &key, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db);
+                        handle_action(app, action, &key, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
 
                         // If a branch was just initiated, record it in the session file
                         if let Some(checkpoint) = app.last_branch_checkpoint.take()
@@ -1228,6 +1228,7 @@ fn handle_action(
     plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
     db: &Option<crate::db::Db>,
+    session_manager: &mut Option<crate::session::SessionManager>,
 ) {
     // When panel is focused, route navigation keys to the panel.
     // Global actions (leader menu, selectors, mode switching, etc.)
@@ -1432,7 +1433,7 @@ fn handle_action(
                     let _ = cmd_tx.send(AgentCommand::TruncateMessages(checkpoint));
                     let _ = cmd_tx.send(AgentCommand::Prompt(prompt));
                 } else {
-                    handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db);
+                    handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager);
                 }
             }
         }
@@ -1701,6 +1702,7 @@ fn handle_leader_action(
     plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
     db: &Option<crate::db::Db>,
+    session_manager: &mut Option<crate::session::SessionManager>,
 ) {
     use crate::tui::components::leader_menu::LeaderAction;
 
@@ -1708,11 +1710,11 @@ fn handle_leader_action(
         LeaderAction::KeymapAction(keymap_action) => {
             // Re-use the existing action dispatcher with a dummy key event
             let dummy_key = crossterm::event::KeyEvent::new(KeyCode::Null, KeyModifiers::NONE);
-            handle_action(app, keymap_action, &dummy_key, cmd_tx, plugin_manager, panel_tx, db);
+            handle_action(app, keymap_action, &dummy_key, cmd_tx, plugin_manager, panel_tx, db, session_manager);
         }
         LeaderAction::SlashCommand(command) => {
             // Execute as if the user typed and submitted the slash command
-            handle_input_with_plugins(app, &command, cmd_tx, plugin_manager, panel_tx, db);
+            handle_input_with_plugins(app, &command, cmd_tx, plugin_manager, panel_tx, db, session_manager);
         }
         LeaderAction::Submenu(_) => {
             // Submenus are handled internally by LeaderMenu::handle_key
@@ -1784,6 +1786,7 @@ fn handle_slash_menu_key(
     plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
     db: &Option<crate::db::Db>,
+    session_manager: &mut Option<crate::session::SessionManager>,
 ) -> bool {
     // Resolve through the keymap — menu actions take priority when menu is visible
     if let Some(action) = keymap.resolve(InputMode::Insert, key) {
@@ -1813,7 +1816,7 @@ fn handle_slash_menu_key(
             Action::Submit => {
                 app.accept_slash_completion();
                 if let Some(text) = app.submit_input() {
-                    handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db);
+                    handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager);
                 }
                 return true;
             }
@@ -2579,9 +2582,10 @@ fn handle_input_with_plugins(
     plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
     db: &Option<crate::db::Db>,
+    session_manager: &mut Option<crate::session::SessionManager>,
 ) {
     if let Some((action, args)) = slash_commands::parse_command(text) {
-        execute_slash_command(app, action, &args, cmd_tx, plugin_manager, panel_tx, db);
+        execute_slash_command(app, action, &args, cmd_tx, plugin_manager, panel_tx, db, session_manager);
     } else {
         let _ = cmd_tx.send(AgentCommand::ResetCancel);
         let mut pending_images = app.take_pending_images();
@@ -2670,6 +2674,7 @@ fn execute_slash_command(
     plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
     db: &Option<crate::db::Db>,
+    session_manager: &mut Option<crate::session::SessionManager>,
 ) {
     match action {
         SlashAction::Help => {
@@ -3364,6 +3369,7 @@ fn execute_slash_command(
                             plugin_manager,
                             panel_tx,
                             db,
+                            session_manager,
                         );
                     }
                     "logout" => {
@@ -4298,6 +4304,173 @@ fn execute_slash_command(
                 }
             }
         }
+        SlashAction::Fork => {
+            if let Some(sm) = session_manager {
+                if sm.message_count() == 0 {
+                    app.push_system("Cannot fork: no messages yet.".to_string(), true);
+                } else {
+                    let reason = if args.is_empty() {
+                        let ts = chrono::Utc::now().format("%Y-%m-%d-%H:%M");
+                        format!("branch-{}", ts)
+                    } else {
+                        args.to_string()
+                    };
+                    // The fork point is the current active leaf
+                    if let Some(fork_point) = sm.active_leaf_id().cloned() {
+                        match sm.record_branch(fork_point.clone(), &reason) {
+                            Ok(()) => {
+                                app.push_system(
+                                    format!("Forked at message {}. Branch: \"{}\"", fork_point, reason),
+                                    false,
+                                );
+                                // Rebuild agent context from the new branch head
+                                if let Ok(context) = sm.build_context() {
+                                    let _ = cmd_tx.send(AgentCommand::ClearHistory);
+                                    let _ = cmd_tx.send(AgentCommand::SeedMessages(context));
+                                }
+                            }
+                            Err(e) => {
+                                app.push_system(format!("Fork failed: {}", e), true);
+                            }
+                        }
+                    } else {
+                        app.push_system("Cannot fork: no active message.".to_string(), true);
+                    }
+                }
+            } else {
+                app.push_system("No active session.".to_string(), true);
+            }
+        }
+        SlashAction::Rewind => {
+            if args.is_empty() {
+                app.push_system("Usage: /rewind <N> or /rewind <message-id> or /rewind <label>".to_string(), true);
+            } else if let Some(sm) = session_manager {
+                match sm.resolve_target(args) {
+                    Ok(target_id) => {
+                        match sm.set_active_head(target_id.clone()) {
+                            Ok(()) => {
+                                if let Ok(context) = sm.build_context() {
+                                    let msg_count = context.len();
+                                    let _ = cmd_tx.send(AgentCommand::ClearHistory);
+                                    let _ = cmd_tx.send(AgentCommand::SeedMessages(context));
+                                    app.push_system(
+                                        format!("Rewound to message {} ({} messages in context)", target_id, msg_count),
+                                        false,
+                                    );
+                                }
+                            }
+                            Err(e) => app.push_system(format!("Rewind failed: {}", e), true),
+                        }
+                    }
+                    Err(e) => app.push_system(format!("Cannot resolve target '{}': {}", args, e), true),
+                }
+            } else {
+                app.push_system("No active session.".to_string(), true);
+            }
+        }
+        SlashAction::Branches => {
+            if let Some(sm) = session_manager {
+                match sm.find_branches() {
+                    Ok(branches) => {
+                        if branches.len() <= 1 {
+                            app.push_system(
+                                "No forks. Use /fork to explore alternatives.".to_string(),
+                                false,
+                            );
+                        } else {
+                            let mut output = String::from("Branches:\n\n");
+                            for branch in &branches {
+                                let marker = if branch.is_active { " *" } else { "  " };
+                                let active_label = if branch.is_active { " (current)" } else { "" };
+                                let ago = format_time_ago(branch.last_activity);
+                                output.push_str(&format!(
+                                    "{} {}{}\n    {} messages    {}\n",
+                                    marker, branch.name, active_label, branch.message_count, ago,
+                                ));
+                            }
+                            output.push_str("\n  Use /switch <name> to change branches");
+                            app.push_system(output, false);
+                        }
+                    }
+                    Err(e) => app.push_system(format!("Failed to list branches: {}", e), true),
+                }
+            } else {
+                app.push_system("No active session.".to_string(), true);
+            }
+        }
+        SlashAction::Switch => {
+            if args.is_empty() {
+                app.push_system("Usage: /switch <branch-name> or /switch <message-id>".to_string(), true);
+            } else if let Some(sm) = session_manager {
+                // First try to resolve as a branch name
+                let target = sm.find_branches().ok().and_then(|branches| {
+                    branches
+                        .iter()
+                        .find(|b| b.name.eq_ignore_ascii_case(args))
+                        .map(|b| b.leaf_id.clone())
+                });
+                // Fall back to resolving as message ID
+                let target = target.or_else(|| sm.resolve_target(args).ok());
+                match target {
+                    Some(target_id) => {
+                        if sm.active_leaf_id() == Some(&target_id) {
+                            let branch_name = sm.find_branches().ok()
+                                .and_then(|bs| bs.iter().find(|b| b.leaf_id == target_id).map(|b| b.name.clone()))
+                                .unwrap_or_else(|| target_id.to_string());
+                            app.push_system(format!("Already on branch \"{}\"", branch_name), false);
+                        } else {
+                            match sm.set_active_head(target_id.clone()) {
+                                Ok(()) => {
+                                    if let Ok(context) = sm.build_context() {
+                                        let msg_count = context.len();
+                                        let _ = cmd_tx.send(AgentCommand::ClearHistory);
+                                        let _ = cmd_tx.send(AgentCommand::SeedMessages(context));
+                                        let branch_name = sm.find_branches().ok()
+                                            .and_then(|bs| bs.iter().find(|b| b.leaf_id == target_id).map(|b| b.name.clone()))
+                                            .unwrap_or_else(|| target_id.to_string());
+                                        app.push_system(
+                                            format!("Switched to branch \"{}\" ({} messages)", branch_name, msg_count),
+                                            false,
+                                        );
+                                    }
+                                }
+                                Err(e) => app.push_system(format!("Switch failed: {}", e), true),
+                            }
+                        }
+                    }
+                    None => {
+                        let available = sm.find_branches().ok()
+                            .map(|bs| bs.iter().map(|b| b.name.clone()).collect::<Vec<_>>().join(", "))
+                            .unwrap_or_default();
+                        app.push_system(
+                            format!("Branch '{}' not found. Available: {}", args, available),
+                            true,
+                        );
+                    }
+                }
+            } else {
+                app.push_system("No active session.".to_string(), true);
+            }
+        }
+        SlashAction::Label => {
+            if args.is_empty() {
+                app.push_system("Usage: /label <name>".to_string(), true);
+            } else if let Some(sm) = session_manager {
+                match sm.record_label(args) {
+                    Ok(()) => {
+                        if let Some(head) = sm.active_leaf_id() {
+                            app.push_system(
+                                format!("Labeled message {} as \"{}\"", head, args),
+                                false,
+                            );
+                        }
+                    }
+                    Err(e) => app.push_system(format!("Label failed: {}", e), true),
+                }
+            } else {
+                app.push_system("No active session.".to_string(), true);
+            }
+        }
         SlashAction::PromptTemplate(ref template_name) => {
             // Look up the prompt template from the discovered resources
             let global_dir = crate::config::paths::ClankersPaths::resolve().global_prompts_dir;
@@ -4320,6 +4493,28 @@ fn execute_slash_command(
 }
 
 /// Strip YAML frontmatter (--- ... ---) from a prompt template
+/// Format a timestamp as a human-readable "time ago" string.
+fn format_time_ago(ts: chrono::DateTime<chrono::Utc>) -> String {
+    let elapsed = chrono::Utc::now().signed_duration_since(ts);
+    let secs = elapsed.num_seconds();
+    if secs < 60 {
+        "just now".to_string()
+    } else if secs < 3600 {
+        let m = elapsed.num_minutes();
+        format!("{} minute{} ago", m, if m == 1 { "" } else { "s" })
+    } else if secs < 86400 {
+        let h = elapsed.num_hours();
+        format!("{} hour{} ago", h, if h == 1 { "" } else { "s" })
+    } else {
+        let d = elapsed.num_days();
+        if d == 1 {
+            "yesterday".to_string()
+        } else {
+            format!("{} days ago", d)
+        }
+    }
+}
+
 fn strip_frontmatter(content: &str) -> String {
     let trimmed = content.trim_start();
     if let Some(rest) = trimmed.strip_prefix("---")

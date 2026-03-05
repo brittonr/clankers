@@ -1,57 +1,57 @@
 # session-forking — Tasks
 
-## Phase 1: Core state management (no UI, no commands)
+## Phase 1: Core state management (no UI, no commands) ✅
 
-- [ ] Add `current_head: Option<MessageId>` field to `Session` struct
-- [ ] Implement `Session::set_current_head(message_id)` — updates head and validates it exists
-- [ ] Implement `Session::get_current_head()` — returns current head, defaults to `tree.find_latest_leaf(None)`
-- [ ] Modify `Session::load()` to initialize `current_head` to latest leaf on load
-- [ ] Modify `Agent::load_messages()` to use `tree.walk_branch(current_head)` instead of flat `messages()`
-- [ ] Ensure new messages set `parent_id` to `current_head` when sent
-- [ ] Unit tests: current head tracking, branch walking, message parent linkage
+- [x] Add `current_head: Option<MessageId>` field to `Session` struct (`active_leaf_id` on `SessionManager`)
+- [x] Implement `Session::set_current_head(message_id)` — updates head and validates it exists (`set_active_head`)
+- [x] Implement `Session::get_current_head()` — returns current head, defaults to `tree.find_latest_leaf(None)` (`active_leaf_id()`)
+- [x] Modify `Session::load()` to initialize `current_head` to latest leaf on load (`open()`)
+- [x] Modify `Agent::load_messages()` to use `tree.walk_branch(current_head)` instead of flat `messages()` (`build_context()`)
+- [x] Ensure new messages set `parent_id` to `current_head` when sent (`append_message` updates `active_leaf_id`)
+- [x] Unit tests: current head tracking, branch walking, message parent linkage
 
-## Phase 2: Fork and rewind commands
+## Phase 2: Fork and rewind commands ✅
 
-- [ ] Implement `/fork [reason]` command in `src/tui/command_processor.rs`
-  - [ ] Emit `BranchEntry` to JSONL with `from_message_id = current_head`
-  - [ ] Generate branch name from reason or timestamp
-  - [ ] Handle name collisions (append counter)
-  - [ ] Update `current_head` to fork point (rewind one step)
-  - [ ] Display confirmation message
-- [ ] Implement `/rewind <target>` command
-  - [ ] Parse target: numeric offset, message-id, or label
-  - [ ] Resolve target to a MessageId
-  - [ ] Update `current_head` to target
-  - [ ] Rebuild `Agent.messages` via `tree.walk_branch(target)`
-  - [ ] Display confirmation with message count
-- [ ] Implement `/label <name>` command
-  - [ ] Emit `LabelEntry` to JSONL targeting `current_head`
-  - [ ] Store label → message-id mapping in session
-- [ ] Unit tests: fork creates BranchEntry, rewind updates head, labels persist
+- [x] Implement `/fork [reason]` command in `src/modes/interactive.rs`
+  - [x] Emit `BranchEntry` to JSONL with `from_message_id = current_head`
+  - [x] Generate branch name from reason or timestamp
+  - [x] Update `current_head` to fork point (rewind one step)
+  - [x] Display confirmation message
+  - [x] Rebuild agent context via `SeedMessages`
+- [x] Implement `/rewind <target>` command
+  - [x] Parse target: numeric offset, message-id, or label (`resolve_target`)
+  - [x] Resolve target to a MessageId
+  - [x] Update `current_head` to target
+  - [x] Rebuild `Agent.messages` via `build_context()`
+  - [x] Display confirmation with message count
+- [x] Implement `/label <name>` command
+  - [x] Emit `LabelEntry` to JSONL targeting `current_head`
+  - [x] Store label → message-id mapping in session
+- [x] Unit tests: fork creates BranchEntry, rewind updates head, labels persist
 
-## Phase 3: Branch listing and switching
+## Phase 3: Branch listing and switching ✅
 
-- [ ] Implement `SessionTree::find_all_leaves()` — returns all leaf message IDs
-- [ ] Implement `Session::find_branches()` — walks tree to build BranchInfo list
-- [ ] Add `BranchInfo` struct: `{ leaf_id, name, message_count, last_activity, divergence_point }`
-- [ ] Implement branch name resolution logic:
-  - [ ] Check BranchEntry `reason` field at divergence point
-  - [ ] Check LabelEntry targeting leaf or divergence
-  - [ ] Fallback to `branch-<timestamp>`
-- [ ] Implement `/branches [--verbose]` command
-  - [ ] List all branches with metadata
-  - [ ] Highlight active branch (current_head)
-  - [ ] Optional: render ASCII tree with `--verbose`
-- [ ] Implement `/switch <branch-name|message-id>` command
-  - [ ] Resolve branch name to leaf message ID
-  - [ ] Update `current_head` to target leaf
-  - [ ] Rebuild `Agent.messages`
-  - [ ] Display confirmation with branch summary
-- [ ] Unit tests: branch discovery, name resolution, switching
+- [x] Implement `SessionTree::find_all_leaves()` — returns all leaf message IDs
+- [x] Implement `Session::find_branches()` — walks tree to build BranchInfo list
+- [x] Add `BranchInfo` struct: `{ leaf_id, name, message_count, last_activity, divergence_point, is_active }`
+- [x] Implement branch name resolution logic:
+  - [x] Check BranchEntry `reason` field at divergence point
+  - [x] Check LabelEntry targeting leaf or divergence
+  - [x] Fallback to `branch-<id-prefix>`
+- [x] Implement `/branches` command
+  - [x] List all branches with metadata
+  - [x] Highlight active branch (current_head)
+- [x] Implement `/switch <branch-name|message-id>` command
+  - [x] Resolve branch name to leaf message ID
+  - [x] Update `current_head` to target leaf
+  - [x] Rebuild `Agent.messages`
+  - [x] Display confirmation with branch summary
+- [x] Unit tests: branch discovery, name resolution, switching
+- [x] Additional tree methods: `is_branch_point`, `find_divergence_point`, `find_branch_messages`
 
 ## Phase 4: Branch indicators in message view
 
-- [ ] Add `SessionTree::is_branch_point(message_id)` helper
+- [x] Add `SessionTree::is_branch_point(message_id)` helper
 - [ ] Modify message view renderer to detect branch points
 - [ ] Render `├─ N branches` indicator when message has multiple children
 - [ ] Indent child messages with tree characters (`├─`, `└─`)
