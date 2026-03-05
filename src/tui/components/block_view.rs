@@ -19,6 +19,7 @@ use super::block::BlockEntry;
 use super::block::ConversationBlock;
 use super::markdown::MarkdownStyle;
 use super::markdown::render_markdown;
+use super::progress_renderer::ProgressRenderer;
 use crate::tui::app::ActiveToolExecution;
 use crate::tui::app::DisplayMessage;
 use crate::tui::app::MessageRole;
@@ -64,6 +65,7 @@ fn render_conversation_block<'a>(
     width: usize,
     siblings: Option<(usize, usize)>,
     active_tools: &HashMap<String, ActiveToolExecution>,
+    progress: &ProgressRenderer,
     tick: u64,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
@@ -138,7 +140,7 @@ fn render_conversation_block<'a>(
             if !show_thinking && msg.role == MessageRole::Thinking {
                 continue;
             }
-            render_response_message(&mut lines, msg, border_style, theme, active_tools, tick);
+            render_response_message(&mut lines, msg, border_style, theme, active_tools, progress, tick);
         }
     }
 
@@ -172,6 +174,7 @@ fn render_response_message<'a>(
     border_style: Style,
     theme: &Theme,
     active_tools: &HashMap<String, ActiveToolExecution>,
+    progress: &ProgressRenderer,
     tick: u64,
 ) {
     match msg.role {
@@ -199,15 +202,25 @@ fn render_response_message<'a>(
                 // Safe: is_streaming checks tool_name.is_some() above
                 let call_id = msg.tool_name.as_ref().expect("checked in is_streaming");
                 let active = &active_tools[call_id.as_str()];
-                let spinner = SPINNER[(tick as usize / 3) % SPINNER.len()];
                 let elapsed = format_elapsed(active.started_at.elapsed().as_secs());
 
-                // Spinner + elapsed time header
-                lines.push(Line::from(vec![
-                    Span::styled("│ ", border_style),
-                    Span::styled(format!("  {} running ", spinner), Style::default().fg(Color::Yellow)),
-                    Span::styled(format!("({})", elapsed), Style::default().fg(Color::DarkGray)),
-                ]));
+                // Spinner + elapsed time header, with structured progress if available
+                if let Some(progress_spans) = progress.render_inline(call_id, tick) {
+                    let mut spans = vec![
+                        Span::styled("│ ", border_style),
+                        Span::raw("  "),
+                    ];
+                    spans.extend(progress_spans);
+                    spans.push(Span::styled(format!(" ({})", elapsed), Style::default().fg(Color::DarkGray)));
+                    lines.push(Line::from(spans));
+                } else {
+                    let spinner = SPINNER[(tick as usize / 3) % SPINNER.len()];
+                    lines.push(Line::from(vec![
+                        Span::styled("│ ", border_style),
+                        Span::styled(format!("  {} running ", spinner), Style::default().fg(Color::Yellow)),
+                        Span::styled(format!("({})", elapsed), Style::default().fg(Color::DarkGray)),
+                    ]));
+                }
 
                 // Show only the last N lines (tail window)
                 let all_lines: Vec<&str> = msg.content.lines().collect();
@@ -305,6 +318,7 @@ fn render_active_block<'a>(
     theme: &Theme,
     width: usize,
     active_tools: &HashMap<String, ActiveToolExecution>,
+    progress: &ProgressRenderer,
     tick: u64,
 ) -> Vec<Line<'a>> {
     let border_color = theme.block_border_focused;
@@ -345,7 +359,7 @@ fn render_active_block<'a>(
         if !show_thinking && msg.role == MessageRole::Thinking {
             continue;
         }
-        render_response_message(&mut lines, msg, border_style, theme, active_tools, tick);
+        render_response_message(&mut lines, msg, border_style, theme, active_tools, progress, tick);
     }
 
     // ── Streaming thinking ───────────────────────────
@@ -406,6 +420,7 @@ pub fn render_blocks(
     search: &super::output_search::OutputSearch,
     search_scroll_target: Option<usize>,
     active_tools: &HashMap<String, ActiveToolExecution>,
+    progress: &ProgressRenderer,
     tick: u64,
 ) -> Vec<String> {
     // Inner width of the Paragraph (inside the outer border)
@@ -437,6 +452,7 @@ pub fn render_blocks(
                     inner_width,
                     siblings,
                     active_tools,
+                    progress,
                     tick,
                 )
             }
@@ -463,6 +479,7 @@ pub fn render_blocks(
             theme,
             inner_width,
             active_tools,
+            progress,
             tick,
         );
         for line in block_lines {
@@ -719,14 +736,15 @@ mod tests {
         });
 
         let theme = Theme::dark();
+        let progress = ProgressRenderer::new();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, 0);
+        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, 0);
 
         // Should have: 1 spinner header + 1 "lines above" + LIVE_OUTPUT_MAX_LINES output lines
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
 
-        // First line should contain "running"
+        // First line should contain "running" (no structured progress → fallback)
         assert!(plain[0].contains("running"), "expected spinner header, got: {}", plain[0]);
 
         // Second line should mention hidden lines
@@ -751,10 +769,11 @@ mod tests {
         };
 
         let active_tools = HashMap::new();
+        let progress = ProgressRenderer::new();
         let theme = Theme::dark();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, 0);
+        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, 0);
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
         assert_eq!(plain.len(), 3);
@@ -781,9 +800,10 @@ mod tests {
         });
 
         let theme = Theme::dark();
+        let progress = ProgressRenderer::new();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, 0);
+        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, 0);
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
 
@@ -791,5 +811,76 @@ mod tests {
         assert!(plain[0].contains("running"));
         assert!(!plain.iter().any(|l| l.contains("lines above")));
         assert!(plain[1].contains("short output"));
+    }
+
+    #[test]
+    fn streaming_with_structured_progress_shows_bar() {
+        use crate::tools::progress::ToolProgress;
+
+        let msg = DisplayMessage {
+            role: MessageRole::ToolResult,
+            content: "output line".to_string(),
+            tool_name: Some("call_progress".to_string()),
+            is_error: false,
+            images: Vec::new(),
+        };
+
+        let mut active_tools = HashMap::new();
+        active_tools.insert("call_progress".to_string(), ActiveToolExecution {
+            tool_name: "bash".to_string(),
+            started_at: std::time::Instant::now(),
+            line_count: 1,
+        });
+
+        // Set up progress renderer with structured progress
+        let mut progress = ProgressRenderer::new();
+        progress.update("call_progress", ToolProgress::lines(42, None));
+
+        let theme = Theme::dark();
+        let border_style = Style::default().fg(Color::DarkGray);
+        let mut lines = Vec::new();
+        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, 0);
+
+        let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
+
+        // First line should show structured progress (not just "running")
+        assert!(plain[0].contains("42"), "expected line count in progress: {}", plain[0]);
+        assert!(plain[0].contains("lines"), "expected unit in progress: {}", plain[0]);
+        // Should NOT contain "running" fallback
+        assert!(!plain[0].contains("running"), "should use structured progress, not fallback: {}", plain[0]);
+    }
+
+    #[test]
+    fn streaming_with_progress_bar_and_total() {
+        use crate::tools::progress::ToolProgress;
+
+        let msg = DisplayMessage {
+            role: MessageRole::ToolResult,
+            content: "data".to_string(),
+            tool_name: Some("call_dl".to_string()),
+            is_error: false,
+            images: Vec::new(),
+        };
+
+        let mut active_tools = HashMap::new();
+        active_tools.insert("call_dl".to_string(), ActiveToolExecution {
+            tool_name: "web".to_string(),
+            started_at: std::time::Instant::now(),
+            line_count: 0,
+        });
+
+        let mut progress = ProgressRenderer::new();
+        progress.update("call_dl", ToolProgress::bytes(500, Some(1000)));
+
+        let theme = Theme::dark();
+        let border_style = Style::default().fg(Color::DarkGray);
+        let mut lines = Vec::new();
+        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, 0);
+
+        let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
+
+        // Should contain a progress bar
+        assert!(plain[0].contains("█"), "expected progress bar: {}", plain[0]);
+        assert!(plain[0].contains("500/1000"), "expected byte count: {}", plain[0]);
     }
 }

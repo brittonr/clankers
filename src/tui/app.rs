@@ -240,6 +240,8 @@ pub struct App {
     // ── Streaming tool output ────────────────────────
     /// Active tool executions keyed by call_id (for spinner/elapsed/line-count)
     pub active_tools: HashMap<String, ActiveToolExecution>,
+    /// Structured progress renderer for active tool executions
+    pub progress_renderer: super::components::progress_renderer::ProgressRenderer,
     /// Monotonic tick counter, incremented each render frame (drives spinner animation)
     pub tick: u64,
 }
@@ -324,6 +326,7 @@ impl App {
             status_area: Rect::default(),
             panel_areas: Vec::new(),
             active_tools: HashMap::new(),
+            progress_renderer: super::components::progress_renderer::ProgressRenderer::new(),
             tick: 0,
         }
     }
@@ -579,13 +582,21 @@ impl App {
                     self.scroll.scroll_to_bottom();
                 }
             }
+            AgentEvent::ToolProgressUpdate { call_id, progress } => {
+                self.progress_renderer.update(call_id, progress.clone());
+            }
+            AgentEvent::ToolResultChunk { .. } => {
+                // Chunks are collected by the executor's accumulator.
+                // The TUI uses ToolExecutionUpdate for live output display.
+            }
             AgentEvent::ToolExecutionEnd {
                 call_id,
                 result,
                 is_error,
                 ..
             } => {
-                // Remove from active tools
+                // Remove from active tools and progress renderer
+                self.progress_renderer.remove(call_id);
                 self.active_tools.remove(call_id.as_str());
 
                 // Collect text content

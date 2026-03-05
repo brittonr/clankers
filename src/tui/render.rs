@@ -208,6 +208,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         &app.output_search,
         search_scroll_target,
         &app.active_tools,
+        &app.progress_renderer,
         app.tick,
     );
 
