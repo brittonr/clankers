@@ -14,21 +14,9 @@ pub struct BranchChangeset {
 }
 
 impl BranchChangeset {
-    /// Get changed files for a branch relative to its parent via `git diff --name-only`
+    /// Get changed files for a branch relative to its parent via in-process diff.
     pub fn from_git(repo_root: &Path, branch: &str, parent: &str) -> Option<Self> {
-        let output = std::process::Command::new("git")
-            .args(["diff", "--name-only", parent, branch])
-            .current_dir(repo_root)
-            .output()
-            .ok()?;
-        if !output.status.success() {
-            return None;
-        }
-        let files: HashSet<PathBuf> = String::from_utf8_lossy(&output.stdout)
-            .lines()
-            .filter(|l| !l.is_empty())
-            .map(PathBuf::from)
-            .collect();
+        let files = crate::tools::git_ops::sync::diff_name_only(repo_root, parent, branch)?;
         Some(Self {
             branch: branch.to_string(),
             parent_branch: parent.to_string(),

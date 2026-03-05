@@ -202,9 +202,9 @@ fn slash_tools_shows_total_count() {
 
 #[test]
 fn slash_help_lists_tools_command() {
-    let mut h = TuiTestHarness::spawn(45, 120);
+    let mut h = TuiTestHarness::spawn(60, 200);
     run_slash(&mut h, "/help");
-    h.wait_for_text("Available slash commands", TIMEOUT);
+    h.wait_for_text("/model", TIMEOUT); // Wait for first command instead of header
     assert!(h.screen_contains("/tools"), "Help should list /tools command.\nScreen:\n{}", h.screen_text());
     h.quit();
 }

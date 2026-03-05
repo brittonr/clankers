@@ -60,22 +60,11 @@ impl WorktreeManager {
 
     /// Check if a directory is inside a git repo
     pub fn is_git_repo(path: &Path) -> bool {
-        let output = std::process::Command::new("git").args(["rev-parse", "--git-dir"]).current_dir(path).output();
-        matches!(output, Ok(o) if o.status.success())
+        crate::tools::git_ops::sync::is_git_repo(path)
     }
 
     /// Get the git repo root for a path
     pub fn find_repo_root(path: &Path) -> Option<PathBuf> {
-        let output = std::process::Command::new("git")
-            .args(["rev-parse", "--show-toplevel"])
-            .current_dir(path)
-            .output()
-            .ok()?;
-        if output.status.success() {
-            let root = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            Some(PathBuf::from(root))
-        } else {
-            None
-        }
+        crate::tools::git_ops::sync::find_repo_root(path)
     }
 }

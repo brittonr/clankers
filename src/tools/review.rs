@@ -5,6 +5,8 @@
 //! - Category classification (bug, security, performance, style, etc.)
 //! - File-level and hunk-level annotations
 //! - Verdict rendering (approve, request changes, comment)
+//!
+//! All git operations are in-process via libgit2 (see `git_ops`).
 
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -16,6 +18,7 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
+use super::git_ops;
 
 /// Priority levels for review findings
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -134,7 +137,11 @@ impl ReviewReport {
         let mut out = String::new();
 
         // Header
-        out.push_str(&format!("# Code Review — {} {}\n\n", self.verdict.emoji(), self.verdict.label()));
+        out.push_str(&format!(
+            "# Code Review — {} {}\n\n",
+            self.verdict.emoji(),
+            self.verdict.label()
+        ));
         out.push_str(&format!("{}\n\n", self.summary));
 
         if self.findings.is_empty() {
@@ -164,7 +171,11 @@ impl ReviewReport {
         for finding in &sorted {
             if current_priority != Some(finding.priority) {
                 current_priority = Some(finding.priority);
-                out.push_str(&format!("## {} {} Priority\n\n", finding.priority.emoji(), finding.priority.label()));
+                out.push_str(&format!(
+                    "## {} {} Priority\n\n",
+                    finding.priority.emoji(),
+                    finding.priority.label()
+                ));
             }
 
             let location = if let Some(line) = finding.line {
@@ -173,7 +184,12 @@ impl ReviewReport {
                 finding.file.clone()
             };
 
-            out.push_str(&format!("### {} {} — {}\n", finding.category.emoji(), finding.title, location));
+            out.push_str(&format!(
+                "### {} {} — {}\n",
+                finding.category.emoji(),
+                finding.title,
+                location
+            ));
             out.push_str(&format!("{}\n", finding.description));
 
             if let Some(ref suggestion) = finding.suggestion {
@@ -269,29 +285,23 @@ impl ReviewTool {
             b.to_string()
         } else {
             // Try to find a sensible base: main, master, or HEAD~5
-            let main_exists = run_git_silent(&["rev-parse", "--verify", "main"]).await;
-            let master_exists = run_git_silent(&["rev-parse", "--verify", "master"]).await;
-            if main_exists {
+            if git_ops::ref_exists("main".to_string()).await {
                 "main".to_string()
-            } else if master_exists {
+            } else if git_ops::ref_exists("master".to_string()).await {
                 "master".to_string()
             } else {
                 "HEAD~5".to_string()
             }
         };
 
-        let mut args = vec!["diff", &base_ref];
-        if !files.is_empty() {
-            args.push("--");
-            for f in files {
-                args.push(f.as_str());
-            }
-        }
-
         ctx.emit_progress(&format!("diff: HEAD vs {}...", base_ref));
-        let diff = run_git(&args).await.unwrap_or_default();
+        let diff = git_ops::diff_ref(base_ref.clone(), files.to_vec())
+            .await
+            .unwrap_or_default();
         ctx.emit_progress("diff --stat...");
-        let stat = run_git(&["diff", &base_ref, "--stat"]).await.unwrap_or_default();
+        let stat = git_ops::diff_ref_stat(base_ref.clone(), files.to_vec())
+            .await
+            .unwrap_or_default();
 
         if diff.trim().is_empty() {
             return ToolResult::text(format!("No changes found relative to {}", base_ref));
@@ -302,7 +312,11 @@ impl ReviewTool {
         let max = 30_000;
         let display = if diff.len() > max {
             ctx.emit_progress(&format!("truncating: {} → {} chars", diff.len(), max));
-            format!("{}...\n\n[Truncated: {} chars total]", &diff[..max], diff.len())
+            format!(
+                "{}...\n\n[Truncated: {} chars total]",
+                &diff[..max],
+                diff.len()
+            )
         } else {
             diff
         };
@@ -320,9 +334,12 @@ impl ReviewTool {
             _ => Verdict::Comment,
         };
 
-        ctx.emit_progress(&format!("verdict: {} {}", verdict.emoji(), verdict.label()));
+        ctx.emit_progress(&format!("{} {}", verdict.emoji(), verdict.label()));
 
-        let summary = params["summary"].as_str().unwrap_or("No summary provided.").to_string();
+        let summary = params["summary"]
+            .as_str()
+            .unwrap_or("No summary provided.")
+            .to_string();
 
         let findings: Vec<Finding> = params["findings"]
             .as_array()
@@ -386,7 +403,11 @@ impl Tool for ReviewTool {
                 let base = params["base"].as_str();
                 let files: Vec<String> = params["files"]
                     .as_array()
-                    .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+                    .map(|a| {
+                        a.iter()
+                            .filter_map(|v| v.as_str().map(String::from))
+                            .collect()
+                    })
                     .unwrap_or_default();
                 self.get_diff(ctx, base, &files).await
             }
@@ -394,31 +415,6 @@ impl Tool for ReviewTool {
             _ => ToolResult::error(format!("Unknown action: {}. Use 'diff' or 'submit'.", action)),
         }
     }
-}
-
-async fn run_git(args: &[&str]) -> Result<String, String> {
-    let output = tokio::process::Command::new("git")
-        .args(args)
-        .output()
-        .await
-        .map_err(|e| format!("git error: {}", e))?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).to_string())
-    }
-}
-
-async fn run_git_silent(args: &[&str]) -> bool {
-    tokio::process::Command::new("git")
-        .args(args)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .await
-        .map(|s| s.success())
-        .unwrap_or(false)
 }
 
 #[cfg(test)]

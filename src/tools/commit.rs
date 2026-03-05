@@ -5,6 +5,8 @@
 //! - Split commits (group related changes)
 //! - Automatic changelog generation
 //! - Conventional commit validation
+//!
+//! All git operations are in-process via libgit2 (see `git_ops`).
 
 use std::sync::LazyLock;
 
@@ -16,6 +18,7 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
+use super::git_ops;
 
 pub struct CommitTool {
     definition: ToolDefinition,
@@ -85,41 +88,21 @@ impl CommitTool {
     async fn analyze(&self, ctx: &ToolContext, files: &[String]) -> ToolResult {
         // Get git status
         ctx.emit_progress("git status...");
-        let status_output = run_git(&["status", "--porcelain"]).await;
-        if let Err(e) = &status_output {
-            return ToolResult::error(format!("Not a git repository or git error: {}", e));
-        }
-        // Safe: we already returned on Err above
-        let status = status_output.expect("checked above");
+        let status = match git_ops::status_porcelain().await {
+            Ok(s) => s,
+            Err(e) => return ToolResult::error(format!("Not a git repository or git error: {}", e)),
+        };
 
-        // Get diff (staged + unstaged)
-        ctx.emit_progress("git diff --cached --stat...");
-        let staged_diff = run_git(&["diff", "--cached", "--stat"]).await.unwrap_or_default();
-        ctx.emit_progress("git diff --stat...");
-        let unstaged_diff = run_git(&["diff", "--stat"]).await.unwrap_or_default();
+        // Get diff stats (staged + unstaged)
+        ctx.emit_progress("staged diff stat...");
+        let staged_stat = git_ops::diff_staged_stat(files.to_vec()).await.unwrap_or_default();
+        ctx.emit_progress("unstaged diff stat...");
+        let unstaged_stat = git_ops::diff_unstaged_stat(files.to_vec()).await.unwrap_or_default();
 
-        // Get detailed diff for specific files or all
+        // Get detailed diffs
         ctx.emit_progress("reading detailed diffs...");
-        let diff_args = if files.is_empty() {
-            vec!["diff", "--cached"]
-        } else {
-            let mut args = vec!["diff", "--cached", "--"];
-            for f in files {
-                args.push(f.as_str());
-            }
-            args
-        };
-        let detailed_diff = run_git(&diff_args).await.unwrap_or_default();
-
-        let unstaged_detail = if files.is_empty() {
-            run_git(&["diff"]).await.unwrap_or_default()
-        } else {
-            let mut args = vec!["diff", "--"];
-            for f in files {
-                args.push(f.as_str());
-            }
-            run_git(&args).await.unwrap_or_default()
-        };
+        let detailed_staged = git_ops::diff_staged(files.to_vec()).await.unwrap_or_default();
+        let detailed_unstaged = git_ops::diff_unstaged(files.to_vec()).await.unwrap_or_default();
 
         // Categorize changes
         ctx.emit_progress("categorizing changes...");
@@ -130,13 +113,13 @@ impl CommitTool {
         output.push_str("## Status\n");
         output.push_str(&format!("```\n{}\n```\n\n", status));
 
-        if !staged_diff.is_empty() {
+        if !staged_stat.is_empty() {
             output.push_str("## Staged Changes\n");
-            output.push_str(&format!("```\n{}\n```\n\n", staged_diff));
+            output.push_str(&format!("```\n{}\n```\n\n", staged_stat));
         }
-        if !unstaged_diff.is_empty() {
+        if !unstaged_stat.is_empty() {
             output.push_str("## Unstaged Changes\n");
-            output.push_str(&format!("```\n{}\n```\n\n", unstaged_diff));
+            output.push_str(&format!("```\n{}\n```\n\n", unstaged_stat));
         }
 
         output.push_str("## Change Categories\n");
@@ -144,25 +127,39 @@ impl CommitTool {
             output.push_str(&format!("- **{}**: {}\n", category, files_in_cat.join(", ")));
         }
 
-        if !detailed_diff.is_empty() {
+        if !detailed_staged.is_empty() {
             // Truncate very long diffs
             let max = 10_000;
-            let diff_display = if detailed_diff.len() > max {
-                format!("{}...\n[Truncated: {} chars total]", &detailed_diff[..max], detailed_diff.len())
+            let diff_display = if detailed_staged.len() > max {
+                format!(
+                    "{}...\n[Truncated: {} chars total]",
+                    &detailed_staged[..max],
+                    detailed_staged.len()
+                )
             } else {
-                detailed_diff
+                detailed_staged
             };
-            output.push_str(&format!("\n## Detailed Staged Diff\n```diff\n{}\n```\n", diff_display));
+            output.push_str(&format!(
+                "\n## Detailed Staged Diff\n```diff\n{}\n```\n",
+                diff_display
+            ));
         }
 
-        if !unstaged_detail.is_empty() {
+        if !detailed_unstaged.is_empty() {
             let max = 10_000;
-            let diff_display = if unstaged_detail.len() > max {
-                format!("{}...\n[Truncated: {} chars total]", &unstaged_detail[..max], unstaged_detail.len())
+            let diff_display = if detailed_unstaged.len() > max {
+                format!(
+                    "{}...\n[Truncated: {} chars total]",
+                    &detailed_unstaged[..max],
+                    detailed_unstaged.len()
+                )
             } else {
-                unstaged_detail
+                detailed_unstaged
             };
-            output.push_str(&format!("\n## Detailed Unstaged Diff\n```diff\n{}\n```\n", diff_display));
+            output.push_str(&format!(
+                "\n## Detailed Unstaged Diff\n```diff\n{}\n```\n",
+                diff_display
+            ));
         }
 
         // Suggest a commit message
@@ -174,20 +171,16 @@ impl CommitTool {
 
     async fn stage(&self, ctx: &ToolContext, files: &[String]) -> ToolResult {
         if files.is_empty() {
-            return ToolResult::error("No files specified. Provide 'files' array with paths to stage.");
+            return ToolResult::error(
+                "No files specified. Provide 'files' array with paths to stage.",
+            );
         }
-
-        let mut staged = Vec::new();
-        let mut errors = Vec::new();
 
         for file in files {
             ctx.emit_progress(&format!("staging: {}", file));
-            let args = vec!["add", file.as_str()];
-            match run_git(&args).await {
-                Ok(_) => staged.push(file.clone()),
-                Err(e) => errors.push(format!("{}: {}", file, e)),
-            }
         }
+
+        let (staged, errors) = git_ops::stage_files(files.to_vec()).await;
 
         let mut output = String::new();
         if !staged.is_empty() {
@@ -220,9 +213,11 @@ impl CommitTool {
     ) -> ToolResult {
         // Check for staged changes
         ctx.emit_progress("checking staged changes...");
-        let staged = run_git(&["diff", "--cached", "--name-only"]).await.unwrap_or_default();
-        if staged.trim().is_empty() {
-            return ToolResult::error("No staged changes. Use action='stage' first, or use 'git add' to stage files.");
+        let staged_names = git_ops::staged_file_names().await.unwrap_or_default();
+        if staged_names.is_empty() {
+            return ToolResult::error(
+                "No staged changes. Use action='stage' first, or use 'git add' to stage files.",
+            );
         }
 
         // Build commit message
@@ -236,25 +231,24 @@ impl CommitTool {
                 m.to_string()
             }
         } else {
-            // Auto-generate commit message from staged diff
-            let status = run_git(&["status", "--porcelain"]).await.unwrap_or_default();
+            // Auto-generate commit message from status
+            let status = git_ops::status_porcelain().await.unwrap_or_default();
             let analysis = categorize_changes(&status);
             suggest_commit_message(&status, &analysis)
         };
 
         // Validate conventional commit format
         if let Some(warning) = validate_conventional_commit(&msg) {
-            // Warn but don't block
             tracing::debug!("Commit message validation: {}", warning);
         }
 
         // Create the commit
         ctx.emit_progress(&format!("committing: {}", msg));
-        match run_git(&["commit", "-m", &msg]).await {
-            Ok(output) => {
-                let hash = run_git(&["rev-parse", "--short", "HEAD"]).await.unwrap_or_default();
-                ToolResult::text(format!("Committed: {}\n\nMessage:\n  {}\n\n{}", hash.trim(), msg, output))
-            }
+        match git_ops::commit(msg.clone()).await {
+            Ok(result) => ToolResult::text(format!(
+                "Committed: {}\n\nMessage:\n  {}\n\n{}",
+                result.short_hash, msg, result.summary
+            )),
             Err(e) => ToolResult::error(format!("Commit failed: {}", e)),
         }
     }
@@ -262,7 +256,7 @@ impl CommitTool {
     async fn split_analysis(&self, ctx: &ToolContext) -> ToolResult {
         // Analyze unstaged changes and suggest how to split into multiple commits
         ctx.emit_progress("analyzing working tree for split...");
-        let status = run_git(&["status", "--porcelain"]).await.unwrap_or_default();
+        let status = git_ops::status_porcelain().await.unwrap_or_default();
         let analysis = categorize_changes(&status);
 
         if analysis.is_empty() {
@@ -282,7 +276,12 @@ impl CommitTool {
                 "style" | "formatting" => "style",
                 _ => "chore",
             };
-            output.push_str(&format!("## Commit {} — `{}({}): ...`\n", i + 1, commit_type, category));
+            output.push_str(&format!(
+                "## Commit {} — `{}({}): ...`\n",
+                i + 1,
+                commit_type,
+                category
+            ));
             for f in files {
                 output.push_str(&format!("  - {}\n", f));
             }
@@ -300,13 +299,9 @@ impl CommitTool {
 
     async fn changelog(&self, ctx: &ToolContext, count: usize) -> ToolResult {
         ctx.emit_progress(&format!("reading last {} commits...", count));
-        let format_str = "--pretty=format:%h|%s|%an|%ar";
-        let count_str = format!("-{}", count);
-        let log = run_git(&["log", &count_str, format_str]).await;
-
-        match log {
-            Ok(output) => {
-                if output.trim().is_empty() {
+        match git_ops::log(count).await {
+            Ok(entries) => {
+                if entries.is_empty() {
                     return ToolResult::text("No commits found.");
                 }
 
@@ -317,22 +312,14 @@ impl CommitTool {
                 let mut groups: std::collections::BTreeMap<String, Vec<ChangelogEntry>> =
                     std::collections::BTreeMap::new();
 
-                for line in output.lines() {
-                    let parts: Vec<&str> = line.splitn(4, '|').collect();
-                    if parts.len() >= 2 {
-                        let hash = parts[0];
-                        let subject = parts[1];
-                        let author = parts.get(2).copied().unwrap_or("");
-                        let date = parts.get(3).copied().unwrap_or("");
-
-                        let (group, desc) = parse_conventional_prefix(subject);
-                        groups.entry(group).or_default().push(ChangelogEntry {
-                            hash: hash.to_string(),
-                            description: desc.to_string(),
-                            author: author.to_string(),
-                            date: date.to_string(),
-                        });
-                    }
+                for entry in &entries {
+                    let (group, desc) = parse_conventional_prefix(&entry.subject);
+                    groups.entry(group).or_default().push(ChangelogEntry {
+                        hash: entry.short_hash.clone(),
+                        description: desc.to_string(),
+                        author: entry.author.clone(),
+                        date: entry.relative_time.clone(),
+                    });
                 }
 
                 let group_labels = [
@@ -353,7 +340,10 @@ impl CommitTool {
                     if let Some(entries) = groups.get(*key) {
                         changelog.push_str(&format!("## {}\n\n", label));
                         for entry in entries {
-                            changelog.push_str(&format!("- {} ({}, {})\n", entry.description, entry.hash, entry.date));
+                            changelog.push_str(&format!(
+                                "- {} ({}, {})\n",
+                                entry.description, entry.hash, entry.date
+                            ));
                         }
                         changelog.push('\n');
                     }
@@ -376,7 +366,11 @@ impl Tool for CommitTool {
         let action = params["action"].as_str().unwrap_or("analyze");
         let files: Vec<String> = params["files"]
             .as_array()
-            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
 
         ctx.emit_progress(&format!("git: {}", action));
@@ -396,32 +390,18 @@ impl Tool for CommitTool {
                 let count = params["count"].as_u64().unwrap_or(20) as usize;
                 self.changelog(ctx, count).await
             }
-            _ => {
-                ToolResult::error(format!("Unknown action: {}. Use: analyze, stage, commit, split, changelog", action))
-            }
+            _ => ToolResult::error(format!(
+                "Unknown action: {}. Use: analyze, stage, commit, split, changelog",
+                action
+            )),
         }
-    }
-}
-
-/// Run a git command and return stdout
-async fn run_git(args: &[&str]) -> Result<String, String> {
-    let output = tokio::process::Command::new("git")
-        .args(args)
-        .output()
-        .await
-        .map_err(|e| format!("Failed to run git: {}", e))?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).to_string())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(stderr.to_string())
     }
 }
 
 /// Categorize changed files by directory/type
 fn categorize_changes(status: &str) -> Vec<(String, Vec<String>)> {
-    let mut categories: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    let mut categories: std::collections::HashMap<String, Vec<String>> =
+        std::collections::HashMap::new();
 
     for line in status.lines() {
         let line = line.trim();
@@ -430,7 +410,10 @@ fn categorize_changes(status: &str) -> Vec<(String, Vec<String>)> {
         }
         let file = &line[3..];
         let category = categorize_file(file);
-        categories.entry(category).or_default().push(file.to_string());
+        categories
+            .entry(category)
+            .or_default()
+            .push(file.to_string());
     }
 
     let mut result: Vec<(String, Vec<String>)> = categories.into_iter().collect();
@@ -492,21 +475,28 @@ fn suggest_commit_message(_status: &str, categories: &[(String, Vec<String>)]) -
 
     // Mixed changes
     let types: Vec<&str> = categories.iter().map(|(c, _)| c.as_str()).collect();
-    format!("chore: update {} files across {}", total_files, types.join(", "))
+    format!(
+        "chore: update {} files across {}",
+        total_files,
+        types.join(", ")
+    )
 }
 
 static CONVENTIONAL_PARSE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?(!)?: (.*)$")
-        .expect("static regex")
+    regex::Regex::new(
+        r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?(!)?: (.*)$",
+    )
+    .expect("static regex")
 });
 
 static CONVENTIONAL_VALIDATE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?(!)?: .+$")
-        .expect("static regex")
+    regex::Regex::new(
+        r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?(!)?: .+$",
+    )
+    .expect("static regex")
 });
 
 fn parse_conventional_prefix(subject: &str) -> (String, &str) {
-    // Match patterns like "feat(scope): msg" or "fix: msg" or "feat!: msg"
     if let Some(caps) = CONVENTIONAL_PARSE_RE.captures(subject) {
         let commit_type = caps.get(1).map(|m| m.as_str()).unwrap_or("other");
         let desc_start = caps.get(4).map(|m| m.start()).unwrap_or(0);
@@ -524,7 +514,10 @@ fn validate_conventional_commit(msg: &str) -> Option<String> {
             first_line
         ))
     } else if first_line.len() > 72 {
-        Some(format!("First line is {} chars (recommended max: 72)", first_line.len()))
+        Some(format!(
+            "First line is {} chars (recommended max: 72)",
+            first_line.len()
+        ))
     } else {
         None
     }

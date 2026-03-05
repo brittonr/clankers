@@ -185,6 +185,7 @@ pub mod ask;
 pub mod bash;
 pub mod commit;
 pub mod delegate;
+pub mod git_ops;
 pub mod diff;
 pub mod edit;
 pub mod find;
