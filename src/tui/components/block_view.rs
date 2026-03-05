@@ -27,6 +27,19 @@ use crate::tui::components::messages::MessageScroll;
 use crate::tui::selection::TextSelection;
 use crate::tui::theme::Theme;
 
+/// Branch metadata passed to the block renderer.
+#[derive(Debug, Clone, Copy)]
+pub struct BlockBranchInfo {
+    /// Sibling index among blocks sharing the same parent (0-based)
+    pub sibling_index: usize,
+    /// Total number of sibling blocks at this level
+    pub sibling_total: usize,
+    /// Number of child blocks branching from this block (0 = leaf, >1 = branch point)
+    pub children_count: usize,
+    /// Whether to show block IDs in the header
+    pub show_id: bool,
+}
+
 /// Maximum lines of tool output to show while streaming (tail window)
 const LIVE_OUTPUT_MAX_LINES: usize = 8;
 
@@ -56,14 +69,14 @@ fn hrule_dotted(width: usize, used: usize) -> String {
 }
 
 /// Render a single conversation block into lines.
-/// `siblings` is `Some((current_index, total))` when there are multiple branches.
+/// `branch_info` carries sibling/children/ID-display metadata when available.
 fn render_conversation_block<'a>(
     block: &ConversationBlock,
     focused: bool,
     show_thinking: bool,
     theme: &Theme,
     width: usize,
-    siblings: Option<(usize, usize)>,
+    branch_info: Option<BlockBranchInfo>,
     active_tools: &HashMap<String, ActiveToolExecution>,
     progress: &ProgressRenderer,
     tick: u64,
@@ -88,16 +101,23 @@ fn render_conversation_block<'a>(
 
     // ── Top border ──────────────────────────────────
     // Build optional branch indicator like " ◂ 2/3 ▸"
-    let branch_label = match siblings {
-        Some((idx, total)) if total > 1 => {
-            format!(" ◂ {}/{} ▸", idx + 1, total)
+    let branch_label = match branch_info {
+        Some(info) if info.sibling_total > 1 => {
+            format!(" ◂ {}/{} ▸", info.sibling_index + 1, info.sibling_total)
         }
         _ => String::new(),
     };
     let branch_display_len = branch_label.len();
 
-    // "┌─ " (3) + icon (varies) + time (8) + " " (1) + branch_label
-    let top_prefix_len = 3 + status_icon.2 + time.len() + 1 + branch_display_len;
+    // Optional block ID like " #5"
+    let id_label = match branch_info {
+        Some(info) if info.show_id => format!(" #{}", block.id),
+        _ => String::new(),
+    };
+    let id_display_len = id_label.len();
+
+    // "┌─ " (3) + icon (varies) + time (8) + " " (1) + branch_label + id_label
+    let top_prefix_len = 3 + status_icon.2 + time.len() + 1 + branch_display_len + id_display_len;
     let mut top_spans = vec![
         Span::styled("┌─ ", border_style),
         Span::styled(status_icon.0, status_icon.1),
@@ -105,6 +125,9 @@ fn render_conversation_block<'a>(
     ];
     if !branch_label.is_empty() {
         top_spans.push(Span::styled(branch_label, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
+    }
+    if !id_label.is_empty() {
+        top_spans.push(Span::styled(id_label, Style::default().fg(Color::DarkGray)));
     }
     top_spans.push(Span::styled(format!(" {}", hrule(width, top_prefix_len)), border_style));
     lines.push(Line::from(top_spans));
@@ -141,6 +164,20 @@ fn render_conversation_block<'a>(
                 continue;
             }
             render_response_message(&mut lines, msg, border_style, theme, active_tools, progress, tick);
+        }
+    }
+
+    // ── Branch point indicator (above bottom border) ─
+    if let Some(info) = branch_info {
+        if info.children_count > 1 {
+            let label = format!("├─ {} branches diverge", info.children_count);
+            lines.push(Line::from(vec![
+                Span::styled("│ ", border_style),
+                Span::styled(
+                    label,
+                    Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM),
+                ),
+            ]));
         }
     }
 
@@ -402,7 +439,7 @@ fn render_active_block<'a>(
 
 /// Render all blocks into the messages area.
 /// Returns the plain-text lines that were rendered (for selection extraction).
-/// `sibling_info` maps block_id → (current_index, total_siblings).
+/// `branch_info` maps block_id → `BlockBranchInfo` with sibling, children, and ID display metadata.
 #[allow(clippy::too_many_arguments)]
 pub fn render_blocks(
     frame: &mut Frame,
@@ -416,7 +453,7 @@ pub fn render_blocks(
     scroll: &mut MessageScroll,
     selection: &Option<TextSelection>,
     area: Rect,
-    sibling_info: &std::collections::HashMap<usize, (usize, usize)>,
+    branch_info: &std::collections::HashMap<usize, BlockBranchInfo>,
     search: &super::output_search::OutputSearch,
     search_scroll_target: Option<usize>,
     active_tools: &HashMap<String, ActiveToolExecution>,
@@ -443,14 +480,14 @@ pub fn render_blocks(
         let block_lines = match entry {
             BlockEntry::Conversation(block) => {
                 let is_focused = focused_block == Some(block.id);
-                let siblings = sibling_info.get(&block.id).copied();
+                let info = branch_info.get(&block.id).copied();
                 render_conversation_block(
                     block,
                     is_focused,
                     show_thinking,
                     theme,
                     inner_width,
-                    siblings,
+                    info,
                     active_tools,
                     progress,
                     tick,

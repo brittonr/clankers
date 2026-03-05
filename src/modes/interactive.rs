@@ -1308,6 +1308,7 @@ fn handle_action(
                 | Action::OpenAccountSelector
                 | Action::ToggleThinking
                 | Action::ToggleShowThinking
+                | Action::ToggleBlockIds
                 | Action::SearchOutput
                 | Action::ToggleSessionPopup
                 | Action::PasteImage
@@ -1528,12 +1529,6 @@ fn handle_action(
             app.update_slash_menu();
         }
         Action::EnterNormal => {
-            // If streaming, Escape also cancels the in-progress prompt
-            // so the user doesn't need to press Escape twice (once to
-            // exit insert mode, again to abort).
-            if app.state == AppState::Streaming {
-                let _ = cmd_tx.send(AgentCommand::Abort);
-            }
             app.input_mode = InputMode::Normal;
             app.slash_menu.hide();
         }
@@ -1651,9 +1646,7 @@ fn handle_action(
             }
         }
         Action::Unfocus => {
-            if app.state == AppState::Streaming {
-                let _ = cmd_tx.send(AgentCommand::Abort);
-            } else if app.input_mode == InputMode::Insert {
+            if app.input_mode == InputMode::Insert {
                 // Esc in insert → normal
                 app.input_mode = InputMode::Normal;
                 app.slash_menu.hide();
@@ -1699,6 +1692,11 @@ fn handle_action(
             app.show_thinking = !app.show_thinking;
             let state = if app.show_thinking { "visible" } else { "hidden" };
             app.push_system(format!("Thinking content now {}.", state), false);
+        }
+        Action::ToggleBlockIds => {
+            app.show_block_ids = !app.show_block_ids;
+            let state = if app.show_block_ids { "visible" } else { "hidden" };
+            app.push_system(format!("Block IDs now {}.", state), false);
         }
 
         // ── Subagent panel ────────────────────────────

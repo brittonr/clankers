@@ -201,6 +201,8 @@ pub struct App {
     pub clipboard_rx: Option<std::sync::mpsc::Receiver<crate::modes::interactive::ClipboardResult>>,
     /// Whether the session/branch popup is visible
     pub session_popup_visible: bool,
+    /// Whether to show block IDs in conversation view (toggled with Ctrl+I)
+    pub show_block_ids: bool,
     /// Plan mode state
     pub plan_state: crate::modes::plan::PlanState,
     /// History search overlay (Ctrl+R)
@@ -308,6 +310,7 @@ impl App {
             clipboard_pending: false,
             clipboard_rx: None,
             session_popup_visible: false,
+            show_block_ids: false,
             plan_state: crate::modes::plan::PlanState::Inactive,
             history_search: super::components::history_search::HistorySearch::new(),
             output_search: super::components::output_search::OutputSearch::new(),
@@ -667,6 +670,18 @@ impl App {
                 self.start_block(text.clone(), *agent_msg_count);
                 self.scroll.scroll_to_bottom();
             }
+            AgentEvent::SessionCompaction {
+                compacted_count,
+                tokens_saved,
+            } => {
+                self.push_system(
+                    format!(
+                        "Auto-compacted {} messages, saved ~{} tokens.",
+                        compacted_count, tokens_saved,
+                    ),
+                    false,
+                );
+            }
             _ => {}
         }
     }
@@ -847,6 +862,12 @@ impl App {
             self.all_blocks.iter().filter(|b| b.parent_block_id == parent).map(|b| b.id).collect();
         let idx = siblings.iter().position(|&id| id == block_id).unwrap_or(0);
         (idx, siblings.len())
+    }
+
+    /// Count how many child blocks branch from the given block.
+    /// Returns 0 for leaf blocks, >1 means this block is a branch point.
+    pub fn block_children_count(&self, block_id: usize) -> usize {
+        self.all_blocks.iter().filter(|b| b.parent_block_id == Some(block_id)).count()
     }
 
     /// Edit the focused block's prompt: pre-fill the editor and set up a

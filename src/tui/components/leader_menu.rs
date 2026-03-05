@@ -167,6 +167,21 @@ impl LeaderMenu {
                     action: LeaderAction::KeymapAction(crate::config::keybindings::Action::OpenEditor),
                 },
                 LeaderMenuItem {
+                    key: 'c',
+                    label: "cancel/abort".into(),
+                    action: LeaderAction::KeymapAction(crate::config::keybindings::Action::Cancel),
+                },
+                LeaderMenuItem {
+                    key: 'x',
+                    label: "clear input".into(),
+                    action: LeaderAction::KeymapAction(crate::config::keybindings::Action::ClearLine),
+                },
+                LeaderMenuItem {
+                    key: 'C',
+                    label: "compact".into(),
+                    action: LeaderAction::SlashCommand("/compact".into()),
+                },
+                LeaderMenuItem {
                     key: '?',
                     label: "help".into(),
                     action: LeaderAction::SlashCommand("/help".into()),

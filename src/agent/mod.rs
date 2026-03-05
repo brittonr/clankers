@@ -145,6 +145,38 @@ impl Agent {
         let model_info = self.provider.models().iter().find(|m| m.id == self.model).cloned();
         let max_input = model_info.map(|m| m.max_input_tokens).unwrap_or(200_000);
 
+        // ── Auto-compaction ─────────────────────────────
+        // If messages exceed 80% of the context window, compact older messages
+        // with LLM summarization (falls back to truncation on failure).
+        let auto_compact_config = compaction::AutoCompactConfig::default();
+        if compaction::should_auto_compact(&self.messages, max_input, &auto_compact_config) {
+            tracing::info!(
+                "Auto-compacting: messages exceed {}% of {} token context window",
+                (auto_compact_config.threshold * 100.0) as u32,
+                max_input,
+            );
+            let result = compaction::compact_with_llm(
+                &self.messages,
+                max_input,
+                auto_compact_config.keep_recent,
+                self.provider.as_ref(),
+                &self.model,
+            )
+            .await;
+            if result.compacted_count > 0 {
+                self.messages = result.messages;
+                let _ = self.event_tx.send(AgentEvent::SessionCompaction {
+                    compacted_count: result.compacted_count,
+                    tokens_saved: result.tokens_saved,
+                });
+                tracing::info!(
+                    "Auto-compacted {} messages, saved ~{} tokens",
+                    result.compacted_count,
+                    result.tokens_saved,
+                );
+            }
+        }
+
         let system_prompt_with_memory = self.system_prompt_with_memory();
         let ctx = context::build_context(&self.messages, &system_prompt_with_memory, max_input);
 

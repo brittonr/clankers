@@ -167,13 +167,19 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
 
     // ── Messages (block-oriented rendering) ─────────────────────────
 
-    let sibling_info: std::collections::HashMap<usize, (usize, usize)> = app
+    let branch_info: std::collections::HashMap<usize, crate::tui::components::block_view::BlockBranchInfo> = app
         .blocks
         .iter()
         .filter_map(|e| match e {
             crate::tui::components::block::BlockEntry::Conversation(b) => {
-                let info = app.block_siblings(b.id);
-                Some((b.id, info))
+                let (sibling_index, sibling_total) = app.block_siblings(b.id);
+                let children_count = app.block_children_count(b.id);
+                Some((b.id, crate::tui::components::block_view::BlockBranchInfo {
+                    sibling_index,
+                    sibling_total,
+                    children_count,
+                    show_id: app.show_block_ids,
+                }))
             }
             _ => None,
         })
@@ -204,7 +210,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         &mut app.scroll,
         &app.selection,
         chunks[messages_idx],
-        &sibling_info,
+        &branch_info,
         &app.output_search,
         search_scroll_target,
         &app.active_tools,

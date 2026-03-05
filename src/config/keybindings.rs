@@ -106,6 +106,8 @@ pub enum Action {
     // ── Branch navigation ────────────────────────────
     BranchPrev,
     BranchNext,
+    /// Toggle block ID display in conversation view
+    ToggleBlockIds,
 
     // ── Toggles ──────────────────────────────────────
     ToggleThinking,
@@ -360,6 +362,9 @@ fn common_normal() -> HashMap<KeyCombo, Action> {
     // ── Session popup ─────────────────────────────────
     m.insert(kc(KeyCode::Char('s'), false, false, false), Action::ToggleSessionPopup);
 
+    // ── Block IDs ─────────────────────────────────────
+    m.insert(kc(KeyCode::Char('I'), false, false, true), Action::ToggleBlockIds);
+
     // ── Selectors ─────────────────────────────────────
     m.insert(kc(KeyCode::Char('m'), false, false, false), Action::OpenModelSelector);
     m.insert(kc(KeyCode::Char('a'), false, false, false), Action::OpenAccountSelector);
@@ -515,6 +520,9 @@ fn common_insert() -> HashMap<KeyCombo, Action> {
     // ── Session popup ────────────────────────────────
     m.insert(kc(KeyCode::Char('s'), true, false, false), Action::ToggleSessionPopup);
 
+    // ── Block IDs ─────────────────────────────────────
+    m.insert(kc(KeyCode::Char('i'), true, false, false), Action::ToggleBlockIds);
+
     // ── Selectors (Ctrl+M model, Ctrl+A account) ────
     m.insert(kc(KeyCode::Char('m'), true, false, false), Action::OpenModelSelector);
     m.insert(kc(KeyCode::Char('a'), true, false, false), Action::OpenAccountSelector);
@@ -629,6 +637,7 @@ fn parse_action(s: &str) -> Option<Action> {
         "unfocus" => Some(Action::Unfocus),
         "branch_prev" => Some(Action::BranchPrev),
         "branch_next" => Some(Action::BranchNext),
+        "toggle_block_ids" | "toggle_ids" => Some(Action::ToggleBlockIds),
         "toggle_thinking" => Some(Action::ToggleThinking),
         "toggle_show_thinking" => Some(Action::ToggleShowThinking),
         "toggle_panel_focus" | "panel_focus" => Some(Action::TogglePanelFocus),
