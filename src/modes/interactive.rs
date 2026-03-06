@@ -2048,6 +2048,9 @@ pub(crate) fn execute_slash_command(
         db,
         session_manager,
     };
+    // Dispatch through the free function. The registry is used for
+    // completions and help; the dispatch function handles routing
+    // to handlers and prompt template fallback.
     slash_commands::dispatch(command, args, &mut ctx);
 }
 

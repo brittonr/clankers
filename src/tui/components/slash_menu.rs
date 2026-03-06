@@ -63,8 +63,8 @@ impl SlashMenu {
     }
 
     /// Update the menu with new completions based on the current input
-    pub fn update(&mut self, input: &str) {
-        let completions = crate::slash_commands::completions(input);
+    pub fn update(&mut self, registry: &crate::slash_commands::SlashRegistry, input: &str) {
+        let completions = crate::slash_commands::completions_from_registry(registry, input);
         if completions.is_empty() || !input.starts_with('/') {
             self.visible = false;
             self.items.clear();

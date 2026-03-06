@@ -126,6 +126,8 @@ pub struct App {
     pub messages_area: Rect,
     /// Slash command autocomplete menu
     pub slash_menu: SlashMenu,
+    /// Slash command registry (commands from builtins, plugins, user config)
+    pub slash_registry: crate::slash_commands::SlashRegistry,
     /// PKCE verifier for in-progress OAuth login (set by `/login`, consumed by `/login <code>`)
     pub login_verifier: Option<(String, String)>, // (verifier, account_name)
     /// Pending branch operation: Some((fork_block_id, new_prompt)) if we need to
@@ -265,6 +267,14 @@ impl App {
             rendered_lines: Vec::new(),
             messages_area: Rect::default(),
             slash_menu: SlashMenu::new(),
+            slash_registry: {
+                use crate::slash_commands::{BuiltinSlashContributor, SlashContributor, SlashRegistry};
+                let builtin = BuiltinSlashContributor;
+                let contributors: Vec<&dyn SlashContributor> = vec![&builtin];
+                let (registry, _conflicts) = SlashRegistry::build(&contributors);
+                // TODO: log conflicts to debug output
+                registry
+            },
             login_verifier: None,
             pending_branch: None,
             last_branch_checkpoint: None,
@@ -1091,7 +1101,7 @@ impl App {
     pub fn update_slash_menu(&mut self) {
         let content = self.editor.content().join("\n");
         if self.editor.line_count() == 1 && content.starts_with('/') && !content.contains('\n') {
-            self.slash_menu.update(&content);
+            self.slash_menu.update(&self.slash_registry, &content);
         } else {
             self.slash_menu.hide();
         }

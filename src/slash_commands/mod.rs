@@ -7,7 +7,9 @@
 pub mod handlers;
 
 use std::cell::RefCell;
+use std::collections::HashMap;
 
+use crate::registry::{Conflict, PRIORITY_BUILTIN};
 use crate::tui::components::leader_menu::MenuPlacement;
 
 // ---------------------------------------------------------------------------
@@ -19,6 +21,10 @@ use crate::tui::components::leader_menu::MenuPlacement;
 /// This is the single entry point for all slash command execution.
 /// Command names map directly to handler structs in
 /// `src/slash_commands/handlers/`.
+///
+/// NOTE: This function is superseded by `SlashRegistry::dispatch()`.
+/// It remains as a compatibility fallback for contexts that don't have
+/// access to the registry. Prefer using the registry when possible.
 pub fn dispatch(
     command: &str,
     args: &str,
@@ -120,6 +126,28 @@ pub struct SlashCommand {
     pub subcommands: Vec<(&'static str, &'static str)>,
     /// Optional leader menu binding. When set, this command appears
     /// in the leader menu automatically.
+    pub leader_key: Option<LeaderBinding>,
+}
+
+/// A fully registered slash command with handler.
+pub struct SlashCommandDef {
+    /// Command name (without leading `/`)
+    pub name: String,
+    /// Short description for autocomplete
+    pub description: String,
+    /// Longer help text
+    pub help: String,
+    /// Whether the command accepts arguments
+    pub accepts_args: bool,
+    /// Subcommands for nested autocomplete
+    pub subcommands: Vec<(String, String)>,
+    /// Handler that executes the command
+    pub handler: Box<dyn handlers::SlashHandler>,
+    /// Priority for conflict resolution
+    pub priority: u16,
+    /// Source identifier (e.g. "builtin", "plugin:calendar", "user")
+    pub source: String,
+    /// Optional leader menu binding
     pub leader_key: Option<LeaderBinding>,
 }
 
@@ -655,6 +683,171 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
     ]
 }
 
+// ---------------------------------------------------------------------------
+// Registry system — dynamic command registration with conflict resolution
+// ---------------------------------------------------------------------------
+
+/// A source of slash commands (builtins, plugins, user config).
+pub trait SlashContributor {
+    fn slash_commands(&self) -> Vec<SlashCommandDef>;
+}
+
+/// Registry for slash commands with priority-based conflict resolution.
+pub struct SlashRegistry {
+    commands: HashMap<String, SlashCommandDef>,
+}
+
+impl SlashRegistry {
+    /// Build from contributors. Higher priority wins on conflict.
+    pub fn build(contributors: &[&dyn SlashContributor]) -> (Self, Vec<Conflict>) {
+        let mut commands: HashMap<String, SlashCommandDef> = HashMap::new();
+        let mut conflicts = Vec::new();
+
+        // Collect all commands from all contributors
+        let mut all_commands: Vec<SlashCommandDef> = contributors
+            .iter()
+            .flat_map(|c| c.slash_commands())
+            .collect();
+
+        // Sort by priority (highest first) so higher priority wins
+        all_commands.sort_by(|a, b| b.priority.cmp(&a.priority));
+
+        // Register commands, tracking conflicts
+        for cmd in all_commands {
+            if let Some(existing) = commands.get(&cmd.name) {
+                // Conflict: this command is lower priority (lost)
+                conflicts.push(Conflict {
+                    registry: "slash_commands",
+                    key: cmd.name.clone(),
+                    winner: existing.source.clone(),
+                    loser: cmd.source.clone(),
+                });
+            } else {
+                commands.insert(cmd.name.clone(), cmd);
+            }
+        }
+
+        (Self { commands }, conflicts)
+    }
+
+    /// Dispatch a command by name.
+    pub fn dispatch(&self, name: &str, args: &str, ctx: &mut handlers::SlashContext<'_>) {
+        use handlers::SlashHandler;
+        if let Some(cmd) = self.commands.get(name) {
+            cmd.handler.handle(args, ctx);
+        } else {
+            // Fall through to prompt template handler
+            handlers::prompt_template::PromptTemplateHandler {
+                template_name: name.to_string(),
+            }
+            .handle(args, ctx);
+        }
+    }
+
+    /// Get completions for a partial input.
+    pub fn completions(&self, partial: &str) -> Vec<&SlashCommandDef> {
+        let mut cmds: Vec<_> = self
+            .commands
+            .values()
+            .filter(|c| c.name.starts_with(partial))
+            .collect();
+        cmds.sort_by(|a, b| a.name.cmp(&b.name));
+        cmds
+    }
+
+    /// Get all registered commands (for help text).
+    pub fn all_commands(&self) -> Vec<&SlashCommandDef> {
+        let mut cmds: Vec<_> = self.commands.values().collect();
+        cmds.sort_by(|a, b| a.name.cmp(&b.name));
+        cmds
+    }
+
+    /// Get a single command definition by name.
+    pub fn get(&self, name: &str) -> Option<&SlashCommandDef> {
+        self.commands.get(name)
+    }
+}
+
+/// Built-in slash command contributor.
+pub struct BuiltinSlashContributor;
+
+impl SlashContributor for BuiltinSlashContributor {
+    fn slash_commands(&self) -> Vec<SlashCommandDef> {
+        let metadata = builtin_commands();
+        
+        // Helper to convert SlashCommand metadata to SlashCommandDef
+        let builtin_def = |cmd: SlashCommand, handler: Box<dyn handlers::SlashHandler>| -> SlashCommandDef {
+            SlashCommandDef {
+                name: cmd.name.to_string(),
+                description: cmd.description.to_string(),
+                help: cmd.help.to_string(),
+                accepts_args: cmd.accepts_args,
+                subcommands: cmd
+                    .subcommands
+                    .iter()
+                    .map(|(n, d)| (n.to_string(), d.to_string()))
+                    .collect(),
+                handler,
+                priority: PRIORITY_BUILTIN,
+                source: "builtin".to_string(),
+                leader_key: cmd.leader_key,
+            }
+        };
+
+        // Match each command name to its handler
+        metadata
+            .into_iter()
+            .map(|cmd| {
+                let handler: Box<dyn handlers::SlashHandler> = match cmd.name {
+                    "help" => Box::new(handlers::info::HelpHandler),
+                    "clear" => Box::new(handlers::context::ClearHandler),
+                    "reset" => Box::new(handlers::context::ResetHandler),
+                    "model" => Box::new(handlers::model::ModelHandler),
+                    "status" => Box::new(handlers::info::StatusHandler),
+                    "usage" => Box::new(handlers::info::UsageHandler),
+                    "version" => Box::new(handlers::info::VersionHandler),
+                    "quit" => Box::new(handlers::info::QuitHandler),
+                    "session" => Box::new(handlers::session::SessionHandler),
+                    "undo" => Box::new(handlers::context::UndoHandler),
+                    "cd" => Box::new(handlers::navigation::CdHandler),
+                    "shell" => Box::new(handlers::navigation::ShellHandler),
+                    "export" => Box::new(handlers::export::ExportHandler),
+                    "compact" => Box::new(handlers::context::CompactHandler),
+                    "think" => Box::new(handlers::model::ThinkHandler),
+                    "login" => Box::new(handlers::auth::LoginHandler),
+                    "tools" => Box::new(handlers::tools::ToolsHandler),
+                    "plugin" => Box::new(handlers::tools::PluginHandler),
+                    "subagents" => Box::new(handlers::swarm::SubagentsHandler),
+                    "account" => Box::new(handlers::auth::AccountHandler),
+                    "todo" => Box::new(handlers::tui::TodoHandler),
+                    "worker" => Box::new(handlers::swarm::WorkerHandler),
+                    "share" => Box::new(handlers::swarm::ShareHandler),
+                    "plan" => Box::new(handlers::tui::PlanHandler),
+                    "review" => Box::new(handlers::tui::ReviewHandler),
+                    "role" => Box::new(handlers::model::RoleHandler),
+                    "system" => Box::new(handlers::memory::SystemPromptHandler),
+                    "memory" => Box::new(handlers::memory::MemoryHandler),
+                    "peers" => Box::new(handlers::swarm::PeersHandler),
+                    "editor" => Box::new(handlers::tui::EditorHandler),
+                    "preview" => Box::new(handlers::tui::PreviewHandler),
+                    "layout" => Box::new(handlers::tui::LayoutHandler),
+                    "fork" => Box::new(handlers::branching::ForkHandler),
+                    "rewind" => Box::new(handlers::branching::RewindHandler),
+                    "branches" => Box::new(handlers::branching::BranchesHandler),
+                    "switch" => Box::new(handlers::branching::SwitchHandler),
+                    "compare" => Box::new(handlers::branching::CompareHandler),
+                    "label" => Box::new(handlers::branching::LabelHandler),
+                    "merge" => Box::new(handlers::branching::MergeHandler),
+                    "merge-interactive" => Box::new(handlers::branching::MergeInteractiveHandler),
+                    "cherry-pick" => Box::new(handlers::branching::CherryPickHandler),
+                    _ => panic!("Unhandled builtin command: {}", cmd.name),
+                };
+                builtin_def(cmd, handler)
+            })
+            .collect()
+    }
+}
+
 /// Parse a slash command from input text.
 /// Returns `Some((action, args))` if the text starts with `/` and matches a command.
 /// Returns `None` if it's not a slash command or doesn't match.
@@ -700,8 +893,90 @@ pub struct CompletionItem {
     pub trailing_space: bool,
 }
 
+/// Get completions for a partial slash command input from a registry.
+/// The input should include the leading `/`.
+pub fn completions_from_registry(registry: &SlashRegistry, input: &str) -> Vec<CompletionItem> {
+    let input = input.trim_start();
+    if !input.starts_with('/') {
+        return Vec::new();
+    }
+
+    let partial = &input[1..];
+
+    // If there's a space, the command name is complete — show subcommands
+    if let Some((cmd_name, sub_partial)) = partial.split_once(char::is_whitespace) {
+        let sub_partial = sub_partial.trim_start();
+        if let Some(cmd) = registry.get(cmd_name)
+            && !cmd.subcommands.is_empty()
+        {
+            // Only show subcommands if user hasn't typed past the subcommand keyword
+            // (i.e., don't keep showing menu when typing arguments)
+            let sub_word = sub_partial.split_whitespace().next().unwrap_or("");
+            let has_more_words = sub_partial.contains(char::is_whitespace);
+
+            // If the user has typed more than just the subcommand keyword, hide menu
+            if has_more_words {
+                return Vec::new();
+            }
+
+            return cmd
+                .subcommands
+                .iter()
+                .filter(|(name, _)| {
+                    // Match against the first word of the subcommand name
+                    let first_word = name.split_whitespace().next().unwrap_or(name);
+                    sub_word.is_empty() || first_word.starts_with(sub_word)
+                })
+                .map(|(name, desc)| {
+                    let first_word = name.split_whitespace().next().unwrap_or(name);
+                    CompletionItem {
+                        display: name.to_string(),
+                        description: Box::leak(desc.clone().into_boxed_str()),
+                        insert_text: format!("{} {} ", cmd_name, first_word),
+                        trailing_space: false, // already included
+                    }
+                })
+                .collect();
+        }
+        return Vec::new();
+    }
+
+    // Top-level command completion
+    let mut items: Vec<CompletionItem> = registry
+        .completions(partial)
+        .into_iter()
+        .map(|c| CompletionItem {
+            display: c.name.clone(),
+            description: Box::leak(c.description.clone().into_boxed_str()),
+            insert_text: c.name.clone(),
+            trailing_space: c.accepts_args,
+        })
+        .collect();
+
+    // Also include prompt templates from the thread-local cache
+    PROMPT_TEMPLATE_CACHE.with(|cache| {
+        for (name, desc) in cache.borrow().iter() {
+            if name.starts_with(partial) && !items.iter().any(|i| i.display == *name) {
+                items.push(CompletionItem {
+                    display: name.clone(),
+                    // Leak the description so we get a &'static str.
+                    // These are cached for the lifetime of the process anyway.
+                    description: Box::leak(desc.clone().into_boxed_str()),
+                    insert_text: name.clone(),
+                    trailing_space: true,
+                });
+            }
+        }
+    });
+
+    items
+}
+
 /// Get completions for a partial slash command input.
 /// The input should include the leading `/`.
+///
+/// NOTE: This is a legacy compatibility function that uses builtin_commands().
+/// Prefer `completions_from_registry()` when you have access to a registry.
 pub fn completions(input: &str) -> Vec<CompletionItem> {
     let input = input.trim_start();
     if !input.starts_with('/') {
@@ -1100,5 +1375,163 @@ mod tests {
         assert!(text.contains("/branches"));
         assert!(text.contains("/switch"));
         assert!(text.contains("/label"));
+    }
+
+    // Registry tests
+    #[test]
+    fn test_simple_registry_check() {
+        // Very simple test to verify registry basics
+        let builtin = BuiltinSlashContributor;
+        let cmds = builtin.slash_commands();
+        assert!(!cmds.is_empty());
+    }
+
+    #[test]
+    fn test_registry_build_from_builtins() {
+        let builtin = BuiltinSlashContributor;
+        let contributors: Vec<&dyn SlashContributor> = vec![&builtin];
+        let (registry, conflicts) = SlashRegistry::build(&contributors);
+
+        // Should have no conflicts when building from a single contributor
+        assert_eq!(conflicts.len(), 0);
+
+        // Should have all 42 builtin commands
+        assert_eq!(registry.all_commands().len(), 41);
+
+        // Verify a few specific commands are present
+        assert!(registry.get("help").is_some());
+        assert!(registry.get("model").is_some());
+        assert!(registry.get("fork").is_some());
+        assert!(registry.get("system").is_some());
+    }
+
+    #[test]
+    fn test_registry_conflict_resolution() {
+        use crate::registry::PRIORITY_PLUGIN;
+
+        // Create a mock contributor with a conflicting command
+        struct MockContributor;
+        impl SlashContributor for MockContributor {
+            fn slash_commands(&self) -> Vec<SlashCommandDef> {
+                vec![SlashCommandDef {
+                    name: "help".to_string(),
+                    description: "Plugin help override".to_string(),
+                    help: "Overridden help".to_string(),
+                    accepts_args: false,
+                    subcommands: vec![],
+                    handler: Box::new(handlers::info::HelpHandler),
+                    priority: PRIORITY_PLUGIN, // Higher than builtin
+                    source: "test_plugin".to_string(),
+                    leader_key: None,
+                }]
+            }
+        }
+
+        let builtin = BuiltinSlashContributor;
+        let mock = MockContributor;
+        let contributors: Vec<&dyn SlashContributor> = vec![&builtin, &mock];
+        let (registry, conflicts) = SlashRegistry::build(&contributors);
+
+        // Should have one conflict (help)
+        assert_eq!(conflicts.len(), 1);
+        assert_eq!(conflicts[0].key, "help");
+        assert_eq!(conflicts[0].winner, "test_plugin");
+        assert_eq!(conflicts[0].loser, "builtin");
+
+        // The plugin version should win
+        let help_cmd = registry.get("help").unwrap();
+        assert_eq!(help_cmd.description, "Plugin help override");
+        assert_eq!(help_cmd.source, "test_plugin");
+    }
+
+    #[test]
+    fn test_registry_completions() {
+        let builtin = BuiltinSlashContributor;
+        let contributors: Vec<&dyn SlashContributor> = vec![&builtin];
+        let (registry, _) = SlashRegistry::build(&contributors);
+
+        // Test prefix matching
+        let completions = registry.completions("he");
+        assert!(completions.iter().any(|c| c.name == "help"));
+
+        // Test empty partial returns all
+        let all_completions = registry.completions("");
+        assert_eq!(all_completions.len(), 41);
+
+        // Test no matches
+        let no_match = registry.completions("xyz");
+        assert_eq!(no_match.len(), 0);
+    }
+
+    #[test]
+    fn test_registry_completions_from_registry_function() {
+        let builtin = BuiltinSlashContributor;
+        let contributors: Vec<&dyn SlashContributor> = vec![&builtin];
+        let (registry, _) = SlashRegistry::build(&contributors);
+
+        // Test the completions_from_registry function
+        let results = completions_from_registry(&registry, "/he");
+        assert!(results.iter().any(|c| c.display == "help"));
+
+        // Test with subcommands
+        let results = completions_from_registry(&registry, "/account ");
+        assert!(!results.is_empty());
+        assert!(results.iter().any(|c| c.display.starts_with("switch")));
+    }
+
+    #[test]
+    fn test_registry_dispatch_unknown_falls_through() {
+        use std::sync::Arc;
+        use std::sync::Mutex;
+
+        let builtin = BuiltinSlashContributor;
+        let contributors: Vec<&dyn SlashContributor> = vec![&builtin];
+        let (registry, _) = SlashRegistry::build(&contributors);
+
+        // Create a minimal SlashContext for testing
+        // We'll use a channel that we can check for messages
+        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (panel_tx, _panel_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        let model = "test-model".to_string();
+        let cwd = std::env::current_dir().unwrap().to_string_lossy().to_string();
+        let theme = crate::tui::theme::Theme::dark();
+        let mut app = crate::tui::app::App::new(model, cwd, theme);
+
+        let mut ctx = handlers::SlashContext {
+            app: &mut app,
+            cmd_tx: &cmd_tx,
+            plugin_manager: None,
+            panel_tx: &panel_tx,
+            db: &None,
+            session_manager: &mut None,
+        };
+
+        // Dispatch an unknown command (should fall through to prompt template handler)
+        registry.dispatch("unknown_command", "test args", &mut ctx);
+
+        // The test passes if no panic occurred (prompt template handler doesn't fail)
+    }
+
+    #[test]
+    fn test_registry_help_text_via_all_commands() {
+        let builtin = BuiltinSlashContributor;
+        let contributors: Vec<&dyn SlashContributor> = vec![&builtin];
+        let (registry, _) = SlashRegistry::build(&contributors);
+
+        let all_cmds = registry.all_commands();
+        assert_eq!(all_cmds.len(), 41);
+
+        // Commands should be sorted
+        let names: Vec<_> = all_cmds.iter().map(|c| &c.name).collect();
+        let mut sorted_names = names.clone();
+        sorted_names.sort();
+        assert_eq!(names, sorted_names);
+
+        // Verify all expected commands are present
+        assert!(all_cmds.iter().any(|c| c.name == "help"));
+        assert!(all_cmds.iter().any(|c| c.name == "clear"));
+        assert!(all_cmds.iter().any(|c| c.name == "fork"));
+        assert!(all_cmds.iter().any(|c| c.name == "system"));
     }
 }
