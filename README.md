@@ -99,6 +99,10 @@ clankers --resume <id>              # resume a specific session
 clankers session list               # list recent sessions
 ```
 
+## Branching
+
+Fork conversations to explore alternatives without losing your work. Use `/fork` to try different approaches, `/switch` to navigate between branches, and `/merge` to combine the best parts. See [`docs/tutorials/branching.md`](docs/tutorials/branching.md) for a complete walkthrough.
+
 ## Subagents
 
 Delegate work to ephemeral sub-instances that run in parallel. The agent spawns them automatically or you can use the `subagent` tool directly. Each gets its own context and tool access, with a built-in panel for live output.

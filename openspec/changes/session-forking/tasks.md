@@ -166,13 +166,13 @@
 - [x] Branch name collision — auto-generated names use message ID prefix for uniqueness
 - [x] All edge cases covered by existing unit tests (38 session tests pass)
 
-## Phase 14: Documentation and examples
+## Phase 14: Documentation and examples ✅
 
-- [ ] Update `docs/session-format.md` with branch examples
-- [ ] Update `docs/commands.md` with new slash commands
-- [ ] Add tutorial: "Branching conversations" to `docs/tutorials/`
-- [ ] Add example session JSONL with branches to `examples/sessions/`
-- [ ] Update README with branching feature mention
+- [x] Update `docs/session-format.md` with branch examples
+- [x] Update `docs/commands.md` with new slash commands
+- [x] Add tutorial: "Branching conversations" to `docs/tutorials/`
+- [x] Add example session JSONL with branches to `examples/sessions/`
+- [x] Update README with branching feature mention
 
 ## Phase 15: Performance and optimization (optional)
 
