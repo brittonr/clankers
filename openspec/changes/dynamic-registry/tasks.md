@@ -28,105 +28,95 @@ _Proves the pattern. Smallest scope, safest starting point._
 - [x] **1.13** Verify: default menu identical to old hardcoded menu
       (19 tests pass including `default_menu_has_expected_structure`)
 
-## Phase 2: Slash Commands (`SlashCommandHandler`)
+## Phase 2: Slash Command Handler Extraction ✅
 
-_Highest pain/payoff. Eliminates 1,831-line match block. Unlocks plugin
-commands._
+_Highest pain/payoff. Eliminates 1,831-line match block._
 
 - [x] **2.1** Define `SlashContext` in `src/slash_commands/handlers/mod.rs`
-- [ ] **2.2** Define `SlashCommandDef`, `SlashContributor` trait,
-      `SlashRegistry`
-- [x] **2.3** Create `src/slash_commands/handlers/` directory, `dispatch()`
-      function routing through `execute_slash_command`
-- [ ] **2.4** Extract handler structs from match arms, grouped by domain:
-  - [ ] **2.4a** `session.rs` — Session, New, Resume
-  - [ ] **2.4b** `model.rs` — Model, Role, Think
-  - [ ] **2.4c** `navigation.rs` — Cd, Shell
-  - [ ] **2.4d** `context.rs` — Clear, Reset, Compact, Undo
-  - [ ] **2.4e** `info.rs` — Help, Status, Usage, Version
-  - [ ] **2.4f** `tools.rs` — Tools, Plugin
-  - [ ] **2.4g** `swarm.rs` — Worker, Share, Subagents, Peers
-  - [ ] **2.4h** `tui.rs` — Layout, Preview, Editor, Todo
-  - [ ] **2.4i** `auth.rs` — Login, Account
-  - [ ] **2.4j** `memory.rs` — Memory, SystemPrompt
-  - [ ] **2.4k** `branching.rs` — Fork, Rewind, Branches, Switch, Label
-  - [ ] **2.4l** `export.rs` — Export
-- [ ] **2.5** Implement `builtin_slash_contributor()` returning all handlers
-- [ ] **2.6** Replace `handle_slash_command()` match block with
-      `registry.dispatch()`
-- [ ] **2.7** Implement `SlashContributor` for `PluginManager`
-- [ ] **2.8** Wire `SlashRegistry` as `MenuContributor` (unifies leader menu
-      and slash command sources of truth)
-- [ ] **2.9** Delete `SlashAction` enum
-- [ ] **2.10** Update slash menu autocomplete to use `registry.completions()`
-- [ ] **2.11** Tests: builtin dispatch, plugin command dispatch, completion,
-      conflict resolution
+- [x] **2.2** Define `SlashHandler` trait
+- [x] **2.3** Create `dispatch()` routing `SlashAction` → handler structs
+- [x] **2.4** Extract all 38 match arms into handler files (13 files):
+  - [x] `info.rs` — Help, Status, Usage, Version, Quit
+  - [x] `context.rs` — Clear, Reset, Compact, Undo
+  - [x] `model.rs` — Model, Think, Role
+  - [x] `navigation.rs` — Cd, Shell
+  - [x] `export.rs` — Export
+  - [x] `auth.rs` — Login, Account
+  - [x] `tools.rs` — Tools, Plugin
+  - [x] `swarm.rs` — Worker, Share, Subagents, Peers
+  - [x] `tui.rs` — Layout, Preview, Editor, Todo, Plan, Review
+  - [x] `memory.rs` — SystemPrompt, Memory
+  - [x] `branching.rs` — Fork, Rewind, Branches, Switch, Label
+  - [x] `session.rs` — Session
+  - [x] `prompt_template.rs` — PromptTemplate
+- [x] **2.5** `execute_slash_command()` → thin 10-line wrapper calling
+      `dispatch()`
+- [x] **2.6** Helper functions made `pub(crate)`: `resume_session_from_file`,
+      `parse_oauth_input`, `parse_account_flag`, `format_time_ago`,
+      `strip_frontmatter`, `probe_peer_background`,
+      `discover_peers_background`
 
-## Phase 3: Panel Registry
+### Phase 2 remaining (future):
+- [ ] `SlashCommandDef`, `SlashContributor` trait, `SlashRegistry`
+- [ ] Plugin command registration via manifest
+- [ ] Delete `SlashAction` enum (replace with string-keyed registry lookup)
+- [ ] Slash menu autocomplete from registry
 
-_Eliminates dual-enum problem and 250-line nested match._
+## Phase 3: Panel Focus Consolidation ✅
 
-- [ ] **3.1** Extend `Panel` trait with `id()`, `label()`, `default_column()`,
-      `handle_key_event()` returning `PanelKeyResult`
-- [ ] **3.2** Create `PanelManager` struct with `register()`, `toggle()`,
-      `focus_next()`, `focus_prev()`, `handle_key()`
-- [ ] **3.3** Add `PanelManager` to `App` alongside existing panel fields
-- [ ] **3.4** Migrate panels one at a time to `PanelManager`:
-  - [ ] **3.4a** `ProcessPanel` (least coupled, good first candidate)
-  - [ ] **3.4b** `PeersPanel`
-  - [ ] **3.4c** `SubagentPanel`
-  - [ ] **3.4d** `TodoPanel`
-  - [ ] **3.4e** `FileActivityPanel`
-- [ ] **3.5** Add typed accessors to `App` (`todo_panel()`,
-      `todo_panel_mut()`, etc.)
-- [ ] **3.6** Replace panel-focused match block in `handle_action()` with
-      `panels.handle_key()`
-- [ ] **3.7** Delete `PanelTab` enum entirely
-- [ ] **3.8** Convert `PanelId` enum to `PanelId(String)` newtype with
-      `const` well-known IDs
-- [ ] **3.9** Update layout presets to use string-based panel references
-- [ ] **3.10** Implement `MenuContributor` for `PanelManager` (auto-generates
-      layout toggle entries)
-- [ ] **3.11** Tests: panel registration, focus cycling, toggle, key dispatch
+_Eliminates dual-enum and 250-line nested match._
+
+- [x] **3.1** Route panel key events through `Panel::handle_key_event()`
+      instead of duplicate dispatch in `interactive.rs`
+- [x] **3.2** Replace `panel_focused`/`panel_tab`/`right_panel_tab` with
+      `FocusTracker` (already existed, now sole source of truth)
+- [x] **3.3** Delete `PanelTab` enum (5 variants)
+- [x] **3.4** Delete `sync_focus_from_legacy()` bridge
+- [x] **3.5** Delete `panel_id_to_tab()` converter
+- [x] **3.6** Use `FocusTracker.cycle_in_column()` for Tab cycling
+- [x] **3.7** Use `FocusTracker.focus_side()` for h/l column navigation
+- [x] **3.8** Add `App::close_focused_panel_views()` for clean unfocus
+- [x] **3.9** Side-effect keys (subagent kill, peer probe) remain as
+      explicit pre-dispatch matches
+
+### Phase 3 remaining (future):
+- [ ] Move panel ownership from App fields into `PanelManager`
+- [ ] Typed accessors (`app.todo_panel()` → `app.panels.get::<TodoPanel>()`)
+- [ ] Convert `PanelId` enum to string-based (for plugin panels)
+- [ ] `MenuContributor` impl for `PanelManager` (auto-generate layout toggles)
+- [ ] Delete `PanelId::Environment` (unused placeholder)
 
 ## Phase 4: Tool Collision List ✅
 
-_Trivial fix. No trait needed._
+- [x] **4.1** `build_plugin_tools()` derives `builtin_names` from actual
+      tool list instead of hardcoded 18-entry array
 
-- [x] **4.1** Change `build_plugin_tools()` signature to accept
-      `&[Arc<dyn Tool>]`
-- [x] **4.2** Derive `builtin_names` from `tools.iter().map(|t| t.definition().name)`
-- [x] **4.3** Delete hardcoded `builtin_names` array
-- [x] **4.4** Update call site in `common.rs` and 4 test sites
+## Phase 5: Model Roles ✅
 
-## Phase 5: Model Roles
+- [x] **5.1** Replace `ModelRole` enum (6 variants) with `ModelRoles` struct
+      (string-keyed `IndexMap<String, ModelRoleDef>`)
+- [x] **5.2** `ModelRoles::with_defaults()` seeds 6 builtins with keywords
+- [x] **5.3** `merge()` for user-defined roles (add new, override existing)
+- [x] **5.4** `resolve()` fallback chain: role model → default model → fallback
+- [x] **5.5** `infer()` matches keywords from all roles including user-defined
+- [x] **5.6** Aliases preserved in `get()` (fast→smol, large→slow, etc.)
+- [x] **5.7** `/role` command dynamically lists available roles
+- [x] **5.8** `ModelRolesConfig` → `ModelRoles` in settings.rs
+- [x] **5.9** Tests: defaults, aliases, resolve fallback, merge, infer,
+      user-defined role inference, reset, names
 
-_Small scope, user-facing improvement._
+## Phase 6: Keybinding Actions (deferred)
 
-- [ ] **5.1** Create `ModelRoleDef` struct with name, description, model,
-      keywords
-- [ ] **5.2** Create `ModelRoles` struct with `with_defaults()`,
-      `merge_user_roles()`, `get()`, `all()`, `infer()`
-- [ ] **5.3** Add `[[model_roles]]` section to settings config
-- [ ] **5.4** Replace `ModelRole` enum with `ModelRoles` struct throughout
-- [ ] **5.5** Update `/role` command to list roles dynamically
-- [ ] **5.6** Delete `ModelRole` enum, `ModelRole::parse()`,
-      `ModelRole::all()`, `ModelRole::description()`
-- [ ] **5.7** Tests: default roles, user override, user-defined role, inference
-
-## Phase 6: Keybinding Actions
-
-_Lowest priority. Ship after phases 2 and 3 are stable._
+_Lowest priority. 566 references to `Action::` across 16 files. The full
+`CoreAction`/`ExtendedAction` split is high churn for low payoff until
+plugin actions are needed._
 
 - [ ] **6.1** Define `CoreAction` enum (~20 stable variants)
 - [ ] **6.2** Define `ExtendedActionDef` struct with handler closure
 - [ ] **6.3** Define `ActionRegistry` with `register()` and `dispatch()`
 - [ ] **6.4** Define unified `Action` enum as `Core(CoreAction) | Extended(String)`
 - [ ] **6.5** Migrate `parse_action()`: core match + extended fallback
-- [ ] **6.6** Register builtin extended actions at init (leader menu, thinking
-      toggle, panel focus, model selector, etc.)
-- [ ] **6.7** Update keybinding presets (helix_normal, vim_normal, etc.)
-- [ ] **6.8** Add plugin action registration via manifest `actions` field
-- [ ] **6.9** Delete old `Action` enum variants that moved to extended
-- [ ] **6.10** Tests: core action parse, extended action dispatch, unknown
-      action handling
+- [ ] **6.6** Register builtin extended actions at init
+- [ ] **6.7** Update keybinding presets
+- [ ] **6.8** Plugin action registration via manifest
+- [ ] **6.9** Tests
