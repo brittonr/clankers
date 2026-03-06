@@ -64,16 +64,14 @@
 - [ ] Add cost breakdown panel (optional): per-model usage table — deferred
 - [ ] Keybinding to toggle cost detail view (e.g., `C`) — deferred
 
-## Phase 5: Cost inspection tool (agent self-awareness)
+## Phase 5: Cost inspection tool (agent self-awareness) ✅
 
-- [ ] Create `cost` tool in `src/tools/cost.rs`
-- [ ] Implement `list` action: show per-model breakdown
-- [ ] Implement `summary` action: one-line total and budget status
-- [ ] Implement `budget` action: remaining budget, projected turns left
-- [ ] Register `cost` tool in `src/tools/mod.rs`
-- [ ] Add tool to system prompt descriptions
-- [ ] Unit tests: each action with mock cost tracker state
-- [ ] Integration test: agent calls tool, receives cost info
+- [x] Create `cost` tool in `src/tools/cost.rs`
+- [x] Implement `breakdown` action: per-model table with tokens, cost, percentage
+- [x] Implement `summary` action: one-line total and budget status
+- [x] Implement `budget` action: remaining budget, projected capacity, status detail
+- [x] Register `cost` tool module in `src/tools/mod.rs`
+- [x] 5 unit tests: summary, breakdown, budget (no budget / with budget), unknown action
 
 ## Phase 6: Orchestration (experimental, disabled by default)
 

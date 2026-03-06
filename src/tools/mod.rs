@@ -184,6 +184,7 @@ impl ToolResult {
 pub mod ask;
 pub mod bash;
 pub mod commit;
+pub mod cost;
 pub mod delegate;
 pub mod git_ops;
 pub mod diff;
