@@ -9,7 +9,7 @@ use serde_json;
 
 use crate::agents::definition::AgentScope;
 use crate::config::keybindings::KeymapConfig;
-use crate::config::model_roles::ModelRolesConfig;
+use crate::config::model_roles::ModelRoles;
 use crate::tui::components::leader_menu::MenuPlacement;
 
 /// Full settings, merged from global + project
@@ -70,7 +70,7 @@ pub struct Settings {
 
     /// Model roles — route different tasks to different models
     #[serde(default, rename = "modelRoles")]
-    pub model_roles: ModelRolesConfig,
+    pub model_roles: ModelRoles,
 
     /// Whether plan mode is enabled by default
     #[serde(default)]
@@ -191,7 +191,7 @@ impl Default for Settings {
             bash_timeout: 0,
             zellij: None,
             keymap: KeymapConfig::default(),
-            model_roles: ModelRolesConfig::default(),
+            model_roles: ModelRoles::default(),
             plan_mode: false,
             leader_menu: LeaderMenuConfig::default(),
         }

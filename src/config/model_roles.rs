@@ -1,239 +1,319 @@
 //! Model roles — route different tasks to different models
 //!
-//! Supports role types:
-//! - `default` — General-purpose model (used when no specific role matches)
-//! - `smol` — Small/fast model for simple tasks (grep, file listing, etc.)
-//! - `slow` — Large/expensive model for complex reasoning
-//! - `plan` — Architecture/planning model (used in plan mode)
-//! - `commit` — Model used for commit message generation
-//! - `review` — Model used for code review
+//! Roles map names to model IDs. Six builtins are seeded by default;
+//! users can override them or add new ones in settings.toml:
 //!
-//! Configuration lives in settings.json under `modelRoles`:
-//! ```json
-//! {
-//!   "modelRoles": {
-//!     "default": "claude-sonnet-4-5",
-//!     "smol": "claude-haiku-3-5",
-//!     "slow": "claude-opus-4-20250514",
-//!     "plan": "claude-opus-4-20250514",
-//!     "commit": "claude-haiku-3-5",
-//!     "review": "claude-sonnet-4-5"
-//!   }
-//! }
+//! ```toml
+//! [[model_roles]]
+//! name = "debug"
+//! description = "Debugging and tracing"
+//! model = "claude-sonnet-4-5-20250514"
+//! keywords = ["debug", "trace", "backtrace", "panic"]
 //! ```
 
-use std::collections::HashMap;
 use std::fmt;
 
+use indexmap::IndexMap;
 use serde::Deserialize;
 use serde::Serialize;
 
-/// A named role that maps to a specific model
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum ModelRole {
-    /// General-purpose, used when no specific role matches
-    Default,
-    /// Small/fast model for simple tasks
-    Smol,
-    /// Large/expensive model for complex reasoning
-    Slow,
-    /// Architecture and planning
-    Plan,
-    /// Commit message generation
-    Commit,
-    /// Code review
-    Review,
+// ── Role definition ─────────────────────────────────────────────────────────
+
+/// A single role definition: name, description, optional model, and keywords
+/// for auto-inference.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelRoleDef {
+    /// Role name (lowercase, e.g. "smol", "debug").
+    pub name: String,
+    /// Human-readable description shown in `/role` output.
+    pub description: String,
+    /// Assigned model ID. `None` means inherit from the "default" role,
+    /// then fall back to the active model.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Keywords used by `infer_role()` to auto-select this role from task text.
+    #[serde(default)]
+    pub keywords: Vec<String>,
 }
 
-impl fmt::Display for ModelRole {
+impl fmt::Display for ModelRoleDef {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ModelRole::Default => write!(f, "default"),
-            ModelRole::Smol => write!(f, "smol"),
-            ModelRole::Slow => write!(f, "slow"),
-            ModelRole::Plan => write!(f, "plan"),
-            ModelRole::Commit => write!(f, "commit"),
-            ModelRole::Review => write!(f, "review"),
-        }
+        write!(f, "{}", self.name)
     }
 }
 
-impl ModelRole {
-    /// All known roles
-    pub fn all() -> &'static [ModelRole] {
-        &[
-            ModelRole::Default,
-            ModelRole::Smol,
-            ModelRole::Slow,
-            ModelRole::Plan,
-            ModelRole::Commit,
-            ModelRole::Review,
-        ]
-    }
+// ── Role registry ───────────────────────────────────────────────────────────
 
-    /// Parse from a role name string
-    pub fn parse(s: &str) -> Option<ModelRole> {
-        match s.to_lowercase().as_str() {
-            "default" => Some(ModelRole::Default),
-            "smol" | "small" | "fast" => Some(ModelRole::Smol),
-            "slow" | "large" | "thinking" => Some(ModelRole::Slow),
-            "plan" | "planning" | "architect" => Some(ModelRole::Plan),
-            "commit" | "git" => Some(ModelRole::Commit),
-            "review" | "code-review" => Some(ModelRole::Review),
-            _ => None,
-        }
-    }
-
-    /// Description of what this role is used for
-    pub fn description(&self) -> &'static str {
-        match self {
-            ModelRole::Default => "General-purpose tasks",
-            ModelRole::Smol => "Simple/fast tasks (file ops, grep, etc.)",
-            ModelRole::Slow => "Complex reasoning and analysis",
-            ModelRole::Plan => "Architecture and planning",
-            ModelRole::Commit => "Commit message generation",
-            ModelRole::Review => "Code review and analysis",
-        }
-    }
-}
-
-/// Configuration mapping roles to model IDs
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct ModelRolesConfig {
-    /// Role-to-model mapping
+/// Ordered map of role definitions. Builtin roles are seeded first;
+/// user-defined roles can override or extend them.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelRoles {
     #[serde(flatten)]
-    pub roles: HashMap<ModelRole, String>,
+    roles: IndexMap<String, ModelRoleDef>,
 }
 
-impl ModelRolesConfig {
-    /// Create a new empty config
-    pub fn new() -> Self {
-        Self { roles: HashMap::new() }
+impl Default for ModelRoles {
+    fn default() -> Self {
+        Self::with_defaults()
     }
+}
 
-    /// Create default role assignments based on a default model
-    pub fn with_defaults(default_model: &str) -> Self {
-        let mut roles = HashMap::new();
-        roles.insert(ModelRole::Default, default_model.to_string());
-        // Other roles fall back to default if not explicitly set
+impl ModelRoles {
+    /// Seed the six builtin roles.
+    pub fn with_defaults() -> Self {
+        let mut roles = IndexMap::new();
+        let builtins = [
+            ("default", "General-purpose tasks", None, vec![]),
+            ("smol", "Simple/fast tasks (file ops, grep, etc.)", None,
+             vec!["grep", "find", "list", "read", "ls"]),
+            ("slow", "Complex reasoning and analysis", None,
+             vec!["complex", "refactor", "think", "analyze"]),
+            ("plan", "Architecture and planning", None,
+             vec!["plan", "architect", "design"]),
+            ("commit", "Commit message generation", None,
+             vec!["commit", "changelog", "git"]),
+            ("review", "Code review and analysis", None,
+             vec!["review", "audit", "security"]),
+        ];
+        for (name, desc, model, kws) in builtins {
+            roles.insert(name.to_string(), ModelRoleDef {
+                name: name.to_string(),
+                description: desc.to_string(),
+                model,
+                keywords: kws.into_iter().map(String::from).collect(),
+            });
+        }
         Self { roles }
     }
 
-    /// Resolve the model for a given role.
-    /// Falls back to the default role, then to the provided fallback model.
-    pub fn resolve(&self, role: ModelRole, fallback: &str) -> String {
-        self.roles
-            .get(&role)
-            .or_else(|| self.roles.get(&ModelRole::Default))
-            .cloned()
-            .unwrap_or_else(|| fallback.to_string())
+    /// Merge user-defined roles. New names are added; existing names are
+    /// overridden (letting users change builtins).
+    pub fn merge(&mut self, user_roles: Vec<ModelRoleDef>) {
+        for role in user_roles {
+            self.roles.insert(role.name.clone(), role);
+        }
     }
 
-    /// Set a role's model
-    pub fn set(&mut self, role: ModelRole, model: String) {
-        self.roles.insert(role, model);
+    /// Look up a role by name. Accepts aliases for builtin roles
+    /// (e.g. "fast" → "smol", "large" → "slow").
+    pub fn get(&self, name: &str) -> Option<&ModelRoleDef> {
+        let binding = name.to_lowercase();
+        let canonical = match binding.as_str() {
+            "small" | "fast" => "smol",
+            "large" | "thinking" => "slow",
+            "planning" | "architect" => "plan",
+            "git" => "commit",
+            "code-review" => "review",
+            other => other,
+        };
+        self.roles.get(canonical)
     }
 
-    /// Remove a role mapping (will fall back to default)
-    pub fn unset(&mut self, role: ModelRole) {
-        self.roles.remove(&role);
+    /// Iterate over all roles in insertion order.
+    pub fn all(&self) -> impl Iterator<Item = &ModelRoleDef> {
+        self.roles.values()
     }
 
-    /// Get a human-readable summary of all role assignments
+    /// Resolve the model for a role. Falls back to the "default" role's model,
+    /// then to the provided fallback.
+    pub fn resolve(&self, name: &str, fallback: &str) -> String {
+        if let Some(role) = self.get(name) {
+            if let Some(ref m) = role.model {
+                return m.clone();
+            }
+        }
+        // Fall back to "default" role's model
+        if let Some(def) = self.roles.get("default") {
+            if let Some(ref m) = def.model {
+                return m.clone();
+            }
+        }
+        fallback.to_string()
+    }
+
+    /// Set a role's model. If the role doesn't exist, creates it.
+    pub fn set_model(&mut self, name: &str, model: String) {
+        if let Some(role) = self.roles.get_mut(name) {
+            role.model = Some(model);
+        } else {
+            self.roles.insert(name.to_string(), ModelRoleDef {
+                name: name.to_string(),
+                description: format!("Custom role: {}", name),
+                model: Some(model),
+                keywords: vec![],
+            });
+        }
+    }
+
+    /// Remove a role's model override (falls back to default).
+    pub fn unset_model(&mut self, name: &str) {
+        if let Some(role) = self.roles.get_mut(name) {
+            role.model = None;
+        }
+    }
+
+    /// Clear all role model overrides.
+    pub fn reset(&mut self) {
+        for role in self.roles.values_mut() {
+            role.model = None;
+        }
+    }
+
+    /// Human-readable summary of all role assignments.
     pub fn summary(&self, fallback: &str) -> String {
         let mut lines = Vec::new();
-        for role in ModelRole::all() {
-            let model = self.resolve(*role, fallback);
-            let is_explicit = self.roles.contains_key(role);
+        for role in self.roles.values() {
+            let model = self.resolve(&role.name, fallback);
+            let is_explicit = role.model.is_some();
             let marker = if is_explicit { "" } else { " (inherited)" };
-            lines.push(format!("  {:>8} → {}{}", role, model, marker));
+            lines.push(format!("  {:>8} → {}{}", role.name, model, marker));
         }
         lines.join("\n")
     }
 
-    /// Check if any roles are explicitly configured
+    /// Infer a role from task text by matching keywords.
+    pub fn infer(&self, task: &str) -> &str {
+        let lower = task.to_lowercase();
+        for role in self.roles.values() {
+            if !role.keywords.is_empty() && role.keywords.iter().any(|kw| lower.contains(kw.as_str())) {
+                return &role.name;
+            }
+        }
+        "default"
+    }
+
+    /// All role names (for tab completion, help text, etc.).
+    pub fn names(&self) -> Vec<&str> {
+        self.roles.keys().map(|s| s.as_str()).collect()
+    }
+
+    /// Check if any roles have explicit model overrides.
     pub fn is_configured(&self) -> bool {
-        !self.roles.is_empty()
+        self.roles.values().any(|r| r.model.is_some())
     }
 }
 
-/// Infer which role should be used for a given task/context.
-/// This is a heuristic — the caller can always override.
-pub fn infer_role_for_task(task_hint: &str) -> ModelRole {
-    let lower = task_hint.to_lowercase();
-    if lower.contains("commit") || lower.contains("changelog") || lower.contains("git") {
-        ModelRole::Commit
-    } else if lower.contains("review") || lower.contains("audit") || lower.contains("security") {
-        ModelRole::Review
-    } else if lower.contains("plan") || lower.contains("architect") || lower.contains("design") {
-        ModelRole::Plan
-    } else if lower.contains("grep")
-        || lower.contains("find")
-        || lower.contains("list")
-        || lower.contains("read")
-        || lower.contains("ls")
-    {
-        ModelRole::Smol
-    } else if lower.contains("complex")
-        || lower.contains("refactor")
-        || lower.contains("think")
-        || lower.contains("analyze")
-    {
-        ModelRole::Slow
-    } else {
-        ModelRole::Default
-    }
-}
+// ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
+    fn test_defaults_have_six_roles() {
+        let roles = ModelRoles::with_defaults();
+        assert_eq!(roles.roles.len(), 6);
+        assert!(roles.get("default").is_some());
+        assert!(roles.get("smol").is_some());
+        assert!(roles.get("slow").is_some());
+        assert!(roles.get("plan").is_some());
+        assert!(roles.get("commit").is_some());
+        assert!(roles.get("review").is_some());
+    }
+
+    #[test]
+    fn test_aliases() {
+        let roles = ModelRoles::with_defaults();
+        assert_eq!(roles.get("fast").unwrap().name, "smol");
+        assert_eq!(roles.get("small").unwrap().name, "smol");
+        assert_eq!(roles.get("large").unwrap().name, "slow");
+        assert_eq!(roles.get("thinking").unwrap().name, "slow");
+        assert_eq!(roles.get("architect").unwrap().name, "plan");
+        assert_eq!(roles.get("git").unwrap().name, "commit");
+        assert_eq!(roles.get("code-review").unwrap().name, "review");
+    }
+
+    #[test]
     fn test_resolve_fallback_chain() {
-        let config = ModelRolesConfig::new();
-        assert_eq!(config.resolve(ModelRole::Smol, "claude-sonnet"), "claude-sonnet");
+        let roles = ModelRoles::with_defaults();
+        // No models set → falls back to provided fallback
+        assert_eq!(roles.resolve("smol", "claude-sonnet"), "claude-sonnet");
     }
 
     #[test]
     fn test_resolve_explicit() {
-        let mut config = ModelRolesConfig::new();
-        config.set(ModelRole::Smol, "claude-haiku".to_string());
-        assert_eq!(config.resolve(ModelRole::Smol, "claude-sonnet"), "claude-haiku");
+        let mut roles = ModelRoles::with_defaults();
+        roles.set_model("smol", "claude-haiku".to_string());
+        assert_eq!(roles.resolve("smol", "claude-sonnet"), "claude-haiku");
     }
 
     #[test]
     fn test_resolve_falls_back_to_default_role() {
-        let mut config = ModelRolesConfig::new();
-        config.set(ModelRole::Default, "claude-sonnet".to_string());
-        // Smol isn't set, should fall back to Default role
-        assert_eq!(config.resolve(ModelRole::Smol, "fallback"), "claude-sonnet");
+        let mut roles = ModelRoles::with_defaults();
+        roles.set_model("default", "claude-sonnet".to_string());
+        // smol has no model → falls back to default role's model
+        assert_eq!(roles.resolve("smol", "fallback"), "claude-sonnet");
+    }
+
+    #[test]
+    fn test_merge_user_roles() {
+        let mut roles = ModelRoles::with_defaults();
+        roles.merge(vec![
+            ModelRoleDef {
+                name: "debug".to_string(),
+                description: "Debugging".to_string(),
+                model: Some("claude-sonnet".to_string()),
+                keywords: vec!["debug".to_string(), "trace".to_string()],
+            },
+            // Override builtin
+            ModelRoleDef {
+                name: "review".to_string(),
+                description: "Custom review".to_string(),
+                model: Some("claude-opus".to_string()),
+                keywords: vec!["review".to_string()],
+            },
+        ]);
+        assert_eq!(roles.roles.len(), 7); // 6 builtins + 1 new
+        assert_eq!(roles.get("debug").unwrap().model.as_deref(), Some("claude-sonnet"));
+        assert_eq!(roles.get("review").unwrap().description, "Custom review");
     }
 
     #[test]
     fn test_infer_role() {
-        assert_eq!(infer_role_for_task("commit these changes"), ModelRole::Commit);
-        assert_eq!(infer_role_for_task("review the code"), ModelRole::Review);
-        assert_eq!(infer_role_for_task("plan the architecture"), ModelRole::Plan);
-        assert_eq!(infer_role_for_task("grep for errors"), ModelRole::Smol);
-        assert_eq!(infer_role_for_task("hello world"), ModelRole::Default);
+        let roles = ModelRoles::with_defaults();
+        assert_eq!(roles.infer("commit these changes"), "commit");
+        assert_eq!(roles.infer("review the code"), "review");
+        assert_eq!(roles.infer("plan the architecture"), "plan");
+        assert_eq!(roles.infer("grep for errors"), "smol");
+        assert_eq!(roles.infer("hello world"), "default");
+    }
+
+    #[test]
+    fn test_infer_user_role() {
+        let mut roles = ModelRoles::with_defaults();
+        roles.merge(vec![ModelRoleDef {
+            name: "debug".to_string(),
+            description: "Debugging".to_string(),
+            model: None,
+            keywords: vec!["debug".to_string(), "backtrace".to_string()],
+        }]);
+        assert_eq!(roles.infer("debug this crash"), "debug");
+        assert_eq!(roles.infer("show backtrace"), "debug");
     }
 
     #[test]
     fn test_summary() {
-        let mut config = ModelRolesConfig::new();
-        config.set(ModelRole::Default, "sonnet".to_string());
-        config.set(ModelRole::Smol, "haiku".to_string());
-        let s = config.summary("fallback");
+        let mut roles = ModelRoles::with_defaults();
+        roles.set_model("default", "sonnet".to_string());
+        roles.set_model("smol", "haiku".to_string());
+        let s = roles.summary("fallback");
         assert!(s.contains("sonnet"));
         assert!(s.contains("haiku"));
     }
 
     #[test]
-    fn test_from_str() {
-        assert_eq!(ModelRole::parse("smol"), Some(ModelRole::Smol));
-        assert_eq!(ModelRole::parse("fast"), Some(ModelRole::Smol));
-        assert_eq!(ModelRole::parse("unknown"), None);
+    fn test_reset() {
+        let mut roles = ModelRoles::with_defaults();
+        roles.set_model("smol", "haiku".to_string());
+        assert!(roles.is_configured());
+        roles.reset();
+        assert!(!roles.is_configured());
+    }
+
+    #[test]
+    fn test_names() {
+        let roles = ModelRoles::with_defaults();
+        let names = roles.names();
+        assert_eq!(names, vec!["default", "smol", "slow", "plan", "commit", "review"]);
     }
 }
