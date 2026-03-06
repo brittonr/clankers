@@ -60,9 +60,9 @@
 - [x] Budget badge shows remaining or exceeded amount
 - [x] `StatusBarData.budget_status` field wired from App's cost tracker
 - [x] Cost removed from trailing info string (now in dedicated badge)
-- [ ] Add budget bar component (optional): visual progress toward limit — deferred
-- [ ] Add cost breakdown panel (optional): per-model usage table — deferred
-- [ ] Keybinding to toggle cost detail view (e.g., `C`) — deferred
+- [x] Add budget bar component: visual progress toward limit (in cost overlay)
+- [x] Add cost breakdown panel: per-model usage table (cost overlay popup)
+- [x] Keybinding to toggle cost detail view (`C` in normal mode, `Ctrl+Shift+C` in insert mode)
 
 ## Phase 5: Cost inspection tool (agent self-awareness) ✅
 

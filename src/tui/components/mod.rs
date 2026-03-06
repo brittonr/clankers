@@ -8,6 +8,7 @@ pub mod merge_interactive;
 pub mod branch_panel;
 pub mod branch_switcher;
 pub mod confirm;
+pub mod cost_overlay;
 pub mod context_gauge;
 pub mod diff_view;
 pub mod editor;

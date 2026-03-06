@@ -21,6 +21,7 @@ use crate::tui::app::App;
 use crate::tui::app::AppState;
 use crate::tui::components::block_view;
 use crate::tui::components::editor as editor_component;
+use crate::tui::components::cost_overlay;
 use crate::tui::components::session_panel;
 use crate::tui::components::slash_menu;
 use crate::tui::components::status_bar::StatusBarData;
@@ -152,6 +153,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // ── Overlays (rendered on top of everything) ────────────────────
 
     session_panel::render_session_popup(frame, app, &app.theme.clone());
+    cost_overlay::render_cost_overlay(frame, app.cost_tracker.as_ref(), app.cost_overlay_visible, &app.theme.clone());
     app.model_selector.render(frame, frame.area());
     app.account_selector.render(frame, frame.area());
     app.session_selector.render(frame, frame.area());

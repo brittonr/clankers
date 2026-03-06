@@ -340,6 +340,9 @@ fn common_normal() -> HashMap<KeyCombo, Action> {
     m.insert(kc(KeyCode::Char('t'), true, false, false), Action::Extended("toggle_thinking".into()));
     m.insert(kc(KeyCode::Char('T'), false, false, true), Action::Extended("toggle_show_thinking".into()));
 
+    // ── Cost overlay ──────────────────────────────────
+    m.insert(kc(KeyCode::Char('C'), false, false, true), Action::Extended("toggle_cost_overlay".into()));
+
     // ── Session popup ─────────────────────────────────
     m.insert(kc(KeyCode::Char('s'), false, false, false), Action::Extended("toggle_session_popup".into()));
 
@@ -505,6 +508,9 @@ fn common_insert() -> HashMap<KeyCombo, Action> {
     // ── Panel focus ────────────────────────────────────
     m.insert(kc(KeyCode::Char('`'), true, false, false), Action::Extended("toggle_panel_focus".into()));
 
+    // ── Cost overlay ──────────────────────────────────
+    m.insert(kc(KeyCode::Char('C'), true, false, true), Action::Extended("toggle_cost_overlay".into()));
+
     // ── Session popup ────────────────────────────────
     m.insert(kc(KeyCode::Char('s'), true, false, false), Action::Extended("toggle_session_popup".into()));
 
@@ -659,6 +665,7 @@ fn parse_action(s: &str) -> Option<Action> {
         "panel_clear_done" | "panel_clear" => Some(Action::Extended("panel_clear_done".into())),
         "panel_kill" => Some(Action::Extended("panel_kill".into())),
         "panel_remove" => Some(Action::Extended("panel_remove".into())),
+        "toggle_cost_overlay" | "cost_overlay" => Some(Action::Extended("toggle_cost_overlay".into())),
         "toggle_session_popup" | "session_popup" => Some(Action::Extended("toggle_session_popup".into())),
         "toggle_branch_panel" | "branch_panel" => Some(Action::Extended("toggle_branch_panel".into())),
         "open_branch_switcher" | "branch_switcher" => Some(Action::Extended("open_branch_switcher".into())),

@@ -1040,6 +1040,17 @@ async fn run_event_loop(
                         continue;
                     }
 
+                    // ── Cost overlay intercept ────────────────────
+                    if app.cost_overlay_visible {
+                        match key.code {
+                            KeyCode::Esc | KeyCode::Char('C') | KeyCode::Char('c') | KeyCode::Char('q') => {
+                                app.cost_overlay_visible = false;
+                            }
+                            _ => {}
+                        }
+                        continue;
+                    }
+
                     // ── Session popup intercept ──────────────────
                     if app.session_popup_visible && handle_session_popup_key(app, &key, &keymap) {
                         continue;
@@ -1475,7 +1486,7 @@ fn handle_action(
             Action::Extended(name) => matches!(name.as_str(),
                 "open_leader_menu" | "open_model_selector" | "open_account_selector"
                 | "toggle_thinking" | "toggle_show_thinking" | "toggle_block_ids"
-                | "search_output" | "toggle_session_popup" | "toggle_branch_panel"
+                | "search_output" | "toggle_session_popup" | "toggle_branch_panel" | "toggle_cost_overlay"
                 | "open_branch_switcher" | "open_editor"
             ),
         };
@@ -1875,6 +1886,11 @@ fn handle_action(
                 if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
                     sp.remove_selected();
                 }
+            }
+
+            // ── Cost overlay ─────────────────────────────
+            "toggle_cost_overlay" => {
+                app.cost_overlay_visible = !app.cost_overlay_visible;
             }
 
             // ── Session popup ─────────────────────────────

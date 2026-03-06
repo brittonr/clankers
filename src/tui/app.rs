@@ -184,6 +184,8 @@ pub struct App {
     pub clipboard_rx: Option<std::sync::mpsc::Receiver<crate::modes::clipboard::ClipboardResult>>,
     /// Whether the session/branch popup is visible
     pub session_popup_visible: bool,
+    /// Whether the cost detail overlay is visible
+    pub cost_overlay_visible: bool,
     /// Whether to show block IDs in conversation view (toggled with Ctrl+I)
     pub show_block_ids: bool,
     /// Plan mode state
@@ -290,8 +292,16 @@ impl App {
                 use crate::slash_commands::{BuiltinSlashContributor, SlashContributor, SlashRegistry};
                 let builtin = BuiltinSlashContributor;
                 let contributors: Vec<&dyn SlashContributor> = vec![&builtin];
-                let (registry, _conflicts) = SlashRegistry::build(&contributors);
-                // TODO: log conflicts to debug output
+                let (registry, conflicts) = SlashRegistry::build(&contributors);
+                for c in &conflicts {
+                    tracing::debug!(
+                        registry = c.registry,
+                        key = %c.key,
+                        winner = %c.winner,
+                        loser = %c.loser,
+                        "slash command conflict (init)"
+                    );
+                }
                 registry
             },
             action_registry: crate::config::keybindings::ActionRegistry::new(),
@@ -324,6 +334,7 @@ impl App {
             clipboard_pending: false,
             clipboard_rx: None,
             session_popup_visible: false,
+            cost_overlay_visible: false,
             show_block_ids: false,
             plan_state: crate::modes::plan::PlanState::Inactive,
             history_search: super::components::history_search::HistorySearch::new(),
