@@ -354,7 +354,17 @@ You have a file called HEARTBEAT.md in your session directory. A background
 scheduler reads this file periodically and prompts you with its contents.
 Use it for reminders and recurring tasks. When asked to remember or schedule
 something, write it to HEARTBEAT.md. When you act on a task, mark it done
-or remove it."#
+or remove it.
+
+## Process Monitoring
+
+You have a `procmon` tool to inspect child processes spawned by your tools.
+Use it to check on long-running builds, monitor memory usage, or debug hung
+processes. Actions:
+- `list`: show all active processes with CPU/memory/time
+- `summary`: one-line aggregate stats
+- `inspect`: deep-dive on a specific PID (pass `pid` parameter)
+- `history`: recently completed processes with exit codes and peak memory"#
 }
 
 #[cfg(test)]
