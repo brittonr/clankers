@@ -24,6 +24,7 @@ use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
 use crate::tools::ToolResult as ToolExecResult;
 use crate::tools::progress::ToolResultAccumulator;
+use crate::tools::switch_model::ModelSwitchSlot;
 
 /// Configuration for a turn loop run
 pub struct TurnConfig {
@@ -121,11 +122,25 @@ pub async fn run_turn_loop(
     event_tx: &broadcast::Sender<AgentEvent>,
     cancel: CancellationToken,
     cost_tracker: Option<&Arc<CostTracker>>,
+    model_switch_slot: Option<&ModelSwitchSlot>,
 ) -> Result<()> {
     let tool_defs: Vec<ToolDefinition> = tools.values().map(|t| t.definition().clone()).collect();
     let mut cumulative_usage = Usage::default();
+    let mut active_model = config.model.clone();
 
     for turn_index in 0..config.max_turns {
+        // Check for a pending model switch from the switch_model tool
+        if let Some(slot) = model_switch_slot {
+            if let Some(new_model) = slot.lock().take() {
+                tracing::info!("Agent-requested model switch: {} → {}", active_model, new_model);
+                let _ = event_tx.send(AgentEvent::ModelChange {
+                    from: active_model.clone(),
+                    to: new_model.clone(),
+                    reason: "agent_request".to_string(),
+                });
+                active_model = new_model;
+            }
+        }
         if cancel.is_cancelled() {
             return Err(Error::Cancelled);
         }
@@ -134,7 +149,7 @@ pub async fn run_turn_loop(
 
         // Build completion request
         let request = CompletionRequest {
-            model: config.model.clone(),
+            model: active_model.clone(),
             messages: messages.clone(),
             system_prompt: Some(config.system_prompt.clone()),
             max_tokens: config.max_tokens,
@@ -178,7 +193,7 @@ pub async fn run_turn_loop(
         // Record cost if tracker is attached
         if let Some(tracker) = cost_tracker {
             let (total_cost, budget_events) = tracker.record_usage(
-                &config.model,
+                &active_model,
                 turn_usage.input_tokens as u64,
                 turn_usage.output_tokens as u64,
             );
@@ -205,7 +220,7 @@ pub async fn run_turn_loop(
             }
             tracing::debug!(
                 "Turn cost recorded: model={}, in={}, out={}, total=${:.4}",
-                config.model,
+                active_model,
                 turn_usage.input_tokens,
                 turn_usage.output_tokens,
                 total_cost,

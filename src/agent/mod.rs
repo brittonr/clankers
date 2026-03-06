@@ -28,6 +28,7 @@ use crate::routing::cost_tracker::CostTracker;
 use crate::routing::policy::RoutingPolicy;
 use crate::routing::signals::{ComplexitySignals, ToolCallSummary};
 use crate::tools::Tool;
+use crate::tools::switch_model::ModelSwitchSlot;
 
 /// The main agent that manages the conversation loop
 pub struct Agent {
@@ -59,6 +60,8 @@ pub struct Agent {
     model_roles: ModelRoles,
     /// Cost tracker for budget enforcement
     cost_tracker: Option<Arc<CostTracker>>,
+    /// Shared slot for agent-initiated model switching
+    model_switch_slot: Option<ModelSwitchSlot>,
 }
 
 impl Agent {
@@ -89,6 +92,7 @@ impl Agent {
             routing_policy: None,
             model_roles: ModelRoles::default(),
             cost_tracker: None,
+            model_switch_slot: None,
         }
     }
 
@@ -128,6 +132,12 @@ impl Agent {
     /// Get the cost tracker, if attached.
     pub fn cost_tracker(&self) -> Option<&Arc<CostTracker>> {
         self.cost_tracker.as_ref()
+    }
+
+    /// Set the model switch slot for agent-initiated switching
+    pub fn with_model_switch_slot(mut self, slot: ModelSwitchSlot) -> Self {
+        self.model_switch_slot = Some(slot);
+        self
     }
 
     /// Subscribe to agent events
@@ -263,8 +273,16 @@ impl Agent {
             &self.event_tx,
             self.cancel.clone(),
             self.cost_tracker.as_ref(),
+            self.model_switch_slot.as_ref(),
         )
         .await;
+
+        // If the agent switched models during the turn, update our state
+        if let Some(slot) = &self.model_switch_slot {
+            if let Some(new_model) = slot.lock().take() {
+                self.model = new_model;
+            }
+        }
 
         let _ = self.event_tx.send(AgentEvent::AgentEnd {
             messages: self.messages.clone(),

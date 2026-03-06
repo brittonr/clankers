@@ -202,6 +202,7 @@ pub mod review;
 pub mod sandbox;
 pub mod screenshot;
 pub mod subagent;
+pub mod switch_model;
 pub mod todo;
 pub mod truncation;
 #[cfg(feature = "tui-validate")]

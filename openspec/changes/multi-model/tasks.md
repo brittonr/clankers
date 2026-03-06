@@ -38,13 +38,16 @@
 - [x] `SelectionReason::BudgetThreshold` variant added
 - [x] 21 unit tests: cost calculation, accumulation, multi-model, thresholds, milestones, status transitions, prefix matching
 
-## Phase 3: Agent-initiated model switching
+## Phase 3: Agent-initiated model switching ✅
 
-- [ ] Create `switch_model` tool in `src/tools/switch_model.rs`
-- [ ] Implement tool parameters: `role` (ModelRole string), `reason` (justification)
-- [ ] Validate switch request (disallow upgrade from cheap to expensive if over budget)
-- [ ] Emit `AgentEvent::ModelChange` with `reason: "agent_request"`
-- [ ] Update agent's current model mid-turn (swap provider)
+- [x] Create `switch_model` tool in `src/tools/switch_model.rs`
+- [x] Implement tool parameters: `role` (ModelRole string), `reason` (justification)
+- [x] Validate switch request (disallow upgrade from cheap to expensive if over budget)
+- [x] Emit `AgentEvent::ModelChange` with `reason: "agent_request"` via turn loop
+- [x] Update agent's current model mid-turn via `ModelSwitchSlot` (Arc<Mutex<Option<String>>>)
+- [x] Turn loop checks slot at top of each iteration, switches `active_model` for next LLM call
+- [x] Agent syncs final model state after turn loop completes
+- [x] 6 unit tests: switch to smol/slow, noop on same model, budget blocks upgrade, budget allows downgrade, is_upgrade ranking
 - [ ] Add `switch_model` to system prompt tool descriptions
 - [ ] Add agent examples: when to switch (task simpler/harder than expected)
 - [ ] Unit tests: validation logic, rejected upgrades over budget
