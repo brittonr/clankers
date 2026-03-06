@@ -11,8 +11,8 @@ _Proves the pattern. Smallest scope, safest starting point._
 - [x] **1.3** Implement `LeaderMenu::build(contributors, hidden)` builder
 - [x] **1.4** Add `leader_key: Option<LeaderBinding>` to `SlashCommand`
 - [ ] **1.5** Populate `leader_key` on relevant builtin slash commands
-      _(field added, all set to `None` — bindings to be populated when
-      slash command registry lands in Phase 2)_
+      _(field added, all set to `None` — registry landed in Phase 2,
+      but populating keys requires deduplicating with BuiltinKeymapContributor)_
 - [x] **1.6** Write `BuiltinKeymapContributor` for non-slash items
       (model selector, thinking toggle, submenu openers, etc.)
 - [x] **1.7** Replace `LeaderMenu::new()` with `LeaderMenu::build()` in
@@ -56,11 +56,15 @@ _Highest pain/payoff. Eliminates 1,831-line match block._
       `strip_frontmatter`, `probe_peer_background`,
       `discover_peers_background`
 
-### Phase 2 remaining (future):
-- [ ] `SlashCommandDef`, `SlashContributor` trait, `SlashRegistry`
-- [ ] Plugin command registration via manifest
-- [ ] Delete `SlashAction` enum (replace with string-keyed registry lookup)
-- [ ] Slash menu autocomplete from registry
+### Phase 2 remaining:
+- [x] `SlashCommandDef`, `SlashContributor` trait, `SlashRegistry`
+- [x] `BuiltinSlashContributor` wrapping all 41 commands with handlers
+- [x] `SlashRegistry::build()` with priority-based conflict resolution
+- [x] `completions_from_registry()` for autocomplete
+- [x] `SlashAction` enum already deleted (done during handler extraction)
+- [x] Slash menu (`SlashMenu::update`) uses registry for completions
+- [x] 7 tests: build, conflicts, completions, dispatch unknown, help
+- [ ] Plugin `SlashContributor` impl for `PluginManager` (when plugins need commands)
 
 ## Phase 3: Panel Focus Consolidation ✅
 
@@ -84,7 +88,7 @@ _Eliminates dual-enum and 250-line nested match._
 - [ ] Typed accessors (`app.todo_panel()` → `app.panels.get::<TodoPanel>()`)
 - [ ] Convert `PanelId` enum to string-based (for plugin panels)
 - [ ] `MenuContributor` impl for `PanelManager` (auto-generate layout toggles)
-- [ ] Delete `PanelId::Environment` (unused placeholder)
+- [x] Delete `PanelId::Environment` (already gone)
 
 ## Phase 4: Tool Collision List ✅
 
