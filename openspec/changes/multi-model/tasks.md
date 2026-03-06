@@ -48,10 +48,10 @@
 - [x] Turn loop checks slot at top of each iteration, switches `active_model` for next LLM call
 - [x] Agent syncs final model state after turn loop completes
 - [x] 6 unit tests: switch to smol/slow, noop on same model, budget blocks upgrade, budget allows downgrade, is_upgrade ranking
-- [ ] Add `switch_model` to system prompt tool descriptions
-- [ ] Add agent examples: when to switch (task simpler/harder than expected)
-- [ ] Unit tests: validation logic, rejected upgrades over budget
-- [ ] Integration test: agent calls tool, model switches, turn continues
+- [x] Add `switch_model` to system prompt tool descriptions
+- [x] Add agent examples: when to switch (task simpler/harder than expected)
+- [x] Unit tests: validation logic, rejected upgrades over budget (5 new tests)
+- [x] Integration test: agent calls tool, model switches, turn continues (2 new integration tests)
 
 ## Phase 4: TUI cost display ✅
 
