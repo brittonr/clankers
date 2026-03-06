@@ -146,8 +146,12 @@ struct Cli {
     timeout: Option<u64>,
 
     /// Maximum cost budget in USD
-    #[arg(long, value_name = "DOLLARS")]
+    #[arg(long, value_name = "DOLLARS", alias = "budget")]
     max_cost: Option<f64>,
+
+    /// Enable automatic model routing by task complexity
+    #[arg(long)]
+    enable_routing: bool,
 
     /// Maximum loop iterations
     #[arg(long, value_name = "N", default_value_t = 25)]
@@ -2654,6 +2658,20 @@ async fn main() -> Result<()> {
                     settings.max_tokens = max_tokens;
                 }
 
+                // Apply --enable-routing
+                if cli.enable_routing && settings.routing.is_none() {
+                    settings.routing = Some(clankers::routing::config::RoutingPolicyConfig::default());
+                }
+
+                // Apply --max-cost / --budget
+                if let Some(max_cost) = cli.max_cost {
+                    settings.cost_tracking = Some(clankers::routing::cost_tracker::CostTrackerConfig {
+                        soft_limit: Some(max_cost * 0.8),
+                        hard_limit: Some(max_cost),
+                        warning_interval: Some(1.0),
+                    });
+                }
+
                 // Apply --thinking / --thinking-budget
                 let thinking_config = if cli.thinking || cli.thinking_budget.is_some() {
                     Some(clankers::provider::ThinkingConfig {
@@ -2731,6 +2749,20 @@ async fn main() -> Result<()> {
                     cli.account.as_deref(),
                 )
                 .await?;
+
+                // Apply routing/cost CLI overrides for interactive mode
+                let mut settings = settings;
+                if cli.enable_routing && settings.routing.is_none() {
+                    settings.routing = Some(clankers::routing::config::RoutingPolicyConfig::default());
+                }
+                if let Some(max_cost) = cli.max_cost {
+                    settings.cost_tracking = Some(clankers::routing::cost_tracker::CostTrackerConfig {
+                        soft_limit: Some(max_cost * 0.8),
+                        hard_limit: Some(max_cost),
+                        warning_interval: Some(1.0),
+                    });
+                }
+
                 let resume_opts = clankers::modes::interactive::ResumeOptions {
                     session_id: cli.resume.clone(),
                     continue_last: cli.r#continue,

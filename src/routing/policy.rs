@@ -107,7 +107,7 @@ impl RoutingPolicy {
     }
 
     /// Compute a numeric complexity score from signals
-    fn compute_complexity_score(&self, signals: &ComplexitySignals) -> f32 {
+    pub(crate) fn compute_complexity_score(&self, signals: &ComplexitySignals) -> f32 {
         let mut score = 0.0;
 
         // Token count contribution (normalized to ~0-20 range)

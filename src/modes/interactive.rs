@@ -245,7 +245,7 @@ pub async fn run_interactive(
         app.active_account = store.active_account_name().to_string();
     }
 
-    let mut agent = Agent::new(provider, Vec::new(), settings, model, system_prompt);
+    let mut agent = Agent::new(provider, Vec::new(), settings.clone(), model, system_prompt);
     // Attach the global database so the agent can read memories and record usage
     if let Some(ref db) = db {
         agent = agent.with_db(db.clone());
@@ -315,7 +315,27 @@ pub async fn run_interactive(
         }
     }
 
-    let agent = agent.with_tools(tools);
+    let mut agent = agent.with_tools(tools);
+
+    // Wire routing policy from settings
+    if let Some(routing_config) = settings.routing.as_ref() {
+        if routing_config.enabled {
+            let policy = crate::routing::policy::RoutingPolicy::new(routing_config.clone());
+            agent = agent.with_routing_policy(policy).with_model_roles(settings.model_roles.clone());
+        }
+    }
+
+    // Wire cost tracking from settings
+    if let Some(cost_config) = settings.cost_tracking.as_ref() {
+        let pricing = crate::routing::cost_tracker::load_pricing(Some(&paths.global_config_dir));
+        let tracker = std::sync::Arc::new(crate::routing::cost_tracker::CostTracker::new(
+            pricing,
+            cost_config.clone(),
+        ));
+        agent = agent.with_cost_tracker(tracker.clone());
+        app.cost_tracker = Some(tracker);
+    }
+
     let event_rx = agent.subscribe();
 
     // ── Start embedded RPC server for swarm presence ─────────────────

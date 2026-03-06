@@ -89,6 +89,17 @@ Headless mode works in CI, cron jobs, scripts — anywhere without a terminal.
 - **OpenAI-compatible proxy** — exposes the router as an OpenAI API endpoint, so Cursor, aider, Continue, etc. can use your credentials and routing
 - **P2P tunnel** — QUIC-based remote access via [iroh](https://iroh.computer), no port forwarding needed
 
+## Multi-Model Conversations
+
+Clankers automatically routes tasks to the right model based on complexity. Simple tasks use fast, cheap models (Haiku). Complex reasoning upgrades to powerful models (Opus). The agent can switch models mid-conversation and tracks per-model costs with budget enforcement.
+
+```
+clankers --budget 10.0              # set hard budget limit ($10)
+clankers --enable-routing           # enable complexity-based routing
+```
+
+See [`docs/multi-model.md`](docs/multi-model.md) for configuration, orchestration patterns, and cost tracking details.
+
 ## Sessions
 
 Conversations persist as JSONL. Pick up where you left off.

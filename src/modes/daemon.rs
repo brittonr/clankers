@@ -217,6 +217,23 @@ fn filter_tools_by_capabilities(
     }
 }
 
+/// Wire routing policy and cost tracking from settings onto an agent.
+fn wire_routing_from_settings(mut agent: Agent, settings: &Settings) -> Agent {
+    if let Some(routing_config) = settings.routing.as_ref() {
+        if routing_config.enabled {
+            let policy = crate::routing::policy::RoutingPolicy::new(routing_config.clone());
+            agent = agent.with_routing_policy(policy).with_model_roles(settings.model_roles.clone());
+        }
+    }
+    if let Some(cost_config) = settings.cost_tracking.as_ref() {
+        let paths = ClankersPaths::resolve();
+        let pricing = crate::routing::cost_tracker::load_pricing(Some(&paths.global_config_dir));
+        let tracker = Arc::new(crate::routing::cost_tracker::CostTracker::new(pricing, cost_config.clone()));
+        agent = agent.with_cost_tracker(tracker);
+    }
+    agent
+}
+
 /// A live agent session for a specific sender.
 struct LiveSession {
     /// The agent with conversation history
@@ -355,6 +372,7 @@ impl SessionStore {
                 self.model.clone(),
                 self.system_prompt.clone(),
             );
+            let agent = wire_routing_from_settings(agent, &self.settings);
 
             let session_mgr =
                 SessionManager::create(&self.sessions_dir, "daemon", &self.model, Some("daemon"), None, None).ok();
@@ -912,7 +930,8 @@ async fn run_session_prompt(
         let settings = store.settings.clone();
         let model = store.model.clone();
         let system_prompt = store.system_prompt.clone();
-        let agent = Agent::new(provider, tools, settings, model, system_prompt);
+        let agent = Agent::new(provider, tools, settings.clone(), model, system_prompt);
+        let agent = wire_routing_from_settings(agent, &settings);
         (agent, messages)
     };
 
@@ -2075,7 +2094,8 @@ async fn run_matrix_prompt(
         let settings = store.settings.clone();
         let model = store.model.clone();
         let system_prompt = store.system_prompt.clone();
-        let agent = Agent::new(provider, tools, settings, model, system_prompt);
+        let agent = Agent::new(provider, tools, settings.clone(), model, system_prompt);
+        let agent = wire_routing_from_settings(agent, &settings);
         (agent, messages)
     };
 
@@ -2136,7 +2156,8 @@ async fn run_matrix_prompt_with_images(
         let settings = store.settings.clone();
         let model = store.model.clone();
         let system_prompt = store.system_prompt.clone();
-        let agent = Agent::new(provider, tools, settings, model, system_prompt);
+        let agent = Agent::new(provider, tools, settings.clone(), model, system_prompt);
+        let agent = wire_routing_from_settings(agent, &settings);
         (agent, messages)
     };
 
@@ -2214,7 +2235,8 @@ async fn run_proactive_prompt(
         let settings = store.settings.clone();
         let model = store.model.clone();
         let system_prompt = store.system_prompt.clone();
-        let agent = Agent::new(provider, tools, settings, model, system_prompt);
+        let agent = Agent::new(provider, tools, settings.clone(), model, system_prompt);
+        let agent = wire_routing_from_settings(agent, &settings);
         (agent, messages)
     };
 

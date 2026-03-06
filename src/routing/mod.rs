@@ -9,6 +9,9 @@ pub mod orchestration;
 pub mod policy;
 pub mod signals;
 
+#[cfg(test)]
+mod integration_tests;
+
 pub use config::RoutingPolicyConfig;
 pub use cost_tracker::{BudgetEvent, BudgetStatus, CostSummary, CostTracker, CostTrackerConfig};
 pub use policy::{ModelSelectionResult, RoutingPolicy, SelectionReason};

@@ -79,6 +79,14 @@ pub struct Settings {
     /// Leader menu customization (add/override/hide items).
     #[serde(default)]
     pub leader_menu: LeaderMenuConfig,
+
+    /// Routing policy configuration (auto model selection by complexity)
+    #[serde(default)]
+    pub routing: Option<crate::routing::config::RoutingPolicyConfig>,
+
+    /// Cost tracking configuration (budget limits and warnings)
+    #[serde(default)]
+    pub cost_tracking: Option<crate::routing::cost_tracker::CostTrackerConfig>,
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +202,8 @@ impl Default for Settings {
             model_roles: ModelRoles::default(),
             plan_mode: false,
             leader_menu: LeaderMenuConfig::default(),
+            routing: None,
+            cost_tracking: None,
         }
     }
 }
