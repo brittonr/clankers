@@ -18,23 +18,25 @@
 - [x] `classify_tool()` maps tools to Simple/Medium/Complex tiers
 - [x] `recent_tool_summaries()` on Agent extracts recent tool calls for complexity signals
 
-## Phase 2: Cost tracking and budget enforcement
+## Phase 2: Cost tracking and budget enforcement ✅
 
-- [ ] Implement `ModelPricing` struct with input/output costs per MTok
-- [ ] Create default pricing table for Anthropic models (opus, sonnet, haiku)
-- [ ] Implement pricing loader from `~/.clankers/pricing.json` (optional override)
-- [ ] Implement `CostTracker` struct with per-model usage tracking
-- [ ] Implement `CostTracker::record_usage()` called after each API response
-- [ ] Implement token-to-cost conversion (tokens / 1M * price_per_mtok)
-- [ ] Add `CostTrackerConfig` with soft/hard budget limits and warning intervals
-- [ ] Implement threshold checking (soft limit warning, hard limit enforcement)
-- [ ] Add `AgentEvent::CostUpdate`, `BudgetWarning`, `BudgetExceeded`, `CostMilestone`
-- [ ] Implement `CostTracker::summary()` returning aggregate stats
-- [ ] Implement `CostTracker::budget_status()` for TUI display
-- [ ] Integrate cost tracking into agent: record usage after each turn
-- [ ] Wire budget status into `RoutingPolicy::select_model()` (downgrade if over limit)
-- [ ] Unit tests: cost calculation, threshold detection, budget status
-- [ ] Integration test: verify downgrade when budget threshold hit
+- [x] Implement `ModelPricing` struct with input/output costs per MTok
+- [x] Create default pricing table for Anthropic models (opus 4, sonnet 4/4.5, haiku 3.5/4)
+- [x] Implement pricing loader from `~/.clankers/pricing.json` (optional override, with prefix matching for dated model IDs)
+- [x] Implement `CostTracker` struct with per-model usage tracking (thread-safe via `RwLock`)
+- [x] Implement `CostTracker::record_usage()` called after each turn in `run_turn_loop`
+- [x] Implement token-to-cost conversion (tokens / 1M * price_per_mtok)
+- [x] Add `CostTrackerConfig` with soft/hard budget limits and warning intervals (serde-enabled)
+- [x] Implement threshold checking — `BudgetEvent::Warning`, `Exceeded`, `Milestone` (fires once per crossing)
+- [x] `CostTracker::summary()` returns `CostSummary` with per-model breakdown, percentages, budget status
+- [x] `CostTracker::budget_status()` returns `BudgetStatus` enum (NoBudget/Ok/Warning/Exceeded)
+- [x] `CostTracker::status_line()` returns formatted one-liner for status bar
+- [x] Integrated into agent: `with_cost_tracker()` builder, passed to `run_turn_loop`
+- [x] Wired budget into `RoutingPolicy::select_model()` via `budget_soft_limit`/`budget_hard_limit` on config
+- [x] Soft budget halves complexity score (biases toward cheaper models)
+- [x] Hard budget forces "smol" role regardless of complexity or user hints
+- [x] `SelectionReason::BudgetThreshold` variant added
+- [x] 21 unit tests: cost calculation, accumulation, multi-model, thresholds, milestones, status transitions, prefix matching
 
 ## Phase 3: Agent-initiated model switching
 

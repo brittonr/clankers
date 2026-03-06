@@ -33,7 +33,21 @@ impl RoutingPolicy {
             };
         }
 
-        // User hints override everything
+        // Hard budget limit — force smol regardless of complexity
+        if let Some(hard) = self.config.budget_hard_limit {
+            if signals.current_cost >= hard {
+                return ModelSelectionResult {
+                    role: "smol".to_string(),
+                    score: 0.0,
+                    reason: SelectionReason::BudgetThreshold {
+                        limit: hard,
+                        current: signals.current_cost,
+                    },
+                };
+            }
+        }
+
+        // User hints override complexity scoring (but not hard budget)
         if let Some(hint) = &signals.user_hint {
             let role = match hint {
                 ModelRoleHint::Explicit(name) => name.clone(),
@@ -50,10 +64,21 @@ impl RoutingPolicy {
         // Compute complexity score
         let score = self.compute_complexity_score(signals);
 
+        // Apply soft budget pressure — reduce score to bias toward cheaper models
+        let adjusted_score = if let Some(soft) = self.config.budget_soft_limit {
+            if signals.current_cost >= soft {
+                score * 0.5 // halve the score — shifts selection toward smol/default
+            } else {
+                score
+            }
+        } else {
+            score
+        };
+
         // Select role based on thresholds
-        let role = if score < self.config.low_threshold {
+        let role = if adjusted_score < self.config.low_threshold {
             "smol".to_string()
-        } else if score > self.config.high_threshold {
+        } else if adjusted_score > self.config.high_threshold {
             "slow".to_string()
         } else {
             "default".to_string()
@@ -61,8 +86,8 @@ impl RoutingPolicy {
 
         ModelSelectionResult {
             role,
-            score,
-            reason: SelectionReason::ComplexityScore(score),
+            score: adjusted_score,
+            reason: SelectionReason::ComplexityScore(adjusted_score),
         }
     }
 
@@ -169,6 +194,8 @@ pub enum SelectionReason {
     UserRequested,
     /// Policy is disabled, using default
     Default,
+    /// Budget threshold forced downgrade
+    BudgetThreshold { limit: f64, current: f64 },
 }
 
 impl fmt::Display for SelectionReason {
@@ -177,6 +204,9 @@ impl fmt::Display for SelectionReason {
             Self::ComplexityScore(score) => write!(f, "complexity_score={:.1}", score),
             Self::UserRequested => write!(f, "user_requested"),
             Self::Default => write!(f, "default"),
+            Self::BudgetThreshold { limit, current } => {
+                write!(f, "budget_threshold(${:.2}/${:.2})", current, limit)
+            }
         }
     }
 }
@@ -373,6 +403,69 @@ mod tests {
 
         // Unknown tools default to medium
         assert_eq!(policy.classify_tool("unknown_tool"), ToolComplexity::Medium);
+    }
+
+    #[test]
+    fn test_hard_budget_forces_smol() {
+        let mut config = RoutingPolicyConfig::default();
+        config.budget_hard_limit = Some(5.0);
+        let policy = RoutingPolicy::new(config);
+
+        let signals = ComplexitySignals {
+            token_count: 5000, // Would normally be slow
+            keywords: vec![("architecture".to_string(), 15.0)],
+            current_cost: 6.0, // Over hard limit
+            ..Default::default()
+        };
+
+        let result = policy.select_model(&signals);
+        assert_eq!(result.role, "smol");
+        assert!(matches!(
+            result.reason,
+            SelectionReason::BudgetThreshold { .. }
+        ));
+    }
+
+    #[test]
+    fn test_soft_budget_biases_cheaper() {
+        let mut config = RoutingPolicyConfig::default();
+        config.budget_soft_limit = Some(1.0);
+        let policy = RoutingPolicy::new(config);
+
+        // Without soft budget pressure, this would select "slow"
+        let signals_no_budget = ComplexitySignals {
+            token_count: 2000,
+            keywords: vec![("architecture".to_string(), 15.0), ("refactor".to_string(), 10.0)],
+            current_cost: 0.0,
+            ..Default::default()
+        };
+        let result_no_budget = policy.select_model(&signals_no_budget);
+        assert_eq!(result_no_budget.role, "slow");
+
+        // With soft budget pressure, score is halved → should downgrade
+        let signals_over_soft = ComplexitySignals {
+            current_cost: 2.0, // Over soft limit
+            ..signals_no_budget
+        };
+        let result_over_soft = policy.select_model(&signals_over_soft);
+        // Score halved: should be default or smol, not slow
+        assert_ne!(result_over_soft.role, "slow");
+    }
+
+    #[test]
+    fn test_hard_budget_overrides_user_hint() {
+        let mut config = RoutingPolicyConfig::default();
+        config.budget_hard_limit = Some(5.0);
+        let policy = RoutingPolicy::new(config);
+
+        let signals = ComplexitySignals {
+            user_hint: Some(ModelRoleHint::Thorough), // User wants slow
+            current_cost: 6.0,                        // But over hard limit
+            ..Default::default()
+        };
+
+        let result = policy.select_model(&signals);
+        assert_eq!(result.role, "smol"); // Hard budget wins
     }
 
     #[test]

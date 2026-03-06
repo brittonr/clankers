@@ -31,6 +31,14 @@ pub struct RoutingPolicyConfig {
     /// Keyword hints: map of keyword → complexity adjustment
     #[serde(default = "default_keyword_hints")]
     pub keyword_hints: HashMap<String, f32>,
+
+    /// Soft budget limit (USD) — bias toward cheaper models when exceeded
+    #[serde(default)]
+    pub budget_soft_limit: Option<f64>,
+
+    /// Hard budget limit (USD) — force cheapest model when exceeded
+    #[serde(default)]
+    pub budget_hard_limit: Option<f64>,
 }
 
 impl Default for RoutingPolicyConfig {
@@ -42,6 +50,8 @@ impl Default for RoutingPolicyConfig {
             token_weight: default_weight(),
             tool_weight: default_weight(),
             keyword_hints: default_keyword_hints(),
+            budget_soft_limit: None,
+            budget_hard_limit: None,
         }
     }
 }

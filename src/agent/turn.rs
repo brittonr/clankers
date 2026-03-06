@@ -19,6 +19,7 @@ use crate::provider::Usage;
 use crate::provider::message::*;
 use crate::provider::streaming::*;
 use crate::tools::Tool;
+use crate::routing::cost_tracker::CostTracker;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
 use crate::tools::ToolResult as ToolExecResult;
@@ -119,6 +120,7 @@ pub async fn run_turn_loop(
     config: &TurnConfig,
     event_tx: &broadcast::Sender<AgentEvent>,
     cancel: CancellationToken,
+    cost_tracker: Option<&Arc<CostTracker>>,
 ) -> Result<()> {
     let tool_defs: Vec<ToolDefinition> = tools.values().map(|t| t.definition().clone()).collect();
     let mut cumulative_usage = Usage::default();
@@ -172,6 +174,43 @@ pub async fn run_turn_loop(
             turn_usage: turn_usage.clone(),
             cumulative_usage: cumulative_usage.clone(),
         });
+
+        // Record cost if tracker is attached
+        if let Some(tracker) = cost_tracker {
+            let (total_cost, budget_events) = tracker.record_usage(
+                &config.model,
+                turn_usage.input_tokens as u64,
+                turn_usage.output_tokens as u64,
+            );
+            for event in budget_events {
+                match event {
+                    crate::routing::cost_tracker::BudgetEvent::Warning { threshold, current } => {
+                        tracing::warn!(
+                            "Budget warning: ${:.2} spent (soft limit: ${:.2})",
+                            current,
+                            threshold,
+                        );
+                    }
+                    crate::routing::cost_tracker::BudgetEvent::Exceeded { limit, current } => {
+                        tracing::warn!(
+                            "Budget exceeded: ${:.2} spent (hard limit: ${:.2})",
+                            current,
+                            limit,
+                        );
+                    }
+                    crate::routing::cost_tracker::BudgetEvent::Milestone { milestone, total: _ } => {
+                        tracing::info!("Cost milestone: ${:.2}", milestone);
+                    }
+                }
+            }
+            tracing::debug!(
+                "Turn cost recorded: model={}, in={}, out={}, total=${:.4}",
+                config.model,
+                turn_usage.input_tokens,
+                turn_usage.output_tokens,
+                total_cost,
+            );
+        }
 
         // Build assistant message
         let assistant_msg = AssistantMessage {

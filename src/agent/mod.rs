@@ -24,6 +24,7 @@ use crate::provider::Provider;
 use crate::provider::ThinkingConfig;
 use crate::provider::ThinkingLevel;
 use crate::provider::message::*;
+use crate::routing::cost_tracker::CostTracker;
 use crate::routing::policy::RoutingPolicy;
 use crate::routing::signals::{ComplexitySignals, ToolCallSummary};
 use crate::tools::Tool;
@@ -56,6 +57,8 @@ pub struct Agent {
     routing_policy: Option<RoutingPolicy>,
     /// Model roles for resolving role names to model IDs
     model_roles: ModelRoles,
+    /// Cost tracker for budget enforcement
+    cost_tracker: Option<Arc<CostTracker>>,
 }
 
 impl Agent {
@@ -85,6 +88,7 @@ impl Agent {
             db: None,
             routing_policy: None,
             model_roles: ModelRoles::default(),
+            cost_tracker: None,
         }
     }
 
@@ -113,6 +117,17 @@ impl Agent {
     pub fn with_model_roles(mut self, roles: ModelRoles) -> Self {
         self.model_roles = roles;
         self
+    }
+
+    /// Set the cost tracker for budget enforcement
+    pub fn with_cost_tracker(mut self, tracker: Arc<CostTracker>) -> Self {
+        self.cost_tracker = Some(tracker);
+        self
+    }
+
+    /// Get the cost tracker, if attached.
+    pub fn cost_tracker(&self) -> Option<&Arc<CostTracker>> {
+        self.cost_tracker.as_ref()
     }
 
     /// Subscribe to agent events
@@ -206,7 +221,7 @@ impl Agent {
                 recent_tools: self.recent_tool_summaries(),
                 keywords: policy.extract_keywords(text),
                 user_hint: policy.parse_user_hint(text),
-                current_cost: 0.0, // Phase 2 will add real cost tracking
+                current_cost: self.cost_tracker.as_ref().map_or(0.0, |ct| ct.total_cost()),
             };
             let selection = policy.select_model(&signals);
             if selection.role != "default" {
@@ -247,6 +262,7 @@ impl Agent {
             &config,
             &self.event_tx,
             self.cancel.clone(),
+            self.cost_tracker.as_ref(),
         )
         .await;
 
