@@ -1114,6 +1114,77 @@ async fn run_event_loop(
                             continue;
                         }
 
+                        // ── Tiling: resize, move, split, close ────
+                        {
+                            use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
+                            use ratatui::layout::Direction;
+                            use crossterm::event::KeyModifiers;
+                            match (key.code, key.modifiers) {
+                                // [ / ] = resize focused pane
+                                (KeyCode::Char('['), m) if m.is_empty() => {
+                                    app.apply_tiling_action(HypertileAction::ResizeFocused { delta: -0.05 });
+                                    continue;
+                                }
+                                (KeyCode::Char(']'), m) if m.is_empty() => {
+                                    app.apply_tiling_action(HypertileAction::ResizeFocused { delta: 0.05 });
+                                    continue;
+                                }
+                                // Shift+H/L/J/K = move (swap) focused pane
+                                (KeyCode::Char('H'), m) if m == KeyModifiers::SHIFT => {
+                                    app.apply_tiling_action(HypertileAction::MoveFocused {
+                                        direction: Direction::Horizontal,
+                                        towards: Towards::Start,
+                                        scope: MoveScope::Window,
+                                    });
+                                    continue;
+                                }
+                                (KeyCode::Char('L'), m) if m == KeyModifiers::SHIFT => {
+                                    app.apply_tiling_action(HypertileAction::MoveFocused {
+                                        direction: Direction::Horizontal,
+                                        towards: Towards::End,
+                                        scope: MoveScope::Window,
+                                    });
+                                    continue;
+                                }
+                                (KeyCode::Char('J'), m) if m == KeyModifiers::SHIFT => {
+                                    app.apply_tiling_action(HypertileAction::MoveFocused {
+                                        direction: Direction::Vertical,
+                                        towards: Towards::End,
+                                        scope: MoveScope::Window,
+                                    });
+                                    continue;
+                                }
+                                (KeyCode::Char('K'), m) if m == KeyModifiers::SHIFT => {
+                                    app.apply_tiling_action(HypertileAction::MoveFocused {
+                                        direction: Direction::Vertical,
+                                        towards: Towards::Start,
+                                        scope: MoveScope::Window,
+                                    });
+                                    continue;
+                                }
+                                // | = split horizontal, - = split vertical
+                                (KeyCode::Char('|'), _) => {
+                                    app.split_focused_pane(Direction::Horizontal);
+                                    continue;
+                                }
+                                (KeyCode::Char('-'), m) if m.is_empty() => {
+                                    app.split_focused_pane(Direction::Vertical);
+                                    continue;
+                                }
+                                // X = close focused pane (Shift+x)
+                                (KeyCode::Char('X'), m) if m == KeyModifiers::SHIFT => {
+                                    app.close_focused_pane();
+                                    continue;
+                                }
+                                // = equalize split ratio
+                                (KeyCode::Char('='), m) if m.is_empty() => {
+                                    app.apply_tiling_action(HypertileAction::SetFocusedRatio { ratio: 0.5 });
+                                    continue;
+                                }
+                                _ => {}
+                            }
+                        }
+
                         // Side-effect keys that need app-level resources
                         // (the Panel trait can't send on channels)
                         if let Some(focused_id) = app.focused_panel {
@@ -1579,6 +1650,60 @@ fn handle_action(
                     towards: Towards::Start,
                 });
                 app.input_mode = InputMode::Normal;
+            }
+            // ── Pane tiling actions (from leader menu) ─
+            "pane_split_vertical" => {
+                app.split_focused_pane(ratatui::layout::Direction::Vertical);
+            }
+            "pane_split_horizontal" => {
+                app.split_focused_pane(ratatui::layout::Direction::Horizontal);
+            }
+            "pane_close" => {
+                app.close_focused_pane();
+            }
+            "pane_equalize" => {
+                use ratatui_hypertile::HypertileAction;
+                app.apply_tiling_action(HypertileAction::SetFocusedRatio { ratio: 0.5 });
+            }
+            "pane_grow" => {
+                use ratatui_hypertile::HypertileAction;
+                app.apply_tiling_action(HypertileAction::ResizeFocused { delta: 0.05 });
+            }
+            "pane_shrink" => {
+                use ratatui_hypertile::HypertileAction;
+                app.apply_tiling_action(HypertileAction::ResizeFocused { delta: -0.05 });
+            }
+            "pane_move_left" => {
+                use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
+                app.apply_tiling_action(HypertileAction::MoveFocused {
+                    direction: ratatui::layout::Direction::Horizontal,
+                    towards: Towards::Start,
+                    scope: MoveScope::Window,
+                });
+            }
+            "pane_move_right" => {
+                use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
+                app.apply_tiling_action(HypertileAction::MoveFocused {
+                    direction: ratatui::layout::Direction::Horizontal,
+                    towards: Towards::End,
+                    scope: MoveScope::Window,
+                });
+            }
+            "pane_move_down" => {
+                use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
+                app.apply_tiling_action(HypertileAction::MoveFocused {
+                    direction: ratatui::layout::Direction::Vertical,
+                    towards: Towards::End,
+                    scope: MoveScope::Window,
+                });
+            }
+            "pane_move_up" => {
+                use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
+                app.apply_tiling_action(HypertileAction::MoveFocused {
+                    direction: ratatui::layout::Direction::Vertical,
+                    towards: Towards::Start,
+                    scope: MoveScope::Window,
+                });
             }
             "panel_scroll_up" => {
                 use crate::tui::components::subagent_panel::SubagentPanel;

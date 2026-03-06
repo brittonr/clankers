@@ -119,6 +119,21 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             height: 1,
         };
         frame.render_widget(Paragraph::new(hint), hint_area);
+    } else if let Some(focused_pane) = app.tiling.focused_pane() {
+        // Show tiling hint on the focused panel's border
+        if let Some(rect) = app.tiling.pane_rect(focused_pane) {
+            let hint = Span::styled(" j/k h/l:nav []:size |/-:split ", Style::default().fg(Color::DarkGray));
+            let hint_len = hint.width() as u16;
+            if rect.width > hint_len + 2 {
+                let hint_area = Rect {
+                    x: rect.x + rect.width.saturating_sub(hint_len + 1),
+                    y: rect.y,
+                    width: hint_len.min(rect.width),
+                    height: 1,
+                };
+                frame.render_widget(Paragraph::new(hint), hint_area);
+            }
+        }
     }
 
     // ── Overlays (rendered on top of everything) ────────────────────

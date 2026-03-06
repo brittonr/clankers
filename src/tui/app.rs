@@ -465,6 +465,48 @@ impl App {
         });
     }
 
+    /// Split the focused pane in the given direction.
+    /// Creates a new empty pane and registers it.
+    /// The chat pane (ROOT) cannot be split.
+    pub fn split_focused_pane(&mut self, direction: ratatui::layout::Direction) {
+        use super::panes::PaneKind;
+
+        // Don't split the chat pane — it must remain a single pane.
+        if let Some(focused) = self.tiling.focused_pane() {
+            if self.pane_registry.is_chat(focused) {
+                return;
+            }
+        }
+
+        match self.tiling.split_focused(direction) {
+            Ok(new_id) => {
+                // The new pane starts as Empty. The old pane keeps its content.
+                self.pane_registry.register(new_id, PaneKind::Empty);
+                self.sync_focused_panel();
+            }
+            Err(_) => {} // Silently ignore (e.g. root-only tree)
+        }
+    }
+
+    /// Close the focused pane and remove it from the registry.
+    /// The chat pane (ROOT) cannot be closed.
+    pub fn close_focused_pane(&mut self) {
+        // Don't close the chat pane.
+        if let Some(focused) = self.tiling.focused_pane() {
+            if self.pane_registry.is_chat(focused) {
+                return;
+            }
+        }
+
+        match self.tiling.close_focused() {
+            Ok(removed_id) => {
+                self.pane_registry.unregister(removed_id);
+                self.sync_focused_panel();
+            }
+            Err(_) => {} // Silently ignore (e.g. only one pane left)
+        }
+    }
+
     /// Advance the animation tick (called once per render frame)
     pub fn advance_tick(&mut self) {
         self.tick = self.tick.wrapping_add(1);
