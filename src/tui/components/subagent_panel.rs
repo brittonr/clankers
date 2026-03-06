@@ -304,8 +304,13 @@ impl Panel for SubagentPanel {
                 Some(PanelAction::Consumed)
             }
             KeyCode::Enter => {
-                self.open_detail();
-                Some(PanelAction::Consumed)
+                // Focus the subagent's dedicated BSP pane (if it has one)
+                if let Some(entry) = self.entries.get(self.selected) {
+                    Some(PanelAction::FocusSubagent(entry.id.clone()))
+                } else {
+                    self.open_detail();
+                    Some(PanelAction::Consumed)
+                }
             }
             KeyCode::Esc if self.view == PanelView::Detail => {
                 self.close_detail();

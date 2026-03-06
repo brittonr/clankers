@@ -1,7 +1,5 @@
 //! Tui slash command handlers.
 
-use ratatui_hypertile::raw::Node;
-
 use super::SlashContext;
 use super::SlashHandler;
 
@@ -55,6 +53,7 @@ impl SlashHandler for LayoutHandler {
                     match ctx.app.pane_registry.kind(p.id) {
                         Some(panes::PaneKind::Panel(panel_id)) => Some(panel_id.label().to_string()),
                         Some(panes::PaneKind::Chat) => Some("Chat".to_string()),
+                        Some(panes::PaneKind::Subagent(id)) => Some(format!("Subagent:{}", id)),
                         _ => None,
                     }
                 }).collect();
@@ -88,7 +87,7 @@ fn parse_panel_name(name: &str) -> Option<crate::tui::panel::PanelId> {
 
 /// Toggle a panel on/off in the current layout.
 fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
-    use crate::tui::panes::PaneKind;
+    use crate::tui::panes::{self, PaneKind};
     use ratatui::layout::Direction;
 
     // Toggling panels modifies the tree, so exit zoom first.
@@ -112,7 +111,7 @@ fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
         }
 
         // Remove the pane node from the BSP tree.
-        let new_root = remove_pane_from_tree(ctx.app.tiling.root().clone(), pane_id);
+        let new_root = panes::remove_pane_from_tree(ctx.app.tiling.root().clone(), pane_id);
         if let Some(new_root) = new_root {
             let _ = ctx.app.tiling.set_root(new_root);
             ctx.app.pane_registry.unregister(pane_id);
@@ -136,7 +135,7 @@ fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
         // Find the chat pane and split it to make room for the new panel.
         // We add the new panel to the right of chat (horizontal split).
         let chat_pane = ctx.app.pane_registry.chat_pane();
-        let new_root = insert_pane_beside(
+        let new_root = panes::insert_pane_beside(
             ctx.app.tiling.root().clone(),
             chat_pane,
             new_pane_id,
@@ -167,94 +166,8 @@ fn pane_id_for_panel(panel_id: crate::tui::panel::PanelId) -> ratatui_hypertile:
     }
 }
 
-/// Remove a pane from the BSP tree, returning the pruned tree.
-/// Returns `None` if the pane is the only node (root leaf).
-fn remove_pane_from_tree(node: Node, target: ratatui_hypertile::PaneId) -> Option<Node> {
-    match node {
-        Node::Pane(id) => {
-            if id == target {
-                None // This is the pane to remove
-            } else {
-                Some(Node::Pane(id))
-            }
-        }
-        Node::Split { direction, ratio, first, second } => {
-            let first_pruned = remove_pane_from_tree(*first, target);
-            let second_pruned = remove_pane_from_tree(*second, target);
-            match (first_pruned, second_pruned) {
-                (Some(f), Some(s)) => Some(Node::Split {
-                    direction,
-                    ratio,
-                    first: Box::new(f),
-                    second: Box::new(s),
-                }),
-                (Some(f), None) => Some(f), // Second was removed, collapse to first
-                (None, Some(s)) => Some(s), // First was removed, collapse to second
-                (None, None) => None,       // Both removed (shouldn't happen)
-            }
-        }
-    }
-}
-
-/// Insert a new pane beside an existing pane in the BSP tree.
-/// Splits the target pane, keeping the target in the `first` slot.
-fn insert_pane_beside(
-    node: Node,
-    target: ratatui_hypertile::PaneId,
-    new_pane: ratatui_hypertile::PaneId,
-    direction: ratatui::layout::Direction,
-    ratio: f32,
-) -> Option<Node> {
-    match node {
-        Node::Pane(id) => {
-            if id == target {
-                Some(Node::Split {
-                    direction,
-                    ratio,
-                    first: Box::new(Node::Pane(id)),
-                    second: Box::new(Node::Pane(new_pane)),
-                })
-            } else {
-                Some(Node::Pane(id))
-            }
-        }
-        Node::Split { direction: d, ratio: r, first, second } => {
-            // Try to find and split the target in either branch
-            let first_result = insert_pane_beside(*first.clone(), target, new_pane, direction, ratio);
-            if let Some(new_first) = first_result {
-                // Check if the first branch actually changed
-                let first_changed = !nodes_equal(&new_first, &*first);
-                if first_changed {
-                    return Some(Node::Split {
-                        direction: d,
-                        ratio: r,
-                        first: Box::new(new_first),
-                        second,
-                    });
-                }
-            }
-            let second_result = insert_pane_beside(*second, target, new_pane, direction, ratio);
-            second_result.map(|new_second| Node::Split {
-                direction: d,
-                ratio: r,
-                first,
-                second: Box::new(new_second),
-            })
-        }
-    }
-}
-
-/// Quick structural equality check for BSP nodes.
-fn nodes_equal(a: &Node, b: &Node) -> bool {
-    match (a, b) {
-        (Node::Pane(a_id), Node::Pane(b_id)) => a_id == b_id,
-        (
-            Node::Split { direction: da, ratio: ra, first: fa, second: sa },
-            Node::Split { direction: db, ratio: rb, first: fb, second: sb },
-        ) => da == db && (ra - rb).abs() < f32::EPSILON && nodes_equal(fa, fb) && nodes_equal(sa, sb),
-        _ => false,
-    }
-}
+// BSP tree utilities (remove_pane_from_tree, insert_pane_beside, nodes_equal)
+// are now in crate::tui::panes — shared across slash commands, subagent panes, etc.
 
 pub struct PreviewHandler;
 

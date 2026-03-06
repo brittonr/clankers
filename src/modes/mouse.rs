@@ -54,6 +54,11 @@ pub(crate) fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u1
                         app.editor.click_to_cursor(rel_col, rel_row, inner_w, indicator_len);
                     }
                 }
+                HitRegion::Subagent(ref subagent_id) => {
+                    // Click on a subagent pane → focus it
+                    app.selection = None;
+                    app.focus_subagent(subagent_id);
+                }
                 HitRegion::Panel(panel_id) => {
                     // Click on a panel → focus it
                     app.selection = None;
@@ -150,6 +155,9 @@ pub(crate) fn handle_mouse_scroll(app: &mut App, col: u16, row: u16, up: bool, l
         HitRegion::Panel(panel_id) => {
             let panel = app.panel_mut(panel_id);
             panel.handle_scroll(up, lines);
+        }
+        HitRegion::Subagent(ref id) => {
+            app.subagent_panes.handle_scroll(id, up, lines);
         }
         HitRegion::Editor => {
             // Scroll in editor could navigate history (up/down),

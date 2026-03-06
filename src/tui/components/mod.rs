@@ -35,6 +35,7 @@ pub mod settings;
 pub mod slash_menu;
 pub mod status_bar;
 pub mod subagent_event;
+pub mod subagent_pane;
 pub mod subagent_panel;
 pub mod todo_panel;
 pub mod tool_output;

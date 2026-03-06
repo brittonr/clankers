@@ -21,6 +21,8 @@ pub enum PaneKind {
     Chat,
     /// One of the existing side-panel types.
     Panel(PanelId),
+    /// A dedicated pane for a single subagent's live output.
+    Subagent(String),
     /// Placeholder pane (empty, waiting for content assignment).
     Empty,
 }
@@ -30,6 +32,7 @@ impl PaneKind {
         match self {
             PaneKind::Chat => "Chat",
             PaneKind::Panel(id) => id.label(),
+            PaneKind::Subagent(_) => "Subagent",
             PaneKind::Empty => "Empty",
         }
     }
@@ -99,6 +102,22 @@ impl PaneRegistry {
     /// Find the pane holding a specific `PanelId`.
     pub fn find_panel(&self, panel_id: PanelId) -> Option<PaneId> {
         self.find(&PaneKind::Panel(panel_id))
+    }
+
+    /// Find the pane for a specific subagent by its string ID.
+    pub fn find_subagent(&self, subagent_id: &str) -> Option<PaneId> {
+        self.kinds.iter().find_map(|(&pane_id, kind)| match kind {
+            PaneKind::Subagent(id) if id == subagent_id => Some(pane_id),
+            _ => None,
+        })
+    }
+
+    /// Find the first subagent pane (any subagent).
+    pub fn find_any_subagent_pane(&self) -> Option<PaneId> {
+        self.kinds.iter().find_map(|(&pane_id, kind)| match kind {
+            PaneKind::Subagent(_) => Some(pane_id),
+            _ => None,
+        })
     }
 
     /// All registered pane IDs.
@@ -289,4 +308,127 @@ pub fn right_heavy_tiling() -> (Hypertile, PaneRegistry) {
     reg.register(pane_ids::subagents(), PaneKind::Panel(PanelId::Subagents));
     reg.register(pane_ids::peers(), PaneKind::Panel(PanelId::Peers));
     (tiling, reg)
+}
+
+// ── BSP tree manipulation utilities ─────────────────────────────────────────
+
+/// Remove a pane from the BSP tree, returning the pruned tree.
+/// Returns `None` if the pane is the only node (root leaf).
+pub fn remove_pane_from_tree(node: Node, target: PaneId) -> Option<Node> {
+    match node {
+        Node::Pane(id) => {
+            if id == target {
+                None
+            } else {
+                Some(Node::Pane(id))
+            }
+        }
+        Node::Split { direction, ratio, first, second } => {
+            let first_pruned = remove_pane_from_tree(*first, target);
+            let second_pruned = remove_pane_from_tree(*second, target);
+            match (first_pruned, second_pruned) {
+                (Some(f), Some(s)) => Some(Node::Split {
+                    direction,
+                    ratio,
+                    first: Box::new(f),
+                    second: Box::new(s),
+                }),
+                (Some(f), None) => Some(f),
+                (None, Some(s)) => Some(s),
+                (None, None) => None,
+            }
+        }
+    }
+}
+
+/// Insert a new pane beside an existing pane in the BSP tree.
+/// Splits the target pane, keeping the target in the `first` slot.
+pub fn insert_pane_beside(
+    node: Node,
+    target: PaneId,
+    new_pane: PaneId,
+    direction: Direction,
+    ratio: f32,
+) -> Option<Node> {
+    match node {
+        Node::Pane(id) => {
+            if id == target {
+                Some(Node::Split {
+                    direction,
+                    ratio,
+                    first: Box::new(Node::Pane(id)),
+                    second: Box::new(Node::Pane(new_pane)),
+                })
+            } else {
+                Some(Node::Pane(id))
+            }
+        }
+        Node::Split { direction: d, ratio: r, first, second } => {
+            let first_result = insert_pane_beside(*first.clone(), target, new_pane, direction, ratio);
+            if let Some(new_first) = first_result {
+                let first_changed = !nodes_equal(&new_first, &first);
+                if first_changed {
+                    return Some(Node::Split {
+                        direction: d,
+                        ratio: r,
+                        first: Box::new(new_first),
+                        second,
+                    });
+                }
+            }
+            let second_result = insert_pane_beside(*second, target, new_pane, direction, ratio);
+            second_result.map(|new_second| Node::Split {
+                direction: d,
+                ratio: r,
+                first,
+                second: Box::new(new_second),
+            })
+        }
+    }
+}
+
+/// Quick structural equality check for BSP nodes.
+fn nodes_equal(a: &Node, b: &Node) -> bool {
+    match (a, b) {
+        (Node::Pane(a_id), Node::Pane(b_id)) => a_id == b_id,
+        (
+            Node::Split { direction: da, ratio: ra, first: fa, second: sa },
+            Node::Split { direction: db, ratio: rb, first: fb, second: sb },
+        ) => da == db && (ra - rb).abs() < f32::EPSILON && nodes_equal(fa, fb) && nodes_equal(sa, sb),
+        _ => false,
+    }
+}
+
+/// Auto-split the BSP tree to make room for a new subagent pane.
+///
+/// Strategy:
+/// 1. If there's an existing subagent pane, split it vertically (stack them)
+/// 2. Else if the Subagents overview panel exists, split it vertically
+/// 3. Else split the chat pane horizontally (chat keeps 75%)
+pub fn auto_split_for_subagent(
+    tiling: &mut Hypertile,
+    registry: &PaneRegistry,
+    new_pane_id: PaneId,
+) {
+    // Try to find an existing subagent pane to stack beside
+    let target = registry.find_any_subagent_pane()
+        .or_else(|| registry.find_panel(PanelId::Subagents));
+
+    let (target_pane, direction, ratio) = if let Some(t) = target {
+        (t, Direction::Vertical, 0.5)
+    } else {
+        // No subagent area — split chat horizontally
+        (registry.chat_pane(), Direction::Horizontal, 0.75)
+    };
+
+    let new_root = insert_pane_beside(
+        tiling.root().clone(),
+        target_pane,
+        new_pane_id,
+        direction,
+        ratio,
+    );
+    if let Some(root) = new_root {
+        let _ = tiling.set_root(root);
+    }
 }

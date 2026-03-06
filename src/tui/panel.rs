@@ -84,6 +84,8 @@ pub enum PanelAction {
     FocusPanel(PanelId),
     /// Switch to a conversation branch by block ID.
     SwitchBranch(usize),
+    /// Focus a subagent's dedicated BSP pane (by subagent ID).
+    FocusSubagent(String),
 }
 
 // ── PanelManager ────────────────────────────────────────────────────────────

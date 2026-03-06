@@ -75,6 +75,15 @@ pub fn render(frame: &mut Frame, app: &mut App) {
                 let panel = app.panel_mut(panel_id);
                 crate::tui::panel::draw_panel_scrolled(frame, panel, pane.rect, &ctx);
             }
+            Some(PaneKind::Subagent(id)) => {
+                let id = id.clone();
+                let focused = app.focused_subagent.as_deref() == Some(&id);
+                let ctx = DrawContext {
+                    theme: &theme,
+                    focused,
+                };
+                app.subagent_panes.draw(&id, frame, pane.rect, &ctx);
+            }
             Some(PaneKind::Chat) => {
                 chat_area = pane.rect;
                 chat_focused = !app.has_panel_focus();

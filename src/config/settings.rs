@@ -87,6 +87,12 @@ pub struct Settings {
     /// Cost tracking configuration (budget limits and warnings)
     #[serde(default)]
     pub cost_tracking: Option<crate::routing::cost_tracker::CostTrackerConfig>,
+
+    /// Max number of subagent panes to auto-create in the BSP tiling.
+    /// When the limit is reached, new subagents only appear in the overview panel.
+    /// Set to 0 to disable auto-pane creation entirely.
+    #[serde(default = "default_max_subagent_panes")]
+    pub max_subagent_panes: usize,
 }
 
 // ---------------------------------------------------------------------------
@@ -182,6 +188,9 @@ fn default_max_lines() -> usize {
 fn default_max_bytes() -> usize {
     50 * 1024
 }
+fn default_max_subagent_panes() -> usize {
+    4
+}
 
 impl Default for Settings {
     fn default() -> Self {
@@ -204,6 +213,7 @@ impl Default for Settings {
             leader_menu: LeaderMenuConfig::default(),
             routing: None,
             cost_tracking: None,
+            max_subagent_panes: default_max_subagent_panes(),
         }
     }
 }

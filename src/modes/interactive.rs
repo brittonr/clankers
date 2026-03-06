@@ -399,6 +399,7 @@ pub async fn run_interactive(
         session_manager,
         seed_messages,
         db.clone(),
+        &settings,
     )
     .await;
 
@@ -506,6 +507,7 @@ async fn run_event_loop(
     mut session_manager: Option<crate::session::SessionManager>,
     seed_messages: Vec<crate::provider::message::AgentMessage>,
     db: Option<crate::db::Db>,
+    settings: &crate::config::settings::Settings,
 ) -> Result<()> {
     let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<AgentCommand>();
     let (done_tx, mut done_rx) = tokio::sync::mpsc::unbounded_channel::<TaskResult>();
@@ -811,43 +813,65 @@ async fn run_event_loop(
                 .expect("subagent panel");
             match event {
                 SubagentEvent::Started { id, name, task, pid } => {
-                    subagent_panel.add(id, name, task, pid);
+                    // Update overview panel
+                    subagent_panel.add(id.clone(), name.clone(), task.clone(), pid);
+
+                    // Create a dedicated BSP pane if under the configured limit
+                    let max_panes = settings.max_subagent_panes;
+                    if max_panes > 0 && app.subagent_panes.len() < max_panes {
+                        let pane_id = app.subagent_panes.create(
+                            id.clone(), name, task, pid, &mut app.tiling,
+                        );
+                        app.pane_registry.register(pane_id, crate::tui::panes::PaneKind::Subagent(id));
+                        crate::tui::panes::auto_split_for_subagent(
+                            &mut app.tiling, &app.pane_registry, pane_id,
+                        );
+                    }
                 }
                 SubagentEvent::Output { id, line } => {
                     subagent_panel.append_output(&id, &line);
+                    app.subagent_panes.append_output(&id, &line);
                 }
                 SubagentEvent::Done { id } => {
                     subagent_panel.mark_done(&id);
+                    app.subagent_panes.mark_done(&id);
                 }
                 SubagentEvent::Error { id, .. } => {
                     subagent_panel.mark_error(&id);
+                    app.subagent_panes.mark_error(&id);
                 }
                 SubagentEvent::KillRequest { ref id } => {
-                    // Kill the subagent process by PID
-                    if let Some(entry) = subagent_panel.get_by_id(id)
-                        && entry.status == crate::tui::components::subagent_panel::SubagentStatus::Running
-                    {
-                        if let Some(pid) = entry.pid {
-                            // Send SIGKILL to the entire process group
-                            #[cfg(unix)]
-                            {
-                                unsafe {
-                                    // Negative PID targets the process group
-                                    libc::kill(-(pid as i32), libc::SIGKILL);
-                                }
+                    // Kill the subagent process by PID — check both the pane and overview
+                    let pid_to_kill = app.subagent_panes.get(id)
+                        .filter(|s| s.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
+                        .and_then(|s| s.pid)
+                        .or_else(|| {
+                            subagent_panel.get_by_id(id)
+                                .filter(|e| e.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
+                                .and_then(|e| e.pid)
+                        });
+
+                    if let Some(pid) = pid_to_kill {
+                        // Send SIGKILL to the entire process group
+                        #[cfg(unix)]
+                        {
+                            unsafe {
+                                libc::kill(-(pid as i32), libc::SIGKILL);
                             }
-                            #[cfg(not(unix))]
-                            {
-                                // On non-unix, try to kill via std
-                                let _ = std::process::Command::new("taskkill")
-                                    .args(&["/PID", &pid.to_string(), "/F"])
-                                    .spawn();
-                            }
-                            subagent_panel.mark_error(id);
-                            subagent_panel.append_output(id, "⚡ Killed by user");
-                        } else {
-                            subagent_panel.append_output(id, "⚠ Cannot kill: no PID tracked");
                         }
+                        #[cfg(not(unix))]
+                        {
+                            let _ = std::process::Command::new("taskkill")
+                                .args(&["/PID", &pid.to_string(), "/F"])
+                                .spawn();
+                        }
+                        subagent_panel.mark_error(id);
+                        subagent_panel.append_output(id, "⚡ Killed by user");
+                        app.subagent_panes.mark_error(id);
+                        app.subagent_panes.append_output(id, "⚡ Killed by user");
+                    } else {
+                        subagent_panel.append_output(id, "⚠ Cannot kill: no PID tracked");
+                        app.subagent_panes.append_output(id, "⚠ Cannot kill: no PID tracked");
                     }
                 }
                 SubagentEvent::InputRequest { .. } => {
@@ -1190,6 +1214,53 @@ async fn run_event_loop(
                             }
                         }
 
+                        // ── Subagent pane key dispatch ────────────────
+                        // Subagent panes are not Panel trait impls — handle them separately.
+                        if let Some(ref subagent_id) = app.focused_subagent.clone() {
+                            match (key.code, key.modifiers) {
+                                // x = kill the subagent
+                                (KeyCode::Char('x'), m) if m.is_empty() => {
+                                    let _ = panel_tx.send(
+                                        crate::tui::components::subagent_event::SubagentEvent::KillRequest {
+                                            id: subagent_id.clone(),
+                                        },
+                                    );
+                                    continue;
+                                }
+                                // q or X = dismiss the pane (close it from BSP tree)
+                                (KeyCode::Char('q'), m) if m.is_empty() => {
+                                    if let Some(pane_id) = app.subagent_panes.remove(subagent_id) {
+                                        if let Some(new_root) = crate::tui::panes::remove_pane_from_tree(
+                                            app.tiling.root().clone(), pane_id,
+                                        ) {
+                                            let _ = app.tiling.set_root(new_root);
+                                        }
+                                        app.pane_registry.unregister(pane_id);
+                                        let live: std::collections::HashSet<_> =
+                                            ratatui_hypertile::raw::collect_pane_ids(app.tiling.root())
+                                                .into_iter()
+                                                .collect();
+                                        app.pane_registry.retain_only(&live);
+                                        app.sync_focused_panel();
+                                    }
+                                    continue;
+                                }
+                                _ => {
+                                    // Delegate scroll/navigation to the pane state
+                                    if let Some(action) = app.subagent_panes.handle_key_event(subagent_id, key) {
+                                        match action {
+                                            PanelAction::Consumed => continue,
+                                            PanelAction::Unfocus => {
+                                                app.unfocus_panel();
+                                                continue;
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         // Side-effect keys that need app-level resources
                         // (the Panel trait can't send on channels)
                         if let Some(focused_id) = app.focused_panel {
@@ -1251,6 +1322,10 @@ async fn run_event_loop(
                                 }
                                 Some(PanelAction::FocusPanel(id)) => {
                                     app.focus_panel(id);
+                                    continue;
+                                }
+                                Some(PanelAction::FocusSubagent(ref subagent_id)) => {
+                                    app.focus_subagent(subagent_id);
                                     continue;
                                 }
                                 None => {} // key not handled by panel, fall through

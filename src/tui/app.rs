@@ -96,6 +96,8 @@ pub struct ZoomState {
     pub registry: super::panes::PaneRegistry,
     /// Which panel was focused before zooming (if any).
     pub focused_panel: Option<PanelId>,
+    /// Which subagent pane was focused before zooming (if any).
+    pub focused_subagent: Option<String>,
 }
 
 /// Main TUI application
@@ -216,6 +218,11 @@ pub struct App {
     /// Which panel (if any) currently has focus.
     /// `None` means the chat pane is focused.
     pub focused_panel: Option<PanelId>,
+    /// Which subagent pane (if any) currently has focus (by subagent ID).
+    /// Mutually exclusive with `focused_panel`.
+    pub focused_subagent: Option<String>,
+    /// Per-subagent pane manager — each subagent gets its own BSP pane.
+    pub subagent_panes: super::components::subagent_pane::SubagentPaneManager,
     /// Saved tiling state while a pane is zoomed to full screen.
     /// `None` means no pane is zoomed.
     pub zoom_state: Option<ZoomState>,
@@ -328,6 +335,8 @@ impl App {
             tiling: super::panes::default_tiling(),
             pane_registry: super::panes::default_registry(),
             focused_panel: None,
+            focused_subagent: None,
+            subagent_panes: super::components::subagent_pane::SubagentPaneManager::new(),
             zoom_state: None,
             editor_area: Rect::default(),
             status_area: Rect::default(),
@@ -433,13 +442,14 @@ impl App {
         if let Some(id) = self.focused_panel {
             self.panel_mut(id).close_detail_view();
         }
+        // Subagent panes have no detail view to close, but clear the focus
     }
 
     // ── Focus helpers (bridge hypertile ↔ PanelId) ──────────────────
 
-    /// Whether a side panel (not chat) currently has focus.
+    /// Whether a side panel or subagent pane (not chat) currently has focus.
     pub fn has_panel_focus(&self) -> bool {
-        self.focused_panel.is_some()
+        self.focused_panel.is_some() || self.focused_subagent.is_some()
     }
 
     /// Focus a specific panel by `PanelId`. Updates both hypertile and
@@ -448,14 +458,25 @@ impl App {
         if let Some(pane) = self.pane_registry.find_panel(panel_id) {
             let _ = self.tiling.focus_pane(pane);
             self.focused_panel = Some(panel_id);
+            self.focused_subagent = None;
         }
     }
 
-    /// Return focus to the chat pane (unfocus any panel).
+    /// Focus a specific subagent pane by its string ID.
+    pub fn focus_subagent(&mut self, subagent_id: &str) {
+        if let Some(pane_id) = self.subagent_panes.pane_id_for(subagent_id) {
+            let _ = self.tiling.focus_pane(pane_id);
+            self.focused_subagent = Some(subagent_id.to_string());
+            self.focused_panel = None;
+        }
+    }
+
+    /// Return focus to the chat pane (unfocus any panel or subagent pane).
     pub fn unfocus_panel(&mut self) {
         let chat = self.pane_registry.chat_pane();
         let _ = self.tiling.focus_pane(chat);
         self.focused_panel = None;
+        self.focused_subagent = None;
     }
 
     /// Is the given panel currently focused?
@@ -470,14 +491,21 @@ impl App {
         self.sync_focused_panel();
     }
 
-    /// Sync `focused_panel` from hypertile's current focus.
+    /// Sync `focused_panel` and `focused_subagent` from hypertile's current focus.
     pub fn sync_focused_panel(&mut self) {
-        self.focused_panel = self.tiling.focused_pane().and_then(|pane_id| {
+        self.focused_panel = None;
+        self.focused_subagent = None;
+        if let Some(pane_id) = self.tiling.focused_pane() {
             match self.pane_registry.kind(pane_id) {
-                Some(super::panes::PaneKind::Panel(panel_id)) => Some(*panel_id),
-                _ => None, // Chat or Empty → no panel focus
+                Some(super::panes::PaneKind::Panel(panel_id)) => {
+                    self.focused_panel = Some(*panel_id);
+                }
+                Some(super::panes::PaneKind::Subagent(id)) => {
+                    self.focused_subagent = Some(id.clone());
+                }
+                _ => {} // Chat or Empty → no panel/subagent focus
             }
-        });
+        }
     }
 
     /// Split the focused pane in the given direction.
@@ -546,6 +574,7 @@ impl App {
             tiling: self.tiling.clone(),
             registry: self.pane_registry.clone(),
             focused_panel: self.focused_panel,
+            focused_subagent: self.focused_subagent.clone(),
         });
 
         // Build a single-pane tree with the focused pane at root.
@@ -568,9 +597,14 @@ impl App {
         self.tiling = zoomed;
         self.pane_registry = reg;
 
-        // Sync focused_panel to match the zoomed pane's content.
+        // Sync focused_panel/focused_subagent to match the zoomed pane's content.
+        self.focused_subagent = None;
         match kind {
             super::panes::PaneKind::Panel(id) => self.focused_panel = Some(id),
+            super::panes::PaneKind::Subagent(ref id) => {
+                self.focused_panel = None;
+                self.focused_subagent = Some(id.clone());
+            }
             _ => self.focused_panel = None,
         }
     }
@@ -584,6 +618,7 @@ impl App {
         self.tiling = saved.tiling;
         self.pane_registry = saved.registry;
         self.focused_panel = saved.focused_panel;
+        self.focused_subagent = saved.focused_subagent;
     }
 
     /// Toggle zoom on the focused pane: zoom in if not zoomed, restore if zoomed.
@@ -1263,6 +1298,9 @@ impl App {
                     Some(super::panes::PaneKind::Panel(panel_id)) => {
                         return HitRegion::Panel(*panel_id);
                     }
+                    Some(super::panes::PaneKind::Subagent(id)) => {
+                        return HitRegion::Subagent(id.clone());
+                    }
                     Some(super::panes::PaneKind::Chat) => {
                         // Fall through to messages/editor checks below
                     }
@@ -1329,7 +1367,7 @@ impl App {
 // ── Hit-testing helpers ──────────────────────────────────────────────────────
 
 /// Which UI region a mouse event landed in.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum HitRegion {
     /// The main messages / chat area
     Messages,
@@ -1337,6 +1375,8 @@ pub enum HitRegion {
     Editor,
     /// A side panel
     Panel(PanelId),
+    /// A subagent's dedicated pane
+    Subagent(String),
     /// The status bar
     StatusBar,
     /// Outside any tracked region
