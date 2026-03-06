@@ -63,6 +63,7 @@ pub fn dispatch(
         "rewind" => handlers::branching::RewindHandler.handle(args, ctx),
         "branches" => handlers::branching::BranchesHandler.handle(args, ctx),
         "switch" => handlers::branching::SwitchHandler.handle(args, ctx),
+        "compare" => handlers::branching::CompareHandler.handle(args, ctx),
         "label" => handlers::branching::LabelHandler.handle(args, ctx),
         // User-defined prompt templates: any name not matched above
         _ => {
@@ -580,6 +581,18 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    Usage:\n  \
                    /switch <branch-name>  — switch by branch name\n  \
                    /switch <message-id>   — switch to specific message",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        },
+        SlashCommand {
+            name: "compare",
+            description: "Compare two branches side-by-side",
+            help: "Show a side-by-side comparison of two conversation branches.\n\n\
+                   Usage: /compare <block-id-a> <block-id-b>\n  \
+                   /compare #1 #3     — compare branches ending at blocks 1 and 3\n\n\
+                   Opens an overlay with divergence point, unique blocks per branch,\n  \
+                   and keybindings: ←/→ switch pane, j/k scroll, s switch to branch.",
             accepts_args: true,
             subcommands: vec![],
             leader_key: None,

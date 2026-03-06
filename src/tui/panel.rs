@@ -122,12 +122,54 @@ pub trait Panel {
     /// or `Some(action)` for the app to process.
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<PanelAction>;
 
-    /// Handle a mouse scroll event. Default scrolls `ListNav`-based panels.
-    fn handle_scroll(&mut self, _up: bool, _lines: u16) {}
+    /// Return a reference to the panel's scroll state (if it uses `PanelScroll`).
+    /// Implementing this enables the default `handle_scroll` for mouse wheel.
+    fn panel_scroll(&self) -> Option<&PanelScroll> {
+        None
+    }
+
+    /// Mutable reference to the panel's scroll state.
+    fn panel_scroll_mut(&mut self) -> Option<&mut PanelScroll> {
+        None
+    }
+
+    /// Handle a mouse scroll event.
+    ///
+    /// Default implementation delegates to `panel_scroll_mut()` if available.
+    /// Panels using `ListNav` should override this to call `nav.next()`/`nav.prev()`.
+    fn handle_scroll(&mut self, up: bool, lines: u16) {
+        if let Some(scroll) = self.panel_scroll_mut() {
+            if up {
+                scroll.scroll_up(lines as usize);
+            } else {
+                scroll.scroll_down(lines as usize);
+            }
+        }
+    }
+
+    /// Return the panel's content as lines. If implemented, `draw_panel`
+    /// handles scrolling automatically via `panel_scroll_mut()`.
+    ///
+    /// Panels that need custom rendering (split panes, stateful widgets)
+    /// should override `draw()` instead.
+    fn content(&self, _width: usize, _ctx: &DrawContext) -> Option<Vec<Line<'static>>> {
+        None
+    }
 
     /// Render the panel's content into `area` (inside the border).
     /// The caller has already drawn the outer Block with title/border.
-    fn draw(&self, frame: &mut Frame, area: Rect, ctx: &DrawContext);
+    ///
+    /// Default implementation calls `content()` and renders with auto-scroll.
+    /// Override this for panels that need custom rendering.
+    fn draw(&self, frame: &mut Frame, area: Rect, ctx: &DrawContext) {
+        if let Some(lines) = self.content(area.width as usize, ctx) {
+            let scroll_offset = self.panel_scroll().map(|s| s.offset_u16()).unwrap_or(0);
+            let para = Paragraph::new(lines)
+                .scroll((scroll_offset, 0))
+                .wrap(Wrap { trim: false });
+            frame.render_widget(para, area);
+        }
+    }
 }
 
 // ── Draw context ────────────────────────────────────────────────────────────
@@ -168,9 +210,114 @@ pub fn draw_panel_frame(frame: &mut Frame, panel: &dyn Panel, area: Rect, ctx: &
 }
 
 /// Convenience: draw frame + content in one call.
+///
+/// If the panel implements `content()` + `panel_scroll()`, this handles
+/// scroll dimensions automatically. Otherwise delegates to `draw()`.
 pub fn draw_panel(frame: &mut Frame, panel: &dyn Panel, area: Rect, ctx: &DrawContext) {
     if let Some(inner) = draw_panel_frame(frame, panel, area, ctx) {
         panel.draw(frame, inner, ctx);
+    }
+}
+
+/// Mutable variant: draw frame + auto-scroll content.
+///
+/// Calls `content()` to get lines, updates `panel_scroll_mut()` dimensions,
+/// then renders with scroll offset. Falls back to immutable `draw()` if the
+/// panel doesn't implement `content()`.
+pub fn draw_panel_scrolled(frame: &mut Frame, panel: &mut dyn Panel, area: Rect, ctx: &DrawContext) {
+    if let Some(inner) = draw_panel_frame(frame, panel, area, ctx) {
+        let width = inner.width as usize;
+        let visible = inner.height as usize;
+
+        if let Some(lines) = panel.content(width, ctx) {
+            let total = lines.len();
+            // Update scroll dimensions
+            if let Some(scroll) = panel.panel_scroll_mut() {
+                scroll.set_dimensions(total, visible);
+            }
+            let offset = panel.panel_scroll().map(|s| s.offset_u16()).unwrap_or(0);
+            let para = Paragraph::new(lines)
+                .scroll((offset, 0))
+                .wrap(Wrap { trim: false });
+            frame.render_widget(para, inner);
+        } else {
+            panel.draw(frame, inner, ctx);
+        }
+    }
+}
+
+// ── PanelScroll — generic scroll state for any panel ────────────────────────
+
+/// Tracks scroll offset for panel content that overflows the visible area.
+///
+/// Embed this in your panel struct, implement `panel_scroll()` /
+/// `panel_scroll_mut()` on the Panel trait, and you get:
+/// - Default `handle_scroll` for mouse wheel
+/// - `scroll_to_fit()` in draw to auto-clamp
+/// - `offset_u16()` for `Paragraph::scroll()`
+///
+/// Panels using `ListNav` for item selection should keep using that instead;
+/// `PanelScroll` is for free-form text or when you want raw pixel scrolling.
+#[derive(Debug, Clone, Default)]
+pub struct PanelScroll {
+    /// Current scroll offset (in lines from top).
+    pub offset: usize,
+    /// Total content height (set each frame in draw).
+    pub content_height: usize,
+    /// Visible height (set each frame in draw).
+    pub visible_height: usize,
+}
+
+impl PanelScroll {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Scroll up by `n` lines (clamped to 0).
+    pub fn scroll_up(&mut self, n: usize) {
+        self.offset = self.offset.saturating_sub(n);
+    }
+
+    /// Scroll down by `n` lines (clamped to max).
+    pub fn scroll_down(&mut self, n: usize) {
+        let max = self.content_height.saturating_sub(self.visible_height);
+        self.offset = (self.offset + n).min(max);
+    }
+
+    /// Update content/visible dimensions each frame. Clamps offset if content shrank.
+    pub fn set_dimensions(&mut self, content_height: usize, visible_height: usize) {
+        self.content_height = content_height;
+        self.visible_height = visible_height;
+        let max = content_height.saturating_sub(visible_height);
+        if self.offset > max {
+            self.offset = max;
+        }
+    }
+
+    /// Convenience for `Paragraph::scroll((offset, 0))`.
+    pub fn offset_u16(&self) -> u16 {
+        self.offset as u16
+    }
+
+    /// Whether there is content above the visible area.
+    pub fn can_scroll_up(&self) -> bool {
+        self.offset > 0
+    }
+
+    /// Whether there is content below the visible area.
+    pub fn can_scroll_down(&self) -> bool {
+        self.offset + self.visible_height < self.content_height
+    }
+
+    /// Scroll so that line `target` is visible, preferring to center it.
+    pub fn scroll_to_line(&mut self, target: usize) {
+        if target < self.offset {
+            self.offset = target;
+        } else if target >= self.offset + self.visible_height {
+            self.offset = target.saturating_sub(self.visible_height / 2);
+        }
+        let max = self.content_height.saturating_sub(self.visible_height);
+        self.offset = self.offset.min(max);
     }
 }
 
@@ -303,5 +450,101 @@ mod tests {
             assert!(!id.label().is_empty());
             assert_eq!(format!("{}", id), id.label());
         }
+    }
+
+    // ── PanelScroll tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_panel_scroll_new() {
+        let s = PanelScroll::new();
+        assert_eq!(s.offset, 0);
+        assert_eq!(s.content_height, 0);
+        assert_eq!(s.visible_height, 0);
+        assert!(!s.can_scroll_up());
+        assert!(!s.can_scroll_down());
+    }
+
+    #[test]
+    fn test_panel_scroll_set_dimensions() {
+        let mut s = PanelScroll::new();
+        s.set_dimensions(100, 20);
+        assert_eq!(s.content_height, 100);
+        assert_eq!(s.visible_height, 20);
+        assert!(!s.can_scroll_up());
+        assert!(s.can_scroll_down());
+    }
+
+    #[test]
+    fn test_panel_scroll_down_clamps() {
+        let mut s = PanelScroll::new();
+        s.set_dimensions(30, 20);
+        // Max offset = 30 - 20 = 10
+        s.scroll_down(5);
+        assert_eq!(s.offset, 5);
+        s.scroll_down(100);
+        assert_eq!(s.offset, 10); // clamped
+        assert!(s.can_scroll_up());
+        assert!(!s.can_scroll_down());
+    }
+
+    #[test]
+    fn test_panel_scroll_up_clamps() {
+        let mut s = PanelScroll::new();
+        s.set_dimensions(30, 20);
+        s.scroll_down(5);
+        s.scroll_up(3);
+        assert_eq!(s.offset, 2);
+        s.scroll_up(100);
+        assert_eq!(s.offset, 0); // clamped
+    }
+
+    #[test]
+    fn test_panel_scroll_dimensions_shrink_clamps() {
+        let mut s = PanelScroll::new();
+        s.set_dimensions(100, 20);
+        s.scroll_down(70);
+        assert_eq!(s.offset, 70);
+        // Content shrinks: max offset is now 10
+        s.set_dimensions(30, 20);
+        assert_eq!(s.offset, 10); // clamped
+    }
+
+    #[test]
+    fn test_panel_scroll_content_fits() {
+        let mut s = PanelScroll::new();
+        s.set_dimensions(10, 20); // content smaller than visible
+        s.scroll_down(5);
+        assert_eq!(s.offset, 0); // can't scroll
+        assert!(!s.can_scroll_up());
+        assert!(!s.can_scroll_down());
+    }
+
+    #[test]
+    fn test_panel_scroll_to_line() {
+        let mut s = PanelScroll::new();
+        s.set_dimensions(100, 20);
+
+        // Target below visible area
+        s.scroll_to_line(50);
+        assert!(s.offset > 0);
+        assert!(s.offset <= 50);
+
+        // Target above visible area
+        s.offset = 50;
+        s.scroll_to_line(10);
+        assert_eq!(s.offset, 10);
+
+        // Target already visible: no change
+        s.offset = 10;
+        s.scroll_to_line(15);
+        assert_eq!(s.offset, 10);
+    }
+
+    #[test]
+    fn test_panel_scroll_offset_u16() {
+        let mut s = PanelScroll::new();
+        s.set_dimensions(100, 20);
+        s.scroll_down(42);
+        assert_eq!(s.offset_u16(), 42);
     }
 }

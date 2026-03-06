@@ -155,6 +155,8 @@ pub struct App {
     pub branch_panel: super::components::branch_panel::BranchPanel,
     /// Branch switcher overlay (quick fuzzy picker)
     pub branch_switcher: super::components::branch_switcher::BranchSwitcher,
+    /// Branch comparison overlay (side-by-side diff)
+    pub branch_compare: super::components::branch_compare::BranchCompareView,
     /// Process monitor panel (CPU/memory tracking)
     pub process_panel: super::components::process_panel::ProcessPanel,
     /// Context window gauge (token usage vs model limit)
@@ -272,6 +274,7 @@ impl App {
             peers_panel: super::components::peers_panel::PeersPanel::new(),
             branch_panel: super::components::branch_panel::BranchPanel::new(),
             branch_switcher: super::components::branch_switcher::BranchSwitcher::new(),
+            branch_compare: super::components::branch_compare::BranchCompareView::new(),
             process_panel: super::components::process_panel::ProcessPanel::new(),
             context_gauge,
             git_status,

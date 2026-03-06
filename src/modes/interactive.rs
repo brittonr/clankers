@@ -1005,6 +1005,11 @@ async fn run_event_loop(
                         continue;
                     }
 
+                    // ── Branch comparison intercept ──────────────
+                    if app.branch_compare.visible && super::selectors::handle_branch_compare_key(app, &key) {
+                        continue;
+                    }
+
                     // ── Leader menu intercept ────────────────────
                     if app.leader_menu.visible {
                         if let Some(leader_action) = app.leader_menu.handle_key(&key) {

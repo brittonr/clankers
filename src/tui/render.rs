@@ -26,7 +26,6 @@ use crate::tui::components::slash_menu;
 use crate::tui::components::status_bar::StatusBarData;
 use crate::tui::components::status_bar::{self};
 use crate::tui::panel::DrawContext;
-use crate::tui::panel::draw_panel;
 use crate::tui::widget_host;
 
 /// Render the full application UI
@@ -59,15 +58,19 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     // ── Render side panels ──────────────────────────────────────────
 
-    for &(panel_id, panel_area) in &regions.panels {
+    // Collect panel render list first, then render with mutable access.
+    let panel_render = regions.panels.clone();
+    let theme = app.theme.clone();
+    for (panel_id, panel_area) in panel_render {
         let focused = app.focus.is_focused(panel_id);
         let ctx = DrawContext {
-            theme: &app.theme,
+            theme: &theme,
             focused,
         };
 
-        let panel = app.panel(panel_id);
-        draw_panel(frame, panel, panel_area, &ctx);
+        // Use draw_panel_scrolled for auto-scroll dimension tracking
+        let panel = app.panel_mut(panel_id);
+        crate::tui::panel::draw_panel_scrolled(frame, panel, panel_area, &ctx);
     }
 
     // ── Main column layout ──────────────────────────────────────────
@@ -109,6 +112,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     app.account_selector.render(frame, frame.area());
     app.session_selector.render(frame, frame.area());
     app.branch_switcher.render(frame, frame.area());
+    app.branch_compare.render(frame, frame.area());
     app.leader_menu.render(frame, frame.area());
 
     if !app.plugin_ui.notifications.is_empty() {

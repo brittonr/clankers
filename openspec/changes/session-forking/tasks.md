@@ -81,47 +81,36 @@
 - [x] Auto-refresh on block finalization
 - [x] 13 unit tests: tree walking, divergence detection, branch discovery, navigation
 
-## Phase 6: Branch details view
+## Phase 6: Branch details view ✅
 
-- [ ] Create `BranchDetailsView` component
-- [ ] Implement layout:
-  - [ ] Show branch metadata (created, diverged from, message count, last activity)
-  - [ ] Show divergence point message
-  - [ ] Show scrollable list of branch messages
-  - [ ] Provide actions: switch, compare, merge
-- [ ] Add `/branch-details <name>` command
-- [ ] Keybindings: `s` (switch), `c` (compare), `m` (merge), `q` (close)
-- [ ] Integration test: view details, navigate messages
+- [x] Enhanced detail view in BranchPanel with scrollable message list
+- [x] BranchBlockSummary struct: prompt preview, response/tool counts, tokens
+- [x] Divergence point marker (⑂) and tree connectors (├─ / └─)
+- [x] j/k scrolls message list, s/Enter switches branch, Esc goes back
+- [x] Compact stats per block (responses, tools, tokens)
 
-## Phase 7: Branch switcher (quick picker)
+## Phase 7: Branch switcher (quick picker) ✅
 
-- [ ] Create `BranchSwitcher` overlay component
-- [ ] Implement floating list with all branches
-- [ ] Add type-ahead filtering (fuzzy match)
-- [ ] Keybindings: `Enter` (switch), `Esc` (cancel), `↑`/`↓` (navigate)
-- [ ] Add keyboard shortcut `Ctrl+Shift+B` to open switcher
-- [ ] Integration test: filter branches, select, switch
+- [x] BranchSwitcher floating overlay component
+- [x] Type-ahead fuzzy filtering (name + prompt text)
+- [x] Active branch indicator (● green / ○ gray)
+- [x] Message count and token display per branch
+- [x] Shift+B (normal mode) opens the switcher
+- [x] Enter switches, Esc cancels, ↑/↓ navigate, Ctrl+j/k vim-style
+- [x] Key handler in selectors.rs following existing patterns
+- [x] 7 unit tests (filter, navigation, selection, close)
 
-## Phase 8: Branch comparison
+## Phase 8: Branch comparison ✅
 
-- [ ] Implement `Session::compare_branches(branch_a, branch_b)` — returns comparison data
-  - [ ] Find divergence point (last common ancestor)
-  - [ ] Walk both branches from divergence to leaves
-  - [ ] Collect unique messages for each branch
-- [ ] Implement `/compare <branch-a> <branch-b>` command
-  - [ ] Open comparison view with side-by-side layout
-- [ ] Create `BranchCompareView` component
-  - [ ] Split-pane layout (left: branch A, right: branch B)
-  - [ ] Show divergence point at top
-  - [ ] Show unique messages in each pane
-  - [ ] Highlight current position in each branch
-- [ ] Keybindings:
-  - [ ] `m` — merge right into left
-  - [ ] `c` — copy selected message to other side
-  - [ ] `←`/`→` — switch focus between panes
-  - [ ] `j`/`k` — navigate messages
-  - [ ] `q` — close view
-- [ ] Integration test: compare branches, navigate, trigger merge
+- [x] `compare_branches()` — finds divergence point (last common ancestor)
+- [x] Walks both branches from divergence to leaves, collects unique blocks
+- [x] `BranchCompareView` overlay with split-pane layout
+- [x] Divergence point shown at top with prompt preview
+- [x] Each pane: border with branch name, block count, token total
+- [x] Per-block: ID, prompt preview, response/tool/token stats
+- [x] `/compare <block-id-a> <block-id-b>` slash command
+- [x] Keybindings: ←/→ switch pane, j/k scroll, s/Enter switch to branch, q close
+- [x] 8 unit tests (simple/deep/asymmetric forks, focus, scroll, close)
 
 ## Phase 9: Branch merge (full merge)
 

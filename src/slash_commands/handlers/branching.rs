@@ -172,6 +172,56 @@ impl SlashHandler for SwitchHandler {
     }
 }
 
+pub struct CompareHandler;
+
+impl SlashHandler for CompareHandler {
+    fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
+        let parts: Vec<&str> = args.split_whitespace().collect();
+        if parts.len() != 2 {
+            ctx.app.push_system("Usage: /compare <block-id-a> <block-id-b>  (e.g. /compare #1 #3)".to_string(), true);
+            return;
+        }
+
+        let parse_id = |s: &str| -> Option<usize> {
+            s.strip_prefix('#').unwrap_or(s).parse().ok()
+        };
+
+        let id_a = match parse_id(parts[0]) {
+            Some(id) => id,
+            None => {
+                ctx.app.push_system(format!("Invalid block ID: {}", parts[0]), true);
+                return;
+            }
+        };
+        let id_b = match parse_id(parts[1]) {
+            Some(id) => id,
+            None => {
+                ctx.app.push_system(format!("Invalid block ID: {}", parts[1]), true);
+                return;
+            }
+        };
+
+        if id_a == id_b {
+            ctx.app.push_system("Cannot compare a branch with itself.".to_string(), true);
+            return;
+        }
+
+        // Verify both blocks exist
+        let a_exists = ctx.app.all_blocks.iter().any(|b| b.id == id_a);
+        let b_exists = ctx.app.all_blocks.iter().any(|b| b.id == id_b);
+        if !a_exists {
+            ctx.app.push_system(format!("Block #{} not found.", id_a), true);
+            return;
+        }
+        if !b_exists {
+            ctx.app.push_system(format!("Block #{} not found.", id_b), true);
+            return;
+        }
+
+        ctx.app.branch_compare.open(id_a, id_b, &ctx.app.all_blocks.clone());
+    }
+}
+
 pub struct LabelHandler;
 
 impl SlashHandler for LabelHandler {

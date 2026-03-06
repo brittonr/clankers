@@ -161,6 +161,43 @@ pub(crate) fn handle_branch_switcher_key(
 }
 
 // ---------------------------------------------------------------------------
+// Branch comparison key handling
+// ---------------------------------------------------------------------------
+
+pub(crate) fn handle_branch_compare_key(
+    app: &mut App,
+    key: &crossterm::event::KeyEvent,
+) -> bool {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => {
+            app.branch_compare.close();
+            true
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            app.branch_compare.scroll_down();
+            true
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.branch_compare.scroll_up();
+            true
+        }
+        KeyCode::Left | KeyCode::Right | KeyCode::Char('h' | 'l') => {
+            app.branch_compare.toggle_focus();
+            true
+        }
+        KeyCode::Char('s') | KeyCode::Enter => {
+            if let Some(leaf_id) = app.branch_compare.focused_leaf_id() {
+                app.branch_compare.close();
+                app.switch_to_branch(leaf_id);
+                app.push_system(format!("Switched to branch at block #{}", leaf_id), false);
+            }
+            true
+        }
+        _ => true, // consume all keys while compare is open
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Session selector key handling
 // ---------------------------------------------------------------------------
 
