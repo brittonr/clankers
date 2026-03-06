@@ -151,6 +151,8 @@ pub struct App {
     pub file_activity_panel: super::components::file_activity_panel::FileActivityPanel,
     /// Peers panel (swarm peer status)
     pub peers_panel: super::components::peers_panel::PeersPanel,
+    /// Branch panel (conversation branches)
+    pub branch_panel: super::components::branch_panel::BranchPanel,
     /// Process monitor panel (CPU/memory tracking)
     pub process_panel: super::components::process_panel::ProcessPanel,
     /// Context window gauge (token usage vs model limit)
@@ -266,6 +268,7 @@ impl App {
             todo_panel: super::components::todo_panel::TodoPanel::new(),
             file_activity_panel: super::components::file_activity_panel::FileActivityPanel::new(),
             peers_panel: super::components::peers_panel::PeersPanel::new(),
+            branch_panel: super::components::branch_panel::BranchPanel::new(),
             process_panel: super::components::process_panel::ProcessPanel::new(),
             context_gauge,
             git_status,
@@ -350,6 +353,7 @@ impl App {
             PanelId::Subagents => &self.subagent_panel,
             PanelId::Peers => &self.peers_panel,
             PanelId::Processes => &self.process_panel,
+            PanelId::Branches => &self.branch_panel,
 
         }
     }
@@ -363,6 +367,7 @@ impl App {
             PanelId::Subagents => &mut self.subagent_panel,
             PanelId::Peers => &mut self.peers_panel,
             PanelId::Processes => &mut self.process_panel,
+            PanelId::Branches => &mut self.branch_panel,
 
         }
     }
@@ -435,6 +440,19 @@ impl App {
             // Store in both the active view and the full block history
             self.all_blocks.push(block.clone());
             self.blocks.push(BlockEntry::Conversation(block));
+
+            // Refresh branch panel if it has entries (i.e., has been opened before)
+            if !self.branch_panel.entries.is_empty() {
+                let active_ids: std::collections::HashSet<usize> = self
+                    .blocks
+                    .iter()
+                    .filter_map(|e| match e {
+                        BlockEntry::Conversation(b) => Some(b.id),
+                        _ => None,
+                    })
+                    .collect();
+                self.branch_panel.refresh(&self.all_blocks.clone(), &active_ids);
+            }
         }
     }
 

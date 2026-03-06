@@ -1192,6 +1192,7 @@ fn handle_action(
                 | Action::ToggleBlockIds
                 | Action::SearchOutput
                 | Action::ToggleSessionPopup
+                | Action::ToggleBranchPanel
                 | Action::PasteImage
                 | Action::OpenEditor
         );
@@ -1216,18 +1217,18 @@ fn handle_action(
                 }
                 // h/l: move between columns and main area
                 Action::PanelNextTab | Action::BranchNext => {
-                    if let Some(id) = app.focus.focused {
-                        if app.panel_layout.panel_side(id) == Some(ColumnSide::Left) {
-                            app.focus.unfocus();
-                        }
+                    if let Some(id) = app.focus.focused
+                        && app.panel_layout.panel_side(id) == Some(ColumnSide::Left)
+                    {
+                        app.focus.unfocus();
                     }
                     return;
                 }
                 Action::PanelPrevTab | Action::BranchPrev => {
-                    if let Some(id) = app.focus.focused {
-                        if app.panel_layout.panel_side(id) == Some(ColumnSide::Right) {
-                            app.focus.unfocus();
-                        }
+                    if let Some(id) = app.focus.focused
+                        && app.panel_layout.panel_side(id) == Some(ColumnSide::Right)
+                    {
+                        app.focus.unfocus();
                     }
                     return;
                 }
@@ -1470,6 +1471,37 @@ fn handle_action(
                     });
                     app.focused_block = last_id;
                 }
+            }
+        }
+
+        // ── Branch panel ──────────────────────────────
+        Action::ToggleBranchPanel => {
+            use crate::tui::panel::PanelId;
+            if app.focus.focused == Some(PanelId::Branches) {
+                // Hide and unfocus
+                app.panel_layout.toggle_panel(PanelId::Branches);
+                app.focus.unfocus();
+            } else {
+                // Refresh branch data, show panel, and focus it
+                let active_ids: std::collections::HashSet<usize> = app
+                    .blocks
+                    .iter()
+                    .filter_map(|e| match e {
+                        BlockEntry::Conversation(b) => Some(b.id),
+                        _ => None,
+                    })
+                    .collect();
+                app.branch_panel.refresh(&app.all_blocks.clone(), &active_ids);
+                // Ensure the panel is visible in the layout
+                let is_visible = app
+                    .panel_layout
+                    .columns
+                    .iter()
+                    .any(|c| c.column.slots.iter().any(|s| s.id == PanelId::Branches && s.weight > 0));
+                if !is_visible {
+                    app.panel_layout.toggle_panel(PanelId::Branches);
+                }
+                app.focus.focus(PanelId::Branches);
             }
         }
 

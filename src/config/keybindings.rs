@@ -156,6 +156,8 @@ pub enum Action {
     // ── Session popup ────────────────────────────────
     /// Toggle the session/branch popup
     ToggleSessionPopup,
+    /// Toggle the branch panel
+    ToggleBranchPanel,
 
     // ── External editor ──────────────────────────────
     /// Open $EDITOR to compose input
@@ -362,6 +364,9 @@ fn common_normal() -> HashMap<KeyCombo, Action> {
     // ── Session popup ─────────────────────────────────
     m.insert(kc(KeyCode::Char('s'), false, false, false), Action::ToggleSessionPopup);
 
+    // ── Branch panel ──────────────────────────────────
+    m.insert(kc(KeyCode::Char('b'), false, false, false), Action::ToggleBranchPanel);
+
     // ── Block IDs ─────────────────────────────────────
     m.insert(kc(KeyCode::Char('I'), false, false, true), Action::ToggleBlockIds);
 
@@ -520,6 +525,9 @@ fn common_insert() -> HashMap<KeyCombo, Action> {
     // ── Session popup ────────────────────────────────
     m.insert(kc(KeyCode::Char('s'), true, false, false), Action::ToggleSessionPopup);
 
+    // ── Branch panel ──────────────────────────────────
+    m.insert(kc(KeyCode::Char('b'), true, false, false), Action::ToggleBranchPanel);
+
     // ── Block IDs ─────────────────────────────────────
     m.insert(kc(KeyCode::Char('i'), true, false, false), Action::ToggleBlockIds);
 
@@ -653,6 +661,7 @@ fn parse_action(s: &str) -> Option<Action> {
         "menu_accept" => Some(Action::MenuAccept),
         "menu_close" => Some(Action::MenuClose),
         "toggle_session_popup" | "session_popup" => Some(Action::ToggleSessionPopup),
+        "toggle_branch_panel" | "branch_panel" => Some(Action::ToggleBranchPanel),
         "open_editor" | "editor" => Some(Action::OpenEditor),
         "search_output" | "search" | "find" => Some(Action::SearchOutput),
         "search_next" | "next_match" => Some(Action::SearchNext),

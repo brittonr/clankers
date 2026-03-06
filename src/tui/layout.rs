@@ -99,7 +99,14 @@ impl Default for PanelLayout {
                 },
                 SideColumn {
                     side: ColumnSide::Right,
-                    column: Column::new(30, vec![PanelSlot::new(PanelId::Subagents), PanelSlot::new(PanelId::Peers)]),
+                    column: Column::new(
+                        30,
+                        vec![
+                            PanelSlot::new(PanelId::Subagents),
+                            PanelSlot::new(PanelId::Peers),
+                            PanelSlot::with_weight(PanelId::Branches, 0),
+                        ],
+                    ),
                 },
             ],
         }

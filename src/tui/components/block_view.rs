@@ -171,40 +171,40 @@ fn render_conversation_block<'a>(
     }
 
     // ── Branch point indicator (above bottom border) ─
-    if let Some(info) = &branch_info {
-        if info.children_count > 1 {
-            // Header line
-            let label = format!("├─ {} branches diverge ─", info.children_count);
+    if let Some(info) = &branch_info
+        && info.children_count > 1
+    {
+        // Header line
+        let label = format!("├─ {} branches diverge ─", info.children_count);
+        lines.push(Line::from(vec![
+            Span::styled("│ ", border_style),
+            Span::styled(
+                label,
+                Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM),
+            ),
+        ]));
+        // Show each child branch with a preview of its prompt
+        for (i, (child_id, preview, is_active)) in info.child_branch_previews.iter().enumerate() {
+            let connector = if i + 1 < info.child_branch_previews.len() {
+                "│ ├─"
+            } else {
+                "│ └─"
+            };
+            let marker = if *is_active { " *" } else { "" };
+            let style = if *is_active {
+                Style::default().fg(Color::Cyan)
+            } else {
+                Style::default().fg(Color::DarkGray)
+            };
+            let id_str = if info.show_id {
+                format!(" #{}", child_id)
+            } else {
+                String::new()
+            };
             lines.push(Line::from(vec![
-                Span::styled("│ ", border_style),
-                Span::styled(
-                    label,
-                    Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM),
-                ),
+                Span::styled(connector, Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM)),
+                Span::styled(format!("{}{} {}", marker, id_str, preview), style),
             ]));
-            // Show each child branch with a preview of its prompt
-            for (i, (child_id, preview, is_active)) in info.child_branch_previews.iter().enumerate() {
-                let connector = if i + 1 < info.child_branch_previews.len() {
-                    "│ ├─"
-                } else {
-                    "│ └─"
-                };
-                let marker = if *is_active { " *" } else { "" };
-                let style = if *is_active {
-                    Style::default().fg(Color::Cyan)
-                } else {
-                    Style::default().fg(Color::DarkGray)
-                };
-                let id_str = if info.show_id {
-                    format!(" #{}", child_id)
-                } else {
-                    String::new()
-                };
-                lines.push(Line::from(vec![
-                    Span::styled(connector, Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM)),
-                    Span::styled(format!("{}{} {}", marker, id_str, preview), style),
-                ]));
-            }
         }
     }
 

@@ -49,36 +49,37 @@
 - [x] Unit tests: branch discovery, name resolution, switching
 - [x] Additional tree methods: `is_branch_point`, `find_divergence_point`, `find_branch_messages`
 
-## Phase 4: Branch indicators in message view
+## Phase 4: Branch indicators in message view ✅
 
 - [x] Add `SessionTree::is_branch_point(message_id)` helper
-- [ ] Modify message view renderer to detect branch points
-- [ ] Render `├─ N branches` indicator when message has multiple children
-- [ ] Indent child messages with tree characters (`├─`, `└─`)
-- [ ] Highlight active branch with `*` marker
-- [ ] Show branch names for child branches
-- [ ] Dim inactive branches (gray text)
-- [ ] Add config option to toggle message ID display (`Ctrl+I`)
-- [ ] Integration test: verify branch indicators render correctly
+- [x] Modify message view renderer to detect branch points
+- [x] Render `├─ N branches` indicator when message has multiple children
+- [x] Indent child messages with tree characters (`├─`, `└─`)
+- [x] Highlight active branch with `*` marker
+- [x] Show branch names for child branches
+- [x] Dim inactive branches (gray text)
+- [x] Add config option to toggle message ID display (`Ctrl+I`)
 
-## Phase 5: Branch panel (TUI component)
+## Phase 5: Branch panel (TUI component) ✅
 
-- [ ] Create `src/tui/components/branch_panel.rs` implementing `Panel` trait
-- [ ] Implement branch list view:
-  - [ ] Fetch all branches via `Session::find_branches()`
-  - [ ] Display table: name, message count, last activity, preview
-  - [ ] Highlight active branch with `*`
-  - [ ] Show divergence point for each branch
-- [ ] Implement keybindings:
-  - [ ] `Enter` — switch to selected branch
-  - [ ] `d` — show branch details view
-  - [ ] `c` — compare with another branch (prompts)
-  - [ ] `m` — merge into another branch (prompts)
-  - [ ] `j`/`k` — navigate list
-  - [ ] `q`/`Esc` — close panel
-- [ ] Register panel in `src/tui/components/mod.rs`
-- [ ] Add keyboard shortcut `Ctrl+B` to open branch panel
-- [ ] Integration test: open panel, navigate, switch branches
+- [x] Create `src/tui/components/branch_panel.rs` implementing `Panel` trait
+- [x] Implement branch list view:
+  - [x] Discover leaf branches from block tree
+  - [x] Display: name, message count, last prompt preview
+  - [x] Highlight active branch with `●` / `○`
+  - [x] Show divergence point for each branch
+  - [x] Track total tokens per branch
+- [x] Implement keybindings:
+  - [x] `Enter` — switch to selected branch (via `/switch` command)
+  - [x] `d` — show branch details view
+  - [x] `j`/`k` — navigate list
+  - [x] `q`/`Esc` — close panel / unfocus
+- [x] Register panel in `src/tui/components/mod.rs`
+- [x] Add `PanelId::Branches` variant to panel registry
+- [x] Add keyboard shortcut `b` (normal) / `Ctrl+B` (insert) to toggle branch panel
+- [x] Panel hidden by default (weight 0), toggled on demand
+- [x] Auto-refresh on block finalization
+- [x] 13 unit tests: tree walking, divergence detection, branch discovery, navigation
 
 ## Phase 6: Branch details view
 

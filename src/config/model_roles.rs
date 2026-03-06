@@ -117,16 +117,16 @@ impl ModelRoles {
     /// Resolve the model for a role. Falls back to the "default" role's model,
     /// then to the provided fallback.
     pub fn resolve(&self, name: &str, fallback: &str) -> String {
-        if let Some(role) = self.get(name) {
-            if let Some(ref m) = role.model {
-                return m.clone();
-            }
+        if let Some(role) = self.get(name)
+            && let Some(ref m) = role.model
+        {
+            return m.clone();
         }
         // Fall back to "default" role's model
-        if let Some(def) = self.roles.get("default") {
-            if let Some(ref m) = def.model {
-                return m.clone();
-            }
+        if let Some(def) = self.roles.get("default")
+            && let Some(ref m) = def.model
+        {
+            return m.clone();
         }
         fallback.to_string()
     }
