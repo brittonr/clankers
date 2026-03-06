@@ -146,7 +146,7 @@ impl SlashHandler for PeersHandler {
         use crate::tui::panel::PanelId;
 
         // Switch to peers panel tab
-        ctx.app.focus.focus(PanelId::Peers);
+        ctx.app.focus_panel(PanelId::Peers);
 
         if args.is_empty() {
             // Just show the panel — refresh peers from registry

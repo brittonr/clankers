@@ -3,8 +3,8 @@
 pub mod app;
 pub mod components;
 pub mod event;
-pub mod layout;
 pub mod panel;
+pub mod panes;
 pub mod render;
 pub mod selection;
 pub mod theme;

@@ -30,12 +30,12 @@ pub(crate) fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u1
                     }
 
                     // Switch to normal mode if we were focused on a panel
-                    app.focus.unfocus();
+                    app.unfocus_panel();
                 }
                 HitRegion::Editor => {
                     // Click in editor → switch to insert mode and place cursor
                     app.selection = None;
-                    app.focus.unfocus();
+                    app.unfocus_panel();
                     app.input_mode = InputMode::Insert;
 
                     // Compute cursor position from click coordinates
@@ -57,7 +57,7 @@ pub(crate) fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u1
                 HitRegion::Panel(panel_id) => {
                     // Click on a panel → focus it
                     app.selection = None;
-                    app.focus.focus(panel_id);
+                    app.focus_panel(panel_id);
                     app.input_mode = InputMode::Normal;
                 }
                 HitRegion::StatusBar | HitRegion::None => {

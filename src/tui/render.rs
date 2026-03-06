@@ -1,7 +1,7 @@
 //! Top-level layout renderer
 //!
-//! Uses [`PanelLayout`] to split the terminal into columns and render
-//! side-panels via the [`Panel`] trait, while the main chat column
+//! Uses hypertile BSP tiling to split the terminal into panes and render
+//! side-panels via the [`Panel`] trait, while the chat pane
 //! (blocks + editor + status bar) is rendered directly.
 
 use ratatui::Frame;
@@ -26,6 +26,7 @@ use crate::tui::components::slash_menu;
 use crate::tui::components::status_bar::StatusBarData;
 use crate::tui::components::status_bar::{self};
 use crate::tui::panel::DrawContext;
+use crate::tui::panes::PaneKind;
 use crate::tui::widget_host;
 
 /// Render the full application UI
@@ -51,59 +52,70 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         pp.refresh_entries();
     }
 
-    // ── Split terminal via layout engine ────────────────────────────
+    // ── Compute BSP tiling layout ───────────────────────────────────
 
-    let regions = app.panel_layout.split(frame.area());
-    let main_area = regions.main;
+    app.tiling.compute_layout(frame.area());
 
-    // ── Save panel areas for mouse hit-testing ────────────────────
+    // ── Render each pane ────────────────────────────────────────────
 
-    app.panel_areas = regions.panels.clone();
-
-    // ── Render side panels ──────────────────────────────────────────
-
-    // Collect panel render list first, then render with mutable access.
-    let panel_render = regions.panels.clone();
+    // Collect pane snapshots first (to avoid borrow conflicts with app).
+    let pane_snapshots: Vec<_> = app.tiling.panes();
     let theme = app.theme.clone();
-    for (panel_id, panel_area) in panel_render {
-        let focused = app.focus.is_focused(panel_id);
-        let ctx = DrawContext {
-            theme: &theme,
-            focused,
-        };
+    let mut chat_area = Rect::default();
+    let mut chat_focused = false;
 
-        // Use draw_panel_scrolled for auto-scroll dimension tracking
-        let panel = app.panel_mut(panel_id);
-        crate::tui::panel::draw_panel_scrolled(frame, panel, panel_area, &ctx);
+    for pane in &pane_snapshots {
+        match app.pane_registry.kind(pane.id) {
+            Some(PaneKind::Panel(panel_id)) => {
+                let panel_id = *panel_id;
+                let focused = app.is_panel_focused(panel_id);
+                let ctx = DrawContext {
+                    theme: &theme,
+                    focused,
+                };
+                let panel = app.panel_mut(panel_id);
+                crate::tui::panel::draw_panel_scrolled(frame, panel, pane.rect, &ctx);
+            }
+            Some(PaneKind::Chat) => {
+                chat_area = pane.rect;
+                chat_focused = !app.has_panel_focus();
+            }
+            Some(PaneKind::Empty) | None => {
+                // Render placeholder for empty/unknown panes
+                let block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::DarkGray))
+                    .title(Span::styled(" Empty ", Style::default().fg(Color::DarkGray)));
+                frame.render_widget(block, pane.rect);
+            }
+        }
     }
 
-    // ── Main column layout ──────────────────────────────────────────
+    // ── Main (chat) column layout ───────────────────────────────────
 
-    let main_focused = !app.focus.has_panel_focus();
-    let main_render_area = if main_focused {
+    let main_render_area = if chat_focused {
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Cyan))
             .title(Span::styled(" Main ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
-        let inner = block.inner(main_area);
-        frame.render_widget(block, main_area);
+        let inner = block.inner(chat_area);
+        frame.render_widget(block, chat_area);
         inner
     } else {
-        main_area
+        chat_area
     };
 
     render_main_column(frame, app, main_render_area);
 
     // ── Panel navigation hint ───────────────────────────────────────
 
-    if main_focused {
-        // Hint is shown in the main border title area instead
+    if chat_focused {
         let hint = Span::styled(" h/l:panels j/k:panes ", Style::default().fg(Color::DarkGray));
         let hint_len = hint.width() as u16;
         let hint_area = Rect {
-            x: main_area.x + main_area.width.saturating_sub(hint_len + 1),
-            y: main_area.y,
-            width: hint_len.min(main_area.width),
+            x: chat_area.x + chat_area.width.saturating_sub(hint_len + 1),
+            y: chat_area.y,
+            width: hint_len.min(chat_area.width),
             height: 1,
         };
         frame.render_widget(Paragraph::new(hint), hint_area);

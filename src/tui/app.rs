@@ -43,8 +43,8 @@ pub enum AppState {
     Dialog,
 }
 
-// PanelTab enum deleted — panel focus is tracked by FocusTracker in layout.rs,
-// which uses PanelId directly. See App::focus field.
+// Panel focus is tracked by `focused_panel: Option<PanelId>` and the hypertile
+// BSP tiling engine (`tiling: Hypertile`). See App::focus_panel() / unfocus_panel().
 
 /// Connection status to the clankers-router daemon
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,7 +163,6 @@ pub struct App {
     /// Git status (branch + dirty indicator)
     pub git_status: super::components::git_status::GitStatus,
     // Legacy panel_tab/right_panel_tab/panel_focused deleted.
-    // Panel focus is tracked by self.focus: FocusTracker (see layout.rs).
     /// Pending images attached via clipboard paste (base64-encoded PNG data)
     pub pending_images: Vec<PendingImage>,
     /// Whether a clipboard read is in progress (to avoid stacking requests)
@@ -198,17 +197,19 @@ pub struct App {
     pub router_status: RouterStatus,
     /// Leader key (Space) popup menu
     pub leader_menu: super::components::leader_menu::LeaderMenu,
-    /// Declarative panel layout (configurable column arrangement)
-    pub panel_layout: super::layout::PanelLayout,
-    /// Which panel (if any) currently has focus
-    pub focus: super::layout::FocusTracker,
+    // ── Hypertile BSP tiling ────────────────────────────
+    /// BSP tiling engine (replaces the old column-based PanelLayout).
+    pub tiling: ratatui_hypertile::Hypertile,
+    /// Maps hypertile PaneIds to their content type (Chat, Panel, Empty).
+    pub pane_registry: super::panes::PaneRegistry,
+    /// Which panel (if any) currently has focus.
+    /// `None` means the chat pane is focused.
+    pub focused_panel: Option<PanelId>,
     // ── Mouse hit-test areas (updated each render) ───
     /// The editor/input area Rect from the last render
     pub editor_area: Rect,
     /// The status bar area Rect from the last render
     pub status_area: Rect,
-    /// Panel areas from the last render: (PanelId, Rect)
-    pub panel_areas: Vec<(PanelId, Rect)>,
 
     // ── Streaming tool output ────────────────────────
     /// Active tool executions keyed by call_id (for spinner/elapsed/line-count)
@@ -310,11 +311,11 @@ impl App {
             available_models: Vec::new(),
             router_status: RouterStatus::Disconnected,
             leader_menu: super::components::leader_menu::LeaderMenu::new(),
-            panel_layout: super::layout::PanelLayout::default(),
-            focus: super::layout::FocusTracker::new(),
+            tiling: super::panes::default_tiling(),
+            pane_registry: super::panes::default_registry(),
+            focused_panel: None,
             editor_area: Rect::default(),
             status_area: Rect::default(),
-            panel_areas: Vec::new(),
             active_tools: HashMap::new(),
             progress_renderer: super::components::progress_renderer::ProgressRenderer::new(),
             tick: 0,
@@ -414,9 +415,54 @@ impl App {
     /// Panels like Subagents and Files have sub-views that should reset
     /// when the user exits the panel.
     pub fn close_focused_panel_views(&mut self) {
-        if let Some(id) = self.focus.focused {
+        if let Some(id) = self.focused_panel {
             self.panel_mut(id).close_detail_view();
         }
+    }
+
+    // ── Focus helpers (bridge hypertile ↔ PanelId) ──────────────────
+
+    /// Whether a side panel (not chat) currently has focus.
+    pub fn has_panel_focus(&self) -> bool {
+        self.focused_panel.is_some()
+    }
+
+    /// Focus a specific panel by `PanelId`. Updates both hypertile and
+    /// the `focused_panel` tracker.
+    pub fn focus_panel(&mut self, panel_id: PanelId) {
+        if let Some(pane) = self.pane_registry.find_panel(panel_id) {
+            let _ = self.tiling.focus_pane(pane);
+            self.focused_panel = Some(panel_id);
+        }
+    }
+
+    /// Return focus to the chat pane (unfocus any panel).
+    pub fn unfocus_panel(&mut self) {
+        let chat = self.pane_registry.chat_pane();
+        let _ = self.tiling.focus_pane(chat);
+        self.focused_panel = None;
+    }
+
+    /// Is the given panel currently focused?
+    pub fn is_panel_focused(&self, panel_id: PanelId) -> bool {
+        self.focused_panel == Some(panel_id)
+    }
+
+    /// Apply a hypertile tiling action (focus, resize, etc.) and sync
+    /// our `focused_panel` tracker from the resulting hypertile state.
+    pub fn apply_tiling_action(&mut self, action: ratatui_hypertile::HypertileAction) {
+        self.tiling.apply_action(action);
+        self.sync_focused_panel();
+    }
+
+    /// Sync `focused_panel` from hypertile's current focus.
+    pub fn sync_focused_panel(&mut self) {
+        self.focused_panel = self.tiling.focused_pane().and_then(|pane_id| {
+            match self.pane_registry.kind(pane_id) {
+                Some(super::panes::PaneKind::Panel(panel_id)) => Some(*panel_id),
+                _ => None, // Chat or Empty → no panel focus
+            }
+        });
     }
 
     /// Advance the animation tick (called once per render frame)
@@ -1080,10 +1126,18 @@ impl App {
         if rect_contains(self.status_area, col, row) {
             return HitRegion::StatusBar;
         }
-        // Check panels
-        for &(panel_id, area) in &self.panel_areas {
-            if rect_contains(area, col, row) {
-                return HitRegion::Panel(panel_id);
+        // Check panes via hypertile geometry
+        for pane in self.tiling.panes() {
+            if rect_contains(pane.rect, col, row) {
+                match self.pane_registry.kind(pane.id) {
+                    Some(super::panes::PaneKind::Panel(panel_id)) => {
+                        return HitRegion::Panel(*panel_id);
+                    }
+                    Some(super::panes::PaneKind::Chat) => {
+                        // Fall through to messages/editor checks below
+                    }
+                    _ => {}
+                }
             }
         }
         // Check messages area
@@ -1200,21 +1254,17 @@ mod tests {
         app.messages_area = Rect::new(20, 0, 60, 40);
         app.editor_area = Rect::new(20, 35, 60, 5);
         app.status_area = Rect::new(20, 40, 60, 1);
-        app.panel_areas = vec![
-            (PanelId::Todo, Rect::new(0, 0, 20, 20)),
-            (PanelId::Files, Rect::new(0, 20, 20, 20)),
-        ];
+        // Compute hypertile layout so pane rects are populated
+        app.tiling.compute_layout(Rect::new(0, 0, 100, 41));
 
         // Click in the editor area
         assert_eq!(app.hit_test(30, 37), HitRegion::Editor);
         // Click in the messages area (above editor)
         assert_eq!(app.hit_test(30, 10), HitRegion::Messages);
-        // Click in a panel
+        // Click in a panel (Todo is in the left column)
         assert_eq!(app.hit_test(5, 5), HitRegion::Panel(PanelId::Todo));
         assert_eq!(app.hit_test(5, 25), HitRegion::Panel(PanelId::Files));
         // Click on status bar
         assert_eq!(app.hit_test(30, 40), HitRegion::StatusBar);
-        // Click nowhere tracked
-        assert_eq!(app.hit_test(90, 25), HitRegion::None);
     }
 }

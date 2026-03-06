@@ -636,14 +636,14 @@ mod tests {
                     "capture": true
                 },
                 {
-                    // l from left column → back to main (spatial navigation)
-                    "action": { "type": "type", "text": "l" },
+                    // h from right panel → focus chat (spatial: chat is to the left)
+                    "action": { "type": "type", "text": "h" },
                     "assert_absent": "j/k Tab",
                     "assert_visible": "Main"
                 },
                 {
-                    // h from main → focus left column again
-                    "action": { "type": "type", "text": "h" },
+                    // l from main → focus right panel again (spatial: right panels are to the right)
+                    "action": { "type": "type", "text": "l" },
                     "assert_visible": "j/k Tab",
                     "capture": true
                 },

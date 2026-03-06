@@ -7,65 +7,56 @@ pub struct LayoutHandler;
 
 impl SlashHandler for LayoutHandler {
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
-        use crate::tui::layout::PanelLayout;
-        use crate::tui::panel::PanelId;
+        use crate::tui::panes;
 
         let sub = args.trim().to_lowercase();
         match sub.as_str() {
             "default" | "3col" | "three" => {
-                ctx.app.panel_layout = PanelLayout::default_three_column();
+                ctx.app.tiling = panes::default_tiling();
+                ctx.app.pane_registry = panes::default_registry();
+                ctx.app.unfocus_panel();
                 ctx.app.push_system("Layout: default 3-column".into(), false);
             }
             "wide" | "chat" => {
-                ctx.app.panel_layout = PanelLayout::wide_chat();
+                let (tiling, registry) = panes::wide_chat_tiling();
+                ctx.app.tiling = tiling;
+                ctx.app.pane_registry = registry;
+                ctx.app.unfocus_panel();
                 ctx.app.push_system("Layout: wide chat with left sidebar".into(), false);
             }
             "focused" | "none" | "clean" => {
-                ctx.app.panel_layout = PanelLayout::focused();
-                ctx.app.focus.unfocus();
-                ctx.app.focus.unfocus();
+                let (tiling, registry) = panes::focused_tiling();
+                ctx.app.tiling = tiling;
+                ctx.app.pane_registry = registry;
+                ctx.app.unfocus_panel();
                 ctx.app.push_system("Layout: focused (no panels)".into(), false);
             }
             "right" => {
-                ctx.app.panel_layout = PanelLayout::right_heavy();
+                let (tiling, registry) = panes::right_heavy_tiling();
+                ctx.app.tiling = tiling;
+                ctx.app.pane_registry = registry;
+                ctx.app.unfocus_panel();
                 ctx.app.push_system("Layout: right-heavy".into(), false);
-            }
-            s if s.starts_with("toggle ") => {
-                let panel_name = s.trim_start_matches("toggle ").trim();
-                let panel_id = match panel_name {
-                    "todo" => Some(PanelId::Todo),
-                    "files" | "file" => Some(PanelId::Files),
-                    "subagents" | "sub" => Some(PanelId::Subagents),
-                    "peers" | "peer" => Some(PanelId::Peers),
-                    _ => None,
-                };
-                if let Some(id) = panel_id {
-                    ctx.app.panel_layout.toggle_panel(id);
-                    ctx.app.push_system(format!("Toggled panel: {}", id.label()), false);
-                } else {
-                    ctx.app.push_system(
-                        format!("Unknown panel '{}'. Use: todo, files, subagents, peers", panel_name),
-                        true,
-                    );
-                }
             }
             "" => {
                 // Show current layout info
-                let order = ctx.app.panel_layout.focus_order();
-                let names: Vec<&str> = order.iter().map(|id| id.label()).collect();
-                let msg = if names.is_empty() {
-                    "Layout: focused (no panels)\nUse /layout <preset> to switch.\nPresets: default, wide, focused, right".to_string()
-                } else {
-                    format!(
-                        "Layout: {} panel(s) visible: {}\nUse /layout <preset> to switch.\nPresets: default, wide, focused, right",
-                        names.len(),
-                        names.join(", ")
-                    )
-                };
+                let pane_count = ctx.app.tiling.panes().len();
+                let panel_names: Vec<String> = ctx.app.tiling.panes().iter().filter_map(|p| {
+                    match ctx.app.pane_registry.kind(p.id) {
+                        Some(panes::PaneKind::Panel(panel_id)) => Some(panel_id.label().to_string()),
+                        Some(panes::PaneKind::Chat) => Some("Chat".to_string()),
+                        _ => None,
+                    }
+                }).collect();
+                let msg = format!(
+                    "Layout: {} pane(s): {}\nUse /layout <preset> to switch.\nPresets: default, wide, focused, right",
+                    pane_count,
+                    panel_names.join(", ")
+                );
                 ctx.app.push_system(msg, false);
             }
             _ => {
-                ctx.app.push_system("Unknown layout. Use: default, wide, focused, right, toggle <panel>".into(), true);
+                ctx.app.push_system("Unknown layout. Use: default, wide, focused, right".into(), true);
             }
         }
     }

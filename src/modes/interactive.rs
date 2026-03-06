@@ -1098,19 +1098,25 @@ async fn run_event_loop(
                     }
 
                     // ── Panel intercepts in normal mode ──────────
-                    if app.focus.has_panel_focus() && app.input_mode == InputMode::Normal {
+                    if app.has_panel_focus() && app.input_mode == InputMode::Normal {
                         use crossterm::event::KeyCode;
                         use crate::tui::panel::PanelAction;
 
-                        // Tab / Shift+Tab cycles sub-panels within the same column
-                        if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
-                            app.focus.cycle_in_column(&app.panel_layout);
+                        // Tab / Shift+Tab cycles focus to the next/prev pane
+                        if matches!(key.code, KeyCode::Tab) {
+                            use ratatui_hypertile::HypertileAction;
+                            app.apply_tiling_action(HypertileAction::FocusNext);
+                            continue;
+                        }
+                        if matches!(key.code, KeyCode::BackTab) {
+                            use ratatui_hypertile::HypertileAction;
+                            app.apply_tiling_action(HypertileAction::FocusPrev);
                             continue;
                         }
 
                         // Side-effect keys that need app-level resources
                         // (the Panel trait can't send on channels)
-                        if let Some(focused_id) = app.focus.focused {
+                        if let Some(focused_id) = app.focused_panel {
                             use crate::tui::panel::PanelId;
                             match (focused_id, key.code, key.modifiers) {
                                 // Subagents: 'x' = kill selected running subagent
@@ -1150,12 +1156,12 @@ async fn run_event_loop(
                         }
 
                         // Delegate everything else to the focused panel's handle_key_event
-                        if let Some(focused_id) = app.focus.focused {
+                        if let Some(focused_id) = app.focused_panel {
                             let result = app.panel_mut(focused_id).handle_key_event(key);
                             match result {
                                 Some(PanelAction::Consumed) => continue,
                                 Some(PanelAction::Unfocus) => {
-                                    app.focus.unfocus();
+                                    app.unfocus_panel();
                                     continue;
                                 }
                                 Some(PanelAction::SlashCommand(_cmd)) => continue,
@@ -1168,7 +1174,7 @@ async fn run_event_loop(
                                     continue;
                                 }
                                 Some(PanelAction::FocusPanel(id)) => {
-                                    app.focus.focus(id);
+                                    app.focus_panel(id);
                                     continue;
                                 }
                                 None => {} // key not handled by panel, fall through
@@ -1266,9 +1272,7 @@ fn handle_action(
     // Panel-specific key handling is done by Panel::handle_key_event()
     // in the raw key dispatch above — this block only handles Action-level
     // structural navigation (focus/unfocus, column movement, mode switching).
-    if app.focus.has_panel_focus() {
-        use crate::tui::layout::ColumnSide;
-
+    if app.has_panel_focus() {
         let is_global = match &action {
             Action::Core(c) => matches!(c, 
                 CoreAction::Quit | CoreAction::Cancel | CoreAction::EnterNormal | CoreAction::PasteImage
@@ -1285,45 +1289,61 @@ fn handle_action(
             match &action {
                 Action::Core(CoreAction::Unfocus) => {
                     app.close_focused_panel_views();
-                    app.focus.unfocus();
+                    app.unfocus_panel();
                     return;
                 }
                 Action::Extended(n) if n == "toggle_panel_focus" => {
                     app.close_focused_panel_views();
-                    app.focus.unfocus();
+                    app.unfocus_panel();
                     return;
                 }
                 Action::Core(CoreAction::EnterInsert) => {
                     app.close_focused_panel_views();
-                    app.focus.unfocus();
+                    app.unfocus_panel();
                     app.input_mode = InputMode::Insert;
                     return;
                 }
                 Action::Core(CoreAction::EnterCommand) => {
                     app.close_focused_panel_views();
-                    app.focus.unfocus();
+                    app.unfocus_panel();
                     // Don't return — fall through to main handler for "/" prefix setup
                 }
-                // h/l: move between columns and main area
+                // h/l: use hypertile directional focus
                 Action::Extended(name) if matches!(name.as_str(), "panel_next_tab" | "branch_next") => {
-                    if let Some(id) = app.focus.focused
-                        && app.panel_layout.panel_side(id) == Some(ColumnSide::Left)
-                    {
-                        app.focus.unfocus();
-                    }
+                    use ratatui_hypertile::{HypertileAction, Towards};
+                    use ratatui::layout::Direction;
+                    app.apply_tiling_action(HypertileAction::FocusDirection {
+                        direction: Direction::Horizontal,
+                        towards: Towards::End,
+                    });
                     return;
                 }
                 Action::Extended(name) if matches!(name.as_str(), "panel_prev_tab" | "branch_prev") => {
-                    if let Some(id) = app.focus.focused
-                        && app.panel_layout.panel_side(id) == Some(ColumnSide::Right)
-                    {
-                        app.focus.unfocus();
-                    }
+                    use ratatui_hypertile::{HypertileAction, Towards};
+                    use ratatui::layout::Direction;
+                    app.apply_tiling_action(HypertileAction::FocusDirection {
+                        direction: Direction::Horizontal,
+                        towards: Towards::Start,
+                    });
                     return;
                 }
-                // j/k: cycle panels within the same column
-                Action::Core(CoreAction::FocusPrevBlock | CoreAction::FocusNextBlock) => {
-                    app.focus.cycle_in_column(&app.panel_layout);
+                // j/k: directional focus vertically
+                Action::Core(CoreAction::FocusPrevBlock) => {
+                    use ratatui_hypertile::{HypertileAction, Towards};
+                    use ratatui::layout::Direction;
+                    app.apply_tiling_action(HypertileAction::FocusDirection {
+                        direction: Direction::Vertical,
+                        towards: Towards::Start,
+                    });
+                    return;
+                }
+                Action::Core(CoreAction::FocusNextBlock) => {
+                    use ratatui_hypertile::{HypertileAction, Towards};
+                    use ratatui::layout::Direction;
+                    app.apply_tiling_action(HypertileAction::FocusDirection {
+                        direction: Direction::Vertical,
+                        towards: Towards::End,
+                    });
                     return;
                 }
                 // Everything else is consumed (don't leak to main handler)
@@ -1493,8 +1513,12 @@ fn handle_action(
                 if app.focused_block.is_some() {
                     app.branch_prev();
                 } else {
-                    // h = focus left column
-                    app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Left);
+                    // h = directional focus left
+                    use ratatui_hypertile::{HypertileAction, Towards};
+                    app.apply_tiling_action(HypertileAction::FocusDirection {
+                        direction: ratatui::layout::Direction::Horizontal,
+                        towards: Towards::Start,
+                    });
                     app.input_mode = InputMode::Normal;
                 }
             }
@@ -1502,8 +1526,12 @@ fn handle_action(
                 if app.focused_block.is_some() {
                     app.branch_next();
                 } else {
-                    // l = focus right column
-                    app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Right);
+                    // l = directional focus right
+                    use ratatui_hypertile::{HypertileAction, Towards};
+                    app.apply_tiling_action(HypertileAction::FocusDirection {
+                        direction: ratatui::layout::Direction::Horizontal,
+                        towards: Towards::End,
+                    });
                     app.input_mode = InputMode::Normal;
                 }
             }
@@ -1525,23 +1553,31 @@ fn handle_action(
 
             // ── Panel focus ─────────────────────────────
             "toggle_panel_focus" => {
-                if app.focus.has_panel_focus() {
-                    app.focus.unfocus();
+                if app.has_panel_focus() {
+                    app.unfocus_panel();
                 } else {
-                    // Focus the first panel in the layout
-                    let order = app.panel_layout.focus_order();
-                    if let Some(&first) = order.first() {
-                        app.focus.focus(first);
-                    }
+                    // Focus the next pane (cycles through all panes)
+                    use ratatui_hypertile::HypertileAction;
+                    app.apply_tiling_action(HypertileAction::FocusNext);
                     app.input_mode = InputMode::Normal;
                 }
             }
             "panel_next_tab" => {
-                app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Right);
+                // l = directional focus right
+                use ratatui_hypertile::{HypertileAction, Towards};
+                app.apply_tiling_action(HypertileAction::FocusDirection {
+                    direction: ratatui::layout::Direction::Horizontal,
+                    towards: Towards::End,
+                });
                 app.input_mode = InputMode::Normal;
             }
             "panel_prev_tab" => {
-                app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Left);
+                // h = directional focus left
+                use ratatui_hypertile::{HypertileAction, Towards};
+                app.apply_tiling_action(HypertileAction::FocusDirection {
+                    direction: ratatui::layout::Direction::Horizontal,
+                    towards: Towards::Start,
+                });
                 app.input_mode = InputMode::Normal;
             }
             "panel_scroll_up" => {
@@ -1564,7 +1600,7 @@ fn handle_action(
                 if let Some(subagent_panel) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
                     subagent_panel.clear_done();
                     if !subagent_panel.is_visible() {
-                        app.focus.unfocus();
+                        app.unfocus_panel();
                     }
                 }
             }
@@ -1604,12 +1640,11 @@ fn handle_action(
             "toggle_branch_panel" => {
                 use crate::tui::components::branch_panel::BranchPanel;
                 use crate::tui::panel::PanelId;
-                if app.focus.focused == Some(PanelId::Branches) {
-                    // Hide and unfocus
-                    app.panel_layout.toggle_panel(PanelId::Branches);
-                    app.focus.unfocus();
+                if app.focused_panel == Some(PanelId::Branches) {
+                    // Unfocus (panel stays in the tree but we leave it)
+                    app.unfocus_panel();
                 } else {
-                    // Refresh branch data, show panel, and focus it
+                    // Refresh branch data and focus it
                     let active_ids: std::collections::HashSet<usize> = app
                         .blocks
                         .iter()
@@ -1621,16 +1656,7 @@ fn handle_action(
                     if let Some(bp) = app.panels.downcast_mut::<BranchPanel>(PanelId::Branches) {
                         bp.refresh(&app.all_blocks.clone(), &active_ids);
                     }
-                    // Ensure the panel is visible in the layout
-                    let is_visible = app
-                        .panel_layout
-                        .columns
-                        .iter()
-                        .any(|c| c.column.slots.iter().any(|s| s.id == PanelId::Branches && s.weight > 0));
-                    if !is_visible {
-                        app.panel_layout.toggle_panel(PanelId::Branches);
-                    }
-                    app.focus.focus(PanelId::Branches);
+                    app.focus_panel(PanelId::Branches);
                 }
             }
 
