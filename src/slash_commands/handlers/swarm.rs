@@ -241,7 +241,7 @@ impl SlashHandler for PeersHandler {
                                 let rp = rp.clone();
                                 let ip = ip.clone();
                                 tokio::spawn(async move {
-                                    crate::modes::interactive::probe_peer_background(nid, rp, ip, ptx).await;
+                                    crate::modes::peers_background::probe_peer_background(nid, rp, ip, ptx).await;
                                 });
                             }
                         }
@@ -259,7 +259,7 @@ impl SlashHandler for PeersHandler {
                         ctx.app.push_system(format!("Probing {}...", &node_id[..12.min(node_id.len())]), false);
                         let ptx = ctx.panel_tx.clone();
                         tokio::spawn(async move {
-                            crate::modes::interactive::probe_peer_background(node_id, registry_path, identity_path, ptx).await;
+                            crate::modes::peers_background::probe_peer_background(node_id, registry_path, identity_path, ptx).await;
                         });
                     }
                 }
@@ -270,7 +270,7 @@ impl SlashHandler for PeersHandler {
                     let identity_path = crate::modes::rpc::iroh::identity_path(&paths);
                     let ptx = ctx.panel_tx.clone();
                     tokio::spawn(async move {
-                        crate::modes::interactive::discover_peers_background(registry_path, identity_path, ptx).await;
+                        crate::modes::peers_background::discover_peers_background(registry_path, identity_path, ptx).await;
                     });
                 }
                 "allow" => {

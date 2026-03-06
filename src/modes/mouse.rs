@@ -70,7 +70,7 @@ pub(crate) fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u1
             // We use the same paste mechanism as Ctrl+V but only on click.
             if matches!(region, HitRegion::Editor) {
                 app.input_mode = InputMode::Insert;
-                super::interactive::paste_from_clipboard(app);
+                super::clipboard::paste_from_clipboard(app);
             }
         }
         Button::Right => {

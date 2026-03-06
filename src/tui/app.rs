@@ -164,7 +164,7 @@ pub struct App {
     /// Whether a clipboard read is in progress (to avoid stacking requests)
     pub clipboard_pending: bool,
     /// Receiver for background clipboard reads
-    pub clipboard_rx: Option<std::sync::mpsc::Receiver<crate::modes::interactive::ClipboardResult>>,
+    pub clipboard_rx: Option<std::sync::mpsc::Receiver<crate::modes::clipboard::ClipboardResult>>,
     /// Whether the session/branch popup is visible
     pub session_popup_visible: bool,
     /// Whether to show block IDs in conversation view (toggled with Ctrl+I)

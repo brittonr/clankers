@@ -487,7 +487,7 @@ async fn run_event_loop(
     // If we have seed messages from a resumed session, restore them into the agent
     // and rebuild display blocks so the user sees the conversation
     if !seed_messages.is_empty() {
-        restore_display_blocks(app, &seed_messages);
+        super::session_restore::restore_display_blocks(app, &seed_messages);
         let _ = cmd_tx.send(AgentCommand::SeedMessages(seed_messages));
     }
 
@@ -757,7 +757,7 @@ async fn run_event_loop(
 
                     // Dispatch to plugins and surface their messages / UI actions
                     if let Some(ref pm) = plugin_manager {
-                        let result = dispatch_event_to_plugins(pm, &event);
+                        let result = super::plugin_dispatch::dispatch_event_to_plugins(pm, &event);
                         for (plugin_name, message) in result.messages {
                             app.push_system(format!("🔌 {}: {}", plugin_name, message), false);
                         }
@@ -957,7 +957,7 @@ async fn run_event_loop(
         }
 
         // Check for completed background clipboard reads
-        poll_clipboard_result(app);
+        super::clipboard::poll_clipboard_result(app);
 
         // Poll terminal events
         let mut poll_timeout = Duration::from_millis(50);
@@ -1060,7 +1060,7 @@ async fn run_event_loop(
                                         let identity_path = crate::modes::rpc::iroh::identity_path(&paths);
                                         let ptx = panel_tx.clone();
                                         tokio::spawn(async move {
-                                            probe_peer_background(node_id, registry_path, identity_path, ptx).await;
+                                            super::peers_background::probe_peer_background(node_id, registry_path, identity_path, ptx).await;
                                         });
                                     }
                                     continue;
@@ -1094,7 +1094,7 @@ async fn run_event_loop(
                     if let Some(action) = action {
                         // OpenEditor needs terminal access — handle it here
                         if action == Action::OpenEditor {
-                            open_external_editor(terminal, app);
+                            super::clipboard::open_external_editor(terminal, app);
                             continue;
                         }
 
@@ -1151,7 +1151,7 @@ async fn run_event_loop(
         // ── Check for deferred external editor request ──
         if app.open_editor_requested {
             app.open_editor_requested = false;
-            open_external_editor(terminal, app);
+            super::clipboard::open_external_editor(terminal, app);
         }
     }
     Ok(())
@@ -1478,7 +1478,7 @@ fn handle_action(
 
         // ── Clipboard paste (text or image) ──────────
         Action::PasteImage => {
-            paste_from_clipboard(app);
+            super::clipboard::paste_from_clipboard(app);
         }
 
         // ── External editor ─────────────────────────
@@ -1778,7 +1778,7 @@ pub(crate) fn resume_session_from_file(
             app.blocks.clear();
             app.all_blocks.clear();
             app.active_block = None;
-            restore_display_blocks(app, &msgs);
+            super::session_restore::restore_display_blocks(app, &msgs);
 
             // Seed the agent with restored messages
             let _ = cmd_tx.send(AgentCommand::SeedMessages(msgs));
@@ -1814,228 +1814,13 @@ fn handle_insert_char(app: &mut App, key: &crossterm::event::KeyEvent) {
 // Clipboard paste (text + image) — runs on a background thread
 // ---------------------------------------------------------------------------
 
-/// Result of a background clipboard read.
-pub enum ClipboardResult {
-    /// Text was found in the clipboard.
-    Text(String),
-    /// An image was found: base64 PNG, mime type, raw size, width, height.
-    Image {
-        encoded: String,
-        mime: String,
-        raw_size: usize,
-        width: u32,
-        height: u32,
-    },
-    /// Nothing useful in clipboard.
-    Empty(String),
-    /// Error accessing the clipboard.
-    Error(String),
-}
 
-/// Read from the system clipboard on a background thread. Tries text first,
-/// then image. This avoids freezing the TUI when another application (e.g. a
-/// browser) holds the Wayland clipboard selection.
-pub(crate) fn paste_from_clipboard(app: &mut App) {
-    if app.clipboard_pending {
-        return;
-    }
-    app.clipboard_pending = true;
 
-    let (tx, rx) = std::sync::mpsc::channel::<ClipboardResult>();
-
-    std::thread::spawn(move || {
-        let result = (|| -> Result<ClipboardResult, ClipboardResult> {
-            let mut clipboard =
-                arboard::Clipboard::new().map_err(|e| ClipboardResult::Error(format!("Clipboard error: {e}")))?;
-
-            // Try text first — this is what the user almost always wants with Ctrl+V
-            if let Ok(text) = clipboard.get_text()
-                && !text.is_empty()
-            {
-                return Ok(ClipboardResult::Text(text));
-            }
-
-            // Fall back to image
-            match clipboard.get_image() {
-                Ok(img_data) => {
-                    use base64::Engine;
-                    use base64::engine::general_purpose::STANDARD as BASE64;
-
-                    let width = img_data.width as u32;
-                    let height = img_data.height as u32;
-                    let rgba: Vec<u8> = img_data.bytes.into_owned();
-
-                    let img = image::RgbaImage::from_raw(width, height, rgba)
-                        .ok_or_else(|| ClipboardResult::Error("Failed to decode clipboard image data.".to_string()))?;
-
-                    let mut png_buf: Vec<u8> = Vec::new();
-                    let mut cursor = std::io::Cursor::new(&mut png_buf);
-                    img.write_to(&mut cursor, image::ImageFormat::Png)
-                        .map_err(|e| ClipboardResult::Error(format!("Failed to encode image as PNG: {e}")))?;
-
-                    let raw_size = png_buf.len();
-                    let encoded = BASE64.encode(&png_buf);
-
-                    Ok(ClipboardResult::Image {
-                        encoded,
-                        mime: "image/png".to_string(),
-                        raw_size,
-                        width,
-                        height,
-                    })
-                }
-                Err(_) => Err(ClipboardResult::Empty("Clipboard is empty.".to_string())),
-            }
-        })();
-
-        let _ = tx.send(result.unwrap_or_else(|e| e));
-    });
-
-    app.clipboard_rx = Some(rx);
-}
-
-/// Poll for a completed clipboard read (non-blocking).
-fn poll_clipboard_result(app: &mut App) {
-    let result = if let Some(ref rx) = app.clipboard_rx {
-        match rx.try_recv() {
-            Ok(result) => Some(result),
-            Err(std::sync::mpsc::TryRecvError::Empty) => return,
-            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                Some(ClipboardResult::Error("Clipboard thread crashed.".to_string()))
-            }
-        }
-    } else {
-        return;
-    };
-
-    app.clipboard_rx = None;
-    app.clipboard_pending = false;
-
-    if let Some(result) = result {
-        match result {
-            ClipboardResult::Text(text) => {
-                app.input_mode = InputMode::Insert;
-                app.selection = None;
-                app.editor.insert_str(&text);
-                app.update_slash_menu();
-            }
-            ClipboardResult::Image {
-                encoded,
-                mime,
-                raw_size,
-                width,
-                height,
-            } => {
-                app.attach_image(encoded, mime, raw_size);
-
-                let size_str = if raw_size >= 1024 * 1024 {
-                    format!("{:.1} MB", raw_size as f64 / (1024.0 * 1024.0))
-                } else if raw_size >= 1024 {
-                    format!("{:.1} KB", raw_size as f64 / 1024.0)
-                } else {
-                    format!("{raw_size} bytes")
-                };
-
-                let count = app.pending_images.len();
-                app.push_system(
-                    format!(
-                        "📎 Image attached ({width}×{height}, {size_str}). {count} image{} pending.",
-                        if count == 1 { "" } else { "s" }
-                    ),
-                    false,
-                );
-            }
-            ClipboardResult::Empty(_) => {
-                // Nothing to paste — silently ignore
-            }
-            ClipboardResult::Error(msg) => {
-                app.push_system(msg, true);
-            }
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // External editor ($EDITOR / $VISUAL)
 // ---------------------------------------------------------------------------
 
-/// Suspend the TUI, open $EDITOR with the current editor content, and load
-/// the result back. Falls back to $VISUAL, then `vi`.
-fn open_external_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) {
-    // Determine which editor to use
-    let editor_cmd = std::env::var("EDITOR").or_else(|_| std::env::var("VISUAL")).unwrap_or_else(|_| "vi".to_string());
-
-    // Write current editor content to a temp file
-    let current_content = app.editor.content().join("\n");
-    let tmp_dir = std::env::temp_dir();
-    let tmp_path = tmp_dir.join(format!("clankers-edit-{}.md", std::process::id()));
-
-    if let Err(e) = std::fs::write(&tmp_path, &current_content) {
-        app.push_system(format!("Failed to create temp file: {}", e), true);
-        return;
-    }
-
-    // Suspend the TUI: leave alternate screen, disable raw mode
-    execute!(terminal.backend_mut(), DisableBracketedPaste, DisableMouseCapture, LeaveAlternateScreen).ok();
-    terminal::disable_raw_mode().ok();
-
-    // Parse the editor command (supports args like "code --wait")
-    let mut parts = editor_cmd.split_whitespace();
-    let program = parts.next().unwrap_or("vi");
-    let extra_args: Vec<&str> = parts.collect();
-
-    // Run the editor
-    let result = std::process::Command::new(program)
-        .args(&extra_args)
-        .arg(&tmp_path)
-        .stdin(std::process::Stdio::inherit())
-        .stdout(std::process::Stdio::inherit())
-        .stderr(std::process::Stdio::inherit())
-        .current_dir(&app.cwd)
-        .status();
-
-    // Restore the TUI: re-enable raw mode, enter alternate screen
-    terminal::enable_raw_mode().ok();
-    execute!(terminal.backend_mut(), EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste).ok();
-
-    // Force a full redraw after returning from the editor
-    terminal.clear().ok();
-
-    match result {
-        Ok(status) if status.success() => {
-            // Read back the edited content
-            match std::fs::read_to_string(&tmp_path) {
-                Ok(new_content) => {
-                    let new_content = new_content.trim_end_matches('\n').to_string();
-                    if new_content.is_empty() {
-                        app.push_system("Editor returned empty content — input cleared.".to_string(), false);
-                        app.editor.clear();
-                    } else if new_content == current_content {
-                        // No changes — don't bother updating
-                    } else {
-                        app.editor.clear();
-                        for c in new_content.chars() {
-                            app.editor.insert_char(c);
-                        }
-                        app.input_mode = InputMode::Insert;
-                    }
-                }
-                Err(e) => {
-                    app.push_system(format!("Failed to read editor output: {}", e), true);
-                }
-            }
-        }
-        Ok(status) => {
-            app.push_system(format!("Editor exited with status {} — changes discarded.", status), true);
-        }
-        Err(e) => {
-            app.push_system(format!("Failed to launch '{}': {}", editor_cmd, e), true);
-        }
-    }
-
-    // Clean up temp file
-    let _ = std::fs::remove_file(&tmp_path);
-}
 
 // ---------------------------------------------------------------------------
 // Input routing
@@ -2211,326 +1996,18 @@ fn persist_messages(
     }
 }
 
-/// Rebuild the display blocks from restored session messages so the user
-/// can see the prior conversation in the TUI.
-fn restore_display_blocks(app: &mut App, messages: &[crate::provider::message::AgentMessage]) {
-    use crate::provider::message::AgentMessage;
-    use crate::provider::message::Content;
-    use crate::tui::app::DisplayMessage;
-    use crate::tui::app::MessageRole;
-
-    for (i, msg) in messages.iter().enumerate() {
-        match msg {
-            AgentMessage::User(user_msg) => {
-                let text = user_msg
-                    .content
-                    .iter()
-                    .filter_map(|c| match c {
-                        Content::Text { text } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                // Start a new block for each user message, recording the
-                // agent message count at this point for branching support.
-                app.start_block(text, i);
-            }
-            AgentMessage::Assistant(asst_msg) => {
-                // Add responses to the current active block
-                for content in &asst_msg.content {
-                    match content {
-                        Content::Text { text } => {
-                            if let Some(ref mut block) = app.active_block {
-                                block.responses.push(DisplayMessage {
-                                    role: MessageRole::Assistant,
-                                    content: text.clone(),
-                                    tool_name: None,
-                                    is_error: false,
-                                    images: Vec::new(),
-                                });
-                            }
-                        }
-                        Content::ToolUse { name, .. } => {
-                            if let Some(ref mut block) = app.active_block {
-                                block.responses.push(DisplayMessage {
-                                    role: MessageRole::ToolCall,
-                                    content: name.clone(),
-                                    tool_name: Some(name.clone()),
-                                    is_error: false,
-                                    images: Vec::new(),
-                                });
-                            }
-                        }
-                        Content::Thinking { thinking, .. } => {
-                            if let Some(ref mut block) = app.active_block {
-                                block.responses.push(DisplayMessage {
-                                    role: MessageRole::Thinking,
-                                    content: thinking.clone(),
-                                    tool_name: None,
-                                    is_error: false,
-                                    images: Vec::new(),
-                                });
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }
-            AgentMessage::ToolResult(tool_result) => {
-                let display = tool_result
-                    .content
-                    .iter()
-                    .filter_map(|c| match c {
-                        Content::Text { text } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-                // Extract images from tool result Content::Image blocks
-                let images: Vec<crate::tui::app::DisplayImage> = tool_result
-                    .content
-                    .iter()
-                    .filter_map(|c| match c {
-                        Content::Image {
-                            source: crate::provider::message::ImageSource::Base64 { media_type, data },
-                        } => Some(crate::tui::app::DisplayImage {
-                            data: data.clone(),
-                            media_type: media_type.clone(),
-                        }),
-                        _ => None,
-                    })
-                    .collect();
-                if let Some(ref mut block) = app.active_block {
-                    block.responses.push(DisplayMessage {
-                        role: MessageRole::ToolResult,
-                        content: display,
-                        tool_name: None,
-                        is_error: tool_result.is_error,
-                        images,
-                    });
-                }
-            }
-            _ => {
-                // BashExecution, Custom, BranchSummary, CompactionSummary — skip in display
-            }
-        }
-    }
-    // Finalize the last active block
-    app.finalize_active_block();
-}
 
 // ---------------------------------------------------------------------------
 // Plugin event dispatch
 // ---------------------------------------------------------------------------
 
-/// Result of dispatching events to plugins
-struct PluginDispatchResult {
-    /// Messages to surface to the user
-    messages: Vec<(String, String)>,
-    /// UI actions to apply
-    ui_actions: Vec<crate::plugin::ui::PluginUIAction>,
-}
 
-/// Dispatch an agent event to all subscribed plugins.
-/// Returns messages to surface and UI actions to apply.
-fn dispatch_event_to_plugins(
-    plugin_manager: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
-    event: &AgentEvent,
-) -> PluginDispatchResult {
-    use crate::plugin::PluginState;
-    use crate::plugin::bridge::PluginEvent;
-
-    let mgr = match plugin_manager.lock() {
-        Ok(m) => m,
-        Err(_) => {
-            return PluginDispatchResult {
-                messages: Vec::new(),
-                ui_actions: Vec::new(),
-            };
-        }
-    };
-
-    let mut messages = Vec::new();
-    let mut ui_actions = Vec::new();
-
-    for info in mgr.list() {
-        if info.state != PluginState::Active {
-            continue;
-        }
-        // Check if this plugin subscribes to this event type
-        let subscribed = info.manifest.events.iter().any(|e| PluginEvent::parse(e).is_some_and(|pe| pe.matches(event)));
-        if !subscribed {
-            continue;
-        }
-
-        // Build event payload
-        let payload = match event {
-            AgentEvent::AgentStart => serde_json::json!({"event": "agent_start", "data": {}}),
-            AgentEvent::AgentEnd { .. } => serde_json::json!({"event": "agent_end", "data": {}}),
-            AgentEvent::ToolCall { tool_name, call_id, .. } => {
-                serde_json::json!({"event": "tool_call", "data": {"tool": tool_name, "call_id": call_id}})
-            }
-            AgentEvent::ToolExecutionEnd { call_id, .. } => {
-                serde_json::json!({"event": "tool_result", "data": {"call_id": call_id}})
-            }
-            AgentEvent::TurnStart { index, .. } => {
-                serde_json::json!({"event": "turn_start", "data": {"turn": index}})
-            }
-            AgentEvent::TurnEnd { index, .. } => {
-                serde_json::json!({"event": "turn_end", "data": {"turn": index}})
-            }
-            AgentEvent::UserInput { text, .. } => {
-                serde_json::json!({"event": "user_input", "data": {"text": text}})
-            }
-            _ => continue,
-        };
-
-        let input = serde_json::to_string(&payload).unwrap_or_default();
-        match mgr.call_plugin(&info.name, "on_event", &input) {
-            Ok(output) => {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&output) {
-                    // Surface messages the plugin explicitly wants shown
-                    let wants_display = parsed.get("display").and_then(|d| d.as_bool()).unwrap_or(false);
-                    if wants_display
-                        && let Some(msg) = parsed.get("message").and_then(|m| m.as_str())
-                        && !msg.is_empty()
-                    {
-                        messages.push((info.name.clone(), msg.to_string()));
-                    }
-
-                    // Parse any UI actions from the response
-                    let actions = crate::plugin::bridge::parse_ui_actions(&info.name, &parsed);
-                    ui_actions.extend(actions);
-                }
-            }
-            Err(e) => {
-                tracing::debug!("Plugin '{}' event handler error: {}", info.name, e);
-            }
-        }
-    }
-
-    PluginDispatchResult { messages, ui_actions }
-}
 
 // ---------------------------------------------------------------------------
 // Swarm / peer background tasks
 // ---------------------------------------------------------------------------
 
-/// Probe a single peer in the background. Updates the registry and sends
-/// a status event back to the TUI via the panel channel.
-pub(crate) async fn probe_peer_background(
-    node_id: String,
-    registry_path: std::path::PathBuf,
-    identity_path: std::path::PathBuf,
-    _panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-) {
-    use crate::modes::rpc::iroh;
-    use crate::modes::rpc::protocol::Request;
 
-    let remote: ::iroh::PublicKey = match node_id.parse() {
-        Ok(pk) => pk,
-        Err(e) => {
-            tracing::warn!("Invalid node ID '{}': {}", node_id, e);
-            return;
-        }
-    };
-
-    let identity = iroh::Identity::load_or_generate(&identity_path);
-    let endpoint = match iroh::start_endpoint_no_mdns(&identity).await {
-        Ok(ep) => ep,
-        Err(e) => {
-            tracing::warn!("Failed to start endpoint for probe: {}", e);
-            return;
-        }
-    };
-    let request = Request::new("status", serde_json::json!({}));
-    let result =
-        tokio::time::timeout(std::time::Duration::from_secs(10), iroh::send_rpc(&endpoint, remote, &request)).await;
-
-    let mut registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
-
-    match result {
-        Ok(Ok(response)) => {
-            if let Some(result) = response.ok {
-                let caps = crate::modes::rpc::peers::PeerCapabilities {
-                    accepts_prompts: result.get("accepts_prompts").and_then(|v| v.as_bool()).unwrap_or(false),
-                    agents: result
-                        .get("agents")
-                        .and_then(|v| v.as_array())
-                        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                        .unwrap_or_default(),
-                    tools: result
-                        .get("tools")
-                        .and_then(|v| v.as_array())
-                        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                        .unwrap_or_default(),
-                    tags: result
-                        .get("tags")
-                        .and_then(|v| v.as_array())
-                        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-                        .unwrap_or_default(),
-                    version: result.get("version").and_then(|v| v.as_str()).map(String::from),
-                };
-                registry.update_capabilities(&node_id, caps);
-                tracing::info!("Probed peer {}: online", &node_id[..12.min(node_id.len())]);
-            } else {
-                registry.touch(&node_id);
-            }
-        }
-        _ => {
-            tracing::info!("Probed peer {}: unreachable", &node_id[..12.min(node_id.len())]);
-        }
-    }
-
-    let _ = registry.save(&registry_path);
-}
-
-/// Discover peers via mDNS in the background. Adds discovered peers to the
-/// registry and probes them for capabilities.
-pub(crate) async fn discover_peers_background(
-    registry_path: std::path::PathBuf,
-    identity_path: std::path::PathBuf,
-    _panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-) {
-    use crate::modes::rpc::iroh;
-
-    let identity = iroh::Identity::load_or_generate(&identity_path);
-    let endpoint = match iroh::start_endpoint(&identity).await {
-        Ok(ep) => ep,
-        Err(e) => {
-            tracing::warn!("Failed to start endpoint for discovery: {}", e);
-            return;
-        }
-    };
-
-    let discovered = iroh::discover_mdns_peers(&endpoint, std::time::Duration::from_secs(5)).await;
-
-    if discovered.is_empty() {
-        tracing::info!("mDNS discovery: no peers found");
-        return;
-    }
-
-    let mut registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
-
-    for (eid, _info) in &discovered {
-        let node_id = eid.to_string();
-        if !registry.peers.contains_key(&node_id) {
-            let short = &node_id[..12.min(node_id.len())];
-            registry.add(&node_id, &format!("mdns-{}", short));
-            tracing::info!("Discovered new peer via mDNS: {}", short);
-        }
-    }
-
-    let _ = registry.save(&registry_path);
-
-    // Probe each discovered peer for capabilities
-    for (eid, _info) in discovered {
-        let node_id = eid.to_string();
-        let rp = registry_path.clone();
-        let ip = identity_path.clone();
-        probe_peer_background(node_id, rp, ip, _panel_tx.clone()).await;
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Embedded RPC server (started alongside the TUI)
