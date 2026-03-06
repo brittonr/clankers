@@ -163,7 +163,11 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             help: "Lists all available slash commands with descriptions.",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: None,
+            leader_key: Some(LeaderBinding {
+                key: '?',
+                placement: MenuPlacement::Root,
+                label: Some("help"),
+            }),
         },
         SlashCommand {
             name: "clear",
@@ -188,7 +192,11 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    replacing the full history to reduce token usage.",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: None,
+            leader_key: Some(LeaderBinding {
+                key: 'C',
+                placement: MenuPlacement::Root,
+                label: Some("compact"),
+            }),
         },
         SlashCommand {
             name: "model",
@@ -580,7 +588,11 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /fork <reason>       — fork with a descriptive name",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
+            leader_key: Some(LeaderBinding {
+                key: 'f',
+                placement: MenuPlacement::Submenu("session".into()),
+                label: Some("fork"),
+            }),
         },
         SlashCommand {
             name: "rewind",
@@ -1481,9 +1493,6 @@ mod tests {
 
     #[test]
     fn test_registry_dispatch_unknown_falls_through() {
-        use std::sync::Arc;
-        use std::sync::Mutex;
-
         let builtin = BuiltinSlashContributor;
         let contributors: Vec<&dyn SlashContributor> = vec![&builtin];
         let (registry, _) = SlashRegistry::build(&contributors);

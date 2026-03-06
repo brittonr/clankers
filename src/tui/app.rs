@@ -328,13 +328,15 @@ impl App {
     ) {
         use super::components::leader_menu::BuiltinKeymapContributor;
         use super::components::leader_menu::MenuContributor;
+        use super::components::leader_menu::SlashCommandContributor;
 
         let builtin = BuiltinKeymapContributor;
+        let slash_commands = SlashCommandContributor::new(crate::slash_commands::builtin_commands());
         let hidden = settings.leader_menu.hidden_set();
 
         // Collect contributors into a vec of trait refs
         let pm_guard;
-        let mut contributors: Vec<&dyn MenuContributor> = vec![&builtin];
+        let mut contributors: Vec<&dyn MenuContributor> = vec![&builtin, &slash_commands];
 
         if let Some(pm_arc) = plugin_manager {
             pm_guard = pm_arc.lock().unwrap();
@@ -359,6 +361,40 @@ impl App {
         }
 
         self.leader_menu = menu;
+    }
+
+    /// Rebuild the slash command registry with plugin contributions.
+    /// Call this after plugins are loaded.
+    pub fn rebuild_slash_registry(
+        &mut self,
+        plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    ) {
+        use crate::slash_commands::{BuiltinSlashContributor, SlashContributor, SlashRegistry};
+
+        let builtin = BuiltinSlashContributor;
+        
+        // Collect contributors
+        let pm_guard;
+        let mut contributors: Vec<&dyn SlashContributor> = vec![&builtin];
+
+        if let Some(pm_arc) = plugin_manager {
+            pm_guard = pm_arc.lock().unwrap();
+            contributors.push(&*pm_guard);
+        }
+
+        let (registry, conflicts) = SlashRegistry::build(&contributors);
+
+        for c in &conflicts {
+            tracing::debug!(
+                registry = c.registry,
+                key = %c.key,
+                winner = %c.winner,
+                loser = %c.loser,
+                "slash command conflict"
+            );
+        }
+
+        self.slash_registry = registry;
     }
 
     /// Get a panel by ID (immutable) for rendering.

@@ -79,6 +79,9 @@ pub async fn run_interactive(
     // Build leader menu from all contributors (builtins + plugins + user config)
     app.rebuild_leader_menu(plugin_manager.as_ref(), &settings);
 
+    // Build slash command registry with plugin contributions
+    app.rebuild_slash_registry(plugin_manager.as_ref());
+
     // ── Session persistence setup ────────────────────────────────────────
     let paths = crate::config::ClankersPaths::resolve();
     let sessions_dir = &paths.global_sessions_dir;

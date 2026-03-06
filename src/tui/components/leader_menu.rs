@@ -132,7 +132,8 @@ impl LeaderMenu {
     ///
     /// Prefer [`LeaderMenu::build`] for dynamic registration.
     pub fn new() -> Self {
-        Self::build(&[&BuiltinKeymapContributor], &HashSet::new()).0
+        let slash_contrib = SlashCommandContributor::new(crate::slash_commands::builtin_commands());
+        Self::build(&[&BuiltinKeymapContributor, &slash_contrib], &HashSet::new()).0
     }
 
     /// Build a leader menu from contributors.
@@ -510,23 +511,7 @@ impl MenuContributor for BuiltinKeymapContributor {
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
             },
-            // ── Root: slash commands ──
-            MenuContribution {
-                key: 'C',
-                label: "compact".into(),
-                action: LeaderAction::SlashCommand("/compact".into()),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: '?',
-                label: "help".into(),
-                action: LeaderAction::SlashCommand("/help".into()),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
+            // ── Root: slash commands (moved to SlashCommand definitions) ──
             // ── Session submenu ──
             MenuContribution {
                 key: 'n',
@@ -536,14 +521,7 @@ impl MenuContributor for BuiltinKeymapContributor {
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
             },
-            MenuContribution {
-                key: 'f',
-                label: "fork".into(),
-                action: LeaderAction::SlashCommand("/fork".into()),
-                placement: MenuPlacement::Submenu("session".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
+
             MenuContribution {
                 key: 'r',
                 label: "resume".into(),
@@ -658,6 +636,23 @@ pub fn slash_command_contributions(commands: &[crate::slash_commands::SlashComma
             })
         })
         .collect()
+}
+
+/// Wrapper to make slash commands act as a MenuContributor.
+pub struct SlashCommandContributor {
+    commands: Vec<crate::slash_commands::SlashCommand>,
+}
+
+impl SlashCommandContributor {
+    pub fn new(commands: Vec<crate::slash_commands::SlashCommand>) -> Self {
+        Self { commands }
+    }
+}
+
+impl MenuContributor for SlashCommandContributor {
+    fn menu_items(&self) -> Vec<MenuContribution> {
+        slash_command_contributions(&self.commands)
+    }
 }
 
 // ---------------------------------------------------------------------------
