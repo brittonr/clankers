@@ -171,14 +171,15 @@ fn slash_quit_exits_app() {
 
 #[test]
 fn slash_help_lists_all_commands() {
-    let mut h = TuiTestHarness::spawn(50, 200);
+    let mut h = TuiTestHarness::spawn(60, 200);
     run_slash(&mut h, "/help");
-    h.wait_for_text("Available slash commands", TIMEOUT);
+    // With 37+ commands + welcome message, the header may scroll off in smaller terminals.
+    // Wait for a command that's always visible (near the bottom of the list).
+    h.wait_for_text("/quit", TIMEOUT);
     // Verify a sampling of commands appear
     assert!(h.screen_contains("/clear"));
     assert!(h.screen_contains("/reset"));
     assert!(h.screen_contains("/model"));
-    assert!(h.screen_contains("/quit"));
     h.quit();
 }
 

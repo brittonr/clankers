@@ -44,7 +44,7 @@ pub fn dispatch(
         "session" => handlers::session::SessionHandler.handle(args, ctx),
         "undo" => handlers::context::UndoHandler.handle(args, ctx),
         "cd" => handlers::navigation::CdHandler.handle(args, ctx),
-        "sh" => handlers::navigation::ShellHandler.handle(args, ctx),
+        "shell" => handlers::navigation::ShellHandler.handle(args, ctx),
         "export" => handlers::export::ExportHandler.handle(args, ctx),
         "compact" => handlers::context::CompactHandler.handle(args, ctx),
         "think" => handlers::model::ThinkHandler.handle(args, ctx),

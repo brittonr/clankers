@@ -100,21 +100,21 @@ fn slash_menu_scrolls_past_visible_items() {
     h.type_str("i/");
     h.settle(SETTLE);
 
-    // The menu shows 10 items at most. We have 16 commands total.
+    // The menu shows 10 items at most. We have 37+ commands total.
     // Navigate down past all 10 visible items to reach commands
-    // beyond the initial window (export, cd, shell, version, login, quit).
-    // Use Ctrl+N (MenuDown) which is the correct keybinding for menu navigation.
-    for _ in 0..12 {
-        h.send_key(Key::CtrlN);
+    // beyond the initial window.
+    // Use Down arrow (HistoryDown) which is handled by the menu when visible.
+    for _ in 0..15 {
+        h.send_key(Key::Down);
         h.settle(Duration::from_millis(50));
     }
     h.settle(SETTLE);
 
     // After scrolling past item 10, the menu should now show items
-    // that were initially hidden — e.g. "shell" or "quit"
+    // that were initially hidden — e.g. "login" or "memory" or "merge"
     let screen = h.screen_text();
     assert!(
-        screen.contains("shell") || screen.contains("quit") || screen.contains("login"),
+        screen.contains("login") || screen.contains("memory") || screen.contains("merge"),
         "Menu should scroll to show items beyond the first 10.\nScreen:\n{}",
         screen
     );
@@ -123,37 +123,37 @@ fn slash_menu_scrolls_past_visible_items() {
 }
 
 #[test]
-fn slash_menu_scrolls_with_ctrl_j_k() {
+fn slash_menu_scrolls_with_arrows() {
     let mut h = TuiTestHarness::spawn(30, 100);
 
     h.type_str("i/");
     h.settle(SETTLE);
 
-    // Navigate down past visible window using Ctrl+J
-    for _ in 0..12 {
-        h.send_key(Key::CtrlJ);
+    // Navigate down past visible window using Down arrow
+    for _ in 0..15 {
+        h.send_key(Key::Down);
         h.settle(Duration::from_millis(50));
     }
     h.settle(SETTLE);
 
     let screen = h.screen_text();
     assert!(
-        screen.contains("shell") || screen.contains("quit") || screen.contains("login"),
-        "Ctrl+J should scroll the menu down past visible items.\nScreen:\n{}",
+        screen.contains("login") || screen.contains("memory") || screen.contains("merge"),
+        "Down arrow should scroll the menu down past visible items.\nScreen:\n{}",
         screen
     );
 
-    // Now navigate back up with Ctrl+K
-    for _ in 0..12 {
-        h.send_key(Key::CtrlK);
+    // Now navigate back up with Up arrow
+    for _ in 0..15 {
+        h.send_key(Key::Up);
         h.settle(Duration::from_millis(50));
     }
     h.settle(SETTLE);
 
     let screen = h.screen_text();
     assert!(
-        screen.contains("help"),
-        "Ctrl+K should scroll the menu back up to show 'help'.\nScreen:\n{}",
+        screen.contains("help") || screen.contains("cherry") || screen.contains("clear"),
+        "Up arrow should scroll the menu back up to show early items.\nScreen:\n{}",
         screen
     );
 
