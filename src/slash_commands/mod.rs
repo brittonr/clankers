@@ -15,29 +15,63 @@ use crate::tui::components::leader_menu::MenuPlacement;
 // Slash command dispatch — routes SlashAction to handler implementations
 // ---------------------------------------------------------------------------
 
-/// Dispatch a parsed slash command to the `execute_slash_command` handler.
+/// Dispatch a parsed slash command to its handler.
 ///
 /// This is the single entry point for all slash command execution.
-/// It constructs a [`handlers::SlashContext`] and delegates to the existing
-/// handler logic in `interactive.rs`.
-///
-/// Future phases will replace the dispatch target with individual handler
-/// structs implementing a `SlashHandler` trait.
+/// Each `SlashAction` variant is routed to a handler struct in
+/// `src/slash_commands/handlers/`.
 pub fn dispatch(
-    action: SlashAction,
+    action: &SlashAction,
     args: &str,
     ctx: &mut handlers::SlashContext<'_>,
 ) {
-    crate::modes::interactive::execute_slash_command(
-        ctx.app,
-        action,
-        args,
-        ctx.cmd_tx,
-        ctx.plugin_manager,
-        ctx.panel_tx,
-        ctx.db,
-        ctx.session_manager,
-    );
+    use handlers::SlashHandler;
+
+    match action {
+        SlashAction::Help => handlers::info::HelpHandler.handle(args, ctx),
+        SlashAction::Clear => handlers::context::ClearHandler.handle(args, ctx),
+        SlashAction::Reset => handlers::context::ResetHandler.handle(args, ctx),
+        SlashAction::Model => handlers::model::ModelHandler.handle(args, ctx),
+        SlashAction::Status => handlers::info::StatusHandler.handle(args, ctx),
+        SlashAction::Usage => handlers::info::UsageHandler.handle(args, ctx),
+        SlashAction::Version => handlers::info::VersionHandler.handle(args, ctx),
+        SlashAction::Quit => handlers::info::QuitHandler.handle(args, ctx),
+        SlashAction::Session => handlers::session::SessionHandler.handle(args, ctx),
+        SlashAction::Undo => handlers::context::UndoHandler.handle(args, ctx),
+        SlashAction::Cd => handlers::navigation::CdHandler.handle(args, ctx),
+        SlashAction::Shell => handlers::navigation::ShellHandler.handle(args, ctx),
+        SlashAction::Export => handlers::export::ExportHandler.handle(args, ctx),
+        SlashAction::Compact => handlers::context::CompactHandler.handle(args, ctx),
+        SlashAction::Think => handlers::model::ThinkHandler.handle(args, ctx),
+        SlashAction::Login => handlers::auth::LoginHandler.handle(args, ctx),
+        SlashAction::Tools => handlers::tools::ToolsHandler.handle(args, ctx),
+        SlashAction::Plugin => handlers::tools::PluginHandler.handle(args, ctx),
+        SlashAction::Subagents => handlers::swarm::SubagentsHandler.handle(args, ctx),
+        SlashAction::Account => handlers::auth::AccountHandler.handle(args, ctx),
+        SlashAction::Todo => handlers::tui::TodoHandler.handle(args, ctx),
+        SlashAction::Worker => handlers::swarm::WorkerHandler.handle(args, ctx),
+        SlashAction::Share => handlers::swarm::ShareHandler.handle(args, ctx),
+        SlashAction::Plan => handlers::tui::PlanHandler.handle(args, ctx),
+        SlashAction::Review => handlers::tui::ReviewHandler.handle(args, ctx),
+        SlashAction::Role => handlers::model::RoleHandler.handle(args, ctx),
+        SlashAction::SystemPrompt => handlers::memory::SystemPromptHandler.handle(args, ctx),
+        SlashAction::Memory => handlers::memory::MemoryHandler.handle(args, ctx),
+        SlashAction::Peers => handlers::swarm::PeersHandler.handle(args, ctx),
+        SlashAction::Editor => handlers::tui::EditorHandler.handle(args, ctx),
+        SlashAction::Preview => handlers::tui::PreviewHandler.handle(args, ctx),
+        SlashAction::Layout => handlers::tui::LayoutHandler.handle(args, ctx),
+        SlashAction::Fork => handlers::branching::ForkHandler.handle(args, ctx),
+        SlashAction::Rewind => handlers::branching::RewindHandler.handle(args, ctx),
+        SlashAction::Branches => handlers::branching::BranchesHandler.handle(args, ctx),
+        SlashAction::Switch => handlers::branching::SwitchHandler.handle(args, ctx),
+        SlashAction::Label => handlers::branching::LabelHandler.handle(args, ctx),
+        SlashAction::PromptTemplate(name) => {
+            handlers::prompt_template::PromptTemplateHandler {
+                template_name: name.clone(),
+            }
+            .handle(args, ctx);
+        }
+    }
 }
 
 // Thread-local cache of prompt template names for slash completion.
