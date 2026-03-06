@@ -237,6 +237,11 @@ pub struct App {
     pub active_tools: HashMap<String, ActiveToolExecution>,
     /// Structured progress renderer for active tool executions
     pub progress_renderer: super::components::progress_renderer::ProgressRenderer,
+    /// Scrollable streaming output buffers for in-progress tools
+    pub streaming_outputs: super::components::streaming_output::StreamingOutputManager,
+    /// Which tool output (call_id) is currently focused for scroll control.
+    /// Mutually exclusive with `focused_panel` and `focused_subagent`.
+    pub focused_tool: Option<String>,
     /// Monotonic tick counter, incremented each render frame (drives spinner animation)
     pub tick: u64,
 }
@@ -342,6 +347,8 @@ impl App {
             status_area: Rect::default(),
             active_tools: HashMap::new(),
             progress_renderer: super::components::progress_renderer::ProgressRenderer::new(),
+            streaming_outputs: super::components::streaming_output::StreamingOutputManager::new(),
+            focused_tool: None,
             tick: 0,
         }
     }
@@ -459,6 +466,8 @@ impl App {
             let _ = self.tiling.focus_pane(pane);
             self.focused_panel = Some(panel_id);
             self.focused_subagent = None;
+            self.focused_tool = None;
+            self.streaming_outputs.unfocus_all();
         }
     }
 
@@ -468,15 +477,34 @@ impl App {
             let _ = self.tiling.focus_pane(pane_id);
             self.focused_subagent = Some(subagent_id.to_string());
             self.focused_panel = None;
+            self.focused_tool = None;
+            self.streaming_outputs.unfocus_all();
         }
     }
 
-    /// Return focus to the chat pane (unfocus any panel or subagent pane).
+    /// Return focus to the chat pane (unfocus any panel, subagent, or tool output).
     pub fn unfocus_panel(&mut self) {
         let chat = self.pane_registry.chat_pane();
         let _ = self.tiling.focus_pane(chat);
         self.focused_panel = None;
         self.focused_subagent = None;
+        self.focused_tool = None;
+        self.streaming_outputs.unfocus_all();
+    }
+
+    /// Focus a specific tool's streaming output for scroll control.
+    /// The `call_id` identifies the active tool execution.
+    pub fn focus_tool(&mut self, call_id: &str) {
+        self.focused_panel = None;
+        self.focused_subagent = None;
+        self.focused_tool = Some(call_id.to_string());
+        self.streaming_outputs.focus(call_id);
+    }
+
+    /// Unfocus the currently focused tool output.
+    pub fn unfocus_tool(&mut self) {
+        self.focused_tool = None;
+        self.streaming_outputs.unfocus_all();
     }
 
     /// Is the given panel currently focused?
@@ -835,6 +863,9 @@ impl App {
                     active.line_count += text.lines().count().max(1);
                 }
 
+                // Feed into streaming output buffer for scrollable display
+                self.streaming_outputs.add_text(call_id, &text);
+
                 if let Some(ref mut block) = self.active_block {
                     let found = block
                         .responses
@@ -863,9 +894,12 @@ impl App {
             AgentEvent::ToolProgressUpdate { call_id, progress } => {
                 self.progress_renderer.update(call_id, progress.clone());
             }
-            AgentEvent::ToolResultChunk { .. } => {
-                // Chunks are collected by the executor's accumulator.
-                // The TUI uses ToolExecutionUpdate for live output display.
+            AgentEvent::ToolResultChunk { call_id, chunk } => {
+                // Feed chunks into the streaming output buffer for display.
+                // The executor's accumulator also collects these for the final result.
+                if chunk.content_type == "text" {
+                    self.streaming_outputs.add_text(call_id, &chunk.content);
+                }
             }
             AgentEvent::ToolExecutionEnd {
                 call_id,
@@ -873,9 +907,14 @@ impl App {
                 is_error,
                 ..
             } => {
-                // Remove from active tools and progress renderer
+                // Remove from active tools, progress renderer, and streaming output
                 self.progress_renderer.remove(call_id);
                 self.active_tools.remove(call_id.as_str());
+                self.streaming_outputs.remove(call_id);
+                // Clear focused tool if it was this one
+                if self.focused_tool.as_deref() == Some(call_id) {
+                    self.focused_tool = None;
+                }
 
                 // Collect text content
                 let display = result

@@ -1214,6 +1214,50 @@ async fn run_event_loop(
                             }
                         }
 
+                        // ── Focused tool output key dispatch ──────────
+                        // When a tool's streaming output is focused, handle scroll keys.
+                        // Visible height for focused tool output (matches block_view::FOCUSED_OUTPUT_LINES).
+                        const TOOL_OUTPUT_VISIBLE: usize = 32;
+                        if let Some(ref call_id) = app.focused_tool.clone() {
+                            match (key.code, key.modifiers) {
+                                (KeyCode::Char('j') | KeyCode::Down, m) if m.is_empty() => {
+                                    if let Some(out) = app.streaming_outputs.get_mut(call_id) {
+                                        out.scroll_down(1, TOOL_OUTPUT_VISIBLE);
+                                    }
+                                    continue;
+                                }
+                                (KeyCode::Char('k') | KeyCode::Up, m) if m.is_empty() => {
+                                    if let Some(out) = app.streaming_outputs.get_mut(call_id) {
+                                        out.scroll_up(1);
+                                    }
+                                    continue;
+                                }
+                                (KeyCode::Char('g'), m) if m.is_empty() => {
+                                    if let Some(out) = app.streaming_outputs.get_mut(call_id) {
+                                        out.scroll_to_top();
+                                    }
+                                    continue;
+                                }
+                                (KeyCode::Char('G'), m) if m.is_empty() || m.contains(KeyModifiers::SHIFT) => {
+                                    if let Some(out) = app.streaming_outputs.get_mut(call_id) {
+                                        out.scroll_to_bottom();
+                                    }
+                                    continue;
+                                }
+                                (KeyCode::Char('f'), m) if m.is_empty() => {
+                                    if let Some(out) = app.streaming_outputs.get_mut(call_id) {
+                                        out.toggle_auto_follow();
+                                    }
+                                    continue;
+                                }
+                                (KeyCode::Char('q') | KeyCode::Esc, m) if m.is_empty() => {
+                                    app.unfocus_tool();
+                                    continue;
+                                }
+                                _ => {} // Unhandled key — fall through
+                            }
+                        }
+
                         // ── Subagent pane key dispatch ────────────────
                         // Subagent panes are not Panel trait impls — handle them separately.
                         if let Some(ref subagent_id) = app.focused_subagent.clone() {

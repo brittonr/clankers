@@ -10,6 +10,7 @@ use ratatui::layout::Direction;
 use ratatui::layout::Layout;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
+use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::text::Span;
 use ratatui::widgets::Block;
@@ -291,6 +292,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         search_scroll_target,
         &app.active_tools,
         &app.progress_renderer,
+        &mut app.streaming_outputs,
         app.tick,
     );
 
@@ -333,6 +335,27 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         .map_or(crate::routing::cost_tracker::BudgetStatus::NoBudget, |ct| {
             ct.budget_status()
         });
+    // Build tool activity summary for the status bar
+    let tool_activity = if !app.active_tools.is_empty() {
+        let count = app.active_tools.len();
+        let total_lines: usize = app.active_tools.values().map(|t| t.line_count).sum();
+        let label = if count == 1 {
+            let tool = app.active_tools.values().next().unwrap();
+            format!(" 🔧 {} ({} lines) ", tool.tool_name, total_lines)
+        } else {
+            format!(" 🔧 {} tools ({} lines) ", count, total_lines)
+        };
+        Some(Span::styled(
+            label,
+            Style::default()
+                .fg(Color::Black)
+                .bg(Color::Yellow)
+                .add_modifier(Modifier::BOLD),
+        ))
+    } else {
+        None
+    };
+
     let status_data = StatusBarData {
         cwd: &app.cwd,
         model: &app.model,
@@ -350,6 +373,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         active_account: &app.active_account,
         router_status: app.router_status,
         budget_status,
+        tool_activity,
     };
     status_bar::render_status_bar(frame, &status_data, &app.theme, chunks[status_idx]);
 }

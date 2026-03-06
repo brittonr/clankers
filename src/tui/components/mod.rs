@@ -34,6 +34,7 @@ pub mod session_selector;
 pub mod settings;
 pub mod slash_menu;
 pub mod status_bar;
+pub mod streaming_output;
 pub mod subagent_event;
 pub mod subagent_pane;
 pub mod subagent_panel;

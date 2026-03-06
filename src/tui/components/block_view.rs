@@ -20,6 +20,7 @@ use super::block::ConversationBlock;
 use super::markdown::MarkdownStyle;
 use super::markdown::render_markdown;
 use super::progress_renderer::ProgressRenderer;
+use super::streaming_output::StreamingOutputManager;
 use crate::tui::app::ActiveToolExecution;
 use crate::tui::app::DisplayMessage;
 use crate::tui::app::MessageRole;
@@ -43,8 +44,11 @@ pub struct BlockBranchInfo {
     pub child_branch_previews: Vec<(usize, String, bool)>, // (block_id, preview, is_active)
 }
 
-/// Maximum lines of tool output to show while streaming (tail window)
+/// Maximum lines of tool output to show while streaming (compact view)
 const LIVE_OUTPUT_MAX_LINES: usize = 8;
+
+/// Lines of tool output to show when the tool is focused for scrolling
+const FOCUSED_OUTPUT_LINES: usize = 32;
 
 /// Spinner characters for animated indicators
 const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
@@ -82,6 +86,7 @@ fn render_conversation_block<'a>(
     branch_info: Option<BlockBranchInfo>,
     active_tools: &HashMap<String, ActiveToolExecution>,
     progress: &ProgressRenderer,
+    streaming_outputs: &mut StreamingOutputManager,
     tick: u64,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
@@ -166,7 +171,7 @@ fn render_conversation_block<'a>(
             if !show_thinking && msg.role == MessageRole::Thinking {
                 continue;
             }
-            render_response_message(&mut lines, msg, border_style, theme, active_tools, progress, tick);
+            render_response_message(&mut lines, msg, border_style, theme, active_tools, progress, streaming_outputs, tick);
         }
     }
 
@@ -231,7 +236,7 @@ fn render_conversation_block<'a>(
 /// Render a single response message (assistant text, tool call, tool result, thinking).
 ///
 /// `active_tools` and `tick` enable live-streaming rendering for in-progress tool output:
-/// a spinner, elapsed time, and a tail window of the last N lines.
+/// a spinner, elapsed time, and scrollable output from the streaming buffer.
 fn render_response_message<'a>(
     lines: &mut Vec<Line<'a>>,
     msg: &DisplayMessage,
@@ -239,6 +244,7 @@ fn render_response_message<'a>(
     theme: &Theme,
     active_tools: &HashMap<String, ActiveToolExecution>,
     progress: &ProgressRenderer,
+    streaming_outputs: &mut StreamingOutputManager,
     tick: u64,
 ) {
     match msg.role {
@@ -286,27 +292,43 @@ fn render_response_message<'a>(
                     ]));
                 }
 
-                // Show only the last N lines (tail window)
-                let all_lines: Vec<&str> = msg.content.lines().collect();
-                let total = all_lines.len();
-                let skip = total.saturating_sub(LIVE_OUTPUT_MAX_LINES);
+                // Render scrollable streaming output from the buffer.
+                // Focused tools show more lines; unfocused show a compact view.
+                if let Some(output) = streaming_outputs.get_mut(call_id) {
+                    let visible = if output.focused {
+                        output.render_lines(FOCUSED_OUTPUT_LINES, border_style)
+                    } else {
+                        output.render_lines(LIVE_OUTPUT_MAX_LINES, border_style)
+                    };
+                    lines.extend(visible);
 
-                if skip > 0 {
-                    lines.push(Line::from(vec![
-                        Span::styled("│ ", border_style),
-                        Span::styled(
-                            format!("  ┄ {} lines above ┄", skip),
-                            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
-                        ),
-                    ]));
-                }
+                    // Stats footer for focused or large outputs.
+                    if output.focused || output.total_lines() > LIVE_OUTPUT_MAX_LINES {
+                        lines.push(output.render_stats(border_style));
+                    }
+                } else {
+                    // Fallback: no streaming buffer yet, show raw content tail.
+                    let all_lines: Vec<&str> = msg.content.lines().collect();
+                    let total = all_lines.len();
+                    let skip = total.saturating_sub(LIVE_OUTPUT_MAX_LINES);
 
-                let output_style = Style::default().fg(Color::DarkGray);
-                for line in &all_lines[skip..] {
-                    lines.push(Line::from(vec![
-                        Span::styled("│ ", border_style),
-                        Span::styled(format!("  │ {}", line), output_style),
-                    ]));
+                    if skip > 0 {
+                        lines.push(Line::from(vec![
+                            Span::styled("│ ", border_style),
+                            Span::styled(
+                                format!("  ┄ {} lines above ┄", skip),
+                                Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM),
+                            ),
+                        ]));
+                    }
+
+                    let output_style = Style::default().fg(Color::DarkGray);
+                    for line in &all_lines[skip..] {
+                        lines.push(Line::from(vec![
+                            Span::styled("│ ", border_style),
+                            Span::styled(format!("  │ {}", line), output_style),
+                        ]));
+                    }
                 }
             } else {
                 // Completed tool result — normal rendering
@@ -383,6 +405,7 @@ fn render_active_block<'a>(
     width: usize,
     active_tools: &HashMap<String, ActiveToolExecution>,
     progress: &ProgressRenderer,
+    streaming_outputs: &mut StreamingOutputManager,
     tick: u64,
 ) -> Vec<Line<'a>> {
     let border_color = theme.block_border_focused;
@@ -423,7 +446,7 @@ fn render_active_block<'a>(
         if !show_thinking && msg.role == MessageRole::Thinking {
             continue;
         }
-        render_response_message(&mut lines, msg, border_style, theme, active_tools, progress, tick);
+        render_response_message(&mut lines, msg, border_style, theme, active_tools, progress, streaming_outputs, tick);
     }
 
     // ── Streaming thinking ───────────────────────────
@@ -485,6 +508,7 @@ pub fn render_blocks(
     search_scroll_target: Option<usize>,
     active_tools: &HashMap<String, ActiveToolExecution>,
     progress: &ProgressRenderer,
+    streaming_outputs: &mut StreamingOutputManager,
     tick: u64,
 ) -> Vec<String> {
     // Inner width of the Paragraph (inside the outer border)
@@ -517,6 +541,7 @@ pub fn render_blocks(
                     info,
                     active_tools,
                     progress,
+                    streaming_outputs,
                     tick,
                 )
             }
@@ -544,6 +569,7 @@ pub fn render_blocks(
             inner_width,
             active_tools,
             progress,
+            streaming_outputs,
             tick,
         );
         for line in block_lines {
@@ -781,7 +807,7 @@ mod tests {
     }
 
     #[test]
-    fn streaming_tool_result_shows_tail_window() {
+    fn streaming_tool_result_shows_output_from_buffer() {
         // Build a DisplayMessage with tool_name set (indicating in-progress)
         let msg = DisplayMessage {
             role: MessageRole::ToolResult,
@@ -799,27 +825,33 @@ mod tests {
             line_count: 20,
         });
 
+        // Feed the same lines into the streaming output manager
+        let mut streaming_outputs = StreamingOutputManager::new();
+        for i in 1..=20 {
+            streaming_outputs.add_line("call_123", &format!("line {}", i));
+        }
+
         let theme = Theme::dark();
         let progress = ProgressRenderer::new();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, 0);
+        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, &mut streaming_outputs, 0);
 
-        // Should have: 1 spinner header + 1 "lines above" + LIVE_OUTPUT_MAX_LINES output lines
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
 
         // First line should contain "running" (no structured progress → fallback)
         assert!(plain[0].contains("running"), "expected spinner header, got: {}", plain[0]);
 
-        // Second line should mention hidden lines
-        assert!(plain[1].contains("lines above"), "expected truncation note, got: {}", plain[1]);
-
-        // Should show exactly LIVE_OUTPUT_MAX_LINES of output
+        // Should show LIVE_OUTPUT_MAX_LINES of output via the streaming buffer
         let output_lines: Vec<_> = plain.iter().filter(|l| l.contains("│ line")).collect();
         assert_eq!(output_lines.len(), LIVE_OUTPUT_MAX_LINES);
 
-        // Last visible line should be "line 20"
-        assert!(plain.last().unwrap().contains("line 20"));
+        // Last visible output line should be "line 20"
+        let last_output = output_lines.last().unwrap();
+        assert!(last_output.contains("line 20"), "expected line 20, got: {}", last_output);
+
+        // Should have a stats footer (output > LIVE_OUTPUT_MAX_LINES)
+        assert!(plain.iter().any(|l| l.contains("20 lines")), "expected stats footer");
     }
 
     #[test]
@@ -834,10 +866,11 @@ mod tests {
 
         let active_tools = HashMap::new();
         let progress = ProgressRenderer::new();
+        let mut streaming_outputs = StreamingOutputManager::new();
         let theme = Theme::dark();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, 0);
+        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, &mut streaming_outputs, 0);
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
         assert_eq!(plain.len(), 3);
@@ -863,11 +896,14 @@ mod tests {
             line_count: 1,
         });
 
+        let mut streaming_outputs = StreamingOutputManager::new();
+        streaming_outputs.add_line("call_456", "short output");
+
         let theme = Theme::dark();
         let progress = ProgressRenderer::new();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, 0);
+        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, &mut streaming_outputs, 0);
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
 
@@ -900,10 +936,13 @@ mod tests {
         let mut progress = ProgressRenderer::new();
         progress.update("call_progress", ToolProgress::lines(42, None));
 
+        let mut streaming_outputs = StreamingOutputManager::new();
+        streaming_outputs.add_line("call_progress", "output line");
+
         let theme = Theme::dark();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, 0);
+        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, &mut streaming_outputs, 0);
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
 
@@ -936,10 +975,13 @@ mod tests {
         let mut progress = ProgressRenderer::new();
         progress.update("call_dl", ToolProgress::bytes(500, Some(1000)));
 
+        let mut streaming_outputs = StreamingOutputManager::new();
+        streaming_outputs.add_line("call_dl", "data");
+
         let theme = Theme::dark();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, 0);
+        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, &mut streaming_outputs, 0);
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
 

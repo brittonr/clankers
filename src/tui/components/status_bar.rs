@@ -40,6 +40,8 @@ pub struct StatusBarData<'a> {
     pub router_status: RouterStatus,
     /// Budget status for cost display coloring
     pub budget_status: BudgetStatus,
+    /// Active tool activity summary (None if no tools running)
+    pub tool_activity: Option<Span<'a>>,
 }
 
 /// Render status bar
@@ -123,6 +125,11 @@ pub fn render_status_bar(frame: &mut Frame, data: &StatusBarData, theme: &Theme,
     // Process stats
     if let Some(ref proc) = data.process_span {
         spans.push(proc.clone());
+    }
+
+    // Active tool progress
+    if let Some(ref tool) = data.tool_activity {
+        spans.push(tool.clone());
     }
 
     // Cost / budget badge (color-coded)
