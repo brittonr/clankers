@@ -5,9 +5,12 @@ use std::path::Path;
 use serde::Deserialize;
 use serde::Serialize;
 
+use serde_json;
+
 use crate::agents::definition::AgentScope;
 use crate::config::keybindings::KeymapConfig;
 use crate::config::model_roles::ModelRolesConfig;
+use crate::tui::components::leader_menu::MenuPlacement;
 
 /// Full settings, merged from global + project
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -72,6 +75,88 @@ pub struct Settings {
     /// Whether plan mode is enabled by default
     #[serde(default)]
     pub plan_mode: bool,
+
+    /// Leader menu customization (add/override/hide items).
+    #[serde(default)]
+    pub leader_menu: LeaderMenuConfig,
+}
+
+// ---------------------------------------------------------------------------
+// Leader menu user config
+// ---------------------------------------------------------------------------
+
+/// User-configurable leader menu items and hide rules.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct LeaderMenuConfig {
+    /// Items to add or override in the leader menu.
+    #[serde(default)]
+    pub items: Vec<LeaderMenuItemConfig>,
+    /// Items to hide from the leader menu.
+    #[serde(default)]
+    pub hide: Vec<LeaderMenuHideConfig>,
+}
+
+/// A user-defined leader menu item.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LeaderMenuItemConfig {
+    /// Key to press.
+    pub key: char,
+    /// Display label.
+    pub label: String,
+    /// Slash command to execute (e.g. "/shell git status").
+    pub command: String,
+    /// Submenu name. If omitted, goes to root.
+    #[serde(default)]
+    pub submenu: Option<String>,
+}
+
+/// Hides a specific leader menu entry by key + placement.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LeaderMenuHideConfig {
+    /// Key to hide.
+    pub key: char,
+    /// Submenu name. If omitted, hides from root.
+    #[serde(default)]
+    pub submenu: Option<String>,
+}
+
+impl crate::tui::components::leader_menu::MenuContributor for LeaderMenuConfig {
+    fn menu_items(&self) -> Vec<crate::tui::components::leader_menu::MenuContribution> {
+        use crate::registry::PRIORITY_USER;
+        use crate::tui::components::leader_menu::LeaderAction;
+        use crate::tui::components::leader_menu::MenuContribution;
+
+        self.items
+            .iter()
+            .map(|item| MenuContribution {
+                key: item.key,
+                label: item.label.clone(),
+                action: LeaderAction::SlashCommand(item.command.clone()),
+                placement: match &item.submenu {
+                    Some(name) => MenuPlacement::Submenu(name.clone()),
+                    None => MenuPlacement::Root,
+                },
+                priority: PRIORITY_USER,
+                source: "config".into(),
+            })
+            .collect()
+    }
+}
+
+impl LeaderMenuConfig {
+    /// Convert hide rules to a set of (key, placement) pairs for the builder.
+    pub fn hidden_set(&self) -> std::collections::HashSet<(char, MenuPlacement)> {
+        self.hide
+            .iter()
+            .map(|h| {
+                let placement = match &h.submenu {
+                    Some(name) => MenuPlacement::Submenu(name.clone()),
+                    None => MenuPlacement::Root,
+                };
+                (h.key, placement)
+            })
+            .collect()
+    }
 }
 
 fn default_model() -> String {
@@ -108,6 +193,7 @@ impl Default for Settings {
             keymap: KeymapConfig::default(),
             model_roles: ModelRolesConfig::default(),
             plan_mode: false,
+            leader_menu: LeaderMenuConfig::default(),
         }
     }
 }

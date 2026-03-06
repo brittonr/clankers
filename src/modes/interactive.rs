@@ -80,6 +80,9 @@ pub async fn run_interactive(
 
     let mut app = App::new(model.clone(), cwd.clone(), theme);
 
+    // Build leader menu from all contributors (builtins + plugins + user config)
+    app.rebuild_leader_menu(plugin_manager.as_ref(), &settings);
+
     // ── Session persistence setup ────────────────────────────────────────
     let paths = crate::config::ClankersPaths::resolve();
     let sessions_dir = &paths.global_sessions_dir;

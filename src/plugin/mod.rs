@@ -186,6 +186,63 @@ impl PluginManager {
     }
 }
 
+// ---------------------------------------------------------------------------
+// MenuContributor — plugins contribute leader menu entries from their manifest
+// ---------------------------------------------------------------------------
+
+impl crate::tui::components::leader_menu::MenuContributor for PluginManager {
+    fn menu_items(&self) -> Vec<crate::tui::components::leader_menu::MenuContribution> {
+        use crate::registry::PRIORITY_PLUGIN;
+        use crate::tui::components::leader_menu::LeaderAction;
+        use crate::tui::components::leader_menu::MenuContribution;
+        use crate::tui::components::leader_menu::MenuPlacement;
+
+        self.plugins
+            .values()
+            .filter(|p| matches!(p.state, PluginState::Loaded | PluginState::Active))
+            .flat_map(|plugin| {
+                plugin.manifest.leader_menu.iter().filter_map(move |entry| {
+                    // Validate: key must be printable ASCII, command must start with /
+                    if !entry.key.is_ascii_graphic() {
+                        tracing::warn!(
+                            plugin = %plugin.name,
+                            key = %entry.key,
+                            "plugin leader_menu entry has non-printable key, skipping"
+                        );
+                        return None;
+                    }
+                    if !entry.command.starts_with('/') {
+                        tracing::warn!(
+                            plugin = %plugin.name,
+                            command = %entry.command,
+                            "plugin leader_menu command must start with '/', skipping"
+                        );
+                        return None;
+                    }
+                    if entry.label.is_empty() {
+                        tracing::warn!(
+                            plugin = %plugin.name,
+                            "plugin leader_menu entry has empty label, skipping"
+                        );
+                        return None;
+                    }
+                    Some(MenuContribution {
+                        key: entry.key,
+                        label: entry.label.clone(),
+                        action: LeaderAction::SlashCommand(entry.command.clone()),
+                        placement: match &entry.submenu {
+                            Some(name) => MenuPlacement::Submenu(name.clone()),
+                            None => MenuPlacement::Root,
+                        },
+                        priority: PRIORITY_PLUGIN,
+                        source: plugin.name.clone(),
+                    })
+                })
+            })
+            .collect()
+    }
+}
+
 fn load_plugins_from_dir(dir: &Path, plugins: &mut HashMap<String, PluginInfo>) {
     if !dir.is_dir() {
         return;

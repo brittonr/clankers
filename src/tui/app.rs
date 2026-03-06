@@ -334,6 +334,49 @@ impl App {
         }
     }
 
+    /// Rebuild the leader menu from all contributors.
+    ///
+    /// Call after plugin load/unload or settings change.
+    pub fn rebuild_leader_menu(
+        &mut self,
+        plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+        settings: &crate::config::settings::Settings,
+    ) {
+        use super::components::leader_menu::BuiltinKeymapContributor;
+        use super::components::leader_menu::MenuContributor;
+
+        let builtin = BuiltinKeymapContributor;
+        let hidden = settings.leader_menu.hidden_set();
+
+        // Collect contributors into a vec of trait refs
+        let pm_guard;
+        let mut contributors: Vec<&dyn MenuContributor> = vec![&builtin];
+
+        if let Some(pm_arc) = plugin_manager {
+            pm_guard = pm_arc.lock().unwrap();
+            contributors.push(&*pm_guard);
+        }
+
+        contributors.push(&settings.leader_menu);
+
+        let (menu, conflicts) = super::components::leader_menu::LeaderMenu::build(
+            &contributors,
+            &hidden,
+        );
+
+        for c in &conflicts {
+            tracing::debug!(
+                registry = c.registry,
+                key = %c.key,
+                winner = %c.winner,
+                loser = %c.loser,
+                "leader menu key conflict"
+            );
+        }
+
+        self.leader_menu = menu;
+    }
+
     /// Get a panel by ID (immutable) for rendering.
     pub fn panel(&self, id: super::panel::PanelId) -> &dyn super::panel::Panel {
         use super::panel::PanelId;

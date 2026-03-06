@@ -37,6 +37,25 @@ pub struct PluginManifest {
     /// At load time, each env var is resolved and passed to the plugin via Extism config.
     #[serde(default)]
     pub config_env: HashMap<String, String>,
+
+    /// Optional leader menu entries contributed by this plugin.
+    #[serde(default)]
+    pub leader_menu: Vec<PluginLeaderEntry>,
+}
+
+/// A leader menu entry declared in a plugin's `plugin.json`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PluginLeaderEntry {
+    /// Key to press in the leader menu.
+    pub key: char,
+    /// Display label.
+    pub label: String,
+    /// Slash command to execute (e.g. "/cal list").
+    pub command: String,
+    /// Submenu name. If omitted, goes to root.
+    /// "plugins" is conventional for plugin top-level items.
+    #[serde(default)]
+    pub submenu: Option<String>,
 }
 
 /// A tool definition inside the plugin manifest, providing metadata

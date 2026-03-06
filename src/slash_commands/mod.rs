@@ -7,6 +7,8 @@
 use std::cell::RefCell;
 use std::fmt;
 
+use crate::tui::components::leader_menu::MenuPlacement;
+
 // Thread-local cache of prompt template names for slash completion.
 // Populated at startup from discovered prompt templates.
 thread_local! {
@@ -21,6 +23,17 @@ pub fn register_prompt_templates(templates: &[(String, String)]) {
         c.clear();
         c.extend(templates.iter().cloned());
     });
+}
+
+/// Binding for a slash command in the leader menu.
+#[derive(Debug, Clone)]
+pub struct LeaderBinding {
+    /// Key to press in the leader menu.
+    pub key: char,
+    /// Where in the menu this appears.
+    pub placement: MenuPlacement,
+    /// Override label (defaults to SlashCommand.description if None).
+    pub label: Option<&'static str>,
 }
 
 /// A registered slash command
@@ -38,6 +51,9 @@ pub struct SlashCommand {
     pub action: SlashAction,
     /// Subcommands shown in the autocomplete menu (name, description)
     pub subcommands: Vec<(&'static str, &'static str)>,
+    /// Optional leader menu binding. When set, this command appears
+    /// in the leader menu automatically.
+    pub leader_key: Option<LeaderBinding>,
 }
 
 /// What happens when a slash command is executed
@@ -137,6 +153,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: false,
             action: SlashAction::Help,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "clear",
@@ -145,6 +162,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: false,
             action: SlashAction::Clear,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "reset",
@@ -153,6 +171,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: false,
             action: SlashAction::Reset,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "compact",
@@ -162,6 +181,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: false,
             action: SlashAction::Compact,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "model",
@@ -170,6 +190,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Model,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "think",
@@ -193,6 +214,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                 ("high", "deep reasoning (~32k tokens)"),
                 ("max", "maximum reasoning (~128k tokens)"),
             ],
+            leader_key: None,
         },
         SlashCommand {
             name: "status",
@@ -201,6 +223,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: false,
             action: SlashAction::Status,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "usage",
@@ -209,6 +232,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: false,
             action: SlashAction::Usage,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "undo",
@@ -217,6 +241,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: false,
             action: SlashAction::Undo,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "session",
@@ -235,6 +260,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                 ("delete <id>", "delete a session"),
                 ("purge", "delete all sessions for this directory"),
             ],
+            leader_key: None,
         },
         SlashCommand {
             name: "export",
@@ -243,6 +269,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Export,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "cd",
@@ -251,6 +278,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Cd,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "shell",
@@ -259,6 +287,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Shell,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "version",
@@ -267,6 +296,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: false,
             action: SlashAction::Version,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "login",
@@ -281,6 +311,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Login,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "tools",
@@ -290,6 +321,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: false,
             action: SlashAction::Tools,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "plugin",
@@ -299,6 +331,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Plugin,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "worker",
@@ -312,6 +345,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Worker,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "share",
@@ -324,6 +358,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Share,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "subagents",
@@ -343,6 +378,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                 ("remove <id>", "remove a subagent entry"),
                 ("clear", "remove all completed/failed subagents"),
             ],
+            leader_key: None,
         },
         SlashCommand {
             name: "account",
@@ -365,6 +401,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                 ("status [name]", "show account status"),
                 ("list", "list all accounts"),
             ],
+            leader_key: None,
         },
         SlashCommand {
             name: "todo",
@@ -386,6 +423,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                 ("remove <id>", "remove an item"),
                 ("clear", "remove all completed items"),
             ],
+            leader_key: None,
         },
         SlashCommand {
             name: "preview",
@@ -397,6 +435,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Preview,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "plan",
@@ -411,6 +450,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Plan,
             subcommands: vec![("on", "enable plan mode"), ("off", "disable plan mode")],
+            leader_key: None,
         },
         SlashCommand {
             name: "review",
@@ -424,6 +464,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Review,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "role",
@@ -442,6 +483,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                 ("<name> <model>", "set a role's model"),
                 ("reset", "clear all role overrides"),
             ],
+            leader_key: None,
         },
         SlashCommand {
             name: "system",
@@ -465,6 +507,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                 ("reset", "restore the original system prompt"),
                 ("file <path>", "load system prompt from a file"),
             ],
+            leader_key: None,
         },
         SlashCommand {
             name: "editor",
@@ -476,6 +519,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: false,
             action: SlashAction::Editor,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "memory",
@@ -499,6 +543,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                 ("search <query>", "search memories"),
                 ("clear", "remove all memories"),
             ],
+            leader_key: None,
         },
         SlashCommand {
             name: "peers",
@@ -524,6 +569,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                 ("deny <node-id>", "remove from allowlist"),
                 ("server [on|off]", "start/stop RPC server"),
             ],
+            leader_key: None,
         },
         SlashCommand {
             name: "layout",
@@ -543,6 +589,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                 ("right", "all panels on the right"),
                 ("toggle <panel>", "show/hide a panel"),
             ],
+            leader_key: None,
         },
         SlashCommand {
             name: "fork",
@@ -554,6 +601,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Fork,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "rewind",
@@ -566,6 +614,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Rewind,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "branches",
@@ -577,6 +626,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Branches,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "switch",
@@ -588,6 +638,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Switch,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "label",
@@ -598,6 +649,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: true,
             action: SlashAction::Label,
             subcommands: vec![],
+            leader_key: None,
         },
         SlashCommand {
             name: "quit",
@@ -606,6 +658,7 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             accepts_args: false,
             action: SlashAction::Quit,
             subcommands: vec![],
+            leader_key: None,
         },
     ]
 }
