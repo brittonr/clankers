@@ -1380,7 +1380,15 @@ async fn run_event_loop(
                                     continue;
                                 }
                                 Some(PanelAction::FocusSubagent(ref subagent_id)) => {
-                                    app.focus_subagent(subagent_id);
+                                    if app.subagent_panes.pane_id_for(subagent_id).is_some() {
+                                        app.focus_subagent(subagent_id);
+                                    } else {
+                                        // No BSP pane — open inline detail view
+                                        use crate::tui::components::subagent_panel::SubagentPanel;
+                                        if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(crate::tui::panel::PanelId::Subagents) {
+                                            sp.open_detail();
+                                        }
+                                    }
                                     continue;
                                 }
                                 None => {} // key not handled by panel, fall through

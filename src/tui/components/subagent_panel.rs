@@ -304,12 +304,13 @@ impl Panel for SubagentPanel {
                 Some(PanelAction::Consumed)
             }
             KeyCode::Enter => {
-                // Focus the subagent's dedicated BSP pane (if it has one)
+                // Try to focus the subagent's dedicated BSP pane.
+                // If the pane doesn't exist (over limit, dismissed, etc.),
+                // the caller will fall back to opening the detail view.
                 if let Some(entry) = self.entries.get(self.selected) {
                     Some(PanelAction::FocusSubagent(entry.id.clone()))
                 } else {
-                    self.open_detail();
-                    Some(PanelAction::Consumed)
+                    None
                 }
             }
             KeyCode::Esc if self.view == PanelView::Detail => {
@@ -660,5 +661,30 @@ mod tests {
         panel.add("1".into(), "sub1".into(), "task".into(), None);
         panel.append_output("unknown", "line");
         assert!(panel.entries[0].output_lines.is_empty());
+    }
+
+    #[test]
+    fn test_enter_emits_focus_subagent() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let mut panel = SubagentPanel::new();
+        panel.add("sub1".into(), "worker".into(), "do stuff".into(), None);
+        panel.selected = 0;
+
+        let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        let action = panel.handle_key_event(enter);
+        // Should emit FocusSubagent with the selected entry's ID
+        assert_eq!(action, Some(PanelAction::FocusSubagent("sub1".into())));
+    }
+
+    #[test]
+    fn test_enter_on_empty_panel_returns_none() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let mut panel = SubagentPanel::new();
+        let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
+        let action = panel.handle_key_event(enter);
+        // No entries → nothing to focus
+        assert_eq!(action, None);
     }
 }
