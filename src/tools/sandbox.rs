@@ -327,6 +327,16 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
         let _ = add_rule(p, ALL_ACCESS);
     }
 
+    // Write access for nix daemon socket (nix build talks to the daemon via Unix socket)
+    let nix_rw_paths = [
+        PathBuf::from("/nix/var/nix/daemon-socket"),
+        home.join(".cache/nix"),
+        home.join(".local/state/nix"),
+    ];
+    for p in &nix_rw_paths {
+        let _ = add_rule(p, ALL_ACCESS);
+    }
+
     // Read-only paths (system, toolchains)
     let ro_paths = [
         PathBuf::from("/nix"),

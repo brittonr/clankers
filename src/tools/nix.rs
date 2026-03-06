@@ -224,6 +224,14 @@ fn supports_structured_logging(subcommand: &str) -> bool {
     )
 }
 
+// ── nom (nix-output-monitor) detection ──────────────────────────────────────
+
+// NOTE: nix-output-monitor (nom) was evaluated as a wrapper but rejected.
+// nom is a TUI app that uses cursor control sequences ([1G, [2K, [1F) and
+// box-drawing characters even when piped or with TERM=dumb. Its output cannot
+// be streamed line-by-line to panes. The internal-json parser below provides
+// cleaner, more controllable streaming output.
+
 // ── Tool implementation ─────────────────────────────────────────────────────
 
 pub struct NixTool {
@@ -235,7 +243,7 @@ impl NixTool {
         Self {
             definition: ToolDefinition {
                 name: "nix".to_string(),
-                description: "Run nix commands with streaming build output. Supports build, develop, run, shell, flake, eval, and other nix subcommands. Parses nix's structured logging for clean progress display. Use this instead of bash for nix commands to get better build output.".to_string(),
+                description: "Run nix commands with streaming build output. Supports build, develop, run, shell, flake, eval, and other nix subcommands. Parses nix's internal-json structured logging for clean progress display (builds, downloads, fetches, phases). Use this instead of bash for nix commands.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
