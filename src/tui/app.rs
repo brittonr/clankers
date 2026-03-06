@@ -157,6 +157,8 @@ pub struct App {
     pub branch_switcher: super::components::branch_switcher::BranchSwitcher,
     /// Branch comparison overlay (side-by-side diff)
     pub branch_compare: super::components::branch_compare::BranchCompareView,
+    /// Interactive merge overlay (checkbox message selection)
+    pub merge_interactive: super::components::merge_interactive::MergeInteractiveView,
     /// Process monitor panel (CPU/memory tracking)
     pub process_panel: super::components::process_panel::ProcessPanel,
     /// Context window gauge (token usage vs model limit)
@@ -275,6 +277,7 @@ impl App {
             branch_panel: super::components::branch_panel::BranchPanel::new(),
             branch_switcher: super::components::branch_switcher::BranchSwitcher::new(),
             branch_compare: super::components::branch_compare::BranchCompareView::new(),
+            merge_interactive: super::components::merge_interactive::MergeInteractiveView::new(),
             process_panel: super::components::process_panel::ProcessPanel::new(),
             context_gauge,
             git_status,

@@ -1010,6 +1010,35 @@ async fn run_event_loop(
                         continue;
                     }
 
+                    // ── Merge interactive intercept ──────────────
+                    if app.merge_interactive.visible && super::selectors::handle_merge_interactive_key(app, &key) {
+                        if app.merge_interactive.confirmed {
+                            let selected = app.merge_interactive.selected_ids();
+                            let source = app.merge_interactive.source_leaf().cloned();
+                            let target = app.merge_interactive.target_leaf().cloned();
+                            app.merge_interactive.close();
+                            if let (Some(src), Some(tgt)) = (source, target) {
+                                if let Some(sm) = session_manager.as_mut() {
+                                    match sm.merge_selective(src, tgt, &selected) {
+                                        Ok((count, _new_leaf)) => {
+                                            if let Ok(context) = sm.build_context() {
+                                                let msg_count = context.len();
+                                                let _ = cmd_tx.send(AgentCommand::ClearHistory);
+                                                let _ = cmd_tx.send(AgentCommand::SeedMessages(context));
+                                                app.push_system(
+                                                    format!("Merged {} messages (selective, {} in context)", count, msg_count),
+                                                    false,
+                                                );
+                                            }
+                                        }
+                                        Err(e) => app.push_system(format!("Merge failed: {}", e), true),
+                                    }
+                                }
+                            }
+                        }
+                        continue;
+                    }
+
                     // ── Leader menu intercept ────────────────────
                     if app.leader_menu.visible {
                         if let Some(leader_action) = app.leader_menu.handle_key(&key) {

@@ -113,6 +113,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     app.session_selector.render(frame, frame.area());
     app.branch_switcher.render(frame, frame.area());
     app.branch_compare.render(frame, frame.area());
+    app.merge_interactive.render(frame, frame.area());
     app.leader_menu.render(frame, frame.area());
 
     if !app.plugin_ui.notifications.is_empty() {

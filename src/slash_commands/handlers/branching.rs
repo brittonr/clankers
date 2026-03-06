@@ -284,6 +284,101 @@ impl SlashHandler for MergeHandler {
     }
 }
 
+pub struct MergeInteractiveHandler;
+
+impl SlashHandler for MergeInteractiveHandler {
+    fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
+        let parts: Vec<&str> = args.split_whitespace().collect();
+        if parts.len() != 2 {
+            ctx.app.push_system(
+                "Usage: /merge-interactive <source-branch> <target-branch>".to_string(),
+                true,
+            );
+            return;
+        }
+
+        let Some(sm) = ctx.session_manager.as_mut() else {
+            ctx.app.push_system("No active session.".to_string(), true);
+            return;
+        };
+
+        let branches = match sm.find_branches() {
+            Ok(b) => b,
+            Err(e) => {
+                ctx.app.push_system(format!("Failed to list branches: {}", e), true);
+                return;
+            }
+        };
+
+        // Resolve source and target branch names to leaf IDs
+        let source_leaf = branches
+            .iter()
+            .find(|b| b.name.eq_ignore_ascii_case(parts[0]))
+            .map(|b| b.leaf_id.clone())
+            .or_else(|| sm.resolve_target(parts[0]).ok());
+        let target_leaf = branches
+            .iter()
+            .find(|b| b.name.eq_ignore_ascii_case(parts[1]))
+            .map(|b| b.leaf_id.clone())
+            .or_else(|| sm.resolve_target(parts[1]).ok());
+
+        let Some(source) = source_leaf else {
+            let available = branches.iter().map(|b| b.name.clone()).collect::<Vec<_>>().join(", ");
+            ctx.app.push_system(
+                format!("Source branch '{}' not found. Available: {}", parts[0], available),
+                true,
+            );
+            return;
+        };
+        let Some(target) = target_leaf else {
+            let available = branches.iter().map(|b| b.name.clone()).collect::<Vec<_>>().join(", ");
+            ctx.app.push_system(
+                format!("Target branch '{}' not found. Available: {}", parts[1], available),
+                true,
+            );
+            return;
+        };
+
+        if source == target {
+            ctx.app.push_system("Cannot merge a branch into itself.".to_string(), true);
+            return;
+        }
+
+        // Load unique messages
+        let tree = match sm.load_tree() {
+            Ok(t) => t,
+            Err(e) => {
+                ctx.app.push_system(format!("Failed to load session tree: {}", e), true);
+                return;
+            }
+        };
+
+        let unique = tree.find_unique_messages(&source, &target);
+        if unique.is_empty() {
+            ctx.app.push_system(
+                "No unique messages to merge — branches share the same content.".to_string(),
+                false,
+            );
+            return;
+        }
+
+        let source_name = branches
+            .iter()
+            .find(|b| b.leaf_id == source)
+            .map(|b| b.name.clone())
+            .unwrap_or_else(|| source.to_string());
+        let target_name = branches
+            .iter()
+            .find(|b| b.leaf_id == target)
+            .map(|b| b.name.clone())
+            .unwrap_or_else(|| target.to_string());
+
+        ctx.app
+            .merge_interactive
+            .open(source, target, &source_name, &target_name, &unique);
+    }
+}
+
 pub struct CherryPickHandler;
 
 impl SlashHandler for CherryPickHandler {

@@ -198,6 +198,51 @@ pub(crate) fn handle_branch_compare_key(
 }
 
 // ---------------------------------------------------------------------------
+// Interactive merge key handling
+// ---------------------------------------------------------------------------
+
+pub(crate) fn handle_merge_interactive_key(
+    app: &mut App,
+    key: &crossterm::event::KeyEvent,
+) -> bool {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => {
+            app.merge_interactive.close();
+            true
+        }
+        KeyCode::Char(' ') => {
+            app.merge_interactive.toggle();
+            true
+        }
+        KeyCode::Char('a') => {
+            app.merge_interactive.select_all();
+            true
+        }
+        KeyCode::Char('n') => {
+            app.merge_interactive.deselect_all();
+            true
+        }
+        KeyCode::Char('j') | KeyCode::Down => {
+            app.merge_interactive.move_down();
+            true
+        }
+        KeyCode::Char('k') | KeyCode::Up => {
+            app.merge_interactive.move_up();
+            true
+        }
+        KeyCode::Enter => {
+            if app.merge_interactive.selected_count() > 0 {
+                app.merge_interactive.confirmed = true;
+            } else {
+                app.push_system("No messages selected for merge.".to_string(), true);
+            }
+            true
+        }
+        _ => true, // consume all keys while merge view is open
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Session selector key handling
 // ---------------------------------------------------------------------------
 

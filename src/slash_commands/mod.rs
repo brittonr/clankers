@@ -66,6 +66,7 @@ pub fn dispatch(
         "compare" => handlers::branching::CompareHandler.handle(args, ctx),
         "label" => handlers::branching::LabelHandler.handle(args, ctx),
         "merge" => handlers::branching::MergeHandler.handle(args, ctx),
+        "merge-interactive" => handlers::branching::MergeInteractiveHandler.handle(args, ctx),
         "cherry-pick" => handlers::branching::CherryPickHandler.handle(args, ctx),
         // User-defined prompt templates: any name not matched above
         _ => {
@@ -617,6 +618,17 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    Finds messages unique to the source branch and appends them\n  \
                    to the target branch's leaf. Switches to the target branch\n  \
                    after merging. Use /branches to see available branch names.",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        },
+        SlashCommand {
+            name: "merge-interactive",
+            description: "Interactively select messages to merge between branches",
+            help: "Opens a checkbox overlay showing all unique messages in the source branch.\n\n\
+                   Usage: /merge-interactive <source-branch> <target-branch>\n\n\
+                   Toggle messages with Space, select all with 'a', deselect with 'n',\n  \
+                   then press Enter to merge only the selected messages. Press Esc to cancel.",
             accepts_args: true,
             subcommands: vec![],
             leader_key: None,
