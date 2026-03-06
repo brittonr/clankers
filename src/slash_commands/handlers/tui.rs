@@ -22,7 +22,7 @@ impl SlashHandler for LayoutHandler {
             }
             "focused" | "none" | "clean" => {
                 ctx.app.panel_layout = PanelLayout::focused();
-                ctx.app.panel_focused = false;
+                ctx.app.focus.unfocus();
                 ctx.app.focus.unfocus();
                 ctx.app.push_system("Layout: focused (no panels)".into(), false);
             }

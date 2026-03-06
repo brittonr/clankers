@@ -42,38 +42,8 @@ pub enum AppState {
     Dialog,
 }
 
-/// Which tab is active in the right-side panel
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PanelTab {
-    Todo,
-    Files,
-    Subagents,
-    Peers,
-    Processes,
-}
-
-impl PanelTab {
-    /// Is this a left-column panel (Todo or Files)?
-    pub fn is_left(self) -> bool {
-        matches!(self, PanelTab::Todo | PanelTab::Files)
-    }
-
-    /// Is this a right-column panel (Subagents, Peers, or Processes)?
-    pub fn is_right(self) -> bool {
-        matches!(self, PanelTab::Subagents | PanelTab::Peers | PanelTab::Processes)
-    }
-
-    /// Convert to the new PanelId system.
-    pub fn to_panel_id(self) -> super::panel::PanelId {
-        match self {
-            PanelTab::Todo => super::panel::PanelId::Todo,
-            PanelTab::Files => super::panel::PanelId::Files,
-            PanelTab::Subagents => super::panel::PanelId::Subagents,
-            PanelTab::Peers => super::panel::PanelId::Peers,
-            PanelTab::Processes => super::panel::PanelId::Processes,
-        }
-    }
-}
+// PanelTab enum deleted — panel focus is tracked by FocusTracker in layout.rs,
+// which uses PanelId directly. See App::focus field.
 
 /// Connection status to the clankers-router daemon
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -187,12 +157,8 @@ pub struct App {
     pub context_gauge: super::components::context_gauge::ContextGauge,
     /// Git status (branch + dirty indicator)
     pub git_status: super::components::git_status::GitStatus,
-    /// Which panel tab is currently focused
-    pub panel_tab: PanelTab,
-    /// Which right-column panel to display (persists when focus moves away)
-    pub right_panel_tab: PanelTab,
-    /// Whether a side panel has focus (for scrolling/navigation)
-    pub panel_focused: bool,
+    // Legacy panel_tab/right_panel_tab/panel_focused deleted.
+    // Panel focus is tracked by self.focus: FocusTracker (see layout.rs).
     /// Pending images attached via clipboard paste (base64-encoded PNG data)
     pub pending_images: Vec<PendingImage>,
     /// Whether a clipboard read is in progress (to avoid stacking requests)
@@ -303,9 +269,7 @@ impl App {
             process_panel: super::components::process_panel::ProcessPanel::new(),
             context_gauge,
             git_status,
-            panel_tab: PanelTab::Todo,
-            right_panel_tab: PanelTab::Subagents,
-            panel_focused: false,
+
             pending_images: Vec::new(),
             clipboard_pending: false,
             clipboard_rx: None,
@@ -403,16 +367,17 @@ impl App {
         }
     }
 
-    /// Sync the new `FocusTracker` from the legacy `panel_tab`/`panel_focused`
-    /// fields. Call this at the start of each render so the layout engine sees
-    /// the correct focus state. This bridge exists during the migration — once
-    /// all key handling moves to `Panel::handle_key_event`, the legacy fields
-    /// can be removed.
-    pub fn sync_focus_from_legacy(&mut self) {
-        if self.panel_focused {
-            self.focus.focus(self.panel_tab.to_panel_id());
-        } else {
-            self.focus.unfocus();
+    /// Close any detail/diff views on the focused panel before unfocusing.
+    /// Panels like Subagents and Files have sub-views that should reset
+    /// when the user exits the panel.
+    pub fn close_focused_panel_views(&mut self) {
+        use super::panel::PanelId;
+        if let Some(id) = self.focus.focused {
+            match id {
+                PanelId::Subagents => self.subagent_panel.close_detail(),
+                PanelId::Files => self.file_activity_panel.close_diff(),
+                _ => {}
+            }
         }
     }
 

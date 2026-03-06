@@ -31,9 +31,6 @@ use crate::tui::widget_host;
 
 /// Render the full application UI
 pub fn render(frame: &mut Frame, app: &mut App) {
-    // Bridge legacy focus state → new FocusTracker
-    app.sync_focus_from_legacy();
-
     // Advance animation tick (drives spinners and other animated elements)
     app.advance_tick();
 

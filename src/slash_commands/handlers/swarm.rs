@@ -141,9 +141,7 @@ pub struct PeersHandler;
 impl SlashHandler for PeersHandler {
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         // Switch to peers panel tab
-        ctx.app.panel_tab = crate::tui::app::PanelTab::Peers;
-        ctx.app.right_panel_tab = crate::tui::app::PanelTab::Peers;
-        ctx.app.panel_focused = true;
+        ctx.app.focus.focus(crate::tui::panel::PanelId::Peers);
 
         if args.is_empty() {
             // Just show the panel — refresh peers from registry

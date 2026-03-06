@@ -34,7 +34,7 @@ use crate::tui::components::block::BlockEntry;
 use crate::tui::event::AppEvent;
 use crate::tui::event::Button;
 use crate::tui::event::{self as tui_event};
-use crate::tui::panel::Panel; // bring trait methods (is_empty, etc.) into scope
+// Panel trait is in scope via panel_mut() return type
 use crate::tui::render;
 use crate::tui::theme::Theme;
 
@@ -1026,185 +1026,67 @@ async fn run_event_loop(
                     }
 
                     // ── Panel intercepts in normal mode ──────────
-                    if app.panel_focused && app.input_mode == InputMode::Normal {
+                    if app.focus.has_panel_focus() && app.input_mode == InputMode::Normal {
                         use crossterm::event::KeyCode;
+                        use crate::tui::panel::PanelAction;
 
-                        use crate::tui::app::PanelTab;
-
-                        // Tab / Shift+Tab cycles sub-panels within the current column
-                        if let (KeyCode::Tab | KeyCode::BackTab, _) = (key.code, key.modifiers) {
-                            // Toggle between sub-panels in the same column
-                            app.panel_tab = match app.panel_tab {
-                                PanelTab::Todo => PanelTab::Files,
-                                PanelTab::Files => PanelTab::Todo,
-                                PanelTab::Subagents => {
-                                    app.right_panel_tab = PanelTab::Peers;
-                                    PanelTab::Peers
-                                }
-                                PanelTab::Peers => {
-                                    app.right_panel_tab = PanelTab::Processes;
-                                    PanelTab::Processes
-                                }
-                                PanelTab::Processes => {
-                                    app.right_panel_tab = PanelTab::Subagents;
-                                    PanelTab::Subagents
-                                }
-                            };
+                        // Tab / Shift+Tab cycles sub-panels within the same column
+                        if matches!(key.code, KeyCode::Tab | KeyCode::BackTab) {
+                            app.focus.cycle_in_column(&app.panel_layout);
                             continue;
                         }
 
-                        match app.panel_tab {
-                            PanelTab::Subagents => {
-                                match (key.code, key.modifiers) {
-                                    (KeyCode::Enter, _) => {
-                                        use crate::tui::components::subagent_panel::PanelView;
-                                        match app.subagent_panel.view {
-                                            PanelView::List => app.subagent_panel.open_detail(),
-                                            PanelView::Detail => app.subagent_panel.close_detail(),
-                                        }
-                                        continue;
+                        // Side-effect keys that need app-level resources
+                        // (the Panel trait can't send on channels)
+                        if let Some(focused_id) = app.focus.focused {
+                            use crate::tui::panel::PanelId;
+                            match (focused_id, key.code, key.modifiers) {
+                                // Subagents: 'x' = kill selected running subagent
+                                (PanelId::Subagents, KeyCode::Char('x'), m) if m.is_empty() => {
+                                    if let Some(id) = app.subagent_panel.selected_id() {
+                                        let _ = panel_tx.send(
+                                            crate::tui::components::subagent_event::SubagentEvent::KillRequest { id },
+                                        );
                                     }
-                                    // 'x' = kill selected running subagent
-                                    (KeyCode::Char('x'), m) if m.is_empty() => {
-                                        if let Some(id) = app.subagent_panel.selected_id() {
-                                            let _ = panel_tx.send(
-                                                crate::tui::components::subagent_event::SubagentEvent::KillRequest {
-                                                    id,
-                                                },
-                                            );
-                                        }
-                                        continue;
-                                    }
-                                    // 'X' (shift-x) = remove/dismiss selected entry
-                                    (KeyCode::Char('X'), _) => {
-                                        app.subagent_panel.remove_selected();
-                                        if !app.subagent_panel.is_visible() && app.todo_panel.is_empty() {
-                                            app.panel_focused = false;
-                                        }
-                                        continue;
-                                    }
-                                    _ => {}
+                                    continue;
                                 }
-                            }
-                            PanelTab::Todo => {
-                                match (key.code, key.modifiers) {
-                                    // 'x' = mark done
-                                    (KeyCode::Char('x'), m) if m.is_empty() => {
-                                        app.todo_panel.toggle_selected();
-                                        continue;
+                                // Peers: 'p' = probe selected peer
+                                (PanelId::Peers, KeyCode::Char('p'), m) if m.is_empty() => {
+                                    if let Some(peer) = app.peers_panel.selected_peer().cloned() {
+                                        app.peers_panel.update_status(
+                                            &peer.node_id,
+                                            crate::tui::components::peers_panel::PeerStatus::Probing,
+                                        );
+                                        let node_id = peer.node_id.clone();
+                                        let paths = crate::config::ClankersPaths::resolve();
+                                        let registry_path = crate::modes::rpc::peers::registry_path(&paths);
+                                        let identity_path = crate::modes::rpc::iroh::identity_path(&paths);
+                                        let ptx = panel_tx.clone();
+                                        tokio::spawn(async move {
+                                            probe_peer_background(node_id, registry_path, identity_path, ptx).await;
+                                        });
                                     }
-                                    // 'X' = remove selected
-                                    (KeyCode::Char('X'), _) => {
-                                        app.todo_panel.remove_selected();
-                                        if app.todo_panel.is_empty() && !app.subagent_panel.is_visible() {
-                                            app.panel_focused = false;
-                                        }
-                                        continue;
-                                    }
-                                    // Enter = cycle (same as space for convenience)
-                                    (KeyCode::Enter, _) => {
-                                        app.todo_panel.cycle_selected();
-                                        continue;
-                                    }
-                                    _ => {}
+                                    continue;
                                 }
+                                _ => {}
                             }
-                            PanelTab::Files => {
-                                use crate::tui::components::file_activity_panel::FileView;
-                                match app.file_activity_panel.view {
-                                    FileView::List => match key.code {
-                                        KeyCode::Enter => {
-                                            app.file_activity_panel.open_diff();
-                                            continue;
-                                        }
-                                        KeyCode::Char('d') if key.modifiers.is_empty() => {
-                                            app.file_activity_panel.open_diff();
-                                            continue;
-                                        }
-                                        _ => {}
-                                    },
-                                    FileView::Diff => match key.code {
-                                        KeyCode::Esc => {
-                                            app.file_activity_panel.close_diff();
-                                            continue;
-                                        }
-                                        KeyCode::Char('q') if key.modifiers.is_empty() => {
-                                            app.file_activity_panel.close_diff();
-                                            continue;
-                                        }
-                                        KeyCode::Char('j') | KeyCode::Down => {
-                                            if let Some(ref dv) = app.file_activity_panel.diff_view {
-                                                dv.scroll_down(1);
-                                            }
-                                            continue;
-                                        }
-                                        KeyCode::Char('k') | KeyCode::Up => {
-                                            if let Some(ref dv) = app.file_activity_panel.diff_view {
-                                                dv.scroll_up(1);
-                                            }
-                                            continue;
-                                        }
-                                        KeyCode::Char('g') if key.modifiers.is_empty() => {
-                                            if let Some(ref dv) = app.file_activity_panel.diff_view {
-                                                dv.scroll_to_top();
-                                            }
-                                            continue;
-                                        }
-                                        KeyCode::Char('G') => {
-                                            if let Some(ref dv) = app.file_activity_panel.diff_view {
-                                                dv.scroll_to_bottom();
-                                            }
-                                            continue;
-                                        }
-                                        KeyCode::Char('d') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                                            if let Some(ref dv) = app.file_activity_panel.diff_view {
-                                                dv.scroll_down(10);
-                                            }
-                                            continue;
-                                        }
-                                        KeyCode::Char('u') if key.modifiers.contains(KeyModifiers::CONTROL) => {
-                                            if let Some(ref dv) = app.file_activity_panel.diff_view {
-                                                dv.scroll_up(10);
-                                            }
-                                            continue;
-                                        }
-                                        _ => {}
-                                    },
+                        }
+
+                        // Delegate everything else to the focused panel's handle_key_event
+                        if let Some(focused_id) = app.focus.focused {
+                            let result = app.panel_mut(focused_id).handle_key_event(key);
+                            match result {
+                                Some(PanelAction::Consumed) => continue,
+                                Some(PanelAction::Unfocus) => {
+                                    app.focus.unfocus();
+                                    continue;
                                 }
-                            }
-                            PanelTab::Processes => {
-                                // Process panel — navigation and sorting handled via Panel trait
-                            }
-                            PanelTab::Peers => {
-                                match (key.code, key.modifiers) {
-                                    (KeyCode::Enter, _) => {
-                                        app.peers_panel.toggle_detail();
-                                        continue;
-                                    }
-                                    (KeyCode::Esc, _) if app.peers_panel.detail_view => {
-                                        app.peers_panel.detail_view = false;
-                                        continue;
-                                    }
-                                    // 'p' = probe selected peer
-                                    (KeyCode::Char('p'), m) if m.is_empty() => {
-                                        if let Some(peer) = app.peers_panel.selected_peer().cloned() {
-                                            app.peers_panel.update_status(
-                                                &peer.node_id,
-                                                crate::tui::components::peers_panel::PeerStatus::Probing,
-                                            );
-                                            let node_id = peer.node_id.clone();
-                                            let paths = crate::config::ClankersPaths::resolve();
-                                            let registry_path = crate::modes::rpc::peers::registry_path(&paths);
-                                            let identity_path = crate::modes::rpc::iroh::identity_path(&paths);
-                                            let ptx = panel_tx.clone();
-                                            tokio::spawn(async move {
-                                                probe_peer_background(node_id, registry_path, identity_path, ptx).await;
-                                            });
-                                        }
-                                        continue;
-                                    }
-                                    _ => {}
+                                Some(PanelAction::SlashCommand(_cmd)) => continue,
+                                Some(PanelAction::FocusPanel(id)) => {
+                                    app.focus.focus(id);
+                                    continue;
                                 }
+                                None => {} // key not handled by panel, fall through
                             }
                         }
                     }
@@ -1292,14 +1174,14 @@ fn handle_action(
     db: &Option<crate::db::Db>,
     session_manager: &mut Option<crate::session::SessionManager>,
 ) {
-    // When panel is focused, route navigation keys to the panel.
-    // Global actions (leader menu, selectors, mode switching, etc.)
-    // bypass panel handling so they work from any context.
-    if app.panel_focused {
-        use crate::tui::app::PanelTab;
+    // When a panel is focused, intercept navigation actions and let
+    // global actions (leader menu, selectors, etc.) fall through.
+    // Panel-specific key handling is done by Panel::handle_key_event()
+    // in the raw key dispatch above — this block only handles Action-level
+    // structural navigation (focus/unfocus, column movement, mode switching).
+    if app.focus.has_panel_focus() {
+        use crate::tui::layout::ColumnSide;
 
-        // Global actions always fall through to the main handler below,
-        // regardless of which panel is focused.
         let is_global = matches!(
             action,
             Action::Quit
@@ -1319,202 +1201,46 @@ fn handle_action(
 
         if !is_global {
             match action {
-                // ── Panel exit / mode switching ──────────────
                 Action::Unfocus | Action::TogglePanelFocus => {
-                    if app.panel_tab == PanelTab::Subagents {
-                        app.subagent_panel.close_detail();
-                    }
-                    if app.panel_tab == PanelTab::Files {
-                        app.file_activity_panel.close_diff();
-                    }
-                    app.panel_focused = false;
+                    app.close_focused_panel_views();
+                    app.focus.unfocus();
                     return;
                 }
                 Action::EnterInsert => {
-                    if app.panel_tab == PanelTab::Subagents {
-                        app.subagent_panel.close_detail();
-                    }
-                    if app.panel_tab == PanelTab::Files {
-                        app.file_activity_panel.close_diff();
-                    }
-                    app.panel_focused = false;
+                    app.close_focused_panel_views();
+                    app.focus.unfocus();
                     app.input_mode = InputMode::Insert;
                     return;
                 }
                 Action::EnterCommand => {
-                    if app.panel_tab == PanelTab::Subagents {
-                        app.subagent_panel.close_detail();
-                    }
-                    if app.panel_tab == PanelTab::Files {
-                        app.file_activity_panel.close_diff();
-                    }
-                    app.panel_focused = false;
+                    app.close_focused_panel_views();
+                    app.focus.unfocus();
                     // Don't return — fall through to main handler for "/" prefix setup
                 }
-
-                // ── Panel navigation ─────────────────────────
+                // h/l: move between columns and main area
                 Action::PanelNextTab | Action::BranchNext => {
-                    // l = move right: left→main, right→no-op
-                    if app.panel_tab.is_left() {
-                        app.panel_focused = false;
+                    if let Some(id) = app.focus.focused {
+                        if app.panel_layout.panel_side(id) == Some(ColumnSide::Left) {
+                            app.focus.unfocus();
+                        }
                     }
-                    // If already in right column, do nothing
                     return;
                 }
                 Action::PanelPrevTab | Action::BranchPrev => {
-                    // h = move left: right→main, left→no-op
-                    if app.panel_tab.is_right() {
-                        app.panel_focused = false;
+                    if let Some(id) = app.focus.focused {
+                        if app.panel_layout.panel_side(id) == Some(ColumnSide::Right) {
+                            app.focus.unfocus();
+                        }
                     }
-                    // If already in left column, do nothing
                     return;
                 }
-                // j/k cycles between panels (panes) in the same column
+                // j/k: cycle panels within the same column
                 Action::FocusPrevBlock | Action::FocusNextBlock => {
-                    let next_tab = match app.panel_tab {
-                        PanelTab::Todo => PanelTab::Files,
-                        PanelTab::Files => PanelTab::Todo,
-                        PanelTab::Subagents => {
-                            app.right_panel_tab = PanelTab::Peers;
-                            PanelTab::Peers
-                        }
-                        PanelTab::Peers => {
-                            app.right_panel_tab = PanelTab::Processes;
-                            PanelTab::Processes
-                        }
-                        PanelTab::Processes => {
-                            app.right_panel_tab = PanelTab::Subagents;
-                            PanelTab::Subagents
-                        }
-                    };
-                    app.panel_tab = next_tab;
+                    app.focus.cycle_in_column(&app.panel_layout);
                     return;
                 }
-
-                // ── Panel-type-specific actions ──────────────
-                _ => match app.panel_tab {
-                    PanelTab::Subagents => {
-                        use crate::tui::components::subagent_panel::PanelView;
-                        match app.subagent_panel.view {
-                            PanelView::List => match action {
-                                Action::Submit => {
-                                    app.subagent_panel.open_detail();
-                                    return;
-                                }
-                                Action::PanelClearDone => {
-                                    app.subagent_panel.clear_done();
-                                    if !app.subagent_panel.is_visible() && app.todo_panel.is_empty() {
-                                        app.panel_focused = false;
-                                    }
-                                    return;
-                                }
-                                _ => return,
-                            },
-                            PanelView::Detail => match action {
-                                Action::ScrollUp => {
-                                    app.subagent_panel.scroll_up(1);
-                                    return;
-                                }
-                                Action::ScrollDown => {
-                                    app.subagent_panel.scroll_down(1);
-                                    return;
-                                }
-                                Action::ScrollPageUp => {
-                                    app.subagent_panel.scroll_up(10);
-                                    return;
-                                }
-                                Action::ScrollPageDown => {
-                                    app.subagent_panel.scroll_down(10);
-                                    return;
-                                }
-                                Action::ScrollToTop => {
-                                    app.subagent_panel.scroll_to_top();
-                                    return;
-                                }
-                                Action::ScrollToBottom => {
-                                    app.subagent_panel.scroll_to_bottom();
-                                    return;
-                                }
-                                _ => return,
-                            },
-                        }
-                    }
-                    PanelTab::Todo => match action {
-                        Action::PanelClearDone => {
-                            app.todo_panel.clear_done();
-                            if app.todo_panel.is_empty() && !app.subagent_panel.is_visible() {
-                                app.panel_focused = false;
-                            }
-                            return;
-                        }
-                        _ => return,
-                    },
-                    PanelTab::Files => {
-                        use crate::tui::components::file_activity_panel::FileView;
-                        match app.file_activity_panel.view {
-                            FileView::List => match action {
-                                Action::Submit => {
-                                    app.file_activity_panel.open_diff();
-                                    return;
-                                }
-                                _ => return,
-                            },
-                            FileView::Diff => match action {
-                                Action::Unfocus => {
-                                    app.file_activity_panel.close_diff();
-                                    return;
-                                }
-                                Action::ScrollUp => {
-                                    if let Some(ref dv) = app.file_activity_panel.diff_view {
-                                        dv.scroll_up(1);
-                                    }
-                                    return;
-                                }
-                                Action::ScrollDown => {
-                                    if let Some(ref dv) = app.file_activity_panel.diff_view {
-                                        dv.scroll_down(1);
-                                    }
-                                    return;
-                                }
-                                Action::ScrollPageUp => {
-                                    if let Some(ref dv) = app.file_activity_panel.diff_view {
-                                        dv.scroll_up(10);
-                                    }
-                                    return;
-                                }
-                                Action::ScrollPageDown => {
-                                    if let Some(ref dv) = app.file_activity_panel.diff_view {
-                                        dv.scroll_down(10);
-                                    }
-                                    return;
-                                }
-                                Action::ScrollToTop => {
-                                    if let Some(ref dv) = app.file_activity_panel.diff_view {
-                                        dv.scroll_to_top();
-                                    }
-                                    return;
-                                }
-                                Action::ScrollToBottom => {
-                                    if let Some(ref dv) = app.file_activity_panel.diff_view {
-                                        dv.scroll_to_bottom();
-                                    }
-                                    return;
-                                }
-                                _ => return,
-                            },
-                        }
-                    }
-                    PanelTab::Processes => {
-                        return;
-                    }
-                    PanelTab::Peers => match action {
-                        Action::Submit => {
-                            app.peers_panel.toggle_detail();
-                            return;
-                        }
-                        _ => return,
-                    },
-                },
+                // Everything else is consumed (don't leak to main handler)
+                _ => return,
             }
         }
     }
@@ -1661,28 +1387,20 @@ fn handle_action(
         // ── Branch / panel navigation ────────────────
         Action::BranchPrev => {
             if app.focused_block.is_some() {
-                // Block focused → branch navigation
                 app.branch_prev();
             } else {
-                // No block focused → h moves focus to left column
-                app.panel_focused = true;
+                // h = focus left column
+                app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Left);
                 app.input_mode = InputMode::Normal;
-                if !app.panel_tab.is_left() {
-                    app.panel_tab = crate::tui::app::PanelTab::Todo;
-                }
             }
         }
         Action::BranchNext => {
             if app.focused_block.is_some() {
-                // Block focused → branch navigation
                 app.branch_next();
             } else {
-                // No block focused → l moves focus to right column
-                app.panel_focused = true;
+                // l = focus right column
+                app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Right);
                 app.input_mode = InputMode::Normal;
-                if !app.panel_tab.is_right() {
-                    app.panel_tab = app.right_panel_tab;
-                }
             }
         }
 
@@ -1701,29 +1419,26 @@ fn handle_action(
             app.push_system(format!("Block IDs now {}.", state), false);
         }
 
-        // ── Subagent panel ────────────────────────────
+        // ── Panel focus ─────────────────────────────
         Action::TogglePanelFocus => {
-            if app.panel_focused {
-                app.panel_focused = false;
+            if app.focus.has_panel_focus() {
+                app.focus.unfocus();
             } else {
-                // All panels are always visible, so just focus the current tab
-                app.panel_focused = true;
+                // Focus the first panel in the layout
+                let order = app.panel_layout.focus_order();
+                if let Some(&first) = order.first() {
+                    app.focus.focus(first);
+                }
                 app.input_mode = InputMode::Normal;
             }
         }
         Action::PanelNextTab => {
-            // Focus right column
-            app.panel_focused = true;
+            app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Right);
             app.input_mode = InputMode::Normal;
-            app.panel_tab = app.right_panel_tab;
         }
         Action::PanelPrevTab => {
-            // Focus left column
-            app.panel_focused = true;
+            app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Left);
             app.input_mode = InputMode::Normal;
-            if !app.panel_tab.is_left() {
-                app.panel_tab = crate::tui::app::PanelTab::Todo;
-            }
         }
         Action::PanelScrollUp => {
             app.subagent_panel.scroll_up(3);
@@ -1734,7 +1449,7 @@ fn handle_action(
         Action::PanelClearDone => {
             app.subagent_panel.clear_done();
             if !app.subagent_panel.is_visible() {
-                app.panel_focused = false;
+                app.focus.unfocus();
             }
         }
         Action::PanelKill => {
@@ -2268,15 +1983,11 @@ fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
                     }
 
                     // Switch to normal mode if we were focused on a panel
-                    if app.panel_focused {
-                        app.panel_focused = false;
-                        app.focus.unfocus();
-                    }
+                    app.focus.unfocus();
                 }
                 HitRegion::Editor => {
                     // Click in editor → switch to insert mode and place cursor
                     app.selection = None;
-                    app.panel_focused = false;
                     app.focus.unfocus();
                     app.input_mode = InputMode::Insert;
 
@@ -2299,8 +2010,6 @@ fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
                 HitRegion::Panel(panel_id) => {
                     // Click on a panel → focus it
                     app.selection = None;
-                    app.panel_focused = true;
-                    app.panel_tab = panel_id_to_tab(panel_id);
                     app.focus.focus(panel_id);
                     app.input_mode = InputMode::Normal;
                 }
@@ -2443,19 +2152,6 @@ fn click_toggle_block(app: &mut App, text_row: usize) {
 }
 
 /// Convert a `PanelId` to the legacy `PanelTab` (bridge during migration).
-fn panel_id_to_tab(id: crate::tui::panel::PanelId) -> crate::tui::app::PanelTab {
-    use crate::tui::app::PanelTab;
-    use crate::tui::panel::PanelId;
-    match id {
-        PanelId::Todo => PanelTab::Todo,
-        PanelId::Files => PanelTab::Files,
-        PanelId::Subagents => PanelTab::Subagents,
-        PanelId::Peers => PanelTab::Peers,
-        PanelId::Processes => PanelTab::Processes,
-        PanelId::Environment => PanelTab::Todo, // fallback
-    }
-}
-
 fn handle_insert_char(app: &mut App, key: &crossterm::event::KeyEvent) {
     if let (KeyCode::Char(c), m) = (key.code, key.modifiers)
         && (m.is_empty() || m == KeyModifiers::SHIFT)
