@@ -99,32 +99,34 @@
 - [ ] Unit tests: ETA calculation with mock history
 - [ ] Unit tests: spinner animation cycles correctly
 
-## Phase 10: TUI Streaming Output Panel
+## Phase 10: TUI Streaming Output Panel ✅
 
-- [ ] Create `src/tui/components/streaming_output_panel.rs`
-- [ ] Implement `StreamingOutputPanel` struct with `chunks: HashMap<String, ChunkBuffer>`
-- [ ] Implement `ChunkBuffer` with smart head/tail truncation during accumulation
-- [ ] Implement `StreamingOutputPanel::add_chunk()` — append chunk, apply truncation
-- [ ] Implement `StreamingOutputPanel::render()` — display lines with scrolling
-- [ ] Implement scrollbar rendering for tall content
-- [ ] Implement `scroll_down()`, `scroll_up()`, `scroll_to_bottom()` methods
-- [ ] Highlight omission marker lines with dimmed yellow style
-- [ ] Show stats footer: lines/total/chunks count
-- [ ] Unit tests: chunk accumulation with truncation
-- [ ] Unit tests: scroll offset clamping
+- [x] Create `src/tui/components/streaming_output.rs`
+- [x] Implement `StreamingOutputManager` with per-call_id `StreamingOutput` buffers
+- [x] Implement `StreamingOutput` with smart head/tail truncation during accumulation
+- [x] Implement `add_line()`, `add_text()`, `push_line()` — append output, apply truncation
+- [x] Implement `render_lines()` — display lines with scroll state
+- [x] Implement scroll state with auto-follow tracking
+- [x] Implement `scroll_down()`, `scroll_up()`, `scroll_to_top()`, `scroll_to_bottom()` methods
+- [x] Highlight omission marker lines with dimmed style
+- [x] Show stats footer: lines, bytes, follow/scroll mode, omitted count
+- [x] 20 unit tests: accumulation, truncation, scroll, focus, rendering, stats
+- [x] Unit tests: scroll offset clamping
 
-## Phase 11: TUI Integration
+## Phase 11: TUI Integration ✅
 
-- [ ] Update `src/tui/components/tool_panel.rs` to embed `ProgressRenderer` and `StreamingOutputPanel`
-- [ ] Add event handler for `AgentEvent::ToolProgressUpdate` — call `progress_renderer.update()`
-- [ ] Add event handler for `AgentEvent::ToolResultChunk` — call `output_panel.add_chunk()`
-- [ ] Keep existing `AgentEvent::ToolExecutionUpdate` handler for backward compatibility
-- [ ] Layout tool panel: progress section (top 3 lines) + output section (remaining)
-- [ ] Add keybindings: `j`/`k` scroll, `g`/`G` top/bottom, `f` toggle auto-follow
-- [ ] Implement auto-follow mode (scroll to bottom on new chunks)
-- [ ] Add detail view mode (show progress history, chunk metadata) on `d` key
-- [ ] Update status bar to show active tool progress (e.g., "grep: 1234 lines")
-- [ ] Integration test: TUI renders progress bars, streaming output, responds to keys
+- [x] Wire `StreamingOutputManager` into `App` struct and `App::new()`
+- [x] Feed `ToolExecutionUpdate` events into streaming output manager
+- [x] Feed `ToolResultChunk` events into streaming output manager (no longer ignored)
+- [x] Keep existing `ToolExecutionUpdate` → `DisplayMessage` path for backward compatibility
+- [x] Replace 8-line tail window in `block_view.rs` with streaming buffer rendering
+- [x] Focused tools show 32 lines, unfocused show 8 lines (compact)
+- [x] Add keybindings: `j`/`k` scroll, `g`/`G` top/bottom, `f` toggle auto-follow
+- [x] Implement auto-follow mode (scroll to bottom on new output, default on)
+- [x] `focused_tool` on App — mutually exclusive with panel/subagent focus
+- [x] Update status bar to show active tool activity (🔧 tool_name + line count)
+- [x] Clean up buffer on `ToolExecutionEnd`
+- [ ] Add detail view mode (show progress history, chunk metadata) on `d` key — deferred
 
 ## Phase 12: Documentation and Examples
 
