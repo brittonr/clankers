@@ -232,6 +232,16 @@ impl LeaderMenu {
         (menu, conflicts)
     }
 
+    /// Get the root menu definition.
+    pub fn root_def(&self) -> &LeaderMenuDef {
+        &self.root
+    }
+
+    /// Get all submenu definitions.
+    pub fn submenu_defs(&self) -> &[LeaderMenuDef] {
+        &self.submenus
+    }
+
     /// Open the leader menu (shows root level).
     pub fn open(&mut self) {
         self.visible = true;

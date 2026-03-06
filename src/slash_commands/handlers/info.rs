@@ -51,3 +51,47 @@ impl SlashHandler for QuitHandler {
         ctx.app.should_quit = true;
     }
 }
+
+pub struct LeaderHandler;
+
+impl SlashHandler for LeaderHandler {
+    fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
+        let menu = &ctx.app.leader_menu;
+        let root = menu.root_def();
+        let submenus = menu.submenu_defs();
+        let mut out = String::from("Leader menu structure:\n");
+
+        // Root items
+        out.push_str("\n  ── Root ──\n");
+        for item in &root.items {
+            let action_str = format_leader_action(&item.action);
+            out.push_str(&format!("  {:>3}  {:<24} {}\n", item.key, item.label, action_str));
+        }
+
+        // Submenus
+        for sub in submenus {
+            out.push_str(&format!("\n  ── {} ──\n", sub.label));
+            for item in &sub.items {
+                let action_str = format_leader_action(&item.action);
+                out.push_str(&format!("  {:>3}  {:<24} {}\n", item.key, item.label, action_str));
+            }
+        }
+
+        out.push_str(&format!(
+            "\n  {} root items, {} submenus",
+            root.items.len(),
+            submenus.len(),
+        ));
+
+        ctx.app.push_system(out, false);
+    }
+}
+
+fn format_leader_action(action: &crate::tui::components::leader_menu::LeaderAction) -> String {
+    use crate::tui::components::leader_menu::LeaderAction;
+    match action {
+        LeaderAction::KeymapAction(a) => format!("→ {:?}", a),
+        LeaderAction::SlashCommand(cmd) => format!("→ {}", cmd),
+        LeaderAction::Submenu(name) => format!("→ [{}…]", name),
+    }
+}

@@ -74,6 +74,7 @@ pub fn dispatch(
         "merge" => handlers::branching::MergeHandler.handle(args, ctx),
         "merge-interactive" => handlers::branching::MergeInteractiveHandler.handle(args, ctx),
         "cherry-pick" => handlers::branching::CherryPickHandler.handle(args, ctx),
+        "leader" => handlers::info::LeaderHandler.handle(args, ctx),
         // User-defined prompt templates: any name not matched above
         _ => {
             handlers::prompt_template::PromptTemplateHandler {
@@ -692,6 +693,23 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             subcommands: vec![],
             leader_key: None,
         },
+        SlashCommand {
+            name: "leader",
+            description: "Dump leader menu structure (debug)",
+            help: "Show the current leader menu structure, including all items,\n\
+                   submenus, and their sources. Useful for debugging menu\n\
+                   contributions from builtins, plugins, and user config.\n\n\
+                   The leader menu (Space in normal mode) is built dynamically from:\n  \
+                   1. Built-in keymap actions and slash commands\n  \
+                   2. Plugin manifest `leader_menu` entries\n  \
+                   3. User config `[leader_menu]` in settings.json\n\n\
+                   User config (priority 200) overrides plugins (100), which\n  \
+                   override builtins (0). Use `leader_menu.hide` in settings\n  \
+                   to remove entries.",
+            accepts_args: false,
+            subcommands: vec![],
+            leader_key: None,
+        },
     ]
 }
 
@@ -852,6 +870,7 @@ impl SlashContributor for BuiltinSlashContributor {
                     "merge" => Box::new(handlers::branching::MergeHandler),
                     "merge-interactive" => Box::new(handlers::branching::MergeInteractiveHandler),
                     "cherry-pick" => Box::new(handlers::branching::CherryPickHandler),
+                    "leader" => Box::new(handlers::info::LeaderHandler),
                     _ => panic!("Unhandled builtin command: {}", cmd.name),
                 };
                 builtin_def(cmd, handler)
@@ -1407,8 +1426,8 @@ mod tests {
         // Should have no conflicts when building from a single contributor
         assert_eq!(conflicts.len(), 0);
 
-        // Should have all 42 builtin commands
-        assert_eq!(registry.all_commands().len(), 41);
+        // Should have all builtin commands
+        assert_eq!(registry.all_commands().len(), 42);
 
         // Verify a few specific commands are present
         assert!(registry.get("help").is_some());
@@ -1468,7 +1487,7 @@ mod tests {
 
         // Test empty partial returns all
         let all_completions = registry.completions("");
-        assert_eq!(all_completions.len(), 41);
+        assert_eq!(all_completions.len(), 42);
 
         // Test no matches
         let no_match = registry.completions("xyz");
@@ -1529,7 +1548,7 @@ mod tests {
         let (registry, _) = SlashRegistry::build(&contributors);
 
         let all_cmds = registry.all_commands();
-        assert_eq!(all_cmds.len(), 41);
+        assert_eq!(all_cmds.len(), 42);
 
         // Commands should be sorted
         let names: Vec<_> = all_cmds.iter().map(|c| &c.name).collect();

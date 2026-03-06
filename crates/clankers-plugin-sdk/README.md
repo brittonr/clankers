@@ -86,6 +86,14 @@ pub fn describe(Json(_): Json<()>) -> FnResult<Json<PluginMeta>> {
         "required": ["name"]
       }
     }
+  ],
+  "leader_menu": [
+    {
+      "key": "g",
+      "label": "greet",
+      "command": "/greet",
+      "submenu": "plugins"
+    }
   ]
 }
 ```
@@ -124,6 +132,42 @@ use clankers_plugin_sdk::prelude::*;
 ```
 Brings in all types, dispatch functions, arg helpers, and essential
 `extism_pdk` / `serde` re-exports.
+
+## Leader menu integration
+
+Plugins can add entries to the leader menu (Space key in normal mode) by
+declaring `leader_menu` in `plugin.json`:
+
+```json
+{
+  "leader_menu": [
+    {
+      "key": "c",
+      "label": "calendar",
+      "command": "/cal",
+      "submenu": "plugins"
+    },
+    {
+      "key": "t",
+      "label": "today's events",
+      "command": "/cal today"
+    }
+  ]
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `key` | yes | Single character key to press (must be printable ASCII) |
+| `label` | yes | Display label shown in the menu |
+| `command` | yes | Slash command to execute (must start with `/`) |
+| `submenu` | no | Submenu name. Omit for root level. `"plugins"` is conventional. |
+
+Plugin entries have priority 100, overriding builtins (0) but not user
+config (200). If two plugins claim the same key at the same placement, the
+last-loaded plugin wins and a warning is logged.
+
+Use `/leader` in clankers to inspect the current menu structure.
 
 ## Dependencies note
 
