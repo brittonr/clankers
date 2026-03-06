@@ -40,12 +40,16 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     app.git_status.maybe_refresh();
 
     // Sync the cwd into file_activity_panel so it can shorten paths
-    if app.file_activity_panel.cwd != app.cwd {
-        app.file_activity_panel.cwd.clone_from(&app.cwd);
+    if let Some(fap) = app.panels.downcast_mut::<crate::tui::components::file_activity_panel::FileActivityPanel>(crate::tui::panel::PanelId::Files) {
+        if fap.cwd != app.cwd {
+            fap.cwd.clone_from(&app.cwd);
+        }
     }
 
     // Refresh process panel entries from monitor
-    app.process_panel.refresh_entries();
+    if let Some(pp) = app.panels.downcast_mut::<crate::tui::components::process_panel::ProcessPanel>(crate::tui::panel::PanelId::Processes) {
+        pp.refresh_entries();
+    }
 
     // ── Split terminal via layout engine ────────────────────────────
 
@@ -281,7 +285,9 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
     let plugin_spans = widget_host::plugin_status_spans(&app.plugin_ui);
     let context_span = app.context_gauge.status_bar_span();
     let git_span = app.git_status.status_bar_span();
-    let process_span = app.process_panel.status_bar_span();
+    let process_span = app.panels
+        .downcast_ref::<crate::tui::components::process_panel::ProcessPanel>(crate::tui::panel::PanelId::Processes)
+        .and_then(|pp| pp.status_bar_span());
     let budget_status = app
         .cost_tracker
         .as_ref()

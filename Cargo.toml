@@ -66,6 +66,7 @@ pulldown-cmark = "0.12"
 serde_yaml = "0.9"
 petgraph = "0.7"
 ratatui = "0.30"
+ratatui-hypertile = { version = "0.1", features = ["serde"] }
 unicode-width = "0.2"
 crossterm = "0.29"
 iroh = { version = "0.96", features = ["address-lookup-mdns"] }

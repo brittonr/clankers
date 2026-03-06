@@ -263,6 +263,18 @@ impl Panel for SubagentPanel {
         PanelId::Subagents
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
+    fn close_detail_view(&mut self) {
+        self.close_detail();
+    }
+
     fn title(&self) -> String {
         let running = self.running_count();
         let total = self.entries.len();

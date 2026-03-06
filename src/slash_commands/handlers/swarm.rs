@@ -52,20 +52,24 @@ pub struct SubagentsHandler;
 
 impl SlashHandler for SubagentsHandler {
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
+        use crate::tui::components::subagent_panel::SubagentPanel;
+        use crate::tui::panel::PanelId;
+
         if args.is_empty() {
             // List all subagents
-            ctx.app.push_system(ctx.app.subagent_panel.summary(), false);
+            let subagent_panel = ctx.app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents).expect("subagent panel");
+            ctx.app.push_system(subagent_panel.summary(), false);
         } else {
             let parts: Vec<&str> = args.splitn(2, char::is_whitespace).collect();
             let subcmd = parts[0].trim();
             let subcmd_args = parts.get(1).map(|s| s.trim()).unwrap_or("");
 
+            let subagent_panel = ctx.app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents).expect("subagent panel");
             match subcmd {
                 "kill" => {
                     if subcmd_args == "all" {
                         // Kill all running subagents
-                        let running: Vec<String> = ctx.app
-                            .subagent_panel
+                        let running: Vec<String> = subagent_panel
                             .entries
                             .iter()
                             .filter(|e| e.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
@@ -88,8 +92,7 @@ impl SlashHandler for SubagentsHandler {
                     } else {
                         let target = subcmd_args.to_string();
                         // Try partial match on id or name
-                        let matched = ctx.app
-                            .subagent_panel
+                        let matched = subagent_panel
                             .entries
                             .iter()
                             .find(|e| e.id == target || e.name == target || e.id.contains(&target))
@@ -110,14 +113,13 @@ impl SlashHandler for SubagentsHandler {
                         ctx.app.push_system("Usage: /subagents remove <id>".to_string(), true);
                     } else {
                         let target = subcmd_args.to_string();
-                        let matched = ctx.app
-                            .subagent_panel
+                        let matched = subagent_panel
                             .entries
                             .iter()
                             .find(|e| e.id == target || e.name == target || e.id.contains(&target))
                             .map(|e| e.id.clone());
                         if let Some(id) = matched {
-                            ctx.app.subagent_panel.remove_by_id(&id);
+                            subagent_panel.remove_by_id(&id);
                             ctx.app.push_system(format!("Removed subagent '{}'.", id), false);
                         } else {
                             ctx.app.push_system(format!("No subagent matching '{}'.", subcmd_args), true);
@@ -125,7 +127,7 @@ impl SlashHandler for SubagentsHandler {
                     }
                 }
                 "clear" => {
-                    ctx.app.subagent_panel.clear_done();
+                    subagent_panel.clear_done();
                     ctx.app.push_system("Cleared completed/failed subagents.".to_string(), false);
                 }
                 _ => {
@@ -140,8 +142,11 @@ pub struct PeersHandler;
 
 impl SlashHandler for PeersHandler {
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
+        use crate::tui::components::peers_panel::PeersPanel;
+        use crate::tui::panel::PanelId;
+
         // Switch to peers panel tab
-        ctx.app.focus.focus(crate::tui::panel::PanelId::Peers);
+        ctx.app.focus.focus(PanelId::Peers);
 
         if args.is_empty() {
             // Just show the panel — refresh peers from registry
@@ -151,7 +156,7 @@ impl SlashHandler for PeersHandler {
             let entries =
                 crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
             let count = entries.len();
-            ctx.app.peers_panel.set_peers(entries);
+            ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel").set_peers(entries);
             ctx.app.push_system(format!("{} peer(s) in registry.", count), false);
         } else {
             let (subcmd, subcmd_args) = args.split_once(char::is_whitespace).unwrap_or((args, ""));
@@ -178,7 +183,7 @@ impl SlashHandler for PeersHandler {
                                     &registry,
                                     chrono::Duration::minutes(5),
                                 );
-                                ctx.app.peers_panel.set_peers(entries);
+                                ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel").set_peers(entries);
                             }
                             Err(e) => ctx.app.push_system(format!("Failed to save registry: {}", e), true),
                         }
@@ -210,7 +215,7 @@ impl SlashHandler for PeersHandler {
                                 &registry,
                                 chrono::Duration::minutes(5),
                             );
-                            ctx.app.peers_panel.set_peers(entries);
+                            ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel").set_peers(entries);
                         } else {
                             ctx.app.push_system(format!("Peer '{}' not found.", subcmd_args), true);
                         }
@@ -230,7 +235,7 @@ impl SlashHandler for PeersHandler {
                         } else {
                             ctx.app.push_system(format!("Probing {} peer(s)...", peer_ids.len()), false);
                             for nid in &peer_ids {
-                                ctx.app.peers_panel
+                                ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel")
                                     .update_status(nid, crate::tui::components::peers_panel::PeerStatus::Probing);
                             }
                             let ptx = ctx.panel_tx.clone();
@@ -254,7 +259,7 @@ impl SlashHandler for PeersHandler {
                             .find(|p| p.name == subcmd_args)
                             .map(|p| p.node_id.clone())
                             .unwrap_or_else(|| subcmd_args.to_string());
-                        ctx.app.peers_panel
+                        ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel")
                             .update_status(&node_id, crate::tui::components::peers_panel::PeerStatus::Probing);
                         ctx.app.push_system(format!("Probing {}...", &node_id[..12.min(node_id.len())]), false);
                         let ptx = ctx.panel_tx.clone();
@@ -320,7 +325,7 @@ impl SlashHandler for PeersHandler {
                         ctx.app.push_system("Server control not yet available in TUI.".to_string(), false);
                     }
                     _ => {
-                        if ctx.app.peers_panel.server_running {
+                        if ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel").server_running {
                             ctx.app.push_system("Embedded RPC server: running".to_string(), false);
                         } else {
                             ctx.app.push_system("Embedded RPC server: not running".to_string(), false);

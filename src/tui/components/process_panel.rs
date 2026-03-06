@@ -249,6 +249,14 @@ impl Panel for ProcessPanel {
         PanelId::Processes
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
     fn title(&self) -> String {
         let active = self.entries.iter().filter(|e| matches!(e.state, EntryState::Running)).count();
         format!("Processes ({} active)", active)

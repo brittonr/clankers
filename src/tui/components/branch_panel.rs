@@ -194,6 +194,14 @@ impl Panel for BranchPanel {
         PanelId::Branches
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
     fn title(&self) -> String {
         let active = self.entries.iter().filter(|e| e.is_active).count();
         let total = self.entries.len();

@@ -10,6 +10,7 @@
 //! - `draw()` for rendering (consistent with ratatui naming)
 
 use crossterm::event::KeyEvent;
+use indexmap::IndexMap;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -85,6 +86,64 @@ pub enum PanelAction {
     SwitchBranch(usize),
 }
 
+// ── PanelManager ────────────────────────────────────────────────────────────
+
+/// Manages the collection of panels, keyed by `PanelId`.
+/// Replaces the old pattern of having a named field per panel on `App`.
+pub struct PanelManager {
+    panels: IndexMap<PanelId, Box<dyn Panel>>,
+}
+
+impl PanelManager {
+    pub fn new() -> Self {
+        Self {
+            panels: IndexMap::new(),
+        }
+    }
+
+    /// Register a panel (inserts by its `id()`).
+    pub fn register(&mut self, panel: Box<dyn Panel>) {
+        let id = panel.id();
+        self.panels.insert(id, panel);
+    }
+
+    /// Get a panel by ID (immutable).
+    pub fn get(&self, id: PanelId) -> Option<&dyn Panel> {
+        self.panels.get(&id).map(|p| p.as_ref())
+    }
+
+    /// Get a panel by ID (mutable).
+    pub fn get_mut(&mut self, id: PanelId) -> Option<&mut dyn Panel> {
+        Some(self.panels.get_mut(&id)?.as_mut())
+    }
+
+    /// Iterate over all panels.
+    pub fn iter(&self) -> impl Iterator<Item = (PanelId, &dyn Panel)> {
+        self.panels.iter().map(|(id, p)| (*id, p.as_ref()))
+    }
+
+    /// All registered panel IDs.
+    pub fn ids(&self) -> Vec<PanelId> {
+        self.panels.keys().copied().collect()
+    }
+
+    /// Downcast a panel to a concrete type (immutable).
+    pub fn downcast_ref<T: Panel + 'static>(&self, id: PanelId) -> Option<&T> {
+        self.panels.get(&id)?.as_any().downcast_ref()
+    }
+
+    /// Downcast a panel to a concrete type (mutable).
+    pub fn downcast_mut<T: Panel + 'static>(&mut self, id: PanelId) -> Option<&mut T> {
+        self.panels.get_mut(&id)?.as_any_mut().downcast_mut()
+    }
+}
+
+impl Default for PanelManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ── The Panel trait ─────────────────────────────────────────────────────────
 
 /// Common interface for all side-panels.
@@ -97,6 +156,12 @@ pub enum PanelAction {
 pub trait Panel {
     /// Unique identifier.
     fn id(&self) -> PanelId;
+
+    /// Downcast to `&dyn Any` for type-safe downcasting via `PanelManager`.
+    fn as_any(&self) -> &dyn std::any::Any;
+
+    /// Downcast to `&mut dyn Any` for type-safe downcasting via `PanelManager`.
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 
     /// Lifecycle: called once after construction.
     fn init(&mut self) {}
@@ -121,6 +186,10 @@ pub trait Panel {
     /// Returns `None` if the key was not handled (bubble up),
     /// or `Some(action)` for the app to process.
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<PanelAction>;
+
+    /// Close any detail/diff views this panel might have open.
+    /// Default: no-op. Override for panels like Subagents (detail view) or Files (diff view).
+    fn close_detail_view(&mut self) {}
 
     /// Return a reference to the panel's scroll state (if it uses `PanelScroll`).
     /// Implementing this enables the default `handle_scroll` for mouse wheel.

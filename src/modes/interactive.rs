@@ -262,7 +262,8 @@ pub async fn run_interactive(
     };
 
     // Wire process monitor into the TUI panel
-    app.process_panel = crate::tui::components::process_panel::ProcessPanel::new()
+    *app.panels.downcast_mut::<crate::tui::components::process_panel::ProcessPanel>(crate::tui::panel::PanelId::Processes)
+        .expect("process panel") = crate::tui::components::process_panel::ProcessPanel::new()
         .with_monitor(process_monitor.clone());
 
     let tools = crate::modes::common::build_all_tools(
@@ -359,14 +360,18 @@ pub async fn run_interactive(
                 } else {
                     node_id.clone()
                 };
-                app.peers_panel.self_id = Some(short_id);
-                app.peers_panel.server_running = true;
-                // Load initial peer list
-                let registry =
-                    crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(&paths));
-                let entries =
-                    crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
-                app.peers_panel.set_peers(entries);
+                {
+                    let peers_panel = app.panels.downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(crate::tui::panel::PanelId::Peers)
+                        .expect("peers panel");
+                    peers_panel.self_id = Some(short_id);
+                    peers_panel.server_running = true;
+                    // Load initial peer list
+                    let registry =
+                        crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(&paths));
+                    let entries =
+                        crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
+                    peers_panel.set_peers(entries);
+                }
                 Some(cancel)
             }
             Err(e) => {
@@ -798,22 +803,25 @@ async fn run_event_loop(
         // Drain subagent panel events
         while let Ok(event) = panel_rx.try_recv() {
             use crate::tui::components::subagent_event::SubagentEvent;
+            use crate::tui::components::subagent_panel::SubagentPanel;
+            let subagent_panel = app.panels.downcast_mut::<SubagentPanel>(crate::tui::panel::PanelId::Subagents)
+                .expect("subagent panel");
             match event {
                 SubagentEvent::Started { id, name, task, pid } => {
-                    app.subagent_panel.add(id, name, task, pid);
+                    subagent_panel.add(id, name, task, pid);
                 }
                 SubagentEvent::Output { id, line } => {
-                    app.subagent_panel.append_output(&id, &line);
+                    subagent_panel.append_output(&id, &line);
                 }
                 SubagentEvent::Done { id } => {
-                    app.subagent_panel.mark_done(&id);
+                    subagent_panel.mark_done(&id);
                 }
                 SubagentEvent::Error { id, .. } => {
-                    app.subagent_panel.mark_error(&id);
+                    subagent_panel.mark_error(&id);
                 }
                 SubagentEvent::KillRequest { ref id } => {
                     // Kill the subagent process by PID
-                    if let Some(entry) = app.subagent_panel.get_by_id(id)
+                    if let Some(entry) = subagent_panel.get_by_id(id)
                         && entry.status == crate::tui::components::subagent_panel::SubagentStatus::Running
                     {
                         if let Some(pid) = entry.pid {
@@ -832,10 +840,10 @@ async fn run_event_loop(
                                     .args(&["/PID", &pid.to_string(), "/F"])
                                     .spawn();
                             }
-                            app.subagent_panel.mark_error(id);
-                            app.subagent_panel.append_output(id, "⚡ Killed by user");
+                            subagent_panel.mark_error(id);
+                            subagent_panel.append_output(id, "⚡ Killed by user");
                         } else {
-                            app.subagent_panel.append_output(id, "⚠ Cannot kill: no PID tracked");
+                            subagent_panel.append_output(id, "⚠ Cannot kill: no PID tracked");
                         }
                     }
                 }
@@ -849,16 +857,18 @@ async fn run_event_loop(
         while let Ok((action, resp_tx)) = todo_rx.try_recv() {
             use crate::tools::todo::TodoAction;
             use crate::tools::todo::TodoResponse;
-            use crate::tui::components::todo_panel::TodoStatus;
+            use crate::tui::components::todo_panel::{TodoPanel, TodoStatus};
+            let todo_panel = app.panels.downcast_mut::<TodoPanel>(crate::tui::panel::PanelId::Todo)
+                .expect("todo panel");
 
             let response = match action {
                 TodoAction::Add { text } => {
-                    let id = app.todo_panel.add(text);
+                    let id = todo_panel.add(text);
                     TodoResponse::Added { id }
                 }
                 TodoAction::SetStatus { id, status } => {
                     if let Some(s) = TodoStatus::parse(&status) {
-                        if app.todo_panel.set_status(id, s) {
+                        if todo_panel.set_status(id, s) {
                             TodoResponse::Updated { id }
                         } else {
                             TodoResponse::NotFound
@@ -869,7 +879,7 @@ async fn run_event_loop(
                 }
                 TodoAction::SetStatusByText { query, status } => {
                     if let Some(s) = TodoStatus::parse(&status) {
-                        if let Some(id) = app.todo_panel.set_status_by_text(&query, s) {
+                        if let Some(id) = todo_panel.set_status_by_text(&query, s) {
                             TodoResponse::Updated { id }
                         } else {
                             TodoResponse::NotFound
@@ -879,25 +889,25 @@ async fn run_event_loop(
                     }
                 }
                 TodoAction::SetNote { id, note } => {
-                    if app.todo_panel.set_note(id, note) {
+                    if todo_panel.set_note(id, note) {
                         TodoResponse::Updated { id }
                     } else {
                         TodoResponse::NotFound
                     }
                 }
                 TodoAction::Remove { id } => {
-                    if app.todo_panel.remove(id) {
+                    if todo_panel.remove(id) {
                         TodoResponse::Updated { id }
                     } else {
                         TodoResponse::NotFound
                     }
                 }
                 TodoAction::ClearDone => {
-                    app.todo_panel.clear_done();
+                    todo_panel.clear_done();
                     TodoResponse::Cleared
                 }
                 TodoAction::List => TodoResponse::Listed {
-                    summary: app.todo_panel.summary(),
+                    summary: todo_panel.summary(),
                 },
             };
             let _ = resp_tx.send(response);
@@ -916,15 +926,18 @@ async fn run_event_loop(
 
         // Periodic peer registry refresh (every ~200 ticks ≈ 10 seconds at 50ms poll)
         {
+            use crate::tui::components::peers_panel::PeersPanel;
             static PEER_REFRESH_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
             let count = PEER_REFRESH_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if count.is_multiple_of(200) && app.peers_panel.server_running {
+            let peers_panel = app.panels.downcast_mut::<PeersPanel>(crate::tui::panel::PanelId::Peers)
+                .expect("peers panel");
+            if count.is_multiple_of(200) && peers_panel.server_running {
                 let registry = crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(
                     &crate::config::ClankersPaths::resolve(),
                 ));
                 let entries =
                     crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
-                app.peers_panel.set_peers(entries);
+                peers_panel.set_peers(entries);
             }
         }
 
@@ -1099,7 +1112,9 @@ async fn run_event_loop(
                             match (focused_id, key.code, key.modifiers) {
                                 // Subagents: 'x' = kill selected running subagent
                                 (PanelId::Subagents, KeyCode::Char('x'), m) if m.is_empty() => {
-                                    if let Some(id) = app.subagent_panel.selected_id() {
+                                    use crate::tui::components::subagent_panel::SubagentPanel;
+                                    if let Some(id) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
+                                        .expect("subagent panel").selected_id() {
                                         let _ = panel_tx.send(
                                             crate::tui::components::subagent_event::SubagentEvent::KillRequest { id },
                                         );
@@ -1108,8 +1123,11 @@ async fn run_event_loop(
                                 }
                                 // Peers: 'p' = probe selected peer
                                 (PanelId::Peers, KeyCode::Char('p'), m) if m.is_empty() => {
-                                    if let Some(peer) = app.peers_panel.selected_peer().cloned() {
-                                        app.peers_panel.update_status(
+                                    use crate::tui::components::peers_panel::PeersPanel;
+                                    let peers_panel = app.panels.downcast_mut::<PeersPanel>(PanelId::Peers)
+                                        .expect("peers panel");
+                                    if let Some(peer) = peers_panel.selected_peer().cloned() {
+                                        peers_panel.update_status(
                                             &peer.node_id,
                                             crate::tui::components::peers_panel::PeerStatus::Probing,
                                         );
@@ -1507,24 +1525,40 @@ fn handle_action(
             app.input_mode = InputMode::Normal;
         }
         Action::PanelScrollUp => {
-            app.subagent_panel.scroll_up(3);
+            use crate::tui::components::subagent_panel::SubagentPanel;
+            use crate::tui::panel::PanelId;
+            app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
+                .expect("subagent panel").scroll_up(3);
         }
         Action::PanelScrollDown => {
-            app.subagent_panel.scroll_down(3);
+            use crate::tui::components::subagent_panel::SubagentPanel;
+            use crate::tui::panel::PanelId;
+            app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
+                .expect("subagent panel").scroll_down(3);
         }
         Action::PanelClearDone => {
-            app.subagent_panel.clear_done();
-            if !app.subagent_panel.is_visible() {
+            use crate::tui::components::subagent_panel::SubagentPanel;
+            use crate::tui::panel::PanelId;
+            let subagent_panel = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents)
+                .expect("subagent panel");
+            subagent_panel.clear_done();
+            if !subagent_panel.is_visible() {
                 app.focus.unfocus();
             }
         }
         Action::PanelKill => {
-            if let Some(id) = app.subagent_panel.selected_id() {
+            use crate::tui::components::subagent_panel::SubagentPanel;
+            use crate::tui::panel::PanelId;
+            if let Some(id) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
+                .expect("subagent panel").selected_id() {
                 let _ = panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest { id });
             }
         }
         Action::PanelRemove => {
-            app.subagent_panel.remove_selected();
+            use crate::tui::components::subagent_panel::SubagentPanel;
+            use crate::tui::panel::PanelId;
+            app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents)
+                .expect("subagent panel").remove_selected();
         }
 
         // ── Session popup ─────────────────────────────
@@ -1544,6 +1578,7 @@ fn handle_action(
 
         // ── Branch panel ──────────────────────────────
         Action::ToggleBranchPanel => {
+            use crate::tui::components::branch_panel::BranchPanel;
             use crate::tui::panel::PanelId;
             if app.focus.focused == Some(PanelId::Branches) {
                 // Hide and unfocus
@@ -1559,7 +1594,8 @@ fn handle_action(
                         _ => None,
                     })
                     .collect();
-                app.branch_panel.refresh(&app.all_blocks.clone(), &active_ids);
+                app.panels.downcast_mut::<BranchPanel>(PanelId::Branches)
+                    .expect("branch panel").refresh(&app.all_blocks.clone(), &active_ids);
                 // Ensure the panel is visible in the layout
                 let is_visible = app
                     .panel_layout

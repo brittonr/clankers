@@ -128,11 +128,15 @@ pub struct TodoHandler;
 
 impl SlashHandler for TodoHandler {
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
-        use crate::tui::components::todo_panel::TodoStatus;
+        use crate::tui::components::todo_panel::{TodoPanel, TodoStatus};
+        use crate::tui::panel::PanelId;
 
         if args.is_empty() {
-            ctx.app.push_system(ctx.app.todo_panel.summary(), false);
+            let summary = ctx.app.panels.downcast_ref::<TodoPanel>(PanelId::Todo)
+                .expect("todo panel").summary();
+            ctx.app.push_system(summary, false);
         } else {
+            let todo_panel = ctx.app.panels.downcast_mut::<TodoPanel>(PanelId::Todo).expect("todo panel");
             let parts: Vec<&str> = args.splitn(2, char::is_whitespace).collect();
             let subcmd = parts[0].trim();
             let subcmd_args = parts.get(1).map(|s| s.trim()).unwrap_or("");
@@ -142,7 +146,7 @@ impl SlashHandler for TodoHandler {
                     if subcmd_args.is_empty() {
                         ctx.app.push_system("Usage: /todo add <text>".to_string(), true);
                     } else {
-                        let id = ctx.app.todo_panel.add(subcmd_args.to_string());
+                        let id = todo_panel.add(subcmd_args.to_string());
                         ctx.app.push_system(format!("Added todo #{}: {}", id, subcmd_args), false);
                     }
                 }
@@ -150,12 +154,12 @@ impl SlashHandler for TodoHandler {
                     if subcmd_args.is_empty() {
                         ctx.app.push_system("Usage: /todo done <id or text>".to_string(), true);
                     } else if let Ok(id) = subcmd_args.parse::<usize>() {
-                        if ctx.app.todo_panel.set_status(id, TodoStatus::Done) {
+                        if todo_panel.set_status(id, TodoStatus::Done) {
                             ctx.app.push_system(format!("Marked #{} as done.", id), false);
                         } else {
                             ctx.app.push_system(format!("No todo item #{}.", id), true);
                         }
-                    } else if let Some(id) = ctx.app.todo_panel.set_status_by_text(subcmd_args, TodoStatus::Done) {
+                    } else if let Some(id) = todo_panel.set_status_by_text(subcmd_args, TodoStatus::Done) {
                         ctx.app.push_system(format!("Marked #{} as done.", id), false);
                     } else {
                         ctx.app.push_system(format!("No todo matching '{}'.", subcmd_args), true);
@@ -165,12 +169,12 @@ impl SlashHandler for TodoHandler {
                     if subcmd_args.is_empty() {
                         ctx.app.push_system("Usage: /todo wip <id or text>".to_string(), true);
                     } else if let Ok(id) = subcmd_args.parse::<usize>() {
-                        if ctx.app.todo_panel.set_status(id, TodoStatus::InProgress) {
+                        if todo_panel.set_status(id, TodoStatus::InProgress) {
                             ctx.app.push_system(format!("Marked #{} as in-progress.", id), false);
                         } else {
                             ctx.app.push_system(format!("No todo item #{}.", id), true);
                         }
-                    } else if let Some(id) = ctx.app.todo_panel.set_status_by_text(subcmd_args, TodoStatus::InProgress)
+                    } else if let Some(id) = todo_panel.set_status_by_text(subcmd_args, TodoStatus::InProgress)
                     {
                         ctx.app.push_system(format!("Marked #{} as in-progress.", id), false);
                     } else {
@@ -181,7 +185,7 @@ impl SlashHandler for TodoHandler {
                     if subcmd_args.is_empty() {
                         ctx.app.push_system("Usage: /todo remove <id>".to_string(), true);
                     } else if let Ok(id) = subcmd_args.parse::<usize>() {
-                        if ctx.app.todo_panel.remove(id) {
+                        if todo_panel.remove(id) {
                             ctx.app.push_system(format!("Removed todo #{}.", id), false);
                         } else {
                             ctx.app.push_system(format!("No todo item #{}.", id), true);
@@ -191,13 +195,13 @@ impl SlashHandler for TodoHandler {
                     }
                 }
                 "clear" => {
-                    ctx.app.todo_panel.clear_done();
+                    todo_panel.clear_done();
                     ctx.app.push_system("Cleared completed items.".to_string(), false);
                 }
                 _ => {
                     // Treat bare text as "add"
                     let text = args.to_string();
-                    let id = ctx.app.todo_panel.add(text.clone());
+                    let id = todo_panel.add(text.clone());
                     ctx.app.push_system(format!("Added todo #{}: {}", id, text), false);
                 }
             }

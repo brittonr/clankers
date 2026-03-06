@@ -234,6 +234,18 @@ impl Panel for FileActivityPanel {
         PanelId::Files
     }
 
+    fn as_any(&self) -> &dyn std::any::Any {
+        self
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
+    }
+
+    fn close_detail_view(&mut self) {
+        self.close_diff();
+    }
+
     fn title(&self) -> String {
         match self.view {
             FileView::List => {

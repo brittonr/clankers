@@ -148,24 +148,14 @@ pub struct App {
     pub tool_info: Vec<(String, String, String)>,
     /// Plugin UI state (widgets, status segments, notifications)
     pub plugin_ui: PluginUIState,
-    /// Subagent panel (right-side panel showing live subagent output)
-    pub subagent_panel: super::components::subagent_panel::SubagentPanel,
-    /// Todo panel (right-side panel showing task list)
-    pub todo_panel: super::components::todo_panel::TodoPanel,
-    /// File activity panel (tracks files touched during session)
-    pub file_activity_panel: super::components::file_activity_panel::FileActivityPanel,
-    /// Peers panel (swarm peer status)
-    pub peers_panel: super::components::peers_panel::PeersPanel,
-    /// Branch panel (conversation branches)
-    pub branch_panel: super::components::branch_panel::BranchPanel,
+    /// Panel manager (owns all side panels)
+    pub panels: super::panel::PanelManager,
     /// Branch switcher overlay (quick fuzzy picker)
     pub branch_switcher: super::components::branch_switcher::BranchSwitcher,
     /// Branch comparison overlay (side-by-side diff)
     pub branch_compare: super::components::branch_compare::BranchCompareView,
     /// Interactive merge overlay (checkbox message selection)
     pub merge_interactive: super::components::merge_interactive::MergeInteractiveView,
-    /// Process monitor panel (CPU/memory tracking)
-    pub process_panel: super::components::process_panel::ProcessPanel,
     /// Context window gauge (token usage vs model limit)
     pub context_gauge: super::components::context_gauge::ContextGauge,
     /// Git status (branch + dirty indicator)
@@ -284,15 +274,19 @@ impl App {
             show_thinking: true,
             tool_info: Vec::new(),
             plugin_ui: PluginUIState::new(),
-            subagent_panel: super::components::subagent_panel::SubagentPanel::new(),
-            todo_panel: super::components::todo_panel::TodoPanel::new(),
-            file_activity_panel: super::components::file_activity_panel::FileActivityPanel::new(),
-            peers_panel: super::components::peers_panel::PeersPanel::new(),
-            branch_panel: super::components::branch_panel::BranchPanel::new(),
+            panels: {
+                let mut pm = super::panel::PanelManager::new();
+                pm.register(Box::new(super::components::todo_panel::TodoPanel::new()));
+                pm.register(Box::new(super::components::file_activity_panel::FileActivityPanel::new()));
+                pm.register(Box::new(super::components::subagent_panel::SubagentPanel::new()));
+                pm.register(Box::new(super::components::peers_panel::PeersPanel::new()));
+                pm.register(Box::new(super::components::process_panel::ProcessPanel::new()));
+                pm.register(Box::new(super::components::branch_panel::BranchPanel::new()));
+                pm
+            },
             branch_switcher: super::components::branch_switcher::BranchSwitcher::new(),
             branch_compare: super::components::branch_compare::BranchCompareView::new(),
             merge_interactive: super::components::merge_interactive::MergeInteractiveView::new(),
-            process_panel: super::components::process_panel::ProcessPanel::new(),
             context_gauge,
             git_status,
 
@@ -369,43 +363,20 @@ impl App {
 
     /// Get a panel by ID (immutable) for rendering.
     pub fn panel(&self, id: super::panel::PanelId) -> &dyn super::panel::Panel {
-        use super::panel::PanelId;
-        match id {
-            PanelId::Todo => &self.todo_panel,
-            PanelId::Files => &self.file_activity_panel,
-            PanelId::Subagents => &self.subagent_panel,
-            PanelId::Peers => &self.peers_panel,
-            PanelId::Processes => &self.process_panel,
-            PanelId::Branches => &self.branch_panel,
-
-        }
+        self.panels.get(id).expect("unknown panel")
     }
 
     /// Get a panel by ID (mutable) for key handling.
     pub fn panel_mut(&mut self, id: super::panel::PanelId) -> &mut dyn super::panel::Panel {
-        use super::panel::PanelId;
-        match id {
-            PanelId::Todo => &mut self.todo_panel,
-            PanelId::Files => &mut self.file_activity_panel,
-            PanelId::Subagents => &mut self.subagent_panel,
-            PanelId::Peers => &mut self.peers_panel,
-            PanelId::Processes => &mut self.process_panel,
-            PanelId::Branches => &mut self.branch_panel,
-
-        }
+        self.panels.get_mut(id).expect("unknown panel")
     }
 
     /// Close any detail/diff views on the focused panel before unfocusing.
     /// Panels like Subagents and Files have sub-views that should reset
     /// when the user exits the panel.
     pub fn close_focused_panel_views(&mut self) {
-        use super::panel::PanelId;
         if let Some(id) = self.focus.focused {
-            match id {
-                PanelId::Subagents => self.subagent_panel.close_detail(),
-                PanelId::Files => self.file_activity_panel.close_diff(),
-                _ => {}
-            }
+            self.panel_mut(id).close_detail_view();
         }
     }
 
@@ -465,16 +436,21 @@ impl App {
             self.blocks.push(BlockEntry::Conversation(block));
 
             // Refresh branch panel if it has entries (i.e., has been opened before)
-            if !self.branch_panel.entries.is_empty() {
-                let active_ids: std::collections::HashSet<usize> = self
-                    .blocks
-                    .iter()
-                    .filter_map(|e| match e {
-                        BlockEntry::Conversation(b) => Some(b.id),
-                        _ => None,
-                    })
-                    .collect();
-                self.branch_panel.refresh(&self.all_blocks.clone(), &active_ids);
+            if let Some(bp) = self.panels.downcast_ref::<super::components::branch_panel::BranchPanel>(super::panel::PanelId::Branches) {
+                if !bp.entries.is_empty() {
+                    let active_ids: std::collections::HashSet<usize> = self
+                        .blocks
+                        .iter()
+                        .filter_map(|e| match e {
+                            BlockEntry::Conversation(b) => Some(b.id),
+                            _ => None,
+                        })
+                        .collect();
+                    let all_blocks = self.all_blocks.clone();
+                    if let Some(bp) = self.panels.downcast_mut::<super::components::branch_panel::BranchPanel>(super::panel::PanelId::Branches) {
+                        bp.refresh(&all_blocks, &active_ids);
+                    }
+                }
             }
         }
     }
@@ -760,7 +736,9 @@ impl App {
             } else {
                 op
             };
-            self.file_activity_panel.record(path.to_string(), actual_op);
+            if let Some(fap) = self.panels.downcast_mut::<super::components::file_activity_panel::FileActivityPanel>(super::panel::PanelId::Files) {
+                fap.record(path.to_string(), actual_op);
+            }
         }
     }
 
