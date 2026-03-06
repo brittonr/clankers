@@ -4,10 +4,41 @@
 //! quick access to common operations like clearing context, switching models,
 //! showing help, etc.
 
+pub mod handlers;
+
 use std::cell::RefCell;
 use std::fmt;
 
 use crate::tui::components::leader_menu::MenuPlacement;
+
+// ---------------------------------------------------------------------------
+// Slash command dispatch — routes SlashAction to handler implementations
+// ---------------------------------------------------------------------------
+
+/// Dispatch a parsed slash command to the `execute_slash_command` handler.
+///
+/// This is the single entry point for all slash command execution.
+/// It constructs a [`handlers::SlashContext`] and delegates to the existing
+/// handler logic in `interactive.rs`.
+///
+/// Future phases will replace the dispatch target with individual handler
+/// structs implementing a `SlashHandler` trait.
+pub fn dispatch(
+    action: SlashAction,
+    args: &str,
+    ctx: &mut handlers::SlashContext<'_>,
+) {
+    crate::modes::interactive::execute_slash_command(
+        ctx.app,
+        action,
+        args,
+        ctx.cmd_tx,
+        ctx.plugin_manager,
+        ctx.panel_tx,
+        ctx.db,
+        ctx.session_manager,
+    );
+}
 
 // Thread-local cache of prompt template names for slash completion.
 // Populated at startup from discovered prompt templates.

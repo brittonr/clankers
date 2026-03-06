@@ -417,7 +417,7 @@ pub async fn run_interactive(
 // Agent commands / results
 // ---------------------------------------------------------------------------
 
-enum AgentCommand {
+pub(crate) enum AgentCommand {
     Prompt(String),
     PromptWithImages {
         text: String,
@@ -2788,7 +2788,7 @@ fn parse_account_flag(args: &str) -> (Option<String>, String) {
     (None, args.to_string())
 }
 
-fn execute_slash_command(
+pub(crate) fn execute_slash_command(
     app: &mut App,
     action: SlashAction,
     args: &str,
