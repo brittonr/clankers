@@ -232,8 +232,15 @@ impl Agent {
                 keywords: policy.extract_keywords(text),
                 user_hint: policy.parse_user_hint(text),
                 current_cost: self.cost_tracker.as_ref().map_or(0.0, |ct| ct.total_cost()),
+                prompt_text: Some(text.to_string()),
             };
             let selection = policy.select_model(&signals);
+
+            // If orchestration is planned, run the multi-phase turn instead
+            if let Some(plan) = selection.orchestration {
+                return self.execute_orchestrated_turn(text, plan).await;
+            }
+
             if selection.role != "default" {
                 let new_model = self.model_roles.resolve(&selection.role, &self.model);
                 if new_model != self.model {
@@ -424,6 +431,107 @@ impl Agent {
     /// Get a reference to the provider (e.g. to reload credentials after login).
     pub fn provider(&self) -> &Arc<dyn Provider> {
         &self.provider
+    }
+
+    /// Run an orchestrated multi-phase turn.
+    ///
+    /// Each phase uses a different model and system prompt suffix. The output
+    /// from one phase becomes context for the next via the conversation history
+    /// (the assistant message from phase N is visible to phase N+1).
+    async fn execute_orchestrated_turn(
+        &mut self,
+        user_text: &str,
+        plan: crate::routing::orchestration::OrchestrationPlan,
+    ) -> crate::error::Result<()> {
+        let total_phases = plan.phases.len();
+        tracing::info!(
+            "Starting orchestrated turn: {} ({} phases)",
+            plan.pattern,
+            total_phases,
+        );
+
+        let base_system_prompt = self.system_prompt_with_memory();
+        let model_info = self.provider.models().iter().find(|m| m.id == self.model).cloned();
+        let max_input = model_info.map(|m| m.max_input_tokens).unwrap_or(200_000);
+
+        for (phase_idx, phase) in plan.phases.iter().enumerate() {
+            if self.cancel.is_cancelled() {
+                return Err(crate::error::Error::Cancelled);
+            }
+
+            // Resolve phase model
+            let phase_model = self.model_roles.resolve(&phase.role, &self.model);
+            let old_model = std::mem::replace(&mut self.model, phase_model.clone());
+            if phase_model != old_model {
+                let _ = self.event_tx.send(AgentEvent::ModelChange {
+                    from: old_model.clone(),
+                    to: phase_model.clone(),
+                    reason: format!(
+                        "orchestration_phase({}/{}:{})",
+                        phase_idx + 1,
+                        total_phases,
+                        phase.label,
+                    ),
+                });
+            }
+
+            // Build phase system prompt
+            let phase_system = format!("{}{}", base_system_prompt, phase.system_suffix);
+            let ctx = context::build_context(&self.messages, &phase_system, max_input);
+
+            let _ = self.event_tx.send(AgentEvent::BeforeAgentStart {
+                prompt: if phase_idx == 0 {
+                    user_text.to_string()
+                } else {
+                    format!("[Orchestration phase {}/{}] {}", phase_idx + 1, total_phases, phase.label)
+                },
+                system_prompt: ctx.system_prompt.clone(),
+            });
+
+            // Run turn loop for this phase
+            let config = TurnConfig {
+                model: phase_model,
+                system_prompt: ctx.system_prompt,
+                max_tokens: Some(self.settings.max_tokens),
+                temperature: None,
+                thinking: self.thinking.clone(),
+                max_turns: if phase_idx == 0 { 25 } else { 10 }, // later phases are shorter
+            };
+
+            let result = turn::run_turn_loop(
+                self.provider.as_ref(),
+                &self.tools,
+                &mut self.messages,
+                &config,
+                &self.event_tx,
+                self.cancel.clone(),
+                self.cost_tracker.as_ref(),
+                self.model_switch_slot.as_ref(),
+            )
+            .await;
+
+            // If the agent switched models during the phase, sync state
+            if let Some(slot) = &self.model_switch_slot {
+                if let Some(new_model) = slot.lock().take() {
+                    self.model = new_model;
+                }
+            }
+
+            result?;
+
+            tracing::info!(
+                "Orchestration phase {}/{} ({}) complete",
+                phase_idx + 1,
+                total_phases,
+                phase.label,
+            );
+        }
+
+        let _ = self.event_tx.send(AgentEvent::AgentEnd {
+            messages: self.messages.clone(),
+        });
+
+        Ok(())
     }
 
     /// Extract recent tool call summaries from conversation history

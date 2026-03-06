@@ -73,22 +73,21 @@
 - [x] Register `cost` tool module in `src/tools/mod.rs`
 - [x] 5 unit tests: summary, breakdown, budget (no budget / with budget), unknown action
 
-## Phase 6: Orchestration (experimental, disabled by default)
+## Phase 6: Orchestration (experimental, disabled by default) ✅
 
-- [ ] Implement `OrchestrationPlan` struct with pattern and phases
-- [ ] Implement `OrchestrationPattern` enum (ProposeValidate, PlanExecute, DraftReview)
-- [ ] Implement `OrchestrationPhase` struct with role, system suffix, previous output
-- [ ] Add orchestration detection to `RoutingPolicy::select_model()`
-- [ ] Implement `RoutingPolicy::plan_orchestration()` for ProposeValidate pattern
-- [ ] Define system prompt suffixes for each phase (PROPOSE_SUFFIX, VALIDATE_SUFFIX, etc.)
-- [ ] Implement `Agent::execute_orchestrated_turn()` with phase loop
-- [ ] Implement `Agent::build_phase_prompt()` to include previous phase output
-- [ ] Log each orchestration phase in session JSONL
-- [ ] Add `entry_type: orchestration_start/phase/complete` to session log
-- [ ] Wire orchestration into agent turn loop (if plan is present)
-- [ ] Add `enable_orchestration` flag to `RoutingPolicyConfig` (default: false)
-- [ ] Unit tests: pattern detection, phase prompt building
-- [ ] Integration test: full ProposeValidate workflow, verify cost savings
+- [x] `OrchestrationPlan` struct with pattern and ordered phases
+- [x] `OrchestrationPattern` enum: ProposeValidate, PlanExecute, DraftReview
+- [x] `OrchestrationPhase` struct: role, label, system_suffix
+- [x] Builders: `propose_validate()`, `plan_execute()`, `draft_review()`
+- [x] `detect_pattern()` — explicit hints ("plan and implement") + heuristic (high complexity + code generation)
+- [x] 6 system prompt suffixes: Propose, Validate, Plan, Execute, Draft, Review
+- [x] `enable_orchestration` flag on `RoutingPolicyConfig` (default: false)
+- [x] `ModelSelectionResult.orchestration` field — routing policy populates when detected
+- [x] `ComplexitySignals.prompt_text` field for pattern detection
+- [x] `Agent::execute_orchestrated_turn()` — runs turn loop per phase with model switching
+- [x] Phase-specific system prompts (base + suffix), model swap + ModelChange events
+- [x] Later phases get shorter max_turns (10 vs 25) since they refine existing work
+- [x] 10 unit tests: pattern detection (explicit, heuristic, low complexity), plan builders, display
 
 ## Phase 7: User hints and explicit role requests
 

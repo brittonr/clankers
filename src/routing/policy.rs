@@ -3,6 +3,7 @@
 use std::fmt;
 
 use super::config::RoutingPolicyConfig;
+use super::orchestration::OrchestrationPlan;
 use super::signals::{ComplexitySignals, ModelRoleHint, ToolComplexity};
 
 /// Main routing policy that selects models based on complexity signals
@@ -30,6 +31,7 @@ impl RoutingPolicy {
                 role: "default".to_string(),
                 score: 0.0,
                 reason: SelectionReason::Default,
+                orchestration: None,
             };
         }
 
@@ -43,6 +45,7 @@ impl RoutingPolicy {
                         limit: hard,
                         current: signals.current_cost,
                     },
+                    orchestration: None,
                 };
             }
         }
@@ -58,6 +61,7 @@ impl RoutingPolicy {
                 role,
                 score: 0.0,
                 reason: SelectionReason::UserRequested,
+                orchestration: None,
             };
         }
 
@@ -84,10 +88,21 @@ impl RoutingPolicy {
             "default".to_string()
         };
 
+        // Check for orchestration (experimental)
+        let orchestration = if self.config.enable_orchestration {
+            super::orchestration::detect_pattern(
+                &signals.prompt_text.as_deref().unwrap_or(""),
+                adjusted_score,
+            )
+        } else {
+            None
+        };
+
         ModelSelectionResult {
             role,
             score: adjusted_score,
             reason: SelectionReason::ComplexityScore(adjusted_score),
+            orchestration,
         }
     }
 
@@ -183,6 +198,8 @@ pub struct ModelSelectionResult {
     pub score: f32,
     /// Why this role was selected
     pub reason: SelectionReason,
+    /// If set, run an orchestrated multi-model turn instead of a single model
+    pub orchestration: Option<OrchestrationPlan>,
 }
 
 /// Reason for model selection
@@ -247,6 +264,7 @@ mod tests {
             keywords: vec![("simple".to_string(), -8.0)],
             user_hint: None,
             current_cost: 0.0,
+            prompt_text: None,
         };
 
         let result = policy.select_model(&signals);
@@ -267,6 +285,7 @@ mod tests {
             ],
             user_hint: None,
             current_cost: 0.0,
+            prompt_text: None,
         };
 
         let result = policy.select_model(&signals);
@@ -286,6 +305,7 @@ mod tests {
             keywords: vec![("optimize".to_string(), 8.0)],
             user_hint: None,
             current_cost: 0.0,
+            prompt_text: None,
         };
 
         let result = policy.select_model(&signals);
@@ -303,6 +323,7 @@ mod tests {
             keywords: vec![("architecture".to_string(), 15.0)],
             user_hint: Some(ModelRoleHint::Fast),
             current_cost: 0.0,
+            prompt_text: None,
         };
 
         let result = policy.select_model(&signals);
@@ -320,6 +341,7 @@ mod tests {
             keywords: vec![],
             user_hint: Some(ModelRoleHint::Thorough),
             current_cost: 0.0,
+            prompt_text: None,
         };
 
         let result = policy.select_model(&signals);
@@ -337,6 +359,7 @@ mod tests {
             keywords: vec![],
             user_hint: Some(ModelRoleHint::Explicit("slow".to_string())),
             current_cost: 0.0,
+            prompt_text: None,
         };
 
         let result = policy.select_model(&signals);
@@ -437,6 +460,7 @@ mod tests {
             token_count: 2000,
             keywords: vec![("architecture".to_string(), 15.0), ("refactor".to_string(), 10.0)],
             current_cost: 0.0,
+            prompt_text: None,
             ..Default::default()
         };
         let result_no_budget = policy.select_model(&signals_no_budget);
@@ -479,6 +503,7 @@ mod tests {
             keywords: vec![],
             user_hint: None,
             current_cost: 0.0,
+            prompt_text: None,
         };
         let score = policy.compute_complexity_score(&signals);
         assert!(score > 0.0);
@@ -490,6 +515,7 @@ mod tests {
             keywords: vec![("refactor".to_string(), 10.0)],
             user_hint: None,
             current_cost: 0.0,
+            prompt_text: None,
         };
         let score_with_keyword = policy.compute_complexity_score(&signals);
         let score_without_keyword = policy.compute_complexity_score(&ComplexitySignals {

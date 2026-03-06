@@ -16,6 +16,8 @@ pub struct ComplexitySignals {
     pub user_hint: Option<ModelRoleHint>,
     /// Cumulative cost so far (for budget awareness in later phases)
     pub current_cost: f64,
+    /// Raw prompt text (for orchestration pattern detection)
+    pub prompt_text: Option<String>,
 }
 
 /// Summary of a tool call for complexity assessment

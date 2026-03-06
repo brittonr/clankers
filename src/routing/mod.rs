@@ -5,6 +5,7 @@
 
 pub mod config;
 pub mod cost_tracker;
+pub mod orchestration;
 pub mod policy;
 pub mod signals;
 

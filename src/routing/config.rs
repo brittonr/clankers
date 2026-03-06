@@ -39,6 +39,10 @@ pub struct RoutingPolicyConfig {
     /// Hard budget limit (USD) — force cheapest model when exceeded
     #[serde(default)]
     pub budget_hard_limit: Option<f64>,
+
+    /// Enable multi-model orchestration (experimental, default: false)
+    #[serde(default)]
+    pub enable_orchestration: bool,
 }
 
 impl Default for RoutingPolicyConfig {
@@ -52,6 +56,7 @@ impl Default for RoutingPolicyConfig {
             keyword_hints: default_keyword_hints(),
             budget_soft_limit: None,
             budget_hard_limit: None,
+            enable_orchestration: false,
         }
     }
 }
