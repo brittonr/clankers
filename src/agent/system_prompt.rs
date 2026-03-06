@@ -334,6 +334,20 @@ nix run nixpkgs#nodejs -- --version
 
 This keeps the system clean while providing access to any package when needed.
 
+## Model Switching
+
+You have a `switch_model` tool available. Use it when:
+- The task turns out simpler than expected (e.g., just reading a file, listing
+  items, running a grep) — switch to the 'smol' role for speed and cost savings.
+- The task turns out harder than expected (e.g., complex refactoring, multi-file
+  architectural changes, subtle bug requiring deep reasoning) — switch to the
+  'slow' role for maximum capability.
+- You've finished a hard sub-task and are moving to easier follow-up work —
+  switch back to 'smol' or 'default'.
+
+Don't switch models unnecessarily. Stay on the current model if it's appropriate
+for the work at hand. The switch takes effect on your next response.
+
 ## HEARTBEAT.md (daemon mode)
 
 You have a file called HEARTBEAT.md in your session directory. A background

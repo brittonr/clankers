@@ -10,9 +10,8 @@ _Proves the pattern. Smallest scope, safest starting point._
       `MenuPlacement` in `src/tui/components/leader_menu.rs`
 - [x] **1.3** Implement `LeaderMenu::build(contributors, hidden)` builder
 - [x] **1.4** Add `leader_key: Option<LeaderBinding>` to `SlashCommand`
-- [ ] **1.5** Populate `leader_key` on relevant builtin slash commands
-      _(field added, all set to `None` — registry landed in Phase 2,
-      but populating keys requires deduplicating with BuiltinKeymapContributor)_
+- [x] **1.5** Populate `leader_key` on relevant builtin slash commands
+      and wire `SlashCommandContributor` into `rebuild_leader_menu()`
 - [x] **1.6** Write `BuiltinKeymapContributor` for non-slash items
       (model selector, thinking toggle, submenu openers, etc.)
 - [x] **1.7** Replace `LeaderMenu::new()` with `LeaderMenu::build()` in
@@ -56,7 +55,7 @@ _Highest pain/payoff. Eliminates 1,831-line match block._
       `strip_frontmatter`, `probe_peer_background`,
       `discover_peers_background`
 
-### Phase 2 remaining:
+### Phase 2 remaining: ✅
 - [x] `SlashCommandDef`, `SlashContributor` trait, `SlashRegistry`
 - [x] `BuiltinSlashContributor` wrapping all 41 commands with handlers
 - [x] `SlashRegistry::build()` with priority-based conflict resolution
@@ -64,7 +63,7 @@ _Highest pain/payoff. Eliminates 1,831-line match block._
 - [x] `SlashAction` enum already deleted (done during handler extraction)
 - [x] Slash menu (`SlashMenu::update`) uses registry for completions
 - [x] 7 tests: build, conflicts, completions, dispatch unknown, help
-- [ ] Plugin `SlashContributor` impl for `PluginManager` (when plugins need commands)
+- [x] Plugin `SlashContributor` impl for `PluginManager` with `PluginSlashHandler` WASM bridge
 
 ## Phase 3: Panel Focus Consolidation ✅
 
@@ -83,11 +82,12 @@ _Eliminates dual-enum and 250-line nested match._
 - [x] **3.9** Side-effect keys (subagent kill, peer probe) remain as
       explicit pre-dispatch matches
 
-### Phase 3 remaining (future):
-- [ ] Move panel ownership from App fields into `PanelManager`
-- [ ] Typed accessors (`app.todo_panel()` → `app.panels.get::<TodoPanel>()`)
-- [ ] Convert `PanelId` enum to string-based (for plugin panels)
-- [ ] `MenuContributor` impl for `PanelManager` (auto-generate layout toggles)
+### Phase 3 remaining: ✅
+- [x] Move panel ownership from App fields into `PanelManager` (IndexMap<PanelId, Box<dyn Panel>>)
+- [x] Typed accessors via `downcast_ref`/`downcast_mut` with `as_any` on Panel trait
+- [x] `close_detail_view()` on Panel trait (replaces per-panel match in App)
+- [ ] Convert `PanelId` enum to string-based (for plugin panels) — deferred
+- [ ] `MenuContributor` impl for `PanelManager` (auto-generate layout toggles) — deferred
 - [x] Delete `PanelId::Environment` (already gone)
 
 ## Phase 4: Tool Collision List ✅
@@ -109,18 +109,14 @@ _Eliminates dual-enum and 250-line nested match._
 - [x] **5.9** Tests: defaults, aliases, resolve fallback, merge, infer,
       user-defined role inference, reset, names
 
-## Phase 6: Keybinding Actions (deferred)
+## Phase 6: Keybinding Actions ✅
 
-_Lowest priority. 566 references to `Action::` across 16 files. The full
-`CoreAction`/`ExtendedAction` split is high churn for low payoff until
-plugin actions are needed._
-
-- [ ] **6.1** Define `CoreAction` enum (~20 stable variants)
-- [ ] **6.2** Define `ExtendedActionDef` struct with handler closure
-- [ ] **6.3** Define `ActionRegistry` with `register()` and `dispatch()`
-- [ ] **6.4** Define unified `Action` enum as `Core(CoreAction) | Extended(String)`
-- [ ] **6.5** Migrate `parse_action()`: core match + extended fallback
-- [ ] **6.6** Register builtin extended actions at init
-- [ ] **6.7** Update keybinding presets
-- [ ] **6.8** Plugin action registration via manifest
-- [ ] **6.9** Tests
+- [x] **6.1** `CoreAction` enum (~30 stable variants: mode, editor, scroll, block nav, menu, clipboard)
+- [x] **6.2** `ExtendedActionDef` struct with name and description
+- [x] **6.3** `ActionRegistry` with `register()`, `is_registered()`, `all()`
+- [x] **6.4** `Action` enum: `Core(CoreAction) | Extended(String)`
+- [x] **6.5** `parse_action()`: core match → extended fallback
+- [x] **6.6** Register ~26 builtin extended actions at init (toggles, panel ops, selectors)
+- [x] **6.7** Updated all 3 keymap presets (helix, vim, common)
+- [x] **6.8** Plugin action registration via `ActionRegistry` on App
+- [x] **6.9** All 1350 tests pass, 36 keybinding-specific tests pass

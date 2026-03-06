@@ -11,13 +11,13 @@ use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
 use super::config::RoutingPolicyConfig;
-use super::cost_tracker::{BudgetStatus, CostTracker, CostTrackerConfig, ModelPricing};
-use super::orchestration::{OrchestrationPattern, OrchestrationPlan};
+use super::cost_tracker::{BudgetStatus, CostTracker, CostTrackerConfig};
+use super::orchestration::OrchestrationPattern;
 use super::policy::{RoutingPolicy, SelectionReason};
 use super::signals::{ComplexitySignals, ModelRoleHint, ToolCallSummary, ToolComplexity};
 use crate::config::model_roles::ModelRoles;
 use crate::tools::cost::CostTool;
-use crate::tools::switch_model::{model_switch_slot, ModelSwitchSlot, SwitchModelTool};
+use crate::tools::switch_model::{model_switch_slot, SwitchModelTool};
 use crate::tools::{Tool, ToolContext};
 
 // ── Test helpers ────────────────────────────────────────────────────────────
@@ -751,6 +751,106 @@ fn test_orchestration_explicit_hints() {
         result2.orchestration.unwrap().pattern,
         OrchestrationPattern::DraftReview
     );
+}
+
+// ── Test: switch_model tool integration with turn loop ──────────────────────
+
+#[tokio::test]
+async fn test_switch_model_tool_writes_slot_and_cost_validates() {
+    // Simulates the full flow: agent calls switch_model, slot is set,
+    // turn loop would read it and switch models on the next LLM call.
+    let roles = setup_model_roles();
+    let slot = model_switch_slot();
+    let current = Arc::new(Mutex::new("claude-sonnet-4-5".to_string()));
+    let tracker = Arc::new(CostTracker::with_defaults());
+
+    let tool = SwitchModelTool::new(slot.clone(), roles.clone(), current.clone())
+        .with_cost_tracker(tracker.clone())
+        .with_budget_hard_limit(10.0);
+
+    let ctx = make_tool_ctx();
+
+    // Step 1: Agent switches to smol (downgrade)
+    let result = tool
+        .execute(&ctx, json!({"role": "smol", "reason": "simple grep task"}))
+        .await;
+    assert!(!result.is_error, "downgrade should succeed");
+    assert_eq!(*slot.lock(), Some("claude-haiku-4".to_string()));
+
+    // Simulate turn loop consuming the slot
+    let switched_to = slot.lock().take().unwrap();
+    *current.lock() = switched_to.clone();
+    assert_eq!(switched_to, "claude-haiku-4");
+
+    // Step 2: Record some usage on haiku
+    tracker.record_usage("claude-haiku-4", 500_000, 200_000);
+    let cost_after = tracker.total_cost();
+    assert!(cost_after > 0.0);
+    assert!(cost_after < 10.0, "should be well under budget");
+
+    // Step 3: Agent switches to slow (upgrade) — should succeed under budget
+    let result = tool
+        .execute(&ctx, json!({"role": "slow", "reason": "complex refactor"}))
+        .await;
+    assert!(!result.is_error, "upgrade under budget should succeed");
+    assert_eq!(*slot.lock(), Some("claude-opus-4".to_string()));
+
+    // Consume the slot again
+    let switched_to = slot.lock().take().unwrap();
+    *current.lock() = switched_to;
+
+    // Step 4: Record expensive opus usage to blow the budget
+    tracker.record_usage("claude-opus-4", 2_000_000, 2_000_000);
+    assert!(tracker.total_cost() > 10.0, "should exceed budget now");
+
+    // Step 5: Attempt another upgrade — should be blocked
+    let result = tool
+        .execute(&ctx, json!({"role": "slow", "reason": "still want opus"}))
+        .await;
+    // Already on opus, so it's "already using" — no error, no switch
+    assert!(!result.is_error);
+    assert!(slot.lock().is_none());
+    assert!(result_text(&result).contains("Already using"));
+
+    // Step 6: Downgrade should always work even over budget
+    let result = tool
+        .execute(&ctx, json!({"role": "smol", "reason": "save money"}))
+        .await;
+    assert!(!result.is_error, "downgrade should work even over budget");
+    assert_eq!(*slot.lock(), Some("claude-haiku-4".to_string()));
+}
+
+#[tokio::test]
+async fn test_switch_model_with_routing_policy_interaction() {
+    // Verify that routing policy and switch_model tool can coexist:
+    // policy suggests a model, but a subsequent tool switch overrides it.
+    let roles = setup_model_roles();
+    let policy = RoutingPolicy::default_policy();
+
+    // Policy would suggest haiku for simple tasks
+    let signals = ComplexitySignals {
+        token_count: 20,
+        recent_tools: vec![],
+        keywords: vec![],
+        user_hint: None,
+        current_cost: 0.0,
+        prompt_text: None,
+    };
+    let selection = policy.select_model(&signals);
+    assert_eq!(selection.role, "smol");
+
+    // But agent decides it needs slow via the tool
+    let slot = model_switch_slot();
+    let current = Arc::new(Mutex::new("claude-haiku-4".to_string()));
+    let tool = SwitchModelTool::new(slot.clone(), roles, current);
+    let ctx = make_tool_ctx();
+
+    let result = tool
+        .execute(&ctx, json!({"role": "slow", "reason": "actually complex"}))
+        .await;
+    assert!(!result.is_error);
+    // Tool switch takes priority — slot is set
+    assert_eq!(*slot.lock(), Some("claude-opus-4".to_string()));
 }
 
 #[test]

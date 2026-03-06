@@ -275,6 +275,90 @@ mod tests {
         assert_eq!(*slot.lock(), Some("claude-haiku-4".to_string()));
     }
 
+    #[tokio::test]
+    async fn test_missing_role_defaults_to_default() {
+        let (tool, slot) = setup();
+        let ctx = make_ctx();
+        // Omit "role" — defaults to "default", which is already the current model
+        let result = tool.execute(&ctx, json!({"reason": "testing"})).await;
+        assert!(!result.is_error);
+        assert!(slot.lock().is_none()); // default == current, no switch
+    }
+
+    #[tokio::test]
+    async fn test_missing_reason_still_works() {
+        let (tool, slot) = setup();
+        let ctx = make_ctx();
+        let result = tool.execute(&ctx, json!({"role": "smol"})).await;
+        assert!(!result.is_error);
+        assert_eq!(*slot.lock(), Some("claude-haiku-4".to_string()));
+        let text = match &result.content[0] {
+            crate::tools::ToolResultContent::Text { text } => text.as_str(),
+            _ => panic!("expected text"),
+        };
+        assert!(text.contains("no reason given"));
+    }
+
+    #[tokio::test]
+    async fn test_unknown_role_resolves_to_current() {
+        let (tool, slot) = setup();
+        let ctx = make_ctx();
+        // Unknown role falls through to fallback (current model)
+        let result = tool
+            .execute(&ctx, json!({"role": "nonexistent", "reason": "test"}))
+            .await;
+        assert!(!result.is_error);
+        assert!(slot.lock().is_none()); // resolves to current
+    }
+
+    #[tokio::test]
+    async fn test_budget_at_exact_limit_blocks_upgrade() {
+        let slot = model_switch_slot();
+        let mut roles = ModelRoles::with_defaults();
+        roles.set_model("smol", "claude-haiku-4".to_string());
+        roles.set_model("slow", "claude-opus-4".to_string());
+
+        let current = Arc::new(Mutex::new("claude-haiku-4".to_string()));
+        let tracker = Arc::new(CostTracker::with_defaults());
+        // Record usage to land exactly at $1.00 (haiku: $1/MTok input, $5/MTok output)
+        tracker.record_usage("claude-haiku-4", 1_000_000, 0);
+
+        let tool = SwitchModelTool::new(slot.clone(), roles, current)
+            .with_cost_tracker(tracker)
+            .with_budget_hard_limit(1.0);
+
+        let ctx = make_ctx();
+        let result = tool
+            .execute(&ctx, json!({"role": "slow", "reason": "want opus"}))
+            .await;
+        assert!(result.is_error);
+        let text = match &result.content[0] {
+            crate::tools::ToolResultContent::Text { text } => text.as_str(),
+            _ => panic!("expected text"),
+        };
+        assert!(text.contains("budget exceeded"));
+    }
+
+    #[tokio::test]
+    async fn test_no_budget_tracker_allows_upgrade() {
+        let slot = model_switch_slot();
+        let mut roles = ModelRoles::with_defaults();
+        roles.set_model("smol", "claude-haiku-4".to_string());
+        roles.set_model("slow", "claude-opus-4".to_string());
+
+        let current = Arc::new(Mutex::new("claude-haiku-4".to_string()));
+        // Has hard limit but no cost tracker — should still allow the switch
+        let tool = SwitchModelTool::new(slot.clone(), roles, current)
+            .with_budget_hard_limit(1.0);
+
+        let ctx = make_ctx();
+        let result = tool
+            .execute(&ctx, json!({"role": "slow", "reason": "want opus"}))
+            .await;
+        assert!(!result.is_error);
+        assert_eq!(*slot.lock(), Some("claude-opus-4".to_string()));
+    }
+
     #[test]
     fn test_is_upgrade() {
         let (tool, _) = setup();
