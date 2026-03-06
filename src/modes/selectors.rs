@@ -108,6 +108,59 @@ pub(crate) fn handle_account_selector_key(
 }
 
 // ---------------------------------------------------------------------------
+// Branch switcher key handling
+// ---------------------------------------------------------------------------
+
+pub(crate) fn handle_branch_switcher_key(
+    app: &mut App,
+    key: &crossterm::event::KeyEvent,
+) -> bool {
+    match key.code {
+        KeyCode::Esc => {
+            app.branch_switcher.close();
+            true
+        }
+        KeyCode::Enter => {
+            if let Some(leaf_id) = app.branch_switcher.selected_leaf_id() {
+                app.branch_switcher.close();
+                app.switch_to_branch(leaf_id);
+                app.push_system(format!("Switched to branch at block #{}", leaf_id), false);
+            } else {
+                app.branch_switcher.close();
+            }
+            true
+        }
+        KeyCode::Up => {
+            app.branch_switcher.move_up();
+            true
+        }
+        KeyCode::Down => {
+            app.branch_switcher.move_down();
+            true
+        }
+        KeyCode::Backspace => {
+            app.branch_switcher.backspace();
+            true
+        }
+        KeyCode::Char(c) => {
+            if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
+                app.branch_switcher.close();
+            } else if key.modifiers.contains(KeyModifiers::CONTROL) {
+                match c {
+                    'k' | 'p' => app.branch_switcher.move_up(),
+                    'j' | 'n' => app.branch_switcher.move_down(),
+                    _ => {}
+                }
+            } else {
+                app.branch_switcher.type_char(c);
+            }
+            true
+        }
+        _ => true,
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Session selector key handling
 // ---------------------------------------------------------------------------
 

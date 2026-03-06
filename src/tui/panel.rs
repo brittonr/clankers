@@ -81,6 +81,8 @@ pub enum PanelAction {
     SlashCommand(String),
     /// The panel wants to switch focus to a different panel.
     FocusPanel(PanelId),
+    /// Switch to a conversation branch by block ID.
+    SwitchBranch(usize),
 }
 
 // ── The Panel trait ─────────────────────────────────────────────────────────

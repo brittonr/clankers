@@ -158,6 +158,8 @@ pub enum Action {
     ToggleSessionPopup,
     /// Toggle the branch panel
     ToggleBranchPanel,
+    /// Open the branch switcher overlay
+    OpenBranchSwitcher,
 
     // ── External editor ──────────────────────────────
     /// Open $EDITOR to compose input
@@ -364,8 +366,9 @@ fn common_normal() -> HashMap<KeyCombo, Action> {
     // ── Session popup ─────────────────────────────────
     m.insert(kc(KeyCode::Char('s'), false, false, false), Action::ToggleSessionPopup);
 
-    // ── Branch panel ──────────────────────────────────
+    // ── Branch panel / switcher ────────────────────────
     m.insert(kc(KeyCode::Char('b'), false, false, false), Action::ToggleBranchPanel);
+    m.insert(kc(KeyCode::Char('B'), false, false, true), Action::OpenBranchSwitcher);
 
     // ── Block IDs ─────────────────────────────────────
     m.insert(kc(KeyCode::Char('I'), false, false, true), Action::ToggleBlockIds);
@@ -662,6 +665,7 @@ fn parse_action(s: &str) -> Option<Action> {
         "menu_close" => Some(Action::MenuClose),
         "toggle_session_popup" | "session_popup" => Some(Action::ToggleSessionPopup),
         "toggle_branch_panel" | "branch_panel" => Some(Action::ToggleBranchPanel),
+        "open_branch_switcher" | "branch_switcher" => Some(Action::OpenBranchSwitcher),
         "open_editor" | "editor" => Some(Action::OpenEditor),
         "search_output" | "search" | "find" => Some(Action::SearchOutput),
         "search_next" | "next_match" => Some(Action::SearchNext),

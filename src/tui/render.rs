@@ -108,6 +108,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     app.model_selector.render(frame, frame.area());
     app.account_selector.render(frame, frame.area());
     app.session_selector.render(frame, frame.area());
+    app.branch_switcher.render(frame, frame.area());
     app.leader_menu.render(frame, frame.area());
 
     if !app.plugin_ui.notifications.is_empty() {

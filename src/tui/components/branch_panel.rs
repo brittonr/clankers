@@ -23,6 +23,21 @@ use crate::tui::panel::Panel;
 use crate::tui::panel::PanelAction;
 use crate::tui::panel::PanelId;
 
+/// Summary of a block on a branch (for the detail message list).
+#[derive(Debug, Clone)]
+pub struct BranchBlockSummary {
+    /// Block ID
+    pub id: usize,
+    /// First line of the user prompt
+    pub prompt_preview: String,
+    /// Number of response messages in the block
+    pub response_count: usize,
+    /// Number of tool calls in the block
+    pub tool_count: usize,
+    /// Token usage for this block
+    pub tokens: usize,
+}
+
 /// Metadata about a single conversation branch (rooted at a leaf block).
 #[derive(Debug, Clone)]
 pub struct BranchEntry {
@@ -40,6 +55,8 @@ pub struct BranchEntry {
     pub divergence_id: Option<usize>,
     /// Total tokens used on this branch
     pub total_tokens: usize,
+    /// Block path from root to leaf (for detail view)
+    pub block_path: Vec<BranchBlockSummary>,
 }
 
 /// Branch panel state
@@ -51,6 +68,8 @@ pub struct BranchPanel {
     nav: ListNav,
     /// Whether the detail view is open
     detail_view: bool,
+    /// Scroll offset within the detail message list
+    detail_scroll: usize,
 }
 
 impl Default for BranchPanel {
@@ -65,6 +84,7 @@ impl BranchPanel {
             entries: Vec::new(),
             nav: ListNav::new(),
             detail_view: false,
+            detail_scroll: 0,
         }
     }
 
@@ -107,6 +127,26 @@ impl BranchPanel {
 
                 let last_prompt = truncate_first_line(&leaf.prompt, 40);
 
+                // Build block summaries for the detail view
+                let block_path: Vec<BranchBlockSummary> = path
+                    .iter()
+                    .filter_map(|&id| all_blocks.iter().find(|b| b.id == id))
+                    .map(|b| {
+                        let tool_count = b
+                            .responses
+                            .iter()
+                            .filter(|m| m.role == crate::tui::app::MessageRole::ToolCall)
+                            .count();
+                        BranchBlockSummary {
+                            id: b.id,
+                            prompt_preview: truncate_first_line(&b.prompt, 50),
+                            response_count: b.responses.len(),
+                            tool_count,
+                            tokens: b.tokens,
+                        }
+                    })
+                    .collect();
+
                 BranchEntry {
                     leaf_id: leaf.id,
                     name,
@@ -115,6 +155,7 @@ impl BranchPanel {
                     is_active,
                     divergence_id,
                     total_tokens,
+                    block_path,
                 }
             })
             .collect();
@@ -180,22 +221,29 @@ impl Panel for BranchPanel {
             return match key.code {
                 KeyCode::Esc | KeyCode::Char('q') => {
                     self.detail_view = false;
+                    self.detail_scroll = 0;
                     Some(PanelAction::Consumed)
                 }
                 KeyCode::Char('j') | KeyCode::Down => {
-                    self.nav.next(self.entries.len());
+                    // Scroll down in the message list
+                    let max = self
+                        .selected_entry()
+                        .map(|e| e.block_path.len().saturating_sub(1))
+                        .unwrap_or(0);
+                    self.detail_scroll = (self.detail_scroll + 1).min(max);
                     Some(PanelAction::Consumed)
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
-                    self.nav.prev(self.entries.len());
+                    self.detail_scroll = self.detail_scroll.saturating_sub(1);
                     Some(PanelAction::Consumed)
                 }
-                KeyCode::Enter => {
-                    // Switch to selected branch
+                KeyCode::Char('s') | KeyCode::Enter => {
+                    // Switch to this branch
                     if let Some(entry) = self.selected_entry() {
                         let leaf_id = entry.leaf_id;
                         self.detail_view = false;
-                        Some(PanelAction::SlashCommand(format!("/switch #{}", leaf_id)))
+                        self.detail_scroll = 0;
+                        Some(PanelAction::SwitchBranch(leaf_id))
                     } else {
                         Some(PanelAction::Consumed)
                     }
@@ -216,7 +264,7 @@ impl Panel for BranchPanel {
             KeyCode::Enter => {
                 // Switch to selected branch
                 if let Some(entry) = self.selected_entry() {
-                    Some(PanelAction::SlashCommand(format!("/switch #{}", entry.leaf_id)))
+                    Some(PanelAction::SwitchBranch(entry.leaf_id))
                 } else {
                     Some(PanelAction::Consumed)
                 }
@@ -318,44 +366,98 @@ fn render_detail_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &
             Span::styled(&entry.name, Style::default().fg(Color::White).add_modifier(Modifier::BOLD)),
             Span::styled(format!(" ({})", active_label), Style::default().fg(active_color)),
         ]),
-        Line::from(""),
         Line::from(vec![
-            Span::styled("  Leaf Block: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("#{}", entry.leaf_id), Style::default().fg(Color::White)),
-        ]),
-        Line::from(vec![
-            Span::styled("  Messages:   ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  Messages: ", Style::default().fg(Color::DarkGray)),
             Span::styled(format!("{}", entry.message_count), Style::default().fg(Color::White)),
-        ]),
-        Line::from(vec![
-            Span::styled("  Tokens:     ", Style::default().fg(Color::DarkGray)),
+            Span::styled("  Tokens: ", Style::default().fg(Color::DarkGray)),
             Span::styled(format!("{}", entry.total_tokens), Style::default().fg(Color::White)),
         ]),
     ];
 
     if let Some(div_id) = entry.divergence_id {
         lines.push(Line::from(vec![
-            Span::styled("  Diverges at:", Style::default().fg(Color::DarkGray)),
-            Span::styled(format!(" #{}", div_id), Style::default().fg(Color::Yellow)),
+            Span::styled("  Fork from: ", Style::default().fg(Color::DarkGray)),
+            Span::styled(format!("#{}", div_id), Style::default().fg(Color::Yellow)),
         ]));
     }
 
-    lines.push(Line::from(""));
-    lines.push(Line::from(vec![
-        Span::styled("  Last prompt:", Style::default().fg(Color::DarkGray)),
-    ]));
-    lines.push(Line::from(vec![
-        Span::styled(format!("  {}", entry.last_prompt), Style::default().fg(Color::White)),
-    ]));
+    // Divider
+    lines.push(Line::from(Span::styled(
+        "─".repeat(area.width as usize),
+        Style::default().fg(Color::DarkGray),
+    )));
 
+    // Scrollable message list
+    let visible_start = panel.detail_scroll;
+    for (i, block) in entry.block_path.iter().enumerate().skip(visible_start) {
+        let is_divergence = entry.divergence_id == Some(block.id);
+        let is_leaf = block.id == entry.leaf_id;
+
+        // Connector
+        let connector = if is_leaf {
+            "└─"
+        } else {
+            "├─"
+        };
+        let connector_color = if is_divergence {
+            Color::Yellow
+        } else {
+            Color::DarkGray
+        };
+
+        // Block number + prompt
+        let num_style = if is_leaf {
+            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+        } else if is_divergence {
+            Style::default().fg(Color::Yellow)
+        } else {
+            Style::default().fg(Color::White)
+        };
+
+        let mut spans = vec![
+            Span::styled(connector, Style::default().fg(connector_color)),
+            Span::styled(format!(" #{} ", block.id), num_style),
+            Span::styled(
+                &block.prompt_preview,
+                Style::default().fg(if i == visible_start { Color::White } else { Color::Gray }),
+            ),
+        ];
+
+        // Divergence marker
+        if is_divergence {
+            spans.push(Span::styled(" ⑂", Style::default().fg(Color::Yellow)));
+        }
+
+        lines.push(Line::from(spans));
+
+        // Response summary line (compact)
+        if block.tool_count > 0 {
+            lines.push(Line::from(vec![
+                Span::styled("│  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{}r {}t {}tok", block.response_count, block.tool_count, block.tokens),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+        } else if block.tokens > 0 {
+            lines.push(Line::from(vec![
+                Span::styled("│  ", Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{}r {}tok", block.response_count, block.tokens),
+                    Style::default().fg(Color::DarkGray),
+                ),
+            ]));
+        }
+    }
+
+    // Hints
     lines.push(Line::from(""));
-    let hint_style = Style::default().fg(Color::DarkGray);
-    let hint = if ctx.focused {
-        "  Enter: switch  j/k: navigate  Esc: back"
-    } else {
-        ""
-    };
-    lines.push(Line::from(Span::styled(hint, hint_style)));
+    if ctx.focused {
+        lines.push(Line::from(Span::styled(
+            " s:switch  j/k:scroll  Esc:back",
+            Style::default().fg(Color::DarkGray),
+        )));
+    }
 
     frame.render_widget(
         Paragraph::new(lines).wrap(Wrap { trim: false }),

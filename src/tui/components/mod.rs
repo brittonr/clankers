@@ -4,6 +4,7 @@ pub mod account_selector;
 pub mod block;
 pub mod block_view;
 pub mod branch_panel;
+pub mod branch_switcher;
 pub mod confirm;
 pub mod context_gauge;
 pub mod diff_view;

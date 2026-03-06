@@ -1000,6 +1000,11 @@ async fn run_event_loop(
                         continue;
                     }
 
+                    // ── Branch switcher intercept ────────────────
+                    if app.branch_switcher.visible && super::selectors::handle_branch_switcher_key(app, &key) {
+                        continue;
+                    }
+
                     // ── Leader menu intercept ────────────────────
                     if app.leader_menu.visible {
                         if let Some(leader_action) = app.leader_menu.handle_key(&key) {
@@ -1079,6 +1084,14 @@ async fn run_event_loop(
                                     continue;
                                 }
                                 Some(PanelAction::SlashCommand(_cmd)) => continue,
+                                Some(PanelAction::SwitchBranch(block_id)) => {
+                                    app.switch_to_branch(block_id);
+                                    app.push_system(
+                                        format!("Switched to branch at block #{}", block_id),
+                                        false,
+                                    );
+                                    continue;
+                                }
                                 Some(PanelAction::FocusPanel(id)) => {
                                     app.focus.focus(id);
                                     continue;
@@ -1193,6 +1206,7 @@ fn handle_action(
                 | Action::SearchOutput
                 | Action::ToggleSessionPopup
                 | Action::ToggleBranchPanel
+                | Action::OpenBranchSwitcher
                 | Action::PasteImage
                 | Action::OpenEditor
         );
@@ -1503,6 +1517,19 @@ fn handle_action(
                 }
                 app.focus.focus(PanelId::Branches);
             }
+        }
+
+        // ── Branch switcher ─────────────────────────────
+        Action::OpenBranchSwitcher => {
+            let active_ids: std::collections::HashSet<usize> = app
+                .blocks
+                .iter()
+                .filter_map(|e| match e {
+                    BlockEntry::Conversation(b) => Some(b.id),
+                    _ => None,
+                })
+                .collect();
+            app.branch_switcher.open(&app.all_blocks.clone(), &active_ids);
         }
 
         // Menu actions are handled by handle_slash_menu_key before reaching here

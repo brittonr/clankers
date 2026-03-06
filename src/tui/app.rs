@@ -153,6 +153,8 @@ pub struct App {
     pub peers_panel: super::components::peers_panel::PeersPanel,
     /// Branch panel (conversation branches)
     pub branch_panel: super::components::branch_panel::BranchPanel,
+    /// Branch switcher overlay (quick fuzzy picker)
+    pub branch_switcher: super::components::branch_switcher::BranchSwitcher,
     /// Process monitor panel (CPU/memory tracking)
     pub process_panel: super::components::process_panel::ProcessPanel,
     /// Context window gauge (token usage vs model limit)
@@ -269,6 +271,7 @@ impl App {
             file_activity_panel: super::components::file_activity_panel::FileActivityPanel::new(),
             peers_panel: super::components::peers_panel::PeersPanel::new(),
             branch_panel: super::components::branch_panel::BranchPanel::new(),
+            branch_switcher: super::components::branch_switcher::BranchSwitcher::new(),
             process_panel: super::components::process_panel::ProcessPanel::new(),
             context_gauge,
             git_status,
@@ -978,7 +981,7 @@ impl App {
 
     /// Switch the visible block list to show the branch containing `target_block_id`.
     /// Rebuilds `self.blocks` to show the path from root through target and all its descendants.
-    fn switch_to_branch(&mut self, target_block_id: usize) {
+    pub fn switch_to_branch(&mut self, target_block_id: usize) {
         // Walk up from target to root to find the full ancestor path
         let mut path_up = Vec::new();
         let mut current = Some(target_block_id);
