@@ -1,20 +1,22 @@
 # multi-model — Tasks
 
-## Phase 1: Core routing policy (no orchestration, no cost tracking)
+## Phase 1: Core routing policy (no orchestration, no cost tracking) ✅
 
-- [ ] Create `src/routing/` module structure
-- [ ] Implement `ComplexitySignals` struct with token count, tool history, keywords
-- [ ] Implement `RoutingPolicy` struct with complexity scoring logic
-- [ ] Implement `RoutingPolicyConfig` with thresholds and weights
-- [ ] Add default keyword hints map (complexity increasers/reducers)
-- [ ] Implement `RoutingPolicy::compute_complexity()` with weighted scoring
-- [ ] Implement `RoutingPolicy::select_model()` returning `ModelSelectionResult`
-- [ ] Add `SelectionReason` enum for tracking why a model was chosen
-- [ ] Integrate `RoutingPolicy` into agent turn loop (call before turn execution)
-- [ ] Wire model switching when selected role differs from current
-- [ ] Add `reason` field to existing `AgentEvent::ModelChange`
-- [ ] Unit tests: complexity scoring, threshold mapping, keyword extraction
-- [ ] Integration test: verify model switches based on prompt keywords
+- [x] Create `src/routing/` module structure (`mod.rs`, `config.rs`, `signals.rs`, `policy.rs`)
+- [x] Implement `ComplexitySignals` struct with token count, tool history, keywords
+- [x] Implement `RoutingPolicy` struct with complexity scoring logic
+- [x] Implement `RoutingPolicyConfig` with thresholds and weights (serde-enabled)
+- [x] Add default keyword hints map (complexity increasers/reducers)
+- [x] Implement `RoutingPolicy::compute_complexity()` with weighted scoring
+- [x] Implement `RoutingPolicy::select_model()` returning `ModelSelectionResult`
+- [x] Add `SelectionReason` enum for tracking why a model was chosen
+- [x] Integrate `RoutingPolicy` into agent turn loop (call before turn execution)
+- [x] Wire model switching when selected role differs from current
+- [x] Add `reason` field to existing `AgentEvent::ModelChange`
+- [x] Unit tests: 18 tests covering scoring, thresholds, keywords, user hints, tool classification
+- [x] `parse_user_hint()` detects "use opus/haiku/sonnet", "quick answer", "think deeply"
+- [x] `classify_tool()` maps tools to Simple/Medium/Complex tiers
+- [x] `recent_tool_summaries()` on Agent extracts recent tool calls for complexity signals
 
 ## Phase 2: Cost tracking and budget enforcement
 

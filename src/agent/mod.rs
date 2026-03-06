@@ -16,6 +16,7 @@ use tokio_util::sync::CancellationToken;
 
 use self::events::AgentEvent;
 use self::turn::TurnConfig;
+use crate::config::model_roles::ModelRoles;
 use crate::config::settings::Settings;
 use crate::db::Db;
 use crate::error::Result;
@@ -23,6 +24,8 @@ use crate::provider::Provider;
 use crate::provider::ThinkingConfig;
 use crate::provider::ThinkingLevel;
 use crate::provider::message::*;
+use crate::routing::policy::RoutingPolicy;
+use crate::routing::signals::{ComplexitySignals, ToolCallSummary};
 use crate::tools::Tool;
 
 /// The main agent that manages the conversation loop
@@ -49,6 +52,10 @@ pub struct Agent {
     thinking_level: ThinkingLevel,
     /// Persistent database handle (memory, usage, history, etc.)
     db: Option<Db>,
+    /// Routing policy for multi-model conversations
+    routing_policy: Option<RoutingPolicy>,
+    /// Model roles for resolving role names to model IDs
+    model_roles: ModelRoles,
 }
 
 impl Agent {
@@ -76,6 +83,8 @@ impl Agent {
             thinking: None,
             thinking_level: ThinkingLevel::Off,
             db: None,
+            routing_policy: None,
+            model_roles: ModelRoles::default(),
         }
     }
 
@@ -92,6 +101,18 @@ impl Agent {
     /// Get the database handle, if attached.
     pub fn db(&self) -> Option<&Db> {
         self.db.as_ref()
+    }
+
+    /// Set the routing policy for multi-model conversations
+    pub fn with_routing_policy(mut self, policy: RoutingPolicy) -> Self {
+        self.routing_policy = Some(policy);
+        self
+    }
+
+    /// Set the model roles for resolving role names to model IDs
+    pub fn with_model_roles(mut self, roles: ModelRoles) -> Self {
+        self.model_roles = roles;
+        self
     }
 
     /// Subscribe to agent events
@@ -174,6 +195,30 @@ impl Agent {
                     result.compacted_count,
                     result.tokens_saved,
                 );
+            }
+        }
+
+        // ── Multi-model routing ─────────────────────────────
+        // Select appropriate model based on task complexity
+        if let Some(policy) = &self.routing_policy {
+            let signals = ComplexitySignals {
+                token_count: text.len() / 4, // rough token estimate
+                recent_tools: self.recent_tool_summaries(),
+                keywords: policy.extract_keywords(text),
+                user_hint: policy.parse_user_hint(text),
+                current_cost: 0.0, // Phase 2 will add real cost tracking
+            };
+            let selection = policy.select_model(&signals);
+            if selection.role != "default" {
+                let new_model = self.model_roles.resolve(&selection.role, &self.model);
+                if new_model != self.model {
+                    let old = std::mem::replace(&mut self.model, new_model.clone());
+                    let _ = self.event_tx.send(AgentEvent::ModelChange {
+                        from: old,
+                        to: new_model,
+                        reason: format!("{}", selection.reason),
+                    });
+                }
             }
         }
 
@@ -265,7 +310,11 @@ impl Agent {
     /// Change the model
     pub fn set_model(&mut self, model: String) {
         let old = std::mem::replace(&mut self.model, model.clone());
-        let _ = self.event_tx.send(AgentEvent::ModelChange { from: old, to: model });
+        let _ = self.event_tx.send(AgentEvent::ModelChange {
+            from: old,
+            to: model,
+            reason: "user_request".to_string(),
+        });
     }
 
     /// Seed the agent with pre-existing messages (for session resume)
@@ -341,5 +390,36 @@ impl Agent {
     /// Get a reference to the provider (e.g. to reload credentials after login).
     pub fn provider(&self) -> &Arc<dyn Provider> {
         &self.provider
+    }
+
+    /// Extract recent tool call summaries from conversation history
+    /// for complexity analysis. Looks at the last 5 messages.
+    fn recent_tool_summaries(&self) -> Vec<ToolCallSummary> {
+        let mut summaries = Vec::new();
+        let start_index = self.messages.len().saturating_sub(5);
+
+        for msg in &self.messages[start_index..] {
+            if let AgentMessage::Assistant(asst) = msg {
+                for content in &asst.content {
+                    if let Content::ToolUse { name, .. } = content {
+                        if let Some(policy) = &self.routing_policy {
+                            summaries.push(ToolCallSummary {
+                                tool_name: name.clone(),
+                                complexity: policy.classify_tool(name),
+                            });
+                        }
+                    }
+                }
+            } else if let AgentMessage::ToolResult(tool_result) = msg {
+                if let Some(policy) = &self.routing_policy {
+                    summaries.push(ToolCallSummary {
+                        tool_name: tool_result.tool_name.clone(),
+                        complexity: policy.classify_tool(&tool_result.tool_name),
+                    });
+                }
+            }
+        }
+
+        summaries
     }
 }

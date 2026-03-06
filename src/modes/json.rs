@@ -155,7 +155,7 @@ fn format_event_json(event: &AgentEvent) -> String {
             }
         })
         .to_string(),
-        AgentEvent::ModelChange { from, to } => json!({"type": "model_change", "from": from, "to": to}).to_string(),
+        AgentEvent::ModelChange { from, to, reason } => json!({"type": "model_change", "from": from, "to": to, "reason": reason}).to_string(),
         AgentEvent::SessionCompaction {
             compacted_count,
             tokens_saved,

@@ -96,6 +96,8 @@ pub struct ModelChangeEntry {
     pub id: MessageId,
     pub from_model: String,
     pub to_model: String,
+    #[serde(default)]
+    pub reason: String,
     pub timestamp: DateTime<Utc>,
 }
 
@@ -209,6 +211,7 @@ mod tests {
             id: MessageId::new("test-id"),
             from_model: "claude-haiku".to_string(),
             to_model: "claude-sonnet".to_string(),
+            reason: "user_request".to_string(),
             timestamp: Utc::now(),
         };
         let entry = SessionEntry::ModelChange(change);

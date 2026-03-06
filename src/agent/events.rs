@@ -120,6 +120,7 @@ pub enum AgentEvent {
     ModelChange {
         from: String,
         to: String,
+        reason: String,
     },
 
     // Input events

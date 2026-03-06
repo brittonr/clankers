@@ -9,6 +9,7 @@ pub mod procmon;
 pub mod prompts;
 pub mod provider;
 pub mod registry;
+pub mod routing;
 pub mod session;
 pub mod skills;
 pub mod slash_commands;
