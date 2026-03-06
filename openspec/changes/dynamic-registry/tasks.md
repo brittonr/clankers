@@ -33,11 +33,11 @@ _Proves the pattern. Smallest scope, safest starting point._
 _Highest pain/payoff. Eliminates 1,831-line match block. Unlocks plugin
 commands._
 
-- [ ] **2.1** Define `SlashHandler` trait, `SlashContext`, `SlashResult` in
-      `src/slash_commands/mod.rs`
+- [x] **2.1** Define `SlashContext` in `src/slash_commands/handlers/mod.rs`
 - [ ] **2.2** Define `SlashCommandDef`, `SlashContributor` trait,
       `SlashRegistry`
-- [ ] **2.3** Create `src/slash_commands/handlers/` directory
+- [x] **2.3** Create `src/slash_commands/handlers/` directory, `dispatch()`
+      function routing through `execute_slash_command`
 - [ ] **2.4** Extract handler structs from match arms, grouped by domain:
   - [ ] **2.4a** `session.rs` — Session, New, Resume
   - [ ] **2.4b** `model.rs` — Model, Role, Think
@@ -89,15 +89,15 @@ _Eliminates dual-enum problem and 250-line nested match._
       layout toggle entries)
 - [ ] **3.11** Tests: panel registration, focus cycling, toggle, key dispatch
 
-## Phase 4: Tool Collision List
+## Phase 4: Tool Collision List ✅
 
-_Trivial fix. No trait needed. Can ship at any point._
+_Trivial fix. No trait needed._
 
-- [ ] **4.1** Change `build_plugin_tools()` signature to accept
+- [x] **4.1** Change `build_plugin_tools()` signature to accept
       `&[Arc<dyn Tool>]`
-- [ ] **4.2** Derive `builtin_names` from `tools.iter().map(|t| t.name())`
-- [ ] **4.3** Delete hardcoded `builtin_names` array
-- [ ] **4.4** Update call site in `interactive.rs`
+- [x] **4.2** Derive `builtin_names` from `tools.iter().map(|t| t.definition().name)`
+- [x] **4.3** Delete hardcoded `builtin_names` array
+- [x] **4.4** Update call site in `common.rs` and 4 test sites
 
 ## Phase 5: Model Roles
 
