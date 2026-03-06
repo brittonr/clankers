@@ -148,6 +148,7 @@ pub fn init_plugin_manager(
 /// (those with "exec" permission and validation tools) get the `ValidatorTool`
 /// adapter that can spawn subprocess validators.
 pub fn build_plugin_tools(
+    builtin_tools: &[Arc<dyn Tool>],
     manager: &Arc<Mutex<PluginManager>>,
     panel_tx: Option<&tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>>,
 ) -> Vec<Arc<dyn Tool>> {
@@ -161,29 +162,11 @@ pub fn build_plugin_tools(
 
     let mut tools: Vec<Arc<dyn Tool>> = Vec::new();
 
-    // Built-in tool names — skip plugin tools that collide with these
-    let builtin_names: std::collections::HashSet<&str> = [
-        "read",
-        "write",
-        "edit",
-        "bash",
-        "grep",
-        "find",
-        "ls",
-        "subagent",
-        "delegate_task",
-        "todo",
-        "nix",
-        "web",
-        "commit",
-        "review",
-        "ask",
-        "image_gen",
-        "validate_tui",
-        "procmon",
-    ]
-    .into_iter()
-    .collect();
+    // Derive built-in tool names from the actual tool list — skip plugin tools that collide
+    let builtin_names: std::collections::HashSet<String> = builtin_tools
+        .iter()
+        .map(|t| t.definition().name.clone())
+        .collect();
 
     for plugin_info in mgr.list() {
         if plugin_info.state != PluginState::Active {
@@ -197,7 +180,7 @@ pub fn build_plugin_tools(
 
             for tool_def in &plugin_info.manifest.tool_definitions {
                 // Skip plugin tools that collide with built-in tools
-                if builtin_names.contains(tool_def.name.as_str()) {
+                if builtin_names.contains(&tool_def.name) {
                     continue;
                 }
 
@@ -273,7 +256,7 @@ pub fn build_all_tools(
 ) -> Vec<Arc<dyn Tool>> {
     let mut tools = build_tools_with_events(event_tx, panel_tx.clone(), todo_tx, bash_confirm_tx, process_monitor);
     if let Some(manager) = plugin_manager {
-        tools.extend(build_plugin_tools(manager, panel_tx.as_ref()));
+        tools.extend(build_plugin_tools(&tools, manager, panel_tx.as_ref()));
     }
     tools
 }

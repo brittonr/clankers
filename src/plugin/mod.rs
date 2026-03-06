@@ -1263,7 +1263,7 @@ mod tests {
     fn build_plugin_tools_creates_tools_from_definitions() {
         let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
         let manager = crate::modes::common::init_plugin_manager(&plugins_dir, None, &[]);
-        let tools = crate::modes::common::build_plugin_tools(&manager, None);
+        let tools = crate::modes::common::build_plugin_tools(&[], &manager, None);
 
         // Should have tools from all discovered plugins (test-plugin + self-validate)
         assert!(tools.len() >= 2, "Expected at least 2 plugin tools, got {}", tools.len());
@@ -1296,7 +1296,7 @@ mod tests {
     fn build_plugin_tools_empty_when_no_plugins() {
         let dir = tempfile::tempdir().unwrap();
         let manager = crate::modes::common::init_plugin_manager(dir.path(), None, &[]);
-        let tools = crate::modes::common::build_plugin_tools(&manager, None);
+        let tools = crate::modes::common::build_plugin_tools(&[], &manager, None);
         assert!(tools.is_empty());
     }
 
@@ -1561,7 +1561,7 @@ mod tests {
     fn build_plugin_tools_includes_hash_tools() {
         let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
         let manager = crate::modes::common::init_plugin_manager(&plugins_dir, None, &[]);
-        let tools = crate::modes::common::build_plugin_tools(&manager, None);
+        let tools = crate::modes::common::build_plugin_tools(&[], &manager, None);
 
         let names: Vec<String> = tools.iter().map(|t| t.definition().name.clone()).collect();
         assert!(names.contains(&"hash_text".to_string()), "Should have hash_text tool");
@@ -1707,7 +1707,7 @@ mod tests {
     fn build_plugin_tools_includes_email_tools() {
         let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
         let manager = crate::modes::common::init_plugin_manager(&plugins_dir, None, &[]);
-        let tools = crate::modes::common::build_plugin_tools(&manager, None);
+        let tools = crate::modes::common::build_plugin_tools(&[], &manager, None);
 
         let names: Vec<String> = tools.iter().map(|t| t.definition().name.clone()).collect();
         assert!(names.contains(&"send_email".to_string()), "Should have send_email tool, got: {:?}", names);
