@@ -120,7 +120,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     } else if let Some(focused_pane) = app.tiling.focused_pane() {
         // Show tiling hint on the focused panel's border
         if let Some(rect) = app.tiling.pane_rect(focused_pane) {
-            let hint = Span::styled(" j/k h/l:nav []:size |/-:split ", Style::default().fg(Color::DarkGray));
+            let hint_text = if app.is_zoomed() {
+                " z:unzoom "
+            } else {
+                " j/k h/l:nav []:size |/-:split z:zoom "
+            };
+            let hint = Span::styled(hint_text, Style::default().fg(Color::DarkGray));
             let hint_len = hint.width() as u16;
             if rect.width > hint_len + 2 {
                 let hint_area = Rect {

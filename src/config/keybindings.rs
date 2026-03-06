@@ -670,6 +670,7 @@ fn parse_action(s: &str) -> Option<Action> {
         "open_model_selector" | "model_selector" => Some(Action::Extended("open_model_selector".into())),
         "open_account_selector" | "account_selector" => Some(Action::Extended("open_account_selector".into())),
         "paste_image" => Some(Action::Extended("paste_image".into())),
+        "pane_zoom" | "zoom" | "zoom_toggle" => Some(Action::Extended("pane_zoom".into())),
         _ => None,
     }
 }

@@ -87,6 +87,17 @@ pub enum MessageRole {
     System,
 }
 
+/// Saved tiling state while a pane is temporarily zoomed to full screen.
+#[derive(Debug, Clone)]
+pub struct ZoomState {
+    /// The BSP tree before zooming.
+    pub tiling: ratatui_hypertile::Hypertile,
+    /// The pane registry before zooming.
+    pub registry: super::panes::PaneRegistry,
+    /// Which panel was focused before zooming (if any).
+    pub focused_panel: Option<PanelId>,
+}
+
 /// Main TUI application
 pub struct App {
     pub state: AppState,
@@ -205,6 +216,9 @@ pub struct App {
     /// Which panel (if any) currently has focus.
     /// `None` means the chat pane is focused.
     pub focused_panel: Option<PanelId>,
+    /// Saved tiling state while a pane is zoomed to full screen.
+    /// `None` means no pane is zoomed.
+    pub zoom_state: Option<ZoomState>,
     // ── Mouse hit-test areas (updated each render) ───
     /// The editor/input area Rect from the last render
     pub editor_area: Rect,
@@ -314,6 +328,7 @@ impl App {
             tiling: super::panes::default_tiling(),
             pane_registry: super::panes::default_registry(),
             focused_panel: None,
+            zoom_state: None,
             editor_area: Rect::default(),
             status_area: Rect::default(),
             active_tools: HashMap::new(),
@@ -504,6 +519,79 @@ impl App {
                 self.sync_focused_panel();
             }
             Err(_) => {} // Silently ignore (e.g. only one pane left)
+        }
+    }
+
+    // ── Zoom (temporary full-screen focus) ────────────────────────
+
+    /// Whether any pane is currently zoomed.
+    pub fn is_zoomed(&self) -> bool {
+        self.zoom_state.is_some()
+    }
+
+    /// Zoom the currently focused pane to fill the entire terminal.
+    /// Saves the current tiling so it can be restored with `zoom_restore`.
+    /// If already zoomed, this is a no-op.
+    pub fn zoom_focused(&mut self) {
+        if self.zoom_state.is_some() {
+            return;
+        }
+
+        let Some(focused_pane) = self.tiling.focused_pane() else {
+            return;
+        };
+
+        // Save current state.
+        self.zoom_state = Some(ZoomState {
+            tiling: self.tiling.clone(),
+            registry: self.pane_registry.clone(),
+            focused_panel: self.focused_panel,
+        });
+
+        // Build a single-pane tree with the focused pane at root.
+        let mut zoomed = ratatui_hypertile::Hypertile::new();
+        // Hypertile::new() creates ROOT as the only pane. We need to
+        // make the registry map ROOT to whatever the focused pane held.
+        let kind = self.pane_registry.kind(focused_pane).cloned()
+            .unwrap_or(super::panes::PaneKind::Empty);
+
+        let mut reg = super::panes::PaneRegistry::new();
+        // ROOT is already Chat in a fresh registry — override it.
+        reg.register(ratatui_hypertile::PaneId::ROOT, kind.clone());
+
+        // If the zoomed pane was Chat, keep chat_pane as ROOT (already the case).
+        // If it was a Panel, we need a registry where ROOT maps to that panel
+        // and chat_pane is still ROOT (PaneRegistry enforces this). That's fine —
+        // the renderer will see ROOT → Panel and skip the chat render path.
+
+        let _ = zoomed.focus_pane(ratatui_hypertile::PaneId::ROOT);
+        self.tiling = zoomed;
+        self.pane_registry = reg;
+
+        // Sync focused_panel to match the zoomed pane's content.
+        match kind {
+            super::panes::PaneKind::Panel(id) => self.focused_panel = Some(id),
+            _ => self.focused_panel = None,
+        }
+    }
+
+    /// Restore the tiling layout from before `zoom_focused` was called.
+    /// No-op if not zoomed.
+    pub fn zoom_restore(&mut self) {
+        let Some(saved) = self.zoom_state.take() else {
+            return;
+        };
+        self.tiling = saved.tiling;
+        self.pane_registry = saved.registry;
+        self.focused_panel = saved.focused_panel;
+    }
+
+    /// Toggle zoom on the focused pane: zoom in if not zoomed, restore if zoomed.
+    pub fn zoom_toggle(&mut self) {
+        if self.is_zoomed() {
+            self.zoom_restore();
+        } else {
+            self.zoom_focused();
         }
     }
 

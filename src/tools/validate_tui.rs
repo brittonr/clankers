@@ -632,24 +632,24 @@ mod tests {
                 },
                 {
                     "action": { "type": "key", "name": "backtick" },
-                    "assert_visible": "j/k Tab",
+                    "assert_visible": "z:zoom",
                     "capture": true
                 },
                 {
                     // h from right panel → focus chat (spatial: chat is to the left)
                     "action": { "type": "type", "text": "h" },
-                    "assert_absent": "j/k Tab",
+                    "assert_absent": "z:zoom",
                     "assert_visible": "h/l:panels"
                 },
                 {
                     // l from main → focus right panel again (spatial: right panels are to the right)
                     "action": { "type": "type", "text": "l" },
-                    "assert_visible": "j/k Tab",
+                    "assert_visible": "z:zoom",
                     "capture": true
                 },
                 {
                     "action": { "type": "key", "name": "esc" },
-                    "assert_absent": "j/k Tab"
+                    "assert_absent": "z:zoom"
                 }
             ]
         });

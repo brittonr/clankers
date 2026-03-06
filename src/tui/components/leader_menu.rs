@@ -638,6 +638,14 @@ impl MenuContributor for BuiltinKeymapContributor {
             },
             // ── Pane submenu items ──
             MenuContribution {
+                key: 'z',
+                label: "zoom toggle".into(),
+                action: LeaderAction::KeymapAction(Action::Extended("pane_zoom".into())),
+                placement: MenuPlacement::Submenu("pane".into()),
+                priority: PRIORITY_BUILTIN,
+                source: "builtin".into(),
+            },
+            MenuContribution {
                 key: 'v',
                 label: "split vertical".into(),
                 action: LeaderAction::KeymapAction(Action::Extended("pane_split_vertical".into())),

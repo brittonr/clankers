@@ -14,12 +14,14 @@ impl SlashHandler for LayoutHandler {
         let sub = args.trim().to_lowercase();
         match sub.as_str() {
             "default" | "3col" | "three" => {
+                ctx.app.zoom_state = None;
                 ctx.app.tiling = panes::default_tiling();
                 ctx.app.pane_registry = panes::default_registry();
                 ctx.app.unfocus_panel();
                 ctx.app.push_system("Layout: default 3-column".into(), false);
             }
             "wide" | "chat" => {
+                ctx.app.zoom_state = None;
                 let (tiling, registry) = panes::wide_chat_tiling();
                 ctx.app.tiling = tiling;
                 ctx.app.pane_registry = registry;
@@ -27,6 +29,7 @@ impl SlashHandler for LayoutHandler {
                 ctx.app.push_system("Layout: wide chat with left sidebar".into(), false);
             }
             "focused" | "none" | "clean" => {
+                ctx.app.zoom_state = None;
                 let (tiling, registry) = panes::focused_tiling();
                 ctx.app.tiling = tiling;
                 ctx.app.pane_registry = registry;
@@ -34,6 +37,7 @@ impl SlashHandler for LayoutHandler {
                 ctx.app.push_system("Layout: focused (no panels)".into(), false);
             }
             "right" => {
+                ctx.app.zoom_state = None;
                 let (tiling, registry) = panes::right_heavy_tiling();
                 ctx.app.tiling = tiling;
                 ctx.app.pane_registry = registry;
@@ -86,6 +90,9 @@ fn parse_panel_name(name: &str) -> Option<crate::tui::panel::PanelId> {
 fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
     use crate::tui::panes::PaneKind;
     use ratatui::layout::Direction;
+
+    // Toggling panels modifies the tree, so exit zoom first.
+    ctx.app.zoom_restore();
 
     let Some(panel_id) = parse_panel_name(panel_name) else {
         ctx.app.push_system(

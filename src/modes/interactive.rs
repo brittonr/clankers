@@ -1181,6 +1181,11 @@ async fn run_event_loop(
                                     app.apply_tiling_action(HypertileAction::SetFocusedRatio { ratio: 0.5 });
                                     continue;
                                 }
+                                // z = zoom (toggle full-screen for focused pane)
+                                (KeyCode::Char('z'), m) if m.is_empty() => {
+                                    app.zoom_toggle();
+                                    continue;
+                                }
                                 _ => {}
                             }
                         }
@@ -1360,22 +1365,26 @@ fn handle_action(
             match &action {
                 Action::Core(CoreAction::Unfocus) => {
                     app.close_focused_panel_views();
+                    app.zoom_restore();
                     app.unfocus_panel();
                     return;
                 }
                 Action::Extended(n) if n == "toggle_panel_focus" => {
                     app.close_focused_panel_views();
+                    app.zoom_restore();
                     app.unfocus_panel();
                     return;
                 }
                 Action::Core(CoreAction::EnterInsert) => {
                     app.close_focused_panel_views();
+                    app.zoom_restore();
                     app.unfocus_panel();
                     app.input_mode = InputMode::Insert;
                     return;
                 }
                 Action::Core(CoreAction::EnterCommand) => {
                     app.close_focused_panel_views();
+                    app.zoom_restore();
                     app.unfocus_panel();
                     // Don't return — fall through to main handler for "/" prefix setup
                 }
@@ -1704,6 +1713,9 @@ fn handle_action(
                     towards: Towards::Start,
                     scope: MoveScope::Window,
                 });
+            }
+            "pane_zoom" => {
+                app.zoom_toggle();
             }
             "panel_scroll_up" => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
