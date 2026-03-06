@@ -417,7 +417,7 @@ pub struct BuiltinKeymapContributor;
 
 impl MenuContributor for BuiltinKeymapContributor {
     fn menu_items(&self) -> Vec<MenuContribution> {
-        use crate::config::keybindings::Action;
+        use crate::config::keybindings::{Action, CoreAction};
         use crate::registry::PRIORITY_BUILTIN;
 
         vec![
@@ -442,7 +442,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'm',
                 label: "model".into(),
-                action: LeaderAction::KeymapAction(Action::OpenModelSelector),
+                action: LeaderAction::KeymapAction(Action::Extended("open_model_selector".into())),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -450,7 +450,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'a',
                 label: "account".into(),
-                action: LeaderAction::KeymapAction(Action::OpenAccountSelector),
+                action: LeaderAction::KeymapAction(Action::Extended("open_account_selector".into())),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -458,7 +458,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 't',
                 label: "toggle thinking".into(),
-                action: LeaderAction::KeymapAction(Action::ToggleThinking),
+                action: LeaderAction::KeymapAction(Action::Extended("toggle_thinking".into())),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -466,7 +466,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'T',
                 label: "show/hide thinking".into(),
-                action: LeaderAction::KeymapAction(Action::ToggleShowThinking),
+                action: LeaderAction::KeymapAction(Action::Extended("toggle_show_thinking".into())),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -474,7 +474,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'f',
                 label: "search output".into(),
-                action: LeaderAction::KeymapAction(Action::SearchOutput),
+                action: LeaderAction::KeymapAction(Action::Extended("search_output".into())),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -482,7 +482,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: '`',
                 label: "toggle panel".into(),
-                action: LeaderAction::KeymapAction(Action::TogglePanelFocus),
+                action: LeaderAction::KeymapAction(Action::Extended("toggle_panel_focus".into())),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -490,7 +490,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'o',
                 label: "external editor".into(),
-                action: LeaderAction::KeymapAction(Action::OpenEditor),
+                action: LeaderAction::KeymapAction(Action::Extended("open_editor".into())),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -498,7 +498,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'c',
                 label: "cancel/abort".into(),
-                action: LeaderAction::KeymapAction(Action::Cancel),
+                action: LeaderAction::KeymapAction(Action::Core(CoreAction::Cancel)),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -506,7 +506,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'x',
                 label: "clear input".into(),
-                action: LeaderAction::KeymapAction(Action::ClearLine),
+                action: LeaderAction::KeymapAction(Action::Core(CoreAction::ClearLine)),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -727,7 +727,7 @@ mod tests {
 
         match result.unwrap() {
             LeaderAction::KeymapAction(a) => {
-                assert_eq!(a, crate::config::keybindings::Action::OpenModelSelector);
+                assert_eq!(a, crate::config::keybindings::Action::Extended("open_model_selector".to_string()));
             }
             _ => panic!("Expected KeymapAction"),
         }
@@ -786,7 +786,7 @@ mod tests {
 
         match result.unwrap() {
             LeaderAction::KeymapAction(a) => {
-                assert_eq!(a, crate::config::keybindings::Action::ToggleShowThinking);
+                assert_eq!(a, crate::config::keybindings::Action::Extended("toggle_show_thinking".to_string()));
             }
             _ => panic!("Expected KeymapAction"),
         }

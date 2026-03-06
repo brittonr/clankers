@@ -44,26 +44,18 @@ impl fmt::Display for InputMode {
 // Actions — every semantic operation the TUI supports
 // ---------------------------------------------------------------------------
 
-/// Semantic actions that keybindings can trigger.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Action {
+/// Core actions that cannot be extended by plugins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum CoreAction {
     // ── Mode switching ───────────────────────────────
-    /// Switch to insert mode (focus the editor)
     EnterInsert,
-    /// Switch to insert mode with `/` pre-filled (quick slash command)
     EnterCommand,
-    /// Switch to normal mode
     EnterNormal,
 
     // ── Core ──────────────────────────────────────────
-    /// Submit the current input (send prompt / execute command)
     Submit,
-    /// Insert a newline in the editor (multi-line input)
     NewLine,
-    /// Cancel current operation (abort streaming) or clear input
     Cancel,
-    /// Quit the application
     Quit,
 
     // ── Editor movement ──────────────────────────────
@@ -93,87 +85,71 @@ pub enum Action {
     // ── Block navigation ─────────────────────────────
     FocusPrevBlock,
     FocusNextBlock,
-    ToggleBlockCollapse,
-    CollapseAllBlocks,
-    ExpandAllBlocks,
-    CopyBlock,
-    RerunBlock,
-    /// Edit the focused block's prompt (starts a branch)
-    EditBlock,
-    /// Unfocus the current block / dismiss
     Unfocus,
 
-    // ── Branch navigation ────────────────────────────
-    BranchPrev,
-    BranchNext,
-    /// Toggle block ID display in conversation view
-    ToggleBlockIds,
-
-    // ── Toggles ──────────────────────────────────────
-    ToggleThinking,
-    ToggleShowThinking,
-
-    // ── Subagent panel ────────────────────────────────
-    // ── Search ────────────────────────────────────
-    /// Open the output search overlay
-    SearchOutput,
-    /// Jump to the next search match
-    SearchNext,
-    /// Jump to the previous search match
-    SearchPrev,
-
-    /// Toggle focus between main TUI and subagent panel
-    TogglePanelFocus,
-    /// Next subagent tab in the panel
-    PanelNextTab,
-    /// Previous subagent tab in the panel
-    PanelPrevTab,
-    /// Scroll up in the panel
-    PanelScrollUp,
-    /// Scroll down in the panel
-    PanelScrollDown,
-    /// Clear completed subagents from the panel
-    PanelClearDone,
-    /// Kill the selected running subagent
-    PanelKill,
-    /// Remove/dismiss the selected subagent entry from the panel
-    PanelRemove,
-
     // ── Menu navigation (slash command autocomplete) ─
-    /// Move selection up in the autocomplete menu
     MenuUp,
-    /// Move selection down in the autocomplete menu
     MenuDown,
-    /// Accept the selected menu item
     MenuAccept,
-    /// Dismiss the autocomplete menu
     MenuClose,
 
     // ── Clipboard paste ──────────────────────────────
-    /// Paste text or image from the system clipboard
     PasteImage,
+}
 
-    // ── Session popup ────────────────────────────────
-    /// Toggle the session/branch popup
-    ToggleSessionPopup,
-    /// Toggle the branch panel
-    ToggleBranchPanel,
-    /// Open the branch switcher overlay
-    OpenBranchSwitcher,
+/// Semantic actions that keybindings can trigger.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum Action {
+    /// Core action (hardcoded, cannot be extended)
+    #[serde(skip)]
+    Core(CoreAction),
+    /// Extended action (registered dynamically by name)
+    Extended(String),
+}
 
-    // ── External editor ──────────────────────────────
-    /// Open $EDITOR to compose input
-    OpenEditor,
+// ---------------------------------------------------------------------------
+// ActionRegistry — tracks extended actions
+// ---------------------------------------------------------------------------
 
-    // ── Selectors ────────────────────────────────────
-    /// Open the model selector popup
-    OpenModelSelector,
-    /// Open the account selector popup
-    OpenAccountSelector,
+/// Metadata for an extended action.
+#[derive(Debug, Clone)]
+pub struct ExtendedActionDef {
+    pub name: String,
+    pub description: String,
+}
 
-    // ── Leader key ───────────────────────────────────
-    /// Open the leader key (Space) popup menu
-    OpenLeaderMenu,
+/// Registry for extended actions (plugins, user config).
+#[derive(Debug, Clone, Default)]
+pub struct ActionRegistry {
+    actions: HashMap<String, ExtendedActionDef>,
+}
+
+impl ActionRegistry {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Register an extended action.
+    pub fn register(&mut self, name: &str, description: &str) {
+        self.actions.insert(
+            name.to_string(),
+            ExtendedActionDef {
+                name: name.to_string(),
+                description: description.to_string(),
+            },
+        );
+    }
+
+    /// Check if an action is registered.
+    pub fn is_registered(&self, name: &str) -> bool {
+        self.actions.contains_key(name)
+    }
+
+    /// Get all registered actions.
+    pub fn all(&self) -> impl Iterator<Item = &ExtendedActionDef> {
+        self.actions.values()
+    }
 }
 
 impl fmt::Display for Action {
@@ -284,8 +260,8 @@ impl Keymap {
     pub fn resolve(&self, mode: InputMode, event: &KeyEvent) -> Option<Action> {
         let combo = KeyCombo::from_event(event);
         match mode {
-            InputMode::Normal => self.normal.get(&combo).copied(),
-            InputMode::Insert => self.insert.get(&combo).copied(),
+            InputMode::Normal => self.normal.get(&combo).cloned(),
+            InputMode::Insert => self.insert.get(&combo).cloned(),
         }
     }
 
@@ -312,7 +288,7 @@ impl Keymap {
             InputMode::Normal => &self.normal,
             InputMode::Insert => &self.insert,
         };
-        let mut out: Vec<(String, Action)> = table.iter().map(|(k, a)| (format_key_combo(k), *a)).collect();
+        let mut out: Vec<(String, Action)> = table.iter().map(|(k, a)| (format_key_combo(k), a.clone())).collect();
         out.sort_by(|a, b| format!("{:?}", a.1).cmp(&format!("{:?}", b.1)));
         out
     }
@@ -338,69 +314,70 @@ fn apply_overrides(map: &mut HashMap<KeyCombo, Action>, overrides: &HashMap<Stri
 
 /// Bindings shared by all presets in normal mode.
 fn common_normal() -> HashMap<KeyCombo, Action> {
+    use CoreAction::*;
     let mut m = HashMap::new();
 
     // ── Mode switching ───────────────────────────────
-    m.insert(kc(KeyCode::Char('i'), false, false, false), Action::EnterInsert);
-    m.insert(kc(KeyCode::Char('/'), false, false, false), Action::EnterCommand);
+    m.insert(kc(KeyCode::Char('i'), false, false, false), Action::Core(EnterInsert));
+    m.insert(kc(KeyCode::Char('/'), false, false, false), Action::Core(EnterCommand));
 
     // ── Cancel / quit ────────────────────────────────
-    m.insert(kc(KeyCode::Char('c'), true, false, false), Action::Cancel);
-    m.insert(kc(KeyCode::Char('q'), false, false, false), Action::Quit);
+    m.insert(kc(KeyCode::Char('c'), true, false, false), Action::Core(Cancel));
+    m.insert(kc(KeyCode::Char('q'), false, false, false), Action::Core(Quit));
 
     // ── Scrolling ────────────────────────────────────
-    m.insert(kc(KeyCode::PageUp, false, false, false), Action::ScrollPageUp);
-    m.insert(kc(KeyCode::PageDown, false, false, false), Action::ScrollPageDown);
+    m.insert(kc(KeyCode::PageUp, false, false, false), Action::Core(ScrollPageUp));
+    m.insert(kc(KeyCode::PageDown, false, false, false), Action::Core(ScrollPageDown));
 
     // ── Block operations (universal) ─────────────────
-    m.insert(kc(KeyCode::Tab, false, false, false), Action::ToggleBlockCollapse);
-    m.insert(kc(KeyCode::Char('y'), false, false, false), Action::CopyBlock);
-    m.insert(kc(KeyCode::Char('e'), false, false, false), Action::EditBlock);
-    m.insert(kc(KeyCode::Char('r'), false, false, false), Action::RerunBlock);
-    m.insert(kc(KeyCode::Esc, false, false, false), Action::Unfocus);
+    m.insert(kc(KeyCode::Tab, false, false, false), Action::Extended("toggle_block_collapse".into()));
+    m.insert(kc(KeyCode::Char('y'), false, false, false), Action::Extended("copy_block".into()));
+    m.insert(kc(KeyCode::Char('e'), false, false, false), Action::Extended("edit_block".into()));
+    m.insert(kc(KeyCode::Char('r'), false, false, false), Action::Extended("rerun_block".into()));
+    m.insert(kc(KeyCode::Esc, false, false, false), Action::Core(Unfocus));
 
     // ── Toggles ──────────────────────────────────────
-    m.insert(kc(KeyCode::Char('t'), true, false, false), Action::ToggleThinking);
-    m.insert(kc(KeyCode::Char('T'), false, false, true), Action::ToggleShowThinking);
+    m.insert(kc(KeyCode::Char('t'), true, false, false), Action::Extended("toggle_thinking".into()));
+    m.insert(kc(KeyCode::Char('T'), false, false, true), Action::Extended("toggle_show_thinking".into()));
 
     // ── Session popup ─────────────────────────────────
-    m.insert(kc(KeyCode::Char('s'), false, false, false), Action::ToggleSessionPopup);
+    m.insert(kc(KeyCode::Char('s'), false, false, false), Action::Extended("toggle_session_popup".into()));
 
     // ── Branch panel / switcher ────────────────────────
-    m.insert(kc(KeyCode::Char('b'), false, false, false), Action::ToggleBranchPanel);
-    m.insert(kc(KeyCode::Char('B'), false, false, true), Action::OpenBranchSwitcher);
+    m.insert(kc(KeyCode::Char('b'), false, false, false), Action::Extended("toggle_branch_panel".into()));
+    m.insert(kc(KeyCode::Char('B'), false, false, true), Action::Extended("open_branch_switcher".into()));
 
     // ── Block IDs ─────────────────────────────────────
-    m.insert(kc(KeyCode::Char('I'), false, false, true), Action::ToggleBlockIds);
+    m.insert(kc(KeyCode::Char('I'), false, false, true), Action::Extended("toggle_block_ids".into()));
 
     // ── Selectors ─────────────────────────────────────
-    m.insert(kc(KeyCode::Char('m'), false, false, false), Action::OpenModelSelector);
-    m.insert(kc(KeyCode::Char('a'), false, false, false), Action::OpenAccountSelector);
+    m.insert(kc(KeyCode::Char('m'), false, false, false), Action::Extended("open_model_selector".into()));
+    m.insert(kc(KeyCode::Char('a'), false, false, false), Action::Extended("open_account_selector".into()));
 
     // ── Leader key (Space) ──────────────────────────
-    m.insert(kc(KeyCode::Char(' '), false, false, false), Action::OpenLeaderMenu);
+    m.insert(kc(KeyCode::Char(' '), false, false, false), Action::Extended("open_leader_menu".into()));
 
     // ── External editor ──────────────────────────────
-    m.insert(kc(KeyCode::Char('o'), false, false, false), Action::OpenEditor);
+    m.insert(kc(KeyCode::Char('o'), false, false, false), Action::Extended("open_editor".into()));
 
     // ── Search ────────────────────────────────────────
-    m.insert(kc(KeyCode::Char('f'), false, false, false), Action::SearchOutput);
-    m.insert(kc(KeyCode::Char('f'), true, false, false), Action::SearchOutput);
-    m.insert(kc(KeyCode::Char('n'), false, false, false), Action::SearchNext);
-    m.insert(kc(KeyCode::Char('N'), false, false, true), Action::SearchPrev);
+    m.insert(kc(KeyCode::Char('f'), false, false, false), Action::Extended("search_output".into()));
+    m.insert(kc(KeyCode::Char('f'), true, false, false), Action::Extended("search_output".into()));
+    m.insert(kc(KeyCode::Char('n'), false, false, false), Action::Extended("search_next".into()));
+    m.insert(kc(KeyCode::Char('N'), false, false, true), Action::Extended("search_prev".into()));
 
     // ── Subagent / Todo panel ────────────────────────
-    m.insert(kc(KeyCode::Char('`'), false, false, false), Action::TogglePanelFocus);
-    m.insert(kc(KeyCode::Char('`'), true, false, false), Action::TogglePanelFocus);
+    m.insert(kc(KeyCode::Char('`'), false, false, false), Action::Extended("toggle_panel_focus".into()));
+    m.insert(kc(KeyCode::Char('`'), true, false, false), Action::Extended("toggle_panel_focus".into()));
     // Tab switching (h/l) is handled contextually when panel is focused —
     // BranchPrev/BranchNext (h/l) are remapped to PanelPrevTab/PanelNextTab.
-    m.insert(kc(KeyCode::Char('x'), true, false, false), Action::PanelClearDone);
+    m.insert(kc(KeyCode::Char('x'), true, false, false), Action::Extended("panel_clear_done".into()));
     // Panel-only keys (x=kill, X=remove) are handled via raw key intercept
     // in the event loop when panel is focused — not in the keymap.
 
     // ── Clipboard paste (text or image) ─────────────
-    m.insert(kc(KeyCode::Char('v'), true, false, false), Action::PasteImage);
-    m.insert(kc(KeyCode::Char('v'), true, false, true), Action::PasteImage);
+    m.insert(kc(KeyCode::Char('v'), true, false, false), Action::Core(PasteImage));
+    m.insert(kc(KeyCode::Char('v'), true, false, true), Action::Core(PasteImage));
 
     m
 }
@@ -409,31 +386,32 @@ fn common_normal() -> HashMap<KeyCombo, Action> {
 ///
 /// Both arrow keys and hjkl for navigation — bare keys are free in normal mode.
 fn helix_normal() -> HashMap<KeyCombo, Action> {
+    use CoreAction::*;
     let mut m = common_normal();
 
     // ── Block navigation (arrows + jk) ───────────────
-    m.insert(kc(KeyCode::Up, false, false, false), Action::FocusPrevBlock);
-    m.insert(kc(KeyCode::Down, false, false, false), Action::FocusNextBlock);
-    m.insert(kc(KeyCode::Char('k'), false, false, false), Action::FocusPrevBlock);
-    m.insert(kc(KeyCode::Char('j'), false, false, false), Action::FocusNextBlock);
+    m.insert(kc(KeyCode::Up, false, false, false), Action::Core(FocusPrevBlock));
+    m.insert(kc(KeyCode::Down, false, false, false), Action::Core(FocusNextBlock));
+    m.insert(kc(KeyCode::Char('k'), false, false, false), Action::Core(FocusPrevBlock));
+    m.insert(kc(KeyCode::Char('j'), false, false, false), Action::Core(FocusNextBlock));
 
     // ── Branch navigation (arrows + hl) ──────────────
-    m.insert(kc(KeyCode::Left, false, false, false), Action::BranchPrev);
-    m.insert(kc(KeyCode::Right, false, false, false), Action::BranchNext);
-    m.insert(kc(KeyCode::Char('h'), false, false, false), Action::BranchPrev);
-    m.insert(kc(KeyCode::Char('l'), false, false, false), Action::BranchNext);
+    m.insert(kc(KeyCode::Left, false, false, false), Action::Extended("branch_prev".into()));
+    m.insert(kc(KeyCode::Right, false, false, false), Action::Extended("branch_next".into()));
+    m.insert(kc(KeyCode::Char('h'), false, false, false), Action::Extended("branch_prev".into()));
+    m.insert(kc(KeyCode::Char('l'), false, false, false), Action::Extended("branch_next".into()));
 
     // ── Scrolling ────────────────────────────────────
-    m.insert(kc(KeyCode::Char('u'), true, false, false), Action::ScrollPageUp);
-    m.insert(kc(KeyCode::Char('d'), true, false, false), Action::ScrollPageDown);
+    m.insert(kc(KeyCode::Char('u'), true, false, false), Action::Core(ScrollPageUp));
+    m.insert(kc(KeyCode::Char('d'), true, false, false), Action::Core(ScrollPageDown));
 
     // ── Collapse / expand all ────────────────────────
-    m.insert(kc(KeyCode::Char('K'), false, false, true), Action::CollapseAllBlocks);
-    m.insert(kc(KeyCode::Char('L'), false, false, true), Action::ExpandAllBlocks);
+    m.insert(kc(KeyCode::Char('K'), false, false, true), Action::Extended("collapse_all_blocks".into()));
+    m.insert(kc(KeyCode::Char('L'), false, false, true), Action::Extended("expand_all_blocks".into()));
 
     // ── Scroll extremes ──────────────────────────────
-    m.insert(kc(KeyCode::Char('g'), false, false, false), Action::ScrollToTop);
-    m.insert(kc(KeyCode::Char('G'), false, false, true), Action::ScrollToBottom);
+    m.insert(kc(KeyCode::Char('g'), false, false, false), Action::Core(ScrollToTop));
+    m.insert(kc(KeyCode::Char('G'), false, false, true), Action::Core(ScrollToBottom));
 
     m
 }
@@ -442,31 +420,32 @@ fn helix_normal() -> HashMap<KeyCombo, Action> {
 ///
 /// hjkl for navigation.
 fn vim_normal() -> HashMap<KeyCombo, Action> {
+    use CoreAction::*;
     let mut m = common_normal();
 
     // ── Block navigation (jk + arrows) ───────────────
-    m.insert(kc(KeyCode::Char('k'), false, false, false), Action::FocusPrevBlock);
-    m.insert(kc(KeyCode::Char('j'), false, false, false), Action::FocusNextBlock);
-    m.insert(kc(KeyCode::Up, false, false, false), Action::FocusPrevBlock);
-    m.insert(kc(KeyCode::Down, false, false, false), Action::FocusNextBlock);
+    m.insert(kc(KeyCode::Char('k'), false, false, false), Action::Core(FocusPrevBlock));
+    m.insert(kc(KeyCode::Char('j'), false, false, false), Action::Core(FocusNextBlock));
+    m.insert(kc(KeyCode::Up, false, false, false), Action::Core(FocusPrevBlock));
+    m.insert(kc(KeyCode::Down, false, false, false), Action::Core(FocusNextBlock));
 
     // ── Branch navigation (hl + arrows) ──────────────
-    m.insert(kc(KeyCode::Char('h'), false, false, false), Action::BranchPrev);
-    m.insert(kc(KeyCode::Char('l'), false, false, false), Action::BranchNext);
-    m.insert(kc(KeyCode::Left, false, false, false), Action::BranchPrev);
-    m.insert(kc(KeyCode::Right, false, false, false), Action::BranchNext);
+    m.insert(kc(KeyCode::Char('h'), false, false, false), Action::Extended("branch_prev".into()));
+    m.insert(kc(KeyCode::Char('l'), false, false, false), Action::Extended("branch_next".into()));
+    m.insert(kc(KeyCode::Left, false, false, false), Action::Extended("branch_prev".into()));
+    m.insert(kc(KeyCode::Right, false, false, false), Action::Extended("branch_next".into()));
 
     // ── Scrolling ────────────────────────────────────
-    m.insert(kc(KeyCode::Char('u'), true, false, false), Action::ScrollPageUp);
-    m.insert(kc(KeyCode::Char('d'), true, false, false), Action::ScrollPageDown);
+    m.insert(kc(KeyCode::Char('u'), true, false, false), Action::Core(ScrollPageUp));
+    m.insert(kc(KeyCode::Char('d'), true, false, false), Action::Core(ScrollPageDown));
 
     // ── Collapse / expand all ────────────────────────
-    m.insert(kc(KeyCode::Char('K'), false, false, true), Action::CollapseAllBlocks);
-    m.insert(kc(KeyCode::Char('L'), false, false, true), Action::ExpandAllBlocks);
+    m.insert(kc(KeyCode::Char('K'), false, false, true), Action::Extended("collapse_all_blocks".into()));
+    m.insert(kc(KeyCode::Char('L'), false, false, true), Action::Extended("expand_all_blocks".into()));
 
     // ── Scroll extremes ──────────────────────────────
-    m.insert(kc(KeyCode::Char('g'), false, false, false), Action::ScrollToTop);
-    m.insert(kc(KeyCode::Char('G'), false, false, true), Action::ScrollToBottom);
+    m.insert(kc(KeyCode::Char('g'), false, false, false), Action::Core(ScrollToTop));
+    m.insert(kc(KeyCode::Char('G'), false, false, true), Action::Core(ScrollToBottom));
 
     m
 }
@@ -477,97 +456,100 @@ fn vim_normal() -> HashMap<KeyCombo, Action> {
 
 /// Bindings shared by all presets in insert mode.
 fn common_insert() -> HashMap<KeyCombo, Action> {
+    use CoreAction::*;
     let mut m = HashMap::new();
 
     // ── Mode switching ───────────────────────────────
-    m.insert(kc(KeyCode::Esc, false, false, false), Action::EnterNormal);
+    m.insert(kc(KeyCode::Esc, false, false, false), Action::Core(EnterNormal));
 
     // ── Submit / newline ─────────────────────────────
-    m.insert(kc(KeyCode::Enter, false, false, false), Action::Submit);
-    m.insert(kc(KeyCode::Enter, false, true, false), Action::NewLine);
+    m.insert(kc(KeyCode::Enter, false, false, false), Action::Core(Submit));
+    m.insert(kc(KeyCode::Enter, false, true, false), Action::Core(NewLine));
 
     // ── Cancel / quit ────────────────────────────────
-    m.insert(kc(KeyCode::Char('c'), true, false, false), Action::Cancel);
-    m.insert(kc(KeyCode::Char('d'), true, false, false), Action::Quit);
+    m.insert(kc(KeyCode::Char('c'), true, false, false), Action::Core(Cancel));
+    m.insert(kc(KeyCode::Char('d'), true, false, false), Action::Core(Quit));
 
     // ── Basic editing ────────────────────────────────
-    m.insert(kc(KeyCode::Backspace, false, false, false), Action::DeleteBack);
-    m.insert(kc(KeyCode::Delete, false, false, false), Action::DeleteForward);
+    m.insert(kc(KeyCode::Backspace, false, false, false), Action::Core(DeleteBack));
+    m.insert(kc(KeyCode::Delete, false, false, false), Action::Core(DeleteForward));
 
     // ── Arrow movement ───────────────────────────────
-    m.insert(kc(KeyCode::Left, false, false, false), Action::MoveLeft);
-    m.insert(kc(KeyCode::Right, false, false, false), Action::MoveRight);
-    m.insert(kc(KeyCode::Home, false, false, false), Action::MoveHome);
-    m.insert(kc(KeyCode::End, false, false, false), Action::MoveEnd);
+    m.insert(kc(KeyCode::Left, false, false, false), Action::Core(MoveLeft));
+    m.insert(kc(KeyCode::Right, false, false, false), Action::Core(MoveRight));
+    m.insert(kc(KeyCode::Home, false, false, false), Action::Core(MoveHome));
+    m.insert(kc(KeyCode::End, false, false, false), Action::Core(MoveEnd));
 
     // ── History ──────────────────────────────────────
-    m.insert(kc(KeyCode::Up, false, false, false), Action::HistoryUp);
-    m.insert(kc(KeyCode::Down, false, false, false), Action::HistoryDown);
+    m.insert(kc(KeyCode::Up, false, false, false), Action::Core(HistoryUp));
+    m.insert(kc(KeyCode::Down, false, false, false), Action::Core(HistoryDown));
 
     // ── Scrolling (Ctrl+arrows) ──────────────────────
-    m.insert(kc(KeyCode::Up, true, false, false), Action::ScrollUp);
-    m.insert(kc(KeyCode::Down, true, false, false), Action::ScrollDown);
-    m.insert(kc(KeyCode::PageUp, false, false, false), Action::ScrollPageUp);
-    m.insert(kc(KeyCode::PageDown, false, false, false), Action::ScrollPageDown);
-    m.insert(kc(KeyCode::Home, true, false, false), Action::ScrollToTop);
-    m.insert(kc(KeyCode::End, true, false, false), Action::ScrollToBottom);
+    m.insert(kc(KeyCode::Up, true, false, false), Action::Core(ScrollUp));
+    m.insert(kc(KeyCode::Down, true, false, false), Action::Core(ScrollDown));
+    m.insert(kc(KeyCode::PageUp, false, false, false), Action::Core(ScrollPageUp));
+    m.insert(kc(KeyCode::PageDown, false, false, false), Action::Core(ScrollPageDown));
+    m.insert(kc(KeyCode::Home, true, false, false), Action::Core(ScrollToTop));
+    m.insert(kc(KeyCode::End, true, false, false), Action::Core(ScrollToBottom));
 
     // ── Menu navigation (Ctrl+j/k, Ctrl+n/p, Tab) ───
-    m.insert(kc(KeyCode::Char('k'), true, false, false), Action::MenuUp);
-    m.insert(kc(KeyCode::Char('j'), true, false, false), Action::MenuDown);
-    m.insert(kc(KeyCode::Char('p'), true, false, false), Action::MenuUp);
-    m.insert(kc(KeyCode::Char('n'), true, false, false), Action::MenuDown);
-    m.insert(kc(KeyCode::Tab, false, false, false), Action::MenuAccept);
+    m.insert(kc(KeyCode::Char('k'), true, false, false), Action::Core(MenuUp));
+    m.insert(kc(KeyCode::Char('j'), true, false, false), Action::Core(MenuDown));
+    m.insert(kc(KeyCode::Char('p'), true, false, false), Action::Core(MenuUp));
+    m.insert(kc(KeyCode::Char('n'), true, false, false), Action::Core(MenuDown));
+    m.insert(kc(KeyCode::Tab, false, false, false), Action::Core(MenuAccept));
 
     // ── Search ────────────────────────────────────────
-    m.insert(kc(KeyCode::Char('f'), true, false, false), Action::SearchOutput);
+    m.insert(kc(KeyCode::Char('f'), true, false, false), Action::Extended("search_output".into()));
 
     // ── Panel focus ────────────────────────────────────
-    m.insert(kc(KeyCode::Char('`'), true, false, false), Action::TogglePanelFocus);
+    m.insert(kc(KeyCode::Char('`'), true, false, false), Action::Extended("toggle_panel_focus".into()));
 
     // ── Session popup ────────────────────────────────
-    m.insert(kc(KeyCode::Char('s'), true, false, false), Action::ToggleSessionPopup);
+    m.insert(kc(KeyCode::Char('s'), true, false, false), Action::Extended("toggle_session_popup".into()));
 
     // ── Branch panel ──────────────────────────────────
-    m.insert(kc(KeyCode::Char('b'), true, false, false), Action::ToggleBranchPanel);
+    m.insert(kc(KeyCode::Char('b'), true, false, false), Action::Extended("toggle_branch_panel".into()));
 
     // ── Block IDs ─────────────────────────────────────
-    m.insert(kc(KeyCode::Char('i'), true, false, false), Action::ToggleBlockIds);
+    m.insert(kc(KeyCode::Char('i'), true, false, false), Action::Extended("toggle_block_ids".into()));
 
     // ── Selectors (Ctrl+M model, Ctrl+A account) ────
-    m.insert(kc(KeyCode::Char('m'), true, false, false), Action::OpenModelSelector);
-    m.insert(kc(KeyCode::Char('a'), true, false, false), Action::OpenAccountSelector);
+    m.insert(kc(KeyCode::Char('m'), true, false, false), Action::Extended("open_model_selector".into()));
+    m.insert(kc(KeyCode::Char('a'), true, false, false), Action::Extended("open_account_selector".into()));
 
     // ── Clipboard paste (text or image) ─────────────
-    m.insert(kc(KeyCode::Char('v'), true, false, false), Action::PasteImage);
-    m.insert(kc(KeyCode::Char('v'), true, false, true), Action::PasteImage);
+    m.insert(kc(KeyCode::Char('v'), true, false, false), Action::Core(PasteImage));
+    m.insert(kc(KeyCode::Char('v'), true, false, true), Action::Core(PasteImage));
 
     // ── External editor ──────────────────────────────
-    m.insert(kc(KeyCode::Char('o'), true, false, false), Action::OpenEditor);
+    m.insert(kc(KeyCode::Char('o'), true, false, false), Action::Extended("open_editor".into()));
 
     m
 }
 
 /// Helix insert mode — emacs-readline shortcuts.
 fn helix_insert() -> HashMap<KeyCombo, Action> {
+    use CoreAction::*;
     let mut m = common_insert();
 
-    m.insert(kc(KeyCode::Char('w'), true, false, false), Action::DeleteWord);
-    m.insert(kc(KeyCode::Char('u'), true, false, false), Action::ClearLine);
-    m.insert(kc(KeyCode::Char('a'), true, false, false), Action::MoveHome);
-    m.insert(kc(KeyCode::Char('e'), true, false, false), Action::MoveEnd);
+    m.insert(kc(KeyCode::Char('w'), true, false, false), Action::Core(DeleteWord));
+    m.insert(kc(KeyCode::Char('u'), true, false, false), Action::Core(ClearLine));
+    m.insert(kc(KeyCode::Char('a'), true, false, false), Action::Core(MoveHome));
+    m.insert(kc(KeyCode::Char('e'), true, false, false), Action::Core(MoveEnd));
 
     m
 }
 
 /// Vim insert mode — same readline shortcuts.
 fn vim_insert() -> HashMap<KeyCombo, Action> {
+    use CoreAction::*;
     let mut m = common_insert();
 
-    m.insert(kc(KeyCode::Char('w'), true, false, false), Action::DeleteWord);
-    m.insert(kc(KeyCode::Char('u'), true, false, false), Action::ClearLine);
-    m.insert(kc(KeyCode::Char('a'), true, false, false), Action::MoveHome);
-    m.insert(kc(KeyCode::Char('e'), true, false, false), Action::MoveEnd);
+    m.insert(kc(KeyCode::Char('w'), true, false, false), Action::Core(DeleteWord));
+    m.insert(kc(KeyCode::Char('u'), true, false, false), Action::Core(ClearLine));
+    m.insert(kc(KeyCode::Char('a'), true, false, false), Action::Core(MoveHome));
+    m.insert(kc(KeyCode::Char('e'), true, false, false), Action::Core(MoveEnd));
 
     m
 }
@@ -613,64 +595,81 @@ fn format_key_combo(k: &KeyCombo) -> String {
 }
 
 fn parse_action(s: &str) -> Option<Action> {
-    match s.to_lowercase().replace('-', "_").as_str() {
-        "enter_insert" => Some(Action::EnterInsert),
-        "enter_command" => Some(Action::EnterCommand),
-        "enter_normal" => Some(Action::EnterNormal),
-        "submit" => Some(Action::Submit),
-        "new_line" | "newline" => Some(Action::NewLine),
-        "cancel" => Some(Action::Cancel),
-        "quit" => Some(Action::Quit),
-        "move_left" => Some(Action::MoveLeft),
-        "move_right" => Some(Action::MoveRight),
-        "move_home" => Some(Action::MoveHome),
-        "move_end" => Some(Action::MoveEnd),
-        "delete_back" => Some(Action::DeleteBack),
-        "delete_forward" => Some(Action::DeleteForward),
-        "delete_word" => Some(Action::DeleteWord),
-        "clear_line" => Some(Action::ClearLine),
-        "history_up" => Some(Action::HistoryUp),
-        "history_down" => Some(Action::HistoryDown),
-        "scroll_up" => Some(Action::ScrollUp),
-        "scroll_down" => Some(Action::ScrollDown),
-        "scroll_page_up" | "page_up" => Some(Action::ScrollPageUp),
-        "scroll_page_down" | "page_down" => Some(Action::ScrollPageDown),
-        "scroll_to_top" => Some(Action::ScrollToTop),
-        "scroll_to_bottom" => Some(Action::ScrollToBottom),
-        "focus_prev_block" | "prev_block" => Some(Action::FocusPrevBlock),
-        "focus_next_block" | "next_block" => Some(Action::FocusNextBlock),
-        "toggle_block_collapse" | "toggle_collapse" => Some(Action::ToggleBlockCollapse),
-        "collapse_all_blocks" | "collapse_all" => Some(Action::CollapseAllBlocks),
-        "expand_all_blocks" | "expand_all" => Some(Action::ExpandAllBlocks),
-        "copy_block" => Some(Action::CopyBlock),
-        "rerun_block" => Some(Action::RerunBlock),
-        "edit_block" => Some(Action::EditBlock),
-        "unfocus" => Some(Action::Unfocus),
-        "branch_prev" => Some(Action::BranchPrev),
-        "branch_next" => Some(Action::BranchNext),
-        "toggle_block_ids" | "toggle_ids" => Some(Action::ToggleBlockIds),
-        "toggle_thinking" => Some(Action::ToggleThinking),
-        "toggle_show_thinking" => Some(Action::ToggleShowThinking),
-        "toggle_panel_focus" | "panel_focus" => Some(Action::TogglePanelFocus),
-        "panel_next_tab" | "panel_next" => Some(Action::PanelNextTab),
-        "panel_prev_tab" | "panel_prev" => Some(Action::PanelPrevTab),
-        "panel_scroll_up" => Some(Action::PanelScrollUp),
-        "panel_scroll_down" => Some(Action::PanelScrollDown),
-        "panel_clear_done" | "panel_clear" => Some(Action::PanelClearDone),
-        "panel_kill" => Some(Action::PanelKill),
-        "panel_remove" => Some(Action::PanelRemove),
-        "menu_up" => Some(Action::MenuUp),
-        "menu_down" => Some(Action::MenuDown),
-        "menu_accept" => Some(Action::MenuAccept),
-        "menu_close" => Some(Action::MenuClose),
-        "toggle_session_popup" | "session_popup" => Some(Action::ToggleSessionPopup),
-        "toggle_branch_panel" | "branch_panel" => Some(Action::ToggleBranchPanel),
-        "open_branch_switcher" | "branch_switcher" => Some(Action::OpenBranchSwitcher),
-        "open_editor" | "editor" => Some(Action::OpenEditor),
-        "search_output" | "search" | "find" => Some(Action::SearchOutput),
-        "search_next" | "next_match" => Some(Action::SearchNext),
-        "search_prev" | "prev_match" => Some(Action::SearchPrev),
-        "open_leader_menu" | "leader_menu" | "leader" => Some(Action::OpenLeaderMenu),
+    use CoreAction::*;
+    
+    let normalized = s.to_lowercase().replace('-', "_");
+    
+    // Core actions
+    let core = match normalized.as_str() {
+        "enter_insert" => Some(EnterInsert),
+        "enter_command" => Some(EnterCommand),
+        "enter_normal" => Some(EnterNormal),
+        "submit" => Some(Submit),
+        "new_line" | "newline" => Some(NewLine),
+        "cancel" => Some(Cancel),
+        "quit" => Some(Quit),
+        "move_left" => Some(MoveLeft),
+        "move_right" => Some(MoveRight),
+        "move_home" => Some(MoveHome),
+        "move_end" => Some(MoveEnd),
+        "delete_back" => Some(DeleteBack),
+        "delete_forward" => Some(DeleteForward),
+        "delete_word" => Some(DeleteWord),
+        "clear_line" => Some(ClearLine),
+        "history_up" => Some(HistoryUp),
+        "history_down" => Some(HistoryDown),
+        "scroll_up" => Some(ScrollUp),
+        "scroll_down" => Some(ScrollDown),
+        "scroll_page_up" | "page_up" => Some(ScrollPageUp),
+        "scroll_page_down" | "page_down" => Some(ScrollPageDown),
+        "scroll_to_top" => Some(ScrollToTop),
+        "scroll_to_bottom" => Some(ScrollToBottom),
+        "focus_prev_block" | "prev_block" => Some(FocusPrevBlock),
+        "focus_next_block" | "next_block" => Some(FocusNextBlock),
+        "unfocus" => Some(Unfocus),
+        "menu_up" => Some(MenuUp),
+        "menu_down" => Some(MenuDown),
+        "menu_accept" => Some(MenuAccept),
+        "menu_close" => Some(MenuClose),
+        _ => None,
+    };
+    
+    if let Some(core_action) = core {
+        return Some(Action::Core(core_action));
+    }
+    
+    // Extended actions
+    match normalized.as_str() {
+        "toggle_block_collapse" | "toggle_collapse" => Some(Action::Extended("toggle_block_collapse".into())),
+        "collapse_all_blocks" | "collapse_all" => Some(Action::Extended("collapse_all_blocks".into())),
+        "expand_all_blocks" | "expand_all" => Some(Action::Extended("expand_all_blocks".into())),
+        "copy_block" => Some(Action::Extended("copy_block".into())),
+        "rerun_block" => Some(Action::Extended("rerun_block".into())),
+        "edit_block" => Some(Action::Extended("edit_block".into())),
+        "branch_prev" => Some(Action::Extended("branch_prev".into())),
+        "branch_next" => Some(Action::Extended("branch_next".into())),
+        "toggle_block_ids" | "toggle_ids" => Some(Action::Extended("toggle_block_ids".into())),
+        "toggle_thinking" => Some(Action::Extended("toggle_thinking".into())),
+        "toggle_show_thinking" => Some(Action::Extended("toggle_show_thinking".into())),
+        "toggle_panel_focus" | "panel_focus" => Some(Action::Extended("toggle_panel_focus".into())),
+        "panel_next_tab" | "panel_next" => Some(Action::Extended("panel_next_tab".into())),
+        "panel_prev_tab" | "panel_prev" => Some(Action::Extended("panel_prev_tab".into())),
+        "panel_scroll_up" => Some(Action::Extended("panel_scroll_up".into())),
+        "panel_scroll_down" => Some(Action::Extended("panel_scroll_down".into())),
+        "panel_clear_done" | "panel_clear" => Some(Action::Extended("panel_clear_done".into())),
+        "panel_kill" => Some(Action::Extended("panel_kill".into())),
+        "panel_remove" => Some(Action::Extended("panel_remove".into())),
+        "toggle_session_popup" | "session_popup" => Some(Action::Extended("toggle_session_popup".into())),
+        "toggle_branch_panel" | "branch_panel" => Some(Action::Extended("toggle_branch_panel".into())),
+        "open_branch_switcher" | "branch_switcher" => Some(Action::Extended("open_branch_switcher".into())),
+        "open_editor" | "editor" => Some(Action::Extended("open_editor".into())),
+        "search_output" | "search" | "find" => Some(Action::Extended("search_output".into())),
+        "search_next" | "next_match" => Some(Action::Extended("search_next".into())),
+        "search_prev" | "prev_match" => Some(Action::Extended("search_prev".into())),
+        "open_leader_menu" | "leader_menu" | "leader" => Some(Action::Extended("open_leader_menu".into())),
+        "open_model_selector" | "model_selector" => Some(Action::Extended("open_model_selector".into())),
+        "open_account_selector" | "account_selector" => Some(Action::Extended("open_account_selector".into())),
+        "paste_image" => Some(Action::Extended("paste_image".into())),
         _ => None,
     }
 }
@@ -738,28 +737,28 @@ mod tests {
     fn normal_i_enters_insert() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Char('i'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::EnterInsert));
+        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Core(CoreAction::EnterInsert)));
     }
 
     #[test]
     fn normal_slash_enters_command() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Char('/'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::EnterCommand));
+        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Core(CoreAction::EnterCommand)));
     }
 
     #[test]
     fn normal_q_quits() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Char('q'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Quit));
+        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Core(CoreAction::Quit)));
     }
 
     #[test]
     fn normal_e_edits_block() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Char('e'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::EditBlock));
+        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Extended("edit_block".into())));
     }
 
     #[test]
@@ -767,8 +766,8 @@ mod tests {
         let km = helix();
         let up = KeyEvent::new(KeyCode::Up, KeyModifiers::NONE);
         let down = KeyEvent::new(KeyCode::Down, KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &up), Some(Action::FocusPrevBlock));
-        assert_eq!(km.resolve(InputMode::Normal, &down), Some(Action::FocusNextBlock));
+        assert_eq!(km.resolve(InputMode::Normal, &up), Some(Action::Core(CoreAction::FocusPrevBlock)));
+        assert_eq!(km.resolve(InputMode::Normal, &down), Some(Action::Core(CoreAction::FocusNextBlock)));
     }
 
     #[test]
@@ -776,8 +775,8 @@ mod tests {
         let km = helix();
         let k = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE);
         let j = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &k), Some(Action::FocusPrevBlock));
-        assert_eq!(km.resolve(InputMode::Normal, &j), Some(Action::FocusNextBlock));
+        assert_eq!(km.resolve(InputMode::Normal, &k), Some(Action::Core(CoreAction::FocusPrevBlock)));
+        assert_eq!(km.resolve(InputMode::Normal, &j), Some(Action::Core(CoreAction::FocusNextBlock)));
     }
 
     #[test]
@@ -785,8 +784,8 @@ mod tests {
         let km = helix();
         let h = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
         let l = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &h), Some(Action::BranchPrev));
-        assert_eq!(km.resolve(InputMode::Normal, &l), Some(Action::BranchNext));
+        assert_eq!(km.resolve(InputMode::Normal, &h), Some(Action::Extended("branch_prev".into())));
+        assert_eq!(km.resolve(InputMode::Normal, &l), Some(Action::Extended("branch_next".into())));
     }
 
     #[test]
@@ -794,8 +793,8 @@ mod tests {
         let km = helix();
         let left = KeyEvent::new(KeyCode::Left, KeyModifiers::NONE);
         let right = KeyEvent::new(KeyCode::Right, KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &left), Some(Action::BranchPrev));
-        assert_eq!(km.resolve(InputMode::Normal, &right), Some(Action::BranchNext));
+        assert_eq!(km.resolve(InputMode::Normal, &left), Some(Action::Extended("branch_prev".into())));
+        assert_eq!(km.resolve(InputMode::Normal, &right), Some(Action::Extended("branch_next".into())));
     }
 
     #[test]
@@ -803,8 +802,8 @@ mod tests {
         let km = vim();
         let k = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::NONE);
         let j = KeyEvent::new(KeyCode::Char('j'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &k), Some(Action::FocusPrevBlock));
-        assert_eq!(km.resolve(InputMode::Normal, &j), Some(Action::FocusNextBlock));
+        assert_eq!(km.resolve(InputMode::Normal, &k), Some(Action::Core(CoreAction::FocusPrevBlock)));
+        assert_eq!(km.resolve(InputMode::Normal, &j), Some(Action::Core(CoreAction::FocusNextBlock)));
     }
 
     #[test]
@@ -812,22 +811,22 @@ mod tests {
         let km = vim();
         let h = KeyEvent::new(KeyCode::Char('h'), KeyModifiers::NONE);
         let l = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &h), Some(Action::BranchPrev));
-        assert_eq!(km.resolve(InputMode::Normal, &l), Some(Action::BranchNext));
+        assert_eq!(km.resolve(InputMode::Normal, &h), Some(Action::Extended("branch_prev".into())));
+        assert_eq!(km.resolve(InputMode::Normal, &l), Some(Action::Extended("branch_next".into())));
     }
 
     #[test]
     fn normal_g_scrolls_to_top() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Char('g'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::ScrollToTop));
+        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Core(CoreAction::ScrollToTop)));
     }
 
     #[test]
     fn normal_shift_g_scrolls_to_bottom() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Char('G'), KeyModifiers::SHIFT);
-        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::ScrollToBottom));
+        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Core(CoreAction::ScrollToBottom)));
     }
 
     // ── Insert mode ──────────────────────────────────
@@ -836,21 +835,21 @@ mod tests {
     fn insert_esc_enters_normal() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::EnterNormal));
+        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::Core(CoreAction::EnterNormal)));
     }
 
     #[test]
     fn insert_enter_submits() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::Submit));
+        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::Core(CoreAction::Submit)));
     }
 
     #[test]
     fn insert_alt_enter_newline() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Enter, KeyModifiers::ALT);
-        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::NewLine));
+        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::Core(CoreAction::NewLine)));
     }
 
     #[test]
@@ -865,7 +864,7 @@ mod tests {
     fn insert_ctrl_w_deletes_word() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Char('w'), KeyModifiers::CONTROL);
-        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::DeleteWord));
+        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::Core(CoreAction::DeleteWord)));
     }
 
     // ── Overrides ────────────────────────────────────
@@ -876,7 +875,7 @@ mod tests {
         normal.insert("x".to_string(), "quit".to_string());
         let km = Keymap::build(KeymapPreset::Helix, &normal, &HashMap::new());
         let event = KeyEvent::new(KeyCode::Char('x'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Quit));
+        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Core(CoreAction::Quit)));
     }
 
     #[test]
@@ -885,7 +884,7 @@ mod tests {
         insert.insert("Ctrl+k".to_string(), "delete_word".to_string());
         let km = Keymap::build(KeymapPreset::Helix, &HashMap::new(), &insert);
         let event = KeyEvent::new(KeyCode::Char('k'), KeyModifiers::CONTROL);
-        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::DeleteWord));
+        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::Core(CoreAction::DeleteWord)));
     }
 
     // ── Config ───────────────────────────────────────
@@ -937,7 +936,7 @@ mod tests {
     fn backtick_toggles_panel_focus() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Char('`'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::TogglePanelFocus));
+        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Extended("toggle_panel_focus".into())));
     }
 
     #[test]
@@ -947,8 +946,8 @@ mod tests {
         let l = KeyEvent::new(KeyCode::Char('l'), KeyModifiers::NONE);
         // h/l resolve to BranchPrev/BranchNext, which are remapped to
         // tab switching when panel is focused (in handle_action)
-        assert_eq!(km.resolve(InputMode::Normal, &h), Some(Action::BranchPrev));
-        assert_eq!(km.resolve(InputMode::Normal, &l), Some(Action::BranchNext));
+        assert_eq!(km.resolve(InputMode::Normal, &h), Some(Action::Extended("branch_prev".into())));
+        assert_eq!(km.resolve(InputMode::Normal, &l), Some(Action::Extended("branch_next".into())));
     }
 
     // ── External editor ──────────────────────────────
@@ -957,34 +956,34 @@ mod tests {
     fn normal_o_opens_editor() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::OpenEditor));
+        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Extended("open_editor".into())));
     }
 
     #[test]
     fn insert_ctrl_o_opens_editor() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL);
-        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::OpenEditor));
+        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::Extended("open_editor".into())));
     }
 
     #[test]
     fn vim_normal_o_opens_editor() {
         let km = vim();
         let event = KeyEvent::new(KeyCode::Char('o'), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::OpenEditor));
+        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Extended("open_editor".into())));
     }
 
     #[test]
     fn vim_insert_ctrl_o_opens_editor() {
         let km = vim();
         let event = KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL);
-        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::OpenEditor));
+        assert_eq!(km.resolve(InputMode::Insert, &event), Some(Action::Extended("open_editor".into())));
     }
 
     #[test]
     fn parse_action_open_editor() {
-        assert_eq!(parse_action("open_editor"), Some(Action::OpenEditor));
-        assert_eq!(parse_action("editor"), Some(Action::OpenEditor));
+        assert_eq!(parse_action("open_editor"), Some(Action::Extended("open_editor".into())));
+        assert_eq!(parse_action("editor"), Some(Action::Extended("open_editor".into())));
     }
 
     // ── Leader key ───────────────────────────────────
@@ -993,14 +992,14 @@ mod tests {
     fn normal_space_opens_leader_menu() {
         let km = helix();
         let event = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::OpenLeaderMenu));
+        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Extended("open_leader_menu".into())));
     }
 
     #[test]
     fn vim_normal_space_opens_leader_menu() {
         let km = vim();
         let event = KeyEvent::new(KeyCode::Char(' '), KeyModifiers::NONE);
-        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::OpenLeaderMenu));
+        assert_eq!(km.resolve(InputMode::Normal, &event), Some(Action::Extended("open_leader_menu".into())));
     }
 
     #[test]
@@ -1013,8 +1012,8 @@ mod tests {
 
     #[test]
     fn parse_action_leader_menu() {
-        assert_eq!(parse_action("open_leader_menu"), Some(Action::OpenLeaderMenu));
-        assert_eq!(parse_action("leader_menu"), Some(Action::OpenLeaderMenu));
-        assert_eq!(parse_action("leader"), Some(Action::OpenLeaderMenu));
+        assert_eq!(parse_action("open_leader_menu"), Some(Action::Extended("open_leader_menu".into())));
+        assert_eq!(parse_action("leader_menu"), Some(Action::Extended("open_leader_menu".into())));
+        assert_eq!(parse_action("leader"), Some(Action::Extended("open_leader_menu".into())));
     }
 }

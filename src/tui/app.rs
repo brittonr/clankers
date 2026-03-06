@@ -128,6 +128,8 @@ pub struct App {
     pub slash_menu: SlashMenu,
     /// Slash command registry (commands from builtins, plugins, user config)
     pub slash_registry: crate::slash_commands::SlashRegistry,
+    /// Action registry (extended actions from plugins, user config)
+    pub action_registry: crate::config::keybindings::ActionRegistry,
     /// PKCE verifier for in-progress OAuth login (set by `/login`, consumed by `/login <code>`)
     pub login_verifier: Option<(String, String)>, // (verifier, account_name)
     /// Pending branch operation: Some((fork_block_id, new_prompt)) if we need to
@@ -265,6 +267,7 @@ impl App {
                 // TODO: log conflicts to debug output
                 registry
             },
+            action_registry: crate::config::keybindings::ActionRegistry::new(),
             login_verifier: None,
             pending_branch: None,
             last_branch_checkpoint: None,

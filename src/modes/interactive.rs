@@ -1181,7 +1181,7 @@ async fn run_event_loop(
 
                     if let Some(action) = action {
                         // OpenEditor needs terminal access — handle it here
-                        if action == Action::OpenEditor {
+                        if matches!(&action, Action::Extended(n) if n == "open_editor") {
                             super::clipboard::open_external_editor(terminal, app);
                             continue;
                         }
@@ -1259,6 +1259,8 @@ fn handle_action(
     db: &Option<crate::db::Db>,
     session_manager: &mut Option<crate::session::SessionManager>,
 ) {
+    use crate::config::keybindings::CoreAction;
+
     // When a panel is focused, intercept navigation actions and let
     // global actions (leader menu, selectors, etc.) fall through.
     // Panel-specific key handling is done by Panel::handle_key_event()
@@ -1267,45 +1269,43 @@ fn handle_action(
     if app.focus.has_panel_focus() {
         use crate::tui::layout::ColumnSide;
 
-        let is_global = matches!(
-            action,
-            Action::Quit
-                | Action::Cancel
-                | Action::OpenLeaderMenu
-                | Action::EnterNormal
-                | Action::OpenModelSelector
-                | Action::OpenAccountSelector
-                | Action::ToggleThinking
-                | Action::ToggleShowThinking
-                | Action::ToggleBlockIds
-                | Action::SearchOutput
-                | Action::ToggleSessionPopup
-                | Action::ToggleBranchPanel
-                | Action::OpenBranchSwitcher
-                | Action::PasteImage
-                | Action::OpenEditor
-        );
+        let is_global = match &action {
+            Action::Core(c) => matches!(c, 
+                CoreAction::Quit | CoreAction::Cancel | CoreAction::EnterNormal | CoreAction::PasteImage
+            ),
+            Action::Extended(name) => matches!(name.as_str(),
+                "open_leader_menu" | "open_model_selector" | "open_account_selector"
+                | "toggle_thinking" | "toggle_show_thinking" | "toggle_block_ids"
+                | "search_output" | "toggle_session_popup" | "toggle_branch_panel"
+                | "open_branch_switcher" | "open_editor"
+            ),
+        };
 
         if !is_global {
-            match action {
-                Action::Unfocus | Action::TogglePanelFocus => {
+            match &action {
+                Action::Core(CoreAction::Unfocus) => {
                     app.close_focused_panel_views();
                     app.focus.unfocus();
                     return;
                 }
-                Action::EnterInsert => {
+                Action::Extended(n) if n == "toggle_panel_focus" => {
+                    app.close_focused_panel_views();
+                    app.focus.unfocus();
+                    return;
+                }
+                Action::Core(CoreAction::EnterInsert) => {
                     app.close_focused_panel_views();
                     app.focus.unfocus();
                     app.input_mode = InputMode::Insert;
                     return;
                 }
-                Action::EnterCommand => {
+                Action::Core(CoreAction::EnterCommand) => {
                     app.close_focused_panel_views();
                     app.focus.unfocus();
                     // Don't return — fall through to main handler for "/" prefix setup
                 }
                 // h/l: move between columns and main area
-                Action::PanelNextTab | Action::BranchNext => {
+                Action::Extended(name) if matches!(name.as_str(), "panel_next_tab" | "branch_next") => {
                     if let Some(id) = app.focus.focused
                         && app.panel_layout.panel_side(id) == Some(ColumnSide::Left)
                     {
@@ -1313,7 +1313,7 @@ fn handle_action(
                     }
                     return;
                 }
-                Action::PanelPrevTab | Action::BranchPrev => {
+                Action::Extended(name) if matches!(name.as_str(), "panel_prev_tab" | "branch_prev") => {
                     if let Some(id) = app.focus.focused
                         && app.panel_layout.panel_side(id) == Some(ColumnSide::Right)
                     {
@@ -1322,7 +1322,7 @@ fn handle_action(
                     return;
                 }
                 // j/k: cycle panels within the same column
-                Action::FocusPrevBlock | Action::FocusNextBlock => {
+                Action::Core(CoreAction::FocusPrevBlock | CoreAction::FocusNextBlock) => {
                     app.focus.cycle_in_column(&app.panel_layout);
                     return;
                 }
@@ -1333,262 +1333,309 @@ fn handle_action(
     }
 
     match action {
-        // ── Mode switching ───────────────────────────
-        Action::EnterInsert => {
-            app.input_mode = InputMode::Insert;
-        }
-        Action::EnterCommand => {
-            app.input_mode = InputMode::Insert;
-            app.editor.clear();
-            app.editor.insert_char('/');
-            app.update_slash_menu();
-        }
-        Action::EnterNormal => {
-            app.input_mode = InputMode::Normal;
-            app.slash_menu.hide();
-        }
-
-        // ── Core ─────────────────────────────────────
-        Action::Submit => {
-            if app.state != AppState::Idle {
-                // Abort the current stream and queue the new prompt
-                if let Some(text) = app.submit_input() {
-                    app.queued_prompt = Some(text);
-                    let _ = cmd_tx.send(AgentCommand::Abort);
-                }
-                return;
-            }
-            if let Some(text) = app.submit_input() {
-                if let Some((checkpoint, prompt)) = app.take_pending_branch(&text) {
-                    let _ = cmd_tx.send(AgentCommand::ResetCancel);
-                    let _ = cmd_tx.send(AgentCommand::TruncateMessages(checkpoint));
-                    let _ = cmd_tx.send(AgentCommand::Prompt(prompt));
-                } else {
-                    handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager);
-                }
-            }
-        }
-        Action::NewLine => {
-            app.editor.insert_char('\n');
-        }
-        Action::Cancel => {
-            if app.state == AppState::Streaming {
-                let _ = cmd_tx.send(AgentCommand::Abort);
-            } else if !app.editor.is_empty() {
-                app.editor.clear();
-                app.slash_menu.hide();
-            } else {
-                app.should_quit = true;
-            }
-        }
-        Action::Quit => {
-            app.should_quit = true;
-        }
-
-        // ── Editor movement ──────────────────────────
-        Action::MoveLeft => app.editor.move_left(),
-        Action::MoveRight => app.editor.move_right(),
-        Action::MoveHome => app.editor.move_home(),
-        Action::MoveEnd => app.editor.move_end(),
-
-        // ── Editor editing ───────────────────────────
-        Action::DeleteBack => {
-            app.editor.delete_back();
-            app.update_slash_menu();
-        }
-        Action::DeleteForward => {
-            app.editor.delete_forward();
-            app.update_slash_menu();
-        }
-        Action::DeleteWord => {
-            app.editor.delete_word_back();
-            app.update_slash_menu();
-        }
-        Action::ClearLine => {
-            app.editor.clear();
-            app.slash_menu.hide();
-        }
-
-        // ── History ──────────────────────────────────
-        Action::HistoryUp => app.editor.history_up(),
-        Action::HistoryDown => app.editor.history_down(),
-
-        // ── Scrolling ────────────────────────────────
-        Action::ScrollUp => app.scroll.scroll_up(1),
-        Action::ScrollDown => app.scroll.scroll_down(1),
-        Action::ScrollPageUp => app.scroll.scroll_up(10),
-        Action::ScrollPageDown => app.scroll.scroll_down(10),
-        Action::ScrollToTop => app.scroll.scroll_to_top(),
-        Action::ScrollToBottom => app.scroll.scroll_to_bottom(),
-
-        // ── Search ──────────────────────────────────
-        Action::SearchOutput => {
-            app.output_search.activate();
-        }
-        Action::SearchNext => {
-            if !app.output_search.matches.is_empty() {
-                app.output_search.next_match();
-                app.output_search.scroll_to_current = true;
-            }
-        }
-        Action::SearchPrev => {
-            if !app.output_search.matches.is_empty() {
-                app.output_search.prev_match();
-                app.output_search.scroll_to_current = true;
-            }
-        }
-
-        // ── Block navigation ─────────────────────────
-        Action::FocusPrevBlock => app.focus_prev_block(),
-        Action::FocusNextBlock => app.focus_next_block(),
-        Action::ToggleBlockCollapse => {
-            if app.focused_block.is_some() {
-                app.toggle_focused_block();
-            }
-        }
-        Action::CollapseAllBlocks => app.collapse_all_blocks(),
-        Action::ExpandAllBlocks => app.expand_all_blocks(),
-        Action::CopyBlock => app.copy_focused_block(),
-        Action::RerunBlock => {
-            if let Some(prompt) = app.get_focused_block_prompt() {
-                let _ = cmd_tx.send(AgentCommand::ResetCancel);
-                let _ = cmd_tx.send(AgentCommand::Prompt(prompt));
-            }
-        }
-        Action::EditBlock => {
-            if app.focused_block.is_some() && app.state == AppState::Idle && app.edit_focused_block_prompt() {
+        // ── Core actions ────────────────────────────────
+        Action::Core(core) => match core {
+            // ── Mode switching ───────────────────────────
+            CoreAction::EnterInsert => {
                 app.input_mode = InputMode::Insert;
             }
-        }
-        Action::Unfocus => {
-            if app.input_mode == InputMode::Insert {
-                // Esc in insert → normal
+            CoreAction::EnterCommand => {
+                app.input_mode = InputMode::Insert;
+                app.editor.clear();
+                app.editor.insert_char('/');
+                app.update_slash_menu();
+            }
+            CoreAction::EnterNormal => {
                 app.input_mode = InputMode::Normal;
                 app.slash_menu.hide();
-            } else if app.focused_block.is_some() {
-                app.focused_block = None;
-                app.scroll.scroll_to_bottom();
             }
-        }
 
-        // ── Branch / panel navigation ────────────────
-        Action::BranchPrev => {
-            if app.focused_block.is_some() {
-                app.branch_prev();
-            } else {
-                // h = focus left column
-                app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Left);
-                app.input_mode = InputMode::Normal;
+            // ── Core operations ──────────────────────────
+            CoreAction::Submit => {
+                if app.state != AppState::Idle {
+                    // Abort the current stream and queue the new prompt
+                    if let Some(text) = app.submit_input() {
+                        app.queued_prompt = Some(text);
+                        let _ = cmd_tx.send(AgentCommand::Abort);
+                    }
+                    return;
+                }
+                if let Some(text) = app.submit_input() {
+                    if let Some((checkpoint, prompt)) = app.take_pending_branch(&text) {
+                        let _ = cmd_tx.send(AgentCommand::ResetCancel);
+                        let _ = cmd_tx.send(AgentCommand::TruncateMessages(checkpoint));
+                        let _ = cmd_tx.send(AgentCommand::Prompt(prompt));
+                    } else {
+                        handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager);
+                    }
+                }
             }
-        }
-        Action::BranchNext => {
-            if app.focused_block.is_some() {
-                app.branch_next();
-            } else {
-                // l = focus right column
+            CoreAction::NewLine => {
+                app.editor.insert_char('\n');
+            }
+            CoreAction::Cancel => {
+                if app.state == AppState::Streaming {
+                    let _ = cmd_tx.send(AgentCommand::Abort);
+                } else if !app.editor.is_empty() {
+                    app.editor.clear();
+                    app.slash_menu.hide();
+                } else {
+                    app.should_quit = true;
+                }
+            }
+            CoreAction::Quit => {
+                app.should_quit = true;
+            }
+
+            // ── Editor movement ──────────────────────────
+            CoreAction::MoveLeft => app.editor.move_left(),
+            CoreAction::MoveRight => app.editor.move_right(),
+            CoreAction::MoveHome => app.editor.move_home(),
+            CoreAction::MoveEnd => app.editor.move_end(),
+
+            // ── Editor editing ───────────────────────────
+            CoreAction::DeleteBack => {
+                app.editor.delete_back();
+                app.update_slash_menu();
+            }
+            CoreAction::DeleteForward => {
+                app.editor.delete_forward();
+                app.update_slash_menu();
+            }
+            CoreAction::DeleteWord => {
+                app.editor.delete_word_back();
+                app.update_slash_menu();
+            }
+            CoreAction::ClearLine => {
+                app.editor.clear();
+                app.slash_menu.hide();
+            }
+
+            // ── History ──────────────────────────────────
+            CoreAction::HistoryUp => app.editor.history_up(),
+            CoreAction::HistoryDown => app.editor.history_down(),
+
+            // ── Scrolling ────────────────────────────────
+            CoreAction::ScrollUp => app.scroll.scroll_up(1),
+            CoreAction::ScrollDown => app.scroll.scroll_down(1),
+            CoreAction::ScrollPageUp => app.scroll.scroll_up(10),
+            CoreAction::ScrollPageDown => app.scroll.scroll_down(10),
+            CoreAction::ScrollToTop => app.scroll.scroll_to_top(),
+            CoreAction::ScrollToBottom => app.scroll.scroll_to_bottom(),
+
+            // ── Block navigation ─────────────────────────
+            CoreAction::FocusPrevBlock => app.focus_prev_block(),
+            CoreAction::FocusNextBlock => app.focus_next_block(),
+            CoreAction::Unfocus => {
+                if app.input_mode == InputMode::Insert {
+                    // Esc in insert → normal
+                    app.input_mode = InputMode::Normal;
+                    app.slash_menu.hide();
+                } else if app.focused_block.is_some() {
+                    app.focused_block = None;
+                    app.scroll.scroll_to_bottom();
+                }
+            }
+
+            // ── Menu navigation ──────────────────────────
+            CoreAction::MenuUp | CoreAction::MenuDown | CoreAction::MenuAccept | CoreAction::MenuClose => {
+                // Menu actions are handled by handle_slash_menu_key before reaching here
+            }
+
+            // ── Clipboard paste ──────────────────────────
+            CoreAction::PasteImage => {
+                super::clipboard::paste_from_clipboard(app);
+            }
+        },
+
+        // ── Extended actions ────────────────────────────
+        Action::Extended(name) => match name.as_str() {
+            // ── Search ───────────────────────────────────
+            "search_output" => {
+                app.output_search.activate();
+            }
+            "search_next" => {
+                if !app.output_search.matches.is_empty() {
+                    app.output_search.next_match();
+                    app.output_search.scroll_to_current = true;
+                }
+            }
+            "search_prev" => {
+                if !app.output_search.matches.is_empty() {
+                    app.output_search.prev_match();
+                    app.output_search.scroll_to_current = true;
+                }
+            }
+
+            // ── Block operations ─────────────────────────
+            "toggle_block_collapse" => {
+                if app.focused_block.is_some() {
+                    app.toggle_focused_block();
+                }
+            }
+            "collapse_all_blocks" => app.collapse_all_blocks(),
+            "expand_all_blocks" => app.expand_all_blocks(),
+            "copy_block" => app.copy_focused_block(),
+            "rerun_block" => {
+                if let Some(prompt) = app.get_focused_block_prompt() {
+                    let _ = cmd_tx.send(AgentCommand::ResetCancel);
+                    let _ = cmd_tx.send(AgentCommand::Prompt(prompt));
+                }
+            }
+            "edit_block" => {
+                if app.focused_block.is_some() && app.state == AppState::Idle && app.edit_focused_block_prompt() {
+                    app.input_mode = InputMode::Insert;
+                }
+            }
+
+            // ── Branch / panel navigation ────────────────
+            "branch_prev" => {
+                if app.focused_block.is_some() {
+                    app.branch_prev();
+                } else {
+                    // h = focus left column
+                    app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Left);
+                    app.input_mode = InputMode::Normal;
+                }
+            }
+            "branch_next" => {
+                if app.focused_block.is_some() {
+                    app.branch_next();
+                } else {
+                    // l = focus right column
+                    app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Right);
+                    app.input_mode = InputMode::Normal;
+                }
+            }
+
+            // ── Toggles ─────────────────────────────────
+            "toggle_thinking" => {
+                let _ = cmd_tx.send(AgentCommand::CycleThinkingLevel);
+            }
+            "toggle_show_thinking" => {
+                app.show_thinking = !app.show_thinking;
+                let state = if app.show_thinking { "visible" } else { "hidden" };
+                app.push_system(format!("Thinking content now {}.", state), false);
+            }
+            "toggle_block_ids" => {
+                app.show_block_ids = !app.show_block_ids;
+                let state = if app.show_block_ids { "visible" } else { "hidden" };
+                app.push_system(format!("Block IDs now {}.", state), false);
+            }
+
+            // ── Panel focus ─────────────────────────────
+            "toggle_panel_focus" => {
+                if app.focus.has_panel_focus() {
+                    app.focus.unfocus();
+                } else {
+                    // Focus the first panel in the layout
+                    let order = app.panel_layout.focus_order();
+                    if let Some(&first) = order.first() {
+                        app.focus.focus(first);
+                    }
+                    app.input_mode = InputMode::Normal;
+                }
+            }
+            "panel_next_tab" => {
                 app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Right);
                 app.input_mode = InputMode::Normal;
             }
-        }
-
-        // ── Toggles ─────────────────────────────────
-        Action::ToggleThinking => {
-            let _ = cmd_tx.send(AgentCommand::CycleThinkingLevel);
-        }
-        Action::ToggleShowThinking => {
-            app.show_thinking = !app.show_thinking;
-            let state = if app.show_thinking { "visible" } else { "hidden" };
-            app.push_system(format!("Thinking content now {}.", state), false);
-        }
-        Action::ToggleBlockIds => {
-            app.show_block_ids = !app.show_block_ids;
-            let state = if app.show_block_ids { "visible" } else { "hidden" };
-            app.push_system(format!("Block IDs now {}.", state), false);
-        }
-
-        // ── Panel focus ─────────────────────────────
-        Action::TogglePanelFocus => {
-            if app.focus.has_panel_focus() {
-                app.focus.unfocus();
-            } else {
-                // Focus the first panel in the layout
-                let order = app.panel_layout.focus_order();
-                if let Some(&first) = order.first() {
-                    app.focus.focus(first);
-                }
+            "panel_prev_tab" => {
+                app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Left);
                 app.input_mode = InputMode::Normal;
             }
-        }
-        Action::PanelNextTab => {
-            app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Right);
-            app.input_mode = InputMode::Normal;
-        }
-        Action::PanelPrevTab => {
-            app.focus.focus_side(&app.panel_layout, crate::tui::layout::ColumnSide::Left);
-            app.input_mode = InputMode::Normal;
-        }
-        Action::PanelScrollUp => {
-            use crate::tui::components::subagent_panel::SubagentPanel;
-            use crate::tui::panel::PanelId;
-            app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
-                .expect("subagent panel").scroll_up(3);
-        }
-        Action::PanelScrollDown => {
-            use crate::tui::components::subagent_panel::SubagentPanel;
-            use crate::tui::panel::PanelId;
-            app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
-                .expect("subagent panel").scroll_down(3);
-        }
-        Action::PanelClearDone => {
-            use crate::tui::components::subagent_panel::SubagentPanel;
-            use crate::tui::panel::PanelId;
-            let subagent_panel = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents)
-                .expect("subagent panel");
-            subagent_panel.clear_done();
-            if !subagent_panel.is_visible() {
-                app.focus.unfocus();
-            }
-        }
-        Action::PanelKill => {
-            use crate::tui::components::subagent_panel::SubagentPanel;
-            use crate::tui::panel::PanelId;
-            if let Some(id) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
-                .expect("subagent panel").selected_id() {
-                let _ = panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest { id });
-            }
-        }
-        Action::PanelRemove => {
-            use crate::tui::components::subagent_panel::SubagentPanel;
-            use crate::tui::panel::PanelId;
-            app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents)
-                .expect("subagent panel").remove_selected();
-        }
-
-        // ── Session popup ─────────────────────────────
-        Action::ToggleSessionPopup => {
-            app.session_popup_visible = !app.session_popup_visible;
-            if app.session_popup_visible {
-                // Focus the last block when opening so user can navigate
-                if app.focused_block.is_none() {
-                    let last_id = app.blocks.iter().rev().find_map(|e| match e {
-                        BlockEntry::Conversation(b) => Some(b.id),
-                        _ => None,
-                    });
-                    app.focused_block = last_id;
+            "panel_scroll_up" => {
+                use crate::tui::components::subagent_panel::SubagentPanel;
+                use crate::tui::panel::PanelId;
+                if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
+                    sp.scroll_up(3);
                 }
             }
-        }
+            "panel_scroll_down" => {
+                use crate::tui::components::subagent_panel::SubagentPanel;
+                use crate::tui::panel::PanelId;
+                if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
+                    sp.scroll_down(3);
+                }
+            }
+            "panel_clear_done" => {
+                use crate::tui::components::subagent_panel::SubagentPanel;
+                use crate::tui::panel::PanelId;
+                if let Some(subagent_panel) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
+                    subagent_panel.clear_done();
+                    if !subagent_panel.is_visible() {
+                        app.focus.unfocus();
+                    }
+                }
+            }
+            "panel_kill" => {
+                use crate::tui::components::subagent_panel::SubagentPanel;
+                use crate::tui::panel::PanelId;
+                if let Some(sp) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents) {
+                    if let Some(id) = sp.selected_id() {
+                        let _ = panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest { id });
+                    }
+                }
+            }
+            "panel_remove" => {
+                use crate::tui::components::subagent_panel::SubagentPanel;
+                use crate::tui::panel::PanelId;
+                if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
+                    sp.remove_selected();
+                }
+            }
 
-        // ── Branch panel ──────────────────────────────
-        Action::ToggleBranchPanel => {
-            use crate::tui::components::branch_panel::BranchPanel;
-            use crate::tui::panel::PanelId;
-            if app.focus.focused == Some(PanelId::Branches) {
-                // Hide and unfocus
-                app.panel_layout.toggle_panel(PanelId::Branches);
-                app.focus.unfocus();
-            } else {
-                // Refresh branch data, show panel, and focus it
+            // ── Session popup ─────────────────────────────
+            "toggle_session_popup" => {
+                app.session_popup_visible = !app.session_popup_visible;
+                if app.session_popup_visible {
+                    // Focus the last block when opening so user can navigate
+                    if app.focused_block.is_none() {
+                        let last_id = app.blocks.iter().rev().find_map(|e| match e {
+                            BlockEntry::Conversation(b) => Some(b.id),
+                            _ => None,
+                        });
+                        app.focused_block = last_id;
+                    }
+                }
+            }
+
+            // ── Branch panel ──────────────────────────────
+            "toggle_branch_panel" => {
+                use crate::tui::components::branch_panel::BranchPanel;
+                use crate::tui::panel::PanelId;
+                if app.focus.focused == Some(PanelId::Branches) {
+                    // Hide and unfocus
+                    app.panel_layout.toggle_panel(PanelId::Branches);
+                    app.focus.unfocus();
+                } else {
+                    // Refresh branch data, show panel, and focus it
+                    let active_ids: std::collections::HashSet<usize> = app
+                        .blocks
+                        .iter()
+                        .filter_map(|e| match e {
+                            BlockEntry::Conversation(b) => Some(b.id),
+                            _ => None,
+                        })
+                        .collect();
+                    if let Some(bp) = app.panels.downcast_mut::<BranchPanel>(PanelId::Branches) {
+                        bp.refresh(&app.all_blocks.clone(), &active_ids);
+                    }
+                    // Ensure the panel is visible in the layout
+                    let is_visible = app
+                        .panel_layout
+                        .columns
+                        .iter()
+                        .any(|c| c.column.slots.iter().any(|s| s.id == PanelId::Branches && s.weight > 0));
+                    if !is_visible {
+                        app.panel_layout.toggle_panel(PanelId::Branches);
+                    }
+                    app.focus.focus(PanelId::Branches);
+                }
+            }
+
+            // ── Branch switcher ─────────────────────────────
+            "open_branch_switcher" => {
                 let active_ids: std::collections::HashSet<usize> = app
                     .blocks
                     .iter()
@@ -1597,82 +1644,55 @@ fn handle_action(
                         _ => None,
                     })
                     .collect();
-                app.panels.downcast_mut::<BranchPanel>(PanelId::Branches)
-                    .expect("branch panel").refresh(&app.all_blocks.clone(), &active_ids);
-                // Ensure the panel is visible in the layout
-                let is_visible = app
-                    .panel_layout
-                    .columns
-                    .iter()
-                    .any(|c| c.column.slots.iter().any(|s| s.id == PanelId::Branches && s.weight > 0));
-                if !is_visible {
-                    app.panel_layout.toggle_panel(PanelId::Branches);
+                app.branch_switcher.open(&app.all_blocks.clone(), &active_ids);
+            }
+
+            // ── External editor ─────────────────────────
+            "open_editor" => {
+                // Handled specially in the event loop (needs terminal access)
+                // This is a marker — the event loop checks for it after handle_action
+            }
+
+            // ── Selectors ───────────────────────────────
+            "open_model_selector" => {
+                let models = app.available_models.clone();
+                if models.is_empty() {
+                    app.push_system("No models available.".to_string(), true);
+                } else {
+                    app.model_selector = crate::tui::components::model_selector::ModelSelector::new(models);
+                    app.model_selector.open();
                 }
-                app.focus.focus(PanelId::Branches);
             }
-        }
-
-        // ── Branch switcher ─────────────────────────────
-        Action::OpenBranchSwitcher => {
-            let active_ids: std::collections::HashSet<usize> = app
-                .blocks
-                .iter()
-                .filter_map(|e| match e {
-                    BlockEntry::Conversation(b) => Some(b.id),
-                    _ => None,
-                })
-                .collect();
-            app.branch_switcher.open(&app.all_blocks.clone(), &active_ids);
-        }
-
-        // Menu actions are handled by handle_slash_menu_key before reaching here
-        Action::MenuUp | Action::MenuDown | Action::MenuAccept | Action::MenuClose => {}
-
-        // ── Clipboard paste (text or image) ──────────
-        Action::PasteImage => {
-            super::clipboard::paste_from_clipboard(app);
-        }
-
-        // ── External editor ─────────────────────────
-        Action::OpenEditor => {
-            // Handled specially in the event loop (needs terminal access)
-            // This is a marker — the event loop checks for it after handle_action
-        }
-
-        // ── Selectors ───────────────────────────────
-        Action::OpenModelSelector => {
-            let models = app.available_models.clone();
-            if models.is_empty() {
-                app.push_system("No models available.".to_string(), true);
-            } else {
-                app.model_selector = crate::tui::components::model_selector::ModelSelector::new(models);
-                app.model_selector.open();
+            "open_account_selector" => {
+                let paths = crate::config::ClankersPaths::resolve();
+                let store = crate::provider::auth::AuthStore::load(&paths.global_auth);
+                let accounts: Vec<crate::tui::components::account_selector::AccountItem> = store
+                    .list_anthropic_accounts()
+                    .into_iter()
+                    .map(|info| crate::tui::components::account_selector::AccountItem {
+                        name: info.name,
+                        label: info.label,
+                        is_active: info.is_active,
+                        is_expired: info.is_expired,
+                    })
+                    .collect();
+                if accounts.is_empty() {
+                    app.push_system("No accounts configured. Use /login to authenticate.".to_string(), true);
+                } else {
+                    app.account_selector.open(accounts);
+                }
             }
-        }
-        Action::OpenAccountSelector => {
-            let paths = crate::config::ClankersPaths::resolve();
-            let store = crate::provider::auth::AuthStore::load(&paths.global_auth);
-            let accounts: Vec<crate::tui::components::account_selector::AccountItem> = store
-                .list_anthropic_accounts()
-                .into_iter()
-                .map(|info| crate::tui::components::account_selector::AccountItem {
-                    name: info.name,
-                    label: info.label,
-                    is_active: info.is_active,
-                    is_expired: info.is_expired,
-                })
-                .collect();
-            if accounts.is_empty() {
-                app.push_system("No accounts configured. Use /login to authenticate.".to_string(), true);
-            } else {
-                app.account_selector.open(accounts);
-            }
-        }
 
-        // ── Leader key ──────────────────────────────
-        Action::OpenLeaderMenu => {
-            app.leader_menu.open();
-        }
+            // ── Leader key ──────────────────────────────
+            "open_leader_menu" => {
+                app.leader_menu.open();
+            }
+
+            // Unknown extended action
+            _ => {
+                tracing::warn!("Unknown extended action: {}", name);
+            }
+        },
     }
 }
 
@@ -1773,39 +1793,41 @@ fn handle_slash_menu_key(
     db: &Option<crate::db::Db>,
     session_manager: &mut Option<crate::session::SessionManager>,
 ) -> bool {
+    use crate::config::keybindings::CoreAction;
+
     // Resolve through the keymap — menu actions take priority when menu is visible
     if let Some(action) = keymap.resolve(InputMode::Insert, key) {
         match action {
-            Action::MenuUp | Action::HistoryUp => {
+            Action::Core(CoreAction::MenuUp | CoreAction::HistoryUp) => {
                 app.slash_menu.select_prev();
                 return true;
             }
-            Action::MenuDown | Action::HistoryDown => {
+            Action::Core(CoreAction::MenuDown | CoreAction::HistoryDown) => {
                 app.slash_menu.select_next();
                 return true;
             }
-            Action::MenuAccept => {
+            Action::Core(CoreAction::MenuAccept) => {
                 app.accept_slash_completion();
                 app.update_slash_menu();
                 return true;
             }
-            Action::MenuClose => {
+            Action::Core(CoreAction::MenuClose) => {
                 app.slash_menu.hide();
                 return true;
             }
-            Action::EnterNormal => {
+            Action::Core(CoreAction::EnterNormal) => {
                 app.slash_menu.hide();
                 app.input_mode = InputMode::Normal;
                 return true;
             }
-            Action::Submit => {
+            Action::Core(CoreAction::Submit) => {
                 app.accept_slash_completion();
                 if let Some(text) = app.submit_input() {
                     handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager);
                 }
                 return true;
             }
-            Action::DeleteBack => {
+            Action::Core(CoreAction::DeleteBack) => {
                 app.editor.delete_back();
                 app.update_slash_menu();
                 return true;
@@ -1832,60 +1854,66 @@ fn handle_slash_menu_key(
 // ---------------------------------------------------------------------------
 
 fn handle_session_popup_key(app: &mut App, key: &crossterm::event::KeyEvent, keymap: &Keymap) -> bool {
+    use crate::config::keybindings::CoreAction;
+
     // Resolve through the current mode's keymap
     let action = keymap.resolve(app.input_mode, key);
 
     match action {
         // Close on Esc, 's' toggle, or 'q'
-        Some(Action::Unfocus | Action::ToggleSessionPopup | Action::Quit) => {
+        Some(Action::Core(CoreAction::Unfocus | CoreAction::Quit)) => {
+            app.session_popup_visible = false;
+            true
+        }
+        Some(Action::Extended(n)) if n == "toggle_session_popup" => {
             app.session_popup_visible = false;
             true
         }
         // Navigate blocks with j/k
-        Some(Action::FocusPrevBlock) => {
+        Some(Action::Core(CoreAction::FocusPrevBlock)) => {
             app.focus_prev_block();
             true
         }
-        Some(Action::FocusNextBlock) => {
+        Some(Action::Core(CoreAction::FocusNextBlock)) => {
             app.focus_next_block();
             true
         }
         // Branch navigation with h/l
-        Some(Action::BranchPrev) => {
+        Some(Action::Extended(n)) if n == "branch_prev" => {
             app.branch_prev();
             true
         }
-        Some(Action::BranchNext) => {
+        Some(Action::Extended(n)) if n == "branch_next" => {
             app.branch_next();
             true
         }
         // Collapse/expand
-        Some(Action::ToggleBlockCollapse) => {
+        Some(Action::Extended(n)) if n == "toggle_block_collapse" => {
             app.toggle_focused_block();
             true
         }
-        Some(Action::CollapseAllBlocks) => {
+        Some(Action::Extended(n)) if n == "collapse_all_blocks" => {
             app.collapse_all_blocks();
             true
         }
-        Some(Action::ExpandAllBlocks) => {
+        Some(Action::Extended(n)) if n == "expand_all_blocks" => {
             app.expand_all_blocks();
             true
         }
         // Copy focused block
-        Some(Action::CopyBlock) => {
+        Some(Action::Extended(n)) if n == "copy_block" => {
             app.copy_focused_block();
             true
         }
         // Scroll to top/bottom
-        Some(Action::ScrollToTop) => {
+        Some(Action::Core(CoreAction::ScrollToTop)) => {
             app.focused_block = app.blocks.iter().find_map(|e| match e {
                 BlockEntry::Conversation(b) => Some(b.id),
                 _ => None,
             });
             true
         }
-        Some(Action::ScrollToBottom) => {
+        Some(Action::Core(CoreAction::ScrollToBottom)) => {
             app.focused_block = app.blocks.iter().rev().find_map(|e| match e {
                 BlockEntry::Conversation(b) => Some(b.id),
                 _ => None,
@@ -1893,7 +1921,7 @@ fn handle_session_popup_key(app: &mut App, key: &crossterm::event::KeyEvent, key
             true
         }
         // Switch to insert mode closes popup
-        Some(Action::EnterInsert | Action::EnterCommand) => {
+        Some(Action::Core(CoreAction::EnterInsert | CoreAction::EnterCommand)) => {
             app.session_popup_visible = false;
             // Don't consume — let the main handler process it
             false
