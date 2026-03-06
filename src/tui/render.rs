@@ -10,7 +10,6 @@ use ratatui::layout::Direction;
 use ratatui::layout::Layout;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
-use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::text::Span;
 use ratatui::widgets::Block;
@@ -96,8 +95,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     let main_render_area = if chat_focused {
         let block = Block::default()
             .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan))
-            .title(Span::styled(" Main ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
+            .border_style(Style::default().fg(Color::Cyan));
         let inner = block.inner(chat_area);
         frame.render_widget(block, chat_area);
         inner

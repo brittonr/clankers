@@ -1,5 +1,7 @@
 //! Tui slash command handlers.
 
+use ratatui_hypertile::raw::Node;
+
 use super::SlashContext;
 use super::SlashHandler;
 
@@ -38,6 +40,10 @@ impl SlashHandler for LayoutHandler {
                 ctx.app.unfocus_panel();
                 ctx.app.push_system("Layout: right-heavy".into(), false);
             }
+            _ if sub.starts_with("toggle ") => {
+                let panel_name = sub.trim_start_matches("toggle ").trim();
+                handle_toggle(panel_name, ctx);
+            }
             "" => {
                 // Show current layout info
                 let pane_count = ctx.app.tiling.panes().len();
@@ -49,16 +55,197 @@ impl SlashHandler for LayoutHandler {
                     }
                 }).collect();
                 let msg = format!(
-                    "Layout: {} pane(s): {}\nUse /layout <preset> to switch.\nPresets: default, wide, focused, right",
+                    "Layout: {} pane(s): {}\nUse /layout <preset> to switch.\nPresets: default, wide, focused, right\nToggle: /layout toggle <todo|files|subagents|peers|processes|branches>",
                     pane_count,
                     panel_names.join(", ")
                 );
                 ctx.app.push_system(msg, false);
             }
             _ => {
-                ctx.app.push_system("Unknown layout. Use: default, wide, focused, right".into(), true);
+                ctx.app.push_system("Unknown layout. Use: default, wide, focused, right, toggle <panel>".into(), true);
             }
         }
+    }
+}
+
+/// Resolve a panel name string to a `PanelId`.
+fn parse_panel_name(name: &str) -> Option<crate::tui::panel::PanelId> {
+    use crate::tui::panel::PanelId;
+    match name {
+        "todo" | "todos" => Some(PanelId::Todo),
+        "files" | "file" => Some(PanelId::Files),
+        "subagents" | "subagent" | "agents" => Some(PanelId::Subagents),
+        "peers" | "peer" => Some(PanelId::Peers),
+        "processes" | "process" | "procs" => Some(PanelId::Processes),
+        "branches" | "branch" => Some(PanelId::Branches),
+        _ => None,
+    }
+}
+
+/// Toggle a panel on/off in the current layout.
+fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
+    use crate::tui::panes::PaneKind;
+    use ratatui::layout::Direction;
+
+    let Some(panel_id) = parse_panel_name(panel_name) else {
+        ctx.app.push_system(
+            format!("Unknown panel '{}'. Use: todo, files, subagents, peers, processes, branches", panel_name),
+            true,
+        );
+        return;
+    };
+
+    let pane_id = ctx.app.pane_registry.find_panel(panel_id);
+
+    if let Some(pane_id) = pane_id {
+        // ── Panel is visible → remove it ────────────────────────────
+        // If it's focused, unfocus first.
+        if ctx.app.is_panel_focused(panel_id) {
+            ctx.app.unfocus_panel();
+        }
+
+        // Remove the pane node from the BSP tree.
+        let new_root = remove_pane_from_tree(ctx.app.tiling.root().clone(), pane_id);
+        if let Some(new_root) = new_root {
+            let _ = ctx.app.tiling.set_root(new_root);
+            ctx.app.pane_registry.unregister(pane_id);
+            // Sync remaining pane IDs
+            let live: std::collections::HashSet<_> =
+                ratatui_hypertile::raw::collect_pane_ids(ctx.app.tiling.root())
+                    .into_iter()
+                    .collect();
+            ctx.app.pane_registry.retain_only(&live);
+            ctx.app.sync_focused_panel();
+            ctx.app.push_system(format!("Hidden {} panel", panel_id.label()), false);
+        } else {
+            // Can't remove last pane
+            ctx.app.push_system("Cannot hide the only remaining pane".into(), true);
+        }
+    } else {
+        // ── Panel is hidden → add it ────────────────────────────────
+        // Pick a stable pane ID for this panel type.
+        let new_pane_id = pane_id_for_panel(panel_id);
+
+        // Find the chat pane and split it to make room for the new panel.
+        // We add the new panel to the right of chat (horizontal split).
+        let chat_pane = ctx.app.pane_registry.chat_pane();
+        let new_root = insert_pane_beside(
+            ctx.app.tiling.root().clone(),
+            chat_pane,
+            new_pane_id,
+            Direction::Horizontal,
+            0.75, // chat keeps 75%, new panel gets 25%
+        );
+        if let Some(new_root) = new_root {
+            let _ = ctx.app.tiling.set_root(new_root);
+            ctx.app.pane_registry.register(new_pane_id, PaneKind::Panel(panel_id));
+            ctx.app.push_system(format!("Showing {} panel", panel_id.label()), false);
+        } else {
+            ctx.app.push_system("Failed to add panel".into(), true);
+        }
+    }
+}
+
+/// Return the well-known `PaneId` for a panel type (reuses pane_ids module when possible).
+fn pane_id_for_panel(panel_id: crate::tui::panel::PanelId) -> ratatui_hypertile::PaneId {
+    use crate::tui::panel::PanelId;
+    use crate::tui::panes::pane_ids;
+    match panel_id {
+        PanelId::Todo => pane_ids::todo(),
+        PanelId::Files => pane_ids::files(),
+        PanelId::Subagents => pane_ids::subagents(),
+        PanelId::Peers => pane_ids::peers(),
+        PanelId::Processes => pane_ids::processes(),
+        PanelId::Branches => pane_ids::branches(),
+    }
+}
+
+/// Remove a pane from the BSP tree, returning the pruned tree.
+/// Returns `None` if the pane is the only node (root leaf).
+fn remove_pane_from_tree(node: Node, target: ratatui_hypertile::PaneId) -> Option<Node> {
+    match node {
+        Node::Pane(id) => {
+            if id == target {
+                None // This is the pane to remove
+            } else {
+                Some(Node::Pane(id))
+            }
+        }
+        Node::Split { direction, ratio, first, second } => {
+            let first_pruned = remove_pane_from_tree(*first, target);
+            let second_pruned = remove_pane_from_tree(*second, target);
+            match (first_pruned, second_pruned) {
+                (Some(f), Some(s)) => Some(Node::Split {
+                    direction,
+                    ratio,
+                    first: Box::new(f),
+                    second: Box::new(s),
+                }),
+                (Some(f), None) => Some(f), // Second was removed, collapse to first
+                (None, Some(s)) => Some(s), // First was removed, collapse to second
+                (None, None) => None,       // Both removed (shouldn't happen)
+            }
+        }
+    }
+}
+
+/// Insert a new pane beside an existing pane in the BSP tree.
+/// Splits the target pane, keeping the target in the `first` slot.
+fn insert_pane_beside(
+    node: Node,
+    target: ratatui_hypertile::PaneId,
+    new_pane: ratatui_hypertile::PaneId,
+    direction: ratatui::layout::Direction,
+    ratio: f32,
+) -> Option<Node> {
+    match node {
+        Node::Pane(id) => {
+            if id == target {
+                Some(Node::Split {
+                    direction,
+                    ratio,
+                    first: Box::new(Node::Pane(id)),
+                    second: Box::new(Node::Pane(new_pane)),
+                })
+            } else {
+                Some(Node::Pane(id))
+            }
+        }
+        Node::Split { direction: d, ratio: r, first, second } => {
+            // Try to find and split the target in either branch
+            let first_result = insert_pane_beside(*first.clone(), target, new_pane, direction, ratio);
+            if let Some(new_first) = first_result {
+                // Check if the first branch actually changed
+                let first_changed = !nodes_equal(&new_first, &*first);
+                if first_changed {
+                    return Some(Node::Split {
+                        direction: d,
+                        ratio: r,
+                        first: Box::new(new_first),
+                        second,
+                    });
+                }
+            }
+            let second_result = insert_pane_beside(*second, target, new_pane, direction, ratio);
+            second_result.map(|new_second| Node::Split {
+                direction: d,
+                ratio: r,
+                first,
+                second: Box::new(new_second),
+            })
+        }
+    }
+}
+
+/// Quick structural equality check for BSP nodes.
+fn nodes_equal(a: &Node, b: &Node) -> bool {
+    match (a, b) {
+        (Node::Pane(a_id), Node::Pane(b_id)) => a_id == b_id,
+        (
+            Node::Split { direction: da, ratio: ra, first: fa, second: sa },
+            Node::Split { direction: db, ratio: rb, first: fb, second: sb },
+        ) => da == db && (ra - rb).abs() < f32::EPSILON && nodes_equal(fa, fb) && nodes_equal(sa, sb),
+        _ => false,
     }
 }
 

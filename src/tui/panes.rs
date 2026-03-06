@@ -137,7 +137,9 @@ pub mod pane_ids {
     pub fn files() -> PaneId { PaneId::new(2) }
     pub fn subagents() -> PaneId { PaneId::new(3) }
     pub fn peers() -> PaneId { PaneId::new(4) }
+    /// Stable ID for the Processes panel (used by toggle and presets).
     pub fn processes() -> PaneId { PaneId::new(5) }
+    /// Stable ID for the Branches panel (used by toggle and presets).
     pub fn branches() -> PaneId { PaneId::new(6) }
 }
 

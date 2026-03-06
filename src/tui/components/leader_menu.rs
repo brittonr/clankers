@@ -611,6 +611,22 @@ impl MenuContributor for BuiltinKeymapContributor {
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
             },
+            MenuContribution {
+                key: '5',
+                label: "toggle Processes".into(),
+                action: LeaderAction::SlashCommand("/layout toggle processes".into()),
+                placement: MenuPlacement::Submenu("layout".into()),
+                priority: PRIORITY_BUILTIN,
+                source: "builtin".into(),
+            },
+            MenuContribution {
+                key: '6',
+                label: "toggle Branches".into(),
+                action: LeaderAction::SlashCommand("/layout toggle branches".into()),
+                placement: MenuPlacement::Submenu("layout".into()),
+                priority: PRIORITY_BUILTIN,
+                source: "builtin".into(),
+            },
             // ── Tiling submenu opener (from root) ──
             MenuContribution {
                 key: 'p',

@@ -639,7 +639,7 @@ mod tests {
                     // h from right panel → focus chat (spatial: chat is to the left)
                     "action": { "type": "type", "text": "h" },
                     "assert_absent": "j/k Tab",
-                    "assert_visible": "Main"
+                    "assert_visible": "h/l:panels"
                 },
                 {
                     // l from main → focus right panel again (spatial: right panels are to the right)
