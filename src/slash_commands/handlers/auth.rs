@@ -4,7 +4,6 @@ use super::SlashContext;
 use super::SlashHandler;
 use crate::provider::auth::AuthStoreExt;
 use crate::modes::interactive::AgentCommand;
-use crate::slash_commands::SlashAction;
 
 pub struct LoginHandler;
 
@@ -148,16 +147,8 @@ impl SlashHandler for AccountHandler {
                         subcmd_args.to_string()
                     };
                     let login_args = format!("--account {}", account_name);
-                    crate::modes::interactive::execute_slash_command(
-                        ctx.app,
-                        SlashAction::Login,
-                        &login_args,
-                        ctx.cmd_tx,
-                        ctx.plugin_manager,
-                        ctx.panel_tx,
-                        ctx.db,
-                        ctx.session_manager,
-                    );
+                    // Delegate to the login handler directly
+                    super::auth::LoginHandler.handle(&login_args, ctx);
                 }
                 "logout" => {
                     let name = if subcmd_args.is_empty() {

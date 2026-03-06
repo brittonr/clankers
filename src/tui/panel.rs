@@ -34,7 +34,6 @@ pub enum PanelId {
     Subagents,
     Peers,
     Processes,
-    Environment,
 }
 
 impl PanelId {
@@ -45,7 +44,6 @@ impl PanelId {
             PanelId::Subagents => "Subagents",
             PanelId::Peers => "Peers",
             PanelId::Processes => "Processes",
-            PanelId::Environment => "Environment",
         }
     }
 
@@ -56,7 +54,6 @@ impl PanelId {
         PanelId::Subagents,
         PanelId::Peers,
         PanelId::Processes,
-        PanelId::Environment,
     ];
 }
 

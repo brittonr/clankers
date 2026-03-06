@@ -350,7 +350,7 @@ impl App {
             PanelId::Subagents => &self.subagent_panel,
             PanelId::Peers => &self.peers_panel,
             PanelId::Processes => &self.process_panel,
-            PanelId::Environment => &self.todo_panel, // placeholder until env panel gets the trait
+
         }
     }
 
@@ -363,7 +363,7 @@ impl App {
             PanelId::Subagents => &mut self.subagent_panel,
             PanelId::Peers => &mut self.peers_panel,
             PanelId::Processes => &mut self.process_panel,
-            PanelId::Environment => &mut self.todo_panel, // placeholder
+
         }
     }
 

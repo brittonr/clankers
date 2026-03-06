@@ -25,14 +25,11 @@ use crate::config::keybindings::InputMode;
 use crate::config::keybindings::Keymap;
 use crate::error::Result;
 use crate::provider::auth::AuthStoreExt;
-use crate::slash_commands::SlashAction;
 use crate::slash_commands::{self};
 use crate::tui::app::App;
 use crate::tui::app::AppState;
-use crate::tui::app::HitRegion;
 use crate::tui::components::block::BlockEntry;
 use crate::tui::event::AppEvent;
-use crate::tui::event::Button;
 use crate::tui::event::{self as tui_event};
 // Panel trait is in scope via panel_mut() return type
 use crate::tui::render;
@@ -989,17 +986,17 @@ async fn run_event_loop(
                     }
 
                     // ── Model selector intercept ─────────────────
-                    if app.model_selector.visible && handle_model_selector_key(app, &key, &cmd_tx) {
+                    if app.model_selector.visible && super::selectors::handle_model_selector_key(app, &key, &cmd_tx) {
                         continue;
                     }
 
                     // ── Account selector intercept ───────────────
-                    if app.account_selector.visible && handle_account_selector_key(app, &key, &cmd_tx) {
+                    if app.account_selector.visible && super::selectors::handle_account_selector_key(app, &key, &cmd_tx) {
                         continue;
                     }
 
                     // ── Session selector intercept ───────────────
-                    if app.session_selector.visible && handle_session_selector_key(app, &key, &cmd_tx) {
+                    if app.session_selector.visible && super::selectors::handle_session_selector_key(app, &key, &cmd_tx) {
                         continue;
                     }
 
@@ -1132,19 +1129,19 @@ async fn run_event_loop(
                     }
                 }
                 AppEvent::MouseDown(button, col, row) => {
-                    handle_mouse_down(app, button, col, row);
+                    super::mouse::handle_mouse_down(app, button, col, row);
                 }
                 AppEvent::MouseDrag(button, col, row) => {
-                    handle_mouse_drag(app, button, col, row);
+                    super::mouse::handle_mouse_drag(app, button, col, row);
                 }
                 AppEvent::MouseUp(button, col, row) => {
-                    handle_mouse_up(app, button, col, row);
+                    super::mouse::handle_mouse_up(app, button, col, row);
                 }
                 AppEvent::ScrollUp(col, row, n) => {
-                    handle_mouse_scroll(app, col, row, true, n);
+                    super::mouse::handle_mouse_scroll(app, col, row, true, n);
                 }
                 AppEvent::ScrollDown(col, row, n) => {
-                    handle_mouse_scroll(app, col, row, false, n);
+                    super::mouse::handle_mouse_scroll(app, col, row, false, n);
                 }
                 AppEvent::Resize(_, _) => {}
                 _ => {}
@@ -1758,164 +1755,6 @@ fn handle_session_popup_key(app: &mut App, key: &crossterm::event::KeyEvent, key
 // Model selector key handling
 // ---------------------------------------------------------------------------
 
-fn handle_model_selector_key(
-    app: &mut App,
-    key: &crossterm::event::KeyEvent,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-) -> bool {
-    match key.code {
-        KeyCode::Esc => {
-            app.model_selector.close();
-            true
-        }
-        KeyCode::Enter => {
-            if let Some(model) = app.model_selector.select() {
-                let old_model = std::mem::replace(&mut app.model, model.clone());
-                let _ = cmd_tx.send(AgentCommand::SetModel(model.clone()));
-                app.context_gauge.set_model(&app.model);
-                app.push_system(format!("Model switched: {} → {}", old_model, model), false);
-            }
-            app.model_selector.close();
-            true
-        }
-        KeyCode::Up => {
-            app.model_selector.move_up();
-            true
-        }
-        KeyCode::Down => {
-            app.model_selector.move_down();
-            true
-        }
-        KeyCode::Backspace => {
-            app.model_selector.backspace();
-            true
-        }
-        KeyCode::Char(c) => {
-            // Ctrl+C closes
-            if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                app.model_selector.close();
-            } else if key.modifiers.contains(KeyModifiers::CONTROL) {
-                match c {
-                    'k' | 'p' => app.model_selector.move_up(),
-                    'j' | 'n' => app.model_selector.move_down(),
-                    _ => {}
-                }
-            } else {
-                app.model_selector.type_char(c);
-            }
-            true
-        }
-        _ => true, // consume all keys while selector is open
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Account selector key handling
-// ---------------------------------------------------------------------------
-
-fn handle_account_selector_key(
-    app: &mut App,
-    key: &crossterm::event::KeyEvent,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-) -> bool {
-    match key.code {
-        KeyCode::Esc => {
-            app.account_selector.close();
-            true
-        }
-        KeyCode::Enter => {
-            if let Some(account_name) = app.account_selector.select() {
-                let _ = cmd_tx.send(AgentCommand::SwitchAccount(account_name));
-            }
-            app.account_selector.close();
-            true
-        }
-        KeyCode::Up => {
-            app.account_selector.move_up();
-            true
-        }
-        KeyCode::Down => {
-            app.account_selector.move_down();
-            true
-        }
-        KeyCode::Backspace => {
-            app.account_selector.backspace();
-            true
-        }
-        KeyCode::Char(c) => {
-            if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                app.account_selector.close();
-            } else if key.modifiers.contains(KeyModifiers::CONTROL) {
-                match c {
-                    'k' | 'p' => app.account_selector.move_up(),
-                    'j' | 'n' => app.account_selector.move_down(),
-                    _ => {}
-                }
-            } else {
-                app.account_selector.type_char(c);
-            }
-            true
-        }
-        _ => true,
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Session selector key handling
-// ---------------------------------------------------------------------------
-
-fn handle_session_selector_key(
-    app: &mut App,
-    key: &crossterm::event::KeyEvent,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-) -> bool {
-    match key.code {
-        KeyCode::Esc => {
-            app.session_selector.close();
-            true
-        }
-        KeyCode::Enter => {
-            if let Some(item) = app.session_selector.select() {
-                let file_path = item.file_path.clone();
-                let session_id = item.session_id.clone();
-                app.session_selector.close();
-                resume_session_from_file(app, file_path, &session_id, cmd_tx);
-            } else {
-                app.session_selector.close();
-            }
-            true
-        }
-        KeyCode::Up => {
-            app.session_selector.move_up();
-            true
-        }
-        KeyCode::Down => {
-            app.session_selector.move_down();
-            true
-        }
-        KeyCode::Backspace => {
-            app.session_selector.backspace();
-            true
-        }
-        KeyCode::Char(c) => {
-            if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                app.session_selector.close();
-            } else if key.modifiers.contains(KeyModifiers::CONTROL) {
-                match c {
-                    'k' | 'p' => app.session_selector.move_up(),
-                    'j' | 'n' => app.session_selector.move_down(),
-                    _ => {}
-                }
-            } else {
-                app.session_selector.type_char(c);
-            }
-            true
-        }
-        _ => true,
-    }
-}
-
-/// Resume a session from a file path (shared by selector and slash command)
 pub(crate) fn resume_session_from_file(
     app: &mut App,
     file_path: std::path::PathBuf,
@@ -1962,196 +1801,6 @@ pub(crate) fn resume_session_from_file(
 // ---------------------------------------------------------------------------
 
 /// Handle mouse button press.
-fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
-    let region = app.hit_test(col, row);
-
-    match button {
-        Button::Left => {
-            match region {
-                HitRegion::Messages => {
-                    // Start text selection in the messages area
-                    if let Some(pos) = crate::tui::selection::screen_to_text_pos(
-                        col,
-                        row,
-                        app.messages_area,
-                        app.scroll.offset,
-                        &app.rendered_lines,
-                    ) {
-                        app.selection = Some(crate::tui::selection::TextSelection::start(pos));
-                    } else {
-                        app.selection = None;
-                    }
-
-                    // Switch to normal mode if we were focused on a panel
-                    app.focus.unfocus();
-                }
-                HitRegion::Editor => {
-                    // Click in editor → switch to insert mode and place cursor
-                    app.selection = None;
-                    app.focus.unfocus();
-                    app.input_mode = InputMode::Insert;
-
-                    // Compute cursor position from click coordinates
-                    let inner_x = app.editor_area.x + 1; // left border
-                    let inner_y = app.editor_area.y + 1; // top border
-                    let inner_w = app.editor_area.width.saturating_sub(2) as usize;
-
-                    if col >= inner_x && row >= inner_y {
-                        let rel_col = col - inner_x;
-                        let rel_row = row - inner_y;
-                        let indicator_len = match (app.state, app.input_mode) {
-                            (AppState::Streaming, _) => 2,
-                            (_, InputMode::Normal) => 2,
-                            (_, InputMode::Insert) => 2,
-                        };
-                        app.editor.click_to_cursor(rel_col, rel_row, inner_w, indicator_len);
-                    }
-                }
-                HitRegion::Panel(panel_id) => {
-                    // Click on a panel → focus it
-                    app.selection = None;
-                    app.focus.focus(panel_id);
-                    app.input_mode = InputMode::Normal;
-                }
-                HitRegion::StatusBar | HitRegion::None => {
-                    app.selection = None;
-                }
-            }
-        }
-        Button::Middle => {
-            // Middle-click: paste from system clipboard (X11/Wayland primary selection).
-            // We use the same paste mechanism as Ctrl+V but only on click.
-            if matches!(region, HitRegion::Editor) {
-                app.input_mode = InputMode::Insert;
-                paste_from_clipboard(app);
-            }
-        }
-        Button::Right => {
-            // Right-click in messages area: toggle collapse of the clicked block
-            if matches!(region, HitRegion::Messages)
-                && let Some(pos) = crate::tui::selection::screen_to_text_pos(
-                    col,
-                    row,
-                    app.messages_area,
-                    app.scroll.offset,
-                    &app.rendered_lines,
-                )
-            {
-                // Try to find which block this line belongs to and toggle it
-                click_toggle_block(app, pos.row);
-            }
-        }
-    }
-}
-
-/// Handle mouse drag (button held + moved).
-fn handle_mouse_drag(app: &mut App, button: Button, col: u16, row: u16) {
-    if button != Button::Left {
-        return;
-    }
-    // Continue text selection in messages area
-    if let Some(ref mut sel) = app.selection
-        && let Some(pos) = crate::tui::selection::screen_to_text_pos(
-            col,
-            row,
-            app.messages_area,
-            app.scroll.offset,
-            &app.rendered_lines,
-        )
-    {
-        sel.update(pos);
-    }
-}
-
-/// Handle mouse button release.
-fn handle_mouse_up(app: &mut App, button: Button, col: u16, row: u16) {
-    if button != Button::Left {
-        return;
-    }
-    if let Some(ref mut sel) = app.selection {
-        if let Some(pos) = crate::tui::selection::screen_to_text_pos(
-            col,
-            row,
-            app.messages_area,
-            app.scroll.offset,
-            &app.rendered_lines,
-        ) {
-            sel.update(pos);
-        }
-        sel.finish();
-        if !sel.is_empty() {
-            let text = sel.extract_text(&app.rendered_lines);
-            crate::tui::selection::copy_to_clipboard(&text);
-        } else {
-            app.selection = None;
-        }
-    }
-}
-
-/// Handle mouse scroll wheel — dispatches to whichever region the cursor is over.
-fn handle_mouse_scroll(app: &mut App, col: u16, row: u16, up: bool, lines: u16) {
-    let region = app.hit_test(col, row);
-
-    match region {
-        HitRegion::Messages => {
-            if up {
-                app.scroll.scroll_up(lines as usize);
-            } else {
-                app.scroll.scroll_down(lines as usize);
-            }
-        }
-        HitRegion::Panel(panel_id) => {
-            let panel = app.panel_mut(panel_id);
-            panel.handle_scroll(up, lines);
-        }
-        HitRegion::Editor => {
-            // Scroll in editor could navigate history (up/down),
-            // but that would be confusing. Just scroll the messages.
-            if up {
-                app.scroll.scroll_up(lines as usize);
-            } else {
-                app.scroll.scroll_down(lines as usize);
-            }
-        }
-        _ => {}
-    }
-}
-
-/// Try to toggle the collapse state of the block at the given rendered line.
-fn click_toggle_block(app: &mut App, text_row: usize) {
-    // Walk through blocks and count rendered lines to find which block
-    // the clicked row falls in. This is approximate — we use the block
-    // header lines as a heuristic.
-    let mut row_cursor: usize = 0;
-
-    for entry in &app.blocks {
-        if let BlockEntry::Conversation(block) = entry {
-            // Each block has at least a header line
-            let block_lines = if block.collapsed {
-                2 // header + collapsed indicator
-            } else {
-                // header + responses + spacing
-                2 + block.responses.iter().map(|r| r.content.lines().count() + 1).sum::<usize>()
-            };
-
-            if text_row >= row_cursor && text_row < row_cursor + block_lines {
-                // Found the block — focus and toggle it
-                app.focused_block = Some(block.id);
-                app.toggle_focused_block();
-                app.input_mode = InputMode::Normal;
-                return;
-            }
-            row_cursor += block_lines;
-        } else {
-            // System messages: count their lines
-            if let BlockEntry::System(msg) = entry {
-                row_cursor += msg.content.lines().count() + 1;
-            }
-        }
-    }
-}
-
-/// Convert a `PanelId` to the legacy `PanelTab` (bridge during migration).
 fn handle_insert_char(app: &mut App, key: &crossterm::event::KeyEvent) {
     if let (KeyCode::Char(c), m) = (key.code, key.modifiers)
         && (m.is_empty() || m == KeyModifiers::SHIFT)
@@ -2186,7 +1835,7 @@ pub enum ClipboardResult {
 /// Read from the system clipboard on a background thread. Tries text first,
 /// then image. This avoids freezing the TUI when another application (e.g. a
 /// browser) holds the Wayland clipboard selection.
-fn paste_from_clipboard(app: &mut App) {
+pub(crate) fn paste_from_clipboard(app: &mut App) {
     if app.clipboard_pending {
         return;
     }
@@ -2401,8 +2050,8 @@ fn handle_input_with_plugins(
     db: &Option<crate::db::Db>,
     session_manager: &mut Option<crate::session::SessionManager>,
 ) {
-    if let Some((action, args)) = slash_commands::parse_command(text) {
-        execute_slash_command(app, action, &args, cmd_tx, plugin_manager, panel_tx, db, session_manager);
+    if let Some((command, args)) = slash_commands::parse_command(text) {
+        execute_slash_command(app, &command, &args, cmd_tx, plugin_manager, panel_tx, db, session_manager);
     } else {
         let _ = cmd_tx.send(AgentCommand::ResetCancel);
         let mut pending_images = app.take_pending_images();
@@ -2485,7 +2134,7 @@ pub(crate) fn parse_account_flag(args: &str) -> (Option<String>, String) {
 
 pub(crate) fn execute_slash_command(
     app: &mut App,
-    action: SlashAction,
+    command: &str,
     args: &str,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
     plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
@@ -2501,7 +2150,7 @@ pub(crate) fn execute_slash_command(
         db,
         session_manager,
     };
-    slash_commands::dispatch(&action, args, &mut ctx);
+    slash_commands::dispatch(command, args, &mut ctx);
 }
 
 

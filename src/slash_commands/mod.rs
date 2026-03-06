@@ -7,67 +7,67 @@
 pub mod handlers;
 
 use std::cell::RefCell;
-use std::fmt;
 
 use crate::tui::components::leader_menu::MenuPlacement;
 
 // ---------------------------------------------------------------------------
-// Slash command dispatch — routes SlashAction to handler implementations
+// Slash command dispatch — routes command names to handler implementations
 // ---------------------------------------------------------------------------
 
-/// Dispatch a parsed slash command to its handler.
+/// Dispatch a slash command by name to its handler.
 ///
 /// This is the single entry point for all slash command execution.
-/// Each `SlashAction` variant is routed to a handler struct in
+/// Command names map directly to handler structs in
 /// `src/slash_commands/handlers/`.
 pub fn dispatch(
-    action: &SlashAction,
+    command: &str,
     args: &str,
     ctx: &mut handlers::SlashContext<'_>,
 ) {
     use handlers::SlashHandler;
 
-    match action {
-        SlashAction::Help => handlers::info::HelpHandler.handle(args, ctx),
-        SlashAction::Clear => handlers::context::ClearHandler.handle(args, ctx),
-        SlashAction::Reset => handlers::context::ResetHandler.handle(args, ctx),
-        SlashAction::Model => handlers::model::ModelHandler.handle(args, ctx),
-        SlashAction::Status => handlers::info::StatusHandler.handle(args, ctx),
-        SlashAction::Usage => handlers::info::UsageHandler.handle(args, ctx),
-        SlashAction::Version => handlers::info::VersionHandler.handle(args, ctx),
-        SlashAction::Quit => handlers::info::QuitHandler.handle(args, ctx),
-        SlashAction::Session => handlers::session::SessionHandler.handle(args, ctx),
-        SlashAction::Undo => handlers::context::UndoHandler.handle(args, ctx),
-        SlashAction::Cd => handlers::navigation::CdHandler.handle(args, ctx),
-        SlashAction::Shell => handlers::navigation::ShellHandler.handle(args, ctx),
-        SlashAction::Export => handlers::export::ExportHandler.handle(args, ctx),
-        SlashAction::Compact => handlers::context::CompactHandler.handle(args, ctx),
-        SlashAction::Think => handlers::model::ThinkHandler.handle(args, ctx),
-        SlashAction::Login => handlers::auth::LoginHandler.handle(args, ctx),
-        SlashAction::Tools => handlers::tools::ToolsHandler.handle(args, ctx),
-        SlashAction::Plugin => handlers::tools::PluginHandler.handle(args, ctx),
-        SlashAction::Subagents => handlers::swarm::SubagentsHandler.handle(args, ctx),
-        SlashAction::Account => handlers::auth::AccountHandler.handle(args, ctx),
-        SlashAction::Todo => handlers::tui::TodoHandler.handle(args, ctx),
-        SlashAction::Worker => handlers::swarm::WorkerHandler.handle(args, ctx),
-        SlashAction::Share => handlers::swarm::ShareHandler.handle(args, ctx),
-        SlashAction::Plan => handlers::tui::PlanHandler.handle(args, ctx),
-        SlashAction::Review => handlers::tui::ReviewHandler.handle(args, ctx),
-        SlashAction::Role => handlers::model::RoleHandler.handle(args, ctx),
-        SlashAction::SystemPrompt => handlers::memory::SystemPromptHandler.handle(args, ctx),
-        SlashAction::Memory => handlers::memory::MemoryHandler.handle(args, ctx),
-        SlashAction::Peers => handlers::swarm::PeersHandler.handle(args, ctx),
-        SlashAction::Editor => handlers::tui::EditorHandler.handle(args, ctx),
-        SlashAction::Preview => handlers::tui::PreviewHandler.handle(args, ctx),
-        SlashAction::Layout => handlers::tui::LayoutHandler.handle(args, ctx),
-        SlashAction::Fork => handlers::branching::ForkHandler.handle(args, ctx),
-        SlashAction::Rewind => handlers::branching::RewindHandler.handle(args, ctx),
-        SlashAction::Branches => handlers::branching::BranchesHandler.handle(args, ctx),
-        SlashAction::Switch => handlers::branching::SwitchHandler.handle(args, ctx),
-        SlashAction::Label => handlers::branching::LabelHandler.handle(args, ctx),
-        SlashAction::PromptTemplate(name) => {
+    match command {
+        "help" => handlers::info::HelpHandler.handle(args, ctx),
+        "clear" => handlers::context::ClearHandler.handle(args, ctx),
+        "reset" => handlers::context::ResetHandler.handle(args, ctx),
+        "model" => handlers::model::ModelHandler.handle(args, ctx),
+        "status" => handlers::info::StatusHandler.handle(args, ctx),
+        "usage" => handlers::info::UsageHandler.handle(args, ctx),
+        "version" => handlers::info::VersionHandler.handle(args, ctx),
+        "quit" => handlers::info::QuitHandler.handle(args, ctx),
+        "session" => handlers::session::SessionHandler.handle(args, ctx),
+        "undo" => handlers::context::UndoHandler.handle(args, ctx),
+        "cd" => handlers::navigation::CdHandler.handle(args, ctx),
+        "sh" => handlers::navigation::ShellHandler.handle(args, ctx),
+        "export" => handlers::export::ExportHandler.handle(args, ctx),
+        "compact" => handlers::context::CompactHandler.handle(args, ctx),
+        "think" => handlers::model::ThinkHandler.handle(args, ctx),
+        "login" => handlers::auth::LoginHandler.handle(args, ctx),
+        "tools" => handlers::tools::ToolsHandler.handle(args, ctx),
+        "plugin" => handlers::tools::PluginHandler.handle(args, ctx),
+        "subagents" => handlers::swarm::SubagentsHandler.handle(args, ctx),
+        "account" => handlers::auth::AccountHandler.handle(args, ctx),
+        "todo" => handlers::tui::TodoHandler.handle(args, ctx),
+        "worker" => handlers::swarm::WorkerHandler.handle(args, ctx),
+        "share" => handlers::swarm::ShareHandler.handle(args, ctx),
+        "plan" => handlers::tui::PlanHandler.handle(args, ctx),
+        "review" => handlers::tui::ReviewHandler.handle(args, ctx),
+        "role" => handlers::model::RoleHandler.handle(args, ctx),
+        "system" => handlers::memory::SystemPromptHandler.handle(args, ctx),
+        "memory" => handlers::memory::MemoryHandler.handle(args, ctx),
+        "peers" => handlers::swarm::PeersHandler.handle(args, ctx),
+        "editor" => handlers::tui::EditorHandler.handle(args, ctx),
+        "preview" => handlers::tui::PreviewHandler.handle(args, ctx),
+        "layout" => handlers::tui::LayoutHandler.handle(args, ctx),
+        "fork" => handlers::branching::ForkHandler.handle(args, ctx),
+        "rewind" => handlers::branching::RewindHandler.handle(args, ctx),
+        "branches" => handlers::branching::BranchesHandler.handle(args, ctx),
+        "switch" => handlers::branching::SwitchHandler.handle(args, ctx),
+        "label" => handlers::branching::LabelHandler.handle(args, ctx),
+        // User-defined prompt templates: any name not matched above
+        _ => {
             handlers::prompt_template::PromptTemplateHandler {
-                template_name: name.clone(),
+                template_name: command.to_string(),
             }
             .handle(args, ctx);
         }
@@ -101,7 +101,7 @@ pub struct LeaderBinding {
     pub label: Option<&'static str>,
 }
 
-/// A registered slash command
+/// A registered slash command.
 #[derive(Debug, Clone)]
 pub struct SlashCommand {
     /// The command name (without the leading `/`)
@@ -112,8 +112,6 @@ pub struct SlashCommand {
     pub help: &'static str,
     /// Whether the command accepts arguments
     pub accepts_args: bool,
-    /// The action this command performs
-    pub action: SlashAction,
     /// Subcommands shown in the autocomplete menu (name, description)
     pub subcommands: Vec<(&'static str, &'static str)>,
     /// Optional leader menu binding. When set, this command appears
@@ -121,92 +119,8 @@ pub struct SlashCommand {
     pub leader_key: Option<LeaderBinding>,
 }
 
-/// What happens when a slash command is executed
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum SlashAction {
-    /// Clear the conversation history
-    Clear,
-    /// Show help / list commands
-    Help,
-    /// Switch to a different model
-    Model,
-    /// Show current model and settings
-    Status,
-    /// Reset the conversation (clear history + context)
-    Reset,
-    /// Compact/summarize the conversation
-    Compact,
-    /// Toggle thinking mode on/off
-    Think,
-    /// Quit the application
-    Quit,
-    /// Show version information
-    Version,
-    /// Show token usage statistics
-    Usage,
-    /// Change working directory
-    Cd,
-    /// Show session info
-    Session,
-    /// Undo the last user message (remove last turn)
-    Undo,
-    /// Export conversation to file
-    Export,
-    /// Run a raw shell command (bypass the agent)
-    Shell,
-    /// Authenticate with a provider (OAuth login)
-    Login,
-    /// Show plugin information
-    Plugin,
-    /// List available tools
-    Tools,
-    /// Spawn a swarm worker in a Zellij pane
-    Worker,
-    /// Share the current Zellij session
-    Share,
-    /// List/manage subagents
-    Subagents,
-    /// Manage todo list
-    Todo,
-    /// Switch/list accounts
-    Account,
-    /// Preview markdown rendering (debug/test)
-    Preview,
-    /// Toggle plan mode
-    Plan,
-    /// Code review mode
-    Review,
-    /// Switch model role
-    Role,
-    /// View or modify the system prompt
-    SystemPrompt,
-    /// Open $EDITOR to compose a multi-line prompt
-    Editor,
-    /// Manage cross-session memory
-    Memory,
-    /// Manage swarm peers
-    Peers,
-    /// Switch panel layout
-    Layout,
-    /// Fork conversation to explore alternatives
-    Fork,
-    /// Jump back to an earlier message
-    Rewind,
-    /// List conversation branches
-    Branches,
-    /// Switch to a different branch
-    Switch,
-    /// Label the current message
-    Label,
-    /// Run a user-defined prompt template
-    PromptTemplate(String),
-}
-
-impl fmt::Display for SlashAction {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
+// SlashAction enum deleted — dispatch uses command name strings directly.
+// See dispatch() above.
 
 /// All built-in slash commands
 pub fn builtin_commands() -> Vec<SlashCommand> {
@@ -216,7 +130,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             description: "Show available commands",
             help: "Lists all available slash commands with descriptions.",
             accepts_args: false,
-            action: SlashAction::Help,
             subcommands: vec![],
             leader_key: None,
         },
@@ -225,7 +138,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             description: "Clear conversation history",
             help: "Clears the visible message history. Does not affect the agent's context window.",
             accepts_args: false,
-            action: SlashAction::Clear,
             subcommands: vec![],
             leader_key: None,
         },
@@ -234,7 +146,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             description: "Reset conversation and context",
             help: "Clears conversation history and resets the agent context, starting fresh.",
             accepts_args: false,
-            action: SlashAction::Reset,
             subcommands: vec![],
             leader_key: None,
         },
@@ -244,7 +155,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             help: "Asks the model to create a compact summary of the conversation so far, \
                    replacing the full history to reduce token usage.",
             accepts_args: false,
-            action: SlashAction::Compact,
             subcommands: vec![],
             leader_key: None,
         },
@@ -253,7 +163,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             description: "Switch model (e.g. /model claude-3-5-sonnet)",
             help: "Switch to a different model. Usage: /model <model-name>",
             accepts_args: true,
-            action: SlashAction::Model,
             subcommands: vec![],
             leader_key: None,
         },
@@ -271,7 +180,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /think <number>     — set budget directly (maps to nearest level)\n\n\
                    Keybinding: Ctrl+T cycles through levels.",
             accepts_args: true,
-            action: SlashAction::Think,
             subcommands: vec![
                 ("off", "disable thinking"),
                 ("low", "light reasoning (~5k tokens)"),
@@ -286,7 +194,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             description: "Show current settings",
             help: "Displays the current model, token usage, and session information.",
             accepts_args: false,
-            action: SlashAction::Status,
             subcommands: vec![],
             leader_key: None,
         },
@@ -295,7 +202,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             description: "Show token usage statistics",
             help: "Shows detailed token usage and estimated cost for this session.",
             accepts_args: false,
-            action: SlashAction::Usage,
             subcommands: vec![],
             leader_key: None,
         },
@@ -304,7 +210,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             description: "Remove last conversation turn",
             help: "Removes the last user message and assistant response from the conversation.",
             accepts_args: false,
-            action: SlashAction::Undo,
             subcommands: vec![],
             leader_key: None,
         },
@@ -318,7 +223,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /session delete <id>    — delete a session\n  \
                    /session purge          — delete all sessions for this directory",
             accepts_args: true,
-            action: SlashAction::Session,
             subcommands: vec![
                 ("list [n]", "list recent sessions"),
                 ("resume [id]", "resume a session (menu if no id)"),
@@ -332,7 +236,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             description: "Export conversation to file",
             help: "Exports the conversation to a file. Usage: /export [filename]",
             accepts_args: true,
-            action: SlashAction::Export,
             subcommands: vec![],
             leader_key: None,
         },
@@ -341,7 +244,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             description: "Change working directory",
             help: "Change the working directory. Usage: /cd <path>",
             accepts_args: true,
-            action: SlashAction::Cd,
             subcommands: vec![],
             leader_key: None,
         },
@@ -350,7 +252,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             description: "Run a shell command directly",
             help: "Execute a shell command without going through the agent. Usage: /shell <command>",
             accepts_args: true,
-            action: SlashAction::Shell,
             subcommands: vec![],
             leader_key: None,
         },
@@ -359,7 +260,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             description: "Show version information",
             help: "Displays the clankers version and build information.",
             accepts_args: false,
-            action: SlashAction::Version,
             subcommands: vec![],
             leader_key: None,
         },
@@ -374,7 +274,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /login --account <name> — login to a specific account\n\n\
                    See also: /account (list, switch, logout, status)",
             accepts_args: true,
-            action: SlashAction::Login,
             subcommands: vec![],
             leader_key: None,
         },
@@ -384,7 +283,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             help: "Lists all tools available to the agent, including built-in tools \
                    and any tools provided by loaded plugins.",
             accepts_args: false,
-            action: SlashAction::Tools,
             subcommands: vec![],
             leader_key: None,
         },
@@ -394,7 +292,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             help: "Lists all discovered and loaded plugins with their status.\n\n\
                    Usage: /plugin [name]  — show details for a specific plugin",
             accepts_args: true,
-            action: SlashAction::Plugin,
             subcommands: vec![],
             leader_key: None,
         },
@@ -408,7 +305,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /worker <name>             — spawn an idle worker\n\n\
                    Requires running inside a Zellij session (clankers --zellij or clankers --swarm).",
             accepts_args: true,
-            action: SlashAction::Worker,
             subcommands: vec![],
             leader_key: None,
         },
@@ -421,7 +317,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /share --read-only  — share read-only\n\n\
                    Requires running inside a Zellij session.",
             accepts_args: true,
-            action: SlashAction::Share,
             subcommands: vec![],
             leader_key: None,
         },
@@ -436,7 +331,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /subagents remove <id> — remove a subagent entry from the panel\n  \
                    /subagents clear       — remove all completed/failed subagents",
             accepts_args: true,
-            action: SlashAction::Subagents,
             subcommands: vec![
                 ("kill <id>", "kill a running subagent"),
                 ("kill all", "kill all running subagents"),
@@ -457,7 +351,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /account remove <name>  — remove an account\n  \
                    /account list           — list all accounts",
             accepts_args: true,
-            action: SlashAction::Account,
             subcommands: vec![
                 ("switch <name>", "switch active account"),
                 ("login [name]", "login to an account"),
@@ -480,7 +373,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /todo remove <id>       — remove an item\n  \
                    /todo clear             — remove all completed items",
             accepts_args: true,
-            action: SlashAction::Todo,
             subcommands: vec![
                 ("add <text>", "add a new item"),
                 ("done <id|text>", "mark item as done"),
@@ -498,7 +390,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /preview              — show default markdown sample\n  \
                    /preview <markdown>   — render the provided markdown text",
             accepts_args: true,
-            action: SlashAction::Preview,
             subcommands: vec![],
             leader_key: None,
         },
@@ -513,7 +404,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /plan on     — enable plan mode\n  \
                    /plan off    — disable plan mode",
             accepts_args: true,
-            action: SlashAction::Plan,
             subcommands: vec![("on", "enable plan mode"), ("off", "disable plan mode")],
             leader_key: None,
         },
@@ -527,7 +417,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /review <base>      — review changes vs a specific base ref\n  \
                    /review staged      — review only staged changes",
             accepts_args: true,
-            action: SlashAction::Review,
             subcommands: vec![],
             leader_key: None,
         },
@@ -542,7 +431,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /role reset              — clear all role overrides\n\n\
                    Roles: default, smol, slow, plan, commit, review",
             accepts_args: true,
-            action: SlashAction::Role,
             subcommands: vec![
                 ("<name>", "switch to a role's model"),
                 ("<name> <model>", "set a role's model"),
@@ -563,7 +451,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /system reset        — restore the original system prompt\n  \
                    /system file <path>  — load system prompt from a file",
             accepts_args: true,
-            action: SlashAction::SystemPrompt,
             subcommands: vec![
                 ("show", "show the full system prompt"),
                 ("set <text>", "replace the system prompt"),
@@ -582,7 +469,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    into the clankers input. Useful for composing long multi-line prompts.\n\n\
                    Keybindings: Ctrl+O (insert mode), o (normal mode)",
             accepts_args: false,
-            action: SlashAction::Editor,
             subcommands: vec![],
             leader_key: None,
         },
@@ -599,7 +485,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /memory search <query>     — search memories by text/tags\n  \
                    /memory clear              — remove all memories",
             accepts_args: true,
-            action: SlashAction::Memory,
             subcommands: vec![
                 ("add <text>", "add a global memory"),
                 ("add --project <text>", "add a project-scoped memory"),
@@ -624,7 +509,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /peers deny <node-id>        — remove from allowlist\n  \
                    /peers server [on|off]       — start/stop embedded RPC server",
             accepts_args: true,
-            action: SlashAction::Peers,
             subcommands: vec![
                 ("add <node-id> <name>", "add a peer"),
                 ("remove <name-or-id>", "remove a peer"),
@@ -646,7 +530,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /layout right                — all panels on the right\n  \
                    /layout toggle <panel>       — show/hide a panel (todo|files|subagents|peers)",
             accepts_args: true,
-            action: SlashAction::Layout,
             subcommands: vec![
                 ("default", "3-column layout"),
                 ("wide", "wide chat with left sidebar"),
@@ -664,7 +547,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /fork                — fork with auto-generated name\n  \
                    /fork <reason>       — fork with a descriptive name",
             accepts_args: true,
-            action: SlashAction::Fork,
             subcommands: vec![],
             leader_key: None,
         },
@@ -677,7 +559,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /rewind <message-id>   — jump to specific message\n  \
                    /rewind <label>        — jump to a labeled message",
             accepts_args: true,
-            action: SlashAction::Rewind,
             subcommands: vec![],
             leader_key: None,
         },
@@ -689,7 +570,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /branches              — list all branches\n  \
                    /branches --verbose    — show detailed branch tree",
             accepts_args: true,
-            action: SlashAction::Branches,
             subcommands: vec![],
             leader_key: None,
         },
@@ -701,7 +581,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    /switch <branch-name>  — switch by branch name\n  \
                    /switch <message-id>   — switch to specific message",
             accepts_args: true,
-            action: SlashAction::Switch,
             subcommands: vec![],
             leader_key: None,
         },
@@ -712,7 +591,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
                    Usage: /label <name>\n\n\
                    Labels can be used with /rewind and /switch for easy navigation.",
             accepts_args: true,
-            action: SlashAction::Label,
             subcommands: vec![],
             leader_key: None,
         },
@@ -721,7 +599,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             description: "Quit clankers",
             help: "Exit the application.",
             accepts_args: false,
-            action: SlashAction::Quit,
             subcommands: vec![],
             leader_key: None,
         },
@@ -731,7 +608,10 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
 /// Parse a slash command from input text.
 /// Returns `Some((action, args))` if the text starts with `/` and matches a command.
 /// Returns `None` if it's not a slash command or doesn't match.
-pub fn parse_command(input: &str) -> Option<(SlashAction, String)> {
+/// Parse a slash command string into (command_name, args).
+/// Returns `None` if the input doesn't start with `/`.
+/// Unknown commands are returned as-is (prompt template fallback).
+pub fn parse_command(input: &str) -> Option<(String, String)> {
     let input = input.trim();
     if !input.starts_with('/') {
         return None;
@@ -744,15 +624,13 @@ pub fn parse_command(input: &str) -> Option<(SlashAction, String)> {
     };
 
     let commands = builtin_commands();
-    if let Some(c) = commands.iter().find(|c| c.name == cmd_name) {
-        return Some((c.action.clone(), args));
+    if commands.iter().any(|c| c.name == cmd_name) {
+        return Some((cmd_name.to_string(), args));
     }
 
     // Fall back to user-defined prompt templates: /fix, /test, etc.
-    // The template name is the command name without leading slash.
-    // Any remaining text after the command becomes the {{input}} variable.
     if !cmd_name.is_empty() && cmd_name.chars().all(|c| c.is_alphanumeric() || c == '-' || c == '_') {
-        return Some((SlashAction::PromptTemplate(cmd_name.to_string()), args));
+        return Some((cmd_name.to_string(), args));
     }
 
     None
@@ -869,15 +747,15 @@ mod tests {
 
     #[test]
     fn test_parse_command_basic() {
-        let (action, args) = parse_command("/help").unwrap();
-        assert_eq!(action, SlashAction::Help);
+        let (cmd, args) = parse_command("/help").unwrap();
+        assert_eq!(cmd, "help");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_command_with_args() {
-        let (action, args) = parse_command("/model claude-3-5-sonnet").unwrap();
-        assert_eq!(action, SlashAction::Model);
+        let (cmd, args) = parse_command("/model claude-3-5-sonnet").unwrap();
+        assert_eq!(cmd, "model");
         assert_eq!(args, "claude-3-5-sonnet");
     }
 
@@ -886,8 +764,8 @@ mod tests {
         // Unknown commands now fall through to the prompt template system
         let result = parse_command("/nonexistent");
         assert!(result.is_some());
-        let (action, _args) = result.unwrap();
-        assert!(matches!(action, SlashAction::PromptTemplate(ref name) if name == "nonexistent"));
+        let (cmd, _args) = result.unwrap();
+        assert_eq!(cmd, "nonexistent");
     }
 
     #[test]
@@ -928,15 +806,15 @@ mod tests {
 
     #[test]
     fn test_parse_login_no_args() {
-        let (action, args) = parse_command("/login").unwrap();
-        assert_eq!(action, SlashAction::Login);
+        let (cmd, args) = parse_command("/login").unwrap();
+        assert_eq!(cmd, "login");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_login_with_code() {
-        let (action, args) = parse_command("/login abc123#state456").unwrap();
-        assert_eq!(action, SlashAction::Login);
+        let (cmd, args) = parse_command("/login abc123#state456").unwrap();
+        assert_eq!(cmd, "login");
         assert_eq!(args, "abc123#state456");
     }
 
@@ -954,29 +832,29 @@ mod tests {
 
     #[test]
     fn test_parse_worker_no_args() {
-        let (action, args) = parse_command("/worker").unwrap();
-        assert_eq!(action, SlashAction::Worker);
+        let (cmd, args) = parse_command("/worker").unwrap();
+        assert_eq!(cmd, "worker");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_worker_with_name_and_task() {
-        let (action, args) = parse_command("/worker builder fix the tests").unwrap();
-        assert_eq!(action, SlashAction::Worker);
+        let (cmd, args) = parse_command("/worker builder fix the tests").unwrap();
+        assert_eq!(cmd, "worker");
         assert_eq!(args, "builder fix the tests");
     }
 
     #[test]
     fn test_parse_share() {
-        let (action, args) = parse_command("/share").unwrap();
-        assert_eq!(action, SlashAction::Share);
+        let (cmd, args) = parse_command("/share").unwrap();
+        assert_eq!(cmd, "share");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_share_read_only() {
-        let (action, args) = parse_command("/share --read-only").unwrap();
-        assert_eq!(action, SlashAction::Share);
+        let (cmd, args) = parse_command("/share --read-only").unwrap();
+        assert_eq!(cmd, "share");
         assert_eq!(args, "--read-only");
     }
 
@@ -1005,43 +883,43 @@ mod tests {
 
     #[test]
     fn test_parse_system_no_args() {
-        let (action, args) = parse_command("/system").unwrap();
-        assert_eq!(action, SlashAction::SystemPrompt);
+        let (cmd, args) = parse_command("/system").unwrap();
+        assert_eq!(cmd, "system");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_system_show() {
-        let (action, args) = parse_command("/system show").unwrap();
-        assert_eq!(action, SlashAction::SystemPrompt);
+        let (cmd, args) = parse_command("/system show").unwrap();
+        assert_eq!(cmd, "system");
         assert_eq!(args, "show");
     }
 
     #[test]
     fn test_parse_system_set() {
-        let (action, args) = parse_command("/system set You are a helpful assistant.").unwrap();
-        assert_eq!(action, SlashAction::SystemPrompt);
+        let (cmd, args) = parse_command("/system set You are a helpful assistant.").unwrap();
+        assert_eq!(cmd, "system");
         assert_eq!(args, "set You are a helpful assistant.");
     }
 
     #[test]
     fn test_parse_system_append() {
-        let (action, args) = parse_command("/system append Always be concise.").unwrap();
-        assert_eq!(action, SlashAction::SystemPrompt);
+        let (cmd, args) = parse_command("/system append Always be concise.").unwrap();
+        assert_eq!(cmd, "system");
         assert_eq!(args, "append Always be concise.");
     }
 
     #[test]
     fn test_parse_system_reset() {
-        let (action, args) = parse_command("/system reset").unwrap();
-        assert_eq!(action, SlashAction::SystemPrompt);
+        let (cmd, args) = parse_command("/system reset").unwrap();
+        assert_eq!(cmd, "system");
         assert_eq!(args, "reset");
     }
 
     #[test]
     fn test_parse_system_file() {
-        let (action, args) = parse_command("/system file /tmp/prompt.md").unwrap();
-        assert_eq!(action, SlashAction::SystemPrompt);
+        let (cmd, args) = parse_command("/system file /tmp/prompt.md").unwrap();
+        assert_eq!(cmd, "system");
         assert_eq!(args, "file /tmp/prompt.md");
     }
 
@@ -1059,8 +937,8 @@ mod tests {
 
     #[test]
     fn test_parse_editor() {
-        let (action, args) = parse_command("/editor").unwrap();
-        assert_eq!(action, SlashAction::Editor);
+        let (cmd, args) = parse_command("/editor").unwrap();
+        assert_eq!(cmd, "editor");
         assert_eq!(args, "");
     }
 
@@ -1112,43 +990,43 @@ mod tests {
 
     #[test]
     fn test_parse_fork() {
-        let (action, args) = parse_command("/fork").unwrap();
-        assert_eq!(action, SlashAction::Fork);
+        let (cmd, args) = parse_command("/fork").unwrap();
+        assert_eq!(cmd, "fork");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_fork_with_args() {
-        let (action, args) = parse_command("/fork try different approach").unwrap();
-        assert_eq!(action, SlashAction::Fork);
+        let (cmd, args) = parse_command("/fork try different approach").unwrap();
+        assert_eq!(cmd, "fork");
         assert_eq!(args, "try different approach");
     }
 
     #[test]
     fn test_parse_rewind() {
-        let (action, args) = parse_command("/rewind 5").unwrap();
-        assert_eq!(action, SlashAction::Rewind);
+        let (cmd, args) = parse_command("/rewind 5").unwrap();
+        assert_eq!(cmd, "rewind");
         assert_eq!(args, "5");
     }
 
     #[test]
     fn test_parse_branches() {
-        let (action, args) = parse_command("/branches").unwrap();
-        assert_eq!(action, SlashAction::Branches);
+        let (cmd, args) = parse_command("/branches").unwrap();
+        assert_eq!(cmd, "branches");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_switch() {
-        let (action, args) = parse_command("/switch main").unwrap();
-        assert_eq!(action, SlashAction::Switch);
+        let (cmd, args) = parse_command("/switch main").unwrap();
+        assert_eq!(cmd, "switch");
         assert_eq!(args, "main");
     }
 
     #[test]
     fn test_parse_label() {
-        let (action, args) = parse_command("/label checkpoint").unwrap();
-        assert_eq!(action, SlashAction::Label);
+        let (cmd, args) = parse_command("/label checkpoint").unwrap();
+        assert_eq!(cmd, "label");
         assert_eq!(args, "checkpoint");
     }
 
