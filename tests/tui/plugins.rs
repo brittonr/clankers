@@ -103,7 +103,7 @@ fn slash_plugin_unknown_name_shows_not_found() {
 
 #[test]
 fn slash_help_lists_plugin_command() {
-    let mut h = TuiTestHarness::spawn(50, 200);
+    let mut h = TuiTestHarness::spawn(60, 200);
     run_slash(&mut h, "/help");
     h.wait_for_text("Available slash commands", TIMEOUT);
     assert!(h.screen_contains("/plugin"), "Help should list /plugin command.\nScreen:\n{}", h.screen_text());

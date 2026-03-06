@@ -3,6 +3,7 @@
 use super::SlashContext;
 use super::SlashHandler;
 use crate::modes::interactive::AgentCommand;
+use crate::provider::message::MessageId;
 
 pub struct ForkHandler;
 
@@ -219,6 +220,124 @@ impl SlashHandler for CompareHandler {
         }
 
         ctx.app.branch_compare.open(id_a, id_b, &ctx.app.all_blocks.clone());
+    }
+}
+
+pub struct MergeHandler;
+
+impl SlashHandler for MergeHandler {
+    fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
+        let parts: Vec<&str> = args.split_whitespace().collect();
+        if parts.len() != 2 {
+            ctx.app.push_system(
+                "Usage: /merge <source-branch> <target-branch>".to_string(),
+                true,
+            );
+            return;
+        }
+
+        let Some(sm) = ctx.session_manager else {
+            ctx.app.push_system("No active session.".to_string(), true);
+            return;
+        };
+
+        let branches = match sm.find_branches() {
+            Ok(b) => b,
+            Err(e) => {
+                ctx.app.push_system(format!("Failed to list branches: {}", e), true);
+                return;
+            }
+        };
+
+        // Resolve source and target branch names to leaf IDs
+        let source_leaf = branches.iter().find(|b| b.name.eq_ignore_ascii_case(parts[0])).map(|b| b.leaf_id.clone())
+            .or_else(|| sm.resolve_target(parts[0]).ok());
+        let target_leaf = branches.iter().find(|b| b.name.eq_ignore_ascii_case(parts[1])).map(|b| b.leaf_id.clone())
+            .or_else(|| sm.resolve_target(parts[1]).ok());
+
+        let Some(source) = source_leaf else {
+            let available = branches.iter().map(|b| b.name.clone()).collect::<Vec<_>>().join(", ");
+            ctx.app.push_system(format!("Source branch '{}' not found. Available: {}", parts[0], available), true);
+            return;
+        };
+        let Some(target) = target_leaf else {
+            let available = branches.iter().map(|b| b.name.clone()).collect::<Vec<_>>().join(", ");
+            ctx.app.push_system(format!("Target branch '{}' not found. Available: {}", parts[1], available), true);
+            return;
+        };
+
+        match sm.merge_branch(source, target) {
+            Ok((count, _new_leaf)) => {
+                // Rebuild agent context from the merged branch
+                if let Ok(context) = sm.build_context() {
+                    let msg_count = context.len();
+                    let _ = ctx.cmd_tx.send(AgentCommand::ClearHistory);
+                    let _ = ctx.cmd_tx.send(AgentCommand::SeedMessages(context));
+                    ctx.app.push_system(
+                        format!("Merged {} messages from \"{}\" into \"{}\" ({} messages in context)", count, parts[0], parts[1], msg_count),
+                        false,
+                    );
+                }
+            }
+            Err(e) => ctx.app.push_system(format!("Merge failed: {}", e), true),
+        }
+    }
+}
+
+pub struct CherryPickHandler;
+
+impl SlashHandler for CherryPickHandler {
+    fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
+        let parts: Vec<&str> = args.split_whitespace().collect();
+        if parts.len() < 2 {
+            ctx.app.push_system(
+                "Usage: /cherry-pick <message-id> <target-branch> [--with-children]".to_string(),
+                true,
+            );
+            return;
+        }
+
+        let Some(sm) = ctx.session_manager else {
+            ctx.app.push_system("No active session.".to_string(), true);
+            return;
+        };
+
+        let with_children = parts.contains(&"--with-children");
+        let msg_id = MessageId::new(parts[0]);
+
+        // Resolve target branch
+        let branches = match sm.find_branches() {
+            Ok(b) => b,
+            Err(e) => {
+                ctx.app.push_system(format!("Failed to list branches: {}", e), true);
+                return;
+            }
+        };
+
+        let target_leaf = branches.iter().find(|b| b.name.eq_ignore_ascii_case(parts[1])).map(|b| b.leaf_id.clone())
+            .or_else(|| sm.resolve_target(parts[1]).ok());
+
+        let Some(target) = target_leaf else {
+            let available = branches.iter().map(|b| b.name.clone()).collect::<Vec<_>>().join(", ");
+            ctx.app.push_system(format!("Target branch '{}' not found. Available: {}", parts[1], available), true);
+            return;
+        };
+
+        match sm.cherry_pick(msg_id, target, with_children) {
+            Ok((count, _new_leaf)) => {
+                if let Ok(context) = sm.build_context() {
+                    let msg_count = context.len();
+                    let _ = ctx.cmd_tx.send(AgentCommand::ClearHistory);
+                    let _ = ctx.cmd_tx.send(AgentCommand::SeedMessages(context));
+                    let suffix = if with_children { " (with children)" } else { "" };
+                    ctx.app.push_system(
+                        format!("Cherry-picked {} message(s){} into \"{}\" ({} messages in context)", count, suffix, parts[1], msg_count),
+                        false,
+                    );
+                }
+            }
+            Err(e) => ctx.app.push_system(format!("Cherry-pick failed: {}", e), true),
+        }
     }
 }
 

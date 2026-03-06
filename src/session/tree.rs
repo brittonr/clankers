@@ -196,6 +196,31 @@ impl SessionTree {
         last_common
     }
 
+    /// Find messages unique to `source_leaf` that are NOT in the `target_leaf` branch.
+    /// Returns messages in root→leaf order (oldest first).
+    pub fn find_unique_messages(
+        &self,
+        source_leaf: &MessageId,
+        target_leaf: &MessageId,
+    ) -> Vec<&MessageEntry> {
+        let source_path = self.walk_branch(source_leaf);
+        let target_path = self.walk_branch(target_leaf);
+
+        if source_path.is_empty() {
+            return vec![];
+        }
+
+        // Build set of target message IDs for O(1) lookup
+        let target_ids: std::collections::HashSet<&MessageId> =
+            target_path.iter().map(|m| &m.id).collect();
+
+        // Return source messages not in target (preserves order)
+        source_path
+            .into_iter()
+            .filter(|m| !target_ids.contains(&m.id))
+            .collect()
+    }
+
     /// Find messages unique to a branch (after divergence from nearest sibling).
     /// Walks from leaf to root, finding where this branch diverged from others.
     pub fn find_branch_messages(&self, leaf_id: &MessageId) -> Vec<&MessageEntry> {
@@ -753,5 +778,95 @@ mod tests {
         let result = tree.find_branch_messages(&id);
         assert_eq!(result.len(), 1);
         assert_eq!(result[0].id, id);
+    }
+
+    #[test]
+    fn test_find_unique_messages_empty_source() {
+        let tree = SessionTree::build(vec![]);
+        let result = tree.find_unique_messages(&MessageId::new("a"), &MessageId::new("b"));
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_find_unique_messages_branching() {
+        let root = MessageId::new("root");
+        let a1 = MessageId::new("a1");
+        let a2 = MessageId::new("a2");
+        let b1 = MessageId::new("b1");
+
+        let entries = vec![
+            make_message(root.clone(), None, "Root"),
+            make_message(a1.clone(), Some(root.clone()), "A1"),
+            make_message(a2.clone(), Some(a1.clone()), "A2"),
+            make_message(b1.clone(), Some(root.clone()), "B1"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        // Unique messages in branch A (not in B): a1, a2
+        let unique = tree.find_unique_messages(&a2, &b1);
+        assert_eq!(unique.len(), 2);
+        assert_eq!(unique[0].id, a1);
+        assert_eq!(unique[1].id, a2);
+
+        // Unique messages in branch B (not in A): b1
+        let unique = tree.find_unique_messages(&b1, &a2);
+        assert_eq!(unique.len(), 1);
+        assert_eq!(unique[0].id, b1);
+    }
+
+    #[test]
+    fn test_find_unique_messages_ancestor() {
+        // When source is an ancestor of target, there are no unique messages
+        let id1 = MessageId::new("msg-1");
+        let id2 = MessageId::new("msg-2");
+        let id3 = MessageId::new("msg-3");
+
+        let entries = vec![
+            make_message(id1.clone(), None, "First"),
+            make_message(id2.clone(), Some(id1.clone()), "Second"),
+            make_message(id3.clone(), Some(id2.clone()), "Third"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        // id1 is ancestor of id3 — all messages in id1's branch are shared
+        let unique = tree.find_unique_messages(&id1, &id3);
+        assert!(unique.is_empty());
+    }
+
+    #[test]
+    fn test_find_unique_messages_same_leaf() {
+        let id = MessageId::new("msg");
+        let entries = vec![make_message(id.clone(), None, "Msg")];
+        let tree = SessionTree::build(entries);
+
+        let unique = tree.find_unique_messages(&id, &id);
+        assert!(unique.is_empty());
+    }
+
+    #[test]
+    fn test_find_unique_messages_deep_branches() {
+        let root = MessageId::new("root");
+        let shared = MessageId::new("shared");
+        let a1 = MessageId::new("a1");
+        let a2 = MessageId::new("a2");
+        let a3 = MessageId::new("a3");
+        let b1 = MessageId::new("b1");
+
+        let entries = vec![
+            make_message(root.clone(), None, "Root"),
+            make_message(shared.clone(), Some(root.clone()), "Shared"),
+            make_message(a1.clone(), Some(shared.clone()), "A1"),
+            make_message(a2.clone(), Some(a1.clone()), "A2"),
+            make_message(a3.clone(), Some(a2.clone()), "A3"),
+            make_message(b1.clone(), Some(shared.clone()), "B1"),
+        ];
+        let tree = SessionTree::build(entries);
+
+        // Unique to A: a1, a2, a3 (root and shared are common)
+        let unique = tree.find_unique_messages(&a3, &b1);
+        assert_eq!(unique.len(), 3);
+        assert_eq!(unique[0].id, a1);
+        assert_eq!(unique[1].id, a2);
+        assert_eq!(unique[2].id, a3);
     }
 }

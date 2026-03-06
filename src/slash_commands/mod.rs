@@ -65,6 +65,8 @@ pub fn dispatch(
         "switch" => handlers::branching::SwitchHandler.handle(args, ctx),
         "compare" => handlers::branching::CompareHandler.handle(args, ctx),
         "label" => handlers::branching::LabelHandler.handle(args, ctx),
+        "merge" => handlers::branching::MergeHandler.handle(args, ctx),
+        "cherry-pick" => handlers::branching::CherryPickHandler.handle(args, ctx),
         // User-defined prompt templates: any name not matched above
         _ => {
             handlers::prompt_template::PromptTemplateHandler {
@@ -603,6 +605,29 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
             help: "Add a human-readable label to the current message.\n\n\
                    Usage: /label <name>\n\n\
                    Labels can be used with /rewind and /switch for easy navigation.",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        },
+        SlashCommand {
+            name: "merge",
+            description: "Merge one branch into another",
+            help: "Copy all unique messages from one branch into another.\n\n\
+                   Usage: /merge <source-branch> <target-branch>\n\n\
+                   Finds messages unique to the source branch and appends them\n  \
+                   to the target branch's leaf. Switches to the target branch\n  \
+                   after merging. Use /branches to see available branch names.",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        },
+        SlashCommand {
+            name: "cherry-pick",
+            description: "Copy a message into another branch",
+            help: "Copy a single message (and optionally its children) into a target branch.\n\n\
+                   Usage: /cherry-pick <message-id> <target-branch> [--with-children]\n\n\
+                   The message is copied with a new ID and appended to the target branch's\n  \
+                   leaf. Use --with-children to copy the entire subtree.",
             accepts_args: true,
             subcommands: vec![],
             leader_key: None,

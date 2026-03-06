@@ -112,18 +112,19 @@
 - [x] Keybindings: ←/→ switch pane, j/k scroll, s/Enter switch to branch, q close
 - [x] 8 unit tests (simple/deep/asymmetric forks, focus, scroll, close)
 
-## Phase 9: Branch merge (full merge)
+## Phase 9: Branch merge (full merge) ✅
 
-- [ ] Implement `Session::find_unique_messages(source_leaf, target_leaf)` helper
-- [ ] Implement `Session::merge_branch(source, target)` — full merge strategy
-  - [ ] Find unique messages in source branch
-  - [ ] Copy messages with new MessageIds
-  - [ ] Append to target branch as children of target leaf
-  - [ ] Emit merge metadata (CustomEntry or BranchEntry)
-  - [ ] Update `current_head` to new target leaf
-- [ ] Implement `/merge <source> <target>` command
-- [ ] Display merge confirmation with message count
-- [ ] Unit tests: merge messages, verify parent linkage, check metadata
+- [x] Implement `SessionTree::find_unique_messages(source_leaf, target_leaf)` helper
+- [x] Implement `SessionManager::merge_branch(source, target)` — full merge strategy
+  - [x] Find unique messages in source branch
+  - [x] Copy messages with new MessageIds (via `set_message_id` helper)
+  - [x] Append to target branch as children of target leaf
+  - [x] Emit merge metadata (CustomEntry with kind "merge")
+  - [x] Update `active_leaf_id` to new target leaf
+- [x] Implement `SessionManager::merge_selective(source, target, selected_ids)` — selective merge
+- [x] Implement `/merge <source> <target>` slash command
+- [x] Display merge confirmation with message count
+- [x] Unit tests: 13 new tests for merge, selective merge, cherry-pick, find_unique_messages
 
 ## Phase 10: Interactive merge
 
@@ -135,13 +136,13 @@
 - [ ] Implement selective merge logic (copy only selected messages)
 - [ ] Integration test: select messages, merge, verify result
 
-## Phase 11: Cherry-pick
+## Phase 11: Cherry-pick ✅
 
-- [ ] Implement `Session::cherry_pick(message_id, target_leaf, with_children)` helper
-- [ ] Implement `/cherry-pick <message-id> <target> [--with-children]` command
-- [ ] Copy single message (or subtree) to target branch
-- [ ] Emit cherry-pick metadata
-- [ ] Unit tests: cherry-pick single message, with children
+- [x] Implement `SessionManager::cherry_pick(message_id, target_leaf, with_children)` helper
+- [x] Implement `/cherry-pick <message-id> <target> [--with-children]` slash command
+- [x] Copy single message (or subtree) to target branch via DFS `collect_subtree`
+- [x] Emit cherry-pick metadata (CustomEntry with kind "cherry-pick")
+- [x] Unit tests: cherry-pick single message, with children, nonexistent message, metadata
 
 ## Phase 12: Keyboard shortcuts and polish
 

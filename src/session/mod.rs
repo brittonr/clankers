@@ -26,6 +26,19 @@ pub struct BranchInfo {
     pub is_active: bool,
 }
 
+/// Set the internal message ID on any AgentMessage variant.
+fn set_message_id(msg: &mut AgentMessage, new_id: MessageId) {
+    match msg {
+        AgentMessage::User(m) => m.id = new_id,
+        AgentMessage::Assistant(m) => m.id = new_id,
+        AgentMessage::ToolResult(m) => m.id = new_id,
+        AgentMessage::BashExecution(m) => m.id = new_id,
+        AgentMessage::Custom(m) => m.id = new_id,
+        AgentMessage::BranchSummary(m) => m.id = new_id,
+        AgentMessage::CompactionSummary(m) => m.id = new_id,
+    }
+}
+
 pub struct SessionManager {
     session_id: String,
     file_path: PathBuf,
@@ -368,6 +381,264 @@ impl SessionManager {
         Err(crate::error::Error::Session {
             message: format!("Could not resolve target: {}", target),
         })
+    }
+
+    /// Merge messages from one branch into another.
+    ///
+    /// Copies messages unique to `source_leaf` (not shared with `target_leaf`)
+    /// and appends them as children of the target branch's leaf. Returns the
+    /// number of messages merged and the new leaf ID on the target branch.
+    pub fn merge_branch(
+        &mut self,
+        source_leaf: MessageId,
+        target_leaf: MessageId,
+    ) -> Result<(usize, MessageId)> {
+        if source_leaf == target_leaf {
+            return Err(crate::error::Error::Session {
+                message: "Cannot merge a branch into itself".into(),
+            });
+        }
+
+        let tree = self.load_tree()?;
+
+        // Verify both leaves exist
+        tree.find_message_public(&source_leaf).ok_or_else(|| crate::error::Error::Session {
+            message: format!("Source branch leaf not found: {}", source_leaf.0),
+        })?;
+        tree.find_message_public(&target_leaf).ok_or_else(|| crate::error::Error::Session {
+            message: format!("Target branch leaf not found: {}", target_leaf.0),
+        })?;
+
+        // Find messages unique to source (not shared with target)
+        let unique = tree.find_unique_messages(&source_leaf, &target_leaf);
+        if unique.is_empty() {
+            return Err(crate::error::Error::Session {
+                message: "No new messages to merge — source branch is already merged or is an ancestor of target".into(),
+            });
+        }
+
+        let merged_count = unique.len();
+        let source_ids: Vec<MessageId> = unique.iter().map(|m| m.id.clone()).collect();
+
+        // Copy messages with new IDs, chaining parent_id from target leaf
+        let mut parent = target_leaf.clone();
+        let mut new_leaf = parent.clone();
+        for msg in &unique {
+            let new_id = MessageId::generate();
+            let mut cloned_message = msg.message.clone();
+            set_message_id(&mut cloned_message, new_id.clone());
+            let entry = SessionEntry::Message(MessageEntry {
+                id: new_id.clone(),
+                parent_id: Some(parent.clone()),
+                message: cloned_message,
+                timestamp: Utc::now(),
+            });
+            store::append_entry(&self.file_path, &entry)?;
+            self.persisted_ids.insert(new_id.clone());
+            parent = new_id.clone();
+            new_leaf = new_id;
+        }
+
+        // Record merge metadata as a CustomEntry
+        let merge_entry = SessionEntry::Custom(CustomEntry {
+            id: MessageId::generate(),
+            kind: "merge".to_string(),
+            data: serde_json::json!({
+                "source_leaf": source_leaf.0,
+                "target_leaf": target_leaf.0,
+                "merged_message_ids": source_ids.iter().map(|id| &id.0).collect::<Vec<_>>(),
+                "merged_count": merged_count,
+                "strategy": "full",
+            }),
+            timestamp: Utc::now(),
+        });
+        store::append_entry(&self.file_path, &merge_entry)?;
+
+        // Switch to the target branch's new leaf
+        self.active_leaf_id = Some(new_leaf.clone());
+
+        Ok((merged_count, new_leaf))
+    }
+
+    /// Merge only selected messages from one branch into another.
+    /// `selected_ids` specifies which source message IDs to copy.
+    /// Messages are copied in their original order (root→leaf).
+    pub fn merge_selective(
+        &mut self,
+        source_leaf: MessageId,
+        target_leaf: MessageId,
+        selected_ids: &[MessageId],
+    ) -> Result<(usize, MessageId)> {
+        if source_leaf == target_leaf {
+            return Err(crate::error::Error::Session {
+                message: "Cannot merge a branch into itself".into(),
+            });
+        }
+        if selected_ids.is_empty() {
+            return Err(crate::error::Error::Session {
+                message: "No messages selected for merge".into(),
+            });
+        }
+
+        let tree = self.load_tree()?;
+
+        // Verify both leaves exist
+        tree.find_message_public(&source_leaf).ok_or_else(|| crate::error::Error::Session {
+            message: format!("Source branch leaf not found: {}", source_leaf.0),
+        })?;
+        tree.find_message_public(&target_leaf).ok_or_else(|| crate::error::Error::Session {
+            message: format!("Target branch leaf not found: {}", target_leaf.0),
+        })?;
+
+        // Get unique messages and filter to selected ones (preserving order)
+        let unique = tree.find_unique_messages(&source_leaf, &target_leaf);
+        let selected_set: std::collections::HashSet<&MessageId> = selected_ids.iter().collect();
+        let to_merge: Vec<_> = unique.into_iter().filter(|m| selected_set.contains(&m.id)).collect();
+
+        if to_merge.is_empty() {
+            return Err(crate::error::Error::Session {
+                message: "None of the selected messages are unique to the source branch".into(),
+            });
+        }
+
+        let merged_count = to_merge.len();
+        let source_ids: Vec<MessageId> = to_merge.iter().map(|m| m.id.clone()).collect();
+
+        // Copy selected messages with new IDs
+        let mut parent = target_leaf.clone();
+        let mut new_leaf = parent.clone();
+        for msg in &to_merge {
+            let new_id = MessageId::generate();
+            let mut cloned_message = msg.message.clone();
+            set_message_id(&mut cloned_message, new_id.clone());
+            let entry = SessionEntry::Message(MessageEntry {
+                id: new_id.clone(),
+                parent_id: Some(parent.clone()),
+                message: cloned_message,
+                timestamp: Utc::now(),
+            });
+            store::append_entry(&self.file_path, &entry)?;
+            self.persisted_ids.insert(new_id.clone());
+            parent = new_id.clone();
+            new_leaf = new_id;
+        }
+
+        // Record merge metadata
+        let merge_entry = SessionEntry::Custom(CustomEntry {
+            id: MessageId::generate(),
+            kind: "merge".to_string(),
+            data: serde_json::json!({
+                "source_leaf": source_leaf.0,
+                "target_leaf": target_leaf.0,
+                "merged_message_ids": source_ids.iter().map(|id| &id.0).collect::<Vec<_>>(),
+                "merged_count": merged_count,
+                "strategy": "selective",
+            }),
+            timestamp: Utc::now(),
+        });
+        store::append_entry(&self.file_path, &merge_entry)?;
+
+        self.active_leaf_id = Some(new_leaf.clone());
+        Ok((merged_count, new_leaf))
+    }
+
+    /// Cherry-pick a single message (and optionally its children) into a target branch.
+    /// Returns the number of messages copied and the new leaf ID.
+    pub fn cherry_pick(
+        &mut self,
+        message_id: MessageId,
+        target_leaf: MessageId,
+        with_children: bool,
+    ) -> Result<(usize, MessageId)> {
+        let tree = self.load_tree()?;
+
+        // Verify both exist
+        tree.find_message_public(&message_id).ok_or_else(|| crate::error::Error::Session {
+            message: format!("Message not found: {}", message_id.0),
+        })?;
+        tree.find_message_public(&target_leaf).ok_or_else(|| crate::error::Error::Session {
+            message: format!("Target branch leaf not found: {}", target_leaf.0),
+        })?;
+
+        // Collect messages to copy
+        let messages_to_copy = if with_children {
+            // DFS from message_id to collect it and all descendants
+            let mut collected = Vec::new();
+            Self::collect_subtree(&tree, &message_id, &mut collected);
+            collected
+        } else {
+            let msg = tree.find_message_public(&message_id).expect("verified above");
+            vec![msg.clone()]
+        };
+
+        if messages_to_copy.is_empty() {
+            return Err(crate::error::Error::Session {
+                message: "No messages to cherry-pick".into(),
+            });
+        }
+
+        let count = messages_to_copy.len();
+
+        // Copy with new IDs, maintaining relative parent structure
+        // For with_children, we need to map old IDs → new IDs
+        let mut id_map: std::collections::HashMap<MessageId, MessageId> = std::collections::HashMap::new();
+        let mut new_leaf = target_leaf.clone();
+
+        for msg in &messages_to_copy {
+            let new_id = MessageId::generate();
+            id_map.insert(msg.id.clone(), new_id.clone());
+
+            // Determine parent: if this message's original parent was also copied,
+            // use the new ID; otherwise chain from target_leaf
+            let new_parent = if let Some(orig_parent) = &msg.parent_id
+                && let Some(mapped) = id_map.get(orig_parent)
+            {
+                mapped.clone()
+            } else {
+                target_leaf.clone()
+            };
+
+            let mut cloned_message = msg.message.clone();
+            set_message_id(&mut cloned_message, new_id.clone());
+
+            let entry = SessionEntry::Message(MessageEntry {
+                id: new_id.clone(),
+                parent_id: Some(new_parent),
+                message: cloned_message,
+                timestamp: Utc::now(),
+            });
+            store::append_entry(&self.file_path, &entry)?;
+            self.persisted_ids.insert(new_id.clone());
+            new_leaf = new_id;
+        }
+
+        // Record cherry-pick metadata
+        let cp_entry = SessionEntry::Custom(CustomEntry {
+            id: MessageId::generate(),
+            kind: "cherry-pick".to_string(),
+            data: serde_json::json!({
+                "source_message_id": message_id.0,
+                "target_leaf": target_leaf.0,
+                "with_children": with_children,
+                "copied_count": count,
+            }),
+            timestamp: Utc::now(),
+        });
+        store::append_entry(&self.file_path, &cp_entry)?;
+
+        self.active_leaf_id = Some(new_leaf.clone());
+        Ok((count, new_leaf))
+    }
+
+    /// Collect a message and all its descendants via DFS
+    fn collect_subtree(tree: &SessionTree, root_id: &MessageId, out: &mut Vec<MessageEntry>) {
+        if let Some(msg) = tree.find_message_public(root_id) {
+            out.push(msg.clone());
+            let children = tree.get_children(&Some(root_id.clone()));
+            for child in children {
+                Self::collect_subtree(tree, &child.id, out);
+            }
+        }
     }
 
     /// Record a label for the current active leaf
@@ -1050,5 +1321,353 @@ mod tests {
         // One of the branches should have the name from the branch entry
         let has_named_branch = branches.iter().any(|b| b.name == "alternate-approach");
         assert!(has_named_branch);
+    }
+
+    #[test]
+    fn test_merge_branch_full() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
+            AgentMessage::User(UserMessage {
+                id: id.clone(),
+                content: vec![Content::Text { text: text.to_string() }],
+                timestamp: Utc::now(),
+            })
+        };
+
+        let root = MessageId::generate();
+        let a1 = MessageId::generate();
+        let a2 = MessageId::generate();
+        let b1 = MessageId::generate();
+
+        mgr.append_message(make_msg(&root, "Root"), None).unwrap();
+        mgr.append_message(make_msg(&a1, "Branch A msg 1"), Some(root.clone())).unwrap();
+        mgr.append_message(make_msg(&a2, "Branch A msg 2"), Some(a1.clone())).unwrap();
+        mgr.append_message(make_msg(&b1, "Branch B msg 1"), Some(root.clone())).unwrap();
+
+        // Merge branch A into branch B
+        let (count, new_leaf) = mgr.merge_branch(a2.clone(), b1.clone()).unwrap();
+        assert_eq!(count, 2); // a1 and a2 are unique to branch A
+
+        // Active head should be on the merged branch
+        assert_eq!(mgr.active_leaf_id(), Some(&new_leaf));
+
+        // Context should contain: root -> b1 -> a1' -> a2'
+        let context = mgr.build_context().unwrap();
+        assert_eq!(context.len(), 4);
+    }
+
+    #[test]
+    fn test_merge_branch_same_branch_error() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let id = MessageId::generate();
+        let msg = AgentMessage::User(UserMessage {
+            id: id.clone(),
+            content: vec![Content::Text { text: "msg".to_string() }],
+            timestamp: Utc::now(),
+        });
+        mgr.append_message(msg, None).unwrap();
+
+        let result = mgr.merge_branch(id.clone(), id);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("itself"));
+    }
+
+    #[test]
+    fn test_merge_branch_no_unique_messages() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
+            AgentMessage::User(UserMessage {
+                id: id.clone(),
+                content: vec![Content::Text { text: text.to_string() }],
+                timestamp: Utc::now(),
+            })
+        };
+
+        // Linear chain: root -> child
+        let root = MessageId::generate();
+        let child = MessageId::generate();
+        mgr.append_message(make_msg(&root, "Root"), None).unwrap();
+        mgr.append_message(make_msg(&child, "Child"), Some(root.clone())).unwrap();
+
+        // Merging ancestor into descendant — no unique messages
+        let result = mgr.merge_branch(root, child);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No new messages"));
+    }
+
+    #[test]
+    fn test_merge_records_metadata() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
+            AgentMessage::User(UserMessage {
+                id: id.clone(),
+                content: vec![Content::Text { text: text.to_string() }],
+                timestamp: Utc::now(),
+            })
+        };
+
+        let root = MessageId::generate();
+        let a1 = MessageId::generate();
+        let b1 = MessageId::generate();
+
+        mgr.append_message(make_msg(&root, "Root"), None).unwrap();
+        mgr.append_message(make_msg(&a1, "A"), Some(root.clone())).unwrap();
+        mgr.append_message(make_msg(&b1, "B"), Some(root.clone())).unwrap();
+
+        mgr.merge_branch(a1.clone(), b1.clone()).unwrap();
+
+        // Check that a merge Custom entry was written
+        let entries = store::read_entries(mgr.file_path()).unwrap();
+        let merge_entry = entries.iter().find(|e| {
+            if let SessionEntry::Custom(c) = e { c.kind == "merge" } else { false }
+        });
+        assert!(merge_entry.is_some());
+        if let SessionEntry::Custom(c) = merge_entry.unwrap() {
+            assert_eq!(c.data["strategy"], "full");
+            assert_eq!(c.data["merged_count"], 1);
+        }
+    }
+
+    #[test]
+    fn test_merge_branch_nonexistent_source() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let id = MessageId::generate();
+        let msg = AgentMessage::User(UserMessage {
+            id: id.clone(),
+            content: vec![Content::Text { text: "msg".to_string() }],
+            timestamp: Utc::now(),
+        });
+        mgr.append_message(msg, None).unwrap();
+
+        let result = mgr.merge_branch(MessageId::new("nonexistent"), id);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Source"));
+    }
+
+    #[test]
+    fn test_merge_selective() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
+            AgentMessage::User(UserMessage {
+                id: id.clone(),
+                content: vec![Content::Text { text: text.to_string() }],
+                timestamp: Utc::now(),
+            })
+        };
+
+        let root = MessageId::generate();
+        let a1 = MessageId::generate();
+        let a2 = MessageId::generate();
+        let a3 = MessageId::generate();
+        let b1 = MessageId::generate();
+
+        mgr.append_message(make_msg(&root, "Root"), None).unwrap();
+        mgr.append_message(make_msg(&a1, "A1"), Some(root.clone())).unwrap();
+        mgr.append_message(make_msg(&a2, "A2"), Some(a1.clone())).unwrap();
+        mgr.append_message(make_msg(&a3, "A3"), Some(a2.clone())).unwrap();
+        mgr.append_message(make_msg(&b1, "B1"), Some(root.clone())).unwrap();
+
+        // Selectively merge only a1 and a3 (skip a2)
+        let (count, _new_leaf) = mgr.merge_selective(a3.clone(), b1.clone(), &[a1.clone(), a3.clone()]).unwrap();
+        assert_eq!(count, 2);
+
+        // Context: root -> b1 -> a1' -> a3'
+        let context = mgr.build_context().unwrap();
+        assert_eq!(context.len(), 4);
+    }
+
+    #[test]
+    fn test_merge_selective_empty_selection() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
+            AgentMessage::User(UserMessage {
+                id: id.clone(),
+                content: vec![Content::Text { text: text.to_string() }],
+                timestamp: Utc::now(),
+            })
+        };
+
+        let root = MessageId::generate();
+        let a1 = MessageId::generate();
+        let b1 = MessageId::generate();
+
+        mgr.append_message(make_msg(&root, "Root"), None).unwrap();
+        mgr.append_message(make_msg(&a1, "A"), Some(root.clone())).unwrap();
+        mgr.append_message(make_msg(&b1, "B"), Some(root.clone())).unwrap();
+
+        let result = mgr.merge_selective(a1, b1, &[]);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("No messages selected"));
+    }
+
+    #[test]
+    fn test_cherry_pick_single() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
+            AgentMessage::User(UserMessage {
+                id: id.clone(),
+                content: vec![Content::Text { text: text.to_string() }],
+                timestamp: Utc::now(),
+            })
+        };
+
+        let root = MessageId::generate();
+        let a1 = MessageId::generate();
+        let b1 = MessageId::generate();
+
+        mgr.append_message(make_msg(&root, "Root"), None).unwrap();
+        mgr.append_message(make_msg(&a1, "Branch A"), Some(root.clone())).unwrap();
+        mgr.append_message(make_msg(&b1, "Branch B"), Some(root.clone())).unwrap();
+
+        // Cherry-pick a1 into branch B
+        let (count, new_leaf) = mgr.cherry_pick(a1.clone(), b1.clone(), false).unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(mgr.active_leaf_id(), Some(&new_leaf));
+
+        // Context: root -> b1 -> a1'
+        let context = mgr.build_context().unwrap();
+        assert_eq!(context.len(), 3);
+    }
+
+    #[test]
+    fn test_cherry_pick_with_children() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
+            AgentMessage::User(UserMessage {
+                id: id.clone(),
+                content: vec![Content::Text { text: text.to_string() }],
+                timestamp: Utc::now(),
+            })
+        };
+
+        let root = MessageId::generate();
+        let a1 = MessageId::generate();
+        let a2 = MessageId::generate();
+        let b1 = MessageId::generate();
+
+        mgr.append_message(make_msg(&root, "Root"), None).unwrap();
+        mgr.append_message(make_msg(&a1, "A1"), Some(root.clone())).unwrap();
+        mgr.append_message(make_msg(&a2, "A2"), Some(a1.clone())).unwrap();
+        mgr.append_message(make_msg(&b1, "B1"), Some(root.clone())).unwrap();
+
+        // Cherry-pick a1 with children into branch B
+        let (count, _new_leaf) = mgr.cherry_pick(a1.clone(), b1.clone(), true).unwrap();
+        assert_eq!(count, 2); // a1 + a2
+
+        // Context: root -> b1 -> a1' -> a2'
+        let context = mgr.build_context().unwrap();
+        assert_eq!(context.len(), 4);
+    }
+
+    #[test]
+    fn test_cherry_pick_nonexistent_message() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let id = MessageId::generate();
+        let msg = AgentMessage::User(UserMessage {
+            id: id.clone(),
+            content: vec![Content::Text { text: "msg".to_string() }],
+            timestamp: Utc::now(),
+        });
+        mgr.append_message(msg, None).unwrap();
+
+        let result = mgr.cherry_pick(MessageId::new("fake"), id, false);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("Message not found"));
+    }
+
+    #[test]
+    fn test_cherry_pick_records_metadata() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
+            AgentMessage::User(UserMessage {
+                id: id.clone(),
+                content: vec![Content::Text { text: text.to_string() }],
+                timestamp: Utc::now(),
+            })
+        };
+
+        let root = MessageId::generate();
+        let a1 = MessageId::generate();
+        let b1 = MessageId::generate();
+
+        mgr.append_message(make_msg(&root, "Root"), None).unwrap();
+        mgr.append_message(make_msg(&a1, "A1"), Some(root.clone())).unwrap();
+        mgr.append_message(make_msg(&b1, "B1"), Some(root.clone())).unwrap();
+
+        mgr.cherry_pick(a1.clone(), b1.clone(), false).unwrap();
+
+        let entries = store::read_entries(mgr.file_path()).unwrap();
+        let cp_entry = entries.iter().find(|e| {
+            if let SessionEntry::Custom(c) = e { c.kind == "cherry-pick" } else { false }
+        });
+        assert!(cp_entry.is_some());
+        if let SessionEntry::Custom(c) = cp_entry.unwrap() {
+            assert_eq!(c.data["with_children"], false);
+            assert_eq!(c.data["copied_count"], 1);
+        }
+    }
+
+    #[test]
+    fn test_merge_preserves_message_content() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+        let make_msg = |id: &MessageId, text: &str| -> AgentMessage {
+            AgentMessage::User(UserMessage {
+                id: id.clone(),
+                content: vec![Content::Text { text: text.to_string() }],
+                timestamp: Utc::now(),
+            })
+        };
+
+        let root = MessageId::generate();
+        let a1 = MessageId::generate();
+        let b1 = MessageId::generate();
+
+        mgr.append_message(make_msg(&root, "Root"), None).unwrap();
+        mgr.append_message(make_msg(&a1, "Unique content from A"), Some(root.clone())).unwrap();
+        mgr.append_message(make_msg(&b1, "B1"), Some(root.clone())).unwrap();
+
+        mgr.merge_branch(a1.clone(), b1.clone()).unwrap();
+
+        // The merged message should have new ID but same content
+        let context = mgr.build_context().unwrap();
+        assert_eq!(context.len(), 3); // root -> b1 -> a1'
+
+        // Last message should contain the original text
+        let last_msg = &context[2];
+        if let AgentMessage::User(u) = last_msg {
+            if let Content::Text { text } = &u.content[0] {
+                assert_eq!(text, "Unique content from A");
+            } else {
+                panic!("Expected text content");
+            }
+            // ID should be different from original
+            assert_ne!(u.id, a1);
+        } else {
+            panic!("Expected user message");
+        }
     }
 }
