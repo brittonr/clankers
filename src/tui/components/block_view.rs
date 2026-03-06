@@ -28,7 +28,7 @@ use crate::tui::selection::TextSelection;
 use crate::tui::theme::Theme;
 
 /// Branch metadata passed to the block renderer.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct BlockBranchInfo {
     /// Sibling index among blocks sharing the same parent (0-based)
     pub sibling_index: usize,
@@ -38,6 +38,9 @@ pub struct BlockBranchInfo {
     pub children_count: usize,
     /// Whether to show block IDs in the header
     pub show_id: bool,
+    /// Names/previews of the child branches diverging from this block.
+    /// Empty if not a branch point. Each entry is the first prompt of that child branch.
+    pub child_branch_previews: Vec<(usize, String, bool)>, // (block_id, preview, is_active)
 }
 
 /// Maximum lines of tool output to show while streaming (tail window)
@@ -101,7 +104,7 @@ fn render_conversation_block<'a>(
 
     // ── Top border ──────────────────────────────────
     // Build optional branch indicator like " ◂ 2/3 ▸"
-    let branch_label = match branch_info {
+    let branch_label = match &branch_info {
         Some(info) if info.sibling_total > 1 => {
             format!(" ◂ {}/{} ▸", info.sibling_index + 1, info.sibling_total)
         }
@@ -110,7 +113,7 @@ fn render_conversation_block<'a>(
     let branch_display_len = branch_label.len();
 
     // Optional block ID like " #5"
-    let id_label = match branch_info {
+    let id_label = match &branch_info {
         Some(info) if info.show_id => format!(" #{}", block.id),
         _ => String::new(),
     };
@@ -168,9 +171,10 @@ fn render_conversation_block<'a>(
     }
 
     // ── Branch point indicator (above bottom border) ─
-    if let Some(info) = branch_info {
+    if let Some(info) = &branch_info {
         if info.children_count > 1 {
-            let label = format!("├─ {} branches diverge", info.children_count);
+            // Header line
+            let label = format!("├─ {} branches diverge ─", info.children_count);
             lines.push(Line::from(vec![
                 Span::styled("│ ", border_style),
                 Span::styled(
@@ -178,6 +182,29 @@ fn render_conversation_block<'a>(
                     Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM),
                 ),
             ]));
+            // Show each child branch with a preview of its prompt
+            for (i, (child_id, preview, is_active)) in info.child_branch_previews.iter().enumerate() {
+                let connector = if i + 1 < info.child_branch_previews.len() {
+                    "│ ├─"
+                } else {
+                    "│ └─"
+                };
+                let marker = if *is_active { " *" } else { "" };
+                let style = if *is_active {
+                    Style::default().fg(Color::Cyan)
+                } else {
+                    Style::default().fg(Color::DarkGray)
+                };
+                let id_str = if info.show_id {
+                    format!(" #{}", child_id)
+                } else {
+                    String::new()
+                };
+                lines.push(Line::from(vec![
+                    Span::styled(connector, Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM)),
+                    Span::styled(format!("{}{} {}", marker, id_str, preview), style),
+                ]));
+            }
         }
     }
 
@@ -480,7 +507,7 @@ pub fn render_blocks(
         let block_lines = match entry {
             BlockEntry::Conversation(block) => {
                 let is_focused = focused_block == Some(block.id);
-                let info = branch_info.get(&block.id).copied();
+                let info = branch_info.get(&block.id).cloned();
                 render_conversation_block(
                     block,
                     is_focused,

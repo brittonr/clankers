@@ -164,6 +164,16 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
 
     // ── Messages (block-oriented rendering) ─────────────────────────
 
+    // Build set of active block IDs for marking active branches
+    let active_block_ids: std::collections::HashSet<usize> = app
+        .blocks
+        .iter()
+        .filter_map(|e| match e {
+            crate::tui::components::block::BlockEntry::Conversation(b) => Some(b.id),
+            _ => None,
+        })
+        .collect();
+
     let branch_info: std::collections::HashMap<usize, crate::tui::components::block_view::BlockBranchInfo> = app
         .blocks
         .iter()
@@ -171,11 +181,31 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
             crate::tui::components::block::BlockEntry::Conversation(b) => {
                 let (sibling_index, sibling_total) = app.block_siblings(b.id);
                 let children_count = app.block_children_count(b.id);
+                // Collect child branch previews for branch points
+                let child_branch_previews = if children_count > 1 {
+                    app.all_blocks
+                        .iter()
+                        .filter(|c| c.parent_block_id == Some(b.id))
+                        .map(|c| {
+                            let preview: String = c.prompt.chars().take(40).collect();
+                            let preview = if c.prompt.len() > 40 {
+                                format!("{}…", preview)
+                            } else {
+                                preview
+                            };
+                            let is_active = active_block_ids.contains(&c.id);
+                            (c.id, preview, is_active)
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
                 Some((b.id, crate::tui::components::block_view::BlockBranchInfo {
                     sibling_index,
                     sibling_total,
                     children_count,
                     show_id: app.show_block_ids,
+                    child_branch_previews,
                 }))
             }
             _ => None,
