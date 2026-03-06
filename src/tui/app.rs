@@ -1,6 +1,7 @@
 //! Main application state machine
 
 use std::collections::HashMap;
+use std::sync::Arc;
 use std::time::Instant;
 
 use ratatui::layout::Rect;
@@ -113,6 +114,8 @@ pub struct App {
     pub session_id: String,
     pub total_tokens: usize,
     pub total_cost: f64,
+    /// Cost tracker for per-model cost display and budget status
+    pub cost_tracker: Option<Arc<crate::routing::cost_tracker::CostTracker>>,
     pub cwd: String,
     pub should_quit: bool,
     /// Current text selection in the messages area
@@ -255,6 +258,7 @@ impl App {
             session_id: String::new(),
             total_tokens: 0,
             total_cost: 0.0,
+            cost_tracker: None,
             cwd,
             should_quit: false,
             selection: None,
@@ -689,6 +693,10 @@ impl App {
                 ..
             } => {
                 self.total_tokens = cumulative_usage.total_tokens();
+                // Pull real cost from tracker if available
+                if let Some(ref ct) = self.cost_tracker {
+                    self.total_cost = ct.total_cost();
+                }
                 if let Some(ref mut block) = self.active_block {
                     block.tokens = block.tokens.saturating_add(turn_usage.total_tokens());
                 }

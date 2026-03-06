@@ -282,6 +282,12 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
     let context_span = app.context_gauge.status_bar_span();
     let git_span = app.git_status.status_bar_span();
     let process_span = app.process_panel.status_bar_span();
+    let budget_status = app
+        .cost_tracker
+        .as_ref()
+        .map_or(crate::routing::cost_tracker::BudgetStatus::NoBudget, |ct| {
+            ct.budget_status()
+        });
     let status_data = StatusBarData {
         cwd: &app.cwd,
         model: &app.model,
@@ -298,6 +304,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         process_span,
         active_account: &app.active_account,
         router_status: app.router_status,
+        budget_status,
     };
     status_bar::render_status_bar(frame, &status_data, &app.theme, chunks[status_idx]);
 }

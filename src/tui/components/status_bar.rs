@@ -10,6 +10,7 @@ use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 
 use crate::config::keybindings::InputMode;
+use crate::routing::cost_tracker::BudgetStatus;
 use crate::tui::app::AppState;
 use crate::tui::app::RouterStatus;
 use crate::tui::theme::Theme;
@@ -37,6 +38,8 @@ pub struct StatusBarData<'a> {
     pub active_account: &'a str,
     /// Router daemon connection status
     pub router_status: RouterStatus,
+    /// Budget status for cost display coloring
+    pub budget_status: BudgetStatus,
 }
 
 /// Render status bar
@@ -56,17 +59,6 @@ pub fn render_status_bar(frame: &mut Frame, data: &StatusBarData, theme: &Theme,
         InputMode::Insert => {
             (" INSERT ", Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD))
         }
-    };
-
-    // Put state + model first so they're always visible; long cwd at the end
-    // gets truncated gracefully when the center column is narrow.
-    let info = if data.total_tokens > 0 {
-        format!(
-            " {} | {} tok | ${:.4} | {} | {}",
-            state_str, data.total_tokens, data.total_cost, data.model, data.cwd
-        )
-    } else {
-        format!(" {} | {} | {}", state_str, data.model, data.cwd)
     };
 
     let mut spans = vec![Span::styled(mode_text, mode_style)];
@@ -133,11 +125,46 @@ pub fn render_status_bar(frame: &mut Frame, data: &StatusBarData, theme: &Theme,
         spans.push(proc.clone());
     }
 
+    // Cost / budget badge (color-coded)
+    if data.total_tokens > 0 {
+        let (cost_text, cost_color) = match &data.budget_status {
+            BudgetStatus::NoBudget => {
+                (format!(" ${:.4} ", data.total_cost), Color::DarkGray)
+            }
+            BudgetStatus::Ok { remaining } => {
+                (format!(" ${:.2} (${:.2} left) ", data.total_cost, remaining), Color::Green)
+            }
+            BudgetStatus::Warning { over_soft_by: _, hard_limit_remaining } => {
+                if hard_limit_remaining.is_finite() {
+                    (format!(" ${:.2} ⚠ (${:.2} to hard) ", data.total_cost, hard_limit_remaining), Color::Yellow)
+                } else {
+                    (format!(" ${:.2} ⚠ over budget ", data.total_cost), Color::Yellow)
+                }
+            }
+            BudgetStatus::Exceeded { .. } => {
+                (format!(" ${:.2} ✖ exceeded ", data.total_cost), Color::Red)
+            }
+        };
+        spans.push(Span::styled(
+            cost_text,
+            Style::default().fg(Color::Black).bg(cost_color).add_modifier(Modifier::BOLD),
+        ));
+    }
+
     // Plugin status segments
     for span in &data.plugin_spans {
         spans.push(span.clone());
     }
 
+    // Trailing info: state, model, tokens, cwd
+    let info = if data.total_tokens > 0 {
+        format!(
+            " {} | {} tok | {} | {}",
+            state_str, data.total_tokens, data.model, data.cwd
+        )
+    } else {
+        format!(" {} | {} | {}", state_str, data.model, data.cwd)
+    };
     spans.push(Span::styled(info, Style::default().fg(theme.fg).bg(theme.bg)));
 
     let line = Line::from(spans);

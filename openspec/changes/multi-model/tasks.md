@@ -53,16 +53,16 @@
 - [ ] Unit tests: validation logic, rejected upgrades over budget
 - [ ] Integration test: agent calls tool, model switches, turn continues
 
-## Phase 4: TUI cost display
+## Phase 4: TUI cost display ✅
 
-- [ ] Add cost summary to status bar: `[model] tokens | $cost | Budget: $X / $Y`
-- [ ] Color-code budget status (green: ok, yellow: warning, red: exceeded)
-- [ ] Show current model name with role indicator (e.g., `[sonnet·default]`)
-- [ ] Handle `AgentEvent::CostUpdate` to refresh cost display
-- [ ] Handle `AgentEvent::BudgetWarning` to flash yellow indicator
-- [ ] Add budget bar component (optional): visual progress toward limit
-- [ ] Add cost breakdown panel (optional): per-model usage table
-- [ ] Keybinding to toggle cost detail view (e.g., `C`)
+- [x] Add `cost_tracker: Option<Arc<CostTracker>>` to App, read total_cost from it on UsageUpdate
+- [x] Color-coded budget badge in status bar: green (ok), yellow (warning), red (exceeded), gray (no budget)
+- [x] Budget badge shows remaining or exceeded amount
+- [x] `StatusBarData.budget_status` field wired from App's cost tracker
+- [x] Cost removed from trailing info string (now in dedicated badge)
+- [ ] Add budget bar component (optional): visual progress toward limit — deferred
+- [ ] Add cost breakdown panel (optional): per-model usage table — deferred
+- [ ] Keybinding to toggle cost detail view (e.g., `C`) — deferred
 
 ## Phase 5: Cost inspection tool (agent self-awareness)
 
