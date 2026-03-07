@@ -1,0 +1,761 @@
+//! CLI argument definitions (clap derive types).
+//!
+//! Separated from `main.rs` so that command handler modules can import
+//! these types without creating circular dependencies.
+
+use clap::Parser;
+use clap::Subcommand;
+use clap::ValueEnum;
+
+#[derive(Parser, Debug)]
+#[command(
+    name = "clankers",
+    about = "clankers — a Rust terminal coding agent",
+    version,
+    long_about = None,
+)]
+pub struct Cli {
+    /// Enable verbose logging
+    #[arg(short, long)]
+    pub verbose: bool,
+
+    /// Print mode: execute a single prompt and exit
+    #[arg(short, long, value_name = "PROMPT")]
+    pub print: Option<String>,
+
+    /// Output mode
+    #[arg(long, value_enum, default_value_t = OutputMode::Interactive)]
+    pub mode: OutputMode,
+
+    /// Model to use (overrides settings)
+    #[arg(long, value_name = "MODEL")]
+    pub model: Option<String>,
+
+    /// Provider to use (anthropic, openai, etc.)
+    #[arg(long, value_name = "PROVIDER")]
+    pub provider: Option<String>,
+
+    /// Maximum output tokens
+    #[arg(long, value_name = "TOKENS")]
+    pub max_tokens: Option<usize>,
+
+    /// Temperature (0.0-1.0)
+    #[arg(long, value_name = "TEMP")]
+    pub temperature: Option<f32>,
+
+    /// Top-p sampling (0.0-1.0)
+    #[arg(long, value_name = "P")]
+    pub top_p: Option<f32>,
+
+    /// Top-k sampling
+    #[arg(long, value_name = "K")]
+    pub top_k: Option<u32>,
+
+    /// System prompt (overrides default)
+    #[arg(long, value_name = "PROMPT")]
+    pub system_prompt: Option<String>,
+
+    /// Append to system prompt
+    #[arg(long, value_name = "TEXT")]
+    pub system_prompt_suffix: Option<String>,
+
+    /// Prepend to system prompt
+    #[arg(long, value_name = "TEXT")]
+    pub system_prompt_prefix: Option<String>,
+
+    /// Load system prompt from file
+    #[arg(long, value_name = "FILE")]
+    pub system_prompt_file: Option<String>,
+
+    /// Allowed tools (comma-separated, or "all")
+    #[arg(long, value_name = "TOOLS")]
+    pub tools: Option<String>,
+
+    /// Attach files for context (can be specified multiple times)
+    #[arg(long, value_name = "FILE")]
+    pub attach: Vec<String>,
+
+    /// Working directory
+    #[arg(long, value_name = "DIR")]
+    pub cwd: Option<String>,
+
+    /// Resume a previous session by ID
+    #[arg(long, value_name = "SESSION_ID")]
+    pub resume: Option<String>,
+
+    /// Continue the most recent session
+    #[arg(long, short = 'c')]
+    pub r#continue: bool,
+
+    /// Disable git worktree isolation
+    #[arg(long)]
+    pub no_worktree: bool,
+
+    /// (Deprecated) Zellij flags — pane management is now built into the TUI
+    #[arg(long, hide = true)]
+    pub zellij: bool,
+    #[arg(long, hide = true)]
+    pub swarm: bool,
+    #[arg(long, hide = true)]
+    pub no_zellij: bool,
+
+    /// Disable session persistence
+    #[arg(long)]
+    pub no_session: bool,
+
+    /// Disable prompt caching
+    #[arg(long)]
+    pub no_cache: bool,
+
+    /// Agent definition to use
+    #[arg(long, value_name = "AGENT")]
+    pub agent: Option<String>,
+
+    /// Agent scope for discovery
+    #[arg(long, value_enum)]
+    pub agent_scope: Option<AgentScopeArg>,
+
+    /// Enable extended thinking
+    #[arg(long)]
+    pub thinking: bool,
+
+    /// Thinking budget tokens
+    #[arg(long, value_name = "TOKENS")]
+    pub thinking_budget: Option<usize>,
+
+    /// Read prompt from stdin
+    #[arg(long)]
+    pub stdin: bool,
+
+    /// Output file for print mode
+    #[arg(short = 'o', long, value_name = "FILE")]
+    pub output: Option<String>,
+
+    /// Account name to use (for multi-account setups)
+    #[arg(long, value_name = "NAME")]
+    pub account: Option<String>,
+
+    /// API key override (for testing)
+    #[arg(long, value_name = "KEY", env = "CLANKERS_API_KEY")]
+    pub api_key: Option<String>,
+
+    /// API base URL override
+    #[arg(long, value_name = "URL")]
+    pub api_base: Option<String>,
+
+    /// Request timeout in seconds
+    #[arg(long, value_name = "SECONDS")]
+    pub timeout: Option<u64>,
+
+    /// Maximum cost budget in USD
+    #[arg(long, value_name = "DOLLARS", alias = "budget")]
+    pub max_cost: Option<f64>,
+
+    /// Enable automatic model routing by task complexity
+    #[arg(long)]
+    pub enable_routing: bool,
+
+    /// Maximum loop iterations
+    #[arg(long, value_name = "N", default_value_t = 25)]
+    pub max_iterations: usize,
+
+    /// Confirm before executing tool calls
+    #[arg(long)]
+    pub confirm: bool,
+
+    /// Dry run: show tool calls without executing
+    #[arg(long)]
+    pub dry_run: bool,
+
+    /// Enable auto-approval of tool calls
+    #[arg(long)]
+    pub auto_approve: bool,
+
+    /// Load skill by name
+    #[arg(long, value_name = "SKILL")]
+    pub skill: Vec<String>,
+
+    /// Skill directory path
+    #[arg(long, value_name = "DIR")]
+    pub skill_dir: Option<String>,
+
+    /// Environment variables to set (KEY=VALUE)
+    #[arg(long, value_name = "KEY=VALUE")]
+    pub env: Vec<String>,
+
+    /// Stream output in real-time
+    #[arg(long)]
+    pub stream: bool,
+
+    /// Disable streaming
+    #[arg(long)]
+    pub no_stream: bool,
+
+    /// Show token usage stats
+    #[arg(long)]
+    pub stats: bool,
+
+    /// Log file path
+    #[arg(long, value_name = "FILE")]
+    pub log_file: Option<String>,
+
+    /// Log level (trace, debug, info, warn, error)
+    #[arg(long, value_name = "LEVEL")]
+    pub log_level: Option<String>,
+
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(ValueEnum, Clone, Debug)]
+pub enum OutputMode {
+    /// Interactive TUI mode
+    Interactive,
+    /// Print mode (single prompt and exit)
+    Print,
+    /// JSON output
+    Json,
+    /// Markdown output
+    Markdown,
+    /// Plain text output
+    Plain,
+}
+
+#[derive(ValueEnum, Clone, Debug)]
+pub enum AgentScopeArg {
+    /// User-level agents only
+    User,
+    /// Project-level agents only
+    Project,
+    /// Both user and project agents
+    Both,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Commands {
+    /// Manage sessions
+    Session {
+        #[command(subcommand)]
+        action: SessionAction,
+    },
+    /// Manage configuration
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+    /// Authenticate with a provider
+    Auth {
+        #[command(subcommand)]
+        action: AuthAction,
+    },
+    /// Manage skills
+    Skill {
+        #[command(subcommand)]
+        action: SkillAction,
+    },
+    /// Manage agent definitions
+    Agent {
+        #[command(subcommand)]
+        action: AgentAction,
+    },
+    /// Show version and build information
+    Version {
+        /// Show detailed version info
+        #[arg(long)]
+        verbose: bool,
+    },
+    /// Manage plugins
+    Plugin {
+        #[command(subcommand)]
+        action: PluginAction,
+    },
+    /// Run diagnostics and health checks
+    Doctor {
+        /// Fix common issues automatically
+        #[arg(long)]
+        fix: bool,
+    },
+    /// Share the current Zellij session over the network
+    Share {
+        /// Read-only mode (remote guests cannot type)
+        #[arg(long)]
+        read_only: bool,
+    },
+    /// Join a remote shared Zellij session
+    Join {
+        /// Remote node ID (from `clankers share` output)
+        node_id: String,
+        /// Pre-shared key (hex, from `clankers share` output)
+        psk: String,
+    },
+    /// Peer-to-peer RPC via iroh
+    Rpc {
+        /// Path to identity key file (default: ~/.clankers/agent/identity.key)
+        #[arg(long, value_name = "FILE")]
+        identity: Option<String>,
+
+        #[command(subcommand)]
+        action: RpcAction,
+    },
+    /// Run as a headless daemon — listens on iroh (+ optional Matrix) for incoming messages
+    Daemon {
+        /// Capability tags to advertise (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
+        /// Allow all iroh peers (no allowlist check)
+        #[arg(long)]
+        allow_all: bool,
+        /// Enable Matrix bridge
+        #[arg(long)]
+        matrix: bool,
+        /// Heartbeat interval in seconds (0 = disabled)
+        #[arg(long, default_value_t = 60)]
+        heartbeat: u64,
+        /// Maximum concurrent sessions
+        #[arg(long, default_value_t = 32)]
+        max_sessions: usize,
+    },
+    /// Manage capability tokens (UCAN auth)
+    Token {
+        #[command(subcommand)]
+        action: TokenAction,
+    },
+    /// Run the merge daemon (watches for completed workers and auto-merges)
+    MergeDaemon {
+        /// Polling interval in seconds
+        #[arg(long, default_value_t = 5)]
+        interval: u64,
+        /// Run one cycle and exit (instead of continuous loop)
+        #[arg(long)]
+        once: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum RpcAction {
+    /// Show this node's identity (public key / EndpointId)
+    Id,
+    /// Start the RPC server (listens for incoming connections)
+    Start {
+        /// Also enable agent prompt handling
+        #[arg(long)]
+        with_agent: bool,
+        /// Capability tags to advertise (comma-separated, e.g. "gpu,code-review")
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
+        /// Allow all peers (no allowlist check)
+        #[arg(long)]
+        allow_all: bool,
+        /// Enable background heartbeat (probes peers periodically)
+        #[arg(long)]
+        heartbeat: bool,
+        /// Heartbeat interval in seconds (default: 60)
+        #[arg(long, default_value_t = 60)]
+        heartbeat_interval: u64,
+    },
+    /// Ping a remote clankers instance
+    Ping {
+        /// Remote node ID (public key)
+        node_id: String,
+    },
+    /// Get version info from a remote clankers instance
+    Version {
+        /// Remote node ID (public key)
+        node_id: String,
+    },
+    /// Get status from a remote clankers instance
+    Status {
+        /// Remote node ID (public key)
+        node_id: String,
+    },
+    /// Send a prompt to a remote clankers instance (streams output in real-time)
+    Prompt {
+        /// Remote node ID (public key)
+        node_id: String,
+        /// The prompt text
+        text: String,
+    },
+    /// Manage known peers
+    Peers {
+        #[command(subcommand)]
+        action: PeerAction,
+    },
+    /// Manage the peer allowlist (who can connect to your server)
+    Allow {
+        /// Peer node ID to allow
+        node_id: String,
+    },
+    /// Remove a peer from the allowlist
+    Deny {
+        /// Peer node ID to deny
+        node_id: String,
+    },
+    /// Show the current allowlist
+    Allowed,
+    /// Discover peers: probe all known peers and scan LAN via mDNS
+    Discover {
+        /// Also scan local network via mDNS for new peers
+        #[arg(long)]
+        mdns: bool,
+        /// mDNS scan duration in seconds (default: 5)
+        #[arg(long, default_value_t = 5)]
+        scan_secs: u64,
+    },
+    /// Send a file to a remote peer
+    SendFile {
+        /// Remote node ID (public key)
+        node_id: String,
+        /// Path to the local file to send
+        file: String,
+    },
+    /// Receive (download) a file from a remote peer
+    RecvFile {
+        /// Remote node ID (public key)
+        node_id: String,
+        /// Remote file path
+        remote_path: String,
+        /// Local path to save to (default: current dir + filename)
+        #[arg(short, long)]
+        output: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PeerAction {
+    /// List known peers
+    List,
+    /// Add a peer to the registry
+    Add {
+        /// Peer node ID (public key)
+        node_id: String,
+        /// Human-readable name for this peer
+        name: String,
+    },
+    /// Remove a peer from the registry
+    Remove {
+        /// Peer node ID (or name)
+        peer: String,
+    },
+    /// Probe a peer and update its capabilities
+    Probe {
+        /// Peer node ID (or name). Use "all" to probe all peers.
+        peer: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SessionAction {
+    /// List recent sessions
+    List {
+        #[arg(short = 'n', long, default_value_t = 20)]
+        limit: usize,
+        /// Show all sessions
+        #[arg(long)]
+        all: bool,
+    },
+    /// Show session details
+    Show {
+        session_id: String,
+        /// Show full conversation history
+        #[arg(long)]
+        full: bool,
+    },
+    /// Delete a session
+    Delete {
+        session_id: String,
+        /// Delete without confirmation
+        #[arg(long)]
+        force: bool,
+    },
+    /// Delete all sessions
+    DeleteAll {
+        /// Delete without confirmation
+        #[arg(long)]
+        force: bool,
+    },
+    /// Export session to file
+    Export {
+        session_id: String,
+        /// Output file path
+        #[arg(short = 'o', long, value_name = "FILE")]
+        output: Option<String>,
+        /// Export format
+        #[arg(long, value_enum, default_value_t = ExportFormat::Json)]
+        format: ExportFormat,
+    },
+    /// Import session from file
+    Import {
+        /// Input file path
+        file: String,
+    },
+}
+
+#[derive(ValueEnum, Clone, Debug)]
+pub enum ExportFormat {
+    Json,
+    Markdown,
+    Text,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ConfigAction {
+    /// Show current configuration
+    Show {
+        /// Show as JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Open settings file in editor
+    Edit {
+        /// Edit project settings instead of global
+        #[arg(long)]
+        project: bool,
+    },
+    /// Show resolved paths
+    Paths,
+    /// Get a config value
+    Get {
+        /// Config key (dot notation)
+        key: String,
+    },
+    /// Set a config value
+    Set {
+        /// Config key (dot notation)
+        key: String,
+        /// Config value
+        value: String,
+        /// Set in project config instead of global
+        #[arg(long)]
+        project: bool,
+    },
+    /// Unset a config value
+    Unset {
+        /// Config key (dot notation)
+        key: String,
+        /// Unset in project config instead of global
+        #[arg(long)]
+        project: bool,
+    },
+    /// Initialize default configuration
+    Init {
+        /// Force overwrite existing config
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AuthAction {
+    /// Authenticate with a provider (OAuth)
+    Login {
+        /// Provider name (anthropic, openai, etc.)
+        provider: Option<String>,
+        /// Account name (e.g. "work", "personal"). Defaults to "default".
+        #[arg(long, value_name = "NAME")]
+        account: Option<String>,
+        /// Authorization code#state from the OAuth callback (skips interactive prompt)
+        #[arg(long, value_name = "CODE")]
+        code: Option<String>,
+    },
+    /// Show current auth status
+    Status {
+        /// Show for all providers
+        #[arg(long)]
+        all: bool,
+    },
+    /// Remove stored credentials
+    Logout {
+        /// Provider name (anthropic, openai, etc.)
+        provider: Option<String>,
+        /// Account name to remove
+        #[arg(long, value_name = "NAME")]
+        account: Option<String>,
+        /// Remove all credentials
+        #[arg(long)]
+        all: bool,
+    },
+    /// Switch the active account
+    Switch {
+        /// Account name to switch to
+        account: String,
+    },
+    /// List all accounts
+    Accounts,
+    /// Set API key directly
+    SetKey {
+        /// Provider name
+        provider: String,
+        /// API key (will prompt if not provided)
+        #[arg(long, value_name = "KEY")]
+        key: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SkillAction {
+    /// List available skills
+    List {
+        /// Show detailed information
+        #[arg(long)]
+        verbose: bool,
+    },
+    /// Show skill details
+    Show {
+        /// Skill name
+        name: String,
+    },
+    /// Create a new skill
+    New {
+        /// Skill name
+        name: String,
+        /// Create in project skills directory
+        #[arg(long)]
+        project: bool,
+    },
+    /// Install a skill from URL or path
+    Install {
+        /// URL or path to skill
+        source: String,
+        /// Skill name (defaults to inferred)
+        #[arg(long)]
+        name: Option<String>,
+    },
+    /// Uninstall a skill
+    Uninstall {
+        /// Skill name
+        name: String,
+    },
+    /// Update all skills
+    Update {
+        /// Update specific skill
+        name: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AgentAction {
+    /// List available agent definitions
+    List {
+        /// Show detailed information
+        #[arg(long)]
+        verbose: bool,
+    },
+    /// Show agent definition details
+    Show {
+        /// Agent name
+        name: String,
+    },
+    /// Create a new agent definition
+    New {
+        /// Agent name
+        name: String,
+        /// Create in project agents directory
+        #[arg(long)]
+        project: bool,
+    },
+    /// Edit an agent definition
+    Edit {
+        /// Agent name
+        name: String,
+    },
+    /// Delete an agent definition
+    Delete {
+        /// Agent name
+        name: String,
+        /// Delete without confirmation
+        #[arg(long)]
+        force: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum PluginAction {
+    /// List discovered plugins
+    List {
+        /// Show detailed information
+        #[arg(long)]
+        verbose: bool,
+    },
+    /// Show plugin details
+    Show {
+        /// Plugin name
+        name: String,
+    },
+    /// Install a plugin from a path
+    Install {
+        /// Path to plugin directory (must contain plugin.json)
+        source: String,
+        /// Install to project plugins instead of global
+        #[arg(long)]
+        project: bool,
+    },
+    /// Uninstall a plugin
+    Uninstall {
+        /// Plugin name
+        name: String,
+        /// Uninstall from project plugins instead of global
+        #[arg(long)]
+        project: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum TokenAction {
+    /// Create a new capability token
+    Create {
+        /// Comma-separated list of allowed tools (e.g., "read,grep,find") or "*" for all
+        #[arg(long, value_name = "TOOLS")]
+        tools: Option<String>,
+        /// Shorthand for read-only access (read, grep, find, ls tools only)
+        #[arg(long)]
+        read_only: bool,
+        /// Token lifetime (e.g., "1h", "24h", "7d", "30d", "365d")
+        #[arg(long, value_name = "DURATION", default_value = "24h")]
+        expire: String,
+        /// Lock token to a specific public key (audience)
+        #[arg(long, value_name = "PUBKEY")]
+        r#for: Option<String>,
+        /// Delegate from a parent token (base64-encoded)
+        #[arg(long, value_name = "TOKEN")]
+        from: Option<String>,
+        /// Comma-separated list of allowed bot commands or "*" for all
+        #[arg(long, value_name = "COMMANDS")]
+        bot_commands: Option<String>,
+        /// Allow session management (restart, compact)
+        #[arg(long)]
+        session_manage: bool,
+        /// Allow model switching
+        #[arg(long)]
+        model_switch: bool,
+        /// Allow delegation (creating child tokens)
+        #[arg(long)]
+        delegate: bool,
+        /// File access prefix (e.g., "/home/user/project/")
+        #[arg(long, value_name = "PREFIX")]
+        file_prefix: Option<String>,
+        /// File access is read-only (used with --file-prefix)
+        #[arg(long)]
+        file_read_only: bool,
+        /// Shell command pattern (e.g., "pg_*" or "*")
+        #[arg(long, value_name = "PATTERN")]
+        shell: Option<String>,
+        /// Working directory constraint for shell commands
+        #[arg(long, value_name = "DIR")]
+        shell_wd: Option<String>,
+        /// Create a full-access root token (all capabilities)
+        #[arg(long)]
+        root: bool,
+    },
+    /// List issued tokens
+    List,
+    /// Revoke a token by its hash (hex-encoded)
+    Revoke {
+        /// Token hash (hex string) or base64 token to revoke
+        hash: String,
+    },
+    /// Decode and display token details
+    Info {
+        /// Base64-encoded token
+        token: String,
+    },
+}
