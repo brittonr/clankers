@@ -809,7 +809,20 @@ pub(crate) fn handle_input_with_plugins(
     session_manager: &mut Option<crate::session::SessionManager>,
 ) {
     if let Some((command, args)) = slash_commands::parse_command(text) {
-        super::interactive::execute_slash_command(app, &command, &args, cmd_tx, plugin_manager, panel_tx, db, session_manager);
+        // Temporarily move the registry out of App so we can borrow it
+        // immutably while SlashContext borrows the rest of App mutably.
+        // This replaces the previous unsafe raw-pointer workaround.
+        let registry = std::mem::take(&mut app.slash_registry);
+        let mut ctx = slash_commands::handlers::SlashContext {
+            app,
+            cmd_tx,
+            plugin_manager,
+            panel_tx,
+            db,
+            session_manager,
+        };
+        registry.dispatch(&command, &args, &mut ctx);
+        ctx.app.slash_registry = registry;
     } else {
         let _ = cmd_tx.send(super::interactive::AgentCommand::ResetCancel);
         let mut pending_images = app.take_pending_images();

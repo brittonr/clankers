@@ -25,7 +25,7 @@ use crate::config::keybindings::InputMode;
 use crate::config::keybindings::Keymap;
 use crate::error::Result;
 use crate::provider::auth::AuthStoreExt;
-use crate::slash_commands::{self};
+
 use crate::tui::app::App;
 use crate::tui::event::AppEvent;
 use crate::tui::event::{self as tui_event};
@@ -1572,40 +1572,10 @@ pub(crate) fn parse_account_flag(args: &str) -> (Option<String>, String) {
     (None, args.to_string())
 }
 
-pub(crate) fn execute_slash_command(
-    app: &mut App,
-    command: &str,
-    args: &str,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-    db: &Option<crate::db::Db>,
-    session_manager: &mut Option<crate::session::SessionManager>,
-) {
-    // Get a pointer to the registry before moving app into the context.
-    // This is safe because:
-    // 1. The registry lives in app, which outlives this function call
-    // 2. The registry is not mutated during dispatch (only read)
-    // 3. ctx.app and registry_ptr both point to the same App instance
-    let registry_ptr: *const crate::slash_commands::SlashRegistry = &app.slash_registry;
-    
-    let mut ctx = slash_commands::handlers::SlashContext {
-        app,
-        cmd_tx,
-        plugin_manager,
-        panel_tx,
-        db,
-        session_manager,
-    };
-    
-    // SAFETY: registry_ptr is valid because:
-    // - It points to app.slash_registry, which is alive for the entire function
-    // - app is borrowed mutably through ctx, but we're only reading the registry
-    // - The registry HashMap is not modified during dispatch
-    unsafe {
-        (*registry_ptr).dispatch(command, args, &mut ctx);
-    }
-}
+// execute_slash_command() was removed — slash dispatch is now inlined
+// at the call site in event_loop.rs using std::mem::take() to avoid
+// the self-referential borrow (registry lives inside App, which is
+// mutably borrowed by SlashContext).
 
 
 /// Strip YAML frontmatter (--- ... ---) from a prompt template

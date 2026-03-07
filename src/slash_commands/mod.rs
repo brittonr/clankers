@@ -186,6 +186,14 @@ pub struct SlashRegistry {
     commands: HashMap<String, SlashCommandDef>,
 }
 
+impl Default for SlashRegistry {
+    fn default() -> Self {
+        Self {
+            commands: HashMap::new(),
+        }
+    }
+}
+
 impl SlashRegistry {
     /// Build from contributors. Higher priority wins on conflict.
     pub fn build(contributors: &[&dyn SlashContributor]) -> (Self, Vec<Conflict>) {
