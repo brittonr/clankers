@@ -225,3 +225,84 @@ fn slash_menu_shows_tools_completion() {
     h.settle(SETTLE);
     h.quit();
 }
+
+// ═══════════════════════════════════════════════════════════════
+//  GitHub plugin TUI tests
+// ═══════════════════════════════════════════════════════════════
+
+// ── /plugin lists GitHub plugin ─────────────────────────────
+
+#[test]
+fn slash_plugin_lists_github_plugin() {
+    let mut h = TuiTestHarness::spawn(50, 140);
+    run_slash(&mut h, "/plugin");
+    h.wait_for_text("clankers-github", TIMEOUT);
+    h.quit();
+}
+
+// ── /plugin clankers-github shows details ───────────────────
+
+#[test]
+fn slash_plugin_github_detail() {
+    let mut h = TuiTestHarness::spawn(50, 140);
+    run_slash(&mut h, "/plugin clankers-github");
+    h.wait_for_text("Plugin: clankers-github", TIMEOUT);
+    assert!(h.screen_contains("GitHub"), "Should show GitHub description.\nScreen:\n{}", h.screen_text());
+    h.quit();
+}
+
+// ── /plugin clankers-github shows tools ─────────────────────
+
+#[test]
+fn slash_plugin_github_shows_tools() {
+    let mut h = TuiTestHarness::spawn(50, 140);
+    run_slash(&mut h, "/plugin clankers-github");
+    h.wait_for_text("github_pr_list", TIMEOUT);
+    assert!(h.screen_contains("github_pr_get"), "Should list github_pr_get.\nScreen:\n{}", h.screen_text());
+    h.quit();
+}
+
+// ── /plugin clankers-github shows events ────────────────────
+
+#[test]
+fn slash_plugin_github_shows_events() {
+    let mut h = TuiTestHarness::spawn(50, 140);
+    run_slash(&mut h, "/plugin clankers-github");
+    h.wait_for_text("Events:", TIMEOUT);
+    assert!(h.screen_contains("agent_start"), "Should show agent_start event.\nScreen:\n{}", h.screen_text());
+    h.quit();
+}
+
+// ── /plugin clankers-github shows permissions ───────────────
+
+#[test]
+fn slash_plugin_github_shows_permissions() {
+    let mut h = TuiTestHarness::spawn(50, 140);
+    run_slash(&mut h, "/plugin clankers-github");
+    h.wait_for_text("Permissions:", TIMEOUT);
+    assert!(h.screen_contains("net"), "Should show net permission.\nScreen:\n{}", h.screen_text());
+    h.quit();
+}
+
+// ── /tools lists GitHub plugin tools ────────────────────────
+
+#[test]
+fn slash_tools_lists_github_tools() {
+    let mut h = TuiTestHarness::spawn(80, 200);
+    run_slash(&mut h, "/tools");
+    h.wait_for_text("github_pr_list", TIMEOUT);
+    assert!(h.screen_contains("github_issues"), "Should list github_issues tool.\nScreen:\n{}", h.screen_text());
+    assert!(h.screen_contains("github_repo_info"), "Should list github_repo_info tool.\nScreen:\n{}", h.screen_text());
+    h.quit();
+}
+
+// ── GitHub plugin shows active marker ───────────────────────
+
+#[test]
+fn slash_plugin_github_active() {
+    let mut h = TuiTestHarness::spawn(50, 140);
+    run_slash(&mut h, "/plugin clankers-github");
+    h.wait_for_text("Plugin: clankers-github", TIMEOUT);
+    assert!(h.screen_contains("Active"), "GitHub plugin should be Active.\nScreen:\n{}", h.screen_text());
+    h.quit();
+}
