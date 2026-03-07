@@ -1,5 +1,6 @@
 //! Agent struct and state
 
+pub mod builder;
 pub mod compaction;
 pub mod context;
 pub mod events;

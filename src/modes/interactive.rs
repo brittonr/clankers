@@ -248,12 +248,15 @@ pub async fn run_interactive(
         app.active_account = store.active_account_name().to_string();
     }
 
-    let mut agent = Agent::new(provider, Vec::new(), settings.clone(), model, system_prompt);
-    // Attach the global database so the agent can read memories and record usage
-    if let Some(ref db) = db {
-        agent = agent.with_db(db.clone());
-    }
-    let event_tx = agent.event_sender();
+    // Create a temporary agent with empty tools to get event_tx for tool construction
+    let temp_agent = Agent::new(
+        Arc::clone(&provider),
+        Vec::new(),
+        settings.clone(),
+        model.clone(),
+        system_prompt.clone(),
+    );
+    let event_tx = temp_agent.event_sender();
     let (bash_confirm_tx, mut bash_confirm_rx) = crate::tools::bash::confirm_channel();
 
     // Create and start the process monitor
@@ -319,25 +322,27 @@ pub async fn run_interactive(
         }
     }
 
-    let mut agent = agent.with_tools(tools);
+    // Build the final agent with tools, db, routing, and cost tracking
+    let mut agent_builder = crate::agent::builder::AgentBuilder::new(
+        provider,
+        settings.clone(),
+        model,
+        system_prompt,
+    )
+    .with_tools(tools)
+    .with_paths(paths.clone());
 
-    // Wire routing policy from settings
-    if let Some(routing_config) = settings.routing.as_ref() {
-        if routing_config.enabled {
-            let policy = crate::routing::policy::RoutingPolicy::new(routing_config.clone());
-            agent = agent.with_routing_policy(policy).with_model_roles(settings.model_roles.clone());
-        }
+    // Attach the global database so the agent can read memories and record usage
+    if let Some(ref db) = db {
+        agent_builder = agent_builder.with_db(db.clone());
     }
 
-    // Wire cost tracking from settings
-    if let Some(cost_config) = settings.cost_tracking.as_ref() {
-        let pricing = crate::routing::cost_tracker::load_pricing(Some(&paths.global_config_dir));
-        let tracker = std::sync::Arc::new(crate::routing::cost_tracker::CostTracker::new(
-            pricing,
-            cost_config.clone(),
-        ));
-        agent = agent.with_cost_tracker(tracker.clone());
-        app.cost_tracker = Some(tracker);
+    // Build the agent (automatically wires routing and cost tracking from settings)
+    let agent = agent_builder.build();
+
+    // Extract cost tracker reference for the app UI
+    if settings.cost_tracking.is_some() {
+        app.cost_tracker = agent.cost_tracker().cloned();
     }
 
     let event_rx = agent.subscribe();
@@ -2413,6 +2418,13 @@ pub(crate) fn execute_slash_command(
     db: &Option<crate::db::Db>,
     session_manager: &mut Option<crate::session::SessionManager>,
 ) {
+    // Get a pointer to the registry before moving app into the context.
+    // This is safe because:
+    // 1. The registry lives in app, which outlives this function call
+    // 2. The registry is not mutated during dispatch (only read)
+    // 3. ctx.app and registry_ptr both point to the same App instance
+    let registry_ptr: *const crate::slash_commands::SlashRegistry = &app.slash_registry;
+    
     let mut ctx = slash_commands::handlers::SlashContext {
         app,
         cmd_tx,
@@ -2421,10 +2433,14 @@ pub(crate) fn execute_slash_command(
         db,
         session_manager,
     };
-    // Dispatch through the free function. The registry is used for
-    // completions and help; the dispatch function handles routing
-    // to handlers and prompt template fallback.
-    slash_commands::dispatch(command, args, &mut ctx);
+    
+    // SAFETY: registry_ptr is valid because:
+    // - It points to app.slash_registry, which is alive for the entire function
+    // - app is borrowed mutably through ctx, but we're only reading the registry
+    // - The registry HashMap is not modified during dispatch
+    unsafe {
+        (*registry_ptr).dispatch(command, args, &mut ctx);
+    }
 }
 
 

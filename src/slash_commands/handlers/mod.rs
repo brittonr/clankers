@@ -1,7 +1,7 @@
 //! Slash command handler infrastructure.
 //!
-//! Defines [`SlashContext`] — the context passed to the dispatch function
-//! in `slash_commands::dispatch()`.
+//! Defines [`SlashContext`] — the context passed to slash command handlers
+//! via [`SlashRegistry::dispatch()`].
 //!
 //! Handler implementations are organized by domain:
 //! - `info` — Help, Status, Usage, Version, Quit
