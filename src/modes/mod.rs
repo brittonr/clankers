@@ -5,6 +5,7 @@ pub mod daemon;
 pub(crate) mod matrix_bridge;
 pub(crate) mod clipboard;
 pub(crate) mod event_loop;
+pub(crate) mod event_loop_runner;
 pub mod interactive;
 pub mod json;
 mod mouse;
