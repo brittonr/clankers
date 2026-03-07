@@ -100,93 +100,62 @@ pub struct ZoomState {
     pub focused_subagent: Option<String>,
 }
 
-/// Main TUI application
-pub struct App {
-    pub state: AppState,
-    pub input_mode: InputMode,
-    pub theme: Theme,
-    pub editor: Editor,
-    /// Block-oriented conversation history (only the active branch is shown)
+/// Streaming state — tracks in-progress LLM/tool output
+#[derive(Debug, Default)]
+pub struct StreamingState {
+    /// Accumulated streaming text (flushed into active block on boundaries)
+    pub text: String,
+    /// Accumulated streaming thinking (flushed into active block on boundaries)
+    pub thinking: String,
+    /// Current streaming content block index
+    pub block_index: Option<usize>,
+    /// Active tool executions keyed by call_id
+    pub active_tools: HashMap<String, ActiveToolExecution>,
+    /// Structured progress renderer for active tool executions
+    pub progress_renderer: super::components::progress_renderer::ProgressRenderer,
+    /// Scrollable streaming output buffers for in-progress tools
+    pub outputs: super::components::streaming_output::StreamingOutputManager,
+    /// Which tool output (call_id) is currently focused for scroll control
+    pub focused_tool: Option<String>,
+}
+
+/// Conversation state — blocks, scroll, and focus
+pub struct ConversationState {
+    /// Block-oriented conversation history (only active branch shown)
     pub blocks: Vec<BlockEntry>,
-    /// All conversation blocks ever created (including branched-off blocks)
+    /// All conversation blocks ever created (including branched-off)
     pub all_blocks: Vec<ConversationBlock>,
     /// The in-progress block being streamed into
     pub active_block: Option<ConversationBlock>,
     /// Next block ID
-    next_block_id: usize,
+    pub next_block_id: usize,
     /// Index of the currently focused block (for keyboard navigation)
     pub focused_block: Option<usize>,
-    /// Accumulated streaming text (flushed into active block on boundaries)
-    pub streaming_text: String,
-    /// Accumulated streaming thinking (flushed into active block on boundaries)
-    pub streaming_thinking: String,
-    /// Current streaming content block index (tracks which block we're in)
-    streaming_block_index: Option<usize>,
+    /// Message scroll state
     pub scroll: MessageScroll,
-    pub model: String,
-    pub session_id: String,
-    pub total_tokens: usize,
-    pub total_cost: f64,
-    /// Cost tracker for per-model cost display and budget status
-    pub cost_tracker: Option<Arc<crate::routing::cost_tracker::CostTracker>>,
-    pub cwd: String,
-    pub should_quit: bool,
-    /// Current text selection in the messages area
-    pub selection: Option<TextSelection>,
-    /// Plain-text lines from the last render (for selection extraction)
-    pub rendered_lines: Vec<String>,
-    /// The messages area Rect from the last render
-    pub messages_area: Rect,
-    /// Slash command autocomplete menu
-    pub slash_menu: SlashMenu,
-    /// Slash command registry (commands from builtins, plugins, user config)
-    pub slash_registry: crate::slash_commands::SlashRegistry,
-    /// Action registry (extended actions from plugins, user config)
-    pub action_registry: crate::config::keybindings::ActionRegistry,
-    /// PKCE verifier for in-progress OAuth login (set by `/login`, consumed by `/login <code>`)
-    pub login_verifier: Option<(String, String)>, // (verifier, account_name)
-    /// Pending branch operation: Some((fork_block_id, new_prompt)) if we need to
-    /// truncate the agent's history and re-prompt after branching.
+}
+
+/// Branching state — fork, compare, merge overlays
+pub struct BranchingState {
+    /// Pending branch operation: Some((fork_block_id, new_prompt))
     pub pending_branch: Option<(usize, String)>,
-    /// Branch checkpoint that was just executed — (checkpoint_msg_count, fork_message_ids).
-    /// The event loop reads this to record the branch in the session file.
+    /// Branch checkpoint that was just executed
     pub last_branch_checkpoint: Option<usize>,
-    /// Queued prompt to send after the current stream is aborted.
-    pub queued_prompt: Option<String>,
-    /// Whether extended thinking is currently enabled
-    pub thinking_enabled: bool,
-    /// Current thinking level
-    pub thinking_level: crate::provider::ThinkingLevel,
-    /// Whether to display thinking content in blocks
-    pub show_thinking: bool,
-    /// Available tool definitions (name, description, source)
-    pub tool_info: Vec<(String, String, String)>,
-    /// Plugin UI state (widgets, status segments, notifications)
-    pub plugin_ui: PluginUIState,
-    /// Panel manager (owns all side panels)
-    pub panels: super::panel::PanelManager,
     /// Branch switcher overlay (quick fuzzy picker)
-    pub branch_switcher: super::components::branch_switcher::BranchSwitcher,
+    pub switcher: super::components::branch_switcher::BranchSwitcher,
     /// Branch comparison overlay (side-by-side diff)
-    pub branch_compare: super::components::branch_compare::BranchCompareView,
+    pub compare: super::components::branch_compare::BranchCompareView,
     /// Interactive merge overlay (checkbox message selection)
     pub merge_interactive: super::components::merge_interactive::MergeInteractiveView,
-    /// Context window gauge (token usage vs model limit)
-    pub context_gauge: super::components::context_gauge::ContextGauge,
-    /// Git status (branch + dirty indicator)
-    pub git_status: super::components::git_status::GitStatus,
-    // Legacy panel_tab/right_panel_tab/panel_focused deleted.
-    /// Pending images attached via clipboard paste (base64-encoded PNG data)
-    pub pending_images: Vec<PendingImage>,
-    /// Whether a clipboard read is in progress (to avoid stacking requests)
-    pub clipboard_pending: bool,
-    /// Receiver for background clipboard reads
-    pub clipboard_rx: Option<std::sync::mpsc::Receiver<crate::modes::clipboard::ClipboardResult>>,
+}
+
+/// Overlay/popup state — all modal dialogs and selectors
+pub struct OverlayState {
     /// Whether the session/branch popup is visible
     pub session_popup_visible: bool,
     /// Whether the cost detail overlay is visible
     pub cost_overlay_visible: bool,
-    /// Whether to show block IDs in conversation view (toggled with Ctrl+I)
+    /// Whether to show block IDs in conversation view
     pub show_block_ids: bool,
     /// Plan mode state
     pub plan_state: crate::modes::plan::PlanState,
@@ -194,58 +163,86 @@ pub struct App {
     pub history_search: super::components::history_search::HistorySearch,
     /// Output search overlay (Ctrl+F / f)
     pub output_search: super::components::output_search::OutputSearch,
-    /// Original system prompt (for `/system reset`)
-    pub original_system_prompt: String,
-    /// Flag: open external editor on next event loop tick
-    pub open_editor_requested: bool,
     /// Model selector popup
     pub model_selector: ModelSelector,
     /// Account selector popup
     pub account_selector: AccountSelector,
     /// Session resume selector popup
     pub session_selector: SessionSelector,
-    /// Active account name (for status bar display)
-    pub active_account: String,
-    /// Available model IDs (populated from provider)
-    pub available_models: Vec<String>,
-    /// Connection status to the clankers-router daemon
-    pub router_status: RouterStatus,
     /// Leader key (Space) popup menu
     pub leader_menu: super::components::leader_menu::LeaderMenu,
-    // ── Hypertile BSP tiling ────────────────────────────
-    /// BSP tiling engine (replaces the old column-based PanelLayout).
+}
+
+/// Tiling state — BSP layout and pane focus
+pub struct TilingState {
+    /// BSP tiling engine
     pub tiling: ratatui_hypertile::Hypertile,
-    /// Maps hypertile PaneIds to their content type (Chat, Panel, Empty).
+    /// Maps hypertile PaneIds to their content type
     pub pane_registry: super::panes::PaneRegistry,
-    /// Which panel (if any) currently has focus.
-    /// `None` means the chat pane is focused.
+    /// Which panel (if any) currently has focus
     pub focused_panel: Option<PanelId>,
-    /// Which subagent pane (if any) currently has focus (by subagent ID).
-    /// Mutually exclusive with `focused_panel`.
+    /// Which subagent pane (if any) currently has focus
     pub focused_subagent: Option<String>,
-    /// Per-subagent pane manager — each subagent gets its own BSP pane.
+    /// Per-subagent pane manager
     pub subagent_panes: super::components::subagent_pane::SubagentPaneManager,
-    /// Saved tiling state while a pane is zoomed to full screen.
-    /// `None` means no pane is zoomed.
+    /// Saved tiling state while a pane is zoomed
     pub zoom_state: Option<ZoomState>,
-    // ── Mouse hit-test areas (updated each render) ───
-    /// The editor/input area Rect from the last render
+}
+
+/// Main TUI application
+pub struct App {
+    // Core state (keep flat)
+    pub state: AppState,
+    pub input_mode: InputMode,
+    pub theme: Theme,
+    pub editor: Editor,
+    pub model: String,
+    pub session_id: String,
+    pub total_tokens: usize,
+    pub total_cost: f64,
+    pub cost_tracker: Option<Arc<crate::routing::cost_tracker::CostTracker>>,
+    pub cwd: String,
+    pub should_quit: bool,
+    pub thinking_enabled: bool,
+    pub thinking_level: crate::provider::ThinkingLevel,
+    pub show_thinking: bool,
+    pub tool_info: Vec<(String, String, String)>,
+    pub original_system_prompt: String,
+    pub open_editor_requested: bool,
+    pub active_account: String,
+    pub available_models: Vec<String>,
+    pub router_status: RouterStatus,
+    pub queued_prompt: Option<String>,
+    pub login_verifier: Option<(String, String)>,
+    pub tick: u64,
+
+    // Grouped sub-states
+    pub streaming: StreamingState,
+    pub conversation: ConversationState,
+    pub branching: BranchingState,
+    pub overlays: OverlayState,
+    pub layout: TilingState,
+
+    // Components (keep flat — they're already self-contained)
+    pub slash_menu: SlashMenu,
+    pub slash_registry: crate::slash_commands::SlashRegistry,
+    pub action_registry: crate::config::keybindings::ActionRegistry,
+    pub plugin_ui: PluginUIState,
+    pub panels: super::panel::PanelManager,
+    pub context_gauge: super::components::context_gauge::ContextGauge,
+    pub git_status: super::components::git_status::GitStatus,
+
+    // Render/hit-test areas
+    pub selection: Option<TextSelection>,
+    pub rendered_lines: Vec<String>,
+    pub messages_area: Rect,
     pub editor_area: Rect,
-    /// The status bar area Rect from the last render
     pub status_area: Rect,
 
-    // ── Streaming tool output ────────────────────────
-    /// Active tool executions keyed by call_id (for spinner/elapsed/line-count)
-    pub active_tools: HashMap<String, ActiveToolExecution>,
-    /// Structured progress renderer for active tool executions
-    pub progress_renderer: super::components::progress_renderer::ProgressRenderer,
-    /// Scrollable streaming output buffers for in-progress tools
-    pub streaming_outputs: super::components::streaming_output::StreamingOutputManager,
-    /// Which tool output (call_id) is currently focused for scroll control.
-    /// Mutually exclusive with `focused_panel` and `focused_subagent`.
-    pub focused_tool: Option<String>,
-    /// Monotonic tick counter, incremented each render frame (drives spinner animation)
-    pub tick: u64,
+    // Clipboard
+    pub pending_images: Vec<PendingImage>,
+    pub clipboard_pending: bool,
+    pub clipboard_rx: Option<std::sync::mpsc::Receiver<crate::modes::clipboard::ClipboardResult>>,
 }
 
 /// An image attached to the editor, waiting to be sent with the next prompt
@@ -264,19 +261,11 @@ impl App {
         let context_gauge = super::components::context_gauge::ContextGauge::new(&model);
         let git_status = super::components::git_status::GitStatus::new(&cwd);
         Self {
+            // Core state
             state: AppState::Idle,
             input_mode: InputMode::Normal,
             theme,
             editor: Editor::new(),
-            blocks: Vec::new(),
-            all_blocks: Vec::new(),
-            active_block: None,
-            next_block_id: 0,
-            focused_block: None,
-            streaming_text: String::new(),
-            streaming_thinking: String::new(),
-            streaming_block_index: None,
-            scroll: MessageScroll::new(),
             model,
             session_id: String::new(),
             total_tokens: 0,
@@ -284,9 +273,66 @@ impl App {
             cost_tracker: None,
             cwd,
             should_quit: false,
-            selection: None,
-            rendered_lines: Vec::new(),
-            messages_area: Rect::default(),
+            thinking_enabled: false,
+            thinking_level: crate::provider::ThinkingLevel::Off,
+            show_thinking: true,
+            tool_info: Vec::new(),
+            original_system_prompt: String::new(),
+            open_editor_requested: false,
+            active_account: String::new(),
+            available_models: Vec::new(),
+            router_status: RouterStatus::Disconnected,
+            queued_prompt: None,
+            login_verifier: None,
+            tick: 0,
+
+            // Grouped sub-states
+            streaming: StreamingState {
+                text: String::new(),
+                thinking: String::new(),
+                block_index: None,
+                active_tools: HashMap::new(),
+                progress_renderer: super::components::progress_renderer::ProgressRenderer::new(),
+                outputs: super::components::streaming_output::StreamingOutputManager::new(),
+                focused_tool: None,
+            },
+            conversation: ConversationState {
+                blocks: Vec::new(),
+                all_blocks: Vec::new(),
+                active_block: None,
+                next_block_id: 0,
+                focused_block: None,
+                scroll: MessageScroll::new(),
+            },
+            branching: BranchingState {
+                pending_branch: None,
+                last_branch_checkpoint: None,
+                switcher: super::components::branch_switcher::BranchSwitcher::new(),
+                compare: super::components::branch_compare::BranchCompareView::new(),
+                merge_interactive: super::components::merge_interactive::MergeInteractiveView::new(),
+            },
+            overlays: OverlayState {
+                session_popup_visible: false,
+                cost_overlay_visible: false,
+                show_block_ids: false,
+                plan_state: crate::modes::plan::PlanState::Inactive,
+                history_search: super::components::history_search::HistorySearch::new(),
+                output_search: super::components::output_search::OutputSearch::new(),
+                model_selector: ModelSelector::new(Vec::new()),
+                account_selector: AccountSelector::new(),
+                session_selector: SessionSelector::new(),
+                leader_menu: super::components::leader_menu::LeaderMenu::new(),
+            },
+            layout: TilingState {
+                tiling: super::panes::default_tiling(),
+                pane_registry: super::panes::default_registry(),
+                focused_panel: None,
+                focused_subagent: None,
+                subagent_panes: super::components::subagent_pane::SubagentPaneManager::new(),
+                zoom_state: None,
+            },
+
+            // Components
             slash_menu: SlashMenu::new(),
             slash_registry: {
                 use crate::slash_commands::{BuiltinSlashContributor, SlashContributor, SlashRegistry};
@@ -305,14 +351,6 @@ impl App {
                 registry
             },
             action_registry: crate::config::keybindings::ActionRegistry::new(),
-            login_verifier: None,
-            pending_branch: None,
-            last_branch_checkpoint: None,
-            queued_prompt: None,
-            thinking_enabled: false,
-            thinking_level: crate::provider::ThinkingLevel::Off,
-            show_thinking: true,
-            tool_info: Vec::new(),
             plugin_ui: PluginUIState::new(),
             panels: {
                 let mut pm = super::panel::PanelManager::new();
@@ -324,43 +362,20 @@ impl App {
                 pm.register(Box::new(super::components::branch_panel::BranchPanel::new()));
                 pm
             },
-            branch_switcher: super::components::branch_switcher::BranchSwitcher::new(),
-            branch_compare: super::components::branch_compare::BranchCompareView::new(),
-            merge_interactive: super::components::merge_interactive::MergeInteractiveView::new(),
             context_gauge,
             git_status,
 
+            // Render/hit-test areas
+            selection: None,
+            rendered_lines: Vec::new(),
+            messages_area: Rect::default(),
+            editor_area: Rect::default(),
+            status_area: Rect::default(),
+
+            // Clipboard
             pending_images: Vec::new(),
             clipboard_pending: false,
             clipboard_rx: None,
-            session_popup_visible: false,
-            cost_overlay_visible: false,
-            show_block_ids: false,
-            plan_state: crate::modes::plan::PlanState::Inactive,
-            history_search: super::components::history_search::HistorySearch::new(),
-            output_search: super::components::output_search::OutputSearch::new(),
-            original_system_prompt: String::new(),
-            open_editor_requested: false,
-            model_selector: ModelSelector::new(Vec::new()),
-            account_selector: AccountSelector::new(),
-            session_selector: SessionSelector::new(),
-            active_account: String::new(),
-            available_models: Vec::new(),
-            router_status: RouterStatus::Disconnected,
-            leader_menu: super::components::leader_menu::LeaderMenu::new(),
-            tiling: super::panes::default_tiling(),
-            pane_registry: super::panes::default_registry(),
-            focused_panel: None,
-            focused_subagent: None,
-            subagent_panes: super::components::subagent_pane::SubagentPaneManager::new(),
-            zoom_state: None,
-            editor_area: Rect::default(),
-            status_area: Rect::default(),
-            active_tools: HashMap::new(),
-            progress_renderer: super::components::progress_renderer::ProgressRenderer::new(),
-            streaming_outputs: super::components::streaming_output::StreamingOutputManager::new(),
-            focused_tool: None,
-            tick: 0,
         }
     }
 
@@ -406,7 +421,7 @@ impl App {
             );
         }
 
-        self.leader_menu = menu;
+        self.overlays.leader_menu = menu;
     }
 
     /// Rebuild the slash command registry with plugin contributions.
@@ -457,7 +472,7 @@ impl App {
     /// Panels like Subagents and Files have sub-views that should reset
     /// when the user exits the panel.
     pub fn close_focused_panel_views(&mut self) {
-        if let Some(id) = self.focused_panel {
+        if let Some(id) = self.layout.focused_panel {
             self.panel_mut(id).close_detail_view();
         }
         // Subagent panes have no detail view to close, but clear the focus
@@ -467,80 +482,80 @@ impl App {
 
     /// Whether a side panel or subagent pane (not chat) currently has focus.
     pub fn has_panel_focus(&self) -> bool {
-        self.focused_panel.is_some() || self.focused_subagent.is_some()
+        self.layout.focused_panel.is_some() || self.layout.focused_subagent.is_some()
     }
 
     /// Focus a specific panel by `PanelId`. Updates both hypertile and
     /// the `focused_panel` tracker.
     pub fn focus_panel(&mut self, panel_id: PanelId) {
-        if let Some(pane) = self.pane_registry.find_panel(panel_id) {
-            let _ = self.tiling.focus_pane(pane);
-            self.focused_panel = Some(panel_id);
-            self.focused_subagent = None;
-            self.focused_tool = None;
-            self.streaming_outputs.unfocus_all();
+        if let Some(pane) = self.layout.pane_registry.find_panel(panel_id) {
+            let _ = self.layout.tiling.focus_pane(pane);
+            self.layout.focused_panel = Some(panel_id);
+            self.layout.focused_subagent = None;
+            self.streaming.focused_tool = None;
+            self.streaming.outputs.unfocus_all();
         }
     }
 
     /// Focus a specific subagent pane by its string ID.
     pub fn focus_subagent(&mut self, subagent_id: &str) {
-        if let Some(pane_id) = self.subagent_panes.pane_id_for(subagent_id) {
-            let _ = self.tiling.focus_pane(pane_id);
-            self.focused_subagent = Some(subagent_id.to_string());
-            self.focused_panel = None;
-            self.focused_tool = None;
-            self.streaming_outputs.unfocus_all();
+        if let Some(pane_id) = self.layout.subagent_panes.pane_id_for(subagent_id) {
+            let _ = self.layout.tiling.focus_pane(pane_id);
+            self.layout.focused_subagent = Some(subagent_id.to_string());
+            self.layout.focused_panel = None;
+            self.streaming.focused_tool = None;
+            self.streaming.outputs.unfocus_all();
         }
     }
 
     /// Return focus to the chat pane (unfocus any panel, subagent, or tool output).
     pub fn unfocus_panel(&mut self) {
-        let chat = self.pane_registry.chat_pane();
-        let _ = self.tiling.focus_pane(chat);
-        self.focused_panel = None;
-        self.focused_subagent = None;
-        self.focused_tool = None;
-        self.streaming_outputs.unfocus_all();
+        let chat = self.layout.pane_registry.chat_pane();
+        let _ = self.layout.tiling.focus_pane(chat);
+        self.layout.focused_panel = None;
+        self.layout.focused_subagent = None;
+        self.streaming.focused_tool = None;
+        self.streaming.outputs.unfocus_all();
     }
 
     /// Focus a specific tool's streaming output for scroll control.
     /// The `call_id` identifies the active tool execution.
     pub fn focus_tool(&mut self, call_id: &str) {
-        self.focused_panel = None;
-        self.focused_subagent = None;
-        self.focused_tool = Some(call_id.to_string());
-        self.streaming_outputs.focus(call_id);
+        self.layout.focused_panel = None;
+        self.layout.focused_subagent = None;
+        self.streaming.focused_tool = Some(call_id.to_string());
+        self.streaming.outputs.focus(call_id);
     }
 
     /// Unfocus the currently focused tool output.
     pub fn unfocus_tool(&mut self) {
-        self.focused_tool = None;
-        self.streaming_outputs.unfocus_all();
+        self.streaming.focused_tool = None;
+        self.streaming.outputs.unfocus_all();
     }
 
     /// Is the given panel currently focused?
     pub fn is_panel_focused(&self, panel_id: PanelId) -> bool {
-        self.focused_panel == Some(panel_id)
+        self.layout.focused_panel == Some(panel_id)
     }
 
     /// Apply a hypertile tiling action (focus, resize, etc.) and sync
     /// our `focused_panel` tracker from the resulting hypertile state.
     pub fn apply_tiling_action(&mut self, action: ratatui_hypertile::HypertileAction) {
-        self.tiling.apply_action(action);
+        self.layout.tiling.apply_action(action);
         self.sync_focused_panel();
     }
 
     /// Sync `focused_panel` and `focused_subagent` from hypertile's current focus.
     pub fn sync_focused_panel(&mut self) {
-        self.focused_panel = None;
-        self.focused_subagent = None;
-        if let Some(pane_id) = self.tiling.focused_pane() {
-            match self.pane_registry.kind(pane_id) {
+        self.layout.focused_panel = None;
+        self.layout.focused_subagent = None;
+        if let Some(pane_id) = self.layout.tiling.focused_pane() {
+            match self.layout.pane_registry.kind(pane_id) {
                 Some(super::panes::PaneKind::Panel(panel_id)) => {
-                    self.focused_panel = Some(*panel_id);
+                    self.layout.focused_panel = Some(*panel_id);
                 }
                 Some(super::panes::PaneKind::Subagent(id)) => {
-                    self.focused_subagent = Some(id.clone());
+                    self.layout.focused_subagent = Some(id.clone());
                 }
                 _ => {} // Chat or Empty → no panel/subagent focus
             }
@@ -554,16 +569,16 @@ impl App {
         use super::panes::PaneKind;
 
         // Don't split the chat pane — it must remain a single pane.
-        if let Some(focused) = self.tiling.focused_pane() {
-            if self.pane_registry.is_chat(focused) {
+        if let Some(focused) = self.layout.tiling.focused_pane() {
+            if self.layout.pane_registry.is_chat(focused) {
                 return;
             }
         }
 
-        match self.tiling.split_focused(direction) {
+        match self.layout.tiling.split_focused(direction) {
             Ok(new_id) => {
                 // The new pane starts as Empty. The old pane keeps its content.
-                self.pane_registry.register(new_id, PaneKind::Empty);
+                self.layout.pane_registry.register(new_id, PaneKind::Empty);
                 self.sync_focused_panel();
             }
             Err(_) => {} // Silently ignore (e.g. root-only tree)
@@ -574,15 +589,15 @@ impl App {
     /// The chat pane (ROOT) cannot be closed.
     pub fn close_focused_pane(&mut self) {
         // Don't close the chat pane.
-        if let Some(focused) = self.tiling.focused_pane() {
-            if self.pane_registry.is_chat(focused) {
+        if let Some(focused) = self.layout.tiling.focused_pane() {
+            if self.layout.pane_registry.is_chat(focused) {
                 return;
             }
         }
 
-        match self.tiling.close_focused() {
+        match self.layout.tiling.close_focused() {
             Ok(removed_id) => {
-                self.pane_registry.unregister(removed_id);
+                self.layout.pane_registry.unregister(removed_id);
                 self.sync_focused_panel();
             }
             Err(_) => {} // Silently ignore (e.g. only one pane left)
@@ -593,34 +608,34 @@ impl App {
 
     /// Whether any pane is currently zoomed.
     pub fn is_zoomed(&self) -> bool {
-        self.zoom_state.is_some()
+        self.layout.zoom_state.is_some()
     }
 
     /// Zoom the currently focused pane to fill the entire terminal.
     /// Saves the current tiling so it can be restored with `zoom_restore`.
     /// If already zoomed, this is a no-op.
     pub fn zoom_focused(&mut self) {
-        if self.zoom_state.is_some() {
+        if self.layout.zoom_state.is_some() {
             return;
         }
 
-        let Some(focused_pane) = self.tiling.focused_pane() else {
+        let Some(focused_pane) = self.layout.tiling.focused_pane() else {
             return;
         };
 
         // Save current state.
-        self.zoom_state = Some(ZoomState {
-            tiling: self.tiling.clone(),
-            registry: self.pane_registry.clone(),
-            focused_panel: self.focused_panel,
-            focused_subagent: self.focused_subagent.clone(),
+        self.layout.zoom_state = Some(ZoomState {
+            tiling: self.layout.tiling.clone(),
+            registry: self.layout.pane_registry.clone(),
+            focused_panel: self.layout.focused_panel,
+            focused_subagent: self.layout.focused_subagent.clone(),
         });
 
         // Build a single-pane tree with the focused pane at root.
         let mut zoomed = ratatui_hypertile::Hypertile::new();
         // Hypertile::new() creates ROOT as the only pane. We need to
         // make the registry map ROOT to whatever the focused pane held.
-        let kind = self.pane_registry.kind(focused_pane).cloned()
+        let kind = self.layout.pane_registry.kind(focused_pane).cloned()
             .unwrap_or(super::panes::PaneKind::Empty);
 
         let mut reg = super::panes::PaneRegistry::new();
@@ -633,31 +648,31 @@ impl App {
         // the renderer will see ROOT → Panel and skip the chat render path.
 
         let _ = zoomed.focus_pane(ratatui_hypertile::PaneId::ROOT);
-        self.tiling = zoomed;
-        self.pane_registry = reg;
+        self.layout.tiling = zoomed;
+        self.layout.pane_registry = reg;
 
         // Sync focused_panel/focused_subagent to match the zoomed pane's content.
-        self.focused_subagent = None;
+        self.layout.focused_subagent = None;
         match kind {
-            super::panes::PaneKind::Panel(id) => self.focused_panel = Some(id),
+            super::panes::PaneKind::Panel(id) => self.layout.focused_panel = Some(id),
             super::panes::PaneKind::Subagent(ref id) => {
-                self.focused_panel = None;
-                self.focused_subagent = Some(id.clone());
+                self.layout.focused_panel = None;
+                self.layout.focused_subagent = Some(id.clone());
             }
-            _ => self.focused_panel = None,
+            _ => self.layout.focused_panel = None,
         }
     }
 
     /// Restore the tiling layout from before `zoom_focused` was called.
     /// No-op if not zoomed.
     pub fn zoom_restore(&mut self) {
-        let Some(saved) = self.zoom_state.take() else {
+        let Some(saved) = self.layout.zoom_state.take() else {
             return;
         };
-        self.tiling = saved.tiling;
-        self.pane_registry = saved.registry;
-        self.focused_panel = saved.focused_panel;
-        self.focused_subagent = saved.focused_subagent;
+        self.layout.tiling = saved.tiling;
+        self.layout.pane_registry = saved.registry;
+        self.layout.focused_panel = saved.focused_panel;
+        self.layout.focused_subagent = saved.focused_subagent;
     }
 
     /// Toggle zoom on the focused pane: zoom in if not zoomed, restore if zoomed.
@@ -683,14 +698,14 @@ impl App {
 
     /// Push a standalone system message (not part of any block)
     pub fn push_system(&mut self, content: String, is_error: bool) {
-        self.blocks.push(BlockEntry::System(DisplayMessage {
+        self.conversation.blocks.push(BlockEntry::System(DisplayMessage {
             role: MessageRole::System,
             content,
             tool_name: None,
             is_error,
             images: Vec::new(),
         }));
-        self.scroll.scroll_to_bottom();
+        self.conversation.scroll.scroll_to_bottom();
     }
 
     /// Start a new conversation block for the given user prompt.
@@ -700,16 +715,16 @@ impl App {
         self.finalize_active_block();
 
         // Determine parent: the last conversation block on the visible list
-        let parent_id = self.blocks.iter().rev().find_map(|e| match e {
+        let parent_id = self.conversation.blocks.iter().rev().find_map(|e| match e {
             BlockEntry::Conversation(b) => Some(b.id),
             _ => None,
         });
 
-        let mut block = ConversationBlock::new(self.next_block_id, prompt);
+        let mut block = ConversationBlock::new(self.conversation.next_block_id, prompt);
         block.parent_block_id = parent_id;
         block.agent_msg_checkpoint = agent_msg_count;
-        self.next_block_id += 1;
-        self.active_block = Some(block);
+        self.conversation.next_block_id += 1;
+        self.conversation.active_block = Some(block);
     }
 
     /// Finalize the active block and move it to the completed list
@@ -718,24 +733,24 @@ impl App {
         self.flush_streaming_thinking();
         self.flush_streaming_text();
 
-        if let Some(mut block) = self.active_block.take() {
+        if let Some(mut block) = self.conversation.active_block.take() {
             block.streaming = false;
             // Store in both the active view and the full block history
-            self.all_blocks.push(block.clone());
-            self.blocks.push(BlockEntry::Conversation(block));
+            self.conversation.all_blocks.push(block.clone());
+            self.conversation.blocks.push(BlockEntry::Conversation(block));
 
             // Refresh branch panel if it has entries (i.e., has been opened before)
             if let Some(bp) = self.panels.downcast_ref::<super::components::branch_panel::BranchPanel>(super::panel::PanelId::Branches) {
                 if !bp.entries.is_empty() {
                     let active_ids: std::collections::HashSet<usize> = self
-                        .blocks
+                        .conversation.blocks
                         .iter()
                         .filter_map(|e| match e {
                             BlockEntry::Conversation(b) => Some(b.id),
                             _ => None,
                         })
                         .collect();
-                    let all_blocks = self.all_blocks.clone();
+                    let all_blocks = self.conversation.all_blocks.clone();
                     if let Some(bp) = self.panels.downcast_mut::<super::components::branch_panel::BranchPanel>(super::panel::PanelId::Branches) {
                         bp.refresh(&all_blocks, &active_ids);
                     }
@@ -746,9 +761,9 @@ impl App {
 
     /// Flush accumulated streaming thinking into the active block
     fn flush_streaming_thinking(&mut self) {
-        if !self.streaming_thinking.is_empty() {
-            let content = std::mem::take(&mut self.streaming_thinking);
-            if let Some(ref mut block) = self.active_block {
+        if !self.streaming.thinking.is_empty() {
+            let content = std::mem::take(&mut self.streaming.thinking);
+            if let Some(ref mut block) = self.conversation.active_block {
                 block.responses.push(DisplayMessage {
                     role: MessageRole::Thinking,
                     content,
@@ -762,9 +777,9 @@ impl App {
 
     /// Flush accumulated streaming text into the active block
     fn flush_streaming_text(&mut self) {
-        if !self.streaming_text.is_empty() {
-            let content = std::mem::take(&mut self.streaming_text);
-            if let Some(ref mut block) = self.active_block {
+        if !self.streaming.text.is_empty() {
+            let content = std::mem::take(&mut self.streaming.text);
+            if let Some(ref mut block) = self.conversation.active_block {
                 block.responses.push(DisplayMessage {
                     role: MessageRole::Assistant,
                     content,
@@ -781,14 +796,14 @@ impl App {
         match event {
             AgentEvent::AgentStart => {
                 self.state = AppState::Streaming;
-                self.streaming_text.clear();
-                self.streaming_thinking.clear();
-                self.streaming_block_index = None;
+                self.streaming.text.clear();
+                self.streaming.thinking.clear();
+                self.streaming.block_index = None;
             }
             AgentEvent::AgentEnd { .. } => {
                 self.finalize_active_block();
                 self.state = AppState::Idle;
-                self.scroll.scroll_to_bottom();
+                self.conversation.scroll.scroll_to_bottom();
             }
             AgentEvent::ContentBlockStart { index, content_block } => {
                 // A new content block is starting — flush any previous streaming buffers
@@ -812,25 +827,25 @@ impl App {
                         self.flush_streaming_text();
                     }
                 }
-                self.streaming_block_index = Some(*index);
+                self.streaming.block_index = Some(*index);
             }
             AgentEvent::ContentBlockStop { index: _ } => {
                 // Content block finished — flush its buffer
                 self.flush_streaming_thinking();
                 self.flush_streaming_text();
-                self.streaming_block_index = None;
+                self.streaming.block_index = None;
             }
             AgentEvent::MessageUpdate { delta, .. } => match delta {
                 ContentDelta::TextDelta { text } => {
-                    self.streaming_text.push_str(text);
-                    if self.scroll.auto_scroll {
-                        self.scroll.scroll_to_bottom();
+                    self.streaming.text.push_str(text);
+                    if self.conversation.scroll.auto_scroll {
+                        self.conversation.scroll.scroll_to_bottom();
                     }
                 }
                 ContentDelta::ThinkingDelta { thinking } => {
-                    self.streaming_thinking.push_str(thinking);
-                    if self.scroll.auto_scroll {
-                        self.scroll.scroll_to_bottom();
+                    self.streaming.thinking.push_str(thinking);
+                    if self.conversation.scroll.auto_scroll {
+                        self.conversation.scroll.scroll_to_bottom();
                     }
                 }
                 _ => {}
@@ -839,7 +854,7 @@ impl App {
                 // ContentBlockStop should have already flushed, but be safe
                 self.flush_streaming_thinking();
                 self.flush_streaming_text();
-                if let Some(ref mut block) = self.active_block {
+                if let Some(ref mut block) = self.conversation.active_block {
                     block.responses.push(DisplayMessage {
                         role: MessageRole::ToolCall,
                         content: tool_name.clone(),
@@ -852,7 +867,7 @@ impl App {
                 self.track_file_activity(tool_name, input);
             }
             AgentEvent::ToolExecutionStart { call_id, tool_name } => {
-                self.active_tools.insert(call_id.clone(), ActiveToolExecution {
+                self.streaming.active_tools.insert(call_id.clone(), ActiveToolExecution {
                     tool_name: tool_name.clone(),
                     started_at: Instant::now(),
                     line_count: 0,
@@ -870,14 +885,14 @@ impl App {
                     .join("");
 
                 // Update active tool line count
-                if let Some(active) = self.active_tools.get_mut(call_id.as_str()) {
+                if let Some(active) = self.streaming.active_tools.get_mut(call_id.as_str()) {
                     active.line_count += text.lines().count().max(1);
                 }
 
                 // Feed into streaming output buffer for scrollable display
-                self.streaming_outputs.add_text(call_id, &text);
+                self.streaming.outputs.add_text(call_id, &text);
 
-                if let Some(ref mut block) = self.active_block {
+                if let Some(ref mut block) = self.conversation.active_block {
                     let found = block
                         .responses
                         .iter_mut()
@@ -898,18 +913,18 @@ impl App {
                         });
                     }
                 }
-                if self.scroll.auto_scroll {
-                    self.scroll.scroll_to_bottom();
+                if self.conversation.scroll.auto_scroll {
+                    self.conversation.scroll.scroll_to_bottom();
                 }
             }
             AgentEvent::ToolProgressUpdate { call_id, progress } => {
-                self.progress_renderer.update(call_id, progress.clone());
+                self.streaming.progress_renderer.update(call_id, progress.clone());
             }
             AgentEvent::ToolResultChunk { call_id, chunk } => {
                 // Feed chunks into the streaming output buffer for display.
                 // The executor's accumulator also collects these for the final result.
                 if chunk.content_type == "text" {
-                    self.streaming_outputs.add_text(call_id, &chunk.content);
+                    self.streaming.outputs.add_text(call_id, &chunk.content);
                 }
             }
             AgentEvent::ToolExecutionEnd {
@@ -919,12 +934,12 @@ impl App {
                 ..
             } => {
                 // Remove from active tools, progress renderer, and streaming output
-                self.progress_renderer.remove(call_id);
-                self.active_tools.remove(call_id.as_str());
-                self.streaming_outputs.remove(call_id);
+                self.streaming.progress_renderer.remove(call_id);
+                self.streaming.active_tools.remove(call_id.as_str());
+                self.streaming.outputs.remove(call_id);
                 // Clear focused tool if it was this one
-                if self.focused_tool.as_deref() == Some(call_id) {
-                    self.focused_tool = None;
+                if self.streaming.focused_tool.as_deref() == Some(call_id) {
+                    self.streaming.focused_tool = None;
                 }
 
                 // Collect text content
@@ -951,7 +966,7 @@ impl App {
                     })
                     .collect();
 
-                if let Some(ref mut block) = self.active_block {
+                if let Some(ref mut block) = self.conversation.active_block {
                     let found = block
                         .responses
                         .iter_mut()
@@ -983,7 +998,7 @@ impl App {
                 if let Some(ref ct) = self.cost_tracker {
                     self.total_cost = ct.total_cost();
                 }
-                if let Some(ref mut block) = self.active_block {
+                if let Some(ref mut block) = self.conversation.active_block {
                     block.tokens = block.tokens.saturating_add(turn_usage.total_tokens());
                 }
                 // Update context gauge with cumulative input/output tokens
@@ -997,7 +1012,7 @@ impl App {
             AgentEvent::UserInput { text, agent_msg_count } => {
                 // Start a new block for this user input
                 self.start_block(text.clone(), *agent_msg_count);
-                self.scroll.scroll_to_bottom();
+                self.conversation.scroll.scroll_to_bottom();
             }
             AgentEvent::SessionCompaction {
                 compacted_count,
@@ -1050,22 +1065,22 @@ impl App {
         if conv_ids.is_empty() {
             return;
         }
-        match self.focused_block {
+        match self.conversation.focused_block {
             None => {
-                self.focused_block = conv_ids.last().copied();
+                self.conversation.focused_block = conv_ids.last().copied();
             }
             Some(current) => {
                 if let Some(pos) = conv_ids.iter().position(|&id| id == current) {
                     if pos > 0 {
-                        self.focused_block = Some(conv_ids[pos - 1]);
+                        self.conversation.focused_block = Some(conv_ids[pos - 1]);
                     }
                     // At the first block — stay put
                 } else {
-                    self.focused_block = conv_ids.last().copied();
+                    self.conversation.focused_block = conv_ids.last().copied();
                 }
             }
         }
-        self.scroll.auto_scroll = false;
+        self.conversation.scroll.auto_scroll = false;
     }
 
     /// Focus the next block
@@ -1074,25 +1089,25 @@ impl App {
         if conv_ids.is_empty() {
             return;
         }
-        match self.focused_block {
+        match self.conversation.focused_block {
             None => {
                 // Start from the bottom (most recent block) since the user
                 // is already scrolled to the bottom when unfocused.
-                self.focused_block = conv_ids.last().copied();
-                self.scroll.auto_scroll = false;
+                self.conversation.focused_block = conv_ids.last().copied();
+                self.conversation.scroll.auto_scroll = false;
             }
             Some(current) => {
                 if let Some(pos) = conv_ids.iter().position(|&id| id == current) {
                     if pos + 1 < conv_ids.len() {
-                        self.focused_block = Some(conv_ids[pos + 1]);
+                        self.conversation.focused_block = Some(conv_ids[pos + 1]);
                     } else {
                         // Past the last block — unfocus and return to auto-scroll
-                        self.focused_block = None;
-                        self.scroll.scroll_to_bottom();
+                        self.conversation.focused_block = None;
+                        self.conversation.scroll.scroll_to_bottom();
                     }
                 } else {
-                    self.focused_block = conv_ids.last().copied();
-                    self.scroll.auto_scroll = false;
+                    self.conversation.focused_block = conv_ids.last().copied();
+                    self.conversation.scroll.auto_scroll = false;
                 }
             }
         }
@@ -1100,8 +1115,8 @@ impl App {
 
     /// Toggle collapse on the focused block
     pub fn toggle_focused_block(&mut self) {
-        if let Some(id) = self.focused_block {
-            for entry in &mut self.blocks {
+        if let Some(id) = self.conversation.focused_block {
+            for entry in &mut self.conversation.blocks {
                 if let BlockEntry::Conversation(block) = entry
                     && block.id == id
                 {
@@ -1114,7 +1129,7 @@ impl App {
 
     /// Collapse all conversation blocks
     pub fn collapse_all_blocks(&mut self) {
-        for entry in &mut self.blocks {
+        for entry in &mut self.conversation.blocks {
             if let BlockEntry::Conversation(block) = entry {
                 block.collapsed = true;
             }
@@ -1123,7 +1138,7 @@ impl App {
 
     /// Expand all conversation blocks
     pub fn expand_all_blocks(&mut self) {
-        for entry in &mut self.blocks {
+        for entry in &mut self.conversation.blocks {
             if let BlockEntry::Conversation(block) = entry {
                 block.collapsed = false;
             }
@@ -1132,8 +1147,8 @@ impl App {
 
     /// Copy the focused block's content to the clipboard
     pub fn copy_focused_block(&self) {
-        if let Some(id) = self.focused_block {
-            for entry in &self.blocks {
+        if let Some(id) = self.conversation.focused_block {
+            for entry in &self.conversation.blocks {
                 if let BlockEntry::Conversation(block) = entry
                     && block.id == id
                 {
@@ -1157,8 +1172,8 @@ impl App {
 
     /// Get the prompt from the focused block (for re-running)
     pub fn get_focused_block_prompt(&self) -> Option<String> {
-        let id = self.focused_block?;
-        for entry in &self.blocks {
+        let id = self.conversation.focused_block?;
+        for entry in &self.conversation.blocks {
             if let BlockEntry::Conversation(block) = entry
                 && block.id == id
             {
@@ -1170,7 +1185,7 @@ impl App {
 
     /// Get IDs of all conversation blocks in order
     fn conversation_block_ids(&self) -> Vec<usize> {
-        self.blocks
+        self.conversation.blocks
             .iter()
             .filter_map(|entry| match entry {
                 BlockEntry::Conversation(block) => Some(block.id),
@@ -1184,13 +1199,13 @@ impl App {
     /// Get the sibling info for a block: (current_index, total_siblings)
     /// Siblings are blocks that share the same parent_block_id.
     pub fn block_siblings(&self, block_id: usize) -> (usize, usize) {
-        let block = match self.all_blocks.iter().find(|b| b.id == block_id) {
+        let block = match self.conversation.all_blocks.iter().find(|b| b.id == block_id) {
             Some(b) => b,
             None => return (0, 1),
         };
         let parent = block.parent_block_id;
         let siblings: Vec<usize> =
-            self.all_blocks.iter().filter(|b| b.parent_block_id == parent).map(|b| b.id).collect();
+            self.conversation.all_blocks.iter().filter(|b| b.parent_block_id == parent).map(|b| b.id).collect();
         let idx = siblings.iter().position(|&id| id == block_id).unwrap_or(0);
         (idx, siblings.len())
     }
@@ -1198,17 +1213,17 @@ impl App {
     /// Count how many child blocks branch from the given block.
     /// Returns 0 for leaf blocks, >1 means this block is a branch point.
     pub fn block_children_count(&self, block_id: usize) -> usize {
-        self.all_blocks.iter().filter(|b| b.parent_block_id == Some(block_id)).count()
+        self.conversation.all_blocks.iter().filter(|b| b.parent_block_id == Some(block_id)).count()
     }
 
     /// Edit the focused block's prompt: pre-fill the editor and set up a
     /// pending branch operation. Returns true if a branch edit was initiated.
     pub fn edit_focused_block_prompt(&mut self) -> bool {
-        let id = match self.focused_block {
+        let id = match self.conversation.focused_block {
             Some(id) => id,
             None => return false,
         };
-        let block = match self.all_blocks.iter().find(|b| b.id == id) {
+        let block = match self.conversation.all_blocks.iter().find(|b| b.id == id) {
             Some(b) => b.clone(),
             None => return false,
         };
@@ -1219,20 +1234,20 @@ impl App {
         }
         // Store the pending branch info: we'll branch from this block's parent
         // using this block's agent_msg_checkpoint (the message count before it)
-        self.pending_branch = Some((id, String::new())); // prompt will be filled on submit
-        self.focused_block = None;
+        self.branching.pending_branch = Some((id, String::new())); // prompt will be filled on submit
+        self.conversation.focused_block = None;
         true
     }
 
     /// If there's a pending branch, finalize it with the submitted prompt.
     /// Returns Some((checkpoint, prompt)) to tell the event loop to truncate and re-prompt.
     pub fn take_pending_branch(&mut self, submitted_prompt: &str) -> Option<(usize, String)> {
-        let (fork_block_id, _) = self.pending_branch.take()?;
-        let fork_block = self.all_blocks.iter().find(|b| b.id == fork_block_id)?;
+        let (fork_block_id, _) = self.branching.pending_branch.take()?;
+        let fork_block = self.conversation.all_blocks.iter().find(|b| b.id == fork_block_id)?;
         let checkpoint = fork_block.agent_msg_checkpoint;
         // Remove all blocks from the visible list that come at or after the fork point.
-        let mut keep_up_to = self.blocks.len();
-        for (i, entry) in self.blocks.iter().enumerate() {
+        let mut keep_up_to = self.conversation.blocks.len();
+        for (i, entry) in self.conversation.blocks.iter().enumerate() {
             if let BlockEntry::Conversation(b) = entry
                 && b.id == fork_block_id
             {
@@ -1240,17 +1255,17 @@ impl App {
                 break;
             }
         }
-        self.blocks.truncate(keep_up_to);
+        self.conversation.blocks.truncate(keep_up_to);
 
         // Signal the event loop to record a branch in the session file
-        self.last_branch_checkpoint = Some(checkpoint);
+        self.branching.last_branch_checkpoint = Some(checkpoint);
 
         Some((checkpoint, submitted_prompt.to_string()))
     }
 
     /// Navigate to the previous sibling branch at the focused block
     pub fn branch_prev(&mut self) {
-        if let Some(id) = self.focused_block
+        if let Some(id) = self.conversation.focused_block
             && let Some(sibling_id) = self.adjacent_sibling(id, -1)
         {
             self.switch_to_branch(sibling_id);
@@ -1259,7 +1274,7 @@ impl App {
 
     /// Navigate to the next sibling branch at the focused block
     pub fn branch_next(&mut self) {
-        if let Some(id) = self.focused_block
+        if let Some(id) = self.conversation.focused_block
             && let Some(sibling_id) = self.adjacent_sibling(id, 1)
         {
             self.switch_to_branch(sibling_id);
@@ -1268,10 +1283,10 @@ impl App {
 
     /// Find the sibling block offset positions from the given block.
     fn adjacent_sibling(&self, block_id: usize, offset: isize) -> Option<usize> {
-        let block = self.all_blocks.iter().find(|b| b.id == block_id)?;
+        let block = self.conversation.all_blocks.iter().find(|b| b.id == block_id)?;
         let parent = block.parent_block_id;
         let siblings: Vec<usize> =
-            self.all_blocks.iter().filter(|b| b.parent_block_id == parent).map(|b| b.id).collect();
+            self.conversation.all_blocks.iter().filter(|b| b.parent_block_id == parent).map(|b| b.id).collect();
         let idx = siblings.iter().position(|&id| id == block_id)? as isize;
         let new_idx = idx + offset;
         if new_idx >= 0 && (new_idx as usize) < siblings.len() {
@@ -1289,7 +1304,7 @@ impl App {
         let mut current = Some(target_block_id);
         while let Some(id) = current {
             path_up.push(id);
-            current = self.all_blocks.iter().find(|b| b.id == id).and_then(|b| b.parent_block_id);
+            current = self.conversation.all_blocks.iter().find(|b| b.id == id).and_then(|b| b.parent_block_id);
         }
         path_up.reverse(); // now root → ... → target
 
@@ -1299,7 +1314,7 @@ impl App {
         loop {
             // Find children of leaf (blocks whose parent_block_id == Some(leaf))
             let children: Vec<usize> =
-                self.all_blocks.iter().filter(|b| b.parent_block_id == Some(leaf)).map(|b| b.id).collect();
+                self.conversation.all_blocks.iter().filter(|b| b.parent_block_id == Some(leaf)).map(|b| b.id).collect();
             if let Some(&last_child) = children.last() {
                 path.push(last_child);
                 leaf = last_child;
@@ -1311,22 +1326,22 @@ impl App {
         // Rebuild self.blocks: keep system messages at their positions,
         // replace conversation blocks with the path
         let system_msgs: Vec<BlockEntry> =
-            self.blocks.iter().filter(|e| matches!(e, BlockEntry::System(_))).cloned().collect();
+            self.conversation.blocks.iter().filter(|e| matches!(e, BlockEntry::System(_))).cloned().collect();
 
-        self.blocks.clear();
+        self.conversation.blocks.clear();
         // Re-add system messages that were before the first conversation block
         // For simplicity, put system messages first, then the branch path
         for sys in system_msgs {
-            self.blocks.push(sys);
+            self.conversation.blocks.push(sys);
         }
         for &block_id in &path {
-            if let Some(block) = self.all_blocks.iter().find(|b| b.id == block_id) {
-                self.blocks.push(BlockEntry::Conversation(block.clone()));
+            if let Some(block) = self.conversation.all_blocks.iter().find(|b| b.id == block_id) {
+                self.conversation.blocks.push(BlockEntry::Conversation(block.clone()));
             }
         }
 
-        self.focused_block = Some(target_block_id);
-        self.scroll.auto_scroll = false;
+        self.conversation.focused_block = Some(target_block_id);
+        self.conversation.scroll.auto_scroll = false;
     }
 
     // ── Mouse hit-testing ─────────────────────────────
@@ -1342,9 +1357,9 @@ impl App {
             return HitRegion::StatusBar;
         }
         // Check panes via hypertile geometry
-        for pane in self.tiling.panes() {
+        for pane in self.layout.tiling.panes() {
             if rect_contains(pane.rect, col, row) {
-                match self.pane_registry.kind(pane.id) {
+                match self.layout.pane_registry.kind(pane.id) {
                     Some(super::panes::PaneKind::Panel(panel_id)) => {
                         return HitRegion::Panel(*panel_id);
                     }
@@ -1475,7 +1490,7 @@ mod tests {
         app.editor_area = Rect::new(20, 35, 60, 5);
         app.status_area = Rect::new(20, 40, 60, 1);
         // Compute hypertile layout so pane rects are populated
-        app.tiling.compute_layout(Rect::new(0, 0, 100, 41));
+        app.layout.tiling.compute_layout(Rect::new(0, 0, 100, 41));
 
         // Click in the editor area
         assert_eq!(app.hit_test(30, 37), HitRegion::Editor);

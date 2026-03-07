@@ -12,43 +12,43 @@ pub(crate) fn handle_model_selector_key(
 ) -> bool {
     match key.code {
         KeyCode::Esc => {
-            app.model_selector.close();
+            app.overlays.model_selector.close();
             true
         }
         KeyCode::Enter => {
-            if let Some(model) = app.model_selector.select() {
+            if let Some(model) = app.overlays.model_selector.select() {
                 let old_model = std::mem::replace(&mut app.model, model.clone());
                 let _ = cmd_tx.send(AgentCommand::SetModel(model.clone()));
                 app.context_gauge.set_model(&app.model);
                 app.push_system(format!("Model switched: {} → {}", old_model, model), false);
             }
-            app.model_selector.close();
+            app.overlays.model_selector.close();
             true
         }
         KeyCode::Up => {
-            app.model_selector.move_up();
+            app.overlays.model_selector.move_up();
             true
         }
         KeyCode::Down => {
-            app.model_selector.move_down();
+            app.overlays.model_selector.move_down();
             true
         }
         KeyCode::Backspace => {
-            app.model_selector.backspace();
+            app.overlays.model_selector.backspace();
             true
         }
         KeyCode::Char(c) => {
             // Ctrl+C closes
             if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                app.model_selector.close();
+                app.overlays.model_selector.close();
             } else if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match c {
-                    'k' | 'p' => app.model_selector.move_up(),
-                    'j' | 'n' => app.model_selector.move_down(),
+                    'k' | 'p' => app.overlays.model_selector.move_up(),
+                    'j' | 'n' => app.overlays.model_selector.move_down(),
                     _ => {}
                 }
             } else {
-                app.model_selector.type_char(c);
+                app.overlays.model_selector.type_char(c);
             }
             true
         }
@@ -67,39 +67,39 @@ pub(crate) fn handle_account_selector_key(
 ) -> bool {
     match key.code {
         KeyCode::Esc => {
-            app.account_selector.close();
+            app.overlays.account_selector.close();
             true
         }
         KeyCode::Enter => {
-            if let Some(account_name) = app.account_selector.select() {
+            if let Some(account_name) = app.overlays.account_selector.select() {
                 let _ = cmd_tx.send(AgentCommand::SwitchAccount(account_name));
             }
-            app.account_selector.close();
+            app.overlays.account_selector.close();
             true
         }
         KeyCode::Up => {
-            app.account_selector.move_up();
+            app.overlays.account_selector.move_up();
             true
         }
         KeyCode::Down => {
-            app.account_selector.move_down();
+            app.overlays.account_selector.move_down();
             true
         }
         KeyCode::Backspace => {
-            app.account_selector.backspace();
+            app.overlays.account_selector.backspace();
             true
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                app.account_selector.close();
+                app.overlays.account_selector.close();
             } else if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match c {
-                    'k' | 'p' => app.account_selector.move_up(),
-                    'j' | 'n' => app.account_selector.move_down(),
+                    'k' | 'p' => app.overlays.account_selector.move_up(),
+                    'j' | 'n' => app.overlays.account_selector.move_down(),
                     _ => {}
                 }
             } else {
-                app.account_selector.type_char(c);
+                app.overlays.account_selector.type_char(c);
             }
             true
         }
@@ -117,42 +117,42 @@ pub(crate) fn handle_branch_switcher_key(
 ) -> bool {
     match key.code {
         KeyCode::Esc => {
-            app.branch_switcher.close();
+            app.branching.switcher.close();
             true
         }
         KeyCode::Enter => {
-            if let Some(leaf_id) = app.branch_switcher.selected_leaf_id() {
-                app.branch_switcher.close();
+            if let Some(leaf_id) = app.branching.switcher.selected_leaf_id() {
+                app.branching.switcher.close();
                 app.switch_to_branch(leaf_id);
                 app.push_system(format!("Switched to branch at block #{}", leaf_id), false);
             } else {
-                app.branch_switcher.close();
+                app.branching.switcher.close();
             }
             true
         }
         KeyCode::Up => {
-            app.branch_switcher.move_up();
+            app.branching.switcher.move_up();
             true
         }
         KeyCode::Down => {
-            app.branch_switcher.move_down();
+            app.branching.switcher.move_down();
             true
         }
         KeyCode::Backspace => {
-            app.branch_switcher.backspace();
+            app.branching.switcher.backspace();
             true
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                app.branch_switcher.close();
+                app.branching.switcher.close();
             } else if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match c {
-                    'k' | 'p' => app.branch_switcher.move_up(),
-                    'j' | 'n' => app.branch_switcher.move_down(),
+                    'k' | 'p' => app.branching.switcher.move_up(),
+                    'j' | 'n' => app.branching.switcher.move_down(),
                     _ => {}
                 }
             } else {
-                app.branch_switcher.type_char(c);
+                app.branching.switcher.type_char(c);
             }
             true
         }
@@ -170,24 +170,24 @@ pub(crate) fn handle_branch_compare_key(
 ) -> bool {
     match key.code {
         KeyCode::Esc | KeyCode::Char('q') => {
-            app.branch_compare.close();
+            app.branching.compare.close();
             true
         }
         KeyCode::Char('j') | KeyCode::Down => {
-            app.branch_compare.scroll_down();
+            app.branching.compare.scroll_down();
             true
         }
         KeyCode::Char('k') | KeyCode::Up => {
-            app.branch_compare.scroll_up();
+            app.branching.compare.scroll_up();
             true
         }
         KeyCode::Left | KeyCode::Right | KeyCode::Char('h' | 'l') => {
-            app.branch_compare.toggle_focus();
+            app.branching.compare.toggle_focus();
             true
         }
         KeyCode::Char('s') | KeyCode::Enter => {
-            if let Some(leaf_id) = app.branch_compare.focused_leaf_id() {
-                app.branch_compare.close();
+            if let Some(leaf_id) = app.branching.compare.focused_leaf_id() {
+                app.branching.compare.close();
                 app.switch_to_branch(leaf_id);
                 app.push_system(format!("Switched to branch at block #{}", leaf_id), false);
             }
@@ -207,32 +207,32 @@ pub(crate) fn handle_merge_interactive_key(
 ) -> bool {
     match key.code {
         KeyCode::Esc | KeyCode::Char('q') => {
-            app.merge_interactive.close();
+            app.branching.merge_interactive.close();
             true
         }
         KeyCode::Char(' ') => {
-            app.merge_interactive.toggle();
+            app.branching.merge_interactive.toggle();
             true
         }
         KeyCode::Char('a') => {
-            app.merge_interactive.select_all();
+            app.branching.merge_interactive.select_all();
             true
         }
         KeyCode::Char('n') => {
-            app.merge_interactive.deselect_all();
+            app.branching.merge_interactive.deselect_all();
             true
         }
         KeyCode::Char('j') | KeyCode::Down => {
-            app.merge_interactive.move_down();
+            app.branching.merge_interactive.move_down();
             true
         }
         KeyCode::Char('k') | KeyCode::Up => {
-            app.merge_interactive.move_up();
+            app.branching.merge_interactive.move_up();
             true
         }
         KeyCode::Enter => {
-            if app.merge_interactive.selected_count() > 0 {
-                app.merge_interactive.confirmed = true;
+            if app.branching.merge_interactive.selected_count() > 0 {
+                app.branching.merge_interactive.confirmed = true;
             } else {
                 app.push_system("No messages selected for merge.".to_string(), true);
             }
@@ -253,43 +253,43 @@ pub(crate) fn handle_session_selector_key(
 ) -> bool {
     match key.code {
         KeyCode::Esc => {
-            app.session_selector.close();
+            app.overlays.session_selector.close();
             true
         }
         KeyCode::Enter => {
-            if let Some(item) = app.session_selector.select() {
+            if let Some(item) = app.overlays.session_selector.select() {
                 let file_path = item.file_path.clone();
                 let session_id = item.session_id.clone();
-                app.session_selector.close();
+                app.overlays.session_selector.close();
                 super::interactive::resume_session_from_file(app, file_path, &session_id, cmd_tx);
             } else {
-                app.session_selector.close();
+                app.overlays.session_selector.close();
             }
             true
         }
         KeyCode::Up => {
-            app.session_selector.move_up();
+            app.overlays.session_selector.move_up();
             true
         }
         KeyCode::Down => {
-            app.session_selector.move_down();
+            app.overlays.session_selector.move_down();
             true
         }
         KeyCode::Backspace => {
-            app.session_selector.backspace();
+            app.overlays.session_selector.backspace();
             true
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                app.session_selector.close();
+                app.overlays.session_selector.close();
             } else if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match c {
-                    'k' | 'p' => app.session_selector.move_up(),
-                    'j' | 'n' => app.session_selector.move_down(),
+                    'k' | 'p' => app.overlays.session_selector.move_up(),
+                    'j' | 'n' => app.overlays.session_selector.move_down(),
                     _ => {}
                 }
             } else {
-                app.session_selector.type_char(c);
+                app.overlays.session_selector.type_char(c);
             }
             true
         }

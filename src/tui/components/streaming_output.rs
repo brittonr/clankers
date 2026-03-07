@@ -302,6 +302,7 @@ enum DisplayLine {
 }
 
 /// Manages streaming output buffers for all active tool executions.
+#[derive(Debug)]
 pub struct StreamingOutputManager {
     /// Per-call_id output buffers.
     outputs: HashMap<String, StreamingOutput>,

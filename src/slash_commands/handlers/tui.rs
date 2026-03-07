@@ -12,33 +12,33 @@ impl SlashHandler for LayoutHandler {
         let sub = args.trim().to_lowercase();
         match sub.as_str() {
             "default" | "3col" | "three" => {
-                ctx.app.zoom_state = None;
-                ctx.app.tiling = panes::default_tiling();
-                ctx.app.pane_registry = panes::default_registry();
+                ctx.app.layout.zoom_state = None;
+                ctx.app.layout.tiling = panes::default_tiling();
+                ctx.app.layout.pane_registry = panes::default_registry();
                 ctx.app.unfocus_panel();
                 ctx.app.push_system("Layout: default 3-column".into(), false);
             }
             "wide" | "chat" => {
-                ctx.app.zoom_state = None;
+                ctx.app.layout.zoom_state = None;
                 let (tiling, registry) = panes::wide_chat_tiling();
-                ctx.app.tiling = tiling;
-                ctx.app.pane_registry = registry;
+                ctx.app.layout.tiling = tiling;
+                ctx.app.layout.pane_registry = registry;
                 ctx.app.unfocus_panel();
                 ctx.app.push_system("Layout: wide chat with left sidebar".into(), false);
             }
             "focused" | "none" | "clean" => {
-                ctx.app.zoom_state = None;
+                ctx.app.layout.zoom_state = None;
                 let (tiling, registry) = panes::focused_tiling();
-                ctx.app.tiling = tiling;
-                ctx.app.pane_registry = registry;
+                ctx.app.layout.tiling = tiling;
+                ctx.app.layout.pane_registry = registry;
                 ctx.app.unfocus_panel();
                 ctx.app.push_system("Layout: focused (no panels)".into(), false);
             }
             "right" => {
-                ctx.app.zoom_state = None;
+                ctx.app.layout.zoom_state = None;
                 let (tiling, registry) = panes::right_heavy_tiling();
-                ctx.app.tiling = tiling;
-                ctx.app.pane_registry = registry;
+                ctx.app.layout.tiling = tiling;
+                ctx.app.layout.pane_registry = registry;
                 ctx.app.unfocus_panel();
                 ctx.app.push_system("Layout: right-heavy".into(), false);
             }
@@ -48,9 +48,9 @@ impl SlashHandler for LayoutHandler {
             }
             "" => {
                 // Show current layout info
-                let pane_count = ctx.app.tiling.panes().len();
-                let panel_names: Vec<String> = ctx.app.tiling.panes().iter().filter_map(|p| {
-                    match ctx.app.pane_registry.kind(p.id) {
+                let pane_count = ctx.app.layout.tiling.panes().len();
+                let panel_names: Vec<String> = ctx.app.layout.tiling.panes().iter().filter_map(|p| {
+                    match ctx.app.layout.pane_registry.kind(p.id) {
                         Some(panes::PaneKind::Panel(panel_id)) => Some(panel_id.label().to_string()),
                         Some(panes::PaneKind::Chat) => Some("Chat".to_string()),
                         Some(panes::PaneKind::Subagent(id)) => Some(format!("Subagent:{}", id)),
@@ -101,7 +101,7 @@ fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
         return;
     };
 
-    let pane_id = ctx.app.pane_registry.find_panel(panel_id);
+    let pane_id = ctx.app.layout.pane_registry.find_panel(panel_id);
 
     if let Some(pane_id) = pane_id {
         // ── Panel is visible → remove it ────────────────────────────
@@ -111,16 +111,16 @@ fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
         }
 
         // Remove the pane node from the BSP tree.
-        let new_root = panes::remove_pane_from_tree(ctx.app.tiling.root().clone(), pane_id);
+        let new_root = panes::remove_pane_from_tree(ctx.app.layout.tiling.root().clone(), pane_id);
         if let Some(new_root) = new_root {
-            let _ = ctx.app.tiling.set_root(new_root);
-            ctx.app.pane_registry.unregister(pane_id);
+            let _ = ctx.app.layout.tiling.set_root(new_root);
+            ctx.app.layout.pane_registry.unregister(pane_id);
             // Sync remaining pane IDs
             let live: std::collections::HashSet<_> =
-                ratatui_hypertile::raw::collect_pane_ids(ctx.app.tiling.root())
+                ratatui_hypertile::raw::collect_pane_ids(ctx.app.layout.tiling.root())
                     .into_iter()
                     .collect();
-            ctx.app.pane_registry.retain_only(&live);
+            ctx.app.layout.pane_registry.retain_only(&live);
             ctx.app.sync_focused_panel();
             ctx.app.push_system(format!("Hidden {} panel", panel_id.label()), false);
         } else {
@@ -134,17 +134,17 @@ fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
 
         // Find the chat pane and split it to make room for the new panel.
         // We add the new panel to the right of chat (horizontal split).
-        let chat_pane = ctx.app.pane_registry.chat_pane();
+        let chat_pane = ctx.app.layout.pane_registry.chat_pane();
         let new_root = panes::insert_pane_beside(
-            ctx.app.tiling.root().clone(),
+            ctx.app.layout.tiling.root().clone(),
             chat_pane,
             new_pane_id,
             Direction::Horizontal,
             0.75, // chat keeps 75%, new panel gets 25%
         );
         if let Some(new_root) = new_root {
-            let _ = ctx.app.tiling.set_root(new_root);
-            ctx.app.pane_registry.register(new_pane_id, PaneKind::Panel(panel_id));
+            let _ = ctx.app.layout.tiling.set_root(new_root);
+            ctx.app.layout.pane_registry.register(new_pane_id, PaneKind::Panel(panel_id));
             ctx.app.push_system(format!("Showing {} panel", panel_id.label()), false);
         } else {
             ctx.app.push_system("Failed to add panel".into(), true);
@@ -197,7 +197,7 @@ impl SlashHandler for PreviewHandler {
         };
         // Create a fake conversation block with the markdown as assistant text
         ctx.app.start_block("(markdown preview)".to_string(), 0);
-        if let Some(ref mut block) = ctx.app.active_block {
+        if let Some(ref mut block) = ctx.app.conversation.active_block {
             block.responses.push(crate::tui::app::DisplayMessage {
                 role: crate::tui::app::MessageRole::Assistant,
                 content,
@@ -208,7 +208,7 @@ impl SlashHandler for PreviewHandler {
             block.streaming = false;
         }
         ctx.app.finalize_active_block();
-        ctx.app.scroll.scroll_to_bottom();
+        ctx.app.conversation.scroll.scroll_to_bottom();
     }
 }
 
@@ -317,7 +317,7 @@ impl SlashHandler for PlanHandler {
             crate::modes::plan::PlanState::Inactive
         } else {
             // Toggle
-            if ctx.app.plan_state.is_active() {
+            if ctx.app.overlays.plan_state.is_active() {
                 crate::modes::plan::PlanState::Inactive
             } else {
                 crate::modes::plan::PlanState::Planning
@@ -328,7 +328,7 @@ impl SlashHandler for PlanHandler {
         } else {
             "Plan mode disabled — normal editing restored.".to_string()
         };
-        ctx.app.plan_state = new_state;
+        ctx.app.overlays.plan_state = new_state;
         ctx.app.push_system(msg, false);
     }
 }

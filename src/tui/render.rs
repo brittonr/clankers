@@ -55,18 +55,18 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     // ── Compute BSP tiling layout ───────────────────────────────────
 
-    app.tiling.compute_layout(frame.area());
+    app.layout.tiling.compute_layout(frame.area());
 
     // ── Render each pane ────────────────────────────────────────────
 
     // Collect pane snapshots first (to avoid borrow conflicts with app).
-    let pane_snapshots: Vec<_> = app.tiling.panes();
+    let pane_snapshots: Vec<_> = app.layout.tiling.panes();
     let theme = app.theme.clone();
     let mut chat_area = Rect::default();
     let mut chat_focused = false;
 
     for pane in &pane_snapshots {
-        match app.pane_registry.kind(pane.id) {
+        match app.layout.pane_registry.kind(pane.id) {
             Some(PaneKind::Panel(panel_id)) => {
                 let panel_id = *panel_id;
                 let focused = app.is_panel_focused(panel_id);
@@ -79,12 +79,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             }
             Some(PaneKind::Subagent(id)) => {
                 let id = id.clone();
-                let focused = app.focused_subagent.as_deref() == Some(&id);
+                let focused = app.layout.focused_subagent.as_deref() == Some(&id);
                 let ctx = DrawContext {
                     theme: &theme,
                     focused,
                 };
-                app.subagent_panes.draw(&id, frame, pane.rect, &ctx);
+                app.layout.subagent_panes.draw(&id, frame, pane.rect, &ctx);
             }
             Some(PaneKind::Chat) => {
                 chat_area = pane.rect;
@@ -128,9 +128,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             height: 1,
         };
         frame.render_widget(Paragraph::new(hint), hint_area);
-    } else if let Some(focused_pane) = app.tiling.focused_pane() {
+    } else if let Some(focused_pane) = app.layout.tiling.focused_pane() {
         // Show tiling hint on the focused panel's border
-        if let Some(rect) = app.tiling.pane_rect(focused_pane) {
+        if let Some(rect) = app.layout.tiling.pane_rect(focused_pane) {
             let hint_text = if app.is_zoomed() {
                 " z:unzoom "
             } else {
@@ -153,14 +153,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // ── Overlays (rendered on top of everything) ────────────────────
 
     session_panel::render_session_popup(frame, app, &app.theme.clone());
-    cost_overlay::render_cost_overlay(frame, app.cost_tracker.as_ref(), app.cost_overlay_visible, &app.theme.clone());
-    app.model_selector.render(frame, frame.area());
-    app.account_selector.render(frame, frame.area());
-    app.session_selector.render(frame, frame.area());
-    app.branch_switcher.render(frame, frame.area());
-    app.branch_compare.render(frame, frame.area());
-    app.merge_interactive.render(frame, frame.area());
-    app.leader_menu.render(frame, frame.area());
+    cost_overlay::render_cost_overlay(frame, app.cost_tracker.as_ref(), app.overlays.cost_overlay_visible, &app.theme.clone());
+    app.overlays.model_selector.render(frame, frame.area());
+    app.overlays.account_selector.render(frame, frame.area());
+    app.overlays.session_selector.render(frame, frame.area());
+    app.branching.switcher.render(frame, frame.area());
+    app.branching.compare.render(frame, frame.area());
+    app.branching.merge_interactive.render(frame, frame.area());
+    app.overlays.leader_menu.render(frame, frame.area());
 
     if !app.plugin_ui.notifications.is_empty() {
         widget_host::render_plugin_notifications(frame, &app.plugin_ui.notifications, frame.area());
@@ -218,7 +218,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
 
     // Build set of active block IDs for marking active branches
     let active_block_ids: std::collections::HashSet<usize> = app
-        .blocks
+        .conversation.blocks
         .iter()
         .filter_map(|e| match e {
             crate::tui::components::block::BlockEntry::Conversation(b) => Some(b.id),
@@ -227,7 +227,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         .collect();
 
     let branch_info: std::collections::HashMap<usize, crate::tui::components::block_view::BlockBranchInfo> = app
-        .blocks
+        .conversation.blocks
         .iter()
         .filter_map(|e| match e {
             crate::tui::components::block::BlockEntry::Conversation(b) => {
@@ -235,7 +235,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
                 let children_count = app.block_children_count(b.id);
                 // Collect child branch previews for branch points
                 let child_branch_previews = if children_count > 1 {
-                    app.all_blocks
+                    app.conversation.all_blocks
                         .iter()
                         .filter(|c| c.parent_block_id == Some(b.id))
                         .map(|c| {
@@ -256,7 +256,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
                     sibling_index,
                     sibling_total,
                     children_count,
-                    show_id: app.show_block_ids,
+                    show_id: app.overlays.show_block_ids,
                     child_branch_previews,
                 }))
             }
@@ -266,40 +266,40 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
 
     app.messages_area = chunks[messages_idx];
 
-    if app.output_search.has_query() || app.output_search.active {
-        app.output_search.update_matches(&app.rendered_lines);
+    if app.overlays.output_search.has_query() || app.overlays.output_search.active {
+        app.overlays.output_search.update_matches(&app.rendered_lines);
     }
 
-    let search_scroll_target = if app.output_search.scroll_to_current {
-        app.output_search.scroll_to_current = false;
-        app.output_search.current_match_row()
+    let search_scroll_target = if app.overlays.output_search.scroll_to_current {
+        app.overlays.output_search.scroll_to_current = false;
+        app.overlays.output_search.current_match_row()
     } else {
         None
     };
 
     app.rendered_lines = block_view::render_blocks(
         frame,
-        &app.blocks,
-        app.focused_block,
-        app.active_block.as_ref(),
-        &app.streaming_thinking,
-        &app.streaming_text,
+        &app.conversation.blocks,
+        app.conversation.focused_block,
+        app.conversation.active_block.as_ref(),
+        &app.streaming.thinking,
+        &app.streaming.text,
         app.show_thinking,
         &app.theme,
-        &mut app.scroll,
+        &mut app.conversation.scroll,
         &app.selection,
         chunks[messages_idx],
         &branch_info,
-        &app.output_search,
+        &app.overlays.output_search,
         search_scroll_target,
-        &app.active_tools,
-        &app.progress_renderer,
-        &mut app.streaming_outputs,
+        &app.streaming.active_tools,
+        &app.streaming.progress_renderer,
+        &mut app.streaming.outputs,
         app.tick,
     );
 
-    if app.output_search.active {
-        app.output_search.render(frame, chunks[messages_idx]);
+    if app.overlays.output_search.active {
+        app.overlays.output_search.render(frame, chunks[messages_idx]);
     }
 
     // ── Plugin widget panels ────────────────────────────────────────
@@ -338,11 +338,11 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
             ct.budget_status()
         });
     // Build tool activity summary for the status bar
-    let tool_activity = if !app.active_tools.is_empty() {
-        let count = app.active_tools.len();
-        let total_lines: usize = app.active_tools.values().map(|t| t.line_count).sum();
+    let tool_activity = if !app.streaming.active_tools.is_empty() {
+        let count = app.streaming.active_tools.len();
+        let total_lines: usize = app.streaming.active_tools.values().map(|t| t.line_count).sum();
         let label = if count == 1 {
-            let tool = app.active_tools.values().next().unwrap();
+            let tool = app.streaming.active_tools.values().next().unwrap();
             format!(" 🔧 {} ({} lines) ", tool.tool_name, total_lines)
         } else {
             format!(" 🔧 {} tools ({} lines) ", count, total_lines)

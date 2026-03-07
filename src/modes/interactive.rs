@@ -823,31 +823,31 @@ async fn run_event_loop(
 
                     // Create a dedicated BSP pane if under the configured limit
                     let max_panes = settings.max_subagent_panes;
-                    if max_panes > 0 && app.subagent_panes.len() < max_panes {
-                        let pane_id = app.subagent_panes.create(
-                            id.clone(), name, task, pid, &mut app.tiling,
+                    if max_panes > 0 && app.layout.subagent_panes.len() < max_panes {
+                        let pane_id = app.layout.subagent_panes.create(
+                            id.clone(), name, task, pid, &mut app.layout.tiling,
                         );
-                        app.pane_registry.register(pane_id, crate::tui::panes::PaneKind::Subagent(id));
+                        app.layout.pane_registry.register(pane_id, crate::tui::panes::PaneKind::Subagent(id));
                         crate::tui::panes::auto_split_for_subagent(
-                            &mut app.tiling, &app.pane_registry, pane_id,
+                            &mut app.layout.tiling, &app.layout.pane_registry, pane_id,
                         );
                     }
                 }
                 SubagentEvent::Output { id, line } => {
                     subagent_panel.append_output(&id, &line);
-                    app.subagent_panes.append_output(&id, &line);
+                    app.layout.subagent_panes.append_output(&id, &line);
                 }
                 SubagentEvent::Done { id } => {
                     subagent_panel.mark_done(&id);
-                    app.subagent_panes.mark_done(&id);
+                    app.layout.subagent_panes.mark_done(&id);
                 }
                 SubagentEvent::Error { id, .. } => {
                     subagent_panel.mark_error(&id);
-                    app.subagent_panes.mark_error(&id);
+                    app.layout.subagent_panes.mark_error(&id);
                 }
                 SubagentEvent::KillRequest { ref id } => {
                     // Kill the subagent process by PID — check both the pane and overview
-                    let pid_to_kill = app.subagent_panes.get(id)
+                    let pid_to_kill = app.layout.subagent_panes.get(id)
                         .filter(|s| s.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
                         .and_then(|s| s.pid)
                         .or_else(|| {
@@ -872,11 +872,11 @@ async fn run_event_loop(
                         }
                         subagent_panel.mark_error(id);
                         subagent_panel.append_output(id, "⚡ Killed by user");
-                        app.subagent_panes.mark_error(id);
-                        app.subagent_panes.append_output(id, "⚡ Killed by user");
+                        app.layout.subagent_panes.mark_error(id);
+                        app.layout.subagent_panes.append_output(id, "⚡ Killed by user");
                     } else {
                         subagent_panel.append_output(id, "⚠ Cannot kill: no PID tracked");
-                        app.subagent_panes.append_output(id, "⚠ Cannot kill: no PID tracked");
+                        app.layout.subagent_panes.append_output(id, "⚠ Cannot kill: no PID tracked");
                     }
                 }
                 SubagentEvent::InputRequest { .. } => {
@@ -977,7 +977,7 @@ async fn run_event_loop(
         while let Ok(result) = done_rx.try_recv() {
             match result {
                 TaskResult::PromptDone(Some(e)) => {
-                    if let Some(ref mut block) = app.active_block {
+                    if let Some(ref mut block) = app.conversation.active_block {
                         block.error = Some(format!("{}", e));
                     }
                     app.finalize_active_block();
@@ -1046,10 +1046,10 @@ async fn run_event_loop(
                     }
 
                     // ── Cost overlay intercept ────────────────────
-                    if app.cost_overlay_visible {
+                    if app.overlays.cost_overlay_visible {
                         match key.code {
                             KeyCode::Esc | KeyCode::Char('C') | KeyCode::Char('c') | KeyCode::Char('q') => {
-                                app.cost_overlay_visible = false;
+                                app.overlays.cost_overlay_visible = false;
                             }
                             _ => {}
                         }
@@ -1057,42 +1057,42 @@ async fn run_event_loop(
                     }
 
                     // ── Session popup intercept ──────────────────
-                    if app.session_popup_visible && handle_session_popup_key(app, &key, &keymap) {
+                    if app.overlays.session_popup_visible && handle_session_popup_key(app, &key, &keymap) {
                         continue;
                     }
 
                     // ── Model selector intercept ─────────────────
-                    if app.model_selector.visible && super::selectors::handle_model_selector_key(app, &key, &cmd_tx) {
+                    if app.overlays.model_selector.visible && super::selectors::handle_model_selector_key(app, &key, &cmd_tx) {
                         continue;
                     }
 
                     // ── Account selector intercept ───────────────
-                    if app.account_selector.visible && super::selectors::handle_account_selector_key(app, &key, &cmd_tx) {
+                    if app.overlays.account_selector.visible && super::selectors::handle_account_selector_key(app, &key, &cmd_tx) {
                         continue;
                     }
 
                     // ── Session selector intercept ───────────────
-                    if app.session_selector.visible && super::selectors::handle_session_selector_key(app, &key, &cmd_tx) {
+                    if app.overlays.session_selector.visible && super::selectors::handle_session_selector_key(app, &key, &cmd_tx) {
                         continue;
                     }
 
                     // ── Branch switcher intercept ────────────────
-                    if app.branch_switcher.visible && super::selectors::handle_branch_switcher_key(app, &key) {
+                    if app.branching.switcher.visible && super::selectors::handle_branch_switcher_key(app, &key) {
                         continue;
                     }
 
                     // ── Branch comparison intercept ──────────────
-                    if app.branch_compare.visible && super::selectors::handle_branch_compare_key(app, &key) {
+                    if app.branching.compare.visible && super::selectors::handle_branch_compare_key(app, &key) {
                         continue;
                     }
 
                     // ── Merge interactive intercept ──────────────
-                    if app.merge_interactive.visible && super::selectors::handle_merge_interactive_key(app, &key) {
-                        if app.merge_interactive.confirmed {
-                            let selected = app.merge_interactive.selected_ids();
-                            let source = app.merge_interactive.source_leaf().cloned();
-                            let target = app.merge_interactive.target_leaf().cloned();
-                            app.merge_interactive.close();
+                    if app.branching.merge_interactive.visible && super::selectors::handle_merge_interactive_key(app, &key) {
+                        if app.branching.merge_interactive.confirmed {
+                            let selected = app.branching.merge_interactive.selected_ids();
+                            let source = app.branching.merge_interactive.source_leaf().cloned();
+                            let target = app.branching.merge_interactive.target_leaf().cloned();
+                            app.branching.merge_interactive.close();
                             if let (Some(src), Some(tgt)) = (source, target) {
                                 if let Some(sm) = session_manager.as_mut() {
                                     match sm.merge_selective(src, tgt, &selected) {
@@ -1116,15 +1116,15 @@ async fn run_event_loop(
                     }
 
                     // ── Leader menu intercept ────────────────────
-                    if app.leader_menu.visible {
-                        if let Some(leader_action) = app.leader_menu.handle_key(&key) {
+                    if app.overlays.leader_menu.visible {
+                        if let Some(leader_action) = app.overlays.leader_menu.handle_key(&key) {
                             handle_leader_action(app, leader_action, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
                         }
                         continue;
                     }
 
                     // ── Output search intercept ──────────────────
-                    if app.output_search.active {
+                    if app.overlays.output_search.active {
                         handle_output_search_key(app, &key);
                         continue;
                     }
@@ -1234,34 +1234,34 @@ async fn run_event_loop(
                         // When a tool's streaming output is focused, handle scroll keys.
                         // Visible height for focused tool output (matches block_view::FOCUSED_OUTPUT_LINES).
                         const TOOL_OUTPUT_VISIBLE: usize = 32;
-                        if let Some(ref call_id) = app.focused_tool.clone() {
+                        if let Some(ref call_id) = app.streaming.focused_tool.clone() {
                             match (key.code, key.modifiers) {
                                 (KeyCode::Char('j') | KeyCode::Down, m) if m.is_empty() => {
-                                    if let Some(out) = app.streaming_outputs.get_mut(call_id) {
+                                    if let Some(out) = app.streaming.outputs.get_mut(call_id) {
                                         out.scroll_down(1, TOOL_OUTPUT_VISIBLE);
                                     }
                                     continue;
                                 }
                                 (KeyCode::Char('k') | KeyCode::Up, m) if m.is_empty() => {
-                                    if let Some(out) = app.streaming_outputs.get_mut(call_id) {
+                                    if let Some(out) = app.streaming.outputs.get_mut(call_id) {
                                         out.scroll_up(1);
                                     }
                                     continue;
                                 }
                                 (KeyCode::Char('g'), m) if m.is_empty() => {
-                                    if let Some(out) = app.streaming_outputs.get_mut(call_id) {
+                                    if let Some(out) = app.streaming.outputs.get_mut(call_id) {
                                         out.scroll_to_top();
                                     }
                                     continue;
                                 }
                                 (KeyCode::Char('G'), m) if m.is_empty() || m.contains(KeyModifiers::SHIFT) => {
-                                    if let Some(out) = app.streaming_outputs.get_mut(call_id) {
+                                    if let Some(out) = app.streaming.outputs.get_mut(call_id) {
                                         out.scroll_to_bottom();
                                     }
                                     continue;
                                 }
                                 (KeyCode::Char('f'), m) if m.is_empty() => {
-                                    if let Some(out) = app.streaming_outputs.get_mut(call_id) {
+                                    if let Some(out) = app.streaming.outputs.get_mut(call_id) {
                                         out.toggle_auto_follow();
                                     }
                                     continue;
@@ -1276,7 +1276,7 @@ async fn run_event_loop(
 
                         // ── Subagent pane key dispatch ────────────────
                         // Subagent panes are not Panel trait impls — handle them separately.
-                        if let Some(ref subagent_id) = app.focused_subagent.clone() {
+                        if let Some(ref subagent_id) = app.layout.focused_subagent.clone() {
                             match (key.code, key.modifiers) {
                                 // x = kill the subagent
                                 (KeyCode::Char('x'), m) if m.is_empty() => {
@@ -1289,25 +1289,25 @@ async fn run_event_loop(
                                 }
                                 // q or X = dismiss the pane (close it from BSP tree)
                                 (KeyCode::Char('q'), m) if m.is_empty() => {
-                                    if let Some(pane_id) = app.subagent_panes.remove(subagent_id) {
+                                    if let Some(pane_id) = app.layout.subagent_panes.remove(subagent_id) {
                                         if let Some(new_root) = crate::tui::panes::remove_pane_from_tree(
-                                            app.tiling.root().clone(), pane_id,
+                                            app.layout.tiling.root().clone(), pane_id,
                                         ) {
-                                            let _ = app.tiling.set_root(new_root);
+                                            let _ = app.layout.tiling.set_root(new_root);
                                         }
-                                        app.pane_registry.unregister(pane_id);
+                                        app.layout.pane_registry.unregister(pane_id);
                                         let live: std::collections::HashSet<_> =
-                                            ratatui_hypertile::raw::collect_pane_ids(app.tiling.root())
+                                            ratatui_hypertile::raw::collect_pane_ids(app.layout.tiling.root())
                                                 .into_iter()
                                                 .collect();
-                                        app.pane_registry.retain_only(&live);
+                                        app.layout.pane_registry.retain_only(&live);
                                         app.sync_focused_panel();
                                     }
                                     continue;
                                 }
                                 _ => {
                                     // Delegate scroll/navigation to the pane state
-                                    if let Some(action) = app.subagent_panes.handle_key_event(subagent_id, key) {
+                                    if let Some(action) = app.layout.subagent_panes.handle_key_event(subagent_id, key) {
                                         match action {
                                             PanelAction::Consumed => continue,
                                             PanelAction::Unfocus => {
@@ -1323,7 +1323,7 @@ async fn run_event_loop(
 
                         // Side-effect keys that need app-level resources
                         // (the Panel trait can't send on channels)
-                        if let Some(focused_id) = app.focused_panel {
+                        if let Some(focused_id) = app.layout.focused_panel {
                             use crate::tui::panel::PanelId;
                             match (focused_id, key.code, key.modifiers) {
                                 // Subagents: 'x' = kill selected running subagent
@@ -1363,7 +1363,7 @@ async fn run_event_loop(
                         }
 
                         // Delegate everything else to the focused panel's handle_key_event
-                        if let Some(focused_id) = app.focused_panel {
+                        if let Some(focused_id) = app.layout.focused_panel {
                             let result = app.panel_mut(focused_id).handle_key_event(key);
                             match result {
                                 Some(PanelAction::Consumed) => continue,
@@ -1385,7 +1385,7 @@ async fn run_event_loop(
                                     continue;
                                 }
                                 Some(PanelAction::FocusSubagent(ref subagent_id)) => {
-                                    if app.subagent_panes.pane_id_for(subagent_id).is_some() {
+                                    if app.layout.subagent_panes.pane_id_for(subagent_id).is_some() {
                                         app.focus_subagent(subagent_id);
                                     } else {
                                         // No BSP pane — open inline detail view
@@ -1414,7 +1414,7 @@ async fn run_event_loop(
                         handle_action(app, action, &key, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
 
                         // If a branch was just initiated, record it in the session file
-                        if let Some(checkpoint) = app.last_branch_checkpoint.take()
+                        if let Some(checkpoint) = app.branching.last_branch_checkpoint.take()
                             && let Some(ref mut sm) = session_manager
                         {
                             // The fork point is the last persisted message at the checkpoint
@@ -1659,12 +1659,12 @@ fn handle_action(
             CoreAction::HistoryDown => app.editor.history_down(),
 
             // ── Scrolling ────────────────────────────────
-            CoreAction::ScrollUp => app.scroll.scroll_up(1),
-            CoreAction::ScrollDown => app.scroll.scroll_down(1),
-            CoreAction::ScrollPageUp => app.scroll.scroll_up(10),
-            CoreAction::ScrollPageDown => app.scroll.scroll_down(10),
-            CoreAction::ScrollToTop => app.scroll.scroll_to_top(),
-            CoreAction::ScrollToBottom => app.scroll.scroll_to_bottom(),
+            CoreAction::ScrollUp => app.conversation.scroll.scroll_up(1),
+            CoreAction::ScrollDown => app.conversation.scroll.scroll_down(1),
+            CoreAction::ScrollPageUp => app.conversation.scroll.scroll_up(10),
+            CoreAction::ScrollPageDown => app.conversation.scroll.scroll_down(10),
+            CoreAction::ScrollToTop => app.conversation.scroll.scroll_to_top(),
+            CoreAction::ScrollToBottom => app.conversation.scroll.scroll_to_bottom(),
 
             // ── Block navigation ─────────────────────────
             CoreAction::FocusPrevBlock => app.focus_prev_block(),
@@ -1674,9 +1674,9 @@ fn handle_action(
                     // Esc in insert → normal
                     app.input_mode = InputMode::Normal;
                     app.slash_menu.hide();
-                } else if app.focused_block.is_some() {
-                    app.focused_block = None;
-                    app.scroll.scroll_to_bottom();
+                } else if app.conversation.focused_block.is_some() {
+                    app.conversation.focused_block = None;
+                    app.conversation.scroll.scroll_to_bottom();
                 }
             }
 
@@ -1695,24 +1695,24 @@ fn handle_action(
         Action::Extended(name) => match name.as_str() {
             // ── Search ───────────────────────────────────
             "search_output" => {
-                app.output_search.activate();
+                app.overlays.output_search.activate();
             }
             "search_next" => {
-                if !app.output_search.matches.is_empty() {
-                    app.output_search.next_match();
-                    app.output_search.scroll_to_current = true;
+                if !app.overlays.output_search.matches.is_empty() {
+                    app.overlays.output_search.next_match();
+                    app.overlays.output_search.scroll_to_current = true;
                 }
             }
             "search_prev" => {
-                if !app.output_search.matches.is_empty() {
-                    app.output_search.prev_match();
-                    app.output_search.scroll_to_current = true;
+                if !app.overlays.output_search.matches.is_empty() {
+                    app.overlays.output_search.prev_match();
+                    app.overlays.output_search.scroll_to_current = true;
                 }
             }
 
             // ── Block operations ─────────────────────────
             "toggle_block_collapse" => {
-                if app.focused_block.is_some() {
+                if app.conversation.focused_block.is_some() {
                     app.toggle_focused_block();
                 }
             }
@@ -1726,14 +1726,14 @@ fn handle_action(
                 }
             }
             "edit_block" => {
-                if app.focused_block.is_some() && app.state == AppState::Idle && app.edit_focused_block_prompt() {
+                if app.conversation.focused_block.is_some() && app.state == AppState::Idle && app.edit_focused_block_prompt() {
                     app.input_mode = InputMode::Insert;
                 }
             }
 
             // ── Branch / panel navigation ────────────────
             "branch_prev" => {
-                if app.focused_block.is_some() {
+                if app.conversation.focused_block.is_some() {
                     app.branch_prev();
                 } else {
                     // h = directional focus left
@@ -1746,7 +1746,7 @@ fn handle_action(
                 }
             }
             "branch_next" => {
-                if app.focused_block.is_some() {
+                if app.conversation.focused_block.is_some() {
                     app.branch_next();
                 } else {
                     // l = directional focus right
@@ -1769,8 +1769,8 @@ fn handle_action(
                 app.push_system(format!("Thinking content now {}.", state), false);
             }
             "toggle_block_ids" => {
-                app.show_block_ids = !app.show_block_ids;
-                let state = if app.show_block_ids { "visible" } else { "hidden" };
+                app.overlays.show_block_ids = !app.overlays.show_block_ids;
+                let state = if app.overlays.show_block_ids { "visible" } else { "hidden" };
                 app.push_system(format!("Block IDs now {}.", state), false);
             }
 
@@ -1903,20 +1903,20 @@ fn handle_action(
 
             // ── Cost overlay ─────────────────────────────
             "toggle_cost_overlay" => {
-                app.cost_overlay_visible = !app.cost_overlay_visible;
+                app.overlays.cost_overlay_visible = !app.overlays.cost_overlay_visible;
             }
 
             // ── Session popup ─────────────────────────────
             "toggle_session_popup" => {
-                app.session_popup_visible = !app.session_popup_visible;
-                if app.session_popup_visible {
+                app.overlays.session_popup_visible = !app.overlays.session_popup_visible;
+                if app.overlays.session_popup_visible {
                     // Focus the last block when opening so user can navigate
-                    if app.focused_block.is_none() {
-                        let last_id = app.blocks.iter().rev().find_map(|e| match e {
+                    if app.conversation.focused_block.is_none() {
+                        let last_id = app.conversation.blocks.iter().rev().find_map(|e| match e {
                             BlockEntry::Conversation(b) => Some(b.id),
                             _ => None,
                         });
-                        app.focused_block = last_id;
+                        app.conversation.focused_block = last_id;
                     }
                 }
             }
@@ -1925,13 +1925,13 @@ fn handle_action(
             "toggle_branch_panel" => {
                 use crate::tui::components::branch_panel::BranchPanel;
                 use crate::tui::panel::PanelId;
-                if app.focused_panel == Some(PanelId::Branches) {
+                if app.layout.focused_panel == Some(PanelId::Branches) {
                     // Unfocus (panel stays in the tree but we leave it)
                     app.unfocus_panel();
                 } else {
                     // Refresh branch data and focus it
                     let active_ids: std::collections::HashSet<usize> = app
-                        .blocks
+                        .conversation.blocks
                         .iter()
                         .filter_map(|e| match e {
                             BlockEntry::Conversation(b) => Some(b.id),
@@ -1939,7 +1939,7 @@ fn handle_action(
                         })
                         .collect();
                     if let Some(bp) = app.panels.downcast_mut::<BranchPanel>(PanelId::Branches) {
-                        bp.refresh(&app.all_blocks.clone(), &active_ids);
+                        bp.refresh(&app.conversation.all_blocks.clone(), &active_ids);
                     }
                     app.focus_panel(PanelId::Branches);
                 }
@@ -1948,14 +1948,14 @@ fn handle_action(
             // ── Branch switcher ─────────────────────────────
             "open_branch_switcher" => {
                 let active_ids: std::collections::HashSet<usize> = app
-                    .blocks
+                    .conversation.blocks
                     .iter()
                     .filter_map(|e| match e {
                         BlockEntry::Conversation(b) => Some(b.id),
                         _ => None,
                     })
                     .collect();
-                app.branch_switcher.open(&app.all_blocks.clone(), &active_ids);
+                app.branching.switcher.open(&app.conversation.all_blocks.clone(), &active_ids);
             }
 
             // ── External editor ─────────────────────────
@@ -1970,8 +1970,8 @@ fn handle_action(
                 if models.is_empty() {
                     app.push_system("No models available.".to_string(), true);
                 } else {
-                    app.model_selector = crate::tui::components::model_selector::ModelSelector::new(models);
-                    app.model_selector.open();
+                    app.overlays.model_selector = crate::tui::components::model_selector::ModelSelector::new(models);
+                    app.overlays.model_selector.open();
                 }
             }
             "open_account_selector" => {
@@ -1990,13 +1990,13 @@ fn handle_action(
                 if accounts.is_empty() {
                     app.push_system("No accounts configured. Use /login to authenticate.".to_string(), true);
                 } else {
-                    app.account_selector.open(accounts);
+                    app.overlays.account_selector.open(accounts);
                 }
             }
 
             // ── Leader key ──────────────────────────────
             "open_leader_menu" => {
-                app.leader_menu.open();
+                app.overlays.leader_menu.open();
             }
 
             // Unknown extended action
@@ -2049,40 +2049,40 @@ fn handle_output_search_key(app: &mut App, key: &crossterm::event::KeyEvent) {
     match (key.code, key.modifiers) {
         // Close search
         (KeyCode::Esc, _) => {
-            app.output_search.deactivate();
+            app.overlays.output_search.deactivate();
         }
         (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-            app.output_search.cancel();
+            app.overlays.output_search.cancel();
         }
 
         // Navigate matches
         (KeyCode::Enter, KeyModifiers::NONE) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
-            app.output_search.next_match();
-            app.output_search.scroll_to_current = true;
+            app.overlays.output_search.next_match();
+            app.overlays.output_search.scroll_to_current = true;
         }
         (KeyCode::Enter, KeyModifiers::SHIFT) | (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
-            app.output_search.prev_match();
-            app.output_search.scroll_to_current = true;
+            app.overlays.output_search.prev_match();
+            app.overlays.output_search.scroll_to_current = true;
         }
 
         // Toggle search mode (substring ↔ fuzzy)
         (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
-            app.output_search.toggle_mode();
+            app.overlays.output_search.toggle_mode();
             // Recompute matches immediately with new mode
-            app.output_search.update_matches(&app.rendered_lines);
-            app.output_search.scroll_to_current = true;
+            app.overlays.output_search.update_matches(&app.rendered_lines);
+            app.overlays.output_search.scroll_to_current = true;
         }
 
         // Edit query
         (KeyCode::Backspace, _) => {
-            app.output_search.backspace();
-            app.output_search.update_matches(&app.rendered_lines);
-            app.output_search.scroll_to_current = true;
+            app.overlays.output_search.backspace();
+            app.overlays.output_search.update_matches(&app.rendered_lines);
+            app.overlays.output_search.scroll_to_current = true;
         }
         (KeyCode::Char(c), m) if m.is_empty() || m == KeyModifiers::SHIFT => {
-            app.output_search.type_char(c);
-            app.output_search.update_matches(&app.rendered_lines);
-            app.output_search.scroll_to_current = true;
+            app.overlays.output_search.type_char(c);
+            app.overlays.output_search.update_matches(&app.rendered_lines);
+            app.overlays.output_search.scroll_to_current = true;
         }
 
         // Consume all other keys (don't leak to main handler)
@@ -2173,11 +2173,11 @@ fn handle_session_popup_key(app: &mut App, key: &crossterm::event::KeyEvent, key
     match action {
         // Close on Esc, 's' toggle, or 'q'
         Some(Action::Core(CoreAction::Unfocus | CoreAction::Quit)) => {
-            app.session_popup_visible = false;
+            app.overlays.session_popup_visible = false;
             true
         }
         Some(Action::Extended(n)) if n == "toggle_session_popup" => {
-            app.session_popup_visible = false;
+            app.overlays.session_popup_visible = false;
             true
         }
         // Navigate blocks with j/k
@@ -2218,14 +2218,14 @@ fn handle_session_popup_key(app: &mut App, key: &crossterm::event::KeyEvent, key
         }
         // Scroll to top/bottom
         Some(Action::Core(CoreAction::ScrollToTop)) => {
-            app.focused_block = app.blocks.iter().find_map(|e| match e {
+            app.conversation.focused_block = app.conversation.blocks.iter().find_map(|e| match e {
                 BlockEntry::Conversation(b) => Some(b.id),
                 _ => None,
             });
             true
         }
         Some(Action::Core(CoreAction::ScrollToBottom)) => {
-            app.focused_block = app.blocks.iter().rev().find_map(|e| match e {
+            app.conversation.focused_block = app.conversation.blocks.iter().rev().find_map(|e| match e {
                 BlockEntry::Conversation(b) => Some(b.id),
                 _ => None,
             });
@@ -2233,7 +2233,7 @@ fn handle_session_popup_key(app: &mut App, key: &crossterm::event::KeyEvent, key
         }
         // Switch to insert mode closes popup
         Some(Action::Core(CoreAction::EnterInsert | CoreAction::EnterCommand)) => {
-            app.session_popup_visible = false;
+            app.overlays.session_popup_visible = false;
             // Don't consume — let the main handler process it
             false
         }
@@ -2266,16 +2266,16 @@ pub(crate) fn resume_session_from_file(
             let _ = crate::session::store::append_entry(mgr.file_path(), &resume_entry);
 
             // Clear current blocks and restore from session
-            app.blocks.clear();
-            app.all_blocks.clear();
-            app.active_block = None;
+            app.conversation.blocks.clear();
+            app.conversation.all_blocks.clear();
+            app.conversation.active_block = None;
             super::session_restore::restore_display_blocks(app, &msgs);
 
             // Seed the agent with restored messages
             let _ = cmd_tx.send(AgentCommand::SeedMessages(msgs));
 
             app.push_system(format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count), false);
-            app.scroll.scroll_to_bottom();
+            app.conversation.scroll.scroll_to_bottom();
         }
         Err(e) => {
             app.push_system(format!("Failed to resume session: {}", e), true);

@@ -15,7 +15,7 @@ impl SlashHandler for ExportHandler {
             args.to_string()
         };
         let mut content = String::new();
-        for entry in &ctx.app.blocks {
+        for entry in &ctx.app.conversation.blocks {
             match entry {
                 BlockEntry::Conversation(block) => {
                     content.push_str("## User\n");

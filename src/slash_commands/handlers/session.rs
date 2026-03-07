@@ -108,7 +108,7 @@ impl SlashHandler for SessionHandler {
                                     }
                                 })
                                 .collect();
-                            ctx.app.session_selector.open(items);
+                            ctx.app.overlays.session_selector.open(items);
                         }
                     } else {
                         // Direct resume by ID

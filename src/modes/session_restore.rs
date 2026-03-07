@@ -31,7 +31,7 @@ pub(crate) fn restore_display_blocks(app: &mut App, messages: &[crate::provider:
                 for content in &asst_msg.content {
                     match content {
                         Content::Text { text } => {
-                            if let Some(ref mut block) = app.active_block {
+                            if let Some(ref mut block) = app.conversation.active_block {
                                 block.responses.push(DisplayMessage {
                                     role: MessageRole::Assistant,
                                     content: text.clone(),
@@ -42,7 +42,7 @@ pub(crate) fn restore_display_blocks(app: &mut App, messages: &[crate::provider:
                             }
                         }
                         Content::ToolUse { name, .. } => {
-                            if let Some(ref mut block) = app.active_block {
+                            if let Some(ref mut block) = app.conversation.active_block {
                                 block.responses.push(DisplayMessage {
                                     role: MessageRole::ToolCall,
                                     content: name.clone(),
@@ -53,7 +53,7 @@ pub(crate) fn restore_display_blocks(app: &mut App, messages: &[crate::provider:
                             }
                         }
                         Content::Thinking { thinking, .. } => {
-                            if let Some(ref mut block) = app.active_block {
+                            if let Some(ref mut block) = app.conversation.active_block {
                                 block.responses.push(DisplayMessage {
                                     role: MessageRole::Thinking,
                                     content: thinking.clone(),
@@ -91,7 +91,7 @@ pub(crate) fn restore_display_blocks(app: &mut App, messages: &[crate::provider:
                         _ => None,
                     })
                     .collect();
-                if let Some(ref mut block) = app.active_block {
+                if let Some(ref mut block) = app.conversation.active_block {
                     block.responses.push(DisplayMessage {
                         role: MessageRole::ToolResult,
                         content: display,

@@ -56,7 +56,7 @@ pub struct LeaderHandler;
 
 impl SlashHandler for LeaderHandler {
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
-        let menu = &ctx.app.leader_menu;
+        let menu = &ctx.app.overlays.leader_menu;
         let root = menu.root_def();
         let submenus = menu.submenu_defs();
         let mut out = String::from("Leader menu structure:\n");

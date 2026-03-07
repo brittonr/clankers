@@ -208,8 +208,8 @@ impl SlashHandler for CompareHandler {
         }
 
         // Verify both blocks exist
-        let a_exists = ctx.app.all_blocks.iter().any(|b| b.id == id_a);
-        let b_exists = ctx.app.all_blocks.iter().any(|b| b.id == id_b);
+        let a_exists = ctx.app.conversation.all_blocks.iter().any(|b| b.id == id_a);
+        let b_exists = ctx.app.conversation.all_blocks.iter().any(|b| b.id == id_b);
         if !a_exists {
             ctx.app.push_system(format!("Block #{} not found.", id_a), true);
             return;
@@ -219,7 +219,7 @@ impl SlashHandler for CompareHandler {
             return;
         }
 
-        ctx.app.branch_compare.open(id_a, id_b, &ctx.app.all_blocks.clone());
+        ctx.app.branching.compare.open(id_a, id_b, &ctx.app.conversation.all_blocks.clone());
     }
 }
 
@@ -374,7 +374,7 @@ impl SlashHandler for MergeInteractiveHandler {
             .unwrap_or_else(|| target.to_string());
 
         ctx.app
-            .merge_interactive
+            .branching.merge_interactive
             .open(source, target, &source_name, &target_name, &unique);
     }
 }

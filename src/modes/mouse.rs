@@ -21,7 +21,7 @@ pub(crate) fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u1
                         col,
                         row,
                         app.messages_area,
-                        app.scroll.offset,
+                        app.conversation.scroll.offset,
                         &app.rendered_lines,
                     ) {
                         app.selection = Some(crate::tui::selection::TextSelection::start(pos));
@@ -85,7 +85,7 @@ pub(crate) fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u1
                     col,
                     row,
                     app.messages_area,
-                    app.scroll.offset,
+                    app.conversation.scroll.offset,
                     &app.rendered_lines,
                 )
             {
@@ -107,7 +107,7 @@ pub(crate) fn handle_mouse_drag(app: &mut App, button: Button, col: u16, row: u1
             col,
             row,
             app.messages_area,
-            app.scroll.offset,
+            app.conversation.scroll.offset,
             &app.rendered_lines,
         )
     {
@@ -125,7 +125,7 @@ pub(crate) fn handle_mouse_up(app: &mut App, button: Button, col: u16, row: u16)
             col,
             row,
             app.messages_area,
-            app.scroll.offset,
+            app.conversation.scroll.offset,
             &app.rendered_lines,
         ) {
             sel.update(pos);
@@ -147,9 +147,9 @@ pub(crate) fn handle_mouse_scroll(app: &mut App, col: u16, row: u16, up: bool, l
     match region {
         HitRegion::Messages => {
             if up {
-                app.scroll.scroll_up(lines as usize);
+                app.conversation.scroll.scroll_up(lines as usize);
             } else {
-                app.scroll.scroll_down(lines as usize);
+                app.conversation.scroll.scroll_down(lines as usize);
             }
         }
         HitRegion::Panel(panel_id) => {
@@ -157,15 +157,15 @@ pub(crate) fn handle_mouse_scroll(app: &mut App, col: u16, row: u16, up: bool, l
             panel.handle_scroll(up, lines);
         }
         HitRegion::Subagent(ref id) => {
-            app.subagent_panes.handle_scroll(id, up, lines);
+            app.layout.subagent_panes.handle_scroll(id, up, lines);
         }
         HitRegion::Editor => {
             // Scroll in editor could navigate history (up/down),
             // but that would be confusing. Just scroll the messages.
             if up {
-                app.scroll.scroll_up(lines as usize);
+                app.conversation.scroll.scroll_up(lines as usize);
             } else {
-                app.scroll.scroll_down(lines as usize);
+                app.conversation.scroll.scroll_down(lines as usize);
             }
         }
         _ => {}
@@ -179,7 +179,7 @@ fn click_toggle_block(app: &mut App, text_row: usize) {
     // header lines as a heuristic.
     let mut row_cursor: usize = 0;
 
-    for entry in &app.blocks {
+    for entry in &app.conversation.blocks {
         if let BlockEntry::Conversation(block) = entry {
             // Each block has at least a header line
             let block_lines = if block.collapsed {
@@ -191,7 +191,7 @@ fn click_toggle_block(app: &mut App, text_row: usize) {
 
             if text_row >= row_cursor && text_row < row_cursor + block_lines {
                 // Found the block — focus and toggle it
-                app.focused_block = Some(block.id);
+                app.conversation.focused_block = Some(block.id);
                 app.toggle_focused_block();
                 app.input_mode = InputMode::Normal;
                 return;

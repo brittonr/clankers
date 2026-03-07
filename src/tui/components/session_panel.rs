@@ -29,7 +29,7 @@ use crate::tui::theme::Theme;
 
 /// Render the session/branch popup as a centered overlay
 pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
-    if !app.session_popup_visible {
+    if !app.overlays.session_popup_visible {
         return;
     }
 
@@ -44,7 +44,7 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
 
     frame.render_widget(Clear, area);
 
-    let total_blocks = app.all_blocks.len();
+    let total_blocks = app.conversation.all_blocks.len();
     let branch_count = count_branch_points(app);
     let title = format!(
         " Session ({} turns, {} branches)  j/k:nav  h/l:branch  e:edit  Esc:close ",
@@ -59,7 +59,7 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
             Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
         ));
 
-    if app.all_blocks.is_empty() {
+    if app.conversation.all_blocks.is_empty() {
         let empty = Paragraph::new(Line::from(Span::styled(
             "No conversation yet.",
             Style::default().fg(Color::DarkGray),
@@ -75,7 +75,7 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
 
     // Build set of active (visible) block IDs
     let active_ids: HashSet<usize> = app
-        .blocks
+        .conversation.blocks
         .iter()
         .filter_map(|e| match e {
             BlockEntry::Conversation(b) => Some(b.id),
@@ -88,7 +88,7 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
     // DFS tree walk over all_blocks
     let mut lines = Vec::new();
     let roots: Vec<&ConversationBlock> = app
-        .all_blocks
+        .conversation.all_blocks
         .iter()
         .filter(|b| b.parent_block_id.is_none())
         .collect();
@@ -107,7 +107,7 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
     }
 
     // Show active block (streaming) at the end
-    if let Some(active) = &app.active_block {
+    if let Some(active) = &app.conversation.active_block {
         let preview = truncate_preview(&active.prompt, max_preview);
         lines.push(Line::from(vec![
             Span::styled("│ ", Style::default().fg(Color::DarkGray)),
@@ -125,7 +125,7 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
     let visible_height = inner.height as usize;
 
     // Auto-scroll to keep focused block visible
-    let scroll = compute_scroll(&lines, app.focused_block, visible_height, app);
+    let scroll = compute_scroll(&lines, app.conversation.focused_block, visible_height, app);
 
     let para = Paragraph::new(lines)
         .scroll((scroll, 0))
@@ -149,7 +149,7 @@ fn render_tree_node(
     theme: &Theme,
 ) {
     let is_active = active_ids.contains(&block.id);
-    let is_focused = app.focused_block == Some(block.id);
+    let is_focused = app.conversation.focused_block == Some(block.id);
 
     // Tree connector character
     let connector = if prefix.is_empty() {
@@ -270,7 +270,7 @@ fn render_tree_node(
 
     // Find children and recurse
     let children: Vec<&ConversationBlock> = app
-        .all_blocks
+        .conversation.all_blocks
         .iter()
         .filter(|b| b.parent_block_id == Some(block.id))
         .collect();
@@ -349,7 +349,7 @@ fn compute_scroll(lines: &[Line], focused_block: Option<usize>, visible_height: 
 /// Count how many blocks have multiple children (branch points)
 fn count_branch_points(app: &App) -> usize {
     let mut parent_child_count = std::collections::HashMap::new();
-    for block in &app.all_blocks {
+    for block in &app.conversation.all_blocks {
         *parent_child_count
             .entry(block.parent_block_id)
             .or_insert(0usize) += 1;
@@ -398,7 +398,7 @@ mod tests {
         let mut forked = ConversationBlock::new(2, "alternative answer".into());
         forked.parent_block_id = Some(0);
         forked.streaming = false;
-        app.all_blocks.push(forked);
+        app.conversation.all_blocks.push(forked);
         // Now block 0 has 2 children → 1 branch point
         assert_eq!(count_branch_points(&app), 1);
     }
@@ -419,7 +419,7 @@ mod tests {
         app.finalize_active_block();
 
         let active_ids: HashSet<usize> = app
-            .blocks
+            .conversation.blocks
             .iter()
             .filter_map(|e| match e {
                 BlockEntry::Conversation(b) => Some(b.id),

@@ -13,12 +13,14 @@ use ratatui::text::Span;
 use crate::tools::progress::{ProgressKind, ToolProgress};
 
 /// Sample for ETA calculation
+#[derive(Debug)]
 struct ProgressSample {
     timestamp: Instant,
     value: f32,
 }
 
 /// State for a single tool's progress
+#[derive(Debug)]
 struct ProgressState {
     /// Latest progress update
     progress: ToolProgress,
@@ -30,6 +32,7 @@ struct ProgressState {
 }
 
 /// Renderer that tracks and formats progress for active tools
+#[derive(Debug)]
 pub struct ProgressRenderer {
     /// Current progress state per call_id
     states: HashMap<String, ProgressState>,
