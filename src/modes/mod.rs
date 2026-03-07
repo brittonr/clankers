@@ -2,6 +2,7 @@
 
 pub mod common;
 pub mod daemon;
+pub(crate) mod matrix_bridge;
 pub(crate) mod clipboard;
 pub(crate) mod event_loop;
 pub mod interactive;
