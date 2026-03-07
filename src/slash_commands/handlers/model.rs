@@ -7,6 +7,17 @@ use crate::modes::interactive::AgentCommand;
 pub struct ModelHandler;
 
 impl SlashHandler for ModelHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "model",
+            description: "Switch model (e.g. /model claude-3-5-sonnet)",
+            help: "Switch to a different model. Usage: /model <model-name>",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+    
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             ctx.app.push_system(format!("Current model: {}\n\nUsage: /model <model-name>", ctx.app.model), false);
@@ -22,6 +33,32 @@ impl SlashHandler for ModelHandler {
 pub struct ThinkHandler;
 
 impl SlashHandler for ThinkHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "think",
+            description: "Set thinking level (off/low/medium/high/max)",
+            help: "Cycle or set extended thinking level.\n\n\
+                   Usage:\n  \
+                   /think              — cycle to next level\n  \
+                   /think off          — disable thinking\n  \
+                   /think low          — light reasoning (~5k tokens)\n  \
+                   /think medium       — moderate reasoning (~10k tokens)\n  \
+                   /think high         — deep reasoning (~32k tokens)\n  \
+                   /think max          — maximum reasoning (~128k tokens)\n  \
+                   /think <number>     — set budget directly (maps to nearest level)\n\n\
+                   Keybinding: Ctrl+T cycles through levels.",
+            accepts_args: true,
+            subcommands: vec![
+                ("off", "disable thinking"),
+                ("low", "light reasoning (~5k tokens)"),
+                ("medium", "moderate reasoning (~10k tokens)"),
+                ("high", "deep reasoning (~32k tokens)"),
+                ("max", "maximum reasoning (~128k tokens)"),
+            ],
+            leader_key: None,
+        }
+    }
+    
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             let _ = ctx.cmd_tx.send(AgentCommand::CycleThinkingLevel);
@@ -39,6 +76,27 @@ impl SlashHandler for ThinkHandler {
 pub struct RoleHandler;
 
 impl SlashHandler for RoleHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "role",
+            description: "Switch or list model roles",
+            help: "Manage model roles for different task types.\n\n\
+                   Usage:\n  \
+                   /role                    — list all role assignments\n  \
+                   /role <name>             — switch to a role's model\n  \
+                   /role <name> <model>     — set a role's model\n  \
+                   /role reset              — clear all role overrides\n\n\
+                   Roles: default, smol, slow, plan, commit, review",
+            accepts_args: true,
+            subcommands: vec![
+                ("<name>", "switch to a role's model"),
+                ("<name> <model>", "set a role's model"),
+                ("reset", "clear all role overrides"),
+            ],
+            leader_key: None,
+        }
+    }
+    
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         let roles = crate::config::model_roles::ModelRoles::with_defaults();
 

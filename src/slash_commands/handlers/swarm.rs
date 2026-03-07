@@ -7,6 +7,22 @@ use tokio_util::sync::CancellationToken;
 pub struct WorkerHandler;
 
 impl SlashHandler for WorkerHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "worker",
+            description: "Spawn or list swarm workers",
+            help: "Spawn a named worker in a Zellij pane, or list active workers.\n\n\
+                   Usage:\n  \
+                   /worker                   — list active workers\n  \
+                   /worker <name> <task>      — spawn worker with a task\n  \
+                   /worker <name>             — spawn an idle worker\n\n\
+                   Requires running inside a Zellij session (clankers --zellij or clankers --swarm).",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             ctx.app.push_system(
@@ -43,6 +59,21 @@ impl SlashHandler for WorkerHandler {
 pub struct ShareHandler;
 
 impl SlashHandler for ShareHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "share",
+            description: "Share this Zellij session remotely",
+            help: "Share the current Zellij session over the network via iroh.\n\n\
+                   Usage:\n  \
+                   /share              — share read-write\n  \
+                   /share --read-only  — share read-only\n\n\
+                   Requires running inside a Zellij session.",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.app.push_system("Share is not yet implemented without Zellij.".to_string(), true);
     }
@@ -51,6 +82,28 @@ impl SlashHandler for ShareHandler {
 pub struct SubagentsHandler;
 
 impl SlashHandler for SubagentsHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "subagents",
+            description: "List and manage subagents",
+            help: "List running and completed subagents, or manage them.\n\n\
+                   Usage:\n  \
+                   /subagents             — list all subagents\n  \
+                   /subagents kill <id>   — kill a running subagent\n  \
+                   /subagents kill all    — kill all running subagents\n  \
+                   /subagents remove <id> — remove a subagent entry from the panel\n  \
+                   /subagents clear       — remove all completed/failed subagents",
+            accepts_args: true,
+            subcommands: vec![
+                ("kill <id>", "kill a running subagent"),
+                ("kill all", "kill all running subagents"),
+                ("remove <id>", "remove a subagent entry"),
+                ("clear", "remove all completed/failed subagents"),
+            ],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         use crate::tui::components::subagent_panel::SubagentPanel;
         use crate::tui::panel::PanelId;
@@ -141,6 +194,34 @@ impl SlashHandler for SubagentsHandler {
 pub struct PeersHandler;
 
 impl SlashHandler for PeersHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "peers",
+            description: "Manage swarm peers",
+            help: "View and manage P2P swarm peers.\n\n\
+                   Usage:\n  \
+                   /peers                      — list all peers (switches to peers panel)\n  \
+                   /peers add <node-id> <name>  — add a peer to the registry\n  \
+                   /peers remove <name-or-id>   — remove a peer\n  \
+                   /peers probe [name-or-id]    — probe a peer (or all peers)\n  \
+                   /peers discover              — scan LAN via mDNS for new peers\n  \
+                   /peers allow <node-id>       — add to allowlist\n  \
+                   /peers deny <node-id>        — remove from allowlist\n  \
+                   /peers server [on|off]       — start/stop embedded RPC server",
+            accepts_args: true,
+            subcommands: vec![
+                ("add <node-id> <name>", "add a peer"),
+                ("remove <name-or-id>", "remove a peer"),
+                ("probe [name-or-id]", "probe a peer or all peers"),
+                ("discover", "scan LAN via mDNS"),
+                ("allow <node-id>", "add to allowlist"),
+                ("deny <node-id>", "remove from allowlist"),
+                ("server [on|off]", "start/stop RPC server"),
+            ],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         use crate::tui::components::peers_panel::PeersPanel;
         use crate::tui::panel::PanelId;

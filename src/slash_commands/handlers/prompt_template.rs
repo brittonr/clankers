@@ -8,6 +8,19 @@ pub struct PromptTemplateHandler {
 }
 
 impl SlashHandler for PromptTemplateHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        // PromptTemplateHandler is dynamic — command metadata depends on the template.
+        // We return a placeholder. The real metadata is discovered at runtime.
+        super::super::SlashCommand {
+            name: Box::leak(self.template_name.clone().into_boxed_str()),
+            description: "User-defined prompt template",
+            help: "Executes a custom prompt template from ~/.pi/prompts/ or .pi/prompts/",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+    
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         // Look up the prompt template from the discovered resources
         let global_dir = &crate::config::paths::ClankersPaths::get().global_prompts_dir;

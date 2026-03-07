@@ -7,6 +7,32 @@ use crate::modes::interactive::AgentCommand;
 pub struct SystemPromptHandler;
 
 impl SlashHandler for SystemPromptHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "system",
+            description: "View or modify the system prompt",
+            help: "View, replace, append to, or reset the system prompt.\n\n\
+                   Usage:\n  \
+                   /system              — show the current system prompt (truncated)\n  \
+                   /system show         — show the full system prompt\n  \
+                   /system set <text>   — replace the system prompt entirely\n  \
+                   /system append <text>— append text to the system prompt\n  \
+                   /system prepend <text>— prepend text to the system prompt\n  \
+                   /system reset        — restore the original system prompt\n  \
+                   /system file <path>  — load system prompt from a file",
+            accepts_args: true,
+            subcommands: vec![
+                ("show", "show the full system prompt"),
+                ("set <text>", "replace the system prompt"),
+                ("append <text>", "append to the system prompt"),
+                ("prepend <text>", "prepend to the system prompt"),
+                ("reset", "restore the original system prompt"),
+                ("file <path>", "load system prompt from a file"),
+            ],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() || args == "show" {
             let full = args == "show";
@@ -154,6 +180,32 @@ impl SlashHandler for SystemPromptHandler {
 pub struct MemoryHandler;
 
 impl SlashHandler for MemoryHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "memory",
+            description: "Manage cross-session memory",
+            help: "View, add, edit, remove, and search persistent memories.\n\n\
+                   Usage:\n  \
+                   /memory                   — list all memories\n  \
+                   /memory add <text>         — add a global memory\n  \
+                   /memory add --project <text> — add a project-scoped memory\n  \
+                   /memory edit <id> <text>   — replace memory text by ID\n  \
+                   /memory remove <id>        — remove a memory by ID\n  \
+                   /memory search <query>     — search memories by text/tags\n  \
+                   /memory clear              — remove all memories",
+            accepts_args: true,
+            subcommands: vec![
+                ("add <text>", "add a global memory"),
+                ("add --project <text>", "add a project-scoped memory"),
+                ("edit <id> <text>", "replace memory text by ID"),
+                ("remove <id>", "remove a memory by ID"),
+                ("search <query>", "search memories"),
+                ("clear", "remove all memories"),
+            ],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if let Some(db) = &ctx.db {
             let mem = db.memory();

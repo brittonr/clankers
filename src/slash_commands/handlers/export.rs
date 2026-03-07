@@ -8,6 +8,17 @@ use crate::tui::components::block::BlockEntry;
 pub struct ExportHandler;
 
 impl SlashHandler for ExportHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "export",
+            description: "Export conversation to file",
+            help: "Exports the conversation to a file. Usage: /export [filename]",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+    
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         let filename = if args.is_empty() {
             format!("clankers-export-{}.md", chrono::Local::now().format("%Y%m%d-%H%M%S"))

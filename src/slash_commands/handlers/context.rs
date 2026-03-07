@@ -8,6 +8,17 @@ use crate::tui::components::block::BlockEntry;
 pub struct ClearHandler;
 
 impl SlashHandler for ClearHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "clear",
+            description: "Clear conversation history",
+            help: "Clears the visible message history. Does not affect the agent's context window.",
+            accepts_args: false,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+    
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.app.conversation.blocks.clear();
         let _ = ctx.cmd_tx.send(AgentCommand::ClearHistory);
@@ -19,6 +30,17 @@ impl SlashHandler for ClearHandler {
 pub struct ResetHandler;
 
 impl SlashHandler for ResetHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "reset",
+            description: "Reset conversation and context",
+            help: "Clears conversation history and resets the agent context, starting fresh.",
+            accepts_args: false,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+    
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.app.conversation.blocks.clear();
         ctx.app.conversation.all_blocks.clear();
@@ -38,6 +60,22 @@ impl SlashHandler for ResetHandler {
 pub struct CompactHandler;
 
 impl SlashHandler for CompactHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "compact",
+            description: "Summarize conversation to save tokens",
+            help: "Asks the model to create a compact summary of the conversation so far, \
+                   replacing the full history to reduce token usage.",
+            accepts_args: false,
+            subcommands: vec![],
+            leader_key: Some(super::super::LeaderBinding {
+                key: 'C',
+                placement: crate::tui::components::leader_menu::MenuPlacement::Root,
+                label: Some("compact"),
+            }),
+        }
+    }
+    
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.app.push_system("Compact mode is not yet implemented.".to_string(), false);
     }
@@ -46,6 +84,17 @@ impl SlashHandler for CompactHandler {
 pub struct UndoHandler;
 
 impl SlashHandler for UndoHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "undo",
+            description: "Remove last conversation turn",
+            help: "Removes the last user message and assistant response from the conversation.",
+            accepts_args: false,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+    
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         let mut removed = false;
         for i in (0..ctx.app.conversation.blocks.len()).rev() {

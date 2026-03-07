@@ -6,6 +6,17 @@ use super::SlashHandler;
 pub struct ToolsHandler;
 
 impl SlashHandler for ToolsHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "tools",
+            description: "List available tools",
+            help: "Lists all tools available to the agent, including built-in tools and any tools provided by loaded plugins.",
+            accepts_args: false,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         if ctx.app.tool_info.is_empty() {
             ctx.app.push_system("No tools available.".to_string(), false);
@@ -38,6 +49,17 @@ impl SlashHandler for ToolsHandler {
 pub struct PluginHandler;
 
 impl SlashHandler for PluginHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "plugin",
+            description: "Show loaded plugins",
+            help: "Lists all discovered and loaded plugins with their status.\n\nUsage: /plugin [name]  — show details for a specific plugin",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if let Some(pm) = ctx.plugin_manager {
             let mgr = pm.lock().unwrap_or_else(|e| e.into_inner());

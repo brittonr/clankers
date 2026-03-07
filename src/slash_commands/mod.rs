@@ -12,6 +12,79 @@ use std::collections::HashMap;
 use crate::registry::{Conflict, PRIORITY_BUILTIN};
 use crate::tui::components::leader_menu::MenuPlacement;
 
+// ---------------------------------------------------------------------------
+// Slash command dispatch — routes command names to handler implementations
+// ---------------------------------------------------------------------------
+
+/// Dispatch a slash command by name to its handler.
+///
+/// This is the single entry point for all slash command execution.
+/// Command names map directly to handler structs in
+/// `src/slash_commands/handlers/`.
+///
+/// NOTE: This function is superseded by `SlashRegistry::dispatch()`.
+/// It remains as a compatibility fallback for contexts that don't have
+/// access to the registry. Prefer using the registry when possible.
+pub fn dispatch(
+    command: &str,
+    args: &str,
+    ctx: &mut handlers::SlashContext<'_>,
+) {
+    use handlers::SlashHandler;
+
+    match command {
+        "help" => handlers::info::HelpHandler.handle(args, ctx),
+        "clear" => handlers::context::ClearHandler.handle(args, ctx),
+        "reset" => handlers::context::ResetHandler.handle(args, ctx),
+        "model" => handlers::model::ModelHandler.handle(args, ctx),
+        "status" => handlers::info::StatusHandler.handle(args, ctx),
+        "usage" => handlers::info::UsageHandler.handle(args, ctx),
+        "version" => handlers::info::VersionHandler.handle(args, ctx),
+        "quit" => handlers::info::QuitHandler.handle(args, ctx),
+        "session" => handlers::session::SessionHandler.handle(args, ctx),
+        "undo" => handlers::context::UndoHandler.handle(args, ctx),
+        "cd" => handlers::navigation::CdHandler.handle(args, ctx),
+        "shell" => handlers::navigation::ShellHandler.handle(args, ctx),
+        "export" => handlers::export::ExportHandler.handle(args, ctx),
+        "compact" => handlers::context::CompactHandler.handle(args, ctx),
+        "think" => handlers::model::ThinkHandler.handle(args, ctx),
+        "login" => handlers::auth::LoginHandler.handle(args, ctx),
+        "tools" => handlers::tools::ToolsHandler.handle(args, ctx),
+        "plugin" => handlers::tools::PluginHandler.handle(args, ctx),
+        "subagents" => handlers::swarm::SubagentsHandler.handle(args, ctx),
+        "account" => handlers::auth::AccountHandler.handle(args, ctx),
+        "todo" => handlers::tui::TodoHandler.handle(args, ctx),
+        "worker" => handlers::swarm::WorkerHandler.handle(args, ctx),
+        "share" => handlers::swarm::ShareHandler.handle(args, ctx),
+        "plan" => handlers::tui::PlanHandler.handle(args, ctx),
+        "review" => handlers::tui::ReviewHandler.handle(args, ctx),
+        "role" => handlers::model::RoleHandler.handle(args, ctx),
+        "system" => handlers::memory::SystemPromptHandler.handle(args, ctx),
+        "memory" => handlers::memory::MemoryHandler.handle(args, ctx),
+        "peers" => handlers::swarm::PeersHandler.handle(args, ctx),
+        "editor" => handlers::tui::EditorHandler.handle(args, ctx),
+        "preview" => handlers::tui::PreviewHandler.handle(args, ctx),
+        "layout" => handlers::tui::LayoutHandler.handle(args, ctx),
+        "fork" => handlers::branching::ForkHandler.handle(args, ctx),
+        "rewind" => handlers::branching::RewindHandler.handle(args, ctx),
+        "branches" => handlers::branching::BranchesHandler.handle(args, ctx),
+        "switch" => handlers::branching::SwitchHandler.handle(args, ctx),
+        "compare" => handlers::branching::CompareHandler.handle(args, ctx),
+        "label" => handlers::branching::LabelHandler.handle(args, ctx),
+        "merge" => handlers::branching::MergeHandler.handle(args, ctx),
+        "merge-interactive" => handlers::branching::MergeInteractiveHandler.handle(args, ctx),
+        "cherry-pick" => handlers::branching::CherryPickHandler.handle(args, ctx),
+        "leader" => handlers::info::LeaderHandler.handle(args, ctx),
+        // User-defined prompt templates: any name not matched above
+        _ => {
+            handlers::prompt_template::PromptTemplateHandler {
+                template_name: command.to_string(),
+            }
+            .handle(args, ctx);
+        }
+    }
+}
+
 // Thread-local cache of prompt template names for slash completion.
 // Populated at startup from discovered prompt templates.
 thread_local! {
@@ -82,563 +155,22 @@ pub struct SlashCommandDef {
 // SlashAction enum deleted — dispatch uses command name strings directly.
 // See dispatch() above.
 
-/// All built-in slash commands
+/// All built-in slash commands.
+/// This function is now a simple collector that asks each handler for its metadata.
 pub fn builtin_commands() -> Vec<SlashCommand> {
-    vec![
-        SlashCommand {
-            name: "help",
-            description: "Show available commands",
-            help: "Lists all available slash commands with descriptions.",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: Some(LeaderBinding {
-                key: '?',
-                placement: MenuPlacement::Root,
-                label: Some("help"),
-            }),
-        },
-        SlashCommand {
-            name: "clear",
-            description: "Clear conversation history",
-            help: "Clears the visible message history. Does not affect the agent's context window.",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "reset",
-            description: "Reset conversation and context",
-            help: "Clears conversation history and resets the agent context, starting fresh.",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "compact",
-            description: "Summarize conversation to save tokens",
-            help: "Asks the model to create a compact summary of the conversation so far, \
-                   replacing the full history to reduce token usage.",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: Some(LeaderBinding {
-                key: 'C',
-                placement: MenuPlacement::Root,
-                label: Some("compact"),
-            }),
-        },
-        SlashCommand {
-            name: "model",
-            description: "Switch model (e.g. /model claude-3-5-sonnet)",
-            help: "Switch to a different model. Usage: /model <model-name>",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "think",
-            description: "Set thinking level (off/low/medium/high/max)",
-            help: "Cycle or set extended thinking level.\n\n\
-                   Usage:\n  \
-                   /think              — cycle to next level\n  \
-                   /think off          — disable thinking\n  \
-                   /think low          — light reasoning (~5k tokens)\n  \
-                   /think medium       — moderate reasoning (~10k tokens)\n  \
-                   /think high         — deep reasoning (~32k tokens)\n  \
-                   /think max          — maximum reasoning (~128k tokens)\n  \
-                   /think <number>     — set budget directly (maps to nearest level)\n\n\
-                   Keybinding: Ctrl+T cycles through levels.",
-            accepts_args: true,
-            subcommands: vec![
-                ("off", "disable thinking"),
-                ("low", "light reasoning (~5k tokens)"),
-                ("medium", "moderate reasoning (~10k tokens)"),
-                ("high", "deep reasoning (~32k tokens)"),
-                ("max", "maximum reasoning (~128k tokens)"),
-            ],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "status",
-            description: "Show current settings",
-            help: "Displays the current model, token usage, and session information.",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "usage",
-            description: "Show token usage statistics",
-            help: "Shows detailed token usage and estimated cost for this session.",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "undo",
-            description: "Remove last conversation turn",
-            help: "Removes the last user message and assistant response from the conversation.",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "session",
-            description: "Manage sessions",
-            help: "Session management:\n  \
-                   /session                — show current session info\n  \
-                   /session list [n]       — list recent sessions (default: 10)\n  \
-                   /session resume [id]    — resume a previous session (opens menu if no id)\n  \
-                   /session delete <id>    — delete a session\n  \
-                   /session purge          — delete all sessions for this directory",
-            accepts_args: true,
-            subcommands: vec![
-                ("list [n]", "list recent sessions"),
-                ("resume [id]", "resume a session (menu if no id)"),
-                ("delete <id>", "delete a session"),
-                ("purge", "delete all sessions for this directory"),
-            ],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "export",
-            description: "Export conversation to file",
-            help: "Exports the conversation to a file. Usage: /export [filename]",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "cd",
-            description: "Change working directory",
-            help: "Change the working directory. Usage: /cd <path>",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "shell",
-            description: "Run a shell command directly",
-            help: "Execute a shell command without going through the agent. Usage: /shell <command>",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "version",
-            description: "Show version information",
-            help: "Displays the clankers version and build information.",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "login",
-            description: "Authenticate with Anthropic (OAuth)",
-            help: "Start the OAuth login flow.\n\n\
-                   Usage:\n  \
-                   /login                  — generate an auth URL and display it\n  \
-                   /login <code#state>     — complete login with code from browser\n  \
-                   /login <callback URL>   — complete login with the full callback URL\n  \
-                   /login --account <name> — login to a specific account\n\n\
-                   See also: /account (list, switch, logout, status)",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "tools",
-            description: "List available tools",
-            help: "Lists all tools available to the agent, including built-in tools \
-                   and any tools provided by loaded plugins.",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "plugin",
-            description: "Show loaded plugins",
-            help: "Lists all discovered and loaded plugins with their status.\n\n\
-                   Usage: /plugin [name]  — show details for a specific plugin",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "worker",
-            description: "Spawn or list swarm workers",
-            help: "Spawn a named worker in a Zellij pane, or list active workers.\n\n\
-                   Usage:\n  \
-                   /worker                   — list active workers\n  \
-                   /worker <name> <task>      — spawn worker with a task\n  \
-                   /worker <name>             — spawn an idle worker\n\n\
-                   Requires running inside a Zellij session (clankers --zellij or clankers --swarm).",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "share",
-            description: "Share this Zellij session remotely",
-            help: "Share the current Zellij session over the network via iroh.\n\n\
-                   Usage:\n  \
-                   /share              — share read-write\n  \
-                   /share --read-only  — share read-only\n\n\
-                   Requires running inside a Zellij session.",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "subagents",
-            description: "List and manage subagents",
-            help: "List running and completed subagents, or manage them.\n\n\
-                   Usage:\n  \
-                   /subagents             — list all subagents\n  \
-                   /subagents kill <id>   — kill a running subagent\n  \
-                   /subagents kill all    — kill all running subagents\n  \
-                   /subagents remove <id> — remove a subagent entry from the panel\n  \
-                   /subagents clear       — remove all completed/failed subagents",
-            accepts_args: true,
-            subcommands: vec![
-                ("kill <id>", "kill a running subagent"),
-                ("kill all", "kill all running subagents"),
-                ("remove <id>", "remove a subagent entry"),
-                ("clear", "remove all completed/failed subagents"),
-            ],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "account",
-            description: "Switch or list accounts",
-            help: "Manage multiple authenticated accounts.\n\n\
-                   Usage:\n  \
-                   /account                — list all accounts & status\n  \
-                   /account switch <name>  — switch active account\n  \
-                   /account login [name]   — login to an account (default: active)\n  \
-                   /account logout [name]  — logout an account\n  \
-                   /account remove <name>  — remove an account\n  \
-                   /account list           — list all accounts",
-            accepts_args: true,
-            subcommands: vec![
-                ("switch <name>", "switch active account"),
-                ("login [name]", "login to an account"),
-                ("logout [name]", "logout an account"),
-                ("remove <name>", "remove an account"),
-                ("status [name]", "show account status"),
-                ("list", "list all accounts"),
-            ],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "todo",
-            description: "Manage todo list",
-            help: "Track tasks in the right-side panel.\n\n\
-                   Usage:\n  \
-                   /todo                   — list all items\n  \
-                   /todo add <text>        — add a new item\n  \
-                   /todo done <id|text>    — mark item as done\n  \
-                   /todo wip <id|text>     — mark item as in-progress\n  \
-                   /todo remove <id>       — remove an item\n  \
-                   /todo clear             — remove all completed items",
-            accepts_args: true,
-            subcommands: vec![
-                ("add <text>", "add a new item"),
-                ("done <id|text>", "mark item as done"),
-                ("wip <id|text>", "mark item as in-progress"),
-                ("remove <id>", "remove an item"),
-                ("clear", "remove all completed items"),
-            ],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "preview",
-            description: "Preview markdown rendering (debug)",
-            help: "Injects a fake assistant block with sample markdown content.\n\n\
-                   Usage:\n  \
-                   /preview              — show default markdown sample\n  \
-                   /preview <markdown>   — render the provided markdown text",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "plan",
-            description: "Toggle plan mode (architecture-first)",
-            help: "Toggle plan mode on or off. In plan mode, the agent reads and analyzes \
-                   the codebase first, proposes an implementation plan, and waits for approval \
-                   before making any edits.\n\n\
-                   Usage:\n  \
-                   /plan        — toggle plan mode\n  \
-                   /plan on     — enable plan mode\n  \
-                   /plan off    — disable plan mode",
-            accepts_args: true,
-            subcommands: vec![("on", "enable plan mode"), ("off", "disable plan mode")],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "review",
-            description: "Start an interactive code review",
-            help: "Start a structured code review of recent changes. The agent will \
-                   examine the diff, identify issues, and produce a prioritized report.\n\n\
-                   Usage:\n  \
-                   /review             — review changes vs main/master\n  \
-                   /review <base>      — review changes vs a specific base ref\n  \
-                   /review staged      — review only staged changes",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "role",
-            description: "Switch or list model roles",
-            help: "Manage model roles for different task types.\n\n\
-                   Usage:\n  \
-                   /role                    — list all role assignments\n  \
-                   /role <name>             — switch to a role's model\n  \
-                   /role <name> <model>     — set a role's model\n  \
-                   /role reset              — clear all role overrides\n\n\
-                   Roles: default, smol, slow, plan, commit, review",
-            accepts_args: true,
-            subcommands: vec![
-                ("<name>", "switch to a role's model"),
-                ("<name> <model>", "set a role's model"),
-                ("reset", "clear all role overrides"),
-            ],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "system",
-            description: "View or modify the system prompt",
-            help: "View, replace, append to, or reset the system prompt.\n\n\
-                   Usage:\n  \
-                   /system              — show the current system prompt (truncated)\n  \
-                   /system show         — show the full system prompt\n  \
-                   /system set <text>   — replace the system prompt entirely\n  \
-                   /system append <text>— append text to the system prompt\n  \
-                   /system prepend <text>— prepend text to the system prompt\n  \
-                   /system reset        — restore the original system prompt\n  \
-                   /system file <path>  — load system prompt from a file",
-            accepts_args: true,
-            subcommands: vec![
-                ("show", "show the full system prompt"),
-                ("set <text>", "replace the system prompt"),
-                ("append <text>", "append to the system prompt"),
-                ("prepend <text>", "prepend to the system prompt"),
-                ("reset", "restore the original system prompt"),
-                ("file <path>", "load system prompt from a file"),
-            ],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "editor",
-            description: "Open $EDITOR to compose input",
-            help: "Opens your $EDITOR (or $VISUAL, falls back to vi) with the current \
-                   editor content. When you save and quit, the content is loaded back \
-                   into the clankers input. Useful for composing long multi-line prompts.\n\n\
-                   Keybindings: Ctrl+O (insert mode), o (normal mode)",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "memory",
-            description: "Manage cross-session memory",
-            help: "View, add, edit, remove, and search persistent memories.\n\n\
-                   Usage:\n  \
-                   /memory                   — list all memories\n  \
-                   /memory add <text>         — add a global memory\n  \
-                   /memory add --project <text> — add a project-scoped memory\n  \
-                   /memory edit <id> <text>   — replace memory text by ID\n  \
-                   /memory remove <id>        — remove a memory by ID\n  \
-                   /memory search <query>     — search memories by text/tags\n  \
-                   /memory clear              — remove all memories",
-            accepts_args: true,
-            subcommands: vec![
-                ("add <text>", "add a global memory"),
-                ("add --project <text>", "add a project-scoped memory"),
-                ("edit <id> <text>", "replace memory text by ID"),
-                ("remove <id>", "remove a memory by ID"),
-                ("search <query>", "search memories"),
-                ("clear", "remove all memories"),
-            ],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "peers",
-            description: "Manage swarm peers",
-            help: "View and manage P2P swarm peers.\n\n\
-                   Usage:\n  \
-                   /peers                      — list all peers (switches to peers panel)\n  \
-                   /peers add <node-id> <name>  — add a peer to the registry\n  \
-                   /peers remove <name-or-id>   — remove a peer\n  \
-                   /peers probe [name-or-id]    — probe a peer (or all peers)\n  \
-                   /peers discover              — scan LAN via mDNS for new peers\n  \
-                   /peers allow <node-id>       — add to allowlist\n  \
-                   /peers deny <node-id>        — remove from allowlist\n  \
-                   /peers server [on|off]       — start/stop embedded RPC server",
-            accepts_args: true,
-            subcommands: vec![
-                ("add <node-id> <name>", "add a peer"),
-                ("remove <name-or-id>", "remove a peer"),
-                ("probe [name-or-id]", "probe a peer or all peers"),
-                ("discover", "scan LAN via mDNS"),
-                ("allow <node-id>", "add to allowlist"),
-                ("deny <node-id>", "remove from allowlist"),
-                ("server [on|off]", "start/stop RPC server"),
-            ],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "layout",
-            description: "Switch panel layout",
-            help: "Usage: /layout <preset>|toggle <panel>\n  \
-                   /layout default              — 3-column (todo+files | chat | subagents+peers)\n  \
-                   /layout wide                 — wide chat with left sidebar\n  \
-                   /layout focused              — chat only (no panels)\n  \
-                   /layout right                — all panels on the right\n  \
-                   /layout toggle <panel>       — show/hide a panel (todo|files|subagents|peers)",
-            accepts_args: true,
-            subcommands: vec![
-                ("default", "3-column layout"),
-                ("wide", "wide chat with left sidebar"),
-                ("focused", "chat only (no panels)"),
-                ("right", "all panels on the right"),
-                ("toggle <panel>", "show/hide a panel"),
-            ],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "fork",
-            description: "Fork conversation to explore alternatives",
-            help: "Create a new branch from the current message.\n\n\
-                   Usage:\n  \
-                   /fork                — fork with auto-generated name\n  \
-                   /fork <reason>       — fork with a descriptive name",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: Some(LeaderBinding {
-                key: 'f',
-                placement: MenuPlacement::Submenu("session".into()),
-                label: Some("fork"),
-            }),
-        },
-        SlashCommand {
-            name: "rewind",
-            description: "Jump back to an earlier message",
-            help: "Rewind the conversation to an earlier point.\n\n\
-                   Usage:\n  \
-                   /rewind <N>            — go back N messages\n  \
-                   /rewind <message-id>   — jump to specific message\n  \
-                   /rewind <label>        — jump to a labeled message",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "branches",
-            description: "List conversation branches",
-            help: "List all branches in the current session.\n\n\
-                   Usage:\n  \
-                   /branches              — list all branches\n  \
-                   /branches --verbose    — show detailed branch tree",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "switch",
-            description: "Switch to a different branch",
-            help: "Switch to a different conversation branch.\n\n\
-                   Usage:\n  \
-                   /switch <branch-name>  — switch by branch name\n  \
-                   /switch <message-id>   — switch to specific message",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "compare",
-            description: "Compare two branches side-by-side",
-            help: "Show a side-by-side comparison of two conversation branches.\n\n\
-                   Usage: /compare <block-id-a> <block-id-b>\n  \
-                   /compare #1 #3     — compare branches ending at blocks 1 and 3\n\n\
-                   Opens an overlay with divergence point, unique blocks per branch,\n  \
-                   and keybindings: ←/→ switch pane, j/k scroll, s switch to branch.",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "label",
-            description: "Label the current message",
-            help: "Add a human-readable label to the current message.\n\n\
-                   Usage: /label <name>\n\n\
-                   Labels can be used with /rewind and /switch for easy navigation.",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "merge",
-            description: "Merge one branch into another",
-            help: "Copy all unique messages from one branch into another.\n\n\
-                   Usage: /merge <source-branch> <target-branch>\n\n\
-                   Finds messages unique to the source branch and appends them\n  \
-                   to the target branch's leaf. Switches to the target branch\n  \
-                   after merging. Use /branches to see available branch names.",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "merge-interactive",
-            description: "Interactively select messages to merge between branches",
-            help: "Opens a checkbox overlay showing all unique messages in the source branch.\n\n\
-                   Usage: /merge-interactive <source-branch> <target-branch>\n\n\
-                   Toggle messages with Space, select all with 'a', deselect with 'n',\n  \
-                   then press Enter to merge only the selected messages. Press Esc to cancel.",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "cherry-pick",
-            description: "Copy a message into another branch",
-            help: "Copy a single message (and optionally its children) into a target branch.\n\n\
-                   Usage: /cherry-pick <message-id> <target-branch> [--with-children]\n\n\
-                   The message is copied with a new ID and appended to the target branch's\n  \
-                   leaf. Use --with-children to copy the entire subtree.",
-            accepts_args: true,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "quit",
-            description: "Quit clankers",
-            help: "Exit the application.",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: None,
-        },
-        SlashCommand {
-            name: "leader",
-            description: "Dump leader menu structure (debug)",
-            help: "Show the current leader menu structure, including all items,\n\
-                   submenus, and their sources. Useful for debugging menu\n\
-                   contributions from builtins, plugins, and user config.\n\n\
-                   The leader menu (Space in normal mode) is built dynamically from:\n  \
-                   1. Built-in keymap actions and slash commands\n  \
-                   2. Plugin manifest `leader_menu` entries\n  \
-                   3. User config `[leader_menu]` in settings.json\n\n\
-                   User config (priority 200) overrides plugins (100), which\n  \
-                   override builtins (0). Use `leader_menu.hide` in settings\n  \
-                   to remove entries.",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: None,
-        },
-    ]
+    builtin_handlers().into_iter().map(|h| h.command()).collect()
 }
+
+// The giant 729-line Vec literal has been eliminated!
+// Each handler now owns its own metadata via the `command()` method.
+//
+// To add a new command:
+// 1. Create a handler struct in handlers/<domain>.rs
+// 2. Implement SlashHandler with both command() and handle()
+// 3. Add the handler to builtin_handlers() above
+//
+// That's it! No more maintaining metadata in two places.
+
 
 // ---------------------------------------------------------------------------
 // Registry system — dynamic command registration with conflict resolution
@@ -725,82 +257,79 @@ impl SlashRegistry {
     }
 }
 
+/// Returns all builtin handler instances.
+/// Each handler provides its own metadata via the `command()` method.
+fn builtin_handlers() -> Vec<Box<dyn handlers::SlashHandler>> {
+    vec![
+        Box::new(handlers::info::HelpHandler),
+        Box::new(handlers::context::ClearHandler),
+        Box::new(handlers::context::ResetHandler),
+        Box::new(handlers::context::CompactHandler),
+        Box::new(handlers::context::UndoHandler),
+        Box::new(handlers::model::ModelHandler),
+        Box::new(handlers::model::ThinkHandler),
+        Box::new(handlers::model::RoleHandler),
+        Box::new(handlers::info::StatusHandler),
+        Box::new(handlers::info::UsageHandler),
+        Box::new(handlers::info::VersionHandler),
+        Box::new(handlers::info::QuitHandler),
+        Box::new(handlers::info::LeaderHandler),
+        Box::new(handlers::session::SessionHandler),
+        Box::new(handlers::navigation::CdHandler),
+        Box::new(handlers::navigation::ShellHandler),
+        Box::new(handlers::export::ExportHandler),
+        Box::new(handlers::auth::LoginHandler),
+        Box::new(handlers::auth::AccountHandler),
+        Box::new(handlers::tools::ToolsHandler),
+        Box::new(handlers::tools::PluginHandler),
+        Box::new(handlers::swarm::WorkerHandler),
+        Box::new(handlers::swarm::ShareHandler),
+        Box::new(handlers::swarm::SubagentsHandler),
+        Box::new(handlers::swarm::PeersHandler),
+        Box::new(handlers::tui::TodoHandler),
+        Box::new(handlers::tui::PreviewHandler),
+        Box::new(handlers::tui::EditorHandler),
+        Box::new(handlers::tui::LayoutHandler),
+        Box::new(handlers::tui::PlanHandler),
+        Box::new(handlers::tui::ReviewHandler),
+        Box::new(handlers::memory::SystemPromptHandler),
+        Box::new(handlers::memory::MemoryHandler),
+        Box::new(handlers::branching::ForkHandler),
+        Box::new(handlers::branching::RewindHandler),
+        Box::new(handlers::branching::BranchesHandler),
+        Box::new(handlers::branching::SwitchHandler),
+        Box::new(handlers::branching::CompareHandler),
+        Box::new(handlers::branching::LabelHandler),
+        Box::new(handlers::branching::MergeHandler),
+        Box::new(handlers::branching::MergeInteractiveHandler),
+        Box::new(handlers::branching::CherryPickHandler),
+    ]
+}
+
 /// Built-in slash command contributor.
 pub struct BuiltinSlashContributor;
 
 impl SlashContributor for BuiltinSlashContributor {
     fn slash_commands(&self) -> Vec<SlashCommandDef> {
-        let metadata = builtin_commands();
-        
-        // Helper to convert SlashCommand metadata to SlashCommandDef
-        let builtin_def = |cmd: SlashCommand, handler: Box<dyn handlers::SlashHandler>| -> SlashCommandDef {
-            SlashCommandDef {
-                name: cmd.name.to_string(),
-                description: cmd.description.to_string(),
-                help: cmd.help.to_string(),
-                accepts_args: cmd.accepts_args,
-                subcommands: cmd
-                    .subcommands
-                    .iter()
-                    .map(|(n, d)| (n.to_string(), d.to_string()))
-                    .collect(),
-                handler,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".to_string(),
-                leader_key: cmd.leader_key,
-            }
-        };
-
-        // Match each command name to its handler
-        metadata
+        builtin_handlers()
             .into_iter()
-            .map(|cmd| {
-                let handler: Box<dyn handlers::SlashHandler> = match cmd.name {
-                    "help" => Box::new(handlers::info::HelpHandler),
-                    "clear" => Box::new(handlers::context::ClearHandler),
-                    "reset" => Box::new(handlers::context::ResetHandler),
-                    "model" => Box::new(handlers::model::ModelHandler),
-                    "status" => Box::new(handlers::info::StatusHandler),
-                    "usage" => Box::new(handlers::info::UsageHandler),
-                    "version" => Box::new(handlers::info::VersionHandler),
-                    "quit" => Box::new(handlers::info::QuitHandler),
-                    "session" => Box::new(handlers::session::SessionHandler),
-                    "undo" => Box::new(handlers::context::UndoHandler),
-                    "cd" => Box::new(handlers::navigation::CdHandler),
-                    "shell" => Box::new(handlers::navigation::ShellHandler),
-                    "export" => Box::new(handlers::export::ExportHandler),
-                    "compact" => Box::new(handlers::context::CompactHandler),
-                    "think" => Box::new(handlers::model::ThinkHandler),
-                    "login" => Box::new(handlers::auth::LoginHandler),
-                    "tools" => Box::new(handlers::tools::ToolsHandler),
-                    "plugin" => Box::new(handlers::tools::PluginHandler),
-                    "subagents" => Box::new(handlers::swarm::SubagentsHandler),
-                    "account" => Box::new(handlers::auth::AccountHandler),
-                    "todo" => Box::new(handlers::tui::TodoHandler),
-                    "worker" => Box::new(handlers::swarm::WorkerHandler),
-                    "share" => Box::new(handlers::swarm::ShareHandler),
-                    "plan" => Box::new(handlers::tui::PlanHandler),
-                    "review" => Box::new(handlers::tui::ReviewHandler),
-                    "role" => Box::new(handlers::model::RoleHandler),
-                    "system" => Box::new(handlers::memory::SystemPromptHandler),
-                    "memory" => Box::new(handlers::memory::MemoryHandler),
-                    "peers" => Box::new(handlers::swarm::PeersHandler),
-                    "editor" => Box::new(handlers::tui::EditorHandler),
-                    "preview" => Box::new(handlers::tui::PreviewHandler),
-                    "layout" => Box::new(handlers::tui::LayoutHandler),
-                    "fork" => Box::new(handlers::branching::ForkHandler),
-                    "rewind" => Box::new(handlers::branching::RewindHandler),
-                    "branches" => Box::new(handlers::branching::BranchesHandler),
-                    "switch" => Box::new(handlers::branching::SwitchHandler),
-                    "compare" => Box::new(handlers::branching::CompareHandler),
-                    "label" => Box::new(handlers::branching::LabelHandler),
-                    "merge" => Box::new(handlers::branching::MergeHandler),
-                    "merge-interactive" => Box::new(handlers::branching::MergeInteractiveHandler),
-                    "cherry-pick" => Box::new(handlers::branching::CherryPickHandler),
-                    "leader" => Box::new(handlers::info::LeaderHandler),
-                    _ => panic!("Unhandled builtin command: {}", cmd.name),
-                };
-                builtin_def(cmd, handler)
+            .map(|handler| {
+                let cmd = handler.command();
+                SlashCommandDef {
+                    name: cmd.name.to_string(),
+                    description: cmd.description.to_string(),
+                    help: cmd.help.to_string(),
+                    accepts_args: cmd.accepts_args,
+                    subcommands: cmd
+                        .subcommands
+                        .iter()
+                        .map(|(n, d)| (n.to_string(), d.to_string()))
+                        .collect(),
+                    handler,
+                    priority: PRIORITY_BUILTIN,
+                    source: "builtin".to_string(),
+                    leader_key: cmd.leader_key,
+                }
             })
             .collect()
     }

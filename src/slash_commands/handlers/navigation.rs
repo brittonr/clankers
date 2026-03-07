@@ -6,6 +6,17 @@ use super::SlashHandler;
 pub struct CdHandler;
 
 impl SlashHandler for CdHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "cd",
+            description: "Change working directory",
+            help: "Change the working directory. Usage: /cd <path>",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+    
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             ctx.app.push_system(format!("Current directory: {}\n\nUsage: /cd <path>", ctx.app.cwd), false);
@@ -35,6 +46,17 @@ impl SlashHandler for CdHandler {
 pub struct ShellHandler;
 
 impl SlashHandler for ShellHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "shell",
+            description: "Run a shell command directly",
+            help: "Execute a shell command without going through the agent. Usage: /shell <command>",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+    
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             ctx.app.push_system("Usage: /shell <command>".to_string(), false);

@@ -8,6 +8,23 @@ use crate::modes::interactive::AgentCommand;
 pub struct LoginHandler;
 
 impl SlashHandler for LoginHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "login",
+            description: "Authenticate with Anthropic (OAuth)",
+            help: "Start the OAuth login flow.\n\n\
+                   Usage:\n  \
+                     /login                  — generate an auth URL and display it\n  \
+                     /login <code#state>     — complete login with code from browser\n  \
+                     /login <callback URL>   — complete login with the full callback URL\n  \
+                     /login --account <name> — login to a specific account\n\n\
+                   See also: /account (list, switch, logout, status)",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         // Parse optional --account flag: /login [--account name] [code#state|url]
         let (account_name, remaining_args) = crate::modes::interactive::parse_account_flag(args);
@@ -95,6 +112,31 @@ impl SlashHandler for LoginHandler {
 pub struct AccountHandler;
 
 impl SlashHandler for AccountHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "account",
+            description: "Switch or list accounts",
+            help: "Manage multiple authenticated accounts.\n\n\
+                   Usage:\n  \
+                     /account                — list all accounts & status\n  \
+                     /account switch <name>  — switch active account\n  \
+                     /account login [name]   — login to an account (default: active)\n  \
+                     /account logout [name]  — logout an account\n  \
+                     /account remove <name>  — remove an account\n  \
+                     /account list           — list all accounts",
+            accepts_args: true,
+            subcommands: vec![
+                ("switch <name>", "switch active account"),
+                ("login [name]", "login to an account"),
+                ("logout [name]", "logout an account"),
+                ("remove <name>", "remove an account"),
+                ("status [name]", "show account status"),
+                ("list", "list all accounts"),
+            ],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         let paths = crate::config::ClankersPaths::get();
         let mut store = crate::provider::auth::AuthStore::load(&paths.global_auth);

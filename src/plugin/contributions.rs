@@ -105,6 +105,19 @@ struct PluginSlashHandler {
 }
 
 impl crate::slash_commands::handlers::SlashHandler for PluginSlashHandler {
+    fn command(&self) -> crate::slash_commands::SlashCommand {
+        // PluginSlashHandler is dynamic — command metadata comes from the plugin manifest.
+        // We return a placeholder. The real metadata is provided by SlashContributor above.
+        crate::slash_commands::SlashCommand {
+            name: Box::leak(self.command_name.clone().into_boxed_str()),
+            description: Box::leak(format!("Plugin command: {}", self.command_name).into_boxed_str()),
+            help: Box::leak(format!("Execute the '{}' command from the '{}' plugin", self.command_name, self.plugin_name).into_boxed_str()),
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+    
     fn handle(&self, args: &str, ctx: &mut crate::slash_commands::handlers::SlashContext<'_>) {
         // Try to call the plugin's handle_command export via the plugin bridge
         if let Some(pm_arc) = ctx.plugin_manager {

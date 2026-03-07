@@ -6,6 +6,27 @@ use super::SlashHandler;
 pub struct SessionHandler;
 
 impl SlashHandler for SessionHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "session",
+            description: "Manage sessions",
+            help: "Session management:\n  \
+                   /session                — show current session info\n  \
+                   /session list [n]       — list recent sessions (default: 10)\n  \
+                   /session resume [id]    — resume a previous session (opens menu if no id)\n  \
+                   /session delete <id>    — delete a session\n  \
+                   /session purge          — delete all sessions for this directory",
+            accepts_args: true,
+            subcommands: vec![
+                ("list [n]", "list recent sessions"),
+                ("resume [id]", "resume a session (menu if no id)"),
+                ("delete <id>", "delete a session"),
+                ("purge", "delete all sessions for this directory"),
+            ],
+            leader_key: None,
+        }
+    }
+    
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             let info = if ctx.app.session_id.is_empty() {

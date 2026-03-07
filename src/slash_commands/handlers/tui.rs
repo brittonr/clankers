@@ -6,6 +6,28 @@ use super::SlashHandler;
 pub struct LayoutHandler;
 
 impl SlashHandler for LayoutHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "layout",
+            description: "Switch panel layout",
+            help: "Usage: /layout <preset>|toggle <panel>\n  \
+                   /layout default              — 3-column (todo+files | chat | subagents+peers)\n  \
+                   /layout wide                 — wide chat with left sidebar\n  \
+                   /layout focused              — chat only (no panels)\n  \
+                   /layout right                — all panels on the right\n  \
+                   /layout toggle <panel>       — show/hide a panel (todo|files|subagents|peers)",
+            accepts_args: true,
+            subcommands: vec![
+                ("default", "3-column layout"),
+                ("wide", "wide chat with left sidebar"),
+                ("focused", "chat only (no panels)"),
+                ("right", "all panels on the right"),
+                ("toggle <panel>", "show/hide a panel"),
+            ],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         use crate::tui::panes;
 
@@ -172,6 +194,20 @@ fn pane_id_for_panel(panel_id: crate::tui::panel::PanelId) -> ratatui_hypertile:
 pub struct PreviewHandler;
 
 impl SlashHandler for PreviewHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "preview",
+            description: "Preview markdown rendering (debug)",
+            help: "Injects a fake assistant block with sample markdown content.\n\n\
+                   Usage:\n  \
+                   /preview              — show default markdown sample\n  \
+                   /preview <markdown>   — render the provided markdown text",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         let content = if args.is_empty() {
             "# Markdown Preview\n\n\
@@ -215,6 +251,20 @@ impl SlashHandler for PreviewHandler {
 pub struct EditorHandler;
 
 impl SlashHandler for EditorHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "editor",
+            description: "Open $EDITOR to compose input",
+            help: "Opens your $EDITOR (or $VISUAL, falls back to vi) with the current \
+                   editor content. When you save and quit, the content is loaded back \
+                   into the clankers input. Useful for composing long multi-line prompts.\n\n\
+                   Keybindings: Ctrl+O (insert mode), o (normal mode)",
+            accepts_args: false,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         // Signal the event loop to open the external editor
         // (needs terminal access, which execute_slash_command doesn't have)
@@ -225,6 +275,30 @@ impl SlashHandler for EditorHandler {
 pub struct TodoHandler;
 
 impl SlashHandler for TodoHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "todo",
+            description: "Manage todo list",
+            help: "Track tasks in the right-side panel.\n\n\
+                   Usage:\n  \
+                   /todo                   — list all items\n  \
+                   /todo add <text>        — add a new item\n  \
+                   /todo done <id|text>    — mark item as done\n  \
+                   /todo wip <id|text>     — mark item as in-progress\n  \
+                   /todo remove <id>       — remove an item\n  \
+                   /todo clear             — remove all completed items",
+            accepts_args: true,
+            subcommands: vec![
+                ("add <text>", "add a new item"),
+                ("done <id|text>", "mark item as done"),
+                ("wip <id|text>", "mark item as in-progress"),
+                ("remove <id>", "remove an item"),
+                ("clear", "remove all completed items"),
+            ],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         use crate::tui::components::todo_panel::{TodoPanel, TodoStatus};
         use crate::tui::panel::PanelId;
@@ -310,6 +384,23 @@ impl SlashHandler for TodoHandler {
 pub struct PlanHandler;
 
 impl SlashHandler for PlanHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "plan",
+            description: "Toggle plan mode (architecture-first)",
+            help: "Toggle plan mode on or off. In plan mode, the agent reads and analyzes \
+                   the codebase first, proposes an implementation plan, and waits for approval \
+                   before making any edits.\n\n\
+                   Usage:\n  \
+                   /plan        — toggle plan mode\n  \
+                   /plan on     — enable plan mode\n  \
+                   /plan off    — disable plan mode",
+            accepts_args: true,
+            subcommands: vec![("on", "enable plan mode"), ("off", "disable plan mode")],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         let new_state = if args.eq_ignore_ascii_case("on") {
             crate::modes::plan::PlanState::Planning
@@ -336,6 +427,22 @@ impl SlashHandler for PlanHandler {
 pub struct ReviewHandler;
 
 impl SlashHandler for ReviewHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "review",
+            description: "Start an interactive code review",
+            help: "Start a structured code review of recent changes. The agent will \
+                   examine the diff, identify issues, and produce a prioritized report.\n\n\
+                   Usage:\n  \
+                   /review             — review changes vs main/master\n  \
+                   /review <base>      — review changes vs a specific base ref\n  \
+                   /review staged      — review only staged changes",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         let base = if args.is_empty() { None } else { Some(args.as_str()) };
         let prompt = if let Some(b) = base {

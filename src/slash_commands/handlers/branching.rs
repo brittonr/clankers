@@ -8,6 +8,24 @@ use crate::provider::message::MessageId;
 pub struct ForkHandler;
 
 impl SlashHandler for ForkHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "fork",
+            description: "Fork conversation to explore alternatives",
+            help: "Create a new branch from the current message.\n\n\
+                   Usage:\n  \
+                   /fork                — fork with auto-generated name\n  \
+                   /fork <reason>       — fork with a descriptive name",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: Some(super::super::LeaderBinding {
+                key: 'f',
+                placement: crate::tui::components::leader_menu::MenuPlacement::Submenu("session".into()),
+                label: Some("fork"),
+            }),
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if let Some(sm) = ctx.session_manager {
             if sm.message_count() == 0 {
@@ -50,6 +68,21 @@ impl SlashHandler for ForkHandler {
 pub struct RewindHandler;
 
 impl SlashHandler for RewindHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "rewind",
+            description: "Jump back to an earlier message",
+            help: "Rewind the conversation to an earlier point.\n\n\
+                   Usage:\n  \
+                   /rewind <N>            — go back N messages\n  \
+                   /rewind <message-id>   — jump to specific message\n  \
+                   /rewind <label>        — jump to a labeled message",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             ctx.app.push_system("Usage: /rewind <N> or /rewind <message-id> or /rewind <label>".to_string(), true);
@@ -82,6 +115,20 @@ impl SlashHandler for RewindHandler {
 pub struct BranchesHandler;
 
 impl SlashHandler for BranchesHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "branches",
+            description: "List conversation branches",
+            help: "List all branches in the current session.\n\n\
+                   Usage:\n  \
+                   /branches              — list all branches\n  \
+                   /branches --verbose    — show detailed branch tree",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         if let Some(sm) = ctx.session_manager {
             match sm.find_branches() {
@@ -117,6 +164,20 @@ impl SlashHandler for BranchesHandler {
 pub struct SwitchHandler;
 
 impl SlashHandler for SwitchHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "switch",
+            description: "Switch to a different branch",
+            help: "Switch to a different conversation branch.\n\n\
+                   Usage:\n  \
+                   /switch <branch-name>  — switch by branch name\n  \
+                   /switch <message-id>   — switch to specific message",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             ctx.app.push_system("Usage: /switch <branch-name> or /switch <message-id>".to_string(), true);
@@ -176,6 +237,21 @@ impl SlashHandler for SwitchHandler {
 pub struct CompareHandler;
 
 impl SlashHandler for CompareHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "compare",
+            description: "Compare two branches side-by-side",
+            help: "Show a side-by-side comparison of two conversation branches.\n\n\
+                   Usage: /compare <block-id-a> <block-id-b>\n  \
+                   /compare #1 #3     — compare branches ending at blocks 1 and 3\n\n\
+                   Opens an overlay with divergence point, unique blocks per branch,\n  \
+                   and keybindings: ←/→ switch pane, j/k scroll, s switch to branch.",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         let parts: Vec<&str> = args.split_whitespace().collect();
         if parts.len() != 2 {
@@ -226,6 +302,21 @@ impl SlashHandler for CompareHandler {
 pub struct MergeHandler;
 
 impl SlashHandler for MergeHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "merge",
+            description: "Merge one branch into another",
+            help: "Copy all unique messages from one branch into another.\n\n\
+                   Usage: /merge <source-branch> <target-branch>\n\n\
+                   Finds messages unique to the source branch and appends them\n  \
+                   to the target branch's leaf. Switches to the target branch\n  \
+                   after merging. Use /branches to see available branch names.",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         let parts: Vec<&str> = args.split_whitespace().collect();
         if parts.len() != 2 {
@@ -287,6 +378,20 @@ impl SlashHandler for MergeHandler {
 pub struct MergeInteractiveHandler;
 
 impl SlashHandler for MergeInteractiveHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "merge-interactive",
+            description: "Interactively select messages to merge between branches",
+            help: "Opens a checkbox overlay showing all unique messages in the source branch.\n\n\
+                   Usage: /merge-interactive <source-branch> <target-branch>\n\n\
+                   Toggle messages with Space, select all with 'a', deselect with 'n',\n  \
+                   then press Enter to merge only the selected messages. Press Esc to cancel.",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         let parts: Vec<&str> = args.split_whitespace().collect();
         if parts.len() != 2 {
@@ -382,6 +487,20 @@ impl SlashHandler for MergeInteractiveHandler {
 pub struct CherryPickHandler;
 
 impl SlashHandler for CherryPickHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "cherry-pick",
+            description: "Copy a message into another branch",
+            help: "Copy a single message (and optionally its children) into a target branch.\n\n\
+                   Usage: /cherry-pick <message-id> <target-branch> [--with-children]\n\n\
+                   The message is copied with a new ID and appended to the target branch's\n  \
+                   leaf. Use --with-children to copy the entire subtree.",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         let parts: Vec<&str> = args.split_whitespace().collect();
         if parts.len() < 2 {
@@ -439,6 +558,19 @@ impl SlashHandler for CherryPickHandler {
 pub struct LabelHandler;
 
 impl SlashHandler for LabelHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "label",
+            description: "Label the current message",
+            help: "Add a human-readable label to the current message.\n\n\
+                   Usage: /label <name>\n\n\
+                   Labels can be used with /rewind and /switch for easy navigation.",
+            accepts_args: true,
+            subcommands: vec![],
+            leader_key: None,
+        }
+    }
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             ctx.app.push_system("Usage: /label <name>".to_string(), true);
