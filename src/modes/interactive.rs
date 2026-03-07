@@ -27,8 +27,6 @@ use crate::error::Result;
 use crate::provider::auth::AuthStoreExt;
 use crate::slash_commands::{self};
 use crate::tui::app::App;
-use crate::tui::app::AppState;
-use crate::tui::components::block::BlockEntry;
 use crate::tui::event::AppEvent;
 use crate::tui::event::{self as tui_event};
 // Panel trait is in scope via panel_mut() return type
@@ -482,7 +480,7 @@ pub(crate) enum AgentCommand {
     },
 }
 
-enum TaskResult {
+pub(crate) enum TaskResult {
     PromptDone(Option<crate::error::Error>),
     LoginDone(std::result::Result<String, String>),
     ThinkingToggled(String, crate::provider::ThinkingLevel),
@@ -988,7 +986,7 @@ async fn run_event_loop(
                     }
                     // Dispatch queued prompt if one is waiting
                     if let Some(text) = app.queued_prompt.take() {
-                        handle_input_with_plugins(app, &text, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
+                        super::event_loop::handle_input_with_plugins(app, &text, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
                     }
                 }
                 TaskResult::PromptDone(None) => {
@@ -996,7 +994,7 @@ async fn run_event_loop(
                     // so the user can keep typing without pressing 'i' again.
                     // Dispatch queued prompt if one is waiting
                     if let Some(text) = app.queued_prompt.take() {
-                        handle_input_with_plugins(app, &text, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
+                        super::event_loop::handle_input_with_plugins(app, &text, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
                     }
                 }
                 TaskResult::LoginDone(Ok(msg)) => app.push_system(msg, false),
@@ -1057,7 +1055,7 @@ async fn run_event_loop(
                     }
 
                     // ── Session popup intercept ──────────────────
-                    if app.overlays.session_popup_visible && handle_session_popup_key(app, &key, &keymap) {
+                    if app.overlays.session_popup_visible && super::event_loop::handle_session_popup_key(app, &key, &keymap) {
                         continue;
                     }
 
@@ -1118,21 +1116,21 @@ async fn run_event_loop(
                     // ── Leader menu intercept ────────────────────
                     if app.overlays.leader_menu.visible {
                         if let Some(leader_action) = app.overlays.leader_menu.handle_key(&key) {
-                            handle_leader_action(app, leader_action, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
+                            super::event_loop::handle_leader_action(app, leader_action, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
                         }
                         continue;
                     }
 
                     // ── Output search intercept ──────────────────
                     if app.overlays.output_search.active {
-                        handle_output_search_key(app, &key);
+                        super::event_loop::handle_output_search_key(app, &key);
                         continue;
                     }
 
                     // ── Slash menu intercept (only in insert mode) ────
                     if app.input_mode == InputMode::Insert
                         && app.slash_menu.visible
-                        && handle_slash_menu_key(app, &key, &keymap, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager)
+                        && super::event_loop::handle_slash_menu_key(app, &key, &keymap, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager)
                     {
                         continue;
                     }
@@ -1411,7 +1409,7 @@ async fn run_event_loop(
                             continue;
                         }
 
-                        handle_action(app, action, &key, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
+                        super::event_loop::handle_action(app, action, &key, &cmd_tx, plugin_manager.as_ref(), &panel_tx, &db, &mut session_manager);
 
                         // If a branch was just initiated, record it in the session file
                         if let Some(checkpoint) = app.branching.last_branch_checkpoint.take()
@@ -1436,7 +1434,7 @@ async fn run_event_loop(
                     } else {
                         // Unmapped key — in insert mode, insert printable chars
                         if app.input_mode == InputMode::Insert {
-                            handle_insert_char(app, &key);
+                            super::event_loop::handle_insert_char(app, &key);
                         }
                         // In normal mode, unmapped keys are ignored
                     }
@@ -1469,779 +1467,6 @@ async fn run_event_loop(
     }
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// Action dispatcher
-// ---------------------------------------------------------------------------
-
-fn handle_action(
-    app: &mut App,
-    action: Action,
-    _key: &crossterm::event::KeyEvent,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-    db: &Option<crate::db::Db>,
-    session_manager: &mut Option<crate::session::SessionManager>,
-) {
-    use crate::config::keybindings::CoreAction;
-
-    // When a panel is focused, intercept navigation actions and let
-    // global actions (leader menu, selectors, etc.) fall through.
-    // Panel-specific key handling is done by Panel::handle_key_event()
-    // in the raw key dispatch above — this block only handles Action-level
-    // structural navigation (focus/unfocus, column movement, mode switching).
-    if app.has_panel_focus() {
-        let is_global = match &action {
-            Action::Core(c) => matches!(c, 
-                CoreAction::Quit | CoreAction::Cancel | CoreAction::EnterNormal | CoreAction::PasteImage
-            ),
-            Action::Extended(name) => matches!(name.as_str(),
-                "open_leader_menu" | "open_model_selector" | "open_account_selector"
-                | "toggle_thinking" | "toggle_show_thinking" | "toggle_block_ids"
-                | "search_output" | "toggle_session_popup" | "toggle_branch_panel" | "toggle_cost_overlay"
-                | "open_branch_switcher" | "open_editor"
-            ),
-        };
-
-        if !is_global {
-            match &action {
-                Action::Core(CoreAction::Unfocus) => {
-                    app.close_focused_panel_views();
-                    app.zoom_restore();
-                    app.unfocus_panel();
-                    return;
-                }
-                Action::Extended(n) if n == "toggle_panel_focus" => {
-                    app.close_focused_panel_views();
-                    app.zoom_restore();
-                    app.unfocus_panel();
-                    return;
-                }
-                Action::Core(CoreAction::EnterInsert) => {
-                    app.close_focused_panel_views();
-                    app.zoom_restore();
-                    app.unfocus_panel();
-                    app.input_mode = InputMode::Insert;
-                    return;
-                }
-                Action::Core(CoreAction::EnterCommand) => {
-                    app.close_focused_panel_views();
-                    app.zoom_restore();
-                    app.unfocus_panel();
-                    // Don't return — fall through to main handler for "/" prefix setup
-                }
-                // h/l: use hypertile directional focus
-                Action::Extended(name) if matches!(name.as_str(), "panel_next_tab" | "branch_next") => {
-                    use ratatui_hypertile::{HypertileAction, Towards};
-                    use ratatui::layout::Direction;
-                    app.apply_tiling_action(HypertileAction::FocusDirection {
-                        direction: Direction::Horizontal,
-                        towards: Towards::End,
-                    });
-                    return;
-                }
-                Action::Extended(name) if matches!(name.as_str(), "panel_prev_tab" | "branch_prev") => {
-                    use ratatui_hypertile::{HypertileAction, Towards};
-                    use ratatui::layout::Direction;
-                    app.apply_tiling_action(HypertileAction::FocusDirection {
-                        direction: Direction::Horizontal,
-                        towards: Towards::Start,
-                    });
-                    return;
-                }
-                // j/k: directional focus vertically
-                Action::Core(CoreAction::FocusPrevBlock) => {
-                    use ratatui_hypertile::{HypertileAction, Towards};
-                    use ratatui::layout::Direction;
-                    app.apply_tiling_action(HypertileAction::FocusDirection {
-                        direction: Direction::Vertical,
-                        towards: Towards::Start,
-                    });
-                    return;
-                }
-                Action::Core(CoreAction::FocusNextBlock) => {
-                    use ratatui_hypertile::{HypertileAction, Towards};
-                    use ratatui::layout::Direction;
-                    app.apply_tiling_action(HypertileAction::FocusDirection {
-                        direction: Direction::Vertical,
-                        towards: Towards::End,
-                    });
-                    return;
-                }
-                // Everything else is consumed (don't leak to main handler)
-                _ => return,
-            }
-        }
-    }
-
-    match action {
-        // ── Core actions ────────────────────────────────
-        Action::Core(core) => match core {
-            // ── Mode switching ───────────────────────────
-            CoreAction::EnterInsert => {
-                app.input_mode = InputMode::Insert;
-            }
-            CoreAction::EnterCommand => {
-                app.input_mode = InputMode::Insert;
-                app.editor.clear();
-                app.editor.insert_char('/');
-                app.update_slash_menu();
-            }
-            CoreAction::EnterNormal => {
-                app.input_mode = InputMode::Normal;
-                app.slash_menu.hide();
-            }
-
-            // ── Core operations ──────────────────────────
-            CoreAction::Submit => {
-                if app.state != AppState::Idle {
-                    // Abort the current stream and queue the new prompt
-                    if let Some(text) = app.submit_input() {
-                        app.queued_prompt = Some(text);
-                        let _ = cmd_tx.send(AgentCommand::Abort);
-                    }
-                    return;
-                }
-                if let Some(text) = app.submit_input() {
-                    if let Some((checkpoint, prompt)) = app.take_pending_branch(&text) {
-                        let _ = cmd_tx.send(AgentCommand::ResetCancel);
-                        let _ = cmd_tx.send(AgentCommand::TruncateMessages(checkpoint));
-                        let _ = cmd_tx.send(AgentCommand::Prompt(prompt));
-                    } else {
-                        handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager);
-                    }
-                }
-            }
-            CoreAction::NewLine => {
-                app.editor.insert_char('\n');
-            }
-            CoreAction::Cancel => {
-                if app.state == AppState::Streaming {
-                    let _ = cmd_tx.send(AgentCommand::Abort);
-                } else if !app.editor.is_empty() {
-                    app.editor.clear();
-                    app.slash_menu.hide();
-                } else {
-                    app.should_quit = true;
-                }
-            }
-            CoreAction::Quit => {
-                app.should_quit = true;
-            }
-
-            // ── Editor movement ──────────────────────────
-            CoreAction::MoveLeft => app.editor.move_left(),
-            CoreAction::MoveRight => app.editor.move_right(),
-            CoreAction::MoveHome => app.editor.move_home(),
-            CoreAction::MoveEnd => app.editor.move_end(),
-
-            // ── Editor editing ───────────────────────────
-            CoreAction::DeleteBack => {
-                app.editor.delete_back();
-                app.update_slash_menu();
-            }
-            CoreAction::DeleteForward => {
-                app.editor.delete_forward();
-                app.update_slash_menu();
-            }
-            CoreAction::DeleteWord => {
-                app.editor.delete_word_back();
-                app.update_slash_menu();
-            }
-            CoreAction::ClearLine => {
-                app.editor.clear();
-                app.slash_menu.hide();
-            }
-
-            // ── History ──────────────────────────────────
-            CoreAction::HistoryUp => app.editor.history_up(),
-            CoreAction::HistoryDown => app.editor.history_down(),
-
-            // ── Scrolling ────────────────────────────────
-            CoreAction::ScrollUp => app.conversation.scroll.scroll_up(1),
-            CoreAction::ScrollDown => app.conversation.scroll.scroll_down(1),
-            CoreAction::ScrollPageUp => app.conversation.scroll.scroll_up(10),
-            CoreAction::ScrollPageDown => app.conversation.scroll.scroll_down(10),
-            CoreAction::ScrollToTop => app.conversation.scroll.scroll_to_top(),
-            CoreAction::ScrollToBottom => app.conversation.scroll.scroll_to_bottom(),
-
-            // ── Block navigation ─────────────────────────
-            CoreAction::FocusPrevBlock => app.focus_prev_block(),
-            CoreAction::FocusNextBlock => app.focus_next_block(),
-            CoreAction::Unfocus => {
-                if app.input_mode == InputMode::Insert {
-                    // Esc in insert → normal
-                    app.input_mode = InputMode::Normal;
-                    app.slash_menu.hide();
-                } else if app.conversation.focused_block.is_some() {
-                    app.conversation.focused_block = None;
-                    app.conversation.scroll.scroll_to_bottom();
-                }
-            }
-
-            // ── Menu navigation ──────────────────────────
-            CoreAction::MenuUp | CoreAction::MenuDown | CoreAction::MenuAccept | CoreAction::MenuClose => {
-                // Menu actions are handled by handle_slash_menu_key before reaching here
-            }
-
-            // ── Clipboard paste ──────────────────────────
-            CoreAction::PasteImage => {
-                super::clipboard::paste_from_clipboard(app);
-            }
-        },
-
-        // ── Extended actions ────────────────────────────
-        Action::Extended(name) => match name.as_str() {
-            // ── Search ───────────────────────────────────
-            "search_output" => {
-                app.overlays.output_search.activate();
-            }
-            "search_next" => {
-                if !app.overlays.output_search.matches.is_empty() {
-                    app.overlays.output_search.next_match();
-                    app.overlays.output_search.scroll_to_current = true;
-                }
-            }
-            "search_prev" => {
-                if !app.overlays.output_search.matches.is_empty() {
-                    app.overlays.output_search.prev_match();
-                    app.overlays.output_search.scroll_to_current = true;
-                }
-            }
-
-            // ── Block operations ─────────────────────────
-            "toggle_block_collapse" => {
-                if app.conversation.focused_block.is_some() {
-                    app.toggle_focused_block();
-                }
-            }
-            "collapse_all_blocks" => app.collapse_all_blocks(),
-            "expand_all_blocks" => app.expand_all_blocks(),
-            "copy_block" => app.copy_focused_block(),
-            "rerun_block" => {
-                if let Some(prompt) = app.get_focused_block_prompt() {
-                    let _ = cmd_tx.send(AgentCommand::ResetCancel);
-                    let _ = cmd_tx.send(AgentCommand::Prompt(prompt));
-                }
-            }
-            "edit_block" => {
-                if app.conversation.focused_block.is_some() && app.state == AppState::Idle && app.edit_focused_block_prompt() {
-                    app.input_mode = InputMode::Insert;
-                }
-            }
-
-            // ── Branch / panel navigation ────────────────
-            "branch_prev" => {
-                if app.conversation.focused_block.is_some() {
-                    app.branch_prev();
-                } else {
-                    // h = directional focus left
-                    use ratatui_hypertile::{HypertileAction, Towards};
-                    app.apply_tiling_action(HypertileAction::FocusDirection {
-                        direction: ratatui::layout::Direction::Horizontal,
-                        towards: Towards::Start,
-                    });
-                    app.input_mode = InputMode::Normal;
-                }
-            }
-            "branch_next" => {
-                if app.conversation.focused_block.is_some() {
-                    app.branch_next();
-                } else {
-                    // l = directional focus right
-                    use ratatui_hypertile::{HypertileAction, Towards};
-                    app.apply_tiling_action(HypertileAction::FocusDirection {
-                        direction: ratatui::layout::Direction::Horizontal,
-                        towards: Towards::End,
-                    });
-                    app.input_mode = InputMode::Normal;
-                }
-            }
-
-            // ── Toggles ─────────────────────────────────
-            "toggle_thinking" => {
-                let _ = cmd_tx.send(AgentCommand::CycleThinkingLevel);
-            }
-            "toggle_show_thinking" => {
-                app.show_thinking = !app.show_thinking;
-                let state = if app.show_thinking { "visible" } else { "hidden" };
-                app.push_system(format!("Thinking content now {}.", state), false);
-            }
-            "toggle_block_ids" => {
-                app.overlays.show_block_ids = !app.overlays.show_block_ids;
-                let state = if app.overlays.show_block_ids { "visible" } else { "hidden" };
-                app.push_system(format!("Block IDs now {}.", state), false);
-            }
-
-            // ── Panel focus ─────────────────────────────
-            "toggle_panel_focus" => {
-                if app.has_panel_focus() {
-                    app.unfocus_panel();
-                } else {
-                    // Focus the next pane (cycles through all panes)
-                    use ratatui_hypertile::HypertileAction;
-                    app.apply_tiling_action(HypertileAction::FocusNext);
-                    app.input_mode = InputMode::Normal;
-                }
-            }
-            "panel_next_tab" => {
-                // l = directional focus right
-                use ratatui_hypertile::{HypertileAction, Towards};
-                app.apply_tiling_action(HypertileAction::FocusDirection {
-                    direction: ratatui::layout::Direction::Horizontal,
-                    towards: Towards::End,
-                });
-                app.input_mode = InputMode::Normal;
-            }
-            "panel_prev_tab" => {
-                // h = directional focus left
-                use ratatui_hypertile::{HypertileAction, Towards};
-                app.apply_tiling_action(HypertileAction::FocusDirection {
-                    direction: ratatui::layout::Direction::Horizontal,
-                    towards: Towards::Start,
-                });
-                app.input_mode = InputMode::Normal;
-            }
-            // ── Pane tiling actions (from leader menu) ─
-            "pane_split_vertical" => {
-                app.split_focused_pane(ratatui::layout::Direction::Vertical);
-            }
-            "pane_split_horizontal" => {
-                app.split_focused_pane(ratatui::layout::Direction::Horizontal);
-            }
-            "pane_close" => {
-                app.close_focused_pane();
-            }
-            "pane_equalize" => {
-                use ratatui_hypertile::HypertileAction;
-                app.apply_tiling_action(HypertileAction::SetFocusedRatio { ratio: 0.5 });
-            }
-            "pane_grow" => {
-                use ratatui_hypertile::HypertileAction;
-                app.apply_tiling_action(HypertileAction::ResizeFocused { delta: 0.05 });
-            }
-            "pane_shrink" => {
-                use ratatui_hypertile::HypertileAction;
-                app.apply_tiling_action(HypertileAction::ResizeFocused { delta: -0.05 });
-            }
-            "pane_move_left" => {
-                use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
-                app.apply_tiling_action(HypertileAction::MoveFocused {
-                    direction: ratatui::layout::Direction::Horizontal,
-                    towards: Towards::Start,
-                    scope: MoveScope::Window,
-                });
-            }
-            "pane_move_right" => {
-                use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
-                app.apply_tiling_action(HypertileAction::MoveFocused {
-                    direction: ratatui::layout::Direction::Horizontal,
-                    towards: Towards::End,
-                    scope: MoveScope::Window,
-                });
-            }
-            "pane_move_down" => {
-                use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
-                app.apply_tiling_action(HypertileAction::MoveFocused {
-                    direction: ratatui::layout::Direction::Vertical,
-                    towards: Towards::End,
-                    scope: MoveScope::Window,
-                });
-            }
-            "pane_move_up" => {
-                use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
-                app.apply_tiling_action(HypertileAction::MoveFocused {
-                    direction: ratatui::layout::Direction::Vertical,
-                    towards: Towards::Start,
-                    scope: MoveScope::Window,
-                });
-            }
-            "pane_zoom" => {
-                app.zoom_toggle();
-            }
-            "panel_scroll_up" => {
-                use crate::tui::components::subagent_panel::SubagentPanel;
-                use crate::tui::panel::PanelId;
-                if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
-                    sp.scroll_up(3);
-                }
-            }
-            "panel_scroll_down" => {
-                use crate::tui::components::subagent_panel::SubagentPanel;
-                use crate::tui::panel::PanelId;
-                if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
-                    sp.scroll_down(3);
-                }
-            }
-            "panel_clear_done" => {
-                use crate::tui::components::subagent_panel::SubagentPanel;
-                use crate::tui::panel::PanelId;
-                if let Some(subagent_panel) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
-                    subagent_panel.clear_done();
-                    if !subagent_panel.is_visible() {
-                        app.unfocus_panel();
-                    }
-                }
-            }
-            "panel_kill" => {
-                use crate::tui::components::subagent_panel::SubagentPanel;
-                use crate::tui::panel::PanelId;
-                if let Some(sp) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents) {
-                    if let Some(id) = sp.selected_id() {
-                        let _ = panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest { id });
-                    }
-                }
-            }
-            "panel_remove" => {
-                use crate::tui::components::subagent_panel::SubagentPanel;
-                use crate::tui::panel::PanelId;
-                if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
-                    sp.remove_selected();
-                }
-            }
-
-            // ── Cost overlay ─────────────────────────────
-            "toggle_cost_overlay" => {
-                app.overlays.cost_overlay_visible = !app.overlays.cost_overlay_visible;
-            }
-
-            // ── Session popup ─────────────────────────────
-            "toggle_session_popup" => {
-                app.overlays.session_popup_visible = !app.overlays.session_popup_visible;
-                if app.overlays.session_popup_visible {
-                    // Focus the last block when opening so user can navigate
-                    if app.conversation.focused_block.is_none() {
-                        let last_id = app.conversation.blocks.iter().rev().find_map(|e| match e {
-                            BlockEntry::Conversation(b) => Some(b.id),
-                            _ => None,
-                        });
-                        app.conversation.focused_block = last_id;
-                    }
-                }
-            }
-
-            // ── Branch panel ──────────────────────────────
-            "toggle_branch_panel" => {
-                use crate::tui::components::branch_panel::BranchPanel;
-                use crate::tui::panel::PanelId;
-                if app.layout.focused_panel == Some(PanelId::Branches) {
-                    // Unfocus (panel stays in the tree but we leave it)
-                    app.unfocus_panel();
-                } else {
-                    // Refresh branch data and focus it
-                    let active_ids: std::collections::HashSet<usize> = app
-                        .conversation.blocks
-                        .iter()
-                        .filter_map(|e| match e {
-                            BlockEntry::Conversation(b) => Some(b.id),
-                            _ => None,
-                        })
-                        .collect();
-                    if let Some(bp) = app.panels.downcast_mut::<BranchPanel>(PanelId::Branches) {
-                        bp.refresh(&app.conversation.all_blocks.clone(), &active_ids);
-                    }
-                    app.focus_panel(PanelId::Branches);
-                }
-            }
-
-            // ── Branch switcher ─────────────────────────────
-            "open_branch_switcher" => {
-                let active_ids: std::collections::HashSet<usize> = app
-                    .conversation.blocks
-                    .iter()
-                    .filter_map(|e| match e {
-                        BlockEntry::Conversation(b) => Some(b.id),
-                        _ => None,
-                    })
-                    .collect();
-                app.branching.switcher.open(&app.conversation.all_blocks.clone(), &active_ids);
-            }
-
-            // ── External editor ─────────────────────────
-            "open_editor" => {
-                // Handled specially in the event loop (needs terminal access)
-                // This is a marker — the event loop checks for it after handle_action
-            }
-
-            // ── Selectors ───────────────────────────────
-            "open_model_selector" => {
-                let models = app.available_models.clone();
-                if models.is_empty() {
-                    app.push_system("No models available.".to_string(), true);
-                } else {
-                    app.overlays.model_selector = crate::tui::components::model_selector::ModelSelector::new(models);
-                    app.overlays.model_selector.open();
-                }
-            }
-            "open_account_selector" => {
-                let paths = crate::config::ClankersPaths::resolve();
-                let store = crate::provider::auth::AuthStore::load(&paths.global_auth);
-                let accounts: Vec<crate::tui::components::account_selector::AccountItem> = store
-                    .list_anthropic_accounts()
-                    .into_iter()
-                    .map(|info| crate::tui::components::account_selector::AccountItem {
-                        name: info.name,
-                        label: info.label,
-                        is_active: info.is_active,
-                        is_expired: info.is_expired,
-                    })
-                    .collect();
-                if accounts.is_empty() {
-                    app.push_system("No accounts configured. Use /login to authenticate.".to_string(), true);
-                } else {
-                    app.overlays.account_selector.open(accounts);
-                }
-            }
-
-            // ── Leader key ──────────────────────────────
-            "open_leader_menu" => {
-                app.overlays.leader_menu.open();
-            }
-
-            // Unknown extended action
-            _ => {
-                tracing::warn!("Unknown extended action: {}", name);
-            }
-        },
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Leader menu action dispatch
-// ---------------------------------------------------------------------------
-
-fn handle_leader_action(
-    app: &mut App,
-    action: crate::tui::components::leader_menu::LeaderAction,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-    db: &Option<crate::db::Db>,
-    session_manager: &mut Option<crate::session::SessionManager>,
-) {
-    use crate::tui::components::leader_menu::LeaderAction;
-
-    match action {
-        LeaderAction::KeymapAction(keymap_action) => {
-            // Re-use the existing action dispatcher with a dummy key event
-            let dummy_key = crossterm::event::KeyEvent::new(KeyCode::Null, KeyModifiers::NONE);
-            handle_action(app, keymap_action, &dummy_key, cmd_tx, plugin_manager, panel_tx, db, session_manager);
-        }
-        LeaderAction::SlashCommand(command) => {
-            // Execute as if the user typed and submitted the slash command
-            handle_input_with_plugins(app, &command, cmd_tx, plugin_manager, panel_tx, db, session_manager);
-        }
-        LeaderAction::Submenu(_) => {
-            // Submenus are handled internally by LeaderMenu::handle_key
-        }
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Output search (Ctrl+F overlay)
-// ---------------------------------------------------------------------------
-
-fn handle_output_search_key(app: &mut App, key: &crossterm::event::KeyEvent) {
-    use crossterm::event::KeyCode;
-    use crossterm::event::KeyModifiers;
-
-    match (key.code, key.modifiers) {
-        // Close search
-        (KeyCode::Esc, _) => {
-            app.overlays.output_search.deactivate();
-        }
-        (KeyCode::Char('c'), KeyModifiers::CONTROL) => {
-            app.overlays.output_search.cancel();
-        }
-
-        // Navigate matches
-        (KeyCode::Enter, KeyModifiers::NONE) | (KeyCode::Char('n'), KeyModifiers::CONTROL) => {
-            app.overlays.output_search.next_match();
-            app.overlays.output_search.scroll_to_current = true;
-        }
-        (KeyCode::Enter, KeyModifiers::SHIFT) | (KeyCode::Char('p'), KeyModifiers::CONTROL) => {
-            app.overlays.output_search.prev_match();
-            app.overlays.output_search.scroll_to_current = true;
-        }
-
-        // Toggle search mode (substring ↔ fuzzy)
-        (KeyCode::Char('r'), KeyModifiers::CONTROL) => {
-            app.overlays.output_search.toggle_mode();
-            // Recompute matches immediately with new mode
-            app.overlays.output_search.update_matches(&app.rendered_lines);
-            app.overlays.output_search.scroll_to_current = true;
-        }
-
-        // Edit query
-        (KeyCode::Backspace, _) => {
-            app.overlays.output_search.backspace();
-            app.overlays.output_search.update_matches(&app.rendered_lines);
-            app.overlays.output_search.scroll_to_current = true;
-        }
-        (KeyCode::Char(c), m) if m.is_empty() || m == KeyModifiers::SHIFT => {
-            app.overlays.output_search.type_char(c);
-            app.overlays.output_search.update_matches(&app.rendered_lines);
-            app.overlays.output_search.scroll_to_current = true;
-        }
-
-        // Consume all other keys (don't leak to main handler)
-        _ => {}
-    }
-}
-
-// ---------------------------------------------------------------------------
-// Slash menu (insert mode only)
-// ---------------------------------------------------------------------------
-
-fn handle_slash_menu_key(
-    app: &mut App,
-    key: &crossterm::event::KeyEvent,
-    keymap: &Keymap,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-    db: &Option<crate::db::Db>,
-    session_manager: &mut Option<crate::session::SessionManager>,
-) -> bool {
-    use crate::config::keybindings::CoreAction;
-
-    // Resolve through the keymap — menu actions take priority when menu is visible
-    if let Some(action) = keymap.resolve(InputMode::Insert, key) {
-        match action {
-            Action::Core(CoreAction::MenuUp | CoreAction::HistoryUp) => {
-                app.slash_menu.select_prev();
-                return true;
-            }
-            Action::Core(CoreAction::MenuDown | CoreAction::HistoryDown) => {
-                app.slash_menu.select_next();
-                return true;
-            }
-            Action::Core(CoreAction::MenuAccept) => {
-                app.accept_slash_completion();
-                app.update_slash_menu();
-                return true;
-            }
-            Action::Core(CoreAction::MenuClose) => {
-                app.slash_menu.hide();
-                return true;
-            }
-            Action::Core(CoreAction::EnterNormal) => {
-                app.slash_menu.hide();
-                app.input_mode = InputMode::Normal;
-                return true;
-            }
-            Action::Core(CoreAction::Submit) => {
-                app.accept_slash_completion();
-                if let Some(text) = app.submit_input() {
-                    handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager);
-                }
-                return true;
-            }
-            Action::Core(CoreAction::DeleteBack) => {
-                app.editor.delete_back();
-                app.update_slash_menu();
-                return true;
-            }
-            // Other mapped actions — fall through to main handler
-            _ => return false,
-        }
-    }
-
-    // Unmapped key — insert printable characters
-    if let KeyCode::Char(c) = key.code
-        && (key.modifiers.is_empty() || key.modifiers == KeyModifiers::SHIFT)
-    {
-        app.editor.insert_char(c);
-        app.update_slash_menu();
-        return true;
-    }
-
-    false
-}
-
-// ---------------------------------------------------------------------------
-// Session popup (key handling when visible)
-// ---------------------------------------------------------------------------
-
-fn handle_session_popup_key(app: &mut App, key: &crossterm::event::KeyEvent, keymap: &Keymap) -> bool {
-    use crate::config::keybindings::CoreAction;
-
-    // Resolve through the current mode's keymap
-    let action = keymap.resolve(app.input_mode, key);
-
-    match action {
-        // Close on Esc, 's' toggle, or 'q'
-        Some(Action::Core(CoreAction::Unfocus | CoreAction::Quit)) => {
-            app.overlays.session_popup_visible = false;
-            true
-        }
-        Some(Action::Extended(n)) if n == "toggle_session_popup" => {
-            app.overlays.session_popup_visible = false;
-            true
-        }
-        // Navigate blocks with j/k
-        Some(Action::Core(CoreAction::FocusPrevBlock)) => {
-            app.focus_prev_block();
-            true
-        }
-        Some(Action::Core(CoreAction::FocusNextBlock)) => {
-            app.focus_next_block();
-            true
-        }
-        // Branch navigation with h/l
-        Some(Action::Extended(n)) if n == "branch_prev" => {
-            app.branch_prev();
-            true
-        }
-        Some(Action::Extended(n)) if n == "branch_next" => {
-            app.branch_next();
-            true
-        }
-        // Collapse/expand
-        Some(Action::Extended(n)) if n == "toggle_block_collapse" => {
-            app.toggle_focused_block();
-            true
-        }
-        Some(Action::Extended(n)) if n == "collapse_all_blocks" => {
-            app.collapse_all_blocks();
-            true
-        }
-        Some(Action::Extended(n)) if n == "expand_all_blocks" => {
-            app.expand_all_blocks();
-            true
-        }
-        // Copy focused block
-        Some(Action::Extended(n)) if n == "copy_block" => {
-            app.copy_focused_block();
-            true
-        }
-        // Scroll to top/bottom
-        Some(Action::Core(CoreAction::ScrollToTop)) => {
-            app.conversation.focused_block = app.conversation.blocks.iter().find_map(|e| match e {
-                BlockEntry::Conversation(b) => Some(b.id),
-                _ => None,
-            });
-            true
-        }
-        Some(Action::Core(CoreAction::ScrollToBottom)) => {
-            app.conversation.focused_block = app.conversation.blocks.iter().rev().find_map(|e| match e {
-                BlockEntry::Conversation(b) => Some(b.id),
-                _ => None,
-            });
-            true
-        }
-        // Switch to insert mode closes popup
-        Some(Action::Core(CoreAction::EnterInsert | CoreAction::EnterCommand)) => {
-            app.overlays.session_popup_visible = false;
-            // Don't consume — let the main handler process it
-            false
-        }
-        // All other keys are consumed (don't pass through while popup is open)
-        _ => true,
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Model selector key handling
 // ---------------------------------------------------------------------------
@@ -2289,17 +1514,6 @@ pub(crate) fn resume_session_from_file(
 
 // ---------------------------------------------------------------------------
 // Mouse event handlers
-// ---------------------------------------------------------------------------
-
-/// Handle mouse button press.
-fn handle_insert_char(app: &mut App, key: &crossterm::event::KeyEvent) {
-    if let (KeyCode::Char(c), m) = (key.code, key.modifiers)
-        && (m.is_empty() || m == KeyModifiers::SHIFT)
-    {
-        app.editor.insert_char(c);
-        app.update_slash_menu();
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Clipboard paste (text + image) — runs on a background thread
@@ -2314,56 +1528,6 @@ fn handle_insert_char(app: &mut App, key: &crossterm::event::KeyEvent) {
 
 
 // ---------------------------------------------------------------------------
-// Input routing
-// ---------------------------------------------------------------------------
-
-fn handle_input_with_plugins(
-    app: &mut App,
-    text: &str,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
-    db: &Option<crate::db::Db>,
-    session_manager: &mut Option<crate::session::SessionManager>,
-) {
-    if let Some((command, args)) = slash_commands::parse_command(text) {
-        execute_slash_command(app, &command, &args, cmd_tx, plugin_manager, panel_tx, db, session_manager);
-    } else {
-        let _ = cmd_tx.send(AgentCommand::ResetCancel);
-        let mut pending_images = app.take_pending_images();
-
-        // Expand @file references — text files are inlined, images become Content blocks
-        let expanded = crate::util::at_file::expand_at_refs_with_images(text, &app.cwd);
-        let prompt_text = expanded.text;
-
-        // Convert @file images into PendingImage and merge with clipboard-pasted images
-        let at_file_images: Vec<crate::tui::app::PendingImage> = expanded
-            .images
-            .into_iter()
-            .filter_map(|c| match c {
-                crate::provider::message::Content::Image {
-                    source: crate::provider::message::ImageSource::Base64 { media_type, data },
-                } => {
-                    let size = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &data)
-                        .map(|b| b.len())
-                        .unwrap_or(0);
-                    Some(crate::tui::app::PendingImage { data, media_type, size })
-                }
-                _ => None,
-            })
-            .collect();
-        pending_images.extend(at_file_images);
-
-        if pending_images.is_empty() {
-            let _ = cmd_tx.send(AgentCommand::Prompt(prompt_text));
-        } else {
-            let _ = cmd_tx.send(AgentCommand::PromptWithImages {
-                text: prompt_text,
-                images: pending_images,
-            });
-        }
-    }
-}
 
 // ---------------------------------------------------------------------------
 // Slash command execution
