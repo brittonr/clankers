@@ -26,7 +26,11 @@ pub async fn run_daemon(
         monitor.clone().start();
         monitor
     };
-    let tools = crate::modes::common::build_tools_with_events(None, None, None, None, Some(process_monitor));
+    let env = crate::modes::common::ToolEnv {
+        process_monitor: Some(process_monitor),
+        ..Default::default()
+    };
+    let tools = crate::modes::common::build_tools_with_env(&env);
 
     let config = crate::modes::daemon::DaemonConfig {
         model: ctx.model.clone(),

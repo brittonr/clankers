@@ -269,14 +269,14 @@ pub async fn run_interactive(
         .expect("process panel") = crate::tui::components::process_panel::ProcessPanel::new()
         .with_monitor(process_monitor.clone());
 
-    let tools = crate::modes::common::build_all_tools(
-        Some(event_tx),
-        Some(panel_tx),
-        Some(todo_tx),
-        plugin_manager.as_ref(),
-        Some(bash_confirm_tx),
-        Some(process_monitor),
-    );
+    let tool_env = crate::modes::common::ToolEnv {
+        event_tx: Some(event_tx),
+        panel_tx: Some(panel_tx),
+        todo_tx: Some(todo_tx),
+        bash_confirm_tx: Some(bash_confirm_tx),
+        process_monitor: Some(process_monitor),
+    };
+    let tools = crate::modes::common::build_all_tools_with_env(&tool_env, plugin_manager.as_ref());
 
     // Populate tool info for /tools slash command
     {

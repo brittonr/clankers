@@ -22,9 +22,53 @@ use crate::tools::ToolDefinition;
 use crate::tools::plugin_tool::PluginTool;
 use crate::tools::validator_tool::ValidatorTool;
 
+/// Optional channels and handles that tools may use for live updates.
+///
+/// Passed as a single struct instead of 5+ positional `Option` parameters.
+/// Use `Default::default()` for headless / test contexts.
+#[derive(Default, Clone)]
+pub struct ToolEnv {
+    /// Event bus for streaming partial results to the TUI.
+    pub event_tx: Option<broadcast::Sender<AgentEvent>>,
+    /// Channel for subagent panel events (delegate/subagent status).
+    pub panel_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>>,
+    /// Channel for TODO list updates.
+    pub todo_tx: Option<crate::tools::todo::TodoTx>,
+    /// Channel for bash tool confirmation prompts.
+    pub bash_confirm_tx: Option<crate::tools::bash::ConfirmTx>,
+    /// Shared process monitor for tracking child processes.
+    pub process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
+}
+
 /// Build the default set of tools
 pub fn build_default_tools() -> Vec<Arc<dyn Tool>> {
-    build_tools_with_events(None, None, None, None, None)
+    build_tools_with_env(&ToolEnv::default())
+}
+
+/// Build the default set of tools, wiring up channels from a [`ToolEnv`].
+pub fn build_tools_with_env(env: &ToolEnv) -> Vec<Arc<dyn Tool>> {
+    build_tools_with_events(
+        env.event_tx.clone(),
+        env.panel_tx.clone(),
+        env.todo_tx.clone(),
+        env.bash_confirm_tx.clone(),
+        env.process_monitor.clone(),
+    )
+}
+
+/// Build the full tool set (built-in + plugin) from a [`ToolEnv`].
+pub fn build_all_tools_with_env(
+    env: &ToolEnv,
+    plugin_manager: Option<&Arc<Mutex<PluginManager>>>,
+) -> Vec<Arc<dyn Tool>> {
+    build_all_tools(
+        env.event_tx.clone(),
+        env.panel_tx.clone(),
+        env.todo_tx.clone(),
+        plugin_manager,
+        env.bash_confirm_tx.clone(),
+        env.process_monitor.clone(),
+    )
 }
 
 /// Build the default set of tools, optionally wiring up event channels

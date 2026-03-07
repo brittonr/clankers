@@ -296,9 +296,11 @@ async fn run_headless(
     let tools = if cli.tools.as_deref() == Some("none") || cli.tools.as_deref() == Some("") {
         Vec::new()
     } else {
-        let all_tools = clankers::modes::common::build_all_tools(
-            None, None, None, Some(plugin_manager), None, Some(headless_process_monitor),
-        );
+        let env = clankers::modes::common::ToolEnv {
+            process_monitor: Some(headless_process_monitor),
+            ..Default::default()
+        };
+        let all_tools = clankers::modes::common::build_all_tools_with_env(&env, Some(plugin_manager));
         if let Some(ref allowed) = cli.tools {
             let allowed_set: std::collections::HashSet<&str> =
                 allowed.split(',').map(|s| s.trim()).collect();

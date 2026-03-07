@@ -82,13 +82,11 @@ pub async fn run(
                     monitor.clone().start();
                     monitor
                 };
-                let tools = crate::modes::common::build_tools_with_events(
-                    None,
-                    None,
-                    None,
-                    None,
-                    Some(rpc_process_monitor),
-                );
+                let env = crate::modes::common::ToolEnv {
+                    process_monitor: Some(rpc_process_monitor),
+                    ..Default::default()
+                };
+                let tools = crate::modes::common::build_tools_with_env(&env);
                 Some(crate::modes::rpc::iroh::RpcContext {
                     provider,
                     tools,
