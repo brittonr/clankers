@@ -1,0 +1,232 @@
+{
+  "name": "clankers-github",
+  "version": "0.1.0",
+  "description": "GitHub integration — list PRs, check CI status, browse issues, and create pull requests without leaving the terminal",
+  "wasm": "clankers_github.wasm",
+  "kind": "extism",
+  "permissions": ["net"],
+  "allowed_hosts": ["api.github.com"],
+  "config_env": {
+    "github_token": "GITHUB_TOKEN"
+  },
+  "tools": [
+    "github_pr_list",
+    "github_pr_get",
+    "github_pr_create",
+    "github_issues",
+    "github_issue_get",
+    "github_actions_status",
+    "github_repo_info"
+  ],
+  "commands": [],
+  "events": ["agent_start", "agent_end"],
+  "leader_menu": [
+    {
+      "key": "G",
+      "label": "GitHub",
+      "command": "/github",
+      "submenu": null
+    }
+  ],
+  "tool_definitions": [
+    {
+      "name": "github_pr_list",
+      "description": "List pull requests for a GitHub repository. Returns title, number, author, state, labels, and update time for each PR.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner (user or org)"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["open", "closed", "all"],
+            "description": "Filter by PR state (default: open)"
+          },
+          "per_page": {
+            "type": "integer",
+            "description": "Number of results per page (default: 10, max: 100)"
+          },
+          "page": {
+            "type": "integer",
+            "description": "Page number (default: 1)"
+          }
+        },
+        "required": ["owner", "repo"]
+      }
+    },
+    {
+      "name": "github_pr_get",
+      "description": "Get detailed information about a specific pull request including description, diff stats, review status, and merge state.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "number": {
+            "type": "integer",
+            "description": "Pull request number"
+          }
+        },
+        "required": ["owner", "repo", "number"]
+      }
+    },
+    {
+      "name": "github_pr_create",
+      "description": "Create a new pull request. Returns the created PR number and URL.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "title": {
+            "type": "string",
+            "description": "PR title"
+          },
+          "body": {
+            "type": "string",
+            "description": "PR description (markdown)"
+          },
+          "head": {
+            "type": "string",
+            "description": "Branch containing changes (e.g. 'feature-branch')"
+          },
+          "base": {
+            "type": "string",
+            "description": "Branch to merge into (default: main)"
+          },
+          "draft": {
+            "type": "boolean",
+            "description": "Create as draft PR (default: false)"
+          }
+        },
+        "required": ["owner", "repo", "title", "head"]
+      }
+    },
+    {
+      "name": "github_issues",
+      "description": "List issues for a GitHub repository. Returns title, number, author, labels, and state.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "state": {
+            "type": "string",
+            "enum": ["open", "closed", "all"],
+            "description": "Filter by issue state (default: open)"
+          },
+          "labels": {
+            "type": "string",
+            "description": "Comma-separated label names to filter by"
+          },
+          "per_page": {
+            "type": "integer",
+            "description": "Results per page (default: 10, max: 100)"
+          },
+          "page": {
+            "type": "integer",
+            "description": "Page number (default: 1)"
+          }
+        },
+        "required": ["owner", "repo"]
+      }
+    },
+    {
+      "name": "github_issue_get",
+      "description": "Get detailed information about a specific issue including body, comments count, assignees, and timeline.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "number": {
+            "type": "integer",
+            "description": "Issue number"
+          }
+        },
+        "required": ["owner", "repo", "number"]
+      }
+    },
+    {
+      "name": "github_actions_status",
+      "description": "Get CI/CD status for a branch or commit. Shows workflow runs, their status (success/failure/pending), and duration.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          },
+          "ref": {
+            "type": "string",
+            "description": "Branch name, tag, or commit SHA (default: main)"
+          },
+          "per_page": {
+            "type": "integer",
+            "description": "Number of workflow runs to show (default: 5)"
+          }
+        },
+        "required": ["owner", "repo"]
+      }
+    },
+    {
+      "name": "github_repo_info",
+      "description": "Get repository metadata: description, stars, forks, open issues count, default branch, language, license, and recent activity.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "owner": {
+            "type": "string",
+            "description": "Repository owner"
+          },
+          "repo": {
+            "type": "string",
+            "description": "Repository name"
+          }
+        },
+        "required": ["owner", "repo"]
+      }
+    }
+  ]
+}
