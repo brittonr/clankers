@@ -317,7 +317,7 @@ impl CommitTool {
                     groups.entry(group).or_default().push(ChangelogEntry {
                         hash: entry.short_hash.clone(),
                         description: desc.to_string(),
-                        author: entry.author.clone(),
+                        _author: entry.author.clone(),
                         date: entry.relative_time.clone(),
                     });
                 }
@@ -523,11 +523,10 @@ fn validate_conventional_commit(msg: &str) -> Option<String> {
     }
 }
 
-#[allow(dead_code)]
 struct ChangelogEntry {
     hash: String,
     description: String,
-    author: String,
+    _author: String,
     date: String,
 }
 

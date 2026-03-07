@@ -25,7 +25,7 @@ struct ProgressState {
     /// Latest progress update
     progress: ToolProgress,
     /// When we received the first progress update (used for ETA baseline)
-    #[allow(dead_code)]
+    #[allow(dead_code)] // retained for future ETA calculation
     started_at: Instant,
     /// History for ETA calculation (last N samples)
     history: VecDeque<ProgressSample>,

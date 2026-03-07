@@ -464,19 +464,12 @@ pub(crate) enum AgentCommand {
     GetSystemPrompt(tokio::sync::oneshot::Sender<String>),
     /// Switch the active account (hot-swap credentials)
     SwitchAccount(String),
-    /// Display a system message in the TUI (used by background tasks)
-    #[allow(dead_code)]
-    SystemMessage {
-        text: String,
-        is_error: bool,
-    },
 }
 
 pub(crate) enum TaskResult {
     PromptDone(Option<crate::error::Error>),
     LoginDone(std::result::Result<String, String>),
     ThinkingToggled(String, crate::provider::ThinkingLevel),
-    ShareResult(std::result::Result<String, String>),
     AccountSwitched(std::result::Result<String, String>),
 }
 
@@ -660,9 +653,6 @@ async fn run_event_loop(
                         let _ =
                             done_tx.send(TaskResult::AccountSwitched(Err(format!("No account '{}'", account_name))));
                     }
-                }
-                AgentCommand::SystemMessage { text, is_error } => {
-                    let _ = done_tx.send(TaskResult::ShareResult(if is_error { Err(text) } else { Ok(text) }));
                 }
                 AgentCommand::Quit => break,
             }

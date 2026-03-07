@@ -254,8 +254,7 @@ impl ProcessMonitor {
 
         for &pid in &pids {
             let sys_pid = Pid::from_u32(pid);
-            if guard.system.process(sys_pid).is_some() {
-                let process = guard.system.process(sys_pid).unwrap();
+            if let Some(process) = guard.system.process(sys_pid) {
                 samples.push(SampleResult {
                     pid,
                     cpu_percent: process.cpu_usage(),

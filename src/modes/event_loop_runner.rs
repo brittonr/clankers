@@ -489,8 +489,7 @@ impl<'a> EventLoopRunner<'a> {
                     self.app.thinking_level = level;
                     self.app.push_system(msg, false);
                 }
-                TaskResult::ShareResult(Ok(msg)) => self.app.push_system(msg, false),
-                TaskResult::ShareResult(Err(msg)) => self.app.push_system(msg, true),
+
                 TaskResult::AccountSwitched(Ok(name)) => {
                     self.app.active_account = name.clone();
                     self.app.push_system(

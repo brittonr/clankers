@@ -342,8 +342,11 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         let count = app.streaming.active_tools.len();
         let total_lines: usize = app.streaming.active_tools.values().map(|t| t.line_count).sum();
         let label = if count == 1 {
-            let tool = app.streaming.active_tools.values().next().unwrap();
-            format!(" 🔧 {} ({} lines) ", tool.tool_name, total_lines)
+            if let Some(tool) = app.streaming.active_tools.values().next() {
+                format!(" 🔧 {} ({} lines) ", tool.tool_name, total_lines)
+            } else {
+                format!(" 🔧 1 tool ({} lines) ", total_lines)
+            }
         } else {
             format!(" 🔧 {} tools ({} lines) ", count, total_lines)
         };

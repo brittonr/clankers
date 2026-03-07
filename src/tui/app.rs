@@ -794,240 +794,236 @@ impl App {
     /// Handle an agent event, routing it into the active block
     pub fn handle_agent_event(&mut self, event: &AgentEvent) {
         match event {
-            AgentEvent::AgentStart => {
-                self.state = AppState::Streaming;
-                self.streaming.text.clear();
-                self.streaming.thinking.clear();
-                self.streaming.block_index = None;
-            }
-            AgentEvent::AgentEnd { .. } => {
-                self.finalize_active_block();
-                self.state = AppState::Idle;
-                self.conversation.scroll.scroll_to_bottom();
-            }
+            AgentEvent::AgentStart => self.on_agent_start(),
+            AgentEvent::AgentEnd { .. } => self.on_agent_end(),
             AgentEvent::ContentBlockStart { index, content_block } => {
-                // A new content block is starting — flush any previous streaming buffers
-                // so each content block becomes its own DisplayMessage
-                match content_block {
-                    Content::Thinking { .. } => {
-                        // New thinking block: flush any prior text
-                        self.flush_streaming_text();
-                    }
-                    Content::Text { .. } => {
-                        // New text block: flush any prior thinking
-                        self.flush_streaming_thinking();
-                    }
-                    Content::ToolUse { .. } => {
-                        // Tool use: flush everything
-                        self.flush_streaming_thinking();
-                        self.flush_streaming_text();
-                    }
-                    _ => {
-                        self.flush_streaming_thinking();
-                        self.flush_streaming_text();
-                    }
-                }
-                self.streaming.block_index = Some(*index);
+                self.on_content_block_start(*index, content_block);
             }
-            AgentEvent::ContentBlockStop { index: _ } => {
-                // Content block finished — flush its buffer
-                self.flush_streaming_thinking();
-                self.flush_streaming_text();
-                self.streaming.block_index = None;
-            }
-            AgentEvent::MessageUpdate { delta, .. } => match delta {
-                ContentDelta::TextDelta { text } => {
-                    self.streaming.text.push_str(text);
-                    if self.conversation.scroll.auto_scroll {
-                        self.conversation.scroll.scroll_to_bottom();
-                    }
-                }
-                ContentDelta::ThinkingDelta { thinking } => {
-                    self.streaming.thinking.push_str(thinking);
-                    if self.conversation.scroll.auto_scroll {
-                        self.conversation.scroll.scroll_to_bottom();
-                    }
-                }
-                _ => {}
-            },
+            AgentEvent::ContentBlockStop { .. } => self.on_content_block_stop(),
+            AgentEvent::MessageUpdate { delta, .. } => self.on_message_update(delta),
             AgentEvent::ToolCall { tool_name, input, .. } => {
-                // ContentBlockStop should have already flushed, but be safe
-                self.flush_streaming_thinking();
-                self.flush_streaming_text();
-                if let Some(ref mut block) = self.conversation.active_block {
-                    block.responses.push(DisplayMessage {
-                        role: MessageRole::ToolCall,
-                        content: tool_name.clone(),
-                        tool_name: Some(tool_name.clone()),
-                        is_error: false,
-                        images: Vec::new(),
-                    });
-                }
-                // Track file activity from tool calls
-                self.track_file_activity(tool_name, input);
+                self.on_tool_call(tool_name, input);
             }
             AgentEvent::ToolExecutionStart { call_id, tool_name } => {
-                self.streaming.active_tools.insert(call_id.clone(), ActiveToolExecution {
-                    tool_name: tool_name.clone(),
-                    started_at: Instant::now(),
-                    line_count: 0,
-                });
+                self.on_tool_execution_start(call_id, tool_name);
             }
             AgentEvent::ToolExecutionUpdate { call_id, partial } => {
-                let text = partial
-                    .content
-                    .iter()
-                    .filter_map(|c| match c {
-                        crate::tools::ToolResultContent::Text { text } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("");
-
-                // Update active tool line count
-                if let Some(active) = self.streaming.active_tools.get_mut(call_id.as_str()) {
-                    active.line_count += text.lines().count().max(1);
-                }
-
-                // Feed into streaming output buffer for scrollable display
-                self.streaming.outputs.add_text(call_id, &text);
-
-                if let Some(ref mut block) = self.conversation.active_block {
-                    let found = block
-                        .responses
-                        .iter_mut()
-                        .rev()
-                        .find(|m| m.role == MessageRole::ToolResult && m.tool_name.as_deref() == Some(call_id));
-                    if let Some(msg) = found {
-                        if !msg.content.is_empty() {
-                            msg.content.push('\n');
-                        }
-                        msg.content.push_str(&text);
-                    } else {
-                        block.responses.push(DisplayMessage {
-                            role: MessageRole::ToolResult,
-                            content: text,
-                            tool_name: Some(call_id.clone()),
-                            is_error: false,
-                            images: Vec::new(),
-                        });
-                    }
-                }
-                if self.conversation.scroll.auto_scroll {
-                    self.conversation.scroll.scroll_to_bottom();
-                }
+                self.on_tool_execution_update(call_id, partial);
             }
             AgentEvent::ToolProgressUpdate { call_id, progress } => {
                 self.streaming.progress_renderer.update(call_id, progress.clone());
             }
             AgentEvent::ToolResultChunk { call_id, chunk } => {
-                // Feed chunks into the streaming output buffer for display.
-                // The executor's accumulator also collects these for the final result.
                 if chunk.content_type == "text" {
                     self.streaming.outputs.add_text(call_id, &chunk.content);
                 }
             }
-            AgentEvent::ToolExecutionEnd {
-                call_id,
-                result,
-                is_error,
-                ..
-            } => {
-                // Remove from active tools, progress renderer, and streaming output
-                self.streaming.progress_renderer.remove(call_id);
-                self.streaming.active_tools.remove(call_id.as_str());
-                self.streaming.outputs.remove(call_id);
-                // Clear focused tool if it was this one
-                if self.streaming.focused_tool.as_deref() == Some(call_id) {
-                    self.streaming.focused_tool = None;
-                }
-
-                // Collect text content
-                let display = result
-                    .content
-                    .iter()
-                    .filter_map(|c| match c {
-                        crate::tools::ToolResultContent::Text { text } => Some(text.as_str()),
-                        _ => None,
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n");
-
-                // Collect image content (no longer silently dropped)
-                let images: Vec<DisplayImage> = result
-                    .content
-                    .iter()
-                    .filter_map(|c| match c {
-                        crate::tools::ToolResultContent::Image { media_type, data } => Some(DisplayImage {
-                            data: data.clone(),
-                            media_type: media_type.clone(),
-                        }),
-                        _ => None,
-                    })
-                    .collect();
-
-                if let Some(ref mut block) = self.conversation.active_block {
-                    let found = block
-                        .responses
-                        .iter_mut()
-                        .rev()
-                        .find(|m| m.role == MessageRole::ToolResult && m.tool_name.as_deref() == Some(call_id));
-                    if let Some(msg) = found {
-                        msg.content = display;
-                        msg.is_error = *is_error;
-                        msg.tool_name = None;
-                        msg.images = images;
-                    } else {
-                        block.responses.push(DisplayMessage {
-                            role: MessageRole::ToolResult,
-                            content: display,
-                            tool_name: None,
-                            is_error: *is_error,
-                            images,
-                        });
-                    }
-                }
+            AgentEvent::ToolExecutionEnd { call_id, result, is_error, .. } => {
+                self.on_tool_execution_end(call_id, result, *is_error);
             }
-            AgentEvent::UsageUpdate {
-                cumulative_usage,
-                turn_usage,
-                ..
-            } => {
-                self.total_tokens = cumulative_usage.total_tokens();
-                // Pull real cost from tracker if available
-                if let Some(ref ct) = self.cost_tracker {
-                    self.total_cost = ct.total_cost();
-                }
-                if let Some(ref mut block) = self.conversation.active_block {
-                    block.tokens = block.tokens.saturating_add(turn_usage.total_tokens());
-                }
-                // Update context gauge with cumulative input/output tokens
-                self.context_gauge.update(
-                    cumulative_usage.input_tokens,
-                    cumulative_usage.output_tokens,
-                    cumulative_usage.cache_creation_input_tokens,
-                    cumulative_usage.cache_read_input_tokens,
-                );
+            AgentEvent::UsageUpdate { cumulative_usage, turn_usage, .. } => {
+                self.on_usage_update(cumulative_usage, turn_usage);
             }
             AgentEvent::UserInput { text, agent_msg_count } => {
-                // Start a new block for this user input
                 self.start_block(text.clone(), *agent_msg_count);
                 self.conversation.scroll.scroll_to_bottom();
             }
-            AgentEvent::SessionCompaction {
-                compacted_count,
-                tokens_saved,
-            } => {
+            AgentEvent::SessionCompaction { compacted_count, tokens_saved } => {
                 self.push_system(
-                    format!(
-                        "Auto-compacted {} messages, saved ~{} tokens.",
-                        compacted_count, tokens_saved,
-                    ),
+                    format!("Auto-compacted {} messages, saved ~{} tokens.", compacted_count, tokens_saved),
                     false,
                 );
             }
             _ => {}
         }
+    }
+
+    fn on_agent_start(&mut self) {
+        self.state = AppState::Streaming;
+        self.streaming.text.clear();
+        self.streaming.thinking.clear();
+        self.streaming.block_index = None;
+    }
+
+    fn on_agent_end(&mut self) {
+        self.finalize_active_block();
+        self.state = AppState::Idle;
+        self.conversation.scroll.scroll_to_bottom();
+    }
+
+    fn on_content_block_start(&mut self, index: usize, content_block: &Content) {
+        match content_block {
+            Content::Thinking { .. } => self.flush_streaming_text(),
+            Content::Text { .. } => self.flush_streaming_thinking(),
+            _ => {
+                self.flush_streaming_thinking();
+                self.flush_streaming_text();
+            }
+        }
+        self.streaming.block_index = Some(index);
+    }
+
+    fn on_content_block_stop(&mut self) {
+        self.flush_streaming_thinking();
+        self.flush_streaming_text();
+        self.streaming.block_index = None;
+    }
+
+    fn on_message_update(&mut self, delta: &ContentDelta) {
+        match delta {
+            ContentDelta::TextDelta { text } => {
+                self.streaming.text.push_str(text);
+                if self.conversation.scroll.auto_scroll {
+                    self.conversation.scroll.scroll_to_bottom();
+                }
+            }
+            ContentDelta::ThinkingDelta { thinking } => {
+                self.streaming.thinking.push_str(thinking);
+                if self.conversation.scroll.auto_scroll {
+                    self.conversation.scroll.scroll_to_bottom();
+                }
+            }
+            _ => {}
+        }
+    }
+
+    fn on_tool_call(&mut self, tool_name: &str, input: &serde_json::Value) {
+        self.flush_streaming_thinking();
+        self.flush_streaming_text();
+        if let Some(ref mut block) = self.conversation.active_block {
+            block.responses.push(DisplayMessage {
+                role: MessageRole::ToolCall,
+                content: tool_name.to_string(),
+                tool_name: Some(tool_name.to_string()),
+                is_error: false,
+                images: Vec::new(),
+            });
+        }
+        self.track_file_activity(tool_name, input);
+    }
+
+    fn on_tool_execution_start(&mut self, call_id: &str, tool_name: &str) {
+        self.streaming.active_tools.insert(call_id.to_string(), ActiveToolExecution {
+            tool_name: tool_name.to_string(),
+            started_at: Instant::now(),
+            line_count: 0,
+        });
+    }
+
+    fn on_tool_execution_update(&mut self, call_id: &str, partial: &crate::tools::ToolResult) {
+        let text = partial
+            .content
+            .iter()
+            .filter_map(|c| match c {
+                crate::tools::ToolResultContent::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("");
+
+        if let Some(active) = self.streaming.active_tools.get_mut(call_id) {
+            active.line_count += text.lines().count().max(1);
+        }
+
+        self.streaming.outputs.add_text(call_id, &text);
+
+        if let Some(ref mut block) = self.conversation.active_block {
+            let found = block
+                .responses
+                .iter_mut()
+                .rev()
+                .find(|m| m.role == MessageRole::ToolResult && m.tool_name.as_deref() == Some(call_id));
+            if let Some(msg) = found {
+                if !msg.content.is_empty() {
+                    msg.content.push('\n');
+                }
+                msg.content.push_str(&text);
+            } else {
+                block.responses.push(DisplayMessage {
+                    role: MessageRole::ToolResult,
+                    content: text,
+                    tool_name: Some(call_id.to_string()),
+                    is_error: false,
+                    images: Vec::new(),
+                });
+            }
+        }
+        if self.conversation.scroll.auto_scroll {
+            self.conversation.scroll.scroll_to_bottom();
+        }
+    }
+
+    fn on_tool_execution_end(&mut self, call_id: &str, result: &crate::tools::ToolResult, is_error: bool) {
+        self.streaming.progress_renderer.remove(call_id);
+        self.streaming.active_tools.remove(call_id);
+        self.streaming.outputs.remove(call_id);
+        if self.streaming.focused_tool.as_deref() == Some(call_id) {
+            self.streaming.focused_tool = None;
+        }
+
+        let display = result
+            .content
+            .iter()
+            .filter_map(|c| match c {
+                crate::tools::ToolResultContent::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        let images: Vec<DisplayImage> = result
+            .content
+            .iter()
+            .filter_map(|c| match c {
+                crate::tools::ToolResultContent::Image { media_type, data } => Some(DisplayImage {
+                    data: data.clone(),
+                    media_type: media_type.clone(),
+                }),
+                _ => None,
+            })
+            .collect();
+
+        if let Some(ref mut block) = self.conversation.active_block {
+            let found = block
+                .responses
+                .iter_mut()
+                .rev()
+                .find(|m| m.role == MessageRole::ToolResult && m.tool_name.as_deref() == Some(call_id));
+            if let Some(msg) = found {
+                msg.content = display;
+                msg.is_error = is_error;
+                msg.tool_name = None;
+                msg.images = images;
+            } else {
+                block.responses.push(DisplayMessage {
+                    role: MessageRole::ToolResult,
+                    content: display,
+                    tool_name: None,
+                    is_error,
+                    images,
+                });
+            }
+        }
+    }
+
+    fn on_usage_update(
+        &mut self,
+        cumulative_usage: &crate::provider::Usage,
+        turn_usage: &crate::provider::Usage,
+    ) {
+        self.total_tokens = cumulative_usage.total_tokens();
+        if let Some(ref ct) = self.cost_tracker {
+            self.total_cost = ct.total_cost();
+        }
+        if let Some(ref mut block) = self.conversation.active_block {
+            block.tokens = block.tokens.saturating_add(turn_usage.total_tokens());
+        }
+        self.context_gauge.update(
+            cumulative_usage.input_tokens,
+            cumulative_usage.output_tokens,
+            cumulative_usage.cache_creation_input_tokens,
+            cumulative_usage.cache_read_input_tokens,
+        );
     }
 
     // ── File activity tracking ─────────────────────────

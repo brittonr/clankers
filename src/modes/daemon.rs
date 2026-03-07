@@ -128,7 +128,7 @@ pub(crate) struct AuthLayer {
     /// Verifier with the daemon owner's key as trusted root
     verifier: TokenVerifier,
     /// Persistent revocation store (redb-backed, used for runtime revocation checks)
-    #[allow(dead_code)]
+    #[allow(dead_code)] // owned for Arc lifetime, checked via verifier
     revocation_store: RedbRevocationStore,
     /// redb database for token storage
     db: Arc<redb::Database>,
@@ -224,7 +224,7 @@ pub(crate) struct LiveSession {
     /// The agent with conversation history
     pub(crate) agent: Agent,
     /// Session persistence manager
-    #[allow(dead_code)]
+    #[allow(dead_code)] // owned for lifetime, persistence happens via agent events
     pub(crate) session_mgr: Option<SessionManager>,
     /// When the session was last active
     pub(crate) last_active: chrono::DateTime<Utc>,
@@ -235,7 +235,7 @@ pub(crate) struct LiveSession {
     /// Cancellation token for the trigger pipe reader task
     pub(crate) trigger_cancel: Option<CancellationToken>,
     /// Capabilities from the user's token (None = full access via allowlist)
-    #[allow(dead_code)]
+    #[allow(dead_code)] // stored for inspection; session_tools is the filtered result
     pub(crate) capabilities: Option<Vec<Capability>>,
     /// Tools available to this session (filtered by capabilities)
     pub(crate) session_tools: Vec<Arc<dyn Tool>>,

@@ -106,8 +106,9 @@ impl DiffView {
 
         for group in diff.grouped_ops(3) {
             // Hunk header
-            let first = group.first().unwrap();
-            let last = group.last().unwrap();
+            let (Some(first), Some(last)) = (group.first(), group.last()) else {
+                continue;
+            };
             let old_start = first.old_range().start + 1;
             let old_len = last.old_range().end - first.old_range().start;
             let new_start = first.new_range().start + 1;

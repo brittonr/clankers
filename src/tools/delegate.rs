@@ -49,12 +49,11 @@ pub struct DelegateTool {
     process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
 }
 
-#[allow(dead_code)]
 struct WorkerState {
-    cwd: String,
-    agent: Option<String>,
+    _cwd: String,
+    _agent: Option<String>,
     /// If delegated to a remote peer, its node_id
-    remote_peer: Option<String>,
+    _remote_peer: Option<String>,
 }
 
 impl Default for DelegateTool {
@@ -210,9 +209,9 @@ impl Tool for DelegateTool {
             {
                 let mut workers = self.workers.lock().await;
                 workers.entry(worker_name.clone()).or_insert(WorkerState {
-                    cwd: cwd.clone().unwrap_or_else(|| ".".to_string()),
-                    agent: agent.clone(),
-                    remote_peer: Some(node_id.clone()),
+                    _cwd: cwd.clone().unwrap_or_else(|| ".".to_string()),
+                    _agent: agent.clone(),
+                    _remote_peer: Some(node_id.clone()),
                 });
             }
 
@@ -237,9 +236,9 @@ impl Tool for DelegateTool {
             {
                 let mut workers = self.workers.lock().await;
                 workers.entry(worker_name.clone()).or_insert(WorkerState {
-                    cwd: cwd.clone().unwrap_or_else(|| ".".to_string()),
-                    agent: agent.clone(),
-                    remote_peer: None,
+                    _cwd: cwd.clone().unwrap_or_else(|| ".".to_string()),
+                    _agent: agent.clone(),
+                    _remote_peer: None,
                 });
             }
 

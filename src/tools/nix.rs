@@ -138,15 +138,6 @@ impl NixLogLevel {
         }
     }
 
-    #[allow(dead_code)]
-    fn prefix(&self) -> &'static str {
-        match self {
-            Self::Error => "error",
-            Self::Warn => "warning",
-            Self::Notice | Self::Info => "info",
-            _ => "",
-        }
-    }
 }
 
 /// Parsed nix internal-json event
@@ -168,7 +159,7 @@ struct NixEvent {
     #[serde(default)]
     fields: Vec<Value>,
     #[serde(default)]
-    #[allow(dead_code)]
+    #[allow(dead_code)] // deserialized by serde, not read directly
     parent: u64,
 }
 
@@ -180,7 +171,7 @@ struct ActivityTracker {
 struct TrackedActivity {
     text: String,
     activity_type: ActivityType,
-    #[allow(dead_code)]
+    #[allow(dead_code)] // retained for future activity display
     phase: Option<String>,
 }
 
