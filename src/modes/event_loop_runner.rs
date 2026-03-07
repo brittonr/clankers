@@ -658,7 +658,7 @@ impl<'a> EventLoopRunner<'a> {
         // Resolve through keymap
         let action = self.keymap.resolve(self.app.input_mode, &key);
         if let Some(action) = action {
-            if matches!(&action, Action::Extended(n) if n == "open_editor") {
+            if matches!(&action, Action::Extended(crate::config::keybindings::ExtendedAction::OpenEditor)) {
                 super::clipboard::open_external_editor(self.terminal, self.app);
                 return;
             }

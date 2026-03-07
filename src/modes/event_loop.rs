@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 use crossterm::event::{KeyCode, KeyModifiers};
-use crate::config::keybindings::{Action, InputMode, Keymap};
+use crate::config::keybindings::{Action, ExtendedAction, InputMode, Keymap};
 use crate::provider::auth::AuthStoreExt;
 use crate::slash_commands;
 use crate::tui::app::{App, AppState};
@@ -36,11 +36,11 @@ pub(crate) fn handle_action(
             Action::Core(c) => matches!(c, 
                 CoreAction::Quit | CoreAction::Cancel | CoreAction::EnterNormal | CoreAction::PasteImage
             ),
-            Action::Extended(name) => matches!(name.as_str(),
-                "open_leader_menu" | "open_model_selector" | "open_account_selector"
-                | "toggle_thinking" | "toggle_show_thinking" | "toggle_block_ids"
-                | "search_output" | "toggle_session_popup" | "toggle_branch_panel" | "toggle_cost_overlay"
-                | "open_branch_switcher" | "open_editor"
+            Action::Extended(ea) => matches!(ea,
+                ExtendedAction::OpenLeaderMenu | ExtendedAction::OpenModelSelector | ExtendedAction::OpenAccountSelector
+                | ExtendedAction::ToggleThinking | ExtendedAction::ToggleShowThinking | ExtendedAction::ToggleBlockIds
+                | ExtendedAction::SearchOutput | ExtendedAction::ToggleSessionPopup | ExtendedAction::ToggleBranchPanel | ExtendedAction::ToggleCostOverlay
+                | ExtendedAction::OpenBranchSwitcher | ExtendedAction::OpenEditor
             ),
         };
 
@@ -52,7 +52,7 @@ pub(crate) fn handle_action(
                     app.unfocus_panel();
                     return;
                 }
-                Action::Extended(n) if n == "toggle_panel_focus" => {
+                Action::Extended(ExtendedAction::TogglePanelFocus) => {
                     app.close_focused_panel_views();
                     app.zoom_restore();
                     app.unfocus_panel();
@@ -72,7 +72,7 @@ pub(crate) fn handle_action(
                     // Don't return — fall through to main handler for "/" prefix setup
                 }
                 // h/l: use hypertile directional focus
-                Action::Extended(name) if matches!(name.as_str(), "panel_next_tab" | "branch_next") => {
+                Action::Extended(ExtendedAction::PanelNextTab | ExtendedAction::BranchNext) => {
                     use ratatui_hypertile::{HypertileAction, Towards};
                     use ratatui::layout::Direction;
                     app.apply_tiling_action(HypertileAction::FocusDirection {
@@ -81,7 +81,7 @@ pub(crate) fn handle_action(
                     });
                     return;
                 }
-                Action::Extended(name) if matches!(name.as_str(), "panel_prev_tab" | "branch_prev") => {
+                Action::Extended(ExtendedAction::PanelPrevTab | ExtendedAction::BranchPrev) => {
                     use ratatui_hypertile::{HypertileAction, Towards};
                     use ratatui::layout::Direction;
                     app.apply_tiling_action(HypertileAction::FocusDirection {
@@ -232,18 +232,18 @@ pub(crate) fn handle_action(
         },
 
         // ── Extended actions ────────────────────────────
-        Action::Extended(name) => match name.as_str() {
+        Action::Extended(ea) => match ea {
             // ── Search ───────────────────────────────────
-            "search_output" => {
+            ExtendedAction::SearchOutput => {
                 app.overlays.output_search.activate();
             }
-            "search_next" => {
+            ExtendedAction::SearchNext => {
                 if !app.overlays.output_search.matches.is_empty() {
                     app.overlays.output_search.next_match();
                     app.overlays.output_search.scroll_to_current = true;
                 }
             }
-            "search_prev" => {
+            ExtendedAction::SearchPrev => {
                 if !app.overlays.output_search.matches.is_empty() {
                     app.overlays.output_search.prev_match();
                     app.overlays.output_search.scroll_to_current = true;
@@ -251,28 +251,28 @@ pub(crate) fn handle_action(
             }
 
             // ── Block operations ─────────────────────────
-            "toggle_block_collapse" => {
+            ExtendedAction::ToggleBlockCollapse => {
                 if app.conversation.focused_block.is_some() {
                     app.toggle_focused_block();
                 }
             }
-            "collapse_all_blocks" => app.collapse_all_blocks(),
-            "expand_all_blocks" => app.expand_all_blocks(),
-            "copy_block" => app.copy_focused_block(),
-            "rerun_block" => {
+            ExtendedAction::CollapseAllBlocks => app.collapse_all_blocks(),
+            ExtendedAction::ExpandAllBlocks => app.expand_all_blocks(),
+            ExtendedAction::CopyBlock => app.copy_focused_block(),
+            ExtendedAction::RerunBlock => {
                 if let Some(prompt) = app.get_focused_block_prompt() {
                     let _ = cmd_tx.send(super::interactive::AgentCommand::ResetCancel);
                     let _ = cmd_tx.send(super::interactive::AgentCommand::Prompt(prompt));
                 }
             }
-            "edit_block" => {
+            ExtendedAction::EditBlock => {
                 if app.conversation.focused_block.is_some() && app.state == AppState::Idle && app.edit_focused_block_prompt() {
                     app.input_mode = InputMode::Insert;
                 }
             }
 
             // ── Branch / panel navigation ────────────────
-            "branch_prev" => {
+            ExtendedAction::BranchPrev => {
                 if app.conversation.focused_block.is_some() {
                     app.branch_prev();
                 } else {
@@ -285,7 +285,7 @@ pub(crate) fn handle_action(
                     app.input_mode = InputMode::Normal;
                 }
             }
-            "branch_next" => {
+            ExtendedAction::BranchNext => {
                 if app.conversation.focused_block.is_some() {
                     app.branch_next();
                 } else {
@@ -300,22 +300,22 @@ pub(crate) fn handle_action(
             }
 
             // ── Toggles ─────────────────────────────────
-            "toggle_thinking" => {
+            ExtendedAction::ToggleThinking => {
                 let _ = cmd_tx.send(super::interactive::AgentCommand::CycleThinkingLevel);
             }
-            "toggle_show_thinking" => {
+            ExtendedAction::ToggleShowThinking => {
                 app.show_thinking = !app.show_thinking;
                 let state = if app.show_thinking { "visible" } else { "hidden" };
                 app.push_system(format!("Thinking content now {}.", state), false);
             }
-            "toggle_block_ids" => {
+            ExtendedAction::ToggleBlockIds => {
                 app.overlays.show_block_ids = !app.overlays.show_block_ids;
                 let state = if app.overlays.show_block_ids { "visible" } else { "hidden" };
                 app.push_system(format!("Block IDs now {}.", state), false);
             }
 
             // ── Panel focus ─────────────────────────────
-            "toggle_panel_focus" => {
+            ExtendedAction::TogglePanelFocus => {
                 if app.has_panel_focus() {
                     app.unfocus_panel();
                 } else {
@@ -325,7 +325,7 @@ pub(crate) fn handle_action(
                     app.input_mode = InputMode::Normal;
                 }
             }
-            "panel_next_tab" => {
+            ExtendedAction::PanelNextTab => {
                 // l = directional focus right
                 use ratatui_hypertile::{HypertileAction, Towards};
                 app.apply_tiling_action(HypertileAction::FocusDirection {
@@ -334,7 +334,7 @@ pub(crate) fn handle_action(
                 });
                 app.input_mode = InputMode::Normal;
             }
-            "panel_prev_tab" => {
+            ExtendedAction::PanelPrevTab => {
                 // h = directional focus left
                 use ratatui_hypertile::{HypertileAction, Towards};
                 app.apply_tiling_action(HypertileAction::FocusDirection {
@@ -344,28 +344,28 @@ pub(crate) fn handle_action(
                 app.input_mode = InputMode::Normal;
             }
             // ── Pane tiling actions (from leader menu) ─
-            "pane_split_vertical" => {
+            ExtendedAction::PaneSplitVertical => {
                 app.split_focused_pane(ratatui::layout::Direction::Vertical);
             }
-            "pane_split_horizontal" => {
+            ExtendedAction::PaneSplitHorizontal => {
                 app.split_focused_pane(ratatui::layout::Direction::Horizontal);
             }
-            "pane_close" => {
+            ExtendedAction::PaneClose => {
                 app.close_focused_pane();
             }
-            "pane_equalize" => {
+            ExtendedAction::PaneEqualize => {
                 use ratatui_hypertile::HypertileAction;
                 app.apply_tiling_action(HypertileAction::SetFocusedRatio { ratio: 0.5 });
             }
-            "pane_grow" => {
+            ExtendedAction::PaneGrow => {
                 use ratatui_hypertile::HypertileAction;
                 app.apply_tiling_action(HypertileAction::ResizeFocused { delta: 0.05 });
             }
-            "pane_shrink" => {
+            ExtendedAction::PaneShrink => {
                 use ratatui_hypertile::HypertileAction;
                 app.apply_tiling_action(HypertileAction::ResizeFocused { delta: -0.05 });
             }
-            "pane_move_left" => {
+            ExtendedAction::PaneMoveLeft => {
                 use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
                 app.apply_tiling_action(HypertileAction::MoveFocused {
                     direction: ratatui::layout::Direction::Horizontal,
@@ -373,7 +373,7 @@ pub(crate) fn handle_action(
                     scope: MoveScope::Window,
                 });
             }
-            "pane_move_right" => {
+            ExtendedAction::PaneMoveRight => {
                 use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
                 app.apply_tiling_action(HypertileAction::MoveFocused {
                     direction: ratatui::layout::Direction::Horizontal,
@@ -381,7 +381,7 @@ pub(crate) fn handle_action(
                     scope: MoveScope::Window,
                 });
             }
-            "pane_move_down" => {
+            ExtendedAction::PaneMoveDown => {
                 use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
                 app.apply_tiling_action(HypertileAction::MoveFocused {
                     direction: ratatui::layout::Direction::Vertical,
@@ -389,7 +389,7 @@ pub(crate) fn handle_action(
                     scope: MoveScope::Window,
                 });
             }
-            "pane_move_up" => {
+            ExtendedAction::PaneMoveUp => {
                 use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
                 app.apply_tiling_action(HypertileAction::MoveFocused {
                     direction: ratatui::layout::Direction::Vertical,
@@ -397,24 +397,24 @@ pub(crate) fn handle_action(
                     scope: MoveScope::Window,
                 });
             }
-            "pane_zoom" => {
+            ExtendedAction::PaneZoom => {
                 app.zoom_toggle();
             }
-            "panel_scroll_up" => {
+            ExtendedAction::PanelScrollUp => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
                 use crate::tui::panel::PanelId;
                 if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
                     sp.scroll_up(3);
                 }
             }
-            "panel_scroll_down" => {
+            ExtendedAction::PanelScrollDown => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
                 use crate::tui::panel::PanelId;
                 if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
                     sp.scroll_down(3);
                 }
             }
-            "panel_clear_done" => {
+            ExtendedAction::PanelClearDone => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
                 use crate::tui::panel::PanelId;
                 if let Some(subagent_panel) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
@@ -424,7 +424,7 @@ pub(crate) fn handle_action(
                     }
                 }
             }
-            "panel_kill" => {
+            ExtendedAction::PanelKill => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
                 use crate::tui::panel::PanelId;
                 if let Some(sp) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents) {
@@ -433,7 +433,7 @@ pub(crate) fn handle_action(
                     }
                 }
             }
-            "panel_remove" => {
+            ExtendedAction::PanelRemove => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
                 use crate::tui::panel::PanelId;
                 if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
@@ -442,12 +442,12 @@ pub(crate) fn handle_action(
             }
 
             // ── Cost overlay ─────────────────────────────
-            "toggle_cost_overlay" => {
+            ExtendedAction::ToggleCostOverlay => {
                 app.overlays.cost_overlay_visible = !app.overlays.cost_overlay_visible;
             }
 
             // ── Session popup ─────────────────────────────
-            "toggle_session_popup" => {
+            ExtendedAction::ToggleSessionPopup => {
                 app.overlays.session_popup_visible = !app.overlays.session_popup_visible;
                 if app.overlays.session_popup_visible {
                     // Focus the last block when opening so user can navigate
@@ -462,7 +462,7 @@ pub(crate) fn handle_action(
             }
 
             // ── Branch panel ──────────────────────────────
-            "toggle_branch_panel" => {
+            ExtendedAction::ToggleBranchPanel => {
                 use crate::tui::components::branch_panel::BranchPanel;
                 use crate::tui::panel::PanelId;
                 if app.layout.focused_panel == Some(PanelId::Branches) {
@@ -486,7 +486,7 @@ pub(crate) fn handle_action(
             }
 
             // ── Branch switcher ─────────────────────────────
-            "open_branch_switcher" => {
+            ExtendedAction::OpenBranchSwitcher => {
                 let active_ids: std::collections::HashSet<usize> = app
                     .conversation.blocks
                     .iter()
@@ -499,13 +499,13 @@ pub(crate) fn handle_action(
             }
 
             // ── External editor ─────────────────────────
-            "open_editor" => {
+            ExtendedAction::OpenEditor => {
                 // Handled specially in the event loop (needs terminal access)
                 // This is a marker — the event loop checks for it after handle_action
             }
 
             // ── Selectors ───────────────────────────────
-            "open_model_selector" => {
+            ExtendedAction::OpenModelSelector => {
                 let models = app.available_models.clone();
                 if models.is_empty() {
                     app.push_system("No models available.".to_string(), true);
@@ -514,7 +514,7 @@ pub(crate) fn handle_action(
                     app.overlays.model_selector.open();
                 }
             }
-            "open_account_selector" => {
+            ExtendedAction::OpenAccountSelector => {
                 let paths = crate::config::ClankersPaths::get();
                 let store = crate::provider::auth::AuthStore::load(&paths.global_auth);
                 let accounts: Vec<crate::tui::components::account_selector::AccountItem> = store
@@ -535,14 +535,12 @@ pub(crate) fn handle_action(
             }
 
             // ── Leader key ──────────────────────────────
-            "open_leader_menu" => {
+            ExtendedAction::OpenLeaderMenu => {
                 app.overlays.leader_menu.open();
             }
 
-            // Unknown extended action
-            _ => {
-                tracing::warn!("Unknown extended action: {}", name);
-            }
+            // Remaining extended actions handled elsewhere (tiling, etc.)
+            _ => {}
         },
     }
 }
@@ -716,7 +714,7 @@ pub(crate) fn handle_session_popup_key(app: &mut App, key: &crossterm::event::Ke
             app.overlays.session_popup_visible = false;
             true
         }
-        Some(Action::Extended(n)) if n == "toggle_session_popup" => {
+        Some(Action::Extended(ExtendedAction::ToggleSessionPopup)) => {
             app.overlays.session_popup_visible = false;
             true
         }
@@ -730,29 +728,29 @@ pub(crate) fn handle_session_popup_key(app: &mut App, key: &crossterm::event::Ke
             true
         }
         // Branch navigation with h/l
-        Some(Action::Extended(n)) if n == "branch_prev" => {
+        Some(Action::Extended(ExtendedAction::BranchPrev)) => {
             app.branch_prev();
             true
         }
-        Some(Action::Extended(n)) if n == "branch_next" => {
+        Some(Action::Extended(ExtendedAction::BranchNext)) => {
             app.branch_next();
             true
         }
         // Collapse/expand
-        Some(Action::Extended(n)) if n == "toggle_block_collapse" => {
+        Some(Action::Extended(ExtendedAction::ToggleBlockCollapse)) => {
             app.toggle_focused_block();
             true
         }
-        Some(Action::Extended(n)) if n == "collapse_all_blocks" => {
+        Some(Action::Extended(ExtendedAction::CollapseAllBlocks)) => {
             app.collapse_all_blocks();
             true
         }
-        Some(Action::Extended(n)) if n == "expand_all_blocks" => {
+        Some(Action::Extended(ExtendedAction::ExpandAllBlocks)) => {
             app.expand_all_blocks();
             true
         }
         // Copy focused block
-        Some(Action::Extended(n)) if n == "copy_block" => {
+        Some(Action::Extended(ExtendedAction::CopyBlock)) => {
             app.copy_focused_block();
             true
         }

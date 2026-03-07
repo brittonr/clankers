@@ -427,7 +427,7 @@ pub struct BuiltinKeymapContributor;
 
 impl MenuContributor for BuiltinKeymapContributor {
     fn menu_items(&self) -> Vec<MenuContribution> {
-        use crate::config::keybindings::{Action, CoreAction};
+        use crate::config::keybindings::{Action, CoreAction, ExtendedAction};
         use crate::registry::PRIORITY_BUILTIN;
 
         vec![
@@ -452,7 +452,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'm',
                 label: "model".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("open_model_selector".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenModelSelector)),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -460,7 +460,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'a',
                 label: "account".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("open_account_selector".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenAccountSelector)),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -468,7 +468,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 't',
                 label: "toggle thinking".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("toggle_thinking".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::ToggleThinking)),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -476,7 +476,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'T',
                 label: "show/hide thinking".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("toggle_show_thinking".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::ToggleShowThinking)),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -484,7 +484,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'f',
                 label: "search output".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("search_output".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::SearchOutput)),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -492,7 +492,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: '`',
                 label: "toggle panel".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("toggle_panel_focus".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::TogglePanelFocus)),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -500,7 +500,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'o',
                 label: "external editor".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("open_editor".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenEditor)),
                 placement: MenuPlacement::Root,
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -650,7 +650,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'z',
                 label: "zoom toggle".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("pane_zoom".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneZoom)),
                 placement: MenuPlacement::Submenu("pane".into()),
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -658,7 +658,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'v',
                 label: "split vertical".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("pane_split_vertical".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneSplitVertical)),
                 placement: MenuPlacement::Submenu("pane".into()),
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -666,7 +666,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'h',
                 label: "split horizontal".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("pane_split_horizontal".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneSplitHorizontal)),
                 placement: MenuPlacement::Submenu("pane".into()),
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -674,7 +674,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'x',
                 label: "close pane".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("pane_close".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneClose)),
                 placement: MenuPlacement::Submenu("pane".into()),
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -682,7 +682,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: '=',
                 label: "equalize size".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("pane_equalize".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneEqualize)),
                 placement: MenuPlacement::Submenu("pane".into()),
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -690,7 +690,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: '+',
                 label: "grow pane".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("pane_grow".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneGrow)),
                 placement: MenuPlacement::Submenu("pane".into()),
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -698,7 +698,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: '-',
                 label: "shrink pane".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("pane_shrink".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneShrink)),
                 placement: MenuPlacement::Submenu("pane".into()),
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -706,7 +706,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'H',
                 label: "move left".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("pane_move_left".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneMoveLeft)),
                 placement: MenuPlacement::Submenu("pane".into()),
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -714,7 +714,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'L',
                 label: "move right".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("pane_move_right".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneMoveRight)),
                 placement: MenuPlacement::Submenu("pane".into()),
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -722,7 +722,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'J',
                 label: "move down".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("pane_move_down".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneMoveDown)),
                 placement: MenuPlacement::Submenu("pane".into()),
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -730,7 +730,7 @@ impl MenuContributor for BuiltinKeymapContributor {
             MenuContribution {
                 key: 'K',
                 label: "move up".into(),
-                action: LeaderAction::KeymapAction(Action::Extended("pane_move_up".into())),
+                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneMoveUp)),
                 placement: MenuPlacement::Submenu("pane".into()),
                 priority: PRIORITY_BUILTIN,
                 source: "builtin".into(),
@@ -851,7 +851,7 @@ mod tests {
 
         match result.unwrap() {
             LeaderAction::KeymapAction(a) => {
-                assert_eq!(a, crate::config::keybindings::Action::Extended("open_model_selector".to_string()));
+                assert_eq!(a, crate::config::keybindings::Action::Extended(crate::config::keybindings::ExtendedAction::OpenModelSelector));
             }
             _ => panic!("Expected KeymapAction"),
         }
@@ -910,7 +910,7 @@ mod tests {
 
         match result.unwrap() {
             LeaderAction::KeymapAction(a) => {
-                assert_eq!(a, crate::config::keybindings::Action::Extended("toggle_show_thinking".to_string()));
+                assert_eq!(a, crate::config::keybindings::Action::Extended(crate::config::keybindings::ExtendedAction::ToggleShowThinking));
             }
             _ => panic!("Expected KeymapAction"),
         }
