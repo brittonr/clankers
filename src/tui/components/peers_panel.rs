@@ -13,8 +13,7 @@ use ratatui::style::Modifier;
 use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
-use ratatui::widgets::Block;
-use ratatui::widgets::Borders;
+
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
 
@@ -247,47 +246,6 @@ impl Panel for PeersPanel {
         } else {
             render_list_view(frame, self, ctx.theme, area, ctx.focused);
         }
-    }
-}
-
-/// Render the peers panel
-pub fn render_peers_panel(frame: &mut Frame, panel: &PeersPanel, theme: &Theme, area: Rect, focused: bool) {
-    if area.width < 4 || area.height < 3 {
-        return;
-    }
-
-    let border_color = if focused { Color::Cyan } else { theme.border };
-
-    // Header with server status and focus hints
-    let server_indicator = if panel.server_running {
-        Span::styled("⚡ serving", Style::default().fg(Color::Green))
-    } else {
-        Span::styled("  standby", Style::default().fg(Color::DarkGray))
-    };
-
-    let focus_hint = if focused { " j/k Tab Enter:detail " } else { "" };
-
-    let title = Line::from(vec![
-        Span::styled(" Peers ", Style::default().fg(border_color).add_modifier(Modifier::BOLD)),
-        Span::raw("("),
-        server_indicator,
-        Span::raw(") "),
-        Span::styled(focus_hint, Style::default().fg(Color::DarkGray)),
-    ]);
-
-    let block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(border_color)).title(title);
-
-    let inner = block.inner(area);
-    frame.render_widget(block, area);
-
-    if inner.height == 0 || inner.width < 2 {
-        return;
-    }
-
-    if panel.detail_view {
-        render_detail_view(frame, panel, theme, inner, focused);
-    } else {
-        render_list_view(frame, panel, theme, inner, focused);
     }
 }
 

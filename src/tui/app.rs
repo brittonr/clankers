@@ -518,15 +518,6 @@ impl App {
         self.streaming.outputs.unfocus_all();
     }
 
-    /// Focus a specific tool's streaming output for scroll control.
-    /// The `call_id` identifies the active tool execution.
-    pub fn focus_tool(&mut self, call_id: &str) {
-        self.layout.focused_panel = None;
-        self.layout.focused_subagent = None;
-        self.streaming.focused_tool = Some(call_id.to_string());
-        self.streaming.outputs.focus(call_id);
-    }
-
     /// Unfocus the currently focused tool output.
     pub fn unfocus_tool(&mut self) {
         self.streaming.focused_tool = None;
@@ -569,19 +560,16 @@ impl App {
         use super::panes::PaneKind;
 
         // Don't split the chat pane — it must remain a single pane.
-        if let Some(focused) = self.layout.tiling.focused_pane() {
-            if self.layout.pane_registry.is_chat(focused) {
-                return;
-            }
+        if let Some(focused) = self.layout.tiling.focused_pane()
+            && self.layout.pane_registry.is_chat(focused)
+        {
+            return;
         }
 
-        match self.layout.tiling.split_focused(direction) {
-            Ok(new_id) => {
-                // The new pane starts as Empty. The old pane keeps its content.
-                self.layout.pane_registry.register(new_id, PaneKind::Empty);
-                self.sync_focused_panel();
-            }
-            Err(_) => {} // Silently ignore (e.g. root-only tree)
+        if let Ok(new_id) = self.layout.tiling.split_focused(direction) {
+            // The new pane starts as Empty. The old pane keeps its content.
+            self.layout.pane_registry.register(new_id, PaneKind::Empty);
+            self.sync_focused_panel();
         }
     }
 
@@ -589,18 +577,15 @@ impl App {
     /// The chat pane (ROOT) cannot be closed.
     pub fn close_focused_pane(&mut self) {
         // Don't close the chat pane.
-        if let Some(focused) = self.layout.tiling.focused_pane() {
-            if self.layout.pane_registry.is_chat(focused) {
-                return;
-            }
+        if let Some(focused) = self.layout.tiling.focused_pane()
+            && self.layout.pane_registry.is_chat(focused)
+        {
+            return;
         }
 
-        match self.layout.tiling.close_focused() {
-            Ok(removed_id) => {
-                self.layout.pane_registry.unregister(removed_id);
-                self.sync_focused_panel();
-            }
-            Err(_) => {} // Silently ignore (e.g. only one pane left)
+        if let Ok(removed_id) = self.layout.tiling.close_focused() {
+            self.layout.pane_registry.unregister(removed_id);
+            self.sync_focused_panel();
         }
     }
 
@@ -740,20 +725,20 @@ impl App {
             self.conversation.blocks.push(BlockEntry::Conversation(block));
 
             // Refresh branch panel if it has entries (i.e., has been opened before)
-            if let Some(bp) = self.panels.downcast_ref::<super::components::branch_panel::BranchPanel>(super::panel::PanelId::Branches) {
-                if !bp.entries.is_empty() {
-                    let active_ids: std::collections::HashSet<usize> = self
-                        .conversation.blocks
-                        .iter()
-                        .filter_map(|e| match e {
-                            BlockEntry::Conversation(b) => Some(b.id),
-                            _ => None,
-                        })
-                        .collect();
-                    let all_blocks = self.conversation.all_blocks.clone();
-                    if let Some(bp) = self.panels.downcast_mut::<super::components::branch_panel::BranchPanel>(super::panel::PanelId::Branches) {
-                        bp.refresh(&all_blocks, &active_ids);
-                    }
+            if let Some(bp) = self.panels.downcast_ref::<super::components::branch_panel::BranchPanel>(super::panel::PanelId::Branches)
+                && !bp.entries.is_empty()
+            {
+                let active_ids: std::collections::HashSet<usize> = self
+                    .conversation.blocks
+                    .iter()
+                    .filter_map(|e| match e {
+                        BlockEntry::Conversation(b) => Some(b.id),
+                        _ => None,
+                    })
+                    .collect();
+                let all_blocks = self.conversation.all_blocks.clone();
+                if let Some(bp) = self.panels.downcast_mut::<super::components::branch_panel::BranchPanel>(super::panel::PanelId::Branches) {
+                    bp.refresh(&all_blocks, &active_ids);
                 }
             }
         }
@@ -1390,11 +1375,6 @@ impl App {
     /// Add an image attachment from clipboard data
     pub fn attach_image(&mut self, data: String, media_type: String, size: usize) {
         self.pending_images.push(PendingImage { data, media_type, size });
-    }
-
-    /// Remove all pending image attachments
-    pub fn clear_pending_images(&mut self) {
-        self.pending_images.clear();
     }
 
     /// Update the slash menu based on current editor content

@@ -51,26 +51,6 @@ pub fn send_status(status: &AgentStatus) {
     }
 }
 
-/// Map an agent lifecycle event to a Zellij IPC status update.
-/// Called from the interactive event loop on every agent event.
-/// No-op when not inside a Zellij session.
-///
-/// The actual pipe command runs on a background thread so it can
-/// never block the TUI event loop.
-pub fn broadcast_agent_event(event: &AgentEvent) {
-    if !super::is_inside_zellij() {
-        return;
-    }
-    let status = match event_to_status(event) {
-        Some(s) => s,
-        None => return,
-    };
-    // Fire-and-forget on a background thread
-    std::thread::spawn(move || {
-        send_status(&status);
-    });
-}
-
 /// Map an agent event to a status, returning None for events that don't
 /// produce a status change. Exposed for testing.
 pub fn event_to_status(event: &AgentEvent) -> Option<AgentStatus> {

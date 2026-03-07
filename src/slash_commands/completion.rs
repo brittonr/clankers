@@ -55,7 +55,7 @@ pub fn completions_from_registry(registry: &SlashRegistry, input: &str) -> Vec<C
                 .map(|(name, desc)| {
                     let first_word = name.split_whitespace().next().unwrap_or(name);
                     CompletionItem {
-                        display: name.to_string(),
+                        display: name.clone(),
                         description: Box::leak(desc.clone().into_boxed_str()),
                         insert_text: format!("{} {} ", cmd_name, first_word),
                         trailing_space: false, // already included

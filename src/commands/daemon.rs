@@ -64,7 +64,7 @@ pub async fn run_merge_daemon(ctx: &CommandContext, interval: u64, once: bool) -
 
     let db_path = ctx.paths.global_config_dir.join("clankers.db");
     let db = crate::db::Db::open(&db_path).map_err(|e| crate::error::Error::Io {
-        source: std::io::Error::new(std::io::ErrorKind::Other, format!("failed to open database: {}", e)),
+        source: std::io::Error::other(format!("failed to open database: {}", e)),
     })?;
     crate::worktree::merge_daemon::run_polling(db, repo_root, interval, once, provider, ctx.model.clone()).await;
     Ok(())

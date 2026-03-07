@@ -27,14 +27,11 @@ pub struct ModelPricing {
 pub fn load_pricing(config_dir: Option<&Path>) -> HashMap<String, ModelPricing> {
     if let Some(dir) = config_dir {
         let path = dir.join("pricing.json");
-        if path.exists() {
-            if let Ok(data) = std::fs::read_to_string(&path) {
-                if let Ok(parsed) = serde_json::from_str::<HashMap<String, ModelPricing>>(&data) {
-                    tracing::info!("Loaded custom pricing from {}", path.display());
-                    return parsed;
-                }
-                tracing::warn!("Invalid pricing.json at {}, using defaults", path.display());
-            }
+        if path.exists() && let Ok(data) = std::fs::read_to_string(&path) && let Ok(parsed) = serde_json::from_str::<HashMap<String, ModelPricing>>(&data) {
+            tracing::info!("Loaded custom pricing from {}", path.display());
+            return parsed;
+        } else if path.exists() {
+            tracing::warn!("Invalid pricing.json at {}, using defaults", path.display());
         }
     }
     default_pricing()
@@ -69,7 +66,7 @@ fn default_pricing() -> HashMap<String, ModelPricing> {
 // ── Configuration ───────────────────────────────────────────────────────────
 
 /// Budget configuration
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct CostTrackerConfig {
     /// Soft budget limit — warn but don't enforce (USD)
     #[serde(default)]
@@ -80,16 +77,6 @@ pub struct CostTrackerConfig {
     /// Warn at regular cost intervals (e.g., every $1.00)
     #[serde(default)]
     pub warning_interval: Option<f64>,
-}
-
-impl Default for CostTrackerConfig {
-    fn default() -> Self {
-        Self {
-            soft_limit: None,
-            hard_limit: None,
-            warning_interval: None,
-        }
-    }
 }
 
 // ── Per-model usage ─────────────────────────────────────────────────────────
@@ -340,36 +327,30 @@ impl CostTracker {
         };
 
         // Hard limit
-        if let Some(hard) = self.config.hard_limit {
-            if total >= hard && prev < hard {
-                events.push(BudgetEvent::Exceeded {
-                    limit: hard,
-                    current: total,
-                });
-            }
+        if let Some(hard) = self.config.hard_limit && total >= hard && prev < hard {
+            events.push(BudgetEvent::Exceeded {
+                limit: hard,
+                current: total,
+            });
         }
 
         // Soft limit
-        if let Some(soft) = self.config.soft_limit {
-            if total >= soft && prev < soft {
-                events.push(BudgetEvent::Warning {
-                    threshold: soft,
-                    current: total,
-                });
-            }
+        if let Some(soft) = self.config.soft_limit && total >= soft && prev < soft {
+            events.push(BudgetEvent::Warning {
+                threshold: soft,
+                current: total,
+            });
         }
 
         // Milestone intervals — emit one event per crossed milestone
-        if let Some(interval) = self.config.warning_interval {
-            if interval > 0.0 {
-                let prev_milestone = (prev / interval).floor() as u64;
-                let curr_milestone = (total / interval).floor() as u64;
-                for m in (prev_milestone + 1)..=curr_milestone {
-                    events.push(BudgetEvent::Milestone {
-                        milestone: m as f64 * interval,
-                        total,
-                    });
-                }
+        if let Some(interval) = self.config.warning_interval && interval > 0.0 {
+            let prev_milestone = (prev / interval).floor() as u64;
+            let curr_milestone = (total / interval).floor() as u64;
+            for m in (prev_milestone + 1)..=curr_milestone {
+                events.push(BudgetEvent::Milestone {
+                    milestone: m as f64 * interval,
+                    total,
+                });
             }
         }
 

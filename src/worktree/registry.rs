@@ -110,11 +110,6 @@ impl<'db> WorktreeRegistry<'db> {
         Ok(self.list_all()?.into_iter().filter(|w| w.status == status).collect())
     }
 
-    /// List worktrees for a specific repo root.
-    pub fn list_for_repo(&self, repo_root: &str) -> Result<Vec<WorktreeInfo>> {
-        Ok(self.list_all()?.into_iter().filter(|w| w.path.to_string_lossy().contains(repo_root)).collect())
-    }
-
     /// List only active worktrees.
     pub fn active(&self) -> Result<Vec<WorktreeInfo>> {
         self.list_by_status(WorktreeStatus::Active)

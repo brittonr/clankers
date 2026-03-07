@@ -57,18 +57,6 @@ impl ModelRegistry {
         models
     }
 
-    /// List models for a specific provider
-    pub fn list_for_provider(&self, provider: &str) -> Vec<&Model> {
-        let mut models: Vec<_> = self.cache.values().filter(|m| m.provider == provider).collect();
-        models.sort_by_key(|m| &m.id);
-        models
-    }
-
-    /// Get the provider name for a model ID or alias
-    pub fn provider_for(&self, model_id: &str) -> Option<&str> {
-        self.resolve(model_id).map(|m| m.provider.as_str())
-    }
-
     pub fn len(&self) -> usize {
         self.cache.len()
     }

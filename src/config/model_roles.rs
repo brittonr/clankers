@@ -145,13 +145,6 @@ impl ModelRoles {
         }
     }
 
-    /// Remove a role's model override (falls back to default).
-    pub fn unset_model(&mut self, name: &str) {
-        if let Some(role) = self.roles.get_mut(name) {
-            role.model = None;
-        }
-    }
-
     /// Clear all role model overrides.
     pub fn reset(&mut self) {
         for role in self.roles.values_mut() {

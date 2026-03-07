@@ -434,7 +434,7 @@ impl<'a> EventLoopRunner<'a> {
             .expect("peers panel");
         if count.is_multiple_of(200) && peers_panel.server_running {
             let registry = crate::modes::rpc::peers::PeerRegistry::load(
-                &crate::modes::rpc::peers::registry_path(&crate::config::ClankersPaths::get()),
+                &crate::modes::rpc::peers::registry_path(crate::config::ClankersPaths::get()),
             );
             let entries = crate::tui::components::peers_panel::entries_from_registry(
                 &registry,
@@ -557,13 +557,10 @@ impl<'a> EventLoopRunner<'a> {
         }
 
         // Overlay intercepts
-        if self.app.overlays.cost_overlay_visible {
-            match key.code {
-                KeyCode::Esc | KeyCode::Char('C') | KeyCode::Char('c') | KeyCode::Char('q') => {
-                    self.app.overlays.cost_overlay_visible = false;
-                }
-                _ => {}
-            }
+        if self.app.overlays.cost_overlay_visible
+            && matches!(key.code, KeyCode::Esc | KeyCode::Char('C' | 'c' | 'q'))
+        {
+            self.app.overlays.cost_overlay_visible = false;
             return;
         }
 
@@ -648,10 +645,8 @@ impl<'a> EventLoopRunner<'a> {
         }
 
         // Panel intercepts in normal mode
-        if self.app.has_panel_focus() && self.app.input_mode == InputMode::Normal {
-            if self.handle_panel_focused_key(key) {
-                return;
-            }
+        if self.app.has_panel_focus() && self.app.input_mode == InputMode::Normal && self.handle_panel_focused_key(key) {
+            return;
         }
 
         // Resolve through keymap
@@ -676,15 +671,14 @@ impl<'a> EventLoopRunner<'a> {
             // Record branch in session if one was initiated
             if let Some(checkpoint) = self.app.branching.last_branch_checkpoint.take()
                 && let Some(ref mut sm) = self.session_manager
+                && let Ok(tree) = sm.load_tree()
             {
-                if let Ok(tree) = sm.load_tree() {
-                    let active_leaf = sm.active_leaf_id().cloned();
-                    let branch_msgs =
-                        crate::session::context::build_messages_for_branch(&tree, active_leaf.as_ref());
-                    if checkpoint > 0 && checkpoint <= branch_msgs.len() {
-                        let fork_msg_id = branch_msgs[checkpoint - 1].id().clone();
-                        let _ = sm.record_branch(fork_msg_id, "User edited prompt");
-                    }
+                let active_leaf = sm.active_leaf_id().cloned();
+                let branch_msgs =
+                    crate::session::context::build_messages_for_branch(&tree, active_leaf.as_ref());
+                if checkpoint > 0 && checkpoint <= branch_msgs.len() {
+                    let fork_msg_id = branch_msgs[checkpoint - 1].id().clone();
+                    let _ = sm.record_branch(fork_msg_id, "User edited prompt");
                 }
             }
         } else if self.app.input_mode == InputMode::Insert {
@@ -979,8 +973,8 @@ impl<'a> EventLoopRunner<'a> {
                     );
                     let node_id = peer.node_id.clone();
                     let paths = crate::config::ClankersPaths::get();
-                    let registry_path = crate::modes::rpc::peers::registry_path(&paths);
-                    let identity_path = crate::modes::rpc::iroh::identity_path(&paths);
+                    let registry_path = crate::modes::rpc::peers::registry_path(paths);
+                    let identity_path = crate::modes::rpc::iroh::identity_path(paths);
                     let ptx = self.panel_tx.clone();
                     tokio::spawn(async move {
                         super::peers_background::probe_peer_background(
@@ -1003,25 +997,25 @@ impl<'a> EventLoopRunner<'a> {
         let source = self.app.branching.merge_interactive.source_leaf().cloned();
         let target = self.app.branching.merge_interactive.target_leaf().cloned();
         self.app.branching.merge_interactive.close();
-        if let (Some(src), Some(tgt)) = (source, target) {
-            if let Some(sm) = self.session_manager.as_mut() {
-                match sm.merge_selective(src, tgt, &selected) {
-                    Ok((count, _new_leaf)) => {
-                        if let Ok(context) = sm.build_context() {
-                            let msg_count = context.len();
-                            let _ = self.cmd_tx.send(AgentCommand::ClearHistory);
-                            let _ = self.cmd_tx.send(AgentCommand::SeedMessages(context));
-                            self.app.push_system(
-                                format!(
-                                    "Merged {} messages (selective, {} in context)",
-                                    count, msg_count
-                                ),
-                                false,
-                            );
-                        }
+        if let (Some(src), Some(tgt)) = (source, target)
+            && let Some(sm) = self.session_manager.as_mut()
+        {
+            match sm.merge_selective(src, tgt, &selected) {
+                Ok((count, _new_leaf)) => {
+                    if let Ok(context) = sm.build_context() {
+                        let msg_count = context.len();
+                        let _ = self.cmd_tx.send(AgentCommand::ClearHistory);
+                        let _ = self.cmd_tx.send(AgentCommand::SeedMessages(context));
+                        self.app.push_system(
+                            format!(
+                                "Merged {} messages (selective, {} in context)",
+                                count, msg_count
+                            ),
+                            false,
+                        );
                     }
-                    Err(e) => self.app.push_system(format!("Merge failed: {}", e), true),
                 }
+                Err(e) => self.app.push_system(format!("Merge failed: {}", e), true),
             }
         }
     }

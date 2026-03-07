@@ -16,18 +16,6 @@ pub struct JsonOptions {
     pub thinking: Option<crate::provider::ThinkingConfig>,
 }
 
-/// Run JSON mode: stream all events as JSON lines to stdout
-pub async fn run_json(
-    prompt: &str,
-    provider: Arc<dyn crate::provider::Provider>,
-    tools: Vec<Arc<dyn crate::tools::Tool>>,
-    settings: crate::config::settings::Settings,
-    model: String,
-    system_prompt: String,
-) -> Result<()> {
-    run_json_with_options(prompt, provider, tools, settings, model, system_prompt, JsonOptions::default()).await
-}
-
 /// Run JSON mode with options
 pub async fn run_json_with_options(
     prompt: &str,
@@ -41,11 +29,11 @@ pub async fn run_json_with_options(
     let mut agent = Agent::new(provider, tools, settings.clone(), model, system_prompt);
 
     // Wire routing policy from settings
-    if let Some(routing_config) = settings.routing.as_ref() {
-        if routing_config.enabled {
-            let policy = crate::routing::policy::RoutingPolicy::new(routing_config.clone());
-            agent = agent.with_routing_policy(policy).with_model_roles(settings.model_roles.clone());
-        }
+    if let Some(routing_config) = settings.routing.as_ref()
+        && routing_config.enabled
+    {
+        let policy = crate::routing::policy::RoutingPolicy::new(routing_config.clone());
+        agent = agent.with_routing_policy(policy).with_model_roles(settings.model_roles.clone());
     }
 
     // Wire cost tracking from settings

@@ -217,15 +217,6 @@ impl WatchdogRegistry {
     pub fn active_count(&self) -> usize {
         self.trackers.lock().iter().filter(|t| t.state() != HealthState::Finished).count()
     }
-
-    /// Count of stalled subagents.
-    pub fn stalled_count(&self) -> usize {
-        self.trackers
-            .lock()
-            .iter()
-            .filter(|t| matches!(t.state(), HealthState::Stalled | HealthState::Unresponsive))
-            .count()
-    }
 }
 
 #[cfg(test)]

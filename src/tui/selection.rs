@@ -77,11 +77,6 @@ impl TextSelection {
     }
 
     /// Check if a given row is within the selection range
-    pub fn contains_row(&self, row: usize) -> bool {
-        let (start, end) = self.ordered();
-        row >= start.row && row <= end.row
-    }
-
     /// For a given row, return the selected column range (start_col, end_col).
     /// Returns None if the row is not in the selection.
     pub fn col_range_for_row(&self, row: usize, line_len: usize) -> Option<(usize, usize)> {

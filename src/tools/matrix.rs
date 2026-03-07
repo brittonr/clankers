@@ -67,11 +67,6 @@ impl MatrixSendTool {
             state: None,
         }
     }
-
-    pub fn with_state(mut self, state: Arc<MatrixState>) -> Self {
-        self.state = Some(state);
-        self
-    }
 }
 
 #[async_trait]
@@ -153,11 +148,6 @@ impl MatrixReadTool {
             },
             state: None,
         }
-    }
-
-    pub fn with_state(mut self, state: Arc<MatrixState>) -> Self {
-        self.state = Some(state);
-        self
     }
 }
 
@@ -259,11 +249,6 @@ impl MatrixRoomsTool {
             state: None,
         }
     }
-
-    pub fn with_state(mut self, state: Arc<MatrixState>) -> Self {
-        self.state = Some(state);
-        self
-    }
 }
 
 #[async_trait]
@@ -334,11 +319,6 @@ impl MatrixPeersTool {
             },
             state: None,
         }
-    }
-
-    pub fn with_state(mut self, state: Arc<MatrixState>) -> Self {
-        self.state = Some(state);
-        self
     }
 }
 
@@ -427,11 +407,6 @@ impl MatrixJoinTool {
             state: None,
         }
     }
-
-    pub fn with_state(mut self, state: Arc<MatrixState>) -> Self {
-        self.state = Some(state);
-        self
-    }
 }
 
 #[async_trait]
@@ -511,11 +486,6 @@ impl MatrixRpcTool {
             },
             state: None,
         }
-    }
-
-    pub fn with_state(mut self, state: Arc<MatrixState>) -> Self {
-        self.state = Some(state);
-        self
     }
 }
 

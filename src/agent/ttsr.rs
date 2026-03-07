@@ -31,7 +31,6 @@
 //! - `interrupt` — Abort the current generation and inject as a user correction
 //! - `log` — Just log the match (no injection)
 
-use std::path::Path;
 use std::time::Instant;
 
 use regex::Regex;
@@ -156,52 +155,6 @@ impl TtsrEngine {
         }
     }
 
-    /// Load rules from a file (JSON array)
-    pub fn load_from_file(path: &Path) -> Self {
-        match std::fs::read_to_string(path) {
-            Ok(content) => match serde_json::from_str::<Vec<TtsrRule>>(&content) {
-                Ok(rules) => {
-                    tracing::info!("Loaded {} TTSR rule(s) from {}", rules.len(), path.display());
-                    Self::new(rules)
-                }
-                Err(e) => {
-                    tracing::warn!("Failed to parse TTSR rules from {}: {}", path.display(), e);
-                    Self::empty()
-                }
-            },
-            Err(_) => Self::empty(),
-        }
-    }
-
-    /// Load rules from both global and project paths, merging them
-    pub fn load_merged(global_path: &Path, project_path: &Path) -> Self {
-        let mut all_rules = Vec::new();
-
-        if let Ok(content) = std::fs::read_to_string(global_path)
-            && let Ok(rules) = serde_json::from_str::<Vec<TtsrRule>>(&content)
-        {
-            all_rules.extend(rules);
-        }
-
-        if let Ok(content) = std::fs::read_to_string(project_path)
-            && let Ok(rules) = serde_json::from_str::<Vec<TtsrRule>>(&content)
-        {
-            // Project rules override global rules with the same name
-            for rule in rules {
-                if let Some(pos) = all_rules.iter().position(|r| r.name == rule.name) {
-                    all_rules[pos] = rule;
-                } else {
-                    all_rules.push(rule);
-                }
-            }
-        }
-
-        if !all_rules.is_empty() {
-            tracing::info!("TTSR: loaded {} rule(s)", all_rules.len());
-        }
-        Self::new(all_rules)
-    }
-
     /// Create an empty engine (no rules)
     pub fn empty() -> Self {
         Self {
@@ -301,11 +254,6 @@ impl TtsrEngine {
     /// Reset the matching window (e.g., between turns)
     pub fn reset_window(&mut self) {
         self.window.clear();
-    }
-
-    /// Get the number of loaded rules
-    pub fn rule_count(&self) -> usize {
-        self.rules.len()
     }
 
     /// Check if any rules are loaded

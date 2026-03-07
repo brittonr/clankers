@@ -241,11 +241,6 @@ impl HistorySearch {
         self.selected = 0;
     }
 
-    /// Initial population from store
-    pub fn populate(&mut self, store: &HistoryStore) {
-        self.refresh_results(store);
-    }
-
     /// Render the search overlay
     pub fn render(&self, frame: &mut Frame, area: Rect) {
         if !self.active {

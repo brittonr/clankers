@@ -24,19 +24,6 @@ pub struct AccountItem {
 }
 
 impl AccountItem {
-    pub fn display_text(&self) -> String {
-        let mut s = self.name.clone();
-        if let Some(ref label) = self.label {
-            s.push_str(&format!(" — {}", label));
-        }
-        if self.is_active {
-            s.push_str(" ◀");
-        }
-        if self.is_expired {
-            s.push_str(" (expired)");
-        }
-        s
-    }
 }
 
 #[derive(Default)]

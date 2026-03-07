@@ -5,6 +5,21 @@ use crate::commands::CommandContext;
 use crate::error::Result;
 use crate::util::parsing::parse_duration;
 
+/// Bundled capability scope for token creation (avoids excessive bool params).
+struct TokenScope {
+    tools: Option<String>,
+    read_only: bool,
+    bot_commands: Option<String>,
+    session_manage: bool,
+    model_switch: bool,
+    delegate: bool,
+    file_prefix: Option<String>,
+    file_read_only: bool,
+    shell: Option<String>,
+    shell_wd: Option<String>,
+    root: bool,
+}
+
 /// Run the token subcommand.
 pub async fn run(ctx: &CommandContext, action: TokenAction) -> Result<()> {
     let identity_path = crate::modes::rpc::iroh::identity_path(&ctx.paths);
@@ -28,24 +43,22 @@ pub async fn run(ctx: &CommandContext, action: TokenAction) -> Result<()> {
             shell,
             shell_wd,
             root,
-        } => handle_create(
-            &identity,
-            &redb_db,
-            tools,
-            read_only,
-            &expire,
-            audience_key,
-            from,
-            bot_commands,
-            session_manage,
-            model_switch,
-            delegate,
-            file_prefix,
-            file_read_only,
-            shell,
-            shell_wd,
-            root,
-        ),
+        } => {
+            let scope = TokenScope {
+                tools,
+                read_only,
+                bot_commands,
+                session_manage,
+                model_switch,
+                delegate,
+                file_prefix,
+                file_read_only,
+                shell,
+                shell_wd,
+                root,
+            };
+            handle_create(&identity, &redb_db, &expire, audience_key, from, scope)
+        }
         TokenAction::List => handle_list(&redb_db),
         TokenAction::Revoke { hash } => handle_revoke(&redb_db, &hash),
         TokenAction::Info { token: token_b64 } => handle_info(&token_b64),
@@ -58,41 +71,30 @@ fn open_auth_db(ctx: &CommandContext) -> Result<std::sync::Arc<redb::Database>> 
     std::fs::create_dir_all(&ctx.paths.global_config_dir).ok();
     let redb_db = std::sync::Arc::new(
         redb::Database::create(&db_path).map_err(|e| crate::error::Error::Io {
-            source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+            source: std::io::Error::other(e.to_string()),
         })?,
     );
     {
         let tx = redb_db.begin_write().map_err(|e| crate::error::Error::Io {
-            source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+            source: std::io::Error::other(e.to_string()),
         })?;
         let _ = tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE);
         let _ = tx.open_table(clankers_auth::revocation::REVOKED_TOKENS_TABLE);
         tx.commit().map_err(|e| crate::error::Error::Io {
-            source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+            source: std::io::Error::other(e.to_string()),
         })?;
     }
     Ok(redb_db)
 }
 
 /// Create a new capability token.
-#[allow(clippy::too_many_arguments)]
 fn handle_create(
     identity: &crate::modes::rpc::iroh::Identity,
     redb_db: &std::sync::Arc<redb::Database>,
-    tools: Option<String>,
-    read_only: bool,
     expire: &str,
     audience_key: Option<String>,
     from: Option<String>,
-    bot_commands: Option<String>,
-    session_manage: bool,
-    model_switch: bool,
-    delegate: bool,
-    file_prefix: Option<String>,
-    file_read_only: bool,
-    shell: Option<String>,
-    shell_wd: Option<String>,
-    root: bool,
+    scope: TokenScope,
 ) -> Result<()> {
     use clankers_auth::{CapabilityToken, TokenBuilder};
 
@@ -122,22 +124,10 @@ fn handle_create(
         builder = builder.for_key(pubkey);
     }
 
-    builder = if root {
+    builder = if scope.root {
         build_root_capabilities(builder)
     } else {
-        build_scoped_capabilities(
-            builder,
-            read_only,
-            tools,
-            shell,
-            shell_wd,
-            file_prefix,
-            file_read_only,
-            bot_commands,
-            session_manage,
-            model_switch,
-            delegate,
-        )
+        build_scoped_capabilities(builder, &scope)
     };
 
     builder = builder.with_lifetime(lifetime).with_random_nonce();
@@ -173,58 +163,48 @@ fn build_root_capabilities(
 }
 
 /// Build capabilities for a scoped (non-root) token.
-#[allow(clippy::too_many_arguments)]
 fn build_scoped_capabilities(
     mut builder: clankers_auth::TokenBuilder,
-    read_only: bool,
-    tools: Option<String>,
-    shell: Option<String>,
-    shell_wd: Option<String>,
-    file_prefix: Option<String>,
-    file_read_only: bool,
-    bot_commands: Option<String>,
-    session_manage: bool,
-    model_switch: bool,
-    delegate: bool,
+    scope: &TokenScope,
 ) -> clankers_auth::TokenBuilder {
     use clankers_auth::Capability;
 
     builder = builder.with_capability(Capability::Prompt);
 
-    if read_only {
+    if scope.read_only {
         builder = builder.with_capability(Capability::ToolUse {
             tool_pattern: "read,grep,find,ls".into(),
         });
-    } else if let Some(ref tool_list) = tools {
+    } else if let Some(ref tool_list) = scope.tools {
         builder = builder.with_capability(Capability::ToolUse {
             tool_pattern: tool_list.clone(),
         });
     }
 
-    if let Some(ref pattern) = shell {
+    if let Some(ref pattern) = scope.shell {
         builder = builder.with_capability(Capability::ShellExecute {
             command_pattern: pattern.clone(),
-            working_dir: shell_wd,
+            working_dir: scope.shell_wd.clone(),
         });
     }
-    if let Some(ref prefix) = file_prefix {
+    if let Some(ref prefix) = scope.file_prefix {
         builder = builder.with_capability(Capability::FileAccess {
             prefix: prefix.clone(),
-            read_only: file_read_only,
+            read_only: scope.file_read_only,
         });
     }
-    if let Some(ref cmds) = bot_commands {
+    if let Some(ref cmds) = scope.bot_commands {
         builder = builder.with_capability(Capability::BotCommand {
             command_pattern: cmds.clone(),
         });
     }
-    if session_manage {
+    if scope.session_manage {
         builder = builder.with_capability(Capability::SessionManage);
     }
-    if model_switch {
+    if scope.model_switch {
         builder = builder.with_capability(Capability::ModelSwitch);
     }
-    if delegate {
+    if scope.delegate {
         builder = builder.with_capability(Capability::Delegate);
     }
     builder
@@ -269,13 +249,13 @@ fn handle_list(redb_db: &std::sync::Arc<redb::Database>) -> Result<()> {
     use redb::ReadableTable;
 
     let read_tx = redb_db.begin_read().map_err(|e| crate::error::Error::Io {
-        source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+        source: std::io::Error::other(e.to_string()),
     })?;
     match read_tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE) {
         Ok(table) => {
             let mut count = 0;
             let iter = table.iter().map_err(|e| crate::error::Error::Io {
-                source: std::io::Error::new(std::io::ErrorKind::Other, e.to_string()),
+                source: std::io::Error::other(e.to_string()),
             })?;
             for entry in iter {
                 let (key, value) = match entry {

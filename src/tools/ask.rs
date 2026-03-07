@@ -24,11 +24,6 @@ pub type AskRequest = tokio::sync::oneshot::Sender<AskResponse>;
 pub type AskTx = tokio::sync::mpsc::UnboundedSender<(AskQuestion, AskRequest)>;
 pub type AskRx = tokio::sync::mpsc::UnboundedReceiver<(AskQuestion, AskRequest)>;
 
-/// Create an ask channel pair
-pub fn ask_channel() -> (AskTx, AskRx) {
-    tokio::sync::mpsc::unbounded_channel()
-}
-
 /// A structured question
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AskQuestion {

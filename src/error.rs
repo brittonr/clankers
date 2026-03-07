@@ -33,26 +33,14 @@ pub enum Error {
     #[snafu(display("tool execution error ({tool_name}): {source}"))]
     ToolExecution { tool_name: String, source: std::io::Error },
 
-    #[snafu(display("tool timeout ({tool_name}): exceeded {timeout_secs}s"))]
-    ToolTimeout { tool_name: String, timeout_secs: u64 },
-
     #[snafu(display("agent error: {message}"))]
     Agent { message: String },
-
-    #[snafu(display("agent loop error: {message}"))]
-    AgentLoop { message: String },
 
     #[snafu(display("agent context error: {message}"))]
     AgentContext { message: String },
 
-    #[snafu(display("agent definition error ({path}): {message}", path = path.display()))]
-    AgentDefinition { path: std::path::PathBuf, message: String },
-
     #[snafu(display("worktree error: {message}"))]
     Worktree { message: String },
-
-    #[snafu(display("worktree git error: {message}"))]
-    WorktreeGit { message: String, source: std::io::Error },
 
     #[snafu(display("plugin error ({plugin_name}): {message}"))]
     Plugin { plugin_name: String, message: String },
@@ -237,10 +225,8 @@ impl Error {
             Self::ProviderStreaming { .. } => ErrorCode::ProviderStreaming,
             Self::Session { .. } | Self::SessionStore { .. } => ErrorCode::Session,
             Self::Tool { .. } | Self::ToolExecution { .. } => ErrorCode::ToolFailed,
-            Self::ToolTimeout { .. } => ErrorCode::ToolTimeout,
-            Self::Agent { .. } | Self::AgentLoop { .. } | Self::AgentContext { .. } => ErrorCode::Agent,
-            Self::AgentDefinition { .. } => ErrorCode::AgentDefinition,
-            Self::Worktree { .. } | Self::WorktreeGit { .. } => ErrorCode::Worktree,
+            Self::Agent { .. } | Self::AgentContext { .. } => ErrorCode::Agent,
+            Self::Worktree { .. } => ErrorCode::Worktree,
             Self::Plugin { .. } => ErrorCode::Plugin,
             Self::Skill { .. } => ErrorCode::Skill,
             Self::Spec { .. } => ErrorCode::Spec,
@@ -263,8 +249,6 @@ impl Error {
             Self::Session { .. } | Self::SessionStore { .. } => {
                 Some("try `clankers session list` to see available sessions")
             }
-            Self::ToolTimeout { .. } => Some("increase timeout or simplify the command"),
-            Self::AgentDefinition { .. } => Some("check the agent YAML file for syntax errors"),
             Self::Skill { .. } => Some("check the SKILL.md file exists and is valid"),
             Self::Database { .. } => {
                 Some("the database may be corrupt — try removing ~/.clankers/agent/clankers.db")
@@ -305,16 +289,9 @@ mod tests {
                 tool_name: String::new(),
                 source: std::io::Error::new(std::io::ErrorKind::Other, "test"),
             },
-            Error::ToolTimeout { tool_name: String::new(), timeout_secs: 0 },
             Error::Agent { message: String::new() },
-            Error::AgentLoop { message: String::new() },
             Error::AgentContext { message: String::new() },
-            Error::AgentDefinition { path: std::path::PathBuf::new(), message: String::new() },
             Error::Worktree { message: String::new() },
-            Error::WorktreeGit {
-                message: String::new(),
-                source: std::io::Error::new(std::io::ErrorKind::Other, "test"),
-            },
             Error::Plugin { plugin_name: String::new(), message: String::new() },
             Error::Skill { message: String::new() },
             Error::Spec { message: String::new() },
@@ -450,10 +427,5 @@ mod tests {
         };
         assert_eq!(err1.code(), err2.code());
         assert_eq!(err1.code(), ErrorCode::ToolFailed);
-
-        // ToolTimeout is a different code.
-        let err3 = Error::ToolTimeout { tool_name: "bash".into(), timeout_secs: 60 };
-        assert_ne!(err3.code(), err1.code());
-        assert_eq!(err3.code(), ErrorCode::ToolTimeout);
     }
 }

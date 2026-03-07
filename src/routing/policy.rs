@@ -36,18 +36,16 @@ impl RoutingPolicy {
         }
 
         // Hard budget limit — force smol regardless of complexity
-        if let Some(hard) = self.config.budget_hard_limit {
-            if signals.current_cost >= hard {
-                return ModelSelectionResult {
-                    role: "smol".to_string(),
-                    score: 0.0,
-                    reason: SelectionReason::BudgetThreshold {
-                        limit: hard,
-                        current: signals.current_cost,
-                    },
-                    orchestration: None,
-                };
-            }
+        if let Some(hard) = self.config.budget_hard_limit && signals.current_cost >= hard {
+            return ModelSelectionResult {
+                role: "smol".to_string(),
+                score: 0.0,
+                reason: SelectionReason::BudgetThreshold {
+                    limit: hard,
+                    current: signals.current_cost,
+                },
+                orchestration: None,
+            };
         }
 
         // User hints override complexity scoring (but not hard budget)
@@ -91,7 +89,7 @@ impl RoutingPolicy {
         // Check for orchestration (experimental)
         let orchestration = if self.config.enable_orchestration {
             super::orchestration::detect_pattern(
-                &signals.prompt_text.as_deref().unwrap_or(""),
+                signals.prompt_text.as_deref().unwrap_or(""),
                 adjusted_score,
             )
         } else {

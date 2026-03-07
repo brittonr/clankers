@@ -130,16 +130,14 @@ pub async fn run_turn_loop(
 
     for turn_index in 0..config.max_turns {
         // Check for a pending model switch from the switch_model tool
-        if let Some(slot) = model_switch_slot {
-            if let Some(new_model) = slot.lock().take() {
-                tracing::info!("Agent-requested model switch: {} → {}", active_model, new_model);
-                let _ = event_tx.send(AgentEvent::ModelChange {
-                    from: active_model.clone(),
-                    to: new_model.clone(),
-                    reason: "agent_request".to_string(),
-                });
-                active_model = new_model;
-            }
+        if let Some(slot) = model_switch_slot && let Some(new_model) = slot.lock().take() {
+            tracing::info!("Agent-requested model switch: {} → {}", active_model, new_model);
+            let _ = event_tx.send(AgentEvent::ModelChange {
+                from: active_model.clone(),
+                to: new_model.clone(),
+                reason: "agent_request".to_string(),
+            });
+            active_model = new_model;
         }
         if cancel.is_cancelled() {
             return Err(Error::Cancelled);

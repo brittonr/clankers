@@ -182,16 +182,9 @@ pub trait SlashContributor {
 }
 
 /// Registry for slash commands with priority-based conflict resolution.
+#[derive(Default)]
 pub struct SlashRegistry {
     commands: HashMap<String, SlashCommandDef>,
-}
-
-impl Default for SlashRegistry {
-    fn default() -> Self {
-        Self {
-            commands: HashMap::new(),
-        }
-    }
 }
 
 impl SlashRegistry {
@@ -207,7 +200,7 @@ impl SlashRegistry {
             .collect();
 
         // Sort by priority (highest first) so higher priority wins
-        all_commands.sort_by(|a, b| b.priority.cmp(&a.priority));
+        all_commands.sort_by_key(|cmd| std::cmp::Reverse(cmd.priority));
 
         // Register commands, tracking conflicts
         for cmd in all_commands {
@@ -248,14 +241,14 @@ impl SlashRegistry {
             .values()
             .filter(|c| c.name.starts_with(partial))
             .collect();
-        cmds.sort_by(|a, b| a.name.cmp(&b.name));
+        cmds.sort_by_key(|c| &c.name);
         cmds
     }
 
     /// Get all registered commands (for help text).
     pub fn all_commands(&self) -> Vec<&SlashCommandDef> {
         let mut cmds: Vec<_> = self.commands.values().collect();
-        cmds.sort_by(|a, b| a.name.cmp(&b.name));
+        cmds.sort_by_key(|c| &c.name);
         cmds
     }
 

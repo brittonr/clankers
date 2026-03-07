@@ -40,11 +40,6 @@ pub struct ToolEnv {
     pub process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
 }
 
-/// Build the default set of tools
-pub fn build_default_tools() -> Vec<Arc<dyn Tool>> {
-    build_tools_with_env(&ToolEnv::default())
-}
-
 /// Build the default set of tools, wiring up channels from a [`ToolEnv`].
 pub fn build_tools_with_env(env: &ToolEnv) -> Vec<Arc<dyn Tool>> {
     build_tools_with_events(
@@ -108,8 +103,8 @@ pub fn build_tools_with_events(
     // Enable remote peer routing if paths exist
     {
         let paths = crate::config::ClankersPaths::get();
-        let registry_path = crate::modes::rpc::peers::registry_path(&paths);
-        let identity_path = crate::modes::rpc::iroh::identity_path(&paths);
+        let registry_path = crate::modes::rpc::peers::registry_path(paths);
+        let identity_path = crate::modes::rpc::iroh::identity_path(paths);
         delegate_tool = delegate_tool.with_peer_routing(registry_path, identity_path);
     }
     if let Some(ref pm) = process_monitor {

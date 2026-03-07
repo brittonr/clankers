@@ -105,13 +105,6 @@ impl PaneRegistry {
     }
 
     /// Find the pane for a specific subagent by its string ID.
-    pub fn find_subagent(&self, subagent_id: &str) -> Option<PaneId> {
-        self.kinds.iter().find_map(|(&pane_id, kind)| match kind {
-            PaneKind::Subagent(id) if id == subagent_id => Some(pane_id),
-            _ => None,
-        })
-    }
-
     /// Find the first subagent pane (any subagent).
     pub fn find_any_subagent_pane(&self) -> Option<PaneId> {
         self.kinds.iter().find_map(|(&pane_id, kind)| match kind {

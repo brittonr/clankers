@@ -286,10 +286,8 @@ impl Agent {
         .await;
 
         // If the agent switched models during the turn, update our state
-        if let Some(slot) = &self.model_switch_slot {
-            if let Some(new_model) = slot.lock().take() {
-                self.model = new_model;
-            }
+        if let Some(slot) = &self.model_switch_slot && let Some(new_model) = slot.lock().take() {
+            self.model = new_model;
         }
 
         let _ = self.event_tx.send(AgentEvent::AgentEnd {
@@ -512,10 +510,8 @@ impl Agent {
             .await;
 
             // If the agent switched models during the phase, sync state
-            if let Some(slot) = &self.model_switch_slot {
-                if let Some(new_model) = slot.lock().take() {
-                    self.model = new_model;
-                }
+            if let Some(slot) = &self.model_switch_slot && let Some(new_model) = slot.lock().take() {
+                self.model = new_model;
             }
 
             result?;
@@ -544,22 +540,18 @@ impl Agent {
         for msg in &self.messages[start_index..] {
             if let AgentMessage::Assistant(asst) = msg {
                 for content in &asst.content {
-                    if let Content::ToolUse { name, .. } = content {
-                        if let Some(policy) = &self.routing_policy {
-                            summaries.push(ToolCallSummary {
-                                tool_name: name.clone(),
-                                complexity: policy.classify_tool(name),
-                            });
-                        }
+                    if let Content::ToolUse { name, .. } = content && let Some(policy) = &self.routing_policy {
+                        summaries.push(ToolCallSummary {
+                            tool_name: name.clone(),
+                            complexity: policy.classify_tool(name),
+                        });
                     }
                 }
-            } else if let AgentMessage::ToolResult(tool_result) = msg {
-                if let Some(policy) = &self.routing_policy {
-                    summaries.push(ToolCallSummary {
-                        tool_name: tool_result.tool_name.clone(),
-                        complexity: policy.classify_tool(&tool_result.tool_name),
-                    });
-                }
+            } else if let AgentMessage::ToolResult(tool_result) = msg && let Some(policy) = &self.routing_policy {
+                summaries.push(ToolCallSummary {
+                    tool_name: tool_result.tool_name.clone(),
+                    complexity: policy.classify_tool(&tool_result.tool_name),
+                });
             }
         }
 

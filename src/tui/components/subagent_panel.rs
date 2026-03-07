@@ -307,11 +307,7 @@ impl Panel for SubagentPanel {
                 // Try to focus the subagent's dedicated BSP pane.
                 // If the pane doesn't exist (over limit, dismissed, etc.),
                 // the caller will fall back to opening the detail view.
-                if let Some(entry) = self.entries.get(self.selected) {
-                    Some(PanelAction::FocusSubagent(entry.id.clone()))
-                } else {
-                    None
-                }
+                self.entries.get(self.selected).map(|entry| PanelAction::FocusSubagent(entry.id.clone()))
             }
             KeyCode::Esc if self.view == PanelView::Detail => {
                 self.close_detail();

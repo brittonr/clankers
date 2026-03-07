@@ -338,21 +338,6 @@ impl Panel for TodoPanel {
     }
 }
 
-// ── Legacy render function (bridge to Panel trait) ──────────────────────────
-
-/// Render the todo panel using the Panel trait infrastructure.
-pub fn render_todo_panel(
-    frame: &mut Frame,
-    panel: &TodoPanel,
-    theme: &crate::tui::theme::Theme,
-    area: Rect,
-    focused: bool,
-) {
-    use crate::tui::panel::draw_panel;
-    let ctx = DrawContext { theme, focused };
-    draw_panel(frame, panel, area, &ctx);
-}
-
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

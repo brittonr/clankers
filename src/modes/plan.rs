@@ -97,11 +97,6 @@ The user has approved your implementation plan. Now execute it step by step:
 4. If you encounter issues, explain them before deviating from the plan
 ";
 
-/// Get the restricted tool set for plan mode (read-only tools)
-pub fn plan_mode_tools() -> Vec<&'static str> {
-    vec!["read", "grep", "find", "ls", "bash"]
-}
-
 /// Check if a tool is allowed in plan mode
 pub fn is_tool_allowed_in_plan_mode(tool_name: &str) -> bool {
     // In plan mode, only read-only tools are allowed

@@ -3,9 +3,7 @@
 use std::time::Duration;
 
 use crossterm::event::Event;
-use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
-use crossterm::event::KeyModifiers;
 use crossterm::event::MouseButton;
 use crossterm::event::MouseEventKind;
 use crossterm::event::{self};
@@ -71,33 +69,6 @@ pub fn poll_event(timeout: Duration) -> Option<AppEvent> {
     } else {
         None
     }
-}
-
-/// Check if key event is a quit command (Ctrl+C or Ctrl+D)
-pub fn is_quit(key: &KeyEvent) -> bool {
-    matches!(key, KeyEvent {
-        code: KeyCode::Char('c' | 'd'),
-        modifiers: KeyModifiers::CONTROL,
-        ..
-    })
-}
-
-/// Check if key event is submit (Enter without modifiers)
-pub fn is_submit(key: &KeyEvent) -> bool {
-    matches!(key, KeyEvent {
-        code: KeyCode::Enter,
-        modifiers: KeyModifiers::NONE,
-        ..
-    })
-}
-
-/// Check if key event is Alt+Enter (newline in input)
-pub fn is_alt_enter(key: &KeyEvent) -> bool {
-    matches!(key, KeyEvent {
-        code: KeyCode::Enter,
-        modifiers: KeyModifiers::ALT,
-        ..
-    })
 }
 
 #[cfg(test)]

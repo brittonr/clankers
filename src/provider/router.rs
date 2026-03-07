@@ -235,16 +235,6 @@ impl RouterProvider {
         &self.registry
     }
 
-    /// List all registered provider names
-    pub fn provider_names(&self) -> Vec<&str> {
-        self.providers.keys().map(String::as_str).collect()
-    }
-
-    /// Get a specific provider by name
-    pub fn get_provider(&self, name: &str) -> Option<&dyn Provider> {
-        self.providers.get(name).map(|p| p.as_ref())
-    }
-
     /// Number of registered providers
     pub fn provider_count(&self) -> usize {
         self.providers.len()

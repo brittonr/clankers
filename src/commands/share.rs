@@ -30,7 +30,7 @@ pub async fn run_share(_ctx: &crate::commands::CommandContext, read_only: bool) 
             Ok(())
         }
         Err(e) => Err(crate::error::Error::Io {
-            source: std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to share session: {}", e)),
+            source: std::io::Error::other(format!("Failed to share session: {}", e)),
         }),
     }
 }
@@ -61,7 +61,7 @@ pub async fn run_join(node_id: &str, psk: &str) -> Result<()> {
             Ok(())
         }
         Err(e) => Err(crate::error::Error::Io {
-            source: std::io::Error::new(std::io::ErrorKind::Other, format!("Failed to join session: {}", e)),
+            source: std::io::Error::other(format!("Failed to join session: {}", e)),
         }),
     }
 }

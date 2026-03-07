@@ -126,12 +126,6 @@ impl DelegateTool {
         self
     }
 
-    /// List active worker names
-    pub async fn list_workers(&self) -> Vec<String> {
-        let workers = self.workers.lock().await;
-        workers.keys().cloned().collect()
-    }
-
     /// Resolve which peer to use: explicit peer > tag match > agent match > None (local)
     fn resolve_peer(&self, peer: Option<&str>, tag: Option<&str>, agent: Option<&str>) -> Option<String> {
         let registry_path = self.peer_registry_path.as_ref()?;

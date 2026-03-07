@@ -153,32 +153,6 @@ fn parse_line_range(s: &str) -> Option<(usize, usize)> {
 
 /// Expand @file references in a prompt, replacing them with file contents.
 /// Returns the expanded prompt text.
-pub fn expand_at_refs(text: &str, cwd: &str) -> String {
-    let refs = find_at_refs(text);
-    if refs.is_empty() {
-        return text.to_string();
-    }
-
-    let mut result = text.to_string();
-    // Process in reverse order so indices stay valid
-    let mut sorted_refs = refs;
-    sorted_refs.sort_by_key(|r| Reverse(r.start));
-
-    for at_ref in sorted_refs {
-        let resolved = resolve_path(&at_ref.path, cwd);
-        let content = read_file_content(&resolved, at_ref.line_range);
-        let replacement = format_replacement(&at_ref.path, &content);
-
-        // Replace the @ref with the file content
-        // Find the exact position of this @ref in the current text
-        if let Some(pos) = result.find(&at_ref.raw) {
-            result.replace_range(pos..pos + at_ref.raw.len(), &replacement);
-        }
-    }
-
-    result
-}
-
 /// Expand `@file` references, returning structured content with text + images.
 ///
 /// Image files (`.jpg`, `.png`, `.gif`, `.webp`) are base64-encoded as
@@ -238,44 +212,6 @@ pub fn expand_at_refs_with_images(text: &str, cwd: &str) -> ExpandedContent {
 }
 
 /// Get completion suggestions for a partial @path
-pub fn complete_at_path(partial: &str, cwd: &str) -> Vec<String> {
-    let partial = partial.strip_prefix('@').unwrap_or(partial);
-    let resolved = resolve_path(partial, cwd);
-
-    let parent = if resolved.is_dir() {
-        resolved.clone()
-    } else {
-        resolved.parent().unwrap_or(Path::new(".")).to_path_buf()
-    };
-
-    let prefix = if resolved.is_dir() {
-        String::new()
-    } else {
-        resolved.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default()
-    };
-
-    let mut completions = Vec::new();
-    if let Ok(entries) = std::fs::read_dir(&parent) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.starts_with(&prefix) {
-                let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-                let path = if partial.contains('/') {
-                    let dir_part = &partial[..=partial.rfind('/').unwrap_or(0)];
-                    format!("@{}{}{}", dir_part, name, if is_dir { "/" } else { "" })
-                } else {
-                    format!("@{}{}", name, if is_dir { "/" } else { "" })
-                };
-                completions.push(path);
-            }
-        }
-    }
-
-    completions.sort();
-    completions.truncate(20);
-    completions
-}
-
 fn resolve_path(path: &str, cwd: &str) -> std::path::PathBuf {
     let p = Path::new(path);
     if p.is_absolute() {

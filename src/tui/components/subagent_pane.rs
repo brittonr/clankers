@@ -318,11 +318,6 @@ impl SubagentPaneManager {
     pub fn pane_id_for(&self, id: &str) -> Option<PaneId> {
         self.panes.get(id).map(|s| s.pane_id)
     }
-
-    /// All PaneIds owned by subagent panes.
-    pub fn all_pane_ids(&self) -> Vec<PaneId> {
-        self.panes.values().map(|s| s.pane_id).collect()
-    }
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────

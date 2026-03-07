@@ -252,37 +252,6 @@ impl MergeDaemon {
         }
         Ok(())
     }
-
-    /// Mark a worktree as completed (ready for merge)
-    pub fn mark_completed(&self, db: &Db, branch: &str) -> Result<()> {
-        db.worktrees().set_status(branch, WorktreeStatus::Completed)?;
-        Ok(())
-    }
-}
-
-/// Spawn the merge daemon as a background tokio task.
-///
-/// Runs a single merge cycle then exits. Designed to be called from
-/// `session_bridge::complete_and_merge` so merges happen automatically
-/// after each session ends.
-pub fn spawn_merge_task(
-    db: Db,
-    repo_root: PathBuf,
-    provider: Option<Arc<dyn Provider>>,
-    model: String,
-) -> tokio::task::JoinHandle<()> {
-    tokio::spawn(async move {
-        let daemon = match provider {
-            Some(p) => MergeDaemon::with_llm(repo_root, p, model),
-            None => MergeDaemon::new(repo_root),
-        };
-
-        match daemon.run_cycle(&db).await {
-            Ok(0) => {} // Nothing to merge
-            Ok(n) => info!(count = n, "background merge: merged branches"),
-            Err(e) => warn!(error = %e, "background merge cycle failed"),
-        }
-    })
 }
 
 /// Spawn a polling merge daemon that runs continuously.

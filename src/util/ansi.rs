@@ -162,12 +162,6 @@ pub fn truncate_visible(s: &str, max_width: usize) -> String {
 /// purposes while preserving the original styled lines.
 ///
 /// Returns `(stripped_lines, original_lines)`.
-pub fn split_strip_lines(s: &str) -> (Vec<String>, Vec<&str>) {
-    let original: Vec<&str> = s.lines().collect();
-    let stripped: Vec<String> = original.iter().map(|l| strip_ansi(l)).collect();
-    (stripped, original)
-}
-
 /// Parse a string containing ANSI SGR escape sequences into a vec of
 /// ratatui `Span`s with appropriate `Style`s applied.
 ///

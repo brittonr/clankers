@@ -82,13 +82,11 @@ impl AgentBuilder {
         }
 
         // Wire routing policy from settings
-        if let Some(routing_config) = self.settings.routing.as_ref() {
-            if routing_config.enabled {
-                let policy = RoutingPolicy::new(routing_config.clone());
-                agent = agent
-                    .with_routing_policy(policy)
-                    .with_model_roles(self.settings.model_roles.clone());
-            }
+        if let Some(routing_config) = self.settings.routing.as_ref() && routing_config.enabled {
+            let policy = RoutingPolicy::new(routing_config.clone());
+            agent = agent
+                .with_routing_policy(policy)
+                .with_model_roles(self.settings.model_roles.clone());
         }
 
         // Wire cost tracking from settings

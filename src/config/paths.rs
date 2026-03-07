@@ -116,22 +116,6 @@ impl ClankersPaths {
             pi_auth,
         }
     }
-
-    /// Ensure all global directories exist
-    pub fn ensure_dirs(&self) -> std::io::Result<()> {
-        for dir in [
-            &self.global_config_dir,
-            &self.global_agents_dir,
-            &self.global_skills_dir,
-            &self.global_prompts_dir,
-            &self.global_plugins_dir,
-            &self.global_sessions_dir,
-            &self.global_themes_dir,
-        ] {
-            std::fs::create_dir_all(dir)?;
-        }
-        Ok(())
-    }
 }
 
 impl ProjectPaths {

@@ -112,7 +112,7 @@ async fn main() -> Result<()> {
     };
 
     // ── Dispatch ───────────────────────────────────────────────────
-    dispatch(cli, ctx, resources).await
+    Box::pin(dispatch(cli, ctx, resources)).await
 }
 
 /// Validate mutually exclusive CLI flags.
@@ -191,7 +191,7 @@ async fn dispatch(
             std::process::exit(1);
         }
         None => {
-            run_agent_mode(cli, ctx, resources).await?;
+            Box::pin(run_agent_mode(cli, ctx, resources)).await?;
         }
     }
 

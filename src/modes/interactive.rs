@@ -365,7 +365,7 @@ pub async fn run_interactive(
                     peers_panel.server_running = true;
                     // Load initial peer list
                     let registry =
-                        crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(&paths));
+                        crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(paths));
                     let entries =
                         crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
                     peers_panel.set_peers(entries);
@@ -904,7 +904,7 @@ pub async fn start_embedded_rpc(
     use crate::modes::rpc::iroh;
 
     let paths = crate::config::ClankersPaths::get();
-    let identity_path = iroh::identity_path(&paths);
+    let identity_path = iroh::identity_path(paths);
     let identity = iroh::Identity::load_or_generate(&identity_path);
     let node_id = identity.public_key().to_string();
 
@@ -914,7 +914,7 @@ pub async fn start_embedded_rpc(
     let acl = if config.allow_all {
         iroh::AccessControl::open()
     } else {
-        let acl_path = iroh::allowlist_path(&paths);
+        let acl_path = iroh::allowlist_path(paths);
         let allowed = iroh::load_allowlist(&acl_path);
         iroh::AccessControl::from_allowlist(allowed)
     };
@@ -962,7 +962,7 @@ pub async fn start_embedded_rpc(
 
     // Start heartbeat if configured
     if let Some(interval) = config.heartbeat_interval {
-        let registry_path = crate::modes::rpc::peers::registry_path(&paths);
+        let registry_path = crate::modes::rpc::peers::registry_path(paths);
         let heartbeat_cancel = cancel.clone();
         let endpoint_arc = std::sync::Arc::new(endpoint);
         tokio::spawn(iroh::run_heartbeat(endpoint_arc, registry_path, interval, heartbeat_cancel));

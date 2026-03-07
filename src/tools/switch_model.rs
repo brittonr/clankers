@@ -140,16 +140,14 @@ impl Tool for SwitchModelTool {
         }
 
         // Budget check: disallow upgrades when over hard limit
-        if let Some(hard_limit) = self.budget_hard_limit {
-            if let Some(tracker) = &self.cost_tracker {
-                let total = tracker.total_cost();
-                if total >= hard_limit && self.is_upgrade(&current, &new_model) {
-                    return ToolResult::error(format!(
-                        "Cannot upgrade to {} — budget exceeded (${:.2}/${:.2}). \
-                         Try a cheaper model or continue with the current one.",
-                        new_model, total, hard_limit,
-                    ));
-                }
+        if let Some(hard_limit) = self.budget_hard_limit && let Some(tracker) = &self.cost_tracker {
+            let total = tracker.total_cost();
+            if total >= hard_limit && self.is_upgrade(&current, &new_model) {
+                return ToolResult::error(format!(
+                    "Cannot upgrade to {} — budget exceeded (${:.2}/${:.2}). \
+                     Try a cheaper model or continue with the current one.",
+                    new_model, total, hard_limit,
+                ));
             }
         }
 

@@ -68,36 +68,9 @@ pub fn new_pane(
     Ok(())
 }
 
-/// Close the focused pane
-pub fn close_pane() -> std::io::Result<()> {
-    zellij_action(&["close-pane"])
-}
-
 /// Return focus to the previous pane (used after spawning a new pane)
 pub fn focus_previous_pane() -> std::io::Result<()> {
     zellij_action(&["focus-previous-pane"])
-}
-
-/// Focus a pane by name (uses write-chars to search)
-pub fn focus_pane_by_name(name: &str) -> std::io::Result<()> {
-    // Zellij doesn't have direct "focus by name" - use go-to-tab-name or pipe
-    // For now, this is best-effort via the zellij action system
-    zellij_action(&["go-to-tab-name", name])
-}
-
-/// Rename the current pane
-pub fn rename_pane(name: &str) -> std::io::Result<()> {
-    zellij_action(&["rename-pane", name])
-}
-
-/// Write characters to the focused pane
-pub fn write_chars(chars: &str) -> std::io::Result<()> {
-    zellij_action(&["write-chars", chars])
-}
-
-/// Toggle floating panes
-pub fn toggle_floating() -> std::io::Result<()> {
-    zellij_action(&["toggle-floating-panes"])
 }
 
 /// Send a pipe message to a plugin.

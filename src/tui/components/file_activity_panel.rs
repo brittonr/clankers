@@ -423,21 +423,6 @@ impl FileActivityPanel {
     }
 }
 
-// ── Legacy render function (bridge to Panel trait) ──────────────────────────
-
-pub fn render_file_activity_panel(
-    frame: &mut Frame,
-    panel: &FileActivityPanel,
-    _cwd: &str, // now stored on the panel itself
-    theme: &crate::tui::theme::Theme,
-    area: Rect,
-    focused: bool,
-) {
-    use crate::tui::panel::draw_panel;
-    let ctx = DrawContext { theme, focused };
-    draw_panel(frame, panel, area, &ctx);
-}
-
 // ── Tests ───────────────────────────────────────────────────────────────────
 
 #[cfg(test)]

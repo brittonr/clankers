@@ -523,6 +523,7 @@ fn format_relative_time(epoch_secs: i64) -> String {
 pub mod sync_ops;
 pub use sync_ops as sync;
 
+#[cfg(test)]
 mod tests {
     use super::*;
 

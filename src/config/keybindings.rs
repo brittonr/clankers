@@ -316,11 +316,6 @@ impl ActionRegistry {
         );
     }
 
-    /// Check if an action is registered.
-    pub fn is_registered(&self, name: &str) -> bool {
-        self.actions.contains_key(name)
-    }
-
     /// Get all registered actions.
     pub fn all(&self) -> impl Iterator<Item = &ExtendedActionDef> {
         self.actions.values()
@@ -489,7 +484,7 @@ fn apply_overrides(map: &mut HashMap<KeyCombo, Action>, overrides: &HashMap<Stri
 
 /// Bindings shared by all presets in normal mode.
 fn common_normal() -> HashMap<KeyCombo, Action> {
-    use CoreAction::*;
+    use CoreAction::{EnterInsert, EnterCommand, Cancel, Quit, ScrollPageUp, ScrollPageDown, Unfocus, PasteImage};
     let mut m = HashMap::new();
 
     // ── Mode switching ───────────────────────────────
@@ -564,7 +559,7 @@ fn common_normal() -> HashMap<KeyCombo, Action> {
 ///
 /// Both arrow keys and hjkl for navigation — bare keys are free in normal mode.
 fn helix_normal() -> HashMap<KeyCombo, Action> {
-    use CoreAction::*;
+    use CoreAction::{FocusPrevBlock, FocusNextBlock, ScrollPageUp, ScrollPageDown, ScrollToTop, ScrollToBottom};
     let mut m = common_normal();
 
     // ── Block navigation (arrows + jk) ───────────────
@@ -598,7 +593,7 @@ fn helix_normal() -> HashMap<KeyCombo, Action> {
 ///
 /// hjkl for navigation.
 fn vim_normal() -> HashMap<KeyCombo, Action> {
-    use CoreAction::*;
+    use CoreAction::{FocusPrevBlock, FocusNextBlock, ScrollPageUp, ScrollPageDown, ScrollToTop, ScrollToBottom};
     let mut m = common_normal();
 
     // ── Block navigation (jk + arrows) ───────────────
@@ -634,7 +629,7 @@ fn vim_normal() -> HashMap<KeyCombo, Action> {
 
 /// Bindings shared by all presets in insert mode.
 fn common_insert() -> HashMap<KeyCombo, Action> {
-    use CoreAction::*;
+    use CoreAction::{EnterNormal, Submit, NewLine, Cancel, Quit, DeleteBack, DeleteForward, MoveLeft, MoveRight, MoveHome, MoveEnd, HistoryUp, HistoryDown, ScrollUp, ScrollDown, ScrollPageUp, ScrollPageDown, ScrollToTop, ScrollToBottom, MenuUp, MenuDown, MenuAccept, PasteImage};
     let mut m = HashMap::new();
 
     // ── Mode switching ───────────────────────────────
@@ -711,7 +706,7 @@ fn common_insert() -> HashMap<KeyCombo, Action> {
 
 /// Helix insert mode — emacs-readline shortcuts.
 fn helix_insert() -> HashMap<KeyCombo, Action> {
-    use CoreAction::*;
+    use CoreAction::{DeleteWord, ClearLine, MoveHome, MoveEnd};
     let mut m = common_insert();
 
     m.insert(kc(KeyCode::Char('w'), true, false, false), Action::Core(DeleteWord));
@@ -724,7 +719,7 @@ fn helix_insert() -> HashMap<KeyCombo, Action> {
 
 /// Vim insert mode — same readline shortcuts.
 fn vim_insert() -> HashMap<KeyCombo, Action> {
-    use CoreAction::*;
+    use CoreAction::{DeleteWord, ClearLine, MoveHome, MoveEnd};
     let mut m = common_insert();
 
     m.insert(kc(KeyCode::Char('w'), true, false, false), Action::Core(DeleteWord));
@@ -776,7 +771,7 @@ fn format_key_combo(k: &KeyCombo) -> String {
 }
 
 fn parse_action(s: &str) -> Option<Action> {
-    use CoreAction::*;
+    use CoreAction::{EnterInsert, EnterCommand, EnterNormal, Submit, NewLine, Cancel, Quit, MoveLeft, MoveRight, MoveHome, MoveEnd, DeleteBack, DeleteForward, DeleteWord, ClearLine, HistoryUp, HistoryDown, ScrollUp, ScrollDown, ScrollPageUp, ScrollPageDown, ScrollToTop, ScrollToBottom, FocusPrevBlock, FocusNextBlock, Unfocus, MenuUp, MenuDown, MenuAccept, MenuClose};
     
     let normalized = s.to_lowercase().replace('-', "_");
     

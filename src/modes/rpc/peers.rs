@@ -113,11 +113,6 @@ impl PeerRegistry {
         self.peers.values().filter(|p| p.capabilities.tags.iter().any(|t| t == tag)).collect()
     }
 
-    /// Find peers that accept prompts
-    pub fn find_prompt_capable(&self) -> Vec<&PeerInfo> {
-        self.peers.values().filter(|p| p.capabilities.accepts_prompts).collect()
-    }
-
     /// Find peers that have a specific agent definition
     pub fn find_by_agent(&self, agent_name: &str) -> Vec<&PeerInfo> {
         self.peers.values().filter(|p| p.capabilities.agents.iter().any(|a| a == agent_name)).collect()

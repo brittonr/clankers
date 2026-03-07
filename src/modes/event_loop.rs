@@ -427,10 +427,10 @@ pub(crate) fn handle_action(
             ExtendedAction::PanelKill => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
                 use crate::tui::panel::PanelId;
-                if let Some(sp) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents) {
-                    if let Some(id) = sp.selected_id() {
-                        let _ = panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest { id });
-                    }
+                if let Some(sp) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
+                    && let Some(id) = sp.selected_id()
+                {
+                    let _ = panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest { id });
                 }
             }
             ExtendedAction::PanelRemove => {

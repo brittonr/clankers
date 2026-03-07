@@ -42,10 +42,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     app.git_status.maybe_refresh();
 
     // Sync the cwd into file_activity_panel so it can shorten paths
-    if let Some(fap) = app.panels.downcast_mut::<crate::tui::components::file_activity_panel::FileActivityPanel>(crate::tui::panel::PanelId::Files) {
-        if fap.cwd != app.cwd {
-            fap.cwd.clone_from(&app.cwd);
-        }
+    if let Some(fap) = app.panels.downcast_mut::<crate::tui::components::file_activity_panel::FileActivityPanel>(crate::tui::panel::PanelId::Files)
+        && fap.cwd != app.cwd
+    {
+        fap.cwd.clone_from(&app.cwd);
     }
 
     // Refresh process panel entries from monitor
