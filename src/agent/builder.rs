@@ -93,7 +93,7 @@ impl AgentBuilder {
 
         // Wire cost tracking from settings
         if let Some(cost_config) = self.settings.cost_tracking.as_ref() {
-            let paths = self.paths.unwrap_or_else(ClankersPaths::resolve);
+            let paths = self.paths.unwrap_or_else(|| ClankersPaths::get().clone());
             let pricing = load_pricing(Some(&paths.global_config_dir));
             let tracker = Arc::new(CostTracker::new(pricing, cost_config.clone()));
             agent = agent.with_cost_tracker(tracker);

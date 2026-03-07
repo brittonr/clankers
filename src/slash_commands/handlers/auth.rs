@@ -18,7 +18,7 @@ impl SlashHandler for LoginHandler {
             ctx.app.login_verifier = Some((verifier.clone(), account_name.clone()));
 
             // Also persist verifier to disk so `clankers auth login --code` can use it
-            let paths = crate::config::ClankersPaths::resolve();
+            let paths = crate::config::ClankersPaths::get();
             let verifier_path = paths.global_config_dir.join(".login_verifier");
             std::fs::create_dir_all(&paths.global_config_dir).ok();
             std::fs::write(&verifier_path, &verifier).ok();
@@ -67,7 +67,7 @@ impl SlashHandler for LoginHandler {
         } else {
             // No in-memory verifier — try recovering from disk (e.g. login started in another clankers
             // instance)
-            let paths = crate::config::ClankersPaths::resolve();
+            let paths = crate::config::ClankersPaths::get();
             let verifier_path = paths.global_config_dir.join(".login_verifier");
             if let Ok(verifier) = std::fs::read_to_string(&verifier_path) {
                 if let Some((code, state)) = crate::modes::interactive::parse_oauth_input(&remaining_args) {
@@ -96,7 +96,7 @@ pub struct AccountHandler;
 
 impl SlashHandler for AccountHandler {
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = crate::config::ClankersPaths::get();
         let mut store = crate::provider::auth::AuthStore::load(&paths.global_auth);
 
         if args.is_empty() || args == "list" {

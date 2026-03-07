@@ -150,7 +150,7 @@ impl SlashHandler for PeersHandler {
 
         if args.is_empty() {
             // Just show the panel — refresh peers from registry
-            let paths = crate::config::ClankersPaths::resolve();
+            let paths = crate::config::ClankersPaths::get();
             let registry_path = crate::modes::rpc::peers::registry_path(&paths);
             let registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
             let entries =
@@ -169,7 +169,7 @@ impl SlashHandler for PeersHandler {
                     } else {
                         let node_id = parts[0].trim();
                         let name = parts[1].trim();
-                        let paths = crate::config::ClankersPaths::resolve();
+                        let paths = crate::config::ClankersPaths::get();
                         let registry_path = crate::modes::rpc::peers::registry_path(&paths);
                         let mut registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
                         registry.add(node_id, name);
@@ -193,7 +193,7 @@ impl SlashHandler for PeersHandler {
                     if subcmd_args.is_empty() {
                         ctx.app.push_system("Usage: /peers remove <name-or-id>".to_string(), true);
                     } else {
-                        let paths = crate::config::ClankersPaths::resolve();
+                        let paths = crate::config::ClankersPaths::get();
                         let registry_path = crate::modes::rpc::peers::registry_path(&paths);
                         let mut registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
                         // Try as node_id first, then by name
@@ -222,7 +222,7 @@ impl SlashHandler for PeersHandler {
                     }
                 }
                 "probe" => {
-                    let paths = crate::config::ClankersPaths::resolve();
+                    let paths = crate::config::ClankersPaths::get();
                     let registry_path = crate::modes::rpc::peers::registry_path(&paths);
                     let identity_path = crate::modes::rpc::iroh::identity_path(&paths);
 
@@ -270,7 +270,7 @@ impl SlashHandler for PeersHandler {
                 }
                 "discover" => {
                     ctx.app.push_system("Scanning LAN via mDNS (5s)...".to_string(), false);
-                    let paths = crate::config::ClankersPaths::resolve();
+                    let paths = crate::config::ClankersPaths::get();
                     let registry_path = crate::modes::rpc::peers::registry_path(&paths);
                     let identity_path = crate::modes::rpc::iroh::identity_path(&paths);
                     let ptx = ctx.panel_tx.clone();
@@ -282,7 +282,7 @@ impl SlashHandler for PeersHandler {
                     if subcmd_args.is_empty() {
                         ctx.app.push_system("Usage: /peers allow <node-id>".to_string(), true);
                     } else {
-                        let paths = crate::config::ClankersPaths::resolve();
+                        let paths = crate::config::ClankersPaths::get();
                         let acl_path = crate::modes::rpc::iroh::allowlist_path(&paths);
                         let mut allowed = crate::modes::rpc::iroh::load_allowlist(&acl_path);
                         allowed.insert(subcmd_args.to_string());
@@ -299,7 +299,7 @@ impl SlashHandler for PeersHandler {
                     if subcmd_args.is_empty() {
                         ctx.app.push_system("Usage: /peers deny <node-id>".to_string(), true);
                     } else {
-                        let paths = crate::config::ClankersPaths::resolve();
+                        let paths = crate::config::ClankersPaths::get();
                         let acl_path = crate::modes::rpc::iroh::allowlist_path(&paths);
                         let mut allowed = crate::modes::rpc::iroh::load_allowlist(&acl_path);
                         if allowed.remove(subcmd_args) {

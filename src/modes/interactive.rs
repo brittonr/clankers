@@ -81,7 +81,7 @@ pub async fn run_interactive(
     app.rebuild_slash_registry(plugin_manager.as_ref());
 
     // ── Session persistence setup ────────────────────────────────────────
-    let paths = crate::config::ClankersPaths::resolve();
+    let paths = crate::config::ClankersPaths::get();
     let sessions_dir = &paths.global_sessions_dir;
     let use_worktrees = settings.use_worktrees;
     let original_cwd = cwd.clone();
@@ -241,7 +241,7 @@ pub async fn run_interactive(
 
     // Populate active account name
     {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = crate::config::ClankersPaths::get();
         let store = crate::provider::auth::AuthStore::load(&paths.global_auth);
         app.active_account = store.active_account_name().to_string();
     }
@@ -597,7 +597,7 @@ async fn run_event_loop(
                     let result = crate::provider::anthropic::oauth::exchange_code(&code, &state, &verifier).await;
                     match result {
                         Ok(creds) => {
-                            let paths = crate::config::ClankersPaths::resolve();
+                            let paths = crate::config::ClankersPaths::get();
                             let mut store = crate::provider::auth::AuthStore::load(&paths.global_auth);
                             store.set_credentials(&account, creds);
                             store.switch_anthropic_account(&account);
@@ -654,7 +654,7 @@ async fn run_event_loop(
                     let _ = tx.send(agent.system_prompt().to_string());
                 }
                 AgentCommand::SwitchAccount(account_name) => {
-                    let paths = crate::config::ClankersPaths::resolve();
+                    let paths = crate::config::ClankersPaths::get();
                     let mut store = crate::provider::auth::AuthStore::load(&paths.global_auth);
                     if store.switch_anthropic_account(&account_name) {
                         if let Err(e) = store.save(&paths.global_auth) {
@@ -963,7 +963,7 @@ async fn run_event_loop(
                 .expect("peers panel");
             if count.is_multiple_of(200) && peers_panel.server_running {
                 let registry = crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(
-                    &crate::config::ClankersPaths::resolve(),
+                    &crate::config::ClankersPaths::get(),
                 ));
                 let entries =
                     crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
@@ -1346,7 +1346,7 @@ async fn run_event_loop(
                                             crate::tui::components::peers_panel::PeerStatus::Probing,
                                         );
                                         let node_id = peer.node_id.clone();
-                                        let paths = crate::config::ClankersPaths::resolve();
+                                        let paths = crate::config::ClankersPaths::get();
                                         let registry_path = crate::modes::rpc::peers::registry_path(&paths);
                                         let identity_path = crate::modes::rpc::iroh::identity_path(&paths);
                                         let ptx = panel_tx.clone();
@@ -1721,7 +1721,7 @@ pub async fn start_embedded_rpc(
 ) -> Result<(String, CancellationToken)> {
     use crate::modes::rpc::iroh;
 
-    let paths = crate::config::ClankersPaths::resolve();
+    let paths = crate::config::ClankersPaths::get();
     let identity_path = iroh::identity_path(&paths);
     let identity = iroh::Identity::load_or_generate(&identity_path);
     let node_id = identity.public_key().to_string();

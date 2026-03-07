@@ -107,7 +107,7 @@ pub fn build_tools_with_events(
     }
     // Enable remote peer routing if paths exist
     {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = crate::config::ClankersPaths::get();
         let registry_path = crate::modes::rpc::peers::registry_path(&paths);
         let identity_path = crate::modes::rpc::iroh::identity_path(&paths);
         delegate_tool = delegate_tool.with_peer_routing(registry_path, identity_path);

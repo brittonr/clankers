@@ -50,7 +50,7 @@ pub async fn run_json_with_options(
 
     // Wire cost tracking from settings
     if let Some(cost_config) = settings.cost_tracking.as_ref() {
-        let paths = crate::config::ClankersPaths::resolve();
+        let paths = crate::config::ClankersPaths::get();
         let pricing = crate::routing::cost_tracker::load_pricing(Some(&paths.global_config_dir));
         let tracker = Arc::new(crate::routing::cost_tracker::CostTracker::new(pricing, cost_config.clone()));
         agent = agent.with_cost_tracker(tracker);

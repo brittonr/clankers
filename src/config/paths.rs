@@ -5,6 +5,7 @@
 
 use std::path::Path;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 /// All resolved paths for clankers configuration and data
 #[derive(Debug, Clone)]
@@ -63,7 +64,19 @@ pub struct ProjectPaths {
     pub spec_dir: PathBuf,
 }
 
+/// Process-wide cached paths (resolved once on first access).
+static CACHED_PATHS: OnceLock<ClankersPaths> = OnceLock::new();
+
 impl ClankersPaths {
+    /// Returns a reference to the globally-cached paths.
+    ///
+    /// Resolves on first call, returns the cached value on subsequent calls.
+    /// Prefer this over [`resolve()`](Self::resolve) to avoid redundant
+    /// XDG/home-directory lookups.
+    pub fn get() -> &'static ClankersPaths {
+        CACHED_PATHS.get_or_init(Self::resolve)
+    }
+
     /// Resolve global paths using home directory.
     /// Also detects ~/.pi/agent/ as a fallback source for auth and settings.
     pub fn resolve() -> Self {

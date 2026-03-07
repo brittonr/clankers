@@ -515,7 +515,7 @@ pub(crate) fn handle_action(
                 }
             }
             "open_account_selector" => {
-                let paths = crate::config::ClankersPaths::resolve();
+                let paths = crate::config::ClankersPaths::get();
                 let store = crate::provider::auth::AuthStore::load(&paths.global_auth);
                 let accounts: Vec<crate::tui::components::account_selector::AccountItem> = store
                     .list_anthropic_accounts()

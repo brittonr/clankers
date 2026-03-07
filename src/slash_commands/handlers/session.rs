@@ -24,7 +24,7 @@ impl SlashHandler for SessionHandler {
 
             match subcmd {
                 "list" | "ls" => {
-                    let paths = crate::config::ClankersPaths::resolve();
+                    let paths = crate::config::ClankersPaths::get();
                     let limit: usize = if subcmd_args.is_empty() {
                         10
                     } else {
@@ -71,7 +71,7 @@ impl SlashHandler for SessionHandler {
                 "resume" | "open" => {
                     if subcmd_args.is_empty() {
                         // Open the session selector menu
-                        let paths = crate::config::ClankersPaths::resolve();
+                        let paths = crate::config::ClankersPaths::get();
                         let files = crate::session::store::list_sessions(&paths.global_sessions_dir, &ctx.app.cwd);
                         if files.is_empty() {
                             ctx.app.push_system("No sessions found for this directory.".to_string(), true);
@@ -112,7 +112,7 @@ impl SlashHandler for SessionHandler {
                         }
                     } else {
                         // Direct resume by ID
-                        let paths = crate::config::ClankersPaths::resolve();
+                        let paths = crate::config::ClankersPaths::get();
                         let files = crate::session::store::list_sessions(&paths.global_sessions_dir, &ctx.app.cwd);
                         let found = files.into_iter().find(|f| {
                             f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(subcmd_args))
@@ -132,7 +132,7 @@ impl SlashHandler for SessionHandler {
                     if subcmd_args.is_empty() {
                         ctx.app.push_system("Usage: /session delete <session-id>".to_string(), true);
                     } else {
-                        let paths = crate::config::ClankersPaths::resolve();
+                        let paths = crate::config::ClankersPaths::get();
                         let found = crate::session::store::find_session_by_id(
                             &paths.global_sessions_dir,
                             &ctx.app.cwd,
@@ -156,7 +156,7 @@ impl SlashHandler for SessionHandler {
                     }
                 }
                 "purge" => {
-                    let paths = crate::config::ClankersPaths::resolve();
+                    let paths = crate::config::ClankersPaths::get();
                     match crate::session::store::purge_sessions(&paths.global_sessions_dir, &ctx.app.cwd) {
                         Ok(count) => {
                             ctx.app.push_system(format!("Deleted {} session(s) for this directory.", count), false);
