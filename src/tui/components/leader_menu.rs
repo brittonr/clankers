@@ -427,316 +427,101 @@ pub struct BuiltinKeymapContributor;
 
 impl MenuContributor for BuiltinKeymapContributor {
     fn menu_items(&self) -> Vec<MenuContribution> {
-        use crate::config::keybindings::{Action, CoreAction, ExtendedAction};
-        use crate::registry::PRIORITY_BUILTIN;
-
-        vec![
-            // ── Root: submenu openers ──
-            MenuContribution {
-                key: 's',
-                label: "session".into(),
-                action: LeaderAction::Submenu("session".into()),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'l',
-                label: "layout".into(),
-                action: LeaderAction::Submenu("layout".into()),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            // ── Root: keymap actions ──
-            MenuContribution {
-                key: 'm',
-                label: "model".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenModelSelector)),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'a',
-                label: "account".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenAccountSelector)),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 't',
-                label: "toggle thinking".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::ToggleThinking)),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'T',
-                label: "show/hide thinking".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::ToggleShowThinking)),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'f',
-                label: "search output".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::SearchOutput)),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: '`',
-                label: "toggle panel".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::TogglePanelFocus)),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'o',
-                label: "external editor".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenEditor)),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'c',
-                label: "cancel/abort".into(),
-                action: LeaderAction::KeymapAction(Action::Core(CoreAction::Cancel)),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'x',
-                label: "clear input".into(),
-                action: LeaderAction::KeymapAction(Action::Core(CoreAction::ClearLine)),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            // ── Root: slash commands (moved to SlashCommand definitions) ──
-            // ── Session submenu ──
-            MenuContribution {
-                key: 'n',
-                label: "new".into(),
-                action: LeaderAction::SlashCommand("/new".into()),
-                placement: MenuPlacement::Submenu("session".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-
-            MenuContribution {
-                key: 'r',
-                label: "resume".into(),
-                action: LeaderAction::SlashCommand("/resume".into()),
-                placement: MenuPlacement::Submenu("session".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'l',
-                label: "list sessions".into(),
-                action: LeaderAction::SlashCommand("/sessions".into()),
-                placement: MenuPlacement::Submenu("session".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'c',
-                label: "compact".into(),
-                action: LeaderAction::SlashCommand("/compact".into()),
-                placement: MenuPlacement::Submenu("session".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            // ── Layout submenu ──
-            MenuContribution {
-                key: 'd',
-                label: "default (3-column)".into(),
-                action: LeaderAction::SlashCommand("/layout default".into()),
-                placement: MenuPlacement::Submenu("layout".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'w',
-                label: "wide chat".into(),
-                action: LeaderAction::SlashCommand("/layout wide".into()),
-                placement: MenuPlacement::Submenu("layout".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'f',
-                label: "focused (no panels)".into(),
-                action: LeaderAction::SlashCommand("/layout focused".into()),
-                placement: MenuPlacement::Submenu("layout".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'r',
-                label: "right-heavy".into(),
-                action: LeaderAction::SlashCommand("/layout right".into()),
-                placement: MenuPlacement::Submenu("layout".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: '1',
-                label: "toggle Todo".into(),
-                action: LeaderAction::SlashCommand("/layout toggle todo".into()),
-                placement: MenuPlacement::Submenu("layout".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: '2',
-                label: "toggle Files".into(),
-                action: LeaderAction::SlashCommand("/layout toggle files".into()),
-                placement: MenuPlacement::Submenu("layout".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: '3',
-                label: "toggle Subagents".into(),
-                action: LeaderAction::SlashCommand("/layout toggle subagents".into()),
-                placement: MenuPlacement::Submenu("layout".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: '4',
-                label: "toggle Peers".into(),
-                action: LeaderAction::SlashCommand("/layout toggle peers".into()),
-                placement: MenuPlacement::Submenu("layout".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: '5',
-                label: "toggle Processes".into(),
-                action: LeaderAction::SlashCommand("/layout toggle processes".into()),
-                placement: MenuPlacement::Submenu("layout".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: '6',
-                label: "toggle Branches".into(),
-                action: LeaderAction::SlashCommand("/layout toggle branches".into()),
-                placement: MenuPlacement::Submenu("layout".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            // ── Tiling submenu opener (from root) ──
-            MenuContribution {
-                key: 'p',
-                label: "pane".into(),
-                action: LeaderAction::Submenu("pane".into()),
-                placement: MenuPlacement::Root,
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            // ── Pane submenu items ──
-            MenuContribution {
-                key: 'z',
-                label: "zoom toggle".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneZoom)),
-                placement: MenuPlacement::Submenu("pane".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'v',
-                label: "split vertical".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneSplitVertical)),
-                placement: MenuPlacement::Submenu("pane".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'h',
-                label: "split horizontal".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneSplitHorizontal)),
-                placement: MenuPlacement::Submenu("pane".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'x',
-                label: "close pane".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneClose)),
-                placement: MenuPlacement::Submenu("pane".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: '=',
-                label: "equalize size".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneEqualize)),
-                placement: MenuPlacement::Submenu("pane".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: '+',
-                label: "grow pane".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneGrow)),
-                placement: MenuPlacement::Submenu("pane".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: '-',
-                label: "shrink pane".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneShrink)),
-                placement: MenuPlacement::Submenu("pane".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'H',
-                label: "move left".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneMoveLeft)),
-                placement: MenuPlacement::Submenu("pane".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'L',
-                label: "move right".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneMoveRight)),
-                placement: MenuPlacement::Submenu("pane".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'J',
-                label: "move down".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneMoveDown)),
-                placement: MenuPlacement::Submenu("pane".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-            MenuContribution {
-                key: 'K',
-                label: "move up".into(),
-                action: LeaderAction::KeymapAction(Action::Extended(ExtendedAction::PaneMoveUp)),
-                placement: MenuPlacement::Submenu("pane".into()),
-                priority: PRIORITY_BUILTIN,
-                source: "builtin".into(),
-            },
-        ]
+        let mut items = Vec::new();
+        items.extend(root_submenu_openers());
+        items.extend(root_keymap_actions());
+        items.extend(session_submenu_items());
+        items.extend(layout_submenu_items());
+        items.extend(pane_submenu_opener());
+        items.extend(pane_submenu_items());
+        items
     }
+}
+
+// ── Builtin menu data (grouped by section) ─────────────────────────────
+
+/// Helper to build a builtin MenuContribution with less boilerplate.
+fn builtin(key: char, label: &str, action: LeaderAction, placement: MenuPlacement) -> MenuContribution {
+    MenuContribution {
+        key,
+        label: label.into(),
+        action,
+        placement,
+        priority: crate::registry::PRIORITY_BUILTIN,
+        source: "builtin".into(),
+    }
+}
+
+fn root_submenu_openers() -> Vec<MenuContribution> {
+    vec![
+        builtin('s', "session", LeaderAction::Submenu("session".into()), MenuPlacement::Root),
+        builtin('l', "layout", LeaderAction::Submenu("layout".into()), MenuPlacement::Root),
+    ]
+}
+
+fn root_keymap_actions() -> Vec<MenuContribution> {
+    use crate::config::keybindings::{Action, CoreAction, ExtendedAction};
+    vec![
+        builtin('m', "model", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenModelSelector)), MenuPlacement::Root),
+        builtin('a', "account", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenAccountSelector)), MenuPlacement::Root),
+        builtin('t', "toggle thinking", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::ToggleThinking)), MenuPlacement::Root),
+        builtin('T', "show/hide thinking", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::ToggleShowThinking)), MenuPlacement::Root),
+        builtin('f', "search output", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::SearchOutput)), MenuPlacement::Root),
+        builtin('`', "toggle panel", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::TogglePanelFocus)), MenuPlacement::Root),
+        builtin('o', "external editor", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenEditor)), MenuPlacement::Root),
+        builtin('c', "cancel/abort", LeaderAction::KeymapAction(Action::Core(CoreAction::Cancel)), MenuPlacement::Root),
+        builtin('x', "clear input", LeaderAction::KeymapAction(Action::Core(CoreAction::ClearLine)), MenuPlacement::Root),
+    ]
+}
+
+fn session_submenu_items() -> Vec<MenuContribution> {
+    let p = |s: &str| MenuPlacement::Submenu(s.into());
+    vec![
+        builtin('n', "new", LeaderAction::SlashCommand("/new".into()), p("session")),
+        builtin('r', "resume", LeaderAction::SlashCommand("/resume".into()), p("session")),
+        builtin('l', "list sessions", LeaderAction::SlashCommand("/sessions".into()), p("session")),
+        builtin('c', "compact", LeaderAction::SlashCommand("/compact".into()), p("session")),
+    ]
+}
+
+fn layout_submenu_items() -> Vec<MenuContribution> {
+    let p = || MenuPlacement::Submenu("layout".into());
+    let cmd = |s: &str| LeaderAction::SlashCommand(s.into());
+    vec![
+        builtin('d', "default (3-column)", cmd("/layout default"), p()),
+        builtin('w', "wide chat", cmd("/layout wide"), p()),
+        builtin('f', "focused (no panels)", cmd("/layout focused"), p()),
+        builtin('r', "right-heavy", cmd("/layout right"), p()),
+        builtin('1', "toggle Todo", cmd("/layout toggle todo"), p()),
+        builtin('2', "toggle Files", cmd("/layout toggle files"), p()),
+        builtin('3', "toggle Subagents", cmd("/layout toggle subagents"), p()),
+        builtin('4', "toggle Peers", cmd("/layout toggle peers"), p()),
+        builtin('5', "toggle Processes", cmd("/layout toggle processes"), p()),
+        builtin('6', "toggle Branches", cmd("/layout toggle branches"), p()),
+    ]
+}
+
+fn pane_submenu_opener() -> Vec<MenuContribution> {
+    vec![builtin('p', "pane", LeaderAction::Submenu("pane".into()), MenuPlacement::Root)]
+}
+
+fn pane_submenu_items() -> Vec<MenuContribution> {
+    use crate::config::keybindings::{Action, ExtendedAction};
+    let p = || MenuPlacement::Submenu("pane".into());
+    let ext = |e: ExtendedAction| LeaderAction::KeymapAction(Action::Extended(e));
+    vec![
+        builtin('z', "zoom toggle", ext(ExtendedAction::PaneZoom), p()),
+        builtin('v', "split vertical", ext(ExtendedAction::PaneSplitVertical), p()),
+        builtin('h', "split horizontal", ext(ExtendedAction::PaneSplitHorizontal), p()),
+        builtin('x', "close pane", ext(ExtendedAction::PaneClose), p()),
+        builtin('=', "equalize size", ext(ExtendedAction::PaneEqualize), p()),
+        builtin('+', "grow pane", ext(ExtendedAction::PaneGrow), p()),
+        builtin('-', "shrink pane", ext(ExtendedAction::PaneShrink), p()),
+        builtin('H', "move left", ext(ExtendedAction::PaneMoveLeft), p()),
+        builtin('L', "move right", ext(ExtendedAction::PaneMoveRight), p()),
+        builtin('J', "move down", ext(ExtendedAction::PaneMoveDown), p()),
+        builtin('K', "move up", ext(ExtendedAction::PaneMoveUp), p()),
+    ]
 }
 
 /// Convert slash commands with `leader_key` bindings into menu contributions.
