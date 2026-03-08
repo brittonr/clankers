@@ -241,13 +241,13 @@ fn resolve_agent_overrides(cli: &Cli, ctx: &CommandContext) -> Result<(String, S
             .agent_scope
             .as_ref()
             .map(|s| match s {
-                AgentScopeArg::User => clankers::agents::definition::AgentScope::User,
-                AgentScopeArg::Project => clankers::agents::definition::AgentScope::Project,
-                AgentScopeArg::Both => clankers::agents::definition::AgentScope::Both,
+                AgentScopeArg::User => clankers::agent_defs::definition::AgentScope::User,
+                AgentScopeArg::Project => clankers::agent_defs::definition::AgentScope::Project,
+                AgentScopeArg::Both => clankers::agent_defs::definition::AgentScope::Both,
             })
             .unwrap_or_default();
 
-        let registry = clankers::agents::discovery::discover_agents(
+        let registry = clankers::agent_defs::discovery::discover_agents(
             &ctx.paths.global_agents_dir,
             Some(&ctx.project_paths.agents_dir),
             &agent_scope,

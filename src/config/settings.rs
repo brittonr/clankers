@@ -7,7 +7,7 @@ use serde::Serialize;
 
 use serde_json;
 
-use crate::agents::definition::AgentScope;
+use crate::agent_defs::definition::AgentScope;
 use crate::config::keybindings::KeymapConfig;
 use crate::config::model_roles::ModelRoles;
 use crate::tui::components::leader_menu::MenuPlacement;

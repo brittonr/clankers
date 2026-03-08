@@ -60,8 +60,8 @@ pub async fn run(
             );
 
             // Discover available agent definitions
-            let agent_scope = crate::agents::definition::AgentScope::default();
-            let agent_registry = crate::agents::discovery::discover_agents(
+            let agent_scope = crate::agent_defs::definition::AgentScope::default();
+            let agent_registry = crate::agent_defs::discovery::discover_agents(
                 &ctx.paths.global_agents_dir,
                 Some(&ctx.project_paths.agents_dir),
                 &agent_scope,
