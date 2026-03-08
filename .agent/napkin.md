@@ -18,6 +18,8 @@
 | 2026-03-07 | self | Both `delegate_task` and `subagent` parallel tasks report success on file refactors but changes don't persist to the main repo | Always do refactoring directly. delegate_task/subagent tools cannot reliably persist multi-file edits. Only use them for read-only analysis or single-file writes. |
 | 2026-03-07 | self | Worker removed `use super::*` from git_ops test module (clippy said unused) but tests needed it | Clippy `unused_import` on `super::*` inside a non-`#[cfg(test)]` mod — the fix is adding `#[cfg(test)]`, not removing the import |
 | 2026-03-07 | self | Subagent parallel workers for single-file clippy fixes worked reliably across 4 groups (no persistence issues) | Subagent parallel tasks DO work well for single-file mechanical edits (clippy fixes, dead code removal) — the persistence issue is mainly with multi-file refactors and worktrees |
+| 2026-03-07 | self | Subagent parallel workers for single-file refactors (function extraction, module splits) worked reliably across 16 parallel batches | Subagent workers work great for: extract helpers from long functions, split file into directory module, move tests to separate file. Key: each task targets 1-2 files max, uses `cargo check` as gate. |
+| 2026-03-07 | self | Panel downcast `.expect()` calls aren't bugs (panels always registered at startup) but are noisy | Replace bare `.expect("panel")` with descriptive `.expect("X panel registered at startup")` or wrap in typed helper methods for readability |
 
 ## User Preferences
 - Don't care about backwards compat — fix the implementation properly
