@@ -130,12 +130,8 @@ pub trait Tool: Send + Sync {
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult;
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ToolDefinition {
-    pub name: String,
-    pub description: String,
-    pub input_schema: Value, // JSON Schema
-}
+// Re-export ToolDefinition from clankers-router (canonical definition)
+pub use clankers_router::provider::ToolDefinition;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolResult {
