@@ -164,102 +164,68 @@ pub enum ExtendedAction {
     PaneMoveDown,
 }
 
+// Name mapping table for ExtendedAction
+const EXTENDED_ACTION_NAMES: &[(ExtendedAction, &[&str])] = &[
+    (ExtendedAction::SearchOutput, &["search_output", "search", "find"]),
+    (ExtendedAction::SearchNext, &["search_next", "next_match"]),
+    (ExtendedAction::SearchPrev, &["search_prev", "prev_match"]),
+    (ExtendedAction::ToggleBlockCollapse, &["toggle_block_collapse", "toggle_collapse"]),
+    (ExtendedAction::CollapseAllBlocks, &["collapse_all_blocks", "collapse_all"]),
+    (ExtendedAction::ExpandAllBlocks, &["expand_all_blocks", "expand_all"]),
+    (ExtendedAction::CopyBlock, &["copy_block"]),
+    (ExtendedAction::RerunBlock, &["rerun_block"]),
+    (ExtendedAction::EditBlock, &["edit_block"]),
+    (ExtendedAction::BranchPrev, &["branch_prev"]),
+    (ExtendedAction::BranchNext, &["branch_next"]),
+    (ExtendedAction::ToggleBlockIds, &["toggle_block_ids", "toggle_ids"]),
+    (ExtendedAction::ToggleThinking, &["toggle_thinking"]),
+    (ExtendedAction::ToggleShowThinking, &["toggle_show_thinking"]),
+    (ExtendedAction::TogglePanelFocus, &["toggle_panel_focus", "panel_focus"]),
+    (ExtendedAction::ToggleCostOverlay, &["toggle_cost_overlay", "cost_overlay"]),
+    (ExtendedAction::ToggleSessionPopup, &["toggle_session_popup", "session_popup"]),
+    (ExtendedAction::ToggleBranchPanel, &["toggle_branch_panel", "branch_panel"]),
+    (ExtendedAction::PanelNextTab, &["panel_next_tab", "panel_next"]),
+    (ExtendedAction::PanelPrevTab, &["panel_prev_tab", "panel_prev"]),
+    (ExtendedAction::PanelScrollUp, &["panel_scroll_up"]),
+    (ExtendedAction::PanelScrollDown, &["panel_scroll_down"]),
+    (ExtendedAction::PanelClearDone, &["panel_clear_done", "panel_clear"]),
+    (ExtendedAction::PanelKill, &["panel_kill"]),
+    (ExtendedAction::PanelRemove, &["panel_remove"]),
+    (ExtendedAction::OpenLeaderMenu, &["open_leader_menu", "leader_menu", "leader"]),
+    (ExtendedAction::OpenModelSelector, &["open_model_selector", "model_selector"]),
+    (ExtendedAction::OpenAccountSelector, &["open_account_selector", "account_selector"]),
+    (ExtendedAction::OpenBranchSwitcher, &["open_branch_switcher", "branch_switcher"]),
+    (ExtendedAction::OpenEditor, &["open_editor", "editor"]),
+    (ExtendedAction::PasteImage, &["paste_image"]),
+    (ExtendedAction::PaneZoom, &["pane_zoom", "zoom", "zoom_toggle"]),
+    (ExtendedAction::PaneSplitHorizontal, &["pane_split_horizontal"]),
+    (ExtendedAction::PaneSplitVertical, &["pane_split_vertical"]),
+    (ExtendedAction::PaneClose, &["pane_close"]),
+    (ExtendedAction::PaneEqualize, &["pane_equalize"]),
+    (ExtendedAction::PaneGrow, &["pane_grow"]),
+    (ExtendedAction::PaneShrink, &["pane_shrink"]),
+    (ExtendedAction::PaneMoveLeft, &["pane_move_left"]),
+    (ExtendedAction::PaneMoveRight, &["pane_move_right"]),
+    (ExtendedAction::PaneMoveUp, &["pane_move_up"]),
+    (ExtendedAction::PaneMoveDown, &["pane_move_down"]),
+];
+
 impl ExtendedAction {
     /// Parse from a string name (for keymap config and leader menu).
     pub fn from_name(s: &str) -> Option<Self> {
-        match s {
-            "search_output" | "search" | "find" => Some(Self::SearchOutput),
-            "search_next" | "next_match" => Some(Self::SearchNext),
-            "search_prev" | "prev_match" => Some(Self::SearchPrev),
-            "toggle_block_collapse" | "toggle_collapse" => Some(Self::ToggleBlockCollapse),
-            "collapse_all_blocks" | "collapse_all" => Some(Self::CollapseAllBlocks),
-            "expand_all_blocks" | "expand_all" => Some(Self::ExpandAllBlocks),
-            "copy_block" => Some(Self::CopyBlock),
-            "rerun_block" => Some(Self::RerunBlock),
-            "edit_block" => Some(Self::EditBlock),
-            "branch_prev" => Some(Self::BranchPrev),
-            "branch_next" => Some(Self::BranchNext),
-            "toggle_block_ids" | "toggle_ids" => Some(Self::ToggleBlockIds),
-            "toggle_thinking" => Some(Self::ToggleThinking),
-            "toggle_show_thinking" => Some(Self::ToggleShowThinking),
-            "toggle_panel_focus" | "panel_focus" => Some(Self::TogglePanelFocus),
-            "toggle_cost_overlay" | "cost_overlay" => Some(Self::ToggleCostOverlay),
-            "toggle_session_popup" | "session_popup" => Some(Self::ToggleSessionPopup),
-            "toggle_branch_panel" | "branch_panel" => Some(Self::ToggleBranchPanel),
-            "panel_next_tab" | "panel_next" => Some(Self::PanelNextTab),
-            "panel_prev_tab" | "panel_prev" => Some(Self::PanelPrevTab),
-            "panel_scroll_up" => Some(Self::PanelScrollUp),
-            "panel_scroll_down" => Some(Self::PanelScrollDown),
-            "panel_clear_done" | "panel_clear" => Some(Self::PanelClearDone),
-            "panel_kill" => Some(Self::PanelKill),
-            "panel_remove" => Some(Self::PanelRemove),
-            "open_leader_menu" | "leader_menu" | "leader" => Some(Self::OpenLeaderMenu),
-            "open_model_selector" | "model_selector" => Some(Self::OpenModelSelector),
-            "open_account_selector" | "account_selector" => Some(Self::OpenAccountSelector),
-            "open_branch_switcher" | "branch_switcher" => Some(Self::OpenBranchSwitcher),
-            "open_editor" | "editor" => Some(Self::OpenEditor),
-            "paste_image" => Some(Self::PasteImage),
-            "pane_zoom" | "zoom" | "zoom_toggle" => Some(Self::PaneZoom),
-            "pane_split_horizontal" => Some(Self::PaneSplitHorizontal),
-            "pane_split_vertical" => Some(Self::PaneSplitVertical),
-            "pane_close" => Some(Self::PaneClose),
-            "pane_equalize" => Some(Self::PaneEqualize),
-            "pane_grow" => Some(Self::PaneGrow),
-            "pane_shrink" => Some(Self::PaneShrink),
-            "pane_move_left" => Some(Self::PaneMoveLeft),
-            "pane_move_right" => Some(Self::PaneMoveRight),
-            "pane_move_up" => Some(Self::PaneMoveUp),
-            "pane_move_down" => Some(Self::PaneMoveDown),
-            _ => None,
-        }
+        EXTENDED_ACTION_NAMES
+            .iter()
+            .find(|(_, names)| names.contains(&s))
+            .map(|(action, _)| *action)
     }
 
     /// Canonical string name (for serialization and display).
     pub fn name(self) -> &'static str {
-        match self {
-            Self::SearchOutput => "search_output",
-            Self::SearchNext => "search_next",
-            Self::SearchPrev => "search_prev",
-            Self::ToggleBlockCollapse => "toggle_block_collapse",
-            Self::CollapseAllBlocks => "collapse_all_blocks",
-            Self::ExpandAllBlocks => "expand_all_blocks",
-            Self::CopyBlock => "copy_block",
-            Self::RerunBlock => "rerun_block",
-            Self::EditBlock => "edit_block",
-            Self::BranchPrev => "branch_prev",
-            Self::BranchNext => "branch_next",
-            Self::ToggleBlockIds => "toggle_block_ids",
-            Self::ToggleThinking => "toggle_thinking",
-            Self::ToggleShowThinking => "toggle_show_thinking",
-            Self::TogglePanelFocus => "toggle_panel_focus",
-            Self::ToggleCostOverlay => "toggle_cost_overlay",
-            Self::ToggleSessionPopup => "toggle_session_popup",
-            Self::ToggleBranchPanel => "toggle_branch_panel",
-            Self::PanelNextTab => "panel_next_tab",
-            Self::PanelPrevTab => "panel_prev_tab",
-            Self::PanelScrollUp => "panel_scroll_up",
-            Self::PanelScrollDown => "panel_scroll_down",
-            Self::PanelClearDone => "panel_clear_done",
-            Self::PanelKill => "panel_kill",
-            Self::PanelRemove => "panel_remove",
-            Self::OpenLeaderMenu => "open_leader_menu",
-            Self::OpenModelSelector => "open_model_selector",
-            Self::OpenAccountSelector => "open_account_selector",
-            Self::OpenBranchSwitcher => "open_branch_switcher",
-            Self::OpenEditor => "open_editor",
-            Self::PasteImage => "paste_image",
-            Self::PaneZoom => "pane_zoom",
-            Self::PaneSplitHorizontal => "pane_split_horizontal",
-            Self::PaneSplitVertical => "pane_split_vertical",
-            Self::PaneClose => "pane_close",
-            Self::PaneEqualize => "pane_equalize",
-            Self::PaneGrow => "pane_grow",
-            Self::PaneShrink => "pane_shrink",
-            Self::PaneMoveLeft => "pane_move_left",
-            Self::PaneMoveRight => "pane_move_right",
-            Self::PaneMoveUp => "pane_move_up",
-            Self::PaneMoveDown => "pane_move_down",
-        }
+        EXTENDED_ACTION_NAMES
+            .iter()
+            .find(|(action, _)| *action == self)
+            .map(|(_, names)| names[0])
+            .expect("all ExtendedActions must have names")
     }
 }
 
@@ -352,13 +318,42 @@ impl KeyCombo {
     }
 }
 
+// Key string parser lookup table
+const KEY_CODE_NAMES: &[(&str, KeyCode)] = &[
+    ("enter", KeyCode::Enter),
+    ("return", KeyCode::Enter),
+    ("cr", KeyCode::Enter),
+    ("esc", KeyCode::Esc),
+    ("escape", KeyCode::Esc),
+    ("tab", KeyCode::Tab),
+    ("backspace", KeyCode::Backspace),
+    ("bs", KeyCode::Backspace),
+    ("delete", KeyCode::Delete),
+    ("del", KeyCode::Delete),
+    ("up", KeyCode::Up),
+    ("down", KeyCode::Down),
+    ("left", KeyCode::Left),
+    ("right", KeyCode::Right),
+    ("home", KeyCode::Home),
+    ("end", KeyCode::End),
+    ("pageup", KeyCode::PageUp),
+    ("pgup", KeyCode::PageUp),
+    ("pagedown", KeyCode::PageDown),
+    ("pgdn", KeyCode::PageDown),
+    ("space", KeyCode::Char(' ')),
+    ("spc", KeyCode::Char(' ')),
+    ("/", KeyCode::Char('/')),
+];
+
 /// Parse a human-readable key string like `"Ctrl+K"`, `"Alt+Enter"`, `"e"`.
 fn parse_key_string(s: &str) -> Option<KeyCombo> {
     let parts: Vec<&str> = s.split('+').map(str::trim).collect();
     let key_str = parts.last()?;
+    
     let mut ctrl = false;
     let mut alt = false;
     let mut shift = false;
+    
     for part in &parts[..parts.len() - 1] {
         match part.to_lowercase().as_str() {
             "ctrl" => ctrl = true,
@@ -368,25 +363,18 @@ fn parse_key_string(s: &str) -> Option<KeyCombo> {
         }
     }
 
-    let code = match key_str.to_lowercase().as_str() {
-        "enter" | "return" | "cr" => KeyCode::Enter,
-        "esc" | "escape" => KeyCode::Esc,
-        "tab" => KeyCode::Tab,
-        "backspace" | "bs" => KeyCode::Backspace,
-        "delete" | "del" => KeyCode::Delete,
-        "up" => KeyCode::Up,
-        "down" => KeyCode::Down,
-        "left" => KeyCode::Left,
-        "right" => KeyCode::Right,
-        "home" => KeyCode::Home,
-        "end" => KeyCode::End,
-        "pageup" | "pgup" => KeyCode::PageUp,
-        "pagedown" | "pgdn" => KeyCode::PageDown,
-        "space" | "spc" => KeyCode::Char(' '),
-        "/" => KeyCode::Char('/'),
-        s if s.len() == 1 => KeyCode::Char(s.chars().next().unwrap()),
-        _ => return None,
-    };
+    let key_lower = key_str.to_lowercase();
+    let code = KEY_CODE_NAMES
+        .iter()
+        .find(|(name, _)| *name == key_lower)
+        .map(|(_, code)| *code)
+        .or_else(|| {
+            if key_str.len() == 1 {
+                key_str.chars().next().map(KeyCode::Char)
+            } else {
+                None
+            }
+        })?;
 
     Some(KeyCombo { code, ctrl, alt, shift })
 }
@@ -479,148 +467,173 @@ fn apply_overrides(map: &mut HashMap<KeyCombo, Action>, overrides: &HashMap<Stri
 }
 
 // ===========================================================================
+// Keymap building helpers
+// ===========================================================================
+
+/// Helper to create a KeyCombo
+fn kc(code: KeyCode, ctrl: bool, alt: bool, shift: bool) -> KeyCombo {
+    KeyCombo { code, ctrl, alt, shift }
+}
+
+/// Helper type for key binding entries
+type KeyBinding = (KeyCode, bool, bool, bool, Action);
+
+/// Build a hashmap from a slice of key bindings
+fn build_keymap(bindings: &[KeyBinding]) -> HashMap<KeyCombo, Action> {
+    bindings
+        .iter()
+        .map(|(code, ctrl, alt, shift, action)| (kc(*code, *ctrl, *alt, *shift), action.clone()))
+        .collect()
+}
+
+/// Merge multiple keymaps into one
+fn merge_keymaps(maps: &[HashMap<KeyCombo, Action>]) -> HashMap<KeyCombo, Action> {
+    let mut result = HashMap::new();
+    for map in maps {
+        result.extend(map.clone());
+    }
+    result
+}
+
+// ===========================================================================
 // Normal mode presets
 // ===========================================================================
 
 /// Bindings shared by all presets in normal mode.
 fn common_normal() -> HashMap<KeyCombo, Action> {
-    use CoreAction::{EnterInsert, EnterCommand, Cancel, Quit, ScrollPageUp, ScrollPageDown, Unfocus, PasteImage};
-    let mut m = HashMap::new();
+    use CoreAction::*;
+    use ExtendedAction as EA;
+    
+    build_keymap(&[
+        // ── Mode switching ───────────────────────────────
+        (KeyCode::Char('i'), false, false, false, Action::Core(EnterInsert)),
+        (KeyCode::Char('/'), false, false, false, Action::Core(EnterCommand)),
 
-    // ── Mode switching ───────────────────────────────
-    m.insert(kc(KeyCode::Char('i'), false, false, false), Action::Core(EnterInsert));
-    m.insert(kc(KeyCode::Char('/'), false, false, false), Action::Core(EnterCommand));
+        // ── Cancel / quit ────────────────────────────────
+        (KeyCode::Char('c'), true, false, false, Action::Core(Cancel)),
+        (KeyCode::Char('q'), false, false, false, Action::Core(Quit)),
 
-    // ── Cancel / quit ────────────────────────────────
-    m.insert(kc(KeyCode::Char('c'), true, false, false), Action::Core(Cancel));
-    m.insert(kc(KeyCode::Char('q'), false, false, false), Action::Core(Quit));
+        // ── Scrolling ────────────────────────────────────
+        (KeyCode::PageUp, false, false, false, Action::Core(ScrollPageUp)),
+        (KeyCode::PageDown, false, false, false, Action::Core(ScrollPageDown)),
 
-    // ── Scrolling ────────────────────────────────────
-    m.insert(kc(KeyCode::PageUp, false, false, false), Action::Core(ScrollPageUp));
-    m.insert(kc(KeyCode::PageDown, false, false, false), Action::Core(ScrollPageDown));
+        // ── Block operations (universal) ─────────────────
+        (KeyCode::Tab, false, false, false, Action::Extended(EA::ToggleBlockCollapse)),
+        (KeyCode::Char('y'), false, false, false, Action::Extended(EA::CopyBlock)),
+        (KeyCode::Char('e'), false, false, false, Action::Extended(EA::EditBlock)),
+        (KeyCode::Char('r'), false, false, false, Action::Extended(EA::RerunBlock)),
+        (KeyCode::Esc, false, false, false, Action::Core(Unfocus)),
 
-    // ── Block operations (universal) ─────────────────
-    m.insert(kc(KeyCode::Tab, false, false, false), Action::Extended(ExtendedAction::ToggleBlockCollapse));
-    m.insert(kc(KeyCode::Char('y'), false, false, false), Action::Extended(ExtendedAction::CopyBlock));
-    m.insert(kc(KeyCode::Char('e'), false, false, false), Action::Extended(ExtendedAction::EditBlock));
-    m.insert(kc(KeyCode::Char('r'), false, false, false), Action::Extended(ExtendedAction::RerunBlock));
-    m.insert(kc(KeyCode::Esc, false, false, false), Action::Core(Unfocus));
+        // ── Toggles ──────────────────────────────────────
+        (KeyCode::Char('t'), true, false, false, Action::Extended(EA::ToggleThinking)),
+        (KeyCode::Char('T'), false, false, true, Action::Extended(EA::ToggleShowThinking)),
+        (KeyCode::Char('C'), false, false, true, Action::Extended(EA::ToggleCostOverlay)),
+        (KeyCode::Char('I'), false, false, true, Action::Extended(EA::ToggleBlockIds)),
 
-    // ── Toggles ──────────────────────────────────────
-    m.insert(kc(KeyCode::Char('t'), true, false, false), Action::Extended(ExtendedAction::ToggleThinking));
-    m.insert(kc(KeyCode::Char('T'), false, false, true), Action::Extended(ExtendedAction::ToggleShowThinking));
+        // ── Popups / panels ──────────────────────────────
+        (KeyCode::Char('s'), false, false, false, Action::Extended(EA::ToggleSessionPopup)),
+        (KeyCode::Char('b'), false, false, false, Action::Extended(EA::ToggleBranchPanel)),
+        (KeyCode::Char('B'), false, false, true, Action::Extended(EA::OpenBranchSwitcher)),
 
-    // ── Cost overlay ──────────────────────────────────
-    m.insert(kc(KeyCode::Char('C'), false, false, true), Action::Extended(ExtendedAction::ToggleCostOverlay));
+        // ── Selectors ─────────────────────────────────────
+        (KeyCode::Char('m'), false, false, false, Action::Extended(EA::OpenModelSelector)),
+        (KeyCode::Char('a'), false, false, false, Action::Extended(EA::OpenAccountSelector)),
 
-    // ── Session popup ─────────────────────────────────
-    m.insert(kc(KeyCode::Char('s'), false, false, false), Action::Extended(ExtendedAction::ToggleSessionPopup));
+        // ── Leader key (Space) ──────────────────────────
+        (KeyCode::Char(' '), false, false, false, Action::Extended(EA::OpenLeaderMenu)),
 
-    // ── Branch panel / switcher ────────────────────────
-    m.insert(kc(KeyCode::Char('b'), false, false, false), Action::Extended(ExtendedAction::ToggleBranchPanel));
-    m.insert(kc(KeyCode::Char('B'), false, false, true), Action::Extended(ExtendedAction::OpenBranchSwitcher));
+        // ── External editor ──────────────────────────────
+        (KeyCode::Char('o'), false, false, false, Action::Extended(EA::OpenEditor)),
 
-    // ── Block IDs ─────────────────────────────────────
-    m.insert(kc(KeyCode::Char('I'), false, false, true), Action::Extended(ExtendedAction::ToggleBlockIds));
+        // ── Search ────────────────────────────────────────
+        (KeyCode::Char('f'), false, false, false, Action::Extended(EA::SearchOutput)),
+        (KeyCode::Char('f'), true, false, false, Action::Extended(EA::SearchOutput)),
+        (KeyCode::Char('n'), false, false, false, Action::Extended(EA::SearchNext)),
+        (KeyCode::Char('N'), false, false, true, Action::Extended(EA::SearchPrev)),
 
-    // ── Selectors ─────────────────────────────────────
-    m.insert(kc(KeyCode::Char('m'), false, false, false), Action::Extended(ExtendedAction::OpenModelSelector));
-    m.insert(kc(KeyCode::Char('a'), false, false, false), Action::Extended(ExtendedAction::OpenAccountSelector));
+        // ── Subagent / Todo panel ────────────────────────
+        (KeyCode::Char('`'), false, false, false, Action::Extended(EA::TogglePanelFocus)),
+        (KeyCode::Char('`'), true, false, false, Action::Extended(EA::TogglePanelFocus)),
+        (KeyCode::Char('x'), true, false, false, Action::Extended(EA::PanelClearDone)),
 
-    // ── Leader key (Space) ──────────────────────────
-    m.insert(kc(KeyCode::Char(' '), false, false, false), Action::Extended(ExtendedAction::OpenLeaderMenu));
+        // ── Clipboard paste (text or image) ─────────────
+        (KeyCode::Char('v'), true, false, false, Action::Core(PasteImage)),
+        (KeyCode::Char('v'), true, false, true, Action::Core(PasteImage)),
+    ])
+}
 
-    // ── External editor ──────────────────────────────
-    m.insert(kc(KeyCode::Char('o'), false, false, false), Action::Extended(ExtendedAction::OpenEditor));
+/// Helix normal mode navigation bindings
+fn helix_normal_nav() -> HashMap<KeyCombo, Action> {
+    use CoreAction::*;
+    use ExtendedAction as EA;
+    
+    build_keymap(&[
+        // ── Block navigation (arrows + jk) ───────────────
+        (KeyCode::Up, false, false, false, Action::Core(FocusPrevBlock)),
+        (KeyCode::Down, false, false, false, Action::Core(FocusNextBlock)),
+        (KeyCode::Char('k'), false, false, false, Action::Core(FocusPrevBlock)),
+        (KeyCode::Char('j'), false, false, false, Action::Core(FocusNextBlock)),
 
-    // ── Search ────────────────────────────────────────
-    m.insert(kc(KeyCode::Char('f'), false, false, false), Action::Extended(ExtendedAction::SearchOutput));
-    m.insert(kc(KeyCode::Char('f'), true, false, false), Action::Extended(ExtendedAction::SearchOutput));
-    m.insert(kc(KeyCode::Char('n'), false, false, false), Action::Extended(ExtendedAction::SearchNext));
-    m.insert(kc(KeyCode::Char('N'), false, false, true), Action::Extended(ExtendedAction::SearchPrev));
+        // ── Branch navigation (arrows + hl) ──────────────
+        (KeyCode::Left, false, false, false, Action::Extended(EA::BranchPrev)),
+        (KeyCode::Right, false, false, false, Action::Extended(EA::BranchNext)),
+        (KeyCode::Char('h'), false, false, false, Action::Extended(EA::BranchPrev)),
+        (KeyCode::Char('l'), false, false, false, Action::Extended(EA::BranchNext)),
 
-    // ── Subagent / Todo panel ────────────────────────
-    m.insert(kc(KeyCode::Char('`'), false, false, false), Action::Extended(ExtendedAction::TogglePanelFocus));
-    m.insert(kc(KeyCode::Char('`'), true, false, false), Action::Extended(ExtendedAction::TogglePanelFocus));
-    // Tab switching (h/l) is handled contextually when panel is focused —
-    // BranchPrev/BranchNext (h/l) are remapped to PanelPrevTab/PanelNextTab.
-    m.insert(kc(KeyCode::Char('x'), true, false, false), Action::Extended(ExtendedAction::PanelClearDone));
-    // Panel-only keys (x=kill, X=remove) are handled via raw key intercept
-    // in the event loop when panel is focused — not in the keymap.
+        // ── Scrolling ────────────────────────────────────
+        (KeyCode::Char('u'), true, false, false, Action::Core(ScrollPageUp)),
+        (KeyCode::Char('d'), true, false, false, Action::Core(ScrollPageDown)),
 
-    // ── Clipboard paste (text or image) ─────────────
-    m.insert(kc(KeyCode::Char('v'), true, false, false), Action::Core(PasteImage));
-    m.insert(kc(KeyCode::Char('v'), true, false, true), Action::Core(PasteImage));
+        // ── Collapse / expand all ────────────────────────
+        (KeyCode::Char('K'), false, false, true, Action::Extended(EA::CollapseAllBlocks)),
+        (KeyCode::Char('L'), false, false, true, Action::Extended(EA::ExpandAllBlocks)),
 
-    m
+        // ── Scroll extremes ──────────────────────────────
+        (KeyCode::Char('g'), false, false, false, Action::Core(ScrollToTop)),
+        (KeyCode::Char('G'), false, false, true, Action::Core(ScrollToBottom)),
+    ])
+}
+
+/// Vim normal mode navigation bindings
+fn vim_normal_nav() -> HashMap<KeyCombo, Action> {
+    use CoreAction::*;
+    use ExtendedAction as EA;
+    
+    build_keymap(&[
+        // ── Block navigation (jk + arrows) ───────────────
+        (KeyCode::Char('k'), false, false, false, Action::Core(FocusPrevBlock)),
+        (KeyCode::Char('j'), false, false, false, Action::Core(FocusNextBlock)),
+        (KeyCode::Up, false, false, false, Action::Core(FocusPrevBlock)),
+        (KeyCode::Down, false, false, false, Action::Core(FocusNextBlock)),
+
+        // ── Branch navigation (hl + arrows) ──────────────
+        (KeyCode::Char('h'), false, false, false, Action::Extended(EA::BranchPrev)),
+        (KeyCode::Char('l'), false, false, false, Action::Extended(EA::BranchNext)),
+        (KeyCode::Left, false, false, false, Action::Extended(EA::BranchPrev)),
+        (KeyCode::Right, false, false, false, Action::Extended(EA::BranchNext)),
+
+        // ── Scrolling ────────────────────────────────────
+        (KeyCode::Char('u'), true, false, false, Action::Core(ScrollPageUp)),
+        (KeyCode::Char('d'), true, false, false, Action::Core(ScrollPageDown)),
+
+        // ── Collapse / expand all ────────────────────────
+        (KeyCode::Char('K'), false, false, true, Action::Extended(EA::CollapseAllBlocks)),
+        (KeyCode::Char('L'), false, false, true, Action::Extended(EA::ExpandAllBlocks)),
+
+        // ── Scroll extremes ──────────────────────────────
+        (KeyCode::Char('g'), false, false, false, Action::Core(ScrollToTop)),
+        (KeyCode::Char('G'), false, false, true, Action::Core(ScrollToBottom)),
+    ])
 }
 
 /// Helix normal mode.
-///
-/// Both arrow keys and hjkl for navigation — bare keys are free in normal mode.
 fn helix_normal() -> HashMap<KeyCombo, Action> {
-    use CoreAction::{FocusPrevBlock, FocusNextBlock, ScrollPageUp, ScrollPageDown, ScrollToTop, ScrollToBottom};
-    let mut m = common_normal();
-
-    // ── Block navigation (arrows + jk) ───────────────
-    m.insert(kc(KeyCode::Up, false, false, false), Action::Core(FocusPrevBlock));
-    m.insert(kc(KeyCode::Down, false, false, false), Action::Core(FocusNextBlock));
-    m.insert(kc(KeyCode::Char('k'), false, false, false), Action::Core(FocusPrevBlock));
-    m.insert(kc(KeyCode::Char('j'), false, false, false), Action::Core(FocusNextBlock));
-
-    // ── Branch navigation (arrows + hl) ──────────────
-    m.insert(kc(KeyCode::Left, false, false, false), Action::Extended(ExtendedAction::BranchPrev));
-    m.insert(kc(KeyCode::Right, false, false, false), Action::Extended(ExtendedAction::BranchNext));
-    m.insert(kc(KeyCode::Char('h'), false, false, false), Action::Extended(ExtendedAction::BranchPrev));
-    m.insert(kc(KeyCode::Char('l'), false, false, false), Action::Extended(ExtendedAction::BranchNext));
-
-    // ── Scrolling ────────────────────────────────────
-    m.insert(kc(KeyCode::Char('u'), true, false, false), Action::Core(ScrollPageUp));
-    m.insert(kc(KeyCode::Char('d'), true, false, false), Action::Core(ScrollPageDown));
-
-    // ── Collapse / expand all ────────────────────────
-    m.insert(kc(KeyCode::Char('K'), false, false, true), Action::Extended(ExtendedAction::CollapseAllBlocks));
-    m.insert(kc(KeyCode::Char('L'), false, false, true), Action::Extended(ExtendedAction::ExpandAllBlocks));
-
-    // ── Scroll extremes ──────────────────────────────
-    m.insert(kc(KeyCode::Char('g'), false, false, false), Action::Core(ScrollToTop));
-    m.insert(kc(KeyCode::Char('G'), false, false, true), Action::Core(ScrollToBottom));
-
-    m
+    merge_keymaps(&[common_normal(), helix_normal_nav()])
 }
 
 /// Vim normal mode.
-///
-/// hjkl for navigation.
 fn vim_normal() -> HashMap<KeyCombo, Action> {
-    use CoreAction::{FocusPrevBlock, FocusNextBlock, ScrollPageUp, ScrollPageDown, ScrollToTop, ScrollToBottom};
-    let mut m = common_normal();
-
-    // ── Block navigation (jk + arrows) ───────────────
-    m.insert(kc(KeyCode::Char('k'), false, false, false), Action::Core(FocusPrevBlock));
-    m.insert(kc(KeyCode::Char('j'), false, false, false), Action::Core(FocusNextBlock));
-    m.insert(kc(KeyCode::Up, false, false, false), Action::Core(FocusPrevBlock));
-    m.insert(kc(KeyCode::Down, false, false, false), Action::Core(FocusNextBlock));
-
-    // ── Branch navigation (hl + arrows) ──────────────
-    m.insert(kc(KeyCode::Char('h'), false, false, false), Action::Extended(ExtendedAction::BranchPrev));
-    m.insert(kc(KeyCode::Char('l'), false, false, false), Action::Extended(ExtendedAction::BranchNext));
-    m.insert(kc(KeyCode::Left, false, false, false), Action::Extended(ExtendedAction::BranchPrev));
-    m.insert(kc(KeyCode::Right, false, false, false), Action::Extended(ExtendedAction::BranchNext));
-
-    // ── Scrolling ────────────────────────────────────
-    m.insert(kc(KeyCode::Char('u'), true, false, false), Action::Core(ScrollPageUp));
-    m.insert(kc(KeyCode::Char('d'), true, false, false), Action::Core(ScrollPageDown));
-
-    // ── Collapse / expand all ────────────────────────
-    m.insert(kc(KeyCode::Char('K'), false, false, true), Action::Extended(ExtendedAction::CollapseAllBlocks));
-    m.insert(kc(KeyCode::Char('L'), false, false, true), Action::Extended(ExtendedAction::ExpandAllBlocks));
-
-    // ── Scroll extremes ──────────────────────────────
-    m.insert(kc(KeyCode::Char('g'), false, false, false), Action::Core(ScrollToTop));
-    m.insert(kc(KeyCode::Char('G'), false, false, true), Action::Core(ScrollToBottom));
-
-    m
+    merge_keymaps(&[common_normal(), vim_normal_nav()])
 }
 
 // ===========================================================================
@@ -629,114 +642,149 @@ fn vim_normal() -> HashMap<KeyCombo, Action> {
 
 /// Bindings shared by all presets in insert mode.
 fn common_insert() -> HashMap<KeyCombo, Action> {
-    use CoreAction::{EnterNormal, Submit, NewLine, Cancel, Quit, DeleteBack, DeleteForward, MoveLeft, MoveRight, MoveHome, MoveEnd, HistoryUp, HistoryDown, ScrollUp, ScrollDown, ScrollPageUp, ScrollPageDown, ScrollToTop, ScrollToBottom, MenuUp, MenuDown, MenuAccept, PasteImage};
-    let mut m = HashMap::new();
+    use CoreAction::*;
+    use ExtendedAction as EA;
+    
+    build_keymap(&[
+        // ── Mode switching ───────────────────────────────
+        (KeyCode::Esc, false, false, false, Action::Core(EnterNormal)),
 
-    // ── Mode switching ───────────────────────────────
-    m.insert(kc(KeyCode::Esc, false, false, false), Action::Core(EnterNormal));
+        // ── Submit / newline ─────────────────────────────
+        (KeyCode::Enter, false, false, false, Action::Core(Submit)),
+        (KeyCode::Enter, false, true, false, Action::Core(NewLine)),
 
-    // ── Submit / newline ─────────────────────────────
-    m.insert(kc(KeyCode::Enter, false, false, false), Action::Core(Submit));
-    m.insert(kc(KeyCode::Enter, false, true, false), Action::Core(NewLine));
+        // ── Cancel / quit ────────────────────────────────
+        (KeyCode::Char('c'), true, false, false, Action::Core(Cancel)),
+        (KeyCode::Char('d'), true, false, false, Action::Core(Quit)),
 
-    // ── Cancel / quit ────────────────────────────────
-    m.insert(kc(KeyCode::Char('c'), true, false, false), Action::Core(Cancel));
-    m.insert(kc(KeyCode::Char('d'), true, false, false), Action::Core(Quit));
+        // ── Basic editing ────────────────────────────────
+        (KeyCode::Backspace, false, false, false, Action::Core(DeleteBack)),
+        (KeyCode::Delete, false, false, false, Action::Core(DeleteForward)),
 
-    // ── Basic editing ────────────────────────────────
-    m.insert(kc(KeyCode::Backspace, false, false, false), Action::Core(DeleteBack));
-    m.insert(kc(KeyCode::Delete, false, false, false), Action::Core(DeleteForward));
+        // ── Arrow movement ───────────────────────────────
+        (KeyCode::Left, false, false, false, Action::Core(MoveLeft)),
+        (KeyCode::Right, false, false, false, Action::Core(MoveRight)),
+        (KeyCode::Home, false, false, false, Action::Core(MoveHome)),
+        (KeyCode::End, false, false, false, Action::Core(MoveEnd)),
 
-    // ── Arrow movement ───────────────────────────────
-    m.insert(kc(KeyCode::Left, false, false, false), Action::Core(MoveLeft));
-    m.insert(kc(KeyCode::Right, false, false, false), Action::Core(MoveRight));
-    m.insert(kc(KeyCode::Home, false, false, false), Action::Core(MoveHome));
-    m.insert(kc(KeyCode::End, false, false, false), Action::Core(MoveEnd));
+        // ── History ──────────────────────────────────────
+        (KeyCode::Up, false, false, false, Action::Core(HistoryUp)),
+        (KeyCode::Down, false, false, false, Action::Core(HistoryDown)),
 
-    // ── History ──────────────────────────────────────
-    m.insert(kc(KeyCode::Up, false, false, false), Action::Core(HistoryUp));
-    m.insert(kc(KeyCode::Down, false, false, false), Action::Core(HistoryDown));
+        // ── Scrolling (Ctrl+arrows) ──────────────────────
+        (KeyCode::Up, true, false, false, Action::Core(ScrollUp)),
+        (KeyCode::Down, true, false, false, Action::Core(ScrollDown)),
+        (KeyCode::PageUp, false, false, false, Action::Core(ScrollPageUp)),
+        (KeyCode::PageDown, false, false, false, Action::Core(ScrollPageDown)),
+        (KeyCode::Home, true, false, false, Action::Core(ScrollToTop)),
+        (KeyCode::End, true, false, false, Action::Core(ScrollToBottom)),
 
-    // ── Scrolling (Ctrl+arrows) ──────────────────────
-    m.insert(kc(KeyCode::Up, true, false, false), Action::Core(ScrollUp));
-    m.insert(kc(KeyCode::Down, true, false, false), Action::Core(ScrollDown));
-    m.insert(kc(KeyCode::PageUp, false, false, false), Action::Core(ScrollPageUp));
-    m.insert(kc(KeyCode::PageDown, false, false, false), Action::Core(ScrollPageDown));
-    m.insert(kc(KeyCode::Home, true, false, false), Action::Core(ScrollToTop));
-    m.insert(kc(KeyCode::End, true, false, false), Action::Core(ScrollToBottom));
+        // ── Menu navigation (Ctrl+j/k, Ctrl+n/p, Tab) ───
+        (KeyCode::Char('k'), true, false, false, Action::Core(MenuUp)),
+        (KeyCode::Char('j'), true, false, false, Action::Core(MenuDown)),
+        (KeyCode::Char('p'), true, false, false, Action::Core(MenuUp)),
+        (KeyCode::Char('n'), true, false, false, Action::Core(MenuDown)),
+        (KeyCode::Tab, false, false, false, Action::Core(MenuAccept)),
 
-    // ── Menu navigation (Ctrl+j/k, Ctrl+n/p, Tab) ───
-    m.insert(kc(KeyCode::Char('k'), true, false, false), Action::Core(MenuUp));
-    m.insert(kc(KeyCode::Char('j'), true, false, false), Action::Core(MenuDown));
-    m.insert(kc(KeyCode::Char('p'), true, false, false), Action::Core(MenuUp));
-    m.insert(kc(KeyCode::Char('n'), true, false, false), Action::Core(MenuDown));
-    m.insert(kc(KeyCode::Tab, false, false, false), Action::Core(MenuAccept));
+        // ── Search ────────────────────────────────────────
+        (KeyCode::Char('f'), true, false, false, Action::Extended(EA::SearchOutput)),
 
-    // ── Search ────────────────────────────────────────
-    m.insert(kc(KeyCode::Char('f'), true, false, false), Action::Extended(ExtendedAction::SearchOutput));
+        // ── Panel focus ────────────────────────────────────
+        (KeyCode::Char('`'), true, false, false, Action::Extended(EA::TogglePanelFocus)),
 
-    // ── Panel focus ────────────────────────────────────
-    m.insert(kc(KeyCode::Char('`'), true, false, false), Action::Extended(ExtendedAction::TogglePanelFocus));
+        // ── Toggles ───────────────────────────────────────
+        (KeyCode::Char('C'), true, false, true, Action::Extended(EA::ToggleCostOverlay)),
+        (KeyCode::Char('s'), true, false, false, Action::Extended(EA::ToggleSessionPopup)),
+        (KeyCode::Char('b'), true, false, false, Action::Extended(EA::ToggleBranchPanel)),
+        (KeyCode::Char('i'), true, false, false, Action::Extended(EA::ToggleBlockIds)),
 
-    // ── Cost overlay ──────────────────────────────────
-    m.insert(kc(KeyCode::Char('C'), true, false, true), Action::Extended(ExtendedAction::ToggleCostOverlay));
+        // ── Selectors (Ctrl+M model, Ctrl+A account) ────
+        (KeyCode::Char('m'), true, false, false, Action::Extended(EA::OpenModelSelector)),
+        (KeyCode::Char('a'), true, false, false, Action::Extended(EA::OpenAccountSelector)),
 
-    // ── Session popup ────────────────────────────────
-    m.insert(kc(KeyCode::Char('s'), true, false, false), Action::Extended(ExtendedAction::ToggleSessionPopup));
+        // ── Clipboard paste (text or image) ─────────────
+        (KeyCode::Char('v'), true, false, false, Action::Core(PasteImage)),
+        (KeyCode::Char('v'), true, false, true, Action::Core(PasteImage)),
 
-    // ── Branch panel ──────────────────────────────────
-    m.insert(kc(KeyCode::Char('b'), true, false, false), Action::Extended(ExtendedAction::ToggleBranchPanel));
-
-    // ── Block IDs ─────────────────────────────────────
-    m.insert(kc(KeyCode::Char('i'), true, false, false), Action::Extended(ExtendedAction::ToggleBlockIds));
-
-    // ── Selectors (Ctrl+M model, Ctrl+A account) ────
-    m.insert(kc(KeyCode::Char('m'), true, false, false), Action::Extended(ExtendedAction::OpenModelSelector));
-    m.insert(kc(KeyCode::Char('a'), true, false, false), Action::Extended(ExtendedAction::OpenAccountSelector));
-
-    // ── Clipboard paste (text or image) ─────────────
-    m.insert(kc(KeyCode::Char('v'), true, false, false), Action::Core(PasteImage));
-    m.insert(kc(KeyCode::Char('v'), true, false, true), Action::Core(PasteImage));
-
-    // ── External editor ──────────────────────────────
-    m.insert(kc(KeyCode::Char('o'), true, false, false), Action::Extended(ExtendedAction::OpenEditor));
-
-    m
+        // ── External editor ──────────────────────────────
+        (KeyCode::Char('o'), true, false, false, Action::Extended(EA::OpenEditor)),
+    ])
 }
 
-/// Helix insert mode — emacs-readline shortcuts.
+/// Readline-style editing shortcuts (shared by helix and vim)
+fn readline_shortcuts() -> HashMap<KeyCombo, Action> {
+    use CoreAction::*;
+    
+    build_keymap(&[
+        (KeyCode::Char('w'), true, false, false, Action::Core(DeleteWord)),
+        (KeyCode::Char('u'), true, false, false, Action::Core(ClearLine)),
+        (KeyCode::Char('a'), true, false, false, Action::Core(MoveHome)),
+        (KeyCode::Char('e'), true, false, false, Action::Core(MoveEnd)),
+    ])
+}
+
+/// Helix insert mode (identical to vim insert)
 fn helix_insert() -> HashMap<KeyCombo, Action> {
-    use CoreAction::{DeleteWord, ClearLine, MoveHome, MoveEnd};
-    let mut m = common_insert();
-
-    m.insert(kc(KeyCode::Char('w'), true, false, false), Action::Core(DeleteWord));
-    m.insert(kc(KeyCode::Char('u'), true, false, false), Action::Core(ClearLine));
-    m.insert(kc(KeyCode::Char('a'), true, false, false), Action::Core(MoveHome));
-    m.insert(kc(KeyCode::Char('e'), true, false, false), Action::Core(MoveEnd));
-
-    m
+    merge_keymaps(&[common_insert(), readline_shortcuts()])
 }
 
-/// Vim insert mode — same readline shortcuts.
+/// Vim insert mode (identical to helix insert)
 fn vim_insert() -> HashMap<KeyCombo, Action> {
-    use CoreAction::{DeleteWord, ClearLine, MoveHome, MoveEnd};
-    let mut m = common_insert();
-
-    m.insert(kc(KeyCode::Char('w'), true, false, false), Action::Core(DeleteWord));
-    m.insert(kc(KeyCode::Char('u'), true, false, false), Action::Core(ClearLine));
-    m.insert(kc(KeyCode::Char('a'), true, false, false), Action::Core(MoveHome));
-    m.insert(kc(KeyCode::Char('e'), true, false, false), Action::Core(MoveEnd));
-
-    m
+    merge_keymaps(&[common_insert(), readline_shortcuts()])
 }
 
 // ---------------------------------------------------------------------------
-// Helpers
+// Action parsing
 // ---------------------------------------------------------------------------
 
-fn kc(code: KeyCode, ctrl: bool, alt: bool, shift: bool) -> KeyCombo {
-    KeyCombo { code, ctrl, alt, shift }
+/// Core action name mappings
+const CORE_ACTION_NAMES: &[(CoreAction, &[&str])] = &[
+    (CoreAction::EnterInsert, &["enter_insert"]),
+    (CoreAction::EnterCommand, &["enter_command"]),
+    (CoreAction::EnterNormal, &["enter_normal"]),
+    (CoreAction::Submit, &["submit"]),
+    (CoreAction::NewLine, &["new_line", "newline"]),
+    (CoreAction::Cancel, &["cancel"]),
+    (CoreAction::Quit, &["quit"]),
+    (CoreAction::MoveLeft, &["move_left"]),
+    (CoreAction::MoveRight, &["move_right"]),
+    (CoreAction::MoveHome, &["move_home"]),
+    (CoreAction::MoveEnd, &["move_end"]),
+    (CoreAction::DeleteBack, &["delete_back"]),
+    (CoreAction::DeleteForward, &["delete_forward"]),
+    (CoreAction::DeleteWord, &["delete_word"]),
+    (CoreAction::ClearLine, &["clear_line"]),
+    (CoreAction::HistoryUp, &["history_up"]),
+    (CoreAction::HistoryDown, &["history_down"]),
+    (CoreAction::ScrollUp, &["scroll_up"]),
+    (CoreAction::ScrollDown, &["scroll_down"]),
+    (CoreAction::ScrollPageUp, &["scroll_page_up", "page_up"]),
+    (CoreAction::ScrollPageDown, &["scroll_page_down", "page_down"]),
+    (CoreAction::ScrollToTop, &["scroll_to_top"]),
+    (CoreAction::ScrollToBottom, &["scroll_to_bottom"]),
+    (CoreAction::FocusPrevBlock, &["focus_prev_block", "prev_block"]),
+    (CoreAction::FocusNextBlock, &["focus_next_block", "next_block"]),
+    (CoreAction::Unfocus, &["unfocus"]),
+    (CoreAction::MenuUp, &["menu_up"]),
+    (CoreAction::MenuDown, &["menu_down"]),
+    (CoreAction::MenuAccept, &["menu_accept"]),
+    (CoreAction::MenuClose, &["menu_close"]),
+];
+
+fn parse_action(s: &str) -> Option<Action> {
+    let normalized = s.to_lowercase().replace('-', "_");
+    
+    // Try core actions first
+    CORE_ACTION_NAMES
+        .iter()
+        .find(|(_, names)| names.contains(&normalized.as_str()))
+        .map(|(action, _)| Action::Core(*action))
+        .or_else(|| ExtendedAction::from_name(&normalized).map(Action::Extended))
 }
+
+// ---------------------------------------------------------------------------
+// Formatting helpers
+// ---------------------------------------------------------------------------
 
 fn format_key_combo(k: &KeyCombo) -> String {
     let mut parts = Vec::new();
@@ -768,54 +816,6 @@ fn format_key_combo(k: &KeyCombo) -> String {
         other => format!("{:?}", other),
     });
     parts.join("+")
-}
-
-fn parse_action(s: &str) -> Option<Action> {
-    use CoreAction::{EnterInsert, EnterCommand, EnterNormal, Submit, NewLine, Cancel, Quit, MoveLeft, MoveRight, MoveHome, MoveEnd, DeleteBack, DeleteForward, DeleteWord, ClearLine, HistoryUp, HistoryDown, ScrollUp, ScrollDown, ScrollPageUp, ScrollPageDown, ScrollToTop, ScrollToBottom, FocusPrevBlock, FocusNextBlock, Unfocus, MenuUp, MenuDown, MenuAccept, MenuClose};
-    
-    let normalized = s.to_lowercase().replace('-', "_");
-    
-    // Core actions
-    let core = match normalized.as_str() {
-        "enter_insert" => Some(EnterInsert),
-        "enter_command" => Some(EnterCommand),
-        "enter_normal" => Some(EnterNormal),
-        "submit" => Some(Submit),
-        "new_line" | "newline" => Some(NewLine),
-        "cancel" => Some(Cancel),
-        "quit" => Some(Quit),
-        "move_left" => Some(MoveLeft),
-        "move_right" => Some(MoveRight),
-        "move_home" => Some(MoveHome),
-        "move_end" => Some(MoveEnd),
-        "delete_back" => Some(DeleteBack),
-        "delete_forward" => Some(DeleteForward),
-        "delete_word" => Some(DeleteWord),
-        "clear_line" => Some(ClearLine),
-        "history_up" => Some(HistoryUp),
-        "history_down" => Some(HistoryDown),
-        "scroll_up" => Some(ScrollUp),
-        "scroll_down" => Some(ScrollDown),
-        "scroll_page_up" | "page_up" => Some(ScrollPageUp),
-        "scroll_page_down" | "page_down" => Some(ScrollPageDown),
-        "scroll_to_top" => Some(ScrollToTop),
-        "scroll_to_bottom" => Some(ScrollToBottom),
-        "focus_prev_block" | "prev_block" => Some(FocusPrevBlock),
-        "focus_next_block" | "next_block" => Some(FocusNextBlock),
-        "unfocus" => Some(Unfocus),
-        "menu_up" => Some(MenuUp),
-        "menu_down" => Some(MenuDown),
-        "menu_accept" => Some(MenuAccept),
-        "menu_close" => Some(MenuClose),
-        _ => None,
-    };
-    
-    if let Some(core_action) = core {
-        return Some(Action::Core(core_action));
-    }
-    
-    // Extended actions — parsed through the ExtendedAction enum
-    ExtendedAction::from_name(&normalized).map(Action::Extended)
 }
 
 // ---------------------------------------------------------------------------

@@ -172,105 +172,37 @@ impl Agent {
 
     /// Internal: run agent with arbitrary user content blocks
     async fn prompt_with_content(&mut self, text: &str, content: Vec<Content>) -> Result<()> {
-        // Create user message
-        let user_msg = AgentMessage::User(UserMessage {
-            id: MessageId::generate(),
-            content,
-            timestamp: Utc::now(),
-        });
-
-        let agent_msg_count = self.messages.len();
-        let _ = self.event_tx.send(AgentEvent::UserInput {
-            text: text.to_string(),
-            agent_msg_count,
-        });
-        self.messages.push(user_msg);
+        // Create and append user message
+        self.append_user_message(text, content);
 
         let _ = self.event_tx.send(AgentEvent::AgentStart);
 
-        // Build context — inject memories from redb if available
-        let model_info = self.provider.models().iter().find(|m| m.id == self.model).cloned();
-        let max_input = model_info.map(|m| m.max_input_tokens).unwrap_or(200_000);
+        // Get model context limits
+        let max_input = self.get_max_input_tokens();
 
-        // ── Auto-compaction ─────────────────────────────
-        // If messages exceed 80% of the context window, compact older messages
-        // with LLM summarization (falls back to truncation on failure).
-        let auto_compact_config = compaction::AutoCompactConfig::default();
-        if compaction::should_auto_compact(&self.messages, max_input, &auto_compact_config) {
-            tracing::info!(
-                "Auto-compacting: messages exceed {}% of {} token context window",
-                (auto_compact_config.threshold * 100.0) as u32,
-                max_input,
-            );
-            let result = compaction::compact_with_llm(
-                &self.messages,
-                max_input,
-                auto_compact_config.keep_recent,
-                self.provider.as_ref(),
-                &self.model,
-            )
-            .await;
-            if result.compacted_count > 0 {
-                self.messages = result.messages;
-                let _ = self.event_tx.send(AgentEvent::SessionCompaction {
-                    compacted_count: result.compacted_count,
-                    tokens_saved: result.tokens_saved,
-                });
-                tracing::info!(
-                    "Auto-compacted {} messages, saved ~{} tokens",
-                    result.compacted_count,
-                    result.tokens_saved,
-                );
-            }
+        // Auto-compact if needed
+        self.handle_auto_compaction(max_input).await;
+
+        // Select model based on complexity signals
+        if let Some(plan) = self.select_model_for_turn(text)? {
+            return self.execute_orchestrated_turn(text, plan).await;
         }
 
-        // ── Multi-model routing ─────────────────────────────
-        // Select appropriate model based on task complexity
-        if let Some(policy) = &self.routing_policy {
-            let signals = ComplexitySignals {
-                token_count: text.len() / 4, // rough token estimate
-                recent_tools: self.recent_tool_summaries(),
-                keywords: policy.extract_keywords(text),
-                user_hint: policy.parse_user_hint(text),
-                current_cost: self.cost_tracker.as_ref().map_or(0.0, |ct| ct.total_cost()),
-                prompt_text: Some(text.to_string()),
-            };
-            let selection = policy.select_model(&signals);
-
-            // If orchestration is planned, run the multi-phase turn instead
-            if let Some(plan) = selection.orchestration {
-                return self.execute_orchestrated_turn(text, plan).await;
-            }
-
-            if selection.role != "default" {
-                let new_model = self.model_roles.resolve(&selection.role, &self.model);
-                if new_model != self.model {
-                    let old = std::mem::replace(&mut self.model, new_model.clone());
-                    let _ = self.event_tx.send(AgentEvent::ModelChange {
-                        from: old,
-                        to: new_model,
-                        reason: format!("{}", selection.reason),
-                    });
-                }
-            }
-        }
-
-        let system_prompt_with_memory = self.system_prompt_with_memory();
-        let ctx = context::build_context(&self.messages, &system_prompt_with_memory, max_input);
+        // Prepare context and run turn
+        let ctx = self.prepare_turn_context(max_input);
 
         let _ = self.event_tx.send(AgentEvent::BeforeAgentStart {
             prompt: text.to_string(),
             system_prompt: ctx.system_prompt.clone(),
         });
 
-        // Run turn loop
         let config = TurnConfig {
             model: self.model.clone(),
             system_prompt: ctx.system_prompt,
             max_tokens: Some(self.settings.max_tokens),
             temperature: None,
             thinking: self.thinking.clone(),
-            max_turns: 25, // default max turns
+            max_turns: 25,
         };
 
         let result = turn::run_turn_loop(
@@ -285,16 +217,129 @@ impl Agent {
         )
         .await;
 
-        // If the agent switched models during the turn, update our state
-        if let Some(slot) = &self.model_switch_slot && let Some(new_model) = slot.lock().take() {
-            self.model = new_model;
-        }
+        // Sync model switch if tool requested it
+        self.sync_model_switch();
 
         let _ = self.event_tx.send(AgentEvent::AgentEnd {
             messages: self.messages.clone(),
         });
 
         result
+    }
+
+    /// Append a user message to the conversation
+    fn append_user_message(&mut self, text: &str, content: Vec<Content>) {
+        let user_msg = AgentMessage::User(UserMessage {
+            id: MessageId::generate(),
+            content,
+            timestamp: Utc::now(),
+        });
+
+        let agent_msg_count = self.messages.len();
+        let _ = self.event_tx.send(AgentEvent::UserInput {
+            text: text.to_string(),
+            agent_msg_count,
+        });
+        self.messages.push(user_msg);
+    }
+
+    /// Get the maximum input token count for the current model
+    fn get_max_input_tokens(&self) -> usize {
+        self.provider
+            .models()
+            .iter()
+            .find(|m| m.id == self.model)
+            .map(|m| m.max_input_tokens)
+            .unwrap_or(200_000)
+    }
+
+    /// Handle auto-compaction if messages exceed threshold
+    async fn handle_auto_compaction(&mut self, max_input: usize) {
+        let auto_compact_config = compaction::AutoCompactConfig::default();
+        if !compaction::should_auto_compact(&self.messages, max_input, &auto_compact_config) {
+            return;
+        }
+
+        tracing::info!(
+            "Auto-compacting: messages exceed {}% of {} token context window",
+            (auto_compact_config.threshold * 100.0) as u32,
+            max_input,
+        );
+
+        let result = compaction::compact_with_llm(
+            &self.messages,
+            max_input,
+            auto_compact_config.keep_recent,
+            self.provider.as_ref(),
+            &self.model,
+        )
+        .await;
+
+        if result.compacted_count > 0 {
+            self.messages = result.messages;
+            let _ = self.event_tx.send(AgentEvent::SessionCompaction {
+                compacted_count: result.compacted_count,
+                tokens_saved: result.tokens_saved,
+            });
+            tracing::info!(
+                "Auto-compacted {} messages, saved ~{} tokens",
+                result.compacted_count,
+                result.tokens_saved,
+            );
+        }
+    }
+
+    /// Select model based on complexity signals, returning orchestration plan if needed
+    fn select_model_for_turn(
+        &mut self,
+        text: &str,
+    ) -> Result<Option<crate::routing::orchestration::OrchestrationPlan>> {
+        let Some(policy) = &self.routing_policy else {
+            return Ok(None);
+        };
+
+        let signals = ComplexitySignals {
+            token_count: text.len() / 4, // rough token estimate
+            recent_tools: self.recent_tool_summaries(),
+            keywords: policy.extract_keywords(text),
+            user_hint: policy.parse_user_hint(text),
+            current_cost: self.cost_tracker.as_ref().map_or(0.0, |ct| ct.total_cost()),
+            prompt_text: Some(text.to_string()),
+        };
+        let selection = policy.select_model(&signals);
+
+        // If orchestration is planned, return it
+        if let Some(plan) = selection.orchestration {
+            return Ok(Some(plan));
+        }
+
+        // Switch model if needed
+        if selection.role != "default" {
+            let new_model = self.model_roles.resolve(&selection.role, &self.model);
+            if new_model != self.model {
+                let old = std::mem::replace(&mut self.model, new_model.clone());
+                let _ = self.event_tx.send(AgentEvent::ModelChange {
+                    from: old,
+                    to: new_model,
+                    reason: format!("{}", selection.reason),
+                });
+            }
+        }
+
+        Ok(None)
+    }
+
+    /// Prepare context for turn execution
+    fn prepare_turn_context(&self, max_input: usize) -> context::AgentContext {
+        let system_prompt_with_memory = self.system_prompt_with_memory();
+        context::build_context(&self.messages, &system_prompt_with_memory, max_input)
+    }
+
+    /// Sync model switch from tool-requested slot
+    fn sync_model_switch(&mut self) {
+        if let Some(slot) = &self.model_switch_slot && let Some(new_model) = slot.lock().take() {
+            self.model = new_model;
+        }
     }
 
     /// Build the system prompt with memories appended (if db is available).

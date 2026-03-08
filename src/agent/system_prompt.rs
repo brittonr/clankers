@@ -7,6 +7,7 @@
 //! - Each context file is labeled with its path in the prompt
 
 use std::collections::HashSet;
+use std::fmt::Write as _;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -58,6 +59,16 @@ pub fn discover_resources(global: &ClankersPaths, project: &ProjectPaths) -> Pro
     }
 }
 
+/// Format AGENTS.md / CLAUDE.md files into a project context section
+fn format_agents_section(agents_files: &[ContextFile]) -> String {
+    let mut section = String::from("# Project Context\n\nProject-specific instructions and guidelines:\n");
+    for ctx_file in agents_files {
+        let _ = writeln!(&mut section, "\n## {}\n", ctx_file.path.display());
+        let _ = writeln!(&mut section, "{}", ctx_file.content);
+    }
+    section
+}
+
 /// Assemble the full system prompt from all sources.
 ///
 /// Matches pi's assembly order:
@@ -97,11 +108,7 @@ pub fn assemble_system_prompt(
 
     // AGENTS.md / CLAUDE.md files (with path headers, like pi does)
     if !resources.agents_files.is_empty() {
-        let mut section = String::from("# Project Context\n\nProject-specific instructions and guidelines:\n");
-        for ctx_file in &resources.agents_files {
-            section.push_str(&format!("\n## {}\n\n{}\n", ctx_file.path.display(), ctx_file.content));
-        }
-        parts.push(section);
+        parts.push(format_agents_section(&resources.agents_files));
     }
 
     // Context files
@@ -132,37 +139,42 @@ pub fn assemble_system_prompt(
     parts.join("\n\n")
 }
 
+/// Load markdown files from a directory (sorted by path)
+fn load_md_files_from_dir(dir: &Path) -> Vec<String> {
+    if !dir.is_dir() {
+        return Vec::new();
+    }
+
+    let mut paths: Vec<_> = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("md"))
+        .map(|e| e.path())
+        .collect();
+    paths.sort();
+
+    paths
+        .into_iter()
+        .filter_map(|path| {
+            std::fs::read_to_string(&path)
+                .ok()
+                .filter(|content| !content.trim().is_empty())
+        })
+        .collect()
+}
+
 /// Load context files from .clankers/context.md and .clankers/context/*.md
 fn load_context_files(project: &ProjectPaths) -> Vec<String> {
     let mut files = Vec::new();
 
     // Single context file
-    if project.context_file.is_file()
-        && let Ok(content) = std::fs::read_to_string(&project.context_file)
-        && !content.trim().is_empty()
-    {
+    if let Some(content) = read_non_empty_file(&project.context_file) {
         files.push(content);
     }
 
     // Context directory (*.md files, sorted)
-    if project.context_dir.is_dir() {
-        let mut paths: Vec<_> = std::fs::read_dir(&project.context_dir)
-            .into_iter()
-            .flatten()
-            .flatten()
-            .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("md"))
-            .map(|e| e.path())
-            .collect();
-        paths.sort();
-
-        for path in paths {
-            if let Ok(content) = std::fs::read_to_string(&path)
-                && !content.trim().is_empty()
-            {
-                files.push(content);
-            }
-        }
-    }
+    files.extend(load_md_files_from_dir(&project.context_dir));
 
     files
 }
@@ -175,10 +187,7 @@ const CONTEXT_FILE_CANDIDATES: &[&str] = &["AGENTS.md", "CLAUDE.md"];
 fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
     for &filename in CONTEXT_FILE_CANDIDATES {
         let file_path = dir.join(filename);
-        if file_path.is_file()
-            && let Ok(content) = std::fs::read_to_string(&file_path)
-            && !content.trim().is_empty()
-        {
+        if let Some(content) = read_non_empty_file(&file_path) {
             return Some(ContextFile {
                 path: file_path,
                 content,
@@ -186,6 +195,52 @@ fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
         }
     }
     None
+}
+
+/// Canonicalize a path, falling back to the original on error
+fn canonicalize_path(path: &Path) -> PathBuf {
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
+}
+
+/// Walk up from a directory to root, collecting AGENTS.md / CLAUDE.md files
+fn collect_ancestor_context_files(start_dir: &Path) -> Vec<ContextFile> {
+    let mut files = Vec::new();
+    let mut current = start_dir.to_path_buf();
+    let root = Path::new("/");
+
+    loop {
+        if let Some(ctx) = load_context_file_from_dir(&current) {
+            files.push(ctx);
+        }
+        
+        if current == root {
+            break;
+        }
+        
+        match current.parent() {
+            Some(p) if p != current => current = p.to_path_buf(),
+            _ => break,
+        }
+    }
+
+    // Reverse so root-level comes first (parent before child, like pi)
+    files.reverse();
+    files
+}
+
+/// Deduplicate context files by canonical path
+fn deduplicate_context_files(files: Vec<ContextFile>) -> Vec<ContextFile> {
+    let mut seen_paths: HashSet<PathBuf> = HashSet::new();
+    let mut unique_files = Vec::new();
+
+    for ctx in files {
+        let canonical = canonicalize_path(&ctx.path);
+        if seen_paths.insert(canonical) {
+            unique_files.push(ctx);
+        }
+    }
+
+    unique_files
 }
 
 /// Load AGENTS.md / CLAUDE.md files from global dir + walk up from cwd.
@@ -196,82 +251,53 @@ fn load_context_file_from_dir(dir: &Path) -> Option<ContextFile> {
 /// 4. Global first, then ancestors from root→cwd order
 fn load_agents_files(global_config_dir: &Path, cwd: &Path) -> Vec<ContextFile> {
     let mut files = Vec::new();
-    let mut seen_paths: HashSet<PathBuf> = HashSet::new();
 
     // 1. Global context file
     if let Some(ctx) = load_context_file_from_dir(global_config_dir) {
-        let canonical = std::fs::canonicalize(&ctx.path).unwrap_or_else(|_| ctx.path.clone());
-        seen_paths.insert(canonical);
         files.push(ctx);
     }
 
     // 2. Walk up from cwd to root
-    let mut ancestor_files = Vec::new();
-    let mut current = cwd.to_path_buf();
-    let root = Path::new("/");
-    loop {
-        if let Some(ctx) = load_context_file_from_dir(&current) {
-            let canonical = std::fs::canonicalize(&ctx.path).unwrap_or_else(|_| ctx.path.clone());
-            if !seen_paths.contains(&canonical) {
-                seen_paths.insert(canonical);
-                ancestor_files.push(ctx);
-            }
-        }
-        if current == root {
-            break;
-        }
-        let parent = current.parent().map(|p| p.to_path_buf());
-        match parent {
-            Some(p) if p != current => current = p,
-            _ => break,
-        }
+    files.extend(collect_ancestor_context_files(cwd));
+
+    // 3. Deduplicate by canonical path
+    deduplicate_context_files(files)
+}
+
+/// Load a configuration file, with project-level overriding global
+fn load_config_file(global_dir: &Path, project_dir: &Path, filename: &str) -> Option<String> {
+    // Try project-level first
+    let project_path = project_dir.join(filename);
+    if let Some(content) = read_non_empty_file(&project_path) {
+        return Some(content);
     }
 
-    // 3. Reverse so root-level comes first (parent before child, like pi)
-    ancestor_files.reverse();
-    files.extend(ancestor_files);
+    // Fall back to global
+    let global_path = global_dir.join(filename);
+    read_non_empty_file(&global_path)
+}
 
-    files
+/// Read a file if it exists and has non-empty content
+fn read_non_empty_file(path: &Path) -> Option<String> {
+    if !path.is_file() {
+        return None;
+    }
+    
+    std::fs::read_to_string(path)
+        .ok()
+        .filter(|content| !content.trim().is_empty())
 }
 
 /// Load SYSTEM.md — replaces the default system prompt.
 /// Project-level (.clankers/SYSTEM.md) takes precedence over global (~/.clankers/agent/SYSTEM.md).
 fn load_system_md(global_config_dir: &Path, project_config_dir: &Path) -> Option<String> {
-    let project_path = project_config_dir.join("SYSTEM.md");
-    if project_path.is_file()
-        && let Ok(content) = std::fs::read_to_string(&project_path)
-        && !content.trim().is_empty()
-    {
-        return Some(content);
-    }
-    let global_path = global_config_dir.join("SYSTEM.md");
-    if global_path.is_file()
-        && let Ok(content) = std::fs::read_to_string(&global_path)
-        && !content.trim().is_empty()
-    {
-        return Some(content);
-    }
-    None
+    load_config_file(global_config_dir, project_config_dir, "SYSTEM.md")
 }
 
 /// Load APPEND_SYSTEM.md — appends to whatever system prompt is used.
 /// Project-level takes precedence over global.
 fn load_append_system_md(global_config_dir: &Path, project_config_dir: &Path) -> Option<String> {
-    let project_path = project_config_dir.join("APPEND_SYSTEM.md");
-    if project_path.is_file()
-        && let Ok(content) = std::fs::read_to_string(&project_path)
-        && !content.trim().is_empty()
-    {
-        return Some(content);
-    }
-    let global_path = global_config_dir.join("APPEND_SYSTEM.md");
-    if global_path.is_file()
-        && let Ok(content) = std::fs::read_to_string(&global_path)
-        && !content.trim().is_empty()
-    {
-        return Some(content);
-    }
-    None
+    load_config_file(global_config_dir, project_config_dir, "APPEND_SYSTEM.md")
 }
 
 /// Load spec context from openspec/ directory
