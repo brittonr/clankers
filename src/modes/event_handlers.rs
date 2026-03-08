@@ -404,14 +404,14 @@ pub(crate) fn handle_action(
                 use crate::tui::components::subagent_panel::SubagentPanel;
                 use crate::tui::panel::PanelId;
                 if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
-                    sp.scroll_up(3);
+                    sp.scroll.scroll_up(3);
                 }
             }
             ExtendedAction::PanelScrollDown => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
                 use crate::tui::panel::PanelId;
                 if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
-                    sp.scroll_down(3);
+                    sp.scroll.scroll_down(3);
                 }
             }
             ExtendedAction::PanelClearDone => {

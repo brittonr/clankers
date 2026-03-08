@@ -4,21 +4,11 @@
 //! first read) against the current file on disk, producing a scrollable
 //! colored unified diff inside the panel.
 
-use std::cell::Cell;
-
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::Color;
-use ratatui::style::Modifier;
-use ratatui::style::Style;
-use ratatui::text::Line;
-use ratatui::text::Span;
-use ratatui::widgets::Paragraph;
-use ratatui::widgets::Wrap;
 use similar::ChangeTag;
 use similar::TextDiff;
 
-use crate::tui::theme::Theme;
+use super::prelude::*;
+use super::scroll::FreeScroll;
 
 // ── Diff line classification ────────────────────────────────────────────────
 
@@ -52,8 +42,8 @@ pub struct DiffView {
     pub file_path: String,
     /// Parsed diff lines
     pub lines: Vec<DiffLine>,
-    /// Scroll offset (Cell for interior mutability in draw)
-    pub scroll_offset: Cell<u16>,
+    /// Scroll state (interior-mutable for draw)
+    pub scroll: FreeScroll,
     /// Stats: lines added
     pub additions: usize,
     /// Stats: lines removed
@@ -141,7 +131,7 @@ impl DiffView {
         Self {
             file_path: file_path.to_string(),
             lines,
-            scroll_offset: Cell::new(0),
+            scroll: FreeScroll::new(),
             additions,
             deletions,
             empty: false,
@@ -175,7 +165,7 @@ impl DiffView {
         Self {
             file_path: file_path.to_string(),
             lines,
-            scroll_offset: Cell::new(0),
+            scroll: FreeScroll::new(),
             additions,
             deletions: 0,
             empty: false,
@@ -209,7 +199,7 @@ impl DiffView {
         Self {
             file_path: file_path.to_string(),
             lines,
-            scroll_offset: Cell::new(0),
+            scroll: FreeScroll::new(),
             additions: 0,
             deletions,
             empty: false,
@@ -220,31 +210,11 @@ impl DiffView {
         Self {
             file_path: file_path.to_string(),
             lines: Vec::new(),
-            scroll_offset: Cell::new(0),
+            scroll: FreeScroll::new(),
             additions: 0,
             deletions: 0,
             empty: true,
         }
-    }
-
-    // ── Scroll helpers ──────────────────────────────────────────────
-
-    pub fn scroll_up(&self, n: u16) {
-        self.scroll_offset
-            .set(self.scroll_offset.get().saturating_sub(n));
-    }
-
-    pub fn scroll_down(&self, n: u16) {
-        self.scroll_offset
-            .set(self.scroll_offset.get().saturating_add(n));
-    }
-
-    pub fn scroll_to_top(&self) {
-        self.scroll_offset.set(0);
-    }
-
-    pub fn scroll_to_bottom(&self) {
-        self.scroll_offset.set(u16::MAX);
     }
 
     /// Title for the diff view header.
@@ -298,8 +268,7 @@ impl DiffView {
 
         let total = rendered.len() as u16;
         let max_scroll = total.saturating_sub(area.height);
-        let scroll = self.scroll_offset.get().min(max_scroll);
-        self.scroll_offset.set(scroll);
+        let scroll = self.scroll.clamp(max_scroll);
 
         let para = Paragraph::new(rendered)
             .scroll((scroll, 0))
@@ -396,15 +365,15 @@ mod tests {
     #[test]
     fn test_scroll_operations() {
         let view = DiffView::diff_texts("f.rs", "a\n", "b\n");
-        assert_eq!(view.scroll_offset.get(), 0);
-        view.scroll_down(5);
-        assert_eq!(view.scroll_offset.get(), 5);
-        view.scroll_up(2);
-        assert_eq!(view.scroll_offset.get(), 3);
-        view.scroll_to_top();
-        assert_eq!(view.scroll_offset.get(), 0);
-        view.scroll_to_bottom();
-        assert_eq!(view.scroll_offset.get(), u16::MAX);
+        assert_eq!(view.scroll.get(), 0);
+        view.scroll.scroll_down(5);
+        assert_eq!(view.scroll.get(), 5);
+        view.scroll.scroll_up(2);
+        assert_eq!(view.scroll.get(), 3);
+        view.scroll.scroll_to_top();
+        assert_eq!(view.scroll.get(), 0);
+        view.scroll.scroll_to_bottom();
+        assert_eq!(view.scroll.get(), u16::MAX);
     }
 
     #[test]

@@ -6,24 +6,11 @@
 
 use std::collections::HashSet;
 
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::Color;
-use ratatui::style::Modifier;
-use ratatui::style::Style;
-use ratatui::text::Line;
-use ratatui::text::Span;
-use ratatui::widgets::Block;
-use ratatui::widgets::Borders;
-use ratatui::widgets::Clear;
-use ratatui::widgets::Paragraph;
-use ratatui::widgets::Wrap;
-
+use super::prelude::*;
 use crate::tui::app::App;
 use crate::tui::app::MessageRole;
 use crate::tui::components::block::BlockEntry;
 use crate::tui::components::block::ConversationBlock;
-use crate::tui::theme::Theme;
 
 // ── Rendering ───────────────────────────────────────────────────────────────
 

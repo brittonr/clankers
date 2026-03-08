@@ -6,23 +6,9 @@
 
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::Color;
-use ratatui::style::Modifier;
-use ratatui::style::Style;
-use ratatui::text::Line;
-use ratatui::text::Span;
-use ratatui::widgets::Block;
-use ratatui::widgets::Borders;
-use ratatui::widgets::Paragraph;
-use ratatui::widgets::Wrap;
 
-use crate::tui::panel::DrawContext;
-use crate::tui::panel::Panel;
-use crate::tui::panel::PanelAction;
-use crate::tui::panel::PanelId;
-use crate::tui::theme::Theme;
+use super::prelude::*;
+use super::scroll::FreeScroll;
 
 /// Status of a subagent
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -62,8 +48,8 @@ pub struct SubagentPanel {
     pub selected: usize,
     /// Current view mode
     pub view: PanelView,
-    /// Scroll offset for detail view (Cell so draw(&self) can clamp it)
-    pub scroll_offset: std::cell::Cell<u16>,
+    /// Scroll state for detail view (interior-mutable for draw)
+    pub scroll: FreeScroll,
 }
 
 impl Default for SubagentPanel {
@@ -72,7 +58,7 @@ impl Default for SubagentPanel {
             entries: Vec::new(),
             selected: 0,
             view: PanelView::List,
-            scroll_offset: std::cell::Cell::new(0),
+            scroll: FreeScroll::new(),
         }
     }
 }
@@ -86,23 +72,6 @@ impl SubagentPanel {
         !self.entries.is_empty()
     }
 
-    // ── Scroll helpers (abstract over Cell) ─────────────────────────
-
-    pub fn scroll_up(&self, n: u16) {
-        self.scroll_offset.set(self.scroll_offset.get().saturating_sub(n));
-    }
-
-    pub fn scroll_down(&self, n: u16) {
-        self.scroll_offset.set(self.scroll_offset.get().saturating_add(n));
-    }
-
-    pub fn scroll_to_top(&self) {
-        self.scroll_offset.set(0);
-    }
-
-    pub fn scroll_to_bottom(&self) {
-        self.scroll_offset.set(u16::MAX);
-    }
 
     pub fn add(&mut self, id: String, name: String, task: String, pid: Option<u32>) {
         self.entries.push(SubagentEntry {
@@ -125,7 +94,7 @@ impl SubagentPanel {
             && let Some(idx) = self.entries.iter().position(|e| e.id == id)
             && idx == self.selected
         {
-            self.scroll_offset.set(u16::MAX);
+            self.scroll.scroll_to_bottom();
         }
     }
 
@@ -151,7 +120,7 @@ impl SubagentPanel {
     pub fn next_tab(&mut self) {
         if !self.entries.is_empty() {
             self.selected = (self.selected + 1) % self.entries.len();
-            self.scroll_offset.set(u16::MAX);
+            self.scroll.scroll_to_bottom();
         }
     }
 
@@ -162,7 +131,7 @@ impl SubagentPanel {
             } else {
                 self.selected - 1
             };
-            self.scroll_offset.set(u16::MAX);
+            self.scroll.scroll_to_bottom();
         }
     }
 
@@ -170,7 +139,7 @@ impl SubagentPanel {
     pub fn open_detail(&mut self) {
         if !self.entries.is_empty() {
             self.view = PanelView::Detail;
-            self.scroll_offset.set(u16::MAX); // start at bottom
+            self.scroll.scroll_to_bottom(); // start at bottom
         }
     }
 
@@ -324,9 +293,9 @@ impl Panel for SubagentPanel {
 
     fn handle_scroll(&mut self, up: bool, lines: u16) {
         if up {
-            self.scroll_up(lines);
+            self.scroll.scroll_up(lines);
         } else {
-            self.scroll_down(lines);
+            self.scroll.scroll_down(lines);
         }
     }
 
@@ -334,7 +303,7 @@ impl Panel for SubagentPanel {
         if area.width < 10 || area.height < 4 {
             return;
         }
-        // SubagentPanel's detail view needs &mut for scroll_offset,
+        // SubagentPanel's detail view needs &mut for scroll,
         // but draw takes &self. We delegate to the legacy render for now.
         // The legacy render_subagent_panel handles both views.
         match self.view {
@@ -504,8 +473,7 @@ fn render_detail_view(frame: &mut Frame, panel: &mut SubagentPanel, theme: &Them
 
     let total = lines.len() as u16;
     let max_scroll = total.saturating_sub(content_area.height);
-    let scroll = panel.scroll_offset.get().min(max_scroll);
-    panel.scroll_offset.set(scroll);
+    let scroll = panel.scroll.clamp(max_scroll);
 
     let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((scroll, 0));
 
@@ -568,8 +536,7 @@ fn render_detail_view_immut(frame: &mut Frame, panel: &SubagentPanel, _theme: &T
 
     let total = lines.len() as u16;
     let max_scroll = total.saturating_sub(area.height);
-    let scroll = panel.scroll_offset.get().min(max_scroll);
-    panel.scroll_offset.set(scroll);
+    let scroll = panel.scroll.clamp(max_scroll);
 
     let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((scroll, 0));
     frame.render_widget(paragraph, area);

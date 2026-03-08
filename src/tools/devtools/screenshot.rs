@@ -17,11 +17,11 @@ use serde_json::Value;
 use serde_json::json;
 use tokio::process::Command;
 
-use super::Tool;
-use super::ToolContext;
-use super::ToolDefinition;
-use super::ToolResult;
-use super::ToolResultContent;
+use crate::tools::Tool;
+use crate::tools::ToolContext;
+use crate::tools::ToolDefinition;
+use crate::tools::ToolResult;
+use crate::tools::ToolResultContent;
 
 pub struct ScreenshotTool {
     definition: ToolDefinition,

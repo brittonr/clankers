@@ -139,7 +139,7 @@ pub fn build_tools_with_events(
         Arc::new(crate::tools::ask::AskTool::new()),
         Arc::new(crate::tools::image_gen::ImageGenTool::new()),
         #[cfg(feature = "tui-validate")]
-        Arc::new(crate::tools::validate_tui::ValidateTuiTool::new()),
+        Arc::new(crate::tools::devtools::validate_tui::ValidateTuiTool::new()),
         Arc::new(procmon_tool),
         // Matrix tools (always registered; they return helpful errors when not connected)
         Arc::new(crate::tools::matrix::MatrixSendTool::new()),

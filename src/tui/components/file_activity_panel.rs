@@ -9,22 +9,10 @@ use std::time::Instant;
 
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::Color;
-use ratatui::style::Modifier;
-use ratatui::style::Style;
-use ratatui::text::Line;
-use ratatui::text::Span;
-use ratatui::widgets::Paragraph;
-use ratatui::widgets::Wrap;
 
+use super::prelude::*;
 use crate::tui::components::diff_view::DiffView;
-use crate::tui::panel::DrawContext;
 use crate::tui::panel::ListNav;
-use crate::tui::panel::Panel;
-use crate::tui::panel::PanelAction;
-use crate::tui::panel::PanelId;
 
 // ── Data types ──────────────────────────────────────────────────────────────
 
@@ -314,25 +302,25 @@ impl Panel for FileActivityPanel {
                 }
                 KeyCode::Char('j') | KeyCode::Down => {
                     if let Some(ref dv) = self.diff_view {
-                        dv.scroll_down(1);
+                        dv.scroll.scroll_down(1);
                     }
                     Some(PanelAction::Consumed)
                 }
                 KeyCode::Char('k') | KeyCode::Up => {
                     if let Some(ref dv) = self.diff_view {
-                        dv.scroll_up(1);
+                        dv.scroll.scroll_up(1);
                     }
                     Some(PanelAction::Consumed)
                 }
                 KeyCode::Char('g') => {
                     if let Some(ref dv) = self.diff_view {
-                        dv.scroll_to_top();
+                        dv.scroll.scroll_to_top();
                     }
                     Some(PanelAction::Consumed)
                 }
                 KeyCode::Char('G') => {
                     if let Some(ref dv) = self.diff_view {
-                        dv.scroll_to_bottom();
+                        dv.scroll.scroll_to_bottom();
                     }
                     Some(PanelAction::Consumed)
                 }
@@ -356,9 +344,9 @@ impl Panel for FileActivityPanel {
             FileView::Diff => {
                 if let Some(ref dv) = self.diff_view {
                     if up {
-                        dv.scroll_up(lines);
+                        dv.scroll.scroll_up(lines);
                     } else {
-                        dv.scroll_down(lines);
+                        dv.scroll.scroll_down(lines);
                     }
                 }
             }

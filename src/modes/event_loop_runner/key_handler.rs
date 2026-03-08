@@ -6,7 +6,7 @@
 use crossterm::event::{KeyCode, KeyModifiers};
 
 use crate::config::keybindings::{Action, InputMode};
-use crate::modes::{clipboard, event_loop, interactive::AgentCommand, peers_background, selectors};
+use crate::modes::{clipboard, event_handlers, interactive::AgentCommand, peers_background, selectors};
 
 use super::EventLoopRunner;
 
@@ -31,7 +31,7 @@ impl<'a> EventLoopRunner<'a> {
         }
 
         if self.app.overlays.session_popup_visible
-            && event_loop::handle_session_popup_key(self.app, &key, &self.keymap)
+            && event_handlers::handle_session_popup_key(self.app, &key, &self.keymap)
         {
             return;
         }
@@ -74,7 +74,7 @@ impl<'a> EventLoopRunner<'a> {
         // Leader menu
         if self.app.overlays.leader_menu.visible {
             if let Some(leader_action) = self.app.overlays.leader_menu.handle_key(&key) {
-                event_loop::handle_leader_action(
+                event_handlers::handle_leader_action(
                     self.app,
                     leader_action,
                     &self.cmd_tx,
@@ -89,14 +89,14 @@ impl<'a> EventLoopRunner<'a> {
 
         // Output search
         if self.app.overlays.output_search.active {
-            event_loop::handle_output_search_key(self.app, &key);
+            event_handlers::handle_output_search_key(self.app, &key);
             return;
         }
 
         // Slash menu (insert mode only)
         if self.app.input_mode == InputMode::Insert
             && self.app.slash_menu.visible
-            && event_loop::handle_slash_menu_key(
+            && event_handlers::handle_slash_menu_key(
                 self.app,
                 &key,
                 &self.keymap,
@@ -123,7 +123,7 @@ impl<'a> EventLoopRunner<'a> {
                 return;
             }
 
-            event_loop::handle_action(
+            event_handlers::handle_action(
                 self.app,
                 action,
                 &key,
@@ -148,7 +148,7 @@ impl<'a> EventLoopRunner<'a> {
                 }
             }
         } else if self.app.input_mode == InputMode::Insert {
-            event_loop::handle_insert_char(self.app, &key);
+            event_handlers::handle_insert_char(self.app, &key);
         }
     }
 

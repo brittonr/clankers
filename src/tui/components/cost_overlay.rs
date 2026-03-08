@@ -8,14 +8,8 @@
 
 use std::sync::Arc;
 
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
-
+use super::prelude::*;
 use crate::routing::cost_tracker::{BudgetStatus, CostSummary, CostTracker};
-use crate::tui::theme::Theme;
 
 /// Render the cost detail overlay if visible.
 pub fn render_cost_overlay(

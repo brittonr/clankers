@@ -7,23 +7,11 @@ use std::time::Duration;
 
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
-use ratatui::Frame;
-use ratatui::layout::Rect;
-use ratatui::style::Color;
-use ratatui::style::Modifier;
-use ratatui::style::Style;
-use ratatui::text::Line;
-use ratatui::text::Span;
-use ratatui::widgets::Paragraph;
-use ratatui::widgets::Wrap;
 
+use super::prelude::*;
 use crate::procmon::ProcessMonitorHandle;
 use crate::procmon::ProcessState;
-use crate::tui::panel::DrawContext;
 use crate::tui::panel::ListNav;
-use crate::tui::panel::Panel;
-use crate::tui::panel::PanelAction;
-use crate::tui::panel::PanelId;
 
 // ── Data types ──────────────────────────────────────────────────────────────
 

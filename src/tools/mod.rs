@@ -197,13 +197,12 @@ pub mod progress;
 pub mod read;
 pub mod review;
 pub mod sandbox;
-pub mod screenshot;
+pub mod devtools;
 pub mod subagent;
 pub mod switch_model;
 pub mod todo;
 pub mod truncation;
-#[cfg(feature = "tui-validate")]
-pub mod validate_tui;
+
 pub mod validator_tool;
 pub mod watchdog;
 pub mod web;

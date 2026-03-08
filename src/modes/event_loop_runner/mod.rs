@@ -442,7 +442,7 @@ impl<'a> EventLoopRunner<'a> {
                         self.app.push_system(format!("Error: {}", e), true);
                     }
                     if let Some(text) = self.app.queued_prompt.take() {
-                        super::event_loop::handle_input_with_plugins(
+                        super::event_handlers::handle_input_with_plugins(
                             self.app,
                             &text,
                             &self.cmd_tx,
@@ -455,7 +455,7 @@ impl<'a> EventLoopRunner<'a> {
                 }
                 TaskResult::PromptDone(None) => {
                     if let Some(text) = self.app.queued_prompt.take() {
-                        super::event_loop::handle_input_with_plugins(
+                        super::event_handlers::handle_input_with_plugins(
                             self.app,
                             &text,
                             &self.cmd_tx,
