@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-03-07 | self | Tried `pub use clankers_router::Cost` but Cost isn't re-exported at root | Check `lib.rs` re-exports before assuming root-level access; use `clankers_router::provider::Cost` |
 | 2026-03-05 | self | Subagent parallel tasks for registry.rs and slash_commands silently failed (files not created) | Verify file existence after subagent work before depending on it; do critical edits directly |
 | 2026-03-05 | self | Delegated handler extraction workers reported success but didn't persist changes | Workers may lose edits; always verify with `cargo check` and `grep` after delegation |
 | 2026-03-05 | self | Python regex-based code transform was fragile (mangled `crate::tui::app::` paths, missed `if let Some(db)` bindings, double-prefixed `self.self.`) | For code extraction: use brace-counting for boundaries, then targeted `sed` fixes for the known replacement patterns. Don't try to be clever with one regex. |

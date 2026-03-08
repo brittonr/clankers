@@ -7,7 +7,6 @@ use super::entry::SessionEntry;
 use crate::provider::message::MessageId;
 
 mod navigation;
-mod mutation;
 mod query;
 
 #[derive(Debug)]

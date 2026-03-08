@@ -46,89 +46,8 @@ pub trait Provider: Send + Sync {
     async fn reload_credentials(&self) {}
 }
 
-/// Model configuration and capabilities.
-///
-/// Describes a specific model's identifier, token limits, and feature support.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Model {
-    /// Model identifier (e.g., "claude-opus-4-20250514")
-    pub id: String,
-
-    /// Human-readable name
-    pub name: String,
-
-    /// Provider name
-    pub provider: String,
-
-    /// Maximum input tokens (context window)
-    pub max_input_tokens: usize,
-
-    /// Maximum output tokens per response
-    pub max_output_tokens: usize,
-
-    /// Whether the model supports extended thinking mode
-    pub supports_thinking: bool,
-
-    /// Whether the model supports image inputs
-    pub supports_images: bool,
-
-    /// Whether the model supports tool use
-    #[serde(default = "default_true")]
-    pub supports_tools: bool,
-
-    /// Cost per million input tokens (USD), if known
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub input_cost_per_mtok: Option<f64>,
-
-    /// Cost per million output tokens (USD), if known
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub output_cost_per_mtok: Option<f64>,
-}
-
-fn default_true() -> bool {
-    true
-}
-
-impl Model {
-    /// Convert to a clankers-router Model
-    pub fn to_router_model(&self) -> clankers_router::Model {
-        clankers_router::Model {
-            id: self.id.clone(),
-            name: self.name.clone(),
-            provider: self.provider.clone(),
-            max_input_tokens: self.max_input_tokens,
-            max_output_tokens: self.max_output_tokens,
-            supports_thinking: self.supports_thinking,
-            supports_images: self.supports_images,
-            supports_tools: self.supports_tools,
-            input_cost_per_mtok: self.input_cost_per_mtok,
-            output_cost_per_mtok: self.output_cost_per_mtok,
-        }
-    }
-
-    /// Create from a clankers-router Model
-    pub fn from_router_model(m: &clankers_router::Model) -> Self {
-        Self {
-            id: m.id.clone(),
-            name: m.name.clone(),
-            provider: m.provider.clone(),
-            max_input_tokens: m.max_input_tokens,
-            max_output_tokens: m.max_output_tokens,
-            supports_thinking: m.supports_thinking,
-            supports_images: m.supports_images,
-            supports_tools: m.supports_tools,
-            input_cost_per_mtok: m.input_cost_per_mtok,
-            output_cost_per_mtok: m.output_cost_per_mtok,
-        }
-    }
-
-    /// Estimate cost for a given usage
-    pub fn estimate_cost(&self, input_tokens: usize, output_tokens: usize) -> Option<f64> {
-        let input_cost = self.input_cost_per_mtok? * (input_tokens as f64 / 1_000_000.0);
-        let output_cost = self.output_cost_per_mtok? * (output_tokens as f64 / 1_000_000.0);
-        Some(input_cost + output_cost)
-    }
-}
+// Re-export Model from clankers-router (canonical definition)
+pub use clankers_router::Model;
 
 /// Request for a model completion.
 ///
@@ -158,18 +77,8 @@ pub struct CompletionRequest {
     pub thinking: Option<ThinkingConfig>,
 }
 
-/// Configuration for extended thinking mode.
-///
-/// Enables models to spend additional tokens on internal reasoning before
-/// generating the final response.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ThinkingConfig {
-    /// Whether extended thinking is enabled
-    pub enabled: bool,
-
-    /// Maximum tokens to allocate for thinking (None = model default)
-    pub budget_tokens: Option<usize>,
-}
+// Re-export ThinkingConfig from clankers-router (canonical definition)
+pub use clankers_router::ThinkingConfig;
 
 /// Named thinking budget levels.
 ///
@@ -273,42 +182,6 @@ impl ThinkingLevel {
     }
 }
 
-/// Token usage statistics for a completion.
-///
-/// Tracks input, output, and cache-related token counts.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Usage {
-    /// Tokens in the input (prompt)
-    pub input_tokens: usize,
-
-    /// Tokens in the output (completion)
-    pub output_tokens: usize,
-
-    /// Tokens written to cache (if prompt caching is used)
-    pub cache_creation_input_tokens: usize,
-
-    /// Tokens read from cache (if prompt caching is used)
-    pub cache_read_input_tokens: usize,
-}
-
-impl Usage {
-    /// Returns the total token count (input + output).
-    pub fn total_tokens(&self) -> usize {
-        self.input_tokens + self.output_tokens
-    }
-}
-
-/// Cost breakdown for a completion.
-///
-/// Tracks estimated or actual costs in USD.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct Cost {
-    /// Cost for input tokens
-    pub input_cost: f64,
-
-    /// Cost for output tokens
-    pub output_cost: f64,
-
-    /// Total cost (input + output)
-    pub total_cost: f64,
-}
+// Re-export Usage and Cost from clankers-router (canonical definitions)
+pub use clankers_router::provider::Cost;
+pub use clankers_router::Usage;

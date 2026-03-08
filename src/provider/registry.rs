@@ -22,8 +22,7 @@ impl ModelRegistry {
 
     /// Register models from a provider
     pub fn register_models(&mut self, models: &[Model]) {
-        let router_models: Vec<clankers_router::Model> = models.iter().map(|m| m.to_router_model()).collect();
-        self.inner.register_models(&router_models);
+        self.inner.register_models(models);
 
         // Cache the clankers models
         for model in models {

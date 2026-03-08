@@ -6,7 +6,6 @@
 
 mod parser;
 mod build;
-mod search;
 
 use async_trait::async_trait;
 use serde_json::Value;

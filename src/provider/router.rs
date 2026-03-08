@@ -30,7 +30,7 @@ pub struct RouterCompatAdapter {
 
 impl RouterCompatAdapter {
     pub fn new(inner: std::sync::Arc<dyn clankers_router::Provider>) -> Self {
-        let models_cache = inner.models().iter().map(Model::from_router_model).collect();
+        let models_cache = inner.models().to_vec();
         Self { inner, models_cache }
     }
 }
@@ -54,10 +54,7 @@ impl Provider for RouterCompatAdapter {
                     input_schema: t.input_schema,
                 })
                 .collect(),
-            thinking: request.thinking.map(|t| clankers_router::ThinkingConfig {
-                enabled: t.enabled,
-                budget_tokens: t.budget_tokens,
-            }),
+            thinking: request.thinking,
             extra_params: Default::default(),
         };
 

@@ -1,16 +1,6 @@
 //! Zellij integration and orchestration
 
-#[allow(dead_code)] // planned zellij pane orchestration
-pub(crate) mod commands;
-#[allow(dead_code)] // planned zellij IPC
-pub(crate) mod ipc;
-#[allow(dead_code)] // planned zellij layout management
-pub(crate) mod layout;
-#[allow(dead_code)] // planned zellij pane control
-pub(crate) mod pane;
 pub(crate) mod streaming;
-#[allow(dead_code)] // planned zellij swarm coordination
-pub(crate) mod swarm;
 
 use std::path::Path;
 
@@ -487,89 +477,6 @@ mod tests {
         };
         let args = fa.to_args();
         assert_eq!(args[0], "--no-zellij");
-    }
-
-    // ── End-to-end: ForwardableArgs → layout → written file ──────────
-
-    #[test]
-    fn test_full_flow_default_layout_written_to_disk() {
-        let fa = ForwardableArgs {
-            model: Some("claude-sonnet-4-20250514".to_string()),
-            agent: None,
-            thinking: false,
-            thinking_budget: None,
-            system_prompt: None,
-            continue_session: false,
-            resume: None,
-            no_session: false,
-        };
-        let args = fa.to_args();
-        let content = layout::default_layout_with_command("/usr/bin/clankers", &[], &args);
-        let path = layout::write_temp_layout(&content).expect("failed to write default layout");
-
-        let written = std::fs::read_to_string(&path).expect("failed to read written layout");
-        assert!(written.contains("command \"/usr/bin/clankers\""), "content:\n{}", written);
-        assert!(written.contains("\"--no-zellij\""), "content:\n{}", written);
-        assert!(written.contains("\"--model\""), "content:\n{}", written);
-        assert!(written.contains("\"claude-sonnet-4-20250514\""), "content:\n{}", written);
-
-        std::fs::remove_file(&path).expect("failed to remove temp layout");
-    }
-
-    #[test]
-    fn test_full_flow_swarm_layout_written_to_disk() {
-        let fa = ForwardableArgs {
-            model: None,
-            agent: Some("coder".to_string()),
-            thinking: true,
-            thinking_budget: None,
-            system_prompt: None,
-            continue_session: false,
-            resume: None,
-            no_session: false,
-        };
-        let args = fa.to_args();
-        let content = layout::swarm_layout_with_command("/usr/bin/clankers", &[], &args);
-        let path = layout::write_temp_layout(&content).expect("failed to write swarm layout");
-
-        let written = std::fs::read_to_string(&path).expect("failed to read swarm layout");
-        assert!(written.contains("command \"/usr/bin/clankers\""));
-        assert!(written.contains("\"--no-zellij\""));
-        assert!(written.contains("\"--agent\""));
-        assert!(written.contains("\"coder\""));
-        assert!(written.contains("\"--thinking\""));
-        assert!(written.contains("name=\"merge-daemon\""));
-        assert!(written.contains("name=\"workers\""));
-
-        std::fs::remove_file(&path).expect("failed to remove swarm layout");
-    }
-
-    #[test]
-    fn test_full_flow_dev_mode_layout_written_to_disk() {
-        let fa = ForwardableArgs {
-            model: Some("test".to_string()),
-            agent: None,
-            thinking: false,
-            thinking_budget: None,
-            system_prompt: None,
-            continue_session: false,
-            resume: None,
-            no_session: false,
-        };
-        let args = fa.to_args();
-        let prefix = vec!["run".to_string(), "--quiet".to_string(), "--".to_string()];
-        let content = layout::default_layout_with_command("cargo", &prefix, &args);
-        let path = layout::write_temp_layout(&content).expect("failed to write dev mode layout");
-
-        let written = std::fs::read_to_string(&path).expect("failed to read dev mode layout");
-        assert!(written.contains("command \"cargo\""), "content:\n{}", written);
-        assert!(written.contains("\"run\""), "content:\n{}", written);
-        assert!(written.contains("\"--quiet\""), "content:\n{}", written);
-        assert!(written.contains("\"--\""), "content:\n{}", written);
-        assert!(written.contains("\"--no-zellij\""), "content:\n{}", written);
-        assert!(written.contains("\"--model\""), "content:\n{}", written);
-
-        std::fs::remove_file(&path).expect("failed to remove dev mode layout");
     }
 
     // ── resolve_clankers_command ────────────────────────────────────────

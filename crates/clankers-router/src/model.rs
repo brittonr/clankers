@@ -28,13 +28,20 @@ pub struct Model {
     pub supports_images: bool,
 
     /// Whether the model supports tool use
+    #[serde(default = "default_true")]
     pub supports_tools: bool,
 
     /// Cost per million input tokens (USD), if known
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub input_cost_per_mtok: Option<f64>,
 
     /// Cost per million output tokens (USD), if known
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub output_cost_per_mtok: Option<f64>,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 impl Model {

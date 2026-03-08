@@ -62,7 +62,7 @@ impl RpcProvider {
             }
         };
 
-        let models: Vec<Model> = router_models.into_iter().map(|m| Model::from_router_model(&m)).collect();
+        let models: Vec<Model> = router_models;
 
         info!("Connected to router daemon (pid {}, {} models)", info.pid, models.len());
 
@@ -106,10 +106,7 @@ impl Provider for RpcProvider {
                     input_schema: t.input_schema,
                 })
                 .collect(),
-            thinking: request.thinking.map(|t| clankers_router::ThinkingConfig {
-                enabled: t.enabled,
-                budget_tokens: t.budget_tokens,
-            }),
+            thinking: request.thinking,
             extra_params: Default::default(),
         };
 
