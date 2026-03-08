@@ -253,15 +253,9 @@ impl<'a> EventLoopRunner<'a> {
     fn drain_panel_events(&mut self) {
         while let Ok(event) = self.panel_rx.try_recv() {
             use crate::tui::components::subagent_event::SubagentEvent;
-            use crate::tui::components::subagent_panel::SubagentPanel;
-            let subagent_panel = self
-                .app
-                .panels
-                .downcast_mut::<SubagentPanel>(crate::tui::panel::PanelId::Subagents)
-                .expect("subagent panel");
             match event {
-                SubagentEvent::Started { id, name, task, pid } => {
-                    subagent_panel.add(id.clone(), name.clone(), task.clone(), pid);
+                SubagentEvent::Started { id, name, task, pid} => {
+                    subagent_panel(self.app).add(id.clone(), name.clone(), task.clone(), pid);
                     let max_panes = self.settings.max_subagent_panes;
                     if max_panes > 0 && self.app.layout.subagent_panes.len() < max_panes {
                         let pane_id = self.app.layout.subagent_panes.create(
@@ -283,15 +277,15 @@ impl<'a> EventLoopRunner<'a> {
                     }
                 }
                 SubagentEvent::Output { id, line } => {
-                    subagent_panel.append_output(&id, &line);
+                    subagent_panel(self.app).append_output(&id, &line);
                     self.app.layout.subagent_panes.append_output(&id, &line);
                 }
                 SubagentEvent::Done { id } => {
-                    subagent_panel.mark_done(&id);
+                    subagent_panel(self.app).mark_done(&id);
                     self.app.layout.subagent_panes.mark_done(&id);
                 }
                 SubagentEvent::Error { id, .. } => {
-                    subagent_panel.mark_error(&id);
+                    subagent_panel(self.app).mark_error(&id);
                     self.app.layout.subagent_panes.mark_error(&id);
                 }
                 SubagentEvent::KillRequest { ref id } => {
@@ -305,7 +299,7 @@ impl<'a> EventLoopRunner<'a> {
                         })
                         .and_then(|s| s.pid)
                         .or_else(|| {
-                            subagent_panel
+                            subagent_panel(self.app)
                                 .get_by_id(id)
                                 .filter(|e| {
                                     e.status
@@ -327,12 +321,12 @@ impl<'a> EventLoopRunner<'a> {
                                 .args(&["/PID", &pid.to_string(), "/F"])
                                 .spawn();
                         }
-                        subagent_panel.mark_error(id);
-                        subagent_panel.append_output(id, "⚡ Killed by user");
+                        subagent_panel(self.app).mark_error(id);
+                        subagent_panel(self.app).append_output(id, "⚡ Killed by user");
                         self.app.layout.subagent_panes.mark_error(id);
                         self.app.layout.subagent_panes.append_output(id, "⚡ Killed by user");
                     } else {
-                        subagent_panel.append_output(id, "⚠ Cannot kill: no PID tracked");
+                        subagent_panel(self.app).append_output(id, "⚠ Cannot kill: no PID tracked");
                         self.app
                             .layout
                             .subagent_panes
@@ -349,12 +343,8 @@ impl<'a> EventLoopRunner<'a> {
     fn drain_todo_requests(&mut self) {
         while let Ok((action, resp_tx)) = self.todo_rx.try_recv() {
             use crate::tools::todo::{TodoAction, TodoResponse};
-            use crate::tui::components::todo_panel::{TodoPanel, TodoStatus};
-            let todo_panel = self
-                .app
-                .panels
-                .downcast_mut::<TodoPanel>(crate::tui::panel::PanelId::Todo)
-                .expect("todo panel");
+            use crate::tui::components::todo_panel::TodoStatus;
+            let todo_panel = todo_panel(self.app);
 
             let response = match action {
                 TodoAction::Add { text } => {
@@ -423,15 +413,10 @@ impl<'a> EventLoopRunner<'a> {
     // ── Periodic peer refresh ───────────────────────────────────────
 
     fn refresh_peers(&mut self) {
-        use crate::tui::components::peers_panel::PeersPanel;
         static PEER_REFRESH_COUNTER: std::sync::atomic::AtomicU32 =
             std::sync::atomic::AtomicU32::new(0);
         let count = PEER_REFRESH_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let peers_panel = self
-            .app
-            .panels
-            .downcast_mut::<PeersPanel>(crate::tui::panel::PanelId::Peers)
-            .expect("peers panel");
+        let peers_panel = peers_panel(self.app);
         if count.is_multiple_of(200) && peers_panel.server_running {
             let registry = crate::modes::rpc::peers::PeerRegistry::load(
                 &crate::modes::rpc::peers::registry_path(crate::config::ClankersPaths::get()),
@@ -753,12 +738,7 @@ impl<'a> EventLoopRunner<'a> {
                     {
                         self.app.focus_subagent(subagent_id);
                     } else {
-                        use crate::tui::components::subagent_panel::SubagentPanel;
-                        if let Some(sp) = self.app.panels.downcast_mut::<SubagentPanel>(
-                            crate::tui::panel::PanelId::Subagents,
-                        ) {
-                            sp.open_detail();
-                        }
+                        subagent_panel(self.app).open_detail();
                     }
                     return true;
                 }
@@ -960,12 +940,7 @@ impl<'a> EventLoopRunner<'a> {
                 true
             }
             (PanelId::Peers, KeyCode::Char('p'), m) if m.is_empty() => {
-                use crate::tui::components::peers_panel::PeersPanel;
-                let peers_panel = self
-                    .app
-                    .panels
-                    .downcast_mut::<PeersPanel>(PanelId::Peers)
-                    .expect("peers panel");
+                let peers_panel = peers_panel(self.app);
                 if let Some(peer) = peers_panel.selected_peer().cloned() {
                     peers_panel.update_status(
                         &peer.node_id,
@@ -1019,4 +994,33 @@ impl<'a> EventLoopRunner<'a> {
             }
         }
     }
+}
+
+// ── Panel accessor helpers ──────────────────────────────────────────
+
+/// Helper to access the SubagentPanel. Panics if panel not registered (should never happen).
+fn subagent_panel(app: &mut App) -> &mut crate::tui::components::subagent_panel::SubagentPanel {
+    app.panels
+        .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
+            crate::tui::panel::PanelId::Subagents,
+        )
+        .expect("subagent panel registered at startup")
+}
+
+/// Helper to access the TodoPanel. Panics if panel not registered (should never happen).
+fn todo_panel(app: &mut App) -> &mut crate::tui::components::todo_panel::TodoPanel {
+    app.panels
+        .downcast_mut::<crate::tui::components::todo_panel::TodoPanel>(
+            crate::tui::panel::PanelId::Todo,
+        )
+        .expect("todo panel registered at startup")
+}
+
+/// Helper to access the PeersPanel. Panics if panel not registered (should never happen).
+fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_panel::PeersPanel {
+    app.panels
+        .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(
+            crate::tui::panel::PanelId::Peers,
+        )
+        .expect("peers panel registered at startup")
 }

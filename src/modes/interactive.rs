@@ -258,8 +258,7 @@ pub async fn run_interactive(
     };
 
     // Wire process monitor into the TUI panel
-    *app.panels.downcast_mut::<crate::tui::components::process_panel::ProcessPanel>(crate::tui::panel::PanelId::Processes)
-        .expect("process panel") = crate::tui::components::process_panel::ProcessPanel::new()
+    *process_panel(&mut app) = crate::tui::components::process_panel::ProcessPanel::new()
         .with_monitor(process_monitor.clone());
 
     let tool_env = crate::modes::common::ToolEnv {
@@ -359,8 +358,7 @@ pub async fn run_interactive(
                     node_id.clone()
                 };
                 {
-                    let peers_panel = app.panels.downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(crate::tui::panel::PanelId::Peers)
-                        .expect("peers panel");
+                    let peers_panel = peers_panel(&mut app);
                     peers_panel.self_id = Some(short_id);
                     peers_panel.server_running = true;
                     // Load initial peer list
@@ -970,4 +968,24 @@ pub async fn start_embedded_rpc(
 
     tracing::info!("Embedded RPC server started as {}", &node_id[..12.min(node_id.len())]);
     Ok((node_id, cancel))
+}
+
+// ── Panel accessor helpers ──────────────────────────────────────────
+
+/// Helper to access the ProcessPanel. Panics if panel not registered (should never happen).
+fn process_panel(app: &mut App) -> &mut crate::tui::components::process_panel::ProcessPanel {
+    app.panels
+        .downcast_mut::<crate::tui::components::process_panel::ProcessPanel>(
+            crate::tui::panel::PanelId::Processes,
+        )
+        .expect("process panel registered at startup")
+}
+
+/// Helper to access the PeersPanel. Panics if panel not registered (should never happen).
+fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_panel::PeersPanel {
+    app.panels
+        .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(
+            crate::tui::panel::PanelId::Peers,
+        )
+        .expect("peers panel registered at startup")
 }

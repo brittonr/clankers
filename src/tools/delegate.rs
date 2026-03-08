@@ -252,6 +252,7 @@ const RETRY_BACKOFF_MS: u64 = 500;
 /// Uses a shared endpoint (created lazily on first call) and retries transient
 /// connection failures with exponential backoff. Streams text deltas to the
 /// subagent panel in real-time via `send_rpc_streaming`.
+
 async fn run_remote_worker(
     worker_name: &str,
     task: &str,
@@ -268,27 +269,11 @@ async fn run_remote_worker(
     let task_preview: String = task.chars().take(60).collect();
     let short_node = &node_id[..12.min(node_id.len())];
 
-    if let Some(tx) = panel_tx {
-        let _ = tx.send(SubagentEvent::Started {
-            id: sub_id.clone(),
-            name: format!("{} → {}", worker_name, short_node),
-            task: task_preview,
-            pid: None, // No local PID for remote workers
-        });
-    }
+    emit_started_event(panel_tx, &sub_id, worker_name, short_node, &task_preview);
 
-    let remote: ::iroh::PublicKey = match node_id.parse() {
+    let remote = match parse_peer_node_id(node_id, short_node, panel_tx, &sub_id) {
         Ok(pk) => pk,
-        Err(e) => {
-            let msg = format!("Invalid peer node ID '{}': {}", short_node, e);
-            if let Some(tx) = panel_tx {
-                let _ = tx.send(SubagentEvent::Error {
-                    id: sub_id,
-                    message: msg.clone(),
-                });
-            }
-            return ToolResult::error(msg);
-        }
+        Err(result) => return result,
     };
 
     // Get or create the shared endpoint (once per process lifetime)
@@ -312,123 +297,100 @@ async fn run_remote_worker(
             return ToolResult::error(msg);
         }
     };
+
     let request = Request::new("prompt", serde_json::json!({ "text": task }));
 
-    // Retry loop with exponential backoff for transient connection failures
-    let mut last_err = String::new();
-    for attempt in 0..=MAX_RETRIES {
-        if attempt > 0 {
-            let backoff = std::time::Duration::from_millis(RETRY_BACKOFF_MS * 2u64.pow(attempt - 1));
+    retry_remote_call(
+        worker_name,
+        short_node,
+        endpoint,
+        remote,
+        &request,
+        &sub_id,
+        panel_tx,
+        signal,
+    )
+    .await
+}
+
+/// Emit a "Started" event to the subagent panel
+fn emit_started_event(panel_tx: Option<&PanelTx>, sub_id: &str, worker_name: &str, short_node: &str, task_preview: &str) {
+    if let Some(tx) = panel_tx {
+        let _ = tx.send(SubagentEvent::Started {
+            id: sub_id.to_string(),
+            name: format!("{} → {}", worker_name, short_node),
+            task: task_preview.to_string(),
+            pid: None,
+        });
+    }
+}
+
+/// Parse the peer node ID. Returns error ToolResult on failure.
+fn parse_peer_node_id(
+    node_id: &str,
+    short_node: &str,
+    panel_tx: Option<&PanelTx>,
+    sub_id: &str,
+) -> Result<::iroh::PublicKey, ToolResult> {
+    match node_id.parse() {
+        Ok(pk) => Ok(pk),
+        Err(e) => {
+            let msg = format!("Invalid peer node ID '{}': {}", short_node, e);
             if let Some(tx) = panel_tx {
-                let _ = tx.send(SubagentEvent::Output {
-                    id: sub_id.clone(),
-                    line: format!("Retry {}/{} after {:?}...", attempt, MAX_RETRIES, backoff),
+                let _ = tx.send(SubagentEvent::Error {
+                    id: sub_id.to_string(),
+                    message: msg.clone(),
                 });
             }
-            tokio::select! {
-                () = tokio::time::sleep(backoff) => {}
-                () = signal.cancelled() => {
-                    if let Some(tx) = panel_tx {
-                        let _ = tx.send(SubagentEvent::Error { id: sub_id, message: "Cancelled".into() });
-                    }
-                    return ToolResult::error(format!("Remote worker '{}' cancelled", worker_name));
-                }
+            Err(ToolResult::error(msg))
+        }
+    }
+}
+
+/// Retry the remote RPC call with exponential backoff
+async fn retry_remote_call(
+    worker_name: &str,
+    short_node: &str,
+    endpoint: &iroh::Endpoint,
+    remote: ::iroh::PublicKey,
+    request: &crate::modes::rpc::protocol::Request,
+    sub_id: &str,
+    panel_tx: Option<&PanelTx>,
+    signal: CancellationToken,
+) -> ToolResult {
+
+    let mut last_err = String::new();
+
+    for attempt in 0..=MAX_RETRIES {
+        // Exponential backoff before retries
+        if attempt > 0 {
+            if let Err(result) = wait_for_retry(attempt, sub_id, panel_tx, &signal).await {
+                return result;
             }
         }
 
-        // Use streaming RPC so text deltas flow to the panel in real-time
-        let sub_id_clone = sub_id.clone();
-        let panel_tx_clone = panel_tx.cloned();
-
-        let result = tokio::select! {
-            res = iroh::send_rpc_streaming(endpoint, remote, &request, |notification| {
-                // Stream text deltas to the subagent panel as they arrive
-                if let Some(method) = notification.get("method").and_then(|v| v.as_str()) {
-                    match method {
-                        "agent.text_delta" => {
-                            if let Some(text) = notification
-                                .get("params")
-                                .and_then(|p| p.get("text"))
-                                .and_then(|v| v.as_str())
-                                && let Some(ref tx) = panel_tx_clone
-                            {
-                                // Send each line separately for TUI rendering
-                                for line in text.split('\n') {
-                                    if !line.is_empty() {
-                                        let _ = tx.send(SubagentEvent::Output {
-                                            id: sub_id_clone.clone(),
-                                            line: line.to_string(),
-                                        });
-                                    }
-                                }
-                            }
-                        }
-                        "agent.tool_call" => {
-                            if let Some(ref tx) = panel_tx_clone {
-                                let tool = notification
-                                    .get("params")
-                                    .and_then(|p| p.get("tool_name"))
-                                    .and_then(|v| v.as_str())
-                                    .unwrap_or("?");
-                                let _ = tx.send(SubagentEvent::Output {
-                                    id: sub_id_clone.clone(),
-                                    line: format!("[tool: {}]", tool),
-                                });
-                            }
-                        }
-                        "agent.tool_result" => {
-                            if let Some(ref tx) = panel_tx_clone {
-                                let is_error = notification
-                                    .get("params")
-                                    .and_then(|p| p.get("is_error"))
-                                    .and_then(|v| v.as_bool())
-                                    .unwrap_or(false);
-                                if is_error {
-                                    let _ = tx.send(SubagentEvent::Output {
-                                        id: sub_id_clone.clone(),
-                                        line: "[tool error]".to_string(),
-                                    });
-                                }
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-            }) => res.map(|(_, response)| response),
-            () = signal.cancelled() => {
+        // Attempt the RPC call
+        match try_remote_call(endpoint, remote, request, sub_id, panel_tx, &signal).await {
+            Ok(text) => {
                 if let Some(tx) = panel_tx {
-                    let _ = tx.send(SubagentEvent::Error { id: sub_id, message: "Cancelled".into() });
+                    let _ = tx.send(SubagentEvent::Done { id: sub_id.to_string() });
                 }
+                return ToolResult::text(format!("[remote:{}] {}", short_node, text));
+            }
+            Err(RemoteCallError::ApplicationError(msg)) => {
+                if let Some(tx) = panel_tx {
+                    let _ = tx.send(SubagentEvent::Error {
+                        id: sub_id.to_string(),
+                        message: msg.clone(),
+                    });
+                }
+                return ToolResult::error(msg);
+            }
+            Err(RemoteCallError::Cancelled) => {
                 return ToolResult::error(format!("Remote worker '{}' cancelled", worker_name));
             }
-        };
-
-        match result {
-            Ok(response) => {
-                if let Some(result) = response.ok {
-                    let text = result.get("text").and_then(|v| v.as_str()).unwrap_or("");
-
-                    if let Some(tx) = panel_tx {
-                        let _ = tx.send(SubagentEvent::Done { id: sub_id });
-                    }
-
-                    return ToolResult::text(format!("[remote:{}] {}", short_node, text));
-                } else if let Some(err) = response.error {
-                    // Application-level errors are not retryable
-                    let msg = format!("Remote peer error: {}", err);
-                    if let Some(tx) = panel_tx {
-                        let _ = tx.send(SubagentEvent::Error {
-                            id: sub_id,
-                            message: msg.clone(),
-                        });
-                    }
-                    return ToolResult::error(msg);
-                }
-                return ToolResult::error("Empty response from remote peer");
-            }
-            Err(e) => {
-                // Connection-level errors are retryable
-                last_err = format!("{}", e);
+            Err(RemoteCallError::ConnectionError(e)) => {
+                last_err = e;
                 tracing::warn!(
                     "Remote worker '{}' attempt {}/{} failed: {}",
                     worker_name,
@@ -436,7 +398,6 @@ async fn run_remote_worker(
                     MAX_RETRIES + 1,
                     last_err
                 );
-                continue;
             }
         }
     }
@@ -445,14 +406,142 @@ async fn run_remote_worker(
     let msg = format!("Failed to reach peer '{}' after {} attempts: {}", short_node, MAX_RETRIES + 1, last_err);
     if let Some(tx) = panel_tx {
         let _ = tx.send(SubagentEvent::Error {
-            id: sub_id,
+            id: sub_id.to_string(),
             message: msg.clone(),
         });
     }
     ToolResult::error(msg)
 }
 
-/// Run a worker as a clankers subprocess, streaming output to the panel.
+enum RemoteCallError {
+    ConnectionError(String),
+    ApplicationError(String),
+    Cancelled,
+}
+
+/// Try a single remote RPC call with streaming notifications
+async fn try_remote_call(
+    endpoint: &iroh::Endpoint,
+    remote: ::iroh::PublicKey,
+    request: &crate::modes::rpc::protocol::Request,
+    sub_id: &str,
+    panel_tx: Option<&PanelTx>,
+    signal: &CancellationToken,
+) -> Result<String, RemoteCallError> {
+    use crate::modes::rpc::iroh;
+
+    let sub_id_clone = sub_id.to_string();
+    let panel_tx_clone = panel_tx.cloned();
+
+    let result = tokio::select! {
+        res = iroh::send_rpc_streaming(endpoint, remote, request, move |notification| {
+            handle_streaming_notification(&notification, &sub_id_clone, panel_tx_clone.as_ref());
+        }) => res.map(|(_, response)| response),
+        () = signal.cancelled() => {
+            if let Some(tx) = panel_tx {
+                let _ = tx.send(SubagentEvent::Error {
+                    id: sub_id.to_string(),
+                    message: "Cancelled".into()
+                });
+            }
+            return Err(RemoteCallError::Cancelled);
+        }
+    };
+
+    match result {
+        Ok(response) => {
+            if let Some(result) = response.ok {
+                let text = result.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                Ok(text.to_string())
+            } else if let Some(err) = response.error {
+                Err(RemoteCallError::ApplicationError(format!("Remote peer error: {}", err)))
+            } else {
+                Err(RemoteCallError::ApplicationError("Empty response from remote peer".to_string()))
+            }
+        }
+        Err(e) => Err(RemoteCallError::ConnectionError(format!("{}", e))),
+    }
+}
+
+/// Handle streaming RPC notifications (text deltas, tool calls, etc.)
+fn handle_streaming_notification(notification: &Value, sub_id: &str, panel_tx: Option<&PanelTx>) {
+    let method = notification.get("method").and_then(|v| v.as_str());
+
+    match method {
+        Some("agent.text_delta") => {
+            if let Some(text) = notification.get("params").and_then(|p| p.get("text")).and_then(|v| v.as_str())
+                && let Some(tx) = panel_tx
+            {
+                for line in text.split('\n') {
+                    if !line.is_empty() {
+                        let _ = tx.send(SubagentEvent::Output {
+                            id: sub_id.to_string(),
+                            line: line.to_string(),
+                        });
+                    }
+                }
+            }
+        }
+        Some("agent.tool_call") => {
+            if let Some(tx) = panel_tx {
+                let tool = notification
+                    .get("params")
+                    .and_then(|p| p.get("tool_name"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("?");
+                let _ = tx.send(SubagentEvent::Output {
+                    id: sub_id.to_string(),
+                    line: format!("[tool: {}]", tool),
+                });
+            }
+        }
+        Some("agent.tool_result") => {
+            if let Some(tx) = panel_tx {
+                let is_error = notification
+                    .get("params")
+                    .and_then(|p| p.get("is_error"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                if is_error {
+                    let _ = tx.send(SubagentEvent::Output {
+                        id: sub_id.to_string(),
+                        line: "[tool error]".to_string(),
+                    });
+                }
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Wait for retry with exponential backoff, checking for cancellation
+async fn wait_for_retry(
+    attempt: u32,
+    sub_id: &str,
+    panel_tx: Option<&PanelTx>,
+    signal: &CancellationToken,
+) -> Result<(), ToolResult> {
+    let backoff = std::time::Duration::from_millis(RETRY_BACKOFF_MS * 2u64.pow(attempt - 1));
+    if let Some(tx) = panel_tx {
+        let _ = tx.send(SubagentEvent::Output {
+            id: sub_id.to_string(),
+            line: format!("Retry {}/{} after {:?}...", attempt, MAX_RETRIES, backoff),
+        });
+    }
+    tokio::select! {
+        () = tokio::time::sleep(backoff) => Ok(()),
+        () = signal.cancelled() => {
+            if let Some(tx) = panel_tx {
+                let _ = tx.send(SubagentEvent::Error {
+                    id: sub_id.to_string(),
+                    message: "Cancelled".into()
+                });
+            }
+            Err(ToolResult::error("Cancelled during retry backoff".to_string()))
+        }
+    }
+}
+
 pub async fn run_worker_subprocess(
     worker_name: &str,
     task: &str,
@@ -462,16 +551,51 @@ pub async fn run_worker_subprocess(
     signal: CancellationToken,
     process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
 ) -> ToolResult {
-    use tokio::io::AsyncBufReadExt;
-    use tokio::io::BufReader;
-
     let sub_id = format!("worker:{}", worker_name);
     let task_preview: String = task.chars().take(60).collect();
 
-    let exe = match resolve_clankers_exe() {
-        Ok(e) => e,
-        Err(e) => return ToolResult::error(format!("Cannot find clankers executable: {}", e)),
+    let mut child = match spawn_worker_process(worker_name, task, agent, cwd) {
+        Ok(child) => child,
+        Err(e) => return ToolResult::error(e),
     };
+
+    let child_pid = child.id();
+    register_with_process_monitor(process_monitor, child_pid, worker_name, task);
+
+    if let Some(tx) = panel_tx {
+        let _ = tx.send(SubagentEvent::Started {
+            id: sub_id.clone(),
+            name: worker_name.to_string(),
+            task: task_preview,
+            pid: child_pid,
+        });
+    }
+
+    let stdout = match child.stdout.take() {
+        Some(s) => s,
+        None => return ToolResult::error("Failed to capture stdout"),
+    };
+    let stderr_handle = child.stderr.take();
+
+    let collected = match stream_worker_output(stdout, &sub_id, panel_tx, signal.clone()).await {
+        Ok(output) => output,
+        Err(e) => {
+            let _ = child.kill().await;
+            return e;
+        }
+    };
+
+    handle_worker_exit(worker_name, child, stderr_handle, collected, &sub_id, panel_tx).await
+}
+
+/// Spawn the worker subprocess with proper configuration
+fn spawn_worker_process(
+    worker_name: &str,
+    task: &str,
+    agent: Option<&str>,
+    cwd: Option<&str>,
+) -> Result<tokio::process::Child, String> {
+    let exe = resolve_clankers_exe().map_err(|e| format!("Cannot find clankers executable: {}", e))?;
 
     let mut cmd = tokio::process::Command::new(&exe);
     cmd.arg("--no-zellij").arg("-p").arg(task);
@@ -497,37 +621,40 @@ pub async fn run_worker_subprocess(
         });
     }
 
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => return ToolResult::error(format!("Failed to spawn worker '{}': {}", worker_name, e)),
-    };
-    let child_pid = child.id();
+    cmd.spawn().map_err(|e| format!("Failed to spawn worker '{}': {}", worker_name, e))
+}
 
-    // Register process with monitor
+/// Register the spawned process with the process monitor
+fn register_with_process_monitor(
+    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    child_pid: Option<u32>,
+    worker_name: &str,
+    task: &str,
+) {
     if let Some(monitor) = process_monitor
-        && let Some(pid) = child_pid {
-            let task_preview_full: String = task.chars().take(200).collect();
-            monitor.register(pid, crate::procmon::ProcessMeta {
+        && let Some(pid) = child_pid
+    {
+        let task_preview_full: String = task.chars().take(200).collect();
+        monitor.register(
+            pid,
+            crate::procmon::ProcessMeta {
                 tool_name: "delegate".to_string(),
                 command: format!("worker:{} {}", worker_name, task_preview_full),
                 call_id: format!("worker:{}", worker_name),
-            });
-        }
-
-    if let Some(tx) = panel_tx {
-        let _ = tx.send(SubagentEvent::Started {
-            id: sub_id.clone(),
-            name: worker_name.to_string(),
-            task: task_preview,
-            pid: child_pid,
-        });
+            },
+        );
     }
+}
 
-    let stdout = match child.stdout.take() {
-        Some(s) => s,
-        None => return ToolResult::error("Failed to capture stdout"),
-    };
-    let stderr_handle = child.stderr.take();
+/// Stream worker stdout to the panel and collect all output
+async fn stream_worker_output(
+    stdout: tokio::process::ChildStdout,
+    sub_id: &str,
+    panel_tx: Option<&PanelTx>,
+    signal: CancellationToken,
+) -> Result<String, ToolResult> {
+    use tokio::io::AsyncBufReadExt;
+    use tokio::io::BufReader;
 
     let mut reader = BufReader::new(stdout).lines();
     let mut collected = String::new();
@@ -539,7 +666,7 @@ pub async fn run_worker_subprocess(
                     Ok(Some(line)) => {
                         if let Some(tx) = panel_tx {
                             let _ = tx.send(SubagentEvent::Output {
-                                id: sub_id.clone(),
+                                id: sub_id.to_string(),
                                 line: line.clone(),
                             });
                         }
@@ -549,28 +676,45 @@ pub async fn run_worker_subprocess(
                         collected.push_str(&line);
                     }
                     Ok(None) => break,
-                    Err(e) => return ToolResult::error(format!("Worker '{}' read error: {}", worker_name, e)),
+                    Err(e) => {
+                        return Err(ToolResult::error(format!("Worker read error: {}", e)));
+                    }
                 }
             }
             () = signal.cancelled() => {
-                let _ = child.kill().await;
                 if let Some(tx) = panel_tx {
-                    let _ = tx.send(SubagentEvent::Error { id: sub_id, message: "Cancelled".into() });
+                    let _ = tx.send(SubagentEvent::Error {
+                        id: sub_id.to_string(),
+                        message: "Cancelled".into()
+                    });
                 }
-                return ToolResult::error(format!("Worker '{}' cancelled", worker_name));
+                return Err(ToolResult::error("Worker cancelled".to_string()));
             }
         }
     }
 
-    let status = child.wait().await.map_err(|e| format!("Wait error: {}", e));
-    let status = match status {
+    Ok(collected)
+}
+
+/// Handle worker process exit and produce the final ToolResult
+async fn handle_worker_exit(
+    worker_name: &str,
+    mut child: tokio::process::Child,
+    stderr_handle: Option<tokio::process::ChildStderr>,
+    collected: String,
+    sub_id: &str,
+    panel_tx: Option<&PanelTx>,
+) -> ToolResult {
+    use tokio::io::BufReader;
+
+    let status = match child.wait().await {
         Ok(s) => s,
-        Err(e) => return ToolResult::error(e),
+        Err(e) => return ToolResult::error(format!("Wait error: {}", e)),
     };
 
     if status.success() {
         if let Some(tx) = panel_tx {
-            let _ = tx.send(SubagentEvent::Done { id: sub_id });
+            let _ = tx.send(SubagentEvent::Done { id: sub_id.to_string() });
         }
         ToolResult::text(collected)
     } else {
@@ -588,7 +732,7 @@ pub async fn run_worker_subprocess(
         );
         if let Some(tx) = panel_tx {
             let _ = tx.send(SubagentEvent::Error {
-                id: sub_id,
+                id: sub_id.to_string(),
                 message: err_msg.clone(),
             });
         }
@@ -596,15 +740,6 @@ pub async fn run_worker_subprocess(
     }
 }
 
-/// Resolve the clankers executable path, handling the case where the binary was
-/// recompiled (and the old inode deleted) while the process is still running.
-///
-/// Tries in order:
-/// 1. `std::env::current_exe()` — if the file still exists on disk
-/// 2. `CARGO_BIN_EXE_clankers` env var (set by `cargo test`)
-/// 3. `target/debug/clankers` relative to the cargo manifest dir
-/// 4. `target/release/clankers` relative to the cargo manifest dir
-/// 5. `clankers` in `$PATH`
 fn resolve_clankers_exe() -> Result<std::path::PathBuf, String> {
     // Try current_exe first — works when the binary hasn't been recompiled
     if let Ok(exe) = std::env::current_exe() {

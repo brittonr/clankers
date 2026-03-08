@@ -274,109 +274,131 @@ fn extract_text_from_html(html: &str) -> String {
 
     let lower = html.to_lowercase();
     let chars: Vec<char> = html.chars().collect();
-    let _lower_chars: Vec<char> = lower.chars().collect();
     let len = chars.len();
     let mut i = 0;
 
     while i < len {
+        // Handle tag opening
         if !in_tag && chars[i] == '<' {
-            in_tag = true;
-            // Check for script/style start
-            let remaining = &lower[i..];
-            if remaining.starts_with("<script") {
-                in_script = true;
-            } else if remaining.starts_with("<style") {
-                in_style = true;
-            } else if remaining.starts_with("</script") {
-                in_script = false;
-            } else if remaining.starts_with("</style") {
-                in_style = false;
-            }
-            // Block elements get newlines
-            if (remaining.starts_with("<br")
-                || remaining.starts_with("<p")
-                || remaining.starts_with("<div")
-                || remaining.starts_with("<h")
-                || remaining.starts_with("<li")
-                || remaining.starts_with("<tr"))
-                && !result.ends_with('\n')
-            {
-                result.push('\n');
-            }
-            i += 1;
+            let skip = handle_tag_open(&lower[i..], &mut in_tag, &mut in_script, &mut in_style, &mut result);
+            i += skip;
             continue;
         }
+
+        // Handle tag closing
         if in_tag && chars[i] == '>' {
             in_tag = false;
             i += 1;
             continue;
         }
+
+        // Skip content inside tags or script/style blocks
         if in_tag || in_script || in_style {
             i += 1;
             continue;
         }
+
         // Decode HTML entities
         if chars[i] == '&' {
-            let rest = &lower[i..];
-            if rest.starts_with("&amp;") {
-                result.push('&');
-                i += 5;
-                last_was_space = false;
+            if let Some((ch, skip)) = decode_html_entity(&lower[i..]) {
+                result.push(ch);
+                i += skip;
+                last_was_space = ch == ' ';
                 continue;
-            } else if rest.starts_with("&lt;") {
-                result.push('<');
-                i += 4;
-                last_was_space = false;
-                continue;
-            } else if rest.starts_with("&gt;") {
-                result.push('>');
-                i += 4;
-                last_was_space = false;
-                continue;
-            } else if rest.starts_with("&quot;") {
-                result.push('"');
-                i += 6;
-                last_was_space = false;
-                continue;
-            } else if rest.starts_with("&nbsp;") {
-                result.push(' ');
-                i += 6;
-                last_was_space = true;
-                continue;
-            } else if rest.starts_with("&#") {
-                // Numeric entity
-                if let Some(end) = rest.find(';') {
-                    let num_str = &rest[2..end];
-                    let code = if let Some(hex) = num_str.strip_prefix('x') {
-                        u32::from_str_radix(hex, 16).ok()
-                    } else {
-                        num_str.parse::<u32>().ok()
-                    };
-                    if let Some(c) = code.and_then(char::from_u32) {
-                        result.push(c);
-                        i += end + 1;
-                        last_was_space = false;
-                        continue;
-                    }
-                }
             }
         }
+
         // Collapse whitespace
-        if chars[i].is_whitespace() {
-            if !last_was_space {
-                result.push(' ');
-                last_was_space = true;
-            }
-        } else {
-            result.push(chars[i]);
-            last_was_space = false;
-        }
+        handle_text_char(chars[i], &mut result, &mut last_was_space);
         i += 1;
     }
-    // Clean up excessive blank lines
+
+    normalize_blank_lines(&result)
+}
+
+/// Handle opening tag: detect script/style blocks and insert newlines for block elements
+fn handle_tag_open(
+    remaining_lower: &str,
+    in_tag: &mut bool,
+    in_script: &mut bool,
+    in_style: &mut bool,
+    result: &mut String,
+) -> usize {
+    *in_tag = true;
+
+    // Track script/style blocks
+    if remaining_lower.starts_with("<script") {
+        *in_script = true;
+    } else if remaining_lower.starts_with("<style") {
+        *in_style = true;
+    } else if remaining_lower.starts_with("</script") {
+        *in_script = false;
+    } else if remaining_lower.starts_with("</style") {
+        *in_style = false;
+    }
+
+    // Block elements get newlines
+    let is_block = remaining_lower.starts_with("<br")
+        || remaining_lower.starts_with("<p")
+        || remaining_lower.starts_with("<div")
+        || remaining_lower.starts_with("<h")
+        || remaining_lower.starts_with("<li")
+        || remaining_lower.starts_with("<tr");
+
+    if is_block && !result.ends_with('\n') {
+        result.push('\n');
+    }
+
+    1 // Skip the '<' character
+}
+
+/// Decode a single HTML entity if present. Returns (decoded char, bytes to skip) or None.
+fn decode_html_entity(text_lower: &str) -> Option<(char, usize)> {
+    if text_lower.starts_with("&amp;") {
+        Some(('&', 5))
+    } else if text_lower.starts_with("&lt;") {
+        Some(('<', 4))
+    } else if text_lower.starts_with("&gt;") {
+        Some(('>', 4))
+    } else if text_lower.starts_with("&quot;") {
+        Some(('"', 6))
+    } else if text_lower.starts_with("&nbsp;") {
+        Some((' ', 6))
+    } else if text_lower.starts_with("&#") {
+        // Numeric entity: &#123; or &#xAB;
+        text_lower.find(';').and_then(|end| {
+            let num_str = &text_lower[2..end];
+            let code = if let Some(hex) = num_str.strip_prefix('x') {
+                u32::from_str_radix(hex, 16).ok()
+            } else {
+                num_str.parse::<u32>().ok()
+            };
+            code.and_then(char::from_u32).map(|c| (c, end + 1))
+        })
+    } else {
+        None
+    }
+}
+
+/// Handle a single text character: collapse whitespace and push to result
+fn handle_text_char(ch: char, result: &mut String, last_was_space: &mut bool) {
+    if ch.is_whitespace() {
+        if !*last_was_space {
+            result.push(' ');
+            *last_was_space = true;
+        }
+    } else {
+        result.push(ch);
+        *last_was_space = false;
+    }
+}
+
+/// Normalize excessive blank lines (max 2 consecutive)
+fn normalize_blank_lines(text: &str) -> String {
     let mut clean = String::new();
     let mut blank_count = 0;
-    for line in result.lines() {
+
+    for line in text.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
             blank_count += 1;

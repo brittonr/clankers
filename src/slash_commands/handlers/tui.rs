@@ -300,15 +300,13 @@ impl SlashHandler for TodoHandler {
     }
 
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
-        use crate::tui::components::todo_panel::{TodoPanel, TodoStatus};
-        use crate::tui::panel::PanelId;
+        use crate::tui::components::todo_panel::TodoStatus;
 
         if args.is_empty() {
-            let summary = ctx.app.panels.downcast_ref::<TodoPanel>(PanelId::Todo)
-                .expect("todo panel").summary();
+            let summary = todo_panel_ref(ctx.app).summary();
             ctx.app.push_system(summary, false);
         } else {
-            let todo_panel = ctx.app.panels.downcast_mut::<TodoPanel>(PanelId::Todo).expect("todo panel");
+            let todo_panel = todo_panel_mut(ctx.app);
             let parts: Vec<&str> = args.splitn(2, char::is_whitespace).collect();
             let subcmd = parts[0].trim();
             let subcmd_args = parts.get(1).map(|s| s.trim()).unwrap_or("");
@@ -467,4 +465,24 @@ impl SlashHandler for ReviewHandler {
         // Queue the review prompt to be sent as a user message
         ctx.app.queued_prompt = Some(prompt);
     }
+}
+
+// ── Panel accessor helpers ──────────────────────────────────────────
+
+/// Helper to access the TodoPanel immutably. Panics if panel not registered (should never happen).
+fn todo_panel_ref(app: &crate::tui::app::App) -> &crate::tui::components::todo_panel::TodoPanel {
+    app.panels
+        .downcast_ref::<crate::tui::components::todo_panel::TodoPanel>(
+            crate::tui::panel::PanelId::Todo,
+        )
+        .expect("todo panel registered at startup")
+}
+
+/// Helper to access the TodoPanel mutably. Panics if panel not registered (should never happen).
+fn todo_panel_mut(app: &mut crate::tui::app::App) -> &mut crate::tui::components::todo_panel::TodoPanel {
+    app.panels
+        .downcast_mut::<crate::tui::components::todo_panel::TodoPanel>(
+            crate::tui::panel::PanelId::Todo,
+        )
+        .expect("todo panel registered at startup")
 }
