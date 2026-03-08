@@ -112,7 +112,7 @@ mod tests {
     }
 
     fn run(tool: &PluginTool, params: Value) -> ToolResult {
-        let rt = tokio::runtime::Runtime::new().unwrap();
+        let rt = tokio::runtime::Runtime::new().expect("should create runtime");
         rt.block_on(tool.execute(&ToolContext::new("call-1".to_string(), CancellationToken::new(), None), params))
     }
 

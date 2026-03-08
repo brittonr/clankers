@@ -124,17 +124,17 @@ mod tests {
 
     #[test]
     fn test_scan_empty_dir() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir");
         let skills = scan_skills_dir(dir.path());
         assert!(skills.is_empty());
     }
 
     #[test]
     fn test_scan_skills() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir");
         let skill_dir = dir.path().join("my-skill");
-        std::fs::create_dir(&skill_dir).unwrap();
-        std::fs::write(skill_dir.join("SKILL.md"), "# My Skill\nDoes things").unwrap();
+        std::fs::create_dir(&skill_dir).expect("failed to create skill dir");
+        std::fs::write(skill_dir.join("SKILL.md"), "# My Skill\nDoes things").expect("failed to write skill file");
 
         let skills = scan_skills_dir(dir.path());
         assert_eq!(skills.len(), 1);
@@ -144,18 +144,18 @@ mod tests {
 
     #[test]
     fn test_discover_project_overrides_global() {
-        let global = TempDir::new().unwrap();
-        let project = TempDir::new().unwrap();
+        let global = TempDir::new().expect("failed to create global temp dir");
+        let project = TempDir::new().expect("failed to create project temp dir");
 
         // Global skill
         let g = global.path().join("test");
-        std::fs::create_dir(&g).unwrap();
-        std::fs::write(g.join("SKILL.md"), "# Global Version").unwrap();
+        std::fs::create_dir(&g).expect("failed to create global skill dir");
+        std::fs::write(g.join("SKILL.md"), "# Global Version").expect("failed to write global skill");
 
         // Project skill with same name
         let p = project.path().join("test");
-        std::fs::create_dir(&p).unwrap();
-        std::fs::write(p.join("SKILL.md"), "# Project Version").unwrap();
+        std::fs::create_dir(&p).expect("failed to create project skill dir");
+        std::fs::write(p.join("SKILL.md"), "# Project Version").expect("failed to write project skill");
 
         let skills = discover_skills(global.path(), Some(project.path()));
         assert_eq!(skills.len(), 1);

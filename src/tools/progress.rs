@@ -413,7 +413,7 @@ mod tests {
             step: 2,
             total_steps: Some(3),
         };
-        assert!((phase.as_percentage().unwrap() - 66.666).abs() < 0.01);
+        assert!((phase.as_percentage().expect("phase with total should have percentage") - 66.666).abs() < 0.01);
     }
 
     #[test]
@@ -497,7 +497,7 @@ mod tests {
         assert_eq!(text, "line 1\nline 2\nline 3");
         
         // Check details
-        let details = result.details.unwrap();
+        let details = result.details.expect("result should have details");
         assert_eq!(details["total_lines"], 3);
         assert_eq!(details["truncated"], false);
     }
@@ -536,7 +536,7 @@ mod tests {
         assert!(text.contains("line 19"));
 
         // Check details
-        let details = result.details.unwrap();
+        let details = result.details.expect("result should have details");
         assert_eq!(details["total_lines"], 20);
         assert_eq!(details["truncated"], true);
     }
@@ -558,7 +558,7 @@ mod tests {
         assert!(acc.total_bytes() > 100);
         
         let result = acc.finalize();
-        let details = result.details.unwrap();
+        let details = result.details.expect("result should have details");
         assert_eq!(details["truncated"], true);
     }
 

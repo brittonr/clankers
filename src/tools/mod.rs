@@ -234,8 +234,8 @@ mod tests {
         ctx.emit_progress("step 1");
         ctx.emit_progress("step 2");
 
-        let event1 = rx.try_recv().unwrap();
-        let event2 = rx.try_recv().unwrap();
+        let event1 = rx.try_recv().expect("should receive first event");
+        let event2 = rx.try_recv().expect("should receive second event");
 
         match event1 {
             AgentEvent::ToolExecutionUpdate { call_id, partial } => {
@@ -270,8 +270,8 @@ mod tests {
         ctx1.emit_progress("from ctx1");
         ctx2.emit_progress("from ctx2");
 
-        let e1 = rx.try_recv().unwrap();
-        let e2 = rx.try_recv().unwrap();
+        let e1 = rx.try_recv().expect("should receive e1");
+        let e2 = rx.try_recv().expect("should receive e2");
 
         // Both should arrive on the same channel
         match (e1, e2) {
@@ -314,7 +314,7 @@ mod tests {
         ctx.emit_structured_progress(progress::ToolProgress::lines(2, Some(100)));
 
         // Should only have one event
-        let event1 = rx.try_recv().unwrap();
+        let event1 = rx.try_recv().expect("should receive first progress event");
         assert!(matches!(event1, AgentEvent::ToolProgressUpdate { .. }));
         
         // Second event should be missing (throttled)
@@ -325,7 +325,7 @@ mod tests {
 
         // Now another call should go through
         ctx.emit_structured_progress(progress::ToolProgress::lines(3, Some(100)));
-        let event2 = rx.try_recv().unwrap();
+        let event2 = rx.try_recv().expect("should receive second progress event after throttle");
         assert!(matches!(event2, AgentEvent::ToolProgressUpdate { .. }));
     }
 
@@ -340,9 +340,9 @@ mod tests {
         ctx.emit_result_chunk(progress::ResultChunk::text("chunk 3"));
 
         // All three should arrive
-        let e1 = rx.try_recv().unwrap();
-        let e2 = rx.try_recv().unwrap();
-        let e3 = rx.try_recv().unwrap();
+        let e1 = rx.try_recv().expect("should receive chunk 1");
+        let e2 = rx.try_recv().expect("should receive chunk 2");
+        let e3 = rx.try_recv().expect("should receive chunk 3");
 
         assert!(matches!(e1, AgentEvent::ToolResultChunk { .. }));
         assert!(matches!(e2, AgentEvent::ToolResultChunk { .. }));

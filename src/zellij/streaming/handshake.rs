@@ -59,7 +59,7 @@ mod tests {
         let psk = generate_psk();
         let hex = psk_to_hex(&psk);
         assert_eq!(hex.len(), 64); // 32 bytes = 64 hex chars
-        let decoded = psk_from_hex(&hex).unwrap();
+        let decoded = psk_from_hex(&hex).expect("failed to decode PSK from hex");
         assert_eq!(decoded, psk);
     }
 
@@ -83,16 +83,16 @@ mod tests {
         let mut buf = Vec::new();
 
         // Send PSK to buffer
-        send_psk(&mut buf, &psk).await.unwrap();
+        send_psk(&mut buf, &psk).await.expect("failed to send PSK");
         assert_eq!(buf.len(), 32);
 
         // Verify with correct PSK
         let mut cursor = std::io::Cursor::new(buf.clone());
-        assert!(verify_psk(&mut cursor, &psk).await.unwrap());
+        assert!(verify_psk(&mut cursor, &psk).await.expect("failed to verify correct PSK"));
 
         // Verify with wrong PSK
         let wrong_psk = generate_psk();
         let mut cursor = std::io::Cursor::new(buf);
-        assert!(!verify_psk(&mut cursor, &wrong_psk).await.unwrap());
+        assert!(!verify_psk(&mut cursor, &wrong_psk).await.expect("failed to verify wrong PSK"));
     }
 }

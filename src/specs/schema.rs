@@ -92,7 +92,7 @@ mod tests {
 
     #[test]
     fn test_load_schema_yaml() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir");
         let schema_file = dir.path().join("schema.yaml");
         let yaml = r#"
 name: test-schema
@@ -104,9 +104,9 @@ artifacts:
     generates: second.md
     requires: [first]
 "#;
-        std::fs::write(&schema_file, yaml).unwrap();
+        std::fs::write(&schema_file, yaml).expect("failed to write schema file");
 
-        let schema = load_schema(&schema_file).unwrap();
+        let schema = load_schema(&schema_file).expect("failed to load schema");
         assert_eq!(schema.name, "test-schema");
         assert_eq!(schema.artifacts.len(), 2);
         assert_eq!(schema.artifacts[0].id, "first");
@@ -128,11 +128,11 @@ artifacts:
 
     #[test]
     fn test_resolve_schema_from_user_dir() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir");
         let schema_dir = dir.path().join("custom");
-        std::fs::create_dir(&schema_dir).unwrap();
+        std::fs::create_dir(&schema_dir).expect("failed to create schema dir");
         let schema_file = schema_dir.join("schema.yaml");
-        std::fs::write(&schema_file, "name: custom\nartifacts: []").unwrap();
+        std::fs::write(&schema_file, "name: custom\nartifacts: []").expect("failed to write schema file");
 
         let schema = resolve_schema(Some("custom"), None, Some(dir.path()));
         assert_eq!(schema.name, "custom");
@@ -140,16 +140,16 @@ artifacts:
 
     #[test]
     fn test_resolve_schema_project_overrides_user() {
-        let user_dir = TempDir::new().unwrap();
-        let project_dir = TempDir::new().unwrap();
+        let user_dir = TempDir::new().expect("failed to create user temp dir");
+        let project_dir = TempDir::new().expect("failed to create project temp dir");
 
         let user_schema = user_dir.path().join("test");
-        std::fs::create_dir(&user_schema).unwrap();
-        std::fs::write(user_schema.join("schema.yaml"), "name: user-test\nartifacts: []").unwrap();
+        std::fs::create_dir(&user_schema).expect("failed to create user schema dir");
+        std::fs::write(user_schema.join("schema.yaml"), "name: user-test\nartifacts: []").expect("failed to write user schema");
 
         let project_schema = project_dir.path().join("test");
-        std::fs::create_dir(&project_schema).unwrap();
-        std::fs::write(project_schema.join("schema.yaml"), "name: project-test\nartifacts: []").unwrap();
+        std::fs::create_dir(&project_schema).expect("failed to create project schema dir");
+        std::fs::write(project_schema.join("schema.yaml"), "name: project-test\nartifacts: []").expect("failed to write project schema");
 
         let schema = resolve_schema(Some("test"), Some(project_dir.path()), Some(user_dir.path()));
         assert_eq!(schema.name, "project-test");

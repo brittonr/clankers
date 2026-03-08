@@ -147,7 +147,7 @@ You are a scout agent for quick reconnaissance."#;
         let result = parse_agent_content(content, Path::new("test.md"), AgentSource::User);
         assert!(result.is_ok());
 
-        let config = result.unwrap();
+        let config = result.expect("failed to parse agent content");
         assert_eq!(config.name, "scout");
         assert_eq!(config.description, "Fast read-only recon agent");
         assert_eq!(config.model, Some("claude-haiku-4-5".to_string()));
@@ -177,7 +177,7 @@ System prompt here."#;
         let result = parse_agent_content(content, Path::new("test.md"), AgentSource::Project);
         assert!(result.is_ok());
 
-        let config = result.unwrap();
+        let config = result.expect("failed to parse minimal agent");
         assert_eq!(config.name, "minimal");
         assert_eq!(config.description, "Minimal agent");
         assert!(config.model.is_none());
@@ -190,7 +190,7 @@ System prompt here."#;
         let content = "Just a prompt without frontmatter";
         let result = parse_agent_content(content, Path::new("test.md"), AgentSource::User);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Missing frontmatter"));
+        assert!(result.expect_err("should fail with missing frontmatter").contains("Missing frontmatter"));
     }
 
     #[test]
@@ -203,7 +203,7 @@ Prompt"#;
 
         let result = parse_agent_content(content, Path::new("test.md"), AgentSource::User);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Missing 'name'"));
+        assert!(result.expect_err("should fail with missing name").contains("Missing 'name'"));
     }
 
     #[test]
@@ -216,7 +216,7 @@ Prompt"#;
 
         let result = parse_agent_content(content, Path::new("test.md"), AgentSource::User);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Missing 'description'"));
+        assert!(result.expect_err("should fail with missing description").contains("Missing 'description'"));
     }
 
     #[test]
@@ -230,7 +230,7 @@ description: Test agent
 
         let result = parse_agent_content(content, Path::new("test.md"), AgentSource::User);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Empty system prompt"));
+        assert!(result.expect_err("should fail with empty prompt").contains("Empty system prompt"));
     }
 
     #[test]
@@ -246,8 +246,8 @@ Prompt"#;
         let result = parse_agent_content(content, Path::new("test.md"), AgentSource::User);
         assert!(result.is_ok());
 
-        let config = result.unwrap();
-        let tools = config.tools.unwrap();
+        let config = result.expect("failed to parse agent with tools");
+        let tools = config.tools.expect("tools should be present");
         assert_eq!(tools, vec!["read", "grep", "find", "bash"]);
     }
 
@@ -265,7 +265,7 @@ Line 3"#;
         let result = parse_agent_content(content, Path::new("test.md"), AgentSource::User);
         assert!(result.is_ok());
 
-        let config = result.unwrap();
+        let config = result.expect("failed to parse multiline prompt");
         assert_eq!(config.system_prompt, "Line 1\nLine 2\nLine 3");
     }
 
@@ -281,7 +281,7 @@ Prompt with --- in it should work"#;
         let result = parse_agent_content(content, Path::new("test.md"), AgentSource::User);
         assert!(result.is_ok());
 
-        let config = result.unwrap();
+        let config = result.expect("failed to parse prompt with triple dash");
         assert_eq!(config.system_prompt, "Prompt with --- in it should work");
     }
 
@@ -299,7 +299,7 @@ Prompt"#;
         let result = parse_agent_content(content, Path::new("test.md"), AgentSource::User);
         assert!(result.is_ok());
 
-        let config = result.unwrap();
+        let config = result.expect("failed to parse agent ignoring comments");
         assert_eq!(config.name, "test");
         assert_eq!(config.description, "Test");
     }
@@ -309,8 +309,8 @@ Prompt"#;
         let user = AgentSource::User;
         let project = AgentSource::Project;
 
-        let user_json = serde_json::to_string(&user).unwrap();
-        let project_json = serde_json::to_string(&project).unwrap();
+        let user_json = serde_json::to_string(&user).expect("failed to serialize user");
+        let project_json = serde_json::to_string(&project).expect("failed to serialize project");
 
         assert_eq!(user_json, "\"user\"");
         assert_eq!(project_json, "\"project\"");
@@ -335,7 +335,7 @@ Prompt"#;
         let result = parse_agent_content(content, &path, AgentSource::User);
         assert!(result.is_ok());
 
-        let config = result.unwrap();
+        let config = result.expect("failed to parse agent with file path");
         assert_eq!(config.file_path, path);
     }
 }

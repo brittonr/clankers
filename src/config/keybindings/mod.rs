@@ -328,21 +328,21 @@ mod tests {
 
     #[test]
     fn parse_simple_char() {
-        let c = parser::parse_key_string("e").unwrap();
+        let c = parser::parse_key_string("e").expect("should parse simple char key");
         assert_eq!(c.code, KeyCode::Char('e'));
         assert!(!c.ctrl && !c.alt && !c.shift);
     }
 
     #[test]
     fn parse_ctrl_combo() {
-        let c = parser::parse_key_string("Ctrl+k").unwrap();
+        let c = parser::parse_key_string("Ctrl+k").expect("should parse ctrl combo");
         assert_eq!(c.code, KeyCode::Char('k'));
         assert!(c.ctrl);
     }
 
     #[test]
     fn parse_alt_enter() {
-        let c = parser::parse_key_string("Alt+Enter").unwrap();
+        let c = parser::parse_key_string("Alt+Enter").expect("should parse alt+enter combo");
         assert_eq!(c.code, KeyCode::Enter);
         assert!(c.alt);
     }

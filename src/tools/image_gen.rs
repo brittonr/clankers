@@ -257,7 +257,7 @@ mod tests {
     fn test_base64_roundtrip() {
         let data = b"hello world";
         let encoded = base64::Engine::encode(&base64::engine::general_purpose::STANDARD, data);
-        let decoded = base64_decode(&encoded).unwrap();
+        let decoded = base64_decode(&encoded).expect("should decode base64");
         assert_eq!(decoded, data);
     }
 }

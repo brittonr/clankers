@@ -140,20 +140,20 @@ mod tests {
 
     #[test]
     fn test_write_temp_layout() {
-        let path = write_temp_layout(DEFAULT_LAYOUT).unwrap();
+        let path = write_temp_layout(DEFAULT_LAYOUT).expect("failed to write temp layout");
         assert!(path.exists());
-        let content = std::fs::read_to_string(&path).unwrap();
+        let content = std::fs::read_to_string(&path).expect("failed to read layout file");
         assert_eq!(content, DEFAULT_LAYOUT);
-        std::fs::remove_file(&path).unwrap();
+        std::fs::remove_file(&path).expect("failed to remove temp layout file");
     }
 
     #[test]
     fn test_write_temp_layout_unique_paths() {
-        let p1 = write_temp_layout(DEFAULT_LAYOUT).unwrap();
-        let p2 = write_temp_layout(DEFAULT_LAYOUT).unwrap();
+        let p1 = write_temp_layout(DEFAULT_LAYOUT).expect("failed to write first layout");
+        let p2 = write_temp_layout(DEFAULT_LAYOUT).expect("failed to write second layout");
         assert_ne!(p1, p2);
-        std::fs::remove_file(&p1).unwrap();
-        std::fs::remove_file(&p2).unwrap();
+        std::fs::remove_file(&p1).expect("failed to remove first layout");
+        std::fs::remove_file(&p2).expect("failed to remove second layout");
     }
 
     #[test]
@@ -165,14 +165,14 @@ mod tests {
     #[test]
     fn test_load_custom_layout_present() {
         let dir = std::env::temp_dir().join("clankers-layout-test");
-        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::create_dir_all(&dir).expect("failed to create test directory");
         let layout_path = dir.join("test.kdl");
-        std::fs::write(&layout_path, "layout { pane }").unwrap();
+        std::fs::write(&layout_path, "layout { pane }").expect("failed to write test layout");
 
         let result = load_custom_layout(&dir, "test");
         assert_eq!(result, Some("layout { pane }".to_string()));
 
-        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&dir).expect("failed to remove test directory");
     }
 
     // ── Production mode (direct binary) ────────────────────────────
@@ -245,10 +245,10 @@ mod tests {
         let extra = vec!["--model".to_string(), "test".to_string()];
         let layout = default_layout_with_command("cargo", &prefix, &extra);
         // Args line should be: args "run" "--quiet" "--" "--no-zellij" "--model" "test"
-        let args_line = layout.lines().find(|l| l.trim().starts_with("args")).unwrap();
-        let run_pos = args_line.find("\"run\"").unwrap();
-        let no_zellij_pos = args_line.find("\"--no-zellij\"").unwrap();
-        let model_pos = args_line.find("\"--model\"").unwrap();
+        let args_line = layout.lines().find(|l| l.trim().starts_with("args")).expect("args line not found in layout");
+        let run_pos = args_line.find("\"run\"").expect("run arg not found");
+        let no_zellij_pos = args_line.find("\"--no-zellij\"").expect("--no-zellij arg not found");
+        let model_pos = args_line.find("\"--model\"").expect("--model arg not found");
         assert!(run_pos < no_zellij_pos, "prefix args should come before --no-zellij");
         assert!(no_zellij_pos < model_pos, "--no-zellij should come before extra args");
     }

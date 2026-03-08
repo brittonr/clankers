@@ -128,7 +128,7 @@ mod tests {
             worktree_branch: None,
         };
         let entry = SessionEntry::Header(header);
-        let json = serde_json::to_string(&entry).unwrap();
+        let json = serde_json::to_string(&entry).expect("failed to serialize header entry");
         assert!(json.contains("\"type\":\"Header\""));
         assert!(json.contains("test123"));
     }
@@ -149,8 +149,8 @@ mod tests {
             timestamp: Utc::now(),
         };
         let entry = SessionEntry::Message(msg.clone());
-        let json = serde_json::to_string(&entry).unwrap();
-        let parsed: SessionEntry = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&entry).expect("failed to serialize message entry");
+        let parsed: SessionEntry = serde_json::from_str(&json).expect("failed to deserialize message entry");
 
         match parsed {
             SessionEntry::Message(parsed_msg) => {
@@ -172,7 +172,7 @@ mod tests {
             timestamp: Utc::now(),
         };
         let entry = SessionEntry::Compaction(compaction);
-        let json = serde_json::to_string(&entry).unwrap();
+        let json = serde_json::to_string(&entry).expect("failed to serialize compaction entry");
         assert!(json.contains("\"type\":\"Compaction\""));
         assert!(json.contains("\"tokens_before\":1000"));
     }
@@ -186,7 +186,7 @@ mod tests {
             timestamp: Utc::now(),
         };
         let entry = SessionEntry::Branch(branch);
-        let json = serde_json::to_string(&entry).unwrap();
+        let json = serde_json::to_string(&entry).expect("failed to serialize branch entry");
         assert!(json.contains("\"type\":\"Branch\""));
         assert!(json.contains("alternate approach"));
     }
@@ -200,7 +200,7 @@ mod tests {
             timestamp: Utc::now(),
         };
         let entry = SessionEntry::Label(label);
-        let json = serde_json::to_string(&entry).unwrap();
+        let json = serde_json::to_string(&entry).expect("failed to serialize label entry");
         assert!(json.contains("\"type\":\"Label\""));
         assert!(json.contains("important"));
     }
@@ -215,7 +215,7 @@ mod tests {
             timestamp: Utc::now(),
         };
         let entry = SessionEntry::ModelChange(change);
-        let json = serde_json::to_string(&entry).unwrap();
+        let json = serde_json::to_string(&entry).expect("failed to serialize model change entry");
         assert!(json.contains("\"type\":\"ModelChange\""));
         assert!(json.contains("claude-haiku"));
         assert!(json.contains("claude-sonnet"));
@@ -230,7 +230,7 @@ mod tests {
             timestamp: Utc::now(),
         };
         let entry = SessionEntry::Custom(custom);
-        let json = serde_json::to_string(&entry).unwrap();
+        let json = serde_json::to_string(&entry).expect("failed to serialize custom entry");
         assert!(json.contains("\"type\":\"Custom\""));
         assert!(json.contains("test_event"));
     }

@@ -153,7 +153,7 @@ mod tests {
             ..c
         });
         assert!(store.switch_anthropic_account("two"));
-        assert_eq!(store.active_credentials().unwrap().access, "b");
+        assert_eq!(store.active_credentials().expect("active credentials should exist").access, "b");
     }
 
     #[test]

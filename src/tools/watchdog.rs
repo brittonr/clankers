@@ -290,7 +290,10 @@ mod tests {
         let handle = spawn_watchdog(tracker.clone(), config, Some(tx), cancel.clone());
 
         // Wait for stall detection
-        let event = tokio::time::timeout(Duration::from_secs(1), rx.recv()).await.unwrap().unwrap();
+        let event = tokio::time::timeout(Duration::from_secs(1), rx.recv())
+            .await
+            .expect("should receive event within timeout")
+            .expect("should receive valid event");
         match event {
             SubagentEvent::Output { id, line } => {
                 assert_eq!(id, "stall-test");

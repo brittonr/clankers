@@ -371,8 +371,8 @@ mod tests {
         let content = Content::Text {
             text: "hello".to_string(),
         };
-        let json = serde_json::to_string(&content).unwrap();
-        let parsed: Content = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&content).expect("content should serialize to JSON");
+        let parsed: Content = serde_json::from_str(&json).expect("JSON should deserialize to content");
         match parsed {
             Content::Text { text } => assert_eq!(text, "hello"),
             other => panic!("Expected Text, got {:?}", other),
@@ -386,8 +386,8 @@ mod tests {
             name: "bash".to_string(),
             input: json!({"command": "ls"}),
         };
-        let json = serde_json::to_string(&content).unwrap();
-        let parsed: Content = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&content).expect("content should serialize to JSON");
+        let parsed: Content = serde_json::from_str(&json).expect("JSON should deserialize to content");
         match parsed {
             Content::ToolUse { id, name, input } => {
                 assert_eq!(id, "call_1");
@@ -401,8 +401,8 @@ mod tests {
     #[test]
     fn test_agent_message_roundtrip() {
         let msg = make_user_msg();
-        let json = serde_json::to_string(&msg).unwrap();
-        let parsed: AgentMessage = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&msg).expect("message should serialize to JSON");
+        let parsed: AgentMessage = serde_json::from_str(&json).expect("JSON should deserialize to message");
         assert!(parsed.is_user());
         assert_eq!(parsed.id().as_ref(), "user-1");
     }
@@ -420,8 +420,8 @@ mod tests {
 
     #[test]
     fn test_stop_reason_roundtrip() {
-        let json = serde_json::to_string(&StopReason::MaxTokens).unwrap();
-        let parsed: StopReason = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&StopReason::MaxTokens).expect("stop reason should serialize to JSON");
+        let parsed: StopReason = serde_json::from_str(&json).expect("JSON should deserialize to stop reason");
         assert_eq!(parsed, StopReason::MaxTokens);
     }
 

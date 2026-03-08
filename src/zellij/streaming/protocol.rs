@@ -55,8 +55,8 @@ mod tests {
             zellij_version: "0.40.0".to_string(),
             read_only: false,
         };
-        let json = serde_json::to_string(&info).unwrap();
-        let deserialized: SessionInfo = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&info).expect("failed to serialize SessionInfo");
+        let deserialized: SessionInfo = serde_json::from_str(&json).expect("failed to deserialize SessionInfo");
         assert_eq!(deserialized.session_name, "test-session");
         assert_eq!(deserialized.zellij_version, "0.40.0");
         assert!(!deserialized.read_only);
@@ -69,8 +69,8 @@ mod tests {
             zellij_version: "0.40.0".to_string(),
             read_only: true,
         };
-        let json = serde_json::to_string(&info).unwrap();
-        let deserialized: SessionInfo = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&info).expect("failed to serialize read-only SessionInfo");
+        let deserialized: SessionInfo = serde_json::from_str(&json).expect("failed to deserialize read-only SessionInfo");
         assert!(deserialized.read_only);
     }
 
@@ -83,7 +83,7 @@ mod tests {
         };
 
         let mut buf = Vec::new();
-        write_message(&mut buf, &info).await.unwrap();
+        write_message(&mut buf, &info).await.expect("failed to write message");
 
         // Buffer should have 4-byte length prefix + JSON
         assert!(buf.len() > 4);
@@ -91,7 +91,7 @@ mod tests {
         assert_eq!(expected_len, buf.len() - 4);
 
         let mut cursor = std::io::Cursor::new(buf);
-        let result: SessionInfo = read_message(&mut cursor).await.unwrap();
+        let result: SessionInfo = read_message(&mut cursor).await.expect("failed to read message");
         assert_eq!(result.session_name, "roundtrip");
     }
 
@@ -110,12 +110,12 @@ mod tests {
             read_only: true,
         };
 
-        write_message(&mut buf, &msg1).await.unwrap();
-        write_message(&mut buf, &msg2).await.unwrap();
+        write_message(&mut buf, &msg1).await.expect("failed to write first message");
+        write_message(&mut buf, &msg2).await.expect("failed to write second message");
 
         let mut cursor = std::io::Cursor::new(buf);
-        let r1: SessionInfo = read_message(&mut cursor).await.unwrap();
-        let r2: SessionInfo = read_message(&mut cursor).await.unwrap();
+        let r1: SessionInfo = read_message(&mut cursor).await.expect("failed to read first message");
+        let r2: SessionInfo = read_message(&mut cursor).await.expect("failed to read second message");
 
         assert_eq!(r1.session_name, "first");
         assert_eq!(r2.session_name, "second");

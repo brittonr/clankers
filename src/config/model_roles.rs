@@ -207,13 +207,13 @@ mod tests {
     #[test]
     fn test_aliases() {
         let roles = ModelRoles::with_defaults();
-        assert_eq!(roles.get("fast").unwrap().name, "smol");
-        assert_eq!(roles.get("small").unwrap().name, "smol");
-        assert_eq!(roles.get("large").unwrap().name, "slow");
-        assert_eq!(roles.get("thinking").unwrap().name, "slow");
-        assert_eq!(roles.get("architect").unwrap().name, "plan");
-        assert_eq!(roles.get("git").unwrap().name, "commit");
-        assert_eq!(roles.get("code-review").unwrap().name, "review");
+        assert_eq!(roles.get("fast").expect("fast alias should exist").name, "smol");
+        assert_eq!(roles.get("small").expect("small alias should exist").name, "smol");
+        assert_eq!(roles.get("large").expect("large alias should exist").name, "slow");
+        assert_eq!(roles.get("thinking").expect("thinking alias should exist").name, "slow");
+        assert_eq!(roles.get("architect").expect("architect alias should exist").name, "plan");
+        assert_eq!(roles.get("git").expect("git alias should exist").name, "commit");
+        assert_eq!(roles.get("code-review").expect("code-review alias should exist").name, "review");
     }
 
     #[test]
@@ -257,8 +257,8 @@ mod tests {
             },
         ]);
         assert_eq!(roles.roles.len(), 7); // 6 builtins + 1 new
-        assert_eq!(roles.get("debug").unwrap().model.as_deref(), Some("claude-sonnet"));
-        assert_eq!(roles.get("review").unwrap().description, "Custom review");
+        assert_eq!(roles.get("debug").expect("debug role should exist").model.as_deref(), Some("claude-sonnet"));
+        assert_eq!(roles.get("review").expect("review role should exist").description, "Custom review");
     }
 
     #[test]

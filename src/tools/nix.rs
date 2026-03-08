@@ -848,7 +848,7 @@ mod tests {
     #[test]
     fn parse_nix_start_event() {
         let json = r#"{"action":"start","fields":["/nix/store/abc-test.drv","",1,1],"id":123,"level":3,"parent":0,"text":"building '/nix/store/abc-test.drv'","type":105}"#;
-        let event: NixEvent = serde_json::from_str(json).unwrap();
+        let event: NixEvent = serde_json::from_str(json).expect("should parse start event");
         assert_eq!(event.action, "start");
         assert_eq!(event.id, 123);
         assert_eq!(ActivityType::from_u64(event.activity_type), ActivityType::Build);
@@ -857,7 +857,7 @@ mod tests {
     #[test]
     fn parse_nix_msg_event() {
         let json = r#"{"action":"msg","level":0,"msg":"error: build failed","raw_msg":"build failed"}"#;
-        let event: NixEvent = serde_json::from_str(json).unwrap();
+        let event: NixEvent = serde_json::from_str(json).expect("should parse msg event");
         assert_eq!(event.action, "msg");
         assert_eq!(NixLogLevel::from_u64(event.level), NixLogLevel::Error);
         assert_eq!(event.raw_msg, "build failed");
@@ -866,9 +866,9 @@ mod tests {
     #[test]
     fn parse_nix_result_build_log() {
         let json = r#"{"action":"result","fields":["compiling main.rs"],"id":123,"type":101}"#;
-        let event: NixEvent = serde_json::from_str(json).unwrap();
+        let event: NixEvent = serde_json::from_str(json).expect("should parse result event");
         assert_eq!(event.action, "result");
         assert_eq!(ResultType::from_u64(event.activity_type), Some(ResultType::BuildLogLine));
-        assert_eq!(event.fields[0].as_str().unwrap(), "compiling main.rs");
+        assert_eq!(event.fields[0].as_str().expect("should have log line field"), "compiling main.rs");
     }
 }

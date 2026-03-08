@@ -396,7 +396,7 @@ mod tests {
         let json = r#"[
             {"name": "test", "trigger": "foo", "injection": "bar"}
         ]"#;
-        let rules: Vec<TtsrRule> = serde_json::from_str(json).unwrap();
+        let rules: Vec<TtsrRule> = serde_json::from_str(json).expect("failed to parse ttsr rules from json");
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].name, "test");
     }

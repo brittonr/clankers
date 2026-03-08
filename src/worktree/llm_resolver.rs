@@ -181,7 +181,7 @@ mod tests {
 
     #[test]
     fn test_git_show_nonexistent() {
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("should create temp dir");
         assert!(git_show(tmp.path(), "main", Path::new("nope.txt")).is_none());
     }
 }

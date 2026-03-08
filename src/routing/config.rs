@@ -120,17 +120,17 @@ mod tests {
     #[test]
     fn test_default_keyword_hints() {
         let hints = default_keyword_hints();
-        assert!(hints.get("refactor").unwrap() > &0.0);
-        assert!(hints.get("quick").unwrap() < &0.0);
-        assert!(hints.get("architecture").unwrap() > &0.0);
-        assert!(hints.get("grep").unwrap() < &0.0);
+        assert!(hints.get("refactor").expect("refactor hint should exist") > &0.0);
+        assert!(hints.get("quick").expect("quick hint should exist") < &0.0);
+        assert!(hints.get("architecture").expect("architecture hint should exist") > &0.0);
+        assert!(hints.get("grep").expect("grep hint should exist") < &0.0);
     }
 
     #[test]
     fn test_config_serialization() {
         let config = RoutingPolicyConfig::default();
-        let json = serde_json::to_string(&config).unwrap();
-        let decoded: RoutingPolicyConfig = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&config).expect("config should serialize to JSON");
+        let decoded: RoutingPolicyConfig = serde_json::from_str(&json).expect("JSON should deserialize to config");
         assert_eq!(decoded.enabled, config.enabled);
         assert_eq!(decoded.low_threshold, config.low_threshold);
     }

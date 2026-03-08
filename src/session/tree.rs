@@ -287,7 +287,7 @@ mod tests {
         assert_eq!(tree.message_count(), 1);
         let latest = tree.latest_message();
         assert!(latest.is_some());
-        assert_eq!(latest.unwrap().id, id);
+        assert_eq!(latest.expect("should have latest message").id, id);
     }
 
     #[test]
@@ -374,7 +374,7 @@ mod tests {
         ];
 
         let tree = SessionTree::build(entries);
-        let latest = tree.latest_message().unwrap();
+        let latest = tree.latest_message().expect("should have latest message");
         assert_eq!(latest.id, id3);
     }
 
@@ -425,7 +425,7 @@ mod tests {
         ];
         let tree = SessionTree::build(entries);
 
-        let leaf = tree.find_latest_leaf(None).unwrap();
+        let leaf = tree.find_latest_leaf(None).expect("should have latest leaf");
         assert_eq!(leaf.id, id3);
     }
 
@@ -446,11 +446,11 @@ mod tests {
 
         // From root, latest leaf should follow the last child at each level
         // Root's last child is id2b, id2b's last child is id3b
-        let leaf = tree.find_latest_leaf(None).unwrap();
+        let leaf = tree.find_latest_leaf(None).expect("should have latest leaf from root");
         assert_eq!(leaf.id, id3b);
 
         // From a specific branch point
-        let leaf_a = tree.find_latest_leaf(Some(&id2a)).unwrap();
+        let leaf_a = tree.find_latest_leaf(Some(&id2a)).expect("should have latest leaf from branch a");
         assert_eq!(leaf_a.id, id2a); // id2a is a leaf itself
     }
 
@@ -620,7 +620,7 @@ mod tests {
 
         let result = tree.find_divergence_point(&id, &id);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().id, id);
+        assert_eq!(result.expect("should have divergence point").id, id);
     }
 
     #[test]
@@ -639,11 +639,11 @@ mod tests {
         // Two points on same linear chain — divergence is the earlier one
         let result = tree.find_divergence_point(&id2, &id3);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().id, id2);
+        assert_eq!(result.expect("should have divergence at id2").id, id2);
 
         let result = tree.find_divergence_point(&id1, &id3);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().id, id1);
+        assert_eq!(result.expect("should have divergence at id1").id, id1);
     }
 
     #[test]
@@ -666,12 +666,12 @@ mod tests {
         // Two leaves from different branches should diverge at root
         let result = tree.find_divergence_point(&id3a, &id3b);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().id, id1);
+        assert_eq!(result.expect("should have divergence at root for leaves").id, id1);
 
         // Leaf and intermediate node on different branches
         let result = tree.find_divergence_point(&id2a, &id3b);
         assert!(result.is_some());
-        assert_eq!(result.unwrap().id, id1);
+        assert_eq!(result.expect("should have divergence at root for leaf and intermediate").id, id1);
     }
 
     #[test]

@@ -329,7 +329,7 @@ mod tests {
     use crate::worktree::WorktreeStatus;
 
     fn test_db() -> Db {
-        Db::in_memory().unwrap()
+        Db::in_memory().expect("should create in-memory db")
     }
 
     fn make_worktree(branch: &str, status: WorktreeStatus) -> WorktreeInfo {
@@ -371,21 +371,21 @@ mod tests {
         let db = test_db();
         let reg = db.worktrees();
         reg.upsert(&make_worktree("clankers/main-aaa", WorktreeStatus::Active))
-            .unwrap();
+            .expect("should upsert aaa");
         reg.upsert(&make_worktree(
             "clankers/main-bbb",
             WorktreeStatus::Completed,
         ))
-        .unwrap();
+        .expect("should upsert bbb");
         reg.upsert(&make_worktree("clankers/main-ccc", WorktreeStatus::Active))
-            .unwrap();
+            .expect("should upsert ccc");
 
         // Simulate: only "aaa" still exists in git
         let live: HashSet<String> = ["clankers/main-aaa".to_string()].into();
         let pruned = prune_against_git(&db, &live);
         assert_eq!(pruned, 2);
-        assert_eq!(reg.count().unwrap(), 1);
-        assert!(reg.get("clankers/main-aaa").unwrap().is_some());
+        assert_eq!(reg.count().expect("should get count"), 1);
+        assert!(reg.get("clankers/main-aaa").expect("should get aaa").is_some());
     }
 
     #[test]
@@ -401,11 +401,11 @@ mod tests {
         let db = test_db();
         let reg = db.worktrees();
         reg.upsert(&make_worktree("clankers/main-aaa", WorktreeStatus::Active))
-            .unwrap();
+            .expect("should upsert aaa");
 
         // This won't find the branch in a real git repo (we're in a temp dir),
         // but it should still clean the registry entry since the branch doesn't exist.
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("should create temp dir");
         let report = gc_after_session(&db, tmp.path(), "clankers/main-aaa");
         // Registry entry pruned because the branch doesn't exist in git
         assert!(report.registry_pruned >= 1);
@@ -414,7 +414,7 @@ mod tests {
     #[test]
     fn test_gc_on_startup_in_non_git_dir() {
         let db = test_db();
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("should create temp dir");
         let report = gc_on_startup(&db, tmp.path());
         assert!(report.is_empty());
     }

@@ -322,8 +322,8 @@ mod tests {
         assert!(!def.description.is_empty());
         assert!(def.input_schema.get("properties").is_some());
         // inspect should be in the enum
-        let actions = def.input_schema["properties"]["action"]["enum"].as_array().unwrap();
-        let names: Vec<&str> = actions.iter().map(|v| v.as_str().unwrap()).collect();
+        let actions = def.input_schema["properties"]["action"]["enum"].as_array().expect("action enum should exist");
+        let names: Vec<&str> = actions.iter().map(|v| v.as_str().expect("action should be string")).collect();
         assert!(names.contains(&"inspect"));
         // pid property should exist
         assert!(def.input_schema["properties"]["pid"].is_object());

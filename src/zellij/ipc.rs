@@ -76,11 +76,11 @@ mod tests {
         let status = AgentStatus::Busy {
             tool: Some("bash".to_string()),
         };
-        let json = serde_json::to_string(&status).unwrap();
+        let json = serde_json::to_string(&status).expect("failed to serialize AgentStatus");
         assert!(json.contains("Busy"));
         assert!(json.contains("bash"));
 
-        let deserialized: AgentStatus = serde_json::from_str(&json).unwrap();
+        let deserialized: AgentStatus = serde_json::from_str(&json).expect("failed to deserialize AgentStatus");
         match deserialized {
             AgentStatus::Busy { tool } => assert_eq!(tool, Some("bash".to_string())),
             _ => panic!("Wrong variant"),
@@ -90,8 +90,8 @@ mod tests {
     #[test]
     fn test_agent_status_idle_serialization() {
         let status = AgentStatus::Idle;
-        let json = serde_json::to_string(&status).unwrap();
-        let deserialized: AgentStatus = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&status).expect("failed to serialize Idle status");
+        let deserialized: AgentStatus = serde_json::from_str(&json).expect("failed to deserialize Idle status");
         assert!(matches!(deserialized, AgentStatus::Idle));
     }
 
@@ -102,8 +102,8 @@ mod tests {
             to: Some("worker-1".to_string()),
             payload: PanePayload::StatusUpdate(AgentStatus::Busy { tool: None }),
         };
-        let json = serde_json::to_string(&msg).unwrap();
-        let deserialized: PaneMessage = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&msg).expect("failed to serialize PaneMessage");
+        let deserialized: PaneMessage = serde_json::from_str(&json).expect("failed to deserialize PaneMessage");
         assert_eq!(deserialized.from, "main");
         assert_eq!(deserialized.to, Some("worker-1".to_string()));
     }
@@ -124,8 +124,8 @@ mod tests {
             },
         ];
         for payload in payloads {
-            let json = serde_json::to_string(&payload).unwrap();
-            let _: PanePayload = serde_json::from_str(&json).unwrap();
+            let json = serde_json::to_string(&payload).expect("failed to serialize PanePayload variant");
+            let _: PanePayload = serde_json::from_str(&json).expect("failed to deserialize PanePayload variant");
         }
     }
 

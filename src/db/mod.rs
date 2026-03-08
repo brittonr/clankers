@@ -166,25 +166,25 @@ mod tests {
 
     #[test]
     fn test_open_creates_file() {
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("failed to create temp dir");
         let path = tmp.path().join("subdir").join("clankers.db");
-        let db = Db::open(&path).unwrap();
+        let db = Db::open(&path).expect("failed to open database");
         assert!(path.exists());
         drop(db);
     }
 
     #[test]
     fn test_open_idempotent() {
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("failed to create temp dir");
         let path = tmp.path().join("clankers.db");
-        let _db1 = Db::open(&path).unwrap();
+        let _db1 = Db::open(&path).expect("failed to open database first time");
         drop(_db1);
-        let _db2 = Db::open(&path).unwrap();
+        let _db2 = Db::open(&path).expect("failed to open database second time");
     }
 
     #[test]
     fn test_in_memory() {
-        let db = Db::in_memory().unwrap();
+        let db = Db::in_memory().expect("failed to create in-memory db");
         // Should be able to access all stores
         let _ = db.memory();
         let _ = db.sessions();
@@ -194,10 +194,10 @@ mod tests {
 
     #[test]
     fn test_clone_is_cheap() {
-        let db = Db::in_memory().unwrap();
+        let db = Db::in_memory().expect("failed to create in-memory db");
         let db2 = db.clone();
         // Both should work
-        db.memory().list(None).unwrap();
-        db2.memory().list(None).unwrap();
+        db.memory().list(None).expect("failed to list memory from db");
+        db2.memory().list(None).expect("failed to list memory from db2");
     }
 }

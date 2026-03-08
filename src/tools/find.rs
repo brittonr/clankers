@@ -198,7 +198,7 @@ mod tests {
         // Find all .rs files in src/tools
         let result = find_files("*.rs", "src/tools", &cancel, |_| {});
         assert!(result.is_ok());
-        let output = result.unwrap();
+        let output = result.expect("find should succeed");
         assert!(!output.is_empty(), "should find at least one .rs file");
         // Should find find.rs itself
         assert!(output.contains("find.rs"), "should find find.rs");
@@ -210,7 +210,7 @@ mod tests {
         // Use a glob pattern that matches nothing
         let result = find_files("*.zzz_nonexistent_extension", ".", &cancel, |_| {});
         assert!(result.is_ok());
-        let output = result.unwrap();
+        let output = result.expect("find should succeed");
         assert!(output.is_empty(), "should return empty string for no matches");
     }
 
@@ -220,7 +220,7 @@ mod tests {
         cancel.cancel();
         let result = find_files("*.rs", ".", &cancel, |_| {});
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("cancelled"));
+        assert!(result.expect_err("cancelled find should error").contains("cancelled"));
     }
 
     #[test]
@@ -230,7 +230,7 @@ mod tests {
         // The ignore crate DOES respect .gitignore automatically
         let result = find_files("*.rs", "src", &cancel, |_| {});
         assert!(result.is_ok());
-        let output = result.unwrap();
+        let output = result.expect("find should succeed");
         assert!(!output.is_empty(), "should find at least one .rs file in src/");
         // Verify no target paths appear (shouldn't happen when searching src/, but good to check)
         for line in output.lines() {
@@ -245,7 +245,7 @@ mod tests {
         // Find multiple .rs files
         let result = find_files("*.rs", "src/tools", &cancel, |_| {});
         assert!(result.is_ok());
-        let output = result.unwrap();
+        let output = result.expect("find should succeed");
         let lines: Vec<&str> = output.lines().collect();
         
         // Check that output is sorted

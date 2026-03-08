@@ -294,7 +294,7 @@ mod tests {
         // Search for something that definitely exists in this project
         let result = search_files("GrepTool", ".", Some("*.rs"), None, &cancel, |_| {});
         assert!(result.is_ok());
-        let output = result.unwrap();
+        let output = result.expect("search should succeed");
         assert!(output.contains("GrepTool"), "should find GrepTool in grep.rs");
     }
 
@@ -304,7 +304,7 @@ mod tests {
         // Use a single file to avoid matching the test source itself
         let result = search_files("zzz_definitely_not_in_any_file_zzz", "Cargo.toml", None, None, &cancel, |_| {});
         assert!(result.is_ok());
-        assert!(result.unwrap().is_empty());
+        assert!(result.expect("search should succeed").is_empty());
     }
 
     #[test]
@@ -312,7 +312,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let result = search_files("[invalid", ".", None, None, &cancel, |_| {});
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("Invalid regex"));
+        assert!(result.expect_err("invalid regex should error").contains("Invalid regex"));
     }
 
     #[test]
@@ -320,7 +320,7 @@ mod tests {
         let cancel = CancellationToken::new();
         let result = search_files("GrepTool", "src/tools/grep.rs", None, None, &cancel, |_| {});
         assert!(result.is_ok());
-        let output = result.unwrap();
+        let output = result.expect("search should succeed");
         assert!(output.contains("GrepTool"));
     }
 
@@ -330,18 +330,18 @@ mod tests {
         // Lowercase pattern -> case insensitive: should match "GrepTool"
         let result = search_files("greptool", "src/tools/grep.rs", None, None, &cancel, |_| {});
         assert!(result.is_ok());
-        let output = result.unwrap();
+        let output = result.expect("search should succeed");
         assert!(output.contains("GrepTool"), "smart case: lowercase should match GrepTool");
 
         // Uppercase pattern -> case sensitive: search Cargo.toml where "GREPTOOL" definitely doesn't appear
         let result2 = search_files("CLANKERS_NONEXISTENT_UPPER", "Cargo.toml", None, None, &cancel, |_| {});
         assert!(result2.is_ok());
-        assert!(result2.unwrap().is_empty(), "case-sensitive uppercase pattern should not match");
+        assert!(result2.expect("search should succeed").is_empty(), "case-sensitive uppercase pattern should not match");
 
         // Explicit case-insensitive override: "clankers" in lowercase should match "clankers" in Cargo.toml
         let result3 = search_files("CLANKERS", "Cargo.toml", None, Some(false), &cancel, |_| {});
         assert!(result3.is_ok());
-        assert!(!result3.unwrap().is_empty(), "explicit case-insensitive should match 'clankers'");
+        assert!(!result3.expect("search should succeed").is_empty(), "explicit case-insensitive should match 'clankers'");
     }
 
     #[test]
@@ -350,6 +350,6 @@ mod tests {
         cancel.cancel();
         let result = search_files("anything", ".", None, None, &cancel, |_| {});
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("cancelled"));
+        assert!(result.expect_err("cancelled search should error").contains("cancelled"));
     }
 }

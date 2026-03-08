@@ -430,7 +430,7 @@ mod tests {
         assert!(pricing.contains_key("claude-opus-4"));
         assert!(pricing.contains_key("claude-sonnet-4-5"));
         assert!(pricing.contains_key("claude-haiku-4"));
-        assert!(pricing.get("claude-opus-4").unwrap().input_per_mtok > 0.0);
+        assert!(pricing.get("claude-opus-4").expect("opus pricing should exist").input_per_mtok > 0.0);
     }
 
     #[test]
@@ -622,8 +622,8 @@ mod tests {
             hard_limit: Some(10.0),
             warning_interval: Some(1.0),
         };
-        let json = serde_json::to_string(&config).unwrap();
-        let decoded: CostTrackerConfig = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&config).expect("config should serialize to JSON");
+        let decoded: CostTrackerConfig = serde_json::from_str(&json).expect("JSON should deserialize to config");
         assert_eq!(decoded.soft_limit, config.soft_limit);
         assert_eq!(decoded.hard_limit, config.hard_limit);
         assert_eq!(decoded.warning_interval, config.warning_interval);

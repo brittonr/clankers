@@ -216,28 +216,28 @@ mod tests {
     fn test_detect_explicit_propose_validate() {
         let plan = detect_pattern("propose and validate a new parser design", 50.0);
         assert!(plan.is_some());
-        assert_eq!(plan.unwrap().pattern, OrchestrationPattern::ProposeValidate);
+        assert_eq!(plan.expect("plan should be detected").pattern, OrchestrationPattern::ProposeValidate);
     }
 
     #[test]
     fn test_detect_explicit_plan_execute() {
         let plan = detect_pattern("plan and implement a new auth system", 50.0);
         assert!(plan.is_some());
-        assert_eq!(plan.unwrap().pattern, OrchestrationPattern::PlanExecute);
+        assert_eq!(plan.expect("plan should be detected").pattern, OrchestrationPattern::PlanExecute);
     }
 
     #[test]
     fn test_detect_explicit_draft_review() {
         let plan = detect_pattern("draft and review the API documentation", 50.0);
         assert!(plan.is_some());
-        assert_eq!(plan.unwrap().pattern, OrchestrationPattern::DraftReview);
+        assert_eq!(plan.expect("plan should be detected").pattern, OrchestrationPattern::DraftReview);
     }
 
     #[test]
     fn test_detect_heuristic_high_complexity() {
         let plan = detect_pattern("write a complex parser with error recovery", 70.0);
         assert!(plan.is_some());
-        assert_eq!(plan.unwrap().pattern, OrchestrationPattern::ProposeValidate);
+        assert_eq!(plan.expect("plan should be detected").pattern, OrchestrationPattern::ProposeValidate);
     }
 
     #[test]

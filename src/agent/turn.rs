@@ -945,8 +945,8 @@ mod tests {
         // Should have details with accumulator metadata
         let details = msg.details.as_ref().expect("expected details");
         assert_eq!(details["chunks"], 3);
-        assert!(details["total_lines"].as_u64().unwrap() >= 5);
-        assert!(!details["truncated"].as_bool().unwrap());
+        assert!(details["total_lines"].as_u64().expect("total_lines should be u64") >= 5);
+        assert!(!details["truncated"].as_bool().expect("truncated should be bool"));
     }
 
     #[tokio::test]

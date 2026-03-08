@@ -390,8 +390,8 @@ mod tests {
             thinking: None,
         };
 
-        router.complete(request, tx).await.unwrap();
-        let event = rx.recv().await.unwrap();
+        router.complete(request, tx).await.expect("router should complete successfully");
+        let event = rx.recv().await.expect("should receive stream event");
         assert!(matches!(event, StreamEvent::MessageStop));
     }
 
