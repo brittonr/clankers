@@ -81,6 +81,122 @@ impl MarkdownStyle {
     }
 }
 
+// ── Block-level rendering helpers ────────────────────────────────────────────
+
+/// Try to render a code fence line (opening or closing ```).
+/// Returns Some(Line) if this is a fence, updating the in_code_block state.
+fn try_render_code_fence(
+    line: &str,
+    in_code_block: &mut bool,
+    code_lang: &mut String,
+    style: &MarkdownStyle,
+) -> Option<Line<'static>> {
+    let rest = line.strip_prefix("```")?;
+    
+    if !*in_code_block {
+        // Opening fence
+        *in_code_block = true;
+        *code_lang = rest.trim().to_string();
+        let label = if code_lang.is_empty() {
+            "───".to_string()
+        } else {
+            format!("─── {} ", code_lang)
+        };
+        Some(Line::from(Span::styled(label, style.code_fence)))
+    } else {
+        // Closing fence
+        *in_code_block = false;
+        code_lang.clear();
+        Some(Line::from(Span::styled("───", style.code_fence)))
+    }
+}
+
+/// Render a line of code inside a code block (with optional syntax highlighting).
+fn render_code_block_line(line: &str, code_lang: &str, style: &MarkdownStyle) -> Line<'static> {
+    if !code_lang.is_empty() {
+        // Syntax-highlighted code line
+        let mut spans: Vec<Span<'static>> = vec![Span::raw("  ".to_string())];
+        let hl_spans = crate::util::syntax::highlight_ratatui(line, code_lang);
+        if hl_spans.iter().all(|s| matches!(s.style.fg, None | Some(ratatui::style::Color::Reset))) {
+            // syntect didn't produce colors — fall back to code_block style
+            spans.push(Span::styled(line.to_string(), style.code_block));
+        } else {
+            spans.extend(hl_spans);
+        }
+        Line::from(spans)
+    } else {
+        Line::from(Span::styled(format!("  {}", line), style.code_block))
+    }
+}
+
+/// Try to render a horizontal rule (---, ***, ___).
+fn try_render_horizontal_rule(line: &str, style: &MarkdownStyle) -> Option<Line<'static>> {
+    let trimmed = line.trim();
+    if trimmed.len() >= 3
+        && (trimmed.chars().all(|c| c == '-' || c == ' ')
+            || trimmed.chars().all(|c| c == '*' || c == ' ')
+            || trimmed.chars().all(|c| c == '_' || c == ' '))
+        && trimmed.chars().filter(|c| !c.is_whitespace()).count() >= 3
+    {
+        Some(Line::from(Span::styled("────────────", style.hrule)))
+    } else {
+        None
+    }
+}
+
+/// Try to render a heading (# H1, ## H2, ### H3, etc.).
+fn try_render_heading(line: &str, style: &MarkdownStyle) -> Option<Line<'static>> {
+    if let Some(content) = line.strip_prefix("# ") {
+        Some(Line::from(Span::styled(content.trim().to_string(), style.heading)))
+    } else if let Some(content) = line.strip_prefix("## ") {
+        Some(Line::from(Span::styled(content.trim().to_string(), style.subheading)))
+    } else if line.starts_with("### ") || line.starts_with("#### ") {
+        let content = line.trim_start_matches('#').trim();
+        Some(Line::from(Span::styled(content.to_string(), style.subheading)))
+    } else {
+        None
+    }
+}
+
+/// Try to render a blockquote (> text).
+fn try_render_blockquote(line: &str, style: &MarkdownStyle) -> Option<Line<'static>> {
+    if let Some(rest) = line.strip_prefix("> ") {
+        let mut spans = vec![Span::styled("▎ ", style.blockquote)];
+        spans.extend(render_inline_spans(rest, style));
+        Some(Line::from(spans))
+    } else if line == ">" {
+        Some(Line::from(Span::styled("▎", style.blockquote)))
+    } else {
+        None
+    }
+}
+
+/// Try to render a list item (unordered: `- ` or `* `, ordered: `1. `).
+fn try_render_list_item(line: &str, style: &MarkdownStyle) -> Option<Line<'static>> {
+    // Try unordered list first
+    if let Some(content) = strip_list_bullet(line) {
+        let indent = leading_spaces(line);
+        let indent_str: String = " ".repeat(indent);
+        let mut spans = vec![Span::raw(indent_str), Span::styled("• ", style.list_marker)];
+        spans.extend(render_inline_spans(content, style));
+        return Some(Line::from(spans));
+    }
+    
+    // Try ordered list
+    if let Some((num, content)) = strip_ordered_list(line) {
+        let indent = leading_spaces(line);
+        let indent_str: String = " ".repeat(indent);
+        let mut spans = vec![
+            Span::raw(indent_str),
+            Span::styled(format!("{}. ", num), style.list_marker),
+        ];
+        spans.extend(render_inline_spans(content, style));
+        return Some(Line::from(spans));
+    }
+    
+    None
+}
+
 /// Render markdown text into a list of ratatui Lines.
 ///
 /// Each returned `Line` corresponds to one visual line of output.
@@ -93,116 +209,43 @@ pub fn render_markdown(text: &str, style: &MarkdownStyle) -> Vec<Line<'static>> 
 
     for raw_line in text.lines() {
         // ── Code fences ──────────────────────────────
-        if let Some(rest) = raw_line.strip_prefix("```") {
-            if !in_code_block {
-                // Opening fence
-                in_code_block = true;
-                code_lang = rest.trim().to_string();
-                let label = if code_lang.is_empty() {
-                    "───".to_string()
-                } else {
-                    format!("─── {} ", code_lang)
-                };
-                lines.push(Line::from(Span::styled(label, style.code_fence)));
-            } else {
-                // Closing fence
-                in_code_block = false;
-                code_lang.clear();
-                lines.push(Line::from(Span::styled("───", style.code_fence)));
-            }
+        if let Some(fence_line) = try_render_code_fence(raw_line, &mut in_code_block, &mut code_lang, style) {
+            lines.push(fence_line);
             continue;
         }
 
         if in_code_block {
-            if !code_lang.is_empty() {
-                // Syntax-highlighted code line
-                let mut spans: Vec<Span<'static>> = vec![Span::raw("  ".to_string())];
-                let hl_spans = crate::util::syntax::highlight_ratatui(raw_line, &code_lang);
-                if hl_spans.iter().all(|s| matches!(s.style.fg, None | Some(ratatui::style::Color::Reset))) {
-                    // syntect didn't produce colors — fall back to code_block style
-                    spans.push(Span::styled(raw_line.to_string(), style.code_block));
-                } else {
-                    spans.extend(hl_spans);
-                }
-                lines.push(Line::from(spans));
-            } else {
-                lines.push(Line::from(Span::styled(format!("  {}", raw_line), style.code_block)));
-            }
+            lines.push(render_code_block_line(raw_line, &code_lang, style));
             continue;
         }
 
         // ── Horizontal rules ─────────────────────────
-        {
-            let trimmed = raw_line.trim();
-            if trimmed.len() >= 3
-                && (trimmed.chars().all(|c| c == '-' || c == ' ')
-                    || trimmed.chars().all(|c| c == '*' || c == ' ')
-                    || trimmed.chars().all(|c| c == '_' || c == ' '))
-                && trimmed.chars().filter(|c| !c.is_whitespace()).count() >= 3
-            {
-                lines.push(Line::from(Span::styled("────────────", style.hrule)));
-                continue;
-            }
+        if let Some(hrule) = try_render_horizontal_rule(raw_line, style) {
+            lines.push(hrule);
+            continue;
         }
 
         // ── Headings ─────────────────────────────────
-        if let Some(content) = raw_line.strip_prefix("# ") {
-            lines.push(Line::from(Span::styled(content.trim().to_string(), style.heading)));
-            continue;
-        }
-        if let Some(content) = raw_line.strip_prefix("## ") {
-            lines.push(Line::from(Span::styled(content.trim().to_string(), style.subheading)));
-            continue;
-        }
-        if raw_line.starts_with("### ") || raw_line.starts_with("#### ") {
-            let content = raw_line.trim_start_matches('#').trim();
-            lines.push(Line::from(Span::styled(content.to_string(), style.subheading)));
+        if let Some(heading) = try_render_heading(raw_line, style) {
+            lines.push(heading);
             continue;
         }
 
         // ── Blockquotes ──────────────────────────────
-        if let Some(rest) = raw_line.strip_prefix("> ") {
-            let mut spans = vec![Span::styled("▎ ", style.blockquote)];
-            spans.extend(render_inline_spans(rest, style));
-            lines.push(Line::from(spans));
-            continue;
-        }
-        if raw_line == ">" {
-            lines.push(Line::from(Span::styled("▎", style.blockquote)));
+        if let Some(blockquote) = try_render_blockquote(raw_line, style) {
+            lines.push(blockquote);
             continue;
         }
 
-        // ── Unordered lists ──────────────────────────
-        if let Some(content) = strip_list_bullet(raw_line) {
-            let indent = leading_spaces(raw_line);
-            let indent_str: String = " ".repeat(indent);
-            let mut spans = vec![Span::raw(indent_str), Span::styled("• ", style.list_marker)];
-            spans.extend(render_inline_spans(content, style));
-            lines.push(Line::from(spans));
-            continue;
-        }
-
-        // ── Ordered lists ────────────────────────────
-        if let Some((num, content)) = strip_ordered_list(raw_line) {
-            let indent = leading_spaces(raw_line);
-            let indent_str: String = " ".repeat(indent);
-            let mut spans = vec![
-                Span::raw(indent_str),
-                Span::styled(format!("{}. ", num), style.list_marker),
-            ];
-            spans.extend(render_inline_spans(content, style));
-            lines.push(Line::from(spans));
+        // ── Lists ────────────────────────────────────
+        if let Some(list_item) = try_render_list_item(raw_line, style) {
+            lines.push(list_item);
             continue;
         }
 
         // ── Regular paragraph text ───────────────────
         let spans = render_inline_spans(raw_line, style);
         lines.push(Line::from(spans));
-    }
-
-    // If we ended inside a code block (incomplete stream), close it gracefully
-    if in_code_block {
-        // Don't add a closing fence — the block is still being streamed
     }
 
     lines
@@ -249,174 +292,32 @@ fn render_inline_spans(text: &str, style: &MarkdownStyle) -> Vec<Span<'static>> 
     let mut i = 0;
     let mut buf = String::new();
 
-    /// Flush the accumulated plain-text buffer into a styled span.
-    fn flush(buf: &mut String, spans: &mut Vec<Span<'static>>, sty: Style) {
-        if !buf.is_empty() {
-            spans.push(Span::styled(std::mem::take(buf), sty));
-        }
-    }
-
-    /// Find the closing delimiter starting at position `from` in `chars`.
-    /// Returns the index of the first char of the closing delimiter, or `None`.
-    fn find_closing(chars: &[char], from: usize, delim: &[char]) -> Option<usize> {
-        let dlen = delim.len();
-        if dlen == 0 {
-            return None;
-        }
-        let mut j = from;
-        while j + dlen <= chars.len() {
-            if chars[j..j + dlen] == *delim {
-                return Some(j);
-            }
-            j += 1;
-        }
-        None
-    }
-
     while i < len {
-        // ── Inline code ──────────────────────────────
-        if chars[i] == '`' {
-            flush(&mut buf, &mut spans, style.base);
-            i += 1;
-            let start = i;
-            while i < len && chars[i] != '`' {
-                i += 1;
-            }
-            let code: String = chars[start..i].iter().collect();
-            spans.push(Span::styled(format!(" {} ", code), style.inline_code));
-            if i < len {
-                i += 1;
-            }
+        // Try inline code first
+        if let Some(new_i) = try_render_inline_code(&chars, i, &mut buf, &mut spans, style) {
+            i = new_i;
             continue;
         }
 
-        // ── Strikethrough (~~text~~) ─────────────────
-        if i + 1 < len
-            && chars[i] == '~'
-            && chars[i + 1] == '~'
-            && let Some(close) = find_closing(&chars, i + 2, &['~', '~'])
-        {
-            flush(&mut buf, &mut spans, style.base);
-            let inner: String = chars[i + 2..close].iter().collect();
-            spans.push(Span::styled(inner, style.base.add_modifier(Modifier::CROSSED_OUT)));
-            i = close + 2;
+        // Try emphasis/formatting (strikethrough, bold, italic)
+        if let Some(new_i) = try_render_emphasis(&chars, i, &mut buf, &mut spans, style) {
+            i = new_i;
             continue;
         }
 
-        // ── Bold-italic (***text*** or ___text___) ───
-        if i + 2 < len
-            && chars[i] == '*'
-            && chars[i + 1] == '*'
-            && chars[i + 2] == '*'
-            && let Some(close) = find_closing(&chars, i + 3, &['*', '*', '*'])
-        {
-            flush(&mut buf, &mut spans, style.base);
-            let inner: String = chars[i + 3..close].iter().collect();
-            spans.push(Span::styled(inner, style.bold_italic));
-            i = close + 3;
-            continue;
-        }
-        if i + 2 < len
-            && chars[i] == '_'
-            && chars[i + 1] == '_'
-            && chars[i + 2] == '_'
-            && let Some(close) = find_closing(&chars, i + 3, &['_', '_', '_'])
-        {
-            flush(&mut buf, &mut spans, style.base);
-            let inner: String = chars[i + 3..close].iter().collect();
-            spans.push(Span::styled(inner, style.bold_italic));
-            i = close + 3;
+        // Try links
+        if let Some(new_i) = try_render_link(&chars, i, &mut buf, &mut spans, style) {
+            i = new_i;
             continue;
         }
 
-        // ── Bold (**text** or __text__) ──────────────
-        if i + 1 < len
-            && chars[i] == '*'
-            && chars[i + 1] == '*'
-            && let Some(close) = find_closing(&chars, i + 2, &['*', '*'])
-        {
-            flush(&mut buf, &mut spans, style.base);
-            let inner: String = chars[i + 2..close].iter().collect();
-            spans.push(Span::styled(inner, style.bold));
-            i = close + 2;
-            continue;
-        }
-        if i + 1 < len
-            && chars[i] == '_'
-            && chars[i + 1] == '_'
-            && let Some(close) = find_closing(&chars, i + 2, &['_', '_'])
-        {
-            flush(&mut buf, &mut spans, style.base);
-            let inner: String = chars[i + 2..close].iter().collect();
-            spans.push(Span::styled(inner, style.bold));
-            i = close + 2;
-            continue;
-        }
-
-        // ── Italic (*text* or _text_) ────────────────
-        if chars[i] == '*'
-            && (i + 1 >= len || chars[i + 1] != '*')
-            && let Some(close) = find_closing(&chars, i + 1, &['*'])
-        {
-            flush(&mut buf, &mut spans, style.base);
-            let inner: String = chars[i + 1..close].iter().collect();
-            spans.push(Span::styled(inner, style.italic));
-            i = close + 1;
-            continue;
-        }
-        if chars[i] == '_'
-            && (i + 1 >= len || chars[i + 1] != '_')
-            && let Some(close) = find_closing(&chars, i + 1, &['_'])
-        {
-            // Only treat as italic if the underscore is at a word boundary
-            // (not in the middle of a_word_like_this)
-            let at_start = i == 0 || !chars[i - 1].is_alphanumeric();
-            let at_end = close + 1 >= len || !chars[close + 1].is_alphanumeric();
-            if at_start && at_end {
-                flush(&mut buf, &mut spans, style.base);
-                let inner: String = chars[i + 1..close].iter().collect();
-                spans.push(Span::styled(inner, style.italic));
-                i = close + 1;
-                continue;
-            }
-        }
-
-        // ── Links [text](url) ────────────────────────
-        if chars[i] == '[' {
-            let bracket_start = i + 1;
-            let mut j = bracket_start;
-            while j < len && chars[j] != ']' {
-                j += 1;
-            }
-            if j + 1 < len && chars[j] == ']' && chars[j + 1] == '(' {
-                let link_text: String = chars[bracket_start..j].iter().collect();
-                let paren_start = j + 2;
-                let mut k = paren_start;
-                while k < len && chars[k] != ')' {
-                    k += 1;
-                }
-                if k < len {
-                    flush(&mut buf, &mut spans, style.base);
-                    spans.push(Span::styled(link_text, style.base.add_modifier(Modifier::UNDERLINED)));
-                    i = k + 1;
-                    continue;
-                }
-            }
-            // Not a valid link — treat [ as literal
-            buf.push(chars[i]);
-            i += 1;
-            continue;
-        }
-
-        // ── Regular character ────────────────────────
+        // Regular character
         buf.push(chars[i]);
         i += 1;
     }
 
     // Flush remaining text
-    if !buf.is_empty() {
-        spans.push(Span::styled(buf, style.base));
-    }
+    flush_buf(&mut buf, &mut spans, style.base);
 
     // If empty input, return at least one empty span so the line exists
     if spans.is_empty() {
@@ -424,6 +325,194 @@ fn render_inline_spans(text: &str, style: &MarkdownStyle) -> Vec<Span<'static>> 
     }
 
     spans
+}
+
+// ── Inline rendering helpers ─────────────────────────────────────────────────
+
+/// Flush the accumulated plain-text buffer into a styled span.
+fn flush_buf(buf: &mut String, spans: &mut Vec<Span<'static>>, sty: Style) {
+    if !buf.is_empty() {
+        spans.push(Span::styled(std::mem::take(buf), sty));
+    }
+}
+
+/// Find the closing delimiter starting at position `from` in `chars`.
+/// Returns the index of the first char of the closing delimiter, or `None`.
+fn find_closing(chars: &[char], from: usize, delim: &[char]) -> Option<usize> {
+    let dlen = delim.len();
+    if dlen == 0 {
+        return None;
+    }
+    let mut j = from;
+    while j + dlen <= chars.len() {
+        if chars[j..j + dlen] == *delim {
+            return Some(j);
+        }
+        j += 1;
+    }
+    None
+}
+
+/// Try to render inline code (`code`).
+/// Returns the new position if successful, None otherwise.
+fn try_render_inline_code(
+    chars: &[char],
+    i: usize,
+    buf: &mut String,
+    spans: &mut Vec<Span<'static>>,
+    style: &MarkdownStyle,
+) -> Option<usize> {
+    if chars[i] != '`' {
+        return None;
+    }
+
+    flush_buf(buf, spans, style.base);
+    let mut pos = i + 1;
+    let start = pos;
+    while pos < chars.len() && chars[pos] != '`' {
+        pos += 1;
+    }
+    let code: String = chars[start..pos].iter().collect();
+    spans.push(Span::styled(format!(" {} ", code), style.inline_code));
+    if pos < chars.len() {
+        pos += 1; // Skip closing backtick
+    }
+    Some(pos)
+}
+
+/// Try to render emphasis markers (strikethrough, bold-italic, bold, italic).
+/// Returns the new position if successful, None otherwise.
+fn try_render_emphasis(
+    chars: &[char],
+    i: usize,
+    buf: &mut String,
+    spans: &mut Vec<Span<'static>>,
+    style: &MarkdownStyle,
+) -> Option<usize> {
+    let len = chars.len();
+
+    // ── Strikethrough (~~text~~) ─────────────────
+    if i + 1 < len
+        && chars[i] == '~'
+        && chars[i + 1] == '~'
+        && let Some(close) = find_closing(chars, i + 2, &['~', '~'])
+    {
+        flush_buf(buf, spans, style.base);
+        let inner: String = chars[i + 2..close].iter().collect();
+        spans.push(Span::styled(inner, style.base.add_modifier(Modifier::CROSSED_OUT)));
+        return Some(close + 2);
+    }
+
+    // ── Bold-italic (***text*** or ___text___) ───
+    if i + 2 < len
+        && chars[i] == '*'
+        && chars[i + 1] == '*'
+        && chars[i + 2] == '*'
+        && let Some(close) = find_closing(chars, i + 3, &['*', '*', '*'])
+    {
+        flush_buf(buf, spans, style.base);
+        let inner: String = chars[i + 3..close].iter().collect();
+        spans.push(Span::styled(inner, style.bold_italic));
+        return Some(close + 3);
+    }
+    if i + 2 < len
+        && chars[i] == '_'
+        && chars[i + 1] == '_'
+        && chars[i + 2] == '_'
+        && let Some(close) = find_closing(chars, i + 3, &['_', '_', '_'])
+    {
+        flush_buf(buf, spans, style.base);
+        let inner: String = chars[i + 3..close].iter().collect();
+        spans.push(Span::styled(inner, style.bold_italic));
+        return Some(close + 3);
+    }
+
+    // ── Bold (**text** or __text__) ──────────────
+    if i + 1 < len
+        && chars[i] == '*'
+        && chars[i + 1] == '*'
+        && let Some(close) = find_closing(chars, i + 2, &['*', '*'])
+    {
+        flush_buf(buf, spans, style.base);
+        let inner: String = chars[i + 2..close].iter().collect();
+        spans.push(Span::styled(inner, style.bold));
+        return Some(close + 2);
+    }
+    if i + 1 < len
+        && chars[i] == '_'
+        && chars[i + 1] == '_'
+        && let Some(close) = find_closing(chars, i + 2, &['_', '_'])
+    {
+        flush_buf(buf, spans, style.base);
+        let inner: String = chars[i + 2..close].iter().collect();
+        spans.push(Span::styled(inner, style.bold));
+        return Some(close + 2);
+    }
+
+    // ── Italic (*text* or _text_) ────────────────
+    if chars[i] == '*'
+        && (i + 1 >= len || chars[i + 1] != '*')
+        && let Some(close) = find_closing(chars, i + 1, &['*'])
+    {
+        flush_buf(buf, spans, style.base);
+        let inner: String = chars[i + 1..close].iter().collect();
+        spans.push(Span::styled(inner, style.italic));
+        return Some(close + 1);
+    }
+    if chars[i] == '_'
+        && (i + 1 >= len || chars[i + 1] != '_')
+        && let Some(close) = find_closing(chars, i + 1, &['_'])
+    {
+        // Only treat as italic if the underscore is at a word boundary
+        // (not in the middle of a_word_like_this)
+        let at_start = i == 0 || !chars[i - 1].is_alphanumeric();
+        let at_end = close + 1 >= len || !chars[close + 1].is_alphanumeric();
+        if at_start && at_end {
+            flush_buf(buf, spans, style.base);
+            let inner: String = chars[i + 1..close].iter().collect();
+            spans.push(Span::styled(inner, style.italic));
+            return Some(close + 1);
+        }
+    }
+
+    None
+}
+
+/// Try to render a markdown link ([text](url)).
+/// Returns the new position if successful, None otherwise.
+fn try_render_link(
+    chars: &[char],
+    i: usize,
+    buf: &mut String,
+    spans: &mut Vec<Span<'static>>,
+    style: &MarkdownStyle,
+) -> Option<usize> {
+    if chars[i] != '[' {
+        return None;
+    }
+
+    let len = chars.len();
+    let bracket_start = i + 1;
+    let mut j = bracket_start;
+    while j < len && chars[j] != ']' {
+        j += 1;
+    }
+    if j + 1 < len && chars[j] == ']' && chars[j + 1] == '(' {
+        let link_text: String = chars[bracket_start..j].iter().collect();
+        let paren_start = j + 2;
+        let mut k = paren_start;
+        while k < len && chars[k] != ')' {
+            k += 1;
+        }
+        if k < len {
+            flush_buf(buf, spans, style.base);
+            spans.push(Span::styled(link_text, style.base.add_modifier(Modifier::UNDERLINED)));
+            return Some(k + 1);
+        }
+    }
+    
+    // Not a valid link
+    None
 }
 
 // ─── Tests ───────────────────────────────────────────────────────────────────

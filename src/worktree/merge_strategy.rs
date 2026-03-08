@@ -71,7 +71,24 @@ pub fn apply_trivial_merge(repo_root: &Path, branch: &str, _target: &str) -> Res
         message: format!("Failed to open repository: {}", e),
     })?;
 
-    // Resolve the branch to merge
+    let (analysis, branch_commit, annotated) = setup_merge(&repo, branch)?;
+
+    if analysis.is_up_to_date() {
+        return Ok(MergeResult::Clean);
+    }
+
+    if analysis.is_fast_forward() {
+        return execute_fast_forward(&repo, branch, &branch_commit);
+    }
+
+    execute_normal_merge(&repo, branch, &annotated, &branch_commit)
+}
+
+/// Resolve branch and perform merge analysis
+fn setup_merge<'a>(
+    repo: &'a git2::Repository,
+    branch: &str,
+) -> Result<(git2::MergeAnalysis, git2::Commit<'a>, git2::AnnotatedCommit<'a>)> {
     let branch_ref = repo
         .find_branch(branch, git2::BranchType::Local)
         .or_else(|_| {
@@ -84,9 +101,12 @@ pub fn apply_trivial_merge(repo_root: &Path, branch: &str, _target: &str) -> Res
             message: format!("Branch '{}' not found: {}", branch, e),
         })?;
 
-    let branch_commit = branch_ref.get().peel_to_commit().map_err(|e| crate::error::Error::Worktree {
-        message: format!("Failed to get commit for branch '{}': {}", branch, e),
-    })?;
+    let branch_commit = branch_ref
+        .get()
+        .peel_to_commit()
+        .map_err(|e| crate::error::Error::Worktree {
+            message: format!("Failed to get commit for branch '{}': {}", branch, e),
+        })?;
 
     let annotated = repo
         .reference_to_annotated_commit(branch_ref.get())
@@ -94,68 +114,94 @@ pub fn apply_trivial_merge(repo_root: &Path, branch: &str, _target: &str) -> Res
             message: format!("Failed to create annotated commit: {}", e),
         })?;
 
-    // Check merge analysis (can we fast-forward?)
-    let (analysis, _pref) = repo.merge_analysis(&[&annotated]).map_err(|e| crate::error::Error::Worktree {
-        message: format!("Merge analysis failed: {}", e),
+    let (analysis, _pref) = repo
+        .merge_analysis(&[&annotated])
+        .map_err(|e| crate::error::Error::Worktree {
+            message: format!("Merge analysis failed: {}", e),
+        })?;
+
+    Ok((analysis, branch_commit, annotated))
+}
+
+/// Execute a fast-forward merge
+fn execute_fast_forward(
+    repo: &git2::Repository,
+    branch: &str,
+    branch_commit: &git2::Commit,
+) -> Result<MergeResult> {
+    let mut head_ref = repo.head().map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to get HEAD: {}", e),
     })?;
 
-    if analysis.is_up_to_date() {
-        return Ok(MergeResult::Clean);
-    }
-
-    if analysis.is_fast_forward() {
-        // Fast-forward merge
-        let mut head_ref = repo.head().map_err(|e| crate::error::Error::Worktree {
-            message: format!("Failed to get HEAD: {}", e),
+    head_ref
+        .set_target(branch_commit.id(), &format!("merge {}: Fast-forward", branch))
+        .map_err(|e| crate::error::Error::Worktree {
+            message: format!("Fast-forward failed: {}", e),
         })?;
-        head_ref
-            .set_target(branch_commit.id(), &format!("merge {}: Fast-forward", branch))
-            .map_err(|e| crate::error::Error::Worktree {
-                message: format!("Fast-forward failed: {}", e),
-            })?;
 
-        // Checkout the new commit
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
-            .map_err(|e| crate::error::Error::Worktree {
-                message: format!("Checkout after fast-forward failed: {}", e),
-            })?;
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
+        .map_err(|e| crate::error::Error::Worktree {
+            message: format!("Checkout after fast-forward failed: {}", e),
+        })?;
 
-        return Ok(MergeResult::Clean);
-    }
+    Ok(MergeResult::Clean)
+}
 
-    // Try normal merge
+/// Execute a normal merge and create merge commit
+fn execute_normal_merge(
+    repo: &git2::Repository,
+    branch: &str,
+    annotated: &git2::AnnotatedCommit,
+    branch_commit: &git2::Commit,
+) -> Result<MergeResult> {
     let mut merge_opts = git2::MergeOptions::new();
     merge_opts.file_favor(git2::FileFavor::Normal);
 
-    repo.merge(&[&annotated], Some(&mut merge_opts), None).map_err(|e| {
-        // Clean up merge state on error
-        let _ = repo.cleanup_state();
-        crate::error::Error::Worktree {
-            message: format!("Merge failed: {}", e),
-        }
-    })?;
+    repo.merge(&[annotated], Some(&mut merge_opts), None)
+        .map_err(|e| {
+            let _ = repo.cleanup_state();
+            crate::error::Error::Worktree {
+                message: format!("Merge failed: {}", e),
+            }
+        })?;
 
-    // Check if there are conflicts
     let mut index = repo.index().map_err(|e| crate::error::Error::Worktree {
         message: format!("Failed to get index: {}", e),
     })?;
 
     if index.has_conflicts() {
-        // Abort the merge
-        repo.cleanup_state().map_err(|e| crate::error::Error::Worktree {
-            message: format!("Failed to cleanup merge state: {}", e),
-        })?;
-        repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
-            .map_err(|e| crate::error::Error::Worktree {
-                message: format!("Failed to checkout HEAD after conflict: {}", e),
-            })?;
-
+        abort_merge(repo)?;
         return Ok(MergeResult::NeedsHuman {
             conflicting_files: vec![],
         });
     }
 
-    // No conflicts - create merge commit
+    create_merge_commit(repo, branch, &mut index, branch_commit)?;
+
+    Ok(MergeResult::Clean)
+}
+
+/// Abort merge and restore working tree
+fn abort_merge(repo: &git2::Repository) -> Result<()> {
+    repo.cleanup_state().map_err(|e| crate::error::Error::Worktree {
+        message: format!("Failed to cleanup merge state: {}", e),
+    })?;
+
+    repo.checkout_head(Some(git2::build::CheckoutBuilder::default().force()))
+        .map_err(|e| crate::error::Error::Worktree {
+            message: format!("Failed to checkout HEAD after conflict: {}", e),
+        })?;
+
+    Ok(())
+}
+
+/// Create a merge commit
+fn create_merge_commit(
+    repo: &git2::Repository,
+    branch: &str,
+    index: &mut git2::Index,
+    branch_commit: &git2::Commit,
+) -> Result<()> {
     let sig = repo.signature().map_err(|e| crate::error::Error::Worktree {
         message: format!("Failed to get signature: {}", e),
     })?;
@@ -163,11 +209,13 @@ pub fn apply_trivial_merge(repo_root: &Path, branch: &str, _target: &str) -> Res
     let tree_id = index.write_tree().map_err(|e| crate::error::Error::Worktree {
         message: format!("Failed to write tree: {}", e),
     })?;
+
     let tree = repo.find_tree(tree_id).map_err(|e| crate::error::Error::Worktree {
         message: format!("Failed to find tree: {}", e),
     })?;
 
-    let head_commit = repo.head()
+    let head_commit = repo
+        .head()
         .and_then(|h| h.peel_to_commit())
         .map_err(|e| crate::error::Error::Worktree {
             message: format!("Failed to get HEAD commit: {}", e),
@@ -180,18 +228,17 @@ pub fn apply_trivial_merge(repo_root: &Path, branch: &str, _target: &str) -> Res
         &sig,
         &message,
         &tree,
-        &[&head_commit, &branch_commit],
+        &[&head_commit, branch_commit],
     )
     .map_err(|e| crate::error::Error::Worktree {
         message: format!("Failed to create merge commit: {}", e),
     })?;
 
-    // Clean up merge state
     repo.cleanup_state().map_err(|e| crate::error::Error::Worktree {
         message: format!("Failed to cleanup merge state: {}", e),
     })?;
 
-    Ok(MergeResult::Clean)
+    Ok(())
 }
 
 /// Apply an overlapping merge using graggle algorithm for conflicting files.

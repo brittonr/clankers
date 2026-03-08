@@ -66,33 +66,67 @@ impl MergeDaemon {
         // Ensure rerere is enabled
         merge_strategy::ensure_rerere_enabled(&self.repo_root)?;
 
-        // Build changesets
+        // Build merge plan
+        let plan = self.build_merge_plan(&completed)?;
+
+        let mut merged_count = 0;
+
+        // Process each category of branches
+        merged_count += self.process_empty_branches(db, &plan.empty)?;
+        merged_count += self.process_trivial_branches(db, &completed, &plan.trivial)?;
+        merged_count += self.process_overlapping_groups(db, &completed, &plan.overlapping).await?;
+
+        Ok(merged_count)
+    }
+
+    /// Build changesets and compute merge plan from completed worktrees
+    fn build_merge_plan(
+        &self,
+        completed: &[super::WorktreeInfo],
+    ) -> Result<super::conflict_graph::MergePlan> {
         let changesets: Vec<BranchChangeset> = completed
             .iter()
             .filter_map(|w| BranchChangeset::from_git(&self.repo_root, &w.branch, &w.parent_branch))
             .collect();
 
-        // Compute merge plan
-        let plan = compute_merge_plan(&changesets);
+        Ok(compute_merge_plan(&changesets))
+    }
 
-        let mut merged_count = 0;
+    /// Process empty branches (no commits ahead of parent)
+    fn process_empty_branches(&self, db: &Db, empty_branches: &[String]) -> Result<usize> {
+        let reg = db.worktrees();
+        let mut count = 0;
 
-        // Skip empty branches
-        for branch in &plan.empty {
+        for branch in empty_branches {
             info!(branch, "skipping empty branch (no commits ahead)");
             let manager = WorktreeManager::new(self.repo_root.clone());
             if let Err(e) = manager.remove_worktree(branch) {
                 warn!(branch, error = %e, "failed to clean up empty branch");
             }
             let _ = reg.remove(branch);
-            merged_count += 1;
+            count += 1;
         }
 
-        // Merge trivial branches (non-overlapping files)
-        for branch in &plan.trivial {
+        Ok(count)
+    }
+
+    /// Process trivial branches (non-overlapping files with other branches)
+    fn process_trivial_branches(
+        &self,
+        db: &Db,
+        completed: &[super::WorktreeInfo],
+        trivial_branches: &[String],
+    ) -> Result<usize> {
+        let reg = db.worktrees();
+        let mut count = 0;
+
+        for branch in trivial_branches {
             info!(branch, "merging trivial branch (no file overlaps)");
-            let target =
-                completed.iter().find(|w| w.branch == *branch).map(|w| w.parent_branch.as_str()).unwrap_or("main");
+            let target = completed
+                .iter()
+                .find(|w| w.branch == *branch)
+                .map(|w| w.parent_branch.as_str())
+                .unwrap_or("main");
 
             match merge_strategy::apply_trivial_merge(&self.repo_root, branch, target) {
                 Ok(merge_strategy::MergeResult::Clean) => {
@@ -102,7 +136,7 @@ impl MergeDaemon {
                         warn!(branch, error = %e, "failed to clean up after merge");
                     }
                     let _ = reg.remove(branch);
-                    merged_count += 1;
+                    count += 1;
                 }
                 Ok(merge_strategy::MergeResult::NeedsHuman { .. }) => {
                     warn!(branch, "trivial merge has conflicts — keeping worktree for manual resolution");
@@ -113,8 +147,19 @@ impl MergeDaemon {
             }
         }
 
-        // Handle overlapping groups with graggle merge + LLM fallback
-        for group in &plan.overlapping {
+        Ok(count)
+    }
+
+    /// Process overlapping groups with graggle merge + LLM fallback
+    async fn process_overlapping_groups(
+        &self,
+        db: &Db,
+        completed: &[super::WorktreeInfo],
+        overlapping_groups: &[super::conflict_graph::OverlapGroup],
+    ) -> Result<usize> {
+        let mut count = 0;
+
+        for group in overlapping_groups {
             info!(
                 branches = ?group.branches,
                 files = ?group.conflicting_files,
@@ -135,45 +180,10 @@ impl MergeDaemon {
             ) {
                 Ok(merge_strategy::MergeResult::Clean) => {
                     self.commit_and_cleanup(db, &group.branches, "graggle merge clean")?;
-                    merged_count += group.branches.len();
+                    count += group.branches.len();
                 }
                 Ok(merge_strategy::MergeResult::NeedsHuman { conflicting_files }) => {
-                    // Tier 2: Try LLM resolution
-                    if let Some(ref provider) = self.provider {
-                        info!(
-                            files = ?conflicting_files,
-                            "attempting LLM conflict resolution"
-                        );
-
-                        let (resolved, unresolved) = super::llm_resolver::resolve_conflicts_batch(
-                            provider,
-                            &self.model,
-                            &self.repo_root,
-                            &conflicting_files,
-                            target,
-                            &group.branches,
-                        )
-                        .await;
-
-                        if !resolved.is_empty() {
-                            info!(count = resolved.len(), "LLM resolved conflicts");
-                        }
-
-                        if unresolved.is_empty() {
-                            // All conflicts resolved by LLM
-                            self.commit_and_cleanup(db, &group.branches, "graggle + LLM merge clean")?;
-                            merged_count += group.branches.len();
-                        } else {
-                            warn!(?unresolved, "LLM could not resolve all conflicts — needs human review");
-                            self.mark_needs_review(db, &group.branches)?;
-                        }
-                    } else {
-                        warn!(
-                            ?conflicting_files,
-                            "graggle merge has conflicts and no LLM available — needs human review"
-                        );
-                        self.mark_needs_review(db, &group.branches)?;
-                    }
+                    count += self.try_llm_resolution(db, &group.branches, &conflicting_files, target).await?;
                 }
                 Err(e) => {
                     warn!(error = %e, "graggle merge failed");
@@ -181,7 +191,54 @@ impl MergeDaemon {
             }
         }
 
-        Ok(merged_count)
+        Ok(count)
+    }
+
+    /// Try LLM-based conflict resolution, fall back to marking for human review
+    async fn try_llm_resolution(
+        &self,
+        db: &Db,
+        branches: &[String],
+        conflicting_files: &[PathBuf],
+        target: &str,
+    ) -> Result<usize> {
+        if let Some(ref provider) = self.provider {
+            info!(
+                files = ?conflicting_files,
+                "attempting LLM conflict resolution"
+            );
+
+            let (resolved, unresolved) = super::llm_resolver::resolve_conflicts_batch(
+                provider,
+                &self.model,
+                &self.repo_root,
+                conflicting_files,
+                target,
+                branches,
+            )
+            .await;
+
+            if !resolved.is_empty() {
+                info!(count = resolved.len(), "LLM resolved conflicts");
+            }
+
+            if unresolved.is_empty() {
+                // All conflicts resolved by LLM
+                self.commit_and_cleanup(db, branches, "graggle + LLM merge clean")?;
+                return Ok(branches.len());
+            } else {
+                warn!(?unresolved, "LLM could not resolve all conflicts — needs human review");
+                self.mark_needs_review(db, branches)?;
+            }
+        } else {
+            warn!(
+                ?conflicting_files,
+                "graggle merge has conflicts and no LLM available — needs human review"
+            );
+            self.mark_needs_review(db, branches)?;
+        }
+
+        Ok(0)
     }
 
     /// Commit merged files and clean up worktrees using in-process git2

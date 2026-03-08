@@ -16,6 +16,13 @@ use super::ToolResult;
 use super::ToolResultContent;
 use crate::util::fs::is_binary_file;
 
+/// File type classification for reading.
+enum FileType {
+    Image,
+    Binary,
+    Text,
+}
+
 pub struct ReadTool {
     definition: ToolDefinition,
 }
@@ -93,81 +100,152 @@ impl Tool for ReadTool {
         };
 
         let offset = params.get("offset").and_then(|v| v.as_u64()).map(|v| v as usize);
-
         let limit = params.get("limit").and_then(|v| v.as_u64()).map(|v| v as usize);
 
         let path = Path::new(path_str);
 
-        // Check if file exists
+        // Validate file exists and is readable
+        if let Some(error) = Self::validate_file(path, path_str) {
+            return error;
+        }
+
+        // Handle different file types
+        match Self::detect_file_type(path) {
+            FileType::Image => Self::read_image_file(ctx, path, path_str).await,
+            FileType::Binary => ToolResult::error("Binary file, cannot read"),
+            FileType::Text => Self::read_text_file(ctx, path, path_str, offset, limit).await,
+        }
+    }
+}
+
+impl ReadTool {
+    /// Validate that the path exists and is a regular file.
+    fn validate_file(path: &Path, path_str: &str) -> Option<ToolResult> {
         if !path.exists() {
-            return ToolResult::error(format!("File not found: {}", path_str));
+            return Some(ToolResult::error(format!("File not found: {}", path_str)));
         }
 
         if !path.is_file() {
-            return ToolResult::error(format!("Not a file: {}", path_str));
+            return Some(ToolResult::error(format!("Not a file: {}", path_str)));
         }
 
-        // Handle image files
+        None
+    }
+
+    /// Detect whether the file is an image, binary, or text.
+    fn detect_file_type(path: &Path) -> FileType {
         if Self::is_image_file(path) {
-            ctx.emit_progress(&format!("reading image: {}", path_str));
-            return match fs::read(path).await {
-                Ok(bytes) => {
-                    let base64_data = general_purpose::STANDARD.encode(&bytes);
-                    let media_type = Self::get_image_media_type(path);
-                    ToolResult {
-                        content: vec![ToolResultContent::Image {
-                            media_type,
-                            data: base64_data,
-                        }],
-                        is_error: false,
-                        details: None,
-                        full_output_path: None,
-                    }
+            FileType::Image
+        } else if let Ok(true) = is_binary_file(path) {
+            FileType::Binary
+        } else {
+            FileType::Text
+        }
+    }
+
+    /// Read and return an image file as base64.
+    async fn read_image_file(ctx: &ToolContext, path: &Path, path_str: &str) -> ToolResult {
+        ctx.emit_progress(&format!("reading image: {}", path_str));
+        match fs::read(path).await {
+            Ok(bytes) => {
+                let base64_data = general_purpose::STANDARD.encode(&bytes);
+                let media_type = Self::get_image_media_type(path);
+                ToolResult {
+                    content: vec![ToolResultContent::Image {
+                        media_type,
+                        data: base64_data,
+                    }],
+                    is_error: false,
+                    details: None,
+                    full_output_path: None,
                 }
-                Err(e) => ToolResult::error(format!("Failed to read image: {}", e)),
-            };
+            }
+            Err(e) => ToolResult::error(format!("Failed to read image: {}", e)),
         }
+    }
 
-        // Check if binary
-        if let Ok(true) = is_binary_file(path) {
-            return ToolResult::error("Binary file, cannot read");
-        }
-
-        // Read text file
+    /// Read a text file with offset/limit and line numbering.
+    async fn read_text_file(
+        ctx: &ToolContext,
+        path: &Path,
+        path_str: &str,
+        offset: Option<usize>,
+        limit: Option<usize>,
+    ) -> ToolResult {
+        // Read file content
         let content = match fs::read_to_string(path).await {
             Ok(c) => c,
             Err(e) => return ToolResult::error(format!("Failed to read file: {}", e)),
         };
 
-        // Split into lines
+        // Apply offset and limit
         let lines: Vec<&str> = content.lines().collect();
         let total_lines = lines.len();
 
-        // Apply offset and limit
+        let (start, end) = match Self::calculate_line_range(offset, limit, total_lines) {
+            Ok(range) => range,
+            Err(e) => return e,
+        };
+
+        // Emit progress
+        Self::emit_read_progress(ctx, path_str, start, end, total_lines, limit.is_some());
+
+        // Format output with line numbers
+        let output = Self::format_lines_with_numbers(ctx, &lines, start, end);
+
+        // Apply truncation and return
+        Self::apply_truncation(output)
+    }
+
+    /// Calculate the start and end line indices based on offset and limit.
+    fn calculate_line_range(
+        offset: Option<usize>,
+        limit: Option<usize>,
+        total_lines: usize,
+    ) -> Result<(usize, usize), ToolResult> {
         let start = offset.unwrap_or(1).saturating_sub(1); // Convert to 0-indexed
+
+        if start >= total_lines {
+            return Err(ToolResult::error(format!(
+                "Offset {} exceeds file length ({} lines)",
+                offset.unwrap_or(1),
+                total_lines
+            )));
+        }
+
         let end = if let Some(lim) = limit {
             std::cmp::min(start + lim, total_lines)
         } else {
             total_lines
         };
 
-        if start >= total_lines {
-            return ToolResult::error(format!(
-                "Offset {} exceeds file length ({} lines)",
-                offset.unwrap_or(1),
-                total_lines
-            ));
-        }
+        Ok((start, end))
+    }
 
-        // Stream progress: file name and line range
-        let range_desc = if limit.is_some() {
+    /// Emit progress indicating what range is being read.
+    fn emit_read_progress(
+        ctx: &ToolContext,
+        path_str: &str,
+        start: usize,
+        end: usize,
+        total_lines: usize,
+        has_limit: bool,
+    ) {
+        let range_desc = if has_limit {
             format!("lines {}-{}/{}", start + 1, end, total_lines)
         } else {
             format!("{} lines", total_lines)
         };
         ctx.emit_progress(&format!("{} ({})", path_str, range_desc));
+    }
 
-        // Format with line numbers, streaming chunks for large files
+    /// Format lines with line numbers, emitting progress for large files.
+    fn format_lines_with_numbers(
+        ctx: &ToolContext,
+        lines: &[&str],
+        start: usize,
+        end: usize,
+    ) -> String {
         let mut output = String::new();
         let line_count = end - start;
         // Stream every 200 lines for large files
@@ -182,7 +260,11 @@ impl Tool for ReadTool {
             }
         }
 
-        // Apply truncation (2000 lines or 50KB)
+        output
+    }
+
+    /// Apply truncation limits and add truncation notice if needed.
+    fn apply_truncation(output: String) -> ToolResult {
         const MAX_LINES: usize = 2000;
         const MAX_BYTES: usize = 50 * 1024;
 

@@ -74,166 +74,180 @@ impl Tool for ProcmonTool {
         let pid_param = params.get("pid").and_then(|v| v.as_u64()).map(|v| v as u32);
 
         match action {
-            "list" => {
-                let snapshot = monitor.snapshot();
-                if snapshot.is_empty() {
-                    return ToolResult::text("No active processes");
-                }
-
-                let mut lines = Vec::new();
-                lines.push(format!(
-                    "{:<8} {:<7} {:<9} {:<9} {}",
-                    "PID", "CPU%", "MEM(MB)", "TIME", "COMMAND"
-                ));
-                lines.push("─".repeat(80));
-
-                for (pid, proc) in &snapshot {
-                    let last_sample = proc.snapshots.last();
-                    let cpu = last_sample.map(|s| s.cpu_percent).unwrap_or(0.0);
-                    let rss_mb = last_sample.map(|s| s.rss_bytes / 1_024 / 1_024).unwrap_or(0);
-                    let elapsed = proc.start_time.elapsed();
-                    let time_str = format!("{}:{:02}", elapsed.as_secs() / 60, elapsed.as_secs() % 60);
-
-                    lines.push(format!(
-                        "{:<8} {:<7.1} {:<9} {:<9} {}",
-                        pid, cpu, rss_mb, time_str, proc.meta.command
-                    ));
-
-                    // Show children indented
-                    for child_pid in &proc.children {
-                        if let Some((_, child_proc)) = snapshot.iter().find(|(p, _)| p == child_pid) {
-                            let child_sample = child_proc.snapshots.last();
-                            let child_cpu = child_sample.map(|s| s.cpu_percent).unwrap_or(0.0);
-                            let child_rss_mb = child_sample.map(|s| s.rss_bytes / 1_024 / 1_024).unwrap_or(0);
-                            let child_elapsed = child_proc.start_time.elapsed();
-                            let child_time_str =
-                                format!("{}:{:02}", child_elapsed.as_secs() / 60, child_elapsed.as_secs() % 60);
-
-                            lines.push(format!(
-                                " └─ {:<5} {:<7.1} {:<9} {:<9} {}",
-                                child_pid, child_cpu, child_rss_mb, child_time_str, child_proc.meta.command
-                            ));
-                        } else {
-                            lines.push(format!(" └─ {:<5} (not tracked)", child_pid));
-                        }
-                    }
-                }
-
-                ToolResult::text(lines.join("\n"))
-            }
-            "summary" => {
-                let stats = monitor.aggregate();
-                let msg = format!(
-                    "{} active processes | {} finished | Total: {:.1} MB RSS, {:.1}% CPU",
-                    stats.active_count,
-                    stats.finished_count,
-                    stats.total_rss as f64 / 1_024.0 / 1_024.0,
-                    stats.total_cpu_percent
-                );
-                ToolResult::text(msg)
-            }
-            "history" => {
-                let history = monitor.history();
-                if history.is_empty() {
-                    return ToolResult::text("No finished processes");
-                }
-
-                let mut lines = Vec::new();
-                lines.push(format!(
-                    "{:<8} {:<6} {:<10} {:<9} {}",
-                    "PID", "EXIT", "PEAK(MB)", "WALL", "COMMAND"
-                ));
-                lines.push("─".repeat(80));
-
-                for (pid, proc) in history {
-                    let exit_code = match proc.state {
-                        ProcessState::Exited { code, .. } => code.map(|c| c.to_string()).unwrap_or("?".to_string()),
-                        ProcessState::Running => "RUN".to_string(),
-                    };
-                    let wall_time = match proc.state {
-                        ProcessState::Exited { wall_time, .. } => wall_time,
-                        ProcessState::Running => proc.start_time.elapsed(),
-                    };
-                    let wall_str = format!("{}:{:02}", wall_time.as_secs() / 60, wall_time.as_secs() % 60);
-                    let peak_mb = proc.peak_rss / 1_024 / 1_024;
-
-                    lines.push(format!(
-                        "{:<8} {:<6} {:<10} {:<9} {}",
-                        pid, exit_code, peak_mb, wall_str, proc.meta.command
-                    ));
-                }
-
-                ToolResult::text(lines.join("\n"))
-            }
-            "inspect" => {
-                let pid = match pid_param {
-                    Some(p) => p,
-                    None => return ToolResult::error("inspect requires a 'pid' parameter"),
-                };
-
-                // Search active first, then history
-                let snapshot = monitor.snapshot();
-                let history = monitor.history();
-
-                let (found_pid, proc, source) = if let Some((_, p)) = snapshot.iter().find(|(p, _)| *p == pid) {
-                    (pid, p.clone(), "active")
-                } else if let Some((_, p)) = history.iter().find(|(p, _)| *p == pid) {
-                    (pid, p.clone(), "history")
-                } else {
-                    return ToolResult::error(format!("No process found with PID {}", pid));
-                };
-
-                let last_sample = proc.snapshots.last();
-                let cpu = last_sample.map(|s| s.cpu_percent).unwrap_or(0.0);
-                let rss_mb = last_sample.map(|s| s.rss_bytes as f64 / 1_048_576.0).unwrap_or(0.0);
-                let peak_mb = proc.peak_rss as f64 / 1_048_576.0;
-                let elapsed = match &proc.state {
-                    ProcessState::Running => proc.start_time.elapsed(),
-                    ProcessState::Exited { wall_time, .. } => *wall_time,
-                };
-                let time_str = format!("{}:{:02}", elapsed.as_secs() / 60, elapsed.as_secs() % 60);
-
-                let state_str = match &proc.state {
-                    ProcessState::Running => "Running".to_string(),
-                    ProcessState::Exited { code, wall_time } => {
-                        let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "?".to_string());
-                        format!("Exited (code {}, wall {}:{:02})", code_str, wall_time.as_secs() / 60, wall_time.as_secs() % 60)
-                    }
-                };
-
-                let cpu_values: Vec<f32> = proc.snapshots.iter().map(|s| s.cpu_percent).collect();
-                let mem_values: Vec<f32> = proc.snapshots.iter().map(|s| s.rss_bytes as f32).collect();
-                let cpu_spark = sparkline(&cpu_values, 100.0, 40);
-                let mem_spark = sparkline(&mem_values, proc.peak_rss as f32, 40);
-
-                let children_str = if proc.children.is_empty() {
-                    "none".to_string()
-                } else {
-                    proc.children.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ")
-                };
-
-                let lines = vec![
-                    format!("PID:       {}", found_pid),
-                    format!("Command:   {}", proc.meta.command),
-                    format!("Tool:      {}", proc.meta.tool_name),
-                    format!("Call ID:   {}", proc.meta.call_id),
-                    format!("State:     {}", state_str),
-                    format!("Source:    {}", source),
-                    format!("Wall time: {}", time_str),
-                    format!("CPU:       {:.1}%", cpu),
-                    format!("RSS:       {:.1} MB", rss_mb),
-                    format!("Peak RSS:  {:.1} MB", peak_mb),
-                    format!("Samples:   {}", proc.snapshots.len()),
-                    format!("Children:  {}", children_str),
-                    String::new(),
-                    format!("CPU history:  {}", cpu_spark),
-                    format!("Mem history:  {}", mem_spark),
-                ];
-
-                ToolResult::text(lines.join("\n"))
-            }
+            "list" => Self::format_process_list(monitor),
+            "summary" => Self::format_summary(monitor),
+            "history" => Self::format_history(monitor),
+            "inspect" => Self::format_inspect(monitor, pid_param),
             _ => ToolResult::error(format!("Unknown action: {}", action)),
         }
+    }
+}
+
+impl ProcmonTool {
+    /// Format the active process list with CPU, memory, and child processes.
+    fn format_process_list(monitor: &ProcessMonitorHandle) -> ToolResult {
+        let snapshot = monitor.snapshot();
+        if snapshot.is_empty() {
+            return ToolResult::text("No active processes");
+        }
+
+        let mut lines = Vec::new();
+        lines.push(format!(
+            "{:<8} {:<7} {:<9} {:<9} {}",
+            "PID", "CPU%", "MEM(MB)", "TIME", "COMMAND"
+        ));
+        lines.push("─".repeat(80));
+
+        for (pid, proc) in &snapshot {
+            let last_sample = proc.snapshots.last();
+            let cpu = last_sample.map(|s| s.cpu_percent).unwrap_or(0.0);
+            let rss_mb = last_sample.map(|s| s.rss_bytes / 1_024 / 1_024).unwrap_or(0);
+            let elapsed = proc.start_time.elapsed();
+            let time_str = format!("{}:{:02}", elapsed.as_secs() / 60, elapsed.as_secs() % 60);
+
+            lines.push(format!(
+                "{:<8} {:<7.1} {:<9} {:<9} {}",
+                pid, cpu, rss_mb, time_str, proc.meta.command
+            ));
+
+            // Show children indented
+            for child_pid in &proc.children {
+                if let Some((_, child_proc)) = snapshot.iter().find(|(p, _)| p == child_pid) {
+                    let child_sample = child_proc.snapshots.last();
+                    let child_cpu = child_sample.map(|s| s.cpu_percent).unwrap_or(0.0);
+                    let child_rss_mb = child_sample.map(|s| s.rss_bytes / 1_024 / 1_024).unwrap_or(0);
+                    let child_elapsed = child_proc.start_time.elapsed();
+                    let child_time_str =
+                        format!("{}:{:02}", child_elapsed.as_secs() / 60, child_elapsed.as_secs() % 60);
+
+                    lines.push(format!(
+                        " └─ {:<5} {:<7.1} {:<9} {:<9} {}",
+                        child_pid, child_cpu, child_rss_mb, child_time_str, child_proc.meta.command
+                    ));
+                } else {
+                    lines.push(format!(" └─ {:<5} (not tracked)", child_pid));
+                }
+            }
+        }
+
+        ToolResult::text(lines.join("\n"))
+    }
+
+    /// Format aggregate process statistics (active, finished, CPU, memory).
+    fn format_summary(monitor: &ProcessMonitorHandle) -> ToolResult {
+        let stats = monitor.aggregate();
+        let msg = format!(
+            "{} active processes | {} finished | Total: {:.1} MB RSS, {:.1}% CPU",
+            stats.active_count,
+            stats.finished_count,
+            stats.total_rss as f64 / 1_024.0 / 1_024.0,
+            stats.total_cpu_percent
+        );
+        ToolResult::text(msg)
+    }
+
+    /// Format the history of completed processes.
+    fn format_history(monitor: &ProcessMonitorHandle) -> ToolResult {
+        let history = monitor.history();
+        if history.is_empty() {
+            return ToolResult::text("No finished processes");
+        }
+
+        let mut lines = Vec::new();
+        lines.push(format!(
+            "{:<8} {:<6} {:<10} {:<9} {}",
+            "PID", "EXIT", "PEAK(MB)", "WALL", "COMMAND"
+        ));
+        lines.push("─".repeat(80));
+
+        for (pid, proc) in history {
+            let exit_code = match proc.state {
+                ProcessState::Exited { code, .. } => code.map(|c| c.to_string()).unwrap_or("?".to_string()),
+                ProcessState::Running => "RUN".to_string(),
+            };
+            let wall_time = match proc.state {
+                ProcessState::Exited { wall_time, .. } => wall_time,
+                ProcessState::Running => proc.start_time.elapsed(),
+            };
+            let wall_str = format!("{}:{:02}", wall_time.as_secs() / 60, wall_time.as_secs() % 60);
+            let peak_mb = proc.peak_rss / 1_024 / 1_024;
+
+            lines.push(format!(
+                "{:<8} {:<6} {:<10} {:<9} {}",
+                pid, exit_code, peak_mb, wall_str, proc.meta.command
+            ));
+        }
+
+        ToolResult::text(lines.join("\n"))
+    }
+
+    /// Format detailed inspection of a specific process by PID.
+    fn format_inspect(monitor: &ProcessMonitorHandle, pid_param: Option<u32>) -> ToolResult {
+        let pid = match pid_param {
+            Some(p) => p,
+            None => return ToolResult::error("inspect requires a 'pid' parameter"),
+        };
+
+        // Search active first, then history
+        let snapshot = monitor.snapshot();
+        let history = monitor.history();
+
+        let (found_pid, proc, source) = if let Some((_, p)) = snapshot.iter().find(|(p, _)| *p == pid) {
+            (pid, p.clone(), "active")
+        } else if let Some((_, p)) = history.iter().find(|(p, _)| *p == pid) {
+            (pid, p.clone(), "history")
+        } else {
+            return ToolResult::error(format!("No process found with PID {}", pid));
+        };
+
+        let last_sample = proc.snapshots.last();
+        let cpu = last_sample.map(|s| s.cpu_percent).unwrap_or(0.0);
+        let rss_mb = last_sample.map(|s| s.rss_bytes as f64 / 1_048_576.0).unwrap_or(0.0);
+        let peak_mb = proc.peak_rss as f64 / 1_048_576.0;
+        let elapsed = match &proc.state {
+            ProcessState::Running => proc.start_time.elapsed(),
+            ProcessState::Exited { wall_time, .. } => *wall_time,
+        };
+        let time_str = format!("{}:{:02}", elapsed.as_secs() / 60, elapsed.as_secs() % 60);
+
+        let state_str = match &proc.state {
+            ProcessState::Running => "Running".to_string(),
+            ProcessState::Exited { code, wall_time } => {
+                let code_str = code.map(|c| c.to_string()).unwrap_or_else(|| "?".to_string());
+                format!("Exited (code {}, wall {}:{:02})", code_str, wall_time.as_secs() / 60, wall_time.as_secs() % 60)
+            }
+        };
+
+        let cpu_values: Vec<f32> = proc.snapshots.iter().map(|s| s.cpu_percent).collect();
+        let mem_values: Vec<f32> = proc.snapshots.iter().map(|s| s.rss_bytes as f32).collect();
+        let cpu_spark = sparkline(&cpu_values, 100.0, 40);
+        let mem_spark = sparkline(&mem_values, proc.peak_rss as f32, 40);
+
+        let children_str = if proc.children.is_empty() {
+            "none".to_string()
+        } else {
+            proc.children.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ")
+        };
+
+        let lines = vec![
+            format!("PID:       {}", found_pid),
+            format!("Command:   {}", proc.meta.command),
+            format!("Tool:      {}", proc.meta.tool_name),
+            format!("Call ID:   {}", proc.meta.call_id),
+            format!("State:     {}", state_str),
+            format!("Source:    {}", source),
+            format!("Wall time: {}", time_str),
+            format!("CPU:       {:.1}%", cpu),
+            format!("RSS:       {:.1} MB", rss_mb),
+            format!("Peak RSS:  {:.1} MB", peak_mb),
+            format!("Samples:   {}", proc.snapshots.len()),
+            format!("Children:  {}", children_str),
+            String::new(),
+            format!("CPU history:  {}", cpu_spark),
+            format!("Mem history:  {}", mem_spark),
+        ];
+
+        ToolResult::text(lines.join("\n"))
     }
 }
 

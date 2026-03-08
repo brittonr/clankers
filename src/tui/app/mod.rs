@@ -334,34 +334,10 @@ impl App {
 
             // Components
             slash_menu: SlashMenu::new(),
-            slash_registry: {
-                use crate::slash_commands::{BuiltinSlashContributor, SlashContributor, SlashRegistry};
-                let builtin = BuiltinSlashContributor;
-                let contributors: Vec<&dyn SlashContributor> = vec![&builtin];
-                let (registry, conflicts) = SlashRegistry::build(&contributors);
-                for c in &conflicts {
-                    tracing::debug!(
-                        registry = c.registry,
-                        key = %c.key,
-                        winner = %c.winner,
-                        loser = %c.loser,
-                        "slash command conflict (init)"
-                    );
-                }
-                registry
-            },
+            slash_registry: build_default_slash_registry(),
             action_registry: crate::config::keybindings::ActionRegistry::new(),
             plugin_ui: PluginUIState::new(),
-            panels: {
-                let mut pm = super::panel::PanelManager::new();
-                pm.register(Box::new(super::components::todo_panel::TodoPanel::new()));
-                pm.register(Box::new(super::components::file_activity_panel::FileActivityPanel::new()));
-                pm.register(Box::new(super::components::subagent_panel::SubagentPanel::new()));
-                pm.register(Box::new(super::components::peers_panel::PeersPanel::new()));
-                pm.register(Box::new(super::components::process_panel::ProcessPanel::new()));
-                pm.register(Box::new(super::components::branch_panel::BranchPanel::new()));
-                pm
-            },
+            panels: register_default_panels(),
             context_gauge,
             git_status,
 
@@ -849,6 +825,41 @@ pub enum HitRegion {
 /// Check whether a screen coordinate (col, row) is inside a `Rect`.
 fn rect_contains(area: Rect, col: u16, row: u16) -> bool {
     col >= area.x && col < area.x + area.width && row >= area.y && row < area.y + area.height
+}
+
+// ── Constructor helpers ──────────────────────────────────────────────────────
+
+/// Register all default panels (todo, files, subagents, peers, processes, branches).
+fn register_default_panels() -> super::panel::PanelManager {
+    let mut pm = super::panel::PanelManager::new();
+    pm.register(Box::new(super::components::todo_panel::TodoPanel::new()));
+    pm.register(Box::new(super::components::file_activity_panel::FileActivityPanel::new()));
+    pm.register(Box::new(super::components::subagent_panel::SubagentPanel::new()));
+    pm.register(Box::new(super::components::peers_panel::PeersPanel::new()));
+    pm.register(Box::new(super::components::process_panel::ProcessPanel::new()));
+    pm.register(Box::new(super::components::branch_panel::BranchPanel::new()));
+    pm
+}
+
+/// Build the default slash command registry with builtin commands.
+fn build_default_slash_registry() -> crate::slash_commands::SlashRegistry {
+    use crate::slash_commands::{BuiltinSlashContributor, SlashContributor, SlashRegistry};
+    
+    let builtin = BuiltinSlashContributor;
+    let contributors: Vec<&dyn SlashContributor> = vec![&builtin];
+    let (registry, conflicts) = SlashRegistry::build(&contributors);
+    
+    for c in &conflicts {
+        tracing::debug!(
+            registry = c.registry,
+            key = %c.key,
+            winner = %c.winner,
+            loser = %c.loser,
+            "slash command conflict (init)"
+        );
+    }
+    
+    registry
 }
 
 #[cfg(test)]

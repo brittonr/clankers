@@ -220,7 +220,7 @@ impl CostTracker {
         let turn_cost = input_cost + output_cost;
 
         let total_cost = {
-            let mut usage = self.usage.write().unwrap();
+            let mut usage = self.usage.write().expect("usage lock not poisoned");
             let entry = usage.entry(model_id.to_string()).or_default();
             entry.input_tokens += input_tokens;
             entry.output_tokens += output_tokens;
@@ -235,7 +235,7 @@ impl CostTracker {
 
     /// Get total cost across all models.
     pub fn total_cost(&self) -> f64 {
-        let usage = self.usage.read().unwrap();
+        let usage = self.usage.read().expect("usage lock not poisoned");
         usage.values().map(|u| u.cost_usd).sum()
     }
 
@@ -246,7 +246,7 @@ impl CostTracker {
 
     /// Generate a full cost summary.
     pub fn summary(&self) -> CostSummary {
-        let usage = self.usage.read().unwrap();
+        let usage = self.usage.read().expect("usage lock not poisoned");
         let total_cost: f64 = usage.values().map(|u| u.cost_usd).sum();
 
         let by_model: Vec<ModelCostBreakdown> = usage
@@ -288,7 +288,7 @@ impl CostTracker {
 
     /// Format a one-line cost string for the status bar.
     pub fn status_line(&self, current_model: &str) -> String {
-        let usage = self.usage.read().unwrap();
+        let usage = self.usage.read().expect("usage lock not poisoned");
         let total_cost: f64 = usage.values().map(|u| u.cost_usd).sum();
         let total_in: u64 = usage.values().map(|u| u.input_tokens).sum();
         let total_out: u64 = usage.values().map(|u| u.output_tokens).sum();
@@ -320,7 +320,7 @@ impl CostTracker {
     fn check_thresholds(&self, total: f64) -> Vec<BudgetEvent> {
         let mut events = Vec::new();
         let prev = {
-            let mut prev = self.prev_total.write().unwrap();
+            let mut prev = self.prev_total.write().expect("prev_total lock not poisoned");
             let old = *prev;
             *prev = total;
             old
