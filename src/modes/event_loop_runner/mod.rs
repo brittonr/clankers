@@ -435,7 +435,7 @@ impl<'a> EventLoopRunner<'a> {
             match result {
                 TaskResult::PromptDone(Some(e)) => {
                     if let Some(ref mut block) = self.app.conversation.active_block {
-                        block.error = Some(format!("{}", e));
+                        block.error = Some(e.to_string());
                     }
                     self.app.finalize_active_block();
                     if self.app.queued_prompt.is_none() {

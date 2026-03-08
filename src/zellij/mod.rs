@@ -1,11 +1,16 @@
 //! Zellij integration and orchestration
 
-pub mod commands;
-pub mod ipc;
-pub mod layout;
-pub mod pane;
-pub mod streaming;
-pub mod swarm;
+#[allow(dead_code)] // planned zellij pane orchestration
+pub(crate) mod commands;
+#[allow(dead_code)] // planned zellij IPC
+pub(crate) mod ipc;
+#[allow(dead_code)] // planned zellij layout management
+pub(crate) mod layout;
+#[allow(dead_code)] // planned zellij pane control
+pub(crate) mod pane;
+pub(crate) mod streaming;
+#[allow(dead_code)] // planned zellij swarm coordination
+pub(crate) mod swarm;
 
 use std::path::Path;
 

@@ -239,6 +239,11 @@ impl ReadTool {
         ctx.emit_progress(&format!("{} ({})", path_str, range_desc));
     }
 
+    /// Threshold for considering a file "large" (for progress streaming)
+    const LARGE_FILE_LINE_THRESHOLD: usize = 500;
+    /// Progress emit interval for large files (emit every N lines)
+    const PROGRESS_INTERVAL_LINES: usize = 200;
+
     /// Format lines with line numbers, emitting progress for large files.
     fn format_lines_with_numbers(
         ctx: &ToolContext,
@@ -248,8 +253,12 @@ impl ReadTool {
     ) -> String {
         let mut output = String::new();
         let line_count = end - start;
-        // Stream every 200 lines for large files
-        let stream_interval = if line_count > 500 { 200 } else { usize::MAX };
+        // Stream every N lines for large files
+        let stream_interval = if line_count > Self::LARGE_FILE_LINE_THRESHOLD { 
+            Self::PROGRESS_INTERVAL_LINES 
+        } else { 
+            usize::MAX 
+        };
 
         for (idx, line) in lines[start..end].iter().enumerate() {
             let line_no = start + idx + 1;

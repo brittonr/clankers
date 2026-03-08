@@ -376,9 +376,9 @@ fn render_detail_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &
         ]),
         Line::from(vec![
             Span::styled("  Messages: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("{}", entry.message_count), Style::default().fg(Color::White)),
+            Span::styled(entry.message_count.to_string(), Style::default().fg(Color::White)),
             Span::styled("  Tokens: ", Style::default().fg(Color::DarkGray)),
-            Span::styled(format!("{}", entry.total_tokens), Style::default().fg(Color::White)),
+            Span::styled(entry.total_tokens.to_string(), Style::default().fg(Color::White)),
         ]),
     ];
 

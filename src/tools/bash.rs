@@ -113,6 +113,9 @@ impl Default for BashTool {
     }
 }
 
+/// Maximum length for command preview in process monitor
+const COMMAND_PREVIEW_LEN: usize = 200;
+
 impl BashTool {
     /// Check if a command is dangerous and request user confirmation if needed.
     /// Returns Ok(()) if safe or approved, Err(ToolResult) if blocked.
@@ -346,7 +349,7 @@ impl Tool for BashTool {
         // Register process with monitor
         if let Some(ref monitor) = self.process_monitor
             && let Some(pid) = child.id() {
-                let command_preview: String = command.chars().take(200).collect();
+                let command_preview: String = command.chars().take(COMMAND_PREVIEW_LEN).collect();
                 monitor.register(pid, crate::procmon::ProcessMeta {
                     tool_name: "bash".to_string(),
                     command: command_preview,

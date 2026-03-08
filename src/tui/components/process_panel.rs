@@ -495,7 +495,7 @@ impl ProcessPanel {
         ]));
         lines.push(Line::from(vec![
             Span::styled("PID:       ", label_style),
-            Span::styled(format!("{}", entry.pid), val_style),
+            Span::styled(entry.pid.to_string(), val_style),
         ]));
         lines.push(Line::from(vec![
             Span::styled("Tool:      ", label_style),

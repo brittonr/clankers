@@ -1,24 +1,13 @@
-//! Nix build/develop/run tool with structured output streaming
+//! Nix internal-json protocol parsing
 //!
-//! Parses nix's `--log-format internal-json` to provide clean, meaningful
-//! progress updates instead of raw terminal noise. Supports all common nix
-//! subcommands: build, develop, run, shell, flake check/show/update.
+//! Parses nix's `--log-format internal-json` output to provide structured
+//! progress information and build logs.
 
 use std::collections::HashMap;
-
-use async_trait::async_trait;
 use serde::Deserialize;
 use serde_json::Value;
-use serde_json::json;
-use tokio::io::AsyncBufReadExt;
-use tokio::io::BufReader;
-use tokio::process::Command;
-use tokio::time::Duration;
 
-use super::Tool;
-use super::ToolContext;
-use super::ToolDefinition;
-use super::ToolResult;
+use super::super::ToolContext;
 use crate::util::ansi::strip_ansi;
 
 // ── Nix internal-json protocol types ────────────────────────────────────────
@@ -27,7 +16,7 @@ use crate::util::ansi::strip_ansi;
 /// See: https://github.com/NixOS/nix/blob/master/src/libutil/logging.hh
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u64)]
-enum ActivityType {
+pub enum ActivityType {
     Unknown = 0,
     CopyPath = 100,
     FileTransfer = 101,
@@ -45,7 +34,7 @@ enum ActivityType {
 }
 
 impl ActivityType {
-    fn from_u64(v: u64) -> Self {
+    pub fn from_u64(v: u64) -> Self {
         match v {
             100 => Self::CopyPath,
             101 => Self::FileTransfer,
@@ -64,7 +53,7 @@ impl ActivityType {
         }
     }
 
-    fn label(&self) -> &'static str {
+    pub fn label(&self) -> &'static str {
         match self {
             Self::Unknown => "working",
             Self::CopyPath => "copying",
@@ -87,7 +76,7 @@ impl ActivityType {
 /// Result types from nix's internal-json format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u64)]
-enum ResultType {
+pub enum ResultType {
     FileLinked = 100,
     BuildLogLine = 101,
     UntrustedPath = 102,
@@ -97,7 +86,7 @@ enum ResultType {
 }
 
 impl ResultType {
-    fn from_u64(v: u64) -> Option<Self> {
+    pub fn from_u64(v: u64) -> Option<Self> {
         match v {
             100 => Some(Self::FileLinked),
             101 => Some(Self::BuildLogLine),
@@ -113,7 +102,7 @@ impl ResultType {
 /// Nix log level
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 #[repr(u64)]
-enum NixLogLevel {
+pub enum NixLogLevel {
     Error = 0,
     Warn = 1,
     Notice = 2,
@@ -125,7 +114,7 @@ enum NixLogLevel {
 }
 
 impl NixLogLevel {
-    fn from_u64(v: u64) -> Self {
+    pub fn from_u64(v: u64) -> Self {
         match v {
             0 => Self::Error,
             1 => Self::Warn,
@@ -142,47 +131,47 @@ impl NixLogLevel {
 
 /// Parsed nix internal-json event
 #[derive(Debug, Deserialize)]
-struct NixEvent {
-    action: String,
+pub struct NixEvent {
+    pub action: String,
     #[serde(default)]
-    id: u64,
+    pub id: u64,
     #[serde(default)]
-    level: u64,
+    pub level: u64,
     #[serde(default)]
-    text: String,
+    pub text: String,
     #[serde(default)]
-    msg: String,
+    pub msg: String,
     #[serde(default)]
-    raw_msg: String,
+    pub raw_msg: String,
     #[serde(rename = "type", default)]
-    activity_type: u64,
+    pub activity_type: u64,
     #[serde(default)]
-    fields: Vec<Value>,
+    pub fields: Vec<Value>,
     #[serde(default)]
     #[allow(dead_code)] // deserialized by serde, not read directly
-    parent: u64,
+    pub parent: u64,
 }
 
 /// Tracks active nix activities for progress display
-struct ActivityTracker {
-    activities: HashMap<u64, TrackedActivity>,
+pub struct ActivityTracker {
+    pub activities: HashMap<u64, TrackedActivity>,
 }
 
-struct TrackedActivity {
-    text: String,
-    activity_type: ActivityType,
+pub struct TrackedActivity {
+    pub text: String,
+    pub activity_type: ActivityType,
     #[allow(dead_code)] // retained for future activity display
-    phase: Option<String>,
+    pub phase: Option<String>,
 }
 
 impl ActivityTracker {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             activities: HashMap::new(),
         }
     }
 
-    fn start(&mut self, id: u64, text: String, activity_type: ActivityType) {
+    pub fn start(&mut self, id: u64, text: String, activity_type: ActivityType) {
         self.activities.insert(id, TrackedActivity {
             text,
             activity_type,
@@ -190,313 +179,23 @@ impl ActivityTracker {
         });
     }
 
-    fn stop(&mut self, id: u64) {
+    pub fn stop(&mut self, id: u64) {
         self.activities.remove(&id);
     }
 
-    fn set_phase(&mut self, id: u64, phase: String) {
+    pub fn set_phase(&mut self, id: u64, phase: String) {
         if let Some(a) = self.activities.get_mut(&id) {
             a.phase = Some(phase);
         }
     }
 
-    fn get(&self, id: u64) -> Option<&TrackedActivity> {
+    pub fn get(&self, id: u64) -> Option<&TrackedActivity> {
         self.activities.get(&id)
     }
 }
 
-// ── Nix subcommands ─────────────────────────────────────────────────────────
-
-/// Which nix subcommands support `--log-format internal-json`
-fn supports_structured_logging(subcommand: &str) -> bool {
-    matches!(
-        subcommand,
-        "build" | "develop" | "run" | "shell" | "flake" | "eval" | "profile" | "store" | "derivation" | "log"
-    )
-}
-
-// ── nom (nix-output-monitor) detection ──────────────────────────────────────
-
-// NOTE: nix-output-monitor (nom) was evaluated as a wrapper but rejected.
-// nom is a TUI app that uses cursor control sequences ([1G, [2K, [1F) and
-// box-drawing characters even when piped or with TERM=dumb. Its output cannot
-// be streamed line-by-line to panes. The internal-json parser below provides
-// cleaner, more controllable streaming output.
-
-// ── Tool implementation ─────────────────────────────────────────────────────
-
-pub struct NixTool {
-    definition: ToolDefinition,
-}
-
-impl NixTool {
-    pub fn new() -> Self {
-        Self {
-            definition: ToolDefinition {
-                name: "nix".to_string(),
-                description: "Run nix commands with streaming build output. Supports build, develop, run, shell, flake, eval, and other nix subcommands. Parses nix's internal-json structured logging for clean progress display (builds, downloads, fetches, phases). Use this instead of bash for nix commands.".to_string(),
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {
-                        "subcommand": {
-                            "type": "string",
-                            "description": "Nix subcommand (build, develop, run, shell, flake, eval, store, etc.)"
-                        },
-                        "args": {
-                            "type": "array",
-                            "items": { "type": "string" },
-                            "description": "Arguments to pass after the subcommand (e.g. [\".#myPackage\", \"--no-link\"])"
-                        },
-                        "timeout": {
-                            "type": "number",
-                            "description": "Timeout in seconds (default: 600 for builds, 0 = no timeout)"
-                        }
-                    },
-                    "required": ["subcommand"]
-                }),
-            },
-        }
-    }
-}
-
-impl Default for NixTool {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-// ── Helper functions ────────────────────────────────────────────────────────
-
-/// Spawn a nix command with appropriate flags and sandboxing
-fn spawn_nix_command(
-    subcommand: &str,
-    args: &[String],
-    use_structured: bool,
-) -> Result<tokio::process::Child, String> {
-    let clean_env = crate::tools::sandbox::sanitized_env();
-
-    let mut cmd = Command::new("nix");
-    cmd.arg(subcommand);
-
-    // Inject --log-format internal-json for structured output
-    if use_structured {
-        cmd.arg("--log-format").arg("internal-json");
-        // Also print build logs so we get BuildLogLine events
-        cmd.arg("-L");
-    }
-
-    // Add user args (skip if user already passed --log-format or -L)
-    for arg in args {
-        if arg == "--log-format" || arg == "-L" || arg == "--print-build-logs" {
-            continue; // We already added these
-        }
-        cmd.arg(arg);
-    }
-
-    cmd.env_clear()
-        .envs(clean_env)
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::piped());
-
-    // Apply Landlock sandbox on Linux
-    #[cfg(target_os = "linux")]
-    {
-        let cwd_for_landlock = std::env::current_dir().unwrap_or_default();
-        unsafe {
-            cmd.pre_exec(move || {
-                if let Err(e) = crate::tools::sandbox::apply_landlock_to_current(&cwd_for_landlock) {
-                    tracing::warn!("sandbox: landlock on nix child failed: {}", e);
-                }
-                Ok(())
-            });
-        }
-    }
-
-    cmd.spawn().map_err(|e| format!("Failed to spawn nix: {}", e))
-}
-
-/// Stream and parse nix output with structured logging support
-async fn stream_nix_output(
-    ctx: &ToolContext,
-    child: &mut tokio::process::Child,
-    use_structured: bool,
-    timeout_secs: u64,
-    subcommand: &str,
-) -> Result<(i32, Vec<String>, Vec<String>, Vec<String>, Vec<String>), ToolResult> {
-    let stdout = child.stdout.take()
-        .ok_or_else(|| ToolResult::error("Failed to capture stdout"))?;
-    let stderr = child.stderr.take()
-        .ok_or_else(|| ToolResult::error("Failed to capture stderr"))?;
-
-    let mut stdout_reader = BufReader::new(stdout).lines();
-    let mut stderr_reader = BufReader::new(stderr).lines();
-
-    let deadline = if timeout_secs > 0 {
-        Some(tokio::time::Instant::now() + Duration::from_secs(timeout_secs))
-    } else {
-        None
-    };
-
-    // Collected outputs
-    let mut stdout_lines: Vec<String> = Vec::new();
-    let mut build_log_lines: Vec<String> = Vec::new();
-    let mut messages: Vec<String> = Vec::new();
-    let mut errors: Vec<String> = Vec::new();
-
-    let mut tracker = ActivityTracker::new();
-    let mut last_progress_text: Option<String> = None;
-
-    // Stream and parse output
-    loop {
-        if let Some(dl) = deadline
-            && tokio::time::Instant::now() >= dl {
-                let _ = child.start_kill();
-                return Err(ToolResult::error(format!("nix {} timed out after {}s", subcommand, timeout_secs)));
-            }
-
-        tokio::select! {
-            () = ctx.signal.cancelled() => {
-                let _ = child.start_kill();
-                return Err(ToolResult::error("nix command cancelled"));
-            }
-            line = stdout_reader.next_line() => {
-                match line {
-                    Ok(Some(raw)) => {
-                        let line = strip_ansi(&raw);
-                        if !line.is_empty() {
-                            ctx.emit_progress(&line);
-                            stdout_lines.push(line);
-                        }
-                    }
-                    Ok(None) => {
-                        // stdout closed — drain stderr
-                        while let Ok(Some(raw)) = stderr_reader.next_line().await {
-                            let line = strip_ansi(&raw);
-                            if use_structured {
-                                process_nix_line(
-                                    &line, ctx, &mut tracker,
-                                    &mut build_log_lines, &mut messages, &mut errors,
-                                    &mut last_progress_text,
-                                );
-                            } else if !line.is_empty() {
-                                ctx.emit_progress(&line);
-                                messages.push(line);
-                            }
-                        }
-                        break;
-                    }
-                    Err(e) => return Err(ToolResult::error(format!("stdout read error: {}", e))),
-                }
-            }
-            line = stderr_reader.next_line() => {
-                match line {
-                    Ok(Some(raw)) => {
-                        let line = strip_ansi(&raw);
-                        if use_structured {
-                            process_nix_line(
-                                &line, ctx, &mut tracker,
-                                &mut build_log_lines, &mut messages, &mut errors,
-                                &mut last_progress_text,
-                            );
-                        } else if !line.is_empty() {
-                            ctx.emit_progress(&line);
-                            messages.push(line);
-                        }
-                    }
-                    Ok(None) => {
-                        // stderr closed — drain stdout
-                        while let Ok(Some(raw)) = stdout_reader.next_line().await {
-                            let line = strip_ansi(&raw);
-                            if !line.is_empty() {
-                                ctx.emit_progress(&line);
-                                stdout_lines.push(line);
-                            }
-                        }
-                        break;
-                    }
-                    Err(e) => return Err(ToolResult::error(format!("stderr read error: {}", e))),
-                }
-            }
-        }
-    }
-
-    let status = child.wait().await
-        .map_err(|e| ToolResult::error(format!("Failed to wait for nix: {}", e)))?;
-
-    let exit_code = status.code().unwrap_or(-1);
-    Ok((exit_code, stdout_lines, build_log_lines, messages, errors))
-}
-
-/// Format and truncate the nix result for LLM consumption
-fn format_and_truncate_result(
-    subcommand: &str,
-    exit_code: i32,
-    stdout_lines: &[String],
-    build_log_lines: &[String],
-    messages: &[String],
-    errors: &[String],
-) -> ToolResult {
-    let output = format_nix_result(subcommand, exit_code, stdout_lines, build_log_lines, messages, errors);
-
-    // Apply truncation
-    const MAX_LINES: usize = 2000;
-    const MAX_BYTES: usize = 50 * 1024;
-    let (truncated, full_path) = crate::tools::truncation::truncate_tail(&output, MAX_LINES, MAX_BYTES);
-
-    let mut result = ToolResult::text(truncated);
-    if let Some(path) = full_path {
-        result.full_output_path = Some(path.display().to_string());
-    }
-    if exit_code != 0 {
-        result.is_error = true;
-    }
-
-    result
-}
-
-#[async_trait]
-impl Tool for NixTool {
-    fn definition(&self) -> &ToolDefinition {
-        &self.definition
-    }
-
-    async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
-        let subcommand = match params.get("subcommand").and_then(|v| v.as_str()) {
-            Some(s) => s.to_string(),
-            None => return ToolResult::error("Missing required parameter: subcommand"),
-        };
-
-        let args: Vec<String> = params
-            .get("args")
-            .and_then(|v| v.as_array())
-            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
-            .unwrap_or_default();
-
-        let timeout_secs = params.get("timeout").and_then(|v| v.as_u64()).unwrap_or(0);
-
-        // Decide whether to use structured logging
-        let use_structured = supports_structured_logging(&subcommand);
-
-        // Spawn the nix command
-        let mut child = match spawn_nix_command(&subcommand, &args, use_structured) {
-            Ok(c) => c,
-            Err(e) => return ToolResult::error(e),
-        };
-
-        // Stream output and collect results
-        let (exit_code, stdout_lines, build_log_lines, messages, errors) = 
-            match stream_nix_output(ctx, &mut child, use_structured, timeout_secs, &subcommand).await {
-                Ok(result) => result,
-                Err(e) => return e,
-            };
-
-        // Format and truncate the result
-        format_and_truncate_result(&subcommand, exit_code, &stdout_lines, &build_log_lines, &messages, &errors)
-    }
-}
-
 /// Parse a single stderr line from nix's internal-json output
-fn process_nix_line(
+pub fn process_nix_line(
     line: &str,
     ctx: &ToolContext,
     tracker: &mut ActivityTracker,
@@ -656,7 +355,7 @@ fn process_nix_line(
 }
 
 /// Format the final result for the LLM
-fn format_nix_result(
+pub fn format_nix_result(
     subcommand: &str,
     exit_code: i32,
     stdout_lines: &[String],
@@ -701,13 +400,24 @@ fn format_nix_result(
     }
 }
 
+/// Hash prefix length in nix store paths (32-char hash + 1-char dash)
+const HASH_PREFIX_LEN: usize = 33;
+/// Maximum URL length before truncation
+const URL_MAX_LEN: usize = 80;
+/// URL truncation point (leaves room for "...")
+const URL_TRUNCATE_AT: usize = 77;
+/// GitHub URL prefix for shortened display
+const GITHUB_URL_DISPLAY_LEN: usize = 60;
+/// GitHub URL path truncation point
+const GITHUB_URL_TRUNCATE_AT: usize = 57;
+
 /// Shorten a nix store path for display
 /// "/nix/store/abc123-foo-1.0" -> "foo-1.0"
-fn shorten_store_path(path: &str) -> String {
+pub fn shorten_store_path(path: &str) -> String {
     if let Some(rest) = path.strip_prefix("/nix/store/") {
         // Skip the 32-char hash + dash
-        if rest.len() > 33 {
-            return rest[33..].to_string();
+        if rest.len() > HASH_PREFIX_LEN {
+            return rest[HASH_PREFIX_LEN..].to_string();
         }
     }
     // Try extracting from longer text like "copying '/nix/store/...'"
@@ -717,8 +427,8 @@ fn shorten_store_path(path: &str) -> String {
         // Find end of path (quote, space, or end)
         let end = rest.find(['\'', '"', ' ']).unwrap_or(rest.len());
         let store_suffix = &rest[..end];
-        if store_suffix.len() > 33 {
-            return store_suffix[33..].to_string();
+        if store_suffix.len() > HASH_PREFIX_LEN {
+            return store_suffix[HASH_PREFIX_LEN..].to_string();
         }
     }
     path.to_string()
@@ -726,15 +436,15 @@ fn shorten_store_path(path: &str) -> String {
 
 /// Shorten a derivation path for display
 /// "building '/nix/store/abc...-foo.drv'" -> "foo"
-fn shorten_drv_path(text: &str) -> String {
+pub fn shorten_drv_path(text: &str) -> String {
     if let Some(start) = text.find("/nix/store/") {
         let from = start + "/nix/store/".len();
         let rest = &text[from..];
         let end = rest.find(['\'', '"', ' ']).unwrap_or(rest.len());
         let name = &rest[..end];
         // Strip hash prefix
-        if name.len() > 33 {
-            let short = &name[33..];
+        if name.len() > HASH_PREFIX_LEN {
+            let short = &name[HASH_PREFIX_LEN..];
             // Strip .drv extension
             return short.strip_suffix(".drv").unwrap_or(short).to_string();
         }
@@ -743,15 +453,15 @@ fn shorten_drv_path(text: &str) -> String {
 }
 
 /// Shorten a URL for display
-fn shorten_url(url: &str) -> String {
+pub fn shorten_url(url: &str) -> String {
     // For github URLs, show just the relevant part
     if let Some(rest) = url.strip_prefix("https://github.com/")
-        && rest.len() > 60 {
-            return format!("github:{}", &rest[..57].rsplit_once('/').map(|(l, _)| l).unwrap_or(&rest[..57]));
+        && rest.len() > GITHUB_URL_DISPLAY_LEN {
+            return format!("github:{}", &rest[..GITHUB_URL_TRUNCATE_AT].rsplit_once('/').map(|(l, _)| l).unwrap_or(&rest[..GITHUB_URL_TRUNCATE_AT]));
         }
     // Trim long URLs
-    if url.len() > 80 {
-        format!("{}...", &url[..77])
+    if url.len() > URL_MAX_LEN {
+        format!("{}...", &url[..URL_TRUNCATE_AT])
     } else {
         url.to_string()
     }
@@ -806,21 +516,6 @@ mod tests {
         assert_eq!(ActivityType::Build.label(), "building");
         assert_eq!(ActivityType::FileTransfer.label(), "downloading");
         assert_eq!(ActivityType::Substitute.label(), "fetching");
-    }
-
-    #[test]
-    fn supports_structured_for_build() {
-        assert!(supports_structured_logging("build"));
-        assert!(supports_structured_logging("develop"));
-        assert!(supports_structured_logging("run"));
-        assert!(supports_structured_logging("flake"));
-    }
-
-    #[test]
-    fn no_structured_for_unknown() {
-        assert!(!supports_structured_logging("repl"));
-        assert!(!supports_structured_logging("search"));
-        assert!(!supports_structured_logging("doctor"));
     }
 
     #[test]

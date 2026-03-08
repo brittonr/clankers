@@ -138,7 +138,7 @@ impl ContextGauge {
         } else if n >= 1_000 {
             format!("{:.1}k", n as f64 / 1_000.0)
         } else {
-            format!("{}", n)
+            n.to_string()
         }
     }
 

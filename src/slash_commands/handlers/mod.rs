@@ -18,19 +18,19 @@
 //! - `session` — Session
 //! - `prompt_template` — PromptTemplate
 
-pub mod auth;
-pub mod branching;
-pub mod context;
-pub mod export;
-pub mod info;
-pub mod memory;
-pub mod model;
-pub mod navigation;
-pub mod prompt_template;
-pub mod session;
-pub mod swarm;
-pub mod tools;
-pub mod tui;
+pub(crate) mod auth;
+pub(crate) mod branching;
+pub(crate) mod context;
+pub(crate) mod export;
+pub(crate) mod info;
+pub(crate) mod memory;
+pub(crate) mod model;
+pub(crate) mod navigation;
+pub(crate) mod prompt_template;
+pub(crate) mod session;
+pub(crate) mod swarm;
+pub(crate) mod tools;
+pub(crate) mod tui;
 
 use std::sync::Arc;
 use std::sync::Mutex;

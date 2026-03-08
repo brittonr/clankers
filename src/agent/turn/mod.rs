@@ -1,30 +1,32 @@
 //! Turn loop: prompt -> LLM -> tool calls -> repeat
 
+mod execution;
+mod model_switch;
+mod usage;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
 use serde_json::Value;
 use tokio::sync::broadcast;
-use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
 use crate::agent::events::AgentEvent;
 use crate::error::Error;
 use crate::error::Result;
-use crate::provider::CompletionRequest;
-use crate::provider::Provider;
 use crate::provider::ThinkingConfig;
 use crate::provider::Usage;
 use crate::provider::message::*;
 use crate::provider::streaming::*;
-use crate::tools::Tool;
+use crate::provider::Provider;
 use crate::routing::cost_tracker::CostTracker;
-use crate::tools::ToolContext;
-use crate::tools::ToolDefinition;
-use crate::tools::ToolResult as ToolExecResult;
-use crate::tools::progress::ToolResultAccumulator;
+use crate::tools::Tool;
 use crate::tools::switch_model::ModelSwitchSlot;
+
+use execution::{execute_turn, execute_tools_parallel};
+use model_switch::check_model_switch;
+use usage::update_usage_tracking;
 
 /// Configuration for a turn loop run
 pub struct TurnConfig {
@@ -37,7 +39,7 @@ pub struct TurnConfig {
 }
 
 /// Result of collecting a streamed response
-struct CollectedResponse {
+pub(crate) struct CollectedResponse {
     content: Vec<Content>,
     model: String,
     usage: Usage,
@@ -55,21 +57,21 @@ fn parse_stop_reason(s: &str) -> StopReason {
 
 /// Builder for accumulating streaming content blocks
 #[derive(Clone)]
-struct ContentBlockBuilder {
+pub(crate) struct ContentBlockBuilder {
     content: Content,
     /// For ToolUse blocks, accumulate the raw JSON string
     raw_json: Option<String>,
 }
 
 impl ContentBlockBuilder {
-    fn new(content: Content) -> Self {
+    pub(crate) fn new(content: Content) -> Self {
         Self {
             content,
             raw_json: None,
         }
     }
 
-    fn apply_delta(&mut self, delta: &ContentDelta) {
+    pub(crate) fn apply_delta(&mut self, delta: &ContentDelta) {
         match (&mut self.content, delta) {
             (Content::Text { text }, ContentDelta::TextDelta { text: delta_text }) => {
                 text.push_str(delta_text);
@@ -89,7 +91,7 @@ impl ContentBlockBuilder {
         }
     }
 
-    fn finalize(mut self) -> Content {
+    pub(crate) fn finalize(mut self) -> Content {
         // Parse accumulated JSON for ToolUse
         if let Content::ToolUse { ref mut input, .. } = self.content {
             if let Some(json_str) = self.raw_json
@@ -124,7 +126,7 @@ pub async fn run_turn_loop(
     cost_tracker: Option<&Arc<CostTracker>>,
     model_switch_slot: Option<&ModelSwitchSlot>,
 ) -> Result<()> {
-    let tool_defs: Vec<ToolDefinition> = tools.values().map(|t| t.definition().clone()).collect();
+    let tool_defs: Vec<_> = tools.values().map(|t| t.definition().clone()).collect();
     let mut cumulative_usage = Usage::default();
     let mut active_model = config.model.clone();
 
@@ -191,122 +193,6 @@ pub async fn run_turn_loop(
     Ok(())
 }
 
-/// Check for pending model switch from tools
-fn check_model_switch(
-    active_model: &mut String,
-    model_switch_slot: Option<&ModelSwitchSlot>,
-    event_tx: &broadcast::Sender<AgentEvent>,
-) -> Result<()> {
-    if let Some(slot) = model_switch_slot && let Some(new_model) = slot.lock().take() {
-        tracing::info!("Agent-requested model switch: {} → {}", active_model, new_model);
-        let _ = event_tx.send(AgentEvent::ModelChange {
-            from: active_model.clone(),
-            to: new_model.clone(),
-            reason: "agent_request".to_string(),
-        });
-        *active_model = new_model;
-    }
-    Ok(())
-}
-
-/// Execute a single turn: build request, stream response, collect results
-async fn execute_turn(
-    provider: &dyn Provider,
-    messages: &[AgentMessage],
-    config: &TurnConfig,
-    active_model: &str,
-    tool_defs: &[ToolDefinition],
-    event_tx: &broadcast::Sender<AgentEvent>,
-    cancel: &CancellationToken,
-) -> Result<CollectedResponse> {
-    let request = CompletionRequest {
-        model: active_model.to_string(),
-        messages: messages.to_vec(),
-        system_prompt: Some(config.system_prompt.clone()),
-        max_tokens: config.max_tokens,
-        temperature: config.temperature,
-        tools: tool_defs.to_vec(),
-        thinking: config.thinking.clone(),
-    };
-
-    let (stream_tx, mut stream_rx) = mpsc::channel(256);
-    let event_tx_clone = event_tx.clone();
-    let complete_fut = provider.complete(request, stream_tx);
-    let collect_fut = collect_stream_events(&mut stream_rx, &event_tx_clone);
-
-    let (complete_result, collected) = tokio::select! {
-        biased;
-        () = cancel.cancelled() => {
-            return Err(Error::Cancelled);
-        }
-        result = async { tokio::join!(complete_fut, collect_fut) } => result,
-    };
-    complete_result?;
-    collected
-}
-
-/// Update usage tracking and emit events
-fn update_usage_tracking(
-    cumulative_usage: &mut Usage,
-    turn_usage: &Usage,
-    active_model: &str,
-    cost_tracker: Option<&Arc<CostTracker>>,
-    event_tx: &broadcast::Sender<AgentEvent>,
-) {
-    cumulative_usage.input_tokens += turn_usage.input_tokens;
-    cumulative_usage.output_tokens += turn_usage.output_tokens;
-    cumulative_usage.cache_creation_input_tokens += turn_usage.cache_creation_input_tokens;
-    cumulative_usage.cache_read_input_tokens += turn_usage.cache_read_input_tokens;
-
-    let _ = event_tx.send(AgentEvent::UsageUpdate {
-        turn_usage: turn_usage.clone(),
-        cumulative_usage: cumulative_usage.clone(),
-    });
-
-    if let Some(tracker) = cost_tracker {
-        record_cost(tracker, active_model, turn_usage);
-    }
-}
-
-/// Record cost and emit budget events
-fn record_cost(tracker: &CostTracker, model: &str, usage: &Usage) {
-    let (total_cost, budget_events) = tracker.record_usage(
-        model,
-        usage.input_tokens as u64,
-        usage.output_tokens as u64,
-    );
-
-    for event in budget_events {
-        match event {
-            crate::routing::cost_tracker::BudgetEvent::Warning { threshold, current } => {
-                tracing::warn!(
-                    "Budget warning: ${:.2} spent (soft limit: ${:.2})",
-                    current,
-                    threshold,
-                );
-            }
-            crate::routing::cost_tracker::BudgetEvent::Exceeded { limit, current } => {
-                tracing::warn!(
-                    "Budget exceeded: ${:.2} spent (hard limit: ${:.2})",
-                    current,
-                    limit,
-                );
-            }
-            crate::routing::cost_tracker::BudgetEvent::Milestone { milestone, total: _ } => {
-                tracing::info!("Cost milestone: ${:.2}", milestone);
-            }
-        }
-    }
-
-    tracing::debug!(
-        "Turn cost recorded: model={}, in={}, out={}, total=${:.4}",
-        model,
-        usage.input_tokens,
-        usage.output_tokens,
-        total_cost,
-    );
-}
-
 /// Build assistant message from collected response
 fn build_assistant_message(collected: &CollectedResponse) -> AssistantMessage {
     AssistantMessage {
@@ -333,285 +219,8 @@ fn extract_tool_calls(content: &[Content]) -> Vec<(String, String, Value)> {
         .collect()
 }
 
-/// Collect streaming events into a complete response
-async fn collect_stream_events(
-    stream_rx: &mut mpsc::Receiver<StreamEvent>,
-    event_tx: &broadcast::Sender<AgentEvent>,
-) -> Result<CollectedResponse> {
-    let mut content_builders: Vec<ContentBlockBuilder> = Vec::new();
-    let mut model = String::new();
-    let mut usage = Usage::default();
-    let mut stop_reason = StopReason::Stop;
-
-    while let Some(event) = stream_rx.recv().await {
-        match event {
-            StreamEvent::MessageStart { message } => {
-                model = message.model.clone();
-            }
-            StreamEvent::ContentBlockStart { index, content_block } => {
-                // Ensure we have enough slots
-                while content_builders.len() <= index {
-                    content_builders.push(ContentBlockBuilder::new(Content::Text { text: String::new() }));
-                }
-                content_builders[index] = ContentBlockBuilder::new(content_block.clone());
-
-                // Forward to TUI/consumers
-                let _ = event_tx.send(AgentEvent::ContentBlockStart { index, content_block });
-            }
-            StreamEvent::ContentBlockDelta { index, delta } => {
-                // Forward delta event with index
-                let _ = event_tx.send(AgentEvent::MessageUpdate {
-                    index,
-                    delta: delta.clone(),
-                });
-
-                // Apply delta to content block builder
-                if let Some(builder) = content_builders.get_mut(index) {
-                    builder.apply_delta(&delta);
-                }
-            }
-            StreamEvent::ContentBlockStop { index } => {
-                // Forward to TUI/consumers
-                let _ = event_tx.send(AgentEvent::ContentBlockStop { index });
-            }
-            StreamEvent::MessageDelta {
-                stop_reason: sr,
-                usage: u,
-            } => {
-                if let Some(reason) = sr {
-                    stop_reason = parse_stop_reason(&reason);
-                }
-                // Update usage (keep higher values from message_delta)
-                if u.output_tokens > 0 {
-                    usage.output_tokens = u.output_tokens;
-                }
-                if u.input_tokens > 0 {
-                    usage.input_tokens = u.input_tokens;
-                }
-                if u.cache_read_input_tokens > 0 {
-                    usage.cache_read_input_tokens = u.cache_read_input_tokens;
-                }
-                if u.cache_creation_input_tokens > 0 {
-                    usage.cache_creation_input_tokens = u.cache_creation_input_tokens;
-                }
-            }
-            StreamEvent::MessageStop => {
-                break;
-            }
-            StreamEvent::Error { error } => {
-                return Err(Error::ProviderStreaming { message: error });
-            }
-        }
-    }
-
-    // Finalize all content blocks
-    let content: Vec<Content> = content_builders.into_iter().map(|builder| builder.finalize()).collect();
-
-    Ok(CollectedResponse {
-        content,
-        model,
-        usage,
-        stop_reason,
-    })
-}
-
-/// Execute tools in parallel and return their results
-async fn execute_tools_parallel(
-    tools: &HashMap<String, Arc<dyn Tool>>,
-    tool_calls: &[(String, String, Value)],
-    event_tx: &broadcast::Sender<AgentEvent>,
-    cancel: CancellationToken,
-) -> Vec<ToolResultMessage> {
-    use futures::future::BoxFuture;
-    use futures::future::FutureExt;
-
-    let futures: Vec<BoxFuture<'static, ToolResultMessage>> = tool_calls
-        .iter()
-        .map(|(call_id, tool_name, input)| {
-            execute_single_tool(
-                tools.get(tool_name).cloned(),
-                call_id.clone(),
-                tool_name.clone(),
-                input.clone(),
-                event_tx.clone(),
-                cancel.clone(),
-            )
-            .boxed()
-        })
-        .collect();
-
-    futures::future::join_all(futures).await
-}
-
-/// Execute a single tool and return its result message
-async fn execute_single_tool(
-    tool: Option<Arc<dyn Tool>>,
-    call_id: String,
-    tool_name: String,
-    input: Value,
-    event_tx: broadcast::Sender<AgentEvent>,
-    cancel: CancellationToken,
-) -> ToolResultMessage {
-    // Emit ToolCall event
-    let _ = event_tx.send(AgentEvent::ToolCall {
-        tool_name: tool_name.clone(),
-        call_id: call_id.clone(),
-        input: input.clone(),
-    });
-
-    // Check if tool exists
-    let Some(tool) = tool else {
-        let error_msg = format!("Tool '{}' not found", tool_name);
-        return create_error_result(
-            call_id,
-            tool_name,
-            error_msg,
-            &event_tx,
-        );
-    };
-
-    // Check sandbox paths
-    if let Some(reason) = check_tool_paths(&input) {
-        return create_error_result(call_id, tool_name, format!("🔒 {}", reason), &event_tx);
-    }
-
-    let _ = event_tx.send(AgentEvent::ToolExecutionStart {
-        call_id: call_id.clone(),
-        tool_name: tool_name.clone(),
-    });
-
-    // Execute with accumulator
-    let result = execute_tool_with_accumulator(tool, &call_id, input, &event_tx, cancel).await;
-
-    let _ = event_tx.send(AgentEvent::ToolExecutionEnd {
-        call_id: call_id.clone(),
-        result: result.clone(),
-        is_error: result.is_error,
-    });
-
-    ToolResultMessage {
-        id: MessageId::generate(),
-        call_id,
-        tool_name,
-        content: tool_result_content_to_message_content(&result.content),
-        is_error: result.is_error,
-        details: result.details,
-        timestamp: Utc::now(),
-    }
-}
-
-/// Execute tool with result accumulator for streaming output
-async fn execute_tool_with_accumulator(
-    tool: Arc<dyn Tool>,
-    call_id: &str,
-    input: Value,
-    event_tx: &broadcast::Sender<AgentEvent>,
-    cancel: CancellationToken,
-) -> ToolExecResult {
-    // Subscribe to event bus BEFORE tool execution to capture all chunks
-    let mut chunk_rx = event_tx.subscribe();
-    let accumulator = Arc::new(parking_lot::Mutex::new(ToolResultAccumulator::new()));
-    let acc_clone = accumulator.clone();
-    let call_id_for_collector = call_id.to_string();
-
-    // Spawn collector task that feeds ToolResultChunk events into accumulator
-    let collector = tokio::spawn(async move {
-        loop {
-            match chunk_rx.recv().await {
-                Ok(AgentEvent::ToolResultChunk { call_id: cid, chunk })
-                    if cid == call_id_for_collector =>
-                {
-                    acc_clone.lock().push(chunk);
-                }
-                Ok(_) => {} // ignore other events
-                Err(broadcast::error::RecvError::Closed) => break,
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
-            }
-        }
-    });
-
-    // Execute tool
-    let ctx = ToolContext::new(call_id.to_string(), cancel, Some(event_tx.clone()));
-    let direct_result = tool.execute(&ctx, input).await;
-
-    // Stop collector and decide which result to use
-    collector.abort();
-    let _ = collector.await;
-
-    let acc = std::mem::take(&mut *accumulator.lock());
-    if acc.total_bytes() > 0 {
-        // Chunks were collected — use accumulated (truncated) result
-        let mut accumulated = acc.finalize();
-        // Preserve error status from the direct result
-        accumulated.is_error = direct_result.is_error;
-        accumulated
-    } else {
-        // No chunks emitted — use tool's direct return (backward compat)
-        direct_result
-    }
-}
-
-/// Create an error result message
-fn create_error_result(
-    call_id: String,
-    tool_name: String,
-    error_msg: String,
-    event_tx: &broadcast::Sender<AgentEvent>,
-) -> ToolResultMessage {
-    let result = ToolExecResult::error(error_msg);
-
-    let _ = event_tx.send(AgentEvent::ToolExecutionEnd {
-        call_id: call_id.clone(),
-        result: result.clone(),
-        is_error: true,
-    });
-
-    ToolResultMessage {
-        id: MessageId::generate(),
-        call_id,
-        tool_name,
-        content: tool_result_content_to_message_content(&result.content),
-        is_error: true,
-        details: result.details,
-        timestamp: Utc::now(),
-    }
-}
-
-/// Check all path-like parameters in a tool call against the sandbox path policy.
-///
-/// Extracts values from common parameter names (`path`, `file`, `directory`,
-/// `cwd`, `command`) and checks each against the global deny-list.
-/// For `command` parameters, extracts file paths from the shell command text.
-///
-/// Returns `Some(reason)` if any path is blocked, `None` if all are allowed.
-fn check_tool_paths(input: &Value) -> Option<String> {
-    use crate::tools::sandbox::check_path;
-
-    // Direct path parameters used by read, write, edit, ls, find, grep, etc.
-    for key in ["path", "file", "directory", "cwd"] {
-        if let Some(reason) = input.get(key).and_then(|v| v.as_str()).and_then(check_path) {
-            return Some(reason);
-        }
-    }
-
-    // Shell commands: scan for paths that look sensitive.
-    // We check each whitespace-delimited token that starts with / or ~.
-    if let Some(cmd) = input.get("command").and_then(|v| v.as_str()) {
-        let expanded = cmd.replace('~', &dirs::home_dir().unwrap_or_default().to_string_lossy());
-        for token in expanded.split_whitespace() {
-            if (token.starts_with('/') || token.starts_with("~/"))
-                && let Some(reason) = check_path(token)
-            {
-                return Some(reason);
-            }
-        }
-    }
-
-    None
-}
-
 /// Convert ToolResultContent to Content
-fn tool_result_content_to_message_content(tool_content: &[crate::tools::ToolResultContent]) -> Vec<Content> {
+pub(crate) fn tool_result_content_to_message_content(tool_content: &[crate::tools::ToolResultContent]) -> Vec<Content> {
     tool_content
         .iter()
         .map(|tc| match tc {
@@ -635,7 +244,8 @@ mod tests {
 
     use super::*;
     use crate::tools::progress::ResultChunk;
-    use crate::tools::ToolDefinition;
+    use crate::tools::{ToolContext, ToolDefinition};
+    use crate::tools::ToolResult as ToolExecResult;
 
     // -----------------------------------------------------------------------
     // parse_stop_reason

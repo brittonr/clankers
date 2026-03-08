@@ -321,7 +321,7 @@ impl Agent {
                 let _ = self.event_tx.send(AgentEvent::ModelChange {
                     from: old,
                     to: new_model,
-                    reason: format!("{}", selection.reason),
+                    reason: selection.reason.to_string(),
                 });
             }
         }

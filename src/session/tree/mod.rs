@@ -6,6 +6,10 @@ use super::entry::MessageEntry;
 use super::entry::SessionEntry;
 use crate::provider::message::MessageId;
 
+mod navigation;
+mod mutation;
+mod query;
+
 #[derive(Debug)]
 pub struct SessionTree {
     entries: Vec<SessionEntry>,
@@ -31,30 +35,13 @@ impl SessionTree {
         }
     }
 
-    /// Walk from a leaf message to the root, collecting message entries.
-    /// O(depth) thanks to the hash index.
-    pub fn walk_branch(&self, leaf_id: &MessageId) -> Vec<&MessageEntry> {
-        let mut path = Vec::new();
-        let mut current_id = Some(leaf_id.clone());
-        while let Some(id) = current_id {
-            if let Some(entry) = self.find_message(&id) {
-                current_id = entry.parent_id.clone();
-                path.push(entry);
-            } else {
-                break;
-            }
-        }
-        path.reverse();
-        path
-    }
-
     /// Find a message by ID (public)
     pub fn find_message_public(&self, id: &MessageId) -> Option<&MessageEntry> {
         self.find_message(id)
     }
 
     /// O(1) message lookup via the hash index.
-    fn find_message(&self, id: &MessageId) -> Option<&MessageEntry> {
+    pub(super) fn find_message(&self, id: &MessageId) -> Option<&MessageEntry> {
         self.index.get(id).and_then(|&i| {
             if let SessionEntry::Message(msg) = &self.entries[i] {
                 Some(msg)
@@ -62,56 +49,6 @@ impl SessionTree {
                 None
             }
         })
-    }
-
-    /// Get the most recent message entry (by insertion order)
-    pub fn latest_message(&self) -> Option<&MessageEntry> {
-        self.entries.iter().rev().find_map(|e| {
-            if let SessionEntry::Message(msg) = e {
-                Some(msg)
-            } else {
-                None
-            }
-        })
-    }
-
-    /// Get children of a given parent (direct descendants)
-    pub fn get_children(&self, parent_id: &Option<MessageId>) -> Vec<&MessageEntry> {
-        self.children
-            .get(parent_id)
-            .map(|indices| {
-                indices
-                    .iter()
-                    .filter_map(|&i| {
-                        if let SessionEntry::Message(msg) = &self.entries[i] {
-                            Some(msg)
-                        } else {
-                            None
-                        }
-                    })
-                    .collect()
-            })
-            .unwrap_or_default()
-    }
-
-    /// Find the latest leaf by following the last child at each level from a given starting
-    /// message. If `start_id` is None, starts from root messages.
-    pub fn find_latest_leaf(&self, start_id: Option<&MessageId>) -> Option<&MessageEntry> {
-        let mut current_id = start_id.cloned();
-        let mut last_message = start_id.and_then(|id| self.find_message(id));
-
-        loop {
-            let children = self.get_children(&current_id);
-            if children.is_empty() {
-                break;
-            }
-            // Follow the last child (most recently added branch)
-            // Safe: we just checked children.is_empty() above
-            let child = children.last().expect("non-empty checked above");
-            last_message = Some(child);
-            current_id = Some(child.id.clone());
-        }
-        last_message
     }
 
     pub fn entries(&self) -> &[SessionEntry] {
@@ -123,128 +60,9 @@ impl SessionTree {
         self.index.len()
     }
 
-    /// Find all leaf nodes (messages with no children) by doing a DFS from all roots.
-    pub fn find_all_leaves(&self) -> Vec<&MessageEntry> {
-        let mut leaves = Vec::new();
-        let mut visited = std::collections::HashSet::new();
-        
-        // Start DFS from all root messages
-        let roots = self.get_children(&None);
-        for root in roots {
-            self.dfs_collect_leaves(root, &mut leaves, &mut visited);
-        }
-        
-        leaves
-    }
-
-    /// Helper for DFS traversal to collect leaf nodes
-    fn dfs_collect_leaves<'a>(
-        &'a self,
-        node: &'a MessageEntry,
-        leaves: &mut Vec<&'a MessageEntry>,
-        visited: &mut std::collections::HashSet<MessageId>,
-    ) {
-        if visited.contains(&node.id) {
-            return;
-        }
-        visited.insert(node.id.clone());
-        
-        let children = self.get_children(&Some(node.id.clone()));
-        if children.is_empty() {
-            // This is a leaf
-            leaves.push(node);
-        } else {
-            // Recurse into children
-            for child in children {
-                self.dfs_collect_leaves(child, leaves, visited);
-            }
-        }
-    }
-
-    /// Returns true if the message has more than one child (is a branch point).
-    pub fn is_branch_point(&self, message_id: &MessageId) -> bool {
-        self.get_children(&Some(message_id.clone())).len() > 1
-    }
-
-    /// Find the last common ancestor (divergence point) of two branches.
-    /// Returns the message where the two branches diverged.
-    pub fn find_divergence_point(
-        &self,
-        leaf_a: &MessageId,
-        leaf_b: &MessageId,
-    ) -> Option<&MessageEntry> {
-        // Walk both branches to root
-        let branch_a = self.walk_branch(leaf_a);
-        let branch_b = self.walk_branch(leaf_b);
-        
-        if branch_a.is_empty() || branch_b.is_empty() {
-            return None;
-        }
-        
-        // Find the last common message by walking from root
-        let mut last_common: Option<&MessageEntry> = None;
-        let min_len = branch_a.len().min(branch_b.len());
-        
-        for i in 0..min_len {
-            if branch_a[i].id == branch_b[i].id {
-                last_common = Some(branch_a[i]);
-            } else {
-                break;
-            }
-        }
-        
-        last_common
-    }
-
-    /// Find messages unique to `source_leaf` that are NOT in the `target_leaf` branch.
-    /// Returns messages in root→leaf order (oldest first).
-    pub fn find_unique_messages(
-        &self,
-        source_leaf: &MessageId,
-        target_leaf: &MessageId,
-    ) -> Vec<&MessageEntry> {
-        let source_path = self.walk_branch(source_leaf);
-        let target_path = self.walk_branch(target_leaf);
-
-        if source_path.is_empty() {
-            return vec![];
-        }
-
-        // Build set of target message IDs for O(1) lookup
-        let target_ids: std::collections::HashSet<&MessageId> =
-            target_path.iter().map(|m| &m.id).collect();
-
-        // Return source messages not in target (preserves order)
-        source_path
-            .into_iter()
-            .filter(|m| !target_ids.contains(&m.id))
-            .collect()
-    }
-
-    /// Find messages unique to a branch (after divergence from nearest sibling).
-    /// Walks from leaf to root, finding where this branch diverged from others.
-    pub fn find_branch_messages(&self, leaf_id: &MessageId) -> Vec<&MessageEntry> {
-        let branch = self.walk_branch(leaf_id);
-        if branch.is_empty() {
-            return vec![];
-        }
-        
-        // Walk backward from leaf to find the divergence point
-        // The divergence point is where the parent has multiple children
-        let mut divergence_idx = 0;
-        
-        for (i, msg) in branch.iter().enumerate() {
-            if let Some(parent_id) = &msg.parent_id
-                && self.is_branch_point(parent_id)
-            {
-                // This message is where the branch starts (first message after fork)
-                divergence_idx = i;
-                break;
-            }
-        }
-        
-        // Return messages from divergence point to leaf
-        branch[divergence_idx..].to_vec()
+    /// Access to children map for module-internal use
+    pub(super) fn children(&self) -> &HashMap<Option<MessageId>, Vec<usize>> {
+        &self.children
     }
 }
 

@@ -506,6 +506,9 @@ fn parse_conventional_prefix(subject: &str) -> (String, &str) {
     }
 }
 
+/// Maximum recommended length for commit message first line
+const MAX_COMMIT_SUBJECT_LEN: usize = 72;
+
 fn validate_conventional_commit(msg: &str) -> Option<String> {
     let first_line = msg.lines().next().unwrap_or(msg);
     if !CONVENTIONAL_VALIDATE_RE.is_match(first_line) {
@@ -513,10 +516,11 @@ fn validate_conventional_commit(msg: &str) -> Option<String> {
             "Message does not follow Conventional Commits format. Expected: type(scope): description. Got: {}",
             first_line
         ))
-    } else if first_line.len() > 72 {
+    } else if first_line.len() > MAX_COMMIT_SUBJECT_LEN {
         Some(format!(
-            "First line is {} chars (recommended max: 72)",
-            first_line.len()
+            "First line is {} chars (recommended max: {})",
+            first_line.len(),
+            MAX_COMMIT_SUBJECT_LEN
         ))
     } else {
         None
