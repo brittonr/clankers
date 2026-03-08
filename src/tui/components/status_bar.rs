@@ -46,13 +46,24 @@ pub struct StatusBarData<'a> {
 
 /// Render status bar
 pub fn render_status_bar(frame: &mut Frame, data: &StatusBarData, theme: &Theme, area: Rect) {
-    let state_str = match data.state {
-        AppState::Idle => "idle",
-        AppState::Streaming => "streaming",
-        AppState::Command => "command",
-        AppState::Dialog => "dialog",
-    };
+    let mut spans = Vec::new();
 
+    // Left section: mode indicators
+    render_mode_indicators(&mut spans, data);
+
+    // Center section: status badges and info
+    render_status_badges(&mut spans, data);
+
+    // Right section: trailing info
+    render_trailing_info(&mut spans, data, theme);
+
+    let line = Line::from(spans);
+    let status = Paragraph::new(line);
+    frame.render_widget(status, area);
+}
+
+/// Render mode indicators: input mode badge, streaming indicator, thinking badge
+fn render_mode_indicators<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>) {
     // Mode badge — distinct colours so it's always obvious
     let (mode_text, mode_style) = match data.input_mode {
         InputMode::Normal => {
@@ -62,9 +73,9 @@ pub fn render_status_bar(frame: &mut Frame, data: &StatusBarData, theme: &Theme,
             (" INSERT ", Style::default().fg(Color::Black).bg(Color::Green).add_modifier(Modifier::BOLD))
         }
     };
+    spans.push(Span::styled(mode_text, mode_style));
 
-    let mut spans = vec![Span::styled(mode_text, mode_style)];
-
+    // Streaming indicator
     if matches!(data.state, AppState::Streaming) {
         spans.push(Span::styled(
             " ⏳ ",
@@ -72,6 +83,7 @@ pub fn render_status_bar(frame: &mut Frame, data: &StatusBarData, theme: &Theme,
         ));
     }
 
+    // Thinking level indicator
     if data.thinking_enabled {
         let level_label = format!(" 💭 {} ", data.thinking_level.label());
         let level_color = match data.thinking_level {
@@ -86,7 +98,10 @@ pub fn render_status_bar(frame: &mut Frame, data: &StatusBarData, theme: &Theme,
             Style::default().fg(Color::Black).bg(level_color).add_modifier(Modifier::BOLD),
         ));
     }
+}
 
+/// Render status badges: account, router, context, git, process, tool activity, cost/budget, plugins
+fn render_status_badges<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>) {
     // Account badge
     if !data.active_account.is_empty() {
         spans.push(Span::styled(
@@ -162,8 +177,17 @@ pub fn render_status_bar(frame: &mut Frame, data: &StatusBarData, theme: &Theme,
     for span in &data.plugin_spans {
         spans.push(span.clone());
     }
+}
 
-    // Trailing info: state, model, tokens, cwd
+/// Render trailing info section: state, model, tokens, cwd
+fn render_trailing_info<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>, theme: &Theme) {
+    let state_str = match data.state {
+        AppState::Idle => "idle",
+        AppState::Streaming => "streaming",
+        AppState::Command => "command",
+        AppState::Dialog => "dialog",
+    };
+
     let info = if data.total_tokens > 0 {
         format!(
             " {} | {} tok | {} | {}",
@@ -173,9 +197,4 @@ pub fn render_status_bar(frame: &mut Frame, data: &StatusBarData, theme: &Theme,
         format!(" {} | {} | {}", state_str, data.model, data.cwd)
     };
     spans.push(Span::styled(info, Style::default().fg(theme.fg).bg(theme.bg)));
-
-    let line = Line::from(spans);
-
-    let status = Paragraph::new(line);
-    frame.render_widget(status, area);
 }
