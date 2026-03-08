@@ -39,4 +39,4 @@ data/
 
 # Embedded repos (worktree artifacts)
 diff/
-session/
+/session/

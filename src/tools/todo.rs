@@ -116,109 +116,129 @@ impl Tool for TodoTool {
         };
 
         match action {
-            "add" => {
-                let text = match params.get("text").and_then(|v| v.as_str()) {
-                    Some(t) => t.to_string(),
-                    None => return ToolResult::error("Missing 'text' for add action"),
-                };
-                match self.send(TodoAction::Add { text: text.clone() }).await {
-                    Ok(TodoResponse::Added { id }) => ToolResult::text(format!("Added todo #{}: {}", id, text)),
-                    Ok(_) => ToolResult::text("Added.".to_string()),
-                    Err(e) => ToolResult::error(e),
-                }
-            }
-            "done" => {
-                let id = params.get("id").and_then(|v| v.as_u64()).map(|v| v as usize);
-                let text = params.get("text").and_then(|v| v.as_str());
-
-                let action = if let Some(id) = id {
-                    TodoAction::SetStatus {
-                        id,
-                        status: "done".into(),
-                    }
-                } else if let Some(query) = text {
-                    TodoAction::SetStatusByText {
-                        query: query.into(),
-                        status: "done".into(),
-                    }
-                } else {
-                    return ToolResult::error("Provide 'id' or 'text' to identify the item");
-                };
-
-                match self.send(action).await {
-                    Ok(TodoResponse::Updated { id }) => ToolResult::text(format!("Marked #{} as done.", id)),
-                    Ok(TodoResponse::NotFound) => ToolResult::error("No matching todo item found."),
-                    Ok(_) => ToolResult::text("Done.".to_string()),
-                    Err(e) => ToolResult::error(e),
-                }
-            }
-            "status" => {
-                let status = match params.get("status").and_then(|v| v.as_str()) {
-                    Some(s) => s.to_string(),
-                    None => return ToolResult::error("Missing 'status' parameter"),
-                };
-                let id = params.get("id").and_then(|v| v.as_u64()).map(|v| v as usize);
-                let text = params.get("text").and_then(|v| v.as_str());
-
-                let action = if let Some(id) = id {
-                    TodoAction::SetStatus { id, status }
-                } else if let Some(query) = text {
-                    TodoAction::SetStatusByText {
-                        query: query.into(),
-                        status,
-                    }
-                } else {
-                    return ToolResult::error("Provide 'id' or 'text' to identify the item");
-                };
-
-                match self.send(action).await {
-                    Ok(TodoResponse::Updated { id }) => ToolResult::text(format!("Updated #{} status.", id)),
-                    Ok(TodoResponse::NotFound) => ToolResult::error("No matching todo item found."),
-                    Ok(_) => ToolResult::text("Updated.".to_string()),
-                    Err(e) => ToolResult::error(e),
-                }
-            }
-            "note" => {
-                let id = match params.get("id").and_then(|v| v.as_u64()) {
-                    Some(id) => id as usize,
-                    None => return ToolResult::error("Missing 'id' for note action"),
-                };
-                let note = match params.get("note").and_then(|v| v.as_str()) {
-                    Some(n) => n.to_string(),
-                    None => return ToolResult::error("Missing 'note' text"),
-                };
-                match self.send(TodoAction::SetNote { id, note }).await {
-                    Ok(TodoResponse::Updated { id }) => ToolResult::text(format!("Added note to #{}.", id)),
-                    Ok(TodoResponse::NotFound) => ToolResult::error("No todo item with that ID."),
-                    Ok(_) => ToolResult::text("Updated.".to_string()),
-                    Err(e) => ToolResult::error(e),
-                }
-            }
-            "remove" => {
-                let id = match params.get("id").and_then(|v| v.as_u64()) {
-                    Some(id) => id as usize,
-                    None => return ToolResult::error("Missing 'id' for remove action"),
-                };
-                match self.send(TodoAction::Remove { id }).await {
-                    Ok(TodoResponse::Updated { .. }) => ToolResult::text(format!("Removed #{}.", id)),
-                    Ok(TodoResponse::NotFound) => ToolResult::error("No todo item with that ID."),
-                    Ok(_) => ToolResult::text("Removed.".to_string()),
-                    Err(e) => ToolResult::error(e),
-                }
-            }
-            "clear_done" => match self.send(TodoAction::ClearDone).await {
-                Ok(_) => ToolResult::text("Cleared completed items."),
-                Err(e) => ToolResult::error(e),
-            },
-            "list" => match self.send(TodoAction::List).await {
-                Ok(TodoResponse::Listed { summary }) => ToolResult::text(summary),
-                Ok(_) => ToolResult::text("No items.".to_string()),
-                Err(e) => ToolResult::error(e),
-            },
+            "add" => self.handle_add(&params).await,
+            "done" => self.handle_done(&params).await,
+            "status" => self.handle_status(&params).await,
+            "note" => self.handle_note(&params).await,
+            "remove" => self.handle_remove(&params).await,
+            "clear_done" => self.handle_clear_done().await,
+            "list" => self.handle_list().await,
             _ => ToolResult::error(format!(
                 "Unknown action '{}'. Use: add, done, status, note, remove, list, clear_done",
                 action
             )),
+        }
+    }
+}
+
+impl TodoTool {
+    async fn handle_add(&self, params: &Value) -> ToolResult {
+        let text = match params.get("text").and_then(|v| v.as_str()) {
+            Some(t) => t.to_string(),
+            None => return ToolResult::error("Missing 'text' for add action"),
+        };
+        match self.send(TodoAction::Add { text: text.clone() }).await {
+            Ok(TodoResponse::Added { id }) => ToolResult::text(format!("Added todo #{}: {}", id, text)),
+            Ok(_) => ToolResult::text("Added.".to_string()),
+            Err(e) => ToolResult::error(e),
+        }
+    }
+
+    async fn handle_done(&self, params: &Value) -> ToolResult {
+        let id = params.get("id").and_then(|v| v.as_u64()).map(|v| v as usize);
+        let text = params.get("text").and_then(|v| v.as_str());
+
+        let action = if let Some(id) = id {
+            TodoAction::SetStatus {
+                id,
+                status: "done".into(),
+            }
+        } else if let Some(query) = text {
+            TodoAction::SetStatusByText {
+                query: query.into(),
+                status: "done".into(),
+            }
+        } else {
+            return ToolResult::error("Provide 'id' or 'text' to identify the item");
+        };
+
+        match self.send(action).await {
+            Ok(TodoResponse::Updated { id }) => ToolResult::text(format!("Marked #{} as done.", id)),
+            Ok(TodoResponse::NotFound) => ToolResult::error("No matching todo item found."),
+            Ok(_) => ToolResult::text("Done.".to_string()),
+            Err(e) => ToolResult::error(e),
+        }
+    }
+
+    async fn handle_status(&self, params: &Value) -> ToolResult {
+        let status = match params.get("status").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None => return ToolResult::error("Missing 'status' parameter"),
+        };
+        let id = params.get("id").and_then(|v| v.as_u64()).map(|v| v as usize);
+        let text = params.get("text").and_then(|v| v.as_str());
+
+        let action = if let Some(id) = id {
+            TodoAction::SetStatus { id, status }
+        } else if let Some(query) = text {
+            TodoAction::SetStatusByText {
+                query: query.into(),
+                status,
+            }
+        } else {
+            return ToolResult::error("Provide 'id' or 'text' to identify the item");
+        };
+
+        match self.send(action).await {
+            Ok(TodoResponse::Updated { id }) => ToolResult::text(format!("Updated #{} status.", id)),
+            Ok(TodoResponse::NotFound) => ToolResult::error("No matching todo item found."),
+            Ok(_) => ToolResult::text("Updated.".to_string()),
+            Err(e) => ToolResult::error(e),
+        }
+    }
+
+    async fn handle_note(&self, params: &Value) -> ToolResult {
+        let id = match params.get("id").and_then(|v| v.as_u64()) {
+            Some(id) => id as usize,
+            None => return ToolResult::error("Missing 'id' for note action"),
+        };
+        let note = match params.get("note").and_then(|v| v.as_str()) {
+            Some(n) => n.to_string(),
+            None => return ToolResult::error("Missing 'note' text"),
+        };
+        match self.send(TodoAction::SetNote { id, note }).await {
+            Ok(TodoResponse::Updated { id }) => ToolResult::text(format!("Added note to #{}.", id)),
+            Ok(TodoResponse::NotFound) => ToolResult::error("No todo item with that ID."),
+            Ok(_) => ToolResult::text("Updated.".to_string()),
+            Err(e) => ToolResult::error(e),
+        }
+    }
+
+    async fn handle_remove(&self, params: &Value) -> ToolResult {
+        let id = match params.get("id").and_then(|v| v.as_u64()) {
+            Some(id) => id as usize,
+            None => return ToolResult::error("Missing 'id' for remove action"),
+        };
+        match self.send(TodoAction::Remove { id }).await {
+            Ok(TodoResponse::Updated { .. }) => ToolResult::text(format!("Removed #{}.", id)),
+            Ok(TodoResponse::NotFound) => ToolResult::error("No todo item with that ID."),
+            Ok(_) => ToolResult::text("Removed.".to_string()),
+            Err(e) => ToolResult::error(e),
+        }
+    }
+
+    async fn handle_clear_done(&self) -> ToolResult {
+        match self.send(TodoAction::ClearDone).await {
+            Ok(_) => ToolResult::text("Cleared completed items."),
+            Err(e) => ToolResult::error(e),
+        }
+    }
+
+    async fn handle_list(&self) -> ToolResult {
+        match self.send(TodoAction::List).await {
+            Ok(TodoResponse::Listed { summary }) => ToolResult::text(summary),
+            Ok(_) => ToolResult::text("No items.".to_string()),
+            Err(e) => ToolResult::error(e),
         }
     }
 }

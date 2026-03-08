@@ -551,9 +551,32 @@ fn handle_rpc_request(request: &Request, state: &ServerState) -> Response {
 async fn handle_file_send(
     request: &Request,
     state: &ServerState,
-    mut recv: iroh::endpoint::RecvStream,
+    recv: iroh::endpoint::RecvStream,
     mut send: iroh::endpoint::SendStream,
 ) {
+    match handle_file_send_inner(request, state, recv).await {
+        Ok((path, size)) => {
+            let resp = Response::success(json!({
+                "path": path.display().to_string(),
+                "size": size,
+            }));
+            let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
+            let _ = send.finish();
+        }
+        Err(e) => {
+            let resp = Response::error(e);
+            let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
+            let _ = send.finish();
+        }
+    }
+}
+
+/// Inner logic for receiving a file. Returns (path, bytes_received) or error message.
+async fn handle_file_send_inner(
+    request: &Request,
+    state: &ServerState,
+    mut recv: iroh::endpoint::RecvStream,
+) -> Result<(PathBuf, u64), String> {
     let file_name = request.params.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
     let expected_size = request.params.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
 
@@ -562,53 +585,44 @@ async fn handle_file_send(
 
     let receive_dir = state.receive_dir.clone().unwrap_or_else(|| PathBuf::from("/tmp/clankers-received"));
 
-    if let Err(e) = std::fs::create_dir_all(&receive_dir) {
-        let resp = Response::error(format!("Cannot create dir: {}", e));
-        let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
-        let _ = send.finish();
-        return;
-    }
+    std::fs::create_dir_all(&receive_dir).map_err(|e| format!("Cannot create dir: {}", e))?;
 
     let dest = receive_dir.join(&safe_name);
-    let mut file = match tokio::fs::File::create(&dest).await {
-        Ok(f) => f,
-        Err(e) => {
-            let resp = Response::error(format!("Cannot create file: {}", e));
-            let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
-            let _ = send.finish();
-            return;
-        }
-    };
+    let mut file = tokio::fs::File::create(&dest)
+        .await
+        .map_err(|e| format!("Cannot create file: {}", e))?;
 
+    let total = stream_to_file(&mut recv, &mut file).await?;
+
+    info!("Received file '{}' ({} bytes, expected {})", dest.display(), total, expected_size);
+
+    Ok((dest, total))
+}
+
+/// Stream data from recv into a file. Returns total bytes written.
+async fn stream_to_file(
+    recv: &mut iroh::endpoint::RecvStream,
+    file: &mut tokio::fs::File,
+) -> Result<u64, String> {
     let mut total = 0u64;
     let mut buf = vec![0u8; 64 * 1024];
+
     loop {
         let n = match recv.read(&mut buf).await {
             Ok(Some(n)) => n,
             Ok(None) => break,
             Err(e) => {
                 warn!("File receive stream error: {}", e);
-                break;
+                return Err(format!("Stream error: {}", e));
             }
         };
-        if let Err(e) = tokio::io::AsyncWriteExt::write_all(&mut file, &buf[..n]).await {
-            warn!("File write error: {}", e);
-            let resp = Response::error(format!("Write error: {}", e));
-            let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
-            let _ = send.finish();
-            return;
-        }
+        tokio::io::AsyncWriteExt::write_all(file, &buf[..n])
+            .await
+            .map_err(|e| format!("Write error: {}", e))?;
         total += n as u64;
     }
 
-    info!("Received file '{}' ({} bytes, expected {})", dest.display(), total, expected_size);
-
-    let resp = Response::success(json!({
-        "path": dest.display().to_string(),
-        "size": total,
-    }));
-    let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
-    let _ = send.finish();
+    Ok(total)
 }
 
 /// Handle a file download request from a peer (file.recv).
@@ -616,46 +630,66 @@ async fn handle_file_send(
 /// Reads the file from disk, sends a header response with size, then
 /// streams the raw bytes.
 async fn handle_file_recv(request: &Request, _recv: iroh::endpoint::RecvStream, mut send: iroh::endpoint::SendStream) {
-    let file_path = match request.params.get("path").and_then(|v| v.as_str()) {
-        Some(p) => PathBuf::from(p),
-        None => {
-            let resp = Response::error("Missing required param: \"path\"");
+    let file_path = match extract_file_path(request) {
+        Ok(path) => path,
+        Err(resp) => {
             let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
             let _ = send.finish();
             return;
         }
     };
 
-    let metadata = match std::fs::metadata(&file_path) {
-        Ok(m) => m,
-        Err(e) => {
-            let resp = Response::error(format!("Cannot stat file: {}", e));
+    let (file_name, file_size) = match get_file_metadata(&file_path) {
+        Ok(info) => info,
+        Err(resp) => {
             let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
             let _ = send.finish();
             return;
         }
     };
-
-    let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("unnamed");
 
     // Send header response with file metadata
     let header = Response::success(json!({
         "name": file_name,
-        "size": metadata.len(),
+        "size": file_size,
     }));
     if write_frame(&mut send, &serde_json::to_vec(&header).unwrap_or_default()).await.is_err() {
         return;
     }
 
     // Stream the file data
-    let mut file = match tokio::fs::File::open(&file_path).await {
-        Ok(f) => f,
-        Err(e) => {
-            warn!("Cannot open file for sending: {}", e);
-            let _ = send.finish();
-            return;
-        }
-    };
+    if stream_file_to_send(&file_path, &mut send).await.is_ok() {
+        info!("Sent file '{}' ({} bytes)", file_path.display(), file_size);
+    }
+    let _ = send.finish();
+}
+
+/// Extract file path from request parameters.
+fn extract_file_path(request: &Request) -> Result<PathBuf, Response> {
+    match request.params.get("path").and_then(|v| v.as_str()) {
+        Some(p) => Ok(PathBuf::from(p)),
+        None => Err(Response::error("Missing required param: \"path\"")),
+    }
+}
+
+/// Get file metadata (name and size).
+fn get_file_metadata(file_path: &Path) -> Result<(String, u64), Response> {
+    let metadata = std::fs::metadata(file_path).map_err(|e| Response::error(format!("Cannot stat file: {}", e)))?;
+
+    let file_name = file_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("unnamed")
+        .to_string();
+
+    Ok((file_name, metadata.len()))
+}
+
+/// Stream a file's contents to the send stream.
+async fn stream_file_to_send(file_path: &Path, send: &mut iroh::endpoint::SendStream) -> Result<(), ()> {
+    let mut file = tokio::fs::File::open(file_path).await.map_err(|e| {
+        warn!("Cannot open file for sending: {}", e);
+    })?;
 
     let mut buf = vec![0u8; 64 * 1024];
     loop {
@@ -664,16 +698,13 @@ async fn handle_file_recv(request: &Request, _recv: iroh::endpoint::RecvStream, 
             Ok(n) => n,
             Err(e) => {
                 warn!("File read error during send: {}", e);
-                break;
+                return Err(());
             }
         };
-        if send.write_all(&buf[..n]).await.is_err() {
-            break;
-        }
+        send.write_all(&buf[..n]).await.map_err(|_| ())?;
     }
 
-    let _ = send.finish();
-    info!("Sent file '{}' ({} bytes)", file_path.display(), metadata.len());
+    Ok(())
 }
 
 // ── Streaming prompt handler ────────────────────────────────────────────────
@@ -687,23 +718,62 @@ async fn handle_prompt_streaming(request: &Request, state: &ServerState, send: i
 
 /// Public wrapper for `handle_prompt_streaming` — used by the daemon module.
 pub async fn handle_prompt_streaming_pub(request: &Request, state: &ServerState, mut send: iroh::endpoint::SendStream) {
-    let ctx = match &state.agent {
+    // Validate and extract agent context
+    let ctx = match validate_agent_context(state, &mut send).await {
         Some(c) => c,
-        None => {
-            let resp = Response::error("This server was not started with agent capabilities");
-            let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
-            let _ = send.finish();
-            return;
-        }
+        None => return,
     };
 
+    // Extract and validate request parameters
+    let (text, model, system_prompt) = match extract_prompt_params(request, ctx, &mut send).await {
+        Some(params) => params,
+        None => return,
+    };
+
+    // Create agent and set up event streaming
+    let mut agent =
+        Agent::new(Arc::clone(&ctx.provider), ctx.tools.clone(), ctx.settings.clone(), model, system_prompt);
+    let rx = agent.subscribe();
+
+    // Stream events to the QUIC send stream in a background task
+    let streamer = spawn_event_streamer(rx, send);
+
+    // Run the agent
+    let agent_result = agent.prompt(&text).await;
+
+    // Wait for streamer to finish and send final response
+    send_final_response(streamer, agent_result).await;
+}
+
+/// Validate that the server has agent capabilities and send error if not.
+async fn validate_agent_context<'a>(
+    state: &'a ServerState,
+    send: &mut iroh::endpoint::SendStream,
+) -> Option<&'a RpcContext> {
+    match &state.agent {
+        Some(c) => Some(c),
+        None => {
+            let resp = Response::error("This server was not started with agent capabilities");
+            let _ = write_frame(send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
+            let _ = send.finish();
+            None
+        }
+    }
+}
+
+/// Extract and validate prompt parameters from the request.
+async fn extract_prompt_params(
+    request: &Request,
+    ctx: &RpcContext,
+    send: &mut iroh::endpoint::SendStream,
+) -> Option<(String, String, String)> {
     let text = match request.params.get("text").and_then(|v| v.as_str()) {
         Some(t) => t.to_string(),
         None => {
             let resp = Response::error("Missing required param: \"text\"");
-            let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
+            let _ = write_frame(send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
             let _ = send.finish();
-            return;
+            return None;
         }
     };
 
@@ -721,13 +791,16 @@ pub async fn handle_prompt_streaming_pub(request: &Request, state: &ServerState,
         .map(String::from)
         .unwrap_or_else(|| ctx.system_prompt.clone());
 
-    let mut agent =
-        Agent::new(Arc::clone(&ctx.provider), ctx.tools.clone(), ctx.settings.clone(), model, system_prompt);
+    Some((text, model, system_prompt))
+}
 
-    let mut rx = agent.subscribe();
-
-    // Stream events to the QUIC send stream
-    let streamer = tokio::spawn(async move {
+/// Spawn a task that streams agent events to the QUIC send stream.
+/// Returns a join handle that resolves to (send stream, collected text).
+fn spawn_event_streamer(
+    mut rx: tokio::sync::broadcast::Receiver<AgentEvent>,
+    mut send: iroh::endpoint::SendStream,
+) -> tokio::task::JoinHandle<(iroh::endpoint::SendStream, String)> {
+    tokio::spawn(async move {
         let mut collected = String::new();
 
         while let Ok(event) = rx.recv().await {
@@ -780,18 +853,19 @@ pub async fn handle_prompt_streaming_pub(request: &Request, state: &ServerState,
         }
 
         (send, collected)
-    });
+    })
+}
 
-    // Run the agent
-    let agent_result = agent.prompt(&text).await;
-
-    // Wait for streamer to finish collecting
+/// Wait for the event streamer to finish and send the final response.
+async fn send_final_response(
+    streamer: tokio::task::JoinHandle<(iroh::endpoint::SendStream, String)>,
+    agent_result: Result<(), crate::error::Error>,
+) {
     let (mut send, collected_text) = match streamer.await {
         Ok(result) => result,
         Err(_) => return,
     };
 
-    // Send the final response
     let response = match agent_result {
         Ok(()) => Response::success(json!({
             "text": collected_text,
