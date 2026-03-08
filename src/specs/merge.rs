@@ -122,8 +122,8 @@ mod tests {
 
     #[test]
     fn test_sync_empty_change() {
-        let main = TempDir::new().unwrap();
-        let change = TempDir::new().unwrap();
+        let main = TempDir::new().expect("failed to create temp dir for main");
+        let change = TempDir::new().expect("failed to create temp dir for change");
 
         let result = sync_change(main.path(), change.path(), false);
         assert_eq!(result.added, 0);
@@ -133,82 +133,82 @@ mod tests {
 
     #[test]
     fn test_sync_added_requirement() {
-        let main = TempDir::new().unwrap();
-        let change = TempDir::new().unwrap();
+        let main = TempDir::new().expect("failed to create temp dir for main");
+        let change = TempDir::new().expect("failed to create temp dir for change");
 
         // Create a delta with ADDED section
         let delta_dir = change.path().join("auth");
-        std::fs::create_dir_all(&delta_dir).unwrap();
+        std::fs::create_dir_all(&delta_dir).expect("failed to create delta dir");
         let delta_file = delta_dir.join("spec.md");
-        std::fs::write(&delta_file, "## ADDED\n\n### New Requirement\nMUST work").unwrap();
+        std::fs::write(&delta_file, "## ADDED\n\n### New Requirement\nMUST work").expect("failed to write delta file");
 
         let result = sync_change(main.path(), change.path(), false);
         assert_eq!(result.added, 1);
 
         let main_spec = main.path().join("auth").join("spec.md");
         assert!(main_spec.exists());
-        let content = std::fs::read_to_string(&main_spec).unwrap();
+        let content = std::fs::read_to_string(&main_spec).expect("failed to read main spec");
         assert!(content.contains("New Requirement"));
     }
 
     #[test]
     fn test_sync_removed_requirement() {
-        let main = TempDir::new().unwrap();
-        let change = TempDir::new().unwrap();
+        let main = TempDir::new().expect("failed to create temp dir for main");
+        let change = TempDir::new().expect("failed to create temp dir for change");
 
         // Create existing main spec
         let main_dir = main.path().join("auth");
-        std::fs::create_dir_all(&main_dir).unwrap();
+        std::fs::create_dir_all(&main_dir).expect("failed to create main dir");
         let main_spec = main_dir.join("spec.md");
-        std::fs::write(&main_spec, "## Old Requirement\nContent").unwrap();
+        std::fs::write(&main_spec, "## Old Requirement\nContent").expect("failed to write main spec");
 
         // Create delta with REMOVED section
         let delta_dir = change.path().join("auth");
-        std::fs::create_dir_all(&delta_dir).unwrap();
+        std::fs::create_dir_all(&delta_dir).expect("failed to create delta dir");
         let delta_file = delta_dir.join("spec.md");
-        std::fs::write(&delta_file, "## REMOVED\n\n### Old Requirement\n").unwrap();
+        std::fs::write(&delta_file, "## REMOVED\n\n### Old Requirement\n").expect("failed to write delta file");
 
         let result = sync_change(main.path(), change.path(), false);
         assert_eq!(result.removed, 1);
 
-        let content = std::fs::read_to_string(&main_spec).unwrap();
+        let content = std::fs::read_to_string(&main_spec).expect("failed to read main spec after sync");
         assert!(!content.contains("Old Requirement"));
     }
 
     #[test]
     fn test_sync_modified_requirement() {
-        let main = TempDir::new().unwrap();
-        let change = TempDir::new().unwrap();
+        let main = TempDir::new().expect("failed to create temp dir for main");
+        let change = TempDir::new().expect("failed to create temp dir for change");
 
         // Create existing main spec
         let main_dir = main.path().join("auth");
-        std::fs::create_dir_all(&main_dir).unwrap();
+        std::fs::create_dir_all(&main_dir).expect("failed to create main dir");
         let main_spec = main_dir.join("spec.md");
-        std::fs::write(&main_spec, "## Feature\nOld content").unwrap();
+        std::fs::write(&main_spec, "## Feature\nOld content").expect("failed to write main spec");
 
         // Create delta with MODIFIED section
         let delta_dir = change.path().join("auth");
-        std::fs::create_dir_all(&delta_dir).unwrap();
+        std::fs::create_dir_all(&delta_dir).expect("failed to create delta dir");
         let delta_file = delta_dir.join("spec.md");
-        std::fs::write(&delta_file, "## MODIFIED\n\n### Feature\nNew content").unwrap();
+        std::fs::write(&delta_file, "## MODIFIED\n\n### Feature\nNew content").expect("failed to write delta file");
 
         let result = sync_change(main.path(), change.path(), false);
         assert_eq!(result.modified, 1);
 
-        let content = std::fs::read_to_string(&main_spec).unwrap();
+        let content = std::fs::read_to_string(&main_spec).expect("failed to read main spec after sync");
         assert!(content.contains("New content"));
         assert!(!content.contains("Old content"));
     }
 
     #[test]
     fn test_sync_dry_run() {
-        let main = TempDir::new().unwrap();
-        let change = TempDir::new().unwrap();
+        let main = TempDir::new().expect("failed to create temp dir for main");
+        let change = TempDir::new().expect("failed to create temp dir for change");
 
         // Create delta
         let delta_dir = change.path().join("auth");
-        std::fs::create_dir_all(&delta_dir).unwrap();
-        std::fs::write(delta_dir.join("spec.md"), "## ADDED\n\n### New\nContent").unwrap();
+        std::fs::create_dir_all(&delta_dir).expect("failed to create delta dir");
+        std::fs::write(delta_dir.join("spec.md"), "## ADDED\n\n### New\nContent").expect("failed to write delta file");
 
         let result = sync_change(main.path(), change.path(), true);
         assert_eq!(result.added, 1);

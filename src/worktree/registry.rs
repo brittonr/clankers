@@ -166,7 +166,7 @@ mod tests {
     use super::*;
 
     fn test_db() -> Db {
-        Db::in_memory().unwrap()
+        Db::in_memory().expect("test: failed to create in-memory db")
     }
 
     fn make_worktree(branch: &str, session_id: &str, status: WorktreeStatus) -> WorktreeInfo {
@@ -186,9 +186,9 @@ mod tests {
         let db = test_db();
         let reg = db.worktrees();
         let info = make_worktree("clankers/main-abc", "sess1", WorktreeStatus::Active);
-        reg.upsert(&info).unwrap();
+        reg.upsert(&info).expect("test: failed to upsert worktree");
 
-        let got = reg.get("clankers/main-abc").unwrap().unwrap();
+        let got = reg.get("clankers/main-abc").expect("test: failed to get worktree").expect("test: worktree should exist");
         assert_eq!(got.session_id, "sess1");
         assert_eq!(got.status, WorktreeStatus::Active);
     }
@@ -196,93 +196,93 @@ mod tests {
     #[test]
     fn test_get_missing() {
         let db = test_db();
-        assert!(db.worktrees().get("nonexistent").unwrap().is_none());
+        assert!(db.worktrees().get("nonexistent").expect("test: failed to get worktree").is_none());
     }
 
     #[test]
     fn test_remove() {
         let db = test_db();
         let reg = db.worktrees();
-        reg.upsert(&make_worktree("br", "s1", WorktreeStatus::Active)).unwrap();
-        assert!(reg.remove("br").unwrap());
-        assert!(!reg.remove("br").unwrap());
-        assert!(reg.get("br").unwrap().is_none());
+        reg.upsert(&make_worktree("br", "s1", WorktreeStatus::Active)).expect("test: failed to upsert worktree");
+        assert!(reg.remove("br").expect("test: failed to remove worktree"));
+        assert!(!reg.remove("br").expect("test: failed second remove"));
+        assert!(reg.get("br").expect("test: failed to get worktree").is_none());
     }
 
     #[test]
     fn test_set_status() {
         let db = test_db();
         let reg = db.worktrees();
-        reg.upsert(&make_worktree("br", "s1", WorktreeStatus::Active)).unwrap();
-        assert!(reg.set_status("br", WorktreeStatus::Completed).unwrap());
+        reg.upsert(&make_worktree("br", "s1", WorktreeStatus::Active)).expect("test: failed to upsert worktree");
+        assert!(reg.set_status("br", WorktreeStatus::Completed).expect("test: failed to set status"));
 
-        let got = reg.get("br").unwrap().unwrap();
+        let got = reg.get("br").expect("test: failed to get worktree").expect("test: worktree should exist");
         assert_eq!(got.status, WorktreeStatus::Completed);
     }
 
     #[test]
     fn test_set_status_missing() {
         let db = test_db();
-        assert!(!db.worktrees().set_status("ghost", WorktreeStatus::Stale).unwrap());
+        assert!(!db.worktrees().set_status("ghost", WorktreeStatus::Stale).expect("test: failed to set status"));
     }
 
     #[test]
     fn test_list_by_status() {
         let db = test_db();
         let reg = db.worktrees();
-        reg.upsert(&make_worktree("a", "s1", WorktreeStatus::Active)).unwrap();
-        reg.upsert(&make_worktree("b", "s2", WorktreeStatus::Completed)).unwrap();
-        reg.upsert(&make_worktree("c", "s3", WorktreeStatus::Active)).unwrap();
+        reg.upsert(&make_worktree("a", "s1", WorktreeStatus::Active)).expect("test: failed to upsert a");
+        reg.upsert(&make_worktree("b", "s2", WorktreeStatus::Completed)).expect("test: failed to upsert b");
+        reg.upsert(&make_worktree("c", "s3", WorktreeStatus::Active)).expect("test: failed to upsert c");
 
-        assert_eq!(reg.active().unwrap().len(), 2);
-        assert_eq!(reg.completed().unwrap().len(), 1);
+        assert_eq!(reg.active().expect("test: failed to get active").len(), 2);
+        assert_eq!(reg.completed().expect("test: failed to get completed").len(), 1);
     }
 
     #[test]
     fn test_find_by_session() {
         let db = test_db();
         let reg = db.worktrees();
-        reg.upsert(&make_worktree("br1", "sess-42", WorktreeStatus::Active)).unwrap();
-        reg.upsert(&make_worktree("br2", "sess-99", WorktreeStatus::Active)).unwrap();
+        reg.upsert(&make_worktree("br1", "sess-42", WorktreeStatus::Active)).expect("test: failed to upsert br1");
+        reg.upsert(&make_worktree("br2", "sess-99", WorktreeStatus::Active)).expect("test: failed to upsert br2");
 
-        let found = reg.find_by_session("sess-42").unwrap().unwrap();
+        let found = reg.find_by_session("sess-42").expect("test: failed to find by session").expect("test: session should be found");
         assert_eq!(found.branch, "br1");
-        assert!(reg.find_by_session("nonexistent").unwrap().is_none());
+        assert!(reg.find_by_session("nonexistent").expect("test: failed to find nonexistent").is_none());
     }
 
     #[test]
     fn test_count() {
         let db = test_db();
         let reg = db.worktrees();
-        assert_eq!(reg.count().unwrap(), 0);
-        reg.upsert(&make_worktree("a", "s1", WorktreeStatus::Active)).unwrap();
-        reg.upsert(&make_worktree("b", "s2", WorktreeStatus::Active)).unwrap();
-        assert_eq!(reg.count().unwrap(), 2);
+        assert_eq!(reg.count().expect("test: failed to get count"), 0);
+        reg.upsert(&make_worktree("a", "s1", WorktreeStatus::Active)).expect("test: failed to upsert a");
+        reg.upsert(&make_worktree("b", "s2", WorktreeStatus::Active)).expect("test: failed to upsert b");
+        assert_eq!(reg.count().expect("test: failed to get count"), 2);
     }
 
     #[test]
     fn test_clear() {
         let db = test_db();
         let reg = db.worktrees();
-        reg.upsert(&make_worktree("a", "s1", WorktreeStatus::Active)).unwrap();
-        reg.upsert(&make_worktree("b", "s2", WorktreeStatus::Active)).unwrap();
-        let cleared = reg.clear().unwrap();
+        reg.upsert(&make_worktree("a", "s1", WorktreeStatus::Active)).expect("test: failed to upsert a");
+        reg.upsert(&make_worktree("b", "s2", WorktreeStatus::Active)).expect("test: failed to upsert b");
+        let cleared = reg.clear().expect("test: failed to clear");
         assert_eq!(cleared, 2);
-        assert_eq!(reg.count().unwrap(), 0);
+        assert_eq!(reg.count().expect("test: failed to get count"), 0);
     }
 
     #[test]
     fn test_remove_batch() {
         let db = test_db();
         let reg = db.worktrees();
-        reg.upsert(&make_worktree("a", "s1", WorktreeStatus::Active)).unwrap();
-        reg.upsert(&make_worktree("b", "s2", WorktreeStatus::Active)).unwrap();
-        reg.upsert(&make_worktree("c", "s3", WorktreeStatus::Active)).unwrap();
+        reg.upsert(&make_worktree("a", "s1", WorktreeStatus::Active)).expect("test: failed to upsert a");
+        reg.upsert(&make_worktree("b", "s2", WorktreeStatus::Active)).expect("test: failed to upsert b");
+        reg.upsert(&make_worktree("c", "s3", WorktreeStatus::Active)).expect("test: failed to upsert c");
 
-        let removed = reg.remove_batch(&["a".into(), "c".into(), "ghost".into()]).unwrap();
+        let removed = reg.remove_batch(&["a".into(), "c".into(), "ghost".into()]).expect("test: failed to remove batch");
         assert_eq!(removed, 2);
-        assert_eq!(reg.count().unwrap(), 1);
-        assert!(reg.get("b").unwrap().is_some());
+        assert_eq!(reg.count().expect("test: failed to get count"), 1);
+        assert!(reg.get("b").expect("test: failed to get b").is_some());
     }
 
     #[test]
@@ -290,13 +290,13 @@ mod tests {
         let db = test_db();
         let reg = db.worktrees();
         let mut info = make_worktree("br", "s1", WorktreeStatus::Active);
-        reg.upsert(&info).unwrap();
+        reg.upsert(&info).expect("test: failed to upsert worktree");
 
         info.status = WorktreeStatus::Completed;
         info.agent = "updated".to_string();
-        reg.upsert(&info).unwrap();
+        reg.upsert(&info).expect("test: failed to upsert updated worktree");
 
-        let got = reg.get("br").unwrap().unwrap();
+        let got = reg.get("br").expect("test: failed to get worktree").expect("test: worktree should exist");
         assert_eq!(got.status, WorktreeStatus::Completed);
         assert_eq!(got.agent, "updated");
     }

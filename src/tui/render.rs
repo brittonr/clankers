@@ -132,8 +132,16 @@ fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
                     theme: &theme,
                     focused,
                 };
-                let panel = app.panel_mut(panel_id);
-                crate::tui::panel::draw_panel_scrolled(frame, panel, pane.rect, &ctx);
+                if let Some(panel) = app.panel_mut(panel_id) {
+                    crate::tui::panel::draw_panel_scrolled(frame, panel, pane.rect, &ctx);
+                } else {
+                    // Panel not registered - render empty placeholder
+                    let block = Block::default()
+                        .borders(Borders::ALL)
+                        .border_style(Style::default().fg(Color::Red))
+                        .title(Span::styled(" Error: Panel Not Found ", Style::default().fg(Color::Red)));
+                    frame.render_widget(block, pane.rect);
+                }
             }
             Some(PaneKind::Subagent(id)) => {
                 let id = id.clone();

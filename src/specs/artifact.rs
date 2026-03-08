@@ -162,8 +162,8 @@ mod tests {
 
     #[test]
     fn test_artifact_state_done_when_file_exists() {
-        let dir = TempDir::new().unwrap();
-        std::fs::write(dir.path().join("proposal.md"), "# Proposal").unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
+        std::fs::write(dir.path().join("proposal.md"), "# Proposal").expect("failed to write proposal file");
 
         let artifacts = vec![SchemaArtifact {
             id: "proposal".to_string(),
@@ -177,8 +177,8 @@ mod tests {
 
     #[test]
     fn test_artifact_state_ready_when_deps_done() {
-        let dir = TempDir::new().unwrap();
-        std::fs::write(dir.path().join("proposal.md"), "# Proposal").unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
+        std::fs::write(dir.path().join("proposal.md"), "# Proposal").expect("failed to write proposal file");
 
         let artifacts = vec![
             SchemaArtifact {
@@ -200,7 +200,7 @@ mod tests {
 
     #[test]
     fn test_artifact_state_blocked_when_deps_not_done() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
 
         let artifacts = vec![
             SchemaArtifact {
@@ -222,8 +222,8 @@ mod tests {
 
     #[test]
     fn test_next_ready() {
-        let dir = TempDir::new().unwrap();
-        std::fs::write(dir.path().join("proposal.md"), "done").unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
+        std::fs::write(dir.path().join("proposal.md"), "done").expect("failed to write proposal file");
 
         let artifacts = vec![
             SchemaArtifact {
@@ -241,14 +241,14 @@ mod tests {
         let graph = ArtifactGraph::build(&artifacts, dir.path());
         let next = graph.next_ready();
         assert!(next.is_some());
-        assert_eq!(next.unwrap().id, "design");
+        assert_eq!(next.expect("next ready artifact should exist").id, "design");
     }
 
     #[test]
     fn test_is_complete() {
-        let dir = TempDir::new().unwrap();
-        std::fs::write(dir.path().join("proposal.md"), "done").unwrap();
-        std::fs::write(dir.path().join("design.md"), "done").unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
+        std::fs::write(dir.path().join("proposal.md"), "done").expect("failed to write proposal file");
+        std::fs::write(dir.path().join("design.md"), "done").expect("failed to write design file");
 
         let artifacts = vec![
             SchemaArtifact {

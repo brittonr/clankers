@@ -153,8 +153,9 @@ pub(crate) fn handle_mouse_scroll(app: &mut App, col: u16, row: u16, up: bool, l
             }
         }
         HitRegion::Panel(panel_id) => {
-            let panel = app.panel_mut(panel_id);
-            panel.handle_scroll(up, lines);
+            if let Some(panel) = app.panel_mut(panel_id) {
+                panel.handle_scroll(up, lines);
+            }
         }
         HitRegion::Subagent(ref id) => {
             app.layout.subagent_panes.handle_scroll(id, up, lines);

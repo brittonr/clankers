@@ -211,8 +211,8 @@ impl<'db> AuditLog<'db> {
 mod tests {
     use super::*;
 
-    fn test_db() -> Db {
-        Db::in_memory().unwrap()
+    fn test_db() -> Result<Db> {
+        Db::in_memory()
     }
 
     fn make_entry(session_id: &str, seq: u32, tool: &str) -> AuditEntry {
@@ -248,155 +248,165 @@ mod tests {
     // ── Basic CRUD ──────────────────────────────────────────────────
 
     #[test]
-    fn record_and_retrieve() {
-        let db = test_db();
+    fn record_and_retrieve() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
         let entry = make_entry("sess-1", 0, "read");
-        log.record(&entry).unwrap();
+        log.record(&entry)?;
 
-        let entries = log.for_session("sess-1").unwrap();
+        let entries = log.for_session("sess-1")?;
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].tool, "read");
         assert_eq!(entries[0].seq, 0);
         assert_eq!(entries[0].session_id, "sess-1");
+        Ok(())
     }
 
     #[test]
-    fn multiple_entries_ordered() {
-        let db = test_db();
+    fn multiple_entries_ordered() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
-        log.record(&make_entry("sess-1", 0, "read")).unwrap();
-        log.record(&make_entry("sess-1", 1, "edit")).unwrap();
-        log.record(&make_entry("sess-1", 2, "bash")).unwrap();
+        log.record(&make_entry("sess-1", 0, "read"))?;
+        log.record(&make_entry("sess-1", 1, "edit"))?;
+        log.record(&make_entry("sess-1", 2, "bash"))?;
 
-        let entries = log.for_session("sess-1").unwrap();
+        let entries = log.for_session("sess-1")?;
         assert_eq!(entries.len(), 3);
         assert_eq!(entries[0].tool, "read");
         assert_eq!(entries[1].tool, "edit");
         assert_eq!(entries[2].tool, "bash");
+        Ok(())
     }
 
     #[test]
-    fn sessions_isolated() {
-        let db = test_db();
+    fn sessions_isolated() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
-        log.record(&make_entry("sess-a", 0, "read")).unwrap();
-        log.record(&make_entry("sess-a", 1, "write")).unwrap();
-        log.record(&make_entry("sess-b", 0, "bash")).unwrap();
+        log.record(&make_entry("sess-a", 0, "read"))?;
+        log.record(&make_entry("sess-a", 1, "write"))?;
+        log.record(&make_entry("sess-b", 0, "bash"))?;
 
-        assert_eq!(log.for_session("sess-a").unwrap().len(), 2);
-        assert_eq!(log.for_session("sess-b").unwrap().len(), 1);
-        assert_eq!(log.for_session("sess-c").unwrap().len(), 0);
+        assert_eq!(log.for_session("sess-a")?.len(), 2);
+        assert_eq!(log.for_session("sess-b")?.len(), 1);
+        assert_eq!(log.for_session("sess-c")?.len(), 0);
+        Ok(())
     }
 
     // ── Sequence tracking ───────────────────────────────────────────
 
     #[test]
-    fn next_seq_empty() {
-        let db = test_db();
-        assert_eq!(db.audit().next_seq("sess-1").unwrap(), 0);
+    fn next_seq_empty() -> Result<()> {
+        let db = test_db()?;
+        assert_eq!(db.audit().next_seq("sess-1")?, 0);
+        Ok(())
     }
 
     #[test]
-    fn next_seq_after_entries() {
-        let db = test_db();
+    fn next_seq_after_entries() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
-        log.record(&make_entry("sess-1", 0, "read")).unwrap();
-        log.record(&make_entry("sess-1", 1, "write")).unwrap();
+        log.record(&make_entry("sess-1", 0, "read"))?;
+        log.record(&make_entry("sess-1", 1, "write"))?;
 
-        assert_eq!(log.next_seq("sess-1").unwrap(), 2);
+        assert_eq!(log.next_seq("sess-1")?, 2);
+        Ok(())
     }
 
     // ── Count and recent ────────────────────────────────────────────
 
     #[test]
-    fn count_all() {
-        let db = test_db();
+    fn count_all() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
-        assert_eq!(log.count().unwrap(), 0);
+        assert_eq!(log.count()?, 0);
 
-        log.record(&make_entry("s1", 0, "read")).unwrap();
-        log.record(&make_entry("s2", 0, "write")).unwrap();
+        log.record(&make_entry("s1", 0, "read"))?;
+        log.record(&make_entry("s2", 0, "write"))?;
 
-        assert_eq!(log.count().unwrap(), 2);
+        assert_eq!(log.count()?, 2);
+        Ok(())
     }
 
     #[test]
-    fn recent_entries() {
-        let db = test_db();
+    fn recent_entries() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
-        log.record(&make_entry("s1", 0, "read")).unwrap();
-        log.record(&make_entry("s1", 1, "write")).unwrap();
-        log.record(&make_entry("s1", 2, "bash")).unwrap();
+        log.record(&make_entry("s1", 0, "read"))?;
+        log.record(&make_entry("s1", 1, "write"))?;
+        log.record(&make_entry("s1", 2, "bash"))?;
 
-        let recent = log.recent(2).unwrap();
+        let recent = log.recent(2)?;
         assert_eq!(recent.len(), 2);
         // Newest first
         assert_eq!(recent[0].seq, 2);
         assert_eq!(recent[1].seq, 1);
+        Ok(())
     }
 
     // ── Error and sandbox entries ───────────────────────────────────
 
     #[test]
-    fn error_entry() {
-        let db = test_db();
+    fn error_entry() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
         let mut entry = make_entry("s1", 0, "bash");
         entry.is_error = true;
         entry.result_preview = "command not found".to_string();
-        log.record(&entry).unwrap();
+        log.record(&entry)?;
 
-        let entries = log.for_session("s1").unwrap();
+        let entries = log.for_session("s1")?;
         assert!(entries[0].is_error);
+        Ok(())
     }
 
     #[test]
-    fn sandbox_blocked_entry() {
-        let db = test_db();
+    fn sandbox_blocked_entry() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
         let mut entry = make_entry("s1", 0, "read");
         entry.sandbox_blocked = Some("blocked: inside ~/.ssh".to_string());
         entry.is_error = true;
-        log.record(&entry).unwrap();
+        log.record(&entry)?;
 
-        let entries = log.for_session("s1").unwrap();
+        let entries = log.for_session("s1")?;
         assert!(entries[0].sandbox_blocked.is_some());
-        assert!(entries[0].sandbox_blocked.as_ref().unwrap().contains(".ssh"));
+        assert!(entries[0].sandbox_blocked.as_ref().expect("sandbox_blocked should be present").contains(".ssh"));
+        Ok(())
     }
 
     // ── Formatting ──────────────────────────────────────────────────
 
     #[test]
-    fn format_empty_session() {
-        let db = test_db();
-        let out = db.audit().format_session("nonexistent").unwrap();
+    fn format_empty_session() -> Result<()> {
+        let db = test_db()?;
+        let out = db.audit().format_session("nonexistent")?;
         assert!(out.contains("No audit entries"));
+        Ok(())
     }
 
     #[test]
-    fn format_session_with_entries() {
-        let db = test_db();
+    fn format_session_with_entries() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
-        log.record(&make_entry("s1", 0, "read")).unwrap();
-        log.record(&make_bash_entry("s1", 1, "cargo build")).unwrap();
+        log.record(&make_entry("s1", 0, "read"))?;
+        log.record(&make_bash_entry("s1", 1, "cargo build"))?;
 
         let mut blocked = make_entry("s1", 2, "read");
         blocked.input = serde_json::json!({"path": "~/.ssh/id_rsa"});
         blocked.sandbox_blocked = Some("inside sensitive path".to_string());
         blocked.is_error = true;
-        log.record(&blocked).unwrap();
+        log.record(&blocked)?;
 
-        let out = log.format_session("s1").unwrap();
+        let out = log.format_session("s1")?;
         assert!(out.contains("**read**"));
         assert!(out.contains("**bash**"));
         assert!(out.contains("cargo build"));
@@ -404,27 +414,29 @@ mod tests {
         assert!(out.contains("3 calls"));
         assert!(out.contains("1 errors"));
         assert!(out.contains("1 blocked"));
+        Ok(())
     }
 
     // ── Clear ───────────────────────────────────────────────────────
 
     #[test]
-    fn clear_removes_all() {
-        let db = test_db();
+    fn clear_removes_all() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
-        log.record(&make_entry("s1", 0, "read")).unwrap();
-        log.record(&make_entry("s2", 0, "write")).unwrap();
+        log.record(&make_entry("s1", 0, "read"))?;
+        log.record(&make_entry("s2", 0, "write"))?;
 
-        let cleared = log.clear().unwrap();
+        let cleared = log.clear()?;
         assert_eq!(cleared, 2);
-        assert_eq!(log.count().unwrap(), 0);
+        assert_eq!(log.count()?, 0);
+        Ok(())
     }
 
     // ── Serialization roundtrip ─────────────────────────────────────
 
     #[test]
-    fn entry_serialization_roundtrip() {
+    fn entry_serialization_roundtrip() -> Result<()> {
         let entry = AuditEntry {
             session_id: "test".into(),
             seq: 42,
@@ -438,18 +450,23 @@ mod tests {
             sandbox_blocked: None,
         };
 
-        let json = serde_json::to_string(&entry).unwrap();
-        let parsed: AuditEntry = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&entry).map_err(|e| crate::error::Error::Database {
+            message: format!("serialization failed: {e}"),
+        })?;
+        let parsed: AuditEntry = serde_json::from_str(&json).map_err(|e| crate::error::Error::Database {
+            message: format!("deserialization failed: {e}"),
+        })?;
 
         assert_eq!(parsed.session_id, "test");
         assert_eq!(parsed.seq, 42);
         assert_eq!(parsed.tool, "bash");
         assert_eq!(parsed.duration_ms, 123);
         assert!(parsed.sandbox_blocked.is_none());
+        Ok(())
     }
 
     #[test]
-    fn entry_with_sandbox_blocked_serializes() {
+    fn entry_with_sandbox_blocked_serializes() -> Result<()> {
         let entry = AuditEntry {
             session_id: "test".into(),
             seq: 0,
@@ -463,197 +480,214 @@ mod tests {
             sandbox_blocked: Some("sensitive path".into()),
         };
 
-        let json = serde_json::to_string(&entry).unwrap();
+        let json = serde_json::to_string(&entry).map_err(|e| crate::error::Error::Database {
+            message: format!("serialization failed: {e}"),
+        })?;
         assert!(json.contains("sandbox_blocked"));
         assert!(json.contains("sensitive path"));
+        Ok(())
     }
 
     #[test]
-    fn entry_without_sandbox_blocked_omits_field() {
+    fn entry_without_sandbox_blocked_omits_field() -> Result<()> {
         let entry = make_entry("s1", 0, "read");
-        let json = serde_json::to_string(&entry).unwrap();
+        let json = serde_json::to_string(&entry).map_err(|e| crate::error::Error::Database {
+            message: format!("serialization failed: {e}"),
+        })?;
         assert!(!json.contains("sandbox_blocked"));
+        Ok(())
     }
 
     // ── High sequence numbers ───────────────────────────────────────
 
     #[test]
-    fn high_sequence_numbers_sort_correctly() {
-        let db = test_db();
+    fn high_sequence_numbers_sort_correctly() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
         // Insert entries with gaps to test zero-padding sort
         for seq in [0, 9, 10, 99, 100, 999, 1000] {
-            log.record(&make_entry("s1", seq, "bash")).unwrap();
+            log.record(&make_entry("s1", seq, "bash"))?;
         }
 
-        let entries = log.for_session("s1").unwrap();
+        let entries = log.for_session("s1")?;
         assert_eq!(entries.len(), 7);
         // Verify monotonically increasing
         for pair in entries.windows(2) {
             assert!(pair[0].seq < pair[1].seq, "{} should be < {}", pair[0].seq, pair[1].seq);
         }
+        Ok(())
     }
 
     // ── Recent spans multiple sessions ──────────────────────────────
 
     #[test]
-    fn recent_spans_sessions() {
-        let db = test_db();
+    fn recent_spans_sessions() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
-        log.record(&make_entry("s1", 0, "read")).unwrap();
-        log.record(&make_entry("s2", 0, "write")).unwrap();
-        log.record(&make_entry("s3", 0, "bash")).unwrap();
+        log.record(&make_entry("s1", 0, "read"))?;
+        log.record(&make_entry("s2", 0, "write"))?;
+        log.record(&make_entry("s3", 0, "bash"))?;
 
-        let recent = log.recent(10).unwrap();
+        let recent = log.recent(10)?;
         assert_eq!(recent.len(), 3);
         // All three sessions present
         let sessions: Vec<&str> = recent.iter().map(|e| e.session_id.as_str()).collect();
         assert!(sessions.contains(&"s1"));
         assert!(sessions.contains(&"s2"));
         assert!(sessions.contains(&"s3"));
+        Ok(())
     }
 
     #[test]
-    fn recent_zero_returns_empty() {
-        let db = test_db();
+    fn recent_zero_returns_empty() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
-        log.record(&make_entry("s1", 0, "read")).unwrap();
-        assert_eq!(log.recent(0).unwrap().len(), 0);
+        log.record(&make_entry("s1", 0, "read"))?;
+        assert_eq!(log.recent(0)?.len(), 0);
+        Ok(())
     }
 
     // ── Clear then re-use ───────────────────────────────────────────
 
     #[test]
-    fn clear_then_reuse() {
-        let db = test_db();
+    fn clear_then_reuse() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
-        log.record(&make_entry("s1", 0, "read")).unwrap();
-        log.clear().unwrap();
+        log.record(&make_entry("s1", 0, "read"))?;
+        log.clear()?;
 
         // Can still write after clear
-        log.record(&make_entry("s1", 0, "write")).unwrap();
-        let entries = log.for_session("s1").unwrap();
+        log.record(&make_entry("s1", 0, "write"))?;
+        let entries = log.for_session("s1")?;
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].tool, "write");
+        Ok(())
     }
 
     // ── next_seq independent per session ────────────────────────────
 
     #[test]
-    fn next_seq_per_session() {
-        let db = test_db();
+    fn next_seq_per_session() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
-        log.record(&make_entry("s1", 0, "read")).unwrap();
-        log.record(&make_entry("s1", 1, "write")).unwrap();
-        log.record(&make_entry("s2", 0, "bash")).unwrap();
+        log.record(&make_entry("s1", 0, "read"))?;
+        log.record(&make_entry("s1", 1, "write"))?;
+        log.record(&make_entry("s2", 0, "bash"))?;
 
-        assert_eq!(log.next_seq("s1").unwrap(), 2);
-        assert_eq!(log.next_seq("s2").unwrap(), 1);
-        assert_eq!(log.next_seq("s3").unwrap(), 0);
+        assert_eq!(log.next_seq("s1")?, 2);
+        assert_eq!(log.next_seq("s2")?, 1);
+        assert_eq!(log.next_seq("s3")?, 0);
+        Ok(())
     }
 
     // ── Overwrite same key ──────────────────────────────────────────
 
     #[test]
-    fn overwrite_same_seq() {
-        let db = test_db();
+    fn overwrite_same_seq() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
-        log.record(&make_entry("s1", 0, "read")).unwrap();
-        log.record(&make_entry("s1", 0, "write")).unwrap(); // same seq
+        log.record(&make_entry("s1", 0, "read"))?;
+        log.record(&make_entry("s1", 0, "write"))?; // same seq
 
-        let entries = log.for_session("s1").unwrap();
+        let entries = log.for_session("s1")?;
         // redb INSERT replaces, so should have 1 entry with the latest tool
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].tool, "write");
+        Ok(())
     }
 
     // ── Format: grep tool rendering ─────────────────────────────────
 
     #[test]
-    fn format_grep_entry() {
-        let db = test_db();
+    fn format_grep_entry() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
         let mut entry = make_entry("s1", 0, "grep");
         entry.input = serde_json::json!({"pattern": "TODO", "path": "src/"});
-        log.record(&entry).unwrap();
+        log.record(&entry)?;
 
-        let out = log.format_session("s1").unwrap();
+        let out = log.format_session("s1")?;
         assert!(out.contains("TODO"));
         assert!(out.contains("src/"));
+        Ok(())
     }
 
     // ── Format: duration totals ─────────────────────────────────────
 
     #[test]
-    fn format_duration_totals() {
-        let db = test_db();
+    fn format_duration_totals() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
         let mut e1 = make_entry("s1", 0, "read");
         e1.duration_ms = 100;
         let mut e2 = make_entry("s1", 1, "write");
         e2.duration_ms = 200;
-        log.record(&e1).unwrap();
-        log.record(&e2).unwrap();
+        log.record(&e1)?;
+        log.record(&e2)?;
 
-        let out = log.format_session("s1").unwrap();
+        let out = log.format_session("s1")?;
         assert!(out.contains("300ms total"));
+        Ok(())
     }
 
     // ── Input with special characters ───────────────────────────────
 
     #[test]
-    fn unicode_in_fields() {
-        let db = test_db();
+    fn unicode_in_fields() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
         let mut entry = make_entry("sess-日本語", 0, "bash");
         entry.input = serde_json::json!({"command": "echo '🚀 héllo'"});
         entry.result_preview = "🚀 héllo".to_string();
-        log.record(&entry).unwrap();
+        log.record(&entry)?;
 
-        let entries = log.for_session("sess-日本語").unwrap();
+        let entries = log.for_session("sess-日本語")?;
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].result_preview, "🚀 héllo");
+        Ok(())
     }
 
     // ── Empty result preview ────────────────────────────────────────
 
     #[test]
-    fn empty_result_preview() {
-        let db = test_db();
+    fn empty_result_preview() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
         let mut entry = make_entry("s1", 0, "write");
         entry.result_preview = String::new();
-        log.record(&entry).unwrap();
+        log.record(&entry)?;
 
-        let entries = log.for_session("s1").unwrap();
+        let entries = log.for_session("s1")?;
         assert_eq!(entries[0].result_preview, "");
+        Ok(())
     }
 
     // ── Large input JSON ────────────────────────────────────────────
 
     #[test]
-    fn large_input_json() {
-        let db = test_db();
+    fn large_input_json() -> Result<()> {
+        let db = test_db()?;
         let log = db.audit();
 
         let big_content: String = "x".repeat(10_000);
         let mut entry = make_entry("s1", 0, "write");
         entry.input = serde_json::json!({"path": "/tmp/big.txt", "content": big_content});
-        log.record(&entry).unwrap();
+        log.record(&entry)?;
 
-        let entries = log.for_session("s1").unwrap();
+        let entries = log.for_session("s1")?;
         assert_eq!(entries.len(), 1);
-        let content = entries[0].input["content"].as_str().unwrap();
+        let content = entries[0].input["content"].as_str().expect("content field should be a string");
         assert_eq!(content.len(), 10_000);
+        Ok(())
     }
 }

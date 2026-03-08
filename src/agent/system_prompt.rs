@@ -476,12 +476,12 @@ mod tests {
 
         let result = assemble_system_prompt("BASE", &resources, Some("PREFIX"), Some("SUFFIX"));
 
-        let prefix_pos = result.find("PREFIX").unwrap();
-        let base_pos = result.find("BASE").unwrap();
-        let agents_pos = result.find("AGENTS_CONTENT").unwrap();
-        let context_pos = result.find("CONTEXT").unwrap();
-        let spec_pos = result.find("SPEC").unwrap();
-        let suffix_pos = result.find("SUFFIX").unwrap();
+        let prefix_pos = result.find("PREFIX").expect("PREFIX should be in result");
+        let base_pos = result.find("BASE").expect("BASE should be in result");
+        let agents_pos = result.find("AGENTS_CONTENT").expect("AGENTS_CONTENT should be in result");
+        let context_pos = result.find("CONTEXT").expect("CONTEXT should be in result");
+        let spec_pos = result.find("SPEC").expect("SPEC should be in result");
+        let suffix_pos = result.find("SUFFIX").expect("SUFFIX should be in result");
 
         assert!(prefix_pos < base_pos);
         assert!(base_pos < agents_pos);
@@ -516,7 +516,7 @@ mod tests {
         assert!(result.contains("Base"));
         assert!(result.contains("Appended instructions"));
         // Append should come after base
-        assert!(result.find("Base").unwrap() < result.find("Appended").unwrap());
+        assert!(result.find("Base").expect("Base should be in result") < result.find("Appended").expect("Appended should be in result"));
     }
 
     #[test]
@@ -529,12 +529,12 @@ mod tests {
 
     #[test]
     fn test_load_context_files_single() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let clankers_dir = temp.path().join(".clankers");
-        std::fs::create_dir_all(&clankers_dir).unwrap();
+        std::fs::create_dir_all(&clankers_dir).expect("failed to create .clankers dir");
 
         let context_file = clankers_dir.join("context.md");
-        std::fs::write(&context_file, "Test context").unwrap();
+        std::fs::write(&context_file, "Test context").expect("failed to write context file");
 
         let project = ProjectPaths::resolve(temp.path());
         let files = load_context_files(&project);
@@ -545,13 +545,13 @@ mod tests {
 
     #[test]
     fn test_load_context_files_directory() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let context_dir = temp.path().join(".clankers").join("context");
-        std::fs::create_dir_all(&context_dir).unwrap();
+        std::fs::create_dir_all(&context_dir).expect("failed to create context dir");
 
-        std::fs::write(context_dir.join("a.md"), "Context A").unwrap();
-        std::fs::write(context_dir.join("b.md"), "Context B").unwrap();
-        std::fs::write(context_dir.join("ignore.txt"), "Ignored").unwrap();
+        std::fs::write(context_dir.join("a.md"), "Context A").expect("failed to write a.md");
+        std::fs::write(context_dir.join("b.md"), "Context B").expect("failed to write b.md");
+        std::fs::write(context_dir.join("ignore.txt"), "Ignored").expect("failed to write ignore.txt");
 
         let project = ProjectPaths::resolve(temp.path());
         let files = load_context_files(&project);
@@ -563,7 +563,7 @@ mod tests {
 
     #[test]
     fn test_load_context_files_empty() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let project = ProjectPaths::resolve(temp.path());
         let files = load_context_files(&project);
         assert!(files.is_empty());
@@ -571,13 +571,13 @@ mod tests {
 
     #[test]
     fn test_load_agents_files_from_cwd() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let global = temp.path().join("global");
-        std::fs::create_dir_all(&global).unwrap();
+        std::fs::create_dir_all(&global).expect("failed to create global dir");
         let cwd = temp.path().join("project");
-        std::fs::create_dir_all(&cwd).unwrap();
+        std::fs::create_dir_all(&cwd).expect("failed to create cwd dir");
 
-        std::fs::write(cwd.join("AGENTS.md"), "# Instructions").unwrap();
+        std::fs::write(cwd.join("AGENTS.md"), "# Instructions").expect("failed to write AGENTS.md");
 
         let files = load_agents_files(&global, &cwd);
         assert_eq!(files.len(), 1);
@@ -586,13 +586,13 @@ mod tests {
 
     #[test]
     fn test_load_agents_files_global() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let global = temp.path().join("global");
-        std::fs::create_dir_all(&global).unwrap();
+        std::fs::create_dir_all(&global).expect("failed to create global dir");
         let cwd = temp.path().join("project");
-        std::fs::create_dir_all(&cwd).unwrap();
+        std::fs::create_dir_all(&cwd).expect("failed to create cwd dir");
 
-        std::fs::write(global.join("AGENTS.md"), "Global rules").unwrap();
+        std::fs::write(global.join("AGENTS.md"), "Global rules").expect("failed to write AGENTS.md");
 
         let files = load_agents_files(&global, &cwd);
         assert_eq!(files.len(), 1);
@@ -601,14 +601,14 @@ mod tests {
 
     #[test]
     fn test_load_agents_files_claude_md_fallback() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let global = temp.path().join("global");
-        std::fs::create_dir_all(&global).unwrap();
+        std::fs::create_dir_all(&global).expect("failed to create global dir");
         let cwd = temp.path().join("project");
-        std::fs::create_dir_all(&cwd).unwrap();
+        std::fs::create_dir_all(&cwd).expect("failed to create cwd dir");
 
         // CLAUDE.md should work as fallback
-        std::fs::write(cwd.join("CLAUDE.md"), "Claude instructions").unwrap();
+        std::fs::write(cwd.join("CLAUDE.md"), "Claude instructions").expect("failed to write CLAUDE.md");
 
         let files = load_agents_files(&global, &cwd);
         assert_eq!(files.len(), 1);
@@ -617,15 +617,15 @@ mod tests {
 
     #[test]
     fn test_load_agents_files_agents_md_preferred_over_claude() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let global = temp.path().join("global");
-        std::fs::create_dir_all(&global).unwrap();
+        std::fs::create_dir_all(&global).expect("failed to create global dir");
         let cwd = temp.path().join("project");
-        std::fs::create_dir_all(&cwd).unwrap();
+        std::fs::create_dir_all(&cwd).expect("failed to create cwd dir");
 
         // Both exist — AGENTS.md should win
-        std::fs::write(cwd.join("AGENTS.md"), "AGENTS wins").unwrap();
-        std::fs::write(cwd.join("CLAUDE.md"), "CLAUDE loses").unwrap();
+        std::fs::write(cwd.join("AGENTS.md"), "AGENTS wins").expect("failed to write AGENTS.md");
+        std::fs::write(cwd.join("CLAUDE.md"), "CLAUDE loses").expect("failed to write CLAUDE.md");
 
         let files = load_agents_files(&global, &cwd);
         assert_eq!(files.len(), 1);
@@ -634,15 +634,15 @@ mod tests {
 
     #[test]
     fn test_load_agents_files_hierarchy() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let global = temp.path().join("global");
-        std::fs::create_dir_all(&global).unwrap();
+        std::fs::create_dir_all(&global).expect("failed to create global dir");
         let parent = temp.path().join("parent");
         let child = parent.join("child");
-        std::fs::create_dir_all(&child).unwrap();
+        std::fs::create_dir_all(&child).expect("failed to create child dir");
 
-        std::fs::write(parent.join("AGENTS.md"), "Parent").unwrap();
-        std::fs::write(child.join("AGENTS.md"), "Child").unwrap();
+        std::fs::write(parent.join("AGENTS.md"), "Parent").expect("failed to write parent AGENTS.md");
+        std::fs::write(child.join("AGENTS.md"), "Child").expect("failed to write child AGENTS.md");
 
         let files = load_agents_files(&global, &child);
         assert_eq!(files.len(), 2);
@@ -653,12 +653,12 @@ mod tests {
 
     #[test]
     fn test_load_agents_files_deduplication() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let global = temp.path().join("global");
-        std::fs::create_dir_all(&global).unwrap();
+        std::fs::create_dir_all(&global).expect("failed to create global dir");
 
         // Global and cwd are the same directory
-        std::fs::write(global.join("AGENTS.md"), "Shared").unwrap();
+        std::fs::write(global.join("AGENTS.md"), "Shared").expect("failed to write AGENTS.md");
 
         let files = load_agents_files(&global, &global);
         // Should not appear twice
@@ -667,11 +667,11 @@ mod tests {
 
     #[test]
     fn test_load_agents_files_none() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let global = temp.path().join("global");
-        std::fs::create_dir_all(&global).unwrap();
+        std::fs::create_dir_all(&global).expect("failed to create global dir");
         let cwd = temp.path().join("project");
-        std::fs::create_dir_all(&cwd).unwrap();
+        std::fs::create_dir_all(&cwd).expect("failed to create cwd dir");
 
         let files = load_agents_files(&global, &cwd);
         assert!(files.is_empty());
@@ -679,44 +679,44 @@ mod tests {
 
     #[test]
     fn test_load_system_md_project_overrides_global() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let global = temp.path().join("global");
-        std::fs::create_dir_all(&global).unwrap();
+        std::fs::create_dir_all(&global).expect("failed to create global dir");
         let project = temp.path().join(".clankers");
-        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&project).expect("failed to create project dir");
 
-        std::fs::write(global.join("SYSTEM.md"), "Global system").unwrap();
-        std::fs::write(project.join("SYSTEM.md"), "Project system").unwrap();
+        std::fs::write(global.join("SYSTEM.md"), "Global system").expect("failed to write global SYSTEM.md");
+        std::fs::write(project.join("SYSTEM.md"), "Project system").expect("failed to write project SYSTEM.md");
 
         let result = load_system_md(&global, &project);
-        assert_eq!(result.unwrap(), "Project system");
+        assert_eq!(result.expect("should have SYSTEM.md"), "Project system");
     }
 
     #[test]
     fn test_load_system_md_global_fallback() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let global = temp.path().join("global");
-        std::fs::create_dir_all(&global).unwrap();
+        std::fs::create_dir_all(&global).expect("failed to create global dir");
         let project = temp.path().join(".clankers");
-        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&project).expect("failed to create project dir");
 
-        std::fs::write(global.join("SYSTEM.md"), "Global system").unwrap();
+        std::fs::write(global.join("SYSTEM.md"), "Global system").expect("failed to write SYSTEM.md");
 
         let result = load_system_md(&global, &project);
-        assert_eq!(result.unwrap(), "Global system");
+        assert_eq!(result.expect("should have SYSTEM.md"), "Global system");
     }
 
     #[test]
     fn test_load_append_system_md() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("failed to create temp dir");
         let global = temp.path().join("global");
-        std::fs::create_dir_all(&global).unwrap();
+        std::fs::create_dir_all(&global).expect("failed to create global dir");
         let project = temp.path().join(".clankers");
-        std::fs::create_dir_all(&project).unwrap();
+        std::fs::create_dir_all(&project).expect("failed to create project dir");
 
-        std::fs::write(project.join("APPEND_SYSTEM.md"), "Extra instructions").unwrap();
+        std::fs::write(project.join("APPEND_SYSTEM.md"), "Extra instructions").expect("failed to write APPEND_SYSTEM.md");
 
         let result = load_append_system_md(&global, &project);
-        assert_eq!(result.unwrap(), "Extra instructions");
+        assert_eq!(result.expect("should have APPEND_SYSTEM.md"), "Extra instructions");
     }
 }

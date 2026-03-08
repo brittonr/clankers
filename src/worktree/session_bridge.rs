@@ -162,7 +162,7 @@ mod tests {
     use super::*;
 
     fn test_db() -> Db {
-        Db::in_memory().unwrap()
+        Db::in_memory().expect("test: failed to create in-memory db")
     }
 
     #[test]
@@ -174,44 +174,44 @@ mod tests {
     #[test]
     fn test_setup_worktree_not_git_repo() {
         let db = test_db();
-        let tmp = tempfile::TempDir::new().unwrap();
-        assert!(setup_worktree_for_session(&db, tmp.path().to_str().unwrap(), true).is_none());
+        let tmp = tempfile::TempDir::new().expect("test: failed to create temp dir");
+        assert!(setup_worktree_for_session(&db, tmp.path().to_str().expect("test: failed to convert path to str"), true).is_none());
     }
 
     #[test]
     fn test_setup_worktree_in_git_repo() {
         let db = test_db();
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("test: failed to create temp dir");
         let repo = tmp.path();
 
         // Initialize a git repo with an initial commit
-        std::process::Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        std::process::Command::new("git").args(["init"]).current_dir(repo).output().expect("test: git init failed");
         std::process::Command::new("git")
             .args(["config", "user.email", "test@test.com"])
             .current_dir(repo)
             .output()
-            .unwrap();
+            .expect("test: git config email failed");
         std::process::Command::new("git")
             .args(["config", "user.name", "Test"])
             .current_dir(repo)
             .output()
-            .unwrap();
-        std::fs::write(repo.join("README.md"), "hello").unwrap();
-        std::process::Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output().unwrap();
+            .expect("test: git config name failed");
+        std::fs::write(repo.join("README.md"), "hello").expect("test: failed to write README");
+        std::process::Command::new("git").args(["add", "."]).current_dir(repo).output().expect("test: git add failed");
+        std::process::Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output().expect("test: git commit failed");
 
-        let setup = setup_worktree_for_session(&db, repo.to_str().unwrap(), true);
+        let setup = setup_worktree_for_session(&db, repo.to_str().expect("test: failed to convert path to str"), true);
         assert!(setup.is_some());
 
-        let setup = setup.unwrap();
+        let setup = setup.expect("test: setup should succeed");
         assert!(setup.working_dir.exists());
         assert!(setup.branch.starts_with("clankers/main-"));
         assert_eq!(setup.repo_root, repo);
 
         // Registry should have the worktree in redb
-        let info = db.worktrees().get(&setup.branch).unwrap();
+        let info = db.worktrees().get(&setup.branch).expect("test: failed to get worktree from db");
         assert!(info.is_some());
-        assert_eq!(info.unwrap().status, WorktreeStatus::Active);
+        assert_eq!(info.expect("test: worktree should exist").status, WorktreeStatus::Active);
 
         // Cleanup
         let manager = WorktreeManager::new(repo.to_path_buf());
@@ -221,31 +221,31 @@ mod tests {
     #[test]
     fn test_complete_worktree() {
         let db = test_db();
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("test: failed to create temp dir");
         let repo = tmp.path();
 
         // Initialize git repo
-        std::process::Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        std::process::Command::new("git").args(["init"]).current_dir(repo).output().expect("test: git init failed");
         std::process::Command::new("git")
             .args(["config", "user.email", "test@test.com"])
             .current_dir(repo)
             .output()
-            .unwrap();
+            .expect("test: git config email failed");
         std::process::Command::new("git")
             .args(["config", "user.name", "Test"])
             .current_dir(repo)
             .output()
-            .unwrap();
-        std::fs::write(repo.join("README.md"), "hello").unwrap();
-        std::process::Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output().unwrap();
+            .expect("test: git config name failed");
+        std::fs::write(repo.join("README.md"), "hello").expect("test: failed to write README");
+        std::process::Command::new("git").args(["add", "."]).current_dir(repo).output().expect("test: git add failed");
+        std::process::Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output().expect("test: git commit failed");
 
-        let setup = setup_worktree_for_session(&db, repo.to_str().unwrap(), true).unwrap();
+        let setup = setup_worktree_for_session(&db, repo.to_str().expect("test: failed to convert path to str"), true).expect("test: setup should succeed");
 
         // Mark completed
-        complete_worktree(&db, &setup).unwrap();
+        complete_worktree(&db, &setup).expect("test: failed to complete worktree");
 
-        let info = db.worktrees().get(&setup.branch).unwrap().unwrap();
+        let info = db.worktrees().get(&setup.branch).expect("test: failed to get worktree").expect("test: worktree should exist");
         assert_eq!(info.status, WorktreeStatus::Completed);
 
         // Cleanup
@@ -262,31 +262,31 @@ mod tests {
     #[test]
     fn test_resume_worktree_exists() {
         let db = test_db();
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("test: failed to create temp dir");
         let repo = tmp.path();
 
         // Initialize git repo
-        std::process::Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+        std::process::Command::new("git").args(["init"]).current_dir(repo).output().expect("test: git init failed");
         std::process::Command::new("git")
             .args(["config", "user.email", "test@test.com"])
             .current_dir(repo)
             .output()
-            .unwrap();
+            .expect("test: git config email failed");
         std::process::Command::new("git")
             .args(["config", "user.name", "Test"])
             .current_dir(repo)
             .output()
-            .unwrap();
-        std::fs::write(repo.join("README.md"), "hello").unwrap();
-        std::process::Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        std::process::Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output().unwrap();
+            .expect("test: git config name failed");
+        std::fs::write(repo.join("README.md"), "hello").expect("test: failed to write README");
+        std::process::Command::new("git").args(["add", "."]).current_dir(repo).output().expect("test: git add failed");
+        std::process::Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output().expect("test: git commit failed");
 
-        let setup = setup_worktree_for_session(&db, repo.to_str().unwrap(), true).unwrap();
+        let setup = setup_worktree_for_session(&db, repo.to_str().expect("test: failed to convert path to str"), true).expect("test: setup should succeed");
 
         // Resume should find the worktree
-        let resumed = resume_worktree(Some(setup.working_dir.to_str().unwrap()), Some(&setup.branch));
+        let resumed = resume_worktree(Some(setup.working_dir.to_str().expect("test: failed to convert path to str")), Some(&setup.branch));
         assert!(resumed.is_some());
-        let resumed = resumed.unwrap();
+        let resumed = resumed.expect("test: resume should succeed");
         assert_eq!(resumed.working_dir, setup.working_dir);
         assert_eq!(resumed.branch, setup.branch);
 

@@ -167,139 +167,149 @@ impl<'db> HistoryDb<'db> {
 mod tests {
     use super::*;
 
-    fn test_db() -> Db {
-        Db::in_memory().unwrap()
+    fn test_db() -> Result<Db> {
+        Db::in_memory()
     }
 
     #[test]
-    fn test_add_and_recent() {
-        let db = test_db();
+    fn test_add_and_recent() -> Result<()> {
+        let db = test_db()?;
         let hist = db.history();
 
-        hist.add("hello world", "sess1", "/proj").unwrap();
-        hist.add("fix the bug", "sess1", "/proj").unwrap();
-        hist.add("add feature", "sess2", "/proj").unwrap();
+        hist.add("hello world", "sess1", "/proj")?;
+        hist.add("fix the bug", "sess1", "/proj")?;
+        hist.add("add feature", "sess2", "/proj")?;
 
-        let recent = hist.most_recent(10).unwrap();
+        let recent = hist.most_recent(10)?;
         assert_eq!(recent.len(), 3);
         // Newest first
         assert_eq!(recent[0].text, "add feature");
         assert_eq!(recent[1].text, "fix the bug");
         assert_eq!(recent[2].text, "hello world");
+        Ok(())
     }
 
     #[test]
-    fn test_recent_with_limit() {
-        let db = test_db();
+    fn test_recent_with_limit() -> Result<()> {
+        let db = test_db()?;
         let hist = db.history();
 
         for i in 0..20 {
-            hist.add(&format!("prompt {i}"), "s1", "/proj").unwrap();
+            hist.add(&format!("prompt {i}"), "s1", "/proj")?;
         }
 
-        let recent = hist.most_recent(5).unwrap();
+        let recent = hist.most_recent(5)?;
         assert_eq!(recent.len(), 5);
         assert_eq!(recent[0].text, "prompt 19");
+        Ok(())
     }
 
     #[test]
-    fn test_dedup_consecutive() {
-        let db = test_db();
+    fn test_dedup_consecutive() -> Result<()> {
+        let db = test_db()?;
         let hist = db.history();
 
-        hist.add("same prompt", "s1", "/proj").unwrap();
-        hist.add("same prompt", "s1", "/proj").unwrap();
-        hist.add("same prompt", "s1", "/proj").unwrap();
+        hist.add("same prompt", "s1", "/proj")?;
+        hist.add("same prompt", "s1", "/proj")?;
+        hist.add("same prompt", "s1", "/proj")?;
 
-        assert_eq!(hist.count().unwrap(), 1);
+        assert_eq!(hist.count()?, 1);
+        Ok(())
     }
 
     #[test]
-    fn test_dedup_allows_non_consecutive() {
-        let db = test_db();
+    fn test_dedup_allows_non_consecutive() -> Result<()> {
+        let db = test_db()?;
         let hist = db.history();
 
-        hist.add("first", "s1", "/proj").unwrap();
-        hist.add("second", "s1", "/proj").unwrap();
-        hist.add("first", "s1", "/proj").unwrap(); // not consecutive dup
+        hist.add("first", "s1", "/proj")?;
+        hist.add("second", "s1", "/proj")?;
+        hist.add("first", "s1", "/proj")?; // not consecutive dup
 
-        assert_eq!(hist.count().unwrap(), 3);
+        assert_eq!(hist.count()?, 3);
+        Ok(())
     }
 
     #[test]
-    fn test_search() {
-        let db = test_db();
+    fn test_search() -> Result<()> {
+        let db = test_db()?;
         let hist = db.history();
 
-        hist.add("fix the login bug", "s1", "/proj").unwrap();
-        hist.add("add new feature", "s1", "/proj").unwrap();
-        hist.add("fix the signup bug", "s2", "/proj").unwrap();
+        hist.add("fix the login bug", "s1", "/proj")?;
+        hist.add("add new feature", "s1", "/proj")?;
+        hist.add("fix the signup bug", "s2", "/proj")?;
 
-        let results = hist.search("bug", 10).unwrap();
+        let results = hist.search("bug", 10)?;
         assert_eq!(results.len(), 2);
         // Newest first
         assert!(results[0].text.contains("signup"));
         assert!(results[1].text.contains("login"));
+        Ok(())
     }
 
     #[test]
-    fn test_search_case_insensitive() {
-        let db = test_db();
+    fn test_search_case_insensitive() -> Result<()> {
+        let db = test_db()?;
         let hist = db.history();
 
-        hist.add("Fix the BUG", "s1", "/proj").unwrap();
+        hist.add("Fix the BUG", "s1", "/proj")?;
 
-        assert_eq!(hist.search("bug", 10).unwrap().len(), 1);
-        assert_eq!(hist.search("FIX", 10).unwrap().len(), 1);
+        assert_eq!(hist.search("bug", 10)?.len(), 1);
+        assert_eq!(hist.search("FIX", 10)?.len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn test_search_empty_returns_recent() {
-        let db = test_db();
+    fn test_search_empty_returns_recent() -> Result<()> {
+        let db = test_db()?;
         let hist = db.history();
 
-        hist.add("one", "s1", "/proj").unwrap();
-        hist.add("two", "s1", "/proj").unwrap();
+        hist.add("one", "s1", "/proj")?;
+        hist.add("two", "s1", "/proj")?;
 
-        let results = hist.search("", 10).unwrap();
+        let results = hist.search("", 10)?;
         assert_eq!(results.len(), 2);
+        Ok(())
     }
 
     #[test]
-    fn test_search_in_cwd() {
-        let db = test_db();
+    fn test_search_in_cwd() -> Result<()> {
+        let db = test_db()?;
         let hist = db.history();
 
-        hist.add("fix bug", "s1", "/proj-a").unwrap();
-        hist.add("fix bug", "s1", "/proj-b").unwrap();
-        hist.add("add feature", "s1", "/proj-a").unwrap();
+        hist.add("fix bug", "s1", "/proj-a")?;
+        hist.add("fix bug", "s1", "/proj-b")?;
+        hist.add("add feature", "s1", "/proj-a")?;
 
-        let results = hist.search_in_cwd("fix", "/proj-a", 10).unwrap();
+        let results = hist.search_in_cwd("fix", "/proj-a", 10)?;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].cwd, "/proj-a");
+        Ok(())
     }
 
     #[test]
-    fn test_count() {
-        let db = test_db();
+    fn test_count() -> Result<()> {
+        let db = test_db()?;
         let hist = db.history();
 
-        assert_eq!(hist.count().unwrap(), 0);
-        hist.add("one", "s1", "/proj").unwrap();
-        hist.add("two", "s1", "/proj").unwrap();
-        assert_eq!(hist.count().unwrap(), 2);
+        assert_eq!(hist.count()?, 0);
+        hist.add("one", "s1", "/proj")?;
+        hist.add("two", "s1", "/proj")?;
+        assert_eq!(hist.count()?, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_clear() {
-        let db = test_db();
+    fn test_clear() -> Result<()> {
+        let db = test_db()?;
         let hist = db.history();
 
-        hist.add("one", "s1", "/proj").unwrap();
-        hist.add("two", "s1", "/proj").unwrap();
+        hist.add("one", "s1", "/proj")?;
+        hist.add("two", "s1", "/proj")?;
 
-        let cleared = hist.clear().unwrap();
+        let cleared = hist.clear()?;
         assert_eq!(cleared, 2);
-        assert_eq!(hist.count().unwrap(), 0);
+        assert_eq!(hist.count()?, 0);
+        Ok(())
     }
 }

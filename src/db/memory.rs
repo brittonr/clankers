@@ -319,95 +319,99 @@ fn scope_matches(entry_scope: &MemoryScope, filter: &MemoryScope) -> bool {
 mod tests {
     use super::*;
 
-    fn test_db() -> Db {
-        Db::in_memory().unwrap()
+    fn test_db() -> Result<Db> {
+        Db::in_memory()
     }
 
     #[test]
-    fn test_save_and_get() {
-        let db = test_db();
+    fn test_save_and_get() -> Result<()> {
+        let db = test_db()?;
         let mem = db.memory();
 
         let entry = MemoryEntry::new("User prefers tabs", MemoryScope::Global);
         let id = entry.id;
-        mem.save(&entry).unwrap();
+        mem.save(&entry)?;
 
-        let got = mem.get(id).unwrap().unwrap();
+        let got = mem.get(id)?.expect("entry should exist");
         assert_eq!(got.text, "User prefers tabs");
         assert_eq!(got.scope, MemoryScope::Global);
+        Ok(())
     }
 
     #[test]
-    fn test_save_and_list() {
-        let db = test_db();
+    fn test_save_and_list() -> Result<()> {
+        let db = test_db()?;
         let mem = db.memory();
 
-        mem.save(&MemoryEntry::new("fact one", MemoryScope::Global)).unwrap();
-        mem.save(&MemoryEntry::new("fact two", MemoryScope::Global)).unwrap();
+        mem.save(&MemoryEntry::new("fact one", MemoryScope::Global))?;
+        mem.save(&MemoryEntry::new("fact two", MemoryScope::Global))?;
         mem.save(&MemoryEntry::new("project fact", MemoryScope::Project {
             path: "/home/user/proj".into(),
-        }))
-        .unwrap();
+        }))?;
 
-        assert_eq!(mem.list(None).unwrap().len(), 3);
-        assert_eq!(mem.list(Some(&MemoryScope::Global)).unwrap().len(), 2);
+        assert_eq!(mem.list(None)?.len(), 3);
+        assert_eq!(mem.list(Some(&MemoryScope::Global))?.len(), 2);
         assert_eq!(
             mem.list(Some(&MemoryScope::Project {
                 path: "/home/user/proj".into()
-            }))
-            .unwrap()
+            }))?
             .len(),
             1
         );
+        Ok(())
     }
 
     #[test]
-    fn test_remove() {
-        let db = test_db();
+    fn test_remove() -> Result<()> {
+        let db = test_db()?;
         let mem = db.memory();
 
         let entry = MemoryEntry::new("to delete", MemoryScope::Global);
         let id = entry.id;
-        mem.save(&entry).unwrap();
-        assert_eq!(mem.count().unwrap(), 1);
+        mem.save(&entry)?;
+        assert_eq!(mem.count()?, 1);
 
-        assert!(mem.remove(id).unwrap());
-        assert_eq!(mem.count().unwrap(), 0);
-        assert!(mem.get(id).unwrap().is_none());
+        assert!(mem.remove(id)?);
+        assert_eq!(mem.count()?, 0);
+        assert!(mem.get(id)?.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_remove_nonexistent() {
-        let db = test_db();
-        assert!(!db.memory().remove(999).unwrap());
+    fn test_remove_nonexistent() -> Result<()> {
+        let db = test_db()?;
+        assert!(!db.memory().remove(999)?);
+        Ok(())
     }
 
     #[test]
-    fn test_update() {
-        let db = test_db();
+    fn test_update() -> Result<()> {
+        let db = test_db()?;
         let mem = db.memory();
 
         let mut entry = MemoryEntry::new("original text", MemoryScope::Global);
         let id = entry.id;
-        mem.save(&entry).unwrap();
+        mem.save(&entry)?;
 
         entry.text = "updated text".into();
-        assert!(mem.update(&entry).unwrap());
+        assert!(mem.update(&entry)?);
 
-        let got = mem.get(id).unwrap().unwrap();
+        let got = mem.get(id)?.expect("entry should exist");
         assert_eq!(got.text, "updated text");
+        Ok(())
     }
 
     #[test]
-    fn test_update_nonexistent() {
-        let db = test_db();
+    fn test_update_nonexistent() -> Result<()> {
+        let db = test_db()?;
         let entry = MemoryEntry::new("ghost", MemoryScope::Global);
-        assert!(!db.memory().update(&entry).unwrap());
+        assert!(!db.memory().update(&entry)?);
+        Ok(())
     }
 
     #[test]
-    fn test_update_preserves_other_fields() {
-        let db = test_db();
+    fn test_update_preserves_other_fields() -> Result<()> {
+        let db = test_db()?;
         let mem = db.memory();
 
         let mut entry = MemoryEntry::new("fact", MemoryScope::Global)
@@ -415,98 +419,103 @@ mod tests {
             .with_tags(vec!["rust".into()])
             .with_session("sess-1");
         let id = entry.id;
-        mem.save(&entry).unwrap();
+        mem.save(&entry)?;
 
         entry.text = "updated fact".into();
-        mem.update(&entry).unwrap();
+        mem.update(&entry)?;
 
-        let got = mem.get(id).unwrap().unwrap();
+        let got = mem.get(id)?.expect("entry should exist");
         assert_eq!(got.text, "updated fact");
         assert_eq!(got.source, MemorySource::User);
         assert_eq!(got.tags, vec!["rust".to_string()]);
         assert_eq!(got.session_id.as_deref(), Some("sess-1"));
+        Ok(())
     }
 
     #[test]
-    fn test_search() {
-        let db = test_db();
+    fn test_search() -> Result<()> {
+        let db = test_db()?;
         let mem = db.memory();
 
-        mem.save(&MemoryEntry::new("prefers snake_case", MemoryScope::Global)).unwrap();
-        mem.save(&MemoryEntry::new("uses pnpm not npm", MemoryScope::Global)).unwrap();
-        mem.save(&MemoryEntry::new("API uses JWT", MemoryScope::Global)).unwrap();
+        mem.save(&MemoryEntry::new("prefers snake_case", MemoryScope::Global))?;
+        mem.save(&MemoryEntry::new("uses pnpm not npm", MemoryScope::Global))?;
+        mem.save(&MemoryEntry::new("API uses JWT", MemoryScope::Global))?;
 
-        let results = mem.search("snake").unwrap();
+        let results = mem.search("snake")?;
         assert_eq!(results.len(), 1);
         assert!(results[0].text.contains("snake_case"));
 
-        let results = mem.search("npm").unwrap();
+        let results = mem.search("npm")?;
         assert_eq!(results.len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn test_search_by_tag() {
-        let db = test_db();
+    fn test_search_by_tag() -> Result<()> {
+        let db = test_db()?;
         let mem = db.memory();
 
         let entry = MemoryEntry::new("some fact", MemoryScope::Global).with_tags(vec!["style".into(), "rust".into()]);
-        mem.save(&entry).unwrap();
+        mem.save(&entry)?;
 
-        let results = mem.search("style").unwrap();
+        let results = mem.search("style")?;
         assert_eq!(results.len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn test_search_case_insensitive() {
-        let db = test_db();
+    fn test_search_case_insensitive() -> Result<()> {
+        let db = test_db()?;
         let mem = db.memory();
 
-        mem.save(&MemoryEntry::new("Uses PostgreSQL", MemoryScope::Global)).unwrap();
+        mem.save(&MemoryEntry::new("Uses PostgreSQL", MemoryScope::Global))?;
 
-        assert_eq!(mem.search("postgresql").unwrap().len(), 1);
-        assert_eq!(mem.search("POSTGRESQL").unwrap().len(), 1);
+        assert_eq!(mem.search("postgresql")?.len(), 1);
+        assert_eq!(mem.search("POSTGRESQL")?.len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn test_context_for_empty() {
-        let db = test_db();
-        let ctx = db.memory().context_for(Some("/any/path")).unwrap();
+    fn test_context_for_empty() -> Result<()> {
+        let db = test_db()?;
+        let ctx = db.memory().context_for(Some("/any/path"))?;
         assert!(ctx.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_context_for_mixed_scopes() {
-        let db = test_db();
+    fn test_context_for_mixed_scopes() -> Result<()> {
+        let db = test_db()?;
         let mem = db.memory();
 
-        mem.save(&MemoryEntry::new("global pref", MemoryScope::Global)).unwrap();
+        mem.save(&MemoryEntry::new("global pref", MemoryScope::Global))?;
         mem.save(&MemoryEntry::new("project fact", MemoryScope::Project {
             path: "/home/user/proj".into(),
-        }))
-        .unwrap();
+        }))?;
         mem.save(&MemoryEntry::new("other project", MemoryScope::Project {
             path: "/home/user/other".into(),
-        }))
-        .unwrap();
+        }))?;
 
-        let ctx = mem.context_for(Some("/home/user/proj")).unwrap();
+        let ctx = mem.context_for(Some("/home/user/proj"))?;
         assert!(ctx.contains("global pref"));
         assert!(ctx.contains("project fact"));
         assert!(!ctx.contains("other project"));
+        Ok(())
     }
 
     #[test]
-    fn test_clear() {
-        let db = test_db();
+    fn test_clear() -> Result<()> {
+        let db = test_db()?;
         let mem = db.memory();
 
-        mem.save(&MemoryEntry::new("one", MemoryScope::Global)).unwrap();
-        mem.save(&MemoryEntry::new("two", MemoryScope::Global)).unwrap();
-        assert_eq!(mem.count().unwrap(), 2);
+        mem.save(&MemoryEntry::new("one", MemoryScope::Global))?;
+        mem.save(&MemoryEntry::new("two", MemoryScope::Global))?;
+        assert_eq!(mem.count()?, 2);
 
-        let cleared = mem.clear().unwrap();
+        let cleared = mem.clear()?;
         assert_eq!(cleared, 2);
-        assert_eq!(mem.count().unwrap(), 0);
+        assert_eq!(mem.count()?, 0);
+        Ok(())
     }
 
     #[test]

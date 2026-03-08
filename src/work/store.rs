@@ -281,8 +281,8 @@ mod tests {
     use super::*;
 
     fn make_store() -> (tempfile::TempDir, WorkStore) {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let store = WorkStore::open(&tmp.path().join("work.redb")).unwrap();
+        let tmp = tempfile::TempDir::new().expect("test: failed to create temp dir");
+        let store = WorkStore::open(&tmp.path().join("work.redb")).expect("test: failed to open work store");
         (tmp, store)
     }
 
@@ -291,9 +291,9 @@ mod tests {
         let (_tmp, store) = make_store();
         let item = WorkItem::new("test task", Priority::P1);
         let id = item.id.clone();
-        store.put(&item).unwrap();
+        store.put(&item).expect("test: failed to put item");
 
-        let loaded = store.get(&id).unwrap().unwrap();
+        let loaded = store.get(&id).expect("test: failed to get item").expect("test: item should exist");
         assert_eq!(loaded.title, "test task");
         assert_eq!(loaded.priority, Priority::P1);
         assert_eq!(loaded.status, Status::Open);
@@ -308,11 +308,11 @@ mod tests {
         let mut t3 = WorkItem::new("task 3 done", Priority::P1);
         t3.complete(None);
 
-        store.put(&t1).unwrap();
-        store.put(&t2).unwrap();
-        store.put(&t3).unwrap();
+        store.put(&t1).expect("test: failed to put t1");
+        store.put(&t2).expect("test: failed to put t2");
+        store.put(&t3).expect("test: failed to put t3");
 
-        let open = store.list_open().unwrap();
+        let open = store.list_open().expect("test: failed to list open items");
         assert_eq!(open.len(), 2);
         // Should be sorted by priority: P0 first
         assert_eq!(open[0].priority, Priority::P0);
@@ -337,13 +337,13 @@ mod tests {
         let task2 = WorkItem::new("blocked task", Priority::P1).blocked_by(&[&dep2_id]);
         let task3 = WorkItem::new("no deps task", Priority::P0);
 
-        store.put(&dep1).unwrap();
-        store.put(&dep2).unwrap();
-        store.put(&task1).unwrap();
-        store.put(&task2).unwrap();
-        store.put(&task3).unwrap();
+        store.put(&dep1).expect("test: failed to put dep1");
+        store.put(&dep2).expect("test: failed to put dep2");
+        store.put(&task1).expect("test: failed to put task1");
+        store.put(&task2).expect("test: failed to put task2");
+        store.put(&task3).expect("test: failed to put task3");
 
-        let ready = store.ready().unwrap();
+        let ready = store.ready().expect("test: failed to get ready items");
         let ready_titles: Vec<&str> = ready.iter().map(|i| i.title.as_str()).collect();
         assert!(ready_titles.contains(&"ready task"));
         assert!(ready_titles.contains(&"no deps task"));
@@ -357,15 +357,15 @@ mod tests {
 
         let item = WorkItem::new("claimable", Priority::P1);
         let id = item.id.clone();
-        store.put(&item).unwrap();
+        store.put(&item).expect("test: failed to put item");
 
         // First claim should succeed
-        let claimed = store.claim(&id, "agent-1").unwrap();
+        let claimed = store.claim(&id, "agent-1").expect("test: failed to claim item");
         assert!(claimed.is_some());
-        assert_eq!(claimed.unwrap().status, Status::InProgress);
+        assert_eq!(claimed.expect("test: claim should succeed").status, Status::InProgress);
 
         // Second claim should fail (already in_progress)
-        let claimed2 = store.claim(&id, "agent-2").unwrap();
+        let claimed2 = store.claim(&id, "agent-2").expect("test: failed second claim attempt");
         assert!(claimed2.is_none());
     }
 
@@ -380,12 +380,12 @@ mod tests {
         let child2 = WorkItem::new("child 2", Priority::P2).with_parent(&epic_id);
         let unrelated = WorkItem::new("unrelated", Priority::P3);
 
-        store.put(&epic).unwrap();
-        store.put(&child1).unwrap();
-        store.put(&child2).unwrap();
-        store.put(&unrelated).unwrap();
+        store.put(&epic).expect("test: failed to put epic");
+        store.put(&child1).expect("test: failed to put child1");
+        store.put(&child2).expect("test: failed to put child2");
+        store.put(&unrelated).expect("test: failed to put unrelated");
 
-        let children = store.children_of(&epic_id).unwrap();
+        let children = store.children_of(&epic_id).expect("test: failed to get children");
         assert_eq!(children.len(), 2);
     }
 
@@ -401,11 +401,11 @@ mod tests {
         t3.claim("agent-a");
         t3.complete(None);
 
-        store.put(&t1).unwrap();
-        store.put(&t2).unwrap();
-        store.put(&t3).unwrap();
+        store.put(&t1).expect("test: failed to put t1");
+        store.put(&t2).expect("test: failed to put t2");
+        store.put(&t3).expect("test: failed to put t3");
 
-        let assigned = store.assigned_to("agent-a").unwrap();
+        let assigned = store.assigned_to("agent-a").expect("test: failed to get assigned items");
         assert_eq!(assigned.len(), 1); // only the open one
         assert_eq!(assigned[0].title, "task 1");
     }
@@ -418,17 +418,17 @@ mod tests {
         let b = WorkItem::new("B", Priority::P1).blocked_by(&[&a.id]);
         let c = WorkItem::new("C", Priority::P1).blocked_by(&[&b.id]);
 
-        store.put(&a).unwrap();
-        store.put(&b).unwrap();
-        store.put(&c).unwrap();
+        store.put(&a).expect("test: failed to put a");
+        store.put(&b).expect("test: failed to put b");
+        store.put(&c).expect("test: failed to put c");
 
         // A → B → C; adding C → A would create a cycle
-        assert!(store.would_cycle(&a.id, &c.id).unwrap());
+        assert!(store.would_cycle(&a.id, &c.id).expect("test: failed cycle check"));
 
         // Adding D → A would NOT create a cycle
         let d = WorkItem::new("D", Priority::P1);
-        store.put(&d).unwrap();
-        assert!(!store.would_cycle(&d.id, &a.id).unwrap());
+        store.put(&d).expect("test: failed to put d");
+        assert!(!store.would_cycle(&d.id, &a.id).expect("test: failed cycle check"));
     }
 
     #[test]
@@ -438,18 +438,18 @@ mod tests {
         let a = WorkItem::new("A", Priority::P1);
         let b = WorkItem::new("B", Priority::P1).blocked_by(&[&a.id]);
 
-        store.put(&a).unwrap();
-        store.put(&b).unwrap();
+        store.put(&a).expect("test: failed to put a");
+        store.put(&b).expect("test: failed to put b");
 
         // Adding a → b should fail (b already depends on a, so a depending on b = cycle)
         let result = store.add_dependency(&a.id, &b.id);
         assert!(result.is_err());
-        assert!(result.unwrap_err().contains("cycle"));
+        assert!(result.expect_err("test: should detect cycle").contains("cycle"));
 
         // Adding c → a should succeed
         let c = WorkItem::new("C", Priority::P1);
-        store.put(&c).unwrap();
-        store.add_dependency(&c.id, &a.id).unwrap();
+        store.put(&c).expect("test: failed to put c");
+        store.add_dependency(&c.id, &a.id).expect("test: failed to add dependency");
     }
 
     #[test]
@@ -458,10 +458,10 @@ mod tests {
 
         let item = WorkItem::new("task", Priority::P1);
         let id = item.id.clone();
-        store.put(&item).unwrap();
+        store.put(&item).expect("test: failed to put item");
 
-        store.update_status(&id, Status::Done, Some("all good")).unwrap();
-        let loaded = store.get(&id).unwrap().unwrap();
+        store.update_status(&id, Status::Done, Some("all good")).expect("test: failed to update status");
+        let loaded = store.get(&id).expect("test: failed to get item").expect("test: item should exist");
         assert_eq!(loaded.status, Status::Done);
         assert_eq!(loaded.notes.as_deref(), Some("all good"));
     }
@@ -472,11 +472,11 @@ mod tests {
 
         let item = WorkItem::new("to delete", Priority::P3);
         let id = item.id.clone();
-        store.put(&item).unwrap();
+        store.put(&item).expect("test: failed to put item");
 
-        assert!(store.delete(&id).unwrap());
-        assert!(store.get(&id).unwrap().is_none());
-        assert!(!store.delete(&id).unwrap());
+        assert!(store.delete(&id).expect("test: failed to delete item"));
+        assert!(store.get(&id).expect("test: failed to get item").is_none());
+        assert!(!store.delete(&id).expect("test: failed second delete"));
     }
 
     #[test]
@@ -491,12 +491,12 @@ mod tests {
         let mut t4 = WorkItem::new("in progress", Priority::P1);
         t4.claim("agent");
 
-        store.put(&t1).unwrap();
-        store.put(&t2).unwrap();
-        store.put(&t3).unwrap();
-        store.put(&t4).unwrap();
+        store.put(&t1).expect("test: failed to put t1");
+        store.put(&t2).expect("test: failed to put t2");
+        store.put(&t3).expect("test: failed to put t3");
+        store.put(&t4).expect("test: failed to put t4");
 
-        let stats = store.stats().unwrap();
+        let stats = store.stats().expect("test: failed to get stats");
         assert_eq!(stats.total, 4);
         assert_eq!(stats.open, 1);
         assert_eq!(stats.done, 1);

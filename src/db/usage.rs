@@ -283,8 +283,8 @@ fn format_tokens(n: u64) -> String {
 mod tests {
     use super::*;
 
-    fn test_db() -> Db {
-        Db::in_memory().unwrap()
+    fn test_db() -> Result<Db> {
+        Db::in_memory()
     }
 
     fn make_request(model: &str, input: u64, output: u64) -> RequestUsage {
@@ -299,30 +299,31 @@ mod tests {
     }
 
     #[test]
-    fn test_record_and_today() {
-        let db = test_db();
+    fn test_record_and_today() -> Result<()> {
+        let db = test_db()?;
         let usage = db.usage();
 
-        usage.record(&make_request("sonnet", 100, 50)).unwrap();
-        usage.record(&make_request("sonnet", 200, 100)).unwrap();
+        usage.record(&make_request("sonnet", 100, 50))?;
+        usage.record(&make_request("sonnet", 200, 100))?;
 
-        let today = usage.today().unwrap().unwrap();
+        let today = usage.today()?.expect("today's usage should exist");
         assert_eq!(today.input_tokens, 300);
         assert_eq!(today.output_tokens, 150);
         assert_eq!(today.requests, 2);
         assert_eq!(today.total_tokens(), 450);
+        Ok(())
     }
 
     #[test]
-    fn test_record_multi_model() {
-        let db = test_db();
+    fn test_record_multi_model() -> Result<()> {
+        let db = test_db()?;
         let usage = db.usage();
 
-        usage.record(&make_request("sonnet", 100, 50)).unwrap();
-        usage.record(&make_request("haiku", 200, 100)).unwrap();
-        usage.record(&make_request("sonnet", 300, 150)).unwrap();
+        usage.record(&make_request("sonnet", 100, 50))?;
+        usage.record(&make_request("haiku", 200, 100))?;
+        usage.record(&make_request("sonnet", 300, 150))?;
 
-        let today = usage.today().unwrap().unwrap();
+        let today = usage.today()?.expect("today's usage should exist");
         assert_eq!(today.requests, 3);
         assert_eq!(today.by_model.len(), 2);
 
@@ -333,50 +334,55 @@ mod tests {
         let haiku = &today.by_model["haiku"];
         assert_eq!(haiku.input_tokens, 200);
         assert_eq!(haiku.requests, 1);
+        Ok(())
     }
 
     #[test]
-    fn test_daily_specific_date() {
-        let db = test_db();
+    fn test_daily_specific_date() -> Result<()> {
+        let db = test_db()?;
         let usage = db.usage();
 
         // Record for today
-        usage.record(&make_request("sonnet", 100, 50)).unwrap();
+        usage.record(&make_request("sonnet", 100, 50))?;
 
         let date = Utc::now().format("%Y-%m-%d").to_string();
-        let daily = usage.daily(&date).unwrap().unwrap();
+        let daily = usage.daily(&date)?.expect("daily usage should exist");
         assert_eq!(daily.input_tokens, 100);
 
         // Non-existent date
-        assert!(usage.daily("2020-01-01").unwrap().is_none());
+        assert!(usage.daily("2020-01-01")?.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_today_empty() {
-        let db = test_db();
-        assert!(db.usage().today().unwrap().is_none());
+    fn test_today_empty() -> Result<()> {
+        let db = test_db()?;
+        assert!(db.usage().today()?.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_total() {
-        let db = test_db();
+    fn test_total() -> Result<()> {
+        let db = test_db()?;
         let usage = db.usage();
 
-        usage.record(&make_request("sonnet", 100, 50)).unwrap();
-        usage.record(&make_request("haiku", 200, 100)).unwrap();
+        usage.record(&make_request("sonnet", 100, 50))?;
+        usage.record(&make_request("haiku", 200, 100))?;
 
-        let total = usage.total().unwrap();
+        let total = usage.total()?;
         assert_eq!(total.input_tokens, 300);
         assert_eq!(total.output_tokens, 150);
         assert_eq!(total.requests, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_total_empty() {
-        let db = test_db();
-        let total = db.usage().total().unwrap();
+    fn test_total_empty() -> Result<()> {
+        let db = test_db()?;
+        let total = db.usage().total()?;
         assert_eq!(total.requests, 0);
         assert_eq!(total.total_tokens(), 0);
+        Ok(())
     }
 
     #[test]
@@ -387,38 +393,41 @@ mod tests {
     }
 
     #[test]
-    fn test_format_summary_empty() {
-        let db = test_db();
-        let summary = db.usage().format_summary().unwrap();
+    fn test_format_summary_empty() -> Result<()> {
+        let db = test_db()?;
+        let summary = db.usage().format_summary()?;
         assert!(summary.contains("No usage recorded today"));
+        Ok(())
     }
 
     #[test]
-    fn test_format_summary_with_data() {
-        let db = test_db();
+    fn test_format_summary_with_data() -> Result<()> {
+        let db = test_db()?;
         let usage = db.usage();
 
-        usage.record(&make_request("sonnet", 10_000, 5_000)).unwrap();
+        usage.record(&make_request("sonnet", 10_000, 5_000))?;
 
-        let summary = usage.format_summary().unwrap();
+        let summary = usage.format_summary()?;
         assert!(summary.contains("Today"));
         assert!(summary.contains("10.0K"));
+        Ok(())
     }
 
     #[test]
-    fn test_clear() {
-        let db = test_db();
+    fn test_clear() -> Result<()> {
+        let db = test_db()?;
         let usage = db.usage();
 
-        usage.record(&make_request("sonnet", 100, 50)).unwrap();
-        let cleared = usage.clear().unwrap();
+        usage.record(&make_request("sonnet", 100, 50))?;
+        let cleared = usage.clear()?;
         assert_eq!(cleared, 1);
-        assert!(usage.today().unwrap().is_none());
+        assert!(usage.today()?.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_cache_tokens() {
-        let db = test_db();
+    fn test_cache_tokens() -> Result<()> {
+        let db = test_db()?;
         let usage = db.usage();
 
         let req = RequestUsage {
@@ -429,10 +438,11 @@ mod tests {
             cache_read_tokens: 200,
             timestamp: Utc::now(),
         };
-        usage.record(&req).unwrap();
+        usage.record(&req)?;
 
-        let today = usage.today().unwrap().unwrap();
+        let today = usage.today()?.expect("today's usage should exist");
         assert_eq!(today.cache_creation_tokens, 500);
         assert_eq!(today.cache_read_tokens, 200);
+        Ok(())
     }
 }

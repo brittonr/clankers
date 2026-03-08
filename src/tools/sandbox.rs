@@ -135,7 +135,7 @@ static POLICY: OnceLock<PathPolicy> = OnceLock::new();
 /// Initialize the global path policy. Call once at startup.
 pub fn init_policy() {
     let _ = POLICY.set(PathPolicy::new());
-    info!("sandbox: path policy initialized ({} denied paths)", POLICY.get().unwrap().denied.len());
+    info!("sandbox: path policy initialized ({} denied paths)", POLICY.get().expect("Policy was just set").denied.len());
 }
 
 /// Check a path against the global policy.
@@ -391,7 +391,7 @@ mod tests {
         let policy = PathPolicy::new();
         if let Some(home) = dirs::home_dir() {
             let ssh = home.join(".ssh/id_rsa");
-            assert!(policy.check(ssh.to_str().unwrap()).is_some());
+            assert!(policy.check(ssh.to_str().expect("Path should be valid UTF-8")).is_some());
         }
     }
 
@@ -400,7 +400,7 @@ mod tests {
         let policy = PathPolicy::new();
         if let Some(home) = dirs::home_dir() {
             let p = home.join(".aws/credentials");
-            assert!(policy.check(p.to_str().unwrap()).is_some());
+            assert!(policy.check(p.to_str().expect("Path should be valid UTF-8")).is_some());
         }
     }
 
@@ -409,7 +409,7 @@ mod tests {
         let policy = PathPolicy::new();
         if let Some(home) = dirs::home_dir() {
             let p = home.join(".gnupg/private-keys-v1.d/key.key");
-            assert!(policy.check(p.to_str().unwrap()).is_some());
+            assert!(policy.check(p.to_str().expect("Path should be valid UTF-8")).is_some());
         }
     }
 
@@ -418,7 +418,7 @@ mod tests {
         let policy = PathPolicy::new();
         if let Some(home) = dirs::home_dir() {
             let p = home.join(".config/clankers-router/auth.json");
-            assert!(policy.check(p.to_str().unwrap()).is_some());
+            assert!(policy.check(p.to_str().expect("Path should be valid UTF-8")).is_some());
         }
     }
 
@@ -432,19 +432,19 @@ mod tests {
     fn blocks_shell_history() {
         let policy = PathPolicy::new();
         if let Some(home) = dirs::home_dir() {
-            assert!(policy.check(home.join(".bash_history").to_str().unwrap()).is_some());
-            assert!(policy.check(home.join(".zsh_history").to_str().unwrap()).is_some());
+            assert!(policy.check(home.join(".bash_history").to_str().expect("Path should be valid UTF-8")).is_some());
+            assert!(policy.check(home.join(".zsh_history").to_str().expect("Path should be valid UTF-8")).is_some());
         }
     }
 
     #[test]
     fn allows_normal_project_files() {
         let policy = PathPolicy::new();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("Failed to create temp directory");
         let file = dir.path().join("src/main.rs");
-        std::fs::create_dir_all(dir.path().join("src")).unwrap();
-        std::fs::write(&file, "fn main() {}").unwrap();
-        assert!(policy.check(file.to_str().unwrap()).is_none());
+        std::fs::create_dir_all(dir.path().join("src")).expect("Failed to create src directory");
+        std::fs::write(&file, "fn main() {}").expect("Failed to write test file");
+        assert!(policy.check(file.to_str().expect("Path should be valid UTF-8")).is_none());
     }
 
     #[test]
@@ -510,18 +510,18 @@ mod tests {
         let policy = PathPolicy::new();
         if let Some(home) = dirs::home_dir() {
             // Use ../.. traversal to reach home from a temp dir
-            let dir = tempfile::tempdir().unwrap();
-            let saved = std::env::current_dir().unwrap();
-            std::env::set_current_dir(dir.path()).unwrap();
+            let dir = tempfile::tempdir().expect("Failed to create temp directory");
+            let saved = std::env::current_dir().expect("Failed to get current directory");
+            std::env::set_current_dir(dir.path()).expect("Failed to change to temp directory");
 
             // Absolute path still blocked when resolved from new cwd
             let abs = home.join(".ssh/id_rsa");
             assert!(
-                policy.check(abs.to_str().unwrap()).is_some(),
+                policy.check(abs.to_str().expect("Path should be valid UTF-8")).is_some(),
                 "absolute path to ~/.ssh should be blocked from any cwd"
             );
 
-            std::env::set_current_dir(saved).unwrap();
+            std::env::set_current_dir(saved).expect("Failed to restore current directory");
         }
     }
 
@@ -531,13 +531,13 @@ mod tests {
     fn blocks_symlink_to_sensitive() {
         let policy = PathPolicy::new();
         if let Some(home) = dirs::home_dir() {
-            let dir = tempfile::tempdir().unwrap();
+            let dir = tempfile::tempdir().expect("Failed to create temp directory");
             let link = dir.path().join("sneaky-link");
             // Attempt to create a symlink to ~/.ssh
             let target = home.join(".ssh");
             if std::os::unix::fs::symlink(&target, &link).is_ok() {
                 let via_link = link.join("id_rsa");
-                assert!(policy.check(via_link.to_str().unwrap()).is_some(), "symlink to ~/.ssh should be blocked");
+                assert!(policy.check(via_link.to_str().expect("Path should be valid UTF-8")).is_some(), "symlink to ~/.ssh should be blocked");
             }
         }
     }
@@ -551,7 +551,7 @@ mod tests {
             // File doesn't exist, but parent dir is sensitive
             let p = home.join(".ssh/nonexistent-key-12345");
             assert!(
-                policy.check(p.to_str().unwrap()).is_some(),
+                policy.check(p.to_str().expect("Path should be valid UTF-8")).is_some(),
                 "nonexistent file inside ~/.ssh should still be blocked"
             );
         }
@@ -560,9 +560,9 @@ mod tests {
     #[test]
     fn allows_nonexistent_file_in_safe_dir() {
         let policy = PathPolicy::new();
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir().expect("Failed to create temp directory");
         let p = dir.path().join("does-not-exist.rs");
-        assert!(policy.check(p.to_str().unwrap()).is_none(), "nonexistent file in temp dir should be allowed");
+        assert!(policy.check(p.to_str().expect("Path should be valid UTF-8")).is_none(), "nonexistent file in temp dir should be allowed");
     }
 
     // ── Path message content ────────────────────────────────────────
@@ -572,7 +572,7 @@ mod tests {
         let policy = PathPolicy::new();
         if let Some(home) = dirs::home_dir() {
             let p = home.join(".ssh/id_rsa");
-            let msg = policy.check(p.to_str().unwrap()).unwrap();
+            let msg = policy.check(p.to_str().expect("Path should be valid UTF-8")).expect("Should be blocked");
             assert!(msg.contains("blocked"));
             assert!(msg.contains("sensitive path"));
         }
@@ -725,7 +725,7 @@ mod tests {
             for rel in SENSITIVE_PATHS {
                 let full = home.join(rel);
                 assert!(
-                    policy.check(full.to_str().unwrap()).is_some(),
+                    policy.check(full.to_str().expect("Path should be valid UTF-8")).is_some(),
                     "home path {} should be blocked",
                     full.display()
                 );

@@ -170,8 +170,11 @@ mod tests {
     fn create_test_tree(dir: &Path, files: &[&str]) {
         for f in files {
             let path = dir.join(f);
-            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
-            std::fs::write(&path, format!("content of {f}")).unwrap();
+            std::fs::create_dir_all(path.parent()
+                .expect("test path should have parent"))
+                .expect("test dir creation should succeed");
+            std::fs::write(&path, format!("content of {f}"))
+                .expect("test file write should succeed");
         }
     }
 
@@ -187,7 +190,7 @@ mod tests {
 
     #[test]
     fn test_walk_directory_basic() {
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("tempdir creation should succeed");
         create_test_tree(tmp.path(), &["a.txt", "sub/b.txt", "sub/deep/c.rs"]);
 
         let files = walk_directory(tmp.path());
@@ -197,11 +200,13 @@ mod tests {
 
     #[test]
     fn test_walk_directory_respects_gitignore() {
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("tempdir creation should succeed");
         // The ignore crate needs a .git dir to recognise .gitignore files
-        std::fs::create_dir(tmp.path().join(".git")).unwrap();
+        std::fs::create_dir(tmp.path().join(".git"))
+            .expect("test .git dir creation should succeed");
         create_test_tree(tmp.path(), &["keep.rs", "build/output.o", "target/debug/bin"]);
-        std::fs::write(tmp.path().join(".gitignore"), "build/\ntarget/\n").unwrap();
+        std::fs::write(tmp.path().join(".gitignore"), "build/\ntarget/\n")
+            .expect("test .gitignore write should succeed");
 
         let files = walk_directory(tmp.path());
         let names = relative_paths(tmp.path(), &files);
@@ -211,7 +216,7 @@ mod tests {
 
     #[test]
     fn test_walk_directory_excludes_hidden() {
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("tempdir creation should succeed");
         create_test_tree(tmp.path(), &["visible.txt", ".hidden_file", ".hidden_dir/secret.txt"]);
 
         let files = walk_directory(tmp.path());
@@ -221,7 +226,7 @@ mod tests {
 
     #[test]
     fn test_walk_directory_include_hidden() {
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("tempdir creation should succeed");
         create_test_tree(tmp.path(), &["visible.txt", ".hidden_file"]);
 
         let opts = WalkOptions {
@@ -236,7 +241,7 @@ mod tests {
 
     #[test]
     fn test_walk_directory_max_depth() {
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("tempdir creation should succeed");
         create_test_tree(tmp.path(), &["top.txt", "a/mid.txt", "a/b/deep.txt"]);
 
         // depth 1 = root dir only (files directly in root)
@@ -260,9 +265,10 @@ mod tests {
 
     #[test]
     fn test_walk_directory_ignore_file() {
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("tempdir creation should succeed");
         create_test_tree(tmp.path(), &["keep.txt", "skip.log"]);
-        std::fs::write(tmp.path().join(".ignore"), "*.log\n").unwrap();
+        std::fs::write(tmp.path().join(".ignore"), "*.log\n")
+            .expect("test .ignore write should succeed");
 
         let files = walk_directory(tmp.path());
         let names = relative_paths(tmp.path(), &files);
@@ -271,7 +277,7 @@ mod tests {
 
     #[test]
     fn test_walk_directory_empty() {
-        let tmp = TempDir::new().unwrap();
+        let tmp = TempDir::new().expect("tempdir creation should succeed");
         let files = walk_directory(tmp.path());
         assert!(files.is_empty());
     }

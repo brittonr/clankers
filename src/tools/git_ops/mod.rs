@@ -60,7 +60,7 @@ pub async fn status_porcelain() -> Result<String> {
         Ok(out)
     })
     .await
-    .unwrap_or_else(|e| Err(GitError(format!("join error: {}", e))))
+    .map_err(|e| GitError(format!("join error: {}", e)))?
 }
 
 /// Map git2 status flags to the two-char porcelain codes.
@@ -196,7 +196,7 @@ pub async fn diff_staged(files: Vec<String>) -> Result<String> {
         diff_to_patch(&diff)
     })
     .await
-    .unwrap_or_else(|e| Err(GitError(format!("join error: {}", e))))
+    .map_err(|e| GitError(format!("join error: {}", e)))?
 }
 
 /// Get diff patch text for unstaged changes (like `git diff`).
@@ -210,7 +210,7 @@ pub async fn diff_unstaged(files: Vec<String>) -> Result<String> {
         diff_to_patch(&diff)
     })
     .await
-    .unwrap_or_else(|e| Err(GitError(format!("join error: {}", e))))
+    .map_err(|e| GitError(format!("join error: {}", e)))?
 }
 
 /// Get diff stat text for staged changes (like `git diff --cached --stat`).
@@ -223,7 +223,7 @@ pub async fn diff_staged_stat(files: Vec<String>) -> Result<String> {
         diff_to_stat(&diff)
     })
     .await
-    .unwrap_or_else(|e| Err(GitError(format!("join error: {}", e))))
+    .map_err(|e| GitError(format!("join error: {}", e)))?
 }
 
 /// Get diff stat text for unstaged changes (like `git diff --stat`).
@@ -236,7 +236,7 @@ pub async fn diff_unstaged_stat(files: Vec<String>) -> Result<String> {
         diff_to_stat(&diff)
     })
     .await
-    .unwrap_or_else(|e| Err(GitError(format!("join error: {}", e))))
+    .map_err(|e| GitError(format!("join error: {}", e)))?
 }
 
 /// Get diff patch between a base ref and HEAD (like `git diff <base>`).
@@ -250,7 +250,7 @@ pub async fn diff_ref(base: String, files: Vec<String>) -> Result<String> {
         diff_to_patch(&diff)
     })
     .await
-    .unwrap_or_else(|e| Err(GitError(format!("join error: {}", e))))
+    .map_err(|e| GitError(format!("join error: {}", e)))?
 }
 
 /// Get diff stat between a base ref and HEAD (like `git diff <base> --stat`).
@@ -263,7 +263,7 @@ pub async fn diff_ref_stat(base: String, files: Vec<String>) -> Result<String> {
         diff_to_stat(&diff)
     })
     .await
-    .unwrap_or_else(|e| Err(GitError(format!("join error: {}", e))))
+    .map_err(|e| GitError(format!("join error: {}", e)))?
 }
 
 /// List staged file names (like `git diff --cached --name-only`).
@@ -274,7 +274,8 @@ pub async fn staged_file_names() -> Result<Vec<String>> {
         let diff = build_staged_diff(&repo, &mut opts)?;
         let mut names = Vec::new();
         for delta_idx in 0..diff.deltas().len() {
-            let delta = diff.get_delta(delta_idx).expect("delta in range");
+            let delta = diff.get_delta(delta_idx)
+                .expect("delta index in range from diff.deltas().len()");
             if let Some(path) = delta.new_file().path() {
                 names.push(path.to_string_lossy().into_owned());
             }
@@ -282,7 +283,7 @@ pub async fn staged_file_names() -> Result<Vec<String>> {
         Ok(names)
     })
     .await
-    .unwrap_or_else(|e| Err(GitError(format!("join error: {}", e))))
+    .map_err(|e| GitError(format!("join error: {}", e)))?
 }
 
 // ── Staging ────────────────────────────────────────────────────────────
@@ -393,7 +394,7 @@ pub async fn commit(message: String) -> Result<CommitResult> {
         })
     })
     .await
-    .unwrap_or_else(|e| Err(GitError(format!("join error: {}", e))))
+    .map_err(|e| GitError(format!("join error: {}", e)))?
 }
 
 /// Result of a successful commit.
@@ -427,7 +428,7 @@ pub async fn head_short_hash() -> Result<String> {
         Ok(oid.to_string()[..7].to_string())
     })
     .await
-    .unwrap_or_else(|e| Err(GitError(format!("join error: {}", e))))
+    .map_err(|e| GitError(format!("join error: {}", e)))?
 }
 
 // ── Log ────────────────────────────────────────────────────────────────
@@ -481,7 +482,7 @@ pub async fn log(count: usize) -> Result<Vec<LogEntry>> {
         Ok(entries)
     })
     .await
-    .unwrap_or_else(|e| Err(GitError(format!("join error: {}", e))))
+    .map_err(|e| GitError(format!("join error: {}", e)))?
 }
 
 /// Format a unix timestamp as a relative time string (e.g. "2 hours ago").
@@ -555,16 +556,22 @@ mod tests {
     fn test_worktree_add_and_remove() {
         use std::process::Command;
 
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("tempdir creation should succeed");
         let repo = tmp.path();
 
         // Init a real git repo
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "t@t.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "T"]).current_dir(repo).output().unwrap();
-        std::fs::write(repo.join("README.md"), "hello").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["init"]).current_dir(repo).output()
+            .expect("git init should succeed");
+        Command::new("git").args(["config", "user.email", "t@t.com"]).current_dir(repo).output()
+            .expect("git config email should succeed");
+        Command::new("git").args(["config", "user.name", "T"]).current_dir(repo).output()
+            .expect("git config name should succeed");
+        std::fs::write(repo.join("README.md"), "hello")
+            .expect("test file write should succeed");
+        Command::new("git").args(["add", "."]).current_dir(repo).output()
+            .expect("git add should succeed");
+        Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output()
+            .expect("git commit should succeed");
 
         // Test worktree_add
         let wt_path = repo.join(".git").join("clankers-worktrees").join("clankers").join("test-1");
@@ -589,20 +596,28 @@ mod tests {
     fn test_list_branches_and_merged() {
         use std::process::Command;
 
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("tempdir creation should succeed");
         let repo = tmp.path();
 
-        Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "t@t.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "T"]).current_dir(repo).output().unwrap();
-        std::fs::write(repo.join("f.txt"), "hello").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["init"]).current_dir(repo).output()
+            .expect("git init should succeed");
+        Command::new("git").args(["config", "user.email", "t@t.com"]).current_dir(repo).output()
+            .expect("git config email should succeed");
+        Command::new("git").args(["config", "user.name", "T"]).current_dir(repo).output()
+            .expect("git config name should succeed");
+        std::fs::write(repo.join("f.txt"), "hello")
+            .expect("test file write should succeed");
+        Command::new("git").args(["add", "."]).current_dir(repo).output()
+            .expect("git add should succeed");
+        Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output()
+            .expect("git commit should succeed");
 
         // Create a branch at HEAD (so it's trivially merged)
-        let r = git2::Repository::open(repo).unwrap();
-        let head = r.head().unwrap().peel_to_commit().unwrap();
-        r.branch("clankers/merged-1", &head, false).unwrap();
+        let r = git2::Repository::open(repo).expect("repo open should succeed");
+        let head = r.head().expect("HEAD should exist")
+            .peel_to_commit().expect("HEAD should peel to commit");
+        r.branch("clankers/merged-1", &head, false)
+            .expect("branch creation should succeed");
 
         let branches = sync::list_branches(repo, "clankers/*");
         assert_eq!(branches, vec!["clankers/merged-1"]);
@@ -615,34 +630,47 @@ mod tests {
     fn test_diff_name_only() {
         use std::process::Command;
 
-        let tmp = tempfile::TempDir::new().unwrap();
+        let tmp = tempfile::TempDir::new().expect("tempdir creation should succeed");
         let repo = tmp.path();
 
-        Command::new("git").args(["init", "-b", "main"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.email", "t@t.com"]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["config", "user.name", "T"]).current_dir(repo).output().unwrap();
-        std::fs::write(repo.join("a.txt"), "hello").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "first"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["init", "-b", "main"]).current_dir(repo).output()
+            .expect("git init should succeed");
+        Command::new("git").args(["config", "user.email", "t@t.com"]).current_dir(repo).output()
+            .expect("git config email should succeed");
+        Command::new("git").args(["config", "user.name", "T"]).current_dir(repo).output()
+            .expect("git config name should succeed");
+        std::fs::write(repo.join("a.txt"), "hello")
+            .expect("test file write should succeed");
+        Command::new("git").args(["add", "."]).current_dir(repo).output()
+            .expect("git add should succeed");
+        Command::new("git").args(["commit", "-m", "first"]).current_dir(repo).output()
+            .expect("git commit should succeed");
 
         // Create branch, add file
-        Command::new("git").args(["checkout", "-b", "feature"]).current_dir(repo).output().unwrap();
-        std::fs::write(repo.join("b.txt"), "world").unwrap();
-        Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
-        Command::new("git").args(["commit", "-m", "second"]).current_dir(repo).output().unwrap();
+        Command::new("git").args(["checkout", "-b", "feature"]).current_dir(repo).output()
+            .expect("git checkout should succeed");
+        std::fs::write(repo.join("b.txt"), "world")
+            .expect("test file write should succeed");
+        Command::new("git").args(["add", "."]).current_dir(repo).output()
+            .expect("git add should succeed");
+        Command::new("git").args(["commit", "-m", "second"]).current_dir(repo).output()
+            .expect("git commit should succeed");
 
         let files = sync::diff_name_only(repo, "main", "feature");
         assert!(files.is_some(), "diff_name_only returned None");
-        let files = files.unwrap();
+        let files = files.expect("files should be present");
         assert!(files.contains(&std::path::PathBuf::from("b.txt")));
     }
 
     #[test]
     fn test_dir_size_approx() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        std::fs::write(tmp.path().join("a.txt"), "hello world").unwrap();
-        std::fs::create_dir(tmp.path().join("sub")).unwrap();
-        std::fs::write(tmp.path().join("sub/b.txt"), "12345").unwrap();
+        let tmp = tempfile::TempDir::new().expect("tempdir creation should succeed");
+        std::fs::write(tmp.path().join("a.txt"), "hello world")
+            .expect("test file write should succeed");
+        std::fs::create_dir(tmp.path().join("sub"))
+            .expect("test dir creation should succeed");
+        std::fs::write(tmp.path().join("sub/b.txt"), "12345")
+            .expect("test file write should succeed");
         let size = sync::dir_size_approx(tmp.path());
         assert!(size >= 16, "Expected at least 16 bytes, got {}", size);
     }

@@ -304,29 +304,29 @@ mod tests {
 
     #[test]
     fn test_create_change() {
-        let dir = TempDir::new().unwrap();
-        let change_path = create_change(dir.path(), "test-change", "spec-driven").unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
+        let change_path = create_change(dir.path(), "test-change", "spec-driven").expect("failed to create change");
 
         assert!(change_path.exists());
         assert!(change_path.join("specs").exists());
         assert!(change_path.join(".openspec.yaml").exists());
 
-        let meta = std::fs::read_to_string(change_path.join(".openspec.yaml")).unwrap();
+        let meta = std::fs::read_to_string(change_path.join(".openspec.yaml")).expect("failed to read metadata file");
         assert!(meta.contains("schema: spec-driven"));
     }
 
     #[test]
     fn test_list_empty_changes() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
         let changes = list_changes(dir.path());
         assert!(changes.is_empty());
     }
 
     #[test]
     fn test_list_changes() {
-        let dir = TempDir::new().unwrap();
-        create_change(dir.path(), "change1", "spec-driven").unwrap();
-        create_change(dir.path(), "change2", "minimal").unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
+        create_change(dir.path(), "change1", "spec-driven").expect("failed to create change1");
+        create_change(dir.path(), "change2", "minimal").expect("failed to create change2");
 
         let changes = list_changes(dir.path());
         assert_eq!(changes.len(), 2);
@@ -336,11 +336,11 @@ mod tests {
 
     #[test]
     fn test_archive_change() {
-        let dir = TempDir::new().unwrap();
-        let change_path = create_change(dir.path(), "old-change", "spec-driven").unwrap();
-        std::fs::write(change_path.join("data.txt"), "test").unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
+        let change_path = create_change(dir.path(), "old-change", "spec-driven").expect("failed to create change");
+        std::fs::write(change_path.join("data.txt"), "test").expect("failed to write test data");
 
-        let archived = archive_change(dir.path(), "old-change").unwrap();
+        let archived = archive_change(dir.path(), "old-change").expect("failed to archive change");
         assert!(archived.exists());
         assert!(archived.join("data.txt").exists());
         assert!(!change_path.exists());
@@ -348,9 +348,9 @@ mod tests {
 
     #[test]
     fn test_task_progress_none() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
         let path = dir.path().join("tasks.md");
-        std::fs::write(&path, "# Tasks\n\nNo checkboxes here").unwrap();
+        std::fs::write(&path, "# Tasks\n\nNo checkboxes here").expect("failed to write tasks file");
 
         let progress = parse_task_progress(&path);
         assert!(progress.is_none());
@@ -358,11 +358,11 @@ mod tests {
 
     #[test]
     fn test_task_progress_partial() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
         let path = dir.path().join("tasks.md");
-        std::fs::write(&path, "- [x] Done\n- [ ] Todo\n- [X] Also done").unwrap();
+        std::fs::write(&path, "- [x] Done\n- [ ] Todo\n- [X] Also done").expect("failed to write tasks file");
 
-        let progress = parse_task_progress(&path).unwrap();
+        let progress = parse_task_progress(&path).expect("failed to parse task progress");
         assert_eq!(progress.done, 2);
         assert_eq!(progress.todo, 1);
         assert_eq!(progress.in_progress, 0);
@@ -371,15 +371,15 @@ mod tests {
 
     #[test]
     fn test_task_progress_with_in_progress() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
         let path = dir.path().join("tasks.md");
         std::fs::write(
             &path,
             "- [x] Done task\n- [~] Working on it ⏱ started: 2026-03-03T11:22Z\n- [ ] Not started",
         )
-        .unwrap();
+        .expect("failed to write tasks file");
 
-        let progress = parse_task_progress(&path).unwrap();
+        let progress = parse_task_progress(&path).expect("failed to parse task progress");
         assert_eq!(progress.done, 1);
         assert_eq!(progress.in_progress, 1);
         assert_eq!(progress.todo, 1);
@@ -392,15 +392,15 @@ mod tests {
 
     #[test]
     fn test_task_progress_done_with_timing() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
         let path = dir.path().join("tasks.md");
         std::fs::write(
             &path,
             "- [x] Feature A ✅ 2h 15m (started: 2026-03-03T09:00Z → completed: 2026-03-03T11:15Z)",
         )
-        .unwrap();
+        .expect("failed to write tasks file");
 
-        let progress = parse_task_progress(&path).unwrap();
+        let progress = parse_task_progress(&path).expect("failed to parse task progress");
         assert_eq!(progress.done, 1);
         assert_eq!(progress.total, 1);
 
@@ -418,11 +418,11 @@ mod tests {
 
     #[test]
     fn test_task_in_progress_no_timestamp() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
         let path = dir.path().join("tasks.md");
-        std::fs::write(&path, "- [~] Working on it").unwrap();
+        std::fs::write(&path, "- [~] Working on it").expect("failed to write tasks file");
 
-        let progress = parse_task_progress(&path).unwrap();
+        let progress = parse_task_progress(&path).expect("failed to parse task progress");
         assert_eq!(progress.in_progress, 1);
         let task = &progress.tasks[0];
         assert!(matches!(&task.state, TaskState::InProgress { started: None }));
@@ -436,7 +436,7 @@ mod tests {
 
     #[test]
     fn test_format_task_line_in_progress_with_timestamp() {
-        let started = DateTime::parse_from_rfc3339("2026-03-03T11:22:00Z").unwrap().with_timezone(&Utc);
+        let started = DateTime::parse_from_rfc3339("2026-03-03T11:22:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
         let task = TaskItem {
             description: "Working".to_string(),
             state: TaskState::InProgress { started: Some(started) },
@@ -446,8 +446,8 @@ mod tests {
 
     #[test]
     fn test_format_task_line_done_with_full_timing() {
-        let started = DateTime::parse_from_rfc3339("2026-03-03T09:00:00Z").unwrap().with_timezone(&Utc);
-        let completed = DateTime::parse_from_rfc3339("2026-03-03T11:15:00Z").unwrap().with_timezone(&Utc);
+        let started = DateTime::parse_from_rfc3339("2026-03-03T09:00:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
+        let completed = DateTime::parse_from_rfc3339("2026-03-03T11:15:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
         let task = TaskItem {
             description: "Feature".to_string(),
             state: TaskState::Done {
@@ -464,37 +464,37 @@ mod tests {
 
     #[test]
     fn test_format_duration_human() {
-        let start = DateTime::parse_from_rfc3339("2026-03-03T09:00:00Z").unwrap().with_timezone(&Utc);
-        let end_15m = DateTime::parse_from_rfc3339("2026-03-03T09:15:00Z").unwrap().with_timezone(&Utc);
+        let start = DateTime::parse_from_rfc3339("2026-03-03T09:00:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
+        let end_15m = DateTime::parse_from_rfc3339("2026-03-03T09:15:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
         assert_eq!(format_duration_human(&start, &end_15m), "15m");
 
-        let end_1h30 = DateTime::parse_from_rfc3339("2026-03-03T10:30:00Z").unwrap().with_timezone(&Utc);
+        let end_1h30 = DateTime::parse_from_rfc3339("2026-03-03T10:30:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
         assert_eq!(format_duration_human(&start, &end_1h30), "1h 30m");
 
-        let end_2d4h = DateTime::parse_from_rfc3339("2026-03-05T13:00:00Z").unwrap().with_timezone(&Utc);
+        let end_2d4h = DateTime::parse_from_rfc3339("2026-03-05T13:00:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
         assert_eq!(format_duration_human(&start, &end_2d4h), "2d 4h");
     }
 
     #[test]
     fn test_roundtrip_parse_format() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
         let path = dir.path().join("tasks.md");
         let content = "\
 - [ ] Not started\n\
 - [~] In progress ⏱ started: 2026-03-03T11:22Z\n\
 - [x] Done plain\n\
 - [x] Done timed ✅ 1h 30m (started: 2026-03-03T09:00Z → completed: 2026-03-03T10:30Z)\n";
-        std::fs::write(&path, content).unwrap();
+        std::fs::write(&path, content).expect("failed to write tasks file");
 
-        let progress = parse_task_progress(&path).unwrap();
+        let progress = parse_task_progress(&path).expect("failed to parse task progress");
         assert_eq!(progress.total, 4);
 
         // Format back and re-parse — should be stable
         let formatted: Vec<String> = progress.tasks.iter().map(format_task_line).collect();
         let rejoined = formatted.join("\n") + "\n";
-        std::fs::write(&path, &rejoined).unwrap();
+        std::fs::write(&path, &rejoined).expect("failed to write reformatted tasks file");
 
-        let progress2 = parse_task_progress(&path).unwrap();
+        let progress2 = parse_task_progress(&path).expect("failed to parse task progress after roundtrip");
         assert_eq!(progress2.total, 4);
         assert_eq!(progress2.done, 2);
         assert_eq!(progress2.in_progress, 1);

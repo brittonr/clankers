@@ -105,13 +105,13 @@ mod tests {
 
     #[test]
     fn test_parse_delta_empty() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
         let file = dir.path().join("spec.md");
-        std::fs::write(&file, "# Empty delta").unwrap();
+        std::fs::write(&file, "# Empty delta").expect("failed to write delta file");
 
         let delta = parse_delta_file(&file, dir.path());
         assert!(delta.is_some());
-        let delta = delta.unwrap();
+        let delta = delta.expect("delta should be parsed successfully");
         assert!(delta.added.is_empty());
         assert!(delta.modified.is_empty());
         assert!(delta.removed.is_empty());
@@ -119,11 +119,11 @@ mod tests {
 
     #[test]
     fn test_parse_delta_added() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
         let file = dir.path().join("spec.md");
-        std::fs::write(&file, "## ADDED\n\n### New Feature\nThe system MUST support this").unwrap();
+        std::fs::write(&file, "## ADDED\n\n### New Feature\nThe system MUST support this").expect("failed to write delta file");
 
-        let delta = parse_delta_file(&file, dir.path()).unwrap();
+        let delta = parse_delta_file(&file, dir.path()).expect("failed to parse delta file");
         assert_eq!(delta.added.len(), 1);
         assert_eq!(delta.added[0].heading, "New Feature");
         assert!(delta.added[0].body.contains("MUST"));
@@ -131,34 +131,34 @@ mod tests {
 
     #[test]
     fn test_parse_delta_modified() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
         let file = dir.path().join("spec.md");
-        std::fs::write(&file, "## MODIFIED\n\n### Updated Feature\nChanged behavior").unwrap();
+        std::fs::write(&file, "## MODIFIED\n\n### Updated Feature\nChanged behavior").expect("failed to write delta file");
 
-        let delta = parse_delta_file(&file, dir.path()).unwrap();
+        let delta = parse_delta_file(&file, dir.path()).expect("failed to parse delta file");
         assert_eq!(delta.modified.len(), 1);
         assert_eq!(delta.modified[0].heading, "Updated Feature");
     }
 
     #[test]
     fn test_parse_delta_removed() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
         let file = dir.path().join("spec.md");
-        std::fs::write(&file, "## REMOVED\n\n### Old Feature\n").unwrap();
+        std::fs::write(&file, "## REMOVED\n\n### Old Feature\n").expect("failed to write delta file");
 
-        let delta = parse_delta_file(&file, dir.path()).unwrap();
+        let delta = parse_delta_file(&file, dir.path()).expect("failed to parse delta file");
         assert_eq!(delta.removed.len(), 1);
         assert_eq!(delta.removed[0], "Old Feature");
     }
 
     #[test]
     fn test_parse_delta_all_sections() {
-        let dir = TempDir::new().unwrap();
+        let dir = TempDir::new().expect("failed to create temp dir for test");
         let file = dir.path().join("spec.md");
         let content = "## ADDED\n\n### A\nContent A\n\n## MODIFIED\n\n### B\nContent B\n\n## REMOVED\n\n### C\n";
-        std::fs::write(&file, content).unwrap();
+        std::fs::write(&file, content).expect("failed to write delta file");
 
-        let delta = parse_delta_file(&file, dir.path()).unwrap();
+        let delta = parse_delta_file(&file, dir.path()).expect("failed to parse delta file");
         assert_eq!(delta.added.len(), 1);
         assert_eq!(delta.modified.len(), 1);
         assert_eq!(delta.removed.len(), 1);

@@ -376,8 +376,17 @@ impl App {
         let mut contributors: Vec<&dyn MenuContributor> = vec![&builtin, &slash_commands];
 
         if let Some(pm_arc) = plugin_manager {
-            pm_guard = pm_arc.lock().unwrap();
-            contributors.push(&*pm_guard);
+            match pm_arc.lock() {
+                Ok(guard) => {
+                    pm_guard = guard;
+                    contributors.push(&*pm_guard);
+                }
+                Err(poisoned) => {
+                    tracing::warn!("plugin manager mutex poisoned in rebuild_leader_menu, recovering");
+                    pm_guard = poisoned.into_inner();
+                    contributors.push(&*pm_guard);
+                }
+            }
         }
 
         contributors.push(&settings.leader_menu);
@@ -415,8 +424,17 @@ impl App {
         let mut contributors: Vec<&dyn SlashContributor> = vec![&builtin];
 
         if let Some(pm_arc) = plugin_manager {
-            pm_guard = pm_arc.lock().unwrap();
-            contributors.push(&*pm_guard);
+            match pm_arc.lock() {
+                Ok(guard) => {
+                    pm_guard = guard;
+                    contributors.push(&*pm_guard);
+                }
+                Err(poisoned) => {
+                    tracing::warn!("plugin manager mutex poisoned in rebuild_slash_registry, recovering");
+                    pm_guard = poisoned.into_inner();
+                    contributors.push(&*pm_guard);
+                }
+            }
         }
 
         let (registry, conflicts) = SlashRegistry::build(&contributors);
@@ -435,21 +453,26 @@ impl App {
     }
 
     /// Get a panel by ID (immutable) for rendering.
-    pub fn panel(&self, id: super::panel::PanelId) -> &dyn super::panel::Panel {
-        self.panels.get(id).expect("unknown panel")
+    pub fn panel(&self, id: super::panel::PanelId) -> Option<&dyn super::panel::Panel> {
+        self.panels.get(id)
     }
 
     /// Get a panel by ID (mutable) for key handling.
-    pub fn panel_mut(&mut self, id: super::panel::PanelId) -> &mut dyn super::panel::Panel {
-        self.panels.get_mut(id).expect("unknown panel")
+    pub fn panel_mut(&mut self, id: super::panel::PanelId) -> Option<&mut dyn super::panel::Panel> {
+        if self.panels.get_mut(id).is_none() {
+            tracing::error!(panel_id = ?id, "attempted to access unregistered panel");
+        }
+        self.panels.get_mut(id)
     }
 
     /// Close any detail/diff views on the focused panel before unfocusing.
     /// Panels like Subagents and Files have sub-views that should reset
     /// when the user exits the panel.
     pub fn close_focused_panel_views(&mut self) {
-        if let Some(id) = self.layout.focused_panel {
-            self.panel_mut(id).close_detail_view();
+        if let Some(id) = self.layout.focused_panel
+            && let Some(panel) = self.panel_mut(id)
+        {
+            panel.close_detail_view();
         }
         // Subagent panes have no detail view to close, but clear the focus
     }

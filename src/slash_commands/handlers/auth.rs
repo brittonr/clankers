@@ -163,8 +163,8 @@ impl SlashHandler for AccountHandler {
             match subcmd {
                 "switch" | "use" => handle_account_switch(ctx, &store, subcmd_args),
                 "login" => handle_account_login(ctx, &store, subcmd_args),
-                "logout" => handle_account_logout(ctx, &mut store, &paths, subcmd_args),
-                "remove" | "rm" => handle_account_remove(ctx, &mut store, &paths, subcmd_args),
+                "logout" => handle_account_logout(ctx, &mut store, paths, subcmd_args),
+                "remove" | "rm" => handle_account_remove(ctx, &mut store, paths, subcmd_args),
                 "status" => handle_account_status(ctx, &store, subcmd_args),
                 _ => {
                     ctx.app.push_system(

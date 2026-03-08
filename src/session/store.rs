@@ -415,7 +415,7 @@ mod tests {
 
     #[test]
     fn test_write_and_read_entries() -> Result<()> {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let session_file = temp.path().join("test_session.jsonl");
 
         // Write entries
@@ -444,14 +444,14 @@ mod tests {
 
     #[test]
     fn test_read_nonexistent_file() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let result = read_entries(&temp.path().join("nonexistent.jsonl"));
         assert!(result.is_err());
     }
 
     #[test]
     fn test_append_creates_parent_dirs() -> Result<()> {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let nested_path = temp.path().join("deep").join("nested").join("session.jsonl");
 
         let header = make_header("test");
@@ -477,21 +477,21 @@ mod tests {
 
     #[test]
     fn test_list_sessions_empty() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let sessions = list_sessions(temp.path(), "/test/cwd");
         assert!(sessions.is_empty());
     }
 
     #[test]
     fn test_list_sessions_sorted() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let cwd_dir = temp.path().join("_test_cwd");
-        std::fs::create_dir_all(&cwd_dir).unwrap();
+        std::fs::create_dir_all(&cwd_dir).expect("test: failed to create cwd dir");
 
         // Create files with different timestamps (names sorted alphabetically)
-        std::fs::write(cwd_dir.join("20240101_120000_sess1.jsonl"), "{}").unwrap();
-        std::fs::write(cwd_dir.join("20240102_120000_sess2.jsonl"), "{}").unwrap();
-        std::fs::write(cwd_dir.join("20240103_120000_sess3.jsonl"), "{}").unwrap();
+        std::fs::write(cwd_dir.join("20240101_120000_sess1.jsonl"), "{}").expect("test: failed to write session file");
+        std::fs::write(cwd_dir.join("20240102_120000_sess2.jsonl"), "{}").expect("test: failed to write session file");
+        std::fs::write(cwd_dir.join("20240103_120000_sess3.jsonl"), "{}").expect("test: failed to write session file");
 
         let sessions = list_sessions(temp.path(), "/test/cwd");
         assert_eq!(sessions.len(), 3);
@@ -503,13 +503,13 @@ mod tests {
 
     #[test]
     fn test_list_sessions_filters_non_jsonl() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let cwd_dir = temp.path().join("_test_cwd");
-        std::fs::create_dir_all(&cwd_dir).unwrap();
+        std::fs::create_dir_all(&cwd_dir).expect("test: failed to create cwd dir");
 
-        std::fs::write(cwd_dir.join("session1.jsonl"), "{}").unwrap();
-        std::fs::write(cwd_dir.join("session2.txt"), "{}").unwrap();
-        std::fs::write(cwd_dir.join("session3.json"), "{}").unwrap();
+        std::fs::write(cwd_dir.join("session1.jsonl"), "{}").expect("test: failed to write jsonl file");
+        std::fs::write(cwd_dir.join("session2.txt"), "{}").expect("test: failed to write txt file");
+        std::fs::write(cwd_dir.join("session3.json"), "{}").expect("test: failed to write json file");
 
         let sessions = list_sessions(temp.path(), "/test/cwd");
         assert_eq!(sessions.len(), 1); // Only .jsonl file
@@ -517,64 +517,64 @@ mod tests {
 
     #[test]
     fn test_read_entries_skips_empty_lines() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let file = temp.path().join("test.jsonl");
 
         let header = make_header("test");
-        let json = serde_json::to_string(&header).unwrap();
+        let json = serde_json::to_string(&header).expect("test: failed to serialize header");
 
         // Write with empty lines
-        std::fs::write(&file, format!("{}\n\n\n{}\n\n", json, json)).unwrap();
+        std::fs::write(&file, format!("{}\n\n\n{}\n\n", json, json)).expect("test: failed to write file");
 
-        let entries = read_entries(&file).unwrap();
+        let entries = read_entries(&file).expect("test: failed to read entries");
         assert_eq!(entries.len(), 2); // Empty lines ignored
     }
 
     #[test]
     fn test_purge_sessions() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let cwd = "/test/cwd";
         let cwd_dir = temp.path().join("_test_cwd");
-        std::fs::create_dir_all(&cwd_dir).unwrap();
+        std::fs::create_dir_all(&cwd_dir).expect("test: failed to create cwd dir");
 
-        std::fs::write(cwd_dir.join("sess1.jsonl"), "{}").unwrap();
-        std::fs::write(cwd_dir.join("sess2.jsonl"), "{}").unwrap();
+        std::fs::write(cwd_dir.join("sess1.jsonl"), "{}").expect("test: failed to write session file");
+        std::fs::write(cwd_dir.join("sess2.jsonl"), "{}").expect("test: failed to write session file");
 
-        let count = purge_sessions(temp.path(), cwd).unwrap();
+        let count = purge_sessions(temp.path(), cwd).expect("test: failed to purge sessions");
         assert_eq!(count, 2);
         assert!(list_sessions(temp.path(), cwd).is_empty());
     }
 
     #[test]
     fn test_purge_all_sessions() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
 
         // Create sessions in two different cwds
         let dir1 = temp.path().join("_cwd1");
         let dir2 = temp.path().join("_cwd2");
-        std::fs::create_dir_all(&dir1).unwrap();
-        std::fs::create_dir_all(&dir2).unwrap();
+        std::fs::create_dir_all(&dir1).expect("test: failed to create dir1");
+        std::fs::create_dir_all(&dir2).expect("test: failed to create dir2");
 
-        std::fs::write(dir1.join("s1.jsonl"), "{}").unwrap();
-        std::fs::write(dir2.join("s2.jsonl"), "{}").unwrap();
-        std::fs::write(dir2.join("s3.jsonl"), "{}").unwrap();
+        std::fs::write(dir1.join("s1.jsonl"), "{}").expect("test: failed to write s1");
+        std::fs::write(dir2.join("s2.jsonl"), "{}").expect("test: failed to write s2");
+        std::fs::write(dir2.join("s3.jsonl"), "{}").expect("test: failed to write s3");
 
-        let count = purge_all_sessions(temp.path()).unwrap();
+        let count = purge_all_sessions(temp.path()).expect("test: failed to purge all sessions");
         assert_eq!(count, 3);
         assert!(list_all_sessions(temp.path()).is_empty());
     }
 
     #[test]
     fn test_list_all_sessions() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
 
         let dir1 = temp.path().join("_cwd1");
         let dir2 = temp.path().join("_cwd2");
-        std::fs::create_dir_all(&dir1).unwrap();
-        std::fs::create_dir_all(&dir2).unwrap();
+        std::fs::create_dir_all(&dir1).expect("test: failed to create dir1");
+        std::fs::create_dir_all(&dir2).expect("test: failed to create dir2");
 
-        std::fs::write(dir1.join("s1.jsonl"), "{}").unwrap();
-        std::fs::write(dir2.join("s2.jsonl"), "{}").unwrap();
+        std::fs::write(dir1.join("s1.jsonl"), "{}").expect("test: failed to write s1");
+        std::fs::write(dir2.join("s2.jsonl"), "{}").expect("test: failed to write s2");
 
         let all = list_all_sessions(temp.path());
         assert_eq!(all.len(), 2);
@@ -582,16 +582,16 @@ mod tests {
 
     #[test]
     fn test_read_session_summary() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let file = temp.path().join("test.jsonl");
 
         let header = make_header("summ123");
-        append_entry(&file, &header).unwrap();
+        append_entry(&file, &header).expect("test: failed to append header");
 
         let msg = make_message(MessageId::new("m1"), None);
-        append_entry(&file, &msg).unwrap();
+        append_entry(&file, &msg).expect("test: failed to append message");
 
-        let summary = read_session_summary(&file).unwrap();
+        let summary = read_session_summary(&file).expect("test: failed to read summary");
         assert_eq!(summary.session_id, "summ123");
         assert_eq!(summary.model, "test-model");
         assert_eq!(summary.message_count, 1);
@@ -600,30 +600,30 @@ mod tests {
 
     #[test]
     fn test_read_session_summary_no_messages() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let file = temp.path().join("test.jsonl");
 
         let header = make_header("empty-sess");
-        append_entry(&file, &header).unwrap();
+        append_entry(&file, &header).expect("test: failed to append header");
 
-        let summary = read_session_summary(&file).unwrap();
+        let summary = read_session_summary(&file).expect("test: failed to read summary");
         assert_eq!(summary.message_count, 0);
         assert!(summary.first_user_message.is_none());
     }
 
     #[test]
     fn test_find_session_by_id() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let cwd = "/test/cwd";
         let cwd_dir = temp.path().join("_test_cwd");
-        std::fs::create_dir_all(&cwd_dir).unwrap();
+        std::fs::create_dir_all(&cwd_dir).expect("test: failed to create cwd dir");
 
-        std::fs::write(cwd_dir.join("20240101_abc123.jsonl"), "{}").unwrap();
-        std::fs::write(cwd_dir.join("20240102_def456.jsonl"), "{}").unwrap();
+        std::fs::write(cwd_dir.join("20240101_abc123.jsonl"), "{}").expect("test: failed to write session file");
+        std::fs::write(cwd_dir.join("20240102_def456.jsonl"), "{}").expect("test: failed to write session file");
 
         let found = find_session_by_id(temp.path(), cwd, "abc123");
         assert!(found.is_some());
-        assert!(found.unwrap().to_string_lossy().contains("abc123"));
+        assert!(found.expect("test: session should be found").to_string_lossy().contains("abc123"));
 
         let not_found = find_session_by_id(temp.path(), cwd, "zzz999");
         assert!(not_found.is_none());
@@ -631,15 +631,15 @@ mod tests {
 
     #[test]
     fn test_export_text() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let file = temp.path().join("test.jsonl");
 
         let header = make_header("exp1");
-        append_entry(&file, &header).unwrap();
+        append_entry(&file, &header).expect("test: failed to append header");
         let msg = make_message(MessageId::new("m1"), None);
-        append_entry(&file, &msg).unwrap();
+        append_entry(&file, &msg).expect("test: failed to append message");
 
-        let text = export_text(&file).unwrap();
+        let text = export_text(&file).expect("test: failed to export text");
         assert!(text.contains("Session: exp1"));
         assert!(text.contains("[User]"));
         assert!(text.contains("Test"));
@@ -647,44 +647,44 @@ mod tests {
 
     #[test]
     fn test_export_markdown() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let file = temp.path().join("test.jsonl");
 
         let header = make_header("md1");
-        append_entry(&file, &header).unwrap();
+        append_entry(&file, &header).expect("test: failed to append header");
         let msg = make_message(MessageId::new("m1"), None);
-        append_entry(&file, &msg).unwrap();
+        append_entry(&file, &msg).expect("test: failed to append message");
 
-        let md = export_markdown(&file).unwrap();
+        let md = export_markdown(&file).expect("test: failed to export markdown");
         assert!(md.contains("# Session: md1"));
         assert!(md.contains("## 🧑 User"));
     }
 
     #[test]
     fn test_export_json() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let file = temp.path().join("test.jsonl");
 
         let header = make_header("json1");
-        append_entry(&file, &header).unwrap();
+        append_entry(&file, &header).expect("test: failed to append header");
 
-        let json = export_json(&file).unwrap();
-        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        let json = export_json(&file).expect("test: failed to export json");
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("test: failed to parse json");
         assert!(parsed.is_array());
     }
 
     #[test]
     fn test_import_session() {
-        let temp = TempDir::new().unwrap();
+        let temp = TempDir::new().expect("test: failed to create temp dir");
         let source = temp.path().join("source.jsonl");
         let sessions_dir = temp.path().join("sessions");
 
         let header = make_header("imp1");
-        append_entry(&source, &header).unwrap();
+        append_entry(&source, &header).expect("test: failed to append header");
         let msg = make_message(MessageId::new("m1"), None);
-        append_entry(&source, &msg).unwrap();
+        append_entry(&source, &msg).expect("test: failed to append message");
 
-        let dest = import_session(&sessions_dir, &source).unwrap();
+        let dest = import_session(&sessions_dir, &source).expect("test: failed to import session");
         assert!(dest.exists());
 
         // Importing again should fail (already exists)

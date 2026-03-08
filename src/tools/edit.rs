@@ -148,32 +148,32 @@ mod tests {
 
     #[test]
     fn test_edit_simple_replacement() {
-        let rt = Runtime::new().unwrap();
+        let rt = Runtime::new().expect("Failed to create runtime");
         rt.block_on(async {
-            let dir = TempDir::new().unwrap();
+            let dir = TempDir::new().expect("Failed to create temp directory");
             let file_path = dir.path().join("test.txt");
-            tokio::fs::write(&file_path, "hello world\nfoo bar").await.unwrap();
+            tokio::fs::write(&file_path, "hello world\nfoo bar").await.expect("Failed to write test file");
 
             let tool = EditTool::new();
             let params = json!({
-                "path": file_path.to_str().unwrap(),
+                "path": file_path.to_str().expect("Path should be valid UTF-8"),
                 "old_text": "hello world",
                 "new_text": "goodbye world"
             });
 
             let result = tool.execute(&ToolContext::new("1".to_string(), CancellationToken::new(), None), params).await;
             assert!(!result.is_error);
-            let text = get_text_content(&result).unwrap();
+            let text = get_text_content(&result).expect("Should have text content");
             assert!(text.contains("Successfully"));
 
-            let content = tokio::fs::read_to_string(&file_path).await.unwrap();
+            let content = tokio::fs::read_to_string(&file_path).await.expect("Failed to read result file");
             assert_eq!(content, "goodbye world\nfoo bar");
         });
     }
 
     #[test]
     fn test_edit_missing_file() {
-        let rt = Runtime::new().unwrap();
+        let rt = Runtime::new().expect("Failed to create runtime");
         rt.block_on(async {
             let tool = EditTool::new();
             let params = json!({
@@ -184,51 +184,51 @@ mod tests {
 
             let result = tool.execute(&ToolContext::new("1".to_string(), CancellationToken::new(), None), params).await;
             assert!(result.is_error);
-            let text = get_text_content(&result).unwrap();
+            let text = get_text_content(&result).expect("Should have text content");
             assert!(text.contains("not found"));
         });
     }
 
     #[test]
     fn test_edit_text_not_found() {
-        let rt = Runtime::new().unwrap();
+        let rt = Runtime::new().expect("Failed to create runtime");
         rt.block_on(async {
-            let dir = TempDir::new().unwrap();
+            let dir = TempDir::new().expect("Failed to create temp directory");
             let file_path = dir.path().join("test.txt");
-            tokio::fs::write(&file_path, "hello world").await.unwrap();
+            tokio::fs::write(&file_path, "hello world").await.expect("Failed to write test file");
 
             let tool = EditTool::new();
             let params = json!({
-                "path": file_path.to_str().unwrap(),
+                "path": file_path.to_str().expect("Path should be valid UTF-8"),
                 "old_text": "goodbye",
                 "new_text": "hello"
             });
 
             let result = tool.execute(&ToolContext::new("1".to_string(), CancellationToken::new(), None), params).await;
             assert!(result.is_error);
-            let text = get_text_content(&result).unwrap();
+            let text = get_text_content(&result).expect("Should have text content");
             assert!(text.contains("not found"));
         });
     }
 
     #[test]
     fn test_edit_multiple_occurrences() {
-        let rt = Runtime::new().unwrap();
+        let rt = Runtime::new().expect("Failed to create runtime");
         rt.block_on(async {
-            let dir = TempDir::new().unwrap();
+            let dir = TempDir::new().expect("Failed to create temp directory");
             let file_path = dir.path().join("test.txt");
-            tokio::fs::write(&file_path, "foo\nfoo\nfoo").await.unwrap();
+            tokio::fs::write(&file_path, "foo\nfoo\nfoo").await.expect("Failed to write test file");
 
             let tool = EditTool::new();
             let params = json!({
-                "path": file_path.to_str().unwrap(),
+                "path": file_path.to_str().expect("Path should be valid UTF-8"),
                 "old_text": "foo",
                 "new_text": "bar"
             });
 
             let result = tool.execute(&ToolContext::new("1".to_string(), CancellationToken::new(), None), params).await;
             assert!(result.is_error);
-            let text = get_text_content(&result).unwrap();
+            let text = get_text_content(&result).expect("Should have text content");
             assert!(text.contains("appears 3 times"));
         });
     }

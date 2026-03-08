@@ -348,12 +348,11 @@ async fn stream_nix_output(
 
     // Stream and parse output
     loop {
-        if let Some(dl) = deadline {
-            if tokio::time::Instant::now() >= dl {
+        if let Some(dl) = deadline
+            && tokio::time::Instant::now() >= dl {
                 let _ = child.start_kill();
                 return Err(ToolResult::error(format!("nix {} timed out after {}s", subcommand, timeout_secs)));
             }
-        }
 
         tokio::select! {
             () = ctx.signal.cancelled() => {

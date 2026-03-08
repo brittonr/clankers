@@ -299,14 +299,13 @@ fn extract_text_from_html(html: &str) -> String {
         }
 
         // Decode HTML entities
-        if chars[i] == '&' {
-            if let Some((ch, skip)) = decode_html_entity(&lower[i..]) {
+        if chars[i] == '&'
+            && let Some((ch, skip)) = decode_html_entity(&lower[i..]) {
                 result.push(ch);
                 i += skip;
                 last_was_space = ch == ' ';
                 continue;
             }
-        }
 
         // Collapse whitespace
         handle_text_char(chars[i], &mut result, &mut last_was_space);

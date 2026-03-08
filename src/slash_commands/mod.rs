@@ -377,14 +377,14 @@ mod tests {
 
     #[test]
     fn test_parse_command_basic() {
-        let (cmd, args) = parse_command("/help").unwrap();
+        let (cmd, args) = parse_command("/help").expect("failed to parse /help");
         assert_eq!(cmd, "help");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_command_with_args() {
-        let (cmd, args) = parse_command("/model claude-3-5-sonnet").unwrap();
+        let (cmd, args) = parse_command("/model claude-3-5-sonnet").expect("failed to parse /model");
         assert_eq!(cmd, "model");
         assert_eq!(args, "claude-3-5-sonnet");
     }
@@ -394,7 +394,7 @@ mod tests {
         // Unknown commands now fall through to the prompt template system
         let result = parse_command("/nonexistent");
         assert!(result.is_some());
-        let (cmd, _args) = result.unwrap();
+        let (cmd, _args) = result.expect("should have parsed unknown command");
         assert_eq!(cmd, "nonexistent");
     }
 
@@ -436,14 +436,14 @@ mod tests {
 
     #[test]
     fn test_parse_login_no_args() {
-        let (cmd, args) = parse_command("/login").unwrap();
+        let (cmd, args) = parse_command("/login").expect("failed to parse /login");
         assert_eq!(cmd, "login");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_login_with_code() {
-        let (cmd, args) = parse_command("/login abc123#state456").unwrap();
+        let (cmd, args) = parse_command("/login abc123#state456").expect("failed to parse /login with code");
         assert_eq!(cmd, "login");
         assert_eq!(args, "abc123#state456");
     }
@@ -462,28 +462,28 @@ mod tests {
 
     #[test]
     fn test_parse_worker_no_args() {
-        let (cmd, args) = parse_command("/worker").unwrap();
+        let (cmd, args) = parse_command("/worker").expect("failed to parse /worker");
         assert_eq!(cmd, "worker");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_worker_with_name_and_task() {
-        let (cmd, args) = parse_command("/worker builder fix the tests").unwrap();
+        let (cmd, args) = parse_command("/worker builder fix the tests").expect("failed to parse /worker with args");
         assert_eq!(cmd, "worker");
         assert_eq!(args, "builder fix the tests");
     }
 
     #[test]
     fn test_parse_share() {
-        let (cmd, args) = parse_command("/share").unwrap();
+        let (cmd, args) = parse_command("/share").expect("failed to parse /share");
         assert_eq!(cmd, "share");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_share_read_only() {
-        let (cmd, args) = parse_command("/share --read-only").unwrap();
+        let (cmd, args) = parse_command("/share --read-only").expect("failed to parse /share with flag");
         assert_eq!(cmd, "share");
         assert_eq!(args, "--read-only");
     }
@@ -513,42 +513,42 @@ mod tests {
 
     #[test]
     fn test_parse_system_no_args() {
-        let (cmd, args) = parse_command("/system").unwrap();
+        let (cmd, args) = parse_command("/system").expect("failed to parse /system");
         assert_eq!(cmd, "system");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_system_show() {
-        let (cmd, args) = parse_command("/system show").unwrap();
+        let (cmd, args) = parse_command("/system show").expect("failed to parse /system show");
         assert_eq!(cmd, "system");
         assert_eq!(args, "show");
     }
 
     #[test]
     fn test_parse_system_set() {
-        let (cmd, args) = parse_command("/system set You are a helpful assistant.").unwrap();
+        let (cmd, args) = parse_command("/system set You are a helpful assistant.").expect("failed to parse /system set");
         assert_eq!(cmd, "system");
         assert_eq!(args, "set You are a helpful assistant.");
     }
 
     #[test]
     fn test_parse_system_append() {
-        let (cmd, args) = parse_command("/system append Always be concise.").unwrap();
+        let (cmd, args) = parse_command("/system append Always be concise.").expect("failed to parse /system append");
         assert_eq!(cmd, "system");
         assert_eq!(args, "append Always be concise.");
     }
 
     #[test]
     fn test_parse_system_reset() {
-        let (cmd, args) = parse_command("/system reset").unwrap();
+        let (cmd, args) = parse_command("/system reset").expect("failed to parse /system reset");
         assert_eq!(cmd, "system");
         assert_eq!(args, "reset");
     }
 
     #[test]
     fn test_parse_system_file() {
-        let (cmd, args) = parse_command("/system file /tmp/prompt.md").unwrap();
+        let (cmd, args) = parse_command("/system file /tmp/prompt.md").expect("failed to parse /system file");
         assert_eq!(cmd, "system");
         assert_eq!(args, "file /tmp/prompt.md");
     }
@@ -567,7 +567,7 @@ mod tests {
 
     #[test]
     fn test_parse_editor() {
-        let (cmd, args) = parse_command("/editor").unwrap();
+        let (cmd, args) = parse_command("/editor").expect("failed to parse /editor");
         assert_eq!(cmd, "editor");
         assert_eq!(args, "");
     }
@@ -620,42 +620,42 @@ mod tests {
 
     #[test]
     fn test_parse_fork() {
-        let (cmd, args) = parse_command("/fork").unwrap();
+        let (cmd, args) = parse_command("/fork").expect("failed to parse /fork");
         assert_eq!(cmd, "fork");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_fork_with_args() {
-        let (cmd, args) = parse_command("/fork try different approach").unwrap();
+        let (cmd, args) = parse_command("/fork try different approach").expect("failed to parse /fork with args");
         assert_eq!(cmd, "fork");
         assert_eq!(args, "try different approach");
     }
 
     #[test]
     fn test_parse_rewind() {
-        let (cmd, args) = parse_command("/rewind 5").unwrap();
+        let (cmd, args) = parse_command("/rewind 5").expect("failed to parse /rewind");
         assert_eq!(cmd, "rewind");
         assert_eq!(args, "5");
     }
 
     #[test]
     fn test_parse_branches() {
-        let (cmd, args) = parse_command("/branches").unwrap();
+        let (cmd, args) = parse_command("/branches").expect("failed to parse /branches");
         assert_eq!(cmd, "branches");
         assert_eq!(args, "");
     }
 
     #[test]
     fn test_parse_switch() {
-        let (cmd, args) = parse_command("/switch main").unwrap();
+        let (cmd, args) = parse_command("/switch main").expect("failed to parse /switch");
         assert_eq!(cmd, "switch");
         assert_eq!(args, "main");
     }
 
     #[test]
     fn test_parse_label() {
-        let (cmd, args) = parse_command("/label checkpoint").unwrap();
+        let (cmd, args) = parse_command("/label checkpoint").expect("failed to parse /label");
         assert_eq!(cmd, "label");
         assert_eq!(args, "checkpoint");
     }
@@ -744,7 +744,7 @@ mod tests {
         assert_eq!(conflicts[0].loser, "builtin");
 
         // The plugin version should win
-        let help_cmd = registry.get("help").unwrap();
+        let help_cmd = registry.get("help").expect("help command should be registered");
         assert_eq!(help_cmd.description, "Plugin help override");
         assert_eq!(help_cmd.source, "test_plugin");
     }
@@ -796,7 +796,7 @@ mod tests {
         let (panel_tx, _panel_rx) = tokio::sync::mpsc::unbounded_channel();
 
         let model = "test-model".to_string();
-        let cwd = std::env::current_dir().unwrap().to_string_lossy().to_string();
+        let cwd = std::env::current_dir().expect("failed to get current dir").to_string_lossy().to_string();
         let theme = crate::tui::theme::Theme::dark();
         let mut app = crate::tui::app::App::new(model, cwd, theme);
 

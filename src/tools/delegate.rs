@@ -252,7 +252,6 @@ const RETRY_BACKOFF_MS: u64 = 500;
 /// Uses a shared endpoint (created lazily on first call) and retries transient
 /// connection failures with exponential backoff. Streams text deltas to the
 /// subagent panel in real-time via `send_rpc_streaming`.
-
 async fn run_remote_worker(
     worker_name: &str,
     task: &str,
@@ -363,11 +362,10 @@ async fn retry_remote_call(
 
     for attempt in 0..=MAX_RETRIES {
         // Exponential backoff before retries
-        if attempt > 0 {
-            if let Err(result) = wait_for_retry(attempt, sub_id, panel_tx, &signal).await {
+        if attempt > 0
+            && let Err(result) = wait_for_retry(attempt, sub_id, panel_tx, &signal).await {
                 return result;
             }
-        }
 
         // Attempt the RPC call
         match try_remote_call(endpoint, remote, request, sub_id, panel_tx, &signal).await {
@@ -435,7 +433,7 @@ async fn try_remote_call(
 
     let result = tokio::select! {
         res = iroh::send_rpc_streaming(endpoint, remote, request, move |notification| {
-            handle_streaming_notification(&notification, &sub_id_clone, panel_tx_clone.as_ref());
+            handle_streaming_notification(notification, &sub_id_clone, panel_tx_clone.as_ref());
         }) => res.map(|(_, response)| response),
         () = signal.cancelled() => {
             if let Some(tx) = panel_tx {

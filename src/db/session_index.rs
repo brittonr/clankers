@@ -195,8 +195,8 @@ impl<'db> SessionIndex<'db> {
 mod tests {
     use super::*;
 
-    fn test_db() -> Db {
-        Db::in_memory().unwrap()
+    fn test_db() -> Result<Db> {
+        Db::in_memory()
     }
 
     fn make_entry(id: &str, cwd: &str, prompt: &str) -> SessionIndexEntry {
@@ -214,147 +214,158 @@ mod tests {
     }
 
     #[test]
-    fn test_upsert_and_get() {
-        let db = test_db();
+    fn test_upsert_and_get() -> Result<()> {
+        let db = test_db()?;
         let idx = db.sessions();
 
         let entry = make_entry("abc123", "/home/user/proj", "fix the bug");
-        idx.upsert(&entry).unwrap();
+        idx.upsert(&entry)?;
 
-        let got = idx.get("abc123").unwrap().unwrap();
+        let got = idx.get("abc123")?.expect("entry should exist");
         assert_eq!(got.session_id, "abc123");
         assert_eq!(got.cwd, "/home/user/proj");
         assert_eq!(got.first_prompt, "fix the bug");
+        Ok(())
     }
 
     #[test]
-    fn test_upsert_overwrites() {
-        let db = test_db();
+    fn test_upsert_overwrites() -> Result<()> {
+        let db = test_db()?;
         let idx = db.sessions();
 
         let mut entry = make_entry("abc123", "/proj", "original");
-        idx.upsert(&entry).unwrap();
+        idx.upsert(&entry)?;
 
         entry.message_count = 20;
         entry.first_prompt = "updated".into();
-        idx.upsert(&entry).unwrap();
+        idx.upsert(&entry)?;
 
-        let got = idx.get("abc123").unwrap().unwrap();
+        let got = idx.get("abc123")?.expect("entry should exist");
         assert_eq!(got.message_count, 20);
         assert_eq!(got.first_prompt, "updated");
+        Ok(())
     }
 
     #[test]
-    fn test_get_missing() {
-        let db = test_db();
-        assert!(db.sessions().get("nonexistent").unwrap().is_none());
+    fn test_get_missing() -> Result<()> {
+        let db = test_db()?;
+        assert!(db.sessions().get("nonexistent")?.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_remove() {
-        let db = test_db();
+    fn test_remove() -> Result<()> {
+        let db = test_db()?;
         let idx = db.sessions();
 
-        idx.upsert(&make_entry("abc", "/proj", "prompt")).unwrap();
-        assert!(idx.remove("abc").unwrap());
-        assert!(!idx.remove("abc").unwrap());
-        assert!(idx.get("abc").unwrap().is_none());
+        idx.upsert(&make_entry("abc", "/proj", "prompt"))?;
+        assert!(idx.remove("abc")?);
+        assert!(!idx.remove("abc")?);
+        assert!(idx.get("abc")?.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_list_by_cwd() {
-        let db = test_db();
+    fn test_list_by_cwd() -> Result<()> {
+        let db = test_db()?;
         let idx = db.sessions();
 
-        idx.upsert(&make_entry("s1", "/proj-a", "prompt 1")).unwrap();
-        idx.upsert(&make_entry("s2", "/proj-a", "prompt 2")).unwrap();
-        idx.upsert(&make_entry("s3", "/proj-b", "prompt 3")).unwrap();
+        idx.upsert(&make_entry("s1", "/proj-a", "prompt 1"))?;
+        idx.upsert(&make_entry("s2", "/proj-a", "prompt 2"))?;
+        idx.upsert(&make_entry("s3", "/proj-b", "prompt 3"))?;
 
-        let proj_a = idx.list_by_cwd("/proj-a").unwrap();
+        let proj_a = idx.list_by_cwd("/proj-a")?;
         assert_eq!(proj_a.len(), 2);
 
-        let proj_b = idx.list_by_cwd("/proj-b").unwrap();
+        let proj_b = idx.list_by_cwd("/proj-b")?;
         assert_eq!(proj_b.len(), 1);
 
-        let proj_c = idx.list_by_cwd("/proj-c").unwrap();
+        let proj_c = idx.list_by_cwd("/proj-c")?;
         assert!(proj_c.is_empty());
+        Ok(())
     }
 
     #[test]
-    fn test_list_all() {
-        let db = test_db();
+    fn test_list_all() -> Result<()> {
+        let db = test_db()?;
         let idx = db.sessions();
 
-        idx.upsert(&make_entry("s1", "/a", "p1")).unwrap();
-        idx.upsert(&make_entry("s2", "/b", "p2")).unwrap();
+        idx.upsert(&make_entry("s1", "/a", "p1"))?;
+        idx.upsert(&make_entry("s2", "/b", "p2"))?;
 
-        let all = idx.list_all().unwrap();
+        let all = idx.list_all()?;
         assert_eq!(all.len(), 2);
+        Ok(())
     }
 
     #[test]
-    fn test_search() {
-        let db = test_db();
+    fn test_search() -> Result<()> {
+        let db = test_db()?;
         let idx = db.sessions();
 
-        idx.upsert(&make_entry("s1", "/proj", "fix the login bug")).unwrap();
-        idx.upsert(&make_entry("s2", "/proj", "add new feature")).unwrap();
-        idx.upsert(&make_entry("s3", "/proj", "refactor auth module")).unwrap();
+        idx.upsert(&make_entry("s1", "/proj", "fix the login bug"))?;
+        idx.upsert(&make_entry("s2", "/proj", "add new feature"))?;
+        idx.upsert(&make_entry("s3", "/proj", "refactor auth module"))?;
 
-        let results = idx.search("bug").unwrap();
+        let results = idx.search("bug")?;
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].session_id, "s1");
 
-        let results = idx.search("auth").unwrap();
+        let results = idx.search("auth")?;
         assert_eq!(results.len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn test_search_by_session_id() {
-        let db = test_db();
+    fn test_search_by_session_id() -> Result<()> {
+        let db = test_db()?;
         let idx = db.sessions();
 
-        idx.upsert(&make_entry("abc123", "/proj", "some prompt")).unwrap();
+        idx.upsert(&make_entry("abc123", "/proj", "some prompt"))?;
 
-        let results = idx.search("abc").unwrap();
+        let results = idx.search("abc")?;
         assert_eq!(results.len(), 1);
+        Ok(())
     }
 
     #[test]
-    fn test_find_by_partial_id() {
-        let db = test_db();
+    fn test_find_by_partial_id() -> Result<()> {
+        let db = test_db()?;
         let idx = db.sessions();
 
-        idx.upsert(&make_entry("abc123def", "/proj", "prompt")).unwrap();
-        idx.upsert(&make_entry("xyz789ghi", "/proj", "prompt")).unwrap();
+        idx.upsert(&make_entry("abc123def", "/proj", "prompt"))?;
+        idx.upsert(&make_entry("xyz789ghi", "/proj", "prompt"))?;
 
-        let found = idx.find_by_partial_id("abc123").unwrap().unwrap();
+        let found = idx.find_by_partial_id("abc123")?.expect("entry should exist");
         assert_eq!(found.session_id, "abc123def");
 
-        assert!(idx.find_by_partial_id("qqq").unwrap().is_none());
+        assert!(idx.find_by_partial_id("qqq")?.is_none());
+        Ok(())
     }
 
     #[test]
-    fn test_count() {
-        let db = test_db();
+    fn test_count() -> Result<()> {
+        let db = test_db()?;
         let idx = db.sessions();
 
-        assert_eq!(idx.count().unwrap(), 0);
-        idx.upsert(&make_entry("s1", "/a", "p")).unwrap();
-        idx.upsert(&make_entry("s2", "/b", "p")).unwrap();
-        assert_eq!(idx.count().unwrap(), 2);
+        assert_eq!(idx.count()?, 0);
+        idx.upsert(&make_entry("s1", "/a", "p"))?;
+        idx.upsert(&make_entry("s2", "/b", "p"))?;
+        assert_eq!(idx.count()?, 2);
+        Ok(())
     }
 
     #[test]
-    fn test_clear() {
-        let db = test_db();
+    fn test_clear() -> Result<()> {
+        let db = test_db()?;
         let idx = db.sessions();
 
-        idx.upsert(&make_entry("s1", "/a", "p")).unwrap();
-        idx.upsert(&make_entry("s2", "/b", "p")).unwrap();
+        idx.upsert(&make_entry("s1", "/a", "p"))?;
+        idx.upsert(&make_entry("s2", "/b", "p"))?;
 
-        let cleared = idx.clear().unwrap();
+        let cleared = idx.clear()?;
         assert_eq!(cleared, 2);
-        assert_eq!(idx.count().unwrap(), 0);
+        assert_eq!(idx.count()?, 0);
+        Ok(())
     }
 }

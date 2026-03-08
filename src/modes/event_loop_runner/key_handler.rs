@@ -191,39 +191,46 @@ impl<'a> EventLoopRunner<'a> {
 
         // Delegate to focused panel's handle_key_event
         if let Some(focused_id) = self.app.layout.focused_panel {
-            let result = self.app.panel_mut(focused_id).handle_key_event(key);
-            match result {
-                Some(PanelAction::Consumed) => return true,
-                Some(PanelAction::Unfocus) => {
-                    self.app.unfocus_panel();
-                    return true;
-                }
-                Some(PanelAction::SlashCommand(_cmd)) => return true,
-                Some(PanelAction::SwitchBranch(block_id)) => {
-                    self.app.switch_to_branch(block_id);
-                    self.app
-                        .push_system(format!("Switched to branch at block #{}", block_id), false);
-                    return true;
-                }
-                Some(PanelAction::FocusPanel(id)) => {
-                    self.app.focus_panel(id);
-                    return true;
-                }
-                Some(PanelAction::FocusSubagent(ref subagent_id)) => {
-                    if self
-                        .app
-                        .layout
-                        .subagent_panes
-                        .pane_id_for(subagent_id)
-                        .is_some()
-                    {
-                        self.app.focus_subagent(subagent_id);
-                    } else {
-                        super::subagent_panel(self.app).open_detail();
+            if let Some(panel) = self.app.panel_mut(focused_id) {
+                let result = panel.handle_key_event(key);
+                match result {
+                    Some(PanelAction::Consumed) => return true,
+                    Some(PanelAction::Unfocus) => {
+                        self.app.unfocus_panel();
+                        return true;
                     }
-                    return true;
+                    Some(PanelAction::SlashCommand(_cmd)) => return true,
+                    Some(PanelAction::SwitchBranch(block_id)) => {
+                        self.app.switch_to_branch(block_id);
+                        self.app
+                            .push_system(format!("Switched to branch at block #{}", block_id), false);
+                        return true;
+                    }
+                    Some(PanelAction::FocusPanel(id)) => {
+                        self.app.focus_panel(id);
+                        return true;
+                    }
+                    Some(PanelAction::FocusSubagent(ref subagent_id)) => {
+                        if self
+                            .app
+                            .layout
+                            .subagent_panes
+                            .pane_id_for(subagent_id)
+                            .is_some()
+                        {
+                            self.app.focus_subagent(subagent_id);
+                        } else {
+                            super::subagent_panel(self.app).open_detail();
+                        }
+                        return true;
+                    }
+                    None => {}
                 }
-                None => {}
+            } else {
+                // Panel not registered - unfocus and log error
+                tracing::error!(panel_id = ?focused_id, "focused panel not found, unfocusing");
+                self.app.unfocus_panel();
+                return true;
             }
         }
 

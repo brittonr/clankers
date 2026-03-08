@@ -154,139 +154,147 @@ mod tests {
     use super::*;
     use redb::backends::InMemoryBackend;
 
-    fn mem_db() -> redb::Database {
+    fn mem_db() -> Result<redb::Database> {
         redb::Database::builder()
             .create_with_backend(InMemoryBackend::new())
-            .unwrap()
+            .map_err(db_err)
     }
 
     #[test]
-    fn fresh_database_migrates_to_current() {
-        let db = mem_db();
-        migrate(&db).unwrap();
-        assert_eq!(read_version(&db).unwrap(), CURRENT_VERSION);
+    fn fresh_database_migrates_to_current() -> Result<()> {
+        let db = mem_db()?;
+        migrate(&db)?;
+        assert_eq!(read_version(&db)?, CURRENT_VERSION);
+        Ok(())
     }
 
     #[test]
-    fn migration_is_idempotent() {
-        let db = mem_db();
-        migrate(&db).unwrap();
-        migrate(&db).unwrap();
-        migrate(&db).unwrap();
-        assert_eq!(read_version(&db).unwrap(), CURRENT_VERSION);
+    fn migration_is_idempotent() -> Result<()> {
+        let db = mem_db()?;
+        migrate(&db)?;
+        migrate(&db)?;
+        migrate(&db)?;
+        assert_eq!(read_version(&db)?, CURRENT_VERSION);
+        Ok(())
     }
 
     #[test]
-    fn already_current_is_noop() {
-        let db = mem_db();
-        migrate(&db).unwrap();
+    fn already_current_is_noop() -> Result<()> {
+        let db = mem_db()?;
+        migrate(&db)?;
 
         // Write something to a table, then re-migrate — data should survive.
         {
-            let tx = db.begin_write().unwrap();
+            let tx = db.begin_write().map_err(db_err)?;
             {
                 let mut table = tx
                     .open_table(crate::db::memory::TABLE)
-                    .unwrap();
-                table.insert(42u64, b"test".as_slice()).unwrap();
+                    .map_err(db_err)?;
+                table.insert(42u64, b"test".as_slice()).map_err(db_err)?;
             }
-            tx.commit().unwrap();
+            tx.commit().map_err(db_err)?;
         }
 
-        migrate(&db).unwrap();
+        migrate(&db)?;
 
-        let tx = db.begin_read().unwrap();
-        let table = tx.open_table(crate::db::memory::TABLE).unwrap();
-        assert!(table.get(42u64).unwrap().is_some());
+        let tx = db.begin_read().map_err(db_err)?;
+        let table = tx.open_table(crate::db::memory::TABLE).map_err(db_err)?;
+        assert!(table.get(42u64).map_err(db_err)?.is_some());
+        Ok(())
     }
 
     #[test]
-    fn future_version_rejected() {
-        let db = mem_db();
-        migrate(&db).unwrap();
+    fn future_version_rejected() -> Result<()> {
+        let db = mem_db()?;
+        migrate(&db)?;
 
         // Manually set a future version.
         {
-            let tx = db.begin_write().unwrap();
+            let tx = db.begin_write().map_err(db_err)?;
             {
-                let mut table = tx.open_table(META_TABLE).unwrap();
+                let mut table = tx.open_table(META_TABLE).map_err(db_err)?;
                 let future = (CURRENT_VERSION + 10).to_le_bytes();
-                table.insert(VERSION_KEY, future.as_slice()).unwrap();
+                table.insert(VERSION_KEY, future.as_slice()).map_err(db_err)?;
             }
-            tx.commit().unwrap();
+            tx.commit().map_err(db_err)?;
         }
 
-        let err = migrate(&db).unwrap_err();
+        let err = migrate(&db).expect_err("should fail with future version");
         let msg = err.to_string();
         assert!(msg.contains("newer than this binary"), "got: {msg}");
+        Ok(())
     }
 
     #[test]
-    fn legacy_database_gets_versioned() {
-        let db = mem_db();
+    fn legacy_database_gets_versioned() -> Result<()> {
+        let db = mem_db()?;
 
         // Simulate a legacy database: tables exist but no _meta table.
         {
-            let tx = db.begin_write().unwrap();
-            tx.open_table(crate::db::audit::TABLE).unwrap();
-            tx.open_table(crate::db::memory::TABLE).unwrap();
-            tx.open_table(crate::db::session_index::TABLE).unwrap();
-            tx.open_table(crate::db::history::TABLE).unwrap();
-            tx.open_table(crate::db::usage::TABLE).unwrap();
-            tx.open_table(crate::worktree::registry::TABLE).unwrap();
-            tx.commit().unwrap();
+            let tx = db.begin_write().map_err(db_err)?;
+            tx.open_table(crate::db::audit::TABLE).map_err(db_err)?;
+            tx.open_table(crate::db::memory::TABLE).map_err(db_err)?;
+            tx.open_table(crate::db::session_index::TABLE).map_err(db_err)?;
+            tx.open_table(crate::db::history::TABLE).map_err(db_err)?;
+            tx.open_table(crate::db::usage::TABLE).map_err(db_err)?;
+            tx.open_table(crate::worktree::registry::TABLE).map_err(db_err)?;
+            tx.commit().map_err(db_err)?;
         }
 
         // No _meta table → version 0.
-        assert_eq!(read_version(&db).unwrap(), 0);
+        assert_eq!(read_version(&db)?, 0);
 
         // Migrate should stamp it as v1 without breaking existing tables.
-        migrate(&db).unwrap();
-        assert_eq!(read_version(&db).unwrap(), 1);
+        migrate(&db)?;
+        assert_eq!(read_version(&db)?, 1);
+        Ok(())
     }
 
     #[test]
-    fn all_tables_exist_after_migration() {
-        let db = mem_db();
-        migrate(&db).unwrap();
+    fn all_tables_exist_after_migration() -> Result<()> {
+        let db = mem_db()?;
+        migrate(&db)?;
 
-        let tx = db.begin_read().unwrap();
+        let tx = db.begin_read().map_err(db_err)?;
         // All 6 data tables + _meta should be openable.
-        tx.open_table(crate::db::audit::TABLE).unwrap();
-        tx.open_table(crate::db::memory::TABLE).unwrap();
-        tx.open_table(crate::db::session_index::TABLE).unwrap();
-        tx.open_table(crate::db::history::TABLE).unwrap();
-        tx.open_table(crate::db::usage::TABLE).unwrap();
-        tx.open_table(crate::worktree::registry::TABLE).unwrap();
-        tx.open_table(META_TABLE).unwrap();
+        tx.open_table(crate::db::audit::TABLE).map_err(db_err)?;
+        tx.open_table(crate::db::memory::TABLE).map_err(db_err)?;
+        tx.open_table(crate::db::session_index::TABLE).map_err(db_err)?;
+        tx.open_table(crate::db::history::TABLE).map_err(db_err)?;
+        tx.open_table(crate::db::usage::TABLE).map_err(db_err)?;
+        tx.open_table(crate::worktree::registry::TABLE).map_err(db_err)?;
+        tx.open_table(META_TABLE).map_err(db_err)?;
+        Ok(())
     }
 
     #[test]
-    fn version_helper_reads_current() {
-        let db = mem_db();
-        assert_eq!(version(&db).unwrap(), 0);
-        migrate(&db).unwrap();
-        assert_eq!(version(&db).unwrap(), CURRENT_VERSION);
+    fn version_helper_reads_current() -> Result<()> {
+        let db = mem_db()?;
+        assert_eq!(version(&db)?, 0);
+        migrate(&db)?;
+        assert_eq!(version(&db)?, CURRENT_VERSION);
+        Ok(())
     }
 
     #[test]
-    fn corrupted_version_treated_as_zero() {
-        let db = mem_db();
+    fn corrupted_version_treated_as_zero() -> Result<()> {
+        let db = mem_db()?;
 
         // Write garbage into the version key.
         {
-            let tx = db.begin_write().unwrap();
+            let tx = db.begin_write().map_err(db_err)?;
             {
-                let mut table = tx.open_table(META_TABLE).unwrap();
-                table.insert(VERSION_KEY, b"bad".as_slice()).unwrap();
+                let mut table = tx.open_table(META_TABLE).map_err(db_err)?;
+                table.insert(VERSION_KEY, b"bad".as_slice()).map_err(db_err)?;
             }
-            tx.commit().unwrap();
+            tx.commit().map_err(db_err)?;
         }
 
         // Should read as 0 and re-migrate cleanly.
-        assert_eq!(read_version(&db).unwrap(), 0);
-        migrate(&db).unwrap();
-        assert_eq!(read_version(&db).unwrap(), CURRENT_VERSION);
+        assert_eq!(read_version(&db)?, 0);
+        migrate(&db)?;
+        assert_eq!(read_version(&db)?, CURRENT_VERSION);
+        Ok(())
     }
 
     #[test]

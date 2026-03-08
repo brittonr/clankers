@@ -226,10 +226,9 @@ impl MergeDaemon {
                 // All conflicts resolved by LLM
                 self.commit_and_cleanup(db, branches, "graggle + LLM merge clean")?;
                 return Ok(branches.len());
-            } else {
-                warn!(?unresolved, "LLM could not resolve all conflicts — needs human review");
-                self.mark_needs_review(db, branches)?;
             }
+            warn!(?unresolved, "LLM could not resolve all conflicts — needs human review");
+            self.mark_needs_review(db, branches)?;
         } else {
             warn!(
                 ?conflicting_files,

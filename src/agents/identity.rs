@@ -334,15 +334,15 @@ mod tests {
 
     #[test]
     fn test_identity_store_roundtrip() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let store = IdentityStore::open(&tmp.path().join("agents.redb")).unwrap();
+        let tmp = tempfile::TempDir::new().expect("Failed to create temp directory");
+        let store = IdentityStore::open(&tmp.path().join("agents.redb")).expect("Failed to open store");
 
         let mut agent = AgentIdentity::new("scout-1", "scout").with_tags(["rust", "grep"]);
         agent.record_work("find TODO", WorkOutcome::Success, Duration::from_secs(5), None);
 
-        store.put(&agent).unwrap();
+        store.put(&agent).expect("Failed to save agent");
 
-        let loaded = store.get(&agent.id).unwrap().unwrap();
+        let loaded = store.get(&agent.id).expect("Failed to load agent").expect("Agent not found");
         assert_eq!(loaded.name, "scout-1");
         assert_eq!(loaded.stats.total_tasks, 1);
         assert!(loaded.has_tag("rust"));
@@ -350,27 +350,27 @@ mod tests {
 
     #[test]
     fn test_identity_store_list_and_find() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let store = IdentityStore::open(&tmp.path().join("agents.redb")).unwrap();
+        let tmp = tempfile::TempDir::new().expect("Failed to create temp directory");
+        let store = IdentityStore::open(&tmp.path().join("agents.redb")).expect("Failed to open store");
 
         let a1 = AgentIdentity::new("rust-dev", "builder").with_tags(["rust", "backend"]);
         let a2 = AgentIdentity::new("js-dev", "builder").with_tags(["javascript", "frontend"]);
         let a3 = AgentIdentity::new("fullstack", "builder").with_tags(["rust", "javascript"]);
 
-        store.put(&a1).unwrap();
-        store.put(&a2).unwrap();
-        store.put(&a3).unwrap();
+        store.put(&a1).expect("Failed to save agent a1");
+        store.put(&a2).expect("Failed to save agent a2");
+        store.put(&a3).expect("Failed to save agent a3");
 
-        assert_eq!(store.list().unwrap().len(), 3);
-        assert_eq!(store.find_by_tag("rust").unwrap().len(), 2);
-        assert_eq!(store.find_by_tag("javascript").unwrap().len(), 2);
-        assert_eq!(store.find_by_tag("python").unwrap().len(), 0);
+        assert_eq!(store.list().expect("Failed to list agents").len(), 3);
+        assert_eq!(store.find_by_tag("rust").expect("Failed to find rust agents").len(), 2);
+        assert_eq!(store.find_by_tag("javascript").expect("Failed to find javascript agents").len(), 2);
+        assert_eq!(store.find_by_tag("python").expect("Failed to find python agents").len(), 0);
     }
 
     #[test]
     fn test_identity_store_best_for_tag() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let store = IdentityStore::open(&tmp.path().join("agents.redb")).unwrap();
+        let tmp = tempfile::TempDir::new().expect("Failed to create temp directory");
+        let store = IdentityStore::open(&tmp.path().join("agents.redb")).expect("Failed to open store");
 
         let mut good = AgentIdentity::new("good-worker", "default").with_tags(["rust"]);
         for _ in 0..10 {
@@ -385,27 +385,27 @@ mod tests {
             mediocre.record_work("task", WorkOutcome::Failure, Duration::from_secs(1), None);
         }
 
-        store.put(&good).unwrap();
-        store.put(&mediocre).unwrap();
+        store.put(&good).expect("Failed to save good worker");
+        store.put(&mediocre).expect("Failed to save mediocre worker");
 
-        let best = store.best_for_tag("rust").unwrap().unwrap();
+        let best = store.best_for_tag("rust").expect("Failed to find best agent").expect("No best agent found");
         assert_eq!(best.name, "good-worker");
         assert!((best.stats.success_rate() - 1.0).abs() < 0.001);
     }
 
     #[test]
     fn test_identity_store_delete() {
-        let tmp = tempfile::TempDir::new().unwrap();
-        let store = IdentityStore::open(&tmp.path().join("agents.redb")).unwrap();
+        let tmp = tempfile::TempDir::new().expect("Failed to create temp directory");
+        let store = IdentityStore::open(&tmp.path().join("agents.redb")).expect("Failed to open store");
 
         let agent = AgentIdentity::new("ephemeral", "default");
         let id = agent.id.clone();
-        store.put(&agent).unwrap();
+        store.put(&agent).expect("Failed to save agent");
 
-        assert!(store.get(&id).unwrap().is_some());
-        assert!(store.delete(&id).unwrap());
-        assert!(store.get(&id).unwrap().is_none());
-        assert!(!store.delete(&id).unwrap()); // already gone
+        assert!(store.get(&id).expect("Failed to get agent").is_some());
+        assert!(store.delete(&id).expect("Failed to delete agent"));
+        assert!(store.get(&id).expect("Failed to get agent after delete").is_none());
+        assert!(!store.delete(&id).expect("Failed to delete already-deleted agent")); // already gone
     }
 
     #[test]
@@ -418,8 +418,8 @@ mod tests {
     #[test]
     fn test_identity_serialization() {
         let agent = AgentIdentity::new("test", "default").with_tags(["a", "b"]);
-        let json = serde_json::to_string(&agent).unwrap();
-        let parsed: AgentIdentity = serde_json::from_str(&json).unwrap();
+        let json = serde_json::to_string(&agent).expect("Failed to serialize agent");
+        let parsed: AgentIdentity = serde_json::from_str(&json).expect("Failed to deserialize agent");
         assert_eq!(parsed.name, "test");
         assert_eq!(parsed.tags, vec!["a", "b"]);
     }
