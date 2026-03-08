@@ -27,6 +27,11 @@ pub fn confirm_channel() -> (ConfirmTx, ConfirmRx) {
 }
 
 /// Patterns that trigger a confirmation prompt before execution.
+/// 
+/// Note: The .unwrap() calls on Regex::new() are safe here because these are
+/// compile-time constant patterns that are validated during development.
+/// A regex compilation failure would be caught immediately during testing.
+/// LazyLock initialization happens once at static init time, not in hot paths.
 static DANGEROUS_PATTERNS: std::sync::LazyLock<Vec<(Regex, &'static str)>> = std::sync::LazyLock::new(|| {
     vec![
         (Regex::new(r"\brm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+|.*-rf\b|.*--force\b)").unwrap(), "forced removal"),
@@ -107,19 +112,10 @@ impl Default for BashTool {
     }
 }
 
-#[async_trait]
-impl Tool for BashTool {
-    fn definition(&self) -> &ToolDefinition {
-        &self.definition
-    }
-
-    async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
-        let command = match params.get("command").and_then(|v| v.as_str()) {
-            Some(c) => c,
-            None => return ToolResult::error("Missing required parameter: command"),
-        };
-
-        // Check for dangerous commands
+impl BashTool {
+    /// Check if a command is dangerous and request user confirmation if needed.
+    /// Returns Ok(()) if safe or approved, Err(ToolResult) if blocked.
+    async fn check_and_confirm_dangerous(&self, command: &str) -> Result<(), ToolResult> {
         if let Some(reason) = check_dangerous(command) {
             if let Some(ref tx) = self.confirm_tx {
                 let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
@@ -128,27 +124,29 @@ impl Tool for BashTool {
                     match resp_rx.await {
                         Ok(true) => { /* approved, continue */ }
                         _ => {
-                            return ToolResult::error(format!(
+                            return Err(ToolResult::error(format!(
                                 "Command blocked by user ({}). Rephrase the command or ask the user for approval.",
                                 reason
-                            ));
+                            )));
                         }
                     }
                 }
             } else {
                 // No confirm channel (headless mode) — block with explanation
-                return ToolResult::error(format!(
+                return Err(ToolResult::error(format!(
                     "⚠️  Dangerous command blocked ({}): {}\n\
                      This command was flagged as potentially destructive. \
                      In interactive mode, a confirmation prompt would appear. \
                      In headless mode, such commands are blocked by default.",
                     reason, command
-                ));
+                )));
             }
         }
+        Ok(())
+    }
 
-        let timeout_secs = params.get("timeout").and_then(|v| v.as_u64()).unwrap_or(0);
-
+    /// Spawn a bash child process with sanitized environment and sandboxing.
+    fn spawn_command(&self, command: &str) -> Result<tokio::process::Child, ToolResult> {
         // Build sanitized environment (strips secrets, API keys, SSH agent, etc.)
         let clean_env = crate::tools::sandbox::sanitized_env();
 
@@ -177,32 +175,23 @@ impl Tool for BashTool {
             }
         }
 
-        let mut child = match cmd.spawn() {
-            Ok(c) => c,
-            Err(e) => return ToolResult::error(format!("Failed to spawn bash: {}", e)),
-        };
+        cmd.spawn()
+            .map_err(|e| ToolResult::error(format!("Failed to spawn bash: {}", e)))
+    }
 
-        // Register process with monitor
-        if let Some(ref monitor) = self.process_monitor
-            && let Some(pid) = child.id() {
-                let command_preview: String = command.chars().take(200).collect();
-                monitor.register(pid, crate::procmon::ProcessMeta {
-                    tool_name: "bash".to_string(),
-                    command: command_preview,
-                    call_id: ctx.call_id.clone(),
-                });
-            }
+    /// Stream stdout and stderr from a child process, emitting progress and collecting output.
+    /// Returns (collected_output, line_count).
+    async fn stream_output(
+        &self,
+        child: &mut tokio::process::Child,
+        ctx: &ToolContext,
+        timeout_secs: u64,
+    ) -> Result<(String, usize), ToolResult> {
+        let stdout = child.stdout.take()
+            .ok_or_else(|| ToolResult::error("Failed to capture stdout from child process"))?;
+        let stderr = child.stderr.take()
+            .ok_or_else(|| ToolResult::error("Failed to capture stderr from child process"))?;
 
-        let stdout = match child.stdout.take() {
-            Some(s) => s,
-            None => return ToolResult::error("Failed to capture stdout from child process"),
-        };
-        let stderr = match child.stderr.take() {
-            Some(s) => s,
-            None => return ToolResult::error("Failed to capture stderr from child process"),
-        };
-
-        // Stream both stdout and stderr line-by-line
         let mut stdout_reader = BufReader::new(stdout).lines();
         let mut stderr_reader = BufReader::new(stderr).lines();
 
@@ -223,14 +212,14 @@ impl Tool for BashTool {
             {
                 let _ = child.start_kill();
                 ctx.emit_structured_progress(ToolProgress::phase("Timeout", 1, Some(1)));
-                return ToolResult::error(format!("Command timeout after {}s", timeout_secs));
+                return Err(ToolResult::error(format!("Command timeout after {}s", timeout_secs)));
             }
 
             tokio::select! {
                 () = ctx.signal.cancelled() => {
                     let _ = child.start_kill();
                     ctx.emit_structured_progress(ToolProgress::phase("Cancelling", 1, Some(1)));
-                    return ToolResult::error("Command cancelled");
+                    return Err(ToolResult::error("Command cancelled"));
                 }
                 line = stdout_reader.next_line() => {
                     match line {
@@ -260,7 +249,7 @@ impl Tool for BashTool {
                             }
                             break;
                         }
-                        Err(e) => return ToolResult::error(format!("Read error: {}", e)),
+                        Err(e) => return Err(ToolResult::error(format!("Read error: {}", e))),
                     }
                 }
                 line = stderr_reader.next_line() => {
@@ -291,26 +280,22 @@ impl Tool for BashTool {
                             }
                             break;
                         }
-                        Err(e) => return ToolResult::error(format!("Read error: {}", e)),
+                        Err(e) => return Err(ToolResult::error(format!("Read error: {}", e))),
                     }
                 }
             }
         }
 
-        let status = match child.wait().await {
-            Ok(s) => s,
-            Err(e) => return ToolResult::error(format!("Failed to wait for command: {}", e)),
-        };
+        Ok((collected, line_count))
+    }
 
-        // Apply truncation to final result
+    /// Format the final tool result with truncation and exit code handling.
+    fn format_result(&self, collected_output: String, exit_code: i32) -> ToolResult {
         const MAX_LINES: usize = 2000;
         const MAX_BYTES: usize = 50 * 1024;
 
-        let _ = line_count; // used for streaming; truncation re-checks
         let (truncated_output, full_output_path) =
-            crate::tools::truncation::truncate_tail(&collected, MAX_LINES, MAX_BYTES);
-
-        let exit_code = status.code().unwrap_or(-1);
+            crate::tools::truncation::truncate_tail(&collected_output, MAX_LINES, MAX_BYTES);
 
         let result_text = if exit_code == 0 {
             truncated_output
@@ -328,6 +313,61 @@ impl Tool for BashTool {
         }
 
         result
+    }
+}
+
+#[async_trait]
+impl Tool for BashTool {
+    fn definition(&self) -> &ToolDefinition {
+        &self.definition
+    }
+
+    async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
+        // Parse parameters
+        let command = match params.get("command").and_then(|v| v.as_str()) {
+            Some(c) => c,
+            None => return ToolResult::error("Missing required parameter: command"),
+        };
+        let timeout_secs = params.get("timeout").and_then(|v| v.as_u64()).unwrap_or(0);
+
+        // Check for dangerous commands and request confirmation if needed
+        if let Err(result) = self.check_and_confirm_dangerous(command).await {
+            return result;
+        }
+
+        // Spawn the bash child process with sandboxing
+        let mut child = match self.spawn_command(command) {
+            Ok(c) => c,
+            Err(result) => return result,
+        };
+
+        // Register process with monitor
+        if let Some(ref monitor) = self.process_monitor
+            && let Some(pid) = child.id() {
+                let command_preview: String = command.chars().take(200).collect();
+                monitor.register(pid, crate::procmon::ProcessMeta {
+                    tool_name: "bash".to_string(),
+                    command: command_preview,
+                    call_id: ctx.call_id.clone(),
+                });
+            }
+
+        // Stream output from the child process
+        let (collected_output, _line_count) = match self.stream_output(&mut child, ctx, timeout_secs).await {
+            Ok(result) => result,
+            Err(result) => return result,
+        };
+
+        // Wait for the process to exit
+        let status = match child.wait().await {
+            Ok(s) => s,
+            Err(e) => return ToolResult::error(format!("Failed to wait for command: {}", e)),
+        };
+
+        let exit_code = status.code().unwrap_or(-1);
+
+        // Format and return the final result
+        self.format_result(collected_output, exit_code)
     }
 }
 

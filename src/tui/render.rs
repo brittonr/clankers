@@ -59,47 +59,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     // ── Render each pane ────────────────────────────────────────────
 
-    // Collect pane snapshots first (to avoid borrow conflicts with app).
-    let pane_snapshots: Vec<_> = app.layout.tiling.panes();
-    let theme = app.theme.clone();
-    let mut chat_area = Rect::default();
-    let mut chat_focused = false;
-
-    for pane in &pane_snapshots {
-        match app.layout.pane_registry.kind(pane.id) {
-            Some(PaneKind::Panel(panel_id)) => {
-                let panel_id = *panel_id;
-                let focused = app.is_panel_focused(panel_id);
-                let ctx = DrawContext {
-                    theme: &theme,
-                    focused,
-                };
-                let panel = app.panel_mut(panel_id);
-                crate::tui::panel::draw_panel_scrolled(frame, panel, pane.rect, &ctx);
-            }
-            Some(PaneKind::Subagent(id)) => {
-                let id = id.clone();
-                let focused = app.layout.focused_subagent.as_deref() == Some(&id);
-                let ctx = DrawContext {
-                    theme: &theme,
-                    focused,
-                };
-                app.layout.subagent_panes.draw(&id, frame, pane.rect, &ctx);
-            }
-            Some(PaneKind::Chat) => {
-                chat_area = pane.rect;
-                chat_focused = !app.has_panel_focus();
-            }
-            Some(PaneKind::Empty) | None => {
-                // Render placeholder for empty/unknown panes
-                let block = Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::DarkGray))
-                    .title(Span::styled(" Empty ", Style::default().fg(Color::DarkGray)));
-                frame.render_widget(block, pane.rect);
-            }
-        }
-    }
+    let (chat_area, chat_focused) = render_side_panels(frame, app);
 
     // ── Main (chat) column layout ───────────────────────────────────
 
@@ -152,6 +112,58 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     // ── Overlays (rendered on top of everything) ────────────────────
 
+    render_chrome(frame, app);
+}
+
+/// Render side panels and return the chat area and focus state
+fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
+    // Collect pane snapshots first (to avoid borrow conflicts with app).
+    let pane_snapshots: Vec<_> = app.layout.tiling.panes();
+    let theme = app.theme.clone();
+    let mut chat_area = Rect::default();
+    let mut chat_focused = false;
+
+    for pane in &pane_snapshots {
+        match app.layout.pane_registry.kind(pane.id) {
+            Some(PaneKind::Panel(panel_id)) => {
+                let panel_id = *panel_id;
+                let focused = app.is_panel_focused(panel_id);
+                let ctx = DrawContext {
+                    theme: &theme,
+                    focused,
+                };
+                let panel = app.panel_mut(panel_id);
+                crate::tui::panel::draw_panel_scrolled(frame, panel, pane.rect, &ctx);
+            }
+            Some(PaneKind::Subagent(id)) => {
+                let id = id.clone();
+                let focused = app.layout.focused_subagent.as_deref() == Some(&id);
+                let ctx = DrawContext {
+                    theme: &theme,
+                    focused,
+                };
+                app.layout.subagent_panes.draw(&id, frame, pane.rect, &ctx);
+            }
+            Some(PaneKind::Chat) => {
+                chat_area = pane.rect;
+                chat_focused = !app.has_panel_focus();
+            }
+            Some(PaneKind::Empty) | None => {
+                // Render placeholder for empty/unknown panes
+                let block = Block::default()
+                    .borders(Borders::ALL)
+                    .border_style(Style::default().fg(Color::DarkGray))
+                    .title(Span::styled(" Empty ", Style::default().fg(Color::DarkGray)));
+                frame.render_widget(block, pane.rect);
+            }
+        }
+    }
+
+    (chat_area, chat_focused)
+}
+
+/// Render chrome: overlays, status bar, session popup, etc.
+fn render_chrome(frame: &mut Frame, app: &mut App) {
     session_panel::render_session_popup(frame, app, &app.theme.clone());
     cost_overlay::render_cost_overlay(frame, app.cost_tracker.as_ref(), app.overlays.cost_overlay_visible, &app.theme.clone());
     app.overlays.model_selector.render(frame, frame.area());
@@ -171,11 +183,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
 fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
     let inner_width = main_area.width.saturating_sub(2) as usize;
-    let indicator = match (app.state, app.input_mode) {
-        (AppState::Streaming, _) => "… ",
-        (_, crate::config::keybindings::InputMode::Normal) => "  ",
-        (_, crate::config::keybindings::InputMode::Insert) => "> ",
-    };
+    let indicator = compute_input_indicator(app.state, app.input_mode);
     let visual_lines = app.editor.visual_line_count(inner_width, indicator.len()) as u16;
     let editor_height = (visual_lines + 2).clamp(3, 10);
 
@@ -216,91 +224,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
 
     // ── Messages (block-oriented rendering) ─────────────────────────
 
-    // Build set of active block IDs for marking active branches
-    let active_block_ids: std::collections::HashSet<usize> = app
-        .conversation.blocks
-        .iter()
-        .filter_map(|e| match e {
-            crate::tui::components::block::BlockEntry::Conversation(b) => Some(b.id),
-            _ => None,
-        })
-        .collect();
-
-    let branch_info: std::collections::HashMap<usize, crate::tui::components::block_view::BlockBranchInfo> = app
-        .conversation.blocks
-        .iter()
-        .filter_map(|e| match e {
-            crate::tui::components::block::BlockEntry::Conversation(b) => {
-                let (sibling_index, sibling_total) = app.block_siblings(b.id);
-                let children_count = app.block_children_count(b.id);
-                // Collect child branch previews for branch points
-                let child_branch_previews = if children_count > 1 {
-                    app.conversation.all_blocks
-                        .iter()
-                        .filter(|c| c.parent_block_id == Some(b.id))
-                        .map(|c| {
-                            let preview: String = c.prompt.chars().take(40).collect();
-                            let preview = if c.prompt.len() > 40 {
-                                format!("{}…", preview)
-                            } else {
-                                preview
-                            };
-                            let is_active = active_block_ids.contains(&c.id);
-                            (c.id, preview, is_active)
-                        })
-                        .collect()
-                } else {
-                    Vec::new()
-                };
-                Some((b.id, crate::tui::components::block_view::BlockBranchInfo {
-                    sibling_index,
-                    sibling_total,
-                    children_count,
-                    show_id: app.overlays.show_block_ids,
-                    child_branch_previews,
-                }))
-            }
-            _ => None,
-        })
-        .collect();
-
-    app.messages_area = chunks[messages_idx];
-
-    if app.overlays.output_search.has_query() || app.overlays.output_search.active {
-        app.overlays.output_search.update_matches(&app.rendered_lines);
-    }
-
-    let search_scroll_target = if app.overlays.output_search.scroll_to_current {
-        app.overlays.output_search.scroll_to_current = false;
-        app.overlays.output_search.current_match_row()
-    } else {
-        None
-    };
-
-    app.rendered_lines = block_view::render_blocks(
-        frame,
-        &app.conversation.blocks,
-        app.conversation.focused_block,
-        app.conversation.active_block.as_ref(),
-        &app.streaming.thinking,
-        &app.streaming.text,
-        app.show_thinking,
-        &app.theme,
-        &mut app.conversation.scroll,
-        &app.selection,
-        chunks[messages_idx],
-        &branch_info,
-        &app.overlays.output_search,
-        search_scroll_target,
-        &app.streaming.active_tools,
-        &app.streaming.progress_renderer,
-        &mut app.streaming.outputs,
-        app.tick,
-    );
-
-    if app.overlays.output_search.active {
-        app.overlays.output_search.render(frame, chunks[messages_idx]);
-    }
+    render_messages(frame, app, chunks[messages_idx]);
 
     // ── Plugin widget panels ────────────────────────────────────────
 
@@ -310,18 +234,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
 
     // ── Editor ──────────────────────────────────────────────────────
 
-    let image_count = app.pending_images.len();
-    let title = if image_count > 0 {
-        format!("Input 📎 {} image{}", image_count, if image_count == 1 { "" } else { "s" })
-    } else {
-        "Input".to_string()
-    };
-    editor_component::render_editor(frame, &app.editor, chunks[editor_idx], indicator, app.theme.border, &title);
-
-    let editor_inner_width = chunks[editor_idx].width.saturating_sub(2) as usize;
-    let (cx, _cy) = app.editor.visual_cursor_position(editor_inner_width, indicator.len());
-    let cursor_x = chunks[editor_idx].x + 1 + cx;
-    slash_menu::render_slash_menu(frame, &app.slash_menu, &app.theme, chunks[editor_idx], cursor_x);
+    render_editor_area(frame, app, chunks[editor_idx], indicator);
 
     // ── Status bar ──────────────────────────────────────────────────
 
@@ -381,4 +294,123 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         tool_activity,
     };
     status_bar::render_status_bar(frame, &status_data, &app.theme, chunks[status_idx]);
+}
+
+/// Compute the input indicator based on app state and input mode
+fn compute_input_indicator(state: AppState, input_mode: crate::config::keybindings::InputMode) -> &'static str {
+    match (state, input_mode) {
+        (AppState::Streaming, _) => "… ",
+        (_, crate::config::keybindings::InputMode::Normal) => "  ",
+        (_, crate::config::keybindings::InputMode::Insert) => "> ",
+    }
+}
+
+/// Render the messages/blocks area with conversation history
+fn render_messages(frame: &mut Frame, app: &mut App, messages_area: Rect) {
+    // Build set of active block IDs for marking active branches
+    let active_block_ids: std::collections::HashSet<usize> = app
+        .conversation.blocks
+        .iter()
+        .filter_map(|e| match e {
+            crate::tui::components::block::BlockEntry::Conversation(b) => Some(b.id),
+            _ => None,
+        })
+        .collect();
+
+    let branch_info: std::collections::HashMap<usize, crate::tui::components::block_view::BlockBranchInfo> = app
+        .conversation.blocks
+        .iter()
+        .filter_map(|e| match e {
+            crate::tui::components::block::BlockEntry::Conversation(b) => {
+                let (sibling_index, sibling_total) = app.block_siblings(b.id);
+                let children_count = app.block_children_count(b.id);
+                // Collect child branch previews for branch points
+                let child_branch_previews = if children_count > 1 {
+                    app.conversation.all_blocks
+                        .iter()
+                        .filter(|c| c.parent_block_id == Some(b.id))
+                        .map(|c| {
+                            let preview: String = c.prompt.chars().take(40).collect();
+                            let preview = if c.prompt.len() > 40 {
+                                format!("{}…", preview)
+                            } else {
+                                preview
+                            };
+                            let is_active = active_block_ids.contains(&c.id);
+                            (c.id, preview, is_active)
+                        })
+                        .collect()
+                } else {
+                    Vec::new()
+                };
+                Some((b.id, crate::tui::components::block_view::BlockBranchInfo {
+                    sibling_index,
+                    sibling_total,
+                    children_count,
+                    show_id: app.overlays.show_block_ids,
+                    child_branch_previews,
+                }))
+            }
+            _ => None,
+        })
+        .collect();
+
+    app.messages_area = messages_area;
+
+    if app.overlays.output_search.has_query() || app.overlays.output_search.active {
+        app.overlays.output_search.update_matches(&app.rendered_lines);
+    }
+
+    let search_scroll_target = compute_search_scroll_target(&mut app.overlays.output_search);
+
+    app.rendered_lines = block_view::render_blocks(
+        frame,
+        &app.conversation.blocks,
+        app.conversation.focused_block,
+        app.conversation.active_block.as_ref(),
+        &app.streaming.thinking,
+        &app.streaming.text,
+        app.show_thinking,
+        &app.theme,
+        &mut app.conversation.scroll,
+        &app.selection,
+        messages_area,
+        &branch_info,
+        &app.overlays.output_search,
+        search_scroll_target,
+        &app.streaming.active_tools,
+        &app.streaming.progress_renderer,
+        &mut app.streaming.outputs,
+        app.tick,
+    );
+
+    if app.overlays.output_search.active {
+        app.overlays.output_search.render(frame, messages_area);
+    }
+}
+
+/// Compute the search scroll target position
+fn compute_search_scroll_target(output_search: &mut crate::tui::components::output_search::OutputSearch) -> Option<usize> {
+    if output_search.scroll_to_current {
+        output_search.scroll_to_current = false;
+        output_search.current_match_row()
+    } else {
+        None
+    }
+}
+
+/// Render the editor/input area with slash menu
+fn render_editor_area(frame: &mut Frame, app: &mut App, editor_area: Rect, indicator: &str) {
+    let image_count = app.pending_images.len();
+    let title = if image_count > 0 {
+        format!("Input 📎 {} image{}", image_count, if image_count == 1 { "" } else { "s" })
+    } else {
+        "Input".to_string()
+    };
+    editor_component::render_editor(frame, &app.editor, editor_area, indicator, app.theme.border, &title);
+
+    let editor_inner_width = editor_area.width.saturating_sub(2) as usize;
+    let (cx, _cy) = app.editor.visual_cursor_position(editor_inner_width, indicator.len());
+    let cursor_x = editor_area.x + 1 + cx;
+    slash_menu::render_slash_menu(frame, &app.slash_menu, &app.theme, editor_area, cursor_x);
 }

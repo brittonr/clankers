@@ -4,6 +4,29 @@ use super::SlashContext;
 use super::SlashHandler;
 use tokio_util::sync::CancellationToken;
 
+// Helper functions for safe panel access
+use crate::tui::components::peers_panel::PeersPanel;
+use crate::tui::components::subagent_panel::SubagentPanel;
+use crate::tui::panel::PanelId;
+
+/// Get a mutable reference to the peers panel, panicking if not found.
+/// Centralizes the expect call to make it easier to audit and replace.
+fn peers_panel_mut<'a>(ctx: &'a mut SlashContext<'_>) -> &'a mut PeersPanel {
+    ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel")
+}
+
+/// Get a mutable reference to the subagent panel, panicking if not found.
+/// Centralizes the expect call to make it easier to audit and replace.
+fn subagent_panel_mut<'a>(ctx: &'a mut SlashContext<'_>) -> &'a mut SubagentPanel {
+    ctx.app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents).expect("subagent panel")
+}
+
+/// Get an immutable reference to the subagent panel, panicking if not found.
+/// Centralizes the expect call to make it easier to audit and replace.
+fn subagent_panel_ref<'a>(ctx: &'a SlashContext<'_>) -> &'a SubagentPanel {
+    ctx.app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents).expect("subagent panel")
+}
+
 pub struct WorkerHandler;
 
 impl SlashHandler for WorkerHandler {
@@ -105,19 +128,16 @@ impl SlashHandler for SubagentsHandler {
     }
 
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
-        use crate::tui::components::subagent_panel::SubagentPanel;
-        use crate::tui::panel::PanelId;
-
         if args.is_empty() {
             // List all subagents
-            let subagent_panel = ctx.app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents).expect("subagent panel");
+            let subagent_panel = subagent_panel_ref(ctx);
             ctx.app.push_system(subagent_panel.summary(), false);
         } else {
             let parts: Vec<&str> = args.splitn(2, char::is_whitespace).collect();
             let subcmd = parts[0].trim();
             let subcmd_args = parts.get(1).map(|s| s.trim()).unwrap_or("");
 
-            let subagent_panel = ctx.app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents).expect("subagent panel");
+            let subagent_panel = subagent_panel_mut(ctx);
             match subcmd {
                 "kill" => {
                     if subcmd_args == "all" {
@@ -191,6 +211,198 @@ impl SlashHandler for SubagentsHandler {
     }
 }
 
+// Helper functions for PeersHandler subcommands
+
+fn handle_peers_status(ctx: &mut SlashContext<'_>) {
+    let paths = crate::config::ClankersPaths::get();
+    let registry_path = crate::modes::rpc::peers::registry_path(paths);
+    let registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
+    let entries =
+        crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
+    let count = entries.len();
+    peers_panel_mut(ctx).set_peers(entries);
+    ctx.app.push_system(format!("{} peer(s) in registry.", count), false);
+}
+
+fn handle_peers_add(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
+    let parts: Vec<&str> = subcmd_args.splitn(2, char::is_whitespace).collect();
+    if parts.len() < 2 {
+        ctx.app.push_system("Usage: /peers add <node-id> <name>".to_string(), true);
+    } else {
+        let node_id = parts[0].trim();
+        let name = parts[1].trim();
+        let paths = crate::config::ClankersPaths::get();
+        let registry_path = crate::modes::rpc::peers::registry_path(paths);
+        let mut registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
+        registry.add(node_id, name);
+        match registry.save(&registry_path) {
+            Ok(()) => {
+                ctx.app.push_system(
+                    format!("Added peer '{}' ({}…)", name, &node_id[..12.min(node_id.len())]),
+                    false,
+                );
+                let entries = crate::tui::components::peers_panel::entries_from_registry(
+                    &registry,
+                    chrono::Duration::minutes(5),
+                );
+                peers_panel_mut(ctx).set_peers(entries);
+            }
+            Err(e) => ctx.app.push_system(format!("Failed to save registry: {}", e), true),
+        }
+    }
+}
+
+fn handle_peers_remove(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
+    if subcmd_args.is_empty() {
+        ctx.app.push_system("Usage: /peers remove <name-or-id>".to_string(), true);
+    } else {
+        let paths = crate::config::ClankersPaths::get();
+        let registry_path = crate::modes::rpc::peers::registry_path(paths);
+        let mut registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
+        // Try as node_id first, then by name
+        let removed = if registry.remove(subcmd_args) {
+            true
+        } else {
+            let found =
+                registry.peers.values().find(|p| p.name == subcmd_args).map(|p| p.node_id.clone());
+            if let Some(nid) = found {
+                registry.remove(&nid)
+            } else {
+                false
+            }
+        };
+        if removed {
+            let _ = registry.save(&registry_path);
+            ctx.app.push_system(format!("Removed peer '{}'.", subcmd_args), false);
+            let entries = crate::tui::components::peers_panel::entries_from_registry(
+                &registry,
+                chrono::Duration::minutes(5),
+            );
+            peers_panel_mut(ctx).set_peers(entries);
+        } else {
+            ctx.app.push_system(format!("Peer '{}' not found.", subcmd_args), true);
+        }
+    }
+}
+
+fn handle_peers_probe(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
+    let paths = crate::config::ClankersPaths::get();
+    let registry_path = crate::modes::rpc::peers::registry_path(paths);
+    let identity_path = crate::modes::rpc::iroh::identity_path(paths);
+
+    if subcmd_args.is_empty() || subcmd_args == "all" {
+        // Probe all peers
+        let registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
+        let peer_ids: Vec<String> = registry.peers.keys().cloned().collect();
+        if peer_ids.is_empty() {
+            ctx.app.push_system("No peers to probe.".to_string(), false);
+        } else {
+            ctx.app.push_system(format!("Probing {} peer(s)...", peer_ids.len()), false);
+            for nid in &peer_ids {
+                peers_panel_mut(ctx)
+                    .update_status(nid, crate::tui::components::peers_panel::PeerStatus::Probing);
+            }
+            let ptx = ctx.panel_tx.clone();
+            let rp = registry_path.clone();
+            let ip = identity_path.clone();
+            for nid in peer_ids {
+                let ptx = ptx.clone();
+                let rp = rp.clone();
+                let ip = ip.clone();
+                tokio::spawn(async move {
+                    crate::modes::peers_background::probe_peer_background(nid, rp, ip, ptx).await;
+                });
+            }
+        }
+    } else {
+        // Probe specific peer
+        let registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
+        let node_id = registry
+            .peers
+            .values()
+            .find(|p| p.name == subcmd_args)
+            .map(|p| p.node_id.clone())
+            .unwrap_or_else(|| subcmd_args.to_string());
+        peers_panel_mut(ctx)
+            .update_status(&node_id, crate::tui::components::peers_panel::PeerStatus::Probing);
+        ctx.app.push_system(format!("Probing {}...", &node_id[..12.min(node_id.len())]), false);
+        let ptx = ctx.panel_tx.clone();
+        tokio::spawn(async move {
+            crate::modes::peers_background::probe_peer_background(node_id, registry_path, identity_path, ptx).await;
+        });
+    }
+}
+
+fn handle_peers_discover(ctx: &mut SlashContext<'_>) {
+    ctx.app.push_system("Scanning LAN via mDNS (5s)...".to_string(), false);
+    let paths = crate::config::ClankersPaths::get();
+    let registry_path = crate::modes::rpc::peers::registry_path(paths);
+    let identity_path = crate::modes::rpc::iroh::identity_path(paths);
+    let ptx = ctx.panel_tx.clone();
+    tokio::spawn(async move {
+        crate::modes::peers_background::discover_peers_background(registry_path, identity_path, ptx).await;
+    });
+}
+
+fn handle_peers_allow(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
+    if subcmd_args.is_empty() {
+        ctx.app.push_system("Usage: /peers allow <node-id>".to_string(), true);
+    } else {
+        let paths = crate::config::ClankersPaths::get();
+        let acl_path = crate::modes::rpc::iroh::allowlist_path(paths);
+        let mut allowed = crate::modes::rpc::iroh::load_allowlist(&acl_path);
+        allowed.insert(subcmd_args.to_string());
+        match crate::modes::rpc::iroh::save_allowlist(&acl_path, &allowed) {
+            Ok(()) => ctx.app.push_system(
+                format!("Allowed peer {}…", &subcmd_args[..12.min(subcmd_args.len())]),
+                false,
+            ),
+            Err(e) => ctx.app.push_system(format!("Failed: {}", e), true),
+        }
+    }
+}
+
+fn handle_peers_deny(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
+    if subcmd_args.is_empty() {
+        ctx.app.push_system("Usage: /peers deny <node-id>".to_string(), true);
+    } else {
+        let paths = crate::config::ClankersPaths::get();
+        let acl_path = crate::modes::rpc::iroh::allowlist_path(paths);
+        let mut allowed = crate::modes::rpc::iroh::load_allowlist(&acl_path);
+        if allowed.remove(subcmd_args) {
+            let _ = crate::modes::rpc::iroh::save_allowlist(&acl_path, &allowed);
+            ctx.app.push_system(
+                format!("Denied peer {}…", &subcmd_args[..12.min(subcmd_args.len())]),
+                false,
+            );
+        } else {
+            ctx.app.push_system("Peer not in allowlist.".to_string(), true);
+        }
+    }
+}
+
+fn handle_peers_server(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
+    match subcmd_args {
+        "on" | "start" => {
+            ctx.app.push_system(
+                "Use `clankers rpc start` to run the RPC server (embedded server coming soon)."
+                    .to_string(),
+                false,
+            );
+        }
+        "off" | "stop" => {
+            ctx.app.push_system("Server control not yet available in TUI.".to_string(), false);
+        }
+        _ => {
+            if peers_panel_mut(ctx).server_running {
+                ctx.app.push_system("Embedded RPC server: running".to_string(), false);
+            } else {
+                ctx.app.push_system("Embedded RPC server: not running".to_string(), false);
+            }
+        }
+    }
+}
+
 pub struct PeersHandler;
 
 impl SlashHandler for PeersHandler {
@@ -223,196 +435,23 @@ impl SlashHandler for PeersHandler {
     }
 
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
-        use crate::tui::components::peers_panel::PeersPanel;
-        use crate::tui::panel::PanelId;
-
         // Switch to peers panel tab
         ctx.app.focus_panel(PanelId::Peers);
 
         if args.is_empty() {
-            // Just show the panel — refresh peers from registry
-            let paths = crate::config::ClankersPaths::get();
-            let registry_path = crate::modes::rpc::peers::registry_path(paths);
-            let registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
-            let entries =
-                crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
-            let count = entries.len();
-            ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel").set_peers(entries);
-            ctx.app.push_system(format!("{} peer(s) in registry.", count), false);
+            handle_peers_status(ctx);
         } else {
             let (subcmd, subcmd_args) = args.split_once(char::is_whitespace).unwrap_or((args, ""));
             let subcmd_args = subcmd_args.trim();
+            
             match subcmd {
-                "add" => {
-                    let parts: Vec<&str> = subcmd_args.splitn(2, char::is_whitespace).collect();
-                    if parts.len() < 2 {
-                        ctx.app.push_system("Usage: /peers add <node-id> <name>".to_string(), true);
-                    } else {
-                        let node_id = parts[0].trim();
-                        let name = parts[1].trim();
-                        let paths = crate::config::ClankersPaths::get();
-                        let registry_path = crate::modes::rpc::peers::registry_path(paths);
-                        let mut registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
-                        registry.add(node_id, name);
-                        match registry.save(&registry_path) {
-                            Ok(()) => {
-                                ctx.app.push_system(
-                                    format!("Added peer '{}' ({}…)", name, &node_id[..12.min(node_id.len())]),
-                                    false,
-                                );
-                                let entries = crate::tui::components::peers_panel::entries_from_registry(
-                                    &registry,
-                                    chrono::Duration::minutes(5),
-                                );
-                                ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel").set_peers(entries);
-                            }
-                            Err(e) => ctx.app.push_system(format!("Failed to save registry: {}", e), true),
-                        }
-                    }
-                }
-                "remove" | "rm" => {
-                    if subcmd_args.is_empty() {
-                        ctx.app.push_system("Usage: /peers remove <name-or-id>".to_string(), true);
-                    } else {
-                        let paths = crate::config::ClankersPaths::get();
-                        let registry_path = crate::modes::rpc::peers::registry_path(paths);
-                        let mut registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
-                        // Try as node_id first, then by name
-                        let removed = if registry.remove(subcmd_args) {
-                            true
-                        } else {
-                            let found =
-                                registry.peers.values().find(|p| p.name == subcmd_args).map(|p| p.node_id.clone());
-                            if let Some(nid) = found {
-                                registry.remove(&nid)
-                            } else {
-                                false
-                            }
-                        };
-                        if removed {
-                            let _ = registry.save(&registry_path);
-                            ctx.app.push_system(format!("Removed peer '{}'.", subcmd_args), false);
-                            let entries = crate::tui::components::peers_panel::entries_from_registry(
-                                &registry,
-                                chrono::Duration::minutes(5),
-                            );
-                            ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel").set_peers(entries);
-                        } else {
-                            ctx.app.push_system(format!("Peer '{}' not found.", subcmd_args), true);
-                        }
-                    }
-                }
-                "probe" => {
-                    let paths = crate::config::ClankersPaths::get();
-                    let registry_path = crate::modes::rpc::peers::registry_path(paths);
-                    let identity_path = crate::modes::rpc::iroh::identity_path(paths);
-
-                    if subcmd_args.is_empty() || subcmd_args == "all" {
-                        // Probe all peers
-                        let registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
-                        let peer_ids: Vec<String> = registry.peers.keys().cloned().collect();
-                        if peer_ids.is_empty() {
-                            ctx.app.push_system("No peers to probe.".to_string(), false);
-                        } else {
-                            ctx.app.push_system(format!("Probing {} peer(s)...", peer_ids.len()), false);
-                            for nid in &peer_ids {
-                                ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel")
-                                    .update_status(nid, crate::tui::components::peers_panel::PeerStatus::Probing);
-                            }
-                            let ptx = ctx.panel_tx.clone();
-                            let rp = registry_path.clone();
-                            let ip = identity_path.clone();
-                            for nid in peer_ids {
-                                let ptx = ptx.clone();
-                                let rp = rp.clone();
-                                let ip = ip.clone();
-                                tokio::spawn(async move {
-                                    crate::modes::peers_background::probe_peer_background(nid, rp, ip, ptx).await;
-                                });
-                            }
-                        }
-                    } else {
-                        // Probe specific peer
-                        let registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
-                        let node_id = registry
-                            .peers
-                            .values()
-                            .find(|p| p.name == subcmd_args)
-                            .map(|p| p.node_id.clone())
-                            .unwrap_or_else(|| subcmd_args.to_string());
-                        ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel")
-                            .update_status(&node_id, crate::tui::components::peers_panel::PeerStatus::Probing);
-                        ctx.app.push_system(format!("Probing {}...", &node_id[..12.min(node_id.len())]), false);
-                        let ptx = ctx.panel_tx.clone();
-                        tokio::spawn(async move {
-                            crate::modes::peers_background::probe_peer_background(node_id, registry_path, identity_path, ptx).await;
-                        });
-                    }
-                }
-                "discover" => {
-                    ctx.app.push_system("Scanning LAN via mDNS (5s)...".to_string(), false);
-                    let paths = crate::config::ClankersPaths::get();
-                    let registry_path = crate::modes::rpc::peers::registry_path(paths);
-                    let identity_path = crate::modes::rpc::iroh::identity_path(paths);
-                    let ptx = ctx.panel_tx.clone();
-                    tokio::spawn(async move {
-                        crate::modes::peers_background::discover_peers_background(registry_path, identity_path, ptx).await;
-                    });
-                }
-                "allow" => {
-                    if subcmd_args.is_empty() {
-                        ctx.app.push_system("Usage: /peers allow <node-id>".to_string(), true);
-                    } else {
-                        let paths = crate::config::ClankersPaths::get();
-                        let acl_path = crate::modes::rpc::iroh::allowlist_path(paths);
-                        let mut allowed = crate::modes::rpc::iroh::load_allowlist(&acl_path);
-                        allowed.insert(subcmd_args.to_string());
-                        match crate::modes::rpc::iroh::save_allowlist(&acl_path, &allowed) {
-                            Ok(()) => ctx.app.push_system(
-                                format!("Allowed peer {}…", &subcmd_args[..12.min(subcmd_args.len())]),
-                                false,
-                            ),
-                            Err(e) => ctx.app.push_system(format!("Failed: {}", e), true),
-                        }
-                    }
-                }
-                "deny" => {
-                    if subcmd_args.is_empty() {
-                        ctx.app.push_system("Usage: /peers deny <node-id>".to_string(), true);
-                    } else {
-                        let paths = crate::config::ClankersPaths::get();
-                        let acl_path = crate::modes::rpc::iroh::allowlist_path(paths);
-                        let mut allowed = crate::modes::rpc::iroh::load_allowlist(&acl_path);
-                        if allowed.remove(subcmd_args) {
-                            let _ = crate::modes::rpc::iroh::save_allowlist(&acl_path, &allowed);
-                            ctx.app.push_system(
-                                format!("Denied peer {}…", &subcmd_args[..12.min(subcmd_args.len())]),
-                                false,
-                            );
-                        } else {
-                            ctx.app.push_system("Peer not in allowlist.".to_string(), true);
-                        }
-                    }
-                }
-                "server" => match subcmd_args {
-                    "on" | "start" => {
-                        ctx.app.push_system(
-                            "Use `clankers rpc start` to run the RPC server (embedded server coming soon)."
-                                .to_string(),
-                            false,
-                        );
-                    }
-                    "off" | "stop" => {
-                        ctx.app.push_system("Server control not yet available in TUI.".to_string(), false);
-                    }
-                    _ => {
-                        if ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel").server_running {
-                            ctx.app.push_system("Embedded RPC server: running".to_string(), false);
-                        } else {
-                            ctx.app.push_system("Embedded RPC server: not running".to_string(), false);
-                        }
-                    }
-                },
+                "add" => handle_peers_add(subcmd_args, ctx),
+                "remove" | "rm" => handle_peers_remove(subcmd_args, ctx),
+                "probe" => handle_peers_probe(subcmd_args, ctx),
+                "discover" => handle_peers_discover(ctx),
+                "allow" => handle_peers_allow(subcmd_args, ctx),
+                "deny" => handle_peers_deny(subcmd_args, ctx),
+                "server" => handle_peers_server(subcmd_args, ctx),
                 _ => {
                     ctx.app.push_system(
                         format!(
