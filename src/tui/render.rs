@@ -255,7 +255,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
     let budget_status = app
         .cost_tracker
         .as_ref()
-        .map_or(crate::routing::cost_tracker::BudgetStatus::NoBudget, |ct| {
+        .map_or(crate::model_selection::cost_tracker::BudgetStatus::NoBudget, |ct| {
             ct.budget_status()
         });
     // Build tool activity summary for the status bar

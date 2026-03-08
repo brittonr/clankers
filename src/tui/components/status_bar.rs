@@ -10,7 +10,7 @@ use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 
 use crate::config::keybindings::InputMode;
-use crate::routing::cost_tracker::BudgetStatus;
+use crate::model_selection::cost_tracker::BudgetStatus;
 use crate::tui::app::AppState;
 use crate::tui::app::RouterStatus;
 use crate::tui::theme::Theme;

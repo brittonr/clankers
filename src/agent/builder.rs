@@ -7,8 +7,8 @@ use crate::config::paths::ClankersPaths;
 use crate::config::settings::Settings;
 use crate::db::Db;
 use crate::provider::Provider;
-use crate::routing::cost_tracker::{load_pricing, CostTracker};
-use crate::routing::policy::RoutingPolicy;
+use crate::model_selection::cost_tracker::{pricing_from_models, CostTracker};
+use crate::model_selection::policy::RoutingPolicy;
 use crate::tools::Tool;
 
 /// Builder for constructing an Agent with automatic routing and cost tracking setup.
@@ -68,6 +68,9 @@ impl AgentBuilder {
 
     /// Build the Agent, automatically wiring routing policy and cost tracking from settings
     pub fn build(self) -> Agent {
+        // Snapshot model pricing before moving the provider into the agent
+        let provider_models: Vec<clankers_router::Model> = self.provider.models().to_vec();
+
         let mut agent = Agent::new(
             self.provider,
             self.tools,
@@ -92,7 +95,7 @@ impl AgentBuilder {
         // Wire cost tracking from settings
         if let Some(cost_config) = self.settings.cost_tracking.as_ref() {
             let paths = self.paths.unwrap_or_else(|| ClankersPaths::get().clone());
-            let pricing = load_pricing(Some(&paths.global_config_dir));
+            let pricing = pricing_from_models(&provider_models, Some(&paths.global_config_dir));
             let tracker = Arc::new(CostTracker::new(pricing, cost_config.clone()));
             agent = agent.with_cost_tracker(tracker);
         }

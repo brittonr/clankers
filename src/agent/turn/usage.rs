@@ -4,7 +4,7 @@ use tokio::sync::broadcast;
 
 use crate::agent::events::AgentEvent;
 use crate::provider::Usage;
-use crate::routing::cost_tracker::CostTracker;
+use crate::model_selection::cost_tracker::CostTracker;
 
 /// Update usage tracking and emit events
 pub(super) fn update_usage_tracking(
@@ -39,21 +39,21 @@ fn record_cost(tracker: &CostTracker, model: &str, usage: &Usage) {
 
     for event in budget_events {
         match event {
-            crate::routing::cost_tracker::BudgetEvent::Warning { threshold, current } => {
+            crate::model_selection::cost_tracker::BudgetEvent::Warning { threshold, current } => {
                 tracing::warn!(
                     "Budget warning: ${:.2} spent (soft limit: ${:.2})",
                     current,
                     threshold,
                 );
             }
-            crate::routing::cost_tracker::BudgetEvent::Exceeded { limit, current } => {
+            crate::model_selection::cost_tracker::BudgetEvent::Exceeded { limit, current } => {
                 tracing::warn!(
                     "Budget exceeded: ${:.2} spent (hard limit: ${:.2})",
                     current,
                     limit,
                 );
             }
-            crate::routing::cost_tracker::BudgetEvent::Milestone { milestone, total: _ } => {
+            crate::model_selection::cost_tracker::BudgetEvent::Milestone { milestone, total: _ } => {
                 tracing::info!("Cost milestone: ${:.2}", milestone);
             }
         }

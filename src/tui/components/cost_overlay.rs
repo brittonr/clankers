@@ -9,7 +9,7 @@
 use std::sync::Arc;
 
 use super::prelude::*;
-use crate::routing::cost_tracker::{BudgetStatus, CostSummary, CostTracker};
+use crate::model_selection::cost_tracker::{BudgetStatus, CostSummary, CostTracker};
 
 /// Render the cost detail overlay if visible.
 pub fn render_cost_overlay(

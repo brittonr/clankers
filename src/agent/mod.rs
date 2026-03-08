@@ -25,9 +25,9 @@ use crate::provider::Provider;
 use crate::provider::ThinkingConfig;
 use crate::provider::ThinkingLevel;
 use crate::provider::message::*;
-use crate::routing::cost_tracker::CostTracker;
-use crate::routing::policy::RoutingPolicy;
-use crate::routing::signals::{ComplexitySignals, ToolCallSummary};
+use crate::model_selection::cost_tracker::CostTracker;
+use crate::model_selection::policy::RoutingPolicy;
+use crate::model_selection::signals::{ComplexitySignals, ToolCallSummary};
 use crate::tools::Tool;
 use crate::tools::switch_model::ModelSwitchSlot;
 
@@ -293,7 +293,7 @@ impl Agent {
     fn select_model_for_turn(
         &mut self,
         text: &str,
-    ) -> Result<Option<crate::routing::orchestration::OrchestrationPlan>> {
+    ) -> Result<Option<crate::model_selection::orchestration::OrchestrationPlan>> {
         let Some(policy) = &self.routing_policy else {
             return Ok(None);
         };
@@ -485,7 +485,7 @@ impl Agent {
     async fn execute_orchestrated_turn(
         &mut self,
         user_text: &str,
-        plan: crate::routing::orchestration::OrchestrationPlan,
+        plan: crate::model_selection::orchestration::OrchestrationPlan,
     ) -> crate::error::Result<()> {
         let total_phases = plan.phases.len();
         tracing::info!(

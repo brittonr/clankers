@@ -82,11 +82,11 @@ pub struct Settings {
 
     /// Routing policy configuration (auto model selection by complexity)
     #[serde(default)]
-    pub routing: Option<crate::routing::config::RoutingPolicyConfig>,
+    pub routing: Option<crate::model_selection::config::RoutingPolicyConfig>,
 
     /// Cost tracking configuration (budget limits and warnings)
     #[serde(default)]
-    pub cost_tracking: Option<crate::routing::cost_tracker::CostTrackerConfig>,
+    pub cost_tracking: Option<crate::model_selection::cost_tracker::CostTrackerConfig>,
 
     /// Max number of subagent panes to auto-create in the BSP tiling.
     /// When the limit is reached, new subagents only appear in the overview panel.

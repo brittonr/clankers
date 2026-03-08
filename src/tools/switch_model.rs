@@ -16,7 +16,7 @@ use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
 use crate::config::model_roles::ModelRoles;
-use crate::routing::cost_tracker::CostTracker;
+use crate::model_selection::cost_tracker::CostTracker;
 
 /// Shared slot the turn loop reads after each tool execution round.
 /// When `Some(model_id)`, the loop switches to that model for the next
@@ -164,7 +164,38 @@ impl Tool for SwitchModelTool {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
+    use crate::model_selection::cost_tracker::ModelPricing;
+
     use super::*;
+
+    fn test_pricing() -> HashMap<String, ModelPricing> {
+        [
+            ("claude-opus-4", 15.0, 75.0, "Claude Opus 4"),
+            ("claude-sonnet-4-5", 3.0, 15.0, "Claude Sonnet 4.5"),
+            ("claude-haiku-4", 1.0, 5.0, "Claude Haiku 4"),
+        ]
+        .into_iter()
+        .map(|(id, input, output, name)| {
+            (
+                id.to_string(),
+                ModelPricing {
+                    input_per_mtok: input,
+                    output_per_mtok: output,
+                    display_name: name.to_string(),
+                },
+            )
+        })
+        .collect()
+    }
+
+    fn test_tracker() -> Arc<CostTracker> {
+        Arc::new(CostTracker::new(
+            test_pricing(),
+            crate::model_selection::cost_tracker::CostTrackerConfig::default(),
+        ))
+    }
 
     fn setup() -> (SwitchModelTool, ModelSwitchSlot) {
         let slot = model_switch_slot();
@@ -234,7 +265,7 @@ mod tests {
         roles.set_model("slow", "claude-opus-4".to_string());
 
         let current = Arc::new(Mutex::new("claude-haiku-4".to_string()));
-        let tracker = Arc::new(CostTracker::with_defaults());
+        let tracker = test_tracker();
         // Record enough usage to exceed budget
         tracker.record_usage("claude-haiku-4", 10_000_000, 5_000_000);
 
@@ -258,7 +289,7 @@ mod tests {
         roles.set_model("slow", "claude-opus-4".to_string());
 
         let current = Arc::new(Mutex::new("claude-opus-4".to_string()));
-        let tracker = Arc::new(CostTracker::with_defaults());
+        let tracker = test_tracker();
         tracker.record_usage("claude-opus-4", 10_000_000, 5_000_000);
 
         let tool = SwitchModelTool::new(slot.clone(), roles, current)
@@ -317,7 +348,7 @@ mod tests {
         roles.set_model("slow", "claude-opus-4".to_string());
 
         let current = Arc::new(Mutex::new("claude-haiku-4".to_string()));
-        let tracker = Arc::new(CostTracker::with_defaults());
+        let tracker = test_tracker();
         // Record usage to land exactly at $1.00 (haiku: $1/MTok input, $5/MTok output)
         tracker.record_usage("claude-haiku-4", 1_000_000, 0);
 

@@ -23,44 +23,69 @@ pub struct ModelPricing {
     pub display_name: String,
 }
 
-/// Load pricing table: try `~/.clankers/pricing.json`, fall back to defaults.
-pub fn load_pricing(config_dir: Option<&Path>) -> HashMap<String, ModelPricing> {
-    if let Some(dir) = config_dir {
-        let path = dir.join("pricing.json");
-        if path.exists() && let Ok(data) = std::fs::read_to_string(&path) && let Ok(parsed) = serde_json::from_str::<HashMap<String, ModelPricing>>(&data) {
+/// Try loading a user-override `pricing.json` from `config_dir`.
+fn try_load_user_pricing(config_dir: Option<&Path>) -> Option<HashMap<String, ModelPricing>> {
+    let dir = config_dir?;
+    let path = dir.join("pricing.json");
+    if !path.exists() {
+        return None;
+    }
+    match std::fs::read_to_string(&path)
+        .ok()
+        .and_then(|data| serde_json::from_str::<HashMap<String, ModelPricing>>(&data).ok())
+    {
+        Some(parsed) => {
             tracing::info!("Loaded custom pricing from {}", path.display());
-            return parsed;
-        } else if path.exists() {
-            tracing::warn!("Invalid pricing.json at {}, using defaults", path.display());
+            Some(parsed)
+        }
+        None => {
+            tracing::warn!("Invalid pricing.json at {}, ignoring", path.display());
+            None
         }
     }
-    default_pricing()
 }
 
-fn default_pricing() -> HashMap<String, ModelPricing> {
-    [
-        ("claude-opus-4", 15.0, 75.0, "Claude Opus 4"),
-        ("claude-opus-4-20250514", 15.0, 75.0, "Claude Opus 4"),
-        ("claude-sonnet-4-5", 3.0, 15.0, "Claude Sonnet 4.5"),
-        ("claude-sonnet-4-5-20250514", 3.0, 15.0, "Claude Sonnet 4.5"),
-        ("claude-sonnet-4", 3.0, 15.0, "Claude Sonnet 4"),
-        ("claude-sonnet-4-20250514", 3.0, 15.0, "Claude Sonnet 4"),
-        ("claude-sonnet-3-5-20241022", 3.0, 15.0, "Claude Sonnet 3.5"),
-        ("claude-haiku-4", 1.0, 5.0, "Claude Haiku 4"),
-        ("claude-haiku-3-5-20241022", 0.8, 4.0, "Claude Haiku 3.5"),
-    ]
-    .into_iter()
-    .map(|(id, input, output, name)| {
-        (
-            id.to_string(),
-            ModelPricing {
-                input_per_mtok: input,
-                output_per_mtok: output,
-                display_name: name.to_string(),
-            },
-        )
-    })
-    .collect()
+/// Derive pricing from the provider's model registry.
+///
+/// This is the preferred way to build a pricing table — it reads
+/// `input_cost_per_mtok` / `output_cost_per_mtok` from each
+/// [`clankers_router::Model`], so prices stay in sync with the
+/// model catalog automatically.  Models without pricing data are
+/// skipped (tracked at $0).
+///
+/// An optional `config_dir` is checked first for a user-override
+/// `pricing.json`; if present, that takes priority.
+pub fn pricing_from_models(
+    models: &[clankers_router::Model],
+    config_dir: Option<&Path>,
+) -> HashMap<String, ModelPricing> {
+    if let Some(user) = try_load_user_pricing(config_dir) {
+        return user;
+    }
+
+    models
+        .iter()
+        .filter_map(|m| {
+            let input = m.input_cost_per_mtok?;
+            let output = m.output_cost_per_mtok?;
+            Some((
+                m.id.clone(),
+                ModelPricing {
+                    input_per_mtok: input,
+                    output_per_mtok: output,
+                    display_name: m.name.clone(),
+                },
+            ))
+        })
+        .collect()
+}
+
+/// Load pricing from a user-override file only (no hardcoded defaults).
+///
+/// Prefer [`pricing_from_models`] when a provider is available.
+/// This function is kept for test/headless contexts where no provider exists.
+pub fn load_pricing(config_dir: Option<&Path>) -> HashMap<String, ModelPricing> {
+    try_load_user_pricing(config_dir).unwrap_or_default()
 }
 
 // ── Configuration ───────────────────────────────────────────────────────────
@@ -181,9 +206,12 @@ impl CostTracker {
         }
     }
 
-    /// Create with default pricing and no budget limits.
+    /// Create with no pricing data and no budget limits.
+    ///
+    /// Models will be tracked at $0 cost. In production, prefer creating
+    /// via [`pricing_from_models`] to get real pricing from the model registry.
     pub fn with_defaults() -> Self {
-        Self::new(default_pricing(), CostTrackerConfig::default())
+        Self::new(HashMap::new(), CostTrackerConfig::default())
     }
 
     /// Record token usage from an API response.
@@ -409,13 +437,35 @@ impl CostTracker {
 mod tests {
     use super::*;
 
+    /// Test pricing table — covers the models used in unit tests.
+    fn test_pricing() -> HashMap<String, ModelPricing> {
+        [
+            ("claude-opus-4", 15.0, 75.0, "Claude Opus 4"),
+            ("claude-sonnet-4-5", 3.0, 15.0, "Claude Sonnet 4.5"),
+            ("claude-sonnet-4", 3.0, 15.0, "Claude Sonnet 4"),
+            ("claude-haiku-4", 1.0, 5.0, "Claude Haiku 4"),
+        ]
+        .into_iter()
+        .map(|(id, input, output, name)| {
+            (
+                id.to_string(),
+                ModelPricing {
+                    input_per_mtok: input,
+                    output_per_mtok: output,
+                    display_name: name.to_string(),
+                },
+            )
+        })
+        .collect()
+    }
+
     fn test_tracker() -> CostTracker {
-        CostTracker::with_defaults()
+        CostTracker::new(test_pricing(), CostTrackerConfig::default())
     }
 
     fn tracker_with_budget(soft: Option<f64>, hard: Option<f64>) -> CostTracker {
         CostTracker::new(
-            default_pricing(),
+            test_pricing(),
             CostTrackerConfig {
                 soft_limit: soft,
                 hard_limit: hard,
@@ -425,12 +475,38 @@ mod tests {
     }
 
     #[test]
-    fn test_default_pricing_has_key_models() {
-        let pricing = default_pricing();
-        assert!(pricing.contains_key("claude-opus-4"));
-        assert!(pricing.contains_key("claude-sonnet-4-5"));
-        assert!(pricing.contains_key("claude-haiku-4"));
-        assert!(pricing.get("claude-opus-4").expect("opus pricing should exist").input_per_mtok > 0.0);
+    fn test_pricing_from_models() {
+        let models = vec![
+            clankers_router::Model {
+                id: "test-model".to_string(),
+                name: "Test Model".to_string(),
+                provider: "test".to_string(),
+                max_input_tokens: 100_000,
+                max_output_tokens: 4_096,
+                supports_thinking: false,
+                supports_images: false,
+                supports_tools: true,
+                input_cost_per_mtok: Some(5.0),
+                output_cost_per_mtok: Some(25.0),
+            },
+            clankers_router::Model {
+                id: "free-model".to_string(),
+                name: "Free Model".to_string(),
+                provider: "test".to_string(),
+                max_input_tokens: 100_000,
+                max_output_tokens: 4_096,
+                supports_thinking: false,
+                supports_images: false,
+                supports_tools: true,
+                input_cost_per_mtok: None,
+                output_cost_per_mtok: None,
+            },
+        ];
+        let pricing = pricing_from_models(&models, None);
+        assert_eq!(pricing.len(), 1, "model without pricing should be skipped");
+        assert!(pricing.contains_key("test-model"));
+        assert_eq!(pricing["test-model"].input_per_mtok, 5.0);
+        assert_eq!(pricing["test-model"].display_name, "Test Model");
     }
 
     #[test]
@@ -521,7 +597,7 @@ mod tests {
     #[test]
     fn test_budget_milestone_event() {
         let tracker = CostTracker::new(
-            default_pricing(),
+            test_pricing(),
             CostTrackerConfig {
                 soft_limit: None,
                 hard_limit: None,
@@ -630,8 +706,8 @@ mod tests {
     }
 
     #[test]
-    fn test_load_pricing_defaults() {
+    fn test_load_pricing_no_config_returns_empty() {
         let pricing = load_pricing(None);
-        assert!(pricing.contains_key("claude-opus-4"));
+        assert!(pricing.is_empty(), "load_pricing with no config dir should return empty map");
     }
 }

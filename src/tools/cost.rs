@@ -14,7 +14,7 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use crate::routing::cost_tracker::{BudgetStatus, CostTracker};
+use crate::model_selection::cost_tracker::{BudgetStatus, CostTracker};
 
 pub struct CostTool {
     tracker: Arc<CostTracker>,
@@ -165,16 +165,37 @@ fn format_budget_detail(status: &BudgetStatus, total: f64) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
-    use crate::routing::cost_tracker::CostTrackerConfig;
+    use crate::model_selection::cost_tracker::{CostTrackerConfig, ModelPricing};
     use tokio_util::sync::CancellationToken;
+
+    fn test_pricing() -> HashMap<String, ModelPricing> {
+        [
+            ("claude-sonnet-4-5", 3.0, 15.0, "Claude Sonnet 4.5"),
+            ("claude-haiku-4", 1.0, 5.0, "Claude Haiku 4"),
+        ]
+        .into_iter()
+        .map(|(id, input, output, name)| {
+            (
+                id.to_string(),
+                ModelPricing {
+                    input_per_mtok: input,
+                    output_per_mtok: output,
+                    display_name: name.to_string(),
+                },
+            )
+        })
+        .collect()
+    }
 
     fn make_ctx() -> ToolContext {
         ToolContext::new("test".to_string(), CancellationToken::new(), None)
     }
 
     fn tracker_with_usage() -> Arc<CostTracker> {
-        let tracker = Arc::new(CostTracker::with_defaults());
+        let tracker = Arc::new(CostTracker::new(test_pricing(), CostTrackerConfig::default()));
         tracker.record_usage("claude-sonnet-4-5", 100_000, 50_000);
         tracker.record_usage("claude-haiku-4", 200_000, 100_000);
         tracker
@@ -182,7 +203,7 @@ mod tests {
 
     fn tracker_with_budget() -> Arc<CostTracker> {
         let tracker = Arc::new(CostTracker::new(
-            crate::routing::cost_tracker::load_pricing(None),
+            test_pricing(),
             CostTrackerConfig {
                 soft_limit: Some(1.0),
                 hard_limit: Some(5.0),

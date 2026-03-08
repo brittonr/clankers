@@ -20,7 +20,7 @@ use crate::provider::Usage;
 use crate::provider::message::*;
 use crate::provider::streaming::*;
 use crate::provider::Provider;
-use crate::routing::cost_tracker::CostTracker;
+use crate::model_selection::cost_tracker::CostTracker;
 use crate::tools::Tool;
 use crate::tools::switch_model::ModelSwitchSlot;
 

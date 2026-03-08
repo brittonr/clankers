@@ -26,21 +26,24 @@ pub async fn run_json_with_options(
     system_prompt: String,
     opts: JsonOptions,
 ) -> Result<()> {
+    // Snapshot model pricing before moving the provider into the agent
+    let provider_models: Vec<clankers_router::Model> = provider.models().to_vec();
+
     let mut agent = Agent::new(provider, tools, settings.clone(), model, system_prompt);
 
     // Wire routing policy from settings
     if let Some(routing_config) = settings.routing.as_ref()
         && routing_config.enabled
     {
-        let policy = crate::routing::policy::RoutingPolicy::new(routing_config.clone());
+        let policy = crate::model_selection::policy::RoutingPolicy::new(routing_config.clone());
         agent = agent.with_routing_policy(policy).with_model_roles(settings.model_roles.clone());
     }
 
     // Wire cost tracking from settings
     if let Some(cost_config) = settings.cost_tracking.as_ref() {
         let paths = crate::config::ClankersPaths::get();
-        let pricing = crate::routing::cost_tracker::load_pricing(Some(&paths.global_config_dir));
-        let tracker = Arc::new(crate::routing::cost_tracker::CostTracker::new(pricing, cost_config.clone()));
+        let pricing = crate::model_selection::cost_tracker::pricing_from_models(&provider_models, Some(&paths.global_config_dir));
+        let tracker = Arc::new(crate::model_selection::cost_tracker::CostTracker::new(pricing, cost_config.clone()));
         agent = agent.with_cost_tracker(tracker);
     }
 

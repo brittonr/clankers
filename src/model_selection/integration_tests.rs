@@ -10,8 +10,10 @@ use parking_lot::Mutex;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
+use std::collections::HashMap;
+
 use super::config::RoutingPolicyConfig;
-use super::cost_tracker::{BudgetStatus, CostTracker, CostTrackerConfig};
+use super::cost_tracker::{BudgetStatus, CostTracker, CostTrackerConfig, ModelPricing};
 use super::orchestration::OrchestrationPattern;
 use super::policy::{RoutingPolicy, SelectionReason};
 use super::signals::{ComplexitySignals, ModelRoleHint, ToolCallSummary, ToolComplexity};
@@ -21,6 +23,28 @@ use crate::tools::switch_model::{model_switch_slot, SwitchModelTool};
 use crate::tools::{Tool, ToolContext};
 
 // ── Test helpers ────────────────────────────────────────────────────────────
+
+/// Pricing table used across integration tests.
+fn test_pricing() -> HashMap<String, ModelPricing> {
+    [
+        ("claude-opus-4", 15.0, 75.0, "Claude Opus 4"),
+        ("claude-sonnet-4-5", 3.0, 15.0, "Claude Sonnet 4.5"),
+        ("claude-sonnet-4", 3.0, 15.0, "Claude Sonnet 4"),
+        ("claude-haiku-4", 1.0, 5.0, "Claude Haiku 4"),
+    ]
+    .into_iter()
+    .map(|(id, input, output, name)| {
+        (
+            id.to_string(),
+            ModelPricing {
+                input_per_mtok: input,
+                output_per_mtok: output,
+                display_name: name.to_string(),
+            },
+        )
+    })
+    .collect()
+}
 
 fn make_tool_ctx() -> ToolContext {
     ToolContext::new("test-call".to_string(), CancellationToken::new(), None)
@@ -221,7 +245,7 @@ fn test_budget_hard_limit_forces_smol() {
 
 #[test]
 fn test_cost_tracker_accumulation() {
-    let tracker = CostTracker::with_defaults();
+    let tracker = CostTracker::new(test_pricing(), CostTrackerConfig::default());
 
     // Record usage across multiple models
     tracker.record_usage("claude-sonnet-4-5", 100_000, 50_000);
@@ -244,7 +268,7 @@ fn test_cost_tracker_accumulation() {
 #[test]
 fn test_cost_tracker_budget_status_transitions() {
     let tracker = CostTracker::new(
-        super::cost_tracker::load_pricing(None),
+        test_pricing(),
         CostTrackerConfig {
             soft_limit: Some(1.0),
             hard_limit: Some(5.0),
@@ -273,7 +297,7 @@ fn test_cost_tracker_budget_status_transitions() {
 
 #[test]
 fn test_cost_tracker_total_cost_matches_summary() {
-    let tracker = CostTracker::with_defaults();
+    let tracker = CostTracker::new(test_pricing(), CostTrackerConfig::default());
     tracker.record_usage("claude-sonnet-4-5", 100_000, 50_000);
     tracker.record_usage("claude-haiku-4", 200_000, 100_000);
 
@@ -309,7 +333,7 @@ async fn test_switch_model_over_budget_rejected() {
     let roles = setup_model_roles();
     let current = Arc::new(Mutex::new("claude-haiku-4".to_string()));
 
-    let tracker = Arc::new(CostTracker::with_defaults());
+    let tracker = Arc::new(CostTracker::new(test_pricing(), CostTrackerConfig::default()));
     // Record expensive usage pushing over budget
     tracker.record_usage("claude-haiku-4", 10_000_000, 5_000_000);
 
@@ -335,7 +359,7 @@ async fn test_switch_model_downgrade_allowed_over_budget() {
     let roles = setup_model_roles();
     let current = Arc::new(Mutex::new("claude-opus-4".to_string()));
 
-    let tracker = Arc::new(CostTracker::with_defaults());
+    let tracker = Arc::new(CostTracker::new(test_pricing(), CostTrackerConfig::default()));
     tracker.record_usage("claude-opus-4", 10_000_000, 5_000_000);
 
     let tool = SwitchModelTool::new(slot.clone(), roles, current)
@@ -455,7 +479,7 @@ fn test_orchestration_disabled_by_default() {
 
 #[tokio::test]
 async fn test_cost_tool_summary_action() {
-    let tracker = Arc::new(CostTracker::with_defaults());
+    let tracker = Arc::new(CostTracker::new(test_pricing(), CostTrackerConfig::default()));
     tracker.record_usage("claude-sonnet-4-5", 100_000, 50_000);
     tracker.record_usage("claude-haiku-4", 200_000, 100_000);
 
@@ -472,7 +496,7 @@ async fn test_cost_tool_summary_action() {
 
 #[tokio::test]
 async fn test_cost_tool_breakdown_action() {
-    let tracker = Arc::new(CostTracker::with_defaults());
+    let tracker = Arc::new(CostTracker::new(test_pricing(), CostTrackerConfig::default()));
     tracker.record_usage("claude-sonnet-4-5", 100_000, 50_000);
     tracker.record_usage("claude-haiku-4", 200_000, 100_000);
 
@@ -491,7 +515,7 @@ async fn test_cost_tool_breakdown_action() {
 #[tokio::test]
 async fn test_cost_tool_budget_action() {
     let tracker = Arc::new(CostTracker::new(
-        super::cost_tracker::load_pricing(None),
+        test_pricing(),
         CostTrackerConfig {
             soft_limit: Some(1.0),
             hard_limit: Some(5.0),
@@ -547,7 +571,7 @@ fn test_routing_performance() {
 #[test]
 fn test_cost_tracker_status_line_format() {
     let tracker = CostTracker::new(
-        super::cost_tracker::load_pricing(None),
+        test_pricing(),
         CostTrackerConfig {
             soft_limit: Some(5.0),
             hard_limit: Some(10.0),
@@ -574,7 +598,7 @@ async fn test_end_to_end_routing_cost_switch() {
     let policy = RoutingPolicy::new(config);
 
     let tracker = Arc::new(CostTracker::new(
-        super::cost_tracker::load_pricing(None),
+        test_pricing(),
         CostTrackerConfig {
             soft_limit: Some(2.0),
             hard_limit: Some(5.0),
@@ -762,7 +786,7 @@ async fn test_switch_model_tool_writes_slot_and_cost_validates() {
     let roles = setup_model_roles();
     let slot = model_switch_slot();
     let current = Arc::new(Mutex::new("claude-sonnet-4-5".to_string()));
-    let tracker = Arc::new(CostTracker::with_defaults());
+    let tracker = Arc::new(CostTracker::new(test_pricing(), CostTrackerConfig::default()));
 
     let tool = SwitchModelTool::new(slot.clone(), roles.clone(), current.clone())
         .with_cost_tracker(tracker.clone())
@@ -855,7 +879,7 @@ async fn test_switch_model_with_routing_policy_interaction() {
 
 #[test]
 fn test_cost_tracker_percentages_sum_to_100() {
-    let tracker = CostTracker::with_defaults();
+    let tracker = CostTracker::new(test_pricing(), CostTrackerConfig::default());
     tracker.record_usage("claude-sonnet-4-5", 100_000, 50_000);
     tracker.record_usage("claude-haiku-4", 200_000, 100_000);
     tracker.record_usage("claude-opus-4", 10_000, 5_000);

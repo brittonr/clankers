@@ -200,7 +200,7 @@ pub struct App {
     pub session_id: String,
     pub total_tokens: usize,
     pub total_cost: f64,
-    pub cost_tracker: Option<Arc<crate::routing::cost_tracker::CostTracker>>,
+    pub cost_tracker: Option<Arc<crate::model_selection::cost_tracker::CostTracker>>,
     pub cwd: String,
     pub should_quit: bool,
     pub thinking_enabled: bool,

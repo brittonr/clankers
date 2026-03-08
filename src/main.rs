@@ -331,10 +331,10 @@ async fn run_headless(
         settings.max_tokens = max_tokens;
     }
     if cli.enable_routing && settings.routing.is_none() {
-        settings.routing = Some(clankers::routing::config::RoutingPolicyConfig::default());
+        settings.routing = Some(clankers::model_selection::config::RoutingPolicyConfig::default());
     }
     if let Some(max_cost) = cli.max_cost {
-        settings.cost_tracking = Some(clankers::routing::cost_tracker::CostTrackerConfig {
+        settings.cost_tracking = Some(clankers::model_selection::cost_tracker::CostTrackerConfig {
             soft_limit: Some(max_cost * 0.8),
             hard_limit: Some(max_cost),
             warning_interval: Some(1.0),
@@ -412,10 +412,10 @@ async fn run_interactive(
 
     let mut settings = ctx.settings.clone();
     if cli.enable_routing && settings.routing.is_none() {
-        settings.routing = Some(clankers::routing::config::RoutingPolicyConfig::default());
+        settings.routing = Some(clankers::model_selection::config::RoutingPolicyConfig::default());
     }
     if let Some(max_cost) = cli.max_cost {
-        settings.cost_tracking = Some(clankers::routing::cost_tracker::CostTrackerConfig {
+        settings.cost_tracking = Some(clankers::model_selection::cost_tracker::CostTrackerConfig {
             soft_limit: Some(max_cost * 0.8),
             hard_limit: Some(max_cost),
             warning_interval: Some(1.0),
