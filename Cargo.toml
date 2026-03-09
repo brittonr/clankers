@@ -5,6 +5,7 @@ members = [
     "crates/clankers-merge",
     "crates/clankers-matrix",
     "crates/clankers-router",
+    "crates/clankers-specs",
     "crates/clankers-tui",
     "crates/clankers-tui-types",
     "xtask",
@@ -34,6 +35,7 @@ clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
 clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
 clankers-router = { version = "0.1.0", path = "crates/clankers-router", features = ["rpc"] }
+clankers-specs = { version = "0.1.0", path = "crates/clankers-specs", optional = true }
 clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }
 clankers-tui-types = { version = "0.1.0", path = "crates/clankers-tui-types" }
 tokio = { version = "1", features = ["full"] }
@@ -116,7 +118,7 @@ workspace = true
 [features]
 default = ["tui-validate", "openspec", "zellij-share"]
 tui-validate = ["dep:portable-pty", "dep:vt100"]
-openspec = []
+openspec = ["dep:clankers-specs"]
 zellij-share = []
 simulation = ["dep:madsim"]
 property-testing = ["dep:bolero", "dep:bolero-generator", "dep:proptest"]

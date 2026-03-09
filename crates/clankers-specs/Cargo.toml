@@ -1,0 +1,12 @@
+[package]
+name = "clankers-specs"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Spec-driven development engine (OpenSpec)"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+petgraph = "0.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = "0.9"

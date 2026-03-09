@@ -1041,6 +1041,7 @@ dependencies = [
  "clankers-matrix",
  "clankers-merge",
  "clankers-router",
+ "clankers-specs",
  "clankers-tui",
  "clankers-tui-types",
  "clap",
@@ -1187,6 +1188,16 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
+]
+
+[[package]]
+name = "clankers-specs"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "petgraph",
+ "serde",
+ "serde_yaml",
 ]
 
 [[package]]
