@@ -51,6 +51,8 @@ pub(crate) struct EventLoopRunner<'a> {
     session_manager: Option<crate::session::SessionManager>,
     db: Option<crate::db::Db>,
     settings: &'a crate::config::settings::Settings,
+    // Slash command dispatch
+    pub(crate) slash_registry: crate::slash_commands::SlashRegistry,
     // Audit state
     audit_pending: std::collections::HashMap<String, (String, serde_json::Value, std::time::Instant)>,
     audit_seq: u32,
@@ -76,6 +78,7 @@ impl<'a> EventLoopRunner<'a> {
         settings: &'a crate::config::settings::Settings,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<AgentCommand>,
         done_rx: tokio::sync::mpsc::UnboundedReceiver<TaskResult>,
+        slash_registry: crate::slash_commands::SlashRegistry,
     ) -> Self {
         Self {
             terminal,
@@ -92,6 +95,7 @@ impl<'a> EventLoopRunner<'a> {
             session_manager,
             db,
             settings,
+            slash_registry,
             audit_pending: std::collections::HashMap::new(),
             audit_seq: 0,
         }
@@ -434,6 +438,7 @@ impl<'a> EventLoopRunner<'a> {
                             &self.panel_tx,
                             &self.db,
                             &mut self.session_manager,
+                            &self.slash_registry,
                         );
                     }
                 }
@@ -447,6 +452,7 @@ impl<'a> EventLoopRunner<'a> {
                             &self.panel_tx,
                             &self.db,
                             &mut self.session_manager,
+                            &self.slash_registry,
                         );
                     }
                 }

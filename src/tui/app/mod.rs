@@ -171,7 +171,7 @@ pub struct App {
 
     // Components (keep flat — they're already self-contained)
     pub slash_menu: SlashMenu,
-    pub slash_registry: crate::slash_commands::SlashRegistry,
+    pub completion_source: Box<dyn clankers_tui_types::CompletionSource>,
     pub plugin_ui: PluginUIState,
     pub panels: super::panel::PanelManager,
     pub context_gauge: super::components::context_gauge::ContextGauge,
@@ -270,7 +270,7 @@ impl App {
 
             // Components
             slash_menu: SlashMenu::new(),
-            slash_registry: build_default_slash_registry(),
+            completion_source: Box::new(EmptyCompletionSource),
             plugin_ui: PluginUIState::new(),
             panels: register_default_panels(),
             context_gauge,
@@ -303,7 +303,7 @@ impl App {
         use super::components::leader_menu::SlashCommandContributor;
 
         let builtin = BuiltinKeymapContributor;
-        let slash_cmds = clankers_tui_types::CompletionSource::slash_commands(&self.slash_registry);
+        let slash_cmds = clankers_tui_types::CompletionSource::slash_commands(&*self.completion_source);
         let slash_commands = SlashCommandContributor::new(slash_cmds);
         let hidden = settings.leader_menu.hidden_set();
 
@@ -342,49 +342,9 @@ impl App {
         self.overlays.leader_menu = menu;
     }
 
-    /// Rebuild the slash command registry with plugin contributions.
-    /// Call this after plugins are loaded.
-    pub fn rebuild_slash_registry(
-        &mut self,
-        plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    ) {
-        use crate::slash_commands::BuiltinSlashContributor;
-        use crate::slash_commands::SlashContributor;
-        use crate::slash_commands::SlashRegistry;
-
-        let builtin = BuiltinSlashContributor;
-
-        // Collect contributors
-        let pm_guard;
-        let mut contributors: Vec<&dyn SlashContributor> = vec![&builtin];
-
-        if let Some(pm_arc) = plugin_manager {
-            match pm_arc.lock() {
-                Ok(guard) => {
-                    pm_guard = guard;
-                    contributors.push(&*pm_guard);
-                }
-                Err(poisoned) => {
-                    tracing::warn!("plugin manager mutex poisoned in rebuild_slash_registry, recovering");
-                    pm_guard = poisoned.into_inner();
-                    contributors.push(&*pm_guard);
-                }
-            }
-        }
-
-        let (registry, conflicts) = SlashRegistry::build(&contributors);
-
-        for c in &conflicts {
-            tracing::debug!(
-                registry = c.registry,
-                key = %c.key,
-                winner = %c.winner,
-                loser = %c.loser,
-                "slash command conflict"
-            );
-        }
-
-        self.slash_registry = registry;
+    /// Set the completion source for slash menu autocompletion.
+    pub fn set_completion_source(&mut self, source: Box<dyn clankers_tui_types::CompletionSource>) {
+        self.completion_source = source;
     }
 
     /// Get a panel by ID (immutable) for rendering.
@@ -742,7 +702,7 @@ impl App {
     pub fn update_slash_menu(&mut self) {
         let content = self.editor.content().join("\n");
         if self.editor.line_count() == 1 && content.starts_with('/') && !content.contains('\n') {
-            self.slash_menu.update(&self.slash_registry, &content);
+            self.slash_menu.update(&*self.completion_source, &content);
         } else {
             self.slash_menu.hide();
         }
@@ -789,27 +749,11 @@ fn register_default_panels() -> super::panel::PanelManager {
     pm
 }
 
-/// Build the default slash command registry with builtin commands.
-fn build_default_slash_registry() -> crate::slash_commands::SlashRegistry {
-    use crate::slash_commands::BuiltinSlashContributor;
-    use crate::slash_commands::SlashContributor;
-    use crate::slash_commands::SlashRegistry;
-
-    let builtin = BuiltinSlashContributor;
-    let contributors: Vec<&dyn SlashContributor> = vec![&builtin];
-    let (registry, conflicts) = SlashRegistry::build(&contributors);
-
-    for c in &conflicts {
-        tracing::debug!(
-            registry = c.registry,
-            key = %c.key,
-            winner = %c.winner,
-            loser = %c.loser,
-            "slash command conflict (init)"
-        );
-    }
-
-    registry
+/// Empty completion source used as initial default before the real one is set.
+struct EmptyCompletionSource;
+impl clankers_tui_types::CompletionSource for EmptyCompletionSource {
+    fn completions(&self, _input: &str) -> Vec<clankers_tui_types::CompletionItem> { Vec::new() }
+    fn slash_commands(&self) -> Vec<clankers_tui_types::SlashCommandInfo> { Vec::new() }
 }
 
 #[cfg(test)]

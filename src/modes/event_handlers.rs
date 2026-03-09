@@ -30,6 +30,7 @@ pub(crate) fn handle_action(
     panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
     db: &Option<crate::db::Db>,
     session_manager: &mut Option<crate::session::SessionManager>,
+    slash_registry: &crate::slash_commands::SlashRegistry,
 ) {
     use crate::config::keybindings::CoreAction;
 
@@ -169,7 +170,7 @@ pub(crate) fn handle_action(
                         let _ = cmd_tx.send(super::interactive::AgentCommand::TruncateMessages(checkpoint));
                         let _ = cmd_tx.send(super::interactive::AgentCommand::Prompt(prompt));
                     } else {
-                        handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager);
+                        handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager, slash_registry);
                     }
                 }
             }
@@ -598,6 +599,7 @@ pub(crate) fn handle_leader_action(
     panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
     db: &Option<crate::db::Db>,
     session_manager: &mut Option<crate::session::SessionManager>,
+    slash_registry: &crate::slash_commands::SlashRegistry,
 ) {
     use clankers_tui_types::LeaderAction;
 
@@ -605,11 +607,11 @@ pub(crate) fn handle_leader_action(
         LeaderAction::KeymapAction(keymap_action) => {
             // Re-use the existing action dispatcher with a dummy key event
             let dummy_key = crossterm::event::KeyEvent::new(KeyCode::Null, KeyModifiers::NONE);
-            handle_action(app, keymap_action, &dummy_key, cmd_tx, plugin_manager, panel_tx, db, session_manager);
+            handle_action(app, keymap_action, &dummy_key, cmd_tx, plugin_manager, panel_tx, db, session_manager, slash_registry);
         }
         LeaderAction::SlashCommand(command) => {
             // Execute as if the user typed and submitted the slash command
-            handle_input_with_plugins(app, &command, cmd_tx, plugin_manager, panel_tx, db, session_manager);
+            handle_input_with_plugins(app, &command, cmd_tx, plugin_manager, panel_tx, db, session_manager, slash_registry);
         }
         LeaderAction::Submenu(_) => {
             // Submenus are handled internally by LeaderMenu::handle_key
@@ -682,6 +684,7 @@ pub(crate) fn handle_slash_menu_key(
     panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
     db: &Option<crate::db::Db>,
     session_manager: &mut Option<crate::session::SessionManager>,
+    slash_registry: &crate::slash_commands::SlashRegistry,
 ) -> bool {
     use crate::config::keybindings::CoreAction;
 
@@ -713,7 +716,7 @@ pub(crate) fn handle_slash_menu_key(
             Action::Core(CoreAction::Submit) => {
                 app.accept_slash_completion();
                 if let Some(text) = app.submit_input() {
-                    handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager);
+                    handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager, slash_registry);
                 }
                 return true;
             }
@@ -846,12 +849,9 @@ pub(crate) fn handle_input_with_plugins(
     panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
     db: &Option<crate::db::Db>,
     session_manager: &mut Option<crate::session::SessionManager>,
+    slash_registry: &crate::slash_commands::SlashRegistry,
 ) {
     if let Some((command, args)) = slash_commands::parse_command(text) {
-        // Temporarily move the registry out of App so we can borrow it
-        // immutably while SlashContext borrows the rest of App mutably.
-        // This replaces the previous unsafe raw-pointer workaround.
-        let registry = std::mem::take(&mut app.slash_registry);
         let mut ctx = slash_commands::handlers::SlashContext {
             app,
             cmd_tx,
@@ -860,8 +860,7 @@ pub(crate) fn handle_input_with_plugins(
             db,
             session_manager,
         };
-        registry.dispatch(&command, &args, &mut ctx);
-        ctx.app.slash_registry = registry;
+        slash_registry.dispatch(&command, &args, &mut ctx);
     } else {
         let _ = cmd_tx.send(super::interactive::AgentCommand::ResetCancel);
         let mut pending_images = app.take_pending_images();

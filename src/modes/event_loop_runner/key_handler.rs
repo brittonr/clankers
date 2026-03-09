@@ -79,6 +79,7 @@ impl<'a> EventLoopRunner<'a> {
                     &self.panel_tx,
                     &self.db,
                     &mut self.session_manager,
+                    &self.slash_registry,
                 );
             }
             return;
@@ -102,6 +103,7 @@ impl<'a> EventLoopRunner<'a> {
                 &self.panel_tx,
                 &self.db,
                 &mut self.session_manager,
+                &self.slash_registry,
             )
         {
             return;
@@ -130,6 +132,7 @@ impl<'a> EventLoopRunner<'a> {
                 &self.panel_tx,
                 &self.db,
                 &mut self.session_manager,
+                &self.slash_registry,
             );
 
             // Record branch in session if one was initiated

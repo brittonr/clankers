@@ -65,11 +65,14 @@ pub async fn run_interactive(
 
     let mut app = App::new(model.clone(), cwd.clone(), theme);
 
+    // Build slash command registry and set completion source on app
+    let slash_registry = build_slash_registry(plugin_manager.as_ref());
+    app.set_completion_source(Box::new(
+        clankers_tui_types::CompletionSnapshot::from_source(&slash_registry),
+    ));
+
     // Build leader menu from all contributors (builtins + plugins + user config)
     app.rebuild_leader_menu(plugin_manager.as_ref(), &settings);
-
-    // Build slash command registry with plugin contributions
-    app.rebuild_slash_registry(plugin_manager.as_ref());
 
     // ── Session persistence setup ────────────────────────────────────────
     let paths = crate::config::ClankersPaths::get();
@@ -202,6 +205,7 @@ pub async fn run_interactive(
         seed_messages,
         db.clone(),
         &settings,
+        slash_registry,
     )
     .await;
 
@@ -537,6 +541,7 @@ async fn run_event_loop(
     seed_messages: Vec<crate::provider::message::AgentMessage>,
     db: Option<crate::db::Db>,
     settings: &crate::config::settings::Settings,
+    slash_registry: crate::slash_commands::SlashRegistry,
 ) -> Result<()> {
     let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel::<AgentCommand>();
     let (done_tx, done_rx) = tokio::sync::mpsc::unbounded_channel::<TaskResult>();
@@ -717,6 +722,7 @@ async fn run_event_loop(
         settings,
         cmd_tx,
         done_rx,
+        slash_registry,
     );
     runner.run()
 }
@@ -995,4 +1001,34 @@ fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_panel::Peers
     app.panels
         .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(crate::tui::panel::PanelId::Peers)
         .expect("peers panel registered at startup")
+}
+
+/// Build the slash command registry from builtins + plugins.
+fn build_slash_registry(
+    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+) -> crate::slash_commands::SlashRegistry {
+    use crate::slash_commands::BuiltinSlashContributor;
+    use crate::slash_commands::SlashContributor;
+    use crate::slash_commands::SlashRegistry;
+
+    let builtin = BuiltinSlashContributor;
+    let pm_guard;
+    let mut contributors: Vec<&dyn SlashContributor> = vec![&builtin];
+    if let Some(pm_arc) = plugin_manager {
+        match pm_arc.lock() {
+            Ok(guard) => { pm_guard = guard; contributors.push(&*pm_guard); }
+            Err(poisoned) => { pm_guard = poisoned.into_inner(); contributors.push(&*pm_guard); }
+        }
+    }
+    let (registry, conflicts) = SlashRegistry::build(&contributors);
+    for c in &conflicts {
+        tracing::debug!(
+            registry = c.registry,
+            key = %c.key,
+            winner = %c.winner,
+            loser = %c.loser,
+            "slash command conflict"
+        );
+    }
+    registry
 }

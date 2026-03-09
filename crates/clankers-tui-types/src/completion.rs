@@ -44,3 +44,45 @@ pub trait CompletionSource {
     /// Get all available slash command info (for leader menu building).
     fn slash_commands(&self) -> Vec<SlashCommandInfo>;
 }
+
+/// A snapshot-based completion source that caches all completions.
+///
+/// Created from a `CompletionSource` to decouple the TUI from the registry.
+/// The TUI stores this; the main crate rebuilds it when the registry changes.
+#[derive(Debug, Clone)]
+pub struct CompletionSnapshot {
+    /// All available completions.
+    pub items: Vec<CompletionItem>,
+    /// All slash command infos (for leader menu).
+    pub commands: Vec<SlashCommandInfo>,
+}
+
+impl CompletionSnapshot {
+    /// Create a snapshot from any completion source.
+    pub fn from_source(source: &dyn CompletionSource) -> Self {
+        Self {
+            // Complete with empty string to get ALL completions
+            items: source.completions("/"),
+            commands: source.slash_commands(),
+        }
+    }
+}
+
+impl CompletionSource for CompletionSnapshot {
+    fn completions(&self, input: &str) -> Vec<CompletionItem> {
+        let query = input.trim_start_matches('/').to_lowercase();
+        if query.is_empty() {
+            return self.items.clone();
+        }
+        self.items
+            .iter()
+            .filter(|item| item.display.to_lowercase().contains(&query)
+                || item.insert_text.to_lowercase().contains(&query))
+            .cloned()
+            .collect()
+    }
+
+    fn slash_commands(&self) -> Vec<SlashCommandInfo> {
+        self.commands.clone()
+    }
+}
