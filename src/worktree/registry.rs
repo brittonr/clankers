@@ -8,6 +8,7 @@ use redb::ReadableTable;
 use redb::ReadableTableMetadata;
 use redb::TableDefinition;
 
+use super::DbWorktreeExt;
 use super::WorktreeInfo;
 use super::WorktreeStatus;
 use crate::db::Db;

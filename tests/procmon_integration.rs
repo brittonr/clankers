@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use clankers::agent::events::AgentEvent;
+use clankers::procmon::ProcessEvent;
 use clankers::procmon::ProcessMeta;
 use clankers::procmon::ProcessMonitor;
 use clankers::procmon::ProcessMonitorConfig;
@@ -13,7 +13,7 @@ use tokio::sync::broadcast;
 /// then wait for it to exit and verify the monitor detects the exit.
 #[tokio::test]
 async fn test_monitor_tracks_real_process() {
-    let (event_tx, mut event_rx) = broadcast::channel::<AgentEvent>(64);
+    let (event_tx, mut event_rx) = broadcast::channel::<ProcessEvent>(64);
     let config = ProcessMonitorConfig {
         poll_interval: Duration::from_millis(200),
         max_history: 10,
@@ -51,7 +51,7 @@ async fn test_monitor_tracks_real_process() {
         .await
         .expect("timeout waiting for spawn event")
         .expect("recv error");
-    assert!(matches!(spawn_event, AgentEvent::ProcessSpawn { .. }));
+    assert!(matches!(spawn_event, ProcessEvent::Spawn { .. }));
 
     // Wait for sample and/or exit events
     let mut got_sample = false;
@@ -61,11 +61,11 @@ async fn test_monitor_tracks_real_process() {
     // Give it plenty of time: 30 attempts with 500ms timeout each
     for _ in 0..30 {
         match tokio::time::timeout(Duration::from_millis(500), event_rx.recv()).await {
-            Ok(Ok(AgentEvent::ProcessSample { pid: sample_pid, .. })) if sample_pid == pid => {
+            Ok(Ok(ProcessEvent::Sample { pid: sample_pid, .. })) if sample_pid == pid => {
                 got_sample = true;
                 // Don't break - keep reading to get the exit event too
             }
-            Ok(Ok(AgentEvent::ProcessExit { pid: exit_pid, .. })) if exit_pid == pid => {
+            Ok(Ok(ProcessEvent::Exit { pid: exit_pid, .. })) if exit_pid == pid => {
                 got_exit = true;
                 break; // Got the exit, we're done
             }

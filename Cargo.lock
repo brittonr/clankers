@@ -1043,6 +1043,7 @@ dependencies = [
  "clankers-matrix",
  "clankers-merge",
  "clankers-model-selection",
+ "clankers-procmon",
  "clankers-router",
  "clankers-specs",
  "clankers-tui",
@@ -1190,6 +1191,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "clankers-procmon"
+version = "0.1.0"
+dependencies = [
+ "clankers-tui-types",
+ "parking_lot",
+ "serde",
+ "sysinfo",
+ "tokio",
+ "tokio-util",
+]
+
+[[package]]
 name = "clankers-router"
 version = "0.1.0"
 dependencies = [
@@ -1239,6 +1252,7 @@ dependencies = [
  "petgraph",
  "serde",
  "serde_yaml",
+ "tempfile",
 ]
 
 [[package]]

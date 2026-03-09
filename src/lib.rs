@@ -9,7 +9,7 @@ pub mod event_translator;
 pub use clankers_model_selection as model_selection;
 pub mod modes;
 pub mod plugin;
-pub mod procmon;
+pub use clankers_procmon as procmon;
 pub mod prompts;
 pub mod provider;
 pub mod registry;

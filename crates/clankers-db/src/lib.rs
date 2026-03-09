@@ -64,8 +64,7 @@ impl Db {
         Ok(Self { inner: Arc::new(db) })
     }
 
-    /// Open an in-memory database (for tests).
-    #[cfg(test)]
+    /// Open an in-memory database (useful for tests).
     pub fn in_memory() -> Result<Self> {
         let db = Database::builder().create_with_backend(redb::backends::InMemoryBackend::new()).map_err(|e| {
             crate::error::DbError {
