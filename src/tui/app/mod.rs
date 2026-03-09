@@ -303,7 +303,8 @@ impl App {
         use super::components::leader_menu::SlashCommandContributor;
 
         let builtin = BuiltinKeymapContributor;
-        let slash_commands = SlashCommandContributor::new(crate::slash_commands::builtin_commands());
+        let slash_cmds = clankers_tui_types::CompletionSource::slash_commands(&self.slash_registry);
+        let slash_commands = SlashCommandContributor::new(slash_cmds);
         let hidden = settings.leader_menu.hidden_set();
 
         // Collect contributors into a vec of trait refs

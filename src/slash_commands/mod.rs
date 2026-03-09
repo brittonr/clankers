@@ -93,6 +93,25 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
     builtin_handlers().into_iter().map(|h| h.command()).collect()
 }
 
+/// Get builtin command info (for leader menu building without importing SlashCommand).
+pub fn builtin_command_infos() -> Vec<clankers_tui_types::SlashCommandInfo> {
+    builtin_commands()
+        .iter()
+        .map(|cmd| {
+            let leader_key = cmd.leader_key.as_ref().map(|b| clankers_tui_types::LeaderBinding {
+                key: b.key,
+                placement: b.placement.clone(),
+                label: b.label.map(|s| s.to_string()),
+            });
+            clankers_tui_types::SlashCommandInfo {
+                name: cmd.name.to_string(),
+                description: cmd.description.to_string(),
+                leader_key,
+            }
+        })
+        .collect()
+}
+
 // The giant 729-line Vec literal has been eliminated!
 // Each handler now owns its own metadata via the `command()` method.
 //

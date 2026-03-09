@@ -255,8 +255,8 @@ fn pane_submenu_items() -> Vec<MenuContribution> {
     ]
 }
 
-/// Convert slash commands with `leader_key` bindings into menu contributions.
-pub fn slash_command_contributions(commands: &[crate::slash_commands::SlashCommand]) -> Vec<MenuContribution> {
+/// Convert slash command info with `leader_key` bindings into menu contributions.
+pub fn slash_command_contributions(commands: &[clankers_tui_types::SlashCommandInfo]) -> Vec<MenuContribution> {
     use clankers_tui_types::PRIORITY_BUILTIN;
 
     commands
@@ -265,7 +265,7 @@ pub fn slash_command_contributions(commands: &[crate::slash_commands::SlashComma
             let binding = cmd.leader_key.as_ref()?;
             Some(MenuContribution {
                 key: binding.key,
-                label: binding.label.unwrap_or(cmd.description).to_string(),
+                label: binding.label.clone().unwrap_or_else(|| cmd.description.clone()),
                 action: LeaderAction::SlashCommand(format!("/{}", cmd.name)),
                 placement: binding.placement.clone(),
                 priority: PRIORITY_BUILTIN,
@@ -275,13 +275,13 @@ pub fn slash_command_contributions(commands: &[crate::slash_commands::SlashComma
         .collect()
 }
 
-/// Wrapper to make slash commands act as a MenuContributor.
+/// Wrapper to make a CompletionSource act as a MenuContributor.
 pub struct SlashCommandContributor {
-    commands: Vec<crate::slash_commands::SlashCommand>,
+    commands: Vec<clankers_tui_types::SlashCommandInfo>,
 }
 
 impl SlashCommandContributor {
-    pub fn new(commands: Vec<crate::slash_commands::SlashCommand>) -> Self {
+    pub fn new(commands: Vec<clankers_tui_types::SlashCommandInfo>) -> Self {
         Self { commands }
     }
 }

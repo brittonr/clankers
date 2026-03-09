@@ -57,7 +57,7 @@ impl LeaderMenu {
     /// Prefer [`LeaderMenu::build`] for dynamic registration.
     pub fn new() -> Self {
         use std::collections::HashSet;
-        let slash_contrib = SlashCommandContributor::new(crate::slash_commands::builtin_commands());
+        let slash_contrib = SlashCommandContributor::new(crate::slash_commands::builtin_command_infos());
         Self::build(&[&BuiltinKeymapContributor, &slash_contrib], &HashSet::new()).0
     }
 

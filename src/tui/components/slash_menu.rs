@@ -16,7 +16,7 @@ use ratatui::widgets::Clear;
 use ratatui::widgets::List;
 use ratatui::widgets::ListItem;
 
-use crate::slash_commands::CompletionItem;
+use clankers_tui_types::CompletionItem;
 use crate::tui::theme::Theme;
 
 /// State for the slash command autocomplete menu
@@ -63,8 +63,8 @@ impl SlashMenu {
     }
 
     /// Update the menu with new completions based on the current input
-    pub fn update(&mut self, registry: &crate::slash_commands::SlashRegistry, input: &str) {
-        let completions = crate::slash_commands::completions_from_registry(registry, input);
+    pub fn update(&mut self, source: &dyn clankers_tui_types::CompletionSource, input: &str) {
+        let completions = source.completions(input);
         if completions.is_empty() || !input.starts_with('/') {
             self.visible = false;
             self.items.clear();
