@@ -307,3 +307,13 @@
 - Tests referencing main-crate types (e.g., `crate::slash_commands`) cannot live in the TUI crate — move to main crate
 - `crate::tui::` → `crate::` sed replacement is safe (all external refs were eliminated in Phase 5)
 - Git detects file moves as renames when content changes are minimal (< ~20% diff)
+
+## Patterns That Work (TUI extraction round 2)
+- Keybindings engine (Keymap, KeyCombo, presets, defaults, parser) moved to `crates/clankers-tui/src/keymap/` — main crate keeps only `KeymapConfig` (settings-layer loading) + re-exports
+- `pub use clankers_tui::keymap::*` in `src/config/keybindings/mod.rs` preserves all import paths
+- Mouse and clipboard modules move directly to TUI crate — zero backend deps, only needed `pub(crate)` → `pub` visibility change
+- Selectors with backend side-effects (model, account, session) return `(bool, Option<SelectorAction>)` instead of taking `cmd_tx` channel
+- `SelectorAction` enum in `clankers-tui-types` covers `SetModel`, `SwitchAccount`, `ResumeSession` — the event loop maps these to `AgentCommand` in `dispatch_selector_action()`
+- Selectors with only TUI side-effects (branch switcher, branch compare, merge interactive) keep simple `bool` return — no abstraction needed
+- `ansi.rs` was NOT a good extraction candidate: `ansi_to_spans`/`ansi_to_lines` are dead outside their own tests, and `strip_ansi` callers are tools (not TUI code)
+- Always check who actually calls a function before deciding to move it — grep for callers, not just the function definition
