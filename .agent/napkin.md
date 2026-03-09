@@ -291,8 +291,14 @@
 
 ## Patterns That Work (TUI extraction)
 - `clankers-tui-types` crate at `crates/clankers-tui-types/` — shared boundary types with no ratatui dep
+- `clankers-tui` crate at `crates/clankers-tui/` — full TUI crate with all 64 files, depends on ratatui/crossterm/hypertile
+- Main crate: `pub use clankers_tui as tui;` in lib.rs — zero API change for callers using `crate::tui::`
 - Re-export pattern: original locations do `pub use clankers_tui_types::TypeName;` for backward compat
 - External files (tools, modes, slash_commands) import directly from `clankers_tui_types::` 
 - Types with ratatui deps (TodoStatus.color(), ListNav.prefix_span()) stay in TUI crate, not types crate
 - InputMode needs `Serialize`/`Deserialize` — add derives in the types crate, not orphan impls in main crate
 - `parse_action()` moved to types crate alongside Action/CoreAction/ExtendedAction (no external deps)
+- Crate extraction: `pub(crate)` items accessed from main crate must become `pub` — found 23 items needing promotion
+- Tests referencing main-crate types (e.g., `crate::slash_commands`) cannot live in the TUI crate — move to main crate
+- `crate::tui::` → `crate::` sed replacement is safe (all external refs were eliminated in Phase 5)
+- Git detects file moves as renames when content changes are minimal (< ~20% diff)
