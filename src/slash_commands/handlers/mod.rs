@@ -34,7 +34,7 @@ use std::sync::Mutex;
 use crate::modes::interactive::AgentCommand;
 use crate::plugin::PluginManager;
 use crate::tui::app::App;
-use crate::tui::components::subagent_event::SubagentEvent;
+use clankers_tui_types::SubagentEvent;
 
 /// Context passed to every slash command handler.
 #[allow(private_interfaces)]

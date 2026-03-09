@@ -11,7 +11,7 @@ use std::collections::HashMap;
 
 use crate::registry::Conflict;
 use crate::registry::PRIORITY_BUILTIN;
-use crate::tui::components::leader_menu::MenuPlacement;
+use clankers_tui_types::MenuPlacement;
 
 // ---------------------------------------------------------------------------
 // Slash command dispatch is handled by `SlashRegistry::dispatch()` below.

@@ -1,5 +1,6 @@
-# Build
+# Build (workspace root + nested plugin/example crates)
 target/
+**/target/
 coverage/
 doc/
 

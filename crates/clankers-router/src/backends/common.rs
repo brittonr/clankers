@@ -300,7 +300,6 @@ where H: SseEventHandler {
             }
             Ok(None) => {
                 // Event ignored (e.g., ping)
-                continue;
             }
             Err(e) => {
                 warn!("SSE event handler error: {}", e);

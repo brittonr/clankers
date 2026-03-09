@@ -6,7 +6,7 @@ use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
 use crate::tools::ToolResult;
-use crate::tui::components::subagent_event::SubagentEvent;
+use clankers_tui_types::SubagentEvent;
 
 type PanelTx = tokio::sync::mpsc::UnboundedSender<SubagentEvent>;
 

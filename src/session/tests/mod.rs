@@ -18,6 +18,4 @@ mod navigation;
 mod store_tests;
 mod tree;
 
-// Re-export store_tests as store for test organization
-#[allow(unused_imports)]
-use store_tests as store_test_module;
+

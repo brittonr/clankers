@@ -14,8 +14,8 @@ use crate::config::keybindings::Keymap;
 use crate::provider::auth::AuthStoreExt;
 use crate::slash_commands;
 use crate::tui::app::App;
-use crate::tui::app::AppState;
-use crate::tui::components::block::BlockEntry;
+use clankers_tui_types::AppState;
+use clankers_tui_types::BlockEntry;
 
 // ---------------------------------------------------------------------------
 // Action dispatcher
@@ -441,21 +441,21 @@ pub(crate) fn handle_action(
             }
             ExtendedAction::PanelScrollUp => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
-                use crate::tui::panel::PanelId;
+                use clankers_tui_types::PanelId;
                 if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
                     sp.scroll.scroll_up(3);
                 }
             }
             ExtendedAction::PanelScrollDown => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
-                use crate::tui::panel::PanelId;
+                use clankers_tui_types::PanelId;
                 if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
                     sp.scroll.scroll_down(3);
                 }
             }
             ExtendedAction::PanelClearDone => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
-                use crate::tui::panel::PanelId;
+                use clankers_tui_types::PanelId;
                 if let Some(subagent_panel) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
                     subagent_panel.clear_done();
                     if !subagent_panel.is_visible() {
@@ -465,7 +465,7 @@ pub(crate) fn handle_action(
             }
             ExtendedAction::PanelKill => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
-                use crate::tui::panel::PanelId;
+                use clankers_tui_types::PanelId;
                 if let Some(sp) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
                     && let Some(id) = sp.selected_id()
                 {
@@ -474,7 +474,7 @@ pub(crate) fn handle_action(
             }
             ExtendedAction::PanelRemove => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
-                use crate::tui::panel::PanelId;
+                use clankers_tui_types::PanelId;
                 if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
                     sp.remove_selected();
                 }
@@ -503,7 +503,7 @@ pub(crate) fn handle_action(
             // ── Branch panel ──────────────────────────────
             ExtendedAction::ToggleBranchPanel => {
                 use crate::tui::components::branch_panel::BranchPanel;
-                use crate::tui::panel::PanelId;
+                use clankers_tui_types::PanelId;
                 if app.layout.focused_panel == Some(PanelId::Branches) {
                     // Unfocus (panel stays in the tree but we leave it)
                     app.unfocus_panel();
@@ -599,7 +599,7 @@ pub(crate) fn handle_leader_action(
     db: &Option<crate::db::Db>,
     session_manager: &mut Option<crate::session::SessionManager>,
 ) {
-    use crate::tui::components::leader_menu::LeaderAction;
+    use clankers_tui_types::LeaderAction;
 
     match action {
         LeaderAction::KeymapAction(keymap_action) => {

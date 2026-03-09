@@ -247,7 +247,7 @@ async fn execute_tool_with_accumulator(
                 }
                 Ok(_) => {} // ignore other events
                 Err(broadcast::error::RecvError::Closed) => break,
-                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Lagged(_)) => {},
             }
         }
     });

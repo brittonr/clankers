@@ -27,9 +27,6 @@ struct ProgressSample {
 struct ProgressState {
     /// Latest progress update
     progress: ToolProgress,
-    /// When we received the first progress update (used for ETA baseline)
-    #[allow(dead_code)] // retained for future ETA calculation
-    started_at: Instant,
     /// History for ETA calculation (last N samples)
     history: VecDeque<ProgressSample>,
 }
@@ -50,7 +47,6 @@ impl ProgressRenderer {
     pub fn update(&mut self, call_id: &str, progress: ToolProgress) {
         let state = self.states.entry(call_id.to_string()).or_insert_with(|| ProgressState {
             progress: progress.clone(),
-            started_at: Instant::now(),
             history: VecDeque::with_capacity(10),
         });
 
@@ -371,7 +367,6 @@ mod tests {
     fn eta_calculation_needs_history() {
         let state = ProgressState {
             progress: ToolProgress::percentage(50.0),
-            started_at: Instant::now(),
             history: VecDeque::new(),
         };
         // Not enough samples
@@ -394,7 +389,6 @@ mod tests {
 
         let state = ProgressState {
             progress: ToolProgress::percentage(50.0),
-            started_at: now - Duration::from_secs(10),
             history,
         };
 

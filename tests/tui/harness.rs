@@ -119,21 +119,6 @@ impl TuiTestHarness {
         }
     }
 
-    /// Wait until the given text is NOT on screen, or panic after timeout
-    #[allow(dead_code)]
-    pub fn wait_for_no_text(&mut self, needle: &str, timeout: Duration) {
-        let start = Instant::now();
-        loop {
-            if !self.screen_text().contains(needle) {
-                return;
-            }
-            if start.elapsed() >= timeout {
-                panic!("Timed out waiting for {:?} to disappear.\nScreen contents:\n{}", needle, self.screen_text());
-            }
-            std::thread::sleep(Duration::from_millis(50));
-        }
-    }
-
     /// Get the full screen contents as a string (one line per row)
     pub fn screen_text(&self) -> String {
         let parser = self.parser.lock().unwrap();
@@ -203,7 +188,6 @@ impl TuiTestHarness {
 use std::io::Read;
 
 /// Named keys for sending to the terminal
-#[allow(dead_code)]
 pub enum Key {
     Enter,
     Escape,
@@ -219,10 +203,6 @@ pub enum Key {
     End,
     CtrlC,
     CtrlD,
-    CtrlJ,
-    CtrlK,
-    CtrlN,
-    CtrlP,
     CtrlT,
     CtrlU,
     CtrlW,
@@ -248,10 +228,6 @@ impl Key {
             Key::End => b"\x1b[F",
             Key::CtrlC => b"\x03",
             Key::CtrlD => b"\x04",
-            Key::CtrlJ => b"\x0a",
-            Key::CtrlK => b"\x0b",
-            Key::CtrlN => b"\x0e",
-            Key::CtrlP => b"\x10",
             Key::CtrlT => b"\x14",
             Key::CtrlU => b"\x15",
             Key::CtrlW => b"\x17",

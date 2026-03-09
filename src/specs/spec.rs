@@ -87,7 +87,6 @@ pub fn parse_spec_file(path: &Path, root: &Path) -> Option<Spec> {
             current_body.clear();
             current_scenarios.clear();
             // Next lines until next heading are purpose
-            continue;
         } else if line.starts_with("## ") || line.starts_with("### ") {
             // Check if previous was purpose
             if current_heading.is_none() && !current_body.is_empty() && purpose.is_none() {

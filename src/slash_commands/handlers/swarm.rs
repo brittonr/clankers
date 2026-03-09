@@ -7,7 +7,7 @@ use super::SlashHandler;
 // Helper functions for safe panel access
 use crate::tui::components::peers_panel::PeersPanel;
 use crate::tui::components::subagent_panel::SubagentPanel;
-use crate::tui::panel::PanelId;
+use clankers_tui_types::PanelId;
 
 /// Get a mutable reference to the peers panel, panicking if not found.
 /// Centralizes the expect call to make it easier to audit and replace.

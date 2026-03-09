@@ -54,8 +54,7 @@ enum SseDelta {
     Thinking { thinking: String },
     #[serde(rename = "signature_delta")]
     Signature {
-        #[allow(dead_code)]
-        signature: String,
+        _signature: String,
     },
 }
 

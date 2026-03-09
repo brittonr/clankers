@@ -91,7 +91,7 @@ async fn test_monitor_tracks_real_process() {
     assert_eq!(stats.active_count, 0);
     assert_eq!(stats.finished_count, 1);
 
-    monitor.shutdown().await;
+    monitor.shutdown();
 }
 
 /// Verify the monitor detects child processes of a tracked parent.
@@ -131,5 +131,5 @@ async fn test_monitor_discovers_children() {
     // Wait for everything to finish
     tokio::time::sleep(Duration::from_secs(2)).await;
 
-    monitor.shutdown().await;
+    monitor.shutdown();
 }

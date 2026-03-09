@@ -34,11 +34,7 @@ impl LeaderMenu {
             .items
             .iter()
             .map(|i| {
-                let suffix = if matches!(i.action, LeaderAction::Submenu(_)) {
-                    1 // "…"
-                } else {
-                    0
-                };
+                let suffix = u16::from(matches!(i.action, LeaderAction::Submenu(_))); // "…"
                 // "  k  label" = 5 + label.len + suffix
                 5 + i.label.len() as u16 + suffix
             })

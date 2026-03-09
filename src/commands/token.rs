@@ -21,7 +21,7 @@ struct TokenScope {
 }
 
 /// Run the token subcommand.
-pub async fn run(ctx: &CommandContext, action: TokenAction) -> Result<()> {
+pub fn run(ctx: &CommandContext, action: TokenAction) -> Result<()> {
     let identity_path = crate::modes::rpc::iroh::identity_path(&ctx.paths);
     let identity = crate::modes::rpc::iroh::Identity::load_or_generate(&identity_path);
 

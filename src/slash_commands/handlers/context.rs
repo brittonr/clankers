@@ -3,7 +3,7 @@
 use super::SlashContext;
 use super::SlashHandler;
 use crate::modes::interactive::AgentCommand;
-use crate::tui::components::block::BlockEntry;
+use clankers_tui_types::BlockEntry;
 
 pub struct ClearHandler;
 

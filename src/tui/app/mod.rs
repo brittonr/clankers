@@ -5,8 +5,6 @@ mod block_nav;
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Instant;
-
 use ratatui::layout::Rect;
 
 use crate::config::keybindings::InputMode;
@@ -23,73 +21,21 @@ use crate::tui::panel::PanelId;
 use crate::tui::selection::TextSelection;
 use crate::tui::theme::Theme;
 
-/// State for a currently-executing tool (used for live output rendering)
-#[derive(Debug, Clone)]
-pub struct ActiveToolExecution {
-    /// Name of the tool (e.g. "bash")
-    pub tool_name: String,
-    /// When execution started
-    pub started_at: Instant,
-    /// Number of output lines received so far
-    pub line_count: usize,
-}
-
-/// Application state
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AppState {
-    Idle,
-    Streaming,
-    Command,
-    Dialog,
-}
+// Display types re-exported from clankers-tui-types.
+pub(crate) use clankers_tui_types::ActiveToolExecution;
+pub(crate) use clankers_tui_types::AppState;
+pub(crate) use clankers_tui_types::DisplayImage;
+pub(crate) use clankers_tui_types::DisplayMessage;
+pub(crate) use clankers_tui_types::MessageRole;
+pub(crate) use clankers_tui_types::PendingImage;
+pub(crate) use clankers_tui_types::RouterStatus;
 
 // Panel focus is tracked by `focused_panel: Option<PanelId>` and the hypertile
 // BSP tiling engine (`tiling: Hypertile`). See App::focus_panel() / unfocus_panel().
 
-/// Connection status to the clankers-router daemon
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RouterStatus {
-    /// Connected to the router daemon via RPC
-    Connected,
-    /// Using in-process provider (no daemon)
-    Local,
-    /// Disconnected / unreachable
-    Disconnected,
-}
-
-/// A message for display in the chat view
-#[derive(Debug, Clone)]
-pub struct DisplayMessage {
-    pub role: MessageRole,
-    pub content: String,
-    pub tool_name: Option<String>,
-    pub is_error: bool,
-    /// Optional inline images (base64 data + media type) for terminal rendering
-    pub images: Vec<DisplayImage>,
-}
-
-/// An image attached to a display message for inline terminal rendering
-#[derive(Debug, Clone)]
-pub struct DisplayImage {
-    /// Base64-encoded image data
-    pub data: String,
-    /// MIME type (e.g. "image/png")
-    pub media_type: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum MessageRole {
-    User,
-    Assistant,
-    ToolCall,
-    ToolResult,
-    Thinking,
-    System,
-}
-
 /// Saved tiling state while a pane is temporarily zoomed to full screen.
 #[derive(Debug, Clone)]
-pub struct ZoomState {
+pub(crate) struct ZoomState {
     /// The BSP tree before zooming.
     pub tiling: ratatui_hypertile::Hypertile,
     /// The pane registry before zooming.
@@ -102,7 +48,7 @@ pub struct ZoomState {
 
 /// Streaming state — tracks in-progress LLM/tool output
 #[derive(Debug, Default)]
-pub struct StreamingState {
+pub(crate) struct StreamingState {
     /// Accumulated streaming text (flushed into active block on boundaries)
     pub text: String,
     /// Accumulated streaming thinking (flushed into active block on boundaries)
@@ -120,7 +66,7 @@ pub struct StreamingState {
 }
 
 /// Conversation state — blocks, scroll, and focus
-pub struct ConversationState {
+pub(crate) struct ConversationState {
     /// Block-oriented conversation history (only active branch shown)
     pub blocks: Vec<BlockEntry>,
     /// All conversation blocks ever created (including branched-off)
@@ -136,7 +82,7 @@ pub struct ConversationState {
 }
 
 /// Branching state — fork, compare, merge overlays
-pub struct BranchingState {
+pub(crate) struct BranchingState {
     /// Pending branch operation: Some((fork_block_id, new_prompt))
     pub pending_branch: Option<(usize, String)>,
     /// Branch checkpoint that was just executed
@@ -150,7 +96,7 @@ pub struct BranchingState {
 }
 
 /// Overlay/popup state — all modal dialogs and selectors
-pub struct OverlayState {
+pub(crate) struct OverlayState {
     /// Whether the session/branch popup is visible
     pub session_popup_visible: bool,
     /// Whether the cost detail overlay is visible
@@ -174,7 +120,7 @@ pub struct OverlayState {
 }
 
 /// Tiling state — BSP layout and pane focus
-pub struct TilingState {
+pub(crate) struct TilingState {
     /// BSP tiling engine
     pub tiling: ratatui_hypertile::Hypertile,
     /// Maps hypertile PaneIds to their content type
@@ -190,7 +136,7 @@ pub struct TilingState {
 }
 
 /// Main TUI application
-pub struct App {
+pub(crate) struct App {
     // Core state (keep flat)
     pub state: AppState,
     pub input_mode: InputMode,
@@ -245,16 +191,7 @@ pub struct App {
     pub clipboard_rx: Option<std::sync::mpsc::Receiver<crate::modes::clipboard::ClipboardResult>>,
 }
 
-/// An image attached to the editor, waiting to be sent with the next prompt
-#[derive(Debug, Clone)]
-pub struct PendingImage {
-    /// Base64-encoded image data
-    pub data: String,
-    /// MIME type (e.g. "image/png")
-    pub media_type: String,
-    /// Approximate size in bytes (of the raw image data)
-    pub size: usize,
-}
+// PendingImage re-exported from clankers-tui-types above.
 
 impl App {
     pub fn new(model: String, cwd: String, theme: Theme) -> Self {
@@ -832,22 +769,7 @@ impl App {
 
 // ── Hit-testing helpers ──────────────────────────────────────────────────────
 
-/// Which UI region a mouse event landed in.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum HitRegion {
-    /// The main messages / chat area
-    Messages,
-    /// The text editor / input area
-    Editor,
-    /// A side panel
-    Panel(PanelId),
-    /// A subagent's dedicated pane
-    Subagent(String),
-    /// The status bar
-    StatusBar,
-    /// Outside any tracked region
-    None,
-}
+pub(crate) use clankers_tui_types::HitRegion;
 
 /// Check whether a screen coordinate (col, row) is inside a `Rect`.
 fn rect_contains(area: Rect, col: u16, row: u16) -> bool {

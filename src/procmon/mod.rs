@@ -203,7 +203,7 @@ impl ProcessMonitor {
     }
 
     /// Shutdown the monitor.
-    pub async fn shutdown(&self) {
+    pub fn shutdown(&self) {
         self.cancel_token.cancel();
     }
 

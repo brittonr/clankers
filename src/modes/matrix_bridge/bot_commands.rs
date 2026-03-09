@@ -352,14 +352,14 @@ pub(crate) async fn handle_bot_command(body: &str, key: &SessionKey, store: Arc<
 /// Parse duration strings like "30m", "1h", "7d", "1y" into `std::time::Duration`.
 pub(crate) fn parse_delegate_duration(s: &str) -> Option<std::time::Duration> {
     let s = s.trim();
-    let (num_str, unit) = if s.ends_with('m') {
-        (&s[..s.len() - 1], 'm')
-    } else if s.ends_with('h') {
-        (&s[..s.len() - 1], 'h')
-    } else if s.ends_with('d') {
-        (&s[..s.len() - 1], 'd')
-    } else if s.ends_with('y') {
-        (&s[..s.len() - 1], 'y')
+    let (num_str, unit) = if let Some(stripped) = s.strip_suffix('m') {
+        (stripped, 'm')
+    } else if let Some(stripped) = s.strip_suffix('h') {
+        (stripped, 'h')
+    } else if let Some(stripped) = s.strip_suffix('d') {
+        (stripped, 'd')
+    } else if let Some(stripped) = s.strip_suffix('y') {
+        (stripped, 'y')
     } else {
         return None;
     };

@@ -98,7 +98,7 @@ impl<'a> EventLoopRunner<'a> {
     }
 
     /// Main event loop. Returns when `app.should_quit` is set.
-    pub async fn run(&mut self) -> Result<()> {
+    pub fn run(&mut self) -> Result<()> {
         loop {
             // Render
             self.terminal.draw(|frame| render::render(frame, self.app)).map_err(|e| crate::error::Error::Tui {
@@ -237,7 +237,6 @@ impl<'a> EventLoopRunner<'a> {
                 }
                 Err(tokio::sync::broadcast::error::TryRecvError::Lagged(n)) => {
                     tracing::warn!("Agent event receiver lagged, skipped {} events", n);
-                    continue;
                 }
                 Err(_) => break,
             }
@@ -248,7 +247,7 @@ impl<'a> EventLoopRunner<'a> {
 
     fn drain_panel_events(&mut self) {
         while let Ok(event) = self.panel_rx.try_recv() {
-            use crate::tui::components::subagent_event::SubagentEvent;
+            use clankers_tui_types::SubagentEvent;
             match event {
                 SubagentEvent::Started { id, name, task, pid } => {
                     subagent_panel(self.app).add(id.clone(), name.clone(), task.clone(), pid);

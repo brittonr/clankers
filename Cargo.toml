@@ -5,6 +5,7 @@ members = [
     "crates/clankers-merge",
     "crates/clankers-matrix",
     "crates/clankers-router",
+    "crates/clankers-tui-types",
     "xtask",
 ]
 resolver = "3"
@@ -32,6 +33,7 @@ clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
 clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
 clankers-router = { version = "0.1.0", path = "crates/clankers-router", features = ["rpc"] }
+clankers-tui-types = { version = "0.1.0", path = "crates/clankers-tui-types" }
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 futures = "0.3"
@@ -164,11 +166,7 @@ unreadable_literal = { level = "allow", priority = 1 }
 # These have many hits across the codebase — fix in follow-up PRs.
 match_wildcard_for_single_variants = { level = "allow", priority = 1 }
 case_sensitive_file_extension_comparisons = { level = "allow", priority = 1 }
-manual_strip = { level = "allow", priority = 1 }
-needless_continue = { level = "allow", priority = 1 }
-unused_async = { level = "allow", priority = 1 }
 type_complexity = { level = "allow", priority = 1 }
-bool_to_int_with_if = { level = "allow", priority = 1 }
 
 [profile.release]
 lto = true

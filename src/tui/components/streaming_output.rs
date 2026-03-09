@@ -14,7 +14,7 @@ use ratatui::text::Span;
 
 /// Configuration for the streaming output buffer.
 #[derive(Debug, Clone)]
-pub struct StreamingConfig {
+pub(crate) struct StreamingConfig {
     /// Maximum lines to keep in the buffer before truncating.
     /// Head + tail must be ≤ max_lines.
     pub max_lines: usize,
@@ -42,7 +42,7 @@ impl Default for StreamingConfig {
 /// Stores lines with head/tail truncation when output exceeds `max_lines`.
 /// Maintains scroll state and auto-follow mode for live viewing.
 #[derive(Debug)]
-pub struct StreamingOutput {
+pub(crate) struct StreamingOutput {
     /// Head lines (first N lines of output).
     head: Vec<String>,
     /// Tail lines (last N lines of output — ring buffer).
@@ -295,7 +295,7 @@ enum DisplayLine {
 
 /// Manages streaming output buffers for all active tool executions.
 #[derive(Debug)]
-pub struct StreamingOutputManager {
+pub(crate) struct StreamingOutputManager {
     /// Per-call_id output buffers.
     outputs: HashMap<String, StreamingOutput>,
     /// Default config for new buffers.

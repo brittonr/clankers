@@ -5,9 +5,9 @@
 
 use crate::config::keybindings::InputMode;
 use crate::tui::app::App;
-use crate::tui::app::AppState;
-use crate::tui::app::HitRegion;
-use crate::tui::components::block::BlockEntry;
+use clankers_tui_types::AppState;
+use clankers_tui_types::HitRegion;
+use clankers_tui_types::BlockEntry;
 use crate::tui::event::Button;
 
 pub(crate) fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {

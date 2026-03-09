@@ -1041,6 +1041,7 @@ dependencies = [
  "clankers-matrix",
  "clankers-merge",
  "clankers-router",
+ "clankers-tui-types",
  "clap",
  "criterion",
  "crossterm",
@@ -1185,6 +1186,15 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
+]
+
+[[package]]
+name = "clankers-tui-types"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

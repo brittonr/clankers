@@ -25,74 +25,15 @@ use ratatui::widgets::Wrap;
 
 use crate::tui::theme::Theme;
 
-// ── Panel identifier ────────────────────────────────────────────────────────
-
-/// Unique identifier for a panel. Used by the layout engine and focus tracker.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum PanelId {
-    Todo,
-    Files,
-    Subagents,
-    Peers,
-    Processes,
-    Branches,
-}
-
-impl PanelId {
-    pub fn label(self) -> &'static str {
-        match self {
-            PanelId::Todo => "Todo",
-            PanelId::Files => "Files",
-            PanelId::Subagents => "Subagents",
-            PanelId::Peers => "Peers",
-            PanelId::Processes => "Processes",
-            PanelId::Branches => "Branches",
-        }
-    }
-
-    /// All known panel IDs (for iteration / config validation).
-    pub const ALL: &'static [PanelId] = &[
-        PanelId::Todo,
-        PanelId::Files,
-        PanelId::Subagents,
-        PanelId::Peers,
-        PanelId::Processes,
-        PanelId::Branches,
-    ];
-}
-
-impl std::fmt::Display for PanelId {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(self.label())
-    }
-}
-
-// ── Panel actions ───────────────────────────────────────────────────────────
-
-/// Actions that a panel can emit back to the application.
-/// Follows the ratatui Component pattern: event handlers return
-/// `Option<PanelAction>` rather than mutating app state directly.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PanelAction {
-    /// The key was consumed internally — no further handling needed.
-    Consumed,
-    /// The panel wants to give up focus (e.g. Esc pressed).
-    Unfocus,
-    /// The panel wants to run a slash command.
-    SlashCommand(String),
-    /// The panel wants to switch focus to a different panel.
-    FocusPanel(PanelId),
-    /// Switch to a conversation branch by block ID.
-    SwitchBranch(usize),
-    /// Focus a subagent's dedicated BSP pane (by subagent ID).
-    FocusSubagent(String),
-}
+// Panel identifier and actions re-exported from clankers-tui-types.
+pub(crate) use clankers_tui_types::PanelAction;
+pub(crate) use clankers_tui_types::PanelId;
 
 // ── PanelManager ────────────────────────────────────────────────────────────
 
 /// Manages the collection of panels, keyed by `PanelId`.
 /// Replaces the old pattern of having a named field per panel on `App`.
-pub struct PanelManager {
+pub(crate) struct PanelManager {
     panels: IndexMap<PanelId, Box<dyn Panel>>,
 }
 
@@ -244,7 +185,7 @@ pub trait Panel {
 // ── Draw context ────────────────────────────────────────────────────────────
 
 /// Everything a panel needs to render itself, bundled for a clean signature.
-pub struct DrawContext<'a> {
+pub(crate) struct DrawContext<'a> {
     pub theme: &'a Theme,
     pub focused: bool,
 }
@@ -254,7 +195,7 @@ pub struct DrawContext<'a> {
 /// Draw the standard panel frame (border + title + focus hints) and return
 /// the inner Rect. If the panel is empty, renders the empty-state text
 /// and returns `None` (caller should skip `draw`).
-pub fn draw_panel_frame(frame: &mut Frame, panel: &dyn Panel, area: Rect, ctx: &DrawContext) -> Option<Rect> {
+pub(crate) fn draw_panel_frame(frame: &mut Frame, panel: &dyn Panel, area: Rect, ctx: &DrawContext) -> Option<Rect> {
     let border_color = if ctx.focused { Color::Cyan } else { ctx.theme.border };
 
     let hints = if ctx.focused { panel.focus_hints() } else { "" };
@@ -282,7 +223,7 @@ pub fn draw_panel_frame(frame: &mut Frame, panel: &dyn Panel, area: Rect, ctx: &
 ///
 /// If the panel implements `content()` + `panel_scroll()`, this handles
 /// scroll dimensions automatically. Otherwise delegates to `draw()`.
-pub fn draw_panel(frame: &mut Frame, panel: &dyn Panel, area: Rect, ctx: &DrawContext) {
+pub(crate) fn draw_panel(frame: &mut Frame, panel: &dyn Panel, area: Rect, ctx: &DrawContext) {
     if let Some(inner) = draw_panel_frame(frame, panel, area, ctx) {
         panel.draw(frame, inner, ctx);
     }
@@ -293,7 +234,7 @@ pub fn draw_panel(frame: &mut Frame, panel: &dyn Panel, area: Rect, ctx: &DrawCo
 /// Calls `content()` to get lines, updates `panel_scroll_mut()` dimensions,
 /// then renders with scroll offset. Falls back to immutable `draw()` if the
 /// panel doesn't implement `content()`.
-pub fn draw_panel_scrolled(frame: &mut Frame, panel: &mut dyn Panel, area: Rect, ctx: &DrawContext) {
+pub(crate) fn draw_panel_scrolled(frame: &mut Frame, panel: &mut dyn Panel, area: Rect, ctx: &DrawContext) {
     if let Some(inner) = draw_panel_frame(frame, panel, area, ctx) {
         let width = inner.width as usize;
         let visible = inner.height as usize;
@@ -326,7 +267,7 @@ pub fn draw_panel_scrolled(frame: &mut Frame, panel: &mut dyn Panel, area: Rect,
 /// Panels using `ListNav` for item selection should keep using that instead;
 /// `PanelScroll` is for free-form text or when you want raw pixel scrolling.
 #[derive(Debug, Clone, Default)]
-pub struct PanelScroll {
+pub(crate) struct PanelScroll {
     /// Current scroll offset (in lines from top).
     pub offset: usize,
     /// Total content height (set each frame in draw).
@@ -377,7 +318,7 @@ impl PanelScroll {
     }
 
     /// Scroll so that line `target` is visible, preferring to center it.
-    pub fn scroll_to_line(&mut self, target: usize) {
+    pub(crate) fn scroll_to_line(&mut self, target: usize) {
         if target < self.offset {
             self.offset = target;
         } else if target >= self.offset + self.visible_height {
@@ -393,7 +334,7 @@ impl PanelScroll {
 /// Manages a selected index in a list with wrapping navigation and
 /// scroll-to-visible calculation.
 #[derive(Debug, Clone, Default)]
-pub struct ListNav {
+pub(crate) struct ListNav {
     /// Currently selected index.
     pub selected: usize,
 }

@@ -30,8 +30,7 @@ pub struct Artifact {
 pub struct ArtifactGraph {
     pub artifacts: Vec<Artifact>,
     graph: DiGraph<String, ()>,
-    #[allow(dead_code)] // Used for future graph traversal operations
-    node_map: HashMap<String, NodeIndex>,
+    _node_map: HashMap<String, NodeIndex>,
 }
 
 impl ArtifactGraph {
@@ -98,7 +97,7 @@ impl ArtifactGraph {
         Self {
             artifacts,
             graph,
-            node_map,
+            _node_map: node_map,
         }
     }
 

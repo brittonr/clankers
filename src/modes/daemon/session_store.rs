@@ -28,8 +28,7 @@ pub(crate) struct AuthLayer {
     /// Verifier with the daemon owner's key as trusted root
     verifier: TokenVerifier,
     /// Persistent revocation store (redb-backed, used for runtime revocation checks)
-    #[allow(dead_code)] // owned for Arc lifetime, checked via verifier
-    revocation_store: RedbRevocationStore,
+    _revocation_store: RedbRevocationStore,
     /// redb database for token storage
     db: Arc<redb::Database>,
     /// Daemon owner's secret key (for signing delegated child tokens)
@@ -118,7 +117,7 @@ pub(crate) fn create_auth_layer(
 
             let layer = Arc::new(AuthLayer {
                 verifier,
-                revocation_store,
+                _revocation_store: revocation_store,
                 db,
                 owner_key: identity.secret_key.clone(),
             });
@@ -162,9 +161,8 @@ pub(crate) fn filter_tools_by_capabilities(tools: &[Arc<dyn Tool>], capabilities
 pub(crate) struct LiveSession {
     /// The agent with conversation history
     pub(crate) agent: Agent,
-    /// Session persistence manager
-    #[allow(dead_code)] // owned for lifetime, persistence happens via agent events
-    pub(crate) session_mgr: Option<SessionManager>,
+    /// Session persistence manager (owned for lifetime, persistence happens via agent events)
+    pub(crate) _session_mgr: Option<SessionManager>,
     /// When the session was last active
     pub(crate) last_active: chrono::DateTime<Utc>,
     /// Number of turns so far
@@ -173,9 +171,8 @@ pub(crate) struct LiveSession {
     pub(crate) session_dir: PathBuf,
     /// Cancellation token for the trigger pipe reader task
     pub(crate) trigger_cancel: Option<CancellationToken>,
-    /// Capabilities from the user's token (None = full access via allowlist)
-    #[allow(dead_code)] // stored for inspection; session_tools is the filtered result
-    pub(crate) capabilities: Option<Vec<Capability>>,
+    /// Capabilities from the user's token (None = full access via allowlist, stored for inspection)
+    pub(crate) _capabilities: Option<Vec<Capability>>,
     /// Tools available to this session (filtered by capabilities)
     pub(crate) session_tools: Vec<Arc<dyn Tool>>,
 }
@@ -312,12 +309,12 @@ impl SessionStore {
 
             self.sessions.insert(key.clone(), LiveSession {
                 agent,
-                session_mgr,
+                _session_mgr: session_mgr,
                 last_active: Utc::now(),
                 turn_count: 0,
                 session_dir,
                 trigger_cancel: None,
-                capabilities: capabilities.map(|c| c.to_vec()),
+                _capabilities: capabilities.map(|c| c.to_vec()),
                 session_tools,
             });
         }

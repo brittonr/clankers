@@ -25,25 +25,8 @@ use serde::Serialize;
 // Input mode
 // ---------------------------------------------------------------------------
 
-/// Modal editing mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
-#[serde(rename_all = "lowercase")]
-pub enum InputMode {
-    /// Navigation mode — bare keys trigger actions, no text insertion.
-    #[default]
-    Normal,
-    /// Typing mode — bare keys insert characters, modified keys trigger actions.
-    Insert,
-}
-
-impl fmt::Display for InputMode {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Normal => write!(f, "NORMAL"),
-            Self::Insert => write!(f, "INSERT"),
-        }
-    }
-}
+// InputMode re-exported from clankers-tui-types.
+pub use clankers_tui_types::InputMode;
 
 // ---------------------------------------------------------------------------
 // Preset enum

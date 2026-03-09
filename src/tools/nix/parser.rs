@@ -148,8 +148,7 @@ pub struct NixEvent {
     #[serde(default)]
     pub fields: Vec<Value>,
     #[serde(default)]
-    #[allow(dead_code)] // deserialized by serde, not read directly
-    pub parent: u64,
+    pub _parent: u64,
 }
 
 /// Tracks active nix activities for progress display
@@ -160,8 +159,7 @@ pub struct ActivityTracker {
 pub struct TrackedActivity {
     pub text: String,
     pub activity_type: ActivityType,
-    #[allow(dead_code)] // retained for future activity display
-    pub phase: Option<String>,
+    pub _phase: Option<String>,
 }
 
 impl ActivityTracker {
@@ -175,7 +173,7 @@ impl ActivityTracker {
         self.activities.insert(id, TrackedActivity {
             text,
             activity_type,
-            phase: None,
+            _phase: None,
         });
     }
 
@@ -185,7 +183,7 @@ impl ActivityTracker {
 
     pub fn set_phase(&mut self, id: u64, phase: String) {
         if let Some(a) = self.activities.get_mut(&id) {
-            a.phase = Some(phase);
+            a._phase = Some(phase);
         }
     }
 

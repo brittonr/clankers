@@ -58,12 +58,13 @@ impl CacheControl {
 
 #[derive(Debug, Serialize)]
 #[serde(tag = "type")]
-#[allow(dead_code)] // Disabled variant needed for serde serialization
 pub(crate) enum ThinkingParam {
     #[serde(rename = "enabled")]
     Enabled { budget_tokens: usize },
+    /// API-contract variant: explicit opt-out of extended thinking.
+    /// Not currently constructed but required for protocol completeness.
     #[serde(rename = "disabled")]
-    Disabled,
+    _Disabled,
 }
 
 #[derive(Debug, Serialize)]

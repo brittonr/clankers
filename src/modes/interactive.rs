@@ -718,7 +718,7 @@ async fn run_event_loop(
         cmd_tx,
         done_rx,
     );
-    runner.run().await
+    runner.run()
 }
 // ---------------------------------------------------------------------------
 // Model selector key handling

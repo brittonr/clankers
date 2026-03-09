@@ -101,7 +101,7 @@ impl SlashHandler for LayoutHandler {
 
 /// Resolve a panel name string to a `PanelId`.
 fn parse_panel_name(name: &str) -> Option<crate::tui::panel::PanelId> {
-    use crate::tui::panel::PanelId;
+    use clankers_tui_types::PanelId;
     match name {
         "todo" | "todos" => Some(PanelId::Todo),
         "files" | "file" => Some(PanelId::Files),
@@ -182,7 +182,7 @@ fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
 
 /// Return the well-known `PaneId` for a panel type (reuses pane_ids module when possible).
 fn pane_id_for_panel(panel_id: crate::tui::panel::PanelId) -> ratatui_hypertile::PaneId {
-    use crate::tui::panel::PanelId;
+    use clankers_tui_types::PanelId;
     use crate::tui::panes::pane_ids;
     match panel_id {
         PanelId::Todo => pane_ids::todo(),

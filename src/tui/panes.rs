@@ -17,7 +17,7 @@ use crate::tui::panel::PanelId;
 
 /// What content a hypertile pane displays.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum PaneKind {
+pub(crate) enum PaneKind {
     /// The main chat/conversation area (blocks + editor + status bar).
     Chat,
     /// One of the existing side-panel types.
@@ -47,7 +47,7 @@ impl PaneKind {
 /// - Exactly one pane has `PaneKind::Chat` at all times.
 /// - The chat pane's ID is tracked in `chat_pane`.
 #[derive(Debug, Clone)]
-pub struct PaneRegistry {
+pub(crate) struct PaneRegistry {
     kinds: HashMap<PaneId, PaneKind>,
     chat_pane: PaneId,
 }
@@ -138,7 +138,7 @@ impl Default for PaneRegistry {
 /// can be built independently of the tree and so layout persistence works.
 ///
 /// `PaneId::new` is not const, so these are functions (except ROOT/CHAT).
-pub mod pane_ids {
+pub(crate) mod pane_ids {
     use ratatui_hypertile::PaneId;
 
     pub const CHAT: PaneId = PaneId::ROOT; // 0
@@ -178,7 +178,7 @@ pub mod pane_ids {
 /// └──────┴────────────────────┴───────────┘
 ///   20%          50%              30%
 /// ```
-pub fn default_tiling() -> Hypertile {
+pub(crate) fn default_tiling() -> Hypertile {
     let tree = Node::Split {
         direction: Direction::Horizontal,
         ratio: 0.20,
@@ -209,7 +209,7 @@ pub fn default_tiling() -> Hypertile {
 }
 
 /// Build the default pane registry matching [`default_tiling`].
-pub fn default_registry() -> PaneRegistry {
+pub(crate) fn default_registry() -> PaneRegistry {
     let mut reg = PaneRegistry {
         kinds: HashMap::new(),
         chat_pane: pane_ids::CHAT,
@@ -225,7 +225,7 @@ pub fn default_registry() -> PaneRegistry {
 // ── Preset layouts ──────────────────────────────────────────────────────────
 
 /// Chat-only layout (no side panels).
-pub fn focused_tiling() -> (Hypertile, PaneRegistry) {
+pub(crate) fn focused_tiling() -> (Hypertile, PaneRegistry) {
     let tiling = Hypertile::new();
     // ROOT is already a single pane
     let reg = PaneRegistry::new(); // ROOT → Chat
@@ -233,7 +233,7 @@ pub fn focused_tiling() -> (Hypertile, PaneRegistry) {
 }
 
 /// Wide chat layout: thin left sidebar only.
-pub fn wide_chat_tiling() -> (Hypertile, PaneRegistry) {
+pub(crate) fn wide_chat_tiling() -> (Hypertile, PaneRegistry) {
     let tree = Node::Split {
         direction: Direction::Horizontal,
         ratio: 0.20,
@@ -267,7 +267,7 @@ pub fn wide_chat_tiling() -> (Hypertile, PaneRegistry) {
 }
 
 /// Right-heavy layout: everything on the right.
-pub fn right_heavy_tiling() -> (Hypertile, PaneRegistry) {
+pub(crate) fn right_heavy_tiling() -> (Hypertile, PaneRegistry) {
     let tree = Node::Split {
         direction: Direction::Horizontal,
         ratio: 0.70,
@@ -310,7 +310,7 @@ pub fn right_heavy_tiling() -> (Hypertile, PaneRegistry) {
 
 /// Remove a pane from the BSP tree, returning the pruned tree.
 /// Returns `None` if the pane is the only node (root leaf).
-pub fn remove_pane_from_tree(node: Node, target: PaneId) -> Option<Node> {
+pub(crate) fn remove_pane_from_tree(node: Node, target: PaneId) -> Option<Node> {
     match node {
         Node::Pane(id) => {
             if id == target {
@@ -344,7 +344,7 @@ pub fn remove_pane_from_tree(node: Node, target: PaneId) -> Option<Node> {
 
 /// Insert a new pane beside an existing pane in the BSP tree.
 /// Splits the target pane, keeping the target in the `first` slot.
-pub fn insert_pane_beside(
+pub(crate) fn insert_pane_beside(
     node: Node,
     target: PaneId,
     new_pane: PaneId,
@@ -421,7 +421,7 @@ fn nodes_equal(a: &Node, b: &Node) -> bool {
 /// 1. If there's an existing subagent pane, split it vertically (stack them)
 /// 2. Else if the Subagents overview panel exists, split it vertically
 /// 3. Else split the chat pane horizontally (chat keeps 75%)
-pub fn auto_split_for_subagent(tiling: &mut Hypertile, registry: &PaneRegistry, new_pane_id: PaneId) {
+pub(crate) fn auto_split_for_subagent(tiling: &mut Hypertile, registry: &PaneRegistry, new_pane_id: PaneId) {
     // Try to find an existing subagent pane to stack beside
     let target = registry.find_any_subagent_pane().or_else(|| registry.find_panel(PanelId::Subagents));
 

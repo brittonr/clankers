@@ -513,16 +513,14 @@ struct OpenAIChunk {
 
 #[derive(Debug, Deserialize)]
 struct OpenAIChoice {
-    #[allow(dead_code)]
-    index: Option<usize>,
+    _index: Option<usize>,
     delta: Option<OpenAIDelta>,
     finish_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 struct OpenAIDelta {
-    #[allow(dead_code)]
-    role: Option<String>,
+    _role: Option<String>,
     content: Option<String>,
     /// Reasoning content from o3/o3-mini models
     reasoning_content: Option<String>,

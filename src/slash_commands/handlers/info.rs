@@ -3,8 +3,8 @@
 use super::SlashContext;
 use super::SlashHandler;
 use crate::slash_commands;
-use crate::tui::app::MessageRole;
-use crate::tui::components::block::BlockEntry;
+use clankers_tui_types::MessageRole;
+use clankers_tui_types::BlockEntry;
 
 pub struct HelpHandler;
 
@@ -165,7 +165,7 @@ impl SlashHandler for LeaderHandler {
 }
 
 fn format_leader_action(action: &crate::tui::components::leader_menu::LeaderAction) -> String {
-    use crate::tui::components::leader_menu::LeaderAction;
+    use clankers_tui_types::LeaderAction;
     match action {
         LeaderAction::KeymapAction(a) => format!("→ {:?}", a),
         LeaderAction::SlashCommand(cmd) => format!("→ {}", cmd),
