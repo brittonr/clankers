@@ -1,16 +1,8 @@
 //! Key string parsing and serialization.
 
-use std::collections::HashMap;
-use std::path::Path;
-
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 use crossterm::event::KeyModifiers;
-use serde::Deserialize;
-use serde::Serialize;
-
-use super::Keymap;
-use super::KeymapPreset;
 
 // ---------------------------------------------------------------------------
 // Key combo
@@ -64,7 +56,7 @@ const KEY_CODE_NAMES: &[(&str, KeyCode)] = &[
 ];
 
 /// Parse a human-readable key string like `"Ctrl+K"`, `"Alt+Enter"`, `"e"`.
-pub(super) fn parse_key_string(s: &str) -> Option<KeyCombo> {
+pub fn parse_key_string(s: &str) -> Option<KeyCombo> {
     let parts: Vec<&str> = s.split('+').map(str::trim).collect();
     let key_str = parts.last()?;
 
@@ -94,7 +86,7 @@ pub(super) fn parse_key_string(s: &str) -> Option<KeyCombo> {
 }
 
 /// Format a KeyCombo into a human-readable string.
-pub(super) fn format_key_combo(k: &KeyCombo) -> String {
+pub fn format_key_combo(k: &KeyCombo) -> String {
     let mut parts = Vec::new();
     if k.ctrl {
         parts.push("Ctrl".to_string());
@@ -124,45 +116,4 @@ pub(super) fn format_key_combo(k: &KeyCombo) -> String {
         other => format!("{:?}", other),
     });
     parts.join("+")
-}
-
-// ---------------------------------------------------------------------------
-// Serialisable config (loaded from settings file)
-// ---------------------------------------------------------------------------
-
-/// User-facing keymap configuration (stored in settings.json).
-///
-/// ```json
-/// {
-///   "keymap": {
-///     "preset": "helix",
-///     "normal": { "x": "quit" },
-///     "insert": { "Ctrl+K": "delete_word" }
-///   }
-/// }
-/// ```
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct KeymapConfig {
-    /// Which preset to start from: "helix" (default) or "vim"
-    #[serde(default)]
-    pub preset: KeymapPreset,
-
-    /// Per-key overrides for normal mode
-    #[serde(default)]
-    pub normal: HashMap<String, String>,
-
-    /// Per-key overrides for insert mode
-    #[serde(default)]
-    pub insert: HashMap<String, String>,
-}
-
-impl KeymapConfig {
-    pub fn load(path: &Path) -> Self {
-        std::fs::read_to_string(path).ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or_default()
-    }
-
-    pub fn into_keymap(self) -> Keymap {
-        Keymap::build(self.preset, &self.normal, &self.insert)
-    }
 }

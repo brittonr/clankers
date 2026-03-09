@@ -3,6 +3,7 @@
 pub mod app;
 pub mod components;
 pub mod event;
+pub mod keymap;
 pub mod panel;
 pub mod panes;
 pub mod render;

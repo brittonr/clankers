@@ -4,9 +4,9 @@ use std::collections::HashMap;
 
 use crossterm::event::KeyCode;
 
-use super::actions::Action;
-use super::actions::CoreAction;
-use super::actions::ExtendedAction;
+use clankers_tui_types::Action;
+use clankers_tui_types::CoreAction;
+use clankers_tui_types::ExtendedAction;
 use super::parser::KeyCombo;
 
 // ===========================================================================
