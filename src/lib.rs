@@ -5,6 +5,7 @@ pub mod commands;
 pub mod config;
 pub mod db;
 pub mod error;
+pub mod event_translator;
 pub mod model_selection;
 pub mod modes;
 pub mod plugin;

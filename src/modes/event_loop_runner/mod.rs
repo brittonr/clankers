@@ -134,7 +134,10 @@ impl<'a> EventLoopRunner<'a> {
         loop {
             match self.event_rx.try_recv() {
                 Ok(event) => {
-                    self.app.handle_agent_event(&event);
+                    // Translate AgentEvent → TuiEvent and forward to TUI
+                    if let Some(tui_event) = crate::event_translator::translate(&event) {
+                        self.app.handle_tui_event(&tui_event);
+                    }
 
                     // Persist messages to session on AgentEnd
                     if let AgentEvent::AgentEnd { ref messages } = event
