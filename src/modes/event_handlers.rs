@@ -407,44 +407,16 @@ pub(crate) fn handle_action(
                 app.apply_tiling_action(HypertileAction::ResizeFocused { delta: -0.05 });
             }
             ExtendedAction::PaneMoveLeft => {
-                use ratatui_hypertile::HypertileAction;
-                use ratatui_hypertile::MoveScope;
-                use ratatui_hypertile::Towards;
-                app.apply_tiling_action(HypertileAction::MoveFocused {
-                    direction: ratatui::layout::Direction::Horizontal,
-                    towards: Towards::Start,
-                    scope: MoveScope::Window,
-                });
+                move_focused_pane(app, ratatui::layout::Direction::Horizontal, ratatui_hypertile::Towards::Start);
             }
             ExtendedAction::PaneMoveRight => {
-                use ratatui_hypertile::HypertileAction;
-                use ratatui_hypertile::MoveScope;
-                use ratatui_hypertile::Towards;
-                app.apply_tiling_action(HypertileAction::MoveFocused {
-                    direction: ratatui::layout::Direction::Horizontal,
-                    towards: Towards::End,
-                    scope: MoveScope::Window,
-                });
+                move_focused_pane(app, ratatui::layout::Direction::Horizontal, ratatui_hypertile::Towards::End);
             }
             ExtendedAction::PaneMoveDown => {
-                use ratatui_hypertile::HypertileAction;
-                use ratatui_hypertile::MoveScope;
-                use ratatui_hypertile::Towards;
-                app.apply_tiling_action(HypertileAction::MoveFocused {
-                    direction: ratatui::layout::Direction::Vertical,
-                    towards: Towards::End,
-                    scope: MoveScope::Window,
-                });
+                move_focused_pane(app, ratatui::layout::Direction::Vertical, ratatui_hypertile::Towards::End);
             }
             ExtendedAction::PaneMoveUp => {
-                use ratatui_hypertile::HypertileAction;
-                use ratatui_hypertile::MoveScope;
-                use ratatui_hypertile::Towards;
-                app.apply_tiling_action(HypertileAction::MoveFocused {
-                    direction: ratatui::layout::Direction::Vertical,
-                    towards: Towards::Start,
-                    scope: MoveScope::Window,
-                });
+                move_focused_pane(app, ratatui::layout::Direction::Vertical, ratatui_hypertile::Towards::Start);
             }
             ExtendedAction::PaneZoom => {
                 app.zoom_toggle();
@@ -939,4 +911,16 @@ pub(crate) fn handle_input_with_plugins(
             });
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Tiling helpers
+// ---------------------------------------------------------------------------
+
+fn move_focused_pane(app: &mut App, direction: ratatui::layout::Direction, towards: ratatui_hypertile::Towards) {
+    app.apply_tiling_action(ratatui_hypertile::HypertileAction::MoveFocused {
+        direction,
+        towards,
+        scope: ratatui_hypertile::MoveScope::Window,
+    });
 }

@@ -2,6 +2,7 @@ use crate::cli::ExportFormat;
 use crate::cli::SessionAction;
 use crate::commands::CommandContext;
 use crate::error::Result;
+use crate::session::export;
 use crate::session::store;
 use crate::util::fs;
 
@@ -65,7 +66,7 @@ fn handle_show(ctx: &CommandContext, session_id: &str, full: bool) -> Result<()>
         let content = std::fs::read_to_string(&path).unwrap_or_default();
         println!("{}", content);
     } else {
-        match store::export_text(&path) {
+        match export::export_text(&path) {
             Ok(text) => print!("{}", text),
             Err(e) => eprintln!("Failed to read session: {}", e),
         }
@@ -106,9 +107,9 @@ fn handle_delete_all(ctx: &CommandContext, force: bool) -> Result<()> {
 fn handle_export(ctx: &CommandContext, session_id: &str, output: Option<String>, format: ExportFormat) -> Result<()> {
     let path = find_session(ctx, session_id)?;
     let content = match format {
-        ExportFormat::Json => store::export_json(&path),
-        ExportFormat::Markdown => store::export_markdown(&path),
-        ExportFormat::Text => store::export_text(&path),
+        ExportFormat::Json => export::export_json(&path),
+        ExportFormat::Markdown => export::export_markdown(&path),
+        ExportFormat::Text => export::export_text(&path),
     }?;
     if let Some(ref out_path) = output {
         let out = std::path::Path::new(out_path);

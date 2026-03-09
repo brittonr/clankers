@@ -2,6 +2,7 @@
 
 pub mod context;
 pub mod entry;
+pub mod export;
 pub mod merge;
 pub mod store;
 pub mod tree;

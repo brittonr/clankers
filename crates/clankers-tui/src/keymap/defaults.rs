@@ -101,41 +101,8 @@ fn common_normal() -> HashMap<KeyCombo, Action> {
     ])
 }
 
-/// Helix normal mode navigation bindings
-fn helix_normal_nav() -> HashMap<KeyCombo, Action> {
-    use CoreAction::FocusNextBlock;
-    use CoreAction::FocusPrevBlock;
-    use CoreAction::ScrollPageDown;
-    use CoreAction::ScrollPageUp;
-    use CoreAction::ScrollToBottom;
-    use CoreAction::ScrollToTop;
-    use ExtendedAction as EA;
-
-    build_keymap(&[
-        // ── Block navigation (arrows + jk) ───────────────
-        (KeyCode::Up, false, false, false, Action::Core(FocusPrevBlock)),
-        (KeyCode::Down, false, false, false, Action::Core(FocusNextBlock)),
-        (KeyCode::Char('k'), false, false, false, Action::Core(FocusPrevBlock)),
-        (KeyCode::Char('j'), false, false, false, Action::Core(FocusNextBlock)),
-        // ── Branch navigation (arrows + hl) ──────────────
-        (KeyCode::Left, false, false, false, Action::Extended(EA::BranchPrev)),
-        (KeyCode::Right, false, false, false, Action::Extended(EA::BranchNext)),
-        (KeyCode::Char('h'), false, false, false, Action::Extended(EA::BranchPrev)),
-        (KeyCode::Char('l'), false, false, false, Action::Extended(EA::BranchNext)),
-        // ── Scrolling ────────────────────────────────────
-        (KeyCode::Char('u'), true, false, false, Action::Core(ScrollPageUp)),
-        (KeyCode::Char('d'), true, false, false, Action::Core(ScrollPageDown)),
-        // ── Collapse / expand all ────────────────────────
-        (KeyCode::Char('K'), false, false, true, Action::Extended(EA::CollapseAllBlocks)),
-        (KeyCode::Char('L'), false, false, true, Action::Extended(EA::ExpandAllBlocks)),
-        // ── Scroll extremes ──────────────────────────────
-        (KeyCode::Char('g'), false, false, false, Action::Core(ScrollToTop)),
-        (KeyCode::Char('G'), false, false, true, Action::Core(ScrollToBottom)),
-    ])
-}
-
-/// Vim normal mode navigation bindings
-fn vim_normal_nav() -> HashMap<KeyCombo, Action> {
+/// Normal mode navigation bindings (shared by helix and vim — identical maps).
+fn common_normal_nav() -> HashMap<KeyCombo, Action> {
     use CoreAction::FocusNextBlock;
     use CoreAction::FocusPrevBlock;
     use CoreAction::ScrollPageDown;
@@ -169,12 +136,12 @@ fn vim_normal_nav() -> HashMap<KeyCombo, Action> {
 
 /// Helix normal mode.
 pub(super) fn helix_normal() -> HashMap<KeyCombo, Action> {
-    merge_keymaps(&[common_normal(), helix_normal_nav()])
+    merge_keymaps(&[common_normal(), common_normal_nav()])
 }
 
 /// Vim normal mode.
 pub(super) fn vim_normal() -> HashMap<KeyCombo, Action> {
-    merge_keymaps(&[common_normal(), vim_normal_nav()])
+    merge_keymaps(&[common_normal(), common_normal_nav()])
 }
 
 // ===========================================================================

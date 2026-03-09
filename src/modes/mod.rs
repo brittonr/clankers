@@ -1,5 +1,6 @@
 //! Run modes
 
+pub(crate) mod agent_commands;
 pub mod common;
 pub mod daemon;
 pub(crate) mod event_handlers;
@@ -12,4 +13,5 @@ pub mod plan;
 pub(crate) mod plugin_dispatch;
 pub mod print;
 pub mod rpc;
+pub mod rpc_embed;
 pub(crate) mod session_restore;
