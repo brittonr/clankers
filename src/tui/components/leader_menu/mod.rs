@@ -176,9 +176,9 @@ mod tests {
     use crossterm::event::KeyEventKind;
 
     use super::*;
-    use crate::registry::PRIORITY_BUILTIN;
-    use crate::registry::PRIORITY_PLUGIN;
-    use crate::registry::PRIORITY_USER;
+    use clankers_tui_types::PRIORITY_BUILTIN;
+    use clankers_tui_types::PRIORITY_PLUGIN;
+    use clankers_tui_types::PRIORITY_USER;
 
     fn key(c: char) -> KeyEvent {
         KeyEvent::new_with_kind(KeyCode::Char(c), KeyModifiers::NONE, KeyEventKind::Press)

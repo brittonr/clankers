@@ -17,22 +17,8 @@ use crate::config::keybindings::InputMode;
 use crate::tui::app::App;
 
 /// Result of a background clipboard read.
-pub enum ClipboardResult {
-    /// Text was found in the clipboard.
-    Text(String),
-    /// An image was found: base64 PNG, mime type, raw size, width, height.
-    Image {
-        encoded: String,
-        mime: String,
-        raw_size: usize,
-        width: u32,
-        height: u32,
-    },
-    /// Nothing useful in clipboard.
-    Empty(String),
-    /// Error accessing the clipboard.
-    Error(String),
-}
+// ClipboardResult re-exported from clankers-tui-types.
+pub use clankers_tui_types::ClipboardResult;
 
 /// Read from the system clipboard on a background thread. Tries text first,
 /// then image. This avoids freezing the TUI when another application (e.g. a

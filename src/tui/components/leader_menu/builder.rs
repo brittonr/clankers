@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use super::types::*;
-use crate::registry::Conflict;
+use clankers_tui_types::Conflict;
 
 /// Build a leader menu from contributors.
 ///
@@ -138,9 +138,9 @@ fn root_submenu_openers() -> Vec<MenuContribution> {
 }
 
 fn root_keymap_actions() -> Vec<MenuContribution> {
-    use crate::config::keybindings::Action;
-    use crate::config::keybindings::CoreAction;
-    use crate::config::keybindings::ExtendedAction;
+    use clankers_tui_types::Action;
+    use clankers_tui_types::CoreAction;
+    use clankers_tui_types::ExtendedAction;
     vec![
         builtin(
             'm',
@@ -236,8 +236,8 @@ fn pane_submenu_opener() -> Vec<MenuContribution> {
 }
 
 fn pane_submenu_items() -> Vec<MenuContribution> {
-    use crate::config::keybindings::Action;
-    use crate::config::keybindings::ExtendedAction;
+    use clankers_tui_types::Action;
+    use clankers_tui_types::ExtendedAction;
     let p = || MenuPlacement::Submenu("pane".into());
     let ext = |e: ExtendedAction| LeaderAction::KeymapAction(Action::Extended(e));
     vec![
@@ -257,7 +257,7 @@ fn pane_submenu_items() -> Vec<MenuContribution> {
 
 /// Convert slash commands with `leader_key` bindings into menu contributions.
 pub fn slash_command_contributions(commands: &[crate::slash_commands::SlashCommand]) -> Vec<MenuContribution> {
-    use crate::registry::PRIORITY_BUILTIN;
+    use clankers_tui_types::PRIORITY_BUILTIN;
 
     commands
         .iter()

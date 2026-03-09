@@ -7,42 +7,8 @@
 //!
 //! Toggled via `/plan` slash command or `--plan` CLI flag.
 
-/// Plan mode state
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PlanState {
-    /// Plan mode is inactive — normal operation
-    Inactive,
-    /// Planning phase — agent reads/analyzes but doesn't edit
-    Planning,
-    /// Plan has been proposed — waiting for user approval
-    AwaitingApproval,
-    /// Plan approved — executing edits
-    Executing,
-}
-
-impl PlanState {
-    pub fn is_active(&self) -> bool {
-        !matches!(self, PlanState::Inactive)
-    }
-
-    pub fn label(&self) -> &'static str {
-        match self {
-            PlanState::Inactive => "off",
-            PlanState::Planning => "planning",
-            PlanState::AwaitingApproval => "awaiting approval",
-            PlanState::Executing => "executing",
-        }
-    }
-
-    pub fn emoji(&self) -> &'static str {
-        match self {
-            PlanState::Inactive => "",
-            PlanState::Planning => "📐",
-            PlanState::AwaitingApproval => "⏳",
-            PlanState::Executing => "🔨",
-        }
-    }
-}
+// PlanState re-exported from clankers-tui-types (canonical definition).
+pub use clankers_tui_types::PlanState;
 
 /// System prompt suffix added when plan mode is active
 pub const PLAN_MODE_PROMPT: &str = r"

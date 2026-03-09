@@ -9,8 +9,8 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 
-use crate::config::keybindings::InputMode;
-use crate::model_selection::cost_tracker::BudgetStatus;
+use clankers_tui_types::InputMode;
+use clankers_tui_types::BudgetStatus;
 use crate::tui::app::AppState;
 use crate::tui::app::RouterStatus;
 use crate::tui::theme::Theme;
@@ -25,7 +25,7 @@ pub struct StatusBarData<'a> {
     pub session_id: &'a str,
     pub input_mode: InputMode,
     pub thinking_enabled: bool,
-    pub thinking_level: crate::provider::ThinkingLevel,
+    pub thinking_level: clankers_tui_types::ThinkingLevel,
     /// Plugin-contributed status bar segments
     pub plugin_spans: Vec<Span<'a>>,
     /// Context window gauge span
@@ -87,11 +87,11 @@ fn render_mode_indicators<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a
     if data.thinking_enabled {
         let level_label = format!(" 💭 {} ", data.thinking_level.label());
         let level_color = match data.thinking_level {
-            crate::provider::ThinkingLevel::Off => Color::DarkGray,
-            crate::provider::ThinkingLevel::Low => Color::Blue,
-            crate::provider::ThinkingLevel::Medium => Color::Magenta,
-            crate::provider::ThinkingLevel::High => Color::Yellow,
-            crate::provider::ThinkingLevel::Max => Color::Red,
+            clankers_tui_types::ThinkingLevel::Off => Color::DarkGray,
+            clankers_tui_types::ThinkingLevel::Low => Color::Blue,
+            clankers_tui_types::ThinkingLevel::Medium => Color::Magenta,
+            clankers_tui_types::ThinkingLevel::High => Color::Yellow,
+            clankers_tui_types::ThinkingLevel::Max => Color::Red,
         };
         spans.push(Span::styled(
             level_label,

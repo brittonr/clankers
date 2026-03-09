@@ -436,7 +436,7 @@ impl Agent {
     /// Set thinking to a specific level. Returns the new level.
     pub fn set_thinking_level(&mut self, level: ThinkingLevel) -> ThinkingLevel {
         self.thinking_level = level;
-        self.thinking = level.to_config();
+        self.thinking = crate::provider::thinking_level_to_config(level);
         level
     }
 

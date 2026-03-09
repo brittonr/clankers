@@ -80,105 +80,18 @@ pub struct CompletionRequest {
 // Re-export ThinkingConfig from clankers-router (canonical definition)
 pub use clankers_router::ThinkingConfig;
 
-/// Named thinking budget levels.
-///
-/// Provides quick presets for thinking token budgets that can be cycled
-/// through with a keybinding or set via `/think <level>`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ThinkingLevel {
-    /// Thinking disabled
-    Off,
-    /// Quick reasoning (~5k tokens)
-    Low,
-    /// Moderate reasoning (~10k tokens, default)
-    Medium,
-    /// Deep reasoning (~32k tokens)
-    High,
-    /// Maximum reasoning (~128k tokens)
-    Max,
-}
+// ThinkingLevel re-exported from clankers-tui-types (canonical definition).
+pub use clankers_tui_types::ThinkingLevel;
 
-impl ThinkingLevel {
-    /// Token budget for this level (None for Off)
-    pub fn budget_tokens(self) -> Option<usize> {
-        match self {
-            Self::Off => None,
-            Self::Low => Some(5_000),
-            Self::Medium => Some(10_000),
-            Self::High => Some(32_000),
-            Self::Max => Some(128_000),
-        }
-    }
-
-    /// Whether thinking is enabled at this level
-    pub fn is_enabled(self) -> bool {
-        self != Self::Off
-    }
-
-    /// Cycle to the next level
-    pub fn next(self) -> Self {
-        match self {
-            Self::Off => Self::Low,
-            Self::Low => Self::Medium,
-            Self::Medium => Self::High,
-            Self::High => Self::Max,
-            Self::Max => Self::Off,
-        }
-    }
-
-    /// Display name
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Off => "off",
-            Self::Low => "low",
-            Self::Medium => "medium",
-            Self::High => "high",
-            Self::Max => "max",
-        }
-    }
-
-    /// Parse from a string (name or raw number)
-    pub fn from_str_or_budget(s: &str) -> Option<Self> {
-        match s.trim().to_lowercase().as_str() {
-            "off" | "none" | "disable" | "disabled" => Some(Self::Off),
-            "low" | "lo" | "l" => Some(Self::Low),
-            "medium" | "med" | "m" | "default" => Some(Self::Medium),
-            "high" | "hi" | "h" => Some(Self::High),
-            "max" | "maximum" | "full" => Some(Self::Max),
-            _ => None,
-        }
-    }
-
-    /// Find the closest level for a raw token budget
-    pub fn from_budget(tokens: usize) -> Self {
-        if tokens == 0 {
-            Self::Off
-        } else if tokens <= 5_000 {
-            Self::Low
-        } else if tokens <= 10_000 {
-            Self::Medium
-        } else if tokens <= 32_000 {
-            Self::High
-        } else {
-            Self::Max
-        }
-    }
-
-    /// Convert to ThinkingConfig
-    pub fn to_config(self) -> Option<ThinkingConfig> {
-        if self.is_enabled() {
-            Some(ThinkingConfig {
-                enabled: true,
-                budget_tokens: self.budget_tokens(),
-            })
-        } else {
-            None
-        }
-    }
-
-    /// All levels in order
-    pub fn all() -> &'static [Self] {
-        &[Self::Off, Self::Low, Self::Medium, Self::High, Self::Max]
+/// Extension: convert ThinkingLevel to provider-specific ThinkingConfig.
+pub fn thinking_level_to_config(level: ThinkingLevel) -> Option<ThinkingConfig> {
+    if level.is_enabled() {
+        Some(ThinkingConfig {
+            enabled: true,
+            budget_tokens: level.budget_tokens(),
+        })
+    } else {
+        None
     }
 }
 

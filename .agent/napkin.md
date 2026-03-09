@@ -3,6 +3,8 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-03-09 | self | Tried to impl Serialize/Deserialize for InputMode in main crate after moving the type to clankers-tui-types — orphan rule prevents it | Add serde derives directly on the type in the types crate (it already depends on serde). Don't try to add trait impls for foreign types. |
+| 2026-03-09 | self | Left `#[derive(Debug, Clone, PartialEq, Eq)]` above a `pub use` re-export — `derive` only applies to struct/enum/union definitions | When replacing a type def with a re-export, remove ALL attributes above the original definition (derives, doc comments that became stale) |
 | 2026-03-07 | self | delegate_task workers for all 5 cleanup tasks reported success but no changes persisted to disk | Always redo multi-file refactors directly after worker "success" — verify files exist before moving on |
 | 2026-03-07 | self | Tried `pub use clankers_router::Cost` but Cost isn't re-exported at root | Check `lib.rs` re-exports before assuming root-level access; use `clankers_router::provider::Cost` |
 | 2026-03-07 | self | Stale `session/` dir (gitignored workspace copy) had old `agents::` paths after rename to `agent_defs::` — cargo test picked it up | Always `rm -rf session/` after renames; stale workspace copies interfere with cargo resolution |
@@ -278,3 +280,11 @@
 - `DaemonConfig` construction in main.rs — use `..Default::default()` for new fields to avoid breaking existing call sites
 - Matrix bridge: BridgeEvent::TextMessage and ChatMessage can be unified with `|` pattern in match arms
 - Worker delegates don't always persist file edits — verify changes after delegation
+
+## Patterns That Work (TUI extraction)
+- `clankers-tui-types` crate at `crates/clankers-tui-types/` — shared boundary types with no ratatui dep
+- Re-export pattern: original locations do `pub use clankers_tui_types::TypeName;` for backward compat
+- External files (tools, modes, slash_commands) import directly from `clankers_tui_types::` 
+- Types with ratatui deps (TodoStatus.color(), ListNav.prefix_span()) stay in TUI crate, not types crate
+- InputMode needs `Serialize`/`Deserialize` — add derives in the types crate, not orphan impls in main crate
+- `parse_action()` moved to types crate alongside Action/CoreAction/ExtendedAction (no external deps)

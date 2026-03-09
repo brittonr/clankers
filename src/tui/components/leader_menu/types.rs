@@ -11,7 +11,7 @@ pub use clankers_tui_types::MenuContribution;
 pub use clankers_tui_types::MenuContributor;
 pub use clankers_tui_types::MenuPlacement;
 
-use crate::registry::Conflict;
+use clankers_tui_types::Conflict;
 
 /// Signature for the build function (defined in builder.rs).
 pub type BuildResult = (super::LeaderMenu, Vec<Conflict>);

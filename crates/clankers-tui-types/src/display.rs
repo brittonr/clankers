@@ -165,4 +165,80 @@ impl ThinkingLevel {
             _ => None,
         }
     }
+
+    /// Find the closest level for a raw token budget.
+    pub fn from_budget(tokens: usize) -> Self {
+        if tokens == 0 {
+            Self::Off
+        } else if tokens <= 5_000 {
+            Self::Low
+        } else if tokens <= 10_000 {
+            Self::Medium
+        } else if tokens <= 32_000 {
+            Self::High
+        } else {
+            Self::Max
+        }
+    }
+
+    /// All levels in order.
+    pub fn all() -> &'static [Self] {
+        &[Self::Off, Self::Low, Self::Medium, Self::High, Self::Max]
+    }
+}
+
+/// Plan mode state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PlanState {
+    /// Plan mode is inactive — normal operation.
+    Inactive,
+    /// Planning phase — agent reads/analyzes but doesn't edit.
+    Planning,
+    /// Plan has been proposed — waiting for user approval.
+    AwaitingApproval,
+    /// Plan approved — executing edits.
+    Executing,
+}
+
+impl PlanState {
+    pub fn is_active(&self) -> bool {
+        !matches!(self, PlanState::Inactive)
+    }
+
+    pub fn label(&self) -> &'static str {
+        match self {
+            PlanState::Inactive => "off",
+            PlanState::Planning => "planning",
+            PlanState::AwaitingApproval => "awaiting approval",
+            PlanState::Executing => "executing",
+        }
+    }
+
+    pub fn emoji(&self) -> &'static str {
+        match self {
+            PlanState::Inactive => "",
+            PlanState::Planning => "📐",
+            PlanState::AwaitingApproval => "⏳",
+            PlanState::Executing => "🔨",
+        }
+    }
+}
+
+/// Result of a clipboard read operation.
+#[derive(Debug, Clone)]
+pub enum ClipboardResult {
+    /// Text was found in the clipboard.
+    Text(String),
+    /// An image was found: base64 PNG, mime type, raw size, width, height.
+    Image {
+        encoded: String,
+        mime: String,
+        raw_size: usize,
+        width: u32,
+        height: u32,
+    },
+    /// Nothing useful in clipboard.
+    Empty(String),
+    /// Error accessing the clipboard.
+    Error(String),
 }

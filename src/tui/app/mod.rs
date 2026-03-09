@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use ratatui::layout::Rect;
 
-use crate::config::keybindings::InputMode;
+use clankers_tui_types::InputMode;
 use crate::plugin::ui::PluginUIState;
 use crate::tui::components::account_selector::AccountSelector;
 use crate::tui::components::block::BlockEntry;
@@ -104,7 +104,7 @@ pub(crate) struct OverlayState {
     /// Whether to show block IDs in conversation view
     pub show_block_ids: bool,
     /// Plan mode state
-    pub plan_state: crate::modes::plan::PlanState,
+    pub plan_state: clankers_tui_types::PlanState,
     /// History search overlay (Ctrl+R)
     pub history_search: super::components::history_search::HistorySearch,
     /// Output search overlay (Ctrl+F / f)
@@ -150,7 +150,7 @@ pub(crate) struct App {
     pub cwd: String,
     pub should_quit: bool,
     pub thinking_enabled: bool,
-    pub thinking_level: crate::provider::ThinkingLevel,
+    pub thinking_level: clankers_tui_types::ThinkingLevel,
     pub show_thinking: bool,
     pub tool_info: Vec<(String, String, String)>,
     pub original_system_prompt: String,
@@ -172,7 +172,6 @@ pub(crate) struct App {
     // Components (keep flat — they're already self-contained)
     pub slash_menu: SlashMenu,
     pub slash_registry: crate::slash_commands::SlashRegistry,
-    pub action_registry: crate::config::keybindings::ActionRegistry,
     pub plugin_ui: PluginUIState,
     pub panels: super::panel::PanelManager,
     pub context_gauge: super::components::context_gauge::ContextGauge,
@@ -188,7 +187,7 @@ pub(crate) struct App {
     // Clipboard
     pub pending_images: Vec<PendingImage>,
     pub clipboard_pending: bool,
-    pub clipboard_rx: Option<std::sync::mpsc::Receiver<crate::modes::clipboard::ClipboardResult>>,
+    pub clipboard_rx: Option<std::sync::mpsc::Receiver<clankers_tui_types::ClipboardResult>>,
 }
 
 // PendingImage re-exported from clankers-tui-types above.
@@ -211,7 +210,7 @@ impl App {
             cwd,
             should_quit: false,
             thinking_enabled: false,
-            thinking_level: crate::provider::ThinkingLevel::Off,
+            thinking_level: clankers_tui_types::ThinkingLevel::Off,
             show_thinking: true,
             tool_info: Vec::new(),
             original_system_prompt: String::new(),
@@ -252,7 +251,7 @@ impl App {
                 session_popup_visible: false,
                 cost_overlay_visible: false,
                 show_block_ids: false,
-                plan_state: crate::modes::plan::PlanState::Inactive,
+                plan_state: clankers_tui_types::PlanState::Inactive,
                 history_search: super::components::history_search::HistorySearch::new(),
                 output_search: super::components::output_search::OutputSearch::new(),
                 model_selector: ModelSelector::new(Vec::new()),
@@ -272,7 +271,6 @@ impl App {
             // Components
             slash_menu: SlashMenu::new(),
             slash_registry: build_default_slash_registry(),
-            action_registry: crate::config::keybindings::ActionRegistry::new(),
             plugin_ui: PluginUIState::new(),
             panels: register_default_panels(),
             context_gauge,

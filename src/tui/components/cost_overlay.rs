@@ -9,8 +9,8 @@
 use std::sync::Arc;
 
 use super::prelude::*;
-use crate::model_selection::cost_tracker::BudgetStatus;
-use crate::model_selection::cost_tracker::CostSummary;
+use clankers_tui_types::BudgetStatus;
+use clankers_tui_types::CostSummary;
 use crate::model_selection::cost_tracker::CostTracker;
 
 /// Render the cost detail overlay if visible.
