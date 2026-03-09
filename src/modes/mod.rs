@@ -12,5 +12,4 @@ pub mod plan;
 pub(crate) mod plugin_dispatch;
 pub mod print;
 pub mod rpc;
-mod selectors;
 pub(crate) mod session_restore;

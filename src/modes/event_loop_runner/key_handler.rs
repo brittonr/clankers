@@ -10,10 +10,10 @@ use super::EventLoopRunner;
 use crate::config::keybindings::Action;
 use crate::config::keybindings::InputMode;
 use crate::tui::clipboard;
+use crate::tui::selectors;
 use crate::modes::event_handlers;
 use crate::modes::interactive::AgentCommand;
 use crate::modes::peers_background;
-use crate::modes::selectors;
 
 impl<'a> EventLoopRunner<'a> {
     // ── Key event dispatch ──────────────────────────────────────────
@@ -38,20 +38,26 @@ impl<'a> EventLoopRunner<'a> {
         {
             return;
         }
-        if self.app.overlays.model_selector.visible
-            && selectors::handle_model_selector_key(self.app, &key, &self.cmd_tx)
-        {
-            return;
+        if self.app.overlays.model_selector.visible {
+            let (consumed, action) = selectors::handle_model_selector_key(self.app, &key);
+            if let Some(action) = action {
+                self.dispatch_selector_action(action);
+            }
+            if consumed { return; }
         }
-        if self.app.overlays.account_selector.visible
-            && selectors::handle_account_selector_key(self.app, &key, &self.cmd_tx)
-        {
-            return;
+        if self.app.overlays.account_selector.visible {
+            let (consumed, action) = selectors::handle_account_selector_key(self.app, &key);
+            if let Some(action) = action {
+                self.dispatch_selector_action(action);
+            }
+            if consumed { return; }
         }
-        if self.app.overlays.session_selector.visible
-            && selectors::handle_session_selector_key(self.app, &key, &self.cmd_tx)
-        {
-            return;
+        if self.app.overlays.session_selector.visible {
+            let (consumed, action) = selectors::handle_session_selector_key(self.app, &key);
+            if let Some(action) = action {
+                self.dispatch_selector_action(action);
+            }
+            if consumed { return; }
         }
         if self.app.branching.switcher.visible && selectors::handle_branch_switcher_key(self.app, &key) {
             return;
@@ -422,6 +428,27 @@ impl<'a> EventLoopRunner<'a> {
                 true
             }
             _ => false,
+        }
+    }
+
+    /// Map a `SelectorAction` to the appropriate `AgentCommand` or side-effect.
+    fn dispatch_selector_action(&mut self, action: clankers_tui_types::SelectorAction) {
+        use clankers_tui_types::SelectorAction;
+        match action {
+            SelectorAction::SetModel(model) => {
+                let _ = self.cmd_tx.send(AgentCommand::SetModel(model));
+            }
+            SelectorAction::SwitchAccount(name) => {
+                let _ = self.cmd_tx.send(AgentCommand::SwitchAccount(name));
+            }
+            SelectorAction::ResumeSession { file_path, session_id } => {
+                super::super::interactive::resume_session_from_file(
+                    self.app,
+                    file_path,
+                    &session_id,
+                    &self.cmd_tx,
+                );
+            }
         }
     }
 

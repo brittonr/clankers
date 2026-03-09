@@ -1,45 +1,55 @@
-//! Popup selector key handling (model, account, session).
+//! Popup selector key handling (model, account, session, branch, merge).
+//!
+//! Each handler returns `(consumed, Option<SelectorAction>)`:
+//! - `consumed`: whether the key was handled (caller should not process further).
+//! - `SelectorAction`: an optional side-effect for the caller to dispatch to the
+//!   backend (model switch, account switch, session resume).
 
 use crossterm::event::KeyCode;
 use crossterm::event::KeyModifiers;
 
-use crate::modes::interactive::AgentCommand;
-use crate::tui::app::App;
+use clankers_tui_types::SelectorAction;
 
-pub(crate) fn handle_model_selector_key(
+use crate::app::App;
+
+// ---------------------------------------------------------------------------
+// Model selector key handling
+// ---------------------------------------------------------------------------
+
+pub fn handle_model_selector_key(
     app: &mut App,
     key: &crossterm::event::KeyEvent,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-) -> bool {
+) -> (bool, Option<SelectorAction>) {
     match key.code {
         KeyCode::Esc => {
             app.overlays.model_selector.close();
-            true
+            (true, None)
         }
         KeyCode::Enter => {
-            if let Some(model) = app.overlays.model_selector.select() {
+            let action = if let Some(model) = app.overlays.model_selector.select() {
                 let old_model = std::mem::replace(&mut app.model, model.clone());
-                let _ = cmd_tx.send(AgentCommand::SetModel(model.clone()));
                 app.context_gauge.set_model(&app.model);
                 app.push_system(format!("Model switched: {} → {}", old_model, model), false);
-            }
+                Some(SelectorAction::SetModel(model))
+            } else {
+                None
+            };
             app.overlays.model_selector.close();
-            true
+            (true, action)
         }
         KeyCode::Up => {
             app.overlays.model_selector.move_up();
-            true
+            (true, None)
         }
         KeyCode::Down => {
             app.overlays.model_selector.move_down();
-            true
+            (true, None)
         }
         KeyCode::Backspace => {
             app.overlays.model_selector.backspace();
-            true
+            (true, None)
         }
         KeyCode::Char(c) => {
-            // Ctrl+C closes
             if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
                 app.overlays.model_selector.close();
             } else if key.modifiers.contains(KeyModifiers::CONTROL) {
@@ -51,9 +61,9 @@ pub(crate) fn handle_model_selector_key(
             } else {
                 app.overlays.model_selector.type_char(c);
             }
-            true
+            (true, None)
         }
-        _ => true, // consume all keys while selector is open
+        _ => (true, None), // consume all keys while selector is open
     }
 }
 
@@ -61,34 +71,35 @@ pub(crate) fn handle_model_selector_key(
 // Account selector key handling
 // ---------------------------------------------------------------------------
 
-pub(crate) fn handle_account_selector_key(
+pub fn handle_account_selector_key(
     app: &mut App,
     key: &crossterm::event::KeyEvent,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-) -> bool {
+) -> (bool, Option<SelectorAction>) {
     match key.code {
         KeyCode::Esc => {
             app.overlays.account_selector.close();
-            true
+            (true, None)
         }
         KeyCode::Enter => {
-            if let Some(account_name) = app.overlays.account_selector.select() {
-                let _ = cmd_tx.send(AgentCommand::SwitchAccount(account_name));
-            }
+            let action = if let Some(account_name) = app.overlays.account_selector.select() {
+                Some(SelectorAction::SwitchAccount(account_name))
+            } else {
+                None
+            };
             app.overlays.account_selector.close();
-            true
+            (true, action)
         }
         KeyCode::Up => {
             app.overlays.account_selector.move_up();
-            true
+            (true, None)
         }
         KeyCode::Down => {
             app.overlays.account_selector.move_down();
-            true
+            (true, None)
         }
         KeyCode::Backspace => {
             app.overlays.account_selector.backspace();
-            true
+            (true, None)
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
@@ -102,9 +113,9 @@ pub(crate) fn handle_account_selector_key(
             } else {
                 app.overlays.account_selector.type_char(c);
             }
-            true
+            (true, None)
         }
-        _ => true,
+        _ => (true, None),
     }
 }
 
@@ -112,7 +123,7 @@ pub(crate) fn handle_account_selector_key(
 // Branch switcher key handling
 // ---------------------------------------------------------------------------
 
-pub(crate) fn handle_branch_switcher_key(app: &mut App, key: &crossterm::event::KeyEvent) -> bool {
+pub fn handle_branch_switcher_key(app: &mut App, key: &crossterm::event::KeyEvent) -> bool {
     match key.code {
         KeyCode::Esc => {
             app.branching.switcher.close();
@@ -162,7 +173,7 @@ pub(crate) fn handle_branch_switcher_key(app: &mut App, key: &crossterm::event::
 // Branch comparison key handling
 // ---------------------------------------------------------------------------
 
-pub(crate) fn handle_branch_compare_key(app: &mut App, key: &crossterm::event::KeyEvent) -> bool {
+pub fn handle_branch_compare_key(app: &mut App, key: &crossterm::event::KeyEvent) -> bool {
     match key.code {
         KeyCode::Esc | KeyCode::Char('q') => {
             app.branching.compare.close();
@@ -196,7 +207,7 @@ pub(crate) fn handle_branch_compare_key(app: &mut App, key: &crossterm::event::K
 // Interactive merge key handling
 // ---------------------------------------------------------------------------
 
-pub(crate) fn handle_merge_interactive_key(app: &mut App, key: &crossterm::event::KeyEvent) -> bool {
+pub fn handle_merge_interactive_key(app: &mut App, key: &crossterm::event::KeyEvent) -> bool {
     match key.code {
         KeyCode::Esc | KeyCode::Char('q') => {
             app.branching.merge_interactive.close();
@@ -238,38 +249,38 @@ pub(crate) fn handle_merge_interactive_key(app: &mut App, key: &crossterm::event
 // Session selector key handling
 // ---------------------------------------------------------------------------
 
-pub(crate) fn handle_session_selector_key(
+pub fn handle_session_selector_key(
     app: &mut App,
     key: &crossterm::event::KeyEvent,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
-) -> bool {
+) -> (bool, Option<SelectorAction>) {
     match key.code {
         KeyCode::Esc => {
             app.overlays.session_selector.close();
-            true
+            (true, None)
         }
         KeyCode::Enter => {
-            if let Some(item) = app.overlays.session_selector.select() {
+            let action = if let Some(item) = app.overlays.session_selector.select() {
                 let file_path = item.file_path.clone();
                 let session_id = item.session_id.clone();
                 app.overlays.session_selector.close();
-                super::interactive::resume_session_from_file(app, file_path, &session_id, cmd_tx);
+                Some(SelectorAction::ResumeSession { file_path, session_id })
             } else {
                 app.overlays.session_selector.close();
-            }
-            true
+                None
+            };
+            (true, action)
         }
         KeyCode::Up => {
             app.overlays.session_selector.move_up();
-            true
+            (true, None)
         }
         KeyCode::Down => {
             app.overlays.session_selector.move_down();
-            true
+            (true, None)
         }
         KeyCode::Backspace => {
             app.overlays.session_selector.backspace();
-            true
+            (true, None)
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
@@ -283,8 +294,8 @@ pub(crate) fn handle_session_selector_key(
             } else {
                 app.overlays.session_selector.type_char(c);
             }
-            true
+            (true, None)
         }
-        _ => true,
+        _ => (true, None),
     }
 }
