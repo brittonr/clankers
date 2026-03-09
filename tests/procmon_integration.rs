@@ -70,8 +70,8 @@ async fn test_monitor_tracks_real_process() {
                 break; // Got the exit, we're done
             }
             Ok(Err(_)) => break, // Channel closed
-            Err(_) => {}  // Timeout, keep trying
-            _ => {}       // Other event, keep trying
+            Err(_) => {}         // Timeout, keep trying
+            _ => {}              // Other event, keep trying
         }
     }
 

@@ -57,6 +57,7 @@
         # Build the actual package
         clankers = craneLib.buildPackage {
           inherit src cargoArtifacts nativeBuildInputs buildInputs;
+          doCheck = false;  # tests run separately via `nix flake check` / checks.nextest
         };
 
         # Build just the clankers-router binary (with CLI/TUI feature)

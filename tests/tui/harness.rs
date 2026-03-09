@@ -112,7 +112,12 @@ impl TuiTestHarness {
             if self.screen_text().contains(needle) {
                 return;
             }
-            assert!(start.elapsed() < timeout, "Timed out waiting for {:?} on screen.\nScreen contents:\n{}", needle, self.screen_text());
+            assert!(
+                start.elapsed() < timeout,
+                "Timed out waiting for {:?} on screen.\nScreen contents:\n{}",
+                needle,
+                self.screen_text()
+            );
             std::thread::sleep(Duration::from_millis(50));
         }
     }

@@ -195,8 +195,8 @@ case_sensitive_file_extension_comparisons = { level = "allow", priority = 1 }
 type_complexity = { level = "allow", priority = 1 }
 
 [profile.release]
-lto = true
-codegen-units = 1
+lto = "thin"
+codegen-units = 16
 strip = true
 
 [profile.dev]
