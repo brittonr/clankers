@@ -374,6 +374,40 @@ impl ProcessMonitor {
     }
 }
 
+impl clankers_tui_types::ProcessDataSource for ProcessMonitor {
+    fn active_processes(&self) -> Vec<clankers_tui_types::ProcessSnapshot> {
+        self.snapshot().into_iter().map(|(pid, t)| tracked_to_snapshot(pid, &t)).collect()
+    }
+
+    fn completed_processes(&self) -> Vec<clankers_tui_types::ProcessSnapshot> {
+        self.history().into_iter().map(|(pid, t)| tracked_to_snapshot(pid, &t)).collect()
+    }
+}
+
+fn tracked_to_snapshot(pid: u32, t: &TrackedProcess) -> clankers_tui_types::ProcessSnapshot {
+    let (cpu_percent, rss_bytes) = t.snapshots.last().map(|s| (s.cpu_percent, s.rss_bytes)).unwrap_or((0.0, 0));
+    let state = match &t.state {
+        ProcessState::Running => clankers_tui_types::ProcessDisplayState::Running,
+        ProcessState::Exited { code, wall_time } => {
+            clankers_tui_types::ProcessDisplayState::Exited { code: *code, wall_time: *wall_time }
+        }
+    };
+    clankers_tui_types::ProcessSnapshot {
+        pid,
+        cpu_percent,
+        rss_bytes,
+        peak_rss: t.peak_rss,
+        command: t.meta.command.clone(),
+        tool_name: t.meta.tool_name.clone(),
+        call_id: t.meta.call_id.clone(),
+        elapsed: t.start_time.elapsed(),
+        state,
+        cpu_history: t.snapshots.iter().map(|s| s.cpu_percent).collect(),
+        mem_history: t.snapshots.iter().map(|s| s.rss_bytes as f32).collect(),
+        children: t.children.clone(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

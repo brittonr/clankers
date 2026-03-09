@@ -130,3 +130,20 @@ impl PeerRegistry {
 pub fn registry_path(paths: &crate::config::ClankersPaths) -> PathBuf {
     paths.global_config_dir.join("peers.json")
 }
+
+/// Convert a PeerRegistry into a list of PeerInfoView for TUI display.
+pub fn peer_info_views(registry: &PeerRegistry) -> Vec<clankers_tui_types::PeerInfoView> {
+    registry.list().into_iter().map(|p| clankers_tui_types::PeerInfoView {
+        name: p.name.clone(),
+        node_id: p.node_id.clone(),
+        last_seen: p.last_seen,
+        added: p.added,
+        capabilities: clankers_tui_types::PeerCapabilitiesView {
+            accepts_prompts: p.capabilities.accepts_prompts,
+            agents: p.capabilities.agents.clone(),
+            tools: p.capabilities.tools.clone(),
+            tags: p.capabilities.tags.clone(),
+            version: p.capabilities.version.clone(),
+        },
+    }).collect()
+}

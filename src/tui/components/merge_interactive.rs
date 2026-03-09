@@ -15,15 +15,10 @@ use ratatui::widgets::Borders;
 use ratatui::widgets::Clear;
 use ratatui::widgets::Paragraph;
 
-use crate::provider::message::AgentMessage;
-use crate::provider::message::Content;
-use crate::provider::message::MessageId;
-use crate::session::entry::MessageEntry;
-
 /// A single item in the interactive merge list.
 #[derive(Debug, Clone)]
 pub struct MergeItem {
-    pub id: MessageId,
+    pub id: String,
     pub label: String,
     pub variant_label: &'static str,
     pub selected: bool,
@@ -38,8 +33,8 @@ pub struct MergeInteractiveView {
     items: Vec<MergeItem>,
     cursor: usize,
     scroll_offset: usize,
-    source_leaf: Option<MessageId>,
-    target_leaf: Option<MessageId>,
+    source_leaf: Option<String>,
+    target_leaf: Option<String>,
     source_name: String,
     target_name: String,
 }
@@ -69,22 +64,19 @@ impl MergeInteractiveView {
     /// All messages are selected by default.
     pub fn open(
         &mut self,
-        source_leaf: MessageId,
-        target_leaf: MessageId,
+        source_leaf: String,
+        target_leaf: String,
         source_name: &str,
         target_name: &str,
-        unique_messages: &[&MessageEntry],
+        messages: &[clankers_tui_types::MergeMessageView],
     ) {
-        self.items = unique_messages
+        self.items = messages
             .iter()
-            .map(|entry| {
-                let (preview, variant) = message_preview(&entry.message, 70);
-                MergeItem {
-                    id: entry.id.clone(),
-                    label: preview,
-                    variant_label: variant,
-                    selected: true,
-                }
+            .map(|m| MergeItem {
+                id: m.id.clone(),
+                label: m.preview.clone(),
+                variant_label: m.variant_label,
+                selected: true,
             })
             .collect();
         self.source_leaf = Some(source_leaf);
@@ -144,8 +136,8 @@ impl MergeInteractiveView {
         self.adjust_scroll();
     }
 
-    /// Return the MessageIds of all selected items.
-    pub fn selected_ids(&self) -> Vec<MessageId> {
+    /// Return the IDs of all selected items.
+    pub fn selected_ids(&self) -> Vec<String> {
         self.items.iter().filter(|i| i.selected).map(|i| i.id.clone()).collect()
     }
 
@@ -153,12 +145,12 @@ impl MergeInteractiveView {
         self.items.iter().filter(|i| i.selected).count()
     }
 
-    pub fn source_leaf(&self) -> Option<&MessageId> {
-        self.source_leaf.as_ref()
+    pub fn source_leaf(&self) -> Option<&str> {
+        self.source_leaf.as_deref()
     }
 
-    pub fn target_leaf(&self) -> Option<&MessageId> {
-        self.target_leaf.as_ref()
+    pub fn target_leaf(&self) -> Option<&str> {
+        self.target_leaf.as_deref()
     }
 
     fn adjust_scroll(&mut self) {
@@ -276,47 +268,8 @@ impl MergeInteractiveView {
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
-/// Extract a preview string and variant label from an AgentMessage.
-fn message_preview(msg: &AgentMessage, max_len: usize) -> (String, &'static str) {
-    match msg {
-        AgentMessage::User(m) => {
-            let text = content_text(&m.content);
-            (truncate_preview(&text, max_len), "User")
-        }
-        AgentMessage::Assistant(m) => {
-            let text = content_text(&m.content);
-            (truncate_preview(&text, max_len), "Assistant")
-        }
-        AgentMessage::ToolResult(m) => {
-            let text = content_text(&m.content);
-            let preview = if text.is_empty() {
-                format!("[{}]", m.tool_name)
-            } else {
-                format!("[{}] {}", m.tool_name, text)
-            };
-            (truncate_preview(&preview, max_len), "Tool")
-        }
-        AgentMessage::BashExecution(m) => (truncate_preview(&format!("$ {}", m.command), max_len), "Bash"),
-        AgentMessage::Custom(m) => (truncate_preview(&format!("[{}]", m.kind), max_len), "Custom"),
-        AgentMessage::BranchSummary(m) => (truncate_preview(&m.summary, max_len), "Branch"),
-        AgentMessage::CompactionSummary(m) => (truncate_preview(&m.summary, max_len), "Compact"),
-    }
-}
-
-/// Extract text from Content blocks.
-fn content_text(content: &[Content]) -> String {
-    content
-        .iter()
-        .filter_map(|c| match c {
-            Content::Text { text } => Some(text.as_str()),
-            Content::Thinking { thinking } => Some(thinking.as_str()),
-            _ => None,
-        })
-        .collect::<Vec<_>>()
-        .join(" ")
-}
-
 /// Truncate to first line, then max chars.
+#[cfg(test)]
 fn truncate_preview(text: &str, max: usize) -> String {
     let first_line = text.lines().next().unwrap_or(text);
     let trimmed = first_line.trim();
@@ -332,30 +285,18 @@ fn truncate_preview(text: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use chrono::Utc;
-
     use super::*;
-    use crate::provider::message::UserMessage;
+    use clankers_tui_types::MergeMessageView;
 
-    fn make_entry(id: &str, text: &str) -> MessageEntry {
-        MessageEntry {
-            id: MessageId::new(id),
-            parent_id: None,
-            message: AgentMessage::User(UserMessage {
-                id: MessageId::new(id),
-                content: vec![Content::Text { text: text.to_string() }],
-                timestamp: Utc::now(),
-            }),
-            timestamp: Utc::now(),
-        }
+    fn make_view(id: &str, text: &str) -> MergeMessageView {
+        MergeMessageView { id: id.to_string(), preview: text.to_string(), variant_label: "User" }
     }
 
     #[test]
     fn open_populates_items_all_selected() {
-        let entries = vec![make_entry("a", "hello"), make_entry("b", "world")];
-        let refs: Vec<&MessageEntry> = entries.iter().collect();
+        let views = vec![make_view("a", "hello"), make_view("b", "world")];
         let mut view = MergeInteractiveView::new();
-        view.open(MessageId::new("src"), MessageId::new("tgt"), "source-branch", "target-branch", &refs);
+        view.open("src".into(), "tgt".into(), "source-branch", "target-branch", &views);
         assert!(view.visible);
         assert_eq!(view.items.len(), 2);
         assert!(view.items.iter().all(|i| i.selected));
@@ -364,10 +305,9 @@ mod tests {
 
     #[test]
     fn toggle_changes_selection() {
-        let entries = vec![make_entry("a", "hello")];
-        let refs: Vec<&MessageEntry> = entries.iter().collect();
+        let views = vec![make_view("a", "hello")];
         let mut view = MergeInteractiveView::new();
-        view.open(MessageId::new("s"), MessageId::new("t"), "s", "t", &refs);
+        view.open("s".into(), "t".into(), "s", "t", &views);
 
         assert!(view.items[0].selected);
         view.toggle();
@@ -378,10 +318,9 @@ mod tests {
 
     #[test]
     fn select_all_deselect_all() {
-        let entries = vec![make_entry("a", "x"), make_entry("b", "y"), make_entry("c", "z")];
-        let refs: Vec<&MessageEntry> = entries.iter().collect();
+        let views = vec![make_view("a", "x"), make_view("b", "y"), make_view("c", "z")];
         let mut view = MergeInteractiveView::new();
-        view.open(MessageId::new("s"), MessageId::new("t"), "s", "t", &refs);
+        view.open("s".into(), "t".into(), "s", "t", &views);
 
         view.deselect_all();
         assert_eq!(view.selected_count(), 0);
@@ -392,10 +331,9 @@ mod tests {
 
     #[test]
     fn navigation_wraps() {
-        let entries = vec![make_entry("a", "x"), make_entry("b", "y"), make_entry("c", "z")];
-        let refs: Vec<&MessageEntry> = entries.iter().collect();
+        let views = vec![make_view("a", "x"), make_view("b", "y"), make_view("c", "z")];
         let mut view = MergeInteractiveView::new();
-        view.open(MessageId::new("s"), MessageId::new("t"), "s", "t", &refs);
+        view.open("s".into(), "t".into(), "s", "t", &views);
 
         assert_eq!(view.cursor, 0);
         view.move_down();
@@ -411,10 +349,9 @@ mod tests {
 
     #[test]
     fn selected_ids_returns_only_selected() {
-        let entries = vec![make_entry("a", "x"), make_entry("b", "y"), make_entry("c", "z")];
-        let refs: Vec<&MessageEntry> = entries.iter().collect();
+        let views = vec![make_view("a", "x"), make_view("b", "y"), make_view("c", "z")];
         let mut view = MergeInteractiveView::new();
-        view.open(MessageId::new("s"), MessageId::new("t"), "s", "t", &refs);
+        view.open("s".into(), "t".into(), "s", "t", &views);
 
         // Deselect middle item
         view.move_down(); // cursor on "b"
@@ -422,16 +359,15 @@ mod tests {
 
         let ids = view.selected_ids();
         assert_eq!(ids.len(), 2);
-        assert_eq!(ids[0], MessageId::new("a"));
-        assert_eq!(ids[1], MessageId::new("c"));
+        assert_eq!(ids[0], "a");
+        assert_eq!(ids[1], "c");
     }
 
     #[test]
     fn close_resets_state() {
-        let entries = vec![make_entry("a", "x")];
-        let refs: Vec<&MessageEntry> = entries.iter().collect();
+        let views = vec![make_view("a", "x")];
         let mut view = MergeInteractiveView::new();
-        view.open(MessageId::new("s"), MessageId::new("t"), "s", "t", &refs);
+        view.open("s".into(), "t".into(), "s", "t", &views);
         assert!(view.visible);
 
         view.close();
@@ -439,20 +375,6 @@ mod tests {
         assert!(view.items.is_empty());
         assert!(view.source_leaf.is_none());
         assert!(view.target_leaf.is_none());
-    }
-
-    #[test]
-    fn message_preview_extracts_text() {
-        let user_msg = AgentMessage::User(UserMessage {
-            id: MessageId::new("u"),
-            content: vec![Content::Text {
-                text: "Hello world".to_string(),
-            }],
-            timestamp: Utc::now(),
-        });
-        let (preview, variant) = super::message_preview(&user_msg, 50);
-        assert_eq!(preview, "Hello world");
-        assert_eq!(variant, "User");
     }
 
     #[test]

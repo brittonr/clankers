@@ -411,7 +411,7 @@ impl<'a> EventLoopRunner<'a> {
                 crate::config::ClankersPaths::get(),
             ));
             let entries =
-                crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
+                crate::tui::components::peers_panel::entries_from_registry(&crate::modes::rpc::peers::peer_info_views(&registry), chrono::Duration::minutes(5));
             peers_panel.set_peers(entries);
         }
     }

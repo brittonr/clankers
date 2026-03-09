@@ -176,7 +176,7 @@ pub async fn run_interactive(
                     let registry =
                         crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(paths));
                     let entries = crate::tui::components::peers_panel::entries_from_registry(
-                        &registry,
+                        &crate::modes::rpc::peers::peer_info_views(&registry),
                         chrono::Duration::minutes(5),
                     );
                     peers_panel.set_peers(entries);
@@ -404,7 +404,7 @@ fn build_agent_with_tools(
 
     // Wire process monitor into the TUI panel
     *process_panel(app) =
-        crate::tui::components::process_panel::ProcessPanel::new().with_monitor(process_monitor.clone());
+        crate::tui::components::process_panel::ProcessPanel::new().with_monitor(process_monitor.clone() as std::sync::Arc<dyn clankers_tui_types::ProcessDataSource>);
 
     let tool_env = crate::modes::common::ToolEnv {
         event_tx: Some(event_tx),

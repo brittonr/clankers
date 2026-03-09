@@ -8,9 +8,11 @@ use std::time::Duration;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 
+use clankers_tui_types::ProcessDataSource;
+use clankers_tui_types::ProcessDisplayState;
+use clankers_tui_types::ProcessSnapshot;
+
 use super::prelude::*;
-use crate::procmon::ProcessMonitorHandle;
-use crate::procmon::ProcessState;
 use crate::tui::panel::ListNav;
 
 // ── Data types ──────────────────────────────────────────────────────────────
@@ -79,7 +81,7 @@ pub struct ProcessPanel {
     nav: ListNav,
     entries: Vec<ProcessEntry>,
     show_completed: bool,
-    monitor: Option<ProcessMonitorHandle>,
+    monitor: Option<std::sync::Arc<dyn ProcessDataSource>>,
     sort_mode: SortMode,
     /// When set, show detail view for this PID instead of the list
     detail_pid: Option<u32>,
@@ -103,8 +105,8 @@ impl ProcessPanel {
         Self::default()
     }
 
-    /// Set the process monitor handle
-    pub fn with_monitor(mut self, monitor: ProcessMonitorHandle) -> Self {
+    /// Set the process data source
+    pub fn with_monitor(mut self, monitor: std::sync::Arc<dyn ProcessDataSource>) -> Self {
         self.monitor = Some(monitor);
         self
     }
@@ -118,43 +120,19 @@ impl ProcessPanel {
         };
 
         // Get active processes
-        let snapshot = monitor.snapshot();
-
-        for (pid, tracked) in snapshot {
-            let (cpu_percent, rss_bytes) = if let Some(last) = tracked.snapshots.last() {
-                (last.cpu_percent, last.rss_bytes)
-            } else {
-                (0.0, 0)
-            };
-
-            let elapsed = tracked.start_time.elapsed();
-            let cpu_history: Vec<f32> = tracked.snapshots.iter().map(|s| s.cpu_percent).collect();
-            let mem_history: Vec<f32> = tracked.snapshots.iter().map(|s| s.rss_bytes as f32).collect();
-
-            self.entries.push(ProcessEntry {
-                pid,
-                cpu_percent,
-                rss_bytes,
-                command: tracked.meta.command.clone(),
-                tool_name: tracked.meta.tool_name.clone(),
-                call_id: tracked.meta.call_id.clone(),
-                elapsed,
-                depth: 0,
-                state: EntryState::Running,
-                peak_rss: tracked.peak_rss,
-                cpu_history,
-                mem_history,
-                children: tracked.children.clone(),
-            });
-
+        for snap in monitor.active_processes() {
             // Add children with depth=1
-            for &child_pid in &tracked.children {
+            let children = snap.children.clone();
+            let tool_name = snap.tool_name.clone();
+            self.entries.push(snapshot_to_entry(snap, 0));
+
+            for child_pid in children {
                 self.entries.push(ProcessEntry {
                     pid: child_pid,
-                    cpu_percent: 0.0, // Children stats are tracked separately if registered
+                    cpu_percent: 0.0,
                     rss_bytes: 0,
-                    command: format!("child of {}", pid),
-                    tool_name: tracked.meta.tool_name.clone(),
+                    command: format!("child of {}", self.entries.last().map(|e| e.pid).unwrap_or(0)),
+                    tool_name: tool_name.clone(),
                     call_id: String::new(),
                     elapsed: Duration::ZERO,
                     depth: 1,
@@ -169,38 +147,8 @@ impl ProcessPanel {
 
         // Add completed processes if requested
         if self.show_completed {
-            let history = monitor.history();
-
-            for (pid, tracked) in history {
-                let (cpu_percent, rss_bytes) = if let Some(last) = tracked.snapshots.last() {
-                    (last.cpu_percent, last.rss_bytes)
-                } else {
-                    (0.0, 0)
-                };
-
-                let (elapsed, code) = match &tracked.state {
-                    ProcessState::Running => (Duration::ZERO, None),
-                    ProcessState::Exited { code, wall_time } => (*wall_time, *code),
-                };
-
-                let cpu_history: Vec<f32> = tracked.snapshots.iter().map(|s| s.cpu_percent).collect();
-                let mem_history: Vec<f32> = tracked.snapshots.iter().map(|s| s.rss_bytes as f32).collect();
-
-                self.entries.push(ProcessEntry {
-                    pid,
-                    cpu_percent,
-                    rss_bytes,
-                    command: tracked.meta.command.clone(),
-                    tool_name: tracked.meta.tool_name.clone(),
-                    call_id: tracked.meta.call_id.clone(),
-                    elapsed,
-                    depth: 0,
-                    state: EntryState::Exited { code },
-                    peak_rss: tracked.peak_rss,
-                    cpu_history,
-                    mem_history,
-                    children: tracked.children.clone(),
-                });
+            for snap in monitor.completed_processes() {
+                self.entries.push(snapshot_to_entry(snap, 0));
             }
         }
 
@@ -228,6 +176,32 @@ impl ProcessPanel {
     /// Get the count of active processes
     pub fn active_count(&self) -> usize {
         self.entries.iter().filter(|e| matches!(e.state, EntryState::Running)).count()
+    }
+}
+
+fn snapshot_to_entry(snap: ProcessSnapshot, depth: u8) -> ProcessEntry {
+    let state = match snap.state {
+        ProcessDisplayState::Running => EntryState::Running,
+        ProcessDisplayState::Exited { code, .. } => EntryState::Exited { code },
+    };
+    let elapsed = match snap.state {
+        ProcessDisplayState::Running => snap.elapsed,
+        ProcessDisplayState::Exited { wall_time, .. } => wall_time,
+    };
+    ProcessEntry {
+        pid: snap.pid,
+        cpu_percent: snap.cpu_percent,
+        rss_bytes: snap.rss_bytes,
+        command: snap.command,
+        tool_name: snap.tool_name,
+        call_id: snap.call_id,
+        elapsed,
+        depth,
+        state,
+        peak_rss: snap.peak_rss,
+        cpu_history: snap.cpu_history,
+        mem_history: snap.mem_history,
+        children: snap.children,
     }
 }
 

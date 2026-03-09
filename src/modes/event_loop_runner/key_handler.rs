@@ -426,9 +426,10 @@ impl<'a> EventLoopRunner<'a> {
     }
 
     pub(super) fn handle_merge_confirmed(&mut self) {
-        let selected = self.app.branching.merge_interactive.selected_ids();
-        let source = self.app.branching.merge_interactive.source_leaf().cloned();
-        let target = self.app.branching.merge_interactive.target_leaf().cloned();
+        use crate::provider::message::MessageId;
+        let selected: Vec<MessageId> = self.app.branching.merge_interactive.selected_ids().into_iter().map(MessageId::from).collect();
+        let source: Option<MessageId> = self.app.branching.merge_interactive.source_leaf().map(|s| MessageId::from(s.to_owned()));
+        let target: Option<MessageId> = self.app.branching.merge_interactive.target_leaf().map(|s| MessageId::from(s.to_owned()));
         self.app.branching.merge_interactive.close();
         if let (Some(src), Some(tgt)) = (source, target)
             && let Some(sm) = self.session_manager.as_mut()

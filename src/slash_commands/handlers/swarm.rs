@@ -217,7 +217,7 @@ fn handle_peers_status(ctx: &mut SlashContext<'_>) {
     let paths = crate::config::ClankersPaths::get();
     let registry_path = crate::modes::rpc::peers::registry_path(paths);
     let registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
-    let entries = crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
+    let entries = crate::tui::components::peers_panel::entries_from_registry(&crate::modes::rpc::peers::peer_info_views(&registry), chrono::Duration::minutes(5));
     let count = entries.len();
     peers_panel_mut(ctx).set_peers(entries);
     ctx.app.push_system(format!("{} peer(s) in registry.", count), false);
@@ -239,7 +239,7 @@ fn handle_peers_add(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
                 ctx.app
                     .push_system(format!("Added peer '{}' ({}…)", name, &node_id[..12.min(node_id.len())]), false);
                 let entries =
-                    crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
+                    crate::tui::components::peers_panel::entries_from_registry(&crate::modes::rpc::peers::peer_info_views(&registry), chrono::Duration::minutes(5));
                 peers_panel_mut(ctx).set_peers(entries);
             }
             Err(e) => ctx.app.push_system(format!("Failed to save registry: {}", e), true),
@@ -269,7 +269,7 @@ fn handle_peers_remove(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
             let _ = registry.save(&registry_path);
             ctx.app.push_system(format!("Removed peer '{}'.", subcmd_args), false);
             let entries =
-                crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
+                crate::tui::components::peers_panel::entries_from_registry(&crate::modes::rpc::peers::peer_info_views(&registry), chrono::Duration::minutes(5));
             peers_panel_mut(ctx).set_peers(entries);
         } else {
             ctx.app.push_system(format!("Peer '{}' not found.", subcmd_args), true);
