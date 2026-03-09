@@ -13,8 +13,9 @@ use crossterm::terminal::{self};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
-use crate::config::keybindings::InputMode;
-use crate::tui::app::App;
+use clankers_tui_types::InputMode;
+
+use crate::app::App;
 
 /// Result of a background clipboard read.
 // ClipboardResult re-exported from clankers-tui-types.
@@ -23,7 +24,7 @@ pub use clankers_tui_types::ClipboardResult;
 /// Read from the system clipboard on a background thread. Tries text first,
 /// then image. This avoids freezing the TUI when another application (e.g. a
 /// browser) holds the Wayland clipboard selection.
-pub(crate) fn paste_from_clipboard(app: &mut App) {
+pub fn paste_from_clipboard(app: &mut App) {
     if app.clipboard_pending {
         return;
     }
@@ -83,7 +84,7 @@ pub(crate) fn paste_from_clipboard(app: &mut App) {
 }
 
 /// Poll for a completed clipboard read (non-blocking).
-pub(crate) fn poll_clipboard_result(app: &mut App) {
+pub fn poll_clipboard_result(app: &mut App) {
     let result = if let Some(ref rx) = app.clipboard_rx {
         match rx.try_recv() {
             Ok(result) => Some(result),
@@ -145,7 +146,7 @@ pub(crate) fn poll_clipboard_result(app: &mut App) {
 
 /// Suspend the TUI, open $EDITOR with the current editor content, and load
 /// the result back. Falls back to $VISUAL, then `vi`.
-pub(crate) fn open_external_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) {
+pub fn open_external_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App) {
     // Determine which editor to use
     let editor_cmd = std::env::var("EDITOR").or_else(|_| std::env::var("VISUAL")).unwrap_or_else(|_| "vi".to_string());
 

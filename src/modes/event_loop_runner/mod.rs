@@ -120,13 +120,13 @@ impl<'a> EventLoopRunner<'a> {
             self.drain_bash_confirms();
             self.refresh_peers();
             self.handle_task_results();
-            super::clipboard::poll_clipboard_result(self.app);
+            crate::tui::clipboard::poll_clipboard_result(self.app);
             self.handle_terminal_events()?;
 
             // Check for deferred external editor request
             if self.app.open_editor_requested {
                 self.app.open_editor_requested = false;
-                super::clipboard::open_external_editor(self.terminal, self.app);
+                crate::tui::clipboard::open_external_editor(self.terminal, self.app);
             }
         }
         Ok(())
@@ -501,19 +501,19 @@ impl<'a> EventLoopRunner<'a> {
                     self.handle_key_event(key);
                 }
                 AppEvent::MouseDown(button, col, row) => {
-                    super::mouse::handle_mouse_down(self.app, button, col, row);
+                    crate::tui::mouse::handle_mouse_down(self.app, button, col, row);
                 }
                 AppEvent::MouseDrag(button, col, row) => {
-                    super::mouse::handle_mouse_drag(self.app, button, col, row);
+                    crate::tui::mouse::handle_mouse_drag(self.app, button, col, row);
                 }
                 AppEvent::MouseUp(button, col, row) => {
-                    super::mouse::handle_mouse_up(self.app, button, col, row);
+                    crate::tui::mouse::handle_mouse_up(self.app, button, col, row);
                 }
                 AppEvent::ScrollUp(col, row, n) => {
-                    super::mouse::handle_mouse_scroll(self.app, col, row, true, n);
+                    crate::tui::mouse::handle_mouse_scroll(self.app, col, row, true, n);
                 }
                 AppEvent::ScrollDown(col, row, n) => {
-                    super::mouse::handle_mouse_scroll(self.app, col, row, false, n);
+                    crate::tui::mouse::handle_mouse_scroll(self.app, col, row, false, n);
                 }
                 AppEvent::Resize(_, _) => {}
                 _ => {}

@@ -9,7 +9,7 @@ use crossterm::event::KeyModifiers;
 use super::EventLoopRunner;
 use crate::config::keybindings::Action;
 use crate::config::keybindings::InputMode;
-use crate::modes::clipboard;
+use crate::tui::clipboard;
 use crate::modes::event_handlers;
 use crate::modes::interactive::AgentCommand;
 use crate::modes::peers_background;

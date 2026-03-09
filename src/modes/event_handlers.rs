@@ -248,7 +248,7 @@ pub(crate) fn handle_action(
 
             // ── Clipboard paste ──────────────────────────
             CoreAction::PasteImage => {
-                super::clipboard::paste_from_clipboard(app);
+                crate::tui::clipboard::paste_from_clipboard(app);
             }
         },
 

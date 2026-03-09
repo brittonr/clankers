@@ -3,14 +3,15 @@
 //! Handles mouse clicks (left/middle/right), dragging for text selection,
 //! scroll wheel, and block collapse toggles.
 
-use crate::config::keybindings::InputMode;
-use crate::tui::app::App;
 use clankers_tui_types::AppState;
-use clankers_tui_types::HitRegion;
 use clankers_tui_types::BlockEntry;
-use crate::tui::event::Button;
+use clankers_tui_types::HitRegion;
+use clankers_tui_types::InputMode;
 
-pub(crate) fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
+use crate::app::App;
+use crate::event::Button;
+
+pub fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
     let region = app.hit_test(col, row);
 
     match button {
@@ -18,14 +19,14 @@ pub(crate) fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u1
             match region {
                 HitRegion::Messages => {
                     // Start text selection in the messages area
-                    if let Some(pos) = crate::tui::selection::screen_to_text_pos(
+                    if let Some(pos) = crate::selection::screen_to_text_pos(
                         col,
                         row,
                         app.messages_area,
                         app.conversation.scroll.offset,
                         &app.rendered_lines,
                     ) {
-                        app.selection = Some(crate::tui::selection::TextSelection::start(pos));
+                        app.selection = Some(crate::selection::TextSelection::start(pos));
                     } else {
                         app.selection = None;
                     }
@@ -82,7 +83,7 @@ pub(crate) fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u1
         Button::Right => {
             // Right-click in messages area: toggle collapse of the clicked block
             if matches!(region, HitRegion::Messages)
-                && let Some(pos) = crate::tui::selection::screen_to_text_pos(
+                && let Some(pos) = crate::selection::screen_to_text_pos(
                     col,
                     row,
                     app.messages_area,
@@ -98,13 +99,13 @@ pub(crate) fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u1
 }
 
 /// Handle mouse drag (button held + moved).
-pub(crate) fn handle_mouse_drag(app: &mut App, button: Button, col: u16, row: u16) {
+pub fn handle_mouse_drag(app: &mut App, button: Button, col: u16, row: u16) {
     if button != Button::Left {
         return;
     }
     // Continue text selection in messages area
     if let Some(ref mut sel) = app.selection
-        && let Some(pos) = crate::tui::selection::screen_to_text_pos(
+        && let Some(pos) = crate::selection::screen_to_text_pos(
             col,
             row,
             app.messages_area,
@@ -117,12 +118,12 @@ pub(crate) fn handle_mouse_drag(app: &mut App, button: Button, col: u16, row: u1
 }
 
 /// Handle mouse button release.
-pub(crate) fn handle_mouse_up(app: &mut App, button: Button, col: u16, row: u16) {
+pub fn handle_mouse_up(app: &mut App, button: Button, col: u16, row: u16) {
     if button != Button::Left {
         return;
     }
     if let Some(ref mut sel) = app.selection {
-        if let Some(pos) = crate::tui::selection::screen_to_text_pos(
+        if let Some(pos) = crate::selection::screen_to_text_pos(
             col,
             row,
             app.messages_area,
@@ -134,7 +135,7 @@ pub(crate) fn handle_mouse_up(app: &mut App, button: Button, col: u16, row: u16)
         sel.finish();
         if !sel.is_empty() {
             let text = sel.extract_text(&app.rendered_lines);
-            crate::tui::selection::copy_to_clipboard(&text);
+            crate::selection::copy_to_clipboard(&text);
         } else {
             app.selection = None;
         }
@@ -142,7 +143,7 @@ pub(crate) fn handle_mouse_up(app: &mut App, button: Button, col: u16, row: u16)
 }
 
 /// Handle mouse scroll wheel — dispatches to whichever region the cursor is over.
-pub(crate) fn handle_mouse_scroll(app: &mut App, col: u16, row: u16, up: bool, lines: u16) {
+pub fn handle_mouse_scroll(app: &mut App, col: u16, row: u16, up: bool, lines: u16) {
     let region = app.hit_test(col, row);
 
     match region {
