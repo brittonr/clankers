@@ -4,6 +4,7 @@ members = [
     "crates/clankers-agent-defs",
     "crates/clankers-auth",
     "crates/clankers-merge",
+    "crates/clankers-model-selection",
     "crates/clankers-matrix",
     "crates/clankers-router",
     "crates/clankers-specs",
@@ -35,6 +36,7 @@ path = "src/main.rs"
 clankers-agent-defs = { version = "0.1.0", path = "crates/clankers-agent-defs" }
 clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
 clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
+clankers-model-selection = { version = "0.1.0", path = "crates/clankers-model-selection" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
 clankers-router = { version = "0.1.0", path = "crates/clankers-router", features = ["rpc"] }
 clankers-specs = { version = "0.1.0", path = "crates/clankers-specs", optional = true }

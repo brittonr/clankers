@@ -1041,6 +1041,7 @@ dependencies = [
  "clankers-auth",
  "clankers-matrix",
  "clankers-merge",
+ "clankers-model-selection",
  "clankers-router",
  "clankers-specs",
  "clankers-tui",
@@ -1158,6 +1159,19 @@ version = "0.1.0"
 dependencies = [
  "pretty_assertions",
  "serde",
+]
+
+[[package]]
+name = "clankers-model-selection"
+version = "0.1.0"
+dependencies = [
+ "clankers-router",
+ "clankers-tui-types",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]

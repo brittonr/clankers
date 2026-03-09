@@ -11,24 +11,25 @@ use parking_lot::Mutex;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use super::config::RoutingPolicyConfig;
-use super::cost_tracker::BudgetStatus;
-use super::cost_tracker::CostTracker;
-use super::cost_tracker::CostTrackerConfig;
-use super::cost_tracker::ModelPricing;
-use super::orchestration::OrchestrationPattern;
-use super::policy::RoutingPolicy;
-use super::policy::SelectionReason;
-use super::signals::ComplexitySignals;
-use super::signals::ModelRoleHint;
-use super::signals::ToolCallSummary;
-use super::signals::ToolComplexity;
-use crate::config::model_roles::ModelRoles;
-use crate::tools::Tool;
-use crate::tools::ToolContext;
-use crate::tools::cost::CostTool;
-use crate::tools::switch_model::SwitchModelTool;
-use crate::tools::switch_model::model_switch_slot;
+use clankers_model_selection::config::RoutingPolicyConfig;
+use clankers_model_selection::cost_tracker::BudgetStatus;
+use clankers_model_selection::cost_tracker::CostTracker;
+use clankers_model_selection::cost_tracker::CostTrackerConfig;
+use clankers_model_selection::cost_tracker::ModelPricing;
+use clankers_model_selection::orchestration::OrchestrationPattern;
+use clankers_model_selection::policy::RoutingPolicy;
+use clankers_model_selection::policy::SelectionReason;
+use clankers_model_selection::signals::ComplexitySignals;
+use clankers_model_selection::signals::ModelRoleHint;
+use clankers_model_selection::signals::ToolCallSummary;
+use clankers_model_selection::signals::ToolComplexity;
+use clankers::config::model_roles::ModelRoles;
+use clankers::tools::Tool;
+use clankers::tools::ToolContext;
+use clankers::tools::cost::CostTool;
+use clankers::tools::switch_model::SwitchModelTool;
+use clankers::tools::switch_model::model_switch_slot;
+use clankers::tools::ToolResultContent;
 
 // ── Test helpers ────────────────────────────────────────────────────────────
 
@@ -63,12 +64,12 @@ fn setup_model_roles() -> ModelRoles {
     roles
 }
 
-fn result_text(result: &crate::tools::ToolResult) -> String {
+fn result_text(result: &clankers::tools::ToolResult) -> String {
     result
         .content
         .iter()
         .filter_map(|c| match c {
-            crate::tools::ToolResultContent::Text { text } => Some(text.as_str()),
+            ToolResultContent::Text { text } => Some(text.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>()
