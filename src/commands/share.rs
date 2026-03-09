@@ -16,21 +16,14 @@ pub async fn run_share(_ctx: &crate::commands::CommandContext, read_only: bool) 
     let secret_key = iroh::SecretKey::generate(&mut rand::rng());
     let node_id = secret_key.public();
 
-    match crate::zellij::streaming::host::host_session(&session_name, secret_key, read_only).await {
-        Ok((_endpoint, psk)) => {
-            let psk_hex = crate::zellij::streaming::handshake::psk_to_hex(&psk);
-            println!("\nSession shared! Give the remote user these credentials:\n");
-            println!("  clankers join {} {}\n", node_id, psk_hex);
-            println!("Press Ctrl+C to stop sharing.");
-            // Keep alive until interrupted
-            tokio::signal::ctrl_c().await.ok();
-            println!("\nStopped sharing.");
-            Ok(())
-        }
-        Err(e) => Err(crate::error::Error::Io {
-            source: std::io::Error::other(format!("Failed to share session: {}", e)),
-        }),
-    }
+    let (_endpoint, psk) = crate::zellij::streaming::host::host_session(&session_name, secret_key, read_only).await?;
+    let psk_hex = crate::zellij::streaming::handshake::psk_to_hex(&psk);
+    println!("\nSession shared! Give the remote user these credentials:\n");
+    println!("  clankers join {} {}\n", node_id, psk_hex);
+    println!("Press Ctrl+C to stop sharing.");
+    tokio::signal::ctrl_c().await.ok();
+    println!("\nStopped sharing.");
+    Ok(())
 }
 
 /// Join a remote shared Zellij session.
@@ -47,18 +40,12 @@ pub async fn run_join(node_id: &str, psk: &str) -> Result<()> {
             message: "Invalid PSK (expected 64-char hex string)".to_string(),
         })?;
 
-    match crate::zellij::streaming::guest::join_session(node_id, &psk_bytes).await {
-        Ok(info) => {
-            println!("Connected to session: {}", info.session_name);
-            println!("Read-only: {}", info.read_only);
-            println!("\nRun this to attach:\n  zellij attach {}-remote\n", info.session_name);
-            println!("Press Ctrl+C to disconnect.");
-            tokio::signal::ctrl_c().await.ok();
-            println!("\nDisconnected.");
-            Ok(())
-        }
-        Err(e) => Err(crate::error::Error::Io {
-            source: std::io::Error::other(format!("Failed to join session: {}", e)),
-        }),
-    }
+    let info = crate::zellij::streaming::guest::join_session(node_id, &psk_bytes).await?;
+    println!("Connected to session: {}", info.session_name);
+    println!("Read-only: {}", info.read_only);
+    println!("\nRun this to attach:\n  zellij attach {}-remote\n", info.session_name);
+    println!("Press Ctrl+C to disconnect.");
+    tokio::signal::ctrl_c().await.ok();
+    println!("\nDisconnected.");
+    Ok(())
 }

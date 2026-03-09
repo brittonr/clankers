@@ -79,6 +79,13 @@ impl From<clankers_router::Error> for Error {
     }
 }
 
+#[cfg(feature = "zellij-share")]
+impl From<clankers_zellij::ZellijError> for Error {
+    fn from(e: clankers_zellij::ZellijError) -> Self {
+        Error::Zellij { message: e.message }
+    }
+}
+
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 // ── Error codes ─────────────────────────────────────────────────────

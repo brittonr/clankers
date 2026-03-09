@@ -23,4 +23,4 @@ pub use clankers_tui as tui;
 pub mod util;
 pub mod worktree;
 #[cfg(feature = "zellij-share")]
-pub mod zellij;
+pub use clankers_zellij as zellij;

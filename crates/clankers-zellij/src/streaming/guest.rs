@@ -17,30 +17,30 @@ use super::protocol::SessionInfo;
 use super::protocol::{self};
 
 /// Join a remote zellij session
-pub async fn join_session(node_id: EndpointId, psk: &[u8; 32]) -> Result<SessionInfo, crate::error::Error> {
+pub async fn join_session(node_id: EndpointId, psk: &[u8; 32]) -> Result<SessionInfo, crate::ZellijError> {
     let secret_key = SecretKey::generate(&mut rand::rng());
     let endpoint = Endpoint::builder().secret_key(secret_key).alpns(vec![ALPN.to_vec()]).bind().await.map_err(|e| {
-        crate::error::Error::Zellij {
+        crate::ZellijError {
             message: format!("Failed to bind endpoint: {}", e),
         }
     })?;
 
     let node_addr = EndpointAddr::new(node_id);
-    let conn = endpoint.connect(node_addr, ALPN).await.map_err(|e| crate::error::Error::Zellij {
+    let conn = endpoint.connect(node_addr, ALPN).await.map_err(|e| crate::ZellijError {
         message: format!("Failed to connect to host: {}", e),
     })?;
 
     // Control stream: send PSK, receive session info
-    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| crate::error::Error::Zellij {
+    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| crate::ZellijError {
         message: format!("Failed to open control stream: {}", e),
     })?;
 
-    handshake::send_psk(&mut send, psk).await.map_err(|e| crate::error::Error::Zellij {
+    handshake::send_psk(&mut send, psk).await.map_err(|e| crate::ZellijError {
         message: format!("Failed to send PSK: {}", e),
     })?;
 
     let session_info: SessionInfo =
-        protocol::read_message(&mut recv).await.map_err(|e| crate::error::Error::Zellij {
+        protocol::read_message(&mut recv).await.map_err(|e| crate::ZellijError {
             message: format!("Failed to read session info: {}", e),
         })?;
 
@@ -48,7 +48,7 @@ pub async fn join_session(node_id: EndpointId, psk: &[u8; 32]) -> Result<Session
     let socket_path = create_fake_socket(&session_info)?;
 
     // Open data stream
-    let (quic_send, quic_recv) = conn.open_bi().await.map_err(|e| crate::error::Error::Zellij {
+    let (quic_send, quic_recv) = conn.open_bi().await.map_err(|e| crate::ZellijError {
         message: format!("Failed to open data stream: {}", e),
     })?;
 
@@ -63,7 +63,7 @@ pub async fn join_session(node_id: EndpointId, psk: &[u8; 32]) -> Result<Session
     Ok(session_info)
 }
 
-fn create_fake_socket(info: &SessionInfo) -> Result<PathBuf, crate::error::Error> {
+fn create_fake_socket(info: &SessionInfo) -> Result<PathBuf, crate::ZellijError> {
     // Try to get UID from environment or use a fallback
     let uid_suffix = std::process::Command::new("id")
         .arg("-u")

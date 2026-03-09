@@ -1,6 +1,20 @@
 //! Zellij integration and orchestration
 
-pub(crate) mod streaming;
+pub mod streaming;
+
+/// Error type for Zellij operations.
+#[derive(Debug, Clone)]
+pub struct ZellijError {
+    pub message: String,
+}
+
+impl std::fmt::Display for ZellijError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "zellij: {}", self.message)
+    }
+}
+
+impl std::error::Error for ZellijError {}
 
 use std::path::Path;
 

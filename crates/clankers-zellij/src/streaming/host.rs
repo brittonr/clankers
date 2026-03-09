@@ -56,16 +56,16 @@ pub async fn host_session(
     session_name: &str,
     secret_key: SecretKey,
     read_only: bool,
-) -> Result<(Endpoint, [u8; 32]), crate::error::Error> {
+) -> Result<(Endpoint, [u8; 32]), crate::ZellijError> {
     let psk = handshake::generate_psk();
 
     let endpoint = Endpoint::builder().secret_key(secret_key).alpns(vec![ALPN.to_vec()]).bind().await.map_err(|e| {
-        crate::error::Error::Zellij {
+        crate::ZellijError {
             message: format!("Failed to bind endpoint: {}", e),
         }
     })?;
 
-    let socket_path = find_session_socket(session_name).ok_or_else(|| crate::error::Error::Zellij {
+    let socket_path = find_session_socket(session_name).ok_or_else(|| crate::ZellijError {
         message: format!("Zellij session socket not found: {}", session_name),
     })?;
 
@@ -108,18 +108,18 @@ async fn handle_guest(
     socket_path: &Path,
     psk: &[u8; 32],
     info: &SessionInfo,
-) -> Result<(), crate::error::Error> {
-    let conn = incoming.await.map_err(|e| crate::error::Error::Zellij {
+) -> Result<(), crate::ZellijError> {
+    let conn = incoming.await.map_err(|e| crate::ZellijError {
         message: format!("Connection failed: {}", e),
     })?;
 
     // Open control stream for handshake
-    let (mut send, mut recv) = conn.accept_bi().await.map_err(|e| crate::error::Error::Zellij {
+    let (mut send, mut recv) = conn.accept_bi().await.map_err(|e| crate::ZellijError {
         message: format!("Failed to accept stream: {}", e),
     })?;
 
     // Verify PSK
-    if !handshake::verify_psk(&mut recv, psk).await.map_err(|e| crate::error::Error::Zellij {
+    if !handshake::verify_psk(&mut recv, psk).await.map_err(|e| crate::ZellijError {
         message: format!("PSK verification failed: {}", e),
     })? {
         tracing::warn!("Invalid PSK from guest");
@@ -127,16 +127,16 @@ async fn handle_guest(
     }
 
     // Send session info
-    protocol::write_message(&mut send, info).await.map_err(|e| crate::error::Error::Zellij {
+    protocol::write_message(&mut send, info).await.map_err(|e| crate::ZellijError {
         message: format!("Failed to send session info: {}", e),
     })?;
 
     // Open data stream and proxy to zellij socket
-    let (mut quic_send, mut quic_recv) = conn.accept_bi().await.map_err(|e| crate::error::Error::Zellij {
+    let (mut quic_send, mut quic_recv) = conn.accept_bi().await.map_err(|e| crate::ZellijError {
         message: format!("Failed to accept data stream: {}", e),
     })?;
 
-    let unix_stream = UnixStream::connect(socket_path).await.map_err(|e| crate::error::Error::Zellij {
+    let unix_stream = UnixStream::connect(socket_path).await.map_err(|e| crate::ZellijError {
         message: format!("Failed to connect to zellij socket: {}", e),
     })?;
 
