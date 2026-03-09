@@ -290,44 +290,16 @@ impl App {
         }
     }
 
-    /// Rebuild the leader menu from all contributors.
+    /// Rebuild the leader menu from the given contributors and hidden set.
     ///
-    /// Call after plugin load/unload or settings change.
+    /// The caller (main crate) is responsible for collecting contributors
+    /// from plugins, settings, and builtins.
     pub fn rebuild_leader_menu(
         &mut self,
-        plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-        settings: &crate::config::settings::Settings,
+        contributors: &[&dyn super::components::leader_menu::MenuContributor],
+        hidden: &std::collections::HashSet<(char, clankers_tui_types::MenuPlacement)>,
     ) {
-        use super::components::leader_menu::BuiltinKeymapContributor;
-        use super::components::leader_menu::MenuContributor;
-        use super::components::leader_menu::SlashCommandContributor;
-
-        let builtin = BuiltinKeymapContributor;
-        let slash_cmds = clankers_tui_types::CompletionSource::slash_commands(&*self.completion_source);
-        let slash_commands = SlashCommandContributor::new(slash_cmds);
-        let hidden = settings.leader_menu.hidden_set();
-
-        // Collect contributors into a vec of trait refs
-        let pm_guard;
-        let mut contributors: Vec<&dyn MenuContributor> = vec![&builtin, &slash_commands];
-
-        if let Some(pm_arc) = plugin_manager {
-            match pm_arc.lock() {
-                Ok(guard) => {
-                    pm_guard = guard;
-                    contributors.push(&*pm_guard);
-                }
-                Err(poisoned) => {
-                    tracing::warn!("plugin manager mutex poisoned in rebuild_leader_menu, recovering");
-                    pm_guard = poisoned.into_inner();
-                    contributors.push(&*pm_guard);
-                }
-            }
-        }
-
-        contributors.push(&settings.leader_menu);
-
-        let (menu, conflicts) = super::components::leader_menu::LeaderMenu::build(&contributors, &hidden);
+        let (menu, conflicts) = super::components::leader_menu::LeaderMenu::build(contributors, hidden);
 
         for c in &conflicts {
             tracing::debug!(

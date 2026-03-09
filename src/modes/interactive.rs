@@ -72,7 +72,7 @@ pub async fn run_interactive(
     ));
 
     // Build leader menu from all contributors (builtins + plugins + user config)
-    app.rebuild_leader_menu(plugin_manager.as_ref(), &settings);
+    rebuild_leader_menu(&mut app, plugin_manager.as_ref(), &settings);
 
     // ── Session persistence setup ────────────────────────────────────────
     let paths = crate::config::ClankersPaths::get();
@@ -1001,6 +1001,34 @@ fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_panel::Peers
     app.panels
         .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(crate::tui::panel::PanelId::Peers)
         .expect("peers panel registered at startup")
+}
+
+/// Build the leader menu from builtins + slash commands + plugins + user config.
+fn rebuild_leader_menu(
+    app: &mut App,
+    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    settings: &crate::config::settings::Settings,
+) {
+    use crate::tui::components::leader_menu::BuiltinKeymapContributor;
+    use crate::tui::components::leader_menu::MenuContributor;
+    use crate::tui::components::leader_menu::SlashCommandContributor;
+
+    let builtin = BuiltinKeymapContributor;
+    let slash_cmds = clankers_tui_types::CompletionSource::slash_commands(&*app.completion_source);
+    let slash_commands = SlashCommandContributor::new(slash_cmds);
+    let hidden = settings.leader_menu.hidden_set();
+
+    let pm_guard;
+    let mut contributors: Vec<&dyn MenuContributor> = vec![&builtin, &slash_commands];
+    if let Some(pm_arc) = plugin_manager {
+        match pm_arc.lock() {
+            Ok(guard) => { pm_guard = guard; contributors.push(&*pm_guard); }
+            Err(poisoned) => { pm_guard = poisoned.into_inner(); contributors.push(&*pm_guard); }
+        }
+    }
+    contributors.push(&settings.leader_menu);
+
+    app.rebuild_leader_menu(&contributors, &hidden);
 }
 
 /// Build the slash command registry from builtins + plugins.
