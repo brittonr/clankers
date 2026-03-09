@@ -2,8 +2,9 @@
 
 use std::collections::HashMap;
 
-use super::types::*;
 use clankers_tui_types::Conflict;
+
+use super::types::*;
 
 /// Build a leader menu from contributors.
 ///

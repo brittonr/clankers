@@ -53,9 +53,7 @@ enum SseDelta {
     #[serde(rename = "thinking_delta")]
     Thinking { thinking: String },
     #[serde(rename = "signature_delta")]
-    Signature {
-        _signature: String,
-    },
+    Signature { _signature: String },
 }
 
 #[derive(Debug, Deserialize)]

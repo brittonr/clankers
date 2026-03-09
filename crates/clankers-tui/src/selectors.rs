@@ -2,13 +2,12 @@
 //!
 //! Each handler returns `(consumed, Option<SelectorAction>)`:
 //! - `consumed`: whether the key was handled (caller should not process further).
-//! - `SelectorAction`: an optional side-effect for the caller to dispatch to the
-//!   backend (model switch, account switch, session resume).
-
-use crossterm::event::KeyCode;
-use crossterm::event::KeyModifiers;
+//! - `SelectorAction`: an optional side-effect for the caller to dispatch to the backend (model
+//!   switch, account switch, session resume).
 
 use clankers_tui_types::SelectorAction;
+use crossterm::event::KeyCode;
+use crossterm::event::KeyModifiers;
 
 use crate::app::App;
 
@@ -16,10 +15,7 @@ use crate::app::App;
 // Model selector key handling
 // ---------------------------------------------------------------------------
 
-pub fn handle_model_selector_key(
-    app: &mut App,
-    key: &crossterm::event::KeyEvent,
-) -> (bool, Option<SelectorAction>) {
+pub fn handle_model_selector_key(app: &mut App, key: &crossterm::event::KeyEvent) -> (bool, Option<SelectorAction>) {
     match key.code {
         KeyCode::Esc => {
             app.overlays.model_selector.close();
@@ -71,10 +67,7 @@ pub fn handle_model_selector_key(
 // Account selector key handling
 // ---------------------------------------------------------------------------
 
-pub fn handle_account_selector_key(
-    app: &mut App,
-    key: &crossterm::event::KeyEvent,
-) -> (bool, Option<SelectorAction>) {
+pub fn handle_account_selector_key(app: &mut App, key: &crossterm::event::KeyEvent) -> (bool, Option<SelectorAction>) {
     match key.code {
         KeyCode::Esc => {
             app.overlays.account_selector.close();
@@ -249,10 +242,7 @@ pub fn handle_merge_interactive_key(app: &mut App, key: &crossterm::event::KeyEv
 // Session selector key handling
 // ---------------------------------------------------------------------------
 
-pub fn handle_session_selector_key(
-    app: &mut App,
-    key: &crossterm::event::KeyEvent,
-) -> (bool, Option<SelectorAction>) {
+pub fn handle_session_selector_key(app: &mut App, key: &crossterm::event::KeyEvent) -> (bool, Option<SelectorAction>) {
     match key.code {
         KeyCode::Esc => {
             app.overlays.session_selector.close();

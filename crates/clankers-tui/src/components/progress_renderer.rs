@@ -8,12 +8,11 @@ use std::collections::VecDeque;
 use std::time::Duration;
 use std::time::Instant;
 
+use clankers_tui_types::ProgressKind;
+use clankers_tui_types::ToolProgress;
 use ratatui::style::Color;
 use ratatui::style::Style;
 use ratatui::text::Span;
-
-use clankers_tui_types::ProgressKind;
-use clankers_tui_types::ToolProgress;
 
 /// Sample for ETA calculation
 #[derive(Debug)]

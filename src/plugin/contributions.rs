@@ -14,10 +14,11 @@ use super::manifest;
 
 impl crate::tui::components::leader_menu::MenuContributor for PluginManager {
     fn menu_items(&self) -> Vec<crate::tui::components::leader_menu::MenuContribution> {
-        use crate::registry::PRIORITY_PLUGIN;
         use clankers_tui_types::LeaderAction;
         use clankers_tui_types::MenuContribution;
         use clankers_tui_types::MenuPlacement;
+
+        use crate::registry::PRIORITY_PLUGIN;
 
         self.plugins
             .values()

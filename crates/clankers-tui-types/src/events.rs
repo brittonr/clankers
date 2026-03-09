@@ -43,7 +43,11 @@ pub enum TuiEvent {
     /// Tool structured progress update.
     ToolProgressUpdate { call_id: String, progress: ToolProgress },
     /// Tool result chunk (streaming accumulation).
-    ToolChunk { call_id: String, content: String, content_type: String },
+    ToolChunk {
+        call_id: String,
+        content: String,
+        content_type: String,
+    },
     /// Tool finished executing.
     ToolDone {
         call_id: String,
@@ -56,7 +60,10 @@ pub enum TuiEvent {
     /// User input was submitted.
     UserInput { text: String, agent_msg_count: usize },
     /// Session was auto-compacted.
-    SessionCompaction { compacted_count: usize, tokens_saved: usize },
+    SessionCompaction {
+        compacted_count: usize,
+        tokens_saved: usize,
+    },
     /// Usage update from the agent.
     UsageUpdate {
         total_tokens: usize,

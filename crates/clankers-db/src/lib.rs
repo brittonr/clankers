@@ -145,8 +145,6 @@ impl Db {
     pub fn usage(&self) -> usage::UsageTracker<'_> {
         usage::UsageTracker::new(self)
     }
-
-
 }
 
 impl std::fmt::Debug for Db {
@@ -154,8 +152,6 @@ impl std::fmt::Debug for Db {
         f.debug_struct("Db").finish_non_exhaustive()
     }
 }
-
-
 
 #[cfg(test)]
 mod tests {

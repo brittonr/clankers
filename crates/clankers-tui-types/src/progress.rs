@@ -96,26 +96,17 @@ impl ProgressKind {
                 current,
                 total: Some(total),
             } => format!("{}/{} bytes", current, total),
-            ProgressKind::Bytes {
-                current,
-                total: None,
-            } => format!("{} bytes", current),
+            ProgressKind::Bytes { current, total: None } => format!("{} bytes", current),
             ProgressKind::Lines {
                 current,
                 total: Some(total),
             } => format!("{}/{} lines", current, total),
-            ProgressKind::Lines {
-                current,
-                total: None,
-            } => format!("{} lines", current),
+            ProgressKind::Lines { current, total: None } => format!("{} lines", current),
             ProgressKind::Items {
                 current,
                 total: Some(total),
             } => format!("{}/{} items", current, total),
-            ProgressKind::Items {
-                current,
-                total: None,
-            } => format!("{} items", current),
+            ProgressKind::Items { current, total: None } => format!("{} items", current),
             ProgressKind::Percentage { percent } => format!("{:.1}%", percent),
             ProgressKind::Phase {
                 name,
@@ -145,28 +136,48 @@ pub struct ToolProgress {
 impl ToolProgress {
     /// Create progress from bytes processed.
     pub fn bytes(current: u64, total: Option<u64>) -> Self {
-        Self { kind: ProgressKind::Bytes { current, total }, message: None, timestamp: Instant::now() }
+        Self {
+            kind: ProgressKind::Bytes { current, total },
+            message: None,
+            timestamp: Instant::now(),
+        }
     }
 
     /// Create progress from lines processed.
     pub fn lines(current: u64, total: Option<u64>) -> Self {
-        Self { kind: ProgressKind::Lines { current, total }, message: None, timestamp: Instant::now() }
+        Self {
+            kind: ProgressKind::Lines { current, total },
+            message: None,
+            timestamp: Instant::now(),
+        }
     }
 
     /// Create progress from items processed (generic countable units).
     pub fn items(current: u64, total: Option<u64>) -> Self {
-        Self { kind: ProgressKind::Items { current, total }, message: None, timestamp: Instant::now() }
+        Self {
+            kind: ProgressKind::Items { current, total },
+            message: None,
+            timestamp: Instant::now(),
+        }
     }
 
     /// Create progress from percentage (0.0 to 100.0).
     pub fn percentage(percent: f32) -> Self {
-        Self { kind: ProgressKind::Percentage { percent }, message: None, timestamp: Instant::now() }
+        Self {
+            kind: ProgressKind::Percentage { percent },
+            message: None,
+            timestamp: Instant::now(),
+        }
     }
 
     /// Create phase progress (e.g., "Fetching", "Parsing", "Cancelling").
     pub fn phase(name: impl Into<String>, step: u32, total_steps: Option<u32>) -> Self {
         Self {
-            kind: ProgressKind::Phase { name: name.into(), step, total_steps },
+            kind: ProgressKind::Phase {
+                name: name.into(),
+                step,
+                total_steps,
+            },
             message: None,
             timestamp: Instant::now(),
         }

@@ -1,5 +1,8 @@
 //! Render plugin Widget trees via ratatui
 
+use clankers_tui_types::PluginNotification;
+use clankers_tui_types::PluginUIState;
+use clankers_tui_types::Widget;
 use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::layout::Direction;
@@ -19,9 +22,6 @@ use ratatui::widgets::Row;
 use ratatui::widgets::Table;
 use ratatui::widgets::Wrap;
 
-use clankers_tui_types::PluginNotification;
-use clankers_tui_types::PluginUIState;
-use clankers_tui_types::Widget;
 use crate::theme::Theme;
 
 /// Render a plugin widget tree into the given area

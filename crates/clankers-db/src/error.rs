@@ -19,7 +19,5 @@ pub type Result<T> = std::result::Result<T, DbError>;
 
 /// Convert any displayable error into a `DbError`.
 pub fn db_err(e: impl std::fmt::Display) -> DbError {
-    DbError {
-        message: e.to_string(),
-    }
+    DbError { message: e.to_string() }
 }

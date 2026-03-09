@@ -4,6 +4,8 @@
 
 use std::sync::Arc;
 
+use clankers_tui_types::AppState;
+use clankers_tui_types::BlockEntry;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyModifiers;
 
@@ -14,8 +16,6 @@ use crate::config::keybindings::Keymap;
 use crate::provider::auth::AuthStoreExt;
 use crate::slash_commands;
 use crate::tui::app::App;
-use clankers_tui_types::AppState;
-use clankers_tui_types::BlockEntry;
 
 // ---------------------------------------------------------------------------
 // Action dispatcher
@@ -170,7 +170,16 @@ pub(crate) fn handle_action(
                         let _ = cmd_tx.send(super::interactive::AgentCommand::TruncateMessages(checkpoint));
                         let _ = cmd_tx.send(super::interactive::AgentCommand::Prompt(prompt));
                     } else {
-                        handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager, slash_registry);
+                        handle_input_with_plugins(
+                            app,
+                            &text,
+                            cmd_tx,
+                            plugin_manager,
+                            panel_tx,
+                            db,
+                            session_manager,
+                            slash_registry,
+                        );
                     }
                 }
             }
@@ -441,22 +450,25 @@ pub(crate) fn handle_action(
                 app.zoom_toggle();
             }
             ExtendedAction::PanelScrollUp => {
-                use crate::tui::components::subagent_panel::SubagentPanel;
                 use clankers_tui_types::PanelId;
+
+                use crate::tui::components::subagent_panel::SubagentPanel;
                 if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
                     sp.scroll.scroll_up(3);
                 }
             }
             ExtendedAction::PanelScrollDown => {
-                use crate::tui::components::subagent_panel::SubagentPanel;
                 use clankers_tui_types::PanelId;
+
+                use crate::tui::components::subagent_panel::SubagentPanel;
                 if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
                     sp.scroll.scroll_down(3);
                 }
             }
             ExtendedAction::PanelClearDone => {
-                use crate::tui::components::subagent_panel::SubagentPanel;
                 use clankers_tui_types::PanelId;
+
+                use crate::tui::components::subagent_panel::SubagentPanel;
                 if let Some(subagent_panel) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
                     subagent_panel.clear_done();
                     if !subagent_panel.is_visible() {
@@ -465,8 +477,9 @@ pub(crate) fn handle_action(
                 }
             }
             ExtendedAction::PanelKill => {
-                use crate::tui::components::subagent_panel::SubagentPanel;
                 use clankers_tui_types::PanelId;
+
+                use crate::tui::components::subagent_panel::SubagentPanel;
                 if let Some(sp) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
                     && let Some(id) = sp.selected_id()
                 {
@@ -474,8 +487,9 @@ pub(crate) fn handle_action(
                 }
             }
             ExtendedAction::PanelRemove => {
-                use crate::tui::components::subagent_panel::SubagentPanel;
                 use clankers_tui_types::PanelId;
+
+                use crate::tui::components::subagent_panel::SubagentPanel;
                 if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
                     sp.remove_selected();
                 }
@@ -503,8 +517,9 @@ pub(crate) fn handle_action(
 
             // ── Branch panel ──────────────────────────────
             ExtendedAction::ToggleBranchPanel => {
-                use crate::tui::components::branch_panel::BranchPanel;
                 use clankers_tui_types::PanelId;
+
+                use crate::tui::components::branch_panel::BranchPanel;
                 if app.layout.focused_panel == Some(PanelId::Branches) {
                     // Unfocus (panel stays in the tree but we leave it)
                     app.unfocus_panel();
@@ -607,11 +622,30 @@ pub(crate) fn handle_leader_action(
         LeaderAction::KeymapAction(keymap_action) => {
             // Re-use the existing action dispatcher with a dummy key event
             let dummy_key = crossterm::event::KeyEvent::new(KeyCode::Null, KeyModifiers::NONE);
-            handle_action(app, keymap_action, &dummy_key, cmd_tx, plugin_manager, panel_tx, db, session_manager, slash_registry);
+            handle_action(
+                app,
+                keymap_action,
+                &dummy_key,
+                cmd_tx,
+                plugin_manager,
+                panel_tx,
+                db,
+                session_manager,
+                slash_registry,
+            );
         }
         LeaderAction::SlashCommand(command) => {
             // Execute as if the user typed and submitted the slash command
-            handle_input_with_plugins(app, &command, cmd_tx, plugin_manager, panel_tx, db, session_manager, slash_registry);
+            handle_input_with_plugins(
+                app,
+                &command,
+                cmd_tx,
+                plugin_manager,
+                panel_tx,
+                db,
+                session_manager,
+                slash_registry,
+            );
         }
         LeaderAction::Submenu(_) => {
             // Submenus are handled internally by LeaderMenu::handle_key
@@ -716,7 +750,16 @@ pub(crate) fn handle_slash_menu_key(
             Action::Core(CoreAction::Submit) => {
                 app.accept_slash_completion();
                 if let Some(text) = app.submit_input() {
-                    handle_input_with_plugins(app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager, slash_registry);
+                    handle_input_with_plugins(
+                        app,
+                        &text,
+                        cmd_tx,
+                        plugin_manager,
+                        panel_tx,
+                        db,
+                        session_manager,
+                        slash_registry,
+                    );
                 }
                 return true;
             }

@@ -15,8 +15,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::Db;
-
-use crate::error::{Result, db_err};
+use crate::error::Result;
+use crate::error::db_err;
 
 /// Table: date string "2026-02-25" → serialized DailyUsage
 pub(crate) const TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("usage_daily");

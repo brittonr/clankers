@@ -27,6 +27,9 @@ pub struct PlainHighlighter;
 
 impl SyntaxHighlighter for PlainHighlighter {
     fn highlight(&self, code: &str, _language: &str) -> Vec<HighlightSpan> {
-        vec![HighlightSpan { text: code.to_string(), fg: None }]
+        vec![HighlightSpan {
+            text: code.to_string(),
+            fg: None,
+        }]
     }
 }

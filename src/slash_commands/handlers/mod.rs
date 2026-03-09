@@ -31,10 +31,11 @@ pub(crate) mod tui;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use clankers_tui_types::SubagentEvent;
+
 use crate::modes::interactive::AgentCommand;
 use crate::plugin::PluginManager;
 use crate::tui::app::App;
-use clankers_tui_types::SubagentEvent;
 
 /// Context passed to every slash command handler.
 #[allow(private_interfaces)]

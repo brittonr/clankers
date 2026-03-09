@@ -8,13 +8,19 @@
 
 use std::sync::Arc;
 
-use super::prelude::*;
 use clankers_tui_types::BudgetStatus;
 use clankers_tui_types::CostProvider;
 use clankers_tui_types::CostSummary;
 
+use super::prelude::*;
+
 /// Render the cost detail overlay if visible.
-pub fn render_cost_overlay(frame: &mut Frame, cost_tracker: Option<&Arc<dyn CostProvider>>, visible: bool, theme: &Theme) {
+pub fn render_cost_overlay(
+    frame: &mut Frame,
+    cost_tracker: Option<&Arc<dyn CostProvider>>,
+    visible: bool,
+    theme: &Theme,
+) {
     if !visible {
         return;
     }

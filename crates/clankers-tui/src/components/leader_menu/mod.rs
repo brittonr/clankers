@@ -17,7 +17,8 @@ pub mod types;
 
 // Re-export public types
 // Re-export public builder items
-pub use builder::{BuiltinKeymapContributor, SlashCommandContributor};
+pub use builder::BuiltinKeymapContributor;
+pub use builder::SlashCommandContributor;
 pub use types::BuildResult;
 pub use types::HiddenSet;
 pub use types::LeaderAction;
@@ -172,12 +173,12 @@ impl LeaderMenu {
 mod tests {
     use std::collections::HashSet;
 
-    use crossterm::event::KeyEventKind;
-
-    use super::*;
     use clankers_tui_types::PRIORITY_BUILTIN;
     use clankers_tui_types::PRIORITY_PLUGIN;
     use clankers_tui_types::PRIORITY_USER;
+    use crossterm::event::KeyEventKind;
+
+    use super::*;
 
     fn key(c: char) -> KeyEvent {
         KeyEvent::new_with_kind(KeyCode::Char(c), KeyModifiers::NONE, KeyEventKind::Press)
@@ -240,9 +241,7 @@ mod tests {
             LeaderAction::KeymapAction(a) => {
                 assert_eq!(
                     a,
-                    clankers_tui_types::Action::Extended(
-                        clankers_tui_types::ExtendedAction::OpenModelSelector
-                    )
+                    clankers_tui_types::Action::Extended(clankers_tui_types::ExtendedAction::OpenModelSelector)
                 );
             }
             _ => panic!("Expected KeymapAction"),
@@ -304,9 +303,7 @@ mod tests {
             LeaderAction::KeymapAction(a) => {
                 assert_eq!(
                     a,
-                    clankers_tui_types::Action::Extended(
-                        clankers_tui_types::ExtendedAction::ToggleShowThinking
-                    )
+                    clankers_tui_types::Action::Extended(clankers_tui_types::ExtendedAction::ToggleShowThinking)
                 );
             }
             _ => panic!("Expected KeymapAction"),

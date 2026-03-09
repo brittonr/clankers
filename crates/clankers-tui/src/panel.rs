@@ -9,6 +9,9 @@
 //! - `update()` for action-driven state changes
 //! - `draw()` for rendering (consistent with ratatui naming)
 
+// Panel identifier and actions re-exported from clankers-tui-types.
+pub use clankers_tui_types::PanelAction;
+pub use clankers_tui_types::PanelId;
 use crossterm::event::KeyEvent;
 use indexmap::IndexMap;
 use ratatui::Frame;
@@ -24,10 +27,6 @@ use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
 
 use crate::theme::Theme;
-
-// Panel identifier and actions re-exported from clankers-tui-types.
-pub use clankers_tui_types::PanelAction;
-pub use clankers_tui_types::PanelId;
 
 // ── PanelManager ────────────────────────────────────────────────────────────
 

@@ -19,7 +19,6 @@
 //! All git operations are in-process via libgit2 (see `git_ops::sync`),
 //! except `git gc` which requires the git CLI.
 
-use super::DbWorktreeExt;
 use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
@@ -30,6 +29,7 @@ use tracing::debug;
 use tracing::info;
 use tracing::warn;
 
+use super::DbWorktreeExt;
 use crate::db::Db;
 use crate::tools::git_ops;
 

@@ -81,7 +81,6 @@ pub struct CompletionRequest {
 
 // Re-export ThinkingConfig from clankers-router (canonical definition)
 pub use clankers_router::ThinkingConfig;
-
 // ThinkingLevel re-exported from clankers-tui-types (canonical definition).
 pub use clankers_tui_types::ThinkingLevel;
 

@@ -8,10 +8,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use parking_lot::Mutex;
-use serde_json::json;
-use tokio_util::sync::CancellationToken;
-
+use clankers::config::model_roles::ModelRoles;
+use clankers::tools::Tool;
+use clankers::tools::ToolContext;
+use clankers::tools::ToolResultContent;
+use clankers::tools::cost::CostTool;
+use clankers::tools::switch_model::SwitchModelTool;
+use clankers::tools::switch_model::model_switch_slot;
 use clankers_model_selection::config::RoutingPolicyConfig;
 use clankers_model_selection::cost_tracker::BudgetStatus;
 use clankers_model_selection::cost_tracker::CostTracker;
@@ -24,13 +27,9 @@ use clankers_model_selection::signals::ComplexitySignals;
 use clankers_model_selection::signals::ModelRoleHint;
 use clankers_model_selection::signals::ToolCallSummary;
 use clankers_model_selection::signals::ToolComplexity;
-use clankers::config::model_roles::ModelRoles;
-use clankers::tools::Tool;
-use clankers::tools::ToolContext;
-use clankers::tools::cost::CostTool;
-use clankers::tools::switch_model::SwitchModelTool;
-use clankers::tools::switch_model::model_switch_slot;
-use clankers::tools::ToolResultContent;
+use parking_lot::Mutex;
+use serde_json::json;
+use tokio_util::sync::CancellationToken;
 
 // ── Test helpers ────────────────────────────────────────────────────────────
 

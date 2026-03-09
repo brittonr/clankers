@@ -8,6 +8,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use clankers_tui_types::SubagentEvent;
 use serde_json::Value;
 
 use crate::plugin::PluginManager;
@@ -15,7 +16,6 @@ use crate::tools::Tool;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
 use crate::tools::ToolResult;
-use clankers_tui_types::SubagentEvent;
 
 type PanelTx = tokio::sync::mpsc::UnboundedSender<SubagentEvent>;
 

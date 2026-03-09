@@ -3,6 +3,7 @@
 //! Renders a floating popup above the editor showing matching slash commands
 //! as the user types.
 
+use clankers_tui_types::CompletionItem;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -16,7 +17,6 @@ use ratatui::widgets::Clear;
 use ratatui::widgets::List;
 use ratatui::widgets::ListItem;
 
-use clankers_tui_types::CompletionItem;
 use crate::theme::Theme;
 
 /// State for the slash command autocomplete menu

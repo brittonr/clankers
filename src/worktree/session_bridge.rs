@@ -5,7 +5,6 @@
 //! the worktree is marked completed for the merge daemon to pick up,
 //! then GC runs to clean up merged branches.
 
-use super::DbWorktreeExt;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -13,6 +12,7 @@ use std::sync::Arc;
 use tracing::info;
 use tracing::warn;
 
+use super::DbWorktreeExt;
 use super::SessionType;
 use super::WorktreeManager;
 use super::WorktreeStatus;

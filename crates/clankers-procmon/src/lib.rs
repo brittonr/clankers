@@ -19,10 +19,7 @@ use tokio_util::sync::CancellationToken;
 #[derive(Debug, Clone)]
 pub enum ProcessEvent {
     /// A new process was registered.
-    Spawn {
-        pid: u32,
-        meta: ProcessMeta,
-    },
+    Spawn { pid: u32, meta: ProcessMeta },
     /// A resource usage sample for a tracked process.
     Sample {
         pid: u32,
@@ -407,9 +404,10 @@ fn tracked_to_snapshot(pid: u32, t: &TrackedProcess) -> clankers_tui_types::Proc
     let (cpu_percent, rss_bytes) = t.snapshots.last().map(|s| (s.cpu_percent, s.rss_bytes)).unwrap_or((0.0, 0));
     let state = match &t.state {
         ProcessState::Running => clankers_tui_types::ProcessDisplayState::Running,
-        ProcessState::Exited { code, wall_time } => {
-            clankers_tui_types::ProcessDisplayState::Exited { code: *code, wall_time: *wall_time }
-        }
+        ProcessState::Exited { code, wall_time } => clankers_tui_types::ProcessDisplayState::Exited {
+            code: *code,
+            wall_time: *wall_time,
+        },
     };
     clankers_tui_types::ProcessSnapshot {
         pid,
@@ -426,7 +424,6 @@ fn tracked_to_snapshot(pid: u32, t: &TrackedProcess) -> clankers_tui_types::Proc
         children: t.children.clone(),
     }
 }
-
 
 #[cfg(test)]
 mod tests {

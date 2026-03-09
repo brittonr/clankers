@@ -2,6 +2,10 @@
 
 use std::io;
 
+/// Result of a background clipboard read.
+// ClipboardResult re-exported from clankers-tui-types.
+pub use clankers_tui_types::ClipboardResult;
+use clankers_tui_types::InputMode;
 use crossterm::event::DisableBracketedPaste;
 use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableBracketedPaste;
@@ -13,13 +17,7 @@ use crossterm::terminal::{self};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
-use clankers_tui_types::InputMode;
-
 use crate::app::App;
-
-/// Result of a background clipboard read.
-// ClipboardResult re-exported from clankers-tui-types.
-pub use clankers_tui_types::ClipboardResult;
 
 /// Read from the system clipboard on a background thread. Tries text first,
 /// then image. This avoids freezing the TUI when another application (e.g. a

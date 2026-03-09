@@ -416,8 +416,10 @@ impl<'a> EventLoopRunner<'a> {
             let registry = crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(
                 crate::config::ClankersPaths::get(),
             ));
-            let entries =
-                crate::tui::components::peers_panel::entries_from_registry(&crate::modes::rpc::peers::peer_info_views(&registry), chrono::Duration::minutes(5));
+            let entries = crate::tui::components::peers_panel::entries_from_registry(
+                &crate::modes::rpc::peers::peer_info_views(&registry),
+                chrono::Duration::minutes(5),
+            );
             peers_panel.set_peers(entries);
         }
     }

@@ -400,7 +400,17 @@ pub fn render_active_block<'a>(
         if !show_thinking && msg.role == MessageRole::Thinking {
             continue;
         }
-        render_response_message(&mut lines, msg, border_style, theme, active_tools, progress, streaming_outputs, tick, highlighter);
+        render_response_message(
+            &mut lines,
+            msg,
+            border_style,
+            theme,
+            active_tools,
+            progress,
+            streaming_outputs,
+            tick,
+            highlighter,
+        );
     }
 
     // ── Streaming thinking ───────────────────────────

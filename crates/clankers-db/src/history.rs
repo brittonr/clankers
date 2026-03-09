@@ -15,8 +15,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::Db;
-
-use crate::error::{Result, db_err};
+use crate::error::Result;
+use crate::error::db_err;
 
 /// Table: timestamp_micros (u64) → serialized HistoryEntry
 ///

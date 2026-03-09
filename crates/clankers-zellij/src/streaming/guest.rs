@@ -39,10 +39,9 @@ pub async fn join_session(node_id: EndpointId, psk: &[u8; 32]) -> Result<Session
         message: format!("Failed to send PSK: {}", e),
     })?;
 
-    let session_info: SessionInfo =
-        protocol::read_message(&mut recv).await.map_err(|e| crate::ZellijError {
-            message: format!("Failed to read session info: {}", e),
-        })?;
+    let session_info: SessionInfo = protocol::read_message(&mut recv).await.map_err(|e| crate::ZellijError {
+        message: format!("Failed to read session info: {}", e),
+    })?;
 
     // Create fake Unix socket for local zellij client
     let socket_path = create_fake_socket(&session_info)?;

@@ -21,6 +21,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use clankers_tui_types::SubagentEvent;
 use lifecycle::WorkerState;
 use protocol::SharedEndpoint;
 use protocol::run_remote_worker;
@@ -34,7 +35,6 @@ use crate::tools::Tool;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
 use crate::tools::ToolResult;
-use clankers_tui_types::SubagentEvent;
 
 type PanelTx = tokio::sync::mpsc::UnboundedSender<SubagentEvent>;
 

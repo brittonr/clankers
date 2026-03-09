@@ -1,10 +1,10 @@
-use crate::plugin::sandbox::{Permission, has_permission};
+use crate::plugin::sandbox::Permission;
+use crate::plugin::sandbox::has_permission;
 
 // ── Sandbox permission tests ─────────────────────────────────────
 
 #[test]
 fn sandbox_permission_check() {
-
     let perms = vec!["fs:read".to_string(), "net".to_string()];
     assert!(has_permission(&perms, Permission::FsRead));
     assert!(has_permission(&perms, Permission::Net));

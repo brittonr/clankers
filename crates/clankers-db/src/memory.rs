@@ -26,8 +26,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::Db;
-
-use crate::error::{Result, db_err};
+use crate::error::Result;
+use crate::error::db_err;
 
 /// Table: memory_id (u64 millis) → serialized MemoryEntry
 pub(crate) const TABLE: TableDefinition<u64, &[u8]> = TableDefinition::new("memories");

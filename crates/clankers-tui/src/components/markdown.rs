@@ -121,7 +121,8 @@ fn render_code_block_line(
     if !code_lang.is_empty() {
         // Syntax-highlighted code line
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ".to_string())];
-        let hl_spans: Vec<Span<'static>> = highlighter.highlight(line, code_lang)
+        let hl_spans: Vec<Span<'static>> = highlighter
+            .highlight(line, code_lang)
             .into_iter()
             .map(|s| {
                 let style = match s.fg {

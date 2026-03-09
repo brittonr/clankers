@@ -1,11 +1,11 @@
-use crate::plugin::bridge::{self, PluginEvent};
+use crate::plugin::bridge::PluginEvent;
+use crate::plugin::bridge::{self};
 use crate::plugin::ui;
 
 // ── Bridge event parsing tests ───────────────────────────────────
 
 #[test]
 fn bridge_parse_known_events() {
-
     assert_eq!(PluginEvent::parse("tool_call"), Some(PluginEvent::ToolCall));
     assert_eq!(PluginEvent::parse("tool_result"), Some(PluginEvent::ToolResult));
     assert_eq!(PluginEvent::parse("agent_start"), Some(PluginEvent::AgentStart));

@@ -1,8 +1,7 @@
 // Common imports for all test modules
-use super::*;
 use super::entry;
 use super::store;
-
+use super::*;
 use crate::provider::Usage;
 use crate::provider::message::AssistantMessage;
 use crate::provider::message::Content;
@@ -17,5 +16,3 @@ mod merge;
 mod navigation;
 mod store_tests;
 mod tree;
-
-

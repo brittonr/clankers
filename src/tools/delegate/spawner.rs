@@ -1,9 +1,9 @@
 //! Local worker subprocess spawning and management
 
+use clankers_tui_types::SubagentEvent;
 use tokio_util::sync::CancellationToken;
 
 use crate::tools::ToolResult;
-use clankers_tui_types::SubagentEvent;
 
 type PanelTx = tokio::sync::mpsc::UnboundedSender<SubagentEvent>;
 

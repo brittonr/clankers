@@ -9,11 +9,11 @@ use crossterm::event::KeyModifiers;
 use super::EventLoopRunner;
 use crate::config::keybindings::Action;
 use crate::config::keybindings::InputMode;
-use crate::tui::clipboard;
-use crate::tui::selectors;
 use crate::modes::event_handlers;
 use crate::modes::interactive::AgentCommand;
 use crate::modes::peers_background;
+use crate::tui::clipboard;
+use crate::tui::selectors;
 
 impl<'a> EventLoopRunner<'a> {
     // ── Key event dispatch ──────────────────────────────────────────
@@ -43,21 +43,27 @@ impl<'a> EventLoopRunner<'a> {
             if let Some(action) = action {
                 self.dispatch_selector_action(action);
             }
-            if consumed { return; }
+            if consumed {
+                return;
+            }
         }
         if self.app.overlays.account_selector.visible {
             let (consumed, action) = selectors::handle_account_selector_key(self.app, &key);
             if let Some(action) = action {
                 self.dispatch_selector_action(action);
             }
-            if consumed { return; }
+            if consumed {
+                return;
+            }
         }
         if self.app.overlays.session_selector.visible {
             let (consumed, action) = selectors::handle_session_selector_key(self.app, &key);
             if let Some(action) = action {
                 self.dispatch_selector_action(action);
             }
-            if consumed { return; }
+            if consumed {
+                return;
+            }
         }
         if self.app.branching.switcher.visible && selectors::handle_branch_switcher_key(self.app, &key) {
             return;
@@ -442,21 +448,19 @@ impl<'a> EventLoopRunner<'a> {
                 let _ = self.cmd_tx.send(AgentCommand::SwitchAccount(name));
             }
             SelectorAction::ResumeSession { file_path, session_id } => {
-                super::super::interactive::resume_session_from_file(
-                    self.app,
-                    file_path,
-                    &session_id,
-                    &self.cmd_tx,
-                );
+                super::super::interactive::resume_session_from_file(self.app, file_path, &session_id, &self.cmd_tx);
             }
         }
     }
 
     pub(super) fn handle_merge_confirmed(&mut self) {
         use crate::provider::message::MessageId;
-        let selected: Vec<MessageId> = self.app.branching.merge_interactive.selected_ids().into_iter().map(MessageId::from).collect();
-        let source: Option<MessageId> = self.app.branching.merge_interactive.source_leaf().map(|s| MessageId::from(s.to_owned()));
-        let target: Option<MessageId> = self.app.branching.merge_interactive.target_leaf().map(|s| MessageId::from(s.to_owned()));
+        let selected: Vec<MessageId> =
+            self.app.branching.merge_interactive.selected_ids().into_iter().map(MessageId::from).collect();
+        let source: Option<MessageId> =
+            self.app.branching.merge_interactive.source_leaf().map(|s| MessageId::from(s.to_owned()));
+        let target: Option<MessageId> =
+            self.app.branching.merge_interactive.target_leaf().map(|s| MessageId::from(s.to_owned()));
         self.app.branching.merge_interactive.close();
         if let (Some(src), Some(tgt)) = (source, target)
             && let Some(sm) = self.session_manager.as_mut()

@@ -1,14 +1,13 @@
 //! Declarative UI widget protocol for plugins
 
-use serde::Deserialize;
-use serde::Serialize;
-
 // Widget types re-exported from clankers-tui-types (canonical definitions).
 pub use clankers_tui_types::Direction;
 pub use clankers_tui_types::PluginNotification;
 pub use clankers_tui_types::PluginUIState;
 pub use clankers_tui_types::StatusSegment;
 pub use clankers_tui_types::Widget;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Actions that a plugin's event handler can return to modify the UI.
 /// Parsed from the JSON response of `on_event` / `on_ui_event`.

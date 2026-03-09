@@ -17,8 +17,5 @@ pub enum SelectorAction {
     /// The user selected a different account in the account picker.
     SwitchAccount(String),
     /// The user selected a session to resume.
-    ResumeSession {
-        file_path: PathBuf,
-        session_id: String,
-    },
+    ResumeSession { file_path: PathBuf, session_id: String },
 }

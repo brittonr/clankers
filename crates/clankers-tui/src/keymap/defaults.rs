@@ -2,11 +2,11 @@
 
 use std::collections::HashMap;
 
-use crossterm::event::KeyCode;
-
 use clankers_tui_types::Action;
 use clankers_tui_types::CoreAction;
 use clankers_tui_types::ExtendedAction;
+use crossterm::event::KeyCode;
+
 use super::parser::KeyCombo;
 
 // ===========================================================================

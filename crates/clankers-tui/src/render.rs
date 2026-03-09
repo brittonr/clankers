@@ -42,9 +42,10 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     app.git_status.maybe_refresh();
 
     // Sync the cwd into file_activity_panel so it can shorten paths
-    if let Some(fap) = app.panels.downcast_mut::<crate::components::file_activity_panel::FileActivityPanel>(
-        crate::panel::PanelId::Files,
-    ) && fap.cwd != app.cwd
+    if let Some(fap) = app
+        .panels
+        .downcast_mut::<crate::components::file_activity_panel::FileActivityPanel>(crate::panel::PanelId::Files)
+        && fap.cwd != app.cwd
     {
         fap.cwd.clone_from(&app.cwd);
     }
@@ -399,9 +400,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, messages_area: Rect) {
 }
 
 /// Compute the search scroll target position
-fn compute_search_scroll_target(
-    output_search: &mut crate::components::output_search::OutputSearch,
-) -> Option<usize> {
+fn compute_search_scroll_target(output_search: &mut crate::components::output_search::OutputSearch) -> Option<usize> {
     if output_search.scroll_to_current {
         output_search.scroll_to_current = false;
         output_search.current_match_row()

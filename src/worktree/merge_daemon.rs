@@ -7,13 +7,13 @@
 //!
 //! Uses in-process git2 operations instead of shelling out to git CLI.
 
-use super::DbWorktreeExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use tracing::info;
 use tracing::warn;
 
+use super::DbWorktreeExt;
 use super::WorktreeManager;
 use super::WorktreeStatus;
 use super::conflict_graph::BranchChangeset;

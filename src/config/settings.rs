@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use clankers_tui_types::MenuPlacement;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json;
@@ -9,7 +10,6 @@ use serde_json;
 use crate::agent_defs::definition::AgentScope;
 use crate::config::keybindings::KeymapConfig;
 use crate::config::model_roles::ModelRoles;
-use clankers_tui_types::MenuPlacement;
 
 /// Full settings, merged from global + project
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -135,9 +135,10 @@ pub struct LeaderMenuHideConfig {
 
 impl crate::tui::components::leader_menu::MenuContributor for LeaderMenuConfig {
     fn menu_items(&self) -> Vec<crate::tui::components::leader_menu::MenuContribution> {
-        use crate::registry::PRIORITY_USER;
         use clankers_tui_types::LeaderAction;
         use clankers_tui_types::MenuContribution;
+
+        use crate::registry::PRIORITY_USER;
 
         self.items
             .iter()

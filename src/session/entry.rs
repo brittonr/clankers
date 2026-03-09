@@ -114,11 +114,15 @@ pub fn to_merge_view(entry: &MessageEntry) -> clankers_tui_types::MergeMessageVi
     use crate::provider::message::Content;
 
     fn content_text(content: &[Content]) -> String {
-        content.iter().filter_map(|c| match c {
-            Content::Text { text } => Some(text.as_str()),
-            Content::Thinking { thinking } => Some(thinking.as_str()),
-            _ => None,
-        }).collect::<Vec<_>>().join(" ")
+        content
+            .iter()
+            .filter_map(|c| match c {
+                Content::Text { text } => Some(text.as_str()),
+                Content::Thinking { thinking } => Some(thinking.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join(" ")
     }
 
     fn truncate(text: &str, max: usize) -> String {
@@ -136,7 +140,11 @@ pub fn to_merge_view(entry: &MessageEntry) -> clankers_tui_types::MergeMessageVi
         AgentMessage::Assistant(m) => (truncate(&content_text(&m.content), 70), "Assistant"),
         AgentMessage::ToolResult(m) => {
             let text = content_text(&m.content);
-            let p = if text.is_empty() { format!("[{}]", m.tool_name) } else { format!("[{}] {}", m.tool_name, text) };
+            let p = if text.is_empty() {
+                format!("[{}]", m.tool_name)
+            } else {
+                format!("[{}] {}", m.tool_name, text)
+            };
             (truncate(&p, 70), "Tool")
         }
         AgentMessage::BashExecution(m) => (truncate(&format!("$ {}", m.command), 70), "Bash"),

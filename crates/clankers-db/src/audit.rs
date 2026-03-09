@@ -22,8 +22,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::Db;
-
-use crate::error::{Result, db_err};
+use crate::error::Result;
+use crate::error::db_err;
 
 /// Table: `"{session_id}:{seq:06}"` → serialized AuditEntry
 pub(crate) const TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("audit_log");

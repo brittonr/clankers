@@ -116,10 +116,11 @@ fn add_thinking_response(app: &mut App, thinking: &str) {
 
 /// Restore a tool result by extracting text and images.
 fn restore_tool_result(app: &mut App, tool_result: &crate::provider::message::ToolResultMessage) {
-    use crate::provider::message::Content;
     use clankers_tui_types::DisplayImage;
     use clankers_tui_types::DisplayMessage;
     use clankers_tui_types::MessageRole;
+
+    use crate::provider::message::Content;
 
     let display = tool_result
         .content

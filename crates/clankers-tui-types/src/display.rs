@@ -77,7 +77,15 @@ pub struct ActiveToolExecution {
 
 /// Modal editing mode.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    Default,
+    serde::Serialize,
+    serde::Deserialize
 )]
 #[serde(rename_all = "lowercase")]
 pub enum InputMode {

@@ -76,8 +76,9 @@ impl CompletionSource for CompletionSnapshot {
         }
         self.items
             .iter()
-            .filter(|item| item.display.to_lowercase().contains(&query)
-                || item.insert_text.to_lowercase().contains(&query))
+            .filter(|item| {
+                item.display.to_lowercase().contains(&query) || item.insert_text.to_lowercase().contains(&query)
+            })
             .cloned()
             .collect()
     }

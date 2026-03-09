@@ -183,14 +183,11 @@ impl App {
     }
 
     fn on_tool_execution_start(&mut self, call_id: &str, tool_name: &str) {
-        self.streaming.active_tools.insert(
-            call_id.to_string(),
-            ActiveToolExecution {
-                tool_name: tool_name.to_string(),
-                started_at: Instant::now(),
-                line_count: 0,
-            },
-        );
+        self.streaming.active_tools.insert(call_id.to_string(), ActiveToolExecution {
+            tool_name: tool_name.to_string(),
+            started_at: Instant::now(),
+            line_count: 0,
+        });
     }
 
     fn on_tool_execution_update(&mut self, call_id: &str, text: &str) {
@@ -273,7 +270,8 @@ impl App {
         if let Some(ref mut block) = self.conversation.active_block {
             block.tokens = block.tokens.saturating_add(turn_tokens);
         }
-        self.context_gauge.update(input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens);
+        self.context_gauge
+            .update(input_tokens, output_tokens, cache_creation_input_tokens, cache_read_input_tokens);
     }
 
     /// Extract file paths from tool call inputs and record them
@@ -293,10 +291,9 @@ impl App {
             } else {
                 op
             };
-            if let Some(fap) =
-                self.panels.downcast_mut::<crate::components::file_activity_panel::FileActivityPanel>(
-                    crate::panel::PanelId::Files,
-                )
+            if let Some(fap) = self
+                .panels
+                .downcast_mut::<crate::components::file_activity_panel::FileActivityPanel>(crate::panel::PanelId::Files)
             {
                 fap.record(path.to_string(), actual_op);
             }

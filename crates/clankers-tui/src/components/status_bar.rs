@@ -1,5 +1,7 @@
 //! Footer status bar
 
+use clankers_tui_types::BudgetStatus;
+use clankers_tui_types::InputMode;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -9,8 +11,6 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 use ratatui::widgets::Paragraph;
 
-use clankers_tui_types::InputMode;
-use clankers_tui_types::BudgetStatus;
 use crate::app::AppState;
 use crate::app::RouterStatus;
 use crate::theme::Theme;

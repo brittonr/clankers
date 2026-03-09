@@ -11,12 +11,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
+use clankers_tui_types::SubagentEvent;
 use parking_lot::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::info;
 use tracing::warn;
-
-use clankers_tui_types::SubagentEvent;
 
 type PanelTx = tokio::sync::mpsc::UnboundedSender<SubagentEvent>;
 
@@ -327,10 +326,11 @@ mod tests {
         let mut got_kill = false;
         for _ in 0..20 {
             if let Ok(Some(event)) = tokio::time::timeout(Duration::from_millis(100), rx.recv()).await
-                && matches!(event, SubagentEvent::KillRequest { .. }) {
-                    got_kill = true;
-                    break;
-                }
+                && matches!(event, SubagentEvent::KillRequest { .. })
+            {
+                got_kill = true;
+                break;
+            }
         }
 
         assert!(got_kill, "should have received KillRequest");

@@ -219,5 +219,3 @@ fn content_to_json(content: &crate::provider::message::Content) -> serde_json::V
         }
     }
 }
-
-

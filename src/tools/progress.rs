@@ -2,14 +2,12 @@
 
 use std::time::Instant;
 
-use serde_json::Value;
-
-use super::ToolResult;
-
 // ProgressKind and ToolProgress re-exported from clankers-tui-types (canonical definitions).
 pub use clankers_tui_types::ProgressKind;
 pub use clankers_tui_types::ToolProgress;
+use serde_json::Value;
 
+use super::ToolResult;
 
 /// Result chunk that tools emit as they produce output
 #[derive(Debug, Clone)]

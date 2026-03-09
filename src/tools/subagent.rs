@@ -4,6 +4,7 @@
 //! to the subagent panel in the TUI only — NOT to the main agent's event bus.
 
 use async_trait::async_trait;
+use clankers_tui_types::SubagentEvent;
 use serde_json::Value;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
@@ -12,7 +13,6 @@ use crate::tools::Tool;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
 use crate::tools::ToolResult;
-use clankers_tui_types::SubagentEvent;
 
 type PanelTx = tokio::sync::mpsc::UnboundedSender<SubagentEvent>;
 

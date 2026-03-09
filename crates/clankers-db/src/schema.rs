@@ -17,8 +17,8 @@ use redb::TableDefinition;
 use redb::WriteTransaction;
 use tracing::info;
 
-
-use crate::error::{Result, db_err};
+use crate::error::Result;
+use crate::error::db_err;
 
 /// Worktree registry table (inlined from worktree::registry).
 const WORKTREE_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("worktrees");
@@ -130,7 +130,6 @@ fn migrate_0_to_1(tx: &WriteTransaction) -> Result<()> {
     use crate::memory;
     use crate::session_index;
     use crate::usage;
-    
 
     tx.open_table(audit::TABLE).map_err(db_err)?;
     tx.open_table(memory::TABLE).map_err(db_err)?;

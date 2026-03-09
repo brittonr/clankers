@@ -12,18 +12,17 @@ mod parser;
 use std::collections::HashMap;
 use std::fmt;
 
-use crossterm::event::KeyEvent;
-use serde::Deserialize;
-use serde::Serialize;
-
 // Re-export public types
 pub use clankers_tui_types::Action;
 pub use clankers_tui_types::CoreAction;
 pub use clankers_tui_types::ExtendedAction;
 pub use clankers_tui_types::InputMode;
 pub use clankers_tui_types::parse_action;
+use crossterm::event::KeyEvent;
 pub use parser::KeyCombo;
 pub use parser::format_key_combo;
+use serde::Deserialize;
+use serde::Serialize;
 
 // ---------------------------------------------------------------------------
 // Preset enum

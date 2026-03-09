@@ -5,6 +5,9 @@
 //! `KeymapConfig` for loading from the config file.
 
 // Re-export everything from the TUI keymap module.
+use std::collections::HashMap;
+use std::path::Path;
+
 pub use clankers_tui::keymap::*;
 // Re-export action types (canonical home is clankers-tui-types).
 pub use clankers_tui_types::Action;
@@ -14,10 +17,6 @@ pub use clankers_tui_types::ExtendedAction;
 pub use clankers_tui_types::ExtendedActionDef;
 pub use clankers_tui_types::InputMode;
 pub use clankers_tui_types::parse_action;
-
-use std::collections::HashMap;
-use std::path::Path;
-
 use serde::Deserialize;
 use serde::Serialize;
 

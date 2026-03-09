@@ -1,10 +1,11 @@
 //! Info and export slash command handlers.
 
+use clankers_tui_types::BlockEntry;
+use clankers_tui_types::MessageRole;
+
 use super::SlashContext;
 use super::SlashHandler;
 use crate::slash_commands;
-use clankers_tui_types::MessageRole;
-use clankers_tui_types::BlockEntry;
 
 pub struct HelpHandler;
 

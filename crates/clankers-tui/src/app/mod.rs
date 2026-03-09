@@ -5,10 +5,19 @@ mod block_nav;
 
 use std::collections::HashMap;
 use std::sync::Arc;
+
+// Display types re-exported from clankers-tui-types.
+pub use clankers_tui_types::ActiveToolExecution;
+pub use clankers_tui_types::AppState;
+pub use clankers_tui_types::DisplayImage;
+pub use clankers_tui_types::DisplayMessage;
+use clankers_tui_types::InputMode;
+pub use clankers_tui_types::MessageRole;
+pub use clankers_tui_types::PendingImage;
+use clankers_tui_types::PluginUIState;
+pub use clankers_tui_types::RouterStatus;
 use ratatui::layout::Rect;
 
-use clankers_tui_types::InputMode;
-use clankers_tui_types::PluginUIState;
 use crate::components::account_selector::AccountSelector;
 use crate::components::block::BlockEntry;
 use crate::components::block::ConversationBlock;
@@ -20,15 +29,6 @@ use crate::components::slash_menu::SlashMenu;
 use crate::panel::PanelId;
 use crate::selection::TextSelection;
 use crate::theme::Theme;
-
-// Display types re-exported from clankers-tui-types.
-pub use clankers_tui_types::ActiveToolExecution;
-pub use clankers_tui_types::AppState;
-pub use clankers_tui_types::DisplayImage;
-pub use clankers_tui_types::DisplayMessage;
-pub use clankers_tui_types::MessageRole;
-pub use clankers_tui_types::PendingImage;
-pub use clankers_tui_types::RouterStatus;
 
 // Panel focus is tracked by `focused_panel: Option<PanelId>` and the hypertile
 // BSP tiling engine (`tiling: Hypertile`). See App::focus_panel() / unfocus_panel().
@@ -729,8 +729,12 @@ fn register_default_panels() -> super::panel::PanelManager {
 /// Empty completion source used as initial default before the real one is set.
 struct EmptyCompletionSource;
 impl clankers_tui_types::CompletionSource for EmptyCompletionSource {
-    fn completions(&self, _input: &str) -> Vec<clankers_tui_types::CompletionItem> { Vec::new() }
-    fn slash_commands(&self) -> Vec<clankers_tui_types::SlashCommandInfo> { Vec::new() }
+    fn completions(&self, _input: &str) -> Vec<clankers_tui_types::CompletionItem> {
+        Vec::new()
+    }
+    fn slash_commands(&self) -> Vec<clankers_tui_types::SlashCommandInfo> {
+        Vec::new()
+    }
 }
 
 #[cfg(test)]

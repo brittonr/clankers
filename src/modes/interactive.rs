@@ -80,9 +80,7 @@ pub async fn run_interactive(
 
     // Build slash command registry and set completion source on app
     let slash_registry = build_slash_registry(plugin_manager.as_ref());
-    app.set_completion_source(Box::new(
-        clankers_tui_types::CompletionSnapshot::from_source(&slash_registry),
-    ));
+    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(&slash_registry)));
 
     // Build leader menu from all contributors (builtins + plugins + user config)
     rebuild_leader_menu(&mut app, plugin_manager.as_ref(), &settings);
@@ -373,7 +371,9 @@ fn build_agent_with_tools(
         tokio::spawn(async move {
             loop {
                 match proc_rx.recv().await {
-                    Ok(pe) => { let _ = agent_tx.send(crate::agent::events::process_event_to_agent(pe)); }
+                    Ok(pe) => {
+                        let _ = agent_tx.send(crate::agent::events::process_event_to_agent(pe));
+                    }
                     Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
                 }
@@ -383,8 +383,8 @@ fn build_agent_with_tools(
     };
 
     // Wire process monitor into the TUI panel
-    *process_panel(app) =
-        crate::tui::components::process_panel::ProcessPanel::new().with_monitor(process_monitor.clone() as std::sync::Arc<dyn clankers_tui_types::ProcessDataSource>);
+    *process_panel(app) = crate::tui::components::process_panel::ProcessPanel::new()
+        .with_monitor(process_monitor.clone() as std::sync::Arc<dyn clankers_tui_types::ProcessDataSource>);
 
     let tool_env = crate::modes::common::ToolEnv {
         event_tx: Some(event_tx),
@@ -451,7 +451,8 @@ fn build_agent_with_tools(
 
     // Extract cost tracker reference for the app UI
     if settings.cost_tracking.is_some() {
-        app.cost_tracker = agent.cost_tracker().map(|ct| ct.clone() as std::sync::Arc<dyn clankers_tui_types::CostProvider>);
+        app.cost_tracker =
+            agent.cost_tracker().map(|ct| ct.clone() as std::sync::Arc<dyn clankers_tui_types::CostProvider>);
     }
 
     let event_rx = agent.subscribe();
@@ -861,10 +862,7 @@ pub(crate) fn persist_messages(
 /// Makes this instance discoverable on the LAN via mDNS. Skipped in test
 /// environments or when `CLANKERS_NO_RPC` is set. Returns a cancellation
 /// token if the server started successfully.
-async fn maybe_start_rpc(
-    app: &mut App,
-    paths: &crate::config::ClankersPaths,
-) -> Option<CancellationToken> {
+async fn maybe_start_rpc(app: &mut App, paths: &crate::config::ClankersPaths) -> Option<CancellationToken> {
     if cfg!(test) || std::env::var("CLANKERS_NO_RPC").is_ok() {
         return None;
     }
@@ -1049,8 +1047,14 @@ fn rebuild_leader_menu(
     let mut contributors: Vec<&dyn MenuContributor> = vec![&builtin, &slash_commands];
     if let Some(pm_arc) = plugin_manager {
         match pm_arc.lock() {
-            Ok(guard) => { pm_guard = guard; contributors.push(&*pm_guard); }
-            Err(poisoned) => { pm_guard = poisoned.into_inner(); contributors.push(&*pm_guard); }
+            Ok(guard) => {
+                pm_guard = guard;
+                contributors.push(&*pm_guard);
+            }
+            Err(poisoned) => {
+                pm_guard = poisoned.into_inner();
+                contributors.push(&*pm_guard);
+            }
         }
     }
     contributors.push(&settings.leader_menu);
@@ -1071,8 +1075,14 @@ fn build_slash_registry(
     let mut contributors: Vec<&dyn SlashContributor> = vec![&builtin];
     if let Some(pm_arc) = plugin_manager {
         match pm_arc.lock() {
-            Ok(guard) => { pm_guard = guard; contributors.push(&*pm_guard); }
-            Err(poisoned) => { pm_guard = poisoned.into_inner(); contributors.push(&*pm_guard); }
+            Ok(guard) => {
+                pm_guard = guard;
+                contributors.push(&*pm_guard);
+            }
+            Err(poisoned) => {
+                pm_guard = poisoned.into_inner();
+                contributors.push(&*pm_guard);
+            }
         }
     }
     let (registry, conflicts) = SlashRegistry::build(&contributors);

@@ -285,11 +285,16 @@ fn truncate_preview(text: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clankers_tui_types::MergeMessageView;
 
+    use super::*;
+
     fn make_view(id: &str, text: &str) -> MergeMessageView {
-        MergeMessageView { id: id.to_string(), preview: text.to_string(), variant_label: "User" }
+        MergeMessageView {
+            id: id.to_string(),
+            preview: text.to_string(),
+            variant_label: "User",
+        }
     }
 
     #[test]

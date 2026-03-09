@@ -60,11 +60,7 @@ impl ConversationBlock {
         } else {
             "✓"
         };
-        let tool_count = self
-            .responses
-            .iter()
-            .filter(|m| m.role == MessageRole::ToolCall)
-            .count();
+        let tool_count = self.responses.iter().filter(|m| m.role == MessageRole::ToolCall).count();
         let text_preview: String = self
             .responses
             .iter()
@@ -76,26 +72,14 @@ impl ConversationBlock {
             .collect();
 
         if tool_count > 0 {
-            format!(
-                "{} {} ({} tools) — {}",
-                status,
-                self.prompt_preview(),
-                tool_count,
-                text_preview
-            )
+            format!("{} {} ({} tools) — {}", status, self.prompt_preview(), tool_count, text_preview)
         } else {
             format!("{} {} — {}", status, self.prompt_preview(), text_preview)
         }
     }
 
     fn prompt_preview(&self) -> String {
-        self.prompt
-            .lines()
-            .next()
-            .unwrap_or("")
-            .chars()
-            .take(40)
-            .collect()
+        self.prompt.lines().next().unwrap_or("").chars().take(40).collect()
     }
 
     /// Toggle collapsed state.
