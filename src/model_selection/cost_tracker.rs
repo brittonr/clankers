@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::sync::RwLock;
 
+use clankers_tui_types::CostProvider;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -380,6 +381,20 @@ impl CostTracker {
                 }
             }
         }
+    }
+}
+
+impl CostProvider for CostTracker {
+    fn summary(&self) -> CostSummary {
+        self.summary()
+    }
+
+    fn budget_status(&self) -> BudgetStatus {
+        self.budget_status()
+    }
+
+    fn total_cost(&self) -> f64 {
+        self.total_cost()
     }
 }
 

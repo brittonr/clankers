@@ -204,7 +204,7 @@ fn plugin_ui_state_set_and_clear_widget() {
     let mut state = ui::PluginUIState::new();
     assert!(!state.has_content());
 
-    state.apply(ui::PluginUIAction::SetWidget {
+    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetWidget {
         plugin: "test".to_string(),
         widget: ui::Widget::Text {
             content: "hello".to_string(),
@@ -215,7 +215,7 @@ fn plugin_ui_state_set_and_clear_widget() {
     assert!(state.has_content());
     assert!(state.widgets.contains_key("test"));
 
-    state.apply(ui::PluginUIAction::ClearWidget {
+    ui::apply_ui_action(&mut state, ui::PluginUIAction::ClearWidget {
         plugin: "test".to_string(),
     });
     assert!(!state.widgets.contains_key("test"));
@@ -225,7 +225,7 @@ fn plugin_ui_state_set_and_clear_widget() {
 fn plugin_ui_state_set_and_clear_status() {
     let mut state = ui::PluginUIState::new();
 
-    state.apply(ui::PluginUIAction::SetStatus {
+    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetStatus {
         plugin: "test".to_string(),
         text: "building".to_string(),
         color: Some("yellow".to_string()),
@@ -235,7 +235,7 @@ fn plugin_ui_state_set_and_clear_status() {
     assert_eq!(seg.text, "building");
     assert_eq!(seg.color, Some("yellow".to_string()));
 
-    state.apply(ui::PluginUIAction::ClearStatus {
+    ui::apply_ui_action(&mut state, ui::PluginUIAction::ClearStatus {
         plugin: "test".to_string(),
     });
     assert!(!state.status_segments.contains_key("test"));
@@ -245,7 +245,7 @@ fn plugin_ui_state_set_and_clear_status() {
 fn plugin_ui_state_notify_and_gc() {
     let mut state = ui::PluginUIState::new();
 
-    state.apply(ui::PluginUIAction::Notify {
+    ui::apply_ui_action(&mut state, ui::PluginUIAction::Notify {
         plugin: "test".to_string(),
         message: "hello".to_string(),
         level: "info".to_string(),
@@ -262,7 +262,7 @@ fn plugin_ui_state_notify_and_gc() {
 fn plugin_ui_state_multiple_plugins() {
     let mut state = ui::PluginUIState::new();
 
-    state.apply(ui::PluginUIAction::SetWidget {
+    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetWidget {
         plugin: "plugin-a".to_string(),
         widget: ui::Widget::Text {
             content: "A".to_string(),
@@ -270,7 +270,7 @@ fn plugin_ui_state_multiple_plugins() {
             color: None,
         },
     });
-    state.apply(ui::PluginUIAction::SetWidget {
+    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetWidget {
         plugin: "plugin-b".to_string(),
         widget: ui::Widget::Text {
             content: "B".to_string(),
@@ -278,7 +278,7 @@ fn plugin_ui_state_multiple_plugins() {
             color: None,
         },
     });
-    state.apply(ui::PluginUIAction::SetStatus {
+    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetStatus {
         plugin: "plugin-a".to_string(),
         text: "ok".to_string(),
         color: None,
@@ -292,7 +292,7 @@ fn plugin_ui_state_multiple_plugins() {
 fn plugin_ui_state_widget_replacement() {
     let mut state = ui::PluginUIState::new();
 
-    state.apply(ui::PluginUIAction::SetWidget {
+    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetWidget {
         plugin: "test".to_string(),
         widget: ui::Widget::Text {
             content: "v1".to_string(),
@@ -300,7 +300,7 @@ fn plugin_ui_state_widget_replacement() {
             color: None,
         },
     });
-    state.apply(ui::PluginUIAction::SetWidget {
+    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetWidget {
         plugin: "test".to_string(),
         widget: ui::Widget::Text {
             content: "v2".to_string(),

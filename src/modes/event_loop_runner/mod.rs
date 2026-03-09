@@ -231,7 +231,7 @@ impl<'a> EventLoopRunner<'a> {
                             self.app.push_system(format!("🔌 {}: {}", plugin_name, message), false);
                         }
                         for action in result.ui_actions {
-                            self.app.plugin_ui.apply(action);
+                            crate::plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
                         }
                     }
                 }

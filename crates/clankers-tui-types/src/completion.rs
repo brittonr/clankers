@@ -36,3 +36,11 @@ pub struct LeaderBinding {
     /// Override label (defaults to command description if None).
     pub label: Option<String>,
 }
+
+/// Trait for providing completions to the TUI without depending on `SlashRegistry`.
+pub trait CompletionSource {
+    /// Get completions for the given input text (e.g., "/com" → matching commands).
+    fn completions(&self, input: &str) -> Vec<CompletionItem>;
+    /// Get all available slash command info (for leader menu building).
+    fn slash_commands(&self) -> Vec<SlashCommandInfo>;
+}

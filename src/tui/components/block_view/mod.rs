@@ -437,7 +437,7 @@ mod tests {
 
     #[test]
     fn streaming_with_structured_progress_shows_bar() {
-        use crate::tools::progress::ToolProgress;
+        use clankers_tui_types::ToolProgress;
 
         let msg = DisplayMessage {
             role: MessageRole::ToolResult,
@@ -486,7 +486,7 @@ mod tests {
 
     #[test]
     fn streaming_with_progress_bar_and_total() {
-        use crate::tools::progress::ToolProgress;
+        use clankers_tui_types::ToolProgress;
 
         let msg = DisplayMessage {
             role: MessageRole::ToolResult,

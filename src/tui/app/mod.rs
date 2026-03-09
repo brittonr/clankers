@@ -8,7 +8,7 @@ use std::sync::Arc;
 use ratatui::layout::Rect;
 
 use clankers_tui_types::InputMode;
-use crate::plugin::ui::PluginUIState;
+use clankers_tui_types::PluginUIState;
 use crate::tui::components::account_selector::AccountSelector;
 use crate::tui::components::block::BlockEntry;
 use crate::tui::components::block::ConversationBlock;
@@ -146,7 +146,7 @@ pub(crate) struct App {
     pub session_id: String,
     pub total_tokens: usize,
     pub total_cost: f64,
-    pub cost_tracker: Option<Arc<crate::model_selection::cost_tracker::CostTracker>>,
+    pub cost_tracker: Option<Arc<dyn clankers_tui_types::CostProvider>>,
     pub cwd: String,
     pub should_quit: bool,
     pub thinking_enabled: bool,

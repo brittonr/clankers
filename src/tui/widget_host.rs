@@ -19,9 +19,9 @@ use ratatui::widgets::Row;
 use ratatui::widgets::Table;
 use ratatui::widgets::Wrap;
 
-use crate::plugin::ui::PluginNotification;
-use crate::plugin::ui::PluginUIState;
-use crate::plugin::ui::Widget;
+use clankers_tui_types::PluginNotification;
+use clankers_tui_types::PluginUIState;
+use clankers_tui_types::Widget;
 use crate::tui::theme::Theme;
 
 /// Render a plugin widget tree into the given area
@@ -42,7 +42,7 @@ pub fn render_widget(frame: &mut Frame, widget: &Widget, area: Rect) {
             if children.is_empty() {
                 return;
             }
-            let is_vertical = matches!(direction, crate::plugin::ui::Direction::Vertical);
+            let is_vertical = matches!(direction, clankers_tui_types::Direction::Vertical);
             let constraints: Vec<Constraint> =
                 children.iter().map(|_| Constraint::Ratio(1, children.len() as u32)).collect();
             let layout = Layout::default()
@@ -204,7 +204,7 @@ pub fn plugin_status_spans(plugin_ui: &PluginUIState) -> Vec<Span<'static>> {
         return Vec::new();
     }
 
-    let mut sorted: Vec<(&String, &crate::plugin::ui::StatusSegment)> = plugin_ui.status_segments.iter().collect();
+    let mut sorted: Vec<(&String, &clankers_tui_types::StatusSegment)> = plugin_ui.status_segments.iter().collect();
     sorted.sort_by_key(|(name, _)| *name);
 
     let mut spans = Vec::new();

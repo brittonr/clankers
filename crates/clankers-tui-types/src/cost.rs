@@ -40,3 +40,13 @@ pub struct ModelCostBreakdown {
     /// Percentage of total cost.
     pub percentage: f32,
 }
+
+/// Trait for accessing cost data from the TUI without depending on `CostTracker`.
+pub trait CostProvider: Send + Sync {
+    /// Full cost summary with per-model breakdown.
+    fn summary(&self) -> CostSummary;
+    /// Current budget status (for status bar badge).
+    fn budget_status(&self) -> BudgetStatus;
+    /// Total cost in USD across all models.
+    fn total_cost(&self) -> f64;
+}

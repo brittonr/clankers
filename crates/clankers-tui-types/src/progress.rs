@@ -130,3 +130,51 @@ impl ProgressKind {
         }
     }
 }
+
+/// Structured progress information emitted by tools during execution.
+#[derive(Debug, Clone)]
+pub struct ToolProgress {
+    /// The kind of progress (bytes, lines, items, percentage, phase).
+    pub kind: ProgressKind,
+    /// Optional human-readable message (e.g., "Searching /usr/lib...").
+    pub message: Option<String>,
+    /// Timestamp when this progress was emitted.
+    pub timestamp: Instant,
+}
+
+impl ToolProgress {
+    /// Create progress from bytes processed.
+    pub fn bytes(current: u64, total: Option<u64>) -> Self {
+        Self { kind: ProgressKind::Bytes { current, total }, message: None, timestamp: Instant::now() }
+    }
+
+    /// Create progress from lines processed.
+    pub fn lines(current: u64, total: Option<u64>) -> Self {
+        Self { kind: ProgressKind::Lines { current, total }, message: None, timestamp: Instant::now() }
+    }
+
+    /// Create progress from items processed (generic countable units).
+    pub fn items(current: u64, total: Option<u64>) -> Self {
+        Self { kind: ProgressKind::Items { current, total }, message: None, timestamp: Instant::now() }
+    }
+
+    /// Create progress from percentage (0.0 to 100.0).
+    pub fn percentage(percent: f32) -> Self {
+        Self { kind: ProgressKind::Percentage { percent }, message: None, timestamp: Instant::now() }
+    }
+
+    /// Create phase progress (e.g., "Fetching", "Parsing", "Cancelling").
+    pub fn phase(name: impl Into<String>, step: u32, total_steps: Option<u32>) -> Self {
+        Self {
+            kind: ProgressKind::Phase { name: name.into(), step, total_steps },
+            message: None,
+            timestamp: Instant::now(),
+        }
+    }
+
+    /// Add a message to this progress.
+    pub fn with_message(mut self, message: impl Into<String>) -> Self {
+        self.message = Some(message.into());
+        self
+    }
+}

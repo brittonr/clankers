@@ -447,7 +447,7 @@ fn build_agent_with_tools(
     // Fire plugin_init event so plugins can set up their initial UI
     if let Some(pm) = plugin_manager {
         for action in crate::modes::common::fire_plugin_init(pm) {
-            app.plugin_ui.apply(action);
+            crate::plugin::ui::apply_ui_action(&mut app.plugin_ui, action);
         }
     }
 
@@ -466,7 +466,7 @@ fn build_agent_with_tools(
 
     // Extract cost tracker reference for the app UI
     if settings.cost_tracking.is_some() {
-        app.cost_tracker = agent.cost_tracker().cloned();
+        app.cost_tracker = agent.cost_tracker().map(|ct| ct.clone() as std::sync::Arc<dyn clankers_tui_types::CostProvider>);
     }
 
     let event_rx = agent.subscribe();

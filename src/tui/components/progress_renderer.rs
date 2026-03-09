@@ -13,7 +13,7 @@ use ratatui::style::Style;
 use ratatui::text::Span;
 
 use clankers_tui_types::ProgressKind;
-use crate::tools::progress::ToolProgress;
+use clankers_tui_types::ToolProgress;
 
 /// Sample for ETA calculation
 #[derive(Debug)]

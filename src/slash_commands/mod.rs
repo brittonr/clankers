@@ -293,5 +293,37 @@ pub use completion::completions;
 pub use completion::completions_from_registry;
 pub use completion::help_text;
 
+impl clankers_tui_types::CompletionSource for SlashRegistry {
+    fn completions(&self, input: &str) -> Vec<clankers_tui_types::CompletionItem> {
+        completions_from_registry(self, input)
+            .into_iter()
+            .map(|c| clankers_tui_types::CompletionItem {
+                display: c.display,
+                description: c.description.to_string(),
+                insert_text: c.insert_text,
+                trailing_space: c.trailing_space,
+            })
+            .collect()
+    }
+
+    fn slash_commands(&self) -> Vec<clankers_tui_types::SlashCommandInfo> {
+        self.all_commands()
+            .into_iter()
+            .map(|def| {
+                let leader_key = def.leader_key.as_ref().map(|binding| clankers_tui_types::LeaderBinding {
+                    key: binding.key,
+                    placement: binding.placement.clone(),
+                    label: binding.label.map(|s| s.to_string()),
+                });
+                clankers_tui_types::SlashCommandInfo {
+                    name: def.name.clone(),
+                    description: def.description.clone(),
+                    leader_key,
+                }
+            })
+            .collect()
+    }
+}
+
 #[cfg(test)]
 mod tests;
