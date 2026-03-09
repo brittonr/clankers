@@ -35,7 +35,7 @@ pub(crate) use clankers_tui_types::RouterStatus;
 
 /// Saved tiling state while a pane is temporarily zoomed to full screen.
 #[derive(Debug, Clone)]
-pub(crate) struct ZoomState {
+pub struct ZoomState {
     /// The BSP tree before zooming.
     pub tiling: ratatui_hypertile::Hypertile,
     /// The pane registry before zooming.
@@ -48,7 +48,7 @@ pub(crate) struct ZoomState {
 
 /// Streaming state — tracks in-progress LLM/tool output
 #[derive(Debug, Default)]
-pub(crate) struct StreamingState {
+pub struct StreamingState {
     /// Accumulated streaming text (flushed into active block on boundaries)
     pub text: String,
     /// Accumulated streaming thinking (flushed into active block on boundaries)
@@ -66,7 +66,7 @@ pub(crate) struct StreamingState {
 }
 
 /// Conversation state — blocks, scroll, and focus
-pub(crate) struct ConversationState {
+pub struct ConversationState {
     /// Block-oriented conversation history (only active branch shown)
     pub blocks: Vec<BlockEntry>,
     /// All conversation blocks ever created (including branched-off)
@@ -82,7 +82,7 @@ pub(crate) struct ConversationState {
 }
 
 /// Branching state — fork, compare, merge overlays
-pub(crate) struct BranchingState {
+pub struct BranchingState {
     /// Pending branch operation: Some((fork_block_id, new_prompt))
     pub pending_branch: Option<(usize, String)>,
     /// Branch checkpoint that was just executed
@@ -96,7 +96,7 @@ pub(crate) struct BranchingState {
 }
 
 /// Overlay/popup state — all modal dialogs and selectors
-pub(crate) struct OverlayState {
+pub struct OverlayState {
     /// Whether the session/branch popup is visible
     pub session_popup_visible: bool,
     /// Whether the cost detail overlay is visible
@@ -120,7 +120,7 @@ pub(crate) struct OverlayState {
 }
 
 /// Tiling state — BSP layout and pane focus
-pub(crate) struct TilingState {
+pub struct TilingState {
     /// BSP tiling engine
     pub tiling: ratatui_hypertile::Hypertile,
     /// Maps hypertile PaneIds to their content type
@@ -136,7 +136,7 @@ pub(crate) struct TilingState {
 }
 
 /// Main TUI application
-pub(crate) struct App {
+pub struct App {
     // Core state (keep flat)
     pub state: AppState,
     pub input_mode: InputMode,

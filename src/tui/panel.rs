@@ -33,7 +33,7 @@ pub(crate) use clankers_tui_types::PanelId;
 
 /// Manages the collection of panels, keyed by `PanelId`.
 /// Replaces the old pattern of having a named field per panel on `App`.
-pub(crate) struct PanelManager {
+pub struct PanelManager {
     panels: IndexMap<PanelId, Box<dyn Panel>>,
 }
 
@@ -159,8 +159,8 @@ pub trait Panel {
         }
     }
 
-    /// Return the panel's content as lines. If implemented, `draw_panel`
-    /// handles scrolling automatically via `panel_scroll_mut()`.
+    /// Return the panel's content as lines. If implemented, the default
+    /// `draw()` implementation handles scrolling automatically via `panel_scroll()`.
     ///
     /// Panels that need custom rendering (split panes, stateful widgets)
     /// should override `draw()` instead.
@@ -185,7 +185,7 @@ pub trait Panel {
 // ── Draw context ────────────────────────────────────────────────────────────
 
 /// Everything a panel needs to render itself, bundled for a clean signature.
-pub(crate) struct DrawContext<'a> {
+pub struct DrawContext<'a> {
     pub theme: &'a Theme,
     pub focused: bool,
 }
@@ -217,16 +217,6 @@ pub(crate) fn draw_panel_frame(frame: &mut Frame, panel: &dyn Panel, area: Rect,
     let inner = block.inner(area);
     frame.render_widget(block, area);
     Some(inner)
-}
-
-/// Convenience: draw frame + content in one call.
-///
-/// If the panel implements `content()` + `panel_scroll()`, this handles
-/// scroll dimensions automatically. Otherwise delegates to `draw()`.
-pub(crate) fn draw_panel(frame: &mut Frame, panel: &dyn Panel, area: Rect, ctx: &DrawContext) {
-    if let Some(inner) = draw_panel_frame(frame, panel, area, ctx) {
-        panel.draw(frame, inner, ctx);
-    }
 }
 
 /// Mutable variant: draw frame + auto-scroll content.
@@ -267,7 +257,7 @@ pub(crate) fn draw_panel_scrolled(frame: &mut Frame, panel: &mut dyn Panel, area
 /// Panels using `ListNav` for item selection should keep using that instead;
 /// `PanelScroll` is for free-form text or when you want raw pixel scrolling.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct PanelScroll {
+pub struct PanelScroll {
     /// Current scroll offset (in lines from top).
     pub offset: usize,
     /// Total content height (set each frame in draw).
@@ -318,6 +308,7 @@ impl PanelScroll {
     }
 
     /// Scroll so that line `target` is visible, preferring to center it.
+    #[allow(dead_code)]
     pub(crate) fn scroll_to_line(&mut self, target: usize) {
         if target < self.offset {
             self.offset = target;
@@ -334,7 +325,7 @@ impl PanelScroll {
 /// Manages a selected index in a list with wrapping navigation and
 /// scroll-to-visible calculation.
 #[derive(Debug, Clone, Default)]
-pub(crate) struct ListNav {
+pub struct ListNav {
     /// Currently selected index.
     pub selected: usize,
 }

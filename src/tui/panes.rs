@@ -17,7 +17,7 @@ use crate::tui::panel::PanelId;
 
 /// What content a hypertile pane displays.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub(crate) enum PaneKind {
+pub enum PaneKind {
     /// The main chat/conversation area (blocks + editor + status bar).
     Chat,
     /// One of the existing side-panel types.
@@ -47,7 +47,7 @@ impl PaneKind {
 /// - Exactly one pane has `PaneKind::Chat` at all times.
 /// - The chat pane's ID is tracked in `chat_pane`.
 #[derive(Debug, Clone)]
-pub(crate) struct PaneRegistry {
+pub struct PaneRegistry {
     kinds: HashMap<PaneId, PaneKind>,
     chat_pane: PaneId,
 }
