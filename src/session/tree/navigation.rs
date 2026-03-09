@@ -2,7 +2,8 @@
 
 use super::SessionTree;
 use crate::provider::message::MessageId;
-use crate::session::entry::{MessageEntry, SessionEntry};
+use crate::session::entry::MessageEntry;
+use crate::session::entry::SessionEntry;
 
 impl SessionTree {
     /// Walk from a leaf message to the root, collecting message entries.
@@ -76,13 +77,13 @@ impl SessionTree {
     pub fn find_all_leaves(&self) -> Vec<&MessageEntry> {
         let mut leaves = Vec::new();
         let mut visited = std::collections::HashSet::new();
-        
+
         // Start DFS from all root messages
         let roots = self.get_children(&None);
         for root in roots {
             self.dfs_collect_leaves(root, &mut leaves, &mut visited);
         }
-        
+
         leaves
     }
 
@@ -97,7 +98,7 @@ impl SessionTree {
             return;
         }
         visited.insert(node.id.clone());
-        
+
         let children = self.get_children(&Some(node.id.clone()));
         if children.is_empty() {
             // This is a leaf

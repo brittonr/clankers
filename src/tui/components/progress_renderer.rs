@@ -5,12 +5,15 @@
 
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
-use ratatui::style::{Color, Style};
+use ratatui::style::Color;
+use ratatui::style::Style;
 use ratatui::text::Span;
 
-use crate::tools::progress::{ProgressKind, ToolProgress};
+use crate::tools::progress::ProgressKind;
+use crate::tools::progress::ToolProgress;
 
 /// Sample for ETA calculation
 #[derive(Debug)]
@@ -40,9 +43,7 @@ pub struct ProgressRenderer {
 
 impl ProgressRenderer {
     pub fn new() -> Self {
-        Self {
-            states: HashMap::new(),
-        }
+        Self { states: HashMap::new() }
     }
 
     /// Update progress for a call_id
@@ -103,7 +104,11 @@ impl ProgressRenderer {
 
         if let Some(total) = total {
             // Known total: show bar + count
-            let percent = if total > 0 { (current as f32 / total as f32) * 100.0 } else { 0.0 };
+            let percent = if total > 0 {
+                (current as f32 / total as f32) * 100.0
+            } else {
+                0.0
+            };
             let bar = progress_bar(percent, 20);
             spans.push(Span::styled(bar, Style::default().fg(Color::Cyan)));
             spans.push(Span::styled(
@@ -113,7 +118,8 @@ impl ProgressRenderer {
 
             // ETA
             if let Some(eta) = calculate_eta(state, percent) {
-                spans.push(Span::styled(format!(" ETA {}", format_duration(eta)), Style::default().fg(Color::DarkGray)));
+                spans
+                    .push(Span::styled(format!(" ETA {}", format_duration(eta)), Style::default().fg(Color::DarkGray)));
             }
         } else {
             // Unknown total: spinner + count

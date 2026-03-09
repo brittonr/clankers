@@ -188,7 +188,10 @@ mod tests {
         let info = make_worktree("clankers/main-abc", "sess1", WorktreeStatus::Active);
         reg.upsert(&info).expect("test: failed to upsert worktree");
 
-        let got = reg.get("clankers/main-abc").expect("test: failed to get worktree").expect("test: worktree should exist");
+        let got = reg
+            .get("clankers/main-abc")
+            .expect("test: failed to get worktree")
+            .expect("test: worktree should exist");
         assert_eq!(got.session_id, "sess1");
         assert_eq!(got.status, WorktreeStatus::Active);
     }
@@ -203,7 +206,8 @@ mod tests {
     fn test_remove() {
         let db = test_db();
         let reg = db.worktrees();
-        reg.upsert(&make_worktree("br", "s1", WorktreeStatus::Active)).expect("test: failed to upsert worktree");
+        reg.upsert(&make_worktree("br", "s1", WorktreeStatus::Active))
+            .expect("test: failed to upsert worktree");
         assert!(reg.remove("br").expect("test: failed to remove worktree"));
         assert!(!reg.remove("br").expect("test: failed second remove"));
         assert!(reg.get("br").expect("test: failed to get worktree").is_none());
@@ -213,7 +217,8 @@ mod tests {
     fn test_set_status() {
         let db = test_db();
         let reg = db.worktrees();
-        reg.upsert(&make_worktree("br", "s1", WorktreeStatus::Active)).expect("test: failed to upsert worktree");
+        reg.upsert(&make_worktree("br", "s1", WorktreeStatus::Active))
+            .expect("test: failed to upsert worktree");
         assert!(reg.set_status("br", WorktreeStatus::Completed).expect("test: failed to set status"));
 
         let got = reg.get("br").expect("test: failed to get worktree").expect("test: worktree should exist");
@@ -242,10 +247,15 @@ mod tests {
     fn test_find_by_session() {
         let db = test_db();
         let reg = db.worktrees();
-        reg.upsert(&make_worktree("br1", "sess-42", WorktreeStatus::Active)).expect("test: failed to upsert br1");
-        reg.upsert(&make_worktree("br2", "sess-99", WorktreeStatus::Active)).expect("test: failed to upsert br2");
+        reg.upsert(&make_worktree("br1", "sess-42", WorktreeStatus::Active))
+            .expect("test: failed to upsert br1");
+        reg.upsert(&make_worktree("br2", "sess-99", WorktreeStatus::Active))
+            .expect("test: failed to upsert br2");
 
-        let found = reg.find_by_session("sess-42").expect("test: failed to find by session").expect("test: session should be found");
+        let found = reg
+            .find_by_session("sess-42")
+            .expect("test: failed to find by session")
+            .expect("test: session should be found");
         assert_eq!(found.branch, "br1");
         assert!(reg.find_by_session("nonexistent").expect("test: failed to find nonexistent").is_none());
     }
@@ -279,7 +289,8 @@ mod tests {
         reg.upsert(&make_worktree("b", "s2", WorktreeStatus::Active)).expect("test: failed to upsert b");
         reg.upsert(&make_worktree("c", "s3", WorktreeStatus::Active)).expect("test: failed to upsert c");
 
-        let removed = reg.remove_batch(&["a".into(), "c".into(), "ghost".into()]).expect("test: failed to remove batch");
+        let removed =
+            reg.remove_batch(&["a".into(), "c".into(), "ghost".into()]).expect("test: failed to remove batch");
         assert_eq!(removed, 2);
         assert_eq!(reg.count().expect("test: failed to get count"), 1);
         assert!(reg.get("b").expect("test: failed to get b").is_some());

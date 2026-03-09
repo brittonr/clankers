@@ -3,6 +3,7 @@
 //! These tests verify the full routing + cost + orchestration pipeline works
 //! together without requiring actual LLM calls or a provider.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -10,17 +11,24 @@ use parking_lot::Mutex;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
-use std::collections::HashMap;
-
 use super::config::RoutingPolicyConfig;
-use super::cost_tracker::{BudgetStatus, CostTracker, CostTrackerConfig, ModelPricing};
+use super::cost_tracker::BudgetStatus;
+use super::cost_tracker::CostTracker;
+use super::cost_tracker::CostTrackerConfig;
+use super::cost_tracker::ModelPricing;
 use super::orchestration::OrchestrationPattern;
-use super::policy::{RoutingPolicy, SelectionReason};
-use super::signals::{ComplexitySignals, ModelRoleHint, ToolCallSummary, ToolComplexity};
+use super::policy::RoutingPolicy;
+use super::policy::SelectionReason;
+use super::signals::ComplexitySignals;
+use super::signals::ModelRoleHint;
+use super::signals::ToolCallSummary;
+use super::signals::ToolComplexity;
 use crate::config::model_roles::ModelRoles;
+use crate::tools::Tool;
+use crate::tools::ToolContext;
 use crate::tools::cost::CostTool;
-use crate::tools::switch_model::{model_switch_slot, SwitchModelTool};
-use crate::tools::{Tool, ToolContext};
+use crate::tools::switch_model::SwitchModelTool;
+use crate::tools::switch_model::model_switch_slot;
 
 // ── Test helpers ────────────────────────────────────────────────────────────
 
@@ -34,14 +42,11 @@ fn test_pricing() -> HashMap<String, ModelPricing> {
     ]
     .into_iter()
     .map(|(id, input, output, name)| {
-        (
-            id.to_string(),
-            ModelPricing {
-                input_per_mtok: input,
-                output_per_mtok: output,
-                display_name: name.to_string(),
-            },
-        )
+        (id.to_string(), ModelPricing {
+            input_per_mtok: input,
+            output_per_mtok: output,
+            display_name: name.to_string(),
+        })
     })
     .collect()
 }
@@ -111,10 +116,7 @@ fn test_full_routing_pipeline_complex() {
                 complexity: ToolComplexity::Complex,
             },
         ],
-        keywords: vec![
-            ("architecture".to_string(), 15.0),
-            ("refactor".to_string(), 10.0),
-        ],
+        keywords: vec![("architecture".to_string(), 15.0), ("refactor".to_string(), 10.0)],
         user_hint: None,
         current_cost: 0.0,
         prompt_text: None,
@@ -197,10 +199,7 @@ fn test_budget_soft_limit_biases_cheaper() {
     // Without budget pressure, this would select "slow"
     let signals_no_budget = ComplexitySignals {
         token_count: 2000,
-        keywords: vec![
-            ("architecture".to_string(), 15.0),
-            ("refactor".to_string(), 10.0),
-        ],
+        keywords: vec![("architecture".to_string(), 15.0), ("refactor".to_string(), 10.0)],
         current_cost: 0.0,
         ..Default::default()
     };
@@ -235,10 +234,7 @@ fn test_budget_hard_limit_forces_smol() {
 
     let result = policy.select_model(&signals);
     assert_eq!(result.role, "smol");
-    assert!(matches!(
-        result.reason,
-        SelectionReason::BudgetThreshold { .. }
-    ));
+    assert!(matches!(result.reason, SelectionReason::BudgetThreshold { .. }));
 }
 
 // ── Test 3: Cost tracker accumulation ───────────────────────────────────────
@@ -267,14 +263,11 @@ fn test_cost_tracker_accumulation() {
 
 #[test]
 fn test_cost_tracker_budget_status_transitions() {
-    let tracker = CostTracker::new(
-        test_pricing(),
-        CostTrackerConfig {
-            soft_limit: Some(1.0),
-            hard_limit: Some(5.0),
-            warning_interval: None,
-        },
-    );
+    let tracker = CostTracker::new(test_pricing(), CostTrackerConfig {
+        soft_limit: Some(1.0),
+        hard_limit: Some(5.0),
+        warning_interval: None,
+    });
 
     // Initially under soft limit
     tracker.record_usage("claude-haiku-4", 10_000, 5_000); // ~$0.035
@@ -282,17 +275,11 @@ fn test_cost_tracker_budget_status_transitions() {
 
     // Over soft, under hard
     tracker.record_usage("claude-sonnet-4-5", 1_000_000, 0); // +$3.00
-    assert!(matches!(
-        tracker.budget_status(),
-        BudgetStatus::Warning { .. }
-    ));
+    assert!(matches!(tracker.budget_status(), BudgetStatus::Warning { .. }));
 
     // Over hard
     tracker.record_usage("claude-opus-4", 1_000_000, 0); // +$15.00
-    assert!(matches!(
-        tracker.budget_status(),
-        BudgetStatus::Exceeded { .. }
-    ));
+    assert!(matches!(tracker.budget_status(), BudgetStatus::Exceeded { .. }));
 }
 
 #[test]
@@ -316,12 +303,7 @@ async fn test_switch_model_to_smol_succeeds() {
     let current = Arc::new(Mutex::new("claude-sonnet-4-5".to_string()));
     let tool = SwitchModelTool::new(slot.clone(), roles, current);
 
-    let result = tool
-        .execute(
-            &make_tool_ctx(),
-            json!({"role": "smol", "reason": "task is simple"}),
-        )
-        .await;
+    let result = tool.execute(&make_tool_ctx(), json!({"role": "smol", "reason": "task is simple"})).await;
 
     assert!(!result.is_error);
     assert_eq!(*slot.lock(), Some("claude-haiku-4".to_string()));
@@ -342,12 +324,7 @@ async fn test_switch_model_over_budget_rejected() {
         .with_budget_hard_limit(1.0);
 
     // Try to upgrade to slow (opus) when over budget
-    let result = tool
-        .execute(
-            &make_tool_ctx(),
-            json!({"role": "slow", "reason": "want opus"}),
-        )
-        .await;
+    let result = tool.execute(&make_tool_ctx(), json!({"role": "slow", "reason": "want opus"})).await;
 
     assert!(result.is_error);
     assert!(slot.lock().is_none()); // No switch happened
@@ -367,12 +344,7 @@ async fn test_switch_model_downgrade_allowed_over_budget() {
         .with_budget_hard_limit(1.0);
 
     // Downgrade to smol should be allowed even over budget
-    let result = tool
-        .execute(
-            &make_tool_ctx(),
-            json!({"role": "smol", "reason": "save money"}),
-        )
-        .await;
+    let result = tool.execute(&make_tool_ctx(), json!({"role": "smol", "reason": "save money"})).await;
 
     assert!(!result.is_error);
     assert_eq!(*slot.lock(), Some("claude-haiku-4".to_string()));
@@ -385,12 +357,7 @@ async fn test_switch_model_to_current_is_noop() {
     let current = Arc::new(Mutex::new("claude-sonnet-4-5".to_string()));
     let tool = SwitchModelTool::new(slot.clone(), roles, current);
 
-    let result = tool
-        .execute(
-            &make_tool_ctx(),
-            json!({"role": "default", "reason": "just checking"}),
-        )
-        .await;
+    let result = tool.execute(&make_tool_ctx(), json!({"role": "default", "reason": "just checking"})).await;
 
     assert!(!result.is_error);
     assert!(slot.lock().is_none()); // No switch needed
@@ -408,10 +375,7 @@ fn test_orchestration_plan_generation() {
 
     let signals = ComplexitySignals {
         token_count: 2000,
-        keywords: vec![
-            ("architecture".to_string(), 15.0),
-            ("implement".to_string(), 10.0),
-        ],
+        keywords: vec![("architecture".to_string(), 15.0), ("implement".to_string(), 10.0)],
         prompt_text: Some("plan and implement a new auth system".to_string()),
         ..Default::default()
     };
@@ -461,10 +425,7 @@ fn test_orchestration_disabled_by_default() {
 
     let signals = ComplexitySignals {
         token_count: 2000,
-        keywords: vec![
-            ("architecture".to_string(), 15.0),
-            ("implement".to_string(), 10.0),
-        ],
+        keywords: vec![("architecture".to_string(), 15.0), ("implement".to_string(), 10.0)],
         prompt_text: Some("plan and implement a new system".to_string()),
         ..Default::default()
     };
@@ -484,9 +445,7 @@ async fn test_cost_tool_summary_action() {
     tracker.record_usage("claude-haiku-4", 200_000, 100_000);
 
     let tool = CostTool::new(tracker);
-    let result = tool
-        .execute(&make_tool_ctx(), json!({"action": "summary"}))
-        .await;
+    let result = tool.execute(&make_tool_ctx(), json!({"action": "summary"})).await;
 
     assert!(!result.is_error);
     let text = result_text(&result);
@@ -501,9 +460,7 @@ async fn test_cost_tool_breakdown_action() {
     tracker.record_usage("claude-haiku-4", 200_000, 100_000);
 
     let tool = CostTool::new(tracker);
-    let result = tool
-        .execute(&make_tool_ctx(), json!({"action": "breakdown"}))
-        .await;
+    let result = tool.execute(&make_tool_ctx(), json!({"action": "breakdown"})).await;
 
     assert!(!result.is_error);
     let text = result_text(&result);
@@ -514,20 +471,15 @@ async fn test_cost_tool_breakdown_action() {
 
 #[tokio::test]
 async fn test_cost_tool_budget_action() {
-    let tracker = Arc::new(CostTracker::new(
-        test_pricing(),
-        CostTrackerConfig {
-            soft_limit: Some(1.0),
-            hard_limit: Some(5.0),
-            warning_interval: None,
-        },
-    ));
+    let tracker = Arc::new(CostTracker::new(test_pricing(), CostTrackerConfig {
+        soft_limit: Some(1.0),
+        hard_limit: Some(5.0),
+        warning_interval: None,
+    }));
     tracker.record_usage("claude-sonnet-4-5", 100_000, 50_000);
 
     let tool = CostTool::new(tracker);
-    let result = tool
-        .execute(&make_tool_ctx(), json!({"action": "budget"}))
-        .await;
+    let result = tool.execute(&make_tool_ctx(), json!({"action": "budget"})).await;
 
     assert!(!result.is_error);
     let text = result_text(&result);
@@ -559,25 +511,18 @@ fn test_routing_performance() {
     let elapsed = start.elapsed();
 
     // 1000 routing calls should take less than 1 second
-    assert!(
-        elapsed.as_millis() < 1000,
-        "1000 routing calls took {:?}",
-        elapsed
-    );
+    assert!(elapsed.as_millis() < 1000, "1000 routing calls took {:?}", elapsed);
 }
 
 // ── Test 9: CostTracker status_line format ──────────────────────────────────
 
 #[test]
 fn test_cost_tracker_status_line_format() {
-    let tracker = CostTracker::new(
-        test_pricing(),
-        CostTrackerConfig {
-            soft_limit: Some(5.0),
-            hard_limit: Some(10.0),
-            warning_interval: None,
-        },
-    );
+    let tracker = CostTracker::new(test_pricing(), CostTrackerConfig {
+        soft_limit: Some(5.0),
+        hard_limit: Some(10.0),
+        warning_interval: None,
+    });
     tracker.record_usage("claude-sonnet-4-5", 100_000, 50_000);
 
     let status = tracker.status_line("claude-sonnet-4-5");
@@ -597,14 +542,11 @@ async fn test_end_to_end_routing_cost_switch() {
     config.budget_soft_limit = Some(2.0);
     let policy = RoutingPolicy::new(config);
 
-    let tracker = Arc::new(CostTracker::new(
-        test_pricing(),
-        CostTrackerConfig {
-            soft_limit: Some(2.0),
-            hard_limit: Some(5.0),
-            warning_interval: None,
-        },
-    ));
+    let tracker = Arc::new(CostTracker::new(test_pricing(), CostTrackerConfig {
+        soft_limit: Some(2.0),
+        hard_limit: Some(5.0),
+        warning_interval: None,
+    }));
 
     let slot = model_switch_slot();
     let roles = setup_model_roles();
@@ -641,12 +583,7 @@ async fn test_end_to_end_routing_cost_switch() {
 
     // Step 4: Simulate agent switch to "smol"
     *current.lock() = "claude-opus-4".to_string();
-    let switch_result = switch_tool
-        .execute(
-            &make_tool_ctx(),
-            json!({"role": "smol", "reason": "save budget"}),
-        )
-        .await;
+    let switch_result = switch_tool.execute(&make_tool_ctx(), json!({"role": "smol", "reason": "save budget"})).await;
     assert!(!switch_result.is_error);
     assert_eq!(*slot.lock(), Some("claude-haiku-4".to_string()));
 
@@ -695,10 +632,7 @@ fn test_hard_budget_overrides_user_hint() {
 
     let result = policy.select_model(&signals);
     assert_eq!(result.role, "smol"); // Hard budget wins
-    assert!(matches!(
-        result.reason,
-        SelectionReason::BudgetThreshold { .. }
-    ));
+    assert!(matches!(result.reason, SelectionReason::BudgetThreshold { .. }));
 }
 
 #[test]
@@ -757,10 +691,7 @@ fn test_orchestration_explicit_hints() {
     };
     let result1 = policy.select_model(&signals1);
     assert!(result1.orchestration.is_some());
-    assert_eq!(
-        result1.orchestration.unwrap().pattern,
-        OrchestrationPattern::ProposeValidate
-    );
+    assert_eq!(result1.orchestration.unwrap().pattern, OrchestrationPattern::ProposeValidate);
 
     // Test "draft and review" hint
     let signals2 = ComplexitySignals {
@@ -771,10 +702,7 @@ fn test_orchestration_explicit_hints() {
     };
     let result2 = policy.select_model(&signals2);
     assert!(result2.orchestration.is_some());
-    assert_eq!(
-        result2.orchestration.unwrap().pattern,
-        OrchestrationPattern::DraftReview
-    );
+    assert_eq!(result2.orchestration.unwrap().pattern, OrchestrationPattern::DraftReview);
 }
 
 // ── Test: switch_model tool integration with turn loop ──────────────────────
@@ -795,9 +723,7 @@ async fn test_switch_model_tool_writes_slot_and_cost_validates() {
     let ctx = make_tool_ctx();
 
     // Step 1: Agent switches to smol (downgrade)
-    let result = tool
-        .execute(&ctx, json!({"role": "smol", "reason": "simple grep task"}))
-        .await;
+    let result = tool.execute(&ctx, json!({"role": "smol", "reason": "simple grep task"})).await;
     assert!(!result.is_error, "downgrade should succeed");
     assert_eq!(*slot.lock(), Some("claude-haiku-4".to_string()));
 
@@ -813,9 +739,7 @@ async fn test_switch_model_tool_writes_slot_and_cost_validates() {
     assert!(cost_after < 10.0, "should be well under budget");
 
     // Step 3: Agent switches to slow (upgrade) — should succeed under budget
-    let result = tool
-        .execute(&ctx, json!({"role": "slow", "reason": "complex refactor"}))
-        .await;
+    let result = tool.execute(&ctx, json!({"role": "slow", "reason": "complex refactor"})).await;
     assert!(!result.is_error, "upgrade under budget should succeed");
     assert_eq!(*slot.lock(), Some("claude-opus-4".to_string()));
 
@@ -828,18 +752,14 @@ async fn test_switch_model_tool_writes_slot_and_cost_validates() {
     assert!(tracker.total_cost() > 10.0, "should exceed budget now");
 
     // Step 5: Attempt another upgrade — should be blocked
-    let result = tool
-        .execute(&ctx, json!({"role": "slow", "reason": "still want opus"}))
-        .await;
+    let result = tool.execute(&ctx, json!({"role": "slow", "reason": "still want opus"})).await;
     // Already on opus, so it's "already using" — no error, no switch
     assert!(!result.is_error);
     assert!(slot.lock().is_none());
     assert!(result_text(&result).contains("Already using"));
 
     // Step 6: Downgrade should always work even over budget
-    let result = tool
-        .execute(&ctx, json!({"role": "smol", "reason": "save money"}))
-        .await;
+    let result = tool.execute(&ctx, json!({"role": "smol", "reason": "save money"})).await;
     assert!(!result.is_error, "downgrade should work even over budget");
     assert_eq!(*slot.lock(), Some("claude-haiku-4".to_string()));
 }
@@ -869,9 +789,7 @@ async fn test_switch_model_with_routing_policy_interaction() {
     let tool = SwitchModelTool::new(slot.clone(), roles, current);
     let ctx = make_tool_ctx();
 
-    let result = tool
-        .execute(&ctx, json!({"role": "slow", "reason": "actually complex"}))
-        .await;
+    let result = tool.execute(&ctx, json!({"role": "slow", "reason": "actually complex"})).await;
     assert!(!result.is_error);
     // Tool switch takes priority — slot is set
     assert_eq!(*slot.lock(), Some("claude-opus-4".to_string()));

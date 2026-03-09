@@ -2,10 +2,11 @@
 
 use std::sync::Arc;
 
+use snafu::ResultExt;
+
 use crate::cli::PluginAction;
 use crate::commands::CommandContext;
 use crate::error::Result;
-use snafu::ResultExt;
 
 /// Run the plugin subcommand.
 pub fn run(ctx: &CommandContext, action: PluginAction) -> Result<()> {
@@ -40,9 +41,15 @@ fn handle_list(
             if verbose {
                 println!(
                     "{} v{} [{:?}]\n  {}\n  Path: {}\n  Tools: {}\n  Commands: {}\n  Events: {}\n  Permissions: {}",
-                    p.name, p.version, p.state, p.manifest.description, p.path.display(),
-                    p.manifest.tools.join(", "), p.manifest.commands.join(", "),
-                    p.manifest.events.join(", "), p.manifest.permissions.join(", "),
+                    p.name,
+                    p.version,
+                    p.state,
+                    p.manifest.description,
+                    p.path.display(),
+                    p.manifest.tools.join(", "),
+                    p.manifest.commands.join(", "),
+                    p.manifest.events.join(", "),
+                    p.manifest.permissions.join(", "),
                 );
             } else {
                 let state = match &p.state {
@@ -58,10 +65,7 @@ fn handle_list(
     Ok(())
 }
 
-fn handle_show(
-    pm: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
-    name: &str,
-) -> Result<()> {
+fn handle_show(pm: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>, name: &str) -> Result<()> {
     let mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
     let p = mgr.get(name).ok_or_else(|| crate::error::Error::Config {
         message: format!("Plugin '{}' not found.", name),
@@ -74,7 +78,11 @@ fn handle_show(
     println!("WASM:        {}", p.manifest.wasm.as_deref().unwrap_or("plugin.wasm"));
     println!("Kind:        {:?}", p.manifest.kind);
     let join_or_none = |v: &[String]| {
-        if v.is_empty() { "(none)".to_string() } else { v.join(", ") }
+        if v.is_empty() {
+            "(none)".to_string()
+        } else {
+            v.join(", ")
+        }
     };
     println!("Tools:       {}", join_or_none(&p.manifest.tools));
     println!("Commands:    {}", join_or_none(&p.manifest.commands));
@@ -99,11 +107,10 @@ fn handle_install(ctx: &CommandContext, source: &str, project: bool) -> Result<(
             message: format!("No plugin.json found at: {}", manifest_path.display()),
         });
     }
-    let manifest = crate::plugin::manifest::PluginManifest::load(&manifest_path).ok_or_else(|| {
-        crate::error::Error::Config {
+    let manifest =
+        crate::plugin::manifest::PluginManifest::load(&manifest_path).ok_or_else(|| crate::error::Error::Config {
             message: format!("Failed to parse plugin.json at: {}", manifest_path.display()),
-        }
-    })?;
+        })?;
     let dest_dir = if project {
         ctx.project_paths.plugins_dir.join(&manifest.name)
     } else {
@@ -113,7 +120,9 @@ fn handle_install(ctx: &CommandContext, source: &str, project: bool) -> Result<(
         return Err(crate::error::Error::Config {
             message: format!(
                 "Plugin '{}' already installed at: {}\nRemove it first with: clankers plugin uninstall {}",
-                manifest.name, dest_dir.display(), manifest.name
+                manifest.name,
+                dest_dir.display(),
+                manifest.name
             ),
         });
     }

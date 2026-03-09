@@ -41,18 +41,13 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(Color::Cyan))
-        .title(Span::styled(
-            title,
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-        ));
+        .title(Span::styled(title, Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
 
     if app.conversation.all_blocks.is_empty() {
-        let empty = Paragraph::new(Line::from(Span::styled(
-            "No conversation yet.",
-            Style::default().fg(Color::DarkGray),
-        )))
-        .block(block)
-        .wrap(Wrap { trim: false });
+        let empty =
+            Paragraph::new(Line::from(Span::styled("No conversation yet.", Style::default().fg(Color::DarkGray))))
+                .block(block)
+                .wrap(Wrap { trim: false });
         frame.render_widget(empty, area);
         return;
     }
@@ -62,7 +57,8 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
 
     // Build set of active (visible) block IDs
     let active_ids: HashSet<usize> = app
-        .conversation.blocks
+        .conversation
+        .blocks
         .iter()
         .filter_map(|e| match e {
             BlockEntry::Conversation(b) => Some(b.id),
@@ -74,23 +70,11 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
 
     // DFS tree walk over all_blocks
     let mut lines = Vec::new();
-    let roots: Vec<&ConversationBlock> = app
-        .conversation.all_blocks
-        .iter()
-        .filter(|b| b.parent_block_id.is_none())
-        .collect();
+    let roots: Vec<&ConversationBlock> =
+        app.conversation.all_blocks.iter().filter(|b| b.parent_block_id.is_none()).collect();
 
     for root in &roots {
-        render_tree_node(
-            &mut lines,
-            app,
-            root,
-            &active_ids,
-            "",
-            true,
-            max_preview,
-            theme,
-        );
+        render_tree_node(&mut lines, app, root, &active_ids, "", true, max_preview, theme);
     }
 
     // Show active block (streaming) at the end
@@ -98,12 +82,7 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
         let preview = truncate_preview(&active.prompt, max_preview);
         lines.push(Line::from(vec![
             Span::styled("│ ", Style::default().fg(Color::DarkGray)),
-            Span::styled(
-                format!("#{} ", active.id),
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::BOLD),
-            ),
+            Span::styled(format!("#{} ", active.id), Style::default().fg(Color::Yellow).add_modifier(Modifier::BOLD)),
             Span::styled(preview, Style::default().fg(Color::Yellow)),
             Span::styled(" ⏳", Style::default().fg(Color::Yellow)),
         ]));
@@ -114,9 +93,7 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
     // Auto-scroll to keep focused block visible
     let scroll = compute_scroll(&lines, app.conversation.focused_block, visible_height, app);
 
-    let para = Paragraph::new(lines)
-        .scroll((scroll, 0))
-        .wrap(Wrap { trim: false });
+    let para = Paragraph::new(lines).scroll((scroll, 0)).wrap(Wrap { trim: false });
     frame.render_widget(para, inner);
 }
 
@@ -152,10 +129,7 @@ fn render_tree_node(
 
     // Prefix + connector
     if !prefix.is_empty() {
-        spans.push(Span::styled(
-            prefix.to_string(),
-            Style::default().fg(Color::DarkGray),
-        ));
+        spans.push(Span::styled(prefix.to_string(), Style::default().fg(Color::DarkGray)));
         spans.push(Span::styled(
             connector.to_string(),
             if is_active {
@@ -168,21 +142,14 @@ fn render_tree_node(
 
     // Active marker
     if is_active {
-        spans.push(Span::styled(
-            "* ",
-            Style::default()
-                .fg(Color::Cyan)
-                .add_modifier(Modifier::BOLD),
-        ));
+        spans.push(Span::styled("* ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)));
     } else {
         spans.push(Span::raw("  "));
     }
 
     // Block number
     let num_style = if is_focused {
-        Style::default()
-            .fg(Color::Cyan)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
     } else if is_active {
         Style::default().fg(Color::White)
     } else {
@@ -193,10 +160,7 @@ fn render_tree_node(
     // Prompt text
     let preview = truncate_preview(&block.prompt, max_preview);
     let text_style = if is_focused {
-        Style::default()
-            .fg(Color::White)
-            .bg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD)
+        Style::default().fg(Color::White).bg(Color::DarkGray).add_modifier(Modifier::BOLD)
     } else if is_active {
         Style::default().fg(theme.fg)
     } else {
@@ -211,10 +175,7 @@ fn render_tree_node(
 
     // Token count
     if block.tokens > 0 {
-        spans.push(Span::styled(
-            format!(" {}t", block.tokens),
-            Style::default().fg(Color::DarkGray),
-        ));
+        spans.push(Span::styled(format!(" {}t", block.tokens), Style::default().fg(Color::DarkGray)));
     }
 
     lines.push(Line::from(spans));
@@ -222,11 +183,7 @@ fn render_tree_node(
     // Response summary (indented under the block)
     if !block.collapsed && !block.responses.is_empty() {
         let resp_count = block.responses.len();
-        let tool_count = block
-            .responses
-            .iter()
-            .filter(|m| m.role == MessageRole::ToolCall)
-            .count();
+        let tool_count = block.responses.iter().filter(|m| m.role == MessageRole::ToolCall).count();
         let info = if tool_count > 0 {
             format!("{} responses, {} tool calls", resp_count, tool_count)
         } else {
@@ -244,9 +201,7 @@ fn render_tree_node(
         let detail_style = if is_active {
             Style::default().fg(Color::DarkGray)
         } else {
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::DIM)
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM)
         };
 
         lines.push(Line::from(vec![
@@ -256,11 +211,8 @@ fn render_tree_node(
     }
 
     // Find children and recurse
-    let children: Vec<&ConversationBlock> = app
-        .conversation.all_blocks
-        .iter()
-        .filter(|b| b.parent_block_id == Some(block.id))
-        .collect();
+    let children: Vec<&ConversationBlock> =
+        app.conversation.all_blocks.iter().filter(|b| b.parent_block_id == Some(block.id)).collect();
 
     if children.is_empty() {
         return;
@@ -277,16 +229,7 @@ fn render_tree_node(
 
     for (i, child) in children.iter().enumerate() {
         let is_last_child = i == children.len() - 1;
-        render_tree_node(
-            lines,
-            app,
-            child,
-            active_ids,
-            &child_prefix,
-            is_last_child,
-            max_preview,
-            theme,
-        );
+        render_tree_node(lines, app, child, active_ids, &child_prefix, is_last_child, max_preview, theme);
     }
 }
 
@@ -337,14 +280,9 @@ fn compute_scroll(lines: &[Line], focused_block: Option<usize>, visible_height: 
 fn count_branch_points(app: &App) -> usize {
     let mut parent_child_count = std::collections::HashMap::new();
     for block in &app.conversation.all_blocks {
-        *parent_child_count
-            .entry(block.parent_block_id)
-            .or_insert(0usize) += 1;
+        *parent_child_count.entry(block.parent_block_id).or_insert(0usize) += 1;
     }
-    parent_child_count
-        .values()
-        .filter(|&&count| count > 1)
-        .count()
+    parent_child_count.values().filter(|&&count| count > 1).count()
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -406,7 +344,8 @@ mod tests {
         app.finalize_active_block();
 
         let active_ids: HashSet<usize> = app
-            .conversation.blocks
+            .conversation
+            .blocks
             .iter()
             .filter_map(|e| match e {
                 BlockEntry::Conversation(b) => Some(b.id),

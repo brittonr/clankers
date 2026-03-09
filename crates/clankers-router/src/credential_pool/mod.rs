@@ -86,7 +86,6 @@ struct SlotHealth {
     last_used: Option<Instant>,
 }
 
-
 impl SlotHealth {
     /// Whether this slot is healthy enough to try.
     fn is_available(&self) -> bool {
@@ -435,7 +434,6 @@ impl std::fmt::Display for SlotSummary {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests;

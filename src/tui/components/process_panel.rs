@@ -119,7 +119,7 @@ impl ProcessPanel {
 
         // Get active processes
         let snapshot = monitor.snapshot();
-        
+
         for (pid, tracked) in snapshot {
             let (cpu_percent, rss_bytes) = if let Some(last) = tracked.snapshots.last() {
                 (last.cpu_percent, last.rss_bytes)
@@ -170,7 +170,7 @@ impl ProcessPanel {
         // Add completed processes if requested
         if self.show_completed {
             let history = monitor.history();
-            
+
             for (pid, tracked) in history {
                 let (cpu_percent, rss_bytes) = if let Some(last) = tracked.snapshots.last() {
                     (last.cpu_percent, last.rss_bytes)
@@ -207,7 +207,8 @@ impl ProcessPanel {
         // Sort entries
         match self.sort_mode {
             SortMode::Cpu => {
-                self.entries.sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap_or(std::cmp::Ordering::Equal));
+                self.entries
+                    .sort_by(|a, b| b.cpu_percent.partial_cmp(&a.cpu_percent).unwrap_or(std::cmp::Ordering::Equal));
             }
             SortMode::Memory => {
                 self.entries.sort_by_key(|e| std::cmp::Reverse(e.rss_bytes));
@@ -339,21 +340,12 @@ impl ProcessPanel {
 
         // Header row
         lines.push(Line::from(vec![Span::styled(
-            format!(
-                "{:>6}  {:>6}  {:>8}  {:>8}  {:>8}  {}",
-                "PID", "CPU%", "SPARK", "MEM(MB)", "TIME", "COMMAND"
-            ),
-            Style::default()
-                .fg(Color::DarkGray)
-                .add_modifier(Modifier::BOLD),
+            format!("{:>6}  {:>6}  {:>8}  {:>8}  {:>8}  {}", "PID", "CPU%", "SPARK", "MEM(MB)", "TIME", "COMMAND"),
+            Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD),
         )]));
 
-        let active_entries: Vec<_> = self
-            .entries
-            .iter()
-            .enumerate()
-            .filter(|(_, e)| matches!(e.state, EntryState::Running))
-            .collect();
+        let active_entries: Vec<_> =
+            self.entries.iter().enumerate().filter(|(_, e)| matches!(e.state, EntryState::Running)).collect();
         let completed_entries: Vec<_> = self
             .entries
             .iter()
@@ -389,8 +381,7 @@ impl ProcessPanel {
                 Span::raw("  "),
                 Span::styled(
                     format!("{}{}", prefix, command_display),
-                    self.nav
-                        .item_style(*global_idx, ctx.focused, Style::default().fg(ctx.theme.fg)),
+                    self.nav.item_style(*global_idx, ctx.focused, Style::default().fg(ctx.theme.fg)),
                 ),
             ];
 
@@ -399,10 +390,7 @@ impl ProcessPanel {
 
         // Separator if showing completed
         if self.show_completed && !completed_entries.is_empty() {
-            lines.push(Line::from(Span::styled(
-                "─ completed ─",
-                Style::default().fg(Color::DarkGray),
-            )));
+            lines.push(Line::from(Span::styled("─ completed ─", Style::default().fg(Color::DarkGray))));
 
             for (global_idx, entry) in &completed_entries {
                 let mem_mb = entry.peak_rss as f64 / (1024.0 * 1024.0);
@@ -430,9 +418,7 @@ impl ProcessPanel {
                     Span::raw("  "),
                     Span::styled(
                         command_display,
-                        Style::default()
-                            .fg(Color::DarkGray)
-                            .add_modifier(Modifier::CROSSED_OUT),
+                        Style::default().fg(Color::DarkGray).add_modifier(Modifier::CROSSED_OUT),
                     ),
                 ];
 
@@ -441,9 +427,7 @@ impl ProcessPanel {
         }
 
         let scroll = self.nav.scroll_offset(area.height as usize, 1);
-        let para = Paragraph::new(lines)
-            .scroll((scroll, 0))
-            .wrap(Wrap { trim: false });
+        let para = Paragraph::new(lines).scroll((scroll, 0)).wrap(Wrap { trim: false });
         frame.render_widget(para, area);
     }
 
@@ -458,9 +442,7 @@ impl ProcessPanel {
             return;
         };
 
-        let label_style = Style::default()
-            .fg(Color::DarkGray)
-            .add_modifier(Modifier::BOLD);
+        let label_style = Style::default().fg(Color::DarkGray).add_modifier(Modifier::BOLD);
         let val_style = Style::default().fg(ctx.theme.fg);
 
         let mut lines = Vec::new();
@@ -549,15 +531,7 @@ impl ProcessPanel {
             lines.push(Line::default());
             lines.push(Line::from(vec![
                 Span::styled("Children:  ", label_style),
-                Span::styled(
-                    entry
-                        .children
-                        .iter()
-                        .map(|c| c.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", "),
-                    val_style,
-                ),
+                Span::styled(entry.children.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", "), val_style),
             ]));
         }
 
@@ -573,10 +547,7 @@ impl ProcessPanel {
         }
 
         let text = format!(" ⚙ {} procs ", active);
-        Some(Span::styled(
-            text,
-            Style::default().fg(Color::Black).bg(Color::Blue).add_modifier(Modifier::BOLD),
-        ))
+        Some(Span::styled(text, Style::default().fg(Color::Black).bg(Color::Blue).add_modifier(Modifier::BOLD)))
     }
 }
 

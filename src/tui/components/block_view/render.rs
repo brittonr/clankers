@@ -13,8 +13,13 @@ use super::super::markdown::MarkdownStyle;
 use super::super::markdown::render_markdown;
 use super::super::progress_renderer::ProgressRenderer;
 use super::super::streaming_output::StreamingOutputManager;
-use super::helpers::{format_elapsed, hrule, hrule_dotted};
-use super::{BlockBranchInfo, FOCUSED_OUTPUT_LINES, LIVE_OUTPUT_MAX_LINES, SPINNER};
+use super::BlockBranchInfo;
+use super::FOCUSED_OUTPUT_LINES;
+use super::LIVE_OUTPUT_MAX_LINES;
+use super::SPINNER;
+use super::helpers::format_elapsed;
+use super::helpers::hrule;
+use super::helpers::hrule_dotted;
 use crate::tui::app::ActiveToolExecution;
 use crate::tui::app::DisplayMessage;
 use crate::tui::app::MessageRole;
@@ -116,7 +121,16 @@ pub fn render_conversation_block<'a>(
             if !show_thinking && msg.role == MessageRole::Thinking {
                 continue;
             }
-            render_response_message(&mut lines, msg, border_style, theme, active_tools, progress, streaming_outputs, tick);
+            render_response_message(
+                &mut lines,
+                msg,
+                border_style,
+                theme,
+                active_tools,
+                progress,
+                streaming_outputs,
+                tick,
+            );
         }
     }
 
@@ -128,10 +142,7 @@ pub fn render_conversation_block<'a>(
         let label = format!("├─ {} branches diverge ─", info.children_count);
         lines.push(Line::from(vec![
             Span::styled("│ ", border_style),
-            Span::styled(
-                label,
-                Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM),
-            ),
+            Span::styled(label, Style::default().fg(Color::Yellow).add_modifier(Modifier::DIM)),
         ]));
         // Show each child branch with a preview of its prompt
         for (i, (child_id, preview, is_active)) in info.child_branch_previews.iter().enumerate() {
@@ -221,10 +232,7 @@ pub fn render_response_message<'a>(
 
                 // Spinner + elapsed time header, with structured progress if available
                 if let Some(progress_spans) = progress.render_inline(call_id, tick) {
-                    let mut spans = vec![
-                        Span::styled("│ ", border_style),
-                        Span::raw("  "),
-                    ];
+                    let mut spans = vec![Span::styled("│ ", border_style), Span::raw("  ")];
                     spans.extend(progress_spans);
                     spans.push(Span::styled(format!(" ({})", elapsed), Style::default().fg(Color::DarkGray)));
                     lines.push(Line::from(spans));
@@ -295,12 +303,7 @@ pub fn render_response_message<'a>(
                     } else {
                         format!("{} bytes", size_bytes)
                     };
-                    let label = format!(
-                        "  🖼 [image {}: {}, {}]",
-                        i + 1,
-                        img.media_type,
-                        size_str,
-                    );
+                    let label = format!("  🖼 [image {}: {}, {}]", i + 1, img.media_type, size_str,);
                     lines.push(Line::from(vec![
                         Span::styled("│ ", border_style),
                         Span::styled(label, Style::default().fg(Color::Cyan)),

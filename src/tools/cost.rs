@@ -14,7 +14,8 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use crate::model_selection::cost_tracker::{BudgetStatus, CostTracker};
+use crate::model_selection::cost_tracker::BudgetStatus;
+use crate::model_selection::cost_tracker::CostTracker;
 
 pub struct CostTool {
     tracker: Arc<CostTracker>,
@@ -51,10 +52,7 @@ impl Tool for CostTool {
     }
 
     async fn execute(&self, _ctx: &ToolContext, params: Value) -> ToolResult {
-        let action = params
-            .get("action")
-            .and_then(|v| v.as_str())
-            .unwrap_or("summary");
+        let action = params.get("action").and_then(|v| v.as_str()).unwrap_or("summary");
 
         let summary = self.tracker.summary();
 
@@ -78,11 +76,7 @@ impl Tool for CostTool {
                     for m in &summary.by_model {
                         out.push_str(&format!(
                             "{:<25} | {:>9} | {:>10} | ${:>6.4} | {:>4.1}%\n",
-                            m.display_name,
-                            m.input_tokens,
-                            m.output_tokens,
-                            m.cost_usd,
-                            m.percentage,
+                            m.display_name, m.input_tokens, m.output_tokens, m.cost_usd, m.percentage,
                         ));
                     }
                 }
@@ -90,14 +84,9 @@ impl Tool for CostTool {
                 out.push_str(&format_budget(&summary.budget_status));
                 ToolResult::text(out)
             }
-            "budget" => {
-                ToolResult::text(format_budget_detail(&summary.budget_status, summary.total_cost))
-            }
+            "budget" => ToolResult::text(format_budget_detail(&summary.budget_status, summary.total_cost)),
             other => {
-                ToolResult::error(format!(
-                    "Unknown action '{}'. Use 'summary', 'breakdown', or 'budget'.",
-                    other,
-                ))
+                ToolResult::error(format!("Unknown action '{}'. Use 'summary', 'breakdown', or 'budget'.", other,))
             }
         }
     }
@@ -112,10 +101,7 @@ fn format_budget(status: &BudgetStatus) -> String {
             hard_limit_remaining,
         } => {
             if hard_limit_remaining.is_finite() {
-                format!(
-                    "⚠ Over soft budget by ${:.2}. ${:.2} until hard limit.",
-                    over_soft_by, hard_limit_remaining,
-                )
+                format!("⚠ Over soft budget by ${:.2}. ${:.2} until hard limit.", over_soft_by, hard_limit_remaining,)
             } else {
                 format!("⚠ Over soft budget by ${:.2}.", over_soft_by)
             }
@@ -130,7 +116,9 @@ fn format_budget_detail(status: &BudgetStatus, total: f64) -> String {
     let mut out = format!("Total spent: ${:.4}\n", total);
     match status {
         BudgetStatus::NoBudget => {
-            out.push_str("No budget limits configured.\nSet budget_soft_limit / budget_hard_limit in routing policy config.");
+            out.push_str(
+                "No budget limits configured.\nSet budget_soft_limit / budget_hard_limit in routing policy config.",
+            );
         }
         BudgetStatus::Ok { remaining } => {
             out.push_str(&format!("Status: ✓ OK\nRemaining: ${:.2}\n", remaining));
@@ -139,10 +127,7 @@ fn format_budget_detail(status: &BudgetStatus, total: f64) -> String {
                 // remaining / (total / turns) but we don't know turns here
                 // Just show the ratio
                 let ratio = remaining / total;
-                out.push_str(&format!(
-                    "At current rate, ~{:.0}x more work before limit.",
-                    ratio,
-                ));
+                out.push_str(&format!("At current rate, ~{:.0}x more work before limit.", ratio,));
             }
         }
         BudgetStatus::Warning {
@@ -167,9 +152,11 @@ fn format_budget_detail(status: &BudgetStatus, total: f64) -> String {
 mod tests {
     use std::collections::HashMap;
 
-    use super::*;
-    use crate::model_selection::cost_tracker::{CostTrackerConfig, ModelPricing};
     use tokio_util::sync::CancellationToken;
+
+    use super::*;
+    use crate::model_selection::cost_tracker::CostTrackerConfig;
+    use crate::model_selection::cost_tracker::ModelPricing;
 
     fn test_pricing() -> HashMap<String, ModelPricing> {
         [
@@ -178,14 +165,11 @@ mod tests {
         ]
         .into_iter()
         .map(|(id, input, output, name)| {
-            (
-                id.to_string(),
-                ModelPricing {
-                    input_per_mtok: input,
-                    output_per_mtok: output,
-                    display_name: name.to_string(),
-                },
-            )
+            (id.to_string(), ModelPricing {
+                input_per_mtok: input,
+                output_per_mtok: output,
+                display_name: name.to_string(),
+            })
         })
         .collect()
     }
@@ -202,14 +186,11 @@ mod tests {
     }
 
     fn tracker_with_budget() -> Arc<CostTracker> {
-        let tracker = Arc::new(CostTracker::new(
-            test_pricing(),
-            CostTrackerConfig {
-                soft_limit: Some(1.0),
-                hard_limit: Some(5.0),
-                warning_interval: None,
-            },
-        ));
+        let tracker = Arc::new(CostTracker::new(test_pricing(), CostTrackerConfig {
+            soft_limit: Some(1.0),
+            hard_limit: Some(5.0),
+            warning_interval: None,
+        }));
         tracker.record_usage("claude-sonnet-4-5", 100_000, 50_000);
         tracker
     }

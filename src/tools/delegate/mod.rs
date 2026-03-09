@@ -21,8 +21,13 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use lifecycle::WorkerState;
+use protocol::SharedEndpoint;
+use protocol::run_remote_worker;
 use serde_json::Value;
 use serde_json::json;
+// Public re-export for external use
+pub use spawner::run_worker_subprocess;
 use tokio::sync::Mutex;
 
 use crate::tools::Tool;
@@ -30,13 +35,6 @@ use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
 use crate::tools::ToolResult;
 use crate::tui::components::subagent_event::SubagentEvent;
-
-use lifecycle::WorkerState;
-use protocol::run_remote_worker;
-use protocol::SharedEndpoint;
-
-// Public re-export for external use
-pub use spawner::run_worker_subprocess;
 
 type PanelTx = tokio::sync::mpsc::UnboundedSender<SubagentEvent>;
 
@@ -204,11 +202,13 @@ impl Tool for DelegateTool {
             // Remote delegation via iroh RPC
             {
                 let mut workers = self.workers.lock().await;
-                workers.entry(worker_name.clone()).or_insert_with(|| WorkerState::new(
-                    cwd.clone().unwrap_or_else(|| ".".to_string()),
-                    agent.clone(),
-                    Some(node_id.clone()),
-                ));
+                workers.entry(worker_name.clone()).or_insert_with(|| {
+                    WorkerState::new(
+                        cwd.clone().unwrap_or_else(|| ".".to_string()),
+                        agent.clone(),
+                        Some(node_id.clone()),
+                    )
+                });
             }
 
             let identity_path = match &self.identity_path {
@@ -231,15 +231,21 @@ impl Tool for DelegateTool {
             // Local subprocess
             {
                 let mut workers = self.workers.lock().await;
-                workers.entry(worker_name.clone()).or_insert_with(|| WorkerState::new(
-                    cwd.clone().unwrap_or_else(|| ".".to_string()),
-                    agent.clone(),
-                    None,
-                ));
+                workers.entry(worker_name.clone()).or_insert_with(|| {
+                    WorkerState::new(cwd.clone().unwrap_or_else(|| ".".to_string()), agent.clone(), None)
+                });
             }
 
-            run_worker_subprocess(&worker_name, &task, agent.as_deref(), cwd.as_deref(), self.panel_tx.as_ref(), signal, self.process_monitor.as_ref())
-                .await
+            run_worker_subprocess(
+                &worker_name,
+                &task,
+                agent.as_deref(),
+                cwd.as_deref(),
+                self.panel_tx.as_ref(),
+                signal,
+                self.process_monitor.as_ref(),
+            )
+            .await
         }
     }
 }

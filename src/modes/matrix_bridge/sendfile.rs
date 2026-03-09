@@ -1,6 +1,7 @@
 //! Sendfile tag extraction and Matrix upload.
 
-use tracing::{info, warn};
+use tracing::info;
+use tracing::warn;
 
 /// A file the agent wants to send back to the user.
 pub(crate) struct SendfileTag {
@@ -63,9 +64,7 @@ pub(crate) fn guess_mime(path: &std::path::Path) -> mime::Mime {
 /// accidentally exfiltrating credentials, keys, or system secrets.
 pub(crate) fn is_sendfile_path_allowed(path: &std::path::Path) -> std::result::Result<(), String> {
     // Canonicalize to resolve symlinks and ../ tricks
-    let canonical = path
-        .canonicalize()
-        .map_err(|e| format!("cannot resolve path: {e}"))?;
+    let canonical = path.canonicalize().map_err(|e| format!("cannot resolve path: {e}"))?;
     let s = canonical.to_string_lossy();
 
     // Blocked directory prefixes (home-relative)
@@ -94,12 +93,7 @@ pub(crate) fn is_sendfile_path_allowed(path: &std::path::Path) -> std::result::R
     }
 
     // Blocked system paths
-    let blocked_system = [
-        "/etc/shadow",
-        "/etc/gshadow",
-        "/etc/master.passwd",
-        "/etc/sudoers",
-    ];
+    let blocked_system = ["/etc/shadow", "/etc/gshadow", "/etc/master.passwd", "/etc/sudoers"];
     for bp in &blocked_system {
         if s.as_ref() == *bp || s.starts_with(&format!("{bp}.")) {
             return Err(format!("blocked: sensitive system file {bp}"));
@@ -107,10 +101,7 @@ pub(crate) fn is_sendfile_path_allowed(path: &std::path::Path) -> std::result::R
     }
 
     // Block private key files by name pattern
-    let filename = canonical
-        .file_name()
-        .map(|f| f.to_string_lossy().to_string())
-        .unwrap_or_default();
+    let filename = canonical.file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
     let blocked_names = [
         "id_rsa",
         "id_ed25519",

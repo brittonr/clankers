@@ -245,19 +245,14 @@ impl ReadTool {
     const PROGRESS_INTERVAL_LINES: usize = 200;
 
     /// Format lines with line numbers, emitting progress for large files.
-    fn format_lines_with_numbers(
-        ctx: &ToolContext,
-        lines: &[&str],
-        start: usize,
-        end: usize,
-    ) -> String {
+    fn format_lines_with_numbers(ctx: &ToolContext, lines: &[&str], start: usize, end: usize) -> String {
         let mut output = String::new();
         let line_count = end - start;
         // Stream every N lines for large files
-        let stream_interval = if line_count > Self::LARGE_FILE_LINE_THRESHOLD { 
-            Self::PROGRESS_INTERVAL_LINES 
-        } else { 
-            usize::MAX 
+        let stream_interval = if line_count > Self::LARGE_FILE_LINE_THRESHOLD {
+            Self::PROGRESS_INTERVAL_LINES
+        } else {
+            usize::MAX
         };
 
         for (idx, line) in lines[start..end].iter().enumerate() {

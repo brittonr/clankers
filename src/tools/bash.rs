@@ -13,7 +13,8 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use super::progress::{ResultChunk, ToolProgress};
+use super::progress::ResultChunk;
+use super::progress::ToolProgress;
 use crate::util::ansi::strip_ansi;
 
 /// Confirmation channel for dangerous commands.
@@ -27,7 +28,7 @@ pub fn confirm_channel() -> (ConfirmTx, ConfirmRx) {
 }
 
 /// Patterns that trigger a confirmation prompt before execution.
-/// 
+///
 /// Note: The .expect() calls on Regex::new() are justified because these are
 /// compile-time constant patterns validated during development. A regex
 /// compilation failure would be caught immediately during testing and indicates
@@ -35,18 +36,34 @@ pub fn confirm_channel() -> (ConfirmTx, ConfirmRx) {
 /// once at static init time, not in hot paths.
 static DANGEROUS_PATTERNS: std::sync::LazyLock<Vec<(Regex, &'static str)>> = std::sync::LazyLock::new(|| {
     vec![
-        (Regex::new(r"\brm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+|.*-rf\b|.*--force\b)").expect("dangerous pattern regex is valid"), "forced removal"),
+        (
+            Regex::new(r"\brm\s+(-[a-zA-Z]*f[a-zA-Z]*\s+|.*-rf\b|.*--force\b)")
+                .expect("dangerous pattern regex is valid"),
+            "forced removal",
+        ),
         (Regex::new(r"\bsudo\s+rm\b").expect("dangerous pattern regex is valid"), "sudo removal"),
-        (Regex::new(r"(?i)\b(DROP|TRUNCATE|DELETE\s+FROM)\b").expect("dangerous pattern regex is valid"), "destructive SQL"),
-        (Regex::new(r"\bchmod\s+777\b").expect("dangerous pattern regex is valid"), "world-writable permissions"),
+        (
+            Regex::new(r"(?i)\b(DROP|TRUNCATE|DELETE\s+FROM)\b").expect("dangerous pattern regex is valid"),
+            "destructive SQL",
+        ),
+        (
+            Regex::new(r"\bchmod\s+777\b").expect("dangerous pattern regex is valid"),
+            "world-writable permissions",
+        ),
         (Regex::new(r"\bmkfs\b").expect("dangerous pattern regex is valid"), "filesystem format"),
         (Regex::new(r"\bdd\s+if=").expect("dangerous pattern regex is valid"), "raw disk write"),
         (Regex::new(r">\s*/dev/sd[a-z]").expect("dangerous pattern regex is valid"), "raw device write"),
         (Regex::new(r"\bgit\s+push\s+.*--force\b").expect("dangerous pattern regex is valid"), "force push"),
         (Regex::new(r"\bgit\s+push\s+-f\b").expect("dangerous pattern regex is valid"), "force push"),
         (Regex::new(r"\bgit\s+reset\s+--hard\b").expect("dangerous pattern regex is valid"), "hard reset"),
-        (Regex::new(r"\bgit\s+clean\s+-[a-zA-Z]*f").expect("dangerous pattern regex is valid"), "forced clean"),
-        (Regex::new(r"\bnix\s+profile\s+install\b").expect("dangerous pattern regex is valid"), "nix profile install (use nix-shell instead)"),
+        (
+            Regex::new(r"\bgit\s+clean\s+-[a-zA-Z]*f").expect("dangerous pattern regex is valid"),
+            "forced clean",
+        ),
+        (
+            Regex::new(r"\bnix\s+profile\s+install\b").expect("dangerous pattern regex is valid"),
+            "nix profile install (use nix-shell instead)",
+        ),
     ]
 });
 
@@ -167,8 +184,7 @@ impl BashTool {
         // level, even if the command tries to read ~/.ssh or /etc/shadow.
         #[cfg(target_os = "linux")]
         {
-            let cwd_for_landlock = std::env::current_dir()
-                .unwrap_or_else(|_| std::path::PathBuf::from("."));
+            let cwd_for_landlock = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
             unsafe {
                 cmd.pre_exec(move || {
                     if let Err(e) = crate::tools::sandbox::apply_landlock_to_current(&cwd_for_landlock) {
@@ -180,8 +196,7 @@ impl BashTool {
             }
         }
 
-        cmd.spawn()
-            .map_err(|e| ToolResult::error(format!("Failed to spawn bash: {}", e)))
+        cmd.spawn().map_err(|e| ToolResult::error(format!("Failed to spawn bash: {}", e)))
     }
 
     /// Stream stdout and stderr from a child process, emitting progress and collecting output.
@@ -192,9 +207,13 @@ impl BashTool {
         ctx: &ToolContext,
         timeout_secs: u64,
     ) -> Result<(String, usize), ToolResult> {
-        let stdout = child.stdout.take()
+        let stdout = child
+            .stdout
+            .take()
             .ok_or_else(|| ToolResult::error("Failed to capture stdout from child process"))?;
-        let stderr = child.stderr.take()
+        let stderr = child
+            .stderr
+            .take()
             .ok_or_else(|| ToolResult::error("Failed to capture stderr from child process"))?;
 
         let mut stdout_reader = BufReader::new(stdout).lines();
@@ -348,14 +367,15 @@ impl Tool for BashTool {
 
         // Register process with monitor
         if let Some(ref monitor) = self.process_monitor
-            && let Some(pid) = child.id() {
-                let command_preview: String = command.chars().take(COMMAND_PREVIEW_LEN).collect();
-                monitor.register(pid, crate::procmon::ProcessMeta {
-                    tool_name: "bash".to_string(),
-                    command: command_preview,
-                    call_id: ctx.call_id.clone(),
-                });
-            }
+            && let Some(pid) = child.id()
+        {
+            let command_preview: String = command.chars().take(COMMAND_PREVIEW_LEN).collect();
+            monitor.register(pid, crate::procmon::ProcessMeta {
+                tool_name: "bash".to_string(),
+                command: command_preview,
+                call_id: ctx.call_id.clone(),
+            });
+        }
 
         // Stream output from the child process
         let (collected_output, _line_count) = match self.stream_output(&mut child, ctx, timeout_secs).await {
@@ -369,8 +389,7 @@ impl Tool for BashTool {
             Err(e) => return ToolResult::error(format!("Failed to wait for command: {}", e)),
         };
 
-        let exit_code = status.code()
-            .unwrap_or(-1); // Process terminated by signal or had no exit code
+        let exit_code = status.code().unwrap_or(-1); // Process terminated by signal or had no exit code
 
         // Format and return the final result
         self.format_result(collected_output, exit_code)

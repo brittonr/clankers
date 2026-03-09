@@ -12,9 +12,11 @@ use tracing::debug;
 use tracing::info;
 use tracing::warn;
 
-use super::protocol::{read_frame, write_frame};
 use super::ALPN;
-use crate::modes::rpc::protocol::{Request, Response};
+use super::protocol::read_frame;
+use super::protocol::write_frame;
+use crate::modes::rpc::protocol::Request;
+use crate::modes::rpc::protocol::Response;
 
 // ── Client: send RPC ────────────────────────────────────────────────────────
 

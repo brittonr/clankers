@@ -1,6 +1,8 @@
 //! Markdown-to-HTML conversion and long-response chunking for Matrix messages.
 
-use pulldown_cmark::{html, Options, Parser};
+use pulldown_cmark::Options;
+use pulldown_cmark::Parser;
+use pulldown_cmark::html;
 
 /// Matrix practical message size limit (32 KB).
 pub const MAX_MESSAGE_BYTES: usize = 32_768;
@@ -143,14 +145,15 @@ fn split_into_blocks(text: &str) -> Vec<String> {
             if line.trim().is_empty() {
                 // Blank line — check if next line is also blank (paragraph boundary)
                 if let Some(next) = lines.peek()
-                    && next.trim().is_empty() {
-                        // Double blank → finalize current block
-                        if !current.is_empty() {
-                            blocks.push(current.trim().to_string());
-                            current.clear();
-                        }
-                        continue;
+                    && next.trim().is_empty()
+                {
+                    // Double blank → finalize current block
+                    if !current.is_empty() {
+                        blocks.push(current.trim().to_string());
+                        current.clear();
                     }
+                    continue;
+                }
                 // Single blank within a paragraph
                 if !current.is_empty() {
                     current.push('\n');
@@ -216,9 +219,8 @@ mod tests {
     #[test]
     fn test_chunk_long() {
         // Create a long text with multiple paragraphs
-        let paragraphs: Vec<String> = (0..20)
-            .map(|i| format!("This is paragraph number {}. It has some text in it.", i))
-            .collect();
+        let paragraphs: Vec<String> =
+            (0..20).map(|i| format!("This is paragraph number {}. It has some text in it.", i)).collect();
         let text = paragraphs.join("\n\n");
 
         let chunks = chunk_response(&text, 200);
@@ -247,13 +249,10 @@ mod tests {
         assert!(rejoined.contains("```"));
 
         // Ensure the code fence markers appear together in one chunk
-        let code_block_intact = chunks.iter().any(|chunk| {
-            chunk.contains("```rust") && chunk.contains("fn main()") && chunk.matches("```").count() == 2
-        });
-        assert!(
-            code_block_intact,
-            "Code block should remain intact in a single chunk"
-        );
+        let code_block_intact = chunks
+            .iter()
+            .any(|chunk| chunk.contains("```rust") && chunk.contains("fn main()") && chunk.matches("```").count() == 2);
+        assert!(code_block_intact, "Code block should remain intact in a single chunk");
     }
 
     #[test]

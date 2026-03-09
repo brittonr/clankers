@@ -2,8 +2,8 @@
 
 use super::SlashContext;
 use super::SlashHandler;
-use crate::provider::auth::AuthStoreExt;
 use crate::modes::interactive::AgentCommand;
+use crate::provider::auth::AuthStoreExt;
 
 pub struct LoginHandler;
 
@@ -88,7 +88,8 @@ fn handle_login_complete(ctx: &mut SlashContext<'_>, input: &str, verifier: Stri
         None => {
             ctx.app.login_verifier = Some((verifier, account.to_string()));
             ctx.app.push_system(
-                "Invalid code format. Expected:\n  /login code#state\n  /login https://...?code=CODE&state=STATE".to_string(),
+                "Invalid code format. Expected:\n  /login code#state\n  /login https://...?code=CODE&state=STATE"
+                    .to_string(),
                 true,
             );
         }
@@ -96,10 +97,11 @@ fn handle_login_complete(ctx: &mut SlashContext<'_>, input: &str, verifier: Stri
 }
 
 fn handle_login_complete_from_disk(ctx: &mut SlashContext<'_>, input: &str, account_name: &str) {
-    // No in-memory verifier — try recovering from disk (e.g. login started in another clankers instance)
+    // No in-memory verifier — try recovering from disk (e.g. login started in another clankers
+    // instance)
     let paths = crate::config::ClankersPaths::get();
     let verifier_path = paths.global_config_dir.join(".login_verifier");
-    
+
     if let Ok(verifier) = std::fs::read_to_string(&verifier_path) {
         if let Some((code, state)) = crate::modes::interactive::parse_oauth_input(input) {
             ctx.app.push_system(format!("Exchanging code for account '{}'...", account_name), false);
@@ -112,7 +114,8 @@ fn handle_login_complete_from_disk(ctx: &mut SlashContext<'_>, input: &str, acco
             });
         } else {
             ctx.app.push_system(
-                "Invalid code format. Expected:\n  /login code#state\n  /login https://...?code=CODE&state=STATE".to_string(),
+                "Invalid code format. Expected:\n  /login code#state\n  /login https://...?code=CODE&state=STATE"
+                    .to_string(),
                 true,
             );
         }
@@ -211,12 +214,9 @@ fn handle_account_list(ctx: &mut SlashContext<'_>, store: &crate::provider::auth
 fn handle_account_switch(ctx: &mut SlashContext<'_>, store: &crate::provider::auth::AuthStore, args: &str) {
     if args.is_empty() {
         // Show available accounts as a hint
-        let names: Vec<String> =
-            store.list_anthropic_accounts().iter().map(|a| a.name.clone()).collect();
-        ctx.app.push_system(
-            format!("Usage: /account switch <name>\n\nAvailable: {}", names.join(", ")),
-            true,
-        );
+        let names: Vec<String> = store.list_anthropic_accounts().iter().map(|a| a.name.clone()).collect();
+        ctx.app
+            .push_system(format!("Usage: /account switch <name>\n\nAvailable: {}", names.join(", ")), true);
     } else {
         let _ = ctx.cmd_tx.send(AgentCommand::SwitchAccount(args.to_string()));
     }
@@ -245,16 +245,13 @@ fn handle_account_logout(
     } else {
         args.to_string()
     };
-    
+
     if store.remove_anthropic_account(&name) {
         if let Err(e) = store.save(&paths.global_auth) {
             ctx.app.push_system(format!("Failed to save: {}", e), true);
         } else {
             let new_active = store.active_account_name().to_string();
-            ctx.app.push_system(
-                format!("Logged out '{}'. Active account: '{}'.", name, new_active),
-                false,
-            );
+            ctx.app.push_system(format!("Logged out '{}'. Active account: '{}'.", name, new_active), false);
         }
     } else {
         ctx.app.push_system(format!("No account '{}'.", name), true);
@@ -290,7 +287,7 @@ fn handle_account_status(ctx: &mut SlashContext<'_>, store: &crate::provider::au
     } else {
         args.to_string()
     };
-    
+
     if let Some(cred) = store.credential_for("anthropic", &name) {
         let status = if cred.is_expired() { "✗ expired" } else { "✓ valid" };
         let expires_in = if cred.is_expired() {
@@ -306,10 +303,7 @@ fn handle_account_status(ctx: &mut SlashContext<'_>, store: &crate::provider::au
         } else {
             "n/a (api key)".to_string()
         };
-        ctx.app.push_system(
-            format!("Account '{}': {} (expires in {})", name, status, expires_in),
-            false,
-        );
+        ctx.app.push_system(format!("Account '{}': {} (expires in {})", name, status, expires_in), false);
     } else {
         ctx.app.push_system(format!("No account '{}'.", name), true);
     }

@@ -4,7 +4,10 @@
 //! resolve paths/settings, then delegate to the appropriate command
 //! handler in [`clankers::commands`].
 
-use clankers::cli::{AgentScopeArg, Cli, Commands, OutputMode};
+use clankers::cli::AgentScopeArg;
+use clankers::cli::Cli;
+use clankers::cli::Commands;
+use clankers::cli::OutputMode;
 use clankers::commands::CommandContext;
 use clankers::error::ConfigSnafu;
 use clankers::error::Result;
@@ -56,7 +59,9 @@ async fn main() -> Result<()> {
         for env_var in &cli.env {
             if let Some((key, value)) = env_var.split_once('=') {
                 // SAFETY: Setting env vars early in main before threads spawn.
-                unsafe { std::env::set_var(key, value); }
+                unsafe {
+                    std::env::set_var(key, value);
+                }
                 info!("set environment variable: {}={}", key, value);
             } else {
                 return ConfigSnafu {
@@ -118,19 +123,34 @@ async fn main() -> Result<()> {
 /// Validate mutually exclusive CLI flags.
 fn validate_cli(cli: &Cli) -> Result<()> {
     if cli.print.is_some() && cli.r#continue {
-        return ConfigSnafu { message: "cannot use --print with --continue" }.fail();
+        return ConfigSnafu {
+            message: "cannot use --print with --continue",
+        }
+        .fail();
     }
     if cli.resume.is_some() && cli.r#continue {
-        return ConfigSnafu { message: "cannot use --resume with --continue" }.fail();
+        return ConfigSnafu {
+            message: "cannot use --resume with --continue",
+        }
+        .fail();
     }
     if cli.stream && cli.no_stream {
-        return ConfigSnafu { message: "cannot use --stream with --no-stream" }.fail();
+        return ConfigSnafu {
+            message: "cannot use --stream with --no-stream",
+        }
+        .fail();
     }
     if (cli.zellij || cli.swarm) && cli.no_zellij {
-        return ConfigSnafu { message: "cannot use --zellij/--swarm with --no-zellij" }.fail();
+        return ConfigSnafu {
+            message: "cannot use --zellij/--swarm with --no-zellij",
+        }
+        .fail();
     }
     if cli.dry_run && cli.auto_approve {
-        return ConfigSnafu { message: "cannot use --dry-run with --auto-approve" }.fail();
+        return ConfigSnafu {
+            message: "cannot use --dry-run with --auto-approve",
+        }
+        .fail();
     }
     Ok(())
 }
@@ -159,9 +179,11 @@ async fn dispatch(
         Some(Commands::Session { action }) => {
             clankers::commands::session::run(&ctx, action)?;
         }
+        #[cfg(feature = "zellij-share")]
         Some(Commands::Share { read_only }) => {
             clankers::commands::share::run_share(&ctx, read_only).await?;
         }
+        #[cfg(feature = "zellij-share")]
         Some(Commands::Join { node_id, psk }) => {
             clankers::commands::share::run_join(&node_id, &psk).await?;
         }
@@ -302,15 +324,11 @@ async fn run_headless(
         };
         let all_tools = clankers::modes::common::build_all_tools_with_env(&env, Some(plugin_manager));
         if let Some(ref allowed) = cli.tools {
-            let allowed_set: std::collections::HashSet<&str> =
-                allowed.split(',').map(|s| s.trim()).collect();
+            let allowed_set: std::collections::HashSet<&str> = allowed.split(',').map(|s| s.trim()).collect();
             if allowed_set.contains("all") {
                 all_tools
             } else {
-                all_tools
-                    .into_iter()
-                    .filter(|t| allowed_set.contains(t.definition().name.as_str()))
-                    .collect()
+                all_tools.into_iter().filter(|t| allowed_set.contains(t.definition().name.as_str())).collect()
             }
         } else {
             all_tools
@@ -357,7 +375,13 @@ async fn run_headless(
                 thinking: thinking_config,
             };
             clankers::modes::json::run_json_with_options(
-                &full_prompt, provider, tools, settings, model, system_prompt, json_opts,
+                &full_prompt,
+                provider,
+                tools,
+                settings,
+                model,
+                system_prompt,
+                json_opts,
             )
             .await?;
         }
@@ -370,7 +394,13 @@ async fn run_headless(
                 thinking: thinking_config,
             };
             clankers::modes::print::run_print_with_options(
-                &full_prompt, provider, tools, settings, model, system_prompt, print_opts,
+                &full_prompt,
+                provider,
+                tools,
+                settings,
+                model,
+                system_prompt,
+                print_opts,
             )
             .await?;
         }
@@ -383,7 +413,13 @@ async fn run_headless(
                 thinking: thinking_config,
             };
             clankers::modes::print::run_print_with_options(
-                &full_prompt, provider, tools, settings, model, system_prompt, print_opts,
+                &full_prompt,
+                provider,
+                tools,
+                settings,
+                model,
+                system_prompt,
+                print_opts,
             )
             .await?;
         }

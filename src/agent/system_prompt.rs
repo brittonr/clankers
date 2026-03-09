@@ -15,6 +15,7 @@ use crate::config::paths::ClankersPaths;
 use crate::config::paths::ProjectPaths;
 use crate::prompts;
 use crate::skills;
+#[cfg(feature = "openspec")]
 use crate::specs::SpecEngine;
 
 /// A context file with its source path and content
@@ -156,11 +157,7 @@ fn load_md_files_from_dir(dir: &Path) -> Vec<String> {
 
     paths
         .into_iter()
-        .filter_map(|path| {
-            std::fs::read_to_string(&path)
-                .ok()
-                .filter(|content| !content.trim().is_empty())
-        })
+        .filter_map(|path| std::fs::read_to_string(&path).ok().filter(|content| !content.trim().is_empty()))
         .collect()
 }
 
@@ -212,11 +209,11 @@ fn collect_ancestor_context_files(start_dir: &Path) -> Vec<ContextFile> {
         if let Some(ctx) = load_context_file_from_dir(&current) {
             files.push(ctx);
         }
-        
+
         if current == root {
             break;
         }
-        
+
         match current.parent() {
             Some(p) if p != current => current = p.to_path_buf(),
             _ => break,
@@ -282,10 +279,8 @@ fn read_non_empty_file(path: &Path) -> Option<String> {
     if !path.is_file() {
         return None;
     }
-    
-    std::fs::read_to_string(path)
-        .ok()
-        .filter(|content| !content.trim().is_empty())
+
+    std::fs::read_to_string(path).ok().filter(|content| !content.trim().is_empty())
 }
 
 /// Load SYSTEM.md — replaces the default system prompt.
@@ -301,6 +296,7 @@ fn load_append_system_md(global_config_dir: &Path, project_config_dir: &Path) ->
 }
 
 /// Load spec context from openspec/ directory
+#[cfg(feature = "openspec")]
 fn load_spec_context(project_root: &Path) -> String {
     let engine = SpecEngine::new(project_root);
     if engine.is_initialized() {
@@ -308,6 +304,11 @@ fn load_spec_context(project_root: &Path) -> String {
     } else {
         String::new()
     }
+}
+
+#[cfg(not(feature = "openspec"))]
+fn load_spec_context(_project_root: &Path) -> String {
+    String::new()
 }
 
 /// Default base system prompt when no agent definition is specified
@@ -516,7 +517,10 @@ mod tests {
         assert!(result.contains("Base"));
         assert!(result.contains("Appended instructions"));
         // Append should come after base
-        assert!(result.find("Base").expect("Base should be in result") < result.find("Appended").expect("Appended should be in result"));
+        assert!(
+            result.find("Base").expect("Base should be in result")
+                < result.find("Appended").expect("Appended should be in result")
+        );
     }
 
     #[test]
@@ -714,7 +718,8 @@ mod tests {
         let project = temp.path().join(".clankers");
         std::fs::create_dir_all(&project).expect("failed to create project dir");
 
-        std::fs::write(project.join("APPEND_SYSTEM.md"), "Extra instructions").expect("failed to write APPEND_SYSTEM.md");
+        std::fs::write(project.join("APPEND_SYSTEM.md"), "Extra instructions")
+            .expect("failed to write APPEND_SYSTEM.md");
 
         let result = load_append_system_md(&global, &project);
         assert_eq!(result.expect("should have APPEND_SYSTEM.md"), "Extra instructions");

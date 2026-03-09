@@ -38,11 +38,7 @@ pub fn build_env_filter(default_level: tracing::Level) -> EnvFilter {
 
     let mut filter = EnvFilter::new("").add_directive(default_level.into());
     for target in SILENCED_TARGETS {
-        filter = filter.add_directive(
-            format!("{}=error", target)
-                .parse()
-                .expect("static directive"),
-        );
+        filter = filter.add_directive(format!("{}=error", target).parse().expect("static directive"));
     }
     filter
 }

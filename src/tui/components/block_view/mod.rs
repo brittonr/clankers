@@ -5,6 +5,8 @@ mod render;
 
 use std::collections::HashMap;
 
+use helpers::char_to_byte;
+use helpers::slice_visible_window;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -15,6 +17,9 @@ use ratatui::widgets::Block;
 use ratatui::widgets::Borders;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
+use render::render_active_block;
+use render::render_conversation_block;
+use render::render_system_message;
 use unicode_width::UnicodeWidthStr;
 
 use super::block::BlockEntry;
@@ -25,9 +30,6 @@ use crate::tui::app::ActiveToolExecution;
 use crate::tui::components::messages::MessageScroll;
 use crate::tui::selection::TextSelection;
 use crate::tui::theme::Theme;
-
-use helpers::{char_to_byte, slice_visible_window};
-use render::{render_active_block, render_conversation_block, render_system_message};
 
 /// Branch metadata passed to the block renderer.
 #[derive(Debug, Clone)]
@@ -277,11 +279,12 @@ pub fn render_blocks(
 
 #[cfg(test)]
 mod tests {
+    use helpers::format_elapsed;
+    use render::render_response_message;
+
     use super::*;
     use crate::tui::app::DisplayMessage;
     use crate::tui::app::MessageRole;
-    use helpers::format_elapsed;
-    use render::render_response_message;
 
     #[test]
     fn format_elapsed_seconds() {
@@ -327,7 +330,16 @@ mod tests {
         let progress = ProgressRenderer::new();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, &mut streaming_outputs, 0);
+        render_response_message(
+            &mut lines,
+            &msg,
+            border_style,
+            &theme,
+            &active_tools,
+            &progress,
+            &mut streaming_outputs,
+            0,
+        );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
 
@@ -362,7 +374,16 @@ mod tests {
         let theme = Theme::dark();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, &mut streaming_outputs, 0);
+        render_response_message(
+            &mut lines,
+            &msg,
+            border_style,
+            &theme,
+            &active_tools,
+            &progress,
+            &mut streaming_outputs,
+            0,
+        );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
         assert_eq!(plain.len(), 3);
@@ -395,7 +416,16 @@ mod tests {
         let progress = ProgressRenderer::new();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, &mut streaming_outputs, 0);
+        render_response_message(
+            &mut lines,
+            &msg,
+            border_style,
+            &theme,
+            &active_tools,
+            &progress,
+            &mut streaming_outputs,
+            0,
+        );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
 
@@ -434,7 +464,16 @@ mod tests {
         let theme = Theme::dark();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, &mut streaming_outputs, 0);
+        render_response_message(
+            &mut lines,
+            &msg,
+            border_style,
+            &theme,
+            &active_tools,
+            &progress,
+            &mut streaming_outputs,
+            0,
+        );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
 
@@ -473,7 +512,16 @@ mod tests {
         let theme = Theme::dark();
         let border_style = Style::default().fg(Color::DarkGray);
         let mut lines = Vec::new();
-        render_response_message(&mut lines, &msg, border_style, &theme, &active_tools, &progress, &mut streaming_outputs, 0);
+        render_response_message(
+            &mut lines,
+            &msg,
+            border_style,
+            &theme,
+            &active_tools,
+            &progress,
+            &mut streaming_outputs,
+            0,
+        );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
 

@@ -3,11 +3,12 @@
 //! Handles mouse clicks (left/middle/right), dragging for text selection,
 //! scroll wheel, and block collapse toggles.
 
-use crate::tui::event::Button;
-
 use crate::config::keybindings::InputMode;
-use crate::tui::app::{App, AppState, HitRegion};
+use crate::tui::app::App;
+use crate::tui::app::AppState;
+use crate::tui::app::HitRegion;
 use crate::tui::components::block::BlockEntry;
+use crate::tui::event::Button;
 
 pub(crate) fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
     let region = app.hit_test(col, row);
@@ -206,4 +207,3 @@ fn click_toggle_block(app: &mut App, text_row: usize) {
         }
     }
 }
-

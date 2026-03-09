@@ -1,13 +1,15 @@
 //! Agent prompt execution for Matrix messages.
 
 use std::sync::Arc;
-use tokio::sync::RwLock;
+
 use clankers_auth::Capability;
+use tokio::sync::RwLock;
 
 use crate::agent::events::AgentEvent;
+use crate::modes::daemon::SessionKey;
+use crate::modes::daemon::SessionStore;
 use crate::provider::message::Content;
 use crate::provider::streaming::ContentDelta;
-use crate::modes::daemon::{SessionKey, SessionStore};
 
 /// Run a prompt for a Matrix message and collect the full text response.
 ///
@@ -140,11 +142,7 @@ pub(crate) async fn run_matrix_prompt_with_images(
 /// Run a prompt against a session without updating `last_active`.
 /// Used for heartbeat and trigger prompts — these shouldn't prevent
 /// idle reaping.
-pub(crate) async fn run_proactive_prompt(
-    store: Arc<RwLock<SessionStore>>,
-    key: SessionKey,
-    text: String,
-) -> String {
+pub(crate) async fn run_proactive_prompt(store: Arc<RwLock<SessionStore>>, key: SessionKey, text: String) -> String {
     // Serialize via prompt lock
     let prompt_lock = {
         let mut store = store.write().await;

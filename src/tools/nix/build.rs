@@ -5,8 +5,11 @@ use tokio::io::BufReader;
 use tokio::process::Command;
 use tokio::time::Duration;
 
-use super::super::{ToolContext, ToolResult};
-use super::parser::{ActivityTracker, format_nix_result, process_nix_line};
+use super::super::ToolContext;
+use super::super::ToolResult;
+use super::parser::ActivityTracker;
+use super::parser::format_nix_result;
+use super::parser::process_nix_line;
 use crate::util::ansi::strip_ansi;
 
 // ── nom (nix-output-monitor) detection ──────────────────────────────────────
@@ -83,10 +86,8 @@ pub async fn stream_nix_output(
     timeout_secs: u64,
     subcommand: &str,
 ) -> Result<(i32, Vec<String>, Vec<String>, Vec<String>, Vec<String>), ToolResult> {
-    let stdout = child.stdout.take()
-        .ok_or_else(|| ToolResult::error("Failed to capture stdout"))?;
-    let stderr = child.stderr.take()
-        .ok_or_else(|| ToolResult::error("Failed to capture stderr"))?;
+    let stdout = child.stdout.take().ok_or_else(|| ToolResult::error("Failed to capture stdout"))?;
+    let stderr = child.stderr.take().ok_or_else(|| ToolResult::error("Failed to capture stderr"))?;
 
     let mut stdout_reader = BufReader::new(stdout).lines();
     let mut stderr_reader = BufReader::new(stderr).lines();
@@ -109,10 +110,11 @@ pub async fn stream_nix_output(
     // Stream and parse output
     loop {
         if let Some(dl) = deadline
-            && tokio::time::Instant::now() >= dl {
-                let _ = child.start_kill();
-                return Err(ToolResult::error(format!("nix {} timed out after {}s", subcommand, timeout_secs)));
-            }
+            && tokio::time::Instant::now() >= dl
+        {
+            let _ = child.start_kill();
+            return Err(ToolResult::error(format!("nix {} timed out after {}s", subcommand, timeout_secs)));
+        }
 
         tokio::select! {
             () = ctx.signal.cancelled() => {
@@ -180,8 +182,7 @@ pub async fn stream_nix_output(
         }
     }
 
-    let status = child.wait().await
-        .map_err(|e| ToolResult::error(format!("Failed to wait for nix: {}", e)))?;
+    let status = child.wait().await.map_err(|e| ToolResult::error(format!("Failed to wait for nix: {}", e)))?;
 
     let exit_code = status.code().unwrap_or(-1);
     Ok((exit_code, stdout_lines, build_log_lines, messages, errors))

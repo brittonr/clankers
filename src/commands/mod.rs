@@ -10,6 +10,7 @@ pub mod daemon;
 pub mod plugin;
 pub mod rpc;
 pub mod session;
+#[cfg(feature = "zellij-share")]
 pub mod share;
 pub mod token;
 

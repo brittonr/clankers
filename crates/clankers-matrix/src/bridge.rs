@@ -196,9 +196,10 @@ impl MatrixBridge {
             ClankersEvent::RpcRequest(request) => {
                 // Check if this is addressed to us (or broadcast)
                 if let Some(ref target) = request.target
-                    && target != our_user_id {
-                        return; // Not for us
-                    }
+                    && target != our_user_id
+                {
+                    return; // Not for us
+                }
 
                 let _ = agent_tx.send(BridgeEvent::IncomingRpc {
                     request: request.clone(),
@@ -233,7 +234,9 @@ impl MatrixBridge {
                 });
             }
 
-            ClankersEvent::Text { sender, body, room_id, .. } => {
+            ClankersEvent::Text {
+                sender, body, room_id, ..
+            } => {
                 if sender == our_user_id {
                     return;
                 }

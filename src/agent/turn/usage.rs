@@ -3,8 +3,8 @@
 use tokio::sync::broadcast;
 
 use crate::agent::events::AgentEvent;
-use crate::provider::Usage;
 use crate::model_selection::cost_tracker::CostTracker;
+use crate::provider::Usage;
 
 /// Update usage tracking and emit events
 pub(super) fn update_usage_tracking(
@@ -31,27 +31,16 @@ pub(super) fn update_usage_tracking(
 
 /// Record cost and emit budget events
 fn record_cost(tracker: &CostTracker, model: &str, usage: &Usage) {
-    let (total_cost, budget_events) = tracker.record_usage(
-        model,
-        usage.input_tokens as u64,
-        usage.output_tokens as u64,
-    );
+    let (total_cost, budget_events) =
+        tracker.record_usage(model, usage.input_tokens as u64, usage.output_tokens as u64);
 
     for event in budget_events {
         match event {
             crate::model_selection::cost_tracker::BudgetEvent::Warning { threshold, current } => {
-                tracing::warn!(
-                    "Budget warning: ${:.2} spent (soft limit: ${:.2})",
-                    current,
-                    threshold,
-                );
+                tracing::warn!("Budget warning: ${:.2} spent (soft limit: ${:.2})", current, threshold,);
             }
             crate::model_selection::cost_tracker::BudgetEvent::Exceeded { limit, current } => {
-                tracing::warn!(
-                    "Budget exceeded: ${:.2} spent (hard limit: ${:.2})",
-                    current,
-                    limit,
-                );
+                tracing::warn!("Budget exceeded: ${:.2} spent (hard limit: ${:.2})", current, limit,);
             }
             crate::model_selection::cost_tracker::BudgetEvent::Milestone { milestone, total: _ } => {
                 tracing::info!("Cost milestone: ${:.2}", milestone);

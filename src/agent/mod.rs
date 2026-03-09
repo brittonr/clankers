@@ -21,13 +21,14 @@ use crate::config::model_roles::ModelRoles;
 use crate::config::settings::Settings;
 use crate::db::Db;
 use crate::error::Result;
+use crate::model_selection::cost_tracker::CostTracker;
+use crate::model_selection::policy::RoutingPolicy;
+use crate::model_selection::signals::ComplexitySignals;
+use crate::model_selection::signals::ToolCallSummary;
 use crate::provider::Provider;
 use crate::provider::ThinkingConfig;
 use crate::provider::ThinkingLevel;
 use crate::provider::message::*;
-use crate::model_selection::cost_tracker::CostTracker;
-use crate::model_selection::policy::RoutingPolicy;
-use crate::model_selection::signals::{ComplexitySignals, ToolCallSummary};
 use crate::tools::Tool;
 use crate::tools::switch_model::ModelSwitchSlot;
 
@@ -281,11 +282,7 @@ impl Agent {
                 compacted_count: result.compacted_count,
                 tokens_saved: result.tokens_saved,
             });
-            tracing::info!(
-                "Auto-compacted {} messages, saved ~{} tokens",
-                result.compacted_count,
-                result.tokens_saved,
-            );
+            tracing::info!("Auto-compacted {} messages, saved ~{} tokens", result.compacted_count, result.tokens_saved,);
         }
     }
 
@@ -337,7 +334,9 @@ impl Agent {
 
     /// Sync model switch from tool-requested slot
     fn sync_model_switch(&mut self) {
-        if let Some(slot) = &self.model_switch_slot && let Some(new_model) = slot.lock().take() {
+        if let Some(slot) = &self.model_switch_slot
+            && let Some(new_model) = slot.lock().take()
+        {
             self.model = new_model;
         }
     }
@@ -488,11 +487,7 @@ impl Agent {
         plan: crate::model_selection::orchestration::OrchestrationPlan,
     ) -> crate::error::Result<()> {
         let total_phases = plan.phases.len();
-        tracing::info!(
-            "Starting orchestrated turn: {} ({} phases)",
-            plan.pattern,
-            total_phases,
-        );
+        tracing::info!("Starting orchestrated turn: {} ({} phases)", plan.pattern, total_phases,);
 
         let base_system_prompt = self.system_prompt_with_memory();
         let model_info = self.provider.models().iter().find(|m| m.id == self.model).cloned();
@@ -510,12 +505,7 @@ impl Agent {
                 let _ = self.event_tx.send(AgentEvent::ModelChange {
                     from: old_model.clone(),
                     to: phase_model.clone(),
-                    reason: format!(
-                        "orchestration_phase({}/{}:{})",
-                        phase_idx + 1,
-                        total_phases,
-                        phase.label,
-                    ),
+                    reason: format!("orchestration_phase({}/{}:{})", phase_idx + 1, total_phases, phase.label,),
                 });
             }
 
@@ -555,18 +545,15 @@ impl Agent {
             .await;
 
             // If the agent switched models during the phase, sync state
-            if let Some(slot) = &self.model_switch_slot && let Some(new_model) = slot.lock().take() {
+            if let Some(slot) = &self.model_switch_slot
+                && let Some(new_model) = slot.lock().take()
+            {
                 self.model = new_model;
             }
 
             result?;
 
-            tracing::info!(
-                "Orchestration phase {}/{} ({}) complete",
-                phase_idx + 1,
-                total_phases,
-                phase.label,
-            );
+            tracing::info!("Orchestration phase {}/{} ({}) complete", phase_idx + 1, total_phases, phase.label,);
         }
 
         let _ = self.event_tx.send(AgentEvent::AgentEnd {
@@ -585,14 +572,18 @@ impl Agent {
         for msg in &self.messages[start_index..] {
             if let AgentMessage::Assistant(asst) = msg {
                 for content in &asst.content {
-                    if let Content::ToolUse { name, .. } = content && let Some(policy) = &self.routing_policy {
+                    if let Content::ToolUse { name, .. } = content
+                        && let Some(policy) = &self.routing_policy
+                    {
                         summaries.push(ToolCallSummary {
                             tool_name: name.clone(),
                             complexity: policy.classify_tool(name),
                         });
                     }
                 }
-            } else if let AgentMessage::ToolResult(tool_result) = msg && let Some(policy) = &self.routing_policy {
+            } else if let AgentMessage::ToolResult(tool_result) = msg
+                && let Some(policy) = &self.routing_policy
+            {
                 summaries.push(ToolCallSummary {
                     tool_name: tool_result.tool_name.clone(),
                     complexity: policy.classify_tool(&tool_result.tool_name),

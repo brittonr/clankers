@@ -13,4 +13,7 @@ mod policy;
 
 // Re-export public API
 pub use landlock::apply_landlock_to_current;
-pub use policy::{check_path, init_policy, sanitized_env, PathPolicy};
+pub use policy::PathPolicy;
+pub use policy::check_path;
+pub use policy::init_policy;
+pub use policy::sanitized_env;

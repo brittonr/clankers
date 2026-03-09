@@ -137,11 +137,7 @@ impl ReviewReport {
         let mut out = String::new();
 
         // Header
-        out.push_str(&format!(
-            "# Code Review — {} {}\n\n",
-            self.verdict.emoji(),
-            self.verdict.label()
-        ));
+        out.push_str(&format!("# Code Review — {} {}\n\n", self.verdict.emoji(), self.verdict.label()));
         out.push_str(&format!("{}\n\n", self.summary));
 
         if self.findings.is_empty() {
@@ -171,11 +167,7 @@ impl ReviewReport {
         for finding in &sorted {
             if current_priority != Some(finding.priority) {
                 current_priority = Some(finding.priority);
-                out.push_str(&format!(
-                    "## {} {} Priority\n\n",
-                    finding.priority.emoji(),
-                    finding.priority.label()
-                ));
+                out.push_str(&format!("## {} {} Priority\n\n", finding.priority.emoji(), finding.priority.label()));
             }
 
             let location = if let Some(line) = finding.line {
@@ -184,12 +176,7 @@ impl ReviewReport {
                 finding.file.clone()
             };
 
-            out.push_str(&format!(
-                "### {} {} — {}\n",
-                finding.category.emoji(),
-                finding.title,
-                location
-            ));
+            out.push_str(&format!("### {} {} — {}\n", finding.category.emoji(), finding.title, location));
             out.push_str(&format!("{}\n", finding.description));
 
             if let Some(ref suggestion) = finding.suggestion {
@@ -295,13 +282,9 @@ impl ReviewTool {
         };
 
         ctx.emit_progress(&format!("diff: HEAD vs {}...", base_ref));
-        let diff = git_ops::diff_ref(base_ref.clone(), files.to_vec())
-            .await
-            .unwrap_or_default();
+        let diff = git_ops::diff_ref(base_ref.clone(), files.to_vec()).await.unwrap_or_default();
         ctx.emit_progress("diff --stat...");
-        let stat = git_ops::diff_ref_stat(base_ref.clone(), files.to_vec())
-            .await
-            .unwrap_or_default();
+        let stat = git_ops::diff_ref_stat(base_ref.clone(), files.to_vec()).await.unwrap_or_default();
 
         if diff.trim().is_empty() {
             return ToolResult::text(format!("No changes found relative to {}", base_ref));
@@ -312,11 +295,7 @@ impl ReviewTool {
         let max = 30_000;
         let display = if diff.len() > max {
             ctx.emit_progress(&format!("truncating: {} → {} chars", diff.len(), max));
-            format!(
-                "{}...\n\n[Truncated: {} chars total]",
-                &diff[..max],
-                diff.len()
-            )
+            format!("{}...\n\n[Truncated: {} chars total]", &diff[..max], diff.len())
         } else {
             diff
         };
@@ -336,10 +315,7 @@ impl ReviewTool {
 
         ctx.emit_progress(&format!("{} {}", verdict.emoji(), verdict.label()));
 
-        let summary = params["summary"]
-            .as_str()
-            .unwrap_or("No summary provided.")
-            .to_string();
+        let summary = params["summary"].as_str().unwrap_or("No summary provided.").to_string();
 
         let findings: Vec<Finding> = params["findings"]
             .as_array()
@@ -403,11 +379,7 @@ impl Tool for ReviewTool {
                 let base = params["base"].as_str();
                 let files: Vec<String> = params["files"]
                     .as_array()
-                    .map(|a| {
-                        a.iter()
-                            .filter_map(|v| v.as_str().map(String::from))
-                            .collect()
-                    })
+                    .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
                     .unwrap_or_default();
                 self.get_diff(ctx, base, &files).await
             }

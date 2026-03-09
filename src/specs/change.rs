@@ -154,7 +154,11 @@ fn parse_task_progress(path: &Path) -> Option<TaskProgress> {
             let (desc, started, completed, duration) = parse_done(rest);
             tasks.push(TaskItem {
                 description: desc,
-                state: TaskState::Done { started, completed, duration },
+                state: TaskState::Done {
+                    started,
+                    completed,
+                    duration,
+                },
             });
         }
     }
@@ -168,7 +172,13 @@ fn parse_task_progress(path: &Path) -> Option<TaskProgress> {
     let todo = tasks.iter().filter(|t| matches!(t.state, TaskState::Todo)).count();
     let total = tasks.len();
 
-    Some(TaskProgress { done, in_progress, todo, total, tasks })
+    Some(TaskProgress {
+        done,
+        in_progress,
+        todo,
+        total,
+        tasks,
+    })
 }
 
 /// Parse an in-progress line: "Description ⏱ started: 2026-03-03T11:22Z"
@@ -269,7 +279,11 @@ pub fn format_task_line(task: &TaskItem) -> String {
                 format!("- [~] {}", task.description)
             }
         }
-        TaskState::Done { started, completed, duration } => {
+        TaskState::Done {
+            started,
+            completed,
+            duration,
+        } => {
             let mut line = format!("- [x] {}", task.description);
             let has_timing = duration.is_some() || started.is_some() || completed.is_some();
             if has_timing {
@@ -373,11 +387,8 @@ mod tests {
     fn test_task_progress_with_in_progress() {
         let dir = TempDir::new().expect("failed to create temp dir for test");
         let path = dir.path().join("tasks.md");
-        std::fs::write(
-            &path,
-            "- [x] Done task\n- [~] Working on it ⏱ started: 2026-03-03T11:22Z\n- [ ] Not started",
-        )
-        .expect("failed to write tasks file");
+        std::fs::write(&path, "- [x] Done task\n- [~] Working on it ⏱ started: 2026-03-03T11:22Z\n- [ ] Not started")
+            .expect("failed to write tasks file");
 
         let progress = parse_task_progress(&path).expect("failed to parse task progress");
         assert_eq!(progress.done, 1);
@@ -394,11 +405,8 @@ mod tests {
     fn test_task_progress_done_with_timing() {
         let dir = TempDir::new().expect("failed to create temp dir for test");
         let path = dir.path().join("tasks.md");
-        std::fs::write(
-            &path,
-            "- [x] Feature A ✅ 2h 15m (started: 2026-03-03T09:00Z → completed: 2026-03-03T11:15Z)",
-        )
-        .expect("failed to write tasks file");
+        std::fs::write(&path, "- [x] Feature A ✅ 2h 15m (started: 2026-03-03T09:00Z → completed: 2026-03-03T11:15Z)")
+            .expect("failed to write tasks file");
 
         let progress = parse_task_progress(&path).expect("failed to parse task progress");
         assert_eq!(progress.done, 1);
@@ -407,7 +415,11 @@ mod tests {
         let task = &progress.tasks[0];
         assert_eq!(task.description, "Feature A");
         match &task.state {
-            TaskState::Done { started, completed, duration } => {
+            TaskState::Done {
+                started,
+                completed,
+                duration,
+            } => {
                 assert!(started.is_some());
                 assert!(completed.is_some());
                 assert_eq!(duration.as_deref(), Some("2h 15m"));
@@ -430,13 +442,18 @@ mod tests {
 
     #[test]
     fn test_format_task_line_todo() {
-        let task = TaskItem { description: "Do something".to_string(), state: TaskState::Todo };
+        let task = TaskItem {
+            description: "Do something".to_string(),
+            state: TaskState::Todo,
+        };
         assert_eq!(format_task_line(&task), "- [ ] Do something");
     }
 
     #[test]
     fn test_format_task_line_in_progress_with_timestamp() {
-        let started = DateTime::parse_from_rfc3339("2026-03-03T11:22:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
+        let started = DateTime::parse_from_rfc3339("2026-03-03T11:22:00Z")
+            .expect("failed to parse RFC3339 timestamp")
+            .with_timezone(&Utc);
         let task = TaskItem {
             description: "Working".to_string(),
             state: TaskState::InProgress { started: Some(started) },
@@ -446,8 +463,12 @@ mod tests {
 
     #[test]
     fn test_format_task_line_done_with_full_timing() {
-        let started = DateTime::parse_from_rfc3339("2026-03-03T09:00:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
-        let completed = DateTime::parse_from_rfc3339("2026-03-03T11:15:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
+        let started = DateTime::parse_from_rfc3339("2026-03-03T09:00:00Z")
+            .expect("failed to parse RFC3339 timestamp")
+            .with_timezone(&Utc);
+        let completed = DateTime::parse_from_rfc3339("2026-03-03T11:15:00Z")
+            .expect("failed to parse RFC3339 timestamp")
+            .with_timezone(&Utc);
         let task = TaskItem {
             description: "Feature".to_string(),
             state: TaskState::Done {
@@ -464,14 +485,22 @@ mod tests {
 
     #[test]
     fn test_format_duration_human() {
-        let start = DateTime::parse_from_rfc3339("2026-03-03T09:00:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
-        let end_15m = DateTime::parse_from_rfc3339("2026-03-03T09:15:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
+        let start = DateTime::parse_from_rfc3339("2026-03-03T09:00:00Z")
+            .expect("failed to parse RFC3339 timestamp")
+            .with_timezone(&Utc);
+        let end_15m = DateTime::parse_from_rfc3339("2026-03-03T09:15:00Z")
+            .expect("failed to parse RFC3339 timestamp")
+            .with_timezone(&Utc);
         assert_eq!(format_duration_human(&start, &end_15m), "15m");
 
-        let end_1h30 = DateTime::parse_from_rfc3339("2026-03-03T10:30:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
+        let end_1h30 = DateTime::parse_from_rfc3339("2026-03-03T10:30:00Z")
+            .expect("failed to parse RFC3339 timestamp")
+            .with_timezone(&Utc);
         assert_eq!(format_duration_human(&start, &end_1h30), "1h 30m");
 
-        let end_2d4h = DateTime::parse_from_rfc3339("2026-03-05T13:00:00Z").expect("failed to parse RFC3339 timestamp").with_timezone(&Utc);
+        let end_2d4h = DateTime::parse_from_rfc3339("2026-03-05T13:00:00Z")
+            .expect("failed to parse RFC3339 timestamp")
+            .with_timezone(&Utc);
         assert_eq!(format_duration_human(&start, &end_2d4h), "2d 4h");
     }
 

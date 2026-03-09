@@ -13,7 +13,8 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use super::progress::{ResultChunk, ToolProgress};
+use super::progress::ResultChunk;
+use super::progress::ToolProgress;
 
 /// Environment variable for the Kagi API key
 const KAGI_API_KEY_ENV: &str = "KAGI_API_KEY";
@@ -133,10 +134,8 @@ impl WebTool {
             {
                 ctx.emit_structured_progress(ToolProgress::phase("Processing", 2, Some(2)));
                 ctx.emit_progress(&format!("summarized: {} chars", output.len()));
-                let result_text = format!(
-                    "# Content from {}\n\n{}\n\n---\n*Summarized via Kagi Universal Summarizer*",
-                    url, output
-                );
+                let result_text =
+                    format!("# Content from {}\n\n{}\n\n---\n*Summarized via Kagi Universal Summarizer*", url, output);
                 ctx.emit_result_chunk(ResultChunk::text(&result_text));
                 return ToolResult::text(result_text);
             }
@@ -161,10 +160,7 @@ impl WebTool {
 
                 let content_length = response.content_length();
                 if let Some(len) = content_length {
-                    ctx.emit_structured_progress(
-                        ToolProgress::bytes(0, Some(len))
-                            .with_message("Downloading"),
-                    );
+                    ctx.emit_structured_progress(ToolProgress::bytes(0, Some(len)).with_message("Downloading"));
                     ctx.emit_progress(&format!("downloading: {} bytes", len));
                 }
 
@@ -300,12 +296,13 @@ fn extract_text_from_html(html: &str) -> String {
 
         // Decode HTML entities
         if chars[i] == '&'
-            && let Some((ch, skip)) = decode_html_entity(&lower[i..]) {
-                result.push(ch);
-                i += skip;
-                last_was_space = ch == ' ';
-                continue;
-            }
+            && let Some((ch, skip)) = decode_html_entity(&lower[i..])
+        {
+            result.push(ch);
+            i += skip;
+            last_was_space = ch == ' ';
+            continue;
+        }
 
         // Collapse whitespace
         handle_text_char(chars[i], &mut result, &mut last_was_space);

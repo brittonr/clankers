@@ -121,7 +121,8 @@ mod tests {
     fn test_parse_delta_added() {
         let dir = TempDir::new().expect("failed to create temp dir for test");
         let file = dir.path().join("spec.md");
-        std::fs::write(&file, "## ADDED\n\n### New Feature\nThe system MUST support this").expect("failed to write delta file");
+        std::fs::write(&file, "## ADDED\n\n### New Feature\nThe system MUST support this")
+            .expect("failed to write delta file");
 
         let delta = parse_delta_file(&file, dir.path()).expect("failed to parse delta file");
         assert_eq!(delta.added.len(), 1);
@@ -133,7 +134,8 @@ mod tests {
     fn test_parse_delta_modified() {
         let dir = TempDir::new().expect("failed to create temp dir for test");
         let file = dir.path().join("spec.md");
-        std::fs::write(&file, "## MODIFIED\n\n### Updated Feature\nChanged behavior").expect("failed to write delta file");
+        std::fs::write(&file, "## MODIFIED\n\n### Updated Feature\nChanged behavior")
+            .expect("failed to write delta file");
 
         let delta = parse_delta_file(&file, dir.path()).expect("failed to parse delta file");
         assert_eq!(delta.modified.len(), 1);

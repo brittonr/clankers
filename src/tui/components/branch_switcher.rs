@@ -54,15 +54,9 @@ impl BranchSwitcher {
     }
 
     /// Open the switcher with branches from the block tree.
-    pub fn open(
-        &mut self,
-        all_blocks: &[ConversationBlock],
-        active_block_ids: &std::collections::HashSet<usize>,
-    ) {
-        let has_children: std::collections::HashSet<usize> = all_blocks
-            .iter()
-            .filter_map(|b| b.parent_block_id)
-            .collect();
+    pub fn open(&mut self, all_blocks: &[ConversationBlock], active_block_ids: &std::collections::HashSet<usize>) {
+        let has_children: std::collections::HashSet<usize> =
+            all_blocks.iter().filter_map(|b| b.parent_block_id).collect();
 
         self.items = all_blocks
             .iter()
@@ -70,11 +64,8 @@ impl BranchSwitcher {
             .enumerate()
             .map(|(i, leaf)| {
                 let path = walk_to_root(leaf.id, all_blocks);
-                let tokens: usize = path
-                    .iter()
-                    .filter_map(|&id| all_blocks.iter().find(|b| b.id == id))
-                    .map(|b| b.tokens)
-                    .sum();
+                let tokens: usize =
+                    path.iter().filter_map(|&id| all_blocks.iter().find(|b| b.id == id)).map(|b| b.tokens).sum();
 
                 SwitcherItem {
                     leaf_id: leaf.id,
@@ -88,11 +79,7 @@ impl BranchSwitcher {
             .collect();
 
         // Sort: active first, then most recent
-        self.items.sort_by(|a, b| {
-            b.is_active
-                .cmp(&a.is_active)
-                .then(b.leaf_id.cmp(&a.leaf_id))
-        });
+        self.items.sort_by(|a, b| b.is_active.cmp(&a.is_active).then(b.leaf_id.cmp(&a.leaf_id)));
 
         self.filter.clear();
         self.selected = 0;
@@ -162,10 +149,7 @@ impl BranchSwitcher {
         frame.render_widget(Clear, popup_area);
 
         let block = Block::default()
-            .title(Span::styled(
-                " Switch Branch ",
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-            ))
+            .title(Span::styled(" Switch Branch ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Cyan));
 
@@ -217,28 +201,17 @@ impl BranchSwitcher {
                 Style::default().fg(Color::DarkGray).bg(bg),
             );
 
-            lines.push(Line::from(vec![
-                Span::styled(" ", Style::default().bg(bg)),
-                marker,
-                name,
-                meta,
-            ]));
+            lines.push(Line::from(vec![Span::styled(" ", Style::default().bg(bg)), marker, name, meta]));
 
             // Preview line
             lines.push(Line::from(vec![
                 Span::styled("   ", Style::default().bg(bg)),
-                Span::styled(
-                    &item.last_prompt,
-                    Style::default().fg(Color::DarkGray).bg(bg),
-                ),
+                Span::styled(&item.last_prompt, Style::default().fg(Color::DarkGray).bg(bg)),
             ]));
         }
 
         if filtered.is_empty() {
-            lines.push(Line::from(Span::styled(
-                " No matching branches",
-                Style::default().fg(Color::DarkGray),
-            )));
+            lines.push(Line::from(Span::styled(" No matching branches", Style::default().fg(Color::DarkGray))));
         }
 
         // Scroll to keep selected visible
@@ -250,12 +223,7 @@ impl BranchSwitcher {
             0
         };
 
-        frame.render_widget(
-            Paragraph::new(lines)
-                .scroll((scroll, 0))
-                .wrap(Wrap { trim: false }),
-            list_area,
-        );
+        frame.render_widget(Paragraph::new(lines).scroll((scroll, 0)).wrap(Wrap { trim: false }), list_area);
     }
 }
 
@@ -267,10 +235,7 @@ fn walk_to_root(leaf_id: usize, all_blocks: &[ConversationBlock]) -> Vec<usize> 
     let mut current = Some(leaf_id);
     while let Some(id) = current {
         path.push(id);
-        current = all_blocks
-            .iter()
-            .find(|b| b.id == id)
-            .and_then(|b| b.parent_block_id);
+        current = all_blocks.iter().find(|b| b.id == id).and_then(|b| b.parent_block_id);
     }
     path.reverse();
     path

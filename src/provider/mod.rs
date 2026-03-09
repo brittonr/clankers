@@ -183,5 +183,5 @@ impl ThinkingLevel {
 }
 
 // Re-export Usage and Cost from clankers-router (canonical definitions)
-pub use clankers_router::provider::Cost;
 pub use clankers_router::Usage;
+pub use clankers_router::provider::Cost;

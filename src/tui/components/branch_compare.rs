@@ -59,11 +59,7 @@ pub struct BranchComparison {
 }
 
 /// Compare two branches, returning their divergence and unique blocks.
-pub fn compare_branches(
-    leaf_a: usize,
-    leaf_b: usize,
-    all_blocks: &[ConversationBlock],
-) -> Option<BranchComparison> {
+pub fn compare_branches(leaf_a: usize, leaf_b: usize, all_blocks: &[ConversationBlock]) -> Option<BranchComparison> {
     let path_a = walk_to_root(leaf_a, all_blocks);
     let path_b = walk_to_root(leaf_b, all_blocks);
 
@@ -188,13 +184,7 @@ impl BranchCompareView {
 
     /// Get the leaf ID of the focused branch.
     pub fn focused_leaf_id(&self) -> Option<usize> {
-        self.comparison.as_ref().map(|c| {
-            if self.right_focused {
-                c.leaf_b
-            } else {
-                c.leaf_a
-            }
-        })
+        self.comparison.as_ref().map(|c| if self.right_focused { c.leaf_b } else { c.leaf_a })
     }
 
     /// Render the comparison view as a floating overlay.
@@ -217,10 +207,7 @@ impl BranchCompareView {
         frame.render_widget(Clear, popup_area);
 
         let outer = Block::default()
-            .title(Span::styled(
-                " Branch Comparison ",
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
-            ))
+            .title(Span::styled(" Branch Comparison ", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Cyan));
 
@@ -237,19 +224,15 @@ impl BranchCompareView {
             Line::from(vec![
                 Span::styled(" Diverges at: ", Style::default().fg(Color::DarkGray)),
                 Span::styled(
-                    cmp.divergence_id
-                        .map(|id| format!("#{}", id))
-                        .unwrap_or_else(|| "root".to_string()),
+                    cmp.divergence_id.map(|id| format!("#{}", id)).unwrap_or_else(|| "root".to_string()),
                     Style::default().fg(Color::Yellow),
                 ),
                 Span::styled(format!(" — {}", cmp.divergence_prompt), Style::default().fg(Color::Gray)),
             ]),
-            Line::from(vec![
-                Span::styled(
-                    " ←/→: pane  j/k: scroll  s: switch  q: close",
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]),
+            Line::from(vec![Span::styled(
+                " ←/→: pane  j/k: scroll  s: switch  q: close",
+                Style::default().fg(Color::DarkGray),
+            )]),
         ];
         frame.render_widget(Paragraph::new(div_lines).wrap(Wrap { trim: false }), div_area);
 
@@ -293,18 +276,10 @@ fn render_comparison_pane(
     area: Rect,
 ) {
     let border_color = if focused { Color::Cyan } else { Color::DarkGray };
-    let title = format!(
-        " {} ({} unique, {}tok) ",
-        name,
-        blocks.len(),
-        total_tokens,
-    );
+    let title = format!(" {} ({} unique, {}tok) ", name, blocks.len(), total_tokens,);
 
     let block = Block::default()
-        .title(Span::styled(
-            title,
-            Style::default().fg(border_color).add_modifier(Modifier::BOLD),
-        ))
+        .title(Span::styled(title, Style::default().fg(border_color).add_modifier(Modifier::BOLD)))
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color));
 
@@ -329,10 +304,7 @@ fn render_comparison_pane(
 
         lines.push(Line::from(vec![
             Span::styled(format!("#{} ", b.id), num_style),
-            Span::styled(
-                &b.prompt_preview,
-                Style::default().fg(if i == scroll { Color::White } else { Color::Gray }),
-            ),
+            Span::styled(&b.prompt_preview, Style::default().fg(if i == scroll { Color::White } else { Color::Gray })),
         ]));
 
         // Compact stats
@@ -344,10 +316,7 @@ fn render_comparison_pane(
         lines.push(Line::from(Span::styled(stats, Style::default().fg(Color::DarkGray))));
     }
 
-    frame.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        inner,
-    );
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), inner);
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -357,10 +326,7 @@ fn walk_to_root(leaf_id: usize, all_blocks: &[ConversationBlock]) -> Vec<usize> 
     let mut current = Some(leaf_id);
     while let Some(id) = current {
         path.push(id);
-        current = all_blocks
-            .iter()
-            .find(|b| b.id == id)
-            .and_then(|b| b.parent_block_id);
+        current = all_blocks.iter().find(|b| b.id == id).and_then(|b| b.parent_block_id);
     }
     path.reverse();
     path
@@ -434,10 +400,7 @@ mod tests {
 
     #[test]
     fn compare_same_branch_no_unique() {
-        let blocks = vec![
-            make_block(0, "root", None, 100),
-            make_block(1, "child", Some(0), 200),
-        ];
+        let blocks = vec![make_block(0, "root", None, 100), make_block(1, "child", Some(0), 200)];
         // Comparing a branch with itself: leaf 1 vs leaf 1
         let cmp = compare_branches(1, 1, &blocks).unwrap();
         assert_eq!(cmp.divergence_id, Some(1));

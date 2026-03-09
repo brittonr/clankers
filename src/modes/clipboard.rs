@@ -2,14 +2,19 @@
 
 use std::io;
 
+use crossterm::event::DisableBracketedPaste;
+use crossterm::event::DisableMouseCapture;
+use crossterm::event::EnableBracketedPaste;
+use crossterm::event::EnableMouseCapture;
+use crossterm::execute;
+use crossterm::terminal::EnterAlternateScreen;
+use crossterm::terminal::LeaveAlternateScreen;
+use crossterm::terminal::{self};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
-use crossterm::execute;
-use crossterm::event::{DisableBracketedPaste, DisableMouseCapture, EnableBracketedPaste, EnableMouseCapture};
-use crossterm::terminal::{self, EnterAlternateScreen, LeaveAlternateScreen};
-use crate::tui::app::App;
 use crate::config::keybindings::InputMode;
+use crate::tui::app::App;
 
 /// Result of a background clipboard read.
 pub enum ClipboardResult {
@@ -57,8 +62,6 @@ pub(crate) fn paste_from_clipboard(app: &mut App) {
                 Ok(img_data) => {
                     use base64::Engine;
                     use base64::engine::general_purpose::STANDARD as BASE64;
-
-
 
                     let width = img_data.width as u32;
                     let height = img_data.height as u32;
@@ -231,4 +234,3 @@ pub(crate) fn open_external_editor(terminal: &mut Terminal<CrosstermBackend<io::
     // Clean up temp file
     let _ = std::fs::remove_file(&tmp_path);
 }
-

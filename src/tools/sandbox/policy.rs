@@ -1,7 +1,9 @@
 //! Security policy enforcement: path access control and environment sanitization
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::OnceLock;
+
 use tracing::info;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -124,7 +126,10 @@ static POLICY: OnceLock<PathPolicy> = OnceLock::new();
 /// Initialize the global path policy. Call once at startup.
 pub fn init_policy() {
     let _ = POLICY.set(PathPolicy::new());
-    info!("sandbox: path policy initialized ({} denied paths)", POLICY.get().expect("Policy was just set").denied.len());
+    info!(
+        "sandbox: path policy initialized ({} denied paths)",
+        POLICY.get().expect("Policy was just set").denied.len()
+    );
 }
 
 /// Check a path against the global policy.
@@ -369,7 +374,10 @@ mod tests {
             let target = home.join(".ssh");
             if std::os::unix::fs::symlink(&target, &link).is_ok() {
                 let via_link = link.join("id_rsa");
-                assert!(policy.check(via_link.to_str().expect("Path should be valid UTF-8")).is_some(), "symlink to ~/.ssh should be blocked");
+                assert!(
+                    policy.check(via_link.to_str().expect("Path should be valid UTF-8")).is_some(),
+                    "symlink to ~/.ssh should be blocked"
+                );
             }
         }
     }
@@ -394,7 +402,10 @@ mod tests {
         let policy = PathPolicy::new();
         let dir = tempfile::tempdir().expect("Failed to create temp directory");
         let p = dir.path().join("does-not-exist.rs");
-        assert!(policy.check(p.to_str().expect("Path should be valid UTF-8")).is_none(), "nonexistent file in temp dir should be allowed");
+        assert!(
+            policy.check(p.to_str().expect("Path should be valid UTF-8")).is_none(),
+            "nonexistent file in temp dir should be allowed"
+        );
     }
 
     // ── Path message content ────────────────────────────────────────

@@ -1,18 +1,18 @@
 //! Run modes
 
+pub(crate) mod clipboard;
 pub mod common;
 pub mod daemon;
-pub(crate) mod matrix_bridge;
-pub(crate) mod clipboard;
 pub(crate) mod event_handlers;
 pub(crate) mod event_loop_runner;
 pub mod interactive;
 pub mod json;
+pub(crate) mod matrix_bridge;
 mod mouse;
 pub(crate) mod peers_background;
-pub(crate) mod plugin_dispatch;
-mod selectors;
-pub(crate) mod session_restore;
 pub mod plan;
+pub(crate) mod plugin_dispatch;
 pub mod print;
 pub mod rpc;
+mod selectors;
+pub(crate) mod session_restore;

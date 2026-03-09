@@ -26,9 +26,7 @@ fn test_secret_key() -> SecretKey {
 #[test]
 fn test_capability_prompt() {
     let cap = Capability::Prompt;
-    assert!(cap.authorizes(&Operation::Prompt {
-        text: "hello".into()
-    }));
+    assert!(cap.authorizes(&Operation::Prompt { text: "hello".into() }));
     assert!(!cap.authorizes(&Operation::ToolUse {
         tool_name: "read".into()
     }));
@@ -198,9 +196,7 @@ fn test_capability_bot_command_comma_separated() {
     assert!(cap.authorizes(&Operation::BotCommand {
         command: "status".into()
     }));
-    assert!(cap.authorizes(&Operation::BotCommand {
-        command: "help".into()
-    }));
+    assert!(cap.authorizes(&Operation::BotCommand { command: "help".into() }));
     assert!(!cap.authorizes(&Operation::BotCommand {
         command: "restart".into()
     }));
@@ -222,20 +218,14 @@ fn test_capability_session_manage() {
     assert!(cap.authorizes(&Operation::SessionManage {
         action: "restart".into()
     }));
-    assert!(!cap.authorizes(&Operation::Prompt {
-        text: "hello".into()
-    }));
+    assert!(!cap.authorizes(&Operation::Prompt { text: "hello".into() }));
 }
 
 #[test]
 fn test_capability_model_switch() {
     let cap = Capability::ModelSwitch;
-    assert!(cap.authorizes(&Operation::ModelSwitch {
-        model: "gpt-4".into()
-    }));
-    assert!(!cap.authorizes(&Operation::Prompt {
-        text: "hello".into()
-    }));
+    assert!(cap.authorizes(&Operation::ModelSwitch { model: "gpt-4".into() }));
+    assert!(!cap.authorizes(&Operation::Prompt { text: "hello".into() }));
 }
 
 // ============================================================================
@@ -502,10 +492,7 @@ fn test_token_builder_delegation_without_delegate_cap() {
         .expect("should build root token");
 
     // Attempt to delegate should fail
-    let result = TokenBuilder::new(child_key)
-        .delegated_from(root)
-        .with_capability(Capability::Prompt)
-        .build();
+    let result = TokenBuilder::new(child_key).delegated_from(root).with_capability(Capability::Prompt).build();
 
     assert!(matches!(result, Err(AuthError::DelegationNotAllowed)));
 }
@@ -566,10 +553,7 @@ fn test_token_encode_decode_roundtrip() {
 fn test_token_base64_roundtrip() {
     let key = test_secret_key();
 
-    let token = TokenBuilder::new(key)
-        .with_capability(Capability::Prompt)
-        .build()
-        .expect("should build token");
+    let token = TokenBuilder::new(key).with_capability(Capability::Prompt).build().expect("should build token");
 
     let b64 = token.to_base64().expect("should encode to base64");
     let decoded = CapabilityToken::from_base64(&b64).expect("should decode from base64");
@@ -599,10 +583,7 @@ fn test_verifier_accepts_valid_token() {
 fn test_verifier_rejects_tampered_signature() {
     let key = test_secret_key();
 
-    let mut token = TokenBuilder::new(key)
-        .with_capability(Capability::Prompt)
-        .build()
-        .expect("should build token");
+    let mut token = TokenBuilder::new(key).with_capability(Capability::Prompt).build().expect("should build token");
 
     // Tamper with the signature
     token.signature[0] ^= 0xFF;
@@ -654,13 +635,7 @@ fn test_verifier_authorize() {
 
     // Should authorize matching operations
     verifier
-        .authorize(
-            &token,
-            &Operation::Prompt {
-                text: "hello".into(),
-            },
-            None,
-        )
+        .authorize(&token, &Operation::Prompt { text: "hello".into() }, None)
         .expect("should authorize prompt");
     verifier
         .authorize(
@@ -853,9 +828,8 @@ fn test_delegation_too_deep() {
 
     for i in 0..=MAX_DELEGATION_DEPTH {
         let key = test_secret_key();
-        let mut builder = TokenBuilder::new(key)
-            .with_capability(Capability::Prompt)
-            .with_capability(Capability::Delegate);
+        let mut builder =
+            TokenBuilder::new(key).with_capability(Capability::Prompt).with_capability(Capability::Delegate);
 
         if let Some(parent) = current_token.take() {
             builder = builder.delegated_from(parent);

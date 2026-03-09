@@ -20,7 +20,6 @@ use crate::agent::events::AgentEvent;
 use crate::config::keybindings::Keymap;
 use crate::error::Result;
 use crate::provider::auth::AuthStoreExt;
-
 use crate::tui::app::App;
 // Panel trait is in scope via panel_mut() return type
 use crate::tui::theme::Theme;
@@ -74,8 +73,6 @@ pub async fn run_interactive(
 
     // ── Session persistence setup ────────────────────────────────────────
     let paths = crate::config::ClankersPaths::get();
-    let sessions_dir = &paths.global_sessions_dir;
-    let use_worktrees = settings.use_worktrees;
     let original_cwd = cwd.clone();
 
     // Open the global database for worktree registry + GC
@@ -83,7 +80,7 @@ pub async fn run_interactive(
     let db = crate::db::Db::open(&db_path).ok();
 
     // Run startup GC in the background if we're in a git repo with worktrees enabled
-    if use_worktrees
+    if settings.use_worktrees
         && let Some(ref db) = db
         && let Some(repo_root) = crate::worktree::WorktreeManager::find_repo_root(std::path::Path::new(&cwd))
     {
@@ -91,113 +88,8 @@ pub async fn run_interactive(
         crate::worktree::gc::spawn_startup_gc(db_clone, repo_root);
     }
 
-    // Helper: create a new session, optionally with a worktree
-    let create_new_session = |app: &mut App,
-                              cwd: &str,
-                              db: &Option<crate::db::Db>|
-     -> (
-        Option<crate::session::SessionManager>,
-        Vec<crate::provider::message::AgentMessage>,
-        Option<crate::worktree::session_bridge::WorktreeSetup>,
-    ) {
-        // Try to set up a worktree first so we can record it in the session header
-        let wt_setup = match db {
-            Some(db) => crate::worktree::session_bridge::setup_worktree_for_session(db, cwd, use_worktrees),
-            None => None,
-        };
-        let (wt_path, wt_branch) = match &wt_setup {
-            Some(s) => (Some(s.working_dir.to_string_lossy().to_string()), Some(s.branch.clone())),
-            None => (None, None),
-        };
-        match crate::session::SessionManager::create(
-            sessions_dir,
-            cwd,
-            &model,
-            None,
-            wt_path.as_deref(),
-            wt_branch.as_deref(),
-        ) {
-            Ok(mgr) => {
-                app.session_id = mgr.session_id().to_string();
-                if let Some(ref s) = wt_setup {
-                    app.push_system(format!("Worktree: {}", s.branch), false);
-                }
-                (Some(mgr), Vec::new(), wt_setup)
-            }
-            Err(e) => {
-                tracing::warn!("Failed to create session: {}", e);
-                (None, Vec::new(), None)
-            }
-        }
-    };
-
-    // Helper: resume a session, re-entering its worktree if present
-    let resume_session = |app: &mut App,
-                          mgr: crate::session::SessionManager,
-                          from_label: &str|
-     -> (
-        Option<crate::session::SessionManager>,
-        Vec<crate::provider::message::AgentMessage>,
-        Option<crate::worktree::session_bridge::WorktreeSetup>,
-    ) {
-        let msgs = mgr.build_context().unwrap_or_default();
-        app.session_id = mgr.session_id().to_string();
-        let resume_entry = crate::session::entry::SessionEntry::Resume(crate::session::entry::ResumeEntry {
-            id: crate::provider::message::MessageId::generate(),
-            resumed_at: chrono::Utc::now(),
-            from_entry_id: crate::provider::message::MessageId::new(from_label),
-        });
-        let _ = crate::session::store::append_entry(mgr.file_path(), &resume_entry);
-        let msg_count = msgs.len();
-        app.push_system(format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count), false);
-
-        // Re-enter the worktree if this session had one
-        let wt_setup = crate::worktree::session_bridge::resume_worktree(mgr.worktree_path(), mgr.worktree_branch());
-        if let Some(ref s) = wt_setup {
-            app.push_system(format!("Worktree: {}", s.branch), false);
-        }
-        (Some(mgr), msgs, wt_setup)
-    };
-
-    let (session_manager, seed_messages, worktree_setup) = if resume_opts.no_session {
-        (None, Vec::new(), None)
-    } else if resume_opts.continue_last {
-        // Find the most recent session for this cwd
-        let files = crate::session::store::list_sessions(sessions_dir, &cwd);
-        if let Some(latest_file) = files.into_iter().next() {
-            match crate::session::SessionManager::open(latest_file) {
-                Ok(mgr) => resume_session(&mut app, mgr, "continue"),
-                Err(e) => {
-                    app.push_system(format!("Failed to resume last session: {}", e), true);
-                    create_new_session(&mut app, &cwd, &db)
-                }
-            }
-        } else {
-            app.push_system("No previous session found. Starting new session.".to_string(), false);
-            create_new_session(&mut app, &cwd, &db)
-        }
-    } else if let Some(ref session_id) = resume_opts.session_id {
-        // Resume a specific session by ID
-        let files = crate::session::store::list_sessions(sessions_dir, &cwd);
-        let found = files
-            .into_iter()
-            .find(|f| f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(session_id)));
-        if let Some(file) = found {
-            match crate::session::SessionManager::open(file) {
-                Ok(mgr) => resume_session(&mut app, mgr, "resume"),
-                Err(e) => {
-                    app.push_system(format!("Failed to resume session '{}': {}", session_id, e), true);
-                    create_new_session(&mut app, &cwd, &db)
-                }
-            }
-        } else {
-            app.push_system(format!("Session '{}' not found.", session_id), true);
-            create_new_session(&mut app, &cwd, &db)
-        }
-    } else {
-        // Default: create a new session
-        create_new_session(&mut app, &cwd, &db)
-    };
+    let (session_manager, seed_messages, worktree_setup) =
+        setup_session(&mut app, &cwd, &model, &db, &settings, resume_opts);
 
     // ── Enter worktree working directory ─────────────────────────────────
     if let Some(ref wt) = worktree_setup
@@ -238,103 +130,18 @@ pub async fn run_interactive(
         app.active_account = store.active_account_name().to_string();
     }
 
-    // Create a temporary agent with empty tools to get event_tx for tool construction
-    let temp_agent = Agent::new(
-        Arc::clone(&provider),
-        Vec::new(),
-        settings.clone(),
+    let (agent, event_rx, mut bash_confirm_rx) = build_agent_with_tools(
+        provider.clone(),
+        &settings,
         model.clone(),
         system_prompt.clone(),
+        &mut app,
+        panel_tx.clone(),
+        todo_tx.clone(),
+        plugin_manager.as_ref(),
+        &paths,
+        &db,
     );
-    let event_tx = temp_agent.event_sender();
-    let (bash_confirm_tx, mut bash_confirm_rx) = crate::tools::bash::confirm_channel();
-
-    // Create and start the process monitor
-    let process_monitor = {
-        let config = crate::procmon::ProcessMonitorConfig::default();
-        let monitor = std::sync::Arc::new(crate::procmon::ProcessMonitor::new(config, Some(event_tx.clone())));
-        monitor.clone().start();
-        monitor
-    };
-
-    // Wire process monitor into the TUI panel
-    *process_panel(&mut app) = crate::tui::components::process_panel::ProcessPanel::new()
-        .with_monitor(process_monitor.clone());
-
-    let tool_env = crate::modes::common::ToolEnv {
-        event_tx: Some(event_tx),
-        panel_tx: Some(panel_tx),
-        todo_tx: Some(todo_tx),
-        bash_confirm_tx: Some(bash_confirm_tx),
-        process_monitor: Some(process_monitor),
-    };
-    let tools = crate::modes::common::build_all_tools_with_env(&tool_env, plugin_manager.as_ref());
-
-    // Populate tool info for /tools slash command
-    {
-        let builtin_names: std::collections::HashSet<&str> = [
-            "read",
-            "write",
-            "edit",
-            "bash",
-            "grep",
-            "find",
-            "ls",
-            "subagent",
-            "delegate_task",
-            "todo",
-            "web",
-            "commit",
-            "review",
-            "ask",
-            "image_gen",
-            "validate_tui",
-        ]
-        .into_iter()
-        .collect();
-        for tool in &tools {
-            let def = tool.definition();
-            let source = if builtin_names.contains(def.name.as_str()) {
-                "built-in".to_string()
-            } else {
-                "plugin".to_string()
-            };
-            app.tool_info.push((def.name.clone(), def.description.clone(), source));
-        }
-        app.tool_info.sort_by(|a, b| a.2.cmp(&b.2).then(a.0.cmp(&b.0)));
-    }
-
-    // Fire plugin_init event so plugins can set up their initial UI
-    if let Some(ref pm) = plugin_manager {
-        for action in crate::modes::common::fire_plugin_init(pm) {
-            app.plugin_ui.apply(action);
-        }
-    }
-
-    // Build the final agent with tools, db, routing, and cost tracking
-    let mut agent_builder = crate::agent::builder::AgentBuilder::new(
-        provider,
-        settings.clone(),
-        model,
-        system_prompt,
-    )
-    .with_tools(tools)
-    .with_paths(paths.clone());
-
-    // Attach the global database so the agent can read memories and record usage
-    if let Some(ref db) = db {
-        agent_builder = agent_builder.with_db(db.clone());
-    }
-
-    // Build the agent (automatically wires routing and cost tracking from settings)
-    let agent = agent_builder.build();
-
-    // Extract cost tracker reference for the app UI
-    if settings.cost_tracking.is_some() {
-        app.cost_tracker = agent.cost_tracker().cloned();
-    }
-
-    let event_rx = agent.subscribe();
 
     // ── Start embedded RPC server for swarm presence ─────────────────
     // This makes this clankers instance discoverable on the LAN via mDNS
@@ -364,8 +171,10 @@ pub async fn run_interactive(
                     // Load initial peer list
                     let registry =
                         crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(paths));
-                    let entries =
-                        crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
+                    let entries = crate::tui::components::peers_panel::entries_from_registry(
+                        &registry,
+                        chrono::Duration::minutes(5),
+                    );
                     peers_panel.set_peers(entries);
                 }
                 Some(cancel)
@@ -429,6 +238,240 @@ pub async fn run_interactive(
     }
 
     result
+}
+
+/// Set up session persistence: create new session or resume existing one
+fn setup_session(
+    app: &mut App,
+    cwd: &str,
+    model: &str,
+    db: &Option<crate::db::Db>,
+    settings: &crate::config::settings::Settings,
+    resume_opts: ResumeOptions,
+) -> (
+    Option<crate::session::SessionManager>,
+    Vec<crate::provider::message::AgentMessage>,
+    Option<crate::worktree::session_bridge::WorktreeSetup>,
+) {
+    let paths = crate::config::ClankersPaths::get();
+    let sessions_dir = &paths.global_sessions_dir;
+    let use_worktrees = settings.use_worktrees;
+
+    // Helper: create a new session, optionally with a worktree
+    let create_new_session = |app: &mut App,
+                              cwd: &str,
+                              db: &Option<crate::db::Db>|
+     -> (
+        Option<crate::session::SessionManager>,
+        Vec<crate::provider::message::AgentMessage>,
+        Option<crate::worktree::session_bridge::WorktreeSetup>,
+    ) {
+        // Try to set up a worktree first so we can record it in the session header
+        let wt_setup = match db {
+            Some(db) => crate::worktree::session_bridge::setup_worktree_for_session(db, cwd, use_worktrees),
+            None => None,
+        };
+        let (wt_path, wt_branch) = match &wt_setup {
+            Some(s) => (Some(s.working_dir.to_string_lossy().to_string()), Some(s.branch.clone())),
+            None => (None, None),
+        };
+        match crate::session::SessionManager::create(
+            sessions_dir,
+            cwd,
+            model,
+            None,
+            wt_path.as_deref(),
+            wt_branch.as_deref(),
+        ) {
+            Ok(mgr) => {
+                app.session_id = mgr.session_id().to_string();
+                if let Some(ref s) = wt_setup {
+                    app.push_system(format!("Worktree: {}", s.branch), false);
+                }
+                (Some(mgr), Vec::new(), wt_setup)
+            }
+            Err(e) => {
+                tracing::warn!("Failed to create session: {}", e);
+                (None, Vec::new(), None)
+            }
+        }
+    };
+
+    // Helper: resume a session, re-entering its worktree if present
+    let resume_session = |app: &mut App,
+                          mgr: crate::session::SessionManager,
+                          from_label: &str|
+     -> (
+        Option<crate::session::SessionManager>,
+        Vec<crate::provider::message::AgentMessage>,
+        Option<crate::worktree::session_bridge::WorktreeSetup>,
+    ) {
+        let msgs = mgr.build_context().unwrap_or_default();
+        app.session_id = mgr.session_id().to_string();
+        let resume_entry = crate::session::entry::SessionEntry::Resume(crate::session::entry::ResumeEntry {
+            id: crate::provider::message::MessageId::generate(),
+            resumed_at: chrono::Utc::now(),
+            from_entry_id: crate::provider::message::MessageId::new(from_label),
+        });
+        let _ = crate::session::store::append_entry(mgr.file_path(), &resume_entry);
+        let msg_count = msgs.len();
+        app.push_system(format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count), false);
+
+        // Re-enter the worktree if this session had one
+        let wt_setup = crate::worktree::session_bridge::resume_worktree(mgr.worktree_path(), mgr.worktree_branch());
+        if let Some(ref s) = wt_setup {
+            app.push_system(format!("Worktree: {}", s.branch), false);
+        }
+        (Some(mgr), msgs, wt_setup)
+    };
+
+    if resume_opts.no_session {
+        (None, Vec::new(), None)
+    } else if resume_opts.continue_last {
+        // Find the most recent session for this cwd
+        let files = crate::session::store::list_sessions(sessions_dir, cwd);
+        if let Some(latest_file) = files.into_iter().next() {
+            match crate::session::SessionManager::open(latest_file) {
+                Ok(mgr) => resume_session(app, mgr, "continue"),
+                Err(e) => {
+                    app.push_system(format!("Failed to resume last session: {}", e), true);
+                    create_new_session(app, cwd, db)
+                }
+            }
+        } else {
+            app.push_system("No previous session found. Starting new session.".to_string(), false);
+            create_new_session(app, cwd, db)
+        }
+    } else if let Some(ref session_id) = resume_opts.session_id {
+        // Resume a specific session by ID
+        let files = crate::session::store::list_sessions(sessions_dir, cwd);
+        let found = files
+            .into_iter()
+            .find(|f| f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(session_id)));
+        if let Some(file) = found {
+            match crate::session::SessionManager::open(file) {
+                Ok(mgr) => resume_session(app, mgr, "resume"),
+                Err(e) => {
+                    app.push_system(format!("Failed to resume session '{}': {}", session_id, e), true);
+                    create_new_session(app, cwd, db)
+                }
+            }
+        } else {
+            app.push_system(format!("Session '{}' not found.", session_id), true);
+            create_new_session(app, cwd, db)
+        }
+    } else {
+        // Default: create a new session
+        create_new_session(app, cwd, db)
+    }
+}
+
+/// Build agent with all tools and configuration
+#[allow(clippy::type_complexity)]
+fn build_agent_with_tools(
+    provider: Arc<dyn crate::provider::Provider>,
+    settings: &crate::config::settings::Settings,
+    model: String,
+    system_prompt: String,
+    app: &mut App,
+    panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
+    todo_tx: tokio::sync::mpsc::UnboundedSender<(
+        crate::tools::todo::TodoAction,
+        tokio::sync::oneshot::Sender<crate::tools::todo::TodoResponse>,
+    )>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    paths: &crate::config::ClankersPaths,
+    db: &Option<crate::db::Db>,
+) -> (Agent, tokio::sync::broadcast::Receiver<AgentEvent>, crate::tools::bash::ConfirmRx) {
+    // Create a temporary agent with empty tools to get event_tx for tool construction
+    let temp_agent =
+        Agent::new(Arc::clone(&provider), Vec::new(), settings.clone(), model.clone(), system_prompt.clone());
+    let event_tx = temp_agent.event_sender();
+    let (bash_confirm_tx, bash_confirm_rx) = crate::tools::bash::confirm_channel();
+
+    // Create and start the process monitor
+    let process_monitor = {
+        let config = crate::procmon::ProcessMonitorConfig::default();
+        let monitor = std::sync::Arc::new(crate::procmon::ProcessMonitor::new(config, Some(event_tx.clone())));
+        monitor.clone().start();
+        monitor
+    };
+
+    // Wire process monitor into the TUI panel
+    *process_panel(app) =
+        crate::tui::components::process_panel::ProcessPanel::new().with_monitor(process_monitor.clone());
+
+    let tool_env = crate::modes::common::ToolEnv {
+        event_tx: Some(event_tx),
+        panel_tx: Some(panel_tx),
+        todo_tx: Some(todo_tx),
+        bash_confirm_tx: Some(bash_confirm_tx),
+        process_monitor: Some(process_monitor),
+    };
+    let tools = crate::modes::common::build_all_tools_with_env(&tool_env, plugin_manager);
+
+    // Populate tool info for /tools slash command
+    {
+        let builtin_names: std::collections::HashSet<&str> = [
+            "read",
+            "write",
+            "edit",
+            "bash",
+            "grep",
+            "find",
+            "ls",
+            "subagent",
+            "delegate_task",
+            "todo",
+            "web",
+            "commit",
+            "review",
+            "ask",
+            "image_gen",
+            "validate_tui",
+        ]
+        .into_iter()
+        .collect();
+        for tool in &tools {
+            let def = tool.definition();
+            let source = if builtin_names.contains(def.name.as_str()) {
+                "built-in".to_string()
+            } else {
+                "plugin".to_string()
+            };
+            app.tool_info.push((def.name.clone(), def.description.clone(), source));
+        }
+        app.tool_info.sort_by(|a, b| a.2.cmp(&b.2).then(a.0.cmp(&b.0)));
+    }
+
+    // Fire plugin_init event so plugins can set up their initial UI
+    if let Some(pm) = plugin_manager {
+        for action in crate::modes::common::fire_plugin_init(pm) {
+            app.plugin_ui.apply(action);
+        }
+    }
+
+    // Build the final agent with tools, db, routing, and cost tracking
+    let mut agent_builder = crate::agent::builder::AgentBuilder::new(provider, settings.clone(), model, system_prompt)
+        .with_tools(tools)
+        .with_paths(paths.clone());
+
+    // Attach the global database so the agent can read memories and record usage
+    if let Some(db) = db {
+        agent_builder = agent_builder.with_db(db.clone());
+    }
+
+    // Build the agent (automatically wires routing and cost tracking from settings)
+    let agent = agent_builder.build();
+
+    // Extract cost tracker reference for the app UI
+    if settings.cost_tracking.is_some() {
+        app.cost_tracker = agent.cost_tracker().cloned();
+    }
+
+    let event_rx = agent.subscribe();
+
+    (agent, event_rx, bash_confirm_rx)
 }
 
 // ---------------------------------------------------------------------------
@@ -718,32 +761,6 @@ pub(crate) fn resume_session_from_file(
     }
 }
 
-// ---------------------------------------------------------------------------
-// Character insertion (insert mode, unmapped keys)
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Mouse event handlers
-
-// ---------------------------------------------------------------------------
-// Clipboard paste (text + image) — runs on a background thread
-// ---------------------------------------------------------------------------
-
-
-
-
-// ---------------------------------------------------------------------------
-// External editor ($EDITOR / $VISUAL)
-// ---------------------------------------------------------------------------
-
-
-// ---------------------------------------------------------------------------
-
-// ---------------------------------------------------------------------------
-// Slash command execution
-// ---------------------------------------------------------------------------
-
-/// Parse an optional `--account <name>` flag from args, returning (account, remaining_args)
 /// Parse OAuth callback input: code#state, URL with ?code=...&state=..., or space-separated.
 pub(crate) fn parse_oauth_input(input: &str) -> Option<(String, String)> {
     let input = input.trim();
@@ -786,7 +803,6 @@ pub(crate) fn parse_account_flag(args: &str) -> (Option<String>, String) {
 // at the call site in event_loop.rs using std::mem::take() to avoid
 // the self-referential borrow (registry lives inside App, which is
 // mutably borrowed by SlashContext).
-
 
 /// Strip YAML frontmatter (--- ... ---) from a prompt template
 /// Format a timestamp as a human-readable "time ago" string.
@@ -845,18 +861,13 @@ pub(crate) fn persist_messages(
     }
 }
 
-
 // ---------------------------------------------------------------------------
 // Plugin event dispatch
 // ---------------------------------------------------------------------------
 
-
-
 // ---------------------------------------------------------------------------
 // Swarm / peer background tasks
 // ---------------------------------------------------------------------------
-
-
 
 // ---------------------------------------------------------------------------
 // Embedded RPC server (started alongside the TUI)
@@ -975,17 +986,13 @@ pub async fn start_embedded_rpc(
 /// Helper to access the ProcessPanel. Panics if panel not registered (should never happen).
 fn process_panel(app: &mut App) -> &mut crate::tui::components::process_panel::ProcessPanel {
     app.panels
-        .downcast_mut::<crate::tui::components::process_panel::ProcessPanel>(
-            crate::tui::panel::PanelId::Processes,
-        )
+        .downcast_mut::<crate::tui::components::process_panel::ProcessPanel>(crate::tui::panel::PanelId::Processes)
         .expect("process panel registered at startup")
 }
 
 /// Helper to access the PeersPanel. Panics if panel not registered (should never happen).
 fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_panel::PeersPanel {
     app.panels
-        .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(
-            crate::tui::panel::PanelId::Peers,
-        )
+        .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(crate::tui::panel::PanelId::Peers)
         .expect("peers panel registered at startup")
 }

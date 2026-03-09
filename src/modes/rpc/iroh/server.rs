@@ -9,11 +9,13 @@ use serde_json::json;
 use tracing::info;
 use tracing::warn;
 
-use super::protocol::{read_frame, write_frame};
 use super::ServerState;
+use super::protocol::read_frame;
+use super::protocol::write_frame;
 use crate::agent::Agent;
 use crate::agent::events::AgentEvent;
-use crate::modes::rpc::protocol::{Request, Response};
+use crate::modes::rpc::protocol::Request;
+use crate::modes::rpc::protocol::Response;
 use crate::provider::streaming::ContentDelta;
 
 // ── Server: accept connections ──────────────────────────────────────────────
@@ -183,9 +185,7 @@ async fn handle_file_send_inner(
     std::fs::create_dir_all(&receive_dir).map_err(|e| format!("Cannot create dir: {}", e))?;
 
     let dest = receive_dir.join(&safe_name);
-    let mut file = tokio::fs::File::create(&dest)
-        .await
-        .map_err(|e| format!("Cannot create file: {}", e))?;
+    let mut file = tokio::fs::File::create(&dest).await.map_err(|e| format!("Cannot create file: {}", e))?;
 
     let total = stream_to_file(&mut recv, &mut file).await?;
 
@@ -195,10 +195,7 @@ async fn handle_file_send_inner(
 }
 
 /// Stream data from recv into a file. Returns total bytes written.
-async fn stream_to_file(
-    recv: &mut iroh::endpoint::RecvStream,
-    file: &mut tokio::fs::File,
-) -> Result<u64, String> {
+async fn stream_to_file(recv: &mut iroh::endpoint::RecvStream, file: &mut tokio::fs::File) -> Result<u64, String> {
     let mut total = 0u64;
     let mut buf = vec![0u8; 64 * 1024];
 
@@ -271,11 +268,7 @@ fn extract_file_path(request: &Request) -> Result<PathBuf, Response> {
 fn get_file_metadata(file_path: &Path) -> Result<(String, u64), Response> {
     let metadata = std::fs::metadata(file_path).map_err(|e| Response::error(format!("Cannot stat file: {}", e)))?;
 
-    let file_name = file_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or("unnamed")
-        .to_string();
+    let file_name = file_path.file_name().and_then(|n| n.to_str()).unwrap_or("unnamed").to_string();
 
     Ok((file_name, metadata.len()))
 }

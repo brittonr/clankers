@@ -9,7 +9,8 @@ pub mod handlers;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use crate::registry::{Conflict, PRIORITY_BUILTIN};
+use crate::registry::Conflict;
+use crate::registry::PRIORITY_BUILTIN;
 use crate::tui::components::leader_menu::MenuPlacement;
 
 // ---------------------------------------------------------------------------
@@ -102,7 +103,6 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
 //
 // That's it! No more maintaining metadata in two places.
 
-
 // ---------------------------------------------------------------------------
 // Registry system — dynamic command registration with conflict resolution
 // ---------------------------------------------------------------------------
@@ -125,10 +125,7 @@ impl SlashRegistry {
         let mut conflicts = Vec::new();
 
         // Collect all commands from all contributors
-        let mut all_commands: Vec<SlashCommandDef> = contributors
-            .iter()
-            .flat_map(|c| c.slash_commands())
-            .collect();
+        let mut all_commands: Vec<SlashCommandDef> = contributors.iter().flat_map(|c| c.slash_commands()).collect();
 
         // Sort by priority (highest first) so higher priority wins
         all_commands.sort_by_key(|cmd| std::cmp::Reverse(cmd.priority));
@@ -167,11 +164,7 @@ impl SlashRegistry {
 
     /// Get completions for a partial input.
     pub fn completions(&self, partial: &str) -> Vec<&SlashCommandDef> {
-        let mut cmds: Vec<_> = self
-            .commands
-            .values()
-            .filter(|c| c.name.starts_with(partial))
-            .collect();
+        let mut cmds: Vec<_> = self.commands.values().filter(|c| c.name.starts_with(partial)).collect();
         cmds.sort_by_key(|c| &c.name);
         cmds
     }
@@ -252,11 +245,7 @@ impl SlashContributor for BuiltinSlashContributor {
                     description: cmd.description.to_string(),
                     help: cmd.help.to_string(),
                     accepts_args: cmd.accepts_args,
-                    subcommands: cmd
-                        .subcommands
-                        .iter()
-                        .map(|(n, d)| (n.to_string(), d.to_string()))
-                        .collect(),
+                    subcommands: cmd.subcommands.iter().map(|(n, d)| (n.to_string(), d.to_string())).collect(),
                     handler,
                     priority: PRIORITY_BUILTIN,
                     source: "builtin".to_string(),
@@ -298,10 +287,11 @@ pub fn parse_command(input: &str) -> Option<(String, String)> {
     None
 }
 
-
 pub mod completion;
-pub use completion::{CompletionItem, completions, completions_from_registry, help_text};
-
+pub use completion::CompletionItem;
+pub use completion::completions;
+pub use completion::completions_from_registry;
+pub use completion::help_text;
 
 #[cfg(test)]
 mod tests;

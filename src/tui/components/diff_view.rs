@@ -55,8 +55,7 @@ pub struct DiffView {
 impl DiffView {
     /// Compute a diff between `original` content and the current file on disk.
     ///
-    /// - `original`: the file content captured on first read (or `None` for
-    ///   newly created files).
+    /// - `original`: the file content captured on first read (or `None` for newly created files).
     /// - `file_path`: absolute or CWD-relative path to the file.
     pub fn compute(file_path: &str, original: Option<&str>) -> Self {
         let current = std::fs::read_to_string(file_path).ok();
@@ -222,10 +221,7 @@ impl DiffView {
         if self.empty {
             format!(" {} — no changes ", self.file_path)
         } else {
-            format!(
-                " {} — +{} −{} ",
-                self.file_path, self.additions, self.deletions
-            )
+            format!(" {} — +{} −{} ", self.file_path, self.additions, self.deletions)
         }
     }
 
@@ -249,18 +245,12 @@ impl DiffView {
             .iter()
             .map(|dl| {
                 let style = match dl.kind {
-                    DiffLineKind::FileHeader => Style::default()
-                        .fg(Color::White)
-                        .add_modifier(Modifier::BOLD),
-                    DiffLineKind::HunkHeader => Style::default()
-                        .fg(Color::Cyan)
-                        .add_modifier(Modifier::DIM),
+                    DiffLineKind::FileHeader => Style::default().fg(Color::White).add_modifier(Modifier::BOLD),
+                    DiffLineKind::HunkHeader => Style::default().fg(Color::Cyan).add_modifier(Modifier::DIM),
                     DiffLineKind::Added => Style::default().fg(Color::Green),
                     DiffLineKind::Removed => Style::default().fg(Color::Red),
                     DiffLineKind::Context => Style::default().fg(theme.fg),
-                    DiffLineKind::Info => Style::default()
-                        .fg(Color::Yellow)
-                        .add_modifier(Modifier::ITALIC),
+                    DiffLineKind::Info => Style::default().fg(Color::Yellow).add_modifier(Modifier::ITALIC),
                 };
                 Line::from(Span::styled(&dl.text, style))
             })
@@ -270,9 +260,7 @@ impl DiffView {
         let max_scroll = total.saturating_sub(area.height);
         let scroll = self.scroll.clamp(max_scroll);
 
-        let para = Paragraph::new(rendered)
-            .scroll((scroll, 0))
-            .wrap(Wrap { trim: false });
+        let para = Paragraph::new(rendered).scroll((scroll, 0)).wrap(Wrap { trim: false });
         frame.render_widget(para, area);
     }
 }
@@ -299,15 +287,9 @@ mod tests {
         assert_eq!(view.deletions, 0);
         assert!(!view.empty);
         // Should have hunk header
-        assert!(view
-            .lines
-            .iter()
-            .any(|l| l.kind == DiffLineKind::HunkHeader));
+        assert!(view.lines.iter().any(|l| l.kind == DiffLineKind::HunkHeader));
         // Should have the added line
-        assert!(view
-            .lines
-            .iter()
-            .any(|l| l.kind == DiffLineKind::Added && l.text.contains("inserted")));
+        assert!(view.lines.iter().any(|l| l.kind == DiffLineKind::Added && l.text.contains("inserted")));
     }
 
     #[test]
@@ -317,10 +299,7 @@ mod tests {
         let view = DiffView::diff_texts("test.rs", old, new);
         assert_eq!(view.additions, 0);
         assert_eq!(view.deletions, 1);
-        assert!(view
-            .lines
-            .iter()
-            .any(|l| l.kind == DiffLineKind::Removed && l.text.contains("bbb")));
+        assert!(view.lines.iter().any(|l| l.kind == DiffLineKind::Removed && l.text.contains("bbb")));
     }
 
     #[test]
@@ -338,12 +317,8 @@ mod tests {
         assert_eq!(view.additions, 1);
         assert_eq!(view.deletions, 0);
         assert!(!view.empty);
-        assert!(view.lines.iter().any(|l| l.kind == DiffLineKind::Info
-            && l.text.contains("new file")));
-        assert!(view
-            .lines
-            .iter()
-            .any(|l| l.kind == DiffLineKind::Added && l.text.contains("fn main")));
+        assert!(view.lines.iter().any(|l| l.kind == DiffLineKind::Info && l.text.contains("new file")));
+        assert!(view.lines.iter().any(|l| l.kind == DiffLineKind::Added && l.text.contains("fn main")));
     }
 
     #[test]
@@ -351,8 +326,7 @@ mod tests {
         let view = DiffView::deleted_file("old.rs", "goodbye\n");
         assert_eq!(view.additions, 0);
         assert_eq!(view.deletions, 1);
-        assert!(view.lines.iter().any(|l| l.kind == DiffLineKind::Info
-            && l.text.contains("deleted")));
+        assert!(view.lines.iter().any(|l| l.kind == DiffLineKind::Info && l.text.contains("deleted")));
     }
 
     #[test]
@@ -402,10 +376,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.txt");
         std::fs::write(&path, "modified\n").unwrap();
-        let view = DiffView::compute(
-            path.to_str().unwrap(),
-            Some("original\n"),
-        );
+        let view = DiffView::compute(path.to_str().unwrap(), Some("original\n"));
         assert_eq!(view.additions, 1);
         assert_eq!(view.deletions, 1);
         assert!(!view.empty);
@@ -425,11 +396,7 @@ mod tests {
     #[test]
     fn test_file_header_lines() {
         let view = DiffView::diff_texts("src/main.rs", "old\n", "new\n");
-        let headers: Vec<_> = view
-            .lines
-            .iter()
-            .filter(|l| l.kind == DiffLineKind::FileHeader)
-            .collect();
+        let headers: Vec<_> = view.lines.iter().filter(|l| l.kind == DiffLineKind::FileHeader).collect();
         assert_eq!(headers.len(), 2);
         assert!(headers[0].text.starts_with("--- a/"));
         assert!(headers[1].text.starts_with("+++ b/"));
@@ -441,11 +408,7 @@ mod tests {
         let new = "a\nb\nc\nX\ne\nf\ng\nh\n";
         let view = DiffView::diff_texts("ctx.rs", old, new);
         // Should have context lines around the change
-        let context_count = view
-            .lines
-            .iter()
-            .filter(|l| l.kind == DiffLineKind::Context)
-            .count();
+        let context_count = view.lines.iter().filter(|l| l.kind == DiffLineKind::Context).count();
         assert!(context_count > 0);
         assert_eq!(view.additions, 1);
         assert_eq!(view.deletions, 1);

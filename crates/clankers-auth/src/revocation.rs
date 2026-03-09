@@ -14,10 +14,11 @@
 //! - Revocations are write-once, never deleted (until token expires naturally)
 //! - Bounded scan operations to prevent unbounded memory usage
 
+use std::sync::Arc;
+
 use redb::Database;
 use redb::ReadableTable;
 use redb::TableDefinition;
-use std::sync::Arc;
 
 /// Table: token_hash ([u8; 32]) -> revocation_timestamp (u64)
 pub const REVOKED_TOKENS_TABLE: TableDefinition<&[u8], u64> = TableDefinition::new("revoked_tokens");
@@ -194,8 +195,9 @@ impl RevocationStore for RedbRevocationStore {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
+
+    use super::*;
 
     fn create_test_store() -> (RedbRevocationStore, TempDir) {
         let temp_dir = tempfile::tempdir().unwrap();

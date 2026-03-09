@@ -23,8 +23,7 @@ pub struct AccountItem {
     pub is_expired: bool,
 }
 
-impl AccountItem {
-}
+impl AccountItem {}
 
 #[derive(Default)]
 pub struct AccountSelector {

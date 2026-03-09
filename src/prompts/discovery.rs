@@ -149,7 +149,8 @@ mod tests {
     #[test]
     fn test_scan_prompts() {
         let dir = TempDir::new().expect("failed to create temp dir");
-        std::fs::write(dir.path().join("review.md"), "# Code Review\nReview the code").expect("failed to write prompt file");
+        std::fs::write(dir.path().join("review.md"), "# Code Review\nReview the code")
+            .expect("failed to write prompt file");
 
         let prompts = scan_prompts_dir(dir.path());
         assert_eq!(prompts.len(), 1);

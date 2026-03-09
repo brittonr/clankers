@@ -1,14 +1,18 @@
 //! Proactive agent features: heartbeats and trigger pipes.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
+
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
-
-use crate::modes::daemon::{SessionKey, SessionStore};
+use tracing::error;
+use tracing::info;
+use tracing::warn;
 
 use super::prompt::run_proactive_prompt;
+use crate::modes::daemon::SessionKey;
+use crate::modes::daemon::SessionStore;
 
 /// Check whether a response signals "nothing to report".
 pub(crate) fn is_heartbeat_ok(response: &str) -> bool {
@@ -46,12 +50,7 @@ pub(crate) async fn ensure_trigger_pipe(
         }
     };
 
-    let cancel = spawn_trigger_reader(
-        &session_dir,
-        key.clone(),
-        Arc::clone(&store),
-        matrix_client,
-    );
+    let cancel = spawn_trigger_reader(&session_dir, key.clone(), Arc::clone(&store), matrix_client);
 
     if let Some(cancel) = cancel {
         let mut store = store.write().await;
@@ -118,12 +117,7 @@ pub(crate) async fn run_session_heartbeat(
             }
 
             // Prompt the agent (without updating last_active)
-            let response = run_proactive_prompt(
-                Arc::clone(&store),
-                key.clone(),
-                prompt,
-            )
-            .await;
+            let response = run_proactive_prompt(Arc::clone(&store), key.clone(), prompt).await;
 
             // Stop typing
             {
@@ -240,12 +234,7 @@ pub(crate) fn spawn_trigger_reader(
                             let _ = c.set_typing(&room_id_parsed, true).await;
                         }
 
-                        let response = run_proactive_prompt(
-                            Arc::clone(&store),
-                            key.clone(),
-                            text,
-                        )
-                        .await;
+                        let response = run_proactive_prompt(Arc::clone(&store), key.clone(), text).await;
 
                         {
                             let c = matrix_client.read().await;
@@ -262,7 +251,7 @@ pub(crate) fn spawn_trigger_reader(
                             error!("[{}] trigger send failed: {e}", key);
                         }
                     }
-                    Ok(Some(_)) => {} // empty line, skip
+                    Ok(Some(_)) => {}  // empty line, skip
                     Ok(None) => break, // EOF — writer closed, re-open
                     Err(e) => {
                         warn!("[{}] trigger pipe read error: {e}", key);

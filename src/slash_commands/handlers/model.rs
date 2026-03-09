@@ -17,10 +17,11 @@ impl SlashHandler for ModelHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
-            ctx.app.push_system(format!("Current model: {}\n\nUsage: /model <model-name>", ctx.app.model), false);
+            ctx.app
+                .push_system(format!("Current model: {}\n\nUsage: /model <model-name>", ctx.app.model), false);
         } else {
             let old_model = std::mem::replace(&mut ctx.app.model, args.to_string());
             let _ = ctx.cmd_tx.send(AgentCommand::SetModel(args.to_string()));
@@ -58,7 +59,7 @@ impl SlashHandler for ThinkHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             let _ = ctx.cmd_tx.send(AgentCommand::CycleThinkingLevel);
@@ -96,7 +97,7 @@ impl SlashHandler for RoleHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         let roles = crate::config::model_roles::ModelRoles::with_defaults();
 
@@ -142,10 +143,7 @@ impl SlashHandler for RoleHandler {
             }
         } else {
             let available = roles.names().join(", ");
-            ctx.app.push_system(
-                format!("Unknown role: '{}'. Available: {}", parts[0], available),
-                true,
-            );
+            ctx.app.push_system(format!("Unknown role: '{}'. Available: {}", parts[0], available), true);
         }
     }
 }

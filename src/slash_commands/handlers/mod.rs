@@ -51,7 +51,7 @@ pub struct SlashContext<'a> {
 pub trait SlashHandler: Send + Sync {
     /// Returns the command's metadata (name, description, help, etc.)
     fn command(&self) -> super::SlashCommand;
-    
+
     /// Execute the command with the given arguments.
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>);
 }

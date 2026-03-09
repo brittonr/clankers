@@ -6,9 +6,10 @@ use crate::agent::Agent;
 use crate::config::paths::ClankersPaths;
 use crate::config::settings::Settings;
 use crate::db::Db;
-use crate::provider::Provider;
-use crate::model_selection::cost_tracker::{pricing_from_models, CostTracker};
+use crate::model_selection::cost_tracker::CostTracker;
+use crate::model_selection::cost_tracker::pricing_from_models;
 use crate::model_selection::policy::RoutingPolicy;
+use crate::provider::Provider;
 use crate::tools::Tool;
 
 /// Builder for constructing an Agent with automatic routing and cost tracking setup.
@@ -28,12 +29,7 @@ pub struct AgentBuilder {
 
 impl AgentBuilder {
     /// Create a new AgentBuilder with required parameters
-    pub fn new(
-        provider: Arc<dyn Provider>,
-        settings: Settings,
-        model: String,
-        system_prompt: String,
-    ) -> Self {
+    pub fn new(provider: Arc<dyn Provider>, settings: Settings, model: String, system_prompt: String) -> Self {
         Self {
             provider,
             settings,
@@ -71,13 +67,7 @@ impl AgentBuilder {
         // Snapshot model pricing before moving the provider into the agent
         let provider_models: Vec<clankers_router::Model> = self.provider.models().to_vec();
 
-        let mut agent = Agent::new(
-            self.provider,
-            self.tools,
-            self.settings.clone(),
-            self.model,
-            self.system_prompt,
-        );
+        let mut agent = Agent::new(self.provider, self.tools, self.settings.clone(), self.model, self.system_prompt);
 
         // Attach database if provided
         if let Some(db) = self.db {
@@ -85,11 +75,11 @@ impl AgentBuilder {
         }
 
         // Wire routing policy from settings
-        if let Some(routing_config) = self.settings.routing.as_ref() && routing_config.enabled {
+        if let Some(routing_config) = self.settings.routing.as_ref()
+            && routing_config.enabled
+        {
             let policy = RoutingPolicy::new(routing_config.clone());
-            agent = agent
-                .with_routing_policy(policy)
-                .with_model_roles(self.settings.model_roles.clone());
+            agent = agent.with_routing_policy(policy).with_model_roles(self.settings.model_roles.clone());
         }
 
         // Wire cost tracking from settings

@@ -69,11 +69,9 @@ pub async fn run(ctx: &CommandContext, action: TokenAction) -> Result<()> {
 fn open_auth_db(ctx: &CommandContext) -> Result<std::sync::Arc<redb::Database>> {
     let db_path = ctx.paths.global_config_dir.join("clankers.db");
     std::fs::create_dir_all(&ctx.paths.global_config_dir).ok();
-    let redb_db = std::sync::Arc::new(
-        redb::Database::create(&db_path).map_err(|e| crate::error::Error::Io {
-            source: std::io::Error::other(e.to_string()),
-        })?,
-    );
+    let redb_db = std::sync::Arc::new(redb::Database::create(&db_path).map_err(|e| crate::error::Error::Io {
+        source: std::io::Error::other(e.to_string()),
+    })?);
     {
         let tx = redb_db.begin_write().map_err(|e| crate::error::Error::Io {
             source: std::io::Error::other(e.to_string()),
@@ -96,7 +94,8 @@ fn handle_create(
     from: Option<String>,
     scope: TokenScope,
 ) -> Result<()> {
-    use clankers_auth::{CapabilityToken, TokenBuilder};
+    use clankers_auth::CapabilityToken;
+    use clankers_auth::TokenBuilder;
 
     let lifetime = parse_duration(expire).ok_or_else(|| crate::error::Error::Config {
         message: format!("Invalid duration: '{}'. Examples: 1h, 24h, 7d, 30d, 365d", expire),
@@ -147,16 +146,24 @@ fn handle_create(
 }
 
 /// Build capabilities for a full-access root token.
-fn build_root_capabilities(
-    builder: clankers_auth::TokenBuilder,
-) -> clankers_auth::TokenBuilder {
+fn build_root_capabilities(builder: clankers_auth::TokenBuilder) -> clankers_auth::TokenBuilder {
     use clankers_auth::Capability;
     builder
         .with_capability(Capability::Prompt)
-        .with_capability(Capability::ToolUse { tool_pattern: "*".into() })
-        .with_capability(Capability::ShellExecute { command_pattern: "*".into(), working_dir: None })
-        .with_capability(Capability::FileAccess { prefix: "/".into(), read_only: false })
-        .with_capability(Capability::BotCommand { command_pattern: "*".into() })
+        .with_capability(Capability::ToolUse {
+            tool_pattern: "*".into(),
+        })
+        .with_capability(Capability::ShellExecute {
+            command_pattern: "*".into(),
+            working_dir: None,
+        })
+        .with_capability(Capability::FileAccess {
+            prefix: "/".into(),
+            read_only: false,
+        })
+        .with_capability(Capability::BotCommand {
+            command_pattern: "*".into(),
+        })
         .with_capability(Capability::SessionManage)
         .with_capability(Capability::ModelSwitch)
         .with_capability(Capability::Delegate)
@@ -287,10 +294,8 @@ fn handle_list(redb_db: &std::sync::Arc<redb::Database>) -> Result<()> {
 fn print_token_list_entry(hash_hex: &str, encoded: &[u8]) {
     match clankers_auth::CapabilityToken::decode(encoded) {
         Ok(token) => {
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map(|d| d.as_secs())
-                .unwrap_or(0);
+            let now =
+                std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
             let status = if token.expires_at < now { "expired" } else { "valid" };
             let expires = chrono::DateTime::from_timestamp(token.expires_at as i64, 0)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
@@ -348,15 +353,10 @@ fn handle_revoke(redb_db: &std::sync::Arc<redb::Database>, hash: &str) -> Result
     };
 
     let hash_hex = hex::encode(token_hash);
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
 
-    let store = clankers_auth::RedbRevocationStore::new(redb_db.clone()).map_err(|e| {
-        crate::error::Error::Config {
-            message: format!("Failed to initialize revocation store: {}", e),
-        }
+    let store = clankers_auth::RedbRevocationStore::new(redb_db.clone()).map_err(|e| crate::error::Error::Config {
+        message: format!("Failed to initialize revocation store: {}", e),
     })?;
     store.revoke(token_hash, now);
 
@@ -367,17 +367,12 @@ fn handle_revoke(redb_db: &std::sync::Arc<redb::Database>, hash: &str) -> Result
 
 /// Display detailed token info.
 fn handle_info(token_b64: &str) -> Result<()> {
-    let token = clankers_auth::CapabilityToken::from_base64(token_b64).map_err(|e| {
-        crate::error::Error::Config {
-            message: format!("Failed to decode token: {}", e),
-        }
+    let token = clankers_auth::CapabilityToken::from_base64(token_b64).map_err(|e| crate::error::Error::Config {
+        message: format!("Failed to decode token: {}", e),
     })?;
 
     let hash = hex::encode(token.hash());
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let expired = token.expires_at < now;
 
     println!("Token Info:");
@@ -385,10 +380,7 @@ fn handle_info(token_b64: &str) -> Result<()> {
     println!("  Issuer:     {}", token.issuer);
     println!("  Audience:   {:?}", token.audience);
     println!("  Hash:       {}", hash);
-    println!(
-        "  Issued:     {}",
-        format_timestamp(token.issued_at, "%Y-%m-%d %H:%M:%S UTC"),
-    );
+    println!("  Issued:     {}", format_timestamp(token.issued_at, "%Y-%m-%d %H:%M:%S UTC"),);
     println!(
         "  Expires:    {} {}",
         format_timestamp(token.expires_at, "%Y-%m-%d %H:%M:%S UTC"),
@@ -426,11 +418,7 @@ fn print_capability_detail(cap: &clankers_auth::Capability) {
             command_pattern,
             working_dir,
         } => {
-            println!(
-                "    - ShellExecute: {} (wd: {})",
-                command_pattern,
-                working_dir.as_deref().unwrap_or("any")
-            );
+            println!("    - ShellExecute: {} (wd: {})", command_pattern, working_dir.as_deref().unwrap_or("any"));
         }
         clankers_auth::Capability::FileAccess { prefix, read_only } => {
             let mode = if *read_only { "read-only" } else { "read-write" };

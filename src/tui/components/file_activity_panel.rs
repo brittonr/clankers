@@ -144,9 +144,7 @@ impl FileActivityPanel {
 
     /// Shorten a path relative to cwd for display
     pub fn display_path<'a>(path: &'a str, cwd: &str) -> &'a str {
-        path.strip_prefix(cwd)
-            .map(|p| p.strip_prefix('/').unwrap_or(p))
-            .unwrap_or(path)
+        path.strip_prefix(cwd).map(|p| p.strip_prefix('/').unwrap_or(p)).unwrap_or(path)
     }
 
     /// Total number of files tracked
@@ -186,10 +184,7 @@ impl FileActivityPanel {
         let display_idx = self.nav.selected;
         let actual_idx = self.order.len().saturating_sub(1).saturating_sub(display_idx);
         if let Some(path) = self.order.get(actual_idx).cloned() {
-            let original = self
-                .files
-                .get(&path)
-                .and_then(|e| e.original_content.as_deref());
+            let original = self.files.get(&path).and_then(|e| e.original_content.as_deref());
             let diff = DiffView::compute(&path, original);
             self.diff_view = Some(diff);
             self.view = FileView::Diff;
@@ -435,8 +430,7 @@ mod tests {
         panel.record("src/main.rs".to_string(), FileOp::Edit);
         assert_eq!(panel.file_count(), 1);
         assert_eq!(panel.total_ops(), 2);
-        let entry = panel.files.get("src/main.rs")
-            .expect("file should exist after recording");
+        let entry = panel.files.get("src/main.rs").expect("file should exist after recording");
         assert_eq!(entry.last_op, FileOp::Edit);
     }
 
@@ -514,15 +508,13 @@ mod tests {
     fn test_record_snapshots_on_first_read() {
         let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("snap.txt");
-        std::fs::write(&path, "original content\n")
-            .expect("test file write should succeed");
+        std::fs::write(&path, "original content\n").expect("test file write should succeed");
 
         let mut panel = FileActivityPanel::new();
         let path_str = path.to_str().expect("path should be valid UTF-8").to_string();
         panel.record(path_str.clone(), FileOp::Read);
 
-        let entry = panel.files.get(&path_str)
-            .expect("file should exist after recording");
+        let entry = panel.files.get(&path_str).expect("file should exist after recording");
         assert_eq!(entry.original_content.as_deref(), Some("original content\n"));
     }
 
@@ -531,8 +523,7 @@ mod tests {
         let mut panel = FileActivityPanel::new();
         panel.record("/tmp/__no_snapshot_test__".to_string(), FileOp::Create);
 
-        let entry = panel.files.get("/tmp/__no_snapshot_test__")
-            .expect("file should exist after recording");
+        let entry = panel.files.get("/tmp/__no_snapshot_test__").expect("file should exist after recording");
         assert!(entry.original_content.is_none());
     }
 
@@ -540,21 +531,18 @@ mod tests {
     fn test_snapshot_only_on_first_encounter() {
         let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("once.txt");
-        std::fs::write(&path, "version 1\n")
-            .expect("test file write should succeed");
+        std::fs::write(&path, "version 1\n").expect("test file write should succeed");
 
         let mut panel = FileActivityPanel::new();
         let path_str = path.to_str().expect("path should be valid UTF-8").to_string();
         panel.record(path_str.clone(), FileOp::Read);
 
         // Mutate the file and record again
-        std::fs::write(&path, "version 2\n")
-            .expect("test file write should succeed");
+        std::fs::write(&path, "version 2\n").expect("test file write should succeed");
         panel.record(path_str.clone(), FileOp::Edit);
 
         // Original snapshot should still be version 1
-        let entry = panel.files.get(&path_str)
-            .expect("file should exist after recording");
+        let entry = panel.files.get(&path_str).expect("file should exist after recording");
         assert_eq!(entry.original_content.as_deref(), Some("version 1\n"));
     }
 
@@ -569,22 +557,19 @@ mod tests {
     fn test_open_diff_computes_in_process() {
         let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("diff_me.txt");
-        std::fs::write(&path, "line1\nline2\n")
-            .expect("test file write should succeed");
+        std::fs::write(&path, "line1\nline2\n").expect("test file write should succeed");
 
         let mut panel = FileActivityPanel::new();
         let path_str = path.to_str().expect("path should be valid UTF-8").to_string();
         panel.record(path_str.clone(), FileOp::Read);
 
         // Mutate the file
-        std::fs::write(&path, "line1\nmodified\nline2\n")
-            .expect("test file write should succeed");
+        std::fs::write(&path, "line1\nmodified\nline2\n").expect("test file write should succeed");
         panel.record(path_str, FileOp::Edit);
 
         panel.open_diff();
         assert_eq!(panel.view, FileView::Diff);
-        let dv = panel.diff_view.as_ref()
-            .expect("diff_view should be populated after open_diff");
+        let dv = panel.diff_view.as_ref().expect("diff_view should be populated after open_diff");
         assert_eq!(dv.additions, 1);
         assert_eq!(dv.deletions, 0);
         assert!(!dv.empty);
@@ -594,8 +579,7 @@ mod tests {
     fn test_open_diff_unchanged_file() {
         let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("unchanged.txt");
-        std::fs::write(&path, "same\n")
-            .expect("test file write should succeed");
+        std::fs::write(&path, "same\n").expect("test file write should succeed");
 
         let mut panel = FileActivityPanel::new();
         let path_str = path.to_str().expect("path should be valid UTF-8").to_string();
@@ -603,16 +587,14 @@ mod tests {
         // File is unchanged — diff should be empty
         panel.open_diff();
         assert_eq!(panel.view, FileView::Diff);
-        assert!(panel.diff_view.as_ref()
-            .expect("diff_view should be populated after open_diff").empty);
+        assert!(panel.diff_view.as_ref().expect("diff_view should be populated after open_diff").empty);
     }
 
     #[test]
     fn test_close_diff_returns_to_list() {
         let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("close.txt");
-        std::fs::write(&path, "x\n")
-            .expect("test file write should succeed");
+        std::fs::write(&path, "x\n").expect("test file write should succeed");
 
         let mut panel = FileActivityPanel::new();
         let path_str = path.to_str().expect("path should be valid UTF-8").to_string();
@@ -636,8 +618,7 @@ mod tests {
     fn test_is_empty_false_in_diff_view() {
         let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("empty_check.txt");
-        std::fs::write(&path, "x\n")
-            .expect("test file write should succeed");
+        std::fs::write(&path, "x\n").expect("test file write should succeed");
 
         let mut panel = FileActivityPanel::new();
         let path_str = path.to_str().expect("path should be valid UTF-8").to_string();
@@ -650,16 +631,13 @@ mod tests {
     fn test_diff_title_shows_stats() {
         let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("titled.txt");
-        std::fs::write(&path, "old\n")
-            .expect("test file write should succeed");
+        std::fs::write(&path, "old\n").expect("test file write should succeed");
 
         let mut panel = FileActivityPanel::new();
-        panel.cwd = dir.path().to_str()
-            .expect("temp dir path should be valid UTF-8").to_string();
+        panel.cwd = dir.path().to_str().expect("temp dir path should be valid UTF-8").to_string();
         let path_str = path.to_str().expect("path should be valid UTF-8").to_string();
         panel.record(path_str, FileOp::Read);
-        std::fs::write(&path, "new\n")
-            .expect("test file write should succeed");
+        std::fs::write(&path, "new\n").expect("test file write should succeed");
         panel.open_diff();
         let title = panel.title();
         assert!(title.starts_with("Diff:"), "title was: {title}");
@@ -671,8 +649,7 @@ mod tests {
     fn test_focus_hints_change_with_view() {
         let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("hints.txt");
-        std::fs::write(&path, "x\n")
-            .expect("test file write should succeed");
+        std::fs::write(&path, "x\n").expect("test file write should succeed");
 
         let mut panel = FileActivityPanel::new();
         assert!(panel.focus_hints().contains("Enter:diff"));
@@ -686,16 +663,14 @@ mod tests {
     fn test_diff_for_created_file() {
         let dir = tempfile::tempdir().expect("tempdir creation should succeed");
         let path = dir.path().join("created.txt");
-        std::fs::write(&path, "brand new\ncontent\n")
-            .expect("test file write should succeed");
+        std::fs::write(&path, "brand new\ncontent\n").expect("test file write should succeed");
 
         let mut panel = FileActivityPanel::new();
         let path_str = path.to_str().expect("path should be valid UTF-8").to_string();
         panel.record(path_str, FileOp::Create);
         panel.open_diff();
 
-        let dv = panel.diff_view.as_ref()
-            .expect("diff_view should be populated after open_diff");
+        let dv = panel.diff_view.as_ref().expect("diff_view should be populated after open_diff");
         assert_eq!(dv.additions, 2);
         assert_eq!(dv.deletions, 0);
         assert!(!dv.empty);

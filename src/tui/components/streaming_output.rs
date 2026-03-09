@@ -6,8 +6,11 @@
 
 use std::collections::HashMap;
 
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
+use ratatui::style::Color;
+use ratatui::style::Modifier;
+use ratatui::style::Style;
+use ratatui::text::Line;
+use ratatui::text::Span;
 
 /// Configuration for the streaming output buffer.
 #[derive(Debug, Clone)]
@@ -189,15 +192,9 @@ impl StreamingOutput {
     ///
     /// `visible_height` is how many lines of output to show (not counting
     /// the stats footer).
-    pub fn render_lines<'a>(
-        &mut self,
-        visible_height: usize,
-        border_style: Style,
-    ) -> Vec<Line<'a>> {
+    pub fn render_lines<'a>(&mut self, visible_height: usize, border_style: Style) -> Vec<Line<'a>> {
         let output_style = Style::default().fg(Color::DarkGray);
-        let omit_style = Style::default()
-            .fg(Color::DarkGray)
-            .add_modifier(Modifier::DIM);
+        let omit_style = Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM);
 
         // Build the full logical line list.
         let display_count = self.display_line_count();
@@ -225,10 +222,7 @@ impl StreamingOutput {
                 DisplayLine::Omitted(n) => {
                     result.push(Line::from(vec![
                         Span::styled("│ ", border_style),
-                        Span::styled(
-                            format!("  ┄ {} lines omitted ┄", n),
-                            omit_style,
-                        ),
+                        Span::styled(format!("  ┄ {} lines omitted ┄", n), omit_style),
                     ]));
                 }
             }
@@ -239,9 +233,7 @@ impl StreamingOutput {
 
     /// Render a compact stats footer line.
     pub fn render_stats<'a>(&self, border_style: Style) -> Line<'a> {
-        let stats_style = Style::default()
-            .fg(Color::DarkGray)
-            .add_modifier(Modifier::DIM);
+        let stats_style = Style::default().fg(Color::DarkGray).add_modifier(Modifier::DIM);
 
         let follow_indicator = if self.auto_follow { "↓follow" } else { "scroll" };
         let truncated = if self.omitted > 0 {
@@ -357,10 +349,7 @@ impl StreamingOutputManager {
 
     /// Get the call_id of the currently focused tool output, if any.
     pub fn focused_call_id(&self) -> Option<&str> {
-        self.outputs
-            .iter()
-            .find(|(_, out)| out.focused)
-            .map(|(id, _)| id.as_str())
+        self.outputs.iter().find(|(_, out)| out.focused).map(|(id, _)| id.as_str())
     }
 
     /// Focus a specific tool's output.

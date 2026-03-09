@@ -18,7 +18,7 @@ impl SlashHandler for ClearHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.app.conversation.blocks.clear();
         let _ = ctx.cmd_tx.send(AgentCommand::ClearHistory);
@@ -40,7 +40,7 @@ impl SlashHandler for ResetHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.app.conversation.blocks.clear();
         ctx.app.conversation.all_blocks.clear();
@@ -75,7 +75,7 @@ impl SlashHandler for CompactHandler {
             }),
         }
     }
-    
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.app.push_system("Compact mode is not yet implemented.".to_string(), false);
     }
@@ -94,7 +94,7 @@ impl SlashHandler for UndoHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         let mut removed = false;
         for i in (0..ctx.app.conversation.blocks.len()).rev() {
@@ -127,7 +127,7 @@ impl SlashHandler for CdHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             ctx.app.push_system(format!("Current directory: {}\n\nUsage: /cd <path>", ctx.app.cwd), false);
@@ -167,7 +167,7 @@ impl SlashHandler for ShellHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             ctx.app.push_system("Usage: /shell <command>".to_string(), false);

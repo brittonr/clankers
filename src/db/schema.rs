@@ -13,12 +13,12 @@
 //! 3. Bump `CURRENT_VERSION`
 //! 4. Add a test
 
-use redb::{TableDefinition, WriteTransaction};
+use redb::TableDefinition;
+use redb::WriteTransaction;
 use tracing::info;
 
-use crate::error::Result;
-
 use super::db_err;
+use crate::error::Result;
 
 /// Metadata table: stores `"schema_version"` → version number (as u32 LE bytes).
 const META_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("_meta");
@@ -34,9 +34,7 @@ pub const CURRENT_VERSION: u32 = 1;
 /// Migrations receive a write transaction that already has the `_meta`
 /// table open. They must NOT commit — the caller commits once after
 /// all pending migrations succeed.
-const MIGRATIONS: &[fn(&WriteTransaction) -> Result<()>] = &[
-    migrate_0_to_1,
-];
+const MIGRATIONS: &[fn(&WriteTransaction) -> Result<()>] = &[migrate_0_to_1];
 
 /// Run all pending migrations. Called from [`Db::open`] on every startup.
 ///
@@ -59,11 +57,7 @@ pub fn migrate(db: &redb::Database) -> Result<()> {
         });
     }
 
-    info!(
-        from = current,
-        to = CURRENT_VERSION,
-        "migrating database schema"
-    );
+    info!(from = current, to = CURRENT_VERSION, "migrating database schema");
 
     let tx = db.begin_write().map_err(db_err)?;
 
@@ -116,9 +110,7 @@ fn read_version(db: &redb::Database) -> Result<u32> {
 fn write_version_in_tx(tx: &WriteTransaction, version: u32) -> Result<()> {
     let mut table = tx.open_table(META_TABLE).map_err(db_err)?;
     let bytes = version.to_le_bytes();
-    table
-        .insert(VERSION_KEY, bytes.as_slice())
-        .map_err(db_err)?;
+    table.insert(VERSION_KEY, bytes.as_slice()).map_err(db_err)?;
     Ok(())
 }
 
@@ -130,7 +122,11 @@ fn write_version_in_tx(tx: &WriteTransaction, version: u32) -> Result<()> {
 /// everything from scratch. For existing databases that predate schema
 /// versioning, these are all no-ops (redb's `open_table` is idempotent).
 fn migrate_0_to_1(tx: &WriteTransaction) -> Result<()> {
-    use crate::db::{audit, history, memory, session_index, usage};
+    use crate::db::audit;
+    use crate::db::history;
+    use crate::db::memory;
+    use crate::db::session_index;
+    use crate::db::usage;
     use crate::worktree::registry;
 
     tx.open_table(audit::TABLE).map_err(db_err)?;
@@ -151,13 +147,12 @@ pub fn version(db: &redb::Database) -> Result<u32> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use redb::backends::InMemoryBackend;
 
+    use super::*;
+
     fn mem_db() -> Result<redb::Database> {
-        redb::Database::builder()
-            .create_with_backend(InMemoryBackend::new())
-            .map_err(db_err)
+        redb::Database::builder().create_with_backend(InMemoryBackend::new()).map_err(db_err)
     }
 
     #[test]
@@ -187,9 +182,7 @@ mod tests {
         {
             let tx = db.begin_write().map_err(db_err)?;
             {
-                let mut table = tx
-                    .open_table(crate::db::memory::TABLE)
-                    .map_err(db_err)?;
+                let mut table = tx.open_table(crate::db::memory::TABLE).map_err(db_err)?;
                 table.insert(42u64, b"test".as_slice()).map_err(db_err)?;
             }
             tx.commit().map_err(db_err)?;

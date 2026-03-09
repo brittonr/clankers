@@ -9,6 +9,9 @@ use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
+use super::CollectedResponse;
+use super::ContentBlockBuilder;
+use super::TurnConfig;
 use crate::agent::events::AgentEvent;
 use crate::error::Error;
 use crate::error::Result;
@@ -22,8 +25,6 @@ use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
 use crate::tools::ToolResult as ToolExecResult;
 use crate::tools::progress::ToolResultAccumulator;
-
-use super::{CollectedResponse, ContentBlockBuilder, TurnConfig};
 
 /// Execute a single turn: build request, stream response, collect results
 pub(super) async fn execute_turn(
@@ -190,12 +191,7 @@ async fn execute_single_tool(
     // Check if tool exists
     let Some(tool) = tool else {
         let error_msg = format!("Tool '{}' not found", tool_name);
-        return create_error_result(
-            call_id,
-            tool_name,
-            error_msg,
-            &event_tx,
-        );
+        return create_error_result(call_id, tool_name, error_msg, &event_tx);
     };
 
     // Check sandbox paths
@@ -246,9 +242,7 @@ async fn execute_tool_with_accumulator(
     let collector = tokio::spawn(async move {
         loop {
             match chunk_rx.recv().await {
-                Ok(AgentEvent::ToolResultChunk { call_id: cid, chunk })
-                    if cid == call_id_for_collector =>
-                {
+                Ok(AgentEvent::ToolResultChunk { call_id: cid, chunk }) if cid == call_id_for_collector => {
                     acc_clone.lock().push(chunk);
                 }
                 Ok(_) => {} // ignore other events

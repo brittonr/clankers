@@ -5,5 +5,3 @@
 
 #[cfg(feature = "tui-validate")]
 pub mod validate_tui;
-
-pub mod screenshot;

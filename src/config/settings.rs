@@ -4,7 +4,6 @@ use std::path::Path;
 
 use serde::Deserialize;
 use serde::Serialize;
-
 use serde_json;
 
 use crate::agent_defs::definition::AgentScope;

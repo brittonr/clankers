@@ -72,7 +72,6 @@ impl SubagentPanel {
         !self.entries.is_empty()
     }
 
-
     pub fn add(&mut self, id: String, name: String, task: String, pid: Option<u32>) {
         self.entries.push(SubagentEntry {
             id,
@@ -628,7 +627,9 @@ mod tests {
 
     #[test]
     fn test_enter_emits_focus_subagent() {
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use crossterm::event::KeyCode;
+        use crossterm::event::KeyEvent;
+        use crossterm::event::KeyModifiers;
 
         let mut panel = SubagentPanel::new();
         panel.add("sub1".into(), "worker".into(), "do stuff".into(), None);
@@ -642,7 +643,9 @@ mod tests {
 
     #[test]
     fn test_enter_on_empty_panel_returns_none() {
-        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+        use crossterm::event::KeyCode;
+        use crossterm::event::KeyEvent;
+        use crossterm::event::KeyModifiers;
 
         let mut panel = SubagentPanel::new();
         let enter = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);

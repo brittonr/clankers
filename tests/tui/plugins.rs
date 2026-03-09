@@ -292,7 +292,11 @@ fn slash_tools_lists_github_tools() {
     run_slash(&mut h, "/tools");
     h.wait_for_text("github_pr_list", TIMEOUT);
     assert!(h.screen_contains("github_issues"), "Should list github_issues tool.\nScreen:\n{}", h.screen_text());
-    assert!(h.screen_contains("github_repo_info"), "Should list github_repo_info tool.\nScreen:\n{}", h.screen_text());
+    assert!(
+        h.screen_contains("github_repo_info"),
+        "Should list github_repo_info tool.\nScreen:\n{}",
+        h.screen_text()
+    );
     h.quit();
 }
 

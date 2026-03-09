@@ -46,9 +46,16 @@ pub mod protocol;
 pub mod server;
 
 // Re-export public API
-pub use client::{discover_mdns_peers, recv_file, run_heartbeat, send_file, send_rpc, send_rpc_streaming};
-pub use protocol::{read_frame, write_frame};
-pub use server::{handle_prompt_streaming_pub, serve_rpc};
+pub use client::discover_mdns_peers;
+pub use client::recv_file;
+pub use client::run_heartbeat;
+pub use client::send_file;
+pub use client::send_rpc;
+pub use client::send_rpc_streaming;
+pub use protocol::read_frame;
+pub use protocol::write_frame;
+pub use server::handle_prompt_streaming_pub;
+pub use server::serve_rpc;
 
 pub const ALPN: &[u8] = b"clankers/rpc/1";
 

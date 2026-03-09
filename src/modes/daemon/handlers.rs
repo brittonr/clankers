@@ -2,21 +2,23 @@
 
 use std::sync::Arc;
 
+use clankers_auth::Capability;
+use clankers_auth::CapabilityToken;
 use serde_json::json;
 use tokio::sync::RwLock;
-use tracing::{info, warn};
+use tracing::info;
+use tracing::warn;
 
+use super::config::ALPN_CHAT;
+use super::session_store::SessionKey;
+use super::session_store::SessionStore;
 use crate::agent::events::AgentEvent;
 use crate::error::Result;
 use crate::modes::rpc::iroh;
 use crate::modes::rpc::iroh::write_frame;
-use crate::modes::rpc::protocol::{Request, Response};
+use crate::modes::rpc::protocol::Request;
+use crate::modes::rpc::protocol::Response;
 use crate::provider::streaming::ContentDelta;
-
-use clankers_auth::{Capability, CapabilityToken};
-
-use super::config::ALPN_CHAT;
-use super::session_store::{SessionKey, SessionStore};
 
 // ── iroh connection handler ─────────────────────────────────────────────────
 
@@ -74,7 +76,11 @@ pub(crate) async fn handle_iroh_connection(
 ///   `{ "type": "auth", "token": "<base64>" }`
 ///   If present, the token is verified and capabilities are used for the session.
 ///   If absent, falls back to allowlist (backwards compatible).
-pub(crate) async fn handle_chat_connection(conn: ::iroh::endpoint::Connection, store: Arc<RwLock<SessionStore>>, peer_id: &str) {
+pub(crate) async fn handle_chat_connection(
+    conn: ::iroh::endpoint::Connection,
+    store: Arc<RwLock<SessionStore>>,
+    peer_id: &str,
+) {
     let key = SessionKey::Iroh(peer_id.to_string());
     let mut auth_capabilities: Option<Vec<Capability>> = None;
     let mut first_frame = true;

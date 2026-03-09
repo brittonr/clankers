@@ -12,11 +12,7 @@ use crate::util::id::generate_id;
 
 impl WorktreeManager {
     /// Create a new worktree for a session
-    pub fn create_worktree(
-        &self,
-        session_type: &SessionType,
-        parent_branch: Option<&str>,
-    ) -> Result<WorktreeInfo> {
+    pub fn create_worktree(&self, session_type: &SessionType, parent_branch: Option<&str>) -> Result<WorktreeInfo> {
         let short_id = generate_id();
         let branch_name = match session_type {
             SessionType::Main => format!("clankers/main-{}", short_id),
@@ -30,16 +26,10 @@ impl WorktreeManager {
 
         let parent = parent_branch.unwrap_or("HEAD");
 
-        let worktree_path = self
-            .repo_root
-            .join(".git")
-            .join("clankers-worktrees")
-            .join(&branch_name);
+        let worktree_path = self.repo_root.join(".git").join("clankers-worktrees").join(&branch_name);
 
         git_ops::sync::worktree_add(&self.repo_root, &branch_name, &worktree_path, parent)
-            .map_err(|e| crate::error::Error::Worktree {
-                message: e.to_string(),
-            })?;
+            .map_err(|e| crate::error::Error::Worktree { message: e.to_string() })?;
 
         let agent_name = match session_type {
             SessionType::Main => "main".to_string(),

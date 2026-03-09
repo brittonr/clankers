@@ -4,6 +4,7 @@
 //! progress information and build logs.
 
 use std::collections::HashMap;
+
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -126,7 +127,6 @@ impl NixLogLevel {
             _ => Self::Vomit,
         }
     }
-
 }
 
 /// Parsed nix internal-json event
@@ -456,9 +456,16 @@ pub fn shorten_drv_path(text: &str) -> String {
 pub fn shorten_url(url: &str) -> String {
     // For github URLs, show just the relevant part
     if let Some(rest) = url.strip_prefix("https://github.com/")
-        && rest.len() > GITHUB_URL_DISPLAY_LEN {
-            return format!("github:{}", &rest[..GITHUB_URL_TRUNCATE_AT].rsplit_once('/').map(|(l, _)| l).unwrap_or(&rest[..GITHUB_URL_TRUNCATE_AT]));
-        }
+        && rest.len() > GITHUB_URL_DISPLAY_LEN
+    {
+        return format!(
+            "github:{}",
+            &rest[..GITHUB_URL_TRUNCATE_AT]
+                .rsplit_once('/')
+                .map(|(l, _)| l)
+                .unwrap_or(&rest[..GITHUB_URL_TRUNCATE_AT])
+        );
+    }
     // Trim long URLs
     if url.len() > URL_MAX_LEN {
         format!("{}...", &url[..URL_TRUNCATE_AT])

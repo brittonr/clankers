@@ -22,7 +22,8 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use super::progress::{ResultChunk, ToolProgress};
+use super::progress::ResultChunk;
+use super::progress::ToolProgress;
 
 pub struct GrepTool {
     definition: ToolDefinition,
@@ -100,10 +101,7 @@ impl Tool for GrepTool {
                     && let Some(end) = msg.rfind(" matches)")
                     && let Ok(count) = msg[start + 1..end].parse::<u64>()
                 {
-                    progress_ctx.emit_structured_progress(
-                        ToolProgress::lines(count, None)
-                            .with_message("Searching"),
-                    );
+                    progress_ctx.emit_structured_progress(ToolProgress::lines(count, None).with_message("Searching"));
                 }
             })
         })
@@ -336,12 +334,18 @@ mod tests {
         // Uppercase pattern -> case sensitive: search Cargo.toml where "GREPTOOL" definitely doesn't appear
         let result2 = search_files("CLANKERS_NONEXISTENT_UPPER", "Cargo.toml", None, None, &cancel, |_| {});
         assert!(result2.is_ok());
-        assert!(result2.expect("search should succeed").is_empty(), "case-sensitive uppercase pattern should not match");
+        assert!(
+            result2.expect("search should succeed").is_empty(),
+            "case-sensitive uppercase pattern should not match"
+        );
 
         // Explicit case-insensitive override: "clankers" in lowercase should match "clankers" in Cargo.toml
         let result3 = search_files("CLANKERS", "Cargo.toml", None, Some(false), &cancel, |_| {});
         assert!(result3.is_ok());
-        assert!(!result3.expect("search should succeed").is_empty(), "explicit case-insensitive should match 'clankers'");
+        assert!(
+            !result3.expect("search should succeed").is_empty(),
+            "explicit case-insensitive should match 'clankers'"
+        );
     }
 
     #[test]

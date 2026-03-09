@@ -16,13 +16,16 @@ pub mod render;
 pub mod types;
 
 // Re-export public types
-pub use types::{
-    BuildResult, HiddenSet, LeaderAction, LeaderMenuDef, LeaderMenuItem, MenuContribution,
-    MenuContributor, MenuPlacement,
-};
-
 // Re-export public builder items
 pub use builder::{BuiltinKeymapContributor, SlashCommandContributor};
+pub use types::BuildResult;
+pub use types::HiddenSet;
+pub use types::LeaderAction;
+pub use types::LeaderMenuDef;
+pub use types::LeaderMenuItem;
+pub use types::MenuContribution;
+pub use types::MenuContributor;
+pub use types::MenuPlacement;
 
 // ---------------------------------------------------------------------------
 // Runtime state
@@ -63,10 +66,7 @@ impl LeaderMenu {
     /// Collects all [`MenuContribution`] items, deduplicates by `(key, placement)`
     /// with highest priority winning, removes hidden entries, and assembles the
     /// menu tree.
-    pub fn build(
-        contributors: &[&dyn MenuContributor],
-        hidden: &HiddenSet,
-    ) -> BuildResult {
+    pub fn build(contributors: &[&dyn MenuContributor], hidden: &HiddenSet) -> BuildResult {
         builder::build(contributors, hidden)
     }
 
@@ -171,8 +171,9 @@ impl LeaderMenu {
 
 #[cfg(test)]
 mod tests {
-    use crossterm::event::KeyEventKind;
     use std::collections::HashSet;
+
+    use crossterm::event::KeyEventKind;
 
     use super::*;
     use crate::registry::PRIORITY_BUILTIN;
@@ -238,7 +239,12 @@ mod tests {
 
         match result.unwrap() {
             LeaderAction::KeymapAction(a) => {
-                assert_eq!(a, crate::config::keybindings::Action::Extended(crate::config::keybindings::ExtendedAction::OpenModelSelector));
+                assert_eq!(
+                    a,
+                    crate::config::keybindings::Action::Extended(
+                        crate::config::keybindings::ExtendedAction::OpenModelSelector
+                    )
+                );
             }
             _ => panic!("Expected KeymapAction"),
         }
@@ -297,7 +303,12 @@ mod tests {
 
         match result.unwrap() {
             LeaderAction::KeymapAction(a) => {
-                assert_eq!(a, crate::config::keybindings::Action::Extended(crate::config::keybindings::ExtendedAction::ToggleShowThinking));
+                assert_eq!(
+                    a,
+                    crate::config::keybindings::Action::Extended(
+                        crate::config::keybindings::ExtendedAction::ToggleShowThinking
+                    )
+                );
             }
             _ => panic!("Expected KeymapAction"),
         }

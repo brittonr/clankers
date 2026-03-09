@@ -81,21 +81,17 @@ pub async fn run_remote_worker(
 
     let request = Request::new("prompt", serde_json::json!({ "text": task }));
 
-    retry_remote_call(
-        worker_name,
-        short_node,
-        endpoint,
-        remote,
-        &request,
-        &sub_id,
-        panel_tx,
-        signal,
-    )
-    .await
+    retry_remote_call(worker_name, short_node, endpoint, remote, &request, &sub_id, panel_tx, signal).await
 }
 
 /// Emit a "Started" event to the subagent panel
-fn emit_started_event(panel_tx: Option<&PanelTx>, sub_id: &str, worker_name: &str, short_node: &str, task_preview: &str) {
+fn emit_started_event(
+    panel_tx: Option<&PanelTx>,
+    sub_id: &str,
+    worker_name: &str,
+    short_node: &str,
+    task_preview: &str,
+) {
     if let Some(tx) = panel_tx {
         let _ = tx.send(SubagentEvent::Started {
             id: sub_id.to_string(),
@@ -139,15 +135,15 @@ async fn retry_remote_call(
     panel_tx: Option<&PanelTx>,
     signal: CancellationToken,
 ) -> ToolResult {
-
     let mut last_err = String::new();
 
     for attempt in 0..=MAX_RETRIES {
         // Exponential backoff before retries
         if attempt > 0
-            && let Err(result) = wait_for_retry(attempt, sub_id, panel_tx, &signal).await {
-                return result;
-            }
+            && let Err(result) = wait_for_retry(attempt, sub_id, panel_tx, &signal).await
+        {
+            return result;
+        }
 
         // Attempt the RPC call
         match try_remote_call(endpoint, remote, request, sub_id, panel_tx, &signal).await {
@@ -258,11 +254,8 @@ fn handle_streaming_notification(notification: &Value, sub_id: &str, panel_tx: O
         }
         Some("agent.tool_call") => {
             if let Some(tx) = panel_tx {
-                let tool = notification
-                    .get("params")
-                    .and_then(|p| p.get("tool_name"))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("?");
+                let tool =
+                    notification.get("params").and_then(|p| p.get("tool_name")).and_then(|v| v.as_str()).unwrap_or("?");
                 let _ = tx.send(SubagentEvent::Output {
                     id: sub_id.to_string(),
                     line: format!("[tool: {}]", tool),

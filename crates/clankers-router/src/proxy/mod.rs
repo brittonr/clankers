@@ -915,6 +915,5 @@ pub async fn serve(router: Arc<Router>, config: ProxyConfig) -> crate::Result<()
 
 // ── Tests ───────────────────────────────────────────────────────────────
 
-
 #[cfg(test)]
 mod tests;

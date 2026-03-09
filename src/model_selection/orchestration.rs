@@ -138,10 +138,8 @@ pub fn detect_pattern(prompt: &str, complexity_score: f32) -> Option<Orchestrati
         return None;
     }
 
-    let is_generation = lower.contains("write")
-        || lower.contains("implement")
-        || lower.contains("create")
-        || lower.contains("build");
+    let is_generation =
+        lower.contains("write") || lower.contains("implement") || lower.contains("create") || lower.contains("build");
     let is_architecture = lower.contains("refactor")
         || lower.contains("architecture")
         || lower.contains("design")

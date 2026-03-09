@@ -182,8 +182,7 @@ impl ErrorCode {
             Self::Provider | Self::ProviderStreaming => 5,
             Self::ToolTimeout => 6,
             Self::Cancelled => 7,
-            Self::Agent | Self::ToolFailed | Self::Plugin
-            | Self::Spec | Self::Tui | Self::Zellij | Self::Worktree => 1,
+            Self::Agent | Self::ToolFailed | Self::Plugin | Self::Spec | Self::Tui | Self::Zellij | Self::Worktree => 1,
         }
     }
 
@@ -192,18 +191,12 @@ impl ErrorCode {
     /// Subagents use this to decide whether to retry a failed delegation
     /// or report the error immediately.
     pub const fn is_retryable(self) -> bool {
-        matches!(
-            self,
-            Self::Provider | Self::ProviderStreaming | Self::ToolTimeout | Self::Io
-        )
+        matches!(self, Self::Provider | Self::ProviderStreaming | Self::ToolTimeout | Self::Io)
     }
 
     /// Whether a human can fix this without code changes.
     pub const fn is_user_fixable(self) -> bool {
-        matches!(
-            self,
-            Self::Config | Self::ProviderAuth | Self::AgentDefinition | Self::Skill
-        )
+        matches!(self, Self::Config | Self::ProviderAuth | Self::AgentDefinition | Self::Skill)
     }
 }
 
@@ -250,9 +243,7 @@ impl Error {
                 Some("try `clankers session list` to see available sessions")
             }
             Self::Skill { .. } => Some("check the SKILL.md file exists and is valid"),
-            Self::Database { .. } => {
-                Some("the database may be corrupt — try removing ~/.clankers/agent/clankers.db")
-            }
+            Self::Database { .. } => Some("the database may be corrupt — try removing ~/.clankers/agent/clankers.db"),
             Self::Plugin { .. } => Some("rebuild the plugin with `cargo build --target wasm32-unknown-unknown`"),
             Self::Cancelled => Some("operation was cancelled — rerun to try again"),
             _ => None,
@@ -274,8 +265,12 @@ mod tests {
         // Construct one of each variant and verify code() doesn't panic.
         let cases: Vec<Error> = vec![
             Error::Config { message: String::new() },
-            Error::Io { source: std::io::Error::new(std::io::ErrorKind::Other, "test") },
-            Error::Json { source: serde_json::from_str::<()>("bad").unwrap_err() },
+            Error::Io {
+                source: std::io::Error::new(std::io::ErrorKind::Other, "test"),
+            },
+            Error::Json {
+                source: serde_json::from_str::<()>("bad").unwrap_err(),
+            },
             Error::Provider { message: String::new() },
             Error::ProviderAuth { message: String::new() },
             Error::ProviderStreaming { message: String::new() },
@@ -284,7 +279,10 @@ mod tests {
                 message: String::new(),
                 source: std::io::Error::new(std::io::ErrorKind::Other, "test"),
             },
-            Error::Tool { tool_name: String::new(), message: String::new() },
+            Error::Tool {
+                tool_name: String::new(),
+                message: String::new(),
+            },
             Error::ToolExecution {
                 tool_name: String::new(),
                 source: std::io::Error::new(std::io::ErrorKind::Other, "test"),
@@ -292,7 +290,10 @@ mod tests {
             Error::Agent { message: String::new() },
             Error::AgentContext { message: String::new() },
             Error::Worktree { message: String::new() },
-            Error::Plugin { plugin_name: String::new(), message: String::new() },
+            Error::Plugin {
+                plugin_name: String::new(),
+                message: String::new(),
+            },
             Error::Skill { message: String::new() },
             Error::Spec { message: String::new() },
             Error::Tui { message: String::new() },
@@ -314,9 +315,25 @@ mod tests {
     fn code_as_str_roundtrip() {
         use ErrorCode::*;
         let all = [
-            Config, Io, Json, Provider, ProviderAuth, ProviderStreaming,
-            Session, ToolFailed, ToolTimeout, Agent, AgentDefinition,
-            Worktree, Plugin, Skill, Spec, Tui, Zellij, Database, Cancelled,
+            Config,
+            Io,
+            Json,
+            Provider,
+            ProviderAuth,
+            ProviderStreaming,
+            Session,
+            ToolFailed,
+            ToolTimeout,
+            Agent,
+            AgentDefinition,
+            Worktree,
+            Plugin,
+            Skill,
+            Spec,
+            Tui,
+            Zellij,
+            Database,
+            Cancelled,
         ];
         // All strings are unique.
         let mut seen = std::collections::HashSet::new();
@@ -378,20 +395,28 @@ mod tests {
 
     #[test]
     fn suggestions_exist_for_user_facing_errors() {
-        let auth_err = Error::ProviderAuth { message: "bad token".into() };
+        let auth_err = Error::ProviderAuth {
+            message: "bad token".into(),
+        };
         assert!(auth_err.suggestion().is_some());
         assert!(auth_err.suggestion().unwrap().contains("API key"));
 
-        let config_err = Error::Config { message: "missing field".into() };
+        let config_err = Error::Config {
+            message: "missing field".into(),
+        };
         assert!(config_err.suggestion().is_some());
 
-        let db_err = Error::Database { message: "corrupt".into() };
+        let db_err = Error::Database {
+            message: "corrupt".into(),
+        };
         assert!(db_err.suggestion().is_some());
     }
 
     #[test]
     fn suggestion_is_none_for_internal_errors() {
-        let err = Error::Agent { message: "internal".into() };
+        let err = Error::Agent {
+            message: "internal".into(),
+        };
         assert!(err.suggestion().is_none());
 
         let err = Error::Io {
@@ -420,7 +445,10 @@ mod tests {
 
     #[test]
     fn tool_variants_share_code() {
-        let err1 = Error::Tool { tool_name: "bash".into(), message: String::new() };
+        let err1 = Error::Tool {
+            tool_name: "bash".into(),
+            message: String::new(),
+        };
         let err2 = Error::ToolExecution {
             tool_name: "bash".into(),
             source: std::io::Error::new(std::io::ErrorKind::Other, "test"),

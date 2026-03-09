@@ -105,14 +105,11 @@ fn register_with_process_monitor(
         && let Some(pid) = child_pid
     {
         let task_preview_full: String = task.chars().take(TASK_PREVIEW_FULL_LEN).collect();
-        monitor.register(
-            pid,
-            crate::procmon::ProcessMeta {
-                tool_name: "delegate".to_string(),
-                command: format!("worker:{} {}", worker_name, task_preview_full),
-                call_id: format!("worker:{}", worker_name),
-            },
-        );
+        monitor.register(pid, crate::procmon::ProcessMeta {
+            tool_name: "delegate".to_string(),
+            command: format!("worker:{} {}", worker_name, task_preview_full),
+            call_id: format!("worker:{}", worker_name),
+        });
     }
 }
 

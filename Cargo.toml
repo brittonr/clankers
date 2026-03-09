@@ -110,8 +110,10 @@ vt100 = "0.16"
 workspace = true
 
 [features]
-default = ["tui-validate"]
+default = ["tui-validate", "openspec", "zellij-share"]
 tui-validate = ["dep:portable-pty", "dep:vt100"]
+openspec = []
+zellij-share = []
 simulation = ["dep:madsim"]
 property-testing = ["dep:bolero", "dep:bolero-generator", "dep:proptest"]
 

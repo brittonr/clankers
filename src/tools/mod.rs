@@ -182,10 +182,11 @@ pub mod bash;
 pub mod commit;
 pub mod cost;
 pub mod delegate;
-pub mod git_ops;
+pub mod devtools;
 pub mod diff;
 pub mod edit;
 pub mod find;
+pub mod git_ops;
 pub mod grep;
 pub mod image_gen;
 pub mod ls;
@@ -197,7 +198,6 @@ pub mod progress;
 pub mod read;
 pub mod review;
 pub mod sandbox;
-pub mod devtools;
 pub mod subagent;
 pub mod switch_model;
 pub mod todo;
@@ -298,20 +298,20 @@ mod tests {
     fn emit_structured_progress_throttles_rapid_calls() {
         let (tx, mut rx) = broadcast::channel(16);
         let ctx = ToolContext::new("call-1".to_string(), CancellationToken::new(), Some(tx));
-        
+
         // Set very short throttle for testing
         ctx.set_throttle_interval(Duration::from_millis(50));
 
         // First call should go through
         ctx.emit_structured_progress(progress::ToolProgress::lines(1, Some(100)));
-        
+
         // Second call immediately after should be throttled (dropped)
         ctx.emit_structured_progress(progress::ToolProgress::lines(2, Some(100)));
 
         // Should only have one event
         let event1 = rx.try_recv().expect("should receive first progress event");
         assert!(matches!(event1, AgentEvent::ToolProgressUpdate { .. }));
-        
+
         // Second event should be missing (throttled)
         assert!(rx.try_recv().is_err());
 

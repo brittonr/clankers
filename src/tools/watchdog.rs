@@ -141,25 +141,26 @@ pub fn spawn_watchdog(
 
             // Check kill timeout first
             if let Some(kill_timeout) = config.kill_timeout
-                && idle >= kill_timeout {
-                    warn!(
-                        "subagent {} unresponsive for {:.0}s (kill timeout {:.0}s), killing",
-                        tracker.id(),
-                        idle.as_secs_f64(),
-                        kill_timeout.as_secs_f64()
-                    );
-                    *tracker.state.lock() = HealthState::Unresponsive;
-                    if let Some(ref tx) = panel_tx {
-                        let _ = tx.send(SubagentEvent::Error {
-                            id: tracker.id().to_string(),
-                            message: format!("Watchdog: no output for {:.0}s, killing subagent", idle.as_secs_f64()),
-                        });
-                        let _ = tx.send(SubagentEvent::KillRequest {
-                            id: tracker.id().to_string(),
-                        });
-                    }
-                    break;
+                && idle >= kill_timeout
+            {
+                warn!(
+                    "subagent {} unresponsive for {:.0}s (kill timeout {:.0}s), killing",
+                    tracker.id(),
+                    idle.as_secs_f64(),
+                    kill_timeout.as_secs_f64()
+                );
+                *tracker.state.lock() = HealthState::Unresponsive;
+                if let Some(ref tx) = panel_tx {
+                    let _ = tx.send(SubagentEvent::Error {
+                        id: tracker.id().to_string(),
+                        message: format!("Watchdog: no output for {:.0}s, killing subagent", idle.as_secs_f64()),
+                    });
+                    let _ = tx.send(SubagentEvent::KillRequest {
+                        id: tracker.id().to_string(),
+                    });
                 }
+                break;
+            }
 
             // Check stall timeout
             if idle >= config.stall_timeout && !stall_notified {

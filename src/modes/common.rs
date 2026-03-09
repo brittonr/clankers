@@ -202,10 +202,8 @@ pub fn build_plugin_tools(
     let mut tools: Vec<Arc<dyn Tool>> = Vec::new();
 
     // Derive built-in tool names from the actual tool list — skip plugin tools that collide
-    let builtin_names: std::collections::HashSet<String> = builtin_tools
-        .iter()
-        .map(|t| t.definition().name.clone())
-        .collect();
+    let builtin_names: std::collections::HashSet<String> =
+        builtin_tools.iter().map(|t| t.definition().name.clone()).collect();
 
     for plugin_info in mgr.list() {
         if plugin_info.state != PluginState::Active {

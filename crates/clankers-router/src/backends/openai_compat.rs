@@ -26,6 +26,7 @@ use tokio::sync::mpsc;
 use tracing::info;
 use tracing::warn;
 
+use super::common;
 use crate::credential_pool::CredentialPool;
 use crate::error::Result;
 use crate::model::Model;
@@ -207,7 +208,7 @@ pub struct OpenAICompatProvider {
 
 impl OpenAICompatProvider {
     pub fn new(config: OpenAICompatConfig) -> Arc<Self> {
-        let client = Client::builder().timeout(config.timeout).build().expect("failed to build HTTP client");
+        let client = common::build_http_client(config.timeout).expect("failed to build HTTP client");
         Arc::new(Self {
             config,
             client,
@@ -219,7 +220,7 @@ impl OpenAICompatProvider {
     ///
     /// When one API key hits rate limits, the provider rotates to the next.
     pub fn with_pool(config: OpenAICompatConfig, pool: CredentialPool) -> Arc<Self> {
-        let client = Client::builder().timeout(config.timeout).build().expect("failed to build HTTP client");
+        let client = common::build_http_client(config.timeout).expect("failed to build HTTP client");
         Arc::new(Self {
             config,
             client,
@@ -557,56 +558,37 @@ struct OpenAIUsage {
     completion_tokens: Option<usize>,
 }
 
-async fn parse_openai_sse(response: reqwest::Response, model: &str, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
-    use tokio::io::AsyncBufReadExt;
-    use tokio_stream::StreamExt;
+/// OpenAI-specific SSE event handler.
+struct OpenAISseHandler {
+    model: String,
+    sent_start: bool,
+    content_block_started: bool,
+    tool_blocks: std::collections::HashMap<usize, (String, String)>,
+}
 
-    let mut sent_start = false;
-    let mut content_block_started = false;
-    let mut tool_blocks: std::collections::HashMap<usize, (String, String)> = Default::default();
-
-    let bytes_stream = response.bytes_stream();
-    let reader = tokio_util::io::StreamReader::new(bytes_stream.map(|r| r.map_err(std::io::Error::other)));
-    let mut lines = tokio::io::BufReader::new(reader).lines();
-
-    while let Some(line) = lines.next_line().await.map_err(|e| crate::Error::Streaming {
-        message: format!("SSE read error: {}", e),
-    })? {
-        let line = line.trim().to_string();
-
-        if line.is_empty() || line.starts_with(':') {
-            continue;
+impl OpenAISseHandler {
+    fn new(model: String) -> Self {
+        Self {
+            model,
+            sent_start: false,
+            content_block_started: false,
+            tool_blocks: Default::default(),
         }
+    }
 
-        if !line.starts_with("data: ") {
-            continue;
-        }
-
-        let data = &line[6..];
-        if data == "[DONE]" {
-            break;
-        }
-
-        let chunk: OpenAIChunk = match serde_json::from_str(data) {
-            Ok(c) => c,
-            Err(e) => {
-                warn!("Failed to parse SSE chunk: {}: {}", e, data);
-                continue;
-            }
-        };
+    fn handle_chunk(&mut self, chunk: OpenAIChunk) -> Result<Vec<StreamEvent>> {
+        let mut events = Vec::new();
 
         // Send MessageStart on first chunk
-        if !sent_start {
-            let _ = tx
-                .send(StreamEvent::MessageStart {
-                    message: MessageMetadata {
-                        id: chunk.id.clone().unwrap_or_default(),
-                        model: chunk.model.clone().unwrap_or_else(|| model.to_string()),
-                        role: "assistant".to_string(),
-                    },
-                })
-                .await;
-            sent_start = true;
+        if !self.sent_start {
+            events.push(StreamEvent::MessageStart {
+                message: MessageMetadata {
+                    id: chunk.id.clone().unwrap_or_default(),
+                    model: chunk.model.clone().unwrap_or_else(|| self.model.clone()),
+                    role: "assistant".to_string(),
+                },
+            });
+            self.sent_start = true;
         }
 
         if let Some(choices) = &chunk.choices {
@@ -617,44 +599,36 @@ async fn parse_openai_sse(response: reqwest::Response, model: &str, tx: mpsc::Se
                         && !reasoning.is_empty()
                     {
                         // Emit as a thinking block (index 0 reserved for thinking)
-                        if !content_block_started {
-                            let _ = tx
-                                .send(StreamEvent::ContentBlockStart {
-                                    index: 0,
-                                    content_block: ContentBlock::Thinking {
-                                        thinking: String::new(),
-                                    },
-                                })
-                                .await;
-                            content_block_started = true;
-                        }
-                        let _ = tx
-                            .send(StreamEvent::ContentBlockDelta {
+                        if !self.content_block_started {
+                            events.push(StreamEvent::ContentBlockStart {
                                 index: 0,
-                                delta: ContentDelta::ThinkingDelta {
-                                    thinking: reasoning.to_string(),
+                                content_block: ContentBlock::Thinking {
+                                    thinking: String::new(),
                                 },
-                            })
-                            .await;
+                            });
+                            self.content_block_started = true;
+                        }
+                        events.push(StreamEvent::ContentBlockDelta {
+                            index: 0,
+                            delta: ContentDelta::ThinkingDelta {
+                                thinking: reasoning.to_string(),
+                            },
+                        });
                     }
 
                     // Text content
                     if let Some(ref text) = delta.content {
-                        if !content_block_started {
-                            let _ = tx
-                                .send(StreamEvent::ContentBlockStart {
-                                    index: 0,
-                                    content_block: ContentBlock::Text { text: String::new() },
-                                })
-                                .await;
-                            content_block_started = true;
-                        }
-                        let _ = tx
-                            .send(StreamEvent::ContentBlockDelta {
+                        if !self.content_block_started {
+                            events.push(StreamEvent::ContentBlockStart {
                                 index: 0,
-                                delta: ContentDelta::TextDelta { text: text.clone() },
-                            })
-                            .await;
+                                content_block: ContentBlock::Text { text: String::new() },
+                            });
+                            self.content_block_started = true;
+                        }
+                        events.push(StreamEvent::ContentBlockDelta {
+                            index: 0,
+                            delta: ContentDelta::TextDelta { text: text.clone() },
+                        });
                     }
 
                     // Tool calls
@@ -666,29 +640,25 @@ async fn parse_openai_sse(response: reqwest::Response, model: &str, tx: mpsc::Se
                                 if let Some(ref name) = func.name {
                                     // New tool call block
                                     let id = tc.id.clone().unwrap_or_else(|| format!("call_{}", idx));
-                                    tool_blocks.insert(idx, (id.clone(), name.clone()));
+                                    self.tool_blocks.insert(idx, (id.clone(), name.clone()));
 
-                                    let _ = tx
-                                        .send(StreamEvent::ContentBlockStart {
-                                            index: idx,
-                                            content_block: ContentBlock::ToolUse {
-                                                id,
-                                                name: name.clone(),
-                                                input: json!({}),
-                                            },
-                                        })
-                                        .await;
+                                    events.push(StreamEvent::ContentBlockStart {
+                                        index: idx,
+                                        content_block: ContentBlock::ToolUse {
+                                            id,
+                                            name: name.clone(),
+                                            input: json!({}),
+                                        },
+                                    });
                                 }
 
                                 if let Some(ref args) = func.arguments {
-                                    let _ = tx
-                                        .send(StreamEvent::ContentBlockDelta {
-                                            index: idx,
-                                            delta: ContentDelta::InputJsonDelta {
-                                                partial_json: args.clone(),
-                                            },
-                                        })
-                                        .await;
+                                    events.push(StreamEvent::ContentBlockDelta {
+                                        index: idx,
+                                        delta: ContentDelta::InputJsonDelta {
+                                            partial_json: args.clone(),
+                                        },
+                                    });
                                 }
                             }
                         }
@@ -698,11 +668,11 @@ async fn parse_openai_sse(response: reqwest::Response, model: &str, tx: mpsc::Se
                 // Finish reason
                 if let Some(ref reason) = choice.finish_reason {
                     // Close any open content blocks
-                    if content_block_started {
-                        let _ = tx.send(StreamEvent::ContentBlockStop { index: 0 }).await;
+                    if self.content_block_started {
+                        events.push(StreamEvent::ContentBlockStop { index: 0 });
                     }
-                    for &idx in tool_blocks.keys() {
-                        let _ = tx.send(StreamEvent::ContentBlockStop { index: idx }).await;
+                    for &idx in self.tool_blocks.keys() {
+                        events.push(StreamEvent::ContentBlockStop { index: idx });
                     }
 
                     let stop_reason = match reason.as_str() {
@@ -722,7 +692,7 @@ async fn parse_openai_sse(response: reqwest::Response, model: &str, tx: mpsc::Se
                         })
                         .unwrap_or_default();
 
-                    let _ = tx.send(StreamEvent::MessageDelta { stop_reason, usage }).await;
+                    events.push(StreamEvent::MessageDelta { stop_reason, usage });
                 }
             }
         }
@@ -731,16 +701,63 @@ async fn parse_openai_sse(response: reqwest::Response, model: &str, tx: mpsc::Se
         if chunk.choices.is_none()
             && let Some(ref usage) = chunk.usage
         {
-            let _ = tx
-                .send(StreamEvent::MessageDelta {
-                    stop_reason: None,
-                    usage: Usage {
-                        input_tokens: usage.prompt_tokens.unwrap_or(0),
-                        output_tokens: usage.completion_tokens.unwrap_or(0),
-                        ..Default::default()
-                    },
-                })
-                .await;
+            events.push(StreamEvent::MessageDelta {
+                stop_reason: None,
+                usage: Usage {
+                    input_tokens: usage.prompt_tokens.unwrap_or(0),
+                    output_tokens: usage.completion_tokens.unwrap_or(0),
+                    ..Default::default()
+                },
+            });
+        }
+
+        Ok(events)
+    }
+}
+
+impl common::SseEventHandler for OpenAISseHandler {
+    fn handle_event(&mut self, event: &common::SseEvent) -> Result<Option<StreamEvent>> {
+        // OpenAI sends events with default "message" type and JSON data
+        let chunk: OpenAIChunk = match serde_json::from_str(&event.data) {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("Failed to parse OpenAI SSE chunk: {}: {}", e, event.data);
+                return Ok(None);
+            }
+        };
+
+        // Handle chunk and get multiple events, but we can only return one.
+        // We'll return the first event and spawn the rest.
+        let events = self.handle_chunk(chunk)?;
+
+        Ok(events.into_iter().next())
+    }
+}
+
+async fn parse_openai_sse(response: reqwest::Response, model: &str, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
+    let mut handler = OpenAISseHandler::new(model.to_string());
+    let mut reader = common::SseLineReader::new(response);
+
+    while let Some(event) = reader.next_event().await? {
+        if event.is_done() {
+            break;
+        }
+
+        // OpenAI sends events with default "message" type and JSON data
+        let chunk: OpenAIChunk = match serde_json::from_str(&event.data) {
+            Ok(c) => c,
+            Err(e) => {
+                warn!("Failed to parse OpenAI SSE chunk: {}: {}", e, event.data);
+                continue;
+            }
+        };
+
+        let events = handler.handle_chunk(chunk)?;
+        for stream_event in events {
+            if tx.send(stream_event).await.is_err() {
+                // Receiver dropped
+                return Ok(());
+            }
         }
     }
 

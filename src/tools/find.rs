@@ -18,7 +18,8 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use super::progress::{ResultChunk, ToolProgress};
+use super::progress::ResultChunk;
+use super::progress::ToolProgress;
 
 pub struct FindTool {
     definition: ToolDefinition,
@@ -113,10 +114,10 @@ fn find_files(
     }
 
     let mut files_vec = files.lock().unwrap_or_else(|e| e.into_inner());
-    
+
     // Sort the results
     files_vec.sort_unstable();
-    
+
     Ok(files_vec.join("\n"))
 }
 
@@ -146,10 +147,8 @@ impl Tool for FindTool {
                     && let Some(end) = msg.rfind(')')
                     && let Ok(count) = msg[start + 1..end].parse::<u64>()
                 {
-                    progress_ctx.emit_structured_progress(
-                        ToolProgress::items(count, None)
-                            .with_message("Finding files"),
-                    );
+                    progress_ctx
+                        .emit_structured_progress(ToolProgress::items(count, None).with_message("Finding files"));
                 }
             })
         })
@@ -234,8 +233,7 @@ mod tests {
         assert!(!output.is_empty(), "should find at least one .rs file in src/");
         // Verify no target paths appear (shouldn't happen when searching src/, but good to check)
         for line in output.lines() {
-            assert!(!line.contains("/target/"), 
-                    "should not find files in target/ subdirectories: {}", line);
+            assert!(!line.contains("/target/"), "should not find files in target/ subdirectories: {}", line);
         }
     }
 
@@ -247,12 +245,15 @@ mod tests {
         assert!(result.is_ok());
         let output = result.expect("find should succeed");
         let lines: Vec<&str> = output.lines().collect();
-        
+
         // Check that output is sorted
         for i in 1..lines.len() {
-            assert!(lines[i-1] <= lines[i], 
-                    "output should be sorted: {} should come before {}", 
-                    lines[i-1], lines[i]);
+            assert!(
+                lines[i - 1] <= lines[i],
+                "output should be sorted: {} should come before {}",
+                lines[i - 1],
+                lines[i]
+            );
         }
     }
 

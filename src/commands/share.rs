@@ -7,11 +7,9 @@ use crate::error::Result;
 /// Creates an iroh endpoint and hosts the session, providing credentials
 /// that remote users can use to join with `clankers join`.
 pub async fn run_share(_ctx: &crate::commands::CommandContext, read_only: bool) -> Result<()> {
-    let session_name = crate::zellij::session_name().ok_or_else(|| {
-        crate::error::Error::Config {
-            message: "Not inside a Zellij session. Start clankers inside Zellij first, or use: clankers --zellij"
-                .to_string(),
-        }
+    let session_name = crate::zellij::session_name().ok_or_else(|| crate::error::Error::Config {
+        message: "Not inside a Zellij session. Start clankers inside Zellij first, or use: clankers --zellij"
+            .to_string(),
     })?;
 
     println!("Sharing Zellij session: {}", session_name);
@@ -44,11 +42,10 @@ pub async fn run_join(node_id: &str, psk: &str) -> Result<()> {
         message: format!("Invalid node ID: {}", e),
     })?;
 
-    let psk_bytes = crate::zellij::streaming::handshake::psk_from_hex(psk).ok_or_else(|| {
-        crate::error::Error::Config {
+    let psk_bytes =
+        crate::zellij::streaming::handshake::psk_from_hex(psk).ok_or_else(|| crate::error::Error::Config {
             message: "Invalid PSK (expected 64-char hex string)".to_string(),
-        }
-    })?;
+        })?;
 
     match crate::zellij::streaming::guest::join_session(node_id, &psk_bytes).await {
         Ok(info) => {

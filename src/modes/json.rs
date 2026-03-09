@@ -42,7 +42,8 @@ pub async fn run_json_with_options(
     // Wire cost tracking from settings
     if let Some(cost_config) = settings.cost_tracking.as_ref() {
         let paths = crate::config::ClankersPaths::get();
-        let pricing = crate::model_selection::cost_tracker::pricing_from_models(&provider_models, Some(&paths.global_config_dir));
+        let pricing =
+            crate::model_selection::cost_tracker::pricing_from_models(&provider_models, Some(&paths.global_config_dir));
         let tracker = Arc::new(crate::model_selection::cost_tracker::CostTracker::new(pricing, cost_config.clone()));
         agent = agent.with_cost_tracker(tracker);
     }
@@ -162,7 +163,9 @@ fn format_event_json(event: &AgentEvent) -> String {
             }
         })
         .to_string(),
-        AgentEvent::ModelChange { from, to, reason } => json!({"type": "model_change", "from": from, "to": to, "reason": reason}).to_string(),
+        AgentEvent::ModelChange { from, to, reason } => {
+            json!({"type": "model_change", "from": from, "to": to, "reason": reason}).to_string()
+        }
         AgentEvent::SessionCompaction {
             compacted_count,
             tokens_saved,

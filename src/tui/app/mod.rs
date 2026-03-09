@@ -391,10 +391,7 @@ impl App {
 
         contributors.push(&settings.leader_menu);
 
-        let (menu, conflicts) = super::components::leader_menu::LeaderMenu::build(
-            &contributors,
-            &hidden,
-        );
+        let (menu, conflicts) = super::components::leader_menu::LeaderMenu::build(&contributors, &hidden);
 
         for c in &conflicts {
             tracing::debug!(
@@ -415,10 +412,12 @@ impl App {
         &mut self,
         plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     ) {
-        use crate::slash_commands::{BuiltinSlashContributor, SlashContributor, SlashRegistry};
+        use crate::slash_commands::BuiltinSlashContributor;
+        use crate::slash_commands::SlashContributor;
+        use crate::slash_commands::SlashRegistry;
 
         let builtin = BuiltinSlashContributor;
-        
+
         // Collect contributors
         let pm_guard;
         let mut contributors: Vec<&dyn SlashContributor> = vec![&builtin];
@@ -619,8 +618,7 @@ impl App {
         let mut zoomed = ratatui_hypertile::Hypertile::new();
         // Hypertile::new() creates ROOT as the only pane. We need to
         // make the registry map ROOT to whatever the focused pane held.
-        let kind = self.layout.pane_registry.kind(focused_pane).cloned()
-            .unwrap_or(super::panes::PaneKind::Empty);
+        let kind = self.layout.pane_registry.kind(focused_pane).cloned().unwrap_or(super::panes::PaneKind::Empty);
 
         let mut reg = super::panes::PaneRegistry::new();
         // ROOT is already Chat in a fresh registry — override it.
@@ -724,11 +722,14 @@ impl App {
             self.conversation.blocks.push(BlockEntry::Conversation(block));
 
             // Refresh branch panel if it has entries (i.e., has been opened before)
-            if let Some(bp) = self.panels.downcast_ref::<super::components::branch_panel::BranchPanel>(super::panel::PanelId::Branches)
+            if let Some(bp) = self
+                .panels
+                .downcast_ref::<super::components::branch_panel::BranchPanel>(super::panel::PanelId::Branches)
                 && !bp.entries.is_empty()
             {
                 let active_ids: std::collections::HashSet<usize> = self
-                    .conversation.blocks
+                    .conversation
+                    .blocks
                     .iter()
                     .filter_map(|e| match e {
                         BlockEntry::Conversation(b) => Some(b.id),
@@ -736,7 +737,10 @@ impl App {
                     })
                     .collect();
                 let all_blocks = self.conversation.all_blocks.clone();
-                if let Some(bp) = self.panels.downcast_mut::<super::components::branch_panel::BranchPanel>(super::panel::PanelId::Branches) {
+                if let Some(bp) = self
+                    .panels
+                    .downcast_mut::<super::components::branch_panel::BranchPanel>(super::panel::PanelId::Branches)
+                {
                     bp.refresh(&all_blocks, &active_ids);
                 }
             }
@@ -866,12 +870,14 @@ fn register_default_panels() -> super::panel::PanelManager {
 
 /// Build the default slash command registry with builtin commands.
 fn build_default_slash_registry() -> crate::slash_commands::SlashRegistry {
-    use crate::slash_commands::{BuiltinSlashContributor, SlashContributor, SlashRegistry};
-    
+    use crate::slash_commands::BuiltinSlashContributor;
+    use crate::slash_commands::SlashContributor;
+    use crate::slash_commands::SlashRegistry;
+
     let builtin = BuiltinSlashContributor;
     let contributors: Vec<&dyn SlashContributor> = vec![&builtin];
     let (registry, conflicts) = SlashRegistry::build(&contributors);
-    
+
     for c in &conflicts {
         tracing::debug!(
             registry = c.registry,
@@ -881,7 +887,7 @@ fn build_default_slash_registry() -> crate::slash_commands::SlashRegistry {
             "slash command conflict (init)"
         );
     }
-    
+
     registry
 }
 

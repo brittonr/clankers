@@ -175,7 +175,10 @@ mod tests {
     fn test_setup_worktree_not_git_repo() {
         let db = test_db();
         let tmp = tempfile::TempDir::new().expect("test: failed to create temp dir");
-        assert!(setup_worktree_for_session(&db, tmp.path().to_str().expect("test: failed to convert path to str"), true).is_none());
+        assert!(
+            setup_worktree_for_session(&db, tmp.path().to_str().expect("test: failed to convert path to str"), true)
+                .is_none()
+        );
     }
 
     #[test]
@@ -185,7 +188,11 @@ mod tests {
         let repo = tmp.path();
 
         // Initialize a git repo with an initial commit
-        std::process::Command::new("git").args(["init"]).current_dir(repo).output().expect("test: git init failed");
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .expect("test: git init failed");
         std::process::Command::new("git")
             .args(["config", "user.email", "test@test.com"])
             .current_dir(repo)
@@ -197,8 +204,16 @@ mod tests {
             .output()
             .expect("test: git config name failed");
         std::fs::write(repo.join("README.md"), "hello").expect("test: failed to write README");
-        std::process::Command::new("git").args(["add", "."]).current_dir(repo).output().expect("test: git add failed");
-        std::process::Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output().expect("test: git commit failed");
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .expect("test: git add failed");
+        std::process::Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(repo)
+            .output()
+            .expect("test: git commit failed");
 
         let setup = setup_worktree_for_session(&db, repo.to_str().expect("test: failed to convert path to str"), true);
         assert!(setup.is_some());
@@ -225,7 +240,11 @@ mod tests {
         let repo = tmp.path();
 
         // Initialize git repo
-        std::process::Command::new("git").args(["init"]).current_dir(repo).output().expect("test: git init failed");
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .expect("test: git init failed");
         std::process::Command::new("git")
             .args(["config", "user.email", "test@test.com"])
             .current_dir(repo)
@@ -237,15 +256,28 @@ mod tests {
             .output()
             .expect("test: git config name failed");
         std::fs::write(repo.join("README.md"), "hello").expect("test: failed to write README");
-        std::process::Command::new("git").args(["add", "."]).current_dir(repo).output().expect("test: git add failed");
-        std::process::Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output().expect("test: git commit failed");
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .expect("test: git add failed");
+        std::process::Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(repo)
+            .output()
+            .expect("test: git commit failed");
 
-        let setup = setup_worktree_for_session(&db, repo.to_str().expect("test: failed to convert path to str"), true).expect("test: setup should succeed");
+        let setup = setup_worktree_for_session(&db, repo.to_str().expect("test: failed to convert path to str"), true)
+            .expect("test: setup should succeed");
 
         // Mark completed
         complete_worktree(&db, &setup).expect("test: failed to complete worktree");
 
-        let info = db.worktrees().get(&setup.branch).expect("test: failed to get worktree").expect("test: worktree should exist");
+        let info = db
+            .worktrees()
+            .get(&setup.branch)
+            .expect("test: failed to get worktree")
+            .expect("test: worktree should exist");
         assert_eq!(info.status, WorktreeStatus::Completed);
 
         // Cleanup
@@ -266,7 +298,11 @@ mod tests {
         let repo = tmp.path();
 
         // Initialize git repo
-        std::process::Command::new("git").args(["init"]).current_dir(repo).output().expect("test: git init failed");
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .expect("test: git init failed");
         std::process::Command::new("git")
             .args(["config", "user.email", "test@test.com"])
             .current_dir(repo)
@@ -278,13 +314,25 @@ mod tests {
             .output()
             .expect("test: git config name failed");
         std::fs::write(repo.join("README.md"), "hello").expect("test: failed to write README");
-        std::process::Command::new("git").args(["add", "."]).current_dir(repo).output().expect("test: git add failed");
-        std::process::Command::new("git").args(["commit", "-m", "init"]).current_dir(repo).output().expect("test: git commit failed");
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .expect("test: git add failed");
+        std::process::Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(repo)
+            .output()
+            .expect("test: git commit failed");
 
-        let setup = setup_worktree_for_session(&db, repo.to_str().expect("test: failed to convert path to str"), true).expect("test: setup should succeed");
+        let setup = setup_worktree_for_session(&db, repo.to_str().expect("test: failed to convert path to str"), true)
+            .expect("test: setup should succeed");
 
         // Resume should find the worktree
-        let resumed = resume_worktree(Some(setup.working_dir.to_str().expect("test: failed to convert path to str")), Some(&setup.branch));
+        let resumed = resume_worktree(
+            Some(setup.working_dir.to_str().expect("test: failed to convert path to str")),
+            Some(&setup.branch),
+        );
         assert!(resumed.is_some());
         let resumed = resumed.expect("test: resume should succeed");
         assert_eq!(resumed.working_dir, setup.working_dir);

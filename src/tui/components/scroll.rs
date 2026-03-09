@@ -18,9 +18,7 @@ pub struct FreeScroll {
 
 impl Default for FreeScroll {
     fn default() -> Self {
-        Self {
-            offset: Cell::new(0),
-        }
+        Self { offset: Cell::new(0) }
     }
 }
 

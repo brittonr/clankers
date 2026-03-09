@@ -7,7 +7,8 @@ use std::path::Path;
 use std::time::Duration;
 use std::time::Instant;
 
-use git2::{Repository, StatusOptions};
+use git2::Repository;
+use git2::StatusOptions;
 use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::style::Style;

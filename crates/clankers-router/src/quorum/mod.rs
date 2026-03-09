@@ -450,6 +450,5 @@ pub fn parse_judge_response(text: &str) -> Option<(usize, String, f64)> {
     Some((winner.saturating_sub(1), reasoning, agreement))
 }
 
-
 #[cfg(test)]
 mod tests;

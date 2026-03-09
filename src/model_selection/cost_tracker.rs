@@ -68,14 +68,11 @@ pub fn pricing_from_models(
         .filter_map(|m| {
             let input = m.input_cost_per_mtok?;
             let output = m.output_cost_per_mtok?;
-            Some((
-                m.id.clone(),
-                ModelPricing {
-                    input_per_mtok: input,
-                    output_per_mtok: output,
-                    display_name: m.name.clone(),
-                },
-            ))
+            Some((m.id.clone(), ModelPricing {
+                input_per_mtok: input,
+                output_per_mtok: output,
+                display_name: m.name.clone(),
+            }))
         })
         .collect()
 }
@@ -218,12 +215,7 @@ impl CostTracker {
     ///
     /// Returns any budget events triggered (warnings, exceeded, milestones).
     /// Unknown models are tracked at zero cost (no pricing entry found).
-    pub fn record_usage(
-        &self,
-        model_id: &str,
-        input_tokens: u64,
-        output_tokens: u64,
-    ) -> (f64, Vec<BudgetEvent>) {
+    pub fn record_usage(&self, model_id: &str, input_tokens: u64, output_tokens: u64) -> (f64, Vec<BudgetEvent>) {
         let (input_cost, output_cost) = if let Some(pricing) = self.pricing.get(model_id) {
             (
                 (input_tokens as f64 / 1_000_000.0) * pricing.input_per_mtok,
@@ -231,10 +223,7 @@ impl CostTracker {
             )
         } else {
             // Try prefix matching (e.g., "claude-sonnet-4-5-20250514" matches "claude-sonnet-4-5")
-            let fallback = self
-                .pricing
-                .iter()
-                .find(|(k, _)| model_id.starts_with(k.as_str()));
+            let fallback = self.pricing.iter().find(|(k, _)| model_id.starts_with(k.as_str()));
             if let Some((_, pricing)) = fallback {
                 (
                     (input_tokens as f64 / 1_000_000.0) * pricing.input_per_mtok,
@@ -280,11 +269,8 @@ impl CostTracker {
         let by_model: Vec<ModelCostBreakdown> = usage
             .iter()
             .map(|(model_id, u)| {
-                let display_name = self
-                    .pricing
-                    .get(model_id)
-                    .map(|p| p.display_name.clone())
-                    .unwrap_or_else(|| model_id.clone());
+                let display_name =
+                    self.pricing.get(model_id).map(|p| p.display_name.clone()).unwrap_or_else(|| model_id.clone());
                 let percentage = if total_cost > 0.0 {
                     (u.cost_usd / total_cost * 100.0) as f32
                 } else {
@@ -321,11 +307,7 @@ impl CostTracker {
         let total_in: u64 = usage.values().map(|u| u.input_tokens).sum();
         let total_out: u64 = usage.values().map(|u| u.output_tokens).sum();
 
-        let model_short = self
-            .pricing
-            .get(current_model)
-            .map(|p| p.display_name.as_str())
-            .unwrap_or(current_model);
+        let model_short = self.pricing.get(current_model).map(|p| p.display_name.as_str()).unwrap_or(current_model);
 
         let budget_part = match (&self.config.soft_limit, &self.config.hard_limit) {
             (_, Some(hard)) => format!(" | Budget: ${:.2} / ${:.2}", total_cost, hard),
@@ -355,7 +337,10 @@ impl CostTracker {
         };
 
         // Hard limit
-        if let Some(hard) = self.config.hard_limit && total >= hard && prev < hard {
+        if let Some(hard) = self.config.hard_limit
+            && total >= hard
+            && prev < hard
+        {
             events.push(BudgetEvent::Exceeded {
                 limit: hard,
                 current: total,
@@ -363,7 +348,10 @@ impl CostTracker {
         }
 
         // Soft limit
-        if let Some(soft) = self.config.soft_limit && total >= soft && prev < soft {
+        if let Some(soft) = self.config.soft_limit
+            && total >= soft
+            && prev < soft
+        {
             events.push(BudgetEvent::Warning {
                 threshold: soft,
                 current: total,
@@ -371,7 +359,9 @@ impl CostTracker {
         }
 
         // Milestone intervals — emit one event per crossed milestone
-        if let Some(interval) = self.config.warning_interval && interval > 0.0 {
+        if let Some(interval) = self.config.warning_interval
+            && interval > 0.0
+        {
             let prev_milestone = (prev / interval).floor() as u64;
             let curr_milestone = (total / interval).floor() as u64;
             for m in (prev_milestone + 1)..=curr_milestone {
@@ -447,14 +437,11 @@ mod tests {
         ]
         .into_iter()
         .map(|(id, input, output, name)| {
-            (
-                id.to_string(),
-                ModelPricing {
-                    input_per_mtok: input,
-                    output_per_mtok: output,
-                    display_name: name.to_string(),
-                },
-            )
+            (id.to_string(), ModelPricing {
+                input_per_mtok: input,
+                output_per_mtok: output,
+                display_name: name.to_string(),
+            })
         })
         .collect()
     }
@@ -464,14 +451,11 @@ mod tests {
     }
 
     fn tracker_with_budget(soft: Option<f64>, hard: Option<f64>) -> CostTracker {
-        CostTracker::new(
-            test_pricing(),
-            CostTrackerConfig {
-                soft_limit: soft,
-                hard_limit: hard,
-                warning_interval: None,
-            },
-        )
+        CostTracker::new(test_pricing(), CostTrackerConfig {
+            soft_limit: soft,
+            hard_limit: hard,
+            warning_interval: None,
+        })
     }
 
     #[test]
@@ -596,14 +580,11 @@ mod tests {
 
     #[test]
     fn test_budget_milestone_event() {
-        let tracker = CostTracker::new(
-            test_pricing(),
-            CostTrackerConfig {
-                soft_limit: None,
-                hard_limit: None,
-                warning_interval: Some(1.0), // every $1
-            },
-        );
+        let tracker = CostTracker::new(test_pricing(), CostTrackerConfig {
+            soft_limit: None,
+            hard_limit: None,
+            warning_interval: Some(1.0), // every $1
+        });
         // Record usage that crosses $1 milestone
         // Sonnet: 1M input = $3.0
         let (_, events) = tracker.record_usage("claude-sonnet-4-5", 1_000_000, 0);
@@ -670,17 +651,11 @@ mod tests {
 
         // Over soft, under hard — sonnet 1M input = $3
         tracker.record_usage("claude-sonnet-4-5", 1_000_000, 0);
-        assert!(matches!(
-            tracker.budget_status(),
-            BudgetStatus::Warning { .. }
-        ));
+        assert!(matches!(tracker.budget_status(), BudgetStatus::Warning { .. }));
 
         // Over hard — opus 1M input = $15
         tracker.record_usage("claude-opus-4", 1_000_000, 0);
-        assert!(matches!(
-            tracker.budget_status(),
-            BudgetStatus::Exceeded { .. }
-        ));
+        assert!(matches!(tracker.budget_status(), BudgetStatus::Exceeded { .. }));
     }
 
     #[test]

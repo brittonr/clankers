@@ -8,7 +8,8 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-use crate::procmon::{ProcessMonitorHandle, ProcessState};
+use crate::procmon::ProcessMonitorHandle;
+use crate::procmon::ProcessState;
 
 pub struct ProcmonTool {
     definition: ToolDefinition,
@@ -92,10 +93,7 @@ impl ProcmonTool {
         }
 
         let mut lines = Vec::new();
-        lines.push(format!(
-            "{:<8} {:<7} {:<9} {:<9} {}",
-            "PID", "CPU%", "MEM(MB)", "TIME", "COMMAND"
-        ));
+        lines.push(format!("{:<8} {:<7} {:<9} {:<9} {}", "PID", "CPU%", "MEM(MB)", "TIME", "COMMAND"));
         lines.push("─".repeat(80));
 
         for (pid, proc) in &snapshot {
@@ -105,10 +103,7 @@ impl ProcmonTool {
             let elapsed = proc.start_time.elapsed();
             let time_str = format!("{}:{:02}", elapsed.as_secs() / 60, elapsed.as_secs() % 60);
 
-            lines.push(format!(
-                "{:<8} {:<7.1} {:<9} {:<9} {}",
-                pid, cpu, rss_mb, time_str, proc.meta.command
-            ));
+            lines.push(format!("{:<8} {:<7.1} {:<9} {:<9} {}", pid, cpu, rss_mb, time_str, proc.meta.command));
 
             // Show children indented
             for child_pid in &proc.children {
@@ -154,10 +149,7 @@ impl ProcmonTool {
         }
 
         let mut lines = Vec::new();
-        lines.push(format!(
-            "{:<8} {:<6} {:<10} {:<9} {}",
-            "PID", "EXIT", "PEAK(MB)", "WALL", "COMMAND"
-        ));
+        lines.push(format!("{:<8} {:<6} {:<10} {:<9} {}", "PID", "EXIT", "PEAK(MB)", "WALL", "COMMAND"));
         lines.push("─".repeat(80));
 
         for (pid, proc) in history {
@@ -172,10 +164,7 @@ impl ProcmonTool {
             let wall_str = format!("{}:{:02}", wall_time.as_secs() / 60, wall_time.as_secs() % 60);
             let peak_mb = proc.peak_rss / 1_024 / 1_024;
 
-            lines.push(format!(
-                "{:<8} {:<6} {:<10} {:<9} {}",
-                pid, exit_code, peak_mb, wall_str, proc.meta.command
-            ));
+            lines.push(format!("{:<8} {:<6} {:<10} {:<9} {}", pid, exit_code, peak_mb, wall_str, proc.meta.command));
         }
 
         ToolResult::text(lines.join("\n"))
@@ -281,14 +270,16 @@ fn sparkline(values: &[f32], max_val: f32, width: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     use std::sync::Arc;
     use std::time::Instant;
 
     use tokio_util::sync::CancellationToken;
 
-    use crate::procmon::{ProcessMonitor, ProcessMonitorConfig, ProcessMeta, ResourceSnapshot};
+    use super::*;
+    use crate::procmon::ProcessMeta;
+    use crate::procmon::ProcessMonitor;
+    use crate::procmon::ProcessMonitorConfig;
+    use crate::procmon::ResourceSnapshot;
     use crate::tools::ToolResultContent;
 
     fn test_ctx() -> ToolContext {

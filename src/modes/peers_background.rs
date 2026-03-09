@@ -115,4 +115,3 @@ pub(crate) async fn discover_peers_background(
         probe_peer_background(node_id, rp, ip, _panel_tx.clone()).await;
     }
 }
-

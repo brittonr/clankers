@@ -40,5 +40,3 @@ impl MessageScroll {
         self.auto_scroll = true;
     }
 }
-
-

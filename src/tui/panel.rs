@@ -235,9 +235,7 @@ pub trait Panel {
     fn draw(&self, frame: &mut Frame, area: Rect, ctx: &DrawContext) {
         if let Some(lines) = self.content(area.width as usize, ctx) {
             let scroll_offset = self.panel_scroll().map(|s| s.offset_u16()).unwrap_or(0);
-            let para = Paragraph::new(lines)
-                .scroll((scroll_offset, 0))
-                .wrap(Wrap { trim: false });
+            let para = Paragraph::new(lines).scroll((scroll_offset, 0)).wrap(Wrap { trim: false });
             frame.render_widget(para, area);
         }
     }
@@ -307,9 +305,7 @@ pub fn draw_panel_scrolled(frame: &mut Frame, panel: &mut dyn Panel, area: Rect,
                 scroll.set_dimensions(total, visible);
             }
             let offset = panel.panel_scroll().map(|s| s.offset_u16()).unwrap_or(0);
-            let para = Paragraph::new(lines)
-                .scroll((offset, 0))
-                .wrap(Wrap { trim: false });
+            let para = Paragraph::new(lines).scroll((offset, 0)).wrap(Wrap { trim: false });
             frame.render_widget(para, inner);
         } else {
             panel.draw(frame, inner, ctx);

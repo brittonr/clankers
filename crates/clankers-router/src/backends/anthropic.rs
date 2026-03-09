@@ -16,6 +16,7 @@ use tracing::debug;
 use tracing::info;
 use tracing::warn;
 
+use super::common;
 use crate::credential_pool::CredentialPool;
 use crate::error::Error;
 use crate::error::Result;
@@ -75,7 +76,7 @@ impl AnthropicProvider {
     #[allow(clippy::new_ret_no_self)]
     pub fn new(credential: Credential, base_url: Option<String>) -> Arc<dyn Provider> {
         Arc::new(Self {
-            client: Client::builder().timeout(Duration::from_secs(300)).build().expect("Failed to build HTTP client"),
+            client: common::build_http_client(Duration::from_secs(300)).expect("Failed to build HTTP client"),
             base_url: base_url.unwrap_or_else(|| BASE_URL.to_string()),
             credential: RwLock::new(credential),
             pool: None,
@@ -92,7 +93,7 @@ impl AnthropicProvider {
         // Use the first credential as the legacy fallback
         let fallback = Credential::ApiKey(String::new());
         Arc::new(Self {
-            client: Client::builder().timeout(Duration::from_secs(300)).build().expect("Failed to build HTTP client"),
+            client: common::build_http_client(Duration::from_secs(300)).expect("Failed to build HTTP client"),
             base_url: base_url.unwrap_or_else(|| BASE_URL.to_string()),
             credential: RwLock::new(fallback),
             pool: Some(pool),
@@ -285,7 +286,7 @@ impl AnthropicProvider {
 
             return Err(Error::provider_with_status(
                 status_code,
-                format!("Anthropic API error {}: {}", status_code, truncate(&body_text, 500)),
+                format!("Anthropic API error {}: {}", status_code, common::truncate(&body_text, 500)),
             ));
         }
     }
@@ -366,41 +367,27 @@ fn build_request_body(request: &CompletionRequest, is_oauth: bool) -> Result<Val
 
 // ── SSE parsing ─────────────────────────────────────────────────────────
 
-async fn parse_sse_stream(resp: reqwest::Response, tx: &mpsc::Sender<StreamEvent>) -> Result<()> {
-    use tokio::io::AsyncBufReadExt;
-    use tokio_stream::StreamExt;
+/// Anthropic-specific SSE event handler.
+struct AnthropicSseHandler {
+    /// Channel for sending usage updates from message_start
+    tx: mpsc::Sender<StreamEvent>,
+}
 
-    let bytes_stream = resp.bytes_stream();
-    let reader = tokio_util::io::StreamReader::new(bytes_stream.map(|r| r.map_err(std::io::Error::other)));
-    let mut lines = tokio::io::BufReader::new(reader).lines();
+impl AnthropicSseHandler {
+    fn new(tx: mpsc::Sender<StreamEvent>) -> Self {
+        Self { tx }
+    }
 
-    let mut current_event_type = String::new();
+    fn parse_event(&self, event_type: &str, data: &str) -> Result<Option<StreamEvent>> {
+        let v: Value = serde_json::from_str(data).map_err(|e| Error::Streaming {
+            message: format!("Failed to parse SSE data: {}", e),
+        })?;
 
-    while let Some(line) = lines.next_line().await.map_err(|e| Error::Streaming {
-        message: format!("SSE read error: {}", e),
-    })? {
-        let line = line.trim().to_string();
-
-        if line.is_empty() || line.starts_with(':') {
-            continue;
-        }
-
-        if let Some(event_type) = line.strip_prefix("event: ") {
-            current_event_type = event_type.to_string();
-            continue;
-        }
-
-        if let Some(data) = line.strip_prefix("data: ") {
-            if data == "[DONE]" {
-                break;
-            }
-
-            // Extract initial usage from message_start before parsing the event.
-            // Anthropic sends input token counts and cache token counts in
-            // message_start.message.usage — this is our only chance to capture them.
-            if current_event_type == "message_start"
-                && let Ok(v) = serde_json::from_str::<Value>(data)
-            {
+        let event = match event_type {
+            "message_start" => {
+                // Extract initial usage from message_start before parsing the event.
+                // Anthropic sends input token counts and cache token counts in
+                // message_start.message.usage — this is our only chance to capture them.
                 let usage = &v["message"]["usage"];
                 if usage.is_object() {
                     let input_tokens = usage["input_tokens"].as_u64().unwrap_or(0) as usize;
@@ -408,117 +395,115 @@ async fn parse_sse_stream(resp: reqwest::Response, tx: &mpsc::Sender<StreamEvent
                     let cache_read = usage["cache_read_input_tokens"].as_u64().unwrap_or(0) as usize;
 
                     if input_tokens > 0 || cache_creation > 0 || cache_read > 0 {
-                        let _ = tx
-                            .send(StreamEvent::MessageDelta {
-                                stop_reason: None,
-                                usage: Usage {
-                                    input_tokens,
-                                    output_tokens: 0,
-                                    cache_creation_input_tokens: cache_creation,
-                                    cache_read_input_tokens: cache_read,
-                                },
-                            })
-                            .await;
+                        // Send usage update asynchronously (best effort)
+                        let tx = self.tx.clone();
+                        tokio::spawn(async move {
+                            let _ = tx
+                                .send(StreamEvent::MessageDelta {
+                                    stop_reason: None,
+                                    usage: Usage {
+                                        input_tokens,
+                                        output_tokens: 0,
+                                        cache_creation_input_tokens: cache_creation,
+                                        cache_read_input_tokens: cache_read,
+                                    },
+                                })
+                                .await;
+                        });
                     }
                 }
-            }
 
-            if let Some(stream_event) = parse_sse_event(&current_event_type, data)?
-                && tx.send(stream_event).await.is_err()
-            {
-                break; // receiver dropped
+                let msg = &v["message"];
+                StreamEvent::MessageStart {
+                    message: MessageMetadata {
+                        id: msg["id"].as_str().unwrap_or("").to_string(),
+                        model: msg["model"].as_str().unwrap_or("").to_string(),
+                        role: msg["role"].as_str().unwrap_or("assistant").to_string(),
+                    },
+                }
             }
-        }
+            "content_block_start" => {
+                let index = v["index"].as_u64().unwrap_or(0) as usize;
+                let cb = &v["content_block"];
+                let block = match cb["type"].as_str() {
+                    Some("text") => ContentBlock::Text {
+                        text: cb["text"].as_str().unwrap_or("").to_string(),
+                    },
+                    Some("thinking") => ContentBlock::Thinking {
+                        thinking: cb["thinking"].as_str().unwrap_or("").to_string(),
+                    },
+                    Some("tool_use") => ContentBlock::ToolUse {
+                        id: cb["id"].as_str().unwrap_or("").to_string(),
+                        name: cb["name"].as_str().unwrap_or("").to_string(),
+                        input: json!({}),
+                    },
+                    _ => ContentBlock::Text { text: String::new() },
+                };
+                StreamEvent::ContentBlockStart {
+                    index,
+                    content_block: block,
+                }
+            }
+            "content_block_delta" => {
+                let index = v["index"].as_u64().unwrap_or(0) as usize;
+                let d = &v["delta"];
+                let delta = match d["type"].as_str() {
+                    Some("text_delta") => ContentDelta::TextDelta {
+                        text: d["text"].as_str().unwrap_or("").to_string(),
+                    },
+                    Some("thinking_delta") => ContentDelta::ThinkingDelta {
+                        thinking: d["thinking"].as_str().unwrap_or("").to_string(),
+                    },
+                    Some("input_json_delta") => ContentDelta::InputJsonDelta {
+                        partial_json: d["partial_json"].as_str().unwrap_or("").to_string(),
+                    },
+                    _ => ContentDelta::TextDelta { text: String::new() },
+                };
+                StreamEvent::ContentBlockDelta { index, delta }
+            }
+            "content_block_stop" => {
+                let index = v["index"].as_u64().unwrap_or(0) as usize;
+                StreamEvent::ContentBlockStop { index }
+            }
+            "message_delta" => {
+                let stop_reason = v["delta"]["stop_reason"].as_str().map(|s| s.to_string());
+                let usage = &v["usage"];
+                StreamEvent::MessageDelta {
+                    stop_reason,
+                    usage: Usage {
+                        input_tokens: usage["input_tokens"].as_u64().unwrap_or(0) as usize,
+                        output_tokens: usage["output_tokens"].as_u64().unwrap_or(0) as usize,
+                        cache_creation_input_tokens: usage["cache_creation_input_tokens"].as_u64().unwrap_or(0)
+                            as usize,
+                        cache_read_input_tokens: usage["cache_read_input_tokens"].as_u64().unwrap_or(0) as usize,
+                    },
+                }
+            }
+            "message_stop" => StreamEvent::MessageStop,
+            "ping" => return Ok(None),
+            "error" => {
+                let msg = v["error"]["message"].as_str().unwrap_or("Unknown error").to_string();
+                StreamEvent::Error { error: msg }
+            }
+            _ => {
+                debug!("Unknown SSE event type: {}", event_type);
+                return Ok(None);
+            }
+        };
+
+        Ok(Some(event))
     }
-
-    Ok(())
 }
 
-fn parse_sse_event(event_type: &str, data: &str) -> Result<Option<StreamEvent>> {
-    let v: Value = serde_json::from_str(data).map_err(|e| Error::Streaming {
-        message: format!("Failed to parse SSE data: {}", e),
-    })?;
+impl common::SseEventHandler for AnthropicSseHandler {
+    fn handle_event(&mut self, event: &common::SseEvent) -> Result<Option<StreamEvent>> {
+        self.parse_event(event.event_type(), &event.data)
+    }
+}
 
-    let event = match event_type {
-        "message_start" => {
-            let msg = &v["message"];
-            StreamEvent::MessageStart {
-                message: MessageMetadata {
-                    id: msg["id"].as_str().unwrap_or("").to_string(),
-                    model: msg["model"].as_str().unwrap_or("").to_string(),
-                    role: msg["role"].as_str().unwrap_or("assistant").to_string(),
-                },
-            }
-        }
-        "content_block_start" => {
-            let index = v["index"].as_u64().unwrap_or(0) as usize;
-            let cb = &v["content_block"];
-            let block = match cb["type"].as_str() {
-                Some("text") => ContentBlock::Text {
-                    text: cb["text"].as_str().unwrap_or("").to_string(),
-                },
-                Some("thinking") => ContentBlock::Thinking {
-                    thinking: cb["thinking"].as_str().unwrap_or("").to_string(),
-                },
-                Some("tool_use") => ContentBlock::ToolUse {
-                    id: cb["id"].as_str().unwrap_or("").to_string(),
-                    name: cb["name"].as_str().unwrap_or("").to_string(),
-                    input: json!({}),
-                },
-                _ => ContentBlock::Text { text: String::new() },
-            };
-            StreamEvent::ContentBlockStart {
-                index,
-                content_block: block,
-            }
-        }
-        "content_block_delta" => {
-            let index = v["index"].as_u64().unwrap_or(0) as usize;
-            let d = &v["delta"];
-            let delta = match d["type"].as_str() {
-                Some("text_delta") => ContentDelta::TextDelta {
-                    text: d["text"].as_str().unwrap_or("").to_string(),
-                },
-                Some("thinking_delta") => ContentDelta::ThinkingDelta {
-                    thinking: d["thinking"].as_str().unwrap_or("").to_string(),
-                },
-                Some("input_json_delta") => ContentDelta::InputJsonDelta {
-                    partial_json: d["partial_json"].as_str().unwrap_or("").to_string(),
-                },
-                _ => ContentDelta::TextDelta { text: String::new() },
-            };
-            StreamEvent::ContentBlockDelta { index, delta }
-        }
-        "content_block_stop" => {
-            let index = v["index"].as_u64().unwrap_or(0) as usize;
-            StreamEvent::ContentBlockStop { index }
-        }
-        "message_delta" => {
-            let stop_reason = v["delta"]["stop_reason"].as_str().map(|s| s.to_string());
-            let usage = &v["usage"];
-            StreamEvent::MessageDelta {
-                stop_reason,
-                usage: Usage {
-                    input_tokens: usage["input_tokens"].as_u64().unwrap_or(0) as usize,
-                    output_tokens: usage["output_tokens"].as_u64().unwrap_or(0) as usize,
-                    cache_creation_input_tokens: usage["cache_creation_input_tokens"].as_u64().unwrap_or(0) as usize,
-                    cache_read_input_tokens: usage["cache_read_input_tokens"].as_u64().unwrap_or(0) as usize,
-                },
-            }
-        }
-        "message_stop" => StreamEvent::MessageStop,
-        "ping" => return Ok(None),
-        "error" => {
-            let msg = v["error"]["message"].as_str().unwrap_or("Unknown error").to_string();
-            StreamEvent::Error { error: msg }
-        }
-        _ => {
-            debug!("Unknown SSE event type: {}", event_type);
-            return Ok(None);
-        }
-    };
-
-    Ok(Some(event))
+async fn parse_sse_stream(resp: reqwest::Response, tx: &mpsc::Sender<StreamEvent>) -> Result<()> {
+    let handler = AnthropicSseHandler::new(tx.clone());
+    common::process_sse_stream(resp, tx.clone(), handler).await
 }
 
 // ── Models ──────────────────────────────────────────────────────────────
@@ -610,8 +595,4 @@ fn default_models() -> Vec<Model> {
             output_cost_per_mtok: Some(4.0),
         },
     ]
-}
-
-fn truncate(s: &str, max_len: usize) -> &str {
-    if s.len() <= max_len { s } else { &s[..max_len] }
 }

@@ -100,7 +100,8 @@ fn render_mode_indicators<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a
     }
 }
 
-/// Render status badges: account, router, context, git, process, tool activity, cost/budget, plugins
+/// Render status badges: account, router, context, git, process, tool activity, cost/budget,
+/// plugins
 fn render_status_badges<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>) {
     // Account badge
     if !data.active_account.is_empty() {
@@ -150,22 +151,21 @@ fn render_status_badges<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>)
     // Cost / budget badge (color-coded)
     if data.total_tokens > 0 {
         let (cost_text, cost_color) = match &data.budget_status {
-            BudgetStatus::NoBudget => {
-                (format!(" ${:.4} ", data.total_cost), Color::DarkGray)
-            }
+            BudgetStatus::NoBudget => (format!(" ${:.4} ", data.total_cost), Color::DarkGray),
             BudgetStatus::Ok { remaining } => {
                 (format!(" ${:.2} (${:.2} left) ", data.total_cost, remaining), Color::Green)
             }
-            BudgetStatus::Warning { over_soft_by: _, hard_limit_remaining } => {
+            BudgetStatus::Warning {
+                over_soft_by: _,
+                hard_limit_remaining,
+            } => {
                 if hard_limit_remaining.is_finite() {
                     (format!(" ${:.2} ⚠ (${:.2} to hard) ", data.total_cost, hard_limit_remaining), Color::Yellow)
                 } else {
                     (format!(" ${:.2} ⚠ over budget ", data.total_cost), Color::Yellow)
                 }
             }
-            BudgetStatus::Exceeded { .. } => {
-                (format!(" ${:.2} ✖ exceeded ", data.total_cost), Color::Red)
-            }
+            BudgetStatus::Exceeded { .. } => (format!(" ${:.2} ✖ exceeded ", data.total_cost), Color::Red),
         };
         spans.push(Span::styled(
             cost_text,
@@ -189,10 +189,7 @@ fn render_trailing_info<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>,
     };
 
     let info = if data.total_tokens > 0 {
-        format!(
-            " {} | {} tok | {} | {}",
-            state_str, data.total_tokens, data.model, data.cwd
-        )
+        format!(" {} | {} tok | {} | {}", state_str, data.total_tokens, data.model, data.cwd)
     } else {
         format!(" {} | {} | {}", state_str, data.model, data.cwd)
     };

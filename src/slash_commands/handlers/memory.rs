@@ -36,10 +36,8 @@ impl SystemPromptHandler {
             let new_prompt = text.to_string();
             let len = new_prompt.len();
             let _ = ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(new_prompt));
-            ctx.app.push_system(
-                format!("System prompt replaced ({} chars). Takes effect on next message.", len),
-                false,
-            );
+            ctx.app
+                .push_system(format!("System prompt replaced ({} chars). Takes effect on next message.", len), false);
         }
     }
 
@@ -51,10 +49,7 @@ impl SystemPromptHandler {
             let new_prompt = format!("{}\n\n{}", current, text);
             let _ = ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(new_prompt));
             ctx.app.push_system(
-                format!(
-                    "Appended {} chars to system prompt. Takes effect on next message.",
-                    text.len()
-                ),
+                format!("Appended {} chars to system prompt. Takes effect on next message.", text.len()),
                 false,
             );
         }
@@ -68,10 +63,7 @@ impl SystemPromptHandler {
             let new_prompt = format!("{}\n\n{}", text, current);
             let _ = ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(new_prompt));
             ctx.app.push_system(
-                format!(
-                    "Prepended {} chars to system prompt. Takes effect on next message.",
-                    text.len()
-                ),
+                format!("Prepended {} chars to system prompt. Takes effect on next message.", text.len()),
                 false,
             );
         }
@@ -163,10 +155,7 @@ impl SlashHandler for SystemPromptHandler {
             "file" => Self::handle_file(ctx, subcmd_args),
             _ => {
                 ctx.app.push_system(
-                    format!(
-                        "Unknown subcommand '{}'. Available: show, set, append, prepend, reset, file",
-                        subcmd
-                    ),
+                    format!("Unknown subcommand '{}'. Available: show, set, append, prepend, reset, file", subcmd),
                     true,
                 );
             }
@@ -194,19 +183,15 @@ impl MemoryHandler {
     fn handle_list(ctx: &mut SlashContext<'_>, mem: &crate::db::memory::MemoryStore) {
         match mem.list(None) {
             Ok(entries) if entries.is_empty() => {
-                ctx.app.push_system(
-                    "No memories stored.\n\nUse `/memory add <text>` to save one.".to_string(),
-                    false,
-                );
+                ctx.app
+                    .push_system("No memories stored.\n\nUse `/memory add <text>` to save one.".to_string(), false);
             }
             Ok(entries) => {
                 let mut out = format!("**Memories** ({} total):\n\n", entries.len());
                 for e in &entries {
                     out.push_str(&Self::format_memory_entry(e));
                 }
-                out.push_str(
-                    "\nUse `/memory edit <id> <new text>` to modify, `/memory remove <id>` to delete.",
-                );
+                out.push_str("\nUse `/memory edit <id> <new text>` to modify, `/memory remove <id>` to delete.");
                 ctx.app.push_system(out, false);
             }
             Err(e) => {
@@ -226,7 +211,9 @@ impl MemoryHandler {
                     return;
                 }
                 (
-                    crate::db::memory::MemoryScope::Project { path: ctx.app.cwd.clone() },
+                    crate::db::memory::MemoryScope::Project {
+                        path: ctx.app.cwd.clone(),
+                    },
                     rest.to_string(),
                 )
             } else {
@@ -238,10 +225,7 @@ impl MemoryHandler {
             let id = entry.id;
             match mem.save(&entry) {
                 Ok(()) => {
-                    ctx.app.push_system(
-                        format!("Memory saved (id: `{}`, scope: {}):\n  {}", id, scope, text),
-                        false,
-                    );
+                    ctx.app.push_system(format!("Memory saved (id: `{}`, scope: {}):\n  {}", id, scope, text), false);
                 }
                 Err(e) => {
                     ctx.app.push_system(format!("Failed to save memory: {}", e), true);
@@ -268,10 +252,7 @@ impl MemoryHandler {
                         match mem.update(&entry) {
                             Ok(true) => {
                                 ctx.app.push_system(
-                                    format!(
-                                        "Memory `{}` updated:\n  ~~{}~~\n  → {}",
-                                        id, old_text, new_text
-                                    ),
+                                    format!("Memory `{}` updated:\n  ~~{}~~\n  → {}", id, old_text, new_text),
                                     false,
                                 );
                             }
@@ -291,10 +272,8 @@ impl MemoryHandler {
                     }
                 }
             } else {
-                ctx.app.push_system(
-                    format!("Invalid memory ID: '{}'. Use `/memory list` to see IDs.", id_str),
-                    true,
-                );
+                ctx.app
+                    .push_system(format!("Invalid memory ID: '{}'. Use `/memory list` to see IDs.", id_str), true);
             }
         }
     }
@@ -315,10 +294,7 @@ impl MemoryHandler {
                 }
             }
         } else {
-            ctx.app.push_system(
-                format!("Invalid memory ID: '{}'. Use `/memory list` to see IDs.", args),
-                true,
-            );
+            ctx.app.push_system(format!("Invalid memory ID: '{}'. Use `/memory list` to see IDs.", args), true);
         }
     }
 
@@ -331,11 +307,7 @@ impl MemoryHandler {
                     ctx.app.push_system(format!("No memories matching '{}'.", query), false);
                 }
                 Ok(results) => {
-                    let mut out = format!(
-                        "**Search results** for '{}' ({} found):\n\n",
-                        query,
-                        results.len()
-                    );
+                    let mut out = format!("**Search results** for '{}' ({} found):\n\n", query, results.len());
                     for e in &results {
                         out.push_str(&Self::format_memory_entry(e));
                     }
@@ -412,10 +384,7 @@ impl SlashHandler for MemoryHandler {
             "clear" => Self::handle_clear(ctx, &mem),
             _ => {
                 ctx.app.push_system(
-                    format!(
-                        "Unknown subcommand '{}'. Available: list, add, edit, remove, search, clear",
-                        subcmd
-                    ),
+                    format!("Unknown subcommand '{}'. Available: list, add, edit, remove, search, clear", subcmd),
                     true,
                 );
             }

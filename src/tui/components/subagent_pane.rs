@@ -4,17 +4,26 @@
 //! each subagent now gets a first-class pane in the tiling layout with
 //! independent scrolling, focus, and lifecycle.
 
-use crossterm::event::{KeyCode, KeyEvent};
+use crossterm::event::KeyCode;
+use crossterm::event::KeyEvent;
 use indexmap::IndexMap;
-use ratatui::layout::Rect;
-use ratatui::style::{Color, Modifier, Style};
-use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use ratatui::Frame;
+use ratatui::layout::Rect;
+use ratatui::style::Color;
+use ratatui::style::Modifier;
+use ratatui::style::Style;
+use ratatui::text::Line;
+use ratatui::text::Span;
+use ratatui::widgets::Block;
+use ratatui::widgets::Borders;
+use ratatui::widgets::Paragraph;
+use ratatui::widgets::Wrap;
 use ratatui_hypertile::PaneId;
 
 use crate::tui::components::subagent_panel::SubagentStatus;
-use crate::tui::panel::{DrawContext, PanelAction, PanelScroll};
+use crate::tui::panel::DrawContext;
+use crate::tui::panel::PanelAction;
+use crate::tui::panel::PanelScroll;
 
 // ── Per-subagent pane state ─────────────────────────────────────────────────
 
@@ -132,10 +141,7 @@ impl SubagentPaneManager {
 
     /// Look up a subagent ID by its pane ID.
     pub fn id_for_pane(&self, pane_id: PaneId) -> Option<&str> {
-        self.panes
-            .values()
-            .find(|s| s.pane_id == pane_id)
-            .map(|s| s.id.as_str())
+        self.panes.values().find(|s| s.pane_id == pane_id).map(|s| s.id.as_str())
     }
 
     /// Handle a key event for a focused subagent pane.
@@ -216,21 +222,13 @@ impl SubagentPaneManager {
             ""
         };
 
-        let title = format!(
-            " {} {} — {}{}",
-            icon,
-            state.name,
-            state.task.chars().take(30).collect::<String>(),
-            focus_hint,
-        );
+        let title =
+            format!(" {} {} — {}{}", icon, state.name, state.task.chars().take(30).collect::<String>(), focus_hint,);
 
         let block = Block::default()
             .borders(Borders::ALL)
             .border_style(Style::default().fg(border_color))
-            .title(Span::styled(
-                title,
-                Style::default().fg(color).add_modifier(Modifier::BOLD),
-            ));
+            .title(Span::styled(title, Style::default().fg(color).add_modifier(Modifier::BOLD)));
 
         let inner = block.inner(area);
         frame.render_widget(block, area);
@@ -248,11 +246,7 @@ impl SubagentPaneManager {
             };
             vec![Line::from(Span::styled(msg, Style::default().fg(Color::DarkGray)))]
         } else {
-            state
-                .output_lines
-                .iter()
-                .map(|l| Line::from(l.as_str()))
-                .collect()
+            state.output_lines.iter().map(|l| Line::from(l.as_str())).collect()
         };
 
         // Update scroll dimensions
@@ -266,18 +260,12 @@ impl SubagentPaneManager {
         }
 
         let offset = state.scroll.offset_u16();
-        let paragraph = Paragraph::new(lines)
-            .wrap(Wrap { trim: false })
-            .scroll((offset, 0));
+        let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((offset, 0));
         frame.render_widget(paragraph, inner);
 
         // Scroll indicator
         if state.scroll.can_scroll_up() || state.scroll.can_scroll_down() {
-            let indicator = format!(
-                " {}/{} ",
-                state.scroll.offset + 1,
-                total.saturating_sub(visible).max(1)
-            );
+            let indicator = format!(" {}/{} ", state.scroll.offset + 1, total.saturating_sub(visible).max(1));
             let ind_len = indicator.len() as u16;
             if area.width > ind_len + 2 {
                 let ind_area = Rect {

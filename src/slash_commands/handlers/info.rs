@@ -23,7 +23,7 @@ impl SlashHandler for HelpHandler {
             }),
         }
     }
-    
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.app.push_system(slash_commands::help_text(), false);
     }
@@ -42,7 +42,7 @@ impl SlashHandler for StatusHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         let status = format!(
             "Model: {}\nTokens used: {}\nCost: ${:.4}\nSession: {}\nCWD: {}",
@@ -65,7 +65,7 @@ impl SlashHandler for UsageHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         let usage = format!(
             "Token usage:\n  Total tokens: {}\n  Estimated cost: ${:.4}",
@@ -88,7 +88,7 @@ impl SlashHandler for VersionHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.app.push_system(format!("clankers {}", env!("CARGO_PKG_VERSION")), false);
     }
@@ -107,7 +107,7 @@ impl SlashHandler for QuitHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.app.should_quit = true;
     }
@@ -135,7 +135,7 @@ impl SlashHandler for LeaderHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         let menu = &ctx.app.overlays.leader_menu;
         let root = menu.root_def();
@@ -158,11 +158,7 @@ impl SlashHandler for LeaderHandler {
             }
         }
 
-        out.push_str(&format!(
-            "\n  {} root items, {} submenus",
-            root.items.len(),
-            submenus.len(),
-        ));
+        out.push_str(&format!("\n  {} root items, {} submenus", root.items.len(), submenus.len(),));
 
         ctx.app.push_system(out, false);
     }
@@ -190,7 +186,7 @@ impl SlashHandler for ExportHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         let filename = if args.is_empty() {
             format!("clankers-export-{}.md", chrono::Local::now().format("%Y%m%d-%H%M%S"))

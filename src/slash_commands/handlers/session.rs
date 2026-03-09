@@ -26,7 +26,7 @@ impl SlashHandler for SessionHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
             handle_show_current(ctx);
@@ -71,7 +71,7 @@ fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
         args.parse().unwrap_or(10)
     };
     let files = crate::session::store::list_sessions(&paths.global_sessions_dir, &ctx.app.cwd);
-    
+
     if files.is_empty() {
         ctx.app.push_system("No sessions found for this directory.".to_string(), false);
         return;
@@ -80,10 +80,7 @@ fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
     let mut out = String::from("Recent sessions:\n\n");
     for (i, path) in files.iter().take(limit).enumerate() {
         let is_current_file = !ctx.app.session_id.is_empty()
-            && path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.contains(&ctx.app.session_id));
+            && path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(&ctx.app.session_id));
         let marker = if is_current_file { " ◀ current" } else { "" };
 
         if let Some(summary) = crate::session::store::read_session_summary(path) {
@@ -104,7 +101,7 @@ fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
             out.push_str(&format!("  {}. {}{}\n", i + 1, name, marker));
         }
     }
-    
+
     if files.len() > limit {
         out.push_str(&format!("  ({} more sessions)\n", files.len() - limit));
     }
@@ -115,7 +112,7 @@ fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
 fn handle_resume(ctx: &mut SlashContext<'_>, args: &str) {
     let paths = crate::config::ClankersPaths::get();
     let files = crate::session::store::list_sessions(&paths.global_sessions_dir, &ctx.app.cwd);
-    
+
     if files.is_empty() {
         ctx.app.push_system("No sessions found for this directory.".to_string(), true);
         return;
@@ -127,10 +124,7 @@ fn handle_resume(ctx: &mut SlashContext<'_>, args: &str) {
             .iter()
             .map(|f| {
                 if let Some(summary) = crate::session::store::read_session_summary(f) {
-                    let date = summary
-                        .created_at
-                        .with_timezone(&chrono::Local)
-                        .format("%Y-%m-%d %H:%M");
+                    let date = summary.created_at.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M");
                     let preview = summary.first_user_message.as_deref().unwrap_or("(empty)");
                     let label = format!(
                         "[{}] {} — {} ({} msgs, {})",
@@ -158,17 +152,13 @@ fn handle_resume(ctx: &mut SlashContext<'_>, args: &str) {
         ctx.app.overlays.session_selector.open(items);
     } else {
         // Direct resume by ID
-        let found = files.into_iter().find(|f| {
-            f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(args))
-        });
+        let found =
+            files.into_iter().find(|f| f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(args)));
         if let Some(file) = found {
             let session_id = file.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
             crate::modes::interactive::resume_session_from_file(ctx.app, file, &session_id, ctx.cmd_tx);
         } else {
-            ctx.app.push_system(
-                format!("No session matching '{}'. Use /session resume to browse.", args),
-                true,
-            );
+            ctx.app.push_system(format!("No session matching '{}'. Use /session resume to browse.", args), true);
         }
     }
 }
@@ -180,12 +170,8 @@ fn handle_delete(ctx: &mut SlashContext<'_>, args: &str) {
     }
 
     let paths = crate::config::ClankersPaths::get();
-    let found = crate::session::store::find_session_by_id(
-        &paths.global_sessions_dir,
-        &ctx.app.cwd,
-        args,
-    );
-    
+    let found = crate::session::store::find_session_by_id(&paths.global_sessions_dir, &ctx.app.cwd, args);
+
     if let Some(file) = found {
         match std::fs::remove_file(&file) {
             Ok(()) => {
@@ -196,10 +182,7 @@ fn handle_delete(ctx: &mut SlashContext<'_>, args: &str) {
             }
         }
     } else {
-        ctx.app.push_system(
-            format!("No session matching '{}'. Use /session list.", args),
-            true,
-        );
+        ctx.app.push_system(format!("No session matching '{}'. Use /session list.", args), true);
     }
 }
 

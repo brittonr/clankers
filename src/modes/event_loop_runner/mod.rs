@@ -17,15 +17,16 @@ use std::time::Duration;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
+use super::interactive::AgentCommand;
+use super::interactive::TaskResult;
 use crate::agent::events::AgentEvent;
-use crate::config::keybindings::{InputMode, Keymap};
+use crate::config::keybindings::InputMode;
+use crate::config::keybindings::Keymap;
 use crate::error::Result;
 use crate::tui::app::App;
-use crate::tui::event::AppEvent;
 use crate::tui::event as tui_event;
+use crate::tui::event::AppEvent;
 use crate::tui::render;
-
-use super::interactive::{AgentCommand, TaskResult};
 
 /// Owns the per-loop state and channels for the TUI event loop.
 pub(crate) struct EventLoopRunner<'a> {
@@ -100,10 +101,8 @@ impl<'a> EventLoopRunner<'a> {
     pub async fn run(&mut self) -> Result<()> {
         loop {
             // Render
-            self.terminal.draw(|frame| render::render(frame, self.app)).map_err(|e| {
-                crate::error::Error::Tui {
-                    message: format!("Render failed: {}", e),
-                }
+            self.terminal.draw(|frame| render::render(frame, self.app)).map_err(|e| crate::error::Error::Tui {
+                message: format!("Render failed: {}", e),
             })?;
 
             if self.app.should_quit {
@@ -163,10 +162,8 @@ impl<'a> EventLoopRunner<'a> {
                         ref input,
                     } = event
                     {
-                        self.audit_pending.insert(
-                            call_id.clone(),
-                            (tool_name.clone(), input.clone(), std::time::Instant::now()),
-                        );
+                        self.audit_pending
+                            .insert(call_id.clone(), (tool_name.clone(), input.clone(), std::time::Instant::now()));
                     }
 
                     // Audit: record completed tool calls
@@ -253,7 +250,7 @@ impl<'a> EventLoopRunner<'a> {
         while let Ok(event) = self.panel_rx.try_recv() {
             use crate::tui::components::subagent_event::SubagentEvent;
             match event {
-                SubagentEvent::Started { id, name, task, pid} => {
+                SubagentEvent::Started { id, name, task, pid } => {
                     subagent_panel(self.app).add(id.clone(), name.clone(), task.clone(), pid);
                     let max_panes = self.settings.max_subagent_panes;
                     if max_panes > 0 && self.app.layout.subagent_panes.len() < max_panes {
@@ -264,10 +261,7 @@ impl<'a> EventLoopRunner<'a> {
                             pid,
                             &mut self.app.layout.tiling,
                         );
-                        self.app
-                            .layout
-                            .pane_registry
-                            .register(pane_id, crate::tui::panes::PaneKind::Subagent(id));
+                        self.app.layout.pane_registry.register(pane_id, crate::tui::panes::PaneKind::Subagent(id));
                         crate::tui::panes::auto_split_for_subagent(
                             &mut self.app.layout.tiling,
                             &self.app.layout.pane_registry,
@@ -293,17 +287,12 @@ impl<'a> EventLoopRunner<'a> {
                         .layout
                         .subagent_panes
                         .get(id)
-                        .filter(|s| {
-                            s.status == crate::tui::components::subagent_panel::SubagentStatus::Running
-                        })
+                        .filter(|s| s.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
                         .and_then(|s| s.pid)
                         .or_else(|| {
                             subagent_panel(self.app)
                                 .get_by_id(id)
-                                .filter(|e| {
-                                    e.status
-                                        == crate::tui::components::subagent_panel::SubagentStatus::Running
-                                })
+                                .filter(|e| e.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
                                 .and_then(|e| e.pid)
                         });
 
@@ -316,9 +305,8 @@ impl<'a> EventLoopRunner<'a> {
                         }
                         #[cfg(not(unix))]
                         {
-                            let _ = std::process::Command::new("taskkill")
-                                .args(&["/PID", &pid.to_string(), "/F"])
-                                .spawn();
+                            let _ =
+                                std::process::Command::new("taskkill").args(&["/PID", &pid.to_string(), "/F"]).spawn();
                         }
                         subagent_panel(self.app).mark_error(id);
                         subagent_panel(self.app).append_output(id, "⚡ Killed by user");
@@ -326,10 +314,7 @@ impl<'a> EventLoopRunner<'a> {
                         self.app.layout.subagent_panes.append_output(id, "⚡ Killed by user");
                     } else {
                         subagent_panel(self.app).append_output(id, "⚠ Cannot kill: no PID tracked");
-                        self.app
-                            .layout
-                            .subagent_panes
-                            .append_output(id, "⚠ Cannot kill: no PID tracked");
+                        self.app.layout.subagent_panes.append_output(id, "⚠ Cannot kill: no PID tracked");
                     }
                 }
                 SubagentEvent::InputRequest { .. } => {}
@@ -341,7 +326,8 @@ impl<'a> EventLoopRunner<'a> {
 
     fn drain_todo_requests(&mut self) {
         while let Ok((action, resp_tx)) = self.todo_rx.try_recv() {
-            use crate::tools::todo::{TodoAction, TodoResponse};
+            use crate::tools::todo::TodoAction;
+            use crate::tools::todo::TodoResponse;
             use crate::tui::components::todo_panel::TodoStatus;
             let todo_panel = todo_panel(self.app);
 
@@ -403,8 +389,7 @@ impl<'a> EventLoopRunner<'a> {
     fn drain_bash_confirms(&mut self) {
         while let Ok((message, resp_tx)) = self.bash_confirm_rx.try_recv() {
             self.app.push_system(message, true);
-            self.app
-                .push_system("Type 'y' to approve or 'n' to block. Approving...".to_string(), false);
+            self.app.push_system("Type 'y' to approve or 'n' to block. Approving...".to_string(), false);
             let _ = resp_tx.send(true);
         }
     }
@@ -412,18 +397,15 @@ impl<'a> EventLoopRunner<'a> {
     // ── Periodic peer refresh ───────────────────────────────────────
 
     fn refresh_peers(&mut self) {
-        static PEER_REFRESH_COUNTER: std::sync::atomic::AtomicU32 =
-            std::sync::atomic::AtomicU32::new(0);
+        static PEER_REFRESH_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let count = PEER_REFRESH_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let peers_panel = peers_panel(self.app);
         if count.is_multiple_of(200) && peers_panel.server_running {
-            let registry = crate::modes::rpc::peers::PeerRegistry::load(
-                &crate::modes::rpc::peers::registry_path(crate::config::ClankersPaths::get()),
-            );
-            let entries = crate::tui::components::peers_panel::entries_from_registry(
-                &registry,
-                chrono::Duration::minutes(5),
-            );
+            let registry = crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(
+                crate::config::ClankersPaths::get(),
+            ));
+            let entries =
+                crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
             peers_panel.set_peers(entries);
         }
     }
@@ -477,10 +459,7 @@ impl<'a> EventLoopRunner<'a> {
                 TaskResult::AccountSwitched(Ok(name)) => {
                     self.app.active_account = name.clone();
                     self.app.push_system(
-                        format!(
-                            "Switched to account '{}'. New credentials will be used for the next API call.",
-                            name
-                        ),
+                        format!("Switched to account '{}'. New credentials will be used for the next API call.", name),
                         false,
                     );
                 }
@@ -528,7 +507,6 @@ impl<'a> EventLoopRunner<'a> {
         }
         Ok(())
     }
-
 }
 
 // ── Key event handling (extracted to key_handler.rs) ────────────────
@@ -539,26 +517,20 @@ mod key_handler;
 /// Helper to access the SubagentPanel. Panics if panel not registered (should never happen).
 pub(super) fn subagent_panel(app: &mut App) -> &mut crate::tui::components::subagent_panel::SubagentPanel {
     app.panels
-        .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
-            crate::tui::panel::PanelId::Subagents,
-        )
+        .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(crate::tui::panel::PanelId::Subagents)
         .expect("subagent panel registered at startup")
 }
 
 /// Helper to access the TodoPanel. Panics if panel not registered (should never happen).
 pub(super) fn todo_panel(app: &mut App) -> &mut crate::tui::components::todo_panel::TodoPanel {
     app.panels
-        .downcast_mut::<crate::tui::components::todo_panel::TodoPanel>(
-            crate::tui::panel::PanelId::Todo,
-        )
+        .downcast_mut::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)
         .expect("todo panel registered at startup")
 }
 
 /// Helper to access the PeersPanel. Panics if panel not registered (should never happen).
 pub(super) fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_panel::PeersPanel {
     app.panels
-        .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(
-            crate::tui::panel::PanelId::Peers,
-        )
+        .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(crate::tui::panel::PanelId::Peers)
         .expect("peers panel registered at startup")
 }

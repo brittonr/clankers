@@ -80,10 +80,7 @@ impl MergeDaemon {
     }
 
     /// Build changesets and compute merge plan from completed worktrees
-    fn build_merge_plan(
-        &self,
-        completed: &[super::WorktreeInfo],
-    ) -> Result<super::conflict_graph::MergePlan> {
+    fn build_merge_plan(&self, completed: &[super::WorktreeInfo]) -> Result<super::conflict_graph::MergePlan> {
         let changesets: Vec<BranchChangeset> = completed
             .iter()
             .filter_map(|w| BranchChangeset::from_git(&self.repo_root, &w.branch, &w.parent_branch))
@@ -122,11 +119,8 @@ impl MergeDaemon {
 
         for branch in trivial_branches {
             info!(branch, "merging trivial branch (no file overlaps)");
-            let target = completed
-                .iter()
-                .find(|w| w.branch == *branch)
-                .map(|w| w.parent_branch.as_str())
-                .unwrap_or("main");
+            let target =
+                completed.iter().find(|w| w.branch == *branch).map(|w| w.parent_branch.as_str()).unwrap_or("main");
 
             match merge_strategy::apply_trivial_merge(&self.repo_root, branch, target) {
                 Ok(merge_strategy::MergeResult::Clean) => {
@@ -230,10 +224,7 @@ impl MergeDaemon {
             warn!(?unresolved, "LLM could not resolve all conflicts — needs human review");
             self.mark_needs_review(db, branches)?;
         } else {
-            warn!(
-                ?conflicting_files,
-                "graggle merge has conflicts and no LLM available — needs human review"
-            );
+            warn!(?conflicting_files, "graggle merge has conflicts and no LLM available — needs human review");
             self.mark_needs_review(db, branches)?;
         }
 
@@ -253,11 +244,11 @@ impl MergeDaemon {
             message: format!("Failed to get index: {}", e),
         })?;
 
-        index
-            .add_all(["."].iter(), git2::IndexAddOption::DEFAULT, None)
-            .map_err(|e| crate::error::Error::Worktree {
+        index.add_all(["."].iter(), git2::IndexAddOption::DEFAULT, None).map_err(|e| {
+            crate::error::Error::Worktree {
                 message: format!("Failed to add files: {}", e),
-            })?;
+            }
+        })?;
 
         index.write().map_err(|e| crate::error::Error::Worktree {
             message: format!("Failed to write index: {}", e),
@@ -275,18 +266,16 @@ impl MergeDaemon {
             message: format!("Failed to find tree: {}", e),
         })?;
 
-        let head_commit = repo
-            .head()
-            .and_then(|h| h.peel_to_commit())
-            .map_err(|e| crate::error::Error::Worktree {
-                message: format!("Failed to get HEAD commit: {}", e),
-            })?;
+        let head_commit = repo.head().and_then(|h| h.peel_to_commit()).map_err(|e| crate::error::Error::Worktree {
+            message: format!("Failed to get HEAD commit: {}", e),
+        })?;
 
         let message = format!("Merge branches: {}", branches.join(", "));
-        repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&head_commit])
-            .map_err(|e| crate::error::Error::Worktree {
+        repo.commit(Some("HEAD"), &sig, &sig, &message, &tree, &[&head_commit]).map_err(|e| {
+            crate::error::Error::Worktree {
                 message: format!("Failed to create commit: {}", e),
-            })?;
+            }
+        })?;
 
         // Clean up worktrees
         let manager = WorktreeManager::new(self.repo_root.clone());

@@ -1,6 +1,7 @@
 //! Command history and history navigation
 
-use super::{Editor, MAX_HISTORY};
+use super::Editor;
+use super::MAX_HISTORY;
 
 impl Editor {
     pub fn history_up(&mut self) {

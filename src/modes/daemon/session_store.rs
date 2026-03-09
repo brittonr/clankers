@@ -5,17 +5,21 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use chrono::Utc;
+use clankers_auth::Capability;
+use clankers_auth::CapabilityToken;
+use clankers_auth::RedbRevocationStore;
+use clankers_auth::RevocationStore;
+use clankers_auth::TokenVerifier;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::info;
+use tracing::warn;
 
 use crate::agent::Agent;
 use crate::config::settings::Settings;
 use crate::provider::Provider;
 use crate::session::SessionManager;
 use crate::tools::Tool;
-
-use clankers_auth::{Capability, CapabilityToken, RevocationStore, RedbRevocationStore, TokenVerifier};
 
 // ── Auth layer ──────────────────────────────────────────────────────────────
 
@@ -36,9 +40,7 @@ impl AuthLayer {
     /// Look up a stored token for a user ID (Matrix user ID or iroh pubkey).
     pub(crate) fn lookup_token(&self, user_id: &str) -> Option<CapabilityToken> {
         let read_txn = self.db.begin_read().ok()?;
-        let table = read_txn
-            .open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE)
-            .ok()?;
+        let table = read_txn.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE).ok()?;
         let guard = table.get(user_id).ok()??;
         let bytes = guard.value().to_vec();
         CapabilityToken::decode(&bytes).ok()
@@ -67,9 +69,7 @@ impl AuthLayer {
 
     /// Verify a token and return its capabilities, or an error message.
     pub(crate) fn verify_token(&self, token: &CapabilityToken) -> std::result::Result<Vec<Capability>, String> {
-        self.verifier
-            .verify(token, None)
-            .map_err(|e| format!("{e}"))?;
+        self.verifier.verify(token, None).map_err(|e| format!("{e}"))?;
         Ok(token.capabilities.clone())
     }
 
@@ -108,8 +108,7 @@ pub(crate) fn create_auth_layer(
 
             // Load revoked tokens into the verifier
             let revoked = revocation_store.load_all();
-            let verifier = TokenVerifier::new()
-                .with_trusted_root(identity.public_key());
+            let verifier = TokenVerifier::new().with_trusted_root(identity.public_key());
             if !revoked.is_empty() {
                 if let Err(e) = verifier.load_revoked(&revoked) {
                     warn!("Failed to load revoked tokens: {e}");
@@ -137,10 +136,7 @@ pub(crate) fn create_auth_layer(
 ///
 /// If capabilities include `ToolUse { "*" }`, all tools are kept.
 /// Otherwise, only tools whose name appears in the ToolUse pattern are kept.
-pub(crate) fn filter_tools_by_capabilities(
-    tools: &[Arc<dyn Tool>],
-    capabilities: &[Capability],
-) -> Vec<Arc<dyn Tool>> {
+pub(crate) fn filter_tools_by_capabilities(tools: &[Arc<dyn Tool>], capabilities: &[Capability]) -> Vec<Arc<dyn Tool>> {
     // Find the ToolUse capability (if any)
     let tool_pattern = capabilities.iter().find_map(|c| {
         if let Capability::ToolUse { tool_pattern } = c {
@@ -151,16 +147,11 @@ pub(crate) fn filter_tools_by_capabilities(
     });
 
     match tool_pattern {
-        None => Vec::new(), // No ToolUse capability → no tools
+        None => Vec::new(),          // No ToolUse capability → no tools
         Some("*") => tools.to_vec(), // Wildcard → all tools
         Some(pattern) => {
-            let allowed: std::collections::HashSet<&str> =
-                pattern.split(',').map(|s| s.trim()).collect();
-            tools
-                .iter()
-                .filter(|t| allowed.contains(t.definition().name.as_str()))
-                .cloned()
-                .collect()
+            let allowed: std::collections::HashSet<&str> = pattern.split(',').map(|s| s.trim()).collect();
+            tools.iter().filter(|t| allowed.contains(t.definition().name.as_str())).cloned().collect()
         }
     }
 }
@@ -281,11 +272,7 @@ impl SessionStore {
     ///
     /// If `capabilities` is Some, tools are filtered based on the token's
     /// ToolUse capability. If None, all tools are available (allowlist user).
-    pub(crate) fn get_or_create(
-        &mut self,
-        key: &SessionKey,
-        capabilities: Option<&[Capability]>,
-    ) -> &mut LiveSession {
+    pub(crate) fn get_or_create(&mut self, key: &SessionKey, capabilities: Option<&[Capability]>) -> &mut LiveSession {
         if !self.sessions.contains_key(key) {
             // Evict oldest session if at capacity
             if self.sessions.len() >= self.max_sessions {
@@ -378,9 +365,10 @@ impl SessionStore {
                 // Clean up trigger pipe file
                 let pipe_path = session.session_dir.join("trigger.pipe");
                 if pipe_path.exists()
-                    && let Err(e) = std::fs::remove_file(&pipe_path) {
-                        warn!("Failed to remove trigger pipe {}: {e}", pipe_path.display());
-                    }
+                    && let Err(e) = std::fs::remove_file(&pipe_path)
+                {
+                    warn!("Failed to remove trigger pipe {}: {e}", pipe_path.display());
+                }
             }
             info!("Reaping idle session: {}", key);
             self.sessions.remove(key);

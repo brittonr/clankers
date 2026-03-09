@@ -4,10 +4,14 @@
 //! progress updates instead of raw terminal noise. Supports all common nix
 //! subcommands: build, develop, run, shell, flake check/show/update.
 
-mod parser;
 mod build;
+mod parser;
 
 use async_trait::async_trait;
+use build::format_and_truncate_result;
+use build::spawn_nix_command;
+use build::stream_nix_output;
+use build::supports_structured_logging;
 use serde_json::Value;
 use serde_json::json;
 
@@ -15,8 +19,6 @@ use super::Tool;
 use super::ToolContext;
 use super::ToolDefinition;
 use super::ToolResult;
-
-use build::{supports_structured_logging, spawn_nix_command, stream_nix_output, format_and_truncate_result};
 
 // ── Tool implementation ─────────────────────────────────────────────────────
 
@@ -90,7 +92,7 @@ impl Tool for NixTool {
         };
 
         // Stream output and collect results
-        let (exit_code, stdout_lines, build_log_lines, messages, errors) = 
+        let (exit_code, stdout_lines, build_log_lines, messages, errors) =
             match stream_nix_output(ctx, &mut child, use_structured, timeout_secs, &subcommand).await {
                 Ok(result) => result,
                 Err(e) => return e,

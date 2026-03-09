@@ -10,17 +10,11 @@ use crate::registry::Conflict;
 /// Collects all [`MenuContribution`] items, deduplicates by `(key, placement)`
 /// with highest priority winning, removes hidden entries, and assembles the
 /// menu tree.
-pub fn build(
-    contributors: &[&dyn MenuContributor],
-    hidden: &HiddenSet,
-) -> BuildResult {
+pub fn build(contributors: &[&dyn MenuContributor], hidden: &HiddenSet) -> BuildResult {
     let mut conflicts = Vec::new();
 
     // 1. Collect all contributions
-    let mut all_items: Vec<MenuContribution> = contributors
-        .iter()
-        .flat_map(|c| c.menu_items())
-        .collect();
+    let mut all_items: Vec<MenuContribution> = contributors.iter().flat_map(|c| c.menu_items()).collect();
 
     // 2. Sort by priority (lowest first, so highest overwrites)
     all_items.sort_by_key(|i| i.priority);
@@ -144,17 +138,64 @@ fn root_submenu_openers() -> Vec<MenuContribution> {
 }
 
 fn root_keymap_actions() -> Vec<MenuContribution> {
-    use crate::config::keybindings::{Action, CoreAction, ExtendedAction};
+    use crate::config::keybindings::Action;
+    use crate::config::keybindings::CoreAction;
+    use crate::config::keybindings::ExtendedAction;
     vec![
-        builtin('m', "model", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenModelSelector)), MenuPlacement::Root),
-        builtin('a', "account", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenAccountSelector)), MenuPlacement::Root),
-        builtin('t', "toggle thinking", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::ToggleThinking)), MenuPlacement::Root),
-        builtin('T', "show/hide thinking", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::ToggleShowThinking)), MenuPlacement::Root),
-        builtin('f', "search output", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::SearchOutput)), MenuPlacement::Root),
-        builtin('`', "toggle panel", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::TogglePanelFocus)), MenuPlacement::Root),
-        builtin('o', "external editor", LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenEditor)), MenuPlacement::Root),
-        builtin('c', "cancel/abort", LeaderAction::KeymapAction(Action::Core(CoreAction::Cancel)), MenuPlacement::Root),
-        builtin('x', "clear input", LeaderAction::KeymapAction(Action::Core(CoreAction::ClearLine)), MenuPlacement::Root),
+        builtin(
+            'm',
+            "model",
+            LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenModelSelector)),
+            MenuPlacement::Root,
+        ),
+        builtin(
+            'a',
+            "account",
+            LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenAccountSelector)),
+            MenuPlacement::Root,
+        ),
+        builtin(
+            't',
+            "toggle thinking",
+            LeaderAction::KeymapAction(Action::Extended(ExtendedAction::ToggleThinking)),
+            MenuPlacement::Root,
+        ),
+        builtin(
+            'T',
+            "show/hide thinking",
+            LeaderAction::KeymapAction(Action::Extended(ExtendedAction::ToggleShowThinking)),
+            MenuPlacement::Root,
+        ),
+        builtin(
+            'f',
+            "search output",
+            LeaderAction::KeymapAction(Action::Extended(ExtendedAction::SearchOutput)),
+            MenuPlacement::Root,
+        ),
+        builtin(
+            '`',
+            "toggle panel",
+            LeaderAction::KeymapAction(Action::Extended(ExtendedAction::TogglePanelFocus)),
+            MenuPlacement::Root,
+        ),
+        builtin(
+            'o',
+            "external editor",
+            LeaderAction::KeymapAction(Action::Extended(ExtendedAction::OpenEditor)),
+            MenuPlacement::Root,
+        ),
+        builtin(
+            'c',
+            "cancel/abort",
+            LeaderAction::KeymapAction(Action::Core(CoreAction::Cancel)),
+            MenuPlacement::Root,
+        ),
+        builtin(
+            'x',
+            "clear input",
+            LeaderAction::KeymapAction(Action::Core(CoreAction::ClearLine)),
+            MenuPlacement::Root,
+        ),
     ]
 }
 
@@ -186,11 +227,17 @@ fn layout_submenu_items() -> Vec<MenuContribution> {
 }
 
 fn pane_submenu_opener() -> Vec<MenuContribution> {
-    vec![builtin('p', "pane", LeaderAction::Submenu("pane".into()), MenuPlacement::Root)]
+    vec![builtin(
+        'p',
+        "pane",
+        LeaderAction::Submenu("pane".into()),
+        MenuPlacement::Root,
+    )]
 }
 
 fn pane_submenu_items() -> Vec<MenuContribution> {
-    use crate::config::keybindings::{Action, ExtendedAction};
+    use crate::config::keybindings::Action;
+    use crate::config::keybindings::ExtendedAction;
     let p = || MenuPlacement::Submenu("pane".into());
     let ext = |e: ExtendedAction| LeaderAction::KeymapAction(Action::Extended(e));
     vec![
@@ -218,10 +265,7 @@ pub fn slash_command_contributions(commands: &[crate::slash_commands::SlashComma
             let binding = cmd.leader_key.as_ref()?;
             Some(MenuContribution {
                 key: binding.key,
-                label: binding
-                    .label
-                    .unwrap_or(cmd.description)
-                    .to_string(),
+                label: binding.label.unwrap_or(cmd.description).to_string(),
                 action: LeaderAction::SlashCommand(format!("/{}", cmd.name)),
                 placement: binding.placement.clone(),
                 priority: PRIORITY_BUILTIN,

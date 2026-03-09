@@ -276,12 +276,14 @@ pub enum Commands {
         fix: bool,
     },
     /// Share the current Zellij session over the network
+    #[cfg(feature = "zellij-share")]
     Share {
         /// Read-only mode (remote guests cannot type)
         #[arg(long)]
         read_only: bool,
     },
     /// Join a remote shared Zellij session
+    #[cfg(feature = "zellij-share")]
     Join {
         /// Remote node ID (from `clankers share` output)
         node_id: String,

@@ -8,14 +8,19 @@
 //! Skipped automatically when any of these env vars are absent.
 
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use clankers::plugin::PluginManager;
 
 /// Build a PluginManager with the email plugin loaded and configured.
 /// Returns None if any required env var is missing.
 fn load_email_plugin() -> Option<Arc<Mutex<PluginManager>>> {
-    for var in ["FASTMAIL_API_TOKEN", "CLANKERS_EMAIL_FROM", "CLANKERS_EMAIL_ALLOWED_RECIPIENTS"] {
+    for var in [
+        "FASTMAIL_API_TOKEN",
+        "CLANKERS_EMAIL_FROM",
+        "CLANKERS_EMAIL_ALLOWED_RECIPIENTS",
+    ] {
         if std::env::var(var).is_err() {
             return None;
         }
@@ -30,9 +35,7 @@ fn load_email_plugin() -> Option<Arc<Mutex<PluginManager>>> {
 
 fn call(mgr: &Arc<Mutex<PluginManager>>, input: &str) -> serde_json::Value {
     let m = mgr.lock().unwrap();
-    let raw = m
-        .call_plugin("clankers-email", "handle_tool_call", input)
-        .expect("plugin call failed");
+    let raw = m.call_plugin("clankers-email", "handle_tool_call", input).expect("plugin call failed");
     serde_json::from_str(&raw).expect("invalid JSON response")
 }
 
@@ -202,13 +205,10 @@ fn send_email_disallowed_recipient_blocked() {
 
     let resp = call(&mgr, &input.to_string());
 
-    assert_ne!(resp["status"], "ok",
-        "should reject recipient not in allowlist: {:?}", resp);
+    assert_ne!(resp["status"], "ok", "should reject recipient not in allowlist: {:?}", resp);
     let result = resp["result"].as_str().unwrap_or("");
-    assert!(result.contains("allowlist"),
-        "error should mention allowlist, got: {result}");
-    assert!(result.contains("nobody@example.invalid"),
-        "error should name the rejected address, got: {result}");
+    assert!(result.contains("allowlist"), "error should mention allowlist, got: {result}");
+    assert!(result.contains("nobody@example.invalid"), "error should name the rejected address, got: {result}");
 }
 
 #[test]
@@ -236,9 +236,7 @@ fn send_email_disallowed_cc_blocked() {
 
     let resp = call(&mgr, &input.to_string());
 
-    assert_ne!(resp["status"], "ok",
-        "should reject CC not in allowlist: {:?}", resp);
+    assert_ne!(resp["status"], "ok", "should reject CC not in allowlist: {:?}", resp);
     let result = resp["result"].as_str().unwrap_or("");
-    assert!(result.contains("sneaky@evil.com"),
-        "error should name the rejected CC, got: {result}");
+    assert!(result.contains("sneaky@evil.com"), "error should name the rejected CC, got: {result}");
 }

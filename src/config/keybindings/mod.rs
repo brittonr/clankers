@@ -13,12 +13,13 @@ mod parser;
 use std::collections::HashMap;
 use std::fmt;
 
-use crossterm::event::KeyEvent;
-use serde::{Deserialize, Serialize};
-
 // Re-export public types
 pub use actions::{Action, ActionRegistry, CoreAction, ExtendedAction, ExtendedActionDef};
-pub use parser::{KeyCombo, KeymapConfig};
+use crossterm::event::KeyEvent;
+pub use parser::KeyCombo;
+pub use parser::KeymapConfig;
+use serde::Deserialize;
+use serde::Serialize;
 
 // ---------------------------------------------------------------------------
 // Input mode
@@ -111,7 +112,8 @@ impl Keymap {
             InputMode::Normal => &self.normal,
             InputMode::Insert => &self.insert,
         };
-        let mut out: Vec<(String, Action)> = table.iter().map(|(k, a)| (parser::format_key_combo(k), a.clone())).collect();
+        let mut out: Vec<(String, Action)> =
+            table.iter().map(|(k, a)| (parser::format_key_combo(k), a.clone())).collect();
         out.sort_by(|a, b| format!("{:?}", a.1).cmp(&format!("{:?}", b.1)));
         out
     }
@@ -137,8 +139,11 @@ fn apply_overrides(map: &mut HashMap<KeyCombo, Action>, overrides: &HashMap<Stri
 
 #[cfg(test)]
 mod tests {
+    use crossterm::event::KeyCode;
+    use crossterm::event::KeyEvent;
+    use crossterm::event::KeyModifiers;
+
     use super::*;
-    use crossterm::event::{KeyCode, KeyModifiers, KeyEvent};
 
     fn helix() -> Keymap {
         Keymap::build(KeymapPreset::Helix, &HashMap::new(), &HashMap::new())

@@ -1,9 +1,9 @@
 //! Swarm slash command handlers.
 
-use super::SlashContext;
-use super::SlashHandler;
 use tokio_util::sync::CancellationToken;
 
+use super::SlashContext;
+use super::SlashHandler;
 // Helper functions for safe panel access
 use crate::tui::components::peers_panel::PeersPanel;
 use crate::tui::components::subagent_panel::SubagentPanel;
@@ -217,8 +217,7 @@ fn handle_peers_status(ctx: &mut SlashContext<'_>) {
     let paths = crate::config::ClankersPaths::get();
     let registry_path = crate::modes::rpc::peers::registry_path(paths);
     let registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
-    let entries =
-        crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
+    let entries = crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
     let count = entries.len();
     peers_panel_mut(ctx).set_peers(entries);
     ctx.app.push_system(format!("{} peer(s) in registry.", count), false);
@@ -237,14 +236,10 @@ fn handle_peers_add(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
         registry.add(node_id, name);
         match registry.save(&registry_path) {
             Ok(()) => {
-                ctx.app.push_system(
-                    format!("Added peer '{}' ({}…)", name, &node_id[..12.min(node_id.len())]),
-                    false,
-                );
-                let entries = crate::tui::components::peers_panel::entries_from_registry(
-                    &registry,
-                    chrono::Duration::minutes(5),
-                );
+                ctx.app
+                    .push_system(format!("Added peer '{}' ({}…)", name, &node_id[..12.min(node_id.len())]), false);
+                let entries =
+                    crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
                 peers_panel_mut(ctx).set_peers(entries);
             }
             Err(e) => ctx.app.push_system(format!("Failed to save registry: {}", e), true),
@@ -263,8 +258,7 @@ fn handle_peers_remove(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
         let removed = if registry.remove(subcmd_args) {
             true
         } else {
-            let found =
-                registry.peers.values().find(|p| p.name == subcmd_args).map(|p| p.node_id.clone());
+            let found = registry.peers.values().find(|p| p.name == subcmd_args).map(|p| p.node_id.clone());
             if let Some(nid) = found {
                 registry.remove(&nid)
             } else {
@@ -274,10 +268,8 @@ fn handle_peers_remove(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
         if removed {
             let _ = registry.save(&registry_path);
             ctx.app.push_system(format!("Removed peer '{}'.", subcmd_args), false);
-            let entries = crate::tui::components::peers_panel::entries_from_registry(
-                &registry,
-                chrono::Duration::minutes(5),
-            );
+            let entries =
+                crate::tui::components::peers_panel::entries_from_registry(&registry, chrono::Duration::minutes(5));
             peers_panel_mut(ctx).set_peers(entries);
         } else {
             ctx.app.push_system(format!("Peer '{}' not found.", subcmd_args), true);
@@ -299,8 +291,7 @@ fn handle_peers_probe(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
         } else {
             ctx.app.push_system(format!("Probing {} peer(s)...", peer_ids.len()), false);
             for nid in &peer_ids {
-                peers_panel_mut(ctx)
-                    .update_status(nid, crate::tui::components::peers_panel::PeerStatus::Probing);
+                peers_panel_mut(ctx).update_status(nid, crate::tui::components::peers_panel::PeerStatus::Probing);
             }
             let ptx = ctx.panel_tx.clone();
             let rp = registry_path.clone();
@@ -323,8 +314,7 @@ fn handle_peers_probe(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
             .find(|p| p.name == subcmd_args)
             .map(|p| p.node_id.clone())
             .unwrap_or_else(|| subcmd_args.to_string());
-        peers_panel_mut(ctx)
-            .update_status(&node_id, crate::tui::components::peers_panel::PeerStatus::Probing);
+        peers_panel_mut(ctx).update_status(&node_id, crate::tui::components::peers_panel::PeerStatus::Probing);
         ctx.app.push_system(format!("Probing {}...", &node_id[..12.min(node_id.len())]), false);
         let ptx = ctx.panel_tx.clone();
         tokio::spawn(async move {
@@ -353,10 +343,9 @@ fn handle_peers_allow(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
         let mut allowed = crate::modes::rpc::iroh::load_allowlist(&acl_path);
         allowed.insert(subcmd_args.to_string());
         match crate::modes::rpc::iroh::save_allowlist(&acl_path, &allowed) {
-            Ok(()) => ctx.app.push_system(
-                format!("Allowed peer {}…", &subcmd_args[..12.min(subcmd_args.len())]),
-                false,
-            ),
+            Ok(()) => {
+                ctx.app.push_system(format!("Allowed peer {}…", &subcmd_args[..12.min(subcmd_args.len())]), false)
+            }
             Err(e) => ctx.app.push_system(format!("Failed: {}", e), true),
         }
     }
@@ -371,10 +360,7 @@ fn handle_peers_deny(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
         let mut allowed = crate::modes::rpc::iroh::load_allowlist(&acl_path);
         if allowed.remove(subcmd_args) {
             let _ = crate::modes::rpc::iroh::save_allowlist(&acl_path, &allowed);
-            ctx.app.push_system(
-                format!("Denied peer {}…", &subcmd_args[..12.min(subcmd_args.len())]),
-                false,
-            );
+            ctx.app.push_system(format!("Denied peer {}…", &subcmd_args[..12.min(subcmd_args.len())]), false);
         } else {
             ctx.app.push_system("Peer not in allowlist.".to_string(), true);
         }
@@ -385,8 +371,7 @@ fn handle_peers_server(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
     match subcmd_args {
         "on" | "start" => {
             ctx.app.push_system(
-                "Use `clankers rpc start` to run the RPC server (embedded server coming soon)."
-                    .to_string(),
+                "Use `clankers rpc start` to run the RPC server (embedded server coming soon).".to_string(),
                 false,
             );
         }
@@ -443,7 +428,7 @@ impl SlashHandler for PeersHandler {
         } else {
             let (subcmd, subcmd_args) = args.split_once(char::is_whitespace).unwrap_or((args, ""));
             let subcmd_args = subcmd_args.trim();
-            
+
             match subcmd {
                 "add" => handle_peers_add(subcmd_args, ctx),
                 "remove" | "rm" => handle_peers_remove(subcmd_args, ctx),

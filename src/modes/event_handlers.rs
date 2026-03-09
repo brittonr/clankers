@@ -3,11 +3,18 @@
 //! These handle key events, actions, and input routing for the TUI event loop.
 
 use std::sync::Arc;
-use crossterm::event::{KeyCode, KeyModifiers};
-use crate::config::keybindings::{Action, ExtendedAction, InputMode, Keymap};
+
+use crossterm::event::KeyCode;
+use crossterm::event::KeyModifiers;
+
+use crate::config::keybindings::Action;
+use crate::config::keybindings::ExtendedAction;
+use crate::config::keybindings::InputMode;
+use crate::config::keybindings::Keymap;
 use crate::provider::auth::AuthStoreExt;
 use crate::slash_commands;
-use crate::tui::app::{App, AppState};
+use crate::tui::app::App;
+use crate::tui::app::AppState;
 use crate::tui::components::block::BlockEntry;
 
 // ---------------------------------------------------------------------------
@@ -33,14 +40,23 @@ pub(crate) fn handle_action(
     // structural navigation (focus/unfocus, column movement, mode switching).
     if app.has_panel_focus() {
         let is_global = match &action {
-            Action::Core(c) => matches!(c, 
-                CoreAction::Quit | CoreAction::Cancel | CoreAction::EnterNormal | CoreAction::PasteImage
-            ),
-            Action::Extended(ea) => matches!(ea,
-                ExtendedAction::OpenLeaderMenu | ExtendedAction::OpenModelSelector | ExtendedAction::OpenAccountSelector
-                | ExtendedAction::ToggleThinking | ExtendedAction::ToggleShowThinking | ExtendedAction::ToggleBlockIds
-                | ExtendedAction::SearchOutput | ExtendedAction::ToggleSessionPopup | ExtendedAction::ToggleBranchPanel | ExtendedAction::ToggleCostOverlay
-                | ExtendedAction::OpenBranchSwitcher | ExtendedAction::OpenEditor
+            Action::Core(c) => {
+                matches!(c, CoreAction::Quit | CoreAction::Cancel | CoreAction::EnterNormal | CoreAction::PasteImage)
+            }
+            Action::Extended(ea) => matches!(
+                ea,
+                ExtendedAction::OpenLeaderMenu
+                    | ExtendedAction::OpenModelSelector
+                    | ExtendedAction::OpenAccountSelector
+                    | ExtendedAction::ToggleThinking
+                    | ExtendedAction::ToggleShowThinking
+                    | ExtendedAction::ToggleBlockIds
+                    | ExtendedAction::SearchOutput
+                    | ExtendedAction::ToggleSessionPopup
+                    | ExtendedAction::ToggleBranchPanel
+                    | ExtendedAction::ToggleCostOverlay
+                    | ExtendedAction::OpenBranchSwitcher
+                    | ExtendedAction::OpenEditor
             ),
         };
 
@@ -73,8 +89,9 @@ pub(crate) fn handle_action(
                 }
                 // h/l: use hypertile directional focus
                 Action::Extended(ExtendedAction::PanelNextTab | ExtendedAction::BranchNext) => {
-                    use ratatui_hypertile::{HypertileAction, Towards};
                     use ratatui::layout::Direction;
+                    use ratatui_hypertile::HypertileAction;
+                    use ratatui_hypertile::Towards;
                     app.apply_tiling_action(HypertileAction::FocusDirection {
                         direction: Direction::Horizontal,
                         towards: Towards::End,
@@ -82,8 +99,9 @@ pub(crate) fn handle_action(
                     return;
                 }
                 Action::Extended(ExtendedAction::PanelPrevTab | ExtendedAction::BranchPrev) => {
-                    use ratatui_hypertile::{HypertileAction, Towards};
                     use ratatui::layout::Direction;
+                    use ratatui_hypertile::HypertileAction;
+                    use ratatui_hypertile::Towards;
                     app.apply_tiling_action(HypertileAction::FocusDirection {
                         direction: Direction::Horizontal,
                         towards: Towards::Start,
@@ -92,8 +110,9 @@ pub(crate) fn handle_action(
                 }
                 // j/k: directional focus vertically
                 Action::Core(CoreAction::FocusPrevBlock) => {
-                    use ratatui_hypertile::{HypertileAction, Towards};
                     use ratatui::layout::Direction;
+                    use ratatui_hypertile::HypertileAction;
+                    use ratatui_hypertile::Towards;
                     app.apply_tiling_action(HypertileAction::FocusDirection {
                         direction: Direction::Vertical,
                         towards: Towards::Start,
@@ -101,8 +120,9 @@ pub(crate) fn handle_action(
                     return;
                 }
                 Action::Core(CoreAction::FocusNextBlock) => {
-                    use ratatui_hypertile::{HypertileAction, Towards};
                     use ratatui::layout::Direction;
+                    use ratatui_hypertile::HypertileAction;
+                    use ratatui_hypertile::Towards;
                     app.apply_tiling_action(HypertileAction::FocusDirection {
                         direction: Direction::Vertical,
                         towards: Towards::End,
@@ -266,7 +286,10 @@ pub(crate) fn handle_action(
                 }
             }
             ExtendedAction::EditBlock => {
-                if app.conversation.focused_block.is_some() && app.state == AppState::Idle && app.edit_focused_block_prompt() {
+                if app.conversation.focused_block.is_some()
+                    && app.state == AppState::Idle
+                    && app.edit_focused_block_prompt()
+                {
                     app.input_mode = InputMode::Insert;
                 }
             }
@@ -277,7 +300,8 @@ pub(crate) fn handle_action(
                     app.branch_prev();
                 } else {
                     // h = directional focus left
-                    use ratatui_hypertile::{HypertileAction, Towards};
+                    use ratatui_hypertile::HypertileAction;
+                    use ratatui_hypertile::Towards;
                     app.apply_tiling_action(HypertileAction::FocusDirection {
                         direction: ratatui::layout::Direction::Horizontal,
                         towards: Towards::Start,
@@ -290,7 +314,8 @@ pub(crate) fn handle_action(
                     app.branch_next();
                 } else {
                     // l = directional focus right
-                    use ratatui_hypertile::{HypertileAction, Towards};
+                    use ratatui_hypertile::HypertileAction;
+                    use ratatui_hypertile::Towards;
                     app.apply_tiling_action(HypertileAction::FocusDirection {
                         direction: ratatui::layout::Direction::Horizontal,
                         towards: Towards::End,
@@ -310,7 +335,11 @@ pub(crate) fn handle_action(
             }
             ExtendedAction::ToggleBlockIds => {
                 app.overlays.show_block_ids = !app.overlays.show_block_ids;
-                let state = if app.overlays.show_block_ids { "visible" } else { "hidden" };
+                let state = if app.overlays.show_block_ids {
+                    "visible"
+                } else {
+                    "hidden"
+                };
                 app.push_system(format!("Block IDs now {}.", state), false);
             }
 
@@ -327,7 +356,8 @@ pub(crate) fn handle_action(
             }
             ExtendedAction::PanelNextTab => {
                 // l = directional focus right
-                use ratatui_hypertile::{HypertileAction, Towards};
+                use ratatui_hypertile::HypertileAction;
+                use ratatui_hypertile::Towards;
                 app.apply_tiling_action(HypertileAction::FocusDirection {
                     direction: ratatui::layout::Direction::Horizontal,
                     towards: Towards::End,
@@ -336,7 +366,8 @@ pub(crate) fn handle_action(
             }
             ExtendedAction::PanelPrevTab => {
                 // h = directional focus left
-                use ratatui_hypertile::{HypertileAction, Towards};
+                use ratatui_hypertile::HypertileAction;
+                use ratatui_hypertile::Towards;
                 app.apply_tiling_action(HypertileAction::FocusDirection {
                     direction: ratatui::layout::Direction::Horizontal,
                     towards: Towards::Start,
@@ -366,7 +397,9 @@ pub(crate) fn handle_action(
                 app.apply_tiling_action(HypertileAction::ResizeFocused { delta: -0.05 });
             }
             ExtendedAction::PaneMoveLeft => {
-                use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
+                use ratatui_hypertile::HypertileAction;
+                use ratatui_hypertile::MoveScope;
+                use ratatui_hypertile::Towards;
                 app.apply_tiling_action(HypertileAction::MoveFocused {
                     direction: ratatui::layout::Direction::Horizontal,
                     towards: Towards::Start,
@@ -374,7 +407,9 @@ pub(crate) fn handle_action(
                 });
             }
             ExtendedAction::PaneMoveRight => {
-                use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
+                use ratatui_hypertile::HypertileAction;
+                use ratatui_hypertile::MoveScope;
+                use ratatui_hypertile::Towards;
                 app.apply_tiling_action(HypertileAction::MoveFocused {
                     direction: ratatui::layout::Direction::Horizontal,
                     towards: Towards::End,
@@ -382,7 +417,9 @@ pub(crate) fn handle_action(
                 });
             }
             ExtendedAction::PaneMoveDown => {
-                use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
+                use ratatui_hypertile::HypertileAction;
+                use ratatui_hypertile::MoveScope;
+                use ratatui_hypertile::Towards;
                 app.apply_tiling_action(HypertileAction::MoveFocused {
                     direction: ratatui::layout::Direction::Vertical,
                     towards: Towards::End,
@@ -390,7 +427,9 @@ pub(crate) fn handle_action(
                 });
             }
             ExtendedAction::PaneMoveUp => {
-                use ratatui_hypertile::{HypertileAction, MoveScope, Towards};
+                use ratatui_hypertile::HypertileAction;
+                use ratatui_hypertile::MoveScope;
+                use ratatui_hypertile::Towards;
                 app.apply_tiling_action(HypertileAction::MoveFocused {
                     direction: ratatui::layout::Direction::Vertical,
                     towards: Towards::Start,
@@ -471,7 +510,8 @@ pub(crate) fn handle_action(
                 } else {
                     // Refresh branch data and focus it
                     let active_ids: std::collections::HashSet<usize> = app
-                        .conversation.blocks
+                        .conversation
+                        .blocks
                         .iter()
                         .filter_map(|e| match e {
                             BlockEntry::Conversation(b) => Some(b.id),
@@ -488,7 +528,8 @@ pub(crate) fn handle_action(
             // ── Branch switcher ─────────────────────────────
             ExtendedAction::OpenBranchSwitcher => {
                 let active_ids: std::collections::HashSet<usize> = app
-                    .conversation.blocks
+                    .conversation
+                    .blocks
                     .iter()
                     .filter_map(|e| match e {
                         BlockEntry::Conversation(b) => Some(b.id),

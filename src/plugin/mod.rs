@@ -86,9 +86,7 @@ impl PluginManager {
 
         // HTTP sandboxing: only plugins with "net" permission get allowed_hosts
         if has_net {
-            let hosts = info.manifest.allowed_hosts
-                .clone()
-                .unwrap_or_else(|| vec!["*".to_string()]);
+            let hosts = info.manifest.allowed_hosts.clone().unwrap_or_else(|| vec!["*".to_string()]);
             manifest = manifest.with_allowed_hosts(hosts.into_iter());
         }
 
@@ -102,14 +100,8 @@ impl PluginManager {
         // Always inject current UTC time so plugins can do time-aware work.
         {
             let now = chrono::Utc::now();
-            manifest = manifest.with_config_key(
-                "current_time",
-                now.format("%Y%m%dT%H%M%SZ").to_string(),
-            );
-            manifest = manifest.with_config_key(
-                "current_time_unix",
-                now.timestamp().to_string(),
-            );
+            manifest = manifest.with_config_key("current_time", now.format("%Y%m%dT%H%M%SZ").to_string());
+            manifest = manifest.with_config_key("current_time_unix", now.timestamp().to_string());
         }
 
         // Timeout for network plugins

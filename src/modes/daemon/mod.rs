@@ -19,7 +19,9 @@ use std::sync::Arc;
 
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::error;
+use tracing::info;
+use tracing::warn;
 
 use crate::config::ClankersPaths;
 use crate::error::Result;
@@ -32,11 +34,12 @@ mod handlers;
 mod session_store;
 
 // Re-export public types
+pub(crate) use config::ALPN_CHAT;
 pub use config::DaemonConfig;
-pub(crate) use config::{ProactiveConfig, ALPN_CHAT};
-pub(crate) use session_store::{SessionKey, SessionStore};
-
+pub(crate) use config::ProactiveConfig;
 use handlers::handle_iroh_connection;
+pub(crate) use session_store::SessionKey;
+pub(crate) use session_store::SessionStore;
 use session_store::create_auth_layer;
 
 // ── Daemon entry point ──────────────────────────────────────────────────────
@@ -98,7 +101,14 @@ pub async fn run_daemon(
 
     println!("clankers daemon started");
     println!("  Node ID:  {}", node_id);
-    println!("  Auth:     {}", if config.allow_all { "open" } else { "allowlist + UCAN tokens" });
+    println!(
+        "  Auth:     {}",
+        if config.allow_all {
+            "open"
+        } else {
+            "allowlist + UCAN tokens"
+        }
+    );
     println!("  Model:    {}", config.model);
     println!("  Sessions: 0/{}", config.max_sessions);
     if !config.tags.is_empty() {
@@ -167,8 +177,14 @@ pub async fn run_daemon(
             trigger_pipe_enabled: config.trigger_pipe_enabled,
         };
         Some(tokio::spawn(async move {
-            if let Err(e) =
-                super::matrix_bridge::run_matrix_bridge(matrix_store, matrix_cancel, &matrix_paths, matrix_allowed, proactive_config).await
+            if let Err(e) = super::matrix_bridge::run_matrix_bridge(
+                matrix_store,
+                matrix_cancel,
+                &matrix_paths,
+                matrix_allowed,
+                proactive_config,
+            )
+            .await
             {
                 error!("Matrix bridge error: {e}");
             }

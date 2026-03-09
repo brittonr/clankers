@@ -92,4 +92,3 @@ pub(crate) fn dispatch_event_to_plugins(
 
     PluginDispatchResult { messages, ui_actions }
 }
-

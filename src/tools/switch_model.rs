@@ -41,11 +41,7 @@ pub struct SwitchModelTool {
 }
 
 impl SwitchModelTool {
-    pub fn new(
-        switch_slot: ModelSwitchSlot,
-        model_roles: ModelRoles,
-        current_model: Arc<Mutex<String>>,
-    ) -> Self {
+    pub fn new(switch_slot: ModelSwitchSlot, model_roles: ModelRoles, current_model: Arc<Mutex<String>>) -> Self {
         Self {
             switch_slot,
             model_roles,
@@ -118,29 +114,22 @@ impl Tool for SwitchModelTool {
     }
 
     async fn execute(&self, _ctx: &ToolContext, params: Value) -> ToolResult {
-        let role = params
-            .get("role")
-            .and_then(|v| v.as_str())
-            .unwrap_or("default");
+        let role = params.get("role").and_then(|v| v.as_str()).unwrap_or("default");
 
-        let reason = params
-            .get("reason")
-            .and_then(|v| v.as_str())
-            .unwrap_or("no reason given");
+        let reason = params.get("reason").and_then(|v| v.as_str()).unwrap_or("no reason given");
 
         // Resolve role to model ID
         let current = self.current_model.lock().clone();
         let new_model = self.model_roles.resolve(role, &current);
 
         if new_model == current {
-            return ToolResult::text(format!(
-                "Already using {} (role '{}'). No switch needed.",
-                current, role,
-            ));
+            return ToolResult::text(format!("Already using {} (role '{}'). No switch needed.", current, role,));
         }
 
         // Budget check: disallow upgrades when over hard limit
-        if let Some(hard_limit) = self.budget_hard_limit && let Some(tracker) = &self.cost_tracker {
+        if let Some(hard_limit) = self.budget_hard_limit
+            && let Some(tracker) = &self.cost_tracker
+        {
             let total = tracker.total_cost();
             if total >= hard_limit && self.is_upgrade(&current, &new_model) {
                 return ToolResult::error(format!(
@@ -166,9 +155,8 @@ impl Tool for SwitchModelTool {
 mod tests {
     use std::collections::HashMap;
 
-    use crate::model_selection::cost_tracker::ModelPricing;
-
     use super::*;
+    use crate::model_selection::cost_tracker::ModelPricing;
 
     fn test_pricing() -> HashMap<String, ModelPricing> {
         [
@@ -178,23 +166,17 @@ mod tests {
         ]
         .into_iter()
         .map(|(id, input, output, name)| {
-            (
-                id.to_string(),
-                ModelPricing {
-                    input_per_mtok: input,
-                    output_per_mtok: output,
-                    display_name: name.to_string(),
-                },
-            )
+            (id.to_string(), ModelPricing {
+                input_per_mtok: input,
+                output_per_mtok: output,
+                display_name: name.to_string(),
+            })
         })
         .collect()
     }
 
     fn test_tracker() -> Arc<CostTracker> {
-        Arc::new(CostTracker::new(
-            test_pricing(),
-            crate::model_selection::cost_tracker::CostTrackerConfig::default(),
-        ))
+        Arc::new(CostTracker::new(test_pricing(), crate::model_selection::cost_tracker::CostTrackerConfig::default()))
     }
 
     fn setup() -> (SwitchModelTool, ModelSwitchSlot) {
@@ -210,11 +192,7 @@ mod tests {
     }
 
     fn make_ctx() -> ToolContext {
-        ToolContext::new(
-            "test-call".to_string(),
-            CancellationToken::new(),
-            None,
-        )
+        ToolContext::new("test-call".to_string(), CancellationToken::new(), None)
     }
 
     use tokio_util::sync::CancellationToken;
@@ -223,9 +201,7 @@ mod tests {
     async fn test_switch_to_smol() {
         let (tool, slot) = setup();
         let ctx = make_ctx();
-        let result = tool
-            .execute(&ctx, json!({"role": "smol", "reason": "task is simple"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"role": "smol", "reason": "task is simple"})).await;
         assert!(!result.is_error);
         assert_eq!(*slot.lock(), Some("claude-haiku-4".to_string()));
     }
@@ -234,9 +210,7 @@ mod tests {
     async fn test_switch_to_slow() {
         let (tool, slot) = setup();
         let ctx = make_ctx();
-        let result = tool
-            .execute(&ctx, json!({"role": "slow", "reason": "need deep reasoning"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"role": "slow", "reason": "need deep reasoning"})).await;
         assert!(!result.is_error);
         assert_eq!(*slot.lock(), Some("claude-opus-4".to_string()));
     }
@@ -245,9 +219,7 @@ mod tests {
     async fn test_switch_same_model_noop() {
         let (tool, slot) = setup();
         let ctx = make_ctx();
-        let result = tool
-            .execute(&ctx, json!({"role": "default", "reason": "just checking"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"role": "default", "reason": "just checking"})).await;
         assert!(!result.is_error);
         assert!(slot.lock().is_none()); // no switch needed
         let text = match &result.content[0] {
@@ -274,9 +246,7 @@ mod tests {
             .with_budget_hard_limit(1.0); // $1 limit
 
         let ctx = make_ctx();
-        let result = tool
-            .execute(&ctx, json!({"role": "slow", "reason": "want opus"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"role": "slow", "reason": "want opus"})).await;
         assert!(result.is_error);
         assert!(slot.lock().is_none()); // no switch happened
     }
@@ -297,9 +267,7 @@ mod tests {
             .with_budget_hard_limit(1.0);
 
         let ctx = make_ctx();
-        let result = tool
-            .execute(&ctx, json!({"role": "smol", "reason": "save money"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"role": "smol", "reason": "save money"})).await;
         assert!(!result.is_error); // downgrade always allowed
         assert_eq!(*slot.lock(), Some("claude-haiku-4".to_string()));
     }
@@ -333,9 +301,7 @@ mod tests {
         let (tool, slot) = setup();
         let ctx = make_ctx();
         // Unknown role falls through to fallback (current model)
-        let result = tool
-            .execute(&ctx, json!({"role": "nonexistent", "reason": "test"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"role": "nonexistent", "reason": "test"})).await;
         assert!(!result.is_error);
         assert!(slot.lock().is_none()); // resolves to current
     }
@@ -357,9 +323,7 @@ mod tests {
             .with_budget_hard_limit(1.0);
 
         let ctx = make_ctx();
-        let result = tool
-            .execute(&ctx, json!({"role": "slow", "reason": "want opus"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"role": "slow", "reason": "want opus"})).await;
         assert!(result.is_error);
         let text = match &result.content[0] {
             crate::tools::ToolResultContent::Text { text } => text.as_str(),
@@ -377,13 +341,10 @@ mod tests {
 
         let current = Arc::new(Mutex::new("claude-haiku-4".to_string()));
         // Has hard limit but no cost tracker — should still allow the switch
-        let tool = SwitchModelTool::new(slot.clone(), roles, current)
-            .with_budget_hard_limit(1.0);
+        let tool = SwitchModelTool::new(slot.clone(), roles, current).with_budget_hard_limit(1.0);
 
         let ctx = make_ctx();
-        let result = tool
-            .execute(&ctx, json!({"role": "slow", "reason": "want opus"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"role": "slow", "reason": "want opus"})).await;
         assert!(!result.is_error);
         assert_eq!(*slot.lock(), Some("claude-opus-4".to_string()));
     }

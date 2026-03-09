@@ -72,7 +72,8 @@ pub enum Capability {
     /// Can send prompts to the agent.
     Prompt,
 
-    /// Can use specific tools. Pattern: exact "read", comma-separated "read,grep,find", or "*" wildcard.
+    /// Can use specific tools. Pattern: exact "read", comma-separated "read,grep,find", or "*"
+    /// wildcard.
     ToolUse { tool_pattern: String },
 
     /// Can execute shell commands via bash tool.
@@ -150,10 +151,20 @@ impl Capability {
                 },
                 Operation::FileWrite { path },
             ) => path.starts_with(prefix),
-            (Capability::FileAccess { prefix, read_only: true }, Operation::FileRead { path }) => {
-                path.starts_with(prefix)
-            }
-            (Capability::FileAccess { prefix: _, read_only: true }, Operation::FileWrite { .. }) => false, // Read-only doesn't allow writes
+            (
+                Capability::FileAccess {
+                    prefix,
+                    read_only: true,
+                },
+                Operation::FileRead { path },
+            ) => path.starts_with(prefix),
+            (
+                Capability::FileAccess {
+                    prefix: _,
+                    read_only: true,
+                },
+                Operation::FileWrite { .. },
+            ) => false, // Read-only doesn't allow writes
 
             // BotCommand operations
             (Capability::BotCommand { command_pattern }, Operation::BotCommand { command }) => {
@@ -331,12 +342,7 @@ impl std::fmt::Display for Operation {
             Operation::Prompt { text } => write!(f, "Prompt({:.40}...)", text),
             Operation::ToolUse { tool_name } => write!(f, "ToolUse({})", tool_name),
             Operation::ShellExecute { command, working_dir } => {
-                write!(
-                    f,
-                    "ShellExecute({}, wd={:?})",
-                    command,
-                    working_dir.as_deref().unwrap_or("<default>")
-                )
+                write!(f, "ShellExecute({}, wd={:?})", command, working_dir.as_deref().unwrap_or("<default>"))
             }
             Operation::FileRead { path } => write!(f, "FileRead({})", path),
             Operation::FileWrite { path } => write!(f, "FileWrite({})", path),

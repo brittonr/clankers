@@ -12,8 +12,8 @@ use ratatui::widgets::Borders;
 use ratatui::widgets::Clear;
 use ratatui::widgets::Paragraph;
 
-use super::types::LeaderAction;
 use super::LeaderMenu;
+use super::types::LeaderAction;
 
 impl LeaderMenu {
     /// Render the leader menu overlay.

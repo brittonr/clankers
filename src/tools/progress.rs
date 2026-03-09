@@ -78,28 +78,17 @@ impl ToolProgress {
 #[derive(Debug, Clone, PartialEq)]
 pub enum ProgressKind {
     /// Bytes processed (e.g., downloaded, uploaded, read from disk)
-    Bytes {
-        current: u64,
-        total: Option<u64>,
-    },
+    Bytes { current: u64, total: Option<u64> },
 
     /// Lines processed (e.g., grep matches, file lines scanned)
-    Lines {
-        current: u64,
-        total: Option<u64>,
-    },
+    Lines { current: u64, total: Option<u64> },
 
     /// Generic countable items (e.g., files processed, tests run)
-    Items {
-        current: u64,
-        total: Option<u64>,
-    },
+    Items { current: u64, total: Option<u64> },
 
     /// Percentage complete (0.0 to 100.0)
     /// Use when the tool can calculate percentage but not absolute progress
-    Percentage {
-        percent: f32,
-    },
+    Percentage { percent: f32 },
 
     /// Phase-based progress (e.g., "Fetching", "Parsing", "Cancelling")
     /// Use for multi-stage operations where each phase is distinct
@@ -114,19 +103,24 @@ impl ProgressKind {
     /// Calculate percentage if total is known
     pub fn as_percentage(&self) -> Option<f32> {
         match self {
-            ProgressKind::Bytes { current, total: Some(total) } if *total > 0 => {
-                Some((*current as f32 / *total as f32) * 100.0)
-            }
-            ProgressKind::Lines { current, total: Some(total) } if *total > 0 => {
-                Some((*current as f32 / *total as f32) * 100.0)
-            }
-            ProgressKind::Items { current, total: Some(total) } if *total > 0 => {
-                Some((*current as f32 / *total as f32) * 100.0)
-            }
+            ProgressKind::Bytes {
+                current,
+                total: Some(total),
+            } if *total > 0 => Some((*current as f32 / *total as f32) * 100.0),
+            ProgressKind::Lines {
+                current,
+                total: Some(total),
+            } if *total > 0 => Some((*current as f32 / *total as f32) * 100.0),
+            ProgressKind::Items {
+                current,
+                total: Some(total),
+            } if *total > 0 => Some((*current as f32 / *total as f32) * 100.0),
             ProgressKind::Percentage { percent } => Some(*percent),
-            ProgressKind::Phase { step, total_steps: Some(total), .. } if *total > 0 => {
-                Some((*step as f32 / *total as f32) * 100.0)
-            }
+            ProgressKind::Phase {
+                step,
+                total_steps: Some(total),
+                ..
+            } if *total > 0 => Some((*step as f32 / *total as f32) * 100.0),
             _ => None,
         }
     }
@@ -134,11 +128,24 @@ impl ProgressKind {
     /// Check if progress is complete (100%)
     pub fn is_complete(&self) -> bool {
         match self {
-            ProgressKind::Bytes { current, total: Some(total) } => current >= total,
-            ProgressKind::Lines { current, total: Some(total) } => current >= total,
-            ProgressKind::Items { current, total: Some(total) } => current >= total,
+            ProgressKind::Bytes {
+                current,
+                total: Some(total),
+            } => current >= total,
+            ProgressKind::Lines {
+                current,
+                total: Some(total),
+            } => current >= total,
+            ProgressKind::Items {
+                current,
+                total: Some(total),
+            } => current >= total,
             ProgressKind::Percentage { percent } => *percent >= 100.0,
-            ProgressKind::Phase { step, total_steps: Some(total), .. } => step >= total,
+            ProgressKind::Phase {
+                step,
+                total_steps: Some(total),
+                ..
+            } => step >= total,
             _ => false,
         }
     }
@@ -146,19 +153,28 @@ impl ProgressKind {
     /// Human-readable string for display (e.g., "50/100 bytes", "75%", "Phase 2/3: Parsing")
     pub fn display_string(&self) -> String {
         match self {
-            ProgressKind::Bytes { current, total: Some(total) } => {
+            ProgressKind::Bytes {
+                current,
+                total: Some(total),
+            } => {
                 format!("{}/{} bytes", current, total)
             }
             ProgressKind::Bytes { current, total: None } => {
                 format!("{} bytes", current)
             }
-            ProgressKind::Lines { current, total: Some(total) } => {
+            ProgressKind::Lines {
+                current,
+                total: Some(total),
+            } => {
                 format!("{}/{} lines", current, total)
             }
             ProgressKind::Lines { current, total: None } => {
                 format!("{} lines", current)
             }
-            ProgressKind::Items { current, total: Some(total) } => {
+            ProgressKind::Items {
+                current,
+                total: Some(total),
+            } => {
                 format!("{}/{} items", current, total)
             }
             ProgressKind::Items { current, total: None } => {
@@ -167,10 +183,18 @@ impl ProgressKind {
             ProgressKind::Percentage { percent } => {
                 format!("{:.1}%", percent)
             }
-            ProgressKind::Phase { name, step, total_steps: Some(total) } => {
+            ProgressKind::Phase {
+                name,
+                step,
+                total_steps: Some(total),
+            } => {
                 format!("Phase {}/{}: {}", step, total, name)
             }
-            ProgressKind::Phase { name, step, total_steps: None } => {
+            ProgressKind::Phase {
+                name,
+                step,
+                total_steps: None,
+            } => {
                 format!("Phase {}: {}", step, name)
             }
         }
@@ -196,7 +220,7 @@ impl ResultChunk {
         Self {
             content: content.into(),
             content_type: "text".to_string(),
-            sequence: 0,  // Caller should set this
+            sequence: 0, // Caller should set this
             timestamp: Instant::now(),
         }
     }
@@ -247,7 +271,7 @@ impl Default for TruncationConfig {
             max_lines: 1000,
             head_lines: 500,
             tail_lines: 500,
-            max_bytes: 1024 * 1024,  // 1MB
+            max_bytes: 1024 * 1024, // 1MB
         }
     }
 }
@@ -329,14 +353,8 @@ impl ToolResultAccumulator {
 
         // Apply truncation if needed
         let result_text = if lines.len() > self.config.max_lines {
-            let head: Vec<_> = lines.iter()
-                .take(self.config.head_lines)
-                .map(|s| s.as_str())
-                .collect();
-            let tail: Vec<_> = lines.iter()
-                .skip(lines.len() - self.config.tail_lines)
-                .map(|s| s.as_str())
-                .collect();
+            let head: Vec<_> = lines.iter().take(self.config.head_lines).map(|s| s.as_str()).collect();
+            let tail: Vec<_> = lines.iter().skip(lines.len() - self.config.tail_lines).map(|s| s.as_str()).collect();
 
             let omitted = lines.len() - self.config.head_lines - self.config.tail_lines;
             let marker = format!("\n... [{} lines omitted] ...\n", omitted);
@@ -350,16 +368,14 @@ impl ToolResultAccumulator {
         };
 
         // Check if truncated
-        let is_truncated = lines.len() > self.config.max_lines
-            || self.total_bytes > self.config.max_bytes;
+        let is_truncated = lines.len() > self.config.max_lines || self.total_bytes > self.config.max_bytes;
 
-        ToolResult::text(result_text)
-            .with_details(serde_json::json!({
-                "total_lines": self.total_lines,
-                "total_bytes": self.total_bytes,
-                "truncated": is_truncated,
-                "chunks": self.chunks.len(),
-            }))
+        ToolResult::text(result_text).with_details(serde_json::json!({
+            "total_lines": self.total_lines,
+            "total_bytes": self.total_bytes,
+            "truncated": is_truncated,
+            "chunks": self.chunks.len(),
+        }))
     }
 }
 
@@ -375,28 +391,46 @@ mod tests {
 
     #[test]
     fn progress_kind_as_percentage_with_known_total() {
-        let bytes = ProgressKind::Bytes { current: 50, total: Some(100) };
+        let bytes = ProgressKind::Bytes {
+            current: 50,
+            total: Some(100),
+        };
         assert_eq!(bytes.as_percentage(), Some(50.0));
 
-        let lines = ProgressKind::Lines { current: 75, total: Some(100) };
+        let lines = ProgressKind::Lines {
+            current: 75,
+            total: Some(100),
+        };
         assert_eq!(lines.as_percentage(), Some(75.0));
 
-        let items = ProgressKind::Items { current: 25, total: Some(100) };
+        let items = ProgressKind::Items {
+            current: 25,
+            total: Some(100),
+        };
         assert_eq!(items.as_percentage(), Some(25.0));
     }
 
     #[test]
     fn progress_kind_as_percentage_with_unknown_total() {
-        let bytes = ProgressKind::Bytes { current: 50, total: None };
+        let bytes = ProgressKind::Bytes {
+            current: 50,
+            total: None,
+        };
         assert_eq!(bytes.as_percentage(), None);
 
-        let lines = ProgressKind::Lines { current: 75, total: None };
+        let lines = ProgressKind::Lines {
+            current: 75,
+            total: None,
+        };
         assert_eq!(lines.as_percentage(), None);
     }
 
     #[test]
     fn progress_kind_as_percentage_with_zero_total() {
-        let bytes = ProgressKind::Bytes { current: 0, total: Some(0) };
+        let bytes = ProgressKind::Bytes {
+            current: 0,
+            total: Some(0),
+        };
         assert_eq!(bytes.as_percentage(), None);
     }
 
@@ -418,45 +452,77 @@ mod tests {
 
     #[test]
     fn progress_kind_is_complete() {
-        assert!(ProgressKind::Bytes { current: 100, total: Some(100) }.is_complete());
-        assert!(ProgressKind::Lines { current: 50, total: Some(50) }.is_complete());
+        assert!(
+            ProgressKind::Bytes {
+                current: 100,
+                total: Some(100)
+            }
+            .is_complete()
+        );
+        assert!(
+            ProgressKind::Lines {
+                current: 50,
+                total: Some(50)
+            }
+            .is_complete()
+        );
         assert!(ProgressKind::Percentage { percent: 100.0 }.is_complete());
         assert!(ProgressKind::Percentage { percent: 101.0 }.is_complete());
-        
-        assert!(!ProgressKind::Bytes { current: 50, total: Some(100) }.is_complete());
-        assert!(!ProgressKind::Bytes { current: 50, total: None }.is_complete());
+
+        assert!(
+            !ProgressKind::Bytes {
+                current: 50,
+                total: Some(100)
+            }
+            .is_complete()
+        );
+        assert!(
+            !ProgressKind::Bytes {
+                current: 50,
+                total: None
+            }
+            .is_complete()
+        );
     }
 
     #[test]
     fn progress_kind_display_string() {
         assert_eq!(
-            ProgressKind::Bytes { current: 50, total: Some(100) }.display_string(),
+            ProgressKind::Bytes {
+                current: 50,
+                total: Some(100)
+            }
+            .display_string(),
             "50/100 bytes"
         );
         assert_eq!(
-            ProgressKind::Bytes { current: 50, total: None }.display_string(),
+            ProgressKind::Bytes {
+                current: 50,
+                total: None
+            }
+            .display_string(),
             "50 bytes"
         );
-        assert_eq!(
-            ProgressKind::Percentage { percent: 42.5 }.display_string(),
-            "42.5%"
-        );
+        assert_eq!(ProgressKind::Percentage { percent: 42.5 }.display_string(), "42.5%");
         assert_eq!(
             ProgressKind::Phase {
                 name: "Building".to_string(),
                 step: 2,
                 total_steps: Some(3)
-            }.display_string(),
+            }
+            .display_string(),
             "Phase 2/3: Building"
         );
     }
 
     #[test]
     fn tool_progress_builders() {
-        let progress = ToolProgress::bytes(50, Some(100))
-            .with_message("Downloading");
-        
-        assert!(matches!(progress.kind, ProgressKind::Bytes { current: 50, total: Some(100) }));
+        let progress = ToolProgress::bytes(50, Some(100)).with_message("Downloading");
+
+        assert!(matches!(progress.kind, ProgressKind::Bytes {
+            current: 50,
+            total: Some(100)
+        }));
         assert_eq!(progress.message, Some("Downloading".to_string()));
 
         let phase = ToolProgress::phase("Building", 1, Some(3));
@@ -481,21 +547,21 @@ mod tests {
     #[test]
     fn accumulator_no_truncation() {
         let mut acc = ToolResultAccumulator::new();
-        
+
         acc.push_text("line 1");
         acc.push_text("line 2");
         acc.push_text("line 3");
 
         assert_eq!(acc.total_lines(), 3);
-        
+
         let result = acc.finalize();
         let text = match &result.content[0] {
             crate::tools::ToolResultContent::Text { text } => text,
             _ => panic!("expected text"),
         };
-        
+
         assert_eq!(text, "line 1\nline 2\nline 3");
-        
+
         // Check details
         let details = result.details.expect("result should have details");
         assert_eq!(details["total_lines"], 3);
@@ -510,16 +576,16 @@ mod tests {
             tail_lines: 3,
             max_bytes: 1024 * 1024,
         };
-        
+
         let mut acc = ToolResultAccumulator::with_config(config);
-        
+
         // Add 20 lines
         for i in 0..20 {
             acc.push_text(format!("line {}", i));
         }
 
         assert_eq!(acc.total_lines(), 20);
-        
+
         let result = acc.finalize();
         let text = match &result.content[0] {
             crate::tools::ToolResultContent::Text { text } => text,
@@ -547,16 +613,16 @@ mod tests {
             max_lines: 1000,
             head_lines: 500,
             tail_lines: 500,
-            max_bytes: 100,  // Very small
+            max_bytes: 100, // Very small
         };
-        
+
         let mut acc = ToolResultAccumulator::with_config(config);
-        
+
         // Add large content
         acc.push_text("x".repeat(200));
 
         assert!(acc.total_bytes() > 100);
-        
+
         let result = acc.finalize();
         let details = result.details.expect("result should have details");
         assert_eq!(details["truncated"], true);
@@ -565,7 +631,7 @@ mod tests {
     #[test]
     fn accumulator_sequence_numbering() {
         let mut acc = ToolResultAccumulator::new();
-        
+
         let chunk1 = ResultChunk::text("first");
         let chunk2 = ResultChunk::text("second");
         let chunk3 = ResultChunk::text("third");

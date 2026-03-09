@@ -228,9 +228,10 @@ impl MatrixClient {
                 let room_id = room.room_id().as_str();
                 let clankers_event = parse_room_message(&ev, room_id);
                 if let Some(event) = clankers_event
-                    && tx.send(event).is_err() {
-                        debug!("No subscribers for Matrix event");
-                    }
+                    && tx.send(event).is_err()
+                {
+                    debug!("No subscribers for Matrix event");
+                }
             }
         });
 
@@ -258,9 +259,10 @@ impl MatrixClient {
             let announce = Announce::new(&self.instance_name, self.config.user_id.as_str());
             for room_id_str in &self.config.auto_join_rooms {
                 if let Ok(room_id) = RoomId::parse(room_id_str.as_str())
-                    && let Err(e) = self.send_announce(&room_id, &announce).await {
-                        warn!("Failed to announce in {}: {}", room_id, e);
-                    }
+                    && let Err(e) = self.send_announce(&room_id, &announce).await
+                {
+                    warn!("Failed to announce in {}: {}", room_id, e);
+                }
             }
         }
 
@@ -287,20 +289,13 @@ impl MatrixClient {
     ///
     /// Returns the raw bytes of the file. Works with both encrypted and
     /// unencrypted media.
-    pub async fn download_media(
-        &self,
-        source: &ruma::events::room::MediaSource,
-    ) -> Result<Vec<u8>, MatrixError> {
+    pub async fn download_media(&self, source: &ruma::events::room::MediaSource) -> Result<Vec<u8>, MatrixError> {
         let client = self.client.as_ref().ok_or(MatrixError::NotLoggedIn)?;
         let request = matrix_sdk::media::MediaRequestParameters {
             source: source.clone(),
             format: matrix_sdk::media::MediaFormat::File,
         };
-        client
-            .media()
-            .get_media_content(&request, true)
-            .await
-            .map_err(MatrixError::from)
+        client.media().get_media_content(&request, true).await.map_err(MatrixError::from)
     }
 
     /// Send a file as a Matrix attachment.
@@ -315,17 +310,10 @@ impl MatrixClient {
         data: Vec<u8>,
     ) -> Result<(), MatrixError> {
         let client = self.client.as_ref().ok_or(MatrixError::NotLoggedIn)?;
-        let room = client
-            .get_room(room_id)
-            .ok_or_else(|| MatrixError::RoomNotFound(room_id.to_string()))?;
-        room.send_attachment(
-            filename,
-            content_type,
-            data,
-            matrix_sdk::attachment::AttachmentConfig::new(),
-        )
-        .await
-        .map_err(|e| MatrixError::Sdk(format!("Failed to send attachment: {e}")))?;
+        let room = client.get_room(room_id).ok_or_else(|| MatrixError::RoomNotFound(room_id.to_string()))?;
+        room.send_attachment(filename, content_type, data, matrix_sdk::attachment::AttachmentConfig::new())
+            .await
+            .map_err(|e| MatrixError::Sdk(format!("Failed to send attachment: {e}")))?;
         Ok(())
     }
 
@@ -357,7 +345,9 @@ impl MatrixClient {
     /// with the original markdown as the plain-text fallback. Long
     /// responses are automatically chunked at paragraph boundaries.
     pub async fn send_markdown(&self, room_id: &RoomId, text: &str) -> Result<(), MatrixError> {
-        use crate::markdown::{chunk_response, md_to_html, MAX_MESSAGE_BYTES};
+        use crate::markdown::MAX_MESSAGE_BYTES;
+        use crate::markdown::chunk_response;
+        use crate::markdown::md_to_html;
 
         let chunks = chunk_response(text, MAX_MESSAGE_BYTES);
         for chunk in &chunks {
@@ -492,38 +482,39 @@ impl MatrixClient {
 
             // Deserialize to get sender, timestamp, and body
             if let Ok(event) = raw.deserialize()
-                && let AnySyncTimelineEvent::MessageLike(msg_event) = event {
-                    use matrix_sdk::ruma::events::AnySyncMessageLikeEvent;
-                    if let AnySyncMessageLikeEvent::RoomMessage(
-                        matrix_sdk::ruma::events::SyncMessageLikeEvent::Original(original),
-                    ) = msg_event
-                    {
-                        let body = match &original.content.msgtype {
-                            MessageType::Text(text) => text.body.clone(),
-                            MessageType::Notice(notice) => notice.body.clone(),
-                            MessageType::Emote(emote) => format!("* {}", emote.body),
-                            _ => continue,
-                        };
+                && let AnySyncTimelineEvent::MessageLike(msg_event) = event
+            {
+                use matrix_sdk::ruma::events::AnySyncMessageLikeEvent;
+                if let AnySyncMessageLikeEvent::RoomMessage(matrix_sdk::ruma::events::SyncMessageLikeEvent::Original(
+                    original,
+                )) = msg_event
+                {
+                    let body = match &original.content.msgtype {
+                        MessageType::Text(text) => text.body.clone(),
+                        MessageType::Notice(notice) => notice.body.clone(),
+                        MessageType::Emote(emote) => format!("* {}", emote.body),
+                        _ => continue,
+                    };
 
-                        let sender = original.sender.to_string();
-                        let timestamp = chrono::DateTime::from_timestamp(original.origin_server_ts.as_secs().into(), 0)
-                            .unwrap_or_else(chrono::Utc::now);
+                    let sender = original.sender.to_string();
+                    let timestamp = chrono::DateTime::from_timestamp(original.origin_server_ts.as_secs().into(), 0)
+                        .unwrap_or_else(chrono::Utc::now);
 
-                        // Classify: is this a clankers protocol message or regular?
-                        let msg_type = if body.starts_with("[clankers:") {
-                            HistoryMessageType::Clankers
-                        } else {
-                            HistoryMessageType::Text
-                        };
+                    // Classify: is this a clankers protocol message or regular?
+                    let msg_type = if body.starts_with("[clankers:") {
+                        HistoryMessageType::Clankers
+                    } else {
+                        HistoryMessageType::Text
+                    };
 
-                        messages.push(HistoryMessage {
-                            sender,
-                            body,
-                            timestamp,
-                            msg_type,
-                        });
-                    }
+                    messages.push(HistoryMessage {
+                        sender,
+                        body,
+                        timestamp,
+                        msg_type,
+                    });
                 }
+            }
         }
 
         Ok(messages)
@@ -554,23 +545,26 @@ fn parse_room_message(ev: &OriginalSyncRoomMessageEvent, room_id: &str) -> Optio
 
             // Try to parse as a clankers-tagged message: [clankers:<type>] <json>
             if let Some(rest) = body.strip_prefix("[clankers:")
-                && let Some(bracket_end) = rest.find(']') {
-                    let event_type = &rest[..bracket_end];
-                    let json_str = rest[bracket_end + 1..].trim();
+                && let Some(bracket_end) = rest.find(']')
+            {
+                let event_type = &rest[..bracket_end];
+                let json_str = rest[bracket_end + 1..].trim();
 
-                    return match event_type {
-                        EVENT_ANNOUNCE => serde_json::from_str::<Announce>(json_str).ok().map(ClankersEvent::Announce),
-                        EVENT_RPC_REQUEST => serde_json::from_str::<RpcRequest>(json_str).ok().map(ClankersEvent::RpcRequest),
-                        EVENT_RPC_RESPONSE => {
-                            serde_json::from_str::<RpcResponse>(json_str).ok().map(ClankersEvent::RpcResponse)
-                        }
-                        EVENT_CHAT => serde_json::from_str::<ChatMessage>(json_str).ok().map(ClankersEvent::Chat),
-                        _ => {
-                            debug!("Unknown clankers event type: {}", event_type);
-                            None
-                        }
-                    };
-                }
+                return match event_type {
+                    EVENT_ANNOUNCE => serde_json::from_str::<Announce>(json_str).ok().map(ClankersEvent::Announce),
+                    EVENT_RPC_REQUEST => {
+                        serde_json::from_str::<RpcRequest>(json_str).ok().map(ClankersEvent::RpcRequest)
+                    }
+                    EVENT_RPC_RESPONSE => {
+                        serde_json::from_str::<RpcResponse>(json_str).ok().map(ClankersEvent::RpcResponse)
+                    }
+                    EVENT_CHAT => serde_json::from_str::<ChatMessage>(json_str).ok().map(ClankersEvent::Chat),
+                    _ => {
+                        debug!("Unknown clankers event type: {}", event_type);
+                        None
+                    }
+                };
+            }
 
             // Regular text message
             Some(ClankersEvent::Text {

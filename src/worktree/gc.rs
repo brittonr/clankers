@@ -126,13 +126,8 @@ pub fn gc_on_startup(db: &Db, repo_root: &Path) -> GcReport {
     let merged_branches = git_ops::sync::list_merged_branches(repo_root, "clankers/*");
 
     // 3. Get the set of branches the registry considers active
-    let active_branches: HashSet<String> = db
-        .worktrees()
-        .active()
-        .unwrap_or_default()
-        .into_iter()
-        .map(|w| w.branch)
-        .collect();
+    let active_branches: HashSet<String> =
+        db.worktrees().active().unwrap_or_default().into_iter().map(|w| w.branch).collect();
 
     // 4. Remove worktrees for fully-merged branches that aren't active
     for entry in &live_worktrees {
@@ -149,9 +144,7 @@ pub fn gc_on_startup(db: &Db, repo_root: &Path) -> GcReport {
 
     // 5. Delete fully-merged clankers/* branches that aren't active
     for branch in &merged_branches {
-        if !active_branches.contains(branch.as_str())
-            && git_ops::sync::delete_branch(repo_root, branch)
-        {
+        if !active_branches.contains(branch.as_str()) && git_ops::sync::delete_branch(repo_root, branch) {
             report.branches_deleted += 1;
         }
     }
@@ -161,9 +154,7 @@ pub fn gc_on_startup(db: &Db, repo_root: &Path) -> GcReport {
 
     // 7. Reconcile registry: remove entries for branches that no longer exist
     let remaining_branches: HashSet<String> =
-        git_ops::sync::list_branches(repo_root, "clankers/*")
-            .into_iter()
-            .collect();
+        git_ops::sync::list_branches(repo_root, "clankers/*").into_iter().collect();
     report.registry_pruned += prune_against_git(db, &remaining_branches);
 
     // 8. Run git gc if we cleaned up enough to warrant it
@@ -180,10 +171,7 @@ pub fn gc_on_startup(db: &Db, repo_root: &Path) -> GcReport {
     if !report.is_empty() {
         info!("{report}");
     } else {
-        debug!(
-            "gc: startup scan clean ({} active worktrees)",
-            active_branches.len()
-        );
+        debug!("gc: startup scan clean ({} active worktrees)", active_branches.len());
     }
     report
 }
@@ -209,15 +197,10 @@ fn cleanup_legacy_worktrees(repo_root: &Path) -> (usize, usize) {
 
     for prefix in LEGACY_PREFIXES {
         // Remove the legacy worktree directory tree (e.g. .git/pirs-worktrees/)
-        let legacy_wt_dir = repo_root
-            .join(".git")
-            .join(format!("{prefix}-worktrees"));
+        let legacy_wt_dir = repo_root.join(".git").join(format!("{prefix}-worktrees"));
         if legacy_wt_dir.is_dir() {
             let size = git_ops::sync::dir_size_approx(&legacy_wt_dir);
-            info!(
-                "gc: removing legacy {prefix}-worktrees/ ({:.1} MB)",
-                size as f64 / 1_048_576.0
-            );
+            info!("gc: removing legacy {prefix}-worktrees/ ({:.1} MB)", size as f64 / 1_048_576.0);
             match std::fs::remove_dir_all(&legacy_wt_dir) {
                 Ok(()) => {
                     wt_removed += 1; // counted as one bulk removal
@@ -236,11 +219,7 @@ fn cleanup_legacy_worktrees(repo_root: &Path) -> (usize, usize) {
             let deleted = git_ops::sync::delete_branches_force(repo_root, &branches);
             br_deleted += deleted;
             if deleted < branches.len() {
-                debug!(
-                    "gc: {}/{} legacy branches deleted (some may have failed)",
-                    deleted,
-                    branches.len()
-                );
+                debug!("gc: {}/{} legacy branches deleted (some may have failed)", deleted, branches.len());
             }
         }
     }
@@ -257,10 +236,7 @@ fn list_clankers_worktrees(repo_root: &Path) -> Vec<git_ops::sync::WorktreeEntry
 
 /// Remove a git worktree by branch name (looks up path from `.git/clankers-worktrees/`).
 fn remove_worktree(repo_root: &Path, branch: &str) -> bool {
-    let wt_path = repo_root
-        .join(".git")
-        .join("clankers-worktrees")
-        .join(branch);
+    let wt_path = repo_root.join(".git").join("clankers-worktrees").join(branch);
     if !wt_path.exists() {
         return false;
     }
@@ -273,10 +249,7 @@ fn remove_worktree(repo_root: &Path, branch: &str) -> bool {
 /// a shell-out. It's an optimization (not correctness-critical) and runs
 /// rarely (only after cleaning 10+ branches/worktrees).
 fn run_git_gc(repo_root: &Path) {
-    let result = std::process::Command::new("git")
-        .args(["gc", "--auto", "--quiet"])
-        .current_dir(repo_root)
-        .output();
+    let result = std::process::Command::new("git").args(["gc", "--auto", "--quiet"]).current_dir(repo_root).output();
     match result {
         Ok(o) if o.status.success() => debug!("gc: git gc completed"),
         Ok(o) => debug!("gc: git gc exited with {}", o.status),
@@ -295,11 +268,7 @@ fn prune_against_git(db: &Db, live_branches: &HashSet<String>) -> usize {
             return 0;
         }
     };
-    let stale: Vec<String> = all
-        .into_iter()
-        .filter(|w| !live_branches.contains(&w.branch))
-        .map(|w| w.branch)
-        .collect();
+    let stale: Vec<String> = all.into_iter().filter(|w| !live_branches.contains(&w.branch)).map(|w| w.branch).collect();
     if stale.is_empty() {
         return 0;
     }
@@ -314,9 +283,7 @@ fn prune_against_git(db: &Db, live_branches: &HashSet<String>) -> usize {
 
 /// Quick prune: remove registry entries for branches that aren't in git.
 fn prune_stale_registry(db: &Db, repo_root: &Path) -> usize {
-    let live: HashSet<String> = git_ops::sync::list_branches(repo_root, "clankers/*")
-        .into_iter()
-        .collect();
+    let live: HashSet<String> = git_ops::sync::list_branches(repo_root, "clankers/*").into_iter().collect();
     prune_against_git(db, &live)
 }
 
@@ -370,15 +337,10 @@ mod tests {
     fn test_prune_against_git_removes_stale() {
         let db = test_db();
         let reg = db.worktrees();
-        reg.upsert(&make_worktree("clankers/main-aaa", WorktreeStatus::Active))
-            .expect("should upsert aaa");
-        reg.upsert(&make_worktree(
-            "clankers/main-bbb",
-            WorktreeStatus::Completed,
-        ))
-        .expect("should upsert bbb");
-        reg.upsert(&make_worktree("clankers/main-ccc", WorktreeStatus::Active))
-            .expect("should upsert ccc");
+        reg.upsert(&make_worktree("clankers/main-aaa", WorktreeStatus::Active)).expect("should upsert aaa");
+        reg.upsert(&make_worktree("clankers/main-bbb", WorktreeStatus::Completed))
+            .expect("should upsert bbb");
+        reg.upsert(&make_worktree("clankers/main-ccc", WorktreeStatus::Active)).expect("should upsert ccc");
 
         // Simulate: only "aaa" still exists in git
         let live: HashSet<String> = ["clankers/main-aaa".to_string()].into();
@@ -400,8 +362,7 @@ mod tests {
     fn test_gc_after_session_prunes_registry() {
         let db = test_db();
         let reg = db.worktrees();
-        reg.upsert(&make_worktree("clankers/main-aaa", WorktreeStatus::Active))
-            .expect("should upsert aaa");
+        reg.upsert(&make_worktree("clankers/main-aaa", WorktreeStatus::Active)).expect("should upsert aaa");
 
         // This won't find the branch in a real git repo (we're in a temp dir),
         // but it should still clean the registry entry since the branch doesn't exist.

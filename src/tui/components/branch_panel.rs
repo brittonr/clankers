@@ -80,15 +80,10 @@ impl BranchPanel {
     /// Call this whenever blocks change (new block, branch switch, etc.).
     pub fn refresh(&mut self, all_blocks: &[ConversationBlock], active_block_ids: &std::collections::HashSet<usize>) {
         // Find leaf blocks (blocks with no children)
-        let has_children: std::collections::HashSet<usize> = all_blocks
-            .iter()
-            .filter_map(|b| b.parent_block_id)
-            .collect();
+        let has_children: std::collections::HashSet<usize> =
+            all_blocks.iter().filter_map(|b| b.parent_block_id).collect();
 
-        let leaves: Vec<&ConversationBlock> = all_blocks
-            .iter()
-            .filter(|b| !has_children.contains(&b.id))
-            .collect();
+        let leaves: Vec<&ConversationBlock> = all_blocks.iter().filter(|b| !has_children.contains(&b.id)).collect();
 
         // Preserve selection across refresh
         let prev_leaf = self.entries.get(self.nav.selected).map(|e| e.leaf_id);
@@ -101,11 +96,8 @@ impl BranchPanel {
                 let path = walk_to_root(leaf.id, all_blocks);
                 let message_count = path.len();
                 let is_active = active_block_ids.contains(&leaf.id);
-                let total_tokens: usize = path
-                    .iter()
-                    .filter_map(|&id| all_blocks.iter().find(|b| b.id == id))
-                    .map(|b| b.tokens)
-                    .sum();
+                let total_tokens: usize =
+                    path.iter().filter_map(|&id| all_blocks.iter().find(|b| b.id == id)).map(|b| b.tokens).sum();
 
                 // Find divergence point (where this branch splits from another)
                 let divergence_id = find_divergence(leaf.id, all_blocks);
@@ -120,11 +112,8 @@ impl BranchPanel {
                     .iter()
                     .filter_map(|&id| all_blocks.iter().find(|b| b.id == id))
                     .map(|b| {
-                        let tool_count = b
-                            .responses
-                            .iter()
-                            .filter(|m| m.role == crate::tui::app::MessageRole::ToolCall)
-                            .count();
+                        let tool_count =
+                            b.responses.iter().filter(|m| m.role == crate::tui::app::MessageRole::ToolCall).count();
                         BranchBlockSummary {
                             id: b.id,
                             prompt_preview: truncate_first_line(&b.prompt, 50),
@@ -149,11 +138,7 @@ impl BranchPanel {
             .collect();
 
         // Sort: active branch first, then by leaf_id descending (most recent first)
-        self.entries.sort_by(|a, b| {
-            b.is_active
-                .cmp(&a.is_active)
-                .then(b.leaf_id.cmp(&a.leaf_id))
-        });
+        self.entries.sort_by(|a, b| b.is_active.cmp(&a.is_active).then(b.leaf_id.cmp(&a.leaf_id)));
 
         // Restore selection
         if let Some(prev) = prev_leaf
@@ -222,10 +207,7 @@ impl Panel for BranchPanel {
                 }
                 KeyCode::Char('j') | KeyCode::Down => {
                     // Scroll down in the message list
-                    let max = self
-                        .selected_entry()
-                        .map(|e| e.block_path.len().saturating_sub(1))
-                        .unwrap_or(0);
+                    let max = self.selected_entry().map(|e| e.block_path.len().saturating_sub(1)).unwrap_or(0);
                     self.detail_scroll = (self.detail_scroll + 1).min(max);
                     Some(PanelAction::Consumed)
                 }
@@ -318,10 +300,7 @@ fn render_list_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &Dr
         let name = Span::styled(&entry.name, name_style);
 
         // Message count
-        let count = Span::styled(
-            format!(" ({})", entry.message_count),
-            Style::default().fg(Color::DarkGray),
-        );
+        let count = Span::styled(format!(" ({})", entry.message_count), Style::default().fg(Color::DarkGray));
 
         lines.push(Line::from(vec![prefix, active_marker, name, count]));
 
@@ -331,21 +310,13 @@ fn render_list_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &Dr
         } else {
             Style::default().fg(Color::DarkGray)
         };
-        lines.push(Line::from(vec![
-            Span::raw("    "),
-            Span::styled(&entry.last_prompt, preview_style),
-        ]));
+        lines.push(Line::from(vec![Span::raw("    "), Span::styled(&entry.last_prompt, preview_style)]));
     }
 
     let visible_height = area.height as usize;
     let scroll_offset = panel.nav.scroll_offset(visible_height, 2);
 
-    frame.render_widget(
-        Paragraph::new(lines)
-            .scroll((scroll_offset, 0))
-            .wrap(Wrap { trim: false }),
-        area,
-    );
+    frame.render_widget(Paragraph::new(lines).scroll((scroll_offset, 0)).wrap(Wrap { trim: false }), area);
 }
 
 fn render_detail_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &DrawContext) {
@@ -378,10 +349,7 @@ fn render_detail_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &
     }
 
     // Divider
-    lines.push(Line::from(Span::styled(
-        "─".repeat(area.width as usize),
-        Style::default().fg(Color::DarkGray),
-    )));
+    lines.push(Line::from(Span::styled("─".repeat(area.width as usize), Style::default().fg(Color::DarkGray))));
 
     // Scrollable message list
     let visible_start = panel.detail_scroll;
@@ -390,16 +358,8 @@ fn render_detail_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &
         let is_leaf = block.id == entry.leaf_id;
 
         // Connector
-        let connector = if is_leaf {
-            "└─"
-        } else {
-            "├─"
-        };
-        let connector_color = if is_divergence {
-            Color::Yellow
-        } else {
-            Color::DarkGray
-        };
+        let connector = if is_leaf { "└─" } else { "├─" };
+        let connector_color = if is_divergence { Color::Yellow } else { Color::DarkGray };
 
         // Block number + prompt
         let num_style = if is_leaf {
@@ -449,16 +409,10 @@ fn render_detail_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &
     // Hints
     lines.push(Line::from(""));
     if ctx.focused {
-        lines.push(Line::from(Span::styled(
-            " s:switch  j/k:scroll  Esc:back",
-            Style::default().fg(Color::DarkGray),
-        )));
+        lines.push(Line::from(Span::styled(" s:switch  j/k:scroll  Esc:back", Style::default().fg(Color::DarkGray))));
     }
 
-    frame.render_widget(
-        Paragraph::new(lines).wrap(Wrap { trim: false }),
-        area,
-    );
+    frame.render_widget(Paragraph::new(lines).wrap(Wrap { trim: false }), area);
 }
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
@@ -469,10 +423,7 @@ fn walk_to_root(leaf_id: usize, all_blocks: &[ConversationBlock]) -> Vec<usize> 
     let mut current = Some(leaf_id);
     while let Some(id) = current {
         path.push(id);
-        current = all_blocks
-            .iter()
-            .find(|b| b.id == id)
-            .and_then(|b| b.parent_block_id);
+        current = all_blocks.iter().find(|b| b.id == id).and_then(|b| b.parent_block_id);
     }
     path.reverse();
     path
@@ -486,10 +437,7 @@ fn find_divergence(leaf_id: usize, all_blocks: &[ConversationBlock]) -> Option<u
         let block = all_blocks.iter().find(|b| b.id == id)?;
         if let Some(parent_id) = block.parent_block_id {
             // Count siblings at this level
-            let sibling_count = all_blocks
-                .iter()
-                .filter(|b| b.parent_block_id == Some(parent_id))
-                .count();
+            let sibling_count = all_blocks.iter().filter(|b| b.parent_block_id == Some(parent_id)).count();
             if sibling_count > 1 {
                 return Some(parent_id);
             }
@@ -544,10 +492,7 @@ mod tests {
 
     #[test]
     fn find_divergence_no_branches() {
-        let blocks = vec![
-            make_block(0, "root", None, 100),
-            make_block(1, "child", Some(0), 200),
-        ];
+        let blocks = vec![make_block(0, "root", None, 100), make_block(1, "child", Some(0), 200)];
         assert_eq!(find_divergence(1, &blocks), None);
     }
 
@@ -616,10 +561,7 @@ mod tests {
 
     #[test]
     fn refresh_counts_tokens() {
-        let blocks = vec![
-            make_block(0, "root", None, 100),
-            make_block(1, "child", Some(0), 200),
-        ];
+        let blocks = vec![make_block(0, "root", None, 100), make_block(1, "child", Some(0), 200)];
         let active: std::collections::HashSet<usize> = [0, 1].into_iter().collect();
 
         let mut panel = BranchPanel::new();
@@ -635,10 +577,7 @@ mod tests {
 
     #[test]
     fn truncate_first_line_long() {
-        assert_eq!(
-            truncate_first_line("hello world this is a long prompt", 10),
-            "hello worl…"
-        );
+        assert_eq!(truncate_first_line("hello world this is a long prompt", 10), "hello worl…");
     }
 
     #[test]

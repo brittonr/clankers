@@ -1,11 +1,16 @@
 //! Key string parsing and serialization.
 
-use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::{Keymap, KeymapPreset};
+use crossterm::event::KeyCode;
+use crossterm::event::KeyEvent;
+use crossterm::event::KeyModifiers;
+use serde::Deserialize;
+use serde::Serialize;
+
+use super::Keymap;
+use super::KeymapPreset;
 
 // ---------------------------------------------------------------------------
 // Key combo
@@ -62,11 +67,11 @@ const KEY_CODE_NAMES: &[(&str, KeyCode)] = &[
 pub(super) fn parse_key_string(s: &str) -> Option<KeyCombo> {
     let parts: Vec<&str> = s.split('+').map(str::trim).collect();
     let key_str = parts.last()?;
-    
+
     let mut ctrl = false;
     let mut alt = false;
     let mut shift = false;
-    
+
     for part in &parts[..parts.len() - 1] {
         match part.to_lowercase().as_str() {
             "ctrl" => ctrl = true,
@@ -77,17 +82,13 @@ pub(super) fn parse_key_string(s: &str) -> Option<KeyCombo> {
     }
 
     let key_lower = key_str.to_lowercase();
-    let code = KEY_CODE_NAMES
-        .iter()
-        .find(|(name, _)| *name == key_lower)
-        .map(|(_, code)| *code)
-        .or_else(|| {
-            if key_str.len() == 1 {
-                key_str.chars().next().map(KeyCode::Char)
-            } else {
-                None
-            }
-        })?;
+    let code = KEY_CODE_NAMES.iter().find(|(name, _)| *name == key_lower).map(|(_, code)| *code).or_else(|| {
+        if key_str.len() == 1 {
+            key_str.chars().next().map(KeyCode::Char)
+        } else {
+            None
+        }
+    })?;
 
     Some(KeyCombo { code, ctrl, alt, shift })
 }

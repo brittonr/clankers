@@ -57,7 +57,11 @@ fn parse_oauth_callback_input(input: &str) -> Result<(String, String)> {
 /// Run the auth subcommand
 pub async fn run(ctx: &CommandContext, action: AuthAction) -> Result<()> {
     match action {
-        AuthAction::Login { provider: _, account, code } => handle_login(ctx, account, code).await,
+        AuthAction::Login {
+            provider: _,
+            account,
+            code,
+        } => handle_login(ctx, account, code).await,
         AuthAction::Status { .. } => handle_status(ctx),
         AuthAction::Logout { account, all, .. } => handle_logout(ctx, account, all),
         AuthAction::Switch { account } => handle_switch(ctx, &account),
@@ -83,10 +87,7 @@ async fn handle_login(ctx: &CommandContext, account: Option<String>, code: Optio
             println!("Could not open browser automatically.\n");
         }
 
-        println!(
-            "Ctrl+Click or open this URL in your browser:\n\n  \x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\\n",
-            url, url
-        );
+        println!("Ctrl+Click or open this URL in your browser:\n\n  \x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\\n", url, url);
         println!(
             "After authorizing, paste the code or callback URL.\n\
              Accepted formats:\n  \
@@ -180,11 +181,8 @@ fn handle_switch(ctx: &CommandContext, account: &str) -> Result<()> {
         store.save(&ctx.paths.global_auth)?;
         println!("Switched to account '{}'.", account);
     } else {
-        let names: Vec<_> = store
-            .providers
-            .get("anthropic")
-            .map(|p| p.accounts.keys().collect::<Vec<_>>())
-            .unwrap_or_default();
+        let names: Vec<_> =
+            store.providers.get("anthropic").map(|p| p.accounts.keys().collect::<Vec<_>>()).unwrap_or_default();
         return Err(crate::error::Error::ProviderAuth {
             message: format!("No account '{}'. Available: {:?}", account, names),
         });

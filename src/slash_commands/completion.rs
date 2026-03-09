@@ -3,7 +3,9 @@
 //! Provides autocomplete for `/` commands including subcommands
 //! and prompt templates.
 
-use super::{builtin_commands, SlashRegistry, PROMPT_TEMPLATE_CACHE};
+use super::PROMPT_TEMPLATE_CACHE;
+use super::SlashRegistry;
+use super::builtin_commands;
 
 /// A completion item returned by the autocomplete system.
 #[derive(Debug, Clone)]
@@ -190,4 +192,3 @@ pub fn help_text() -> String {
     }
     out
 }
-

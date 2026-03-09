@@ -1,6 +1,8 @@
 //! Block navigation and branching — focus, collapse, copy, and branch switching.
 
-use super::{App, BlockEntry, MessageRole};
+use super::App;
+use super::BlockEntry;
+use super::MessageRole;
 
 impl App {
     /// Focus the previous block
@@ -129,7 +131,8 @@ impl App {
 
     /// Get IDs of all conversation blocks in order
     fn conversation_block_ids(&self) -> Vec<usize> {
-        self.conversation.blocks
+        self.conversation
+            .blocks
             .iter()
             .filter_map(|entry| match entry {
                 BlockEntry::Conversation(block) => Some(block.id),
@@ -257,8 +260,13 @@ impl App {
         let mut leaf = target_block_id;
         loop {
             // Find children of leaf (blocks whose parent_block_id == Some(leaf))
-            let children: Vec<usize> =
-                self.conversation.all_blocks.iter().filter(|b| b.parent_block_id == Some(leaf)).map(|b| b.id).collect();
+            let children: Vec<usize> = self
+                .conversation
+                .all_blocks
+                .iter()
+                .filter(|b| b.parent_block_id == Some(leaf))
+                .map(|b| b.id)
+                .collect();
             if let Some(&last_child) = children.last() {
                 path.push(last_child);
                 leaf = last_child;

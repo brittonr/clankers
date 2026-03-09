@@ -5,18 +5,19 @@
 //! of discovering from CWD.
 
 use std::collections::HashSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
-use git2::{
-    BranchType, Repository, WorktreePruneOptions,
-};
+use git2::BranchType;
+use git2::Repository;
+use git2::WorktreePruneOptions;
 
-use super::{GitError, Result};
+use super::GitError;
+use super::Result;
 
 /// Open a repository at an explicit path.
 fn open_at(repo_root: &Path) -> Result<Repository> {
-    Repository::open(repo_root)
-        .map_err(|e| GitError(format!("Not a git repository ({}): {}", repo_root.display(), e)))
+    Repository::open(repo_root).map_err(|e| GitError(format!("Not a git repository ({}): {}", repo_root.display(), e)))
 }
 
 // ── Repo discovery ─────────────────────────────────────────────────
@@ -28,9 +29,7 @@ pub fn is_git_repo(path: &Path) -> bool {
 
 /// Find the repo root for a path (like `git rev-parse --show-toplevel`).
 pub fn find_repo_root(path: &Path) -> Option<PathBuf> {
-    Repository::discover(path)
-        .ok()
-        .and_then(|repo| repo.workdir().map(|p| p.to_path_buf()))
+    Repository::discover(path).ok().and_then(|repo| repo.workdir().map(|p| p.to_path_buf()))
 }
 
 // ── Worktree lifecycle ─────────────────────────────────────────────
@@ -38,33 +37,24 @@ pub fn find_repo_root(path: &Path) -> Option<PathBuf> {
 /// Create a new worktree with a new branch.
 ///
 /// Equivalent to `git worktree add -b <branch> <path> <start_point>`.
-pub fn worktree_add(
-    repo_root: &Path,
-    branch_name: &str,
-    worktree_path: &Path,
-    start_point: &str,
-) -> Result<()> {
+pub fn worktree_add(repo_root: &Path, branch_name: &str, worktree_path: &Path, start_point: &str) -> Result<()> {
     let repo = open_at(repo_root)?;
 
     // Resolve start point to a commit
-    let start_obj = repo.revparse_single(start_point).map_err(|e| {
-        GitError(format!("Cannot resolve '{}': {}", start_point, e))
-    })?;
-    let start_commit = start_obj.peel_to_commit().map_err(|e| {
-        GitError(format!("'{}' is not a commit: {}", start_point, e))
-    })?;
+    let start_obj = repo
+        .revparse_single(start_point)
+        .map_err(|e| GitError(format!("Cannot resolve '{}': {}", start_point, e)))?;
+    let start_commit = start_obj
+        .peel_to_commit()
+        .map_err(|e| GitError(format!("'{}' is not a commit: {}", start_point, e)))?;
 
     // Create the branch
-    repo.branch(branch_name, &start_commit, false).map_err(|e| {
-        GitError(format!("Failed to create branch '{}': {}", branch_name, e))
-    })?;
+    repo.branch(branch_name, &start_commit, false)
+        .map_err(|e| GitError(format!("Failed to create branch '{}': {}", branch_name, e)))?;
 
     // Create the worktree
     // git2 worktree name is the last component of the path
-    let wt_name = worktree_path
-        .file_name()
-        .and_then(|n| n.to_str())
-        .unwrap_or(branch_name);
+    let wt_name = worktree_path.file_name().and_then(|n| n.to_str()).unwrap_or(branch_name);
 
     let reference = repo
         .find_branch(branch_name, BranchType::Local)
@@ -72,13 +62,8 @@ pub fn worktree_add(
 
     // Ensure parent directories exist (git2 doesn't create them)
     if let Some(parent) = worktree_path.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| {
-            GitError(format!(
-                "Failed to create worktree parent dir '{}': {}",
-                parent.display(),
-                e
-            ))
-        })?;
+        std::fs::create_dir_all(parent)
+            .map_err(|e| GitError(format!("Failed to create worktree parent dir '{}': {}", parent.display(), e)))?;
     }
 
     let mut opts = git2::WorktreeAddOptions::new();
@@ -204,15 +189,9 @@ pub fn worktree_list(repo_root: &Path, branch_prefix: &str) -> Vec<WorktreeEntry
             // Determine the branch by opening the worktree as a repo
             let branch = Repository::open(wt.path())
                 .ok()
-                .and_then(|wt_repo| {
-                    wt_repo
-                        .head()
-                        .ok()
-                        .and_then(|h| h.shorthand().map(|s| s.to_string()))
-                });
+                .and_then(|wt_repo| wt_repo.head().ok().and_then(|h| h.shorthand().map(|s| s.to_string())));
 
-            let matches = branch_prefix.is_empty()
-                || branch.as_ref().is_some_and(|b| b.starts_with(branch_prefix));
+            let matches = branch_prefix.is_empty() || branch.as_ref().is_some_and(|b| b.starts_with(branch_prefix));
 
             if matches {
                 entries.push(WorktreeEntry {
@@ -291,11 +270,7 @@ pub fn list_merged_branches(repo_root: &Path, pattern: &str) -> HashSet<String> 
             // Branch is "merged" if its tip is an ancestor of HEAD
             let branch_oid = branch.get().target()?;
             let merge_base = repo.merge_base(branch_oid, head_oid).ok()?;
-            if merge_base == branch_oid {
-                Some(name)
-            } else {
-                None
-            }
+            if merge_base == branch_oid { Some(name) } else { None }
         })
         .collect()
 }
@@ -340,20 +315,14 @@ pub fn delete_branches_force(repo_root: &Path, branch_names: &[String]) -> usize
 /// Get file names changed between two refs.
 ///
 /// Equivalent to `git diff --name-only <from> <to>`.
-pub fn diff_name_only(
-    repo_root: &Path,
-    from_ref: &str,
-    to_ref: &str,
-) -> Option<HashSet<PathBuf>> {
+pub fn diff_name_only(repo_root: &Path, from_ref: &str, to_ref: &str) -> Option<HashSet<PathBuf>> {
     let repo = open_at(repo_root).ok()?;
     let from_obj = repo.revparse_single(from_ref).ok()?;
     let to_obj = repo.revparse_single(to_ref).ok()?;
     let from_tree = from_obj.peel_to_tree().ok()?;
     let to_tree = to_obj.peel_to_tree().ok()?;
 
-    let diff = repo
-        .diff_tree_to_tree(Some(&from_tree), Some(&to_tree), None)
-        .ok()?;
+    let diff = repo.diff_tree_to_tree(Some(&from_tree), Some(&to_tree), None).ok()?;
 
     let mut files = HashSet::new();
     for delta_idx in 0..diff.deltas().len() {

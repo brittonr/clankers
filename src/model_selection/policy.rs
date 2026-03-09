@@ -4,7 +4,9 @@ use std::fmt;
 
 use super::config::RoutingPolicyConfig;
 use super::orchestration::OrchestrationPlan;
-use super::signals::{ComplexitySignals, ModelRoleHint, ToolComplexity};
+use super::signals::ComplexitySignals;
+use super::signals::ModelRoleHint;
+use super::signals::ToolComplexity;
 
 /// Main routing policy that selects models based on complexity signals
 #[derive(Debug, Clone)]
@@ -36,7 +38,9 @@ impl RoutingPolicy {
         }
 
         // Hard budget limit — force smol regardless of complexity
-        if let Some(hard) = self.config.budget_hard_limit && signals.current_cost >= hard {
+        if let Some(hard) = self.config.budget_hard_limit
+            && signals.current_cost >= hard
+        {
             return ModelSelectionResult {
                 role: "smol".to_string(),
                 score: 0.0,
@@ -88,10 +92,7 @@ impl RoutingPolicy {
 
         // Check for orchestration (experimental)
         let orchestration = if self.config.enable_orchestration {
-            super::orchestration::detect_pattern(
-                signals.prompt_text.as_deref().unwrap_or(""),
-                adjusted_score,
-            )
+            super::orchestration::detect_pattern(signals.prompt_text.as_deref().unwrap_or(""), adjusted_score)
         } else {
             None
         };
@@ -114,12 +115,8 @@ impl RoutingPolicy {
         score += token_contribution;
 
         // Tool complexity contribution
-        let tool_contribution: f32 = signals
-            .recent_tools
-            .iter()
-            .map(|t| t.complexity.weight())
-            .sum::<f32>()
-            * self.config.tool_weight;
+        let tool_contribution: f32 =
+            signals.recent_tools.iter().map(|t| t.complexity.weight()).sum::<f32>() * self.config.tool_weight;
         score += tool_contribution;
 
         // Keyword contributions
@@ -159,10 +156,7 @@ impl RoutingPolicy {
         }
 
         // Check for fast/thorough hints
-        if lower.contains("quick answer")
-            || lower.contains("quickly")
-            || lower.contains("fast response")
-        {
+        if lower.contains("quick answer") || lower.contains("quickly") || lower.contains("fast response") {
             return Some(ModelRoleHint::Fast);
         }
         if lower.contains("think deeply")
@@ -277,10 +271,7 @@ mod tests {
         let signals = ComplexitySignals {
             token_count: 2000, // Large prompt
             recent_tools: vec![],
-            keywords: vec![
-                ("architecture".to_string(), 15.0),
-                ("refactor".to_string(), 10.0),
-            ],
+            keywords: vec![("architecture".to_string(), 15.0), ("refactor".to_string(), 10.0)],
             user_hint: None,
             current_cost: 0.0,
             prompt_text: None,
@@ -441,10 +432,7 @@ mod tests {
 
         let result = policy.select_model(&signals);
         assert_eq!(result.role, "smol");
-        assert!(matches!(
-            result.reason,
-            SelectionReason::BudgetThreshold { .. }
-        ));
+        assert!(matches!(result.reason, SelectionReason::BudgetThreshold { .. }));
     }
 
     #[test]

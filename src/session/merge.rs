@@ -1,12 +1,15 @@
 //! Merge, selective merge, and cherry-pick operations on session branches.
 
-use chrono::Utc;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
+use std::collections::HashSet;
 
+use chrono::Utc;
+
+use super::SessionManager;
 use super::entry::*;
+use super::set_message_id;
 use super::store;
 use super::tree::SessionTree;
-use super::{set_message_id, SessionManager};
 use crate::error::Result;
 use crate::provider::message::MessageId;
 
@@ -16,11 +19,7 @@ impl SessionManager {
     /// Copies messages unique to `source_leaf` (not shared with `target_leaf`)
     /// and appends them as children of the target branch's leaf. Returns the
     /// number of messages merged and the new leaf ID on the target branch.
-    pub fn merge_branch(
-        &mut self,
-        source_leaf: MessageId,
-        target_leaf: MessageId,
-    ) -> Result<(usize, MessageId)> {
+    pub fn merge_branch(&mut self, source_leaf: MessageId, target_leaf: MessageId) -> Result<(usize, MessageId)> {
         if source_leaf == target_leaf {
             return Err(crate::error::Error::Session {
                 message: "Cannot merge a branch into itself".into(),
@@ -41,7 +40,8 @@ impl SessionManager {
         let unique = tree.find_unique_messages(&source_leaf, &target_leaf);
         if unique.is_empty() {
             return Err(crate::error::Error::Session {
-                message: "No new messages to merge — source branch is already merged or is an ancestor of target".into(),
+                message: "No new messages to merge — source branch is already merged or is an ancestor of target"
+                    .into(),
             });
         }
 

@@ -3,9 +3,11 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use clankers::procmon::{ProcessMeta, ProcessMonitor, ProcessMonitorConfig};
-use tokio::sync::broadcast;
 use clankers::agent::events::AgentEvent;
+use clankers::procmon::ProcessMeta;
+use clankers::procmon::ProcessMonitor;
+use clankers::procmon::ProcessMonitorConfig;
+use tokio::sync::broadcast;
 
 /// Spawn a real `sleep` process, register it with the monitor, verify tracking,
 /// then wait for it to exit and verify the monitor detects the exit.
@@ -22,13 +24,10 @@ async fn test_monitor_tracks_real_process() {
     monitor.clone().start();
 
     // Spawn a real short-lived process using std::process to avoid tokio reaping it
-    let mut child = std::process::Command::new("sleep")
-        .arg("1")
-        .spawn()
-        .expect("failed to spawn sleep");
+    let mut child = std::process::Command::new("sleep").arg("1").spawn().expect("failed to spawn sleep");
 
     let pid = child.id();
-    
+
     // Wait for the child in a background task so it gets reaped when it finishes
     // (otherwise it becomes a zombie and sysinfo still sees it as "existing")
     tokio::task::spawn_blocking(move || {
@@ -57,7 +56,7 @@ async fn test_monitor_tracks_real_process() {
     // Wait for sample and/or exit events
     let mut got_sample = false;
     let mut got_exit = false;
-    
+
     // Process sleeps 1s, poll every 200ms, so we should get 4-5 samples before exit
     // Give it plenty of time: 30 attempts with 500ms timeout each
     for _ in 0..30 {
@@ -71,11 +70,11 @@ async fn test_monitor_tracks_real_process() {
                 break; // Got the exit, we're done
             }
             Ok(Err(_)) => break, // Channel closed
-            Err(_) => continue, // Timeout, keep trying
-            _ => continue, // Other event, keep trying
+            Err(_) => continue,  // Timeout, keep trying
+            _ => continue,       // Other event, keep trying
         }
     }
-    
+
     // For very fast processes, we might get exit before any samples - that's OK
     assert!(got_sample || got_exit, "never received a sample or exit event");
     assert!(got_exit, "never received exit event for pid {}", pid);

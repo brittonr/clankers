@@ -1,6 +1,7 @@
 //! Popup selector key handling (model, account, session).
 
-use crossterm::event::{KeyCode, KeyModifiers};
+use crossterm::event::KeyCode;
+use crossterm::event::KeyModifiers;
 
 use crate::modes::interactive::AgentCommand;
 use crate::tui::app::App;
@@ -111,10 +112,7 @@ pub(crate) fn handle_account_selector_key(
 // Branch switcher key handling
 // ---------------------------------------------------------------------------
 
-pub(crate) fn handle_branch_switcher_key(
-    app: &mut App,
-    key: &crossterm::event::KeyEvent,
-) -> bool {
+pub(crate) fn handle_branch_switcher_key(app: &mut App, key: &crossterm::event::KeyEvent) -> bool {
     match key.code {
         KeyCode::Esc => {
             app.branching.switcher.close();
@@ -164,10 +162,7 @@ pub(crate) fn handle_branch_switcher_key(
 // Branch comparison key handling
 // ---------------------------------------------------------------------------
 
-pub(crate) fn handle_branch_compare_key(
-    app: &mut App,
-    key: &crossterm::event::KeyEvent,
-) -> bool {
+pub(crate) fn handle_branch_compare_key(app: &mut App, key: &crossterm::event::KeyEvent) -> bool {
     match key.code {
         KeyCode::Esc | KeyCode::Char('q') => {
             app.branching.compare.close();
@@ -201,10 +196,7 @@ pub(crate) fn handle_branch_compare_key(
 // Interactive merge key handling
 // ---------------------------------------------------------------------------
 
-pub(crate) fn handle_merge_interactive_key(
-    app: &mut App,
-    key: &crossterm::event::KeyEvent,
-) -> bool {
+pub(crate) fn handle_merge_interactive_key(app: &mut App, key: &crossterm::event::KeyEvent) -> bool {
     match key.code {
         KeyCode::Esc | KeyCode::Char('q') => {
             app.branching.merge_interactive.close();
@@ -296,4 +288,3 @@ pub(crate) fn handle_session_selector_key(
         _ => true,
     }
 }
-

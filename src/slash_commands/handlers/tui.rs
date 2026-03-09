@@ -71,14 +71,19 @@ impl SlashHandler for LayoutHandler {
             "" => {
                 // Show current layout info
                 let pane_count = ctx.app.layout.tiling.panes().len();
-                let panel_names: Vec<String> = ctx.app.layout.tiling.panes().iter().filter_map(|p| {
-                    match ctx.app.layout.pane_registry.kind(p.id) {
+                let panel_names: Vec<String> = ctx
+                    .app
+                    .layout
+                    .tiling
+                    .panes()
+                    .iter()
+                    .filter_map(|p| match ctx.app.layout.pane_registry.kind(p.id) {
                         Some(panes::PaneKind::Panel(panel_id)) => Some(panel_id.label().to_string()),
                         Some(panes::PaneKind::Chat) => Some("Chat".to_string()),
                         Some(panes::PaneKind::Subagent(id)) => Some(format!("Subagent:{}", id)),
                         _ => None,
-                    }
-                }).collect();
+                    })
+                    .collect();
                 let msg = format!(
                     "Layout: {} pane(s): {}\nUse /layout <preset> to switch.\nPresets: default, wide, focused, right\nToggle: /layout toggle <todo|files|subagents|peers|processes|branches>",
                     pane_count,
@@ -87,7 +92,8 @@ impl SlashHandler for LayoutHandler {
                 ctx.app.push_system(msg, false);
             }
             _ => {
-                ctx.app.push_system("Unknown layout. Use: default, wide, focused, right, toggle <panel>".into(), true);
+                ctx.app
+                    .push_system("Unknown layout. Use: default, wide, focused, right, toggle <panel>".into(), true);
             }
         }
     }
@@ -109,8 +115,10 @@ fn parse_panel_name(name: &str) -> Option<crate::tui::panel::PanelId> {
 
 /// Toggle a panel on/off in the current layout.
 fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
-    use crate::tui::panes::{self, PaneKind};
     use ratatui::layout::Direction;
+
+    use crate::tui::panes::PaneKind;
+    use crate::tui::panes::{self};
 
     // Toggling panels modifies the tree, so exit zoom first.
     ctx.app.zoom_restore();
@@ -139,9 +147,7 @@ fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
             ctx.app.layout.pane_registry.unregister(pane_id);
             // Sync remaining pane IDs
             let live: std::collections::HashSet<_> =
-                ratatui_hypertile::raw::collect_pane_ids(ctx.app.layout.tiling.root())
-                    .into_iter()
-                    .collect();
+                ratatui_hypertile::raw::collect_pane_ids(ctx.app.layout.tiling.root()).into_iter().collect();
             ctx.app.layout.pane_registry.retain_only(&live);
             ctx.app.sync_focused_panel();
             ctx.app.push_system(format!("Hidden {} panel", panel_id.label()), false);
@@ -344,8 +350,7 @@ impl SlashHandler for TodoHandler {
                         } else {
                             ctx.app.push_system(format!("No todo item #{}.", id), true);
                         }
-                    } else if let Some(id) = todo_panel.set_status_by_text(subcmd_args, TodoStatus::InProgress)
-                    {
+                    } else if let Some(id) = todo_panel.set_status_by_text(subcmd_args, TodoStatus::InProgress) {
                         ctx.app.push_system(format!("Marked #{} as in-progress.", id), false);
                     } else {
                         ctx.app.push_system(format!("No todo matching '{}'.", subcmd_args), true);
@@ -472,17 +477,13 @@ impl SlashHandler for ReviewHandler {
 /// Helper to access the TodoPanel immutably. Panics if panel not registered (should never happen).
 fn todo_panel_ref(app: &crate::tui::app::App) -> &crate::tui::components::todo_panel::TodoPanel {
     app.panels
-        .downcast_ref::<crate::tui::components::todo_panel::TodoPanel>(
-            crate::tui::panel::PanelId::Todo,
-        )
+        .downcast_ref::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)
         .expect("todo panel registered at startup")
 }
 
 /// Helper to access the TodoPanel mutably. Panics if panel not registered (should never happen).
 fn todo_panel_mut(app: &mut crate::tui::app::App) -> &mut crate::tui::components::todo_panel::TodoPanel {
     app.panels
-        .downcast_mut::<crate::tui::components::todo_panel::TodoPanel>(
-            crate::tui::panel::PanelId::Todo,
-        )
+        .downcast_mut::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)
         .expect("todo panel registered at startup")
 }

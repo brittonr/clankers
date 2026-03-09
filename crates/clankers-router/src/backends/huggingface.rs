@@ -31,6 +31,7 @@ use serde::Serialize;
 use tracing::info;
 use tracing::warn;
 
+use super::common;
 use super::openai_compat::OpenAICompatConfig;
 use crate::error::Result;
 use crate::model::Model;
@@ -183,9 +184,7 @@ impl HubClient {
     pub fn new(api_key: Option<String>) -> Self {
         let cache_dir = default_cache_dir();
         Self {
-            client: reqwest::Client::builder()
-                .user_agent("clankers-router/0.1")
-                .build()
+            client: common::build_http_client(std::time::Duration::from_secs(300))
                 .expect("failed to build HTTP client"),
             api_key,
             cache_dir,
@@ -195,9 +194,7 @@ impl HubClient {
     /// Create a Hub client with a custom cache directory.
     pub fn with_cache_dir(api_key: Option<String>, cache_dir: PathBuf) -> Self {
         Self {
-            client: reqwest::Client::builder()
-                .user_agent("clankers-router/0.1")
-                .build()
+            client: common::build_http_client(std::time::Duration::from_secs(300))
                 .expect("failed to build HTTP client"),
             api_key,
             cache_dir,
@@ -350,7 +347,7 @@ impl HubClient {
             "selected: {} ({}, {})",
             selected.filename,
             selected.quantization.as_deref().unwrap_or("unknown"),
-            format_bytes(selected.size_bytes),
+            common::format_bytes(selected.size_bytes),
         );
 
         // Create local cache path: {cache_dir}/{org}/{repo}/{filename}
@@ -409,7 +406,7 @@ impl HubClient {
         }
         file.flush().await?;
 
-        info!("downloaded {} to {}", format_bytes(downloaded), local_path.display());
+        info!("downloaded {} to {}", common::format_bytes(downloaded), local_path.display());
 
         Ok(PulledModel {
             model_id: model_id.to_string(),
@@ -758,19 +755,6 @@ fn generate_ollama_name(model_id: &str, quantization: Option<&str>) -> String {
     }
 }
 
-/// Format bytes as human-readable string.
-fn format_bytes(bytes: u64) -> String {
-    if bytes >= 1_073_741_824 {
-        format!("{:.1} GB", bytes as f64 / 1_073_741_824.0)
-    } else if bytes >= 1_048_576 {
-        format!("{:.1} MB", bytes as f64 / 1_048_576.0)
-    } else if bytes >= 1024 {
-        format!("{:.1} KB", bytes as f64 / 1024.0)
-    } else {
-        format!("{} B", bytes)
-    }
-}
-
 /// Simple recursive directory walker (avoids pulling in the `walkdir` crate).
 fn walkdir(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     let mut files = Vec::new();
@@ -858,9 +842,9 @@ mod tests {
 
     #[test]
     fn test_format_bytes() {
-        assert_eq!(format_bytes(512), "512 B");
-        assert_eq!(format_bytes(1_048_576), "1.0 MB");
-        assert_eq!(format_bytes(4_294_967_296), "4.0 GB");
+        assert_eq!(common::format_bytes(512), "512 B");
+        assert_eq!(common::format_bytes(1_048_576), "1.0 MB");
+        assert_eq!(common::format_bytes(4_294_967_296), "4.0 GB");
     }
 
     #[test]

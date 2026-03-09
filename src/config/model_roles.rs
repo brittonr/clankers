@@ -64,16 +64,11 @@ impl ModelRoles {
         let mut roles = IndexMap::new();
         let builtins = [
             ("default", "General-purpose tasks", None, vec![]),
-            ("smol", "Simple/fast tasks (file ops, grep, etc.)", None,
-             vec!["grep", "find", "list", "read", "ls"]),
-            ("slow", "Complex reasoning and analysis", None,
-             vec!["complex", "refactor", "think", "analyze"]),
-            ("plan", "Architecture and planning", None,
-             vec!["plan", "architect", "design"]),
-            ("commit", "Commit message generation", None,
-             vec!["commit", "changelog", "git"]),
-            ("review", "Code review and analysis", None,
-             vec!["review", "audit", "security"]),
+            ("smol", "Simple/fast tasks (file ops, grep, etc.)", None, vec!["grep", "find", "list", "read", "ls"]),
+            ("slow", "Complex reasoning and analysis", None, vec!["complex", "refactor", "think", "analyze"]),
+            ("plan", "Architecture and planning", None, vec!["plan", "architect", "design"]),
+            ("commit", "Commit message generation", None, vec!["commit", "changelog", "git"]),
+            ("review", "Code review and analysis", None, vec!["review", "audit", "security"]),
         ];
         for (name, desc, model, kws) in builtins {
             roles.insert(name.to_string(), ModelRoleDef {

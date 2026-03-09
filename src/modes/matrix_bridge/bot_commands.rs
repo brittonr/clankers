@@ -1,27 +1,25 @@
 //! Matrix bot commands (!help, !status, !token, etc.).
 
 use std::sync::Arc;
-use tokio::sync::RwLock;
-use chrono::Utc;
-use clankers_auth::{Capability, CapabilityToken, TokenBuilder};
 
-use crate::modes::daemon::{SessionKey, SessionStore};
+use chrono::Utc;
+use clankers_auth::Capability;
+use clankers_auth::CapabilityToken;
+use clankers_auth::TokenBuilder;
+use tokio::sync::RwLock;
 
 use super::prompt::run_matrix_prompt;
+use crate::modes::daemon::SessionKey;
+use crate::modes::daemon::SessionStore;
 
 /// Handle a `!command` from a Matrix user. Returns the response text.
-pub(crate) async fn handle_bot_command(
-    body: &str,
-    key: &SessionKey,
-    store: Arc<RwLock<SessionStore>>,
-) -> String {
+pub(crate) async fn handle_bot_command(body: &str, key: &SessionKey, store: Arc<RwLock<SessionStore>>) -> String {
     let parts: Vec<&str> = body.trim().splitn(2, char::is_whitespace).collect();
     let command = parts[0].to_lowercase();
     let args = parts.get(1).unwrap_or(&"").trim();
 
     match command.as_str() {
-        "!help" => {
-            "**Available commands:**\n\
+        "!help" => "**Available commands:**\n\
              • `!help` — Show this message\n\
              • `!status` — Session info (model, turns, uptime)\n\
              • `!restart` — Clear session history and start fresh\n\
@@ -30,8 +28,7 @@ pub(crate) async fn handle_bot_command(
              • `!skills` — List loaded skills\n\
              • `!token <base64>` — Register an access token\n\
              • `!delegate [opts]` — Create a child token from yours"
-                .to_string()
-        }
+            .to_string(),
         "!status" => {
             let store = store.read().await;
             if let Some(session) = store.sessions.get(key) {
@@ -97,14 +94,19 @@ pub(crate) async fn handle_bot_command(
             if tool_names.is_empty() {
                 "No tools loaded.".to_string()
             } else {
-                format!("**Loaded tools ({}):**\n{}", tool_names.len(), tool_names.iter().map(|n| format!("• `{}`", n)).collect::<Vec<_>>().join("\n"))
+                format!(
+                    "**Loaded tools ({}):**\n{}",
+                    tool_names.len(),
+                    tool_names.iter().map(|n| format!("• `{}`", n)).collect::<Vec<_>>().join("\n")
+                )
             }
         }
         "!token" => {
             if args.is_empty() {
                 return "Usage: `!token <base64-encoded-token>`\n\n\
                         Register an access token to get daemon capabilities.\n\
-                        Get a token from the daemon owner: `clankers token create`".to_string();
+                        Get a token from the daemon owner: `clankers token create`"
+                    .to_string();
             }
 
             let store_guard = store.read().await;
@@ -137,16 +139,19 @@ pub(crate) async fn handle_bot_command(
                         store.prompt_locks.remove(key);
                     }
 
-                    let cap_names: Vec<&str> = caps.iter().map(|c| match c {
-                        Capability::Prompt => "Prompt",
-                        Capability::ToolUse { .. } => "ToolUse",
-                        Capability::ShellExecute { .. } => "ShellExecute",
-                        Capability::FileAccess { .. } => "FileAccess",
-                        Capability::BotCommand { .. } => "BotCommand",
-                        Capability::SessionManage => "SessionManage",
-                        Capability::ModelSwitch => "ModelSwitch",
-                        Capability::Delegate => "Delegate",
-                    }).collect();
+                    let cap_names: Vec<&str> = caps
+                        .iter()
+                        .map(|c| match c {
+                            Capability::Prompt => "Prompt",
+                            Capability::ToolUse { .. } => "ToolUse",
+                            Capability::ShellExecute { .. } => "ShellExecute",
+                            Capability::FileAccess { .. } => "FileAccess",
+                            Capability::BotCommand { .. } => "BotCommand",
+                            Capability::SessionManage => "SessionManage",
+                            Capability::ModelSwitch => "ModelSwitch",
+                            Capability::Delegate => "Delegate",
+                        })
+                        .collect();
 
                     let expires = chrono::DateTime::from_timestamp(token.expires_at as i64, 0)
                         .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
@@ -274,9 +279,7 @@ pub(crate) async fn handle_bot_command(
             let mut child_caps = vec![Capability::Prompt];
 
             if let Some(pattern) = tools_pattern {
-                child_caps.push(Capability::ToolUse {
-                    tool_pattern: pattern,
-                });
+                child_caps.push(Capability::ToolUse { tool_pattern: pattern });
             }
 
             if include_shell {
@@ -304,16 +307,20 @@ pub(crate) async fn handle_bot_command(
                         Err(e) => return format!("Failed to encode child token: {e}"),
                     };
 
-                    let cap_names: Vec<&str> = child_token.capabilities.iter().map(|c| match c {
-                        Capability::Prompt => "Prompt",
-                        Capability::ToolUse { .. } => "ToolUse",
-                        Capability::ShellExecute { .. } => "ShellExecute",
-                        Capability::FileAccess { .. } => "FileAccess",
-                        Capability::BotCommand { .. } => "BotCommand",
-                        Capability::SessionManage => "SessionManage",
-                        Capability::ModelSwitch => "ModelSwitch",
-                        Capability::Delegate => "Delegate",
-                    }).collect();
+                    let cap_names: Vec<&str> = child_token
+                        .capabilities
+                        .iter()
+                        .map(|c| match c {
+                            Capability::Prompt => "Prompt",
+                            Capability::ToolUse { .. } => "ToolUse",
+                            Capability::ShellExecute { .. } => "ShellExecute",
+                            Capability::FileAccess { .. } => "FileAccess",
+                            Capability::BotCommand { .. } => "BotCommand",
+                            Capability::SessionManage => "SessionManage",
+                            Capability::ModelSwitch => "ModelSwitch",
+                            Capability::Delegate => "Delegate",
+                        })
+                        .collect();
 
                     let expires = chrono::DateTime::from_timestamp(child_token.expires_at as i64, 0)
                         .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())

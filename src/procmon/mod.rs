@@ -2,11 +2,15 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use std::time::Instant;
 
 use parking_lot::RwLock;
-use serde::{Serialize, Deserialize};
-use sysinfo::{Pid, ProcessesToUpdate, System};
+use serde::Deserialize;
+use serde::Serialize;
+use sysinfo::Pid;
+use sysinfo::ProcessesToUpdate;
+use sysinfo::System;
 use tokio::sync::broadcast;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
@@ -39,10 +43,7 @@ pub struct ResourceSnapshot {
 #[derive(Debug, Clone)]
 pub enum ProcessState {
     Running,
-    Exited {
-        code: Option<i32>,
-        wall_time: Duration,
-    },
+    Exited { code: Option<i32>, wall_time: Duration },
 }
 
 /// Full tracked state for a single process.
@@ -136,7 +137,7 @@ impl ProcessMonitor {
     /// Register a new process to track.
     pub fn register(&self, pid: u32, meta: ProcessMeta) {
         let mut inner = self.inner.write();
-        
+
         // Emit spawn event
         if let Some(ref tx) = inner.event_tx {
             let _ = tx.send(AgentEvent::ProcessSpawn {
@@ -166,10 +167,10 @@ impl ProcessMonitor {
     /// Get aggregate statistics.
     pub fn aggregate(&self) -> AggregateStats {
         let inner = self.inner.read();
-        
+
         let mut total_rss = 0;
         let mut total_cpu_percent = 0.0;
-        
+
         for proc in inner.tracked.values() {
             if let Some(last) = proc.snapshots.last() {
                 total_rss += last.rss_bytes;
@@ -195,7 +196,7 @@ impl ProcessMonitor {
     pub fn start(self: Arc<Self>) {
         let inner = Arc::clone(&self.inner);
         let cancel = self.cancel_token.clone();
-        
+
         tokio::spawn(async move {
             Self::poll_loop(inner, cancel).await;
         });
@@ -295,10 +296,7 @@ impl ProcessMonitor {
         for &(pid, wall_time) in &exited {
             let peak_rss = guard.tracked.get(&pid).map(|t| t.peak_rss).unwrap_or(0);
             if let Some(tracked) = guard.tracked.get_mut(&pid) {
-                tracked.state = ProcessState::Exited {
-                    code: None,
-                    wall_time,
-                };
+                tracked.state = ProcessState::Exited { code: None, wall_time };
             }
             events.push(AgentEvent::ProcessExit {
                 pid,
@@ -330,9 +328,10 @@ impl ProcessMonitor {
 
         for (pid, process) in system.processes() {
             if let Some(ppid) = process.parent()
-                && ppid == parent_sys_pid {
-                    children.push(pid.as_u32());
-                }
+                && ppid == parent_sys_pid
+            {
+                children.push(pid.as_u32());
+            }
         }
 
         children
@@ -356,11 +355,7 @@ impl ProcessMonitor {
     #[cfg(test)]
     pub fn mark_exited(&self, pid: u32, code: Option<i32>) {
         let mut inner = self.inner.write();
-        let wall_time = inner
-            .tracked
-            .get(&pid)
-            .map(|t| t.start_time.elapsed())
-            .unwrap_or_default();
+        let wall_time = inner.tracked.get(&pid).map(|t| t.start_time.elapsed()).unwrap_or_default();
         if let Some(tracked) = inner.tracked.get_mut(&pid) {
             tracked.state = ProcessState::Exited { code, wall_time };
         }
@@ -386,15 +381,15 @@ mod tests {
     #[test]
     fn test_register_adds_process() {
         let monitor = ProcessMonitor::new(ProcessMonitorConfig::default(), None);
-        
+
         let meta = ProcessMeta {
             tool_name: "bash".to_string(),
             command: "echo test".to_string(),
             call_id: "test-123".to_string(),
         };
-        
+
         monitor.register(12345, meta.clone());
-        
+
         let snapshot = monitor.snapshot();
         assert_eq!(snapshot.len(), 1);
         assert_eq!(snapshot[0].0, 12345);
@@ -404,25 +399,25 @@ mod tests {
     #[test]
     fn test_snapshot_returns_tracked() {
         let monitor = ProcessMonitor::new(ProcessMonitorConfig::default(), None);
-        
+
         let meta1 = ProcessMeta {
             tool_name: "bash".to_string(),
             command: "cmd1".to_string(),
             call_id: "call-1".to_string(),
         };
-        
+
         let meta2 = ProcessMeta {
             tool_name: "bash".to_string(),
             command: "cmd2".to_string(),
             call_id: "call-2".to_string(),
         };
-        
+
         monitor.register(100, meta1);
         monitor.register(200, meta2);
-        
+
         let snapshot = monitor.snapshot();
         assert_eq!(snapshot.len(), 2);
-        
+
         let pids: Vec<u32> = snapshot.iter().map(|(pid, _)| *pid).collect();
         assert!(pids.contains(&100));
         assert!(pids.contains(&200));
@@ -431,15 +426,15 @@ mod tests {
     #[test]
     fn test_aggregate_stats() {
         let monitor = ProcessMonitor::new(ProcessMonitorConfig::default(), None);
-        
+
         let meta = ProcessMeta {
             tool_name: "test".to_string(),
             command: "test".to_string(),
             call_id: "test".to_string(),
         };
-        
+
         monitor.register(123, meta);
-        
+
         let stats = monitor.aggregate();
         assert_eq!(stats.active_count, 1);
         assert_eq!(stats.finished_count, 0);
@@ -459,7 +454,7 @@ mod tests {
             poll_interval: Duration::from_secs(1),
             max_history: 5,
         };
-        
+
         let mut tracked = TrackedProcess {
             meta: ProcessMeta {
                 tool_name: "test".to_string(),
@@ -472,7 +467,7 @@ mod tests {
             peak_rss: 0,
             start_time: Instant::now(),
         };
-        
+
         // Add 10 snapshots
         for i in 0..10 {
             tracked.snapshots.push(ResourceSnapshot {
@@ -480,13 +475,13 @@ mod tests {
                 rss_bytes: i * 1000,
                 timestamp: Instant::now(),
             });
-            
+
             // Simulate trimming
             if tracked.snapshots.len() > config.max_history {
                 tracked.snapshots.remove(0);
             }
         }
-        
+
         // Should have only max_history snapshots
         assert_eq!(tracked.snapshots.len(), 5);
         // First snapshot should be index 5 (0-4 removed)

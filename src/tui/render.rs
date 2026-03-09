@@ -20,8 +20,8 @@ use ratatui::widgets::Paragraph;
 use crate::tui::app::App;
 use crate::tui::app::AppState;
 use crate::tui::components::block_view;
-use crate::tui::components::editor as editor_component;
 use crate::tui::components::cost_overlay;
+use crate::tui::components::editor as editor_component;
 use crate::tui::components::session_panel;
 use crate::tui::components::slash_menu;
 use crate::tui::components::status_bar::StatusBarData;
@@ -42,14 +42,18 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     app.git_status.maybe_refresh();
 
     // Sync the cwd into file_activity_panel so it can shorten paths
-    if let Some(fap) = app.panels.downcast_mut::<crate::tui::components::file_activity_panel::FileActivityPanel>(crate::tui::panel::PanelId::Files)
-        && fap.cwd != app.cwd
+    if let Some(fap) = app.panels.downcast_mut::<crate::tui::components::file_activity_panel::FileActivityPanel>(
+        crate::tui::panel::PanelId::Files,
+    ) && fap.cwd != app.cwd
     {
         fap.cwd.clone_from(&app.cwd);
     }
 
     // Refresh process panel entries from monitor
-    if let Some(pp) = app.panels.downcast_mut::<crate::tui::components::process_panel::ProcessPanel>(crate::tui::panel::PanelId::Processes) {
+    if let Some(pp) = app
+        .panels
+        .downcast_mut::<crate::tui::components::process_panel::ProcessPanel>(crate::tui::panel::PanelId::Processes)
+    {
         pp.refresh_entries();
     }
 
@@ -64,9 +68,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // ── Main (chat) column layout ───────────────────────────────────
 
     let main_render_area = if chat_focused {
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan));
+        let block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Cyan));
         let inner = block.inner(chat_area);
         frame.render_widget(block, chat_area);
         inner
@@ -128,10 +130,7 @@ fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
             Some(PaneKind::Panel(panel_id)) => {
                 let panel_id = *panel_id;
                 let focused = app.is_panel_focused(panel_id);
-                let ctx = DrawContext {
-                    theme: &theme,
-                    focused,
-                };
+                let ctx = DrawContext { theme: &theme, focused };
                 if let Some(panel) = app.panel_mut(panel_id) {
                     crate::tui::panel::draw_panel_scrolled(frame, panel, pane.rect, &ctx);
                 } else {
@@ -146,10 +145,7 @@ fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
             Some(PaneKind::Subagent(id)) => {
                 let id = id.clone();
                 let focused = app.layout.focused_subagent.as_deref() == Some(&id);
-                let ctx = DrawContext {
-                    theme: &theme,
-                    focused,
-                };
+                let ctx = DrawContext { theme: &theme, focused };
                 app.layout.subagent_panes.draw(&id, frame, pane.rect, &ctx);
             }
             Some(PaneKind::Chat) => {
@@ -173,7 +169,12 @@ fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
 /// Render chrome: overlays, status bar, session popup, etc.
 fn render_chrome(frame: &mut Frame, app: &mut App) {
     session_panel::render_session_popup(frame, app, &app.theme.clone());
-    cost_overlay::render_cost_overlay(frame, app.cost_tracker.as_ref(), app.overlays.cost_overlay_visible, &app.theme.clone());
+    cost_overlay::render_cost_overlay(
+        frame,
+        app.cost_tracker.as_ref(),
+        app.overlays.cost_overlay_visible,
+        &app.theme.clone(),
+    );
     app.overlays.model_selector.render(frame, frame.area());
     app.overlays.account_selector.render(frame, frame.area());
     app.overlays.session_selector.render(frame, frame.area());
@@ -249,15 +250,14 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
     let plugin_spans = widget_host::plugin_status_spans(&app.plugin_ui);
     let context_span = app.context_gauge.status_bar_span();
     let git_span = app.git_status.status_bar_span();
-    let process_span = app.panels
+    let process_span = app
+        .panels
         .downcast_ref::<crate::tui::components::process_panel::ProcessPanel>(crate::tui::panel::PanelId::Processes)
         .and_then(|pp| pp.status_bar_span());
     let budget_status = app
         .cost_tracker
         .as_ref()
-        .map_or(crate::model_selection::cost_tracker::BudgetStatus::NoBudget, |ct| {
-            ct.budget_status()
-        });
+        .map_or(crate::model_selection::cost_tracker::BudgetStatus::NoBudget, |ct| ct.budget_status());
     // Build tool activity summary for the status bar
     let tool_activity = if !app.streaming.active_tools.is_empty() {
         let count = app.streaming.active_tools.len();
@@ -273,10 +273,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         };
         Some(Span::styled(
             label,
-            Style::default()
-                .fg(Color::Black)
-                .bg(Color::Yellow)
-                .add_modifier(Modifier::BOLD),
+            Style::default().fg(Color::Black).bg(Color::Yellow).add_modifier(Modifier::BOLD),
         ))
     } else {
         None
@@ -317,7 +314,8 @@ fn compute_input_indicator(state: AppState, input_mode: crate::config::keybindin
 fn render_messages(frame: &mut Frame, app: &mut App, messages_area: Rect) {
     // Build set of active block IDs for marking active branches
     let active_block_ids: std::collections::HashSet<usize> = app
-        .conversation.blocks
+        .conversation
+        .blocks
         .iter()
         .filter_map(|e| match e {
             crate::tui::components::block::BlockEntry::Conversation(b) => Some(b.id),
@@ -326,7 +324,8 @@ fn render_messages(frame: &mut Frame, app: &mut App, messages_area: Rect) {
         .collect();
 
     let branch_info: std::collections::HashMap<usize, crate::tui::components::block_view::BlockBranchInfo> = app
-        .conversation.blocks
+        .conversation
+        .blocks
         .iter()
         .filter_map(|e| match e {
             crate::tui::components::block::BlockEntry::Conversation(b) => {
@@ -334,7 +333,8 @@ fn render_messages(frame: &mut Frame, app: &mut App, messages_area: Rect) {
                 let children_count = app.block_children_count(b.id);
                 // Collect child branch previews for branch points
                 let child_branch_previews = if children_count > 1 {
-                    app.conversation.all_blocks
+                    app.conversation
+                        .all_blocks
                         .iter()
                         .filter(|c| c.parent_block_id == Some(b.id))
                         .map(|c| {
@@ -398,7 +398,9 @@ fn render_messages(frame: &mut Frame, app: &mut App, messages_area: Rect) {
 }
 
 /// Compute the search scroll target position
-fn compute_search_scroll_target(output_search: &mut crate::tui::components::output_search::OutputSearch) -> Option<usize> {
+fn compute_search_scroll_target(
+    output_search: &mut crate::tui::components::output_search::OutputSearch,
+) -> Option<usize> {
     if output_search.scroll_to_current {
         output_search.scroll_to_current = false;
         output_search.current_match_row()

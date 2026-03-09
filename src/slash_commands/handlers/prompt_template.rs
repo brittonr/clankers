@@ -20,7 +20,7 @@ impl SlashHandler for PromptTemplateHandler {
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         // Look up the prompt template from the discovered resources
         let global_dir = &crate::config::paths::ClankersPaths::get().global_prompts_dir;

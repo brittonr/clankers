@@ -7,8 +7,9 @@
 use std::collections::HashMap;
 
 use ratatui::layout::Direction;
+use ratatui_hypertile::Hypertile;
+use ratatui_hypertile::PaneId;
 use ratatui_hypertile::raw::Node;
-use ratatui_hypertile::{Hypertile, PaneId};
 
 use crate::tui::panel::PanelId;
 
@@ -93,10 +94,7 @@ impl PaneRegistry {
 
     /// Find the first pane of a given kind.
     pub fn find(&self, kind: &PaneKind) -> Option<PaneId> {
-        self.kinds
-            .iter()
-            .find(|(_, k)| *k == kind)
-            .map(|(&id, _)| id)
+        self.kinds.iter().find(|(_, k)| *k == kind).map(|(&id, _)| id)
     }
 
     /// Find the pane holding a specific `PanelId`.
@@ -145,14 +143,26 @@ pub mod pane_ids {
 
     pub const CHAT: PaneId = PaneId::ROOT; // 0
 
-    pub fn todo() -> PaneId { PaneId::new(1) }
-    pub fn files() -> PaneId { PaneId::new(2) }
-    pub fn subagents() -> PaneId { PaneId::new(3) }
-    pub fn peers() -> PaneId { PaneId::new(4) }
+    pub fn todo() -> PaneId {
+        PaneId::new(1)
+    }
+    pub fn files() -> PaneId {
+        PaneId::new(2)
+    }
+    pub fn subagents() -> PaneId {
+        PaneId::new(3)
+    }
+    pub fn peers() -> PaneId {
+        PaneId::new(4)
+    }
     /// Stable ID for the Processes panel (used by toggle and presets).
-    pub fn processes() -> PaneId { PaneId::new(5) }
+    pub fn processes() -> PaneId {
+        PaneId::new(5)
+    }
     /// Stable ID for the Branches panel (used by toggle and presets).
-    pub fn branches() -> PaneId { PaneId::new(6) }
+    pub fn branches() -> PaneId {
+        PaneId::new(6)
+    }
 }
 
 // ── Default layout builder ──────────────────────────────────────────────────
@@ -191,17 +201,10 @@ pub fn default_tiling() -> Hypertile {
         }),
     };
 
-    let mut tiling = Hypertile::builder()
-        .with_focus_highlight(true)
-        .with_gap(0)
-        .build();
-    tiling
-        .set_root(tree)
-        .expect("default BSP tree is valid");
+    let mut tiling = Hypertile::builder().with_focus_highlight(true).with_gap(0).build();
+    tiling.set_root(tree).expect("default BSP tree is valid");
     // Focus the chat pane on startup
-    tiling
-        .focus_pane(pane_ids::CHAT)
-        .expect("chat pane exists");
+    tiling.focus_pane(pane_ids::CHAT).expect("chat pane exists");
     tiling
 }
 
@@ -316,7 +319,12 @@ pub fn remove_pane_from_tree(node: Node, target: PaneId) -> Option<Node> {
                 Some(Node::Pane(id))
             }
         }
-        Node::Split { direction, ratio, first, second } => {
+        Node::Split {
+            direction,
+            ratio,
+            first,
+            second,
+        } => {
             let first_pruned = remove_pane_from_tree(*first, target);
             let second_pruned = remove_pane_from_tree(*second, target);
             match (first_pruned, second_pruned) {
@@ -356,7 +364,12 @@ pub fn insert_pane_beside(
                 Some(Node::Pane(id))
             }
         }
-        Node::Split { direction: d, ratio: r, first, second } => {
+        Node::Split {
+            direction: d,
+            ratio: r,
+            first,
+            second,
+        } => {
             let first_result = insert_pane_beside(*first.clone(), target, new_pane, direction, ratio);
             if let Some(new_first) = first_result {
                 let first_changed = !nodes_equal(&new_first, &first);
@@ -385,8 +398,18 @@ fn nodes_equal(a: &Node, b: &Node) -> bool {
     match (a, b) {
         (Node::Pane(a_id), Node::Pane(b_id)) => a_id == b_id,
         (
-            Node::Split { direction: da, ratio: ra, first: fa, second: sa },
-            Node::Split { direction: db, ratio: rb, first: fb, second: sb },
+            Node::Split {
+                direction: da,
+                ratio: ra,
+                first: fa,
+                second: sa,
+            },
+            Node::Split {
+                direction: db,
+                ratio: rb,
+                first: fb,
+                second: sb,
+            },
         ) => da == db && (ra - rb).abs() < f32::EPSILON && nodes_equal(fa, fb) && nodes_equal(sa, sb),
         _ => false,
     }
@@ -398,14 +421,9 @@ fn nodes_equal(a: &Node, b: &Node) -> bool {
 /// 1. If there's an existing subagent pane, split it vertically (stack them)
 /// 2. Else if the Subagents overview panel exists, split it vertically
 /// 3. Else split the chat pane horizontally (chat keeps 75%)
-pub fn auto_split_for_subagent(
-    tiling: &mut Hypertile,
-    registry: &PaneRegistry,
-    new_pane_id: PaneId,
-) {
+pub fn auto_split_for_subagent(tiling: &mut Hypertile, registry: &PaneRegistry, new_pane_id: PaneId) {
     // Try to find an existing subagent pane to stack beside
-    let target = registry.find_any_subagent_pane()
-        .or_else(|| registry.find_panel(PanelId::Subagents));
+    let target = registry.find_any_subagent_pane().or_else(|| registry.find_panel(PanelId::Subagents));
 
     let (target_pane, direction, ratio) = if let Some(t) = target {
         (t, Direction::Vertical, 0.5)
@@ -414,13 +432,7 @@ pub fn auto_split_for_subagent(
         (registry.chat_pane(), Direction::Horizontal, 0.75)
     };
 
-    let new_root = insert_pane_beside(
-        tiling.root().clone(),
-        target_pane,
-        new_pane_id,
-        direction,
-        ratio,
-    );
+    let new_root = insert_pane_beside(tiling.root().clone(), target_pane, new_pane_id, direction, ratio);
     if let Some(root) = new_root {
         let _ = tiling.set_root(root);
     }

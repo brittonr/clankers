@@ -146,11 +146,7 @@ impl MergeInteractiveView {
 
     /// Return the MessageIds of all selected items.
     pub fn selected_ids(&self) -> Vec<MessageId> {
-        self.items
-            .iter()
-            .filter(|i| i.selected)
-            .map(|i| i.id.clone())
-            .collect()
+        self.items.iter().filter(|i| i.selected).map(|i| i.id.clone()).collect()
     }
 
     pub fn selected_count(&self) -> usize {
@@ -196,10 +192,7 @@ impl MergeInteractiveView {
         );
 
         let outer = Block::default()
-            .title(Span::styled(
-                title,
-                Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD),
-            ))
+            .title(Span::styled(title, Style::default().fg(Color::Magenta).add_modifier(Modifier::BOLD)))
             .borders(Borders::ALL)
             .border_style(Style::default().fg(Color::Magenta));
 
@@ -247,10 +240,7 @@ impl MergeInteractiveView {
                     format!("{} ", checkbox),
                     bg.fg(if item.selected { Color::Green } else { Color::DarkGray }),
                 ),
-                Span::styled(
-                    format!("{:<9} ", item.variant_label),
-                    bg.fg(variant_color),
-                ),
+                Span::styled(format!("{:<9} ", item.variant_label), bg.fg(variant_color)),
                 Span::styled(&item.label, bg.fg(Color::White)),
             ]));
         }
@@ -276,11 +266,7 @@ impl MergeInteractiveView {
                 Span::raw(": cancel"),
             ]),
             Line::from(Span::styled(
-                format!(
-                    " {} of {} messages selected",
-                    self.selected_count(),
-                    self.items.len(),
-                ),
+                format!(" {} of {} messages selected", self.selected_count(), self.items.len(),),
                 Style::default().fg(Color::DarkGray),
             )),
         ];
@@ -310,18 +296,10 @@ fn message_preview(msg: &AgentMessage, max_len: usize) -> (String, &'static str)
             };
             (truncate_preview(&preview, max_len), "Tool")
         }
-        AgentMessage::BashExecution(m) => {
-            (truncate_preview(&format!("$ {}", m.command), max_len), "Bash")
-        }
-        AgentMessage::Custom(m) => {
-            (truncate_preview(&format!("[{}]", m.kind), max_len), "Custom")
-        }
-        AgentMessage::BranchSummary(m) => {
-            (truncate_preview(&m.summary, max_len), "Branch")
-        }
-        AgentMessage::CompactionSummary(m) => {
-            (truncate_preview(&m.summary, max_len), "Compact")
-        }
+        AgentMessage::BashExecution(m) => (truncate_preview(&format!("$ {}", m.command), max_len), "Bash"),
+        AgentMessage::Custom(m) => (truncate_preview(&format!("[{}]", m.kind), max_len), "Custom"),
+        AgentMessage::BranchSummary(m) => (truncate_preview(&m.summary, max_len), "Branch"),
+        AgentMessage::CompactionSummary(m) => (truncate_preview(&m.summary, max_len), "Compact"),
     }
 }
 
@@ -354,8 +332,9 @@ fn truncate_preview(text: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use chrono::Utc;
+
+    use super::*;
     use crate::provider::message::UserMessage;
 
     fn make_entry(id: &str, text: &str) -> MessageEntry {
@@ -376,13 +355,7 @@ mod tests {
         let entries = vec![make_entry("a", "hello"), make_entry("b", "world")];
         let refs: Vec<&MessageEntry> = entries.iter().collect();
         let mut view = MergeInteractiveView::new();
-        view.open(
-            MessageId::new("src"),
-            MessageId::new("tgt"),
-            "source-branch",
-            "target-branch",
-            &refs,
-        );
+        view.open(MessageId::new("src"), MessageId::new("tgt"), "source-branch", "target-branch", &refs);
         assert!(view.visible);
         assert_eq!(view.items.len(), 2);
         assert!(view.items.iter().all(|i| i.selected));
@@ -472,7 +445,9 @@ mod tests {
     fn message_preview_extracts_text() {
         let user_msg = AgentMessage::User(UserMessage {
             id: MessageId::new("u"),
-            content: vec![Content::Text { text: "Hello world".to_string() }],
+            content: vec![Content::Text {
+                text: "Hello world".to_string(),
+            }],
             timestamp: Utc::now(),
         });
         let (preview, variant) = super::message_preview(&user_msg, 50);

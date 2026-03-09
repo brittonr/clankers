@@ -114,13 +114,40 @@ impl Tool for SubagentTool {
         if let Some(task) = params.get("task").and_then(|v| v.as_str()) {
             let preview: String = task.chars().take(80).collect();
             ctx.emit_progress(&format!("subagent: {}", preview));
-            run_single(task, default_agent.as_deref(), cwd.as_deref(), panel_tx.as_ref(), &call_id, signal, process_monitor).await
+            run_single(
+                task,
+                default_agent.as_deref(),
+                cwd.as_deref(),
+                panel_tx.as_ref(),
+                &call_id,
+                signal,
+                process_monitor,
+            )
+            .await
         } else if let Some(tasks) = params.get("tasks").and_then(|v| v.as_array()) {
             ctx.emit_progress(&format!("subagent: {} parallel tasks", tasks.len()));
-            run_parallel(tasks, default_agent.as_deref(), cwd.as_deref(), panel_tx.as_ref(), &call_id, signal, process_monitor).await
+            run_parallel(
+                tasks,
+                default_agent.as_deref(),
+                cwd.as_deref(),
+                panel_tx.as_ref(),
+                &call_id,
+                signal,
+                process_monitor,
+            )
+            .await
         } else if let Some(chain) = params.get("chain").and_then(|v| v.as_array()) {
             ctx.emit_progress(&format!("subagent: {} chained steps", chain.len()));
-            run_chain(chain, default_agent.as_deref(), cwd.as_deref(), panel_tx.as_ref(), &call_id, signal, process_monitor).await
+            run_chain(
+                chain,
+                default_agent.as_deref(),
+                cwd.as_deref(),
+                panel_tx.as_ref(),
+                &call_id,
+                signal,
+                process_monitor,
+            )
+            .await
         } else {
             ToolResult::error("Must provide exactly one of: task, tasks, or chain")
         }
@@ -286,14 +313,15 @@ async fn spawn_subprocess(
 
     // Register process with monitor
     if let Some(monitor) = process_monitor
-        && let Some(pid) = child_pid {
-            let task_preview_full: String = task.chars().take(200).collect();
-            monitor.register(pid, crate::procmon::ProcessMeta {
-                tool_name: "subagent".to_string(),
-                command: format!("subagent: {}", task_preview_full),
-                call_id: call_id.to_string(),
-            });
-        }
+        && let Some(pid) = child_pid
+    {
+        let task_preview_full: String = task.chars().take(200).collect();
+        monitor.register(pid, crate::procmon::ProcessMeta {
+            tool_name: "subagent".to_string(),
+            command: format!("subagent: {}", task_preview_full),
+            call_id: call_id.to_string(),
+        });
+    }
 
     if let Some(tx) = panel_tx {
         let _ = tx.send(SubagentEvent::Started {

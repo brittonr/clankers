@@ -3,10 +3,10 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::manifest;
 use super::PluginInfo;
 use super::PluginManager;
 use super::PluginState;
+use super::manifest;
 
 // ---------------------------------------------------------------------------
 // MenuContributor — plugins contribute leader menu entries from their manifest
@@ -77,7 +77,7 @@ impl crate::slash_commands::SlashContributor for PluginManager {
                 plugin.manifest.commands.iter().map(move |command_name| {
                     let plugin_name = plugin.name.clone();
                     let cmd_name = command_name.clone();
-                    
+
                     crate::slash_commands::SlashCommandDef {
                         name: cmd_name.clone(),
                         description: format!("Plugin command: {}", cmd_name),
@@ -111,13 +111,16 @@ impl crate::slash_commands::handlers::SlashHandler for PluginSlashHandler {
         crate::slash_commands::SlashCommand {
             name: Box::leak(self.command_name.clone().into_boxed_str()),
             description: Box::leak(format!("Plugin command: {}", self.command_name).into_boxed_str()),
-            help: Box::leak(format!("Execute the '{}' command from the '{}' plugin", self.command_name, self.plugin_name).into_boxed_str()),
+            help: Box::leak(
+                format!("Execute the '{}' command from the '{}' plugin", self.command_name, self.plugin_name)
+                    .into_boxed_str(),
+            ),
             accepts_args: true,
             subcommands: vec![],
             leader_key: None,
         }
     }
-    
+
     fn handle(&self, args: &str, ctx: &mut crate::slash_commands::handlers::SlashContext<'_>) {
         // Try to call the plugin's handle_command export via the plugin bridge
         if let Some(pm_arc) = ctx.plugin_manager {
@@ -127,7 +130,7 @@ impl crate::slash_commands::handlers::SlashHandler for PluginSlashHandler {
                     "command": self.command_name,
                     "args": args,
                 });
-                
+
                 let input_str = match serde_json::to_string(&input) {
                     Ok(s) => s,
                     Err(e) => {
@@ -198,4 +201,3 @@ pub(super) fn load_plugins_from_dir(dir: &Path, plugins: &mut HashMap<String, Pl
         }
     }
 }
-

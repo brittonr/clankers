@@ -287,11 +287,7 @@ impl SessionManager {
     }
 
     /// Find the divergence point where this branch split from others
-    fn find_divergence_point(
-        &self,
-        branch_messages: &[&entry::MessageEntry],
-        tree: &SessionTree,
-    ) -> Option<MessageId> {
+    fn find_divergence_point(&self, branch_messages: &[&entry::MessageEntry], tree: &SessionTree) -> Option<MessageId> {
         // Walk backwards through the branch to find where it diverged
         for msg in branch_messages.iter().rev() {
             if let Some(parent_id) = &msg.parent_id {
@@ -350,7 +346,8 @@ impl SessionManager {
 
         // Try parsing as numeric offset (for small numbers, reasonable offsets)
         if let Ok(offset) = target.parse::<usize>()
-            && offset < 1000  // Sanity check - offsets shouldn't be huge
+            && offset < 1000
+        // Sanity check - offsets shouldn't be huge
         {
             let current_leaf = self.active_leaf_id.as_ref().ok_or_else(|| crate::error::Error::Session {
                 message: "No active branch for offset resolution".to_string(),
@@ -403,7 +400,6 @@ impl SessionManager {
         Ok(())
     }
 }
-
 
 #[cfg(test)]
 mod tests;

@@ -131,35 +131,21 @@ impl CommitTool {
             // Truncate very long diffs
             let max = 10_000;
             let diff_display = if detailed_staged.len() > max {
-                format!(
-                    "{}...\n[Truncated: {} chars total]",
-                    &detailed_staged[..max],
-                    detailed_staged.len()
-                )
+                format!("{}...\n[Truncated: {} chars total]", &detailed_staged[..max], detailed_staged.len())
             } else {
                 detailed_staged
             };
-            output.push_str(&format!(
-                "\n## Detailed Staged Diff\n```diff\n{}\n```\n",
-                diff_display
-            ));
+            output.push_str(&format!("\n## Detailed Staged Diff\n```diff\n{}\n```\n", diff_display));
         }
 
         if !detailed_unstaged.is_empty() {
             let max = 10_000;
             let diff_display = if detailed_unstaged.len() > max {
-                format!(
-                    "{}...\n[Truncated: {} chars total]",
-                    &detailed_unstaged[..max],
-                    detailed_unstaged.len()
-                )
+                format!("{}...\n[Truncated: {} chars total]", &detailed_unstaged[..max], detailed_unstaged.len())
             } else {
                 detailed_unstaged
             };
-            output.push_str(&format!(
-                "\n## Detailed Unstaged Diff\n```diff\n{}\n```\n",
-                diff_display
-            ));
+            output.push_str(&format!("\n## Detailed Unstaged Diff\n```diff\n{}\n```\n", diff_display));
         }
 
         // Suggest a commit message
@@ -171,9 +157,7 @@ impl CommitTool {
 
     async fn stage(&self, ctx: &ToolContext, files: &[String]) -> ToolResult {
         if files.is_empty() {
-            return ToolResult::error(
-                "No files specified. Provide 'files' array with paths to stage.",
-            );
+            return ToolResult::error("No files specified. Provide 'files' array with paths to stage.");
         }
 
         for file in files {
@@ -215,9 +199,7 @@ impl CommitTool {
         ctx.emit_progress("checking staged changes...");
         let staged_names = git_ops::staged_file_names().await.unwrap_or_default();
         if staged_names.is_empty() {
-            return ToolResult::error(
-                "No staged changes. Use action='stage' first, or use 'git add' to stage files.",
-            );
+            return ToolResult::error("No staged changes. Use action='stage' first, or use 'git add' to stage files.");
         }
 
         // Build commit message
@@ -276,12 +258,7 @@ impl CommitTool {
                 "style" | "formatting" => "style",
                 _ => "chore",
             };
-            output.push_str(&format!(
-                "## Commit {} — `{}({}): ...`\n",
-                i + 1,
-                commit_type,
-                category
-            ));
+            output.push_str(&format!("## Commit {} — `{}({}): ...`\n", i + 1, commit_type, category));
             for f in files {
                 output.push_str(&format!("  - {}\n", f));
             }
@@ -340,10 +317,7 @@ impl CommitTool {
                     if let Some(entries) = groups.get(*key) {
                         changelog.push_str(&format!("## {}\n\n", label));
                         for entry in entries {
-                            changelog.push_str(&format!(
-                                "- {} ({}, {})\n",
-                                entry.description, entry.hash, entry.date
-                            ));
+                            changelog.push_str(&format!("- {} ({}, {})\n", entry.description, entry.hash, entry.date));
                         }
                         changelog.push('\n');
                     }
@@ -366,11 +340,7 @@ impl Tool for CommitTool {
         let action = params["action"].as_str().unwrap_or("analyze");
         let files: Vec<String> = params["files"]
             .as_array()
-            .map(|a| {
-                a.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
             .unwrap_or_default();
 
         ctx.emit_progress(&format!("git: {}", action));
@@ -390,18 +360,16 @@ impl Tool for CommitTool {
                 let count = params["count"].as_u64().unwrap_or(20) as usize;
                 self.changelog(ctx, count).await
             }
-            _ => ToolResult::error(format!(
-                "Unknown action: {}. Use: analyze, stage, commit, split, changelog",
-                action
-            )),
+            _ => {
+                ToolResult::error(format!("Unknown action: {}. Use: analyze, stage, commit, split, changelog", action))
+            }
         }
     }
 }
 
 /// Categorize changed files by directory/type
 fn categorize_changes(status: &str) -> Vec<(String, Vec<String>)> {
-    let mut categories: std::collections::HashMap<String, Vec<String>> =
-        std::collections::HashMap::new();
+    let mut categories: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
 
     for line in status.lines() {
         let line = line.trim();
@@ -410,10 +378,7 @@ fn categorize_changes(status: &str) -> Vec<(String, Vec<String>)> {
         }
         let file = &line[3..];
         let category = categorize_file(file);
-        categories
-            .entry(category)
-            .or_default()
-            .push(file.to_string());
+        categories.entry(category).or_default().push(file.to_string());
     }
 
     let mut result: Vec<(String, Vec<String>)> = categories.into_iter().collect();
@@ -475,25 +440,17 @@ fn suggest_commit_message(_status: &str, categories: &[(String, Vec<String>)]) -
 
     // Mixed changes
     let types: Vec<&str> = categories.iter().map(|(c, _)| c.as_str()).collect();
-    format!(
-        "chore: update {} files across {}",
-        total_files,
-        types.join(", ")
-    )
+    format!("chore: update {} files across {}", total_files, types.join(", "))
 }
 
 static CONVENTIONAL_PARSE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(
-        r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?(!)?: (.*)$",
-    )
-    .expect("static regex")
+    regex::Regex::new(r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?(!)?: (.*)$")
+        .expect("static regex")
 });
 
 static CONVENTIONAL_VALIDATE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    regex::Regex::new(
-        r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?(!)?: .+$",
-    )
-    .expect("static regex")
+    regex::Regex::new(r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?(!)?: .+$")
+        .expect("static regex")
 });
 
 fn parse_conventional_prefix(subject: &str) -> (String, &str) {
@@ -517,11 +474,7 @@ fn validate_conventional_commit(msg: &str) -> Option<String> {
             first_line
         ))
     } else if first_line.len() > MAX_COMMIT_SUBJECT_LEN {
-        Some(format!(
-            "First line is {} chars (recommended max: {})",
-            first_line.len(),
-            MAX_COMMIT_SUBJECT_LEN
-        ))
+        Some(format!("First line is {} chars (recommended max: {})", first_line.len(), MAX_COMMIT_SUBJECT_LEN))
     } else {
         None
     }

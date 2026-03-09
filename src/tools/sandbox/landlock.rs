@@ -3,7 +3,8 @@
 //! Applies kernel-level restrictions to bash child processes, confining them
 //! to specific read/write and read-only paths.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 /// Apply Landlock filesystem restrictions to the *current thread/process*.
 ///
@@ -70,9 +71,8 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
         handled_access_fs: ALL_ACCESS,
         handled_access_net: 0,
     };
-    let fd = unsafe {
-        libc::syscall(LANDLOCK_CREATE_RULESET, &raw const attr, std::mem::size_of::<RulesetAttr>(), 0u32)
-    };
+    let fd =
+        unsafe { libc::syscall(LANDLOCK_CREATE_RULESET, &raw const attr, std::mem::size_of::<RulesetAttr>(), 0u32) };
     if fd < 0 {
         let err = std::io::Error::last_os_error();
         if err.raw_os_error() == Some(libc::ENOSYS) || err.raw_os_error() == Some(libc::EOPNOTSUPP) {
@@ -92,8 +92,7 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
             allowed_access: access,
             parent_fd: file.as_raw_fd(),
         };
-        let ret =
-            unsafe { libc::syscall(LANDLOCK_ADD_RULE, fd, RULE_PATH_BENEATH, &raw const rule, 0u32) };
+        let ret = unsafe { libc::syscall(LANDLOCK_ADD_RULE, fd, RULE_PATH_BENEATH, &raw const rule, 0u32) };
         // Keep file open until after syscall (fd must be valid)
         std::mem::forget(file);
         if ret < 0 {

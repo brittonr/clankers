@@ -1,4 +1,5 @@
-use crate::cli::{ExportFormat, SessionAction};
+use crate::cli::ExportFormat;
+use crate::cli::SessionAction;
 use crate::commands::CommandContext;
 use crate::error::Result;
 use crate::session::store;
@@ -10,9 +11,11 @@ pub fn run(ctx: &CommandContext, action: SessionAction) -> Result<()> {
         SessionAction::Show { session_id, full } => handle_show(ctx, &session_id, full),
         SessionAction::Delete { session_id, .. } => handle_delete(ctx, &session_id),
         SessionAction::DeleteAll { force } => handle_delete_all(ctx, force),
-        SessionAction::Export { session_id, output, format } => {
-            handle_export(ctx, &session_id, output, format)
-        }
+        SessionAction::Export {
+            session_id,
+            output,
+            format,
+        } => handle_export(ctx, &session_id, output, format),
         SessionAction::Import { file } => handle_import(ctx, &file),
     }
 }
@@ -31,12 +34,20 @@ fn handle_list(ctx: &CommandContext, limit: usize, all: bool) -> Result<()> {
         if let Some(summary) = store::read_session_summary(path) {
             let date = summary.created_at.format("%Y-%m-%d %H:%M");
             let preview = summary.first_user_message.as_deref().unwrap_or("(empty)");
-            let cwd_info = if all { format!(" [{}]", summary.cwd) } else { String::new() };
+            let cwd_info = if all {
+                format!(" [{}]", summary.cwd)
+            } else {
+                String::new()
+            };
             println!(
                 "  {}. {} | {} | {} msgs | {}{}\n     {}",
                 i + 1,
                 &summary.session_id[..8.min(summary.session_id.len())],
-                date, summary.message_count, summary.model, cwd_info, preview,
+                date,
+                summary.message_count,
+                summary.model,
+                cwd_info,
+                preview,
             );
         } else {
             println!("  {}. {}", i + 1, path.display());
@@ -92,12 +103,7 @@ fn handle_delete_all(ctx: &CommandContext, force: bool) -> Result<()> {
     Ok(())
 }
 
-fn handle_export(
-    ctx: &CommandContext,
-    session_id: &str,
-    output: Option<String>,
-    format: ExportFormat,
-) -> Result<()> {
+fn handle_export(ctx: &CommandContext, session_id: &str, output: Option<String>, format: ExportFormat) -> Result<()> {
     let path = find_session(ctx, session_id)?;
     let content = match format {
         ExportFormat::Json => store::export_json(&path),
@@ -137,8 +143,9 @@ fn handle_import(ctx: &CommandContext, file: &str) -> Result<()> {
 
 /// Find a session file by ID prefix, or return an error.
 fn find_session(ctx: &CommandContext, session_id: &str) -> Result<std::path::PathBuf> {
-    store::find_session_by_id(&ctx.paths.global_sessions_dir, &ctx.cwd, session_id)
-        .ok_or_else(|| crate::error::Error::Session {
+    store::find_session_by_id(&ctx.paths.global_sessions_dir, &ctx.cwd, session_id).ok_or_else(|| {
+        crate::error::Error::Session {
             message: format!("session not found: {}", session_id),
-        })
+        }
+    })
 }

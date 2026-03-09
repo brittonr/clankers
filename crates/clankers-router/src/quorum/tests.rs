@@ -222,8 +222,7 @@ fn test_parse_judge_response_valid() {
 
 #[test]
 fn test_parse_judge_response_with_markdown_fences() {
-    let text =
-        "Here is my evaluation:\n```json\n{\"winner\": 1, \"reasoning\": \"correct\", \"agreement\": 0.9}\n```";
+    let text = "Here is my evaluation:\n```json\n{\"winner\": 1, \"reasoning\": \"correct\", \"agreement\": 0.9}\n```";
     let (winner, _, _) = parse_judge_response(text).unwrap();
     assert_eq!(winner, 0); // 1-based → 0-based
 }

@@ -5,29 +5,37 @@
 
 mod allowlist;
 mod bot_commands;
-mod prompt;
 mod proactive;
+mod prompt;
 mod sendfile;
 
 // Internal imports
-use allowlist::{is_user_allowed, resolve_matrix_allowlist};
-use bot_commands::handle_bot_command;
-use prompt::{run_matrix_prompt, run_matrix_prompt_with_images};
-use proactive::{ensure_trigger_pipe, run_session_heartbeat};
-use sendfile::{extract_sendfile_tags, guess_mime, upload_sendfiles};
-
 use std::sync::Arc;
+
+use allowlist::is_user_allowed;
+use allowlist::resolve_matrix_allowlist;
+use bot_commands::handle_bot_command;
+use clankers_auth::Capability;
+use proactive::ensure_trigger_pipe;
+use proactive::run_session_heartbeat;
+use prompt::run_matrix_prompt;
+use prompt::run_matrix_prompt_with_images;
+use sendfile::extract_sendfile_tags;
+use sendfile::guess_mime;
+use sendfile::upload_sendfiles;
 use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
-use tracing::{error, info, warn};
+use tracing::error;
+use tracing::info;
+use tracing::warn;
 
+use super::daemon::ProactiveConfig;
+use super::daemon::SessionKey;
+use super::daemon::SessionStore;
 use crate::config::ClankersPaths;
 use crate::error::Result;
-use crate::provider::message::{Content, ImageSource};
-
-use clankers_auth::Capability;
-
-use super::daemon::{ProactiveConfig, SessionKey, SessionStore};
+use crate::provider::message::Content;
+use crate::provider::message::ImageSource;
 
 pub(crate) async fn run_matrix_bridge(
     store: Arc<RwLock<SessionStore>>,
@@ -84,10 +92,7 @@ pub(crate) async fn run_matrix_bridge(
         tokio::spawn(async move {
             run_session_heartbeat(hb_store, hb_client, hb_interval, hb_prompt, hb_cancel).await;
         });
-        info!(
-            "Session heartbeat scheduler started (interval: {}s)",
-            proactive.session_heartbeat_secs
-        );
+        info!("Session heartbeat scheduler started (interval: {}s)", proactive.session_heartbeat_secs);
     }
 
     loop {

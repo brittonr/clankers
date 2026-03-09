@@ -1,7 +1,9 @@
 //! Action types and name mappings for keybindings.
 
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use serde::Deserialize;
+use serde::Serialize;
 
 // ---------------------------------------------------------------------------
 // Actions — every semantic operation the TUI supports
@@ -182,10 +184,7 @@ const EXTENDED_ACTION_NAMES: &[(ExtendedAction, &[&str])] = &[
 impl ExtendedAction {
     /// Parse from a string name (for keymap config and leader menu).
     pub fn from_name(s: &str) -> Option<Self> {
-        EXTENDED_ACTION_NAMES
-            .iter()
-            .find(|(_, names)| names.contains(&s))
-            .map(|(action, _)| *action)
+        EXTENDED_ACTION_NAMES.iter().find(|(_, names)| names.contains(&s)).map(|(action, _)| *action)
     }
 
     /// Canonical string name (for serialization and display).
@@ -242,13 +241,10 @@ impl ActionRegistry {
 
     /// Register an extended action.
     pub fn register(&mut self, name: &str, description: &str) {
-        self.actions.insert(
-            name.to_string(),
-            ExtendedActionDef {
-                name: name.to_string(),
-                description: description.to_string(),
-            },
-        );
+        self.actions.insert(name.to_string(), ExtendedActionDef {
+            name: name.to_string(),
+            description: description.to_string(),
+        });
     }
 
     /// Get all registered actions.
@@ -297,7 +293,7 @@ const CORE_ACTION_NAMES: &[(CoreAction, &[&str])] = &[
 
 pub(super) fn parse_action(s: &str) -> Option<Action> {
     let normalized = s.to_lowercase().replace('-', "_");
-    
+
     // Try core actions first
     CORE_ACTION_NAMES
         .iter()

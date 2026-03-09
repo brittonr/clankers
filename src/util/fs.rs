@@ -170,11 +170,9 @@ mod tests {
     fn create_test_tree(dir: &Path, files: &[&str]) {
         for f in files {
             let path = dir.join(f);
-            std::fs::create_dir_all(path.parent()
-                .expect("test path should have parent"))
+            std::fs::create_dir_all(path.parent().expect("test path should have parent"))
                 .expect("test dir creation should succeed");
-            std::fs::write(&path, format!("content of {f}"))
-                .expect("test file write should succeed");
+            std::fs::write(&path, format!("content of {f}")).expect("test file write should succeed");
         }
     }
 
@@ -202,8 +200,7 @@ mod tests {
     fn test_walk_directory_respects_gitignore() {
         let tmp = TempDir::new().expect("tempdir creation should succeed");
         // The ignore crate needs a .git dir to recognise .gitignore files
-        std::fs::create_dir(tmp.path().join(".git"))
-            .expect("test .git dir creation should succeed");
+        std::fs::create_dir(tmp.path().join(".git")).expect("test .git dir creation should succeed");
         create_test_tree(tmp.path(), &["keep.rs", "build/output.o", "target/debug/bin"]);
         std::fs::write(tmp.path().join(".gitignore"), "build/\ntarget/\n")
             .expect("test .gitignore write should succeed");
@@ -267,8 +264,7 @@ mod tests {
     fn test_walk_directory_ignore_file() {
         let tmp = TempDir::new().expect("tempdir creation should succeed");
         create_test_tree(tmp.path(), &["keep.txt", "skip.log"]);
-        std::fs::write(tmp.path().join(".ignore"), "*.log\n")
-            .expect("test .ignore write should succeed");
+        std::fs::write(tmp.path().join(".ignore"), "*.log\n").expect("test .ignore write should succeed");
 
         let files = walk_directory(tmp.path());
         let names = relative_paths(tmp.path(), &files);

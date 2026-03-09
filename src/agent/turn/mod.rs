@@ -8,25 +8,25 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use execution::execute_tools_parallel;
+use execution::execute_turn;
+use model_switch::check_model_switch;
 use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
+use usage::update_usage_tracking;
 
 use crate::agent::events::AgentEvent;
 use crate::error::Error;
 use crate::error::Result;
+use crate::model_selection::cost_tracker::CostTracker;
+use crate::provider::Provider;
 use crate::provider::ThinkingConfig;
 use crate::provider::Usage;
 use crate::provider::message::*;
 use crate::provider::streaming::*;
-use crate::provider::Provider;
-use crate::model_selection::cost_tracker::CostTracker;
 use crate::tools::Tool;
 use crate::tools::switch_model::ModelSwitchSlot;
-
-use execution::{execute_turn, execute_tools_parallel};
-use model_switch::check_model_switch;
-use usage::update_usage_tracking;
 
 /// Configuration for a turn loop run
 pub struct TurnConfig {
@@ -140,25 +140,10 @@ pub async fn run_turn_loop(
         let _ = event_tx.send(AgentEvent::TurnStart { index: turn_index });
 
         // Execute turn and get response
-        let collected = execute_turn(
-            provider,
-            messages,
-            config,
-            &active_model,
-            &tool_defs,
-            event_tx,
-            &cancel,
-        )
-        .await?;
+        let collected = execute_turn(provider, messages, config, &active_model, &tool_defs, event_tx, &cancel).await?;
 
         // Update usage tracking
-        update_usage_tracking(
-            &mut cumulative_usage,
-            &collected.usage,
-            &active_model,
-            cost_tracker,
-            event_tx,
-        );
+        update_usage_tracking(&mut cumulative_usage, &collected.usage, &active_model, cost_tracker, event_tx);
 
         // Build and append assistant message
         let assistant_msg = build_assistant_message(&collected);
@@ -243,9 +228,10 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::tools::progress::ResultChunk;
-    use crate::tools::{ToolContext, ToolDefinition};
+    use crate::tools::ToolContext;
+    use crate::tools::ToolDefinition;
     use crate::tools::ToolResult as ToolExecResult;
+    use crate::tools::progress::ResultChunk;
 
     // -----------------------------------------------------------------------
     // parse_stop_reason
@@ -531,11 +517,7 @@ mod tests {
         let (event_tx, _rx) = broadcast::channel(256);
         let cancel = CancellationToken::new();
 
-        let tool_calls = vec![(
-            "call-1".to_string(),
-            "chunk_tool".to_string(),
-            json!({}),
-        )];
+        let tool_calls = vec![("call-1".to_string(), "chunk_tool".to_string(), json!({}))];
 
         let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel).await;
 
@@ -568,11 +550,7 @@ mod tests {
         let (event_tx, _rx) = broadcast::channel(256);
         let cancel = CancellationToken::new();
 
-        let tool_calls = vec![(
-            "call-2".to_string(),
-            "direct_tool".to_string(),
-            json!({}),
-        )];
+        let tool_calls = vec![("call-2".to_string(), "direct_tool".to_string(), json!({}))];
 
         let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel).await;
 

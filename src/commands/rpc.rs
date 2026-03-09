@@ -1,6 +1,7 @@
 //! Peer-to-peer RPC command handlers via iroh.
 
-use crate::cli::{PeerAction, RpcAction};
+use crate::cli::PeerAction;
+use crate::cli::RpcAction;
 use crate::commands::CommandContext;
 use crate::error::Result;
 
@@ -8,11 +9,7 @@ use crate::error::Result;
 ///
 /// Handles all RPC-related subcommands: id, start, ping, version, status,
 /// prompt, peers, allow/deny, discover, send-file, recv-file.
-pub async fn run(
-    ctx: &CommandContext,
-    identity_path: Option<String>,
-    action: RpcAction,
-) -> Result<()> {
+pub async fn run(ctx: &CommandContext, identity_path: Option<String>, action: RpcAction) -> Result<()> {
     let identity_path = identity_path
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|| crate::modes::rpc::iroh::identity_path(&ctx.paths));
@@ -121,12 +118,7 @@ pub async fn run(
                 let interval = std::time::Duration::from_secs(heartbeat_interval);
                 let ep = std::sync::Arc::new(crate::modes::rpc::iroh::start_endpoint(&identity).await?);
                 println!("Heartbeat: every {}s", heartbeat_interval);
-                tokio::spawn(crate::modes::rpc::iroh::run_heartbeat(
-                    ep,
-                    registry_path,
-                    interval,
-                    cancel.clone(),
-                ));
+                tokio::spawn(crate::modes::rpc::iroh::run_heartbeat(ep, registry_path, interval, cancel.clone()));
             }
 
             println!("\nListening... (Ctrl+C to stop)\n");
@@ -204,8 +196,7 @@ pub async fn run(
                 message: format!("Invalid node ID: {}", e),
             })?;
             let endpoint = crate::modes::rpc::iroh::start_endpoint(&identity).await?;
-            let request =
-                crate::modes::rpc::protocol::Request::new("prompt", serde_json::json!({ "text": text }));
+            let request = crate::modes::rpc::protocol::Request::new("prompt", serde_json::json!({ "text": text }));
             eprintln!("Sending prompt to {}...", remote.fmt_short());
 
             // Use streaming RPC — print text deltas as they arrive
@@ -214,10 +205,8 @@ pub async fn run(
                     if let Some(method) = notification.get("method").and_then(|v| v.as_str()) {
                         match method {
                             "agent.text_delta" => {
-                                if let Some(text) = notification
-                                    .get("params")
-                                    .and_then(|p| p.get("text"))
-                                    .and_then(|v| v.as_str())
+                                if let Some(text) =
+                                    notification.get("params").and_then(|p| p.get("text")).and_then(|v| v.as_str())
                                 {
                                     print!("{}", text);
                                     use std::io::Write;
@@ -232,8 +221,7 @@ pub async fn run(
                             }
                             "agent.tool_result" => {
                                 if let Some(params) = notification.get("params") {
-                                    let is_error =
-                                        params.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                                    let is_error = params.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
                                     if is_error {
                                         eprintln!("[tool error]");
                                     }
@@ -362,8 +350,7 @@ pub async fn run(
                             }
                         };
                         print!("  Probing {}... ", name);
-                        let request =
-                            crate::modes::rpc::protocol::Request::new("status", serde_json::json!({}));
+                        let request = crate::modes::rpc::protocol::Request::new("status", serde_json::json!({}));
                         match crate::modes::rpc::iroh::send_rpc(&endpoint, remote, &request).await {
                             Ok(response) => {
                                 if let Some(result) = response.ok {
@@ -375,28 +362,19 @@ pub async fn run(
                                         agents: result
                                             .get("agents")
                                             .and_then(|v| v.as_array())
-                                            .map(|a| {
-                                                a.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-                                            })
+                                            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
                                             .unwrap_or_default(),
                                         tools: result
                                             .get("tools")
                                             .and_then(|v| v.as_array())
-                                            .map(|a| {
-                                                a.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-                                            })
+                                            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
                                             .unwrap_or_default(),
                                         tags: result
                                             .get("tags")
                                             .and_then(|v| v.as_array())
-                                            .map(|a| {
-                                                a.iter().filter_map(|v| v.as_str().map(String::from)).collect()
-                                            })
+                                            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
                                             .unwrap_or_default(),
-                                        version: result
-                                            .get("version")
-                                            .and_then(|v| v.as_str())
-                                            .map(String::from),
+                                        version: result.get("version").and_then(|v| v.as_str()).map(String::from),
                                     };
                                     let prompt_status = if caps.accepts_prompts { "✓" } else { "✗" };
                                     println!(
@@ -521,8 +499,7 @@ pub async fn run(
                     Ok(Ok(response)) => {
                         online += 1;
                         if let Some(result) = response.ok {
-                            let prompts =
-                                result.get("accepts_prompts").and_then(|v| v.as_bool()).unwrap_or(false);
+                            let prompts = result.get("accepts_prompts").and_then(|v| v.as_bool()).unwrap_or(false);
                             let tags: Vec<String> = result
                                 .get("tags")
                                 .and_then(|v| v.as_array())
@@ -611,16 +588,13 @@ pub async fn run(
                 message: format!("Invalid node ID: {}", e),
             })?;
             let local_path = output.map(std::path::PathBuf::from).unwrap_or_else(|| {
-                let name = std::path::Path::new(&remote_path)
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("downloaded");
+                let name =
+                    std::path::Path::new(&remote_path).file_name().and_then(|n| n.to_str()).unwrap_or("downloaded");
                 std::path::PathBuf::from(name)
             });
             let endpoint = crate::modes::rpc::iroh::start_endpoint(&identity).await?;
             println!("Downloading '{}' from {} → {}...", remote_path, remote.fmt_short(), local_path.display());
-            let total =
-                crate::modes::rpc::iroh::recv_file(&endpoint, remote, &remote_path, &local_path).await?;
+            let total = crate::modes::rpc::iroh::recv_file(&endpoint, remote, &remote_path, &local_path).await?;
             println!("✓ Received {} bytes → {}", total, local_path.display());
             Ok(())
         }

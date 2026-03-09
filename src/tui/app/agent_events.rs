@@ -2,11 +2,15 @@
 
 use std::time::Instant;
 
+use super::ActiveToolExecution;
+use super::App;
+use super::AppState;
+use super::DisplayImage;
+use super::DisplayMessage;
+use super::MessageRole;
 use crate::agent::events::AgentEvent;
 use crate::provider::message::Content;
 use crate::provider::streaming::ContentDelta;
-
-use super::{ActiveToolExecution, App, AppState, DisplayImage, DisplayMessage, MessageRole};
 
 impl App {
     /// Flush accumulated streaming thinking into the active block
@@ -68,17 +72,29 @@ impl App {
                     self.streaming.outputs.add_text(call_id, &chunk.content);
                 }
             }
-            AgentEvent::ToolExecutionEnd { call_id, result, is_error, .. } => {
+            AgentEvent::ToolExecutionEnd {
+                call_id,
+                result,
+                is_error,
+                ..
+            } => {
                 self.on_tool_execution_end(call_id, result, *is_error);
             }
-            AgentEvent::UsageUpdate { cumulative_usage, turn_usage, .. } => {
+            AgentEvent::UsageUpdate {
+                cumulative_usage,
+                turn_usage,
+                ..
+            } => {
                 self.on_usage_update(cumulative_usage, turn_usage);
             }
             AgentEvent::UserInput { text, agent_msg_count } => {
                 self.start_block(text.clone(), *agent_msg_count);
                 self.conversation.scroll.scroll_to_bottom();
             }
-            AgentEvent::SessionCompaction { compacted_count, tokens_saved } => {
+            AgentEvent::SessionCompaction {
+                compacted_count,
+                tokens_saved,
+            } => {
                 self.push_system(
                     format!("Auto-compacted {} messages, saved ~{} tokens.", compacted_count, tokens_saved),
                     false,
@@ -256,11 +272,7 @@ impl App {
         }
     }
 
-    fn on_usage_update(
-        &mut self,
-        cumulative_usage: &crate::provider::Usage,
-        turn_usage: &crate::provider::Usage,
-    ) {
+    fn on_usage_update(&mut self, cumulative_usage: &crate::provider::Usage, turn_usage: &crate::provider::Usage) {
         self.total_tokens = cumulative_usage.total_tokens();
         if let Some(ref ct) = self.cost_tracker {
             self.total_cost = ct.total_cost();
@@ -293,7 +305,11 @@ impl App {
             } else {
                 op
             };
-            if let Some(fap) = self.panels.downcast_mut::<crate::tui::components::file_activity_panel::FileActivityPanel>(crate::tui::panel::PanelId::Files) {
+            if let Some(fap) =
+                self.panels.downcast_mut::<crate::tui::components::file_activity_panel::FileActivityPanel>(
+                    crate::tui::panel::PanelId::Files,
+                )
+            {
                 fap.record(path.to_string(), actual_op);
             }
         }

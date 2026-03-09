@@ -92,7 +92,7 @@ fn try_render_code_fence(
     style: &MarkdownStyle,
 ) -> Option<Line<'static>> {
     let rest = line.strip_prefix("```")?;
-    
+
     if !*in_code_block {
         // Opening fence
         *in_code_block = true;
@@ -181,7 +181,7 @@ fn try_render_list_item(line: &str, style: &MarkdownStyle) -> Option<Line<'stati
         spans.extend(render_inline_spans(content, style));
         return Some(Line::from(spans));
     }
-    
+
     // Try ordered list
     if let Some((num, content)) = strip_ordered_list(line) {
         let indent = leading_spaces(line);
@@ -193,7 +193,7 @@ fn try_render_list_item(line: &str, style: &MarkdownStyle) -> Option<Line<'stati
         spans.extend(render_inline_spans(content, style));
         return Some(Line::from(spans));
     }
-    
+
     None
 }
 
@@ -510,7 +510,7 @@ fn try_render_link(
             return Some(k + 1);
         }
     }
-    
+
     // Not a valid link
     None
 }

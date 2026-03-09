@@ -12,7 +12,9 @@ pub(super) fn check_model_switch(
     model_switch_slot: Option<&ModelSwitchSlot>,
     event_tx: &broadcast::Sender<AgentEvent>,
 ) -> Result<()> {
-    if let Some(slot) = model_switch_slot && let Some(new_model) = slot.lock().take() {
+    if let Some(slot) = model_switch_slot
+        && let Some(new_model) = slot.lock().take()
+    {
         tracing::info!("Agent-requested model switch: {} → {}", active_model, new_model);
         let _ = event_tx.send(AgentEvent::ModelChange {
             from: active_model.clone(),

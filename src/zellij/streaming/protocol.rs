@@ -70,7 +70,8 @@ mod tests {
             read_only: true,
         };
         let json = serde_json::to_string(&info).expect("failed to serialize read-only SessionInfo");
-        let deserialized: SessionInfo = serde_json::from_str(&json).expect("failed to deserialize read-only SessionInfo");
+        let deserialized: SessionInfo =
+            serde_json::from_str(&json).expect("failed to deserialize read-only SessionInfo");
         assert!(deserialized.read_only);
     }
 

@@ -201,9 +201,10 @@ impl WorkStore {
                 return Ok(true);
             }
             if visited.insert(current)
-                && let Some(current_deps) = deps.get(current) {
-                    stack.extend(current_deps.iter());
-                }
+                && let Some(current_deps) = deps.get(current)
+            {
+                stack.extend(current_deps.iter());
+            }
         }
         Ok(false)
     }
