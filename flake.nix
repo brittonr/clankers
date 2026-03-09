@@ -1,9 +1,10 @@
 {
-  description = "clankers — Rust project built with Crane";
+  description = "clankers — Rust project built with unit2nix";
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    crane.url = "github:ipetkov/crane";
+    unit2nix.url = "github:brittonr/unit2nix";
+    crane.url = "github:ipetkov/crane";  # only used for WASM plugin vendoring
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -11,7 +12,7 @@
     flake-utils.url = "github:numtide/flake-utils";
   };
 
-  outputs = { self, nixpkgs, crane, rust-overlay, flake-utils, ... }:
+  outputs = { self, nixpkgs, unit2nix, crane, rust-overlay, flake-utils, ... }:
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -19,55 +20,60 @@
           overlays = [ (import rust-overlay) ];
         };
 
+        # Nightly toolchain — needed for WASM plugin builds (-Zbuild-std)
+        # and for the devShell.
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
 
-        craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
-
-        # Common source filtering
-        src = craneLib.cleanCargoSource ./.;
-
-        # Plugin source includes plugin.json manifests
-        pluginSrc = pkgs.lib.cleanSourceWith {
+        # ── Main workspace (unit2nix) ──────────────────────────────────────
+        #
+        # Regenerate build-plan.json whenever Cargo.lock changes:
+        #   nix run github:brittonr/unit2nix -- --workspace
+        ws = unit2nix.lib.${system}.buildFromUnitGraph {
+          inherit pkgs;
           src = ./.;
-          filter = path: type:
-            (builtins.match ".*plugin\\.json$" path != null)
-            || (craneLib.filterCargoSources path type);
+          resolvedJson = ./build-plan.json;
+
+          # Use the nightly toolchain — clankers requires edition 2024
+          # and unstable library features.
+          buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
+            rustc = rustToolchain;
+          };
+
+          extraCrateOverrides = {
+            # aws-lc-rs wraps aws-lc-sys; its build script needs cmake + go
+            aws-lc-rs = attrs: {
+              nativeBuildInputs = [ pkgs.cmake pkgs.go ];
+            };
+          };
         };
 
-        # Common build inputs
-        nativeBuildInputs = with pkgs; [
-          pkg-config
-          clang
-          mold
-        ];
+        # ── clankers-router standalone build ───────────────────────────────
+        #
+        # The router binary requires the `cli` feature which isn't in the
+        # workspace graph (the workspace uses `rpc` only). Separate plan:
+        #   nix run github:brittonr/unit2nix -- -p clankers-router --features cli --include-dev -o build-plan-router.json
+        wsRouter = unit2nix.lib.${system}.buildFromUnitGraph {
+          inherit pkgs;
+          src = ./.;
+          resolvedJson = ./build-plan-router.json;
 
-        buildInputs = with pkgs; [
-          openssl
-          sqlite
-        ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
-          pkgs.darwin.apple_sdk.frameworks.Security
-          pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
-        ];
+          buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
+            rustc = rustToolchain;
+          };
 
-        # Build just the cargo dependencies for caching
-        cargoArtifacts = craneLib.buildDepsOnly {
-          inherit src nativeBuildInputs buildInputs;
+          extraCrateOverrides = {
+            aws-lc-rs = attrs: {
+              nativeBuildInputs = [ pkgs.cmake pkgs.go ];
+            };
+          };
         };
 
-        # Build the actual package
-        clankers = craneLib.buildPackage {
-          inherit src cargoArtifacts nativeBuildInputs buildInputs;
-          doCheck = false;  # tests run separately via `nix flake check` / checks.nextest
-        };
+        # ── WASM plugin builds ─────────────────────────────────────────────
+        #
+        # Plugins are standalone crates with their own Cargo.lock, built to
+        # wasm32-unknown-unknown with -Zbuild-std. unit2nix doesn't handle
+        # WASM targets, so we keep these as a plain stdenv derivation.
 
-        # Build just the clankers-router binary (with CLI/TUI feature)
-        clankers-router = craneLib.buildPackage {
-          inherit src cargoArtifacts nativeBuildInputs buildInputs;
-          pname = "clankers-router";
-          cargoExtraArgs = "-p clankers-router --features cli";
-        };
-
-        # WASM plugin builds
         pluginSpecs = [
           { dir = "plugins/clankers-hash"; name = "clankers_hash"; }
           { dir = "plugins/clankers-self-validate"; name = "clankers_self_validate"; }
@@ -76,18 +82,27 @@
           { dir = "examples/plugins/clankers-wordcount"; name = "clankers_wordcount"; }
         ];
 
-        pluginVendorDir = craneLib.vendorMultipleCargoDeps {
-          cargoConfigs = [];
-          cargoLockParsedList =
-            # Plugin lockfiles
-            (map (p:
-              builtins.fromTOML (builtins.readFile (./. + "/${p.dir}/Cargo.lock"))
-            ) pluginSpecs)
-            ++
-            # Std library deps (needed for -Zbuild-std)
-            [ (builtins.fromTOML (builtins.readFile
-                "${rustToolchain}/lib/rustlib/src/rust/library/Cargo.lock")) ];
+        # Source filter: include plugin.json manifests alongside Cargo sources
+        pluginSrc = pkgs.lib.cleanSourceWith {
+          src = ./.;
+          filter = path: type:
+            (builtins.match ".*plugin\\.json$" path != null)
+            || (builtins.match ".*\\.(rs|toml|lock)$" path != null)
+            || type == "directory";
         };
+
+        craneLib = (crane.mkLib pkgs).overrideToolchain rustToolchain;
+
+        pluginVendorDir = craneLib.vendorMultipleCargoDeps {
+            cargoConfigs = [];
+            cargoLockParsedList =
+              (map (p:
+                builtins.fromTOML (builtins.readFile (./. + "/${p.dir}/Cargo.lock"))
+              ) pluginSpecs)
+              ++
+              [ (builtins.fromTOML (builtins.readFile
+                  "${rustToolchain}/lib/rustlib/src/rust/library/Cargo.lock")) ];
+          };
 
         clankers-plugins = pkgs.stdenv.mkDerivation {
           pname = "clankers-plugins";
@@ -96,7 +111,6 @@
           nativeBuildInputs = [ rustToolchain pkgs.clang pkgs.mold ];
 
           configurePhase = ''
-            # Append vendored dependency config to existing .cargo/config.toml
             cat ${pluginVendorDir}/config.toml >> .cargo/config.toml
           '';
 
@@ -129,50 +143,111 @@
       in
       {
         packages = {
-          default = clankers;
-          inherit clankers clankers-router clankers-plugins;
+          default = ws.workspaceMembers."clankers".build;
+          clankers = ws.workspaceMembers."clankers".build;
+          clankers-router = wsRouter.workspaceMembers."clankers-router".build;
+          all = ws.allWorkspaceMembers;
+          inherit clankers-plugins;
         };
 
         checks = {
-          inherit clankers;
+          # Per-crate test runners (generated by unit2nix --workspace).
+          # The root `clankers` crate is excluded because its integration tests
+          # use env!("CARGO_BIN_EXE_clankers") which requires Cargo's runtime
+          # env vars (not available in buildRustCrate). Run those with `cargo test`.
+          inherit (ws.test.check)
+            clankers-agent-defs
+            clankers-auth
+            clankers-db
+            clankers-matrix
+            clankers-merge
+            clankers-model-selection
+            clankers-procmon
+            clankers-router
+            clankers-specs
+            clankers-tui
+            clankers-tui-types
+            clankers-zellij
+            ;
 
-          # Run tests with nextest
-          nextest = craneLib.cargoNextest {
-            inherit src cargoArtifacts nativeBuildInputs buildInputs;
-            partitions = 1;
-            partitionType = "count";
-          };
-
-          # Clippy lints
-          clippy = craneLib.cargoClippy {
-            inherit src cargoArtifacts nativeBuildInputs buildInputs;
-            cargoClippyExtraArgs = "--all-targets -- -D warnings";
-          };
+          # Clippy — run via cargo since buildRustCrate's clippy wrapper
+          # doesn't support custom rustc toolchains yet.  Deps are vendored
+          # via crane so the check works inside the Nix sandbox.
+          clippy =
+            let
+              vendorDir = craneLib.vendorCargoDeps { src = ./.; };
+            in
+            pkgs.runCommand "cargo-clippy-check" {
+              nativeBuildInputs = [
+                rustToolchain
+                pkgs.pkg-config
+                pkgs.clang
+                pkgs.mold
+              ];
+              buildInputs = [
+                pkgs.openssl
+                pkgs.sqlite
+                pkgs.libgit2
+                pkgs.libssh2
+                pkgs.zlib
+                pkgs.zstd
+              ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+                pkgs.darwin.apple_sdk.frameworks.Security
+                pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+              ];
+              src = ./.;
+            } ''
+              export HOME=$(mktemp -d)
+              cp -r $src source && chmod -R u+w source && cd source
+              mkdir -p .cargo
+              cp ${vendorDir}/config.toml .cargo/config.toml
+              cargo clippy --all-targets -- -D warnings
+              touch $out
+            '';
 
           # Format check
-          fmt = craneLib.cargoFmt {
-            inherit src;
-          };
+          fmt = pkgs.runCommand "cargo-fmt-check" {
+            nativeBuildInputs = [ rustToolchain ];
+            src = ./.;
+          } ''
+            cd $src
+            cargo fmt --check
+            touch $out
+          '';
         };
 
-        devShells.default = craneLib.devShell {
-          inherit buildInputs;
-
-          packages = with pkgs; [
-            cargo-nextest
-            cargo-watch
-            rust-analyzer
-
-            # Allwinner / SDWire tooling
-            sunxi-tools
-            sd-mux-ctrl
-            usbutils
+        devShells.default = pkgs.mkShell {
+          nativeBuildInputs = [
+            rustToolchain
+            pkgs.pkg-config
+            pkgs.clang
+            pkgs.mold
           ];
 
-          # Ensure the nightly toolchain is available
-          inputsFrom = [ clankers ];
+          buildInputs = [
+            pkgs.openssl
+            pkgs.sqlite
+            pkgs.libgit2
+            pkgs.libssh2
+            pkgs.zlib
+            pkgs.zstd
+          ] ++ pkgs.lib.optionals pkgs.stdenv.isDarwin [
+            pkgs.darwin.apple_sdk.frameworks.Security
+            pkgs.darwin.apple_sdk.frameworks.SystemConfiguration
+          ];
 
-          # Put cargo build output on PATH so clankers can auto-start clankers-router
+          packages = [
+            pkgs.cargo-nextest
+            pkgs.cargo-watch
+            pkgs.rust-analyzer
+            unit2nix.packages.${system}.unit2nix
+
+            # Allwinner / SDWire tooling
+            pkgs.sunxi-tools
+            pkgs.sd-mux-ctrl
+            pkgs.usbutils
+          ];
+
           shellHook = ''
             export PATH="$PWD/target/debug:$PATH"
             export LIBRARY_PATH="${pkgs.sqlite.out}/lib''${LIBRARY_PATH:+:$LIBRARY_PATH}"

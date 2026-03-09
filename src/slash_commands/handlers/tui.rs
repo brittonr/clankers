@@ -448,7 +448,7 @@ impl SlashHandler for ReviewHandler {
     }
 
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
-        let base = if args.is_empty() { None } else { Some(args.as_str()) };
+        let base = if args.is_empty() { None } else { Some(args) };
         let prompt = if let Some(b) = base {
             format!(
                 "Please perform a thorough code review of the changes vs `{}`. \

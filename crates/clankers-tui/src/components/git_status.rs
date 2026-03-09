@@ -210,9 +210,14 @@ mod tests {
 
     #[test]
     fn test_git_status_in_repo() {
-        // This test runs inside the clankers repo, so should find git
+        // This test runs inside the clankers repo, so should find git.
+        // In Nix sandbox builds the source lives in /nix/store without .git,
+        // so skip when no repo is found.
         let status = GitStatus::new(env!("CARGO_MANIFEST_DIR"));
-        assert!(status.is_repo, "Should detect git repo");
+        if !status.is_repo {
+            eprintln!("skipping: not inside a git repo (Nix sandbox build)");
+            return;
+        }
         assert!(status.branch.is_some(), "Should have a branch name");
     }
 

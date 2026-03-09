@@ -74,11 +74,7 @@ pub fn handle_account_selector_key(app: &mut App, key: &crossterm::event::KeyEve
             (true, None)
         }
         KeyCode::Enter => {
-            let action = if let Some(account_name) = app.overlays.account_selector.select() {
-                Some(SelectorAction::SwitchAccount(account_name))
-            } else {
-                None
-            };
+            let action = app.overlays.account_selector.select().map(SelectorAction::SwitchAccount);
             app.overlays.account_selector.close();
             (true, action)
         }

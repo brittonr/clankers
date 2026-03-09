@@ -376,7 +376,7 @@ impl HubClient {
         }
 
         // Download
-        let download_url = format!("https://huggingface.co/{}/resolve/main/{}", model_id, selected.filename,);
+        let download_url = format!("https://huggingface.co/{}/resolve/main/{}", model_id, selected.filename);
         let resp = self.authed_get(&download_url).await?;
         let status = resp.status();
         if !status.is_success() {
@@ -497,7 +497,7 @@ impl HubClient {
             .unwrap_or_else(|| generate_ollama_name(&pulled.model_id, pulled.quantization.as_deref()));
 
         // Create a Modelfile
-        let modelfile_content = format!("FROM {}\n", pulled.local_path.display(),);
+        let modelfile_content = format!("FROM {}\n", pulled.local_path.display());
         let modelfile_path = pulled.local_path.with_extension("Modelfile");
         std::fs::write(&modelfile_path, &modelfile_content)?;
 

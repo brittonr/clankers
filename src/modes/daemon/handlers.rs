@@ -44,7 +44,7 @@ pub(crate) async fn handle_iroh_connection(
     let alpn = conn.alpn();
     info!("Connection from {} (ALPN: {:?})", remote.fmt_short(), String::from_utf8_lossy(alpn));
 
-    match alpn.as_slice() {
+    match &*alpn {
         // ── chat/1: conversational sessions ─────────────────────────
         x if x == ALPN_CHAT => {
             handle_chat_connection(conn, store, &remote.to_string()).await;
