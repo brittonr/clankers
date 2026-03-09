@@ -154,7 +154,13 @@ impl<'a> EventLoopRunner<'a> {
                     if let AgentEvent::UsageUpdate { ref turn_usage, .. } = event
                         && let Some(ref db) = self.db
                     {
-                        let req = crate::db::usage::RequestUsage::from_provider(&self.app.model, turn_usage);
+                        let req = crate::db::usage::RequestUsage::new(
+                            &self.app.model,
+                            turn_usage.input_tokens as u64,
+                            turn_usage.output_tokens as u64,
+                            turn_usage.cache_creation_input_tokens as u64,
+                            turn_usage.cache_read_input_tokens as u64,
+                        );
                         db.spawn_write(move |db| {
                             if let Err(e) = db.usage().record(&req) {
                                 tracing::warn!("Failed to record usage: {}", e);

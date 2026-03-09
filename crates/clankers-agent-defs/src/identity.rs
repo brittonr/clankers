@@ -18,6 +18,16 @@ use chrono::DateTime;
 use chrono::Utc;
 use redb::ReadableTable;
 use serde::Deserialize;
+
+/// Generate a random 8-character hex ID (inlined from util::id).
+fn generate_hex_id() -> String {
+    use std::collections::hash_map::RandomState;
+    use std::hash::BuildHasher;
+    use std::hash::Hasher;
+    let s = RandomState::new();
+    let val = s.build_hasher().finish();
+    format!("{:016x}", val)[..8].to_string()
+}
 use serde::Serialize;
 
 /// A persistent agent identity.
@@ -120,7 +130,7 @@ impl AgentStats {
 impl AgentIdentity {
     /// Create a new identity.
     pub fn new(name: impl Into<String>, agent_type: impl Into<String>) -> Self {
-        let id = format!("agent-{}", crate::util::id::generate_id());
+        let id = format!("agent-{}", generate_hex_id());
         let now = Utc::now();
         Self {
             id,

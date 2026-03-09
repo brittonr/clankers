@@ -15,7 +15,29 @@ use tokio::sync::broadcast;
 use tokio::time;
 use tokio_util::sync::CancellationToken;
 
-use crate::agent::events::AgentEvent;
+/// Events emitted by the process monitor.
+#[derive(Debug, Clone)]
+pub enum ProcessEvent {
+    /// A new process was registered.
+    Spawn {
+        pid: u32,
+        meta: ProcessMeta,
+    },
+    /// A resource usage sample for a tracked process.
+    Sample {
+        pid: u32,
+        cpu_percent: f32,
+        rss_bytes: u64,
+        children: Vec<u32>,
+    },
+    /// A tracked process has exited.
+    Exit {
+        pid: u32,
+        exit_code: Option<i32>,
+        wall_time: Duration,
+        peak_rss: u64,
+    },
+}
 
 /// Metadata about why a process was spawned.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -105,7 +127,7 @@ struct ProcessMonitorInner {
     /// Configuration
     config: ProcessMonitorConfig,
     /// Event bus for emitting events
-    event_tx: Option<broadcast::Sender<AgentEvent>>,
+    event_tx: Option<broadcast::Sender<ProcessEvent>>,
 }
 
 /// Main process monitor struct.
@@ -119,7 +141,7 @@ pub type ProcessMonitorHandle = Arc<ProcessMonitor>;
 
 impl ProcessMonitor {
     /// Create a new process monitor with the given configuration.
-    pub fn new(config: ProcessMonitorConfig, event_tx: Option<broadcast::Sender<AgentEvent>>) -> Self {
+    pub fn new(config: ProcessMonitorConfig, event_tx: Option<broadcast::Sender<ProcessEvent>>) -> Self {
         let inner = ProcessMonitorInner {
             system: System::new(),
             tracked: HashMap::new(),
@@ -140,7 +162,7 @@ impl ProcessMonitor {
 
         // Emit spawn event
         if let Some(ref tx) = inner.event_tx {
-            let _ = tx.send(AgentEvent::ProcessSpawn {
+            let _ = tx.send(ProcessEvent::Spawn {
                 pid,
                 meta: meta.clone(),
             });
@@ -268,7 +290,7 @@ impl ProcessMonitor {
         }
 
         // Second pass: apply mutations to tracked state
-        let mut events: Vec<AgentEvent> = Vec::new();
+        let mut events: Vec<ProcessEvent> = Vec::new();
 
         for sample in &samples {
             if let Some(tracked) = guard.tracked.get_mut(&sample.pid) {
@@ -284,7 +306,7 @@ impl ProcessMonitor {
                 if tracked.snapshots.len() > max_history {
                     tracked.snapshots.remove(0);
                 }
-                events.push(AgentEvent::ProcessSample {
+                events.push(ProcessEvent::Sample {
                     pid: sample.pid,
                     cpu_percent: sample.cpu_percent,
                     rss_bytes: sample.rss_bytes,
@@ -298,7 +320,7 @@ impl ProcessMonitor {
             if let Some(tracked) = guard.tracked.get_mut(&pid) {
                 tracked.state = ProcessState::Exited { code: None, wall_time };
             }
-            events.push(AgentEvent::ProcessExit {
+            events.push(ProcessEvent::Exit {
                 pid,
                 exit_code: None,
                 wall_time,
@@ -340,7 +362,7 @@ impl ProcessMonitor {
     // ── Test helpers ──────────────────────────────────────────────────────
 
     /// Inject a resource snapshot for a tracked process (test-only).
-    #[cfg(test)]
+    
     pub fn inject_snapshot(&self, pid: u32, snapshot: ResourceSnapshot) {
         let mut inner = self.inner.write();
         if let Some(tracked) = inner.tracked.get_mut(&pid) {
@@ -352,7 +374,7 @@ impl ProcessMonitor {
     }
 
     /// Mark a tracked process as exited and move it to history (test-only).
-    #[cfg(test)]
+    
     pub fn mark_exited(&self, pid: u32, code: Option<i32>) {
         let mut inner = self.inner.write();
         let wall_time = inner.tracked.get(&pid).map(|t| t.start_time.elapsed()).unwrap_or_default();
@@ -365,7 +387,7 @@ impl ProcessMonitor {
     }
 
     /// Add a child PID to a tracked process (test-only).
-    #[cfg(test)]
+    
     pub fn add_child(&self, parent_pid: u32, child_pid: u32) {
         let mut inner = self.inner.write();
         if let Some(tracked) = inner.tracked.get_mut(&parent_pid) {
@@ -407,6 +429,7 @@ fn tracked_to_snapshot(pid: u32, t: &TrackedProcess) -> clankers_tui_types::Proc
         children: t.children.clone(),
     }
 }
+
 
 #[cfg(test)]
 mod tests {

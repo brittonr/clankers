@@ -394,11 +394,22 @@ fn build_agent_with_tools(
     let event_tx = temp_agent.event_sender();
     let (bash_confirm_tx, bash_confirm_rx) = crate::tools::bash::confirm_channel();
 
-    // Create and start the process monitor
+    // Create and start the process monitor (bridge ProcessEvent → AgentEvent)
     let process_monitor = {
         let config = crate::procmon::ProcessMonitorConfig::default();
-        let monitor = std::sync::Arc::new(crate::procmon::ProcessMonitor::new(config, Some(event_tx.clone())));
+        let (proc_tx, mut proc_rx) = tokio::sync::broadcast::channel::<crate::procmon::ProcessEvent>(256);
+        let monitor = std::sync::Arc::new(crate::procmon::ProcessMonitor::new(config, Some(proc_tx)));
         monitor.clone().start();
+        let agent_tx = event_tx.clone();
+        tokio::spawn(async move {
+            loop {
+                match proc_rx.recv().await {
+                    Ok(pe) => { let _ = agent_tx.send(crate::agent::events::process_event_to_agent(pe)); }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}
+                }
+            }
+        });
         monitor
     };
 

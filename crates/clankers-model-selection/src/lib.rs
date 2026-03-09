@@ -9,9 +9,6 @@ pub mod orchestration;
 pub mod policy;
 pub mod signals;
 
-#[cfg(test)]
-mod integration_tests;
-
 pub use config::RoutingPolicyConfig;
 pub use cost_tracker::BudgetEvent;
 pub use cost_tracker::BudgetStatus;

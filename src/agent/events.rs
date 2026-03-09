@@ -155,3 +155,16 @@ pub enum AgentEvent {
         peak_rss: u64,
     },
 }
+
+/// Convert a `ProcessEvent` from the procmon crate into an `AgentEvent`.
+pub fn process_event_to_agent(pe: crate::procmon::ProcessEvent) -> AgentEvent {
+    match pe {
+        crate::procmon::ProcessEvent::Spawn { pid, meta } => AgentEvent::ProcessSpawn { pid, meta },
+        crate::procmon::ProcessEvent::Sample { pid, cpu_percent, rss_bytes, children } => {
+            AgentEvent::ProcessSample { pid, cpu_percent, rss_bytes, children }
+        }
+        crate::procmon::ProcessEvent::Exit { pid, exit_code, wall_time, peak_rss } => {
+            AgentEvent::ProcessExit { pid, exit_code, wall_time, peak_rss }
+        }
+    }
+}

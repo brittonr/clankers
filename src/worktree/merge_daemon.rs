@@ -7,6 +7,7 @@
 //!
 //! Uses in-process git2 operations instead of shelling out to git CLI.
 
+use super::DbWorktreeExt;
 use std::path::PathBuf;
 use std::sync::Arc;
 

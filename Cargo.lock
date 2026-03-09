@@ -1037,12 +1037,18 @@ dependencies = [
  "bolero-generator",
  "bytes",
  "chrono",
+ "clankers-agent-defs",
  "clankers-auth",
+ "clankers-db",
  "clankers-matrix",
  "clankers-merge",
+ "clankers-model-selection",
+ "clankers-procmon",
  "clankers-router",
+ "clankers-specs",
  "clankers-tui",
  "clankers-tui-types",
+ "clankers-zellij",
  "clap",
  "criterion",
  "crossterm",
@@ -1102,6 +1108,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "clankers-agent-defs"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "redb",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "clankers-auth"
 version = "0.1.0"
 dependencies = [
@@ -1115,6 +1132,19 @@ dependencies = [
  "serde",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "clankers-db"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "redb",
+ "serde",
+ "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
 ]
@@ -1145,6 +1175,31 @@ version = "0.1.0"
 dependencies = [
  "pretty_assertions",
  "serde",
+]
+
+[[package]]
+name = "clankers-model-selection"
+version = "0.1.0"
+dependencies = [
+ "clankers-router",
+ "clankers-tui-types",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tokio-util",
+ "tracing",
+]
+
+[[package]]
+name = "clankers-procmon"
+version = "0.1.0"
+dependencies = [
+ "clankers-tui-types",
+ "parking_lot",
+ "serde",
+ "sysinfo",
+ "tokio",
+ "tokio-util",
 ]
 
 [[package]]
@@ -1190,6 +1245,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "clankers-specs"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "petgraph",
+ "serde",
+ "serde_yaml",
+ "tempfile",
+]
+
+[[package]]
 name = "clankers-tui"
 version = "0.1.0"
 dependencies = [
@@ -1217,6 +1283,20 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "clankers-zellij"
+version = "0.1.0"
+dependencies = [
+ "dirs",
+ "hex",
+ "iroh",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]

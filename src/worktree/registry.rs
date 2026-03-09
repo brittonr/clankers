@@ -8,6 +8,7 @@ use redb::ReadableTable;
 use redb::ReadableTableMetadata;
 use redb::TableDefinition;
 
+use super::DbWorktreeExt;
 use super::WorktreeInfo;
 use super::WorktreeStatus;
 use crate::db::Db;
@@ -124,7 +125,7 @@ impl<'db> WorktreeRegistry<'db> {
     pub fn count(&self) -> Result<u64> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(TABLE).map_err(db_err)?;
-        table.len().map_err(db_err)
+        Ok(table.len().map_err(db_err)?)
     }
 
     /// Remove all entries (for testing / reset).

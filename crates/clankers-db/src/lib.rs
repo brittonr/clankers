@@ -13,7 +13,11 @@
 //! tokio blocking threadpool, avoiding stalls on the async runtime.
 
 pub mod audit;
+pub mod error;
 pub mod history;
+
+pub use error::DbError;
+pub use error::db_err;
 pub mod memory;
 pub mod schema;
 pub mod session_index;
@@ -46,12 +50,12 @@ impl Db {
     /// and the schema is up to date. See [`schema`] for details.
     pub fn open(path: &Path) -> Result<Self> {
         if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| crate::error::Error::Database {
+            std::fs::create_dir_all(parent).map_err(|e| crate::error::DbError {
                 message: format!("failed to create database directory: {e}"),
             })?;
         }
 
-        let db = Database::create(path).map_err(|e| crate::error::Error::Database {
+        let db = Database::create(path).map_err(|e| crate::error::DbError {
             message: format!("failed to open database: {e}"),
         })?;
 
@@ -60,11 +64,10 @@ impl Db {
         Ok(Self { inner: Arc::new(db) })
     }
 
-    /// Open an in-memory database (for tests).
-    #[cfg(test)]
+    /// Open an in-memory database (useful for tests).
     pub fn in_memory() -> Result<Self> {
         let db = Database::builder().create_with_backend(redb::backends::InMemoryBackend::new()).map_err(|e| {
-            crate::error::Error::Database {
+            crate::error::DbError {
                 message: format!("failed to create in-memory database: {e}"),
             }
         })?;
@@ -79,13 +82,13 @@ impl Db {
         schema::version(&self.inner)
     }
 
-    /// Raw read transaction (for advanced queries).
-    pub(crate) fn begin_read(&self) -> Result<redb::ReadTransaction> {
+    /// Raw read transaction.
+    pub fn begin_read(&self) -> Result<redb::ReadTransaction> {
         self.inner.begin_read().map_err(db_err)
     }
 
-    /// Raw write transaction (for advanced queries).
-    pub(crate) fn begin_write(&self) -> Result<redb::WriteTransaction> {
+    /// Raw write transaction.
+    pub fn begin_write(&self) -> Result<redb::WriteTransaction> {
         self.inner.begin_write().map_err(db_err)
     }
 
@@ -103,7 +106,7 @@ impl Db {
         T: Send + 'static,
     {
         let db = self.clone();
-        tokio::task::spawn_blocking(move || f(&db)).await.map_err(|e| crate::error::Error::Database {
+        tokio::task::spawn_blocking(move || f(&db)).await.map_err(|e| crate::error::DbError {
             message: format!("blocking task panicked: {e}"),
         })?
     }
@@ -143,10 +146,7 @@ impl Db {
         usage::UsageTracker::new(self)
     }
 
-    /// Worktree registry accessor.
-    pub fn worktrees(&self) -> crate::worktree::registry::WorktreeRegistry<'_> {
-        crate::worktree::registry::WorktreeRegistry::new(self)
-    }
+
 }
 
 impl std::fmt::Debug for Db {
@@ -155,10 +155,7 @@ impl std::fmt::Debug for Db {
     }
 }
 
-/// Convert any redb error into our error type.
-pub(crate) fn db_err(e: impl std::fmt::Display) -> crate::error::Error {
-    crate::error::Error::Database { message: e.to_string() }
-}
+
 
 #[cfg(test)]
 mod tests {

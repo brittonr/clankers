@@ -18,6 +18,17 @@ use chrono::Utc;
 use serde::Deserialize;
 use serde::Serialize;
 
+/// Extension to add `worktrees()` accessor on `Db`.
+pub trait DbWorktreeExt {
+    fn worktrees(&self) -> registry::WorktreeRegistry<'_>;
+}
+
+impl DbWorktreeExt for crate::db::Db {
+    fn worktrees(&self) -> registry::WorktreeRegistry<'_> {
+        registry::WorktreeRegistry::new(self)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorktreeInfo {
     pub branch: String,

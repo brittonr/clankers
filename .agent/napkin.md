@@ -3,6 +3,11 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-03-09 | self | Missed serde_json dep when extracting agent_defs (identity.rs uses it) | Always run `rg` for ALL external crate usages including transitive ones like serde_json, not just explicit `use` at top of mod.rs |
+| 2026-03-09 | self | `cargo fix --lib` removed `DbWorktreeExt` import from registry.rs (thought it was unused) — broke tests later | After `cargo fix`, verify extension trait imports are still present in files that use the trait in test modules (glob `use super::*` pulls them in for tests) |
+| 2026-03-09 | self | Extracting procmon: ProcessEvent enum fields didn't match what the code actually constructs | Always grep for actual struct literal construction sites before defining a replacement type — don't guess field names from the original |
+| 2026-03-09 | self | `#[cfg(test)]` methods on extracted crate become invisible to downstream integration tests | For test helpers on extracted crates, use unconditional `pub` instead of `#[cfg(test)]` — downstream tests need them. Same for `Db::in_memory()`. |
+| 2026-03-09 | self | `map_err(db_err)` as tail expression returns `Result<T, DbError>`, not `Result<T, Error>` — type mismatch | When `db_err` returns a different type than the function's Result, wrap in `Ok(expr.map_err(db_err)?)` to trigger `From` conversion via `?` |
 | 2026-03-09 | self | Tried to impl Serialize/Deserialize for InputMode in main crate after moving the type to clankers-tui-types — orphan rule prevents it | Add serde derives directly on the type in the types crate (it already depends on serde). Don't try to add trait impls for foreign types. |
 | 2026-03-09 | self | Left `#[derive(Debug, Clone, PartialEq, Eq)]` above a `pub use` re-export — `derive` only applies to struct/enum/union definitions | When replacing a type def with a re-export, remove ALL attributes above the original definition (derives, doc comments that became stale) |
 | 2026-03-09 | self | Switched slash_commands CompletionItem import to tui-types version, but they have different field types (`&'static str` vs `String`) | Before switching imports, verify the types are structurally identical. Different field types break From impls and constructors. |
