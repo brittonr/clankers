@@ -1,7 +1,6 @@
 //! Anthropic Messages API provider
 
 pub mod api;
-pub mod oauth;
 pub mod streaming;
 
 use std::sync::Arc;
@@ -34,7 +33,7 @@ impl AnthropicProvider {
             client: api::AnthropicClient::new(base_url),
             credential: Some(credential),
             credential_manager: None,
-            models: default_models(),
+            models: clankers_router::backends::anthropic::default_models(),
         }
     }
 
@@ -44,7 +43,7 @@ impl AnthropicProvider {
             client: api::AnthropicClient::new(base_url),
             credential: None,
             credential_manager: Some(credential_manager),
-            models: default_models(),
+            models: clankers_router::backends::anthropic::default_models(),
         }
     }
 
@@ -127,43 +126,4 @@ impl Provider for AnthropicProvider {
     }
 }
 
-fn default_models() -> Vec<Model> {
-    vec![
-        Model {
-            id: "claude-sonnet-4-5-20250514".to_string(),
-            name: "Claude Sonnet 4.5".to_string(),
-            provider: "anthropic".to_string(),
-            max_input_tokens: 200_000,
-            max_output_tokens: 16_384,
-            supports_thinking: true,
-            supports_images: true,
-            supports_tools: true,
-            input_cost_per_mtok: Some(3.0),
-            output_cost_per_mtok: Some(15.0),
-        },
-        Model {
-            id: "claude-opus-4-20250514".to_string(),
-            name: "Claude Opus 4".to_string(),
-            provider: "anthropic".to_string(),
-            max_input_tokens: 200_000,
-            max_output_tokens: 32_768,
-            supports_thinking: true,
-            supports_images: true,
-            supports_tools: true,
-            input_cost_per_mtok: Some(15.0),
-            output_cost_per_mtok: Some(75.0),
-        },
-        Model {
-            id: "claude-haiku-4-5-20250514".to_string(),
-            name: "Claude Haiku 4.5".to_string(),
-            provider: "anthropic".to_string(),
-            max_input_tokens: 200_000,
-            max_output_tokens: 16_384,
-            supports_thinking: true,
-            supports_images: true,
-            supports_tools: true,
-            input_cost_per_mtok: Some(0.8),
-            output_cost_per_mtok: Some(4.0),
-        },
-    ]
-}
+

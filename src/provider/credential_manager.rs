@@ -22,7 +22,6 @@ use tracing::warn;
 
 use super::auth::AuthStoreExt;
 use super::auth::Credential;
-use super::auth::CredentialExt;
 use crate::error::Result;
 
 /// Manages credentials with automatic refresh for OAuth tokens.
@@ -54,7 +53,7 @@ impl CredentialManager {
     /// and refreshes proactively if needed.
     pub async fn get_credential(&self) -> Result<Credential> {
         let cred = self.credential.lock().await;
-        if !cred.needs_refresh() {
+        if !cred.is_expired() {
             return Ok(cred.clone());
         }
         // Drop the lock before doing I/O

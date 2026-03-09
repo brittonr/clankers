@@ -1,11 +1,26 @@
 //! Streaming response types
+//!
+//! Re-exports identical types from `clankers_router::streaming` and defines
+//! `StreamEvent` locally because `ContentBlockStart` uses the richer
+//! [`Content`](super::message::Content) type (which includes `Image` and
+//! `ToolResult` variants not present in the router's `ContentBlock`).
 
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::provider::message::Content;
 
-/// Events streamed during model completion
+// Re-export types that are field-identical to the router's definitions.
+pub use clankers_router::streaming::ContentDelta;
+pub use clankers_router::streaming::MessageMetadata;
+
+/// Delta update for streaming messages (alias for ContentDelta).
+pub type StreamDelta = ContentDelta;
+
+/// Events streamed during model completion.
+///
+/// Mirrors `clankers_router::streaming::StreamEvent` but uses the richer
+/// [`Content`] enum for `ContentBlockStart` instead of `ContentBlock`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum StreamEvent {
@@ -28,79 +43,39 @@ pub enum StreamEvent {
     Error { error: String },
 }
 
-/// Metadata about a streaming message
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageMetadata {
-    pub id: String,
-    pub model: String,
-    pub role: String,
-}
-
-/// Incremental delta for content blocks
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum ContentDelta {
-    /// Text delta
-    TextDelta { text: String },
-    /// Thinking delta
-    ThinkingDelta { thinking: String },
-    /// Input JSON delta for tool use
-    InputJsonDelta { partial_json: String },
-}
-
-/// Delta update for streaming messages (alias for ContentDelta)
-pub type StreamDelta = ContentDelta;
-
-/// Translate a `clankers_router` stream event into a clankers `StreamEvent`.
+/// Convert a router `ContentBlock` into a clankers `Content`.
 ///
-/// Used by both [`RouterCompatAdapter`](super::router::RouterCompatAdapter) and
-/// [`RpcProvider`](super::rpc_provider::RpcProvider) to bridge the two type
-/// hierarchies without duplicating the match arms.
-pub fn translate_router_event(event: clankers_router::streaming::StreamEvent) -> StreamEvent {
-    use clankers_router::streaming as router_stream;
+/// All three router variants (`Text`, `Thinking`, `ToolUse`) map 1:1
+/// to `Content` variants of the same name.
+impl From<clankers_router::streaming::ContentBlock> for Content {
+    fn from(block: clankers_router::streaming::ContentBlock) -> Self {
+        use clankers_router::streaming::ContentBlock;
+        match block {
+            ContentBlock::Text { text } => Content::Text { text },
+            ContentBlock::Thinking { thinking } => Content::Thinking { thinking },
+            ContentBlock::ToolUse { id, name, input } => Content::ToolUse { id, name, input },
+        }
+    }
+}
 
-    use crate::provider::message::Content;
-
-    match event {
-        router_stream::StreamEvent::MessageStart { message } => StreamEvent::MessageStart {
-            message: MessageMetadata {
-                id: message.id,
-                model: message.model,
-                role: message.role,
-            },
-        },
-        router_stream::StreamEvent::ContentBlockStart { index, content_block } => {
-            let block = match content_block {
-                router_stream::ContentBlock::Text { text } => Content::Text { text },
-                router_stream::ContentBlock::Thinking { thinking } => Content::Thinking { thinking },
-                router_stream::ContentBlock::ToolUse { id, name, input } => Content::ToolUse { id, name, input },
-            };
-            StreamEvent::ContentBlockStart {
+/// Convert a router `StreamEvent` into a clankers `StreamEvent`.
+///
+/// All variants map 1:1. `ContentBlockStart` converts `ContentBlock` → `Content`
+/// via the `From` impl above. `Usage` fields are identical.
+impl From<clankers_router::streaming::StreamEvent> for StreamEvent {
+    fn from(event: clankers_router::streaming::StreamEvent) -> Self {
+        use clankers_router::streaming::StreamEvent as RouterEvent;
+        match event {
+            RouterEvent::MessageStart { message } => StreamEvent::MessageStart { message },
+            RouterEvent::ContentBlockStart { index, content_block } => StreamEvent::ContentBlockStart {
                 index,
-                content_block: block,
-            }
-        }
-        router_stream::StreamEvent::ContentBlockDelta { index, delta } => {
-            let d = match delta {
-                router_stream::ContentDelta::TextDelta { text } => ContentDelta::TextDelta { text },
-                router_stream::ContentDelta::ThinkingDelta { thinking } => ContentDelta::ThinkingDelta { thinking },
-                router_stream::ContentDelta::InputJsonDelta { partial_json } => {
-                    ContentDelta::InputJsonDelta { partial_json }
-                }
-            };
-            StreamEvent::ContentBlockDelta { index, delta: d }
-        }
-        router_stream::StreamEvent::ContentBlockStop { index } => StreamEvent::ContentBlockStop { index },
-        router_stream::StreamEvent::MessageDelta { stop_reason, usage } => StreamEvent::MessageDelta {
-            stop_reason,
-            usage: crate::provider::Usage {
-                input_tokens: usage.input_tokens,
-                output_tokens: usage.output_tokens,
-                cache_creation_input_tokens: usage.cache_creation_input_tokens,
-                cache_read_input_tokens: usage.cache_read_input_tokens,
+                content_block: content_block.into(),
             },
-        },
-        router_stream::StreamEvent::MessageStop => StreamEvent::MessageStop,
-        router_stream::StreamEvent::Error { error } => StreamEvent::Error { error },
+            RouterEvent::ContentBlockDelta { index, delta } => StreamEvent::ContentBlockDelta { index, delta },
+            RouterEvent::ContentBlockStop { index } => StreamEvent::ContentBlockStop { index },
+            RouterEvent::MessageDelta { stop_reason, usage } => StreamEvent::MessageDelta { stop_reason, usage },
+            RouterEvent::MessageStop => StreamEvent::MessageStop,
+            RouterEvent::Error { error } => StreamEvent::Error { error },
+        }
     }
 }

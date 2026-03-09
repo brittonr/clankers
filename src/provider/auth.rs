@@ -12,21 +12,7 @@ pub use clankers_router::auth::{
 pub use clankers_router::oauth::OAuthCredentials;
 
 /// Resolved credential for making API calls.
-///
-/// Thin wrapper around [`StoredCredential`] that preserves the clankers-internal
-/// API (`token()`, `is_oauth()`, `needs_refresh()`).
 pub type Credential = StoredCredential;
-
-/// Extension methods on `StoredCredential` used by clankers internals.
-pub trait CredentialExt {
-    fn needs_refresh(&self) -> bool;
-}
-
-impl CredentialExt for StoredCredential {
-    fn needs_refresh(&self) -> bool {
-        self.is_expired()
-    }
-}
 
 /// Anthropic-specific convenience methods on [`AuthStore`].
 ///
@@ -171,12 +157,12 @@ mod tests {
     }
 
     #[test]
-    fn test_credential_needs_refresh() {
+    fn test_credential_expired() {
         let api_key = StoredCredential::ApiKey {
             api_key: "sk-test".into(),
             label: None,
         };
-        assert!(!api_key.needs_refresh());
+        assert!(!api_key.is_expired());
 
         let expired_oauth = StoredCredential::OAuth {
             access_token: "t".into(),
@@ -184,6 +170,6 @@ mod tests {
             expires_at_ms: 0,
             label: None,
         };
-        assert!(expired_oauth.needs_refresh());
+        assert!(expired_oauth.is_expired());
     }
 }

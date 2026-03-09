@@ -9,3 +9,4 @@ pub mod logging;
 pub mod parsing;
 pub mod syntax;
 pub mod token;
+pub mod truncation;

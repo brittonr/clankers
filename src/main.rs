@@ -300,7 +300,7 @@ async fn run_headless(
     prompt: &str,
     plugin_manager: &std::sync::Arc<std::sync::Mutex<clankers::plugin::PluginManager>>,
 ) -> Result<()> {
-    let provider = clankers::modes::common::build_router(
+    let provider = clankers::provider::discovery::build_router(
         ctx.api_key.as_deref(),
         ctx.api_base.clone(),
         &ctx.paths.global_auth,
@@ -437,7 +437,7 @@ async fn run_interactive(
     resources: clankers::agent::system_prompt::PromptResources,
     plugin_manager: &std::sync::Arc<std::sync::Mutex<clankers::plugin::PluginManager>>,
 ) -> Result<()> {
-    let provider = clankers::modes::common::build_router_with_rpc(
+    let provider = clankers::provider::discovery::build_router_with_rpc(
         ctx.api_key.as_deref(),
         ctx.api_base.clone(),
         &ctx.paths.global_auth,

@@ -508,7 +508,9 @@ async fn parse_sse_stream(resp: reqwest::Response, tx: &mpsc::Sender<StreamEvent
 
 // ── Models ──────────────────────────────────────────────────────────────
 
-fn default_models() -> Vec<Model> {
+/// Default Anthropic model catalog. Used by both the router backend and
+/// the in-process `AnthropicProvider` in the main crate.
+pub fn default_models() -> Vec<Model> {
     vec![
         Model {
             id: "claude-sonnet-4-5-20250514".to_string(),

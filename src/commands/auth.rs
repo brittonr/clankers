@@ -78,7 +78,7 @@ async fn handle_login(ctx: &CommandContext, account: Option<String>, code: Optio
     let input = if let Some(code_input) = code {
         code_input
     } else {
-        let (url, verifier_val) = crate::provider::anthropic::oauth::build_auth_url();
+        let (url, verifier_val) = clankers_router::oauth::build_auth_url();
         println!("Logging in as account: {}", account_name);
 
         if open::that_detached(&url).is_ok() {
@@ -111,7 +111,7 @@ async fn handle_login(ctx: &CommandContext, account: Option<String>, code: Optio
         message: "No login in progress. Run `clankers auth login` first to get the auth URL.".to_string(),
     })?;
 
-    let creds = crate::provider::anthropic::oauth::exchange_code(&code_str, &state_str, &verifier).await?;
+    let creds = clankers_router::oauth::exchange_code(&code_str, &state_str, &verifier).await?;
     std::fs::remove_file(&verifier_path).ok();
 
     let mut store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);

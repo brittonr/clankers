@@ -201,7 +201,8 @@ pub mod sandbox;
 pub mod subagent;
 pub mod switch_model;
 pub mod todo;
-pub mod truncation;
+/// Output truncation utilities — re-exported from `crate::util::truncation`.
+pub use crate::util::truncation;
 
 pub mod validator_tool;
 pub mod watchdog;

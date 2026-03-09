@@ -14,6 +14,7 @@ use crate::error::Result;
 pub mod anthropic;
 pub mod auth;
 pub mod credential_manager;
+pub mod discovery;
 pub mod message;
 /// Model registry — re-exported from `clankers-router`.
 pub use clankers_router::registry;

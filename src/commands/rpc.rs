@@ -66,7 +66,7 @@ pub async fn run(ctx: &CommandContext, identity_path: Option<String>, action: Rp
             let agent_names: Vec<String> = agent_registry.list().iter().map(|a| a.name.clone()).collect();
 
             let agent_ctx = if with_agent {
-                let provider = crate::modes::common::build_router(
+                let provider = crate::provider::discovery::build_router(
                     ctx.api_key.as_deref(),
                     ctx.api_base.clone(),
                     &ctx.paths.global_auth,

@@ -12,7 +12,6 @@ use tracing::warn;
 use super::ServerState;
 use super::protocol::read_frame;
 use super::protocol::write_frame;
-use crate::agent::Agent;
 use crate::agent::events::AgentEvent;
 use crate::modes::rpc::protocol::Request;
 use crate::modes::rpc::protocol::Response;
@@ -319,8 +318,14 @@ pub async fn handle_prompt_streaming_pub(request: &Request, state: &ServerState,
     };
 
     // Create agent and set up event streaming
-    let mut agent =
-        Agent::new(Arc::clone(&ctx.provider), ctx.tools.clone(), ctx.settings.clone(), model, system_prompt);
+    let mut agent = crate::agent::builder::AgentBuilder::new(
+        Arc::clone(&ctx.provider),
+        ctx.settings.clone(),
+        model,
+        system_prompt,
+    )
+    .with_tools(ctx.tools.clone())
+    .build();
     let rx = agent.subscribe();
 
     // Stream events to the QUIC send stream in a background task

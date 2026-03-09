@@ -38,34 +38,27 @@ impl RouterCompatAdapter {
 #[async_trait]
 impl Provider for RouterCompatAdapter {
     async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
-        // Convert clankers CompletionRequest → router CompletionRequest
+        // Convert clankers CompletionRequest → router CompletionRequest.
+        // The only real conversion is AgentMessage → serde_json::Value for messages.
+        // ToolDefinition is the same type (re-exported from clankers-router).
         let router_request = clankers_router::CompletionRequest {
             model: request.model,
             messages: request.messages.iter().filter_map(|m| serde_json::to_value(m).ok()).collect(),
             system_prompt: request.system_prompt,
             max_tokens: request.max_tokens,
             temperature: request.temperature,
-            tools: request
-                .tools
-                .into_iter()
-                .map(|t| clankers_router::provider::ToolDefinition {
-                    name: t.name,
-                    description: t.description,
-                    input_schema: t.input_schema,
-                })
-                .collect(),
+            tools: request.tools,
             thinking: request.thinking,
             extra_params: Default::default(),
         };
 
-        // Create a channel for router StreamEvents and translate them
+        // Create a channel for router StreamEvents and convert via From impl
         let (router_tx, mut router_rx) = mpsc::channel(64);
 
         let tx_clone = tx.clone();
         let translate_handle = tokio::spawn(async move {
             while let Some(event) = router_rx.recv().await {
-                let clankers_event = crate::provider::streaming::translate_router_event(event);
-                if tx_clone.send(clankers_event).await.is_err() {
+                if tx_clone.send(StreamEvent::from(event)).await.is_err() {
                     break;
                 }
             }

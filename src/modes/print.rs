@@ -3,7 +3,7 @@
 use std::io::Write;
 use std::sync::Arc;
 
-use crate::agent::Agent;
+use crate::agent::builder::AgentBuilder;
 use crate::agent::events::AgentEvent;
 use crate::error::Result;
 use crate::provider::streaming::ContentDelta;
@@ -43,35 +43,11 @@ pub async fn run_print_with_options(
     system_prompt: String,
     opts: PrintOptions,
 ) -> Result<()> {
-    // Snapshot model pricing before moving the provider into the agent
-    let provider_models: Vec<clankers_router::Model> = provider.models().to_vec();
-
-    let mut agent = Agent::new(provider, tools, settings.clone(), model, system_prompt);
-
-    // Wire routing policy from settings
-    if let Some(routing_config) = settings.routing.as_ref()
-        && routing_config.enabled
-    {
-        let policy = crate::model_selection::policy::RoutingPolicy::new(routing_config.clone());
-        agent = agent.with_routing_policy(policy).with_model_roles(settings.model_roles.clone());
+    let mut builder = AgentBuilder::new(provider, settings, model, system_prompt).with_tools(tools);
+    if let Some(thinking) = opts.thinking.clone() {
+        builder = builder.with_thinking(thinking);
     }
-
-    // Wire cost tracking from settings
-    if let Some(cost_config) = settings.cost_tracking.as_ref() {
-        let paths = crate::config::ClankersPaths::get();
-        let pricing =
-            crate::model_selection::cost_tracker::pricing_from_models(&provider_models, Some(&paths.global_config_dir));
-        let tracker = Arc::new(crate::model_selection::cost_tracker::CostTracker::new(pricing, cost_config.clone()));
-        agent = agent.with_cost_tracker(tracker);
-    }
-
-    // Enable extended thinking if requested
-    if let Some(ref thinking) = opts.thinking
-        && thinking.enabled
-    {
-        agent.toggle_thinking(thinking.budget_tokens.unwrap_or(10_000));
-    }
-
+    let mut agent = builder.build();
     let mut rx = agent.subscribe();
 
     let show_tools = opts.show_tools;

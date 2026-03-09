@@ -12,7 +12,7 @@ pub async fn run_daemon(
     heartbeat: u64,
     max_sessions: usize,
 ) -> Result<()> {
-    let provider = crate::modes::common::build_router(
+    let provider = crate::provider::discovery::build_router(
         ctx.api_key.as_deref(),
         ctx.api_base.clone(),
         &ctx.paths.global_auth,
@@ -53,7 +53,7 @@ pub async fn run_merge_daemon(ctx: &CommandContext, interval: u64, once: bool) -
     let repo_root = std::path::PathBuf::from(&ctx.cwd);
 
     // Try to build a provider for LLM conflict resolution
-    let provider = crate::modes::common::build_router(
+    let provider = crate::provider::discovery::build_router(
         ctx.api_key.as_deref(),
         ctx.api_base.clone(),
         &ctx.paths.global_auth,

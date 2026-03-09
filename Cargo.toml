@@ -168,14 +168,14 @@ redundant_closure_for_method_calls = { level = "allow", priority = 1 }
 if_not_else = { level = "allow", priority = 1 }
 items_after_statements = { level = "allow", priority = 1 }
 wildcard_imports = { level = "allow", priority = 1 }
-default_trait_access = { level = "allow", priority = 1 }
-format_push_string = { level = "allow", priority = 1 }
+# default_trait_access — enabled (zero current violations)
+# format_push_string — enabled (zero current violations)
 many_single_char_names = { level = "allow", priority = 1 }
 doc_link_with_quotes = { level = "allow", priority = 1 }
 unnecessary_wraps = { level = "allow", priority = 1 }
 map_unwrap_or = { level = "allow", priority = 1 }
 duration_suboptimal_units = { level = "allow", priority = 1 }
-assigning_clones = { level = "allow", priority = 1 }
+# assigning_clones — enabled (zero current violations)
 elidable_lifetime_names = { level = "allow", priority = 1 }
 unnecessary_literal_bound = { level = "allow", priority = 1 }
 borrow_deref_ref = { level = "allow", priority = 1 }

@@ -97,15 +97,7 @@ impl Provider for RpcProvider {
             system_prompt: request.system_prompt,
             max_tokens: request.max_tokens,
             temperature: request.temperature,
-            tools: request
-                .tools
-                .into_iter()
-                .map(|t| clankers_router::provider::ToolDefinition {
-                    name: t.name,
-                    description: t.description,
-                    input_schema: t.input_schema,
-                })
-                .collect(),
+            tools: request.tools,
             thinking: request.thinking,
             extra_params: Default::default(),
         };
@@ -116,8 +108,7 @@ impl Provider for RpcProvider {
         let tx_clone = tx.clone();
         let translate_handle = tokio::spawn(async move {
             while let Some(event) = router_rx.recv().await {
-                let clankers_event = crate::provider::streaming::translate_router_event(event);
-                if tx_clone.send(clankers_event).await.is_err() {
+                if tx_clone.send(StreamEvent::from(event)).await.is_err() {
                     break;
                 }
             }

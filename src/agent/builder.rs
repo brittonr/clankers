@@ -25,6 +25,7 @@ pub struct AgentBuilder {
     tools: Vec<Arc<dyn Tool>>,
     db: Option<Db>,
     paths: Option<ClankersPaths>,
+    thinking: Option<crate::provider::ThinkingConfig>,
 }
 
 impl AgentBuilder {
@@ -38,6 +39,7 @@ impl AgentBuilder {
             tools: Vec::new(),
             db: None,
             paths: None,
+            thinking: None,
         }
     }
 
@@ -50,6 +52,12 @@ impl AgentBuilder {
     /// Attach a database handle to this agent
     pub fn with_db(mut self, db: Db) -> Self {
         self.db = Some(db);
+        self
+    }
+
+    /// Enable extended thinking with the given config.
+    pub fn with_thinking(mut self, config: crate::provider::ThinkingConfig) -> Self {
+        self.thinking = Some(config);
         self
     }
 
@@ -88,6 +96,13 @@ impl AgentBuilder {
             let pricing = pricing_from_models(&provider_models, Some(&paths.global_config_dir));
             let tracker = Arc::new(CostTracker::new(pricing, cost_config.clone()));
             agent = agent.with_cost_tracker(tracker);
+        }
+
+        // Enable extended thinking if requested
+        if let Some(ref thinking) = self.thinking
+            && thinking.enabled
+        {
+            agent.toggle_thinking(thinking.budget_tokens.unwrap_or(10_000));
         }
 
         agent

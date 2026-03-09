@@ -573,7 +573,7 @@ async fn run_event_loop(
                     verifier,
                     account,
                 } => {
-                    let result = crate::provider::anthropic::oauth::exchange_code(&code, &state, &verifier).await;
+                    let result = clankers_router::oauth::exchange_code(&code, &state, &verifier).await;
                     match result {
                         Ok(creds) => {
                             let paths = crate::config::ClankersPaths::get();
