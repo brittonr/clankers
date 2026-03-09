@@ -21,7 +21,6 @@ pub mod specs;
 pub mod tools;
 pub use clankers_tui as tui;
 pub mod util;
-pub mod work;
 pub mod worktree;
 #[cfg(feature = "zellij-share")]
 pub mod zellij;
