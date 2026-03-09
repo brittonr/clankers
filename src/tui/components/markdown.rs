@@ -112,13 +112,27 @@ fn try_render_code_fence(
 }
 
 /// Render a line of code inside a code block (with optional syntax highlighting).
-fn render_code_block_line(line: &str, code_lang: &str, style: &MarkdownStyle) -> Line<'static> {
+fn render_code_block_line(
+    line: &str,
+    code_lang: &str,
+    style: &MarkdownStyle,
+    highlighter: &dyn clankers_tui_types::SyntaxHighlighter,
+) -> Line<'static> {
     if !code_lang.is_empty() {
         // Syntax-highlighted code line
         let mut spans: Vec<Span<'static>> = vec![Span::raw("  ".to_string())];
-        let hl_spans = crate::util::syntax::highlight_ratatui(line, code_lang);
-        if hl_spans.iter().all(|s| matches!(s.style.fg, None | Some(ratatui::style::Color::Reset))) {
-            // syntect didn't produce colors — fall back to code_block style
+        let hl_spans: Vec<Span<'static>> = highlighter.highlight(line, code_lang)
+            .into_iter()
+            .map(|s| {
+                let style = match s.fg {
+                    Some((r, g, b)) => Style::default().fg(Color::Rgb(r, g, b)),
+                    None => Style::default(),
+                };
+                Span::styled(s.text, style)
+            })
+            .collect();
+        if hl_spans.iter().all(|s| matches!(s.style.fg, None | Some(Color::Reset))) {
+            // Highlighter didn't produce colors — fall back to code_block style
             spans.push(Span::styled(line.to_string(), style.code_block));
         } else {
             spans.extend(hl_spans);
@@ -202,7 +216,11 @@ fn try_render_list_item(line: &str, style: &MarkdownStyle) -> Option<Line<'stati
 /// Each returned `Line` corresponds to one visual line of output.
 /// The caller is responsible for adding any border prefix (e.g. `"│ "`)
 /// before each line.
-pub fn render_markdown(text: &str, style: &MarkdownStyle) -> Vec<Line<'static>> {
+pub fn render_markdown(
+    text: &str,
+    style: &MarkdownStyle,
+    highlighter: &dyn clankers_tui_types::SyntaxHighlighter,
+) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
     let mut in_code_block = false;
     let mut code_lang = String::new();
@@ -215,7 +233,7 @@ pub fn render_markdown(text: &str, style: &MarkdownStyle) -> Vec<Line<'static>> 
         }
 
         if in_code_block {
-            lines.push(render_code_block_line(raw_line, &code_lang, style));
+            lines.push(render_code_block_line(raw_line, &code_lang, style, highlighter));
             continue;
         }
 
@@ -528,7 +546,7 @@ mod tests {
     /// Helper: render markdown and return plain text lines (no styles).
     fn plain_lines(text: &str) -> Vec<String> {
         let style = test_style();
-        render_markdown(text, &style)
+        render_markdown(text, &style, &clankers_tui_types::PlainHighlighter)
             .iter()
             .map(|line| line.spans.iter().map(|s| s.content.as_ref()).collect::<String>())
             .collect()

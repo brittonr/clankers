@@ -79,6 +79,7 @@ pub fn render_blocks(
     progress: &ProgressRenderer,
     streaming_outputs: &mut StreamingOutputManager,
     tick: u64,
+    highlighter: &dyn clankers_tui_types::SyntaxHighlighter,
 ) -> Vec<String> {
     // Inner width of the Paragraph (inside the outer border)
     let inner_width = area.width.saturating_sub(2) as usize;
@@ -112,6 +113,7 @@ pub fn render_blocks(
                     progress,
                     streaming_outputs,
                     tick,
+                    highlighter,
                 )
             }
             BlockEntry::System(msg) => render_system_message(msg, theme),
@@ -140,6 +142,7 @@ pub fn render_blocks(
             progress,
             streaming_outputs,
             tick,
+            highlighter,
         );
         for line in block_lines {
             let plain: String = line.spans.iter().map(|s| s.content.as_ref()).collect();
@@ -339,6 +342,7 @@ mod tests {
             &progress,
             &mut streaming_outputs,
             0,
+            &clankers_tui_types::PlainHighlighter,
         );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
@@ -383,6 +387,7 @@ mod tests {
             &progress,
             &mut streaming_outputs,
             0,
+            &clankers_tui_types::PlainHighlighter,
         );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
@@ -425,6 +430,7 @@ mod tests {
             &progress,
             &mut streaming_outputs,
             0,
+            &clankers_tui_types::PlainHighlighter,
         );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
@@ -473,6 +479,7 @@ mod tests {
             &progress,
             &mut streaming_outputs,
             0,
+            &clankers_tui_types::PlainHighlighter,
         );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
@@ -521,6 +528,7 @@ mod tests {
             &progress,
             &mut streaming_outputs,
             0,
+            &clankers_tui_types::PlainHighlighter,
         );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();

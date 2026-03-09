@@ -188,6 +188,9 @@ pub struct App {
     pub pending_images: Vec<PendingImage>,
     pub clipboard_pending: bool,
     pub clipboard_rx: Option<std::sync::mpsc::Receiver<clankers_tui_types::ClipboardResult>>,
+
+    // External services
+    pub highlighter: Box<dyn clankers_tui_types::SyntaxHighlighter>,
 }
 
 // PendingImage re-exported from clankers-tui-types above.
@@ -287,6 +290,8 @@ impl App {
             pending_images: Vec::new(),
             clipboard_pending: false,
             clipboard_rx: None,
+
+            highlighter: Box::new(clankers_tui_types::PlainHighlighter),
         }
     }
 

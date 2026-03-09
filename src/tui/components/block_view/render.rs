@@ -38,6 +38,7 @@ pub fn render_conversation_block<'a>(
     progress: &ProgressRenderer,
     streaming_outputs: &mut StreamingOutputManager,
     tick: u64,
+    highlighter: &dyn clankers_tui_types::SyntaxHighlighter,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
 
@@ -130,6 +131,7 @@ pub fn render_conversation_block<'a>(
                 progress,
                 streaming_outputs,
                 tick,
+                highlighter,
             );
         }
     }
@@ -202,11 +204,12 @@ pub fn render_response_message<'a>(
     progress: &ProgressRenderer,
     streaming_outputs: &mut StreamingOutputManager,
     tick: u64,
+    highlighter: &dyn clankers_tui_types::SyntaxHighlighter,
 ) {
     match msg.role {
         MessageRole::Assistant => {
             let md_style = MarkdownStyle::from_theme(theme, Style::default().fg(theme.assistant_msg));
-            let md_lines = render_markdown(&msg.content, &md_style);
+            let md_lines = render_markdown(&msg.content, &md_style, highlighter);
             for md_line in md_lines {
                 let mut spans = vec![Span::styled("│ ", border_style), Span::raw("  ")];
                 spans.extend(md_line.spans);
@@ -355,6 +358,7 @@ pub fn render_active_block<'a>(
     progress: &ProgressRenderer,
     streaming_outputs: &mut StreamingOutputManager,
     tick: u64,
+    highlighter: &dyn clankers_tui_types::SyntaxHighlighter,
 ) -> Vec<Line<'a>> {
     let border_color = theme.block_border_focused;
     let border_style = Style::default().fg(border_color);
@@ -394,7 +398,7 @@ pub fn render_active_block<'a>(
         if !show_thinking && msg.role == MessageRole::Thinking {
             continue;
         }
-        render_response_message(&mut lines, msg, border_style, theme, active_tools, progress, streaming_outputs, tick);
+        render_response_message(&mut lines, msg, border_style, theme, active_tools, progress, streaming_outputs, tick, highlighter);
     }
 
     // ── Streaming thinking ───────────────────────────
@@ -412,7 +416,7 @@ pub fn render_active_block<'a>(
     // ── Streaming text (with live markdown rendering) ─
     if !streaming_text.is_empty() {
         let md_style = MarkdownStyle::from_theme(theme, Style::default().fg(theme.assistant_msg));
-        let md_lines = render_markdown(streaming_text, &md_style);
+        let md_lines = render_markdown(streaming_text, &md_style, highlighter);
         for md_line in md_lines {
             let mut spans = vec![Span::styled("│ ", border_style), Span::raw("  ")];
             spans.extend(md_line.spans);

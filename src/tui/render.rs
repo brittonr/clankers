@@ -390,6 +390,7 @@ fn render_messages(frame: &mut Frame, app: &mut App, messages_area: Rect) {
         &app.streaming.progress_renderer,
         &mut app.streaming.outputs,
         app.tick,
+        &*app.highlighter,
     );
 
     if app.overlays.output_search.active {

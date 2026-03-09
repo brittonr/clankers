@@ -16,6 +16,7 @@ pub mod plugin;
 pub mod progress;
 pub mod registry;
 pub mod subagent;
+pub mod syntax;
 
 // Re-export all public types at the crate root for convenience.
 pub use actions::*;
@@ -30,3 +31,4 @@ pub use plugin::*;
 pub use progress::*;
 pub use registry::*;
 pub use subagent::*;
+pub use syntax::*;

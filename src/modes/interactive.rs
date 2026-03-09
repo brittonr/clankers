@@ -64,6 +64,7 @@ pub async fn run_interactive(
     let keymap = settings.keymap.clone().into_keymap();
 
     let mut app = App::new(model.clone(), cwd.clone(), theme);
+    app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
 
     // Build slash command registry and set completion source on app
     let slash_registry = build_slash_registry(plugin_manager.as_ref());
