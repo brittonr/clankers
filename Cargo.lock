@@ -1037,6 +1037,7 @@ dependencies = [
  "bolero-generator",
  "bytes",
  "chrono",
+ "clankers-agent-defs",
  "clankers-auth",
  "clankers-matrix",
  "clankers-merge",
@@ -1100,6 +1101,17 @@ dependencies = [
  "url",
  "uuid",
  "vt100",
+]
+
+[[package]]
+name = "clankers-agent-defs"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "redb",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

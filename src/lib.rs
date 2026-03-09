@@ -1,5 +1,5 @@
 pub mod agent;
-pub mod agent_defs;
+pub use clankers_agent_defs as agent_defs;
 pub mod cli;
 pub mod commands;
 pub mod config;

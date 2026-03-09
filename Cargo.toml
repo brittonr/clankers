@@ -1,6 +1,7 @@
 [workspace]
 members = [
     ".",
+    "crates/clankers-agent-defs",
     "crates/clankers-auth",
     "crates/clankers-merge",
     "crates/clankers-matrix",
@@ -31,6 +32,7 @@ name = "clankers"
 path = "src/main.rs"
 
 [dependencies]
+clankers-agent-defs = { version = "0.1.0", path = "crates/clankers-agent-defs" }
 clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
 clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
