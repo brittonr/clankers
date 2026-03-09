@@ -28,6 +28,8 @@ pub(crate) enum AgentCommand {
     GetSystemPrompt(tokio::sync::oneshot::Sender<String>),
     /// Switch the active account (hot-swap credentials)
     SwitchAccount(String),
+    /// Update the set of disabled tools (rebuilds the agent's tool set)
+    SetDisabledTools(std::collections::HashSet<String>),
 }
 
 /// Results sent back from the background agent task to the event loop.

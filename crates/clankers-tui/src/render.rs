@@ -179,6 +179,7 @@ fn render_chrome(frame: &mut Frame, app: &mut App) {
     app.overlays.model_selector.render(frame, frame.area());
     app.overlays.account_selector.render(frame, frame.area());
     app.overlays.session_selector.render(frame, frame.area());
+    app.overlays.tool_toggle.render(frame, frame.area());
     app.branching.switcher.render(frame, frame.area());
     app.branching.compare.render(frame, frame.area());
     app.branching.merge_interactive.render(frame, frame.area());

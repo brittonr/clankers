@@ -285,3 +285,69 @@ pub fn handle_session_selector_key(app: &mut App, key: &crossterm::event::KeyEve
         _ => (true, None),
     }
 }
+
+// ---------------------------------------------------------------------------
+// Tool toggle key handling
+// ---------------------------------------------------------------------------
+
+/// Returns `(consumed, dirty)` — dirty=true means tools changed and agent
+/// needs a rebuild.
+pub fn handle_tool_toggle_key(app: &mut App, key: &crossterm::event::KeyEvent) -> (bool, bool) {
+    match key.code {
+        KeyCode::Esc => {
+            let dirty = app.overlays.tool_toggle.dirty;
+            app.overlays.tool_toggle.close();
+            (true, dirty)
+        }
+        KeyCode::Enter | KeyCode::Char(' ') => {
+            app.overlays.tool_toggle.toggle_selected();
+            (true, false)
+        }
+        KeyCode::Up => {
+            app.overlays.tool_toggle.move_up();
+            (true, false)
+        }
+        KeyCode::Down => {
+            app.overlays.tool_toggle.move_down();
+            (true, false)
+        }
+        KeyCode::Backspace => {
+            app.overlays.tool_toggle.backspace();
+            (true, false)
+        }
+        KeyCode::Tab => {
+            app.overlays.tool_toggle.cycle_scope();
+            (true, false)
+        }
+        KeyCode::Char(c) => {
+            if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
+                let dirty = app.overlays.tool_toggle.dirty;
+                app.overlays.tool_toggle.close();
+                return (true, dirty);
+            }
+            if key.modifiers.contains(KeyModifiers::CONTROL) {
+                match c {
+                    'k' | 'p' => app.overlays.tool_toggle.move_up(),
+                    'j' | 'n' => app.overlays.tool_toggle.move_down(),
+                    _ => {}
+                }
+                return (true, false);
+            }
+            match c {
+                'a' if app.overlays.tool_toggle.filter.is_empty() => {
+                    app.overlays.tool_toggle.enable_all();
+                    (true, false)
+                }
+                'n' if app.overlays.tool_toggle.filter.is_empty() => {
+                    app.overlays.tool_toggle.disable_all();
+                    (true, false)
+                }
+                _ => {
+                    app.overlays.tool_toggle.type_char(c);
+                    (true, false)
+                }
+            }
+        }
+        _ => (true, false),
+    }
+}

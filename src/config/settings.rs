@@ -92,6 +92,11 @@ pub struct Settings {
     /// Set to 0 to disable auto-pane creation entirely.
     #[serde(default = "default_max_subagent_panes")]
     pub max_subagent_panes: usize,
+
+    /// Tools to disable (by name). Merged from global + project settings.
+    /// Tools in this list are not registered with the agent.
+    #[serde(default)]
+    pub disabled_tools: Vec<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -214,6 +219,7 @@ impl Default for Settings {
             routing: None,
             cost_tracking: None,
             max_subagent_panes: default_max_subagent_panes(),
+            disabled_tools: Vec::new(),
         }
     }
 }
@@ -279,5 +285,33 @@ impl Settings {
                 target_obj.insert(key.clone(), value.clone());
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn disabled_tools_from_json() {
+        let json = r#"{"disabledTools": ["bash", "commit"]}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.disabled_tools, vec!["bash".to_string(), "commit".to_string()]);
+    }
+
+    #[test]
+    fn disabled_tools_default_empty() {
+        let json = r#"{}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert!(settings.disabled_tools.is_empty());
+    }
+
+    #[test]
+    fn disabled_tools_project_overrides_global() {
+        let global = serde_json::json!({"disabledTools": ["bash"]});
+        let project = serde_json::json!({"disabledTools": ["commit", "review"]});
+        let settings = Settings::merge_layers(None, Some(global), Some(project));
+        // Project replaces global (field-level merge, not array merge)
+        assert_eq!(settings.disabled_tools, vec!["commit".to_string(), "review".to_string()]);
     }
 }

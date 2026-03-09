@@ -58,6 +58,7 @@ pub(crate) fn handle_action(
                     | ExtendedAction::ToggleCostOverlay
                     | ExtendedAction::OpenBranchSwitcher
                     | ExtendedAction::OpenEditor
+                    | ExtendedAction::OpenToolToggle
             ),
         };
 
@@ -566,6 +567,12 @@ pub(crate) fn handle_action(
             // ── Leader key ──────────────────────────────
             ExtendedAction::OpenLeaderMenu => {
                 app.overlays.leader_menu.open();
+            }
+
+            // ── Tool toggle ────────────────────────────
+            ExtendedAction::OpenToolToggle => {
+                let tools = app.tool_info.clone();
+                app.overlays.tool_toggle.open(tools, &app.disabled_tools);
             }
 
             // Remaining extended actions handled elsewhere (tiling, etc.)

@@ -117,6 +117,8 @@ pub struct OverlayState {
     pub session_selector: SessionSelector,
     /// Leader key (Space) popup menu
     pub leader_menu: super::components::leader_menu::LeaderMenu,
+    /// Tool toggle popup (enable/disable tools)
+    pub tool_toggle: super::components::tool_toggle::ToolToggle,
 }
 
 /// Tiling state — BSP layout and pane focus
@@ -153,6 +155,8 @@ pub struct App {
     pub thinking_level: clankers_tui_types::ThinkingLevel,
     pub show_thinking: bool,
     pub tool_info: Vec<(String, String, String)>,
+    /// Tools disabled by the user (names). Applied at tool-build time.
+    pub disabled_tools: std::collections::HashSet<String>,
     pub original_system_prompt: String,
     pub open_editor_requested: bool,
     pub active_account: String,
@@ -216,6 +220,7 @@ impl App {
             thinking_level: clankers_tui_types::ThinkingLevel::Off,
             show_thinking: true,
             tool_info: Vec::new(),
+            disabled_tools: std::collections::HashSet::new(),
             original_system_prompt: String::new(),
             open_editor_requested: false,
             active_account: String::new(),
@@ -261,6 +266,7 @@ impl App {
                 account_selector: AccountSelector::new(),
                 session_selector: SessionSelector::new(),
                 leader_menu: super::components::leader_menu::LeaderMenu::new(),
+                tool_toggle: super::components::tool_toggle::ToolToggle::new(),
             },
             layout: TilingState {
                 tiling: super::panes::default_tiling(),

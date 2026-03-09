@@ -65,6 +65,15 @@ impl<'a> EventLoopRunner<'a> {
                 return;
             }
         }
+        if self.app.overlays.tool_toggle.visible {
+            let (consumed, dirty) = selectors::handle_tool_toggle_key(self.app, &key);
+            if dirty {
+                self.apply_tool_toggle();
+            }
+            if consumed {
+                return;
+            }
+        }
         if self.app.branching.switcher.visible && selectors::handle_branch_switcher_key(self.app, &key) {
             return;
         }
@@ -450,6 +459,81 @@ impl<'a> EventLoopRunner<'a> {
             SelectorAction::ResumeSession { file_path, session_id } => {
                 super::super::interactive::resume_session_from_file(self.app, file_path, &session_id, &self.cmd_tx);
             }
+        }
+    }
+
+    /// Apply tool toggle changes: update disabled_tools, persist if needed,
+    /// and send a rebuild command to the agent.
+    pub(super) fn apply_tool_toggle(&mut self) {
+        use crate::tui::components::tool_toggle::ToolToggleScope;
+
+        let disabled = self.app.overlays.tool_toggle.disabled_set();
+        let scope = self.app.overlays.tool_toggle.scope;
+
+        // Update app state
+        self.app.disabled_tools = disabled.clone();
+
+        // Persist based on scope
+        match scope {
+            ToolToggleScope::Session => {
+                // No persistence — disabled_tools only lives in app state
+            }
+            ToolToggleScope::Project => {
+                let project_paths = crate::config::ProjectPaths::resolve(std::path::Path::new(&self.app.cwd));
+                Self::persist_disabled_tools(&project_paths.settings, &disabled);
+            }
+            ToolToggleScope::Global => {
+                let paths = crate::config::ClankersPaths::get();
+                Self::persist_disabled_tools(&paths.global_settings, &disabled);
+            }
+        }
+
+        // Rebuild the agent's tool set via command
+        let _ = self.cmd_tx.send(AgentCommand::SetDisabledTools(disabled.clone()));
+
+        let enabled_count = self.app.overlays.tool_toggle.entries.iter().filter(|e| e.enabled).count();
+        let total = self.app.overlays.tool_toggle.entries.len();
+        let disabled_count = total - enabled_count;
+        if disabled_count > 0 {
+            self.app.push_system(
+                format!("Tools updated: {enabled_count} enabled, {disabled_count} disabled (scope: {scope})"),
+                false,
+            );
+        } else {
+            self.app.push_system("All tools enabled.".to_string(), false);
+        }
+    }
+
+    /// Persist disabled_tools to a settings.json file.
+    /// Reads existing content, merges the disabledTools field, and writes back.
+    fn persist_disabled_tools(path: &std::path::Path, disabled: &std::collections::HashSet<String>) {
+        // Read existing
+        let mut value: serde_json::Value = if let Ok(content) = std::fs::read_to_string(path) {
+            serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+
+        // Update the field
+        let sorted: Vec<&String> = {
+            let mut v: Vec<&String> = disabled.iter().collect();
+            v.sort();
+            v
+        };
+        if let Some(obj) = value.as_object_mut() {
+            if disabled.is_empty() {
+                obj.remove("disabledTools");
+            } else {
+                obj.insert("disabledTools".to_string(), serde_json::json!(sorted));
+            }
+        }
+
+        // Ensure parent dir exists and write
+        if let Some(parent) = path.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        if let Ok(content) = serde_json::to_string_pretty(&value) {
+            let _ = std::fs::write(path, content);
         }
     }
 

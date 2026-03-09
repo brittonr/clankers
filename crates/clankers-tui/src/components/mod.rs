@@ -43,4 +43,5 @@ pub mod subagent_pane;
 pub mod subagent_panel;
 pub mod todo_panel;
 pub mod tool_output;
+pub mod tool_toggle;
 pub mod tree_view;

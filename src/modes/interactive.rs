@@ -143,6 +143,9 @@ pub async fn run_interactive(
         app.active_account = store.active_account_name().to_string();
     }
 
+    // Populate disabled tools from settings (global + project merged)
+    app.disabled_tools = settings.disabled_tools.iter().cloned().collect();
+
     let (agent, event_rx, mut bash_confirm_rx) = build_agent_with_tools(
         provider.clone(),
         &settings,
@@ -435,9 +438,16 @@ fn build_agent_with_tools(
         }
     }
 
+    // Filter out disabled tools before giving them to the agent.
+    // tool_info keeps the full list so the toggle menu shows everything.
+    let active_tools: Vec<std::sync::Arc<dyn crate::tools::Tool>> = tools
+        .into_iter()
+        .filter(|t| !app.disabled_tools.contains(&t.definition().name))
+        .collect();
+
     // Build the final agent with tools, db, routing, and cost tracking
     let mut agent_builder = crate::agent::builder::AgentBuilder::new(provider, settings.clone(), model, system_prompt)
-        .with_tools(tools)
+        .with_tools(active_tools)
         .with_paths(paths.clone());
 
     // Attach the global database so the agent can read memories and record usage
@@ -502,6 +512,18 @@ async fn run_event_loop(
         super::session_restore::restore_display_blocks(app, &seed_messages);
         let _ = cmd_tx.send(AgentCommand::SeedMessages(seed_messages));
     }
+
+    // Clone tool_env and plugin_manager for tool rebuilds inside the agent task.
+    // The ToolEnv channels were set up during build_agent_with_tools — cloning
+    // the Arc/sender handles is cheap and gives the spawn block access.
+    let tool_env_for_rebuild = crate::modes::common::ToolEnv {
+        event_tx: Some(agent.event_sender()),
+        panel_tx: None,     // Rebuild doesn't need panel routing
+        todo_tx: None,      // These stay wired from the original build
+        bash_confirm_tx: None,
+        process_monitor: None,
+    };
+    let plugin_manager_for_rebuild = plugin_manager.clone();
 
     tokio::spawn(async move {
         while let Some(cmd) = cmd_rx.recv().await {
@@ -647,6 +669,18 @@ async fn run_event_loop(
                         let _ =
                             done_tx.send(TaskResult::AccountSwitched(Err(format!("No account '{}'", account_name))));
                     }
+                }
+                AgentCommand::SetDisabledTools(disabled) => {
+                    // Rebuild tools, filtering out disabled ones
+                    let all_tools = crate::modes::common::build_all_tools_with_env(
+                        &tool_env_for_rebuild,
+                        plugin_manager_for_rebuild.as_ref(),
+                    );
+                    let filtered: Vec<std::sync::Arc<dyn crate::tools::Tool>> = all_tools
+                        .into_iter()
+                        .filter(|t| !disabled.contains(&t.definition().name))
+                        .collect();
+                    agent = agent.with_tools(filtered);
                 }
                 AgentCommand::Quit => break,
             }

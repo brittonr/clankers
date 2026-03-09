@@ -9,15 +9,64 @@ impl SlashHandler for ToolsHandler {
     fn command(&self) -> super::super::SlashCommand {
         super::super::SlashCommand {
             name: "tools",
-            description: "List available tools",
-            help: "Lists all tools available to the agent, including built-in tools and any tools provided by loaded plugins.",
-            accepts_args: false,
-            subcommands: vec![],
-            leader_key: None,
+            description: "List or toggle available tools",
+            help: "Lists all tools available to the agent.\n\nUsage:\n  /tools           — list all tools\n  /tools toggle     — open tool toggle menu\n  /tools enable X   — enable tool X\n  /tools disable X  — disable tool X",
+            accepts_args: true,
+            subcommands: vec![
+                ("toggle", "Open tool toggle menu"),
+                ("enable", "Enable a tool by name"),
+                ("disable", "Disable a tool by name"),
+            ],
+            leader_key: Some(super::super::LeaderBinding {
+                key: 'w',
+                placement: clankers_tui_types::MenuPlacement::Root,
+                label: Some("tools"),
+            }),
         }
     }
 
-    fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
+    fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
+        let args = args.trim();
+
+        if args == "toggle" {
+            let tools = ctx.app.tool_info.clone();
+            ctx.app.overlays.tool_toggle.open(tools, &ctx.app.disabled_tools);
+            return;
+        }
+
+        if let Some(name) = args.strip_prefix("enable").map(|s| s.trim()) {
+            if name.is_empty() {
+                ctx.app.push_system("Usage: /tools enable <name>".to_string(), true);
+                return;
+            }
+            if ctx.app.disabled_tools.remove(name) {
+                let disabled = ctx.app.disabled_tools.clone();
+                let _ = ctx.cmd_tx.send(crate::modes::interactive::AgentCommand::SetDisabledTools(disabled));
+                ctx.app.push_system(format!("Tool '{}' enabled.", name), false);
+            } else {
+                ctx.app.push_system(format!("Tool '{}' is already enabled.", name), false);
+            }
+            return;
+        }
+
+        if let Some(name) = args.strip_prefix("disable").map(|s| s.trim()) {
+            if name.is_empty() {
+                ctx.app.push_system("Usage: /tools disable <name>".to_string(), true);
+                return;
+            }
+            // Verify the tool exists
+            if !ctx.app.tool_info.iter().any(|(n, _, _)| n == name) {
+                ctx.app.push_system(format!("Unknown tool '{}'.", name), true);
+                return;
+            }
+            ctx.app.disabled_tools.insert(name.to_string());
+            let disabled = ctx.app.disabled_tools.clone();
+            let _ = ctx.cmd_tx.send(crate::modes::interactive::AgentCommand::SetDisabledTools(disabled));
+            ctx.app.push_system(format!("Tool '{}' disabled.", name), false);
+            return;
+        }
+
+        // Default: list tools
         if ctx.app.tool_info.is_empty() {
             ctx.app.push_system("No tools available.".to_string(), false);
         } else {
@@ -32,15 +81,20 @@ impl SlashHandler for ToolsHandler {
                     out.push_str(&format!("  ── {} ──\n", source));
                     current_source = source.clone();
                 }
-                // Truncate long descriptions to keep it readable
-                let desc = if description.len() > 60 {
-                    format!("{}…", &description[..59])
+                let status = if ctx.app.disabled_tools.contains(name) {
+                    "✗"
+                } else {
+                    "✓"
+                };
+                let desc = if description.len() > 55 {
+                    format!("{}…", &description[..54])
                 } else {
                     description.clone()
                 };
-                out.push_str(&format!("  {:<width$}  {}\n", name, desc, width = max_name));
+                out.push_str(&format!("  {} {:<width$}  {}\n", status, name, desc, width = max_name));
             }
-            out.push_str(&format!("\n  {} tool(s) total", ctx.app.tool_info.len()));
+            let enabled = ctx.app.tool_info.iter().filter(|(n, _, _)| !ctx.app.disabled_tools.contains(n)).count();
+            out.push_str(&format!("\n  {}/{} tool(s) enabled", enabled, ctx.app.tool_info.len()));
             ctx.app.push_system(out, false);
         }
     }
