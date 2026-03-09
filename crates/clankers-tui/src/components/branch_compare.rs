@@ -20,7 +20,7 @@ use ratatui::widgets::Clear;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
 
-use crate::tui::components::block::ConversationBlock;
+use crate::components::block::ConversationBlock;
 
 /// Summary of a block in the comparison view.
 #[derive(Debug, Clone)]
@@ -110,7 +110,7 @@ pub fn compare_branches(leaf_a: usize, leaf_b: usize, all_blocks: &[Conversation
 }
 
 fn block_to_compare(b: &ConversationBlock) -> CompareBlock {
-    use crate::tui::app::MessageRole;
+    use crate::app::MessageRole;
     CompareBlock {
         id: b.id,
         prompt_preview: truncate_first_line(&b.prompt, 50),

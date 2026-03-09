@@ -17,7 +17,7 @@ use ratatui::widgets::List;
 use ratatui::widgets::ListItem;
 
 use clankers_tui_types::CompletionItem;
-use crate::tui::theme::Theme;
+use crate::theme::Theme;
 
 /// State for the slash command autocomplete menu
 #[derive(Debug, Clone)]

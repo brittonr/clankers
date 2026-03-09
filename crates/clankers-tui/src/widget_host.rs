@@ -22,7 +22,7 @@ use ratatui::widgets::Wrap;
 use clankers_tui_types::PluginNotification;
 use clankers_tui_types::PluginUIState;
 use clankers_tui_types::Widget;
-use crate::tui::theme::Theme;
+use crate::theme::Theme;
 
 /// Render a plugin widget tree into the given area
 pub fn render_widget(frame: &mut Frame, widget: &Widget, area: Rect) {

@@ -7,10 +7,10 @@
 use std::collections::HashSet;
 
 use super::prelude::*;
-use crate::tui::app::App;
-use crate::tui::app::MessageRole;
-use crate::tui::components::block::BlockEntry;
-use crate::tui::components::block::ConversationBlock;
+use crate::app::App;
+use crate::app::MessageRole;
+use crate::components::block::BlockEntry;
+use crate::components::block::ConversationBlock;
 
 // ── Rendering ───────────────────────────────────────────────────────────────
 
@@ -290,7 +290,7 @@ fn count_branch_points(app: &App) -> usize {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::tui::theme::Theme;
+    use crate::theme::Theme;
 
     #[test]
     fn test_count_branch_points_empty() {

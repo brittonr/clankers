@@ -18,5 +18,5 @@ pub use ratatui::widgets::Paragraph;
 pub use ratatui::widgets::Wrap;
 
 // Re-export crate-local TUI plumbing
-pub(crate) use crate::tui::panel::{DrawContext, Panel, PanelAction, PanelId};
-pub use crate::tui::theme::Theme;
+pub use crate::panel::{DrawContext, Panel, PanelAction, PanelId};
+pub use crate::theme::Theme;

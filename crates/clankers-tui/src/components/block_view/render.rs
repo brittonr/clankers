@@ -20,10 +20,10 @@ use super::SPINNER;
 use super::helpers::format_elapsed;
 use super::helpers::hrule;
 use super::helpers::hrule_dotted;
-use crate::tui::app::ActiveToolExecution;
-use crate::tui::app::DisplayMessage;
-use crate::tui::app::MessageRole;
-use crate::tui::theme::Theme;
+use crate::app::ActiveToolExecution;
+use crate::app::DisplayMessage;
+use crate::app::MessageRole;
+use crate::theme::Theme;
 
 /// Render a single conversation block into lines.
 /// `branch_info` carries sibling/children/ID-display metadata when available.

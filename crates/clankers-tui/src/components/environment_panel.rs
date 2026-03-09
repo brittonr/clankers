@@ -7,10 +7,10 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::tui::app::App;
-    use crate::tui::components::context_gauge::ContextGauge;
-    use crate::tui::components::git_status::GitStatus;
-    use crate::tui::theme::Theme;
+    use crate::app::App;
+    use crate::components::context_gauge::ContextGauge;
+    use crate::components::git_status::GitStatus;
+    use crate::theme::Theme;
 
     #[test]
     fn test_environment_panel_no_panic() {

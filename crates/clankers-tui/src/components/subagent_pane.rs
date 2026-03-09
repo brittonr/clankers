@@ -20,10 +20,10 @@ use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
 use ratatui_hypertile::PaneId;
 
-use crate::tui::components::subagent_panel::SubagentStatus;
-use crate::tui::panel::DrawContext;
-use crate::tui::panel::PanelAction;
-use crate::tui::panel::PanelScroll;
+use crate::components::subagent_panel::SubagentStatus;
+use crate::panel::DrawContext;
+use crate::panel::PanelAction;
+use crate::panel::PanelScroll;
 
 // ── Per-subagent pane state ─────────────────────────────────────────────────
 

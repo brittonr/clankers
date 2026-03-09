@@ -528,41 +528,6 @@ mod tests {
         assert_eq!(foo_sub.items.len(), 1);
     }
 
-    #[test]
-    fn default_menu_has_expected_structure() {
-        // Verify the default menu built from BuiltinKeymapContributor + slash commands
-        // matches the old hardcoded structure
-        let slash_cmds = crate::slash_commands::builtin_command_infos();
-        let slash_contrib = builder::SlashCommandContributor::new(slash_cmds);
-        let menu = LeaderMenu::build(
-            &[&builder::BuiltinKeymapContributor, &slash_contrib],
-            &std::collections::HashSet::new(),
-        )
-        .0;
-
-        // Root should have all the expected items
-        let root_keys: Vec<char> = menu.root.items.iter().map(|i| i.key).collect();
-        assert!(root_keys.contains(&'s'), "missing session submenu");
-        assert!(root_keys.contains(&'m'), "missing model");
-        assert!(root_keys.contains(&'a'), "missing account");
-        assert!(root_keys.contains(&'t'), "missing thinking");
-        assert!(root_keys.contains(&'T'), "missing show thinking");
-        assert!(root_keys.contains(&'l'), "missing layout");
-        assert!(root_keys.contains(&'?'), "missing help");
-        assert!(root_keys.contains(&'C'), "missing compact");
-
-        // Session submenu should exist
-        let session = menu.submenus.iter().find(|s| s.label == "session").unwrap();
-        let session_keys: Vec<char> = session.items.iter().map(|i| i.key).collect();
-        assert!(session_keys.contains(&'n'), "missing new in session");
-        assert!(session_keys.contains(&'f'), "missing fork in session");
-        assert!(session_keys.contains(&'r'), "missing resume in session");
-
-        // Layout submenu should exist
-        let layout = menu.submenus.iter().find(|s| s.label == "layout").unwrap();
-        let layout_keys: Vec<char> = layout.items.iter().map(|i| i.key).collect();
-        assert!(layout_keys.contains(&'d'), "missing default layout");
-        assert!(layout_keys.contains(&'w'), "missing wide layout");
-        assert!(layout_keys.contains(&'1'), "missing toggle todo");
-    }
+    // NOTE: default_menu_has_expected_structure test lives in main crate
+    // (needs crate::slash_commands::builtin_command_infos)
 }

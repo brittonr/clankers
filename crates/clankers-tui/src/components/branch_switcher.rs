@@ -16,7 +16,7 @@ use ratatui::widgets::Clear;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
 
-use crate::tui::components::block::ConversationBlock;
+use crate::components::block::ConversationBlock;
 
 /// A branch item for the switcher
 #[derive(Debug, Clone)]

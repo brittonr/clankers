@@ -23,11 +23,11 @@ use ratatui::widgets::Borders;
 use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
 
-use crate::tui::theme::Theme;
+use crate::theme::Theme;
 
 // Panel identifier and actions re-exported from clankers-tui-types.
-pub(crate) use clankers_tui_types::PanelAction;
-pub(crate) use clankers_tui_types::PanelId;
+pub use clankers_tui_types::PanelAction;
+pub use clankers_tui_types::PanelId;
 
 // ── PanelManager ────────────────────────────────────────────────────────────
 
@@ -195,7 +195,7 @@ pub struct DrawContext<'a> {
 /// Draw the standard panel frame (border + title + focus hints) and return
 /// the inner Rect. If the panel is empty, renders the empty-state text
 /// and returns `None` (caller should skip `draw`).
-pub(crate) fn draw_panel_frame(frame: &mut Frame, panel: &dyn Panel, area: Rect, ctx: &DrawContext) -> Option<Rect> {
+pub fn draw_panel_frame(frame: &mut Frame, panel: &dyn Panel, area: Rect, ctx: &DrawContext) -> Option<Rect> {
     let border_color = if ctx.focused { Color::Cyan } else { ctx.theme.border };
 
     let hints = if ctx.focused { panel.focus_hints() } else { "" };
@@ -224,7 +224,7 @@ pub(crate) fn draw_panel_frame(frame: &mut Frame, panel: &dyn Panel, area: Rect,
 /// Calls `content()` to get lines, updates `panel_scroll_mut()` dimensions,
 /// then renders with scroll offset. Falls back to immutable `draw()` if the
 /// panel doesn't implement `content()`.
-pub(crate) fn draw_panel_scrolled(frame: &mut Frame, panel: &mut dyn Panel, area: Rect, ctx: &DrawContext) {
+pub fn draw_panel_scrolled(frame: &mut Frame, panel: &mut dyn Panel, area: Rect, ctx: &DrawContext) {
     if let Some(inner) = draw_panel_frame(frame, panel, area, ctx) {
         let width = inner.width as usize;
         let visible = inner.height as usize;

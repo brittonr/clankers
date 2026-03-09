@@ -5,6 +5,7 @@ members = [
     "crates/clankers-merge",
     "crates/clankers-matrix",
     "crates/clankers-router",
+    "crates/clankers-tui",
     "crates/clankers-tui-types",
     "xtask",
 ]
@@ -33,6 +34,7 @@ clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
 clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
 clankers-router = { version = "0.1.0", path = "crates/clankers-router", features = ["rpc"] }
+clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }
 clankers-tui-types = { version = "0.1.0", path = "crates/clankers-tui-types" }
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["codec"] }

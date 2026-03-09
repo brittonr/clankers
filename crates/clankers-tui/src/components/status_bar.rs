@@ -11,9 +11,9 @@ use ratatui::widgets::Paragraph;
 
 use clankers_tui_types::InputMode;
 use clankers_tui_types::BudgetStatus;
-use crate::tui::app::AppState;
-use crate::tui::app::RouterStatus;
-use crate::tui::theme::Theme;
+use crate::app::AppState;
+use crate::app::RouterStatus;
+use crate::theme::Theme;
 
 /// Data for status bar rendering
 pub struct StatusBarData<'a> {

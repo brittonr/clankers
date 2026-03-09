@@ -8,7 +8,7 @@ use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 
 use super::prelude::*;
-use crate::tui::panel::ListNav;
+use crate::panel::ListNav;
 
 // ── Data types ──────────────────────────────────────────────────────────────
 

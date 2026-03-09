@@ -9,26 +9,26 @@ use ratatui::layout::Rect;
 
 use clankers_tui_types::InputMode;
 use clankers_tui_types::PluginUIState;
-use crate::tui::components::account_selector::AccountSelector;
-use crate::tui::components::block::BlockEntry;
-use crate::tui::components::block::ConversationBlock;
-use crate::tui::components::editor::Editor;
-use crate::tui::components::messages::MessageScroll;
-use crate::tui::components::model_selector::ModelSelector;
-use crate::tui::components::session_selector::SessionSelector;
-use crate::tui::components::slash_menu::SlashMenu;
-use crate::tui::panel::PanelId;
-use crate::tui::selection::TextSelection;
-use crate::tui::theme::Theme;
+use crate::components::account_selector::AccountSelector;
+use crate::components::block::BlockEntry;
+use crate::components::block::ConversationBlock;
+use crate::components::editor::Editor;
+use crate::components::messages::MessageScroll;
+use crate::components::model_selector::ModelSelector;
+use crate::components::session_selector::SessionSelector;
+use crate::components::slash_menu::SlashMenu;
+use crate::panel::PanelId;
+use crate::selection::TextSelection;
+use crate::theme::Theme;
 
 // Display types re-exported from clankers-tui-types.
-pub(crate) use clankers_tui_types::ActiveToolExecution;
-pub(crate) use clankers_tui_types::AppState;
-pub(crate) use clankers_tui_types::DisplayImage;
-pub(crate) use clankers_tui_types::DisplayMessage;
-pub(crate) use clankers_tui_types::MessageRole;
-pub(crate) use clankers_tui_types::PendingImage;
-pub(crate) use clankers_tui_types::RouterStatus;
+pub use clankers_tui_types::ActiveToolExecution;
+pub use clankers_tui_types::AppState;
+pub use clankers_tui_types::DisplayImage;
+pub use clankers_tui_types::DisplayMessage;
+pub use clankers_tui_types::MessageRole;
+pub use clankers_tui_types::PendingImage;
+pub use clankers_tui_types::RouterStatus;
 
 // Panel focus is tracked by `focused_panel: Option<PanelId>` and the hypertile
 // BSP tiling engine (`tiling: Hypertile`). See App::focus_panel() / unfocus_panel().
@@ -705,7 +705,7 @@ impl App {
 
 // ── Hit-testing helpers ──────────────────────────────────────────────────────
 
-pub(crate) use clankers_tui_types::HitRegion;
+pub use clankers_tui_types::HitRegion;
 
 /// Check whether a screen coordinate (col, row) is inside a `Rect`.
 fn rect_contains(area: Rect, col: u16, row: u16) -> bool {
@@ -764,7 +764,7 @@ mod tests {
     fn test_hit_region_editor_wins_over_messages() {
         // Editor and messages are both in the "main column" — editor should
         // win because it's checked first.
-        let theme = crate::tui::theme::Theme::dark();
+        let theme = crate::theme::Theme::dark();
         let mut app = App::new("test".to_string(), "/tmp".to_string(), theme);
         app.messages_area = Rect::new(20, 0, 60, 40);
         app.editor_area = Rect::new(20, 35, 60, 5);

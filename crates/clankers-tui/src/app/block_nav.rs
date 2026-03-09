@@ -108,7 +108,7 @@ impl App {
                         }
                     }
                     if !text.is_empty() {
-                        crate::tui::selection::copy_to_clipboard(&text);
+                        crate::selection::copy_to_clipboard(&text);
                     }
                     return;
                 }

@@ -8,8 +8,8 @@ use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 
 use super::prelude::*;
-use crate::tui::components::block::ConversationBlock;
-use crate::tui::panel::ListNav;
+use crate::components::block::ConversationBlock;
+use crate::panel::ListNav;
 
 /// Summary of a block on a branch (for the detail message list).
 #[derive(Debug, Clone)]
@@ -113,7 +113,7 @@ impl BranchPanel {
                     .filter_map(|&id| all_blocks.iter().find(|b| b.id == id))
                     .map(|b| {
                         let tool_count =
-                            b.responses.iter().filter(|m| m.role == crate::tui::app::MessageRole::ToolCall).count();
+                            b.responses.iter().filter(|m| m.role == crate::app::MessageRole::ToolCall).count();
                         BranchBlockSummary {
                             id: b.id,
                             prompt_preview: truncate_first_line(&b.prompt, 50),

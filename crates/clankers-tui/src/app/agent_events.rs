@@ -278,7 +278,7 @@ impl App {
 
     /// Extract file paths from tool call inputs and record them
     fn track_file_activity(&mut self, tool_name: &str, input: &serde_json::Value) {
-        use crate::tui::components::file_activity_panel::FileOp;
+        use crate::components::file_activity_panel::FileOp;
 
         let op = match tool_name {
             "read" => FileOp::Read,
@@ -294,8 +294,8 @@ impl App {
                 op
             };
             if let Some(fap) =
-                self.panels.downcast_mut::<crate::tui::components::file_activity_panel::FileActivityPanel>(
-                    crate::tui::panel::PanelId::Files,
+                self.panels.downcast_mut::<crate::components::file_activity_panel::FileActivityPanel>(
+                    crate::panel::PanelId::Files,
                 )
             {
                 fap.record(path.to_string(), actual_op);

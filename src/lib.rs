@@ -19,7 +19,7 @@ pub mod slash_commands;
 #[cfg(feature = "openspec")]
 pub mod specs;
 pub mod tools;
-pub mod tui;
+pub use clankers_tui as tui;
 pub mod util;
 pub mod work;
 pub mod worktree;

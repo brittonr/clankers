@@ -11,7 +11,7 @@ use ratatui::style::Style;
 use ratatui::text::Line;
 use ratatui::text::Span;
 
-use crate::tui::theme::Theme;
+use crate::theme::Theme;
 
 /// Colors/styles used by the markdown renderer.
 #[derive(Debug, Clone)]

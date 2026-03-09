@@ -11,7 +11,7 @@ use ratatui_hypertile::Hypertile;
 use ratatui_hypertile::PaneId;
 use ratatui_hypertile::raw::Node;
 
-use crate::tui::panel::PanelId;
+use crate::panel::PanelId;
 
 // ── PaneKind ────────────────────────────────────────────────────────────────
 
@@ -138,7 +138,7 @@ impl Default for PaneRegistry {
 /// can be built independently of the tree and so layout persistence works.
 ///
 /// `PaneId::new` is not const, so these are functions (except ROOT/CHAT).
-pub(crate) mod pane_ids {
+pub mod pane_ids {
     use ratatui_hypertile::PaneId;
 
     pub const CHAT: PaneId = PaneId::ROOT; // 0
@@ -178,7 +178,7 @@ pub(crate) mod pane_ids {
 /// └──────┴────────────────────┴───────────┘
 ///   20%          50%              30%
 /// ```
-pub(crate) fn default_tiling() -> Hypertile {
+pub fn default_tiling() -> Hypertile {
     let tree = Node::Split {
         direction: Direction::Horizontal,
         ratio: 0.20,
@@ -209,7 +209,7 @@ pub(crate) fn default_tiling() -> Hypertile {
 }
 
 /// Build the default pane registry matching [`default_tiling`].
-pub(crate) fn default_registry() -> PaneRegistry {
+pub fn default_registry() -> PaneRegistry {
     let mut reg = PaneRegistry {
         kinds: HashMap::new(),
         chat_pane: pane_ids::CHAT,
@@ -225,7 +225,7 @@ pub(crate) fn default_registry() -> PaneRegistry {
 // ── Preset layouts ──────────────────────────────────────────────────────────
 
 /// Chat-only layout (no side panels).
-pub(crate) fn focused_tiling() -> (Hypertile, PaneRegistry) {
+pub fn focused_tiling() -> (Hypertile, PaneRegistry) {
     let tiling = Hypertile::new();
     // ROOT is already a single pane
     let reg = PaneRegistry::new(); // ROOT → Chat
@@ -233,7 +233,7 @@ pub(crate) fn focused_tiling() -> (Hypertile, PaneRegistry) {
 }
 
 /// Wide chat layout: thin left sidebar only.
-pub(crate) fn wide_chat_tiling() -> (Hypertile, PaneRegistry) {
+pub fn wide_chat_tiling() -> (Hypertile, PaneRegistry) {
     let tree = Node::Split {
         direction: Direction::Horizontal,
         ratio: 0.20,
@@ -267,7 +267,7 @@ pub(crate) fn wide_chat_tiling() -> (Hypertile, PaneRegistry) {
 }
 
 /// Right-heavy layout: everything on the right.
-pub(crate) fn right_heavy_tiling() -> (Hypertile, PaneRegistry) {
+pub fn right_heavy_tiling() -> (Hypertile, PaneRegistry) {
     let tree = Node::Split {
         direction: Direction::Horizontal,
         ratio: 0.70,
@@ -310,7 +310,7 @@ pub(crate) fn right_heavy_tiling() -> (Hypertile, PaneRegistry) {
 
 /// Remove a pane from the BSP tree, returning the pruned tree.
 /// Returns `None` if the pane is the only node (root leaf).
-pub(crate) fn remove_pane_from_tree(node: Node, target: PaneId) -> Option<Node> {
+pub fn remove_pane_from_tree(node: Node, target: PaneId) -> Option<Node> {
     match node {
         Node::Pane(id) => {
             if id == target {
@@ -344,7 +344,7 @@ pub(crate) fn remove_pane_from_tree(node: Node, target: PaneId) -> Option<Node> 
 
 /// Insert a new pane beside an existing pane in the BSP tree.
 /// Splits the target pane, keeping the target in the `first` slot.
-pub(crate) fn insert_pane_beside(
+pub fn insert_pane_beside(
     node: Node,
     target: PaneId,
     new_pane: PaneId,
@@ -421,7 +421,7 @@ fn nodes_equal(a: &Node, b: &Node) -> bool {
 /// 1. If there's an existing subagent pane, split it vertically (stack them)
 /// 2. Else if the Subagents overview panel exists, split it vertically
 /// 3. Else split the chat pane horizontally (chat keeps 75%)
-pub(crate) fn auto_split_for_subagent(tiling: &mut Hypertile, registry: &PaneRegistry, new_pane_id: PaneId) {
+pub fn auto_split_for_subagent(tiling: &mut Hypertile, registry: &PaneRegistry, new_pane_id: PaneId) {
     // Try to find an existing subagent pane to stack beside
     let target = registry.find_any_subagent_pane().or_else(|| registry.find_panel(PanelId::Subagents));
 

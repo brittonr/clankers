@@ -13,7 +13,7 @@ use clankers_tui_types::ProcessDisplayState;
 use clankers_tui_types::ProcessSnapshot;
 
 use super::prelude::*;
-use crate::tui::panel::ListNav;
+use crate::panel::ListNav;
 
 // ── Data types ──────────────────────────────────────────────────────────────
 

@@ -26,10 +26,10 @@ use super::block::BlockEntry;
 use super::block::ConversationBlock;
 use super::progress_renderer::ProgressRenderer;
 use super::streaming_output::StreamingOutputManager;
-use crate::tui::app::ActiveToolExecution;
-use crate::tui::components::messages::MessageScroll;
-use crate::tui::selection::TextSelection;
-use crate::tui::theme::Theme;
+use crate::app::ActiveToolExecution;
+use crate::components::messages::MessageScroll;
+use crate::selection::TextSelection;
+use crate::theme::Theme;
 
 /// Branch metadata passed to the block renderer.
 #[derive(Debug, Clone)]
@@ -286,8 +286,8 @@ mod tests {
     use render::render_response_message;
 
     use super::*;
-    use crate::tui::app::DisplayMessage;
-    use crate::tui::app::MessageRole;
+    use crate::app::DisplayMessage;
+    use crate::app::MessageRole;
 
     #[test]
     fn format_elapsed_seconds() {
