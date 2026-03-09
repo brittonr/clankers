@@ -241,8 +241,8 @@ mod tests {
             LeaderAction::KeymapAction(a) => {
                 assert_eq!(
                     a,
-                    crate::config::keybindings::Action::Extended(
-                        crate::config::keybindings::ExtendedAction::OpenModelSelector
+                    clankers_tui_types::Action::Extended(
+                        clankers_tui_types::ExtendedAction::OpenModelSelector
                     )
                 );
             }
@@ -305,8 +305,8 @@ mod tests {
             LeaderAction::KeymapAction(a) => {
                 assert_eq!(
                     a,
-                    crate::config::keybindings::Action::Extended(
-                        crate::config::keybindings::ExtendedAction::ToggleShowThinking
+                    clankers_tui_types::Action::Extended(
+                        clankers_tui_types::ExtendedAction::ToggleShowThinking
                     )
                 );
             }

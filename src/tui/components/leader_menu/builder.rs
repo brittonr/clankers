@@ -125,7 +125,7 @@ fn builtin(key: char, label: &str, action: LeaderAction, placement: MenuPlacemen
         label: label.into(),
         action,
         placement,
-        priority: crate::registry::PRIORITY_BUILTIN,
+        priority: clankers_tui_types::PRIORITY_BUILTIN,
         source: "builtin".into(),
     }
 }
