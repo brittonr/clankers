@@ -28,10 +28,11 @@ impl CredentialExt for StoredCredential {
     }
 }
 
-/// Extension methods on `AuthStore` that provide the clankers-specific
-/// Anthropic-focused convenience API.
+/// Anthropic-specific convenience methods on [`AuthStore`].
 ///
 /// All methods delegate to the multi-provider store with `provider = "anthropic"`.
+/// Lives here (rather than in `provider::anthropic`) because it is used by
+/// commands, slash-commands, and mode setup — not just the Anthropic backend.
 pub trait AuthStoreExt {
     fn active_account_name(&self) -> &str;
     fn active_credentials(&self) -> Option<OAuthCredentials>;

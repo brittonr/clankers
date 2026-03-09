@@ -57,7 +57,7 @@ fn status_bar_shows_cwd() {
     let mut h = TuiTestHarness::spawn(24, 120);
     let bar = h.status_bar();
     // Should contain part of the current working directory
-    assert!(bar.contains("/") || bar.contains("~"), "Status bar should show CWD.\nBar: {}", bar);
+    assert!(bar.contains('/') || bar.contains('~'), "Status bar should show CWD.\nBar: {}", bar);
     h.quit();
 }
 

@@ -27,6 +27,7 @@ use crate::theme::Theme;
 
 /// Render a single conversation block into lines.
 /// `branch_info` carries sibling/children/ID-display metadata when available.
+#[allow(clippy::too_many_arguments)]
 pub fn render_conversation_block<'a>(
     block: &ConversationBlock,
     focused: bool,
@@ -347,6 +348,7 @@ pub fn render_system_message<'a>(msg: &DisplayMessage, theme: &Theme) -> Vec<Lin
 }
 
 /// Render the active (still-streaming) block
+#[allow(clippy::too_many_arguments)]
 pub fn render_active_block<'a>(
     block: &ConversationBlock,
     streaming_thinking: &str,

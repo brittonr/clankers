@@ -201,7 +201,7 @@ mod tests {
         let result = tool.execute(&make_ctx(), json!({"action": "summary"})).await;
         assert!(!result.is_error);
         let text = result_text(&result);
-        assert!(text.contains("$"));
+        assert!(text.contains('$'));
         assert!(text.contains("2 model"));
     }
 
@@ -213,7 +213,7 @@ mod tests {
         let text = result_text(&result);
         assert!(text.contains("Sonnet"));
         assert!(text.contains("Haiku"));
-        assert!(text.contains("%"));
+        assert!(text.contains('%'));
     }
 
     #[tokio::test]
@@ -231,7 +231,7 @@ mod tests {
         let text = result_text(&result);
         // Usage (~$1.05) exceeds soft limit ($1) so status is Warning
         assert!(text.contains("Warning") || text.contains("OK") || text.contains("Exceeded"));
-        assert!(text.contains("$"));
+        assert!(text.contains('$'));
     }
 
     #[tokio::test]

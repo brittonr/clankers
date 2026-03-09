@@ -41,44 +41,15 @@ pub struct ToolEnv {
 }
 
 /// Build the default set of tools, wiring up channels from a [`ToolEnv`].
-pub fn build_tools_with_env(env: &ToolEnv) -> Vec<Arc<dyn Tool>> {
-    build_tools_with_events(
-        env.event_tx.clone(),
-        env.panel_tx.clone(),
-        env.todo_tx.clone(),
-        env.bash_confirm_tx.clone(),
-        env.process_monitor.clone(),
-    )
-}
-
-/// Build the full tool set (built-in + plugin) from a [`ToolEnv`].
-pub fn build_all_tools_with_env(
-    env: &ToolEnv,
-    plugin_manager: Option<&Arc<Mutex<PluginManager>>>,
-) -> Vec<Arc<dyn Tool>> {
-    build_all_tools(
-        env.event_tx.clone(),
-        env.panel_tx.clone(),
-        env.todo_tx.clone(),
-        plugin_manager,
-        env.bash_confirm_tx.clone(),
-        env.process_monitor.clone(),
-    )
-}
-
-/// Build the default set of tools, optionally wiring up event channels
-/// for tools that support live progress streaming.
 ///
-/// Note: per-tool streaming is handled uniformly via `ToolContext` — the
-/// event channel is passed to every tool at execution time by the turn loop,
+/// Per-tool streaming is handled uniformly via `ToolContext` — the event
+/// channel is passed to every tool at execution time by the turn loop,
 /// so no per-tool wiring is needed here.
-pub fn build_tools_with_events(
-    _event_tx: Option<broadcast::Sender<AgentEvent>>,
-    panel_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>>,
-    todo_tx: Option<crate::tools::todo::TodoTx>,
-    bash_confirm_tx: Option<crate::tools::bash::ConfirmTx>,
-    process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
-) -> Vec<Arc<dyn Tool>> {
+pub fn build_tools_with_env(env: &ToolEnv) -> Vec<Arc<dyn Tool>> {
+    let panel_tx = env.panel_tx.clone();
+    let todo_tx = env.todo_tx.clone();
+    let bash_confirm_tx = env.bash_confirm_tx.clone();
+    let process_monitor = env.process_monitor.clone();
     let mut bash_tool = if let Some(tx) = bash_confirm_tx {
         crate::tools::bash::BashTool::with_confirm(tx)
     } else {
@@ -282,18 +253,14 @@ pub fn build_plugin_tools(
     tools
 }
 
-/// Build the full tool set: built-in tools + plugin tools.
-pub fn build_all_tools(
-    event_tx: Option<broadcast::Sender<AgentEvent>>,
-    panel_tx: Option<tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>>,
-    todo_tx: Option<crate::tools::todo::TodoTx>,
+/// Build the full tool set (built-in + plugin) from a [`ToolEnv`].
+pub fn build_all_tools_with_env(
+    env: &ToolEnv,
     plugin_manager: Option<&Arc<Mutex<PluginManager>>>,
-    bash_confirm_tx: Option<crate::tools::bash::ConfirmTx>,
-    process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
 ) -> Vec<Arc<dyn Tool>> {
-    let mut tools = build_tools_with_events(event_tx, panel_tx.clone(), todo_tx, bash_confirm_tx, process_monitor);
+    let mut tools = build_tools_with_env(env);
     if let Some(manager) = plugin_manager {
-        tools.extend(build_plugin_tools(&tools, manager, panel_tx.as_ref()));
+        tools.extend(build_plugin_tools(&tools, manager, env.panel_tx.as_ref()));
     }
     tools
 }

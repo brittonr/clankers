@@ -36,16 +36,8 @@ pub struct ResumeOptions {
 }
 
 /// Run the interactive TUI mode
-pub async fn run_interactive(
-    provider: Arc<dyn crate::provider::Provider>,
-    settings: crate::config::settings::Settings,
-    model: String,
-    system_prompt: String,
-    cwd: String,
-    plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    resume_opts: ResumeOptions,
-) -> Result<()> {
-    // Set up terminal
+/// Set up the crossterm terminal (raw mode, alternate screen, mouse capture).
+fn init_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
     terminal::enable_raw_mode().map_err(|e| crate::error::Error::Tui {
         message: format!("Failed to enable raw mode: {}", e),
     })?;
@@ -56,9 +48,29 @@ pub async fn run_interactive(
         }
     })?;
     let backend = CrosstermBackend::new(stdout);
-    let mut terminal = Terminal::new(backend).map_err(|e| crate::error::Error::Tui {
+    Terminal::new(backend).map_err(|e| crate::error::Error::Tui {
         message: format!("Failed to create terminal: {}", e),
-    })?;
+    })
+}
+
+/// Tear down the crossterm terminal (restore normal mode).
+fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) {
+    terminal::disable_raw_mode().ok();
+    execute!(terminal.backend_mut(), DisableBracketedPaste, DisableMouseCapture, LeaveAlternateScreen).ok();
+    terminal.show_cursor().ok();
+}
+
+/// Run the interactive TUI mode
+pub async fn run_interactive(
+    provider: Arc<dyn crate::provider::Provider>,
+    settings: crate::config::settings::Settings,
+    model: String,
+    system_prompt: String,
+    cwd: String,
+    plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+    resume_opts: ResumeOptions,
+) -> Result<()> {
+    let mut terminal = init_terminal()?;
 
     let theme = Theme::dark();
     let keymap = settings.keymap.clone().into_keymap();
@@ -143,53 +155,12 @@ pub async fn run_interactive(
         panel_tx.clone(),
         todo_tx.clone(),
         plugin_manager.as_ref(),
-        &paths,
+        paths,
         &db,
     );
 
-    // ── Start embedded RPC server for swarm presence ─────────────────
-    // This makes this clankers instance discoverable on the LAN via mDNS
-    // and allows remote peers to query its status. It does NOT expose
-    // prompt execution by default (requires explicit opt-in).
-    // Skip in test environments to avoid mDNS/network noise.
-    let _rpc_cancel = if cfg!(test) || std::env::var("CLANKERS_NO_RPC").is_ok() {
-        None
-    } else {
-        let config = EmbeddedRpcConfig {
-            tags: vec![],
-            with_agent: false, // Don't expose prompt execution by default
-            allow_all: true,   // Accept status queries from anyone
-            heartbeat_interval: Some(std::time::Duration::from_secs(120)),
-        };
-        match start_embedded_rpc(config, None, Vec::new(), Default::default(), String::new(), String::new()).await {
-            Ok((node_id, cancel)) => {
-                let short_id = if node_id.len() > 12 {
-                    format!("{}…", &node_id[..12])
-                } else {
-                    node_id.clone()
-                };
-                {
-                    let peers_panel = peers_panel(&mut app);
-                    peers_panel.self_id = Some(short_id);
-                    peers_panel.server_running = true;
-                    // Load initial peer list
-                    let registry =
-                        crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(paths));
-                    let entries = crate::tui::components::peers_panel::entries_from_registry(
-                        &crate::modes::rpc::peers::peer_info_views(&registry),
-                        chrono::Duration::minutes(5),
-                    );
-                    peers_panel.set_peers(entries);
-                }
-                Some(cancel)
-            }
-            Err(e) => {
-                tracing::debug!("Embedded RPC not available: {}", e);
-                // Non-fatal — swarm features just won't be available
-                None
-            }
-        }
-    };
+    // Start embedded RPC for swarm presence (non-fatal if unavailable)
+    let _rpc_cancel = maybe_start_rpc(&mut app, paths).await;
 
     let result = run_event_loop(
         &mut terminal,
@@ -215,9 +186,7 @@ pub async fn run_interactive(
         cancel.cancel();
     }
 
-    terminal::disable_raw_mode().ok();
-    execute!(terminal.backend_mut(), DisableBracketedPaste, DisableMouseCapture, LeaveAlternateScreen).ok();
-    terminal.show_cursor().ok();
+    restore_terminal(&mut terminal);
 
     // ── Worktree cleanup: mark completed, merge, and GC ─────────────────
     if let Some(ref wt) = worktree_setup
@@ -534,7 +503,7 @@ pub(crate) enum TaskResult {
 // Main event loop
 // ---------------------------------------------------------------------------
 
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::unused_async)]
 async fn run_event_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
@@ -886,6 +855,52 @@ pub(crate) fn persist_messages(
 // ---------------------------------------------------------------------------
 // Swarm / peer background tasks
 // ---------------------------------------------------------------------------
+
+/// Try to start the embedded RPC server for swarm presence.
+///
+/// Makes this instance discoverable on the LAN via mDNS. Skipped in test
+/// environments or when `CLANKERS_NO_RPC` is set. Returns a cancellation
+/// token if the server started successfully.
+async fn maybe_start_rpc(
+    app: &mut App,
+    paths: &crate::config::ClankersPaths,
+) -> Option<CancellationToken> {
+    if cfg!(test) || std::env::var("CLANKERS_NO_RPC").is_ok() {
+        return None;
+    }
+
+    let config = EmbeddedRpcConfig {
+        tags: vec![],
+        with_agent: false,
+        allow_all: true,
+        heartbeat_interval: Some(std::time::Duration::from_secs(120)),
+    };
+
+    match start_embedded_rpc(config, None, Vec::new(), Default::default(), String::new(), String::new()).await {
+        Ok((node_id, cancel)) => {
+            let short_id = if node_id.len() > 12 {
+                format!("{}…", &node_id[..12])
+            } else {
+                node_id.clone()
+            };
+            let pp = peers_panel(app);
+            pp.self_id = Some(short_id);
+            pp.server_running = true;
+            let registry =
+                crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(paths));
+            let entries = crate::tui::components::peers_panel::entries_from_registry(
+                &crate::modes::rpc::peers::peer_info_views(&registry),
+                chrono::Duration::minutes(5),
+            );
+            pp.set_peers(entries);
+            Some(cancel)
+        }
+        Err(e) => {
+            tracing::debug!("Embedded RPC not available: {}", e);
+            None
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Embedded RPC server (started alongside the TUI)

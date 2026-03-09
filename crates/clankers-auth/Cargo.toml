@@ -7,14 +7,14 @@ description = "UCAN-inspired capability-based authorization for clankers agents"
 
 [dependencies]
 iroh = { version = "0.96", features = ["address-lookup-mdns"] }
-serde = { version = "1.0", features = ["derive"] }
+serde = { workspace = true }
 postcard = { version = "1.0", features = ["alloc"] }
 blake3 = "1.5"
 base64 = "0.22"
 hex = "0.4"
-thiserror = "2.0"
-rand = "0.9"
-tracing = "0.1"
+thiserror = { workspace = true }
+rand = { workspace = true }
+tracing = { workspace = true }
 redb = "2.6"
 
 [dev-dependencies]

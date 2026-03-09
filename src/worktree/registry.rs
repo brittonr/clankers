@@ -8,7 +8,6 @@ use redb::ReadableTable;
 use redb::ReadableTableMetadata;
 use redb::TableDefinition;
 
-use super::DbWorktreeExt;
 use super::WorktreeInfo;
 use super::WorktreeStatus;
 use crate::db::Db;
@@ -165,6 +164,7 @@ mod tests {
     use chrono::Utc;
 
     use super::*;
+    use crate::worktree::DbWorktreeExt;
 
     fn test_db() -> Db {
         Db::in_memory().expect("test: failed to create in-memory db")

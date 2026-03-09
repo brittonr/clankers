@@ -16,16 +16,10 @@ pub async fn create_clankers_room(
     _name: &str,
     _topic: Option<&str>,
 ) -> Result<String, MatrixError> {
-    // For now, delegate to the raw client SDK via send_text to a
-    // known room. Full room creation requires the matrix-sdk room
-    // creation API which we'll wire up once the base client is solid.
-    //
-    // TODO: Use client.create_room() with proper settings:
-    // - visibility: private
-    // - preset: private_chat
-    // - name: provided name
-    // - topic: "clankers collaboration room" or custom
-    // - initial_state: enable encryption
+    // Current approach: Users join existing rooms via `matrix_join` rather than
+    // creating new rooms. This keeps the initial implementation simple and avoids
+    // the complexity of room creation, invitation flows, and encryption setup.
+    // Room creation can be added later if needed via the matrix-sdk create_room() API.
     Err(MatrixError::Config(
         "Room creation not yet implemented — join an existing room with `matrix_join`".to_string(),
     ))

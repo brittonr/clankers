@@ -362,7 +362,6 @@ impl ProcessMonitor {
     // ── Test helpers ──────────────────────────────────────────────────────
 
     /// Inject a resource snapshot for a tracked process (test-only).
-    
     pub fn inject_snapshot(&self, pid: u32, snapshot: ResourceSnapshot) {
         let mut inner = self.inner.write();
         if let Some(tracked) = inner.tracked.get_mut(&pid) {
@@ -374,7 +373,6 @@ impl ProcessMonitor {
     }
 
     /// Mark a tracked process as exited and move it to history (test-only).
-    
     pub fn mark_exited(&self, pid: u32, code: Option<i32>) {
         let mut inner = self.inner.write();
         let wall_time = inner.tracked.get(&pid).map(|t| t.start_time.elapsed()).unwrap_or_default();
@@ -387,7 +385,6 @@ impl ProcessMonitor {
     }
 
     /// Add a child PID to a tracked process (test-only).
-    
     pub fn add_child(&self, parent_pid: u32, child_pid: u32) {
         let mut inner = self.inner.write();
         if let Some(tracked) = inner.tracked.get_mut(&parent_pid) {

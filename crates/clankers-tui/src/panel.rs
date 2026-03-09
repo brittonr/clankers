@@ -308,8 +308,7 @@ impl PanelScroll {
     }
 
     /// Scroll so that line `target` is visible, preferring to center it.
-    #[allow(dead_code)]
-    pub(crate) fn scroll_to_line(&mut self, target: usize) {
+    pub fn scroll_to_line(&mut self, target: usize) {
         if target < self.offset {
             self.offset = target;
         } else if target >= self.offset + self.visible_height {

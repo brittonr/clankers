@@ -2,6 +2,7 @@
 //!
 //! These tests verify the full routing + cost + orchestration pipeline works
 //! together without requiring actual LLM calls or a provider.
+#![allow(clippy::field_reassign_with_default)]
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -450,7 +451,7 @@ async fn test_cost_tool_summary_action() {
 
     assert!(!result.is_error);
     let text = result_text(&result);
-    assert!(text.contains("$"));
+    assert!(text.contains('$'));
     assert!(text.contains("2 model"));
 }
 
@@ -467,7 +468,7 @@ async fn test_cost_tool_breakdown_action() {
     let text = result_text(&result);
     assert!(text.contains("Sonnet") || text.contains("sonnet"));
     assert!(text.contains("Haiku") || text.contains("haiku"));
-    assert!(text.contains("%"));
+    assert!(text.contains('%'));
 }
 
 #[tokio::test]
@@ -484,7 +485,7 @@ async fn test_cost_tool_budget_action() {
 
     assert!(!result.is_error);
     let text = result_text(&result);
-    assert!(text.contains("$"));
+    assert!(text.contains('$'));
 }
 
 // ── Test 8: Routing performance ─────────────────────────────────────────────
@@ -530,7 +531,7 @@ fn test_cost_tracker_status_line_format() {
 
     // Should contain model name, tokens, cost, and budget
     assert!(status.contains("Sonnet") || status.contains("sonnet"));
-    assert!(status.contains("$"));
+    assert!(status.contains('$'));
     assert!(status.contains("Budget"));
 }
 

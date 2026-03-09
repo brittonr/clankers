@@ -193,8 +193,11 @@ fn parse_in_progress(rest: &str) -> (String, Option<DateTime<Utc>>) {
     }
 }
 
+/// Parsed fields from a done line (`✅`).
+type DoneParts = (String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<String>);
+
 /// Parse a done line: "Description ✅ 2h 15m (started: … → completed: …)"
-fn parse_done(rest: &str) -> (String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<String>) {
+fn parse_done(rest: &str) -> DoneParts {
     if let Some(idx) = rest.find('✅') {
         let desc = rest[..idx].trim().to_string();
         let meta = rest[idx + '✅'.len_utf8()..].trim();

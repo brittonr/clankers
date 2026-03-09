@@ -235,7 +235,7 @@ mod tests {
     fn test_liveness_tracker_record_output() {
         let tracker = LivenessTracker::new("test-2".into());
         // Artificially set last_output to the past
-        *tracker.last_output.lock() = Instant::now() - Duration::from_secs(200);
+        *tracker.last_output.lock() = Instant::now().checked_sub(Duration::from_secs(200)).unwrap();
         *tracker.state.lock() = HealthState::Stalled;
 
         tracker.record_output();
@@ -277,7 +277,7 @@ mod tests {
     async fn test_watchdog_detects_stall() {
         let tracker = LivenessTracker::new("stall-test".into());
         // Set last output to 200s ago
-        *tracker.last_output.lock() = Instant::now() - Duration::from_secs(200);
+        *tracker.last_output.lock() = Instant::now().checked_sub(Duration::from_secs(200)).unwrap();
 
         let config = WatchdogConfig {
             stall_timeout: Duration::from_millis(50),
@@ -310,7 +310,7 @@ mod tests {
     #[tokio::test]
     async fn test_watchdog_kills_unresponsive() {
         let tracker = LivenessTracker::new("kill-test".into());
-        *tracker.last_output.lock() = Instant::now() - Duration::from_secs(500);
+        *tracker.last_output.lock() = Instant::now().checked_sub(Duration::from_secs(500)).unwrap();
 
         let config = WatchdogConfig {
             stall_timeout: Duration::from_millis(10),
@@ -326,12 +326,11 @@ mod tests {
         // Collect events until we see KillRequest
         let mut got_kill = false;
         for _ in 0..20 {
-            if let Ok(Some(event)) = tokio::time::timeout(Duration::from_millis(100), rx.recv()).await {
-                if matches!(event, SubagentEvent::KillRequest { .. }) {
+            if let Ok(Some(event)) = tokio::time::timeout(Duration::from_millis(100), rx.recv()).await
+                && matches!(event, SubagentEvent::KillRequest { .. }) {
                     got_kill = true;
                     break;
                 }
-            }
         }
 
         assert!(got_kill, "should have received KillRequest");

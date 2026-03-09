@@ -9,15 +9,15 @@ categories = ["network-programming"]
 
 [dependencies]
 matrix-sdk = { version = "0.9", default-features = false, features = ["e2e-encryption", "sqlite", "rustls-tls"] }
-tokio = { version = "1", features = ["full"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tracing = "0.1"
-thiserror = "2.0"
-chrono = { version = "0.4", features = ["serde"] }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+chrono = { workspace = true }
 url = "2"
 dirs = "6"
-uuid = { version = "1", features = ["v4"] }
+uuid = { workspace = true }
 hostname = "0.4"
 mime = "0.3"
 ruma = "0.12"

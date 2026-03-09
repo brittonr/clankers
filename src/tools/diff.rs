@@ -121,7 +121,7 @@ mod tests {
         let stat = diff_stat("f.txt", old, new);
         // 2 inserts (B, C), 1 delete (b) — because similar sees
         // old b→new B as delete+insert, old c stays, new C is insert, new c stays
-        assert!(stat.contains("+"));
-        assert!(stat.contains("-"));
+        assert!(stat.contains('+'));
+        assert!(stat.contains('-'));
     }
 }

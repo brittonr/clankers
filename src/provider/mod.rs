@@ -15,8 +15,10 @@ pub mod anthropic;
 pub mod auth;
 pub mod credential_manager;
 pub mod message;
-pub mod registry;
-pub mod retry;
+/// Model registry — re-exported from `clankers-router`.
+pub use clankers_router::registry;
+/// Retry logic — re-exported from `clankers-router`.
+pub use clankers_router::retry;
 pub mod router;
 pub mod rpc_provider;
 pub mod streaming;

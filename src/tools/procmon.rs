@@ -470,7 +470,7 @@ mod tests {
         };
         assert!(text.contains("333"));
         assert!(text.contains("make test"));
-        assert!(text.contains("0")); // exit code
+        assert!(text.contains('0')); // exit code
     }
 
     #[tokio::test]

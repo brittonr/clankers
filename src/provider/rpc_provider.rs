@@ -116,7 +116,7 @@ impl Provider for RpcProvider {
         let tx_clone = tx.clone();
         let translate_handle = tokio::spawn(async move {
             while let Some(event) = router_rx.recv().await {
-                let clankers_event = translate_stream_event(event);
+                let clankers_event = crate::provider::streaming::translate_router_event(event);
                 if tx_clone.send(clankers_event).await.is_err() {
                     break;
                 }
@@ -220,57 +220,4 @@ fn content_to_json(content: &crate::provider::message::Content) -> serde_json::V
     }
 }
 
-/// Translate a clankers_router StreamEvent → clankers StreamEvent.
-///
-/// Same translation as in `src/provider/router.rs::RouterCompatAdapter`.
-fn translate_stream_event(event: clankers_router::streaming::StreamEvent) -> StreamEvent {
-    use clankers_router::streaming as router_stream;
 
-    use crate::provider::message::Content;
-    use crate::provider::streaming as clankers_stream;
-
-    match event {
-        router_stream::StreamEvent::MessageStart { message } => StreamEvent::MessageStart {
-            message: clankers_stream::MessageMetadata {
-                id: message.id,
-                model: message.model,
-                role: message.role,
-            },
-        },
-        router_stream::StreamEvent::ContentBlockStart { index, content_block } => {
-            let block = match content_block {
-                router_stream::ContentBlock::Text { text } => Content::Text { text },
-                router_stream::ContentBlock::Thinking { thinking } => Content::Thinking { thinking },
-                router_stream::ContentBlock::ToolUse { id, name, input } => Content::ToolUse { id, name, input },
-            };
-            StreamEvent::ContentBlockStart {
-                index,
-                content_block: block,
-            }
-        }
-        router_stream::StreamEvent::ContentBlockDelta { index, delta } => {
-            let d = match delta {
-                router_stream::ContentDelta::TextDelta { text } => clankers_stream::ContentDelta::TextDelta { text },
-                router_stream::ContentDelta::ThinkingDelta { thinking } => {
-                    clankers_stream::ContentDelta::ThinkingDelta { thinking }
-                }
-                router_stream::ContentDelta::InputJsonDelta { partial_json } => {
-                    clankers_stream::ContentDelta::InputJsonDelta { partial_json }
-                }
-            };
-            StreamEvent::ContentBlockDelta { index, delta: d }
-        }
-        router_stream::StreamEvent::ContentBlockStop { index } => StreamEvent::ContentBlockStop { index },
-        router_stream::StreamEvent::MessageDelta { stop_reason, usage } => StreamEvent::MessageDelta {
-            stop_reason,
-            usage: crate::provider::Usage {
-                input_tokens: usage.input_tokens,
-                output_tokens: usage.output_tokens,
-                cache_creation_input_tokens: usage.cache_creation_input_tokens,
-                cache_read_input_tokens: usage.cache_read_input_tokens,
-            },
-        },
-        router_stream::StreamEvent::MessageStop => StreamEvent::MessageStop,
-        router_stream::StreamEvent::Error { error } => StreamEvent::Error { error },
-    }
-}

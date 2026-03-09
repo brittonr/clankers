@@ -6,9 +6,9 @@ license.workspace = true
 description = "Spec-driven development engine (OpenSpec)"
 
 [dependencies]
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { workspace = true }
 petgraph = "0.7"
-serde = { version = "1.0", features = ["derive"] }
+serde = { workspace = true }
 serde_yaml = "0.9"
 
 [dev-dependencies]

@@ -8,16 +8,16 @@ license.workspace = true
 clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
 
 base64 = "0.22"
-chrono = { version = "0.4", features = ["serde"] }
+chrono = { workspace = true }
 crossterm = "0.29"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 git2 = "0.20"
 indexmap = { version = "2.13.0", features = ["serde"] }
 ratatui = "0.30"
 ratatui-hypertile = { version = "0.1", features = ["serde"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-tracing = "0.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
 similar = "2.7"
 unicode-width = "0.2"
 

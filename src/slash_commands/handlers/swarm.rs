@@ -344,7 +344,7 @@ fn handle_peers_allow(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
         allowed.insert(subcmd_args.to_string());
         match crate::modes::rpc::iroh::save_allowlist(&acl_path, &allowed) {
             Ok(()) => {
-                ctx.app.push_system(format!("Allowed peer {}…", &subcmd_args[..12.min(subcmd_args.len())]), false)
+                ctx.app.push_system(format!("Allowed peer {}…", &subcmd_args[..12.min(subcmd_args.len())]), false);
             }
             Err(e) => ctx.app.push_system(format!("Failed: {}", e), true),
         }

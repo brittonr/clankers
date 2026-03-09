@@ -279,7 +279,7 @@ mod tests {
         let cases: Vec<Error> = vec![
             Error::Config { message: String::new() },
             Error::Io {
-                source: std::io::Error::new(std::io::ErrorKind::Other, "test"),
+                source: std::io::Error::other("test"),
             },
             Error::Json {
                 source: serde_json::from_str::<()>("bad").unwrap_err(),
@@ -290,7 +290,7 @@ mod tests {
             Error::Session { message: String::new() },
             Error::SessionStore {
                 message: String::new(),
-                source: std::io::Error::new(std::io::ErrorKind::Other, "test"),
+                source: std::io::Error::other("test"),
             },
             Error::Tool {
                 tool_name: String::new(),
@@ -298,7 +298,7 @@ mod tests {
             },
             Error::ToolExecution {
                 tool_name: String::new(),
-                source: std::io::Error::new(std::io::ErrorKind::Other, "test"),
+                source: std::io::Error::other("test"),
             },
             Error::Agent { message: String::new() },
             Error::AgentContext { message: String::new() },
@@ -433,7 +433,7 @@ mod tests {
         assert!(err.suggestion().is_none());
 
         let err = Error::Io {
-            source: std::io::Error::new(std::io::ErrorKind::Other, "test"),
+            source: std::io::Error::other("test"),
         };
         assert!(err.suggestion().is_none());
     }
@@ -450,7 +450,7 @@ mod tests {
         let err1 = Error::Session { message: String::new() };
         let err2 = Error::SessionStore {
             message: String::new(),
-            source: std::io::Error::new(std::io::ErrorKind::Other, "test"),
+            source: std::io::Error::other("test"),
         };
         assert_eq!(err1.code(), err2.code());
         assert_eq!(err1.code(), ErrorCode::Session);
@@ -464,7 +464,7 @@ mod tests {
         };
         let err2 = Error::ToolExecution {
             tool_name: "bash".into(),
-            source: std::io::Error::new(std::io::ErrorKind::Other, "test"),
+            source: std::io::Error::other("test"),
         };
         assert_eq!(err1.code(), err2.code());
         assert_eq!(err1.code(), ErrorCode::ToolFailed);
