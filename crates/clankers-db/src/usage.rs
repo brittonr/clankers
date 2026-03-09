@@ -15,8 +15,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::Db;
-use super::db_err;
-use crate::error::Result;
+
+use crate::error::{Result, db_err};
 
 /// Table: date string "2026-02-25" → serialized DailyUsage
 pub(crate) const TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("usage_daily");
@@ -66,14 +66,20 @@ pub struct RequestUsage {
 }
 
 impl RequestUsage {
-    /// Create from a provider Usage struct.
-    pub fn from_provider(model: &str, usage: &crate::provider::Usage) -> Self {
+    /// Create a new usage record from raw token counts.
+    pub fn new(
+        model: &str,
+        input_tokens: u64,
+        output_tokens: u64,
+        cache_creation_tokens: u64,
+        cache_read_tokens: u64,
+    ) -> Self {
         Self {
             model: model.to_string(),
-            input_tokens: usage.input_tokens as u64,
-            output_tokens: usage.output_tokens as u64,
-            cache_creation_tokens: usage.cache_creation_input_tokens as u64,
-            cache_read_tokens: usage.cache_read_input_tokens as u64,
+            input_tokens,
+            output_tokens,
+            cache_creation_tokens,
+            cache_read_tokens,
             timestamp: Utc::now(),
         }
     }
@@ -119,7 +125,7 @@ impl<'db> UsageTracker<'db> {
             model_entry.output_tokens += req.output_tokens;
             model_entry.requests += 1;
 
-            let bytes = serde_json::to_vec(&daily).map_err(|e| crate::error::Error::Database {
+            let bytes = serde_json::to_vec(&daily).map_err(|e| crate::error::DbError {
                 message: format!("failed to serialize usage: {e}"),
             })?;
             table.insert(date.as_str(), bytes.as_slice()).map_err(db_err)?;
@@ -134,7 +140,7 @@ impl<'db> UsageTracker<'db> {
         let table = tx.open_table(TABLE).map_err(db_err)?;
         match table.get(date).map_err(db_err)? {
             Some(value) => {
-                let entry = serde_json::from_slice(value.value()).map_err(|e| crate::error::Error::Database {
+                let entry = serde_json::from_slice(value.value()).map_err(|e| crate::error::DbError {
                     message: format!("failed to deserialize usage: {e}"),
                 })?;
                 Ok(Some(entry))

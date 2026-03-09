@@ -79,6 +79,12 @@ impl From<clankers_router::Error> for Error {
     }
 }
 
+impl From<clankers_db::DbError> for Error {
+    fn from(e: clankers_db::DbError) -> Self {
+        Error::Database { message: e.message }
+    }
+}
+
 #[cfg(feature = "zellij-share")]
 impl From<clankers_zellij::ZellijError> for Error {
     fn from(e: clankers_zellij::ZellijError) -> Self {

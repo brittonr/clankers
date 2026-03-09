@@ -17,8 +17,11 @@ use redb::TableDefinition;
 use redb::WriteTransaction;
 use tracing::info;
 
-use super::db_err;
-use crate::error::Result;
+
+use crate::error::{Result, db_err};
+
+/// Worktree registry table (inlined from worktree::registry).
+const WORKTREE_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("worktrees");
 
 /// Metadata table: stores `"schema_version"` → version number (as u32 LE bytes).
 const META_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("_meta");
@@ -49,7 +52,7 @@ pub fn migrate(db: &redb::Database) -> Result<()> {
     }
 
     if current > CURRENT_VERSION {
-        return Err(crate::error::Error::Database {
+        return Err(crate::error::DbError {
             message: format!(
                 "database schema version {current} is newer than this binary supports ({CURRENT_VERSION}). \
                  Upgrade clankers or use a matching version."
@@ -122,19 +125,19 @@ fn write_version_in_tx(tx: &WriteTransaction, version: u32) -> Result<()> {
 /// everything from scratch. For existing databases that predate schema
 /// versioning, these are all no-ops (redb's `open_table` is idempotent).
 fn migrate_0_to_1(tx: &WriteTransaction) -> Result<()> {
-    use crate::db::audit;
-    use crate::db::history;
-    use crate::db::memory;
-    use crate::db::session_index;
-    use crate::db::usage;
-    use crate::worktree::registry;
+    use crate::audit;
+    use crate::history;
+    use crate::memory;
+    use crate::session_index;
+    use crate::usage;
+    
 
     tx.open_table(audit::TABLE).map_err(db_err)?;
     tx.open_table(memory::TABLE).map_err(db_err)?;
     tx.open_table(session_index::TABLE).map_err(db_err)?;
     tx.open_table(history::TABLE).map_err(db_err)?;
     tx.open_table(usage::TABLE).map_err(db_err)?;
-    tx.open_table(registry::TABLE).map_err(db_err)?;
+    tx.open_table(WORKTREE_TABLE).map_err(db_err)?;
 
     Ok(())
 }
@@ -182,7 +185,7 @@ mod tests {
         {
             let tx = db.begin_write().map_err(db_err)?;
             {
-                let mut table = tx.open_table(crate::db::memory::TABLE).map_err(db_err)?;
+                let mut table = tx.open_table(crate::memory::TABLE).map_err(db_err)?;
                 table.insert(42u64, b"test".as_slice()).map_err(db_err)?;
             }
             tx.commit().map_err(db_err)?;
@@ -191,7 +194,7 @@ mod tests {
         migrate(&db)?;
 
         let tx = db.begin_read().map_err(db_err)?;
-        let table = tx.open_table(crate::db::memory::TABLE).map_err(db_err)?;
+        let table = tx.open_table(crate::memory::TABLE).map_err(db_err)?;
         assert!(table.get(42u64).map_err(db_err)?.is_some());
         Ok(())
     }
@@ -225,12 +228,12 @@ mod tests {
         // Simulate a legacy database: tables exist but no _meta table.
         {
             let tx = db.begin_write().map_err(db_err)?;
-            tx.open_table(crate::db::audit::TABLE).map_err(db_err)?;
-            tx.open_table(crate::db::memory::TABLE).map_err(db_err)?;
-            tx.open_table(crate::db::session_index::TABLE).map_err(db_err)?;
-            tx.open_table(crate::db::history::TABLE).map_err(db_err)?;
-            tx.open_table(crate::db::usage::TABLE).map_err(db_err)?;
-            tx.open_table(crate::worktree::registry::TABLE).map_err(db_err)?;
+            tx.open_table(crate::audit::TABLE).map_err(db_err)?;
+            tx.open_table(crate::memory::TABLE).map_err(db_err)?;
+            tx.open_table(crate::session_index::TABLE).map_err(db_err)?;
+            tx.open_table(crate::history::TABLE).map_err(db_err)?;
+            tx.open_table(crate::usage::TABLE).map_err(db_err)?;
+            tx.open_table(WORKTREE_TABLE).map_err(db_err)?;
             tx.commit().map_err(db_err)?;
         }
 
@@ -250,12 +253,12 @@ mod tests {
 
         let tx = db.begin_read().map_err(db_err)?;
         // All 6 data tables + _meta should be openable.
-        tx.open_table(crate::db::audit::TABLE).map_err(db_err)?;
-        tx.open_table(crate::db::memory::TABLE).map_err(db_err)?;
-        tx.open_table(crate::db::session_index::TABLE).map_err(db_err)?;
-        tx.open_table(crate::db::history::TABLE).map_err(db_err)?;
-        tx.open_table(crate::db::usage::TABLE).map_err(db_err)?;
-        tx.open_table(crate::worktree::registry::TABLE).map_err(db_err)?;
+        tx.open_table(crate::audit::TABLE).map_err(db_err)?;
+        tx.open_table(crate::memory::TABLE).map_err(db_err)?;
+        tx.open_table(crate::session_index::TABLE).map_err(db_err)?;
+        tx.open_table(crate::history::TABLE).map_err(db_err)?;
+        tx.open_table(crate::usage::TABLE).map_err(db_err)?;
+        tx.open_table(WORKTREE_TABLE).map_err(db_err)?;
         tx.open_table(META_TABLE).map_err(db_err)?;
         Ok(())
     }

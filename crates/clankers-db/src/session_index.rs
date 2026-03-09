@@ -15,8 +15,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::Db;
-use super::db_err;
-use crate::error::Result;
+
+use crate::error::{Result, db_err};
 
 /// Table: session_id (string) → serialized SessionIndexEntry
 pub(crate) const TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("session_index");
@@ -56,7 +56,7 @@ impl<'db> SessionIndex<'db> {
 
     /// Insert or update a session index entry.
     pub fn upsert(&self, entry: &SessionIndexEntry) -> Result<()> {
-        let bytes = serde_json::to_vec(entry).map_err(|e| crate::error::Error::Database {
+        let bytes = serde_json::to_vec(entry).map_err(|e| crate::error::DbError {
             message: format!("failed to serialize session index entry: {e}"),
         })?;
 
@@ -75,7 +75,7 @@ impl<'db> SessionIndex<'db> {
         let table = tx.open_table(TABLE).map_err(db_err)?;
         match table.get(session_id).map_err(db_err)? {
             Some(value) => {
-                let entry = serde_json::from_slice(value.value()).map_err(|e| crate::error::Error::Database {
+                let entry = serde_json::from_slice(value.value()).map_err(|e| crate::error::DbError {
                     message: format!("failed to deserialize session index: {e}"),
                 })?;
                 Ok(Some(entry))

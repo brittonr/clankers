@@ -15,8 +15,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::Db;
-use super::db_err;
-use crate::error::Result;
+
+use crate::error::{Result, db_err};
 
 /// Table: timestamp_micros (u64) → serialized HistoryEntry
 ///
@@ -62,8 +62,8 @@ impl<'db> HistoryDb<'db> {
             session_id: session_id.to_string(),
             cwd: cwd.to_string(),
         };
-        let key = crate::db::memory::generate_id();
-        let bytes = serde_json::to_vec(&entry).map_err(|e| crate::error::Error::Database {
+        let key = crate::memory::generate_id();
+        let bytes = serde_json::to_vec(&entry).map_err(|e| crate::error::DbError {
             message: format!("failed to serialize history entry: {e}"),
         })?;
 

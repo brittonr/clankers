@@ -1039,6 +1039,7 @@ dependencies = [
  "chrono",
  "clankers-agent-defs",
  "clankers-auth",
+ "clankers-db",
  "clankers-matrix",
  "clankers-merge",
  "clankers-model-selection",
@@ -1130,6 +1131,19 @@ dependencies = [
  "serde",
  "tempfile",
  "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "clankers-db"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "redb",
+ "serde",
+ "serde_json",
+ "tempfile",
  "tokio",
  "tracing",
 ]

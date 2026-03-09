@@ -3,7 +3,7 @@ pub use clankers_agent_defs as agent_defs;
 pub mod cli;
 pub mod commands;
 pub mod config;
-pub mod db;
+pub use clankers_db as db;
 pub mod error;
 pub mod event_translator;
 pub use clankers_model_selection as model_selection;

@@ -22,8 +22,8 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::Db;
-use super::db_err;
-use crate::error::Result;
+
+use crate::error::{Result, db_err};
 
 /// Table: `"{session_id}:{seq:06}"` → serialized AuditEntry
 pub(crate) const TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("audit_log");
@@ -67,7 +67,7 @@ impl<'db> AuditLog<'db> {
     /// Append an entry to the log.
     pub fn record(&self, entry: &AuditEntry) -> Result<()> {
         let key = format!("{}:{:06}", entry.session_id, entry.seq);
-        let bytes = serde_json::to_vec(entry).map_err(|e| crate::error::Error::Database {
+        let bytes = serde_json::to_vec(entry).map_err(|e| crate::error::DbError {
             message: format!("failed to serialize audit entry: {e}"),
         })?;
 
@@ -450,10 +450,10 @@ mod tests {
             sandbox_blocked: None,
         };
 
-        let json = serde_json::to_string(&entry).map_err(|e| crate::error::Error::Database {
+        let json = serde_json::to_string(&entry).map_err(|e| crate::error::DbError {
             message: format!("serialization failed: {e}"),
         })?;
-        let parsed: AuditEntry = serde_json::from_str(&json).map_err(|e| crate::error::Error::Database {
+        let parsed: AuditEntry = serde_json::from_str(&json).map_err(|e| crate::error::DbError {
             message: format!("deserialization failed: {e}"),
         })?;
 
@@ -480,7 +480,7 @@ mod tests {
             sandbox_blocked: Some("sensitive path".into()),
         };
 
-        let json = serde_json::to_string(&entry).map_err(|e| crate::error::Error::Database {
+        let json = serde_json::to_string(&entry).map_err(|e| crate::error::DbError {
             message: format!("serialization failed: {e}"),
         })?;
         assert!(json.contains("sandbox_blocked"));
@@ -491,7 +491,7 @@ mod tests {
     #[test]
     fn entry_without_sandbox_blocked_omits_field() -> Result<()> {
         let entry = make_entry("s1", 0, "read");
-        let json = serde_json::to_string(&entry).map_err(|e| crate::error::Error::Database {
+        let json = serde_json::to_string(&entry).map_err(|e| crate::error::DbError {
             message: format!("serialization failed: {e}"),
         })?;
         assert!(!json.contains("sandbox_blocked"));

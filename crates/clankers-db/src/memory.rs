@@ -26,8 +26,8 @@ use serde::Deserialize;
 use serde::Serialize;
 
 use super::Db;
-use super::db_err;
-use crate::error::Result;
+
+use crate::error::{Result, db_err};
 
 /// Table: memory_id (u64 millis) → serialized MemoryEntry
 pub(crate) const TABLE: TableDefinition<u64, &[u8]> = TableDefinition::new("memories");
@@ -144,7 +144,7 @@ impl<'db> MemoryStore<'db> {
 
     /// Save a new memory entry.
     pub fn save(&self, entry: &MemoryEntry) -> Result<()> {
-        let bytes = serde_json::to_vec(entry).map_err(|e| crate::error::Error::Database {
+        let bytes = serde_json::to_vec(entry).map_err(|e| crate::error::DbError {
             message: format!("failed to serialize memory: {e}"),
         })?;
 
@@ -197,7 +197,7 @@ impl<'db> MemoryStore<'db> {
             return Ok(false);
         }
 
-        let bytes = serde_json::to_vec(entry).map_err(|e| crate::error::Error::Database {
+        let bytes = serde_json::to_vec(entry).map_err(|e| crate::error::DbError {
             message: format!("failed to serialize memory: {e}"),
         })?;
         let tx = self.db.begin_write()?;
@@ -215,7 +215,7 @@ impl<'db> MemoryStore<'db> {
         let table = tx.open_table(TABLE).map_err(db_err)?;
         match table.get(id).map_err(db_err)? {
             Some(value) => {
-                let entry = serde_json::from_slice(value.value()).map_err(|e| crate::error::Error::Database {
+                let entry = serde_json::from_slice(value.value()).map_err(|e| crate::error::DbError {
                     message: format!("failed to deserialize memory: {e}"),
                 })?;
                 Ok(Some(entry))
