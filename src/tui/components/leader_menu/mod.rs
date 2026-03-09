@@ -52,13 +52,12 @@ impl Default for LeaderMenu {
 }
 
 impl LeaderMenu {
-    /// Create a leader menu with the default hardcoded bindings.
+    /// Create a leader menu with the default hardcoded bindings (no slash commands).
     ///
-    /// Prefer [`LeaderMenu::build`] for dynamic registration.
+    /// Prefer [`LeaderMenu::build`] for dynamic registration with slash commands.
     pub fn new() -> Self {
         use std::collections::HashSet;
-        let slash_contrib = SlashCommandContributor::new(crate::slash_commands::builtin_command_infos());
-        Self::build(&[&BuiltinKeymapContributor, &slash_contrib], &HashSet::new()).0
+        Self::build(&[&BuiltinKeymapContributor], &HashSet::new()).0
     }
 
     /// Build a leader menu from contributors.
@@ -531,9 +530,15 @@ mod tests {
 
     #[test]
     fn default_menu_has_expected_structure() {
-        // Verify the default menu built from BuiltinKeymapContributor
+        // Verify the default menu built from BuiltinKeymapContributor + slash commands
         // matches the old hardcoded structure
-        let menu = LeaderMenu::new();
+        let slash_cmds = crate::slash_commands::builtin_command_infos();
+        let slash_contrib = builder::SlashCommandContributor::new(slash_cmds);
+        let menu = LeaderMenu::build(
+            &[&builder::BuiltinKeymapContributor, &slash_contrib],
+            &std::collections::HashSet::new(),
+        )
+        .0;
 
         // Root should have all the expected items
         let root_keys: Vec<char> = menu.root.items.iter().map(|i| i.key).collect();
