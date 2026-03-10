@@ -8,6 +8,7 @@ description = "Shared utility functions for clankers"
 [dependencies]
 clankers-message = { version = "0.1.0", path = "../clankers-message" }
 clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
+dirs = "6"
 base64 = "0.22"
 hex = "0.4"
 ignore = "0.4"

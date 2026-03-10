@@ -16,17 +16,17 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use usage::update_usage_tracking;
 
-use crate::agent::events::AgentEvent;
-use crate::error::Error;
+use crate::events::AgentEvent;
+use crate::error::AgentError;
 use crate::error::Result;
-use crate::model_selection::cost_tracker::CostTracker;
-use crate::provider::Provider;
-use crate::provider::ThinkingConfig;
-use crate::provider::Usage;
-use crate::provider::message::*;
-use crate::provider::streaming::*;
-use crate::tools::Tool;
-use crate::tools::switch_model::ModelSwitchSlot;
+use clankers_model_selection::cost_tracker::CostTracker;
+use clankers_provider::Provider;
+use clankers_provider::ThinkingConfig;
+use clankers_provider::Usage;
+use clankers_provider::message::*;
+use clankers_provider::streaming::*;
+use crate::tool::Tool;
+use crate::tool::ModelSwitchSlot;
 
 /// Configuration for a turn loop run
 pub struct TurnConfig {
@@ -134,7 +134,7 @@ pub async fn run_turn_loop(
         // Check for model switch and cancellation
         check_model_switch(&mut active_model, model_switch_slot, event_tx)?;
         if cancel.is_cancelled() {
-            return Err(Error::Cancelled);
+            return Err(AgentError::Cancelled);
         }
 
         let _ = event_tx.send(AgentEvent::TurnStart { index: turn_index });
@@ -205,12 +205,12 @@ fn extract_tool_calls(content: &[Content]) -> Vec<(String, String, Value)> {
 }
 
 /// Convert ToolResultContent to Content
-pub(crate) fn tool_result_content_to_message_content(tool_content: &[crate::tools::ToolResultContent]) -> Vec<Content> {
+pub(crate) fn tool_result_content_to_message_content(tool_content: &[crate::tool::ToolResultContent]) -> Vec<Content> {
     tool_content
         .iter()
         .map(|tc| match tc {
-            crate::tools::ToolResultContent::Text { text } => Content::Text { text: text.clone() },
-            crate::tools::ToolResultContent::Image { media_type, data } => Content::Image {
+            crate::tool::ToolResultContent::Text { text } => Content::Text { text: text.clone() },
+            crate::tool::ToolResultContent::Image { media_type, data } => Content::Image {
                 source: ImageSource::Base64 {
                     media_type: media_type.clone(),
                     data: data.clone(),
@@ -228,10 +228,10 @@ mod tests {
     use serde_json::json;
 
     use super::*;
-    use crate::tools::ToolContext;
-    use crate::tools::ToolDefinition;
-    use crate::tools::ToolResult as ToolExecResult;
-    use crate::tools::progress::ResultChunk;
+    use crate::tool::ToolContext;
+    use crate::tool::ToolDefinition;
+    use crate::tool::ToolResult as ToolExecResult;
+    use crate::tool::progress::ResultChunk;
 
     // -----------------------------------------------------------------------
     // parse_stop_reason
@@ -383,7 +383,7 @@ mod tests {
 
     #[test]
     fn test_tool_result_text_conversion() {
-        use crate::tools::ToolResultContent;
+        use crate::tool::ToolResultContent;
         let content = vec![ToolResultContent::Text {
             text: "output".to_string(),
         }];
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn test_tool_result_image_conversion() {
-        use crate::tools::ToolResultContent;
+        use crate::tool::ToolResultContent;
         let content = vec![ToolResultContent::Image {
             media_type: "image/png".to_string(),
             data: "base64data".to_string(),
@@ -417,7 +417,7 @@ mod tests {
 
     #[test]
     fn test_tool_result_mixed_content() {
-        use crate::tools::ToolResultContent;
+        use crate::tool::ToolResultContent;
         let content = vec![
             ToolResultContent::Text {
                 text: "text".to_string(),

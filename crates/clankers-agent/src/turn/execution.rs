@@ -12,19 +12,19 @@ use tokio_util::sync::CancellationToken;
 use super::CollectedResponse;
 use super::ContentBlockBuilder;
 use super::TurnConfig;
-use crate::agent::events::AgentEvent;
-use crate::error::Error;
+use crate::events::AgentEvent;
+use crate::error::AgentError;
 use crate::error::Result;
-use crate::provider::CompletionRequest;
-use crate::provider::Provider;
-use crate::provider::Usage;
-use crate::provider::message::*;
-use crate::provider::streaming::*;
-use crate::tools::Tool;
-use crate::tools::ToolContext;
-use crate::tools::ToolDefinition;
-use crate::tools::ToolResult as ToolExecResult;
-use crate::tools::progress::ToolResultAccumulator;
+use clankers_provider::CompletionRequest;
+use clankers_provider::Provider;
+use clankers_provider::Usage;
+use clankers_provider::message::*;
+use clankers_provider::streaming::*;
+use crate::tool::Tool;
+use crate::tool::ToolContext;
+use crate::tool::ToolDefinition;
+use crate::tool::ToolResult as ToolExecResult;
+use crate::tool::progress::ToolResultAccumulator;
 
 /// Execute a single turn: build request, stream response, collect results
 pub(super) async fn execute_turn(
@@ -54,7 +54,7 @@ pub(super) async fn execute_turn(
     let (complete_result, collected) = tokio::select! {
         biased;
         () = cancel.cancelled() => {
-            return Err(Error::Cancelled);
+            return Err(AgentError::Cancelled);
         }
         result = async { tokio::join!(complete_fut, collect_fut) } => result,
     };
@@ -128,7 +128,7 @@ pub(super) async fn collect_stream_events(
                 break;
             }
             StreamEvent::Error { error } => {
-                return Err(Error::ProviderStreaming { message: error });
+                return Err(AgentError::ProviderStreaming { message: error });
             }
         }
     }
@@ -307,7 +307,7 @@ pub(super) fn create_error_result(
 ///
 /// Returns `Some(reason)` if any path is blocked, `None` if all are allowed.
 fn check_tool_paths(input: &Value) -> Option<String> {
-    use crate::tools::sandbox::check_path;
+    use clankers_util::path_policy::check_path;
 
     // Direct path parameters used by read, write, edit, ls, find, grep, etc.
     for key in ["path", "file", "directory", "cwd"] {

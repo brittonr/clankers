@@ -328,7 +328,7 @@ pub async fn handle_prompt_streaming_pub(request: &Request, state: &ServerState,
     let streamer = spawn_event_streamer(rx, send);
 
     // Run the agent
-    let agent_result = agent.prompt(&text).await;
+    let agent_result = agent.prompt(&text).await.map_err(crate::error::Error::from);
 
     // Wait for streamer to finish and send final response
     send_final_response(streamer, agent_result).await;

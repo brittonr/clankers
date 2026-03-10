@@ -549,8 +549,8 @@ async fn run_event_loop(
                     };
                     let err = match result {
                         Ok(()) => None,
-                        Err(crate::error::Error::Cancelled) => None,
-                        Err(e) => Some(e),
+                        Err(clankers_agent::AgentError::Cancelled) => None,
+                        Err(e) => Some(crate::error::Error::from(e)),
                     };
                     let _ = done_tx.send(TaskResult::PromptDone(err));
                 }
@@ -582,8 +582,8 @@ async fn run_event_loop(
                     };
                     let err = match result {
                         Ok(()) => None,
-                        Err(crate::error::Error::Cancelled) => None,
-                        Err(e) => Some(e),
+                        Err(clankers_agent::AgentError::Cancelled) => None,
+                        Err(e) => Some(crate::error::Error::from(e)),
                     };
                     let _ = done_tx.send(TaskResult::PromptDone(err));
                 }

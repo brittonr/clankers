@@ -12,9 +12,9 @@
 
 use tokio::sync::mpsc;
 
-use crate::provider::Provider;
-use crate::provider::message::AgentMessage;
-use crate::util::token::estimate_tokens;
+use clankers_provider::Provider;
+use clankers_provider::message::AgentMessage;
+use clankers_util::token::estimate_tokens;
 
 /// Compaction result
 #[derive(Debug)]
@@ -114,11 +114,11 @@ pub async fn compact_with_llm(
         convo_text
     );
 
-    let summary_request = crate::provider::CompletionRequest {
+    let summary_request = clankers_provider::CompletionRequest {
         model: model.to_string(),
-        messages: vec![AgentMessage::User(crate::provider::message::UserMessage {
-            id: crate::provider::message::MessageId::generate(),
-            content: vec![crate::provider::message::Content::Text { text: summary_prompt }],
+        messages: vec![AgentMessage::User(clankers_provider::message::UserMessage {
+            id: clankers_provider::message::MessageId::generate(),
+            content: vec![clankers_provider::message::Content::Text { text: summary_prompt }],
             timestamp: chrono::Utc::now(),
         })],
         system_prompt: Some(
@@ -139,8 +139,8 @@ pub async fn compact_with_llm(
     let mut summary_text = String::new();
     if provider_result.is_ok() {
         while let Some(event) = rx.recv().await {
-            if let crate::provider::streaming::StreamEvent::ContentBlockDelta {
-                delta: crate::provider::streaming::ContentDelta::TextDelta { text },
+            if let clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+                delta: clankers_provider::streaming::ContentDelta::TextDelta { text },
                 ..
             } = event
             {
@@ -159,9 +159,9 @@ pub async fn compact_with_llm(
     let mut result = Vec::new();
     result.extend_from_slice(&messages[..keep_first]);
 
-    result.push(AgentMessage::User(crate::provider::message::UserMessage {
-        id: crate::provider::message::MessageId::generate(),
-        content: vec![crate::provider::message::Content::Text {
+    result.push(AgentMessage::User(clankers_provider::message::UserMessage {
+        id: clankers_provider::message::MessageId::generate(),
+        content: vec![clankers_provider::message::Content::Text {
             text: format!(
                 "[Conversation summary — {} earlier messages compacted]\n\n{}",
                 drop_end - drop_start,
@@ -189,7 +189,7 @@ fn extract_role_and_text(msg: &AgentMessage) -> (&'static str, String) {
                 .content
                 .iter()
                 .filter_map(|c| match c {
-                    crate::provider::message::Content::Text { text } => Some(text.as_str()),
+                    clankers_provider::message::Content::Text { text } => Some(text.as_str()),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
@@ -201,7 +201,7 @@ fn extract_role_and_text(msg: &AgentMessage) -> (&'static str, String) {
                 .content
                 .iter()
                 .filter_map(|c| match c {
-                    crate::provider::message::Content::Text { text } => Some(text.as_str()),
+                    clankers_provider::message::Content::Text { text } => Some(text.as_str()),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
@@ -213,7 +213,7 @@ fn extract_role_and_text(msg: &AgentMessage) -> (&'static str, String) {
                 .content
                 .iter()
                 .filter_map(|c| match c {
-                    crate::provider::message::Content::Text { text } => Some(text.as_str()),
+                    clankers_provider::message::Content::Text { text } => Some(text.as_str()),
                     _ => None,
                 })
                 .collect::<Vec<_>>()
@@ -275,9 +275,9 @@ pub fn compact_by_truncation(messages: &[AgentMessage], max_tokens: usize, keep_
     result.extend_from_slice(&messages[..keep_first]);
 
     // Insert compaction marker
-    result.push(AgentMessage::User(crate::provider::message::UserMessage {
-        id: crate::provider::message::MessageId::generate(),
-        content: vec![crate::provider::message::Content::Text {
+    result.push(AgentMessage::User(clankers_provider::message::UserMessage {
+        id: clankers_provider::message::MessageId::generate(),
+        content: vec![clankers_provider::message::Content::Text {
             text: format!(
                 "[Context compacted: {} messages removed to save tokens. Recent context preserved.]",
                 dropped_count,
@@ -307,7 +307,7 @@ mod tests {
     use chrono::Utc;
 
     use super::*;
-    use crate::provider::message::*;
+    use clankers_provider::message::*;
 
     fn make_msg(text: &str) -> AgentMessage {
         AgentMessage::User(UserMessage {

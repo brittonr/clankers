@@ -2,12 +2,12 @@
 
 use serde_json::Value;
 
-use crate::provider::Usage;
-use crate::provider::message::AgentMessage;
-use crate::provider::message::AssistantMessage;
-use crate::provider::message::Content;
-use crate::provider::message::MessageId;
-use crate::tools::ToolResult;
+use clankers_provider::Usage;
+use clankers_provider::message::AgentMessage;
+use clankers_provider::message::AssistantMessage;
+use clankers_provider::message::Content;
+use clankers_provider::message::MessageId;
+use crate::tool::ToolResult;
 
 /// All lifecycle events emitted by the agent during execution.
 /// Consumed by TUI, JSON mode, print mode, plugins, etc.
@@ -34,7 +34,7 @@ pub enum AgentEvent {
     TurnEnd {
         index: u32,
         message: AssistantMessage,
-        tool_results: Vec<crate::provider::message::ToolResultMessage>,
+        tool_results: Vec<clankers_provider::message::ToolResultMessage>,
     },
 
     // Message streaming
@@ -49,7 +49,7 @@ pub enum AgentEvent {
     /// Incremental delta for a content block
     MessageUpdate {
         index: usize,
-        delta: crate::provider::streaming::StreamDelta,
+        delta: clankers_provider::streaming::StreamDelta,
     },
     /// A content block has finished streaming
     ContentBlockStop {
@@ -89,12 +89,12 @@ pub enum AgentEvent {
     /// Structured progress update from a tool
     ToolProgressUpdate {
         call_id: String,
-        progress: crate::tools::progress::ToolProgress,
+        progress: crate::tool::progress::ToolProgress,
     },
     /// Result chunk streamed from a tool
     ToolResultChunk {
         call_id: String,
-        chunk: crate::tools::progress::ResultChunk,
+        chunk: crate::tool::progress::ResultChunk,
     },
 
     // Context
@@ -140,7 +140,7 @@ pub enum AgentEvent {
     // Process monitoring events
     ProcessSpawn {
         pid: u32,
-        meta: crate::procmon::ProcessMeta,
+        meta: clankers_procmon::ProcessMeta,
     },
     ProcessSample {
         pid: u32,
@@ -177,10 +177,10 @@ impl AgentEvent {
 }
 
 /// Convert a `ProcessEvent` from the procmon crate into an `AgentEvent`.
-pub fn process_event_to_agent(pe: crate::procmon::ProcessEvent) -> AgentEvent {
+pub fn process_event_to_agent(pe: clankers_procmon::ProcessEvent) -> AgentEvent {
     match pe {
-        crate::procmon::ProcessEvent::Spawn { pid, meta } => AgentEvent::ProcessSpawn { pid, meta },
-        crate::procmon::ProcessEvent::Sample {
+        clankers_procmon::ProcessEvent::Spawn { pid, meta } => AgentEvent::ProcessSpawn { pid, meta },
+        clankers_procmon::ProcessEvent::Sample {
             pid,
             cpu_percent,
             rss_bytes,
@@ -191,7 +191,7 @@ pub fn process_event_to_agent(pe: crate::procmon::ProcessEvent) -> AgentEvent {
             rss_bytes,
             children,
         },
-        crate::procmon::ProcessEvent::Exit {
+        clankers_procmon::ProcessEvent::Exit {
             pid,
             exit_code,
             wall_time,

@@ -92,6 +92,16 @@ impl From<clankers_provider::error::ProviderError> for Error {
     }
 }
 
+impl From<clankers_agent::AgentError> for Error {
+    fn from(e: clankers_agent::AgentError) -> Self {
+        match e {
+            clankers_agent::AgentError::Cancelled => Error::Cancelled,
+            clankers_agent::AgentError::ProviderStreaming { message } => Error::ProviderStreaming { message },
+            clankers_agent::AgentError::Agent { message } => Error::Agent { message },
+        }
+    }
+}
+
 impl From<clankers_db::DbError> for Error {
     fn from(e: clankers_db::DbError) -> Self {
         Error::Database { message: e.message }

@@ -1,0 +1,42 @@
+[package]
+name = "clankers-agent"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Agent core — turn loop, event bus, tool interface, context management"
+
+[dependencies]
+clankers-config = { version = "0.1.0", path = "../clankers-config" }
+clankers-db = { version = "0.1.0", path = "../clankers-db" }
+clankers-message = { version = "0.1.0", path = "../clankers-message" }
+clankers-model-selection = { version = "0.1.0", path = "../clankers-model-selection" }
+clankers-procmon = { version = "0.1.0", path = "../clankers-procmon" }
+clankers-prompts = { version = "0.1.0", path = "../clankers-prompts" }
+clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
+clankers-router = { version = "0.1.0", path = "../clankers-router" }
+clankers-skills = { version = "0.1.0", path = "../clankers-skills" }
+clankers-specs = { version = "0.1.0", path = "../clankers-specs", optional = true }
+clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
+clankers-util = { version = "0.1.0", path = "../clankers-util" }
+
+async-trait = "0.1"
+chrono = { workspace = true }
+dirs = "6"
+futures = "0.3"
+parking_lot = "0.12"
+regex = "1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { version = "0.7", features = ["codec"] }
+tracing = { workspace = true }
+
+[features]
+default = ["openspec"]
+openspec = ["dep:clankers-specs"]
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile = "3"

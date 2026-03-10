@@ -1,7 +1,7 @@
 //! Context building, token estimation, window management
 
-use crate::config::settings::Settings;
-use crate::provider::message::AgentMessage;
+use clankers_config::settings::Settings;
+use clankers_provider::message::AgentMessage;
 
 /// Built context ready for an LLM request
 #[derive(Debug, Clone)]
@@ -108,12 +108,12 @@ pub fn truncate_messages(
 /// Estimate tokens for a single message
 fn estimate_message_tokens(message: &AgentMessage) -> usize {
     let json = serde_json::to_string(message).unwrap_or_default();
-    crate::util::token::estimate_tokens(&json)
+    clankers_util::token::estimate_tokens(&json)
 }
 
 /// Build full context for an LLM request
 pub fn build_context(messages: &[AgentMessage], system_prompt: &str, max_input_tokens: usize) -> AgentContext {
-    let system_tokens = crate::util::token::estimate_tokens(system_prompt);
+    let system_tokens = clankers_util::token::estimate_tokens(system_prompt);
     let truncated = truncate_messages(messages, max_input_tokens, system_tokens);
     let msg_tokens: usize = truncated.iter().map(estimate_message_tokens).sum();
 
@@ -129,7 +129,7 @@ mod tests {
     use chrono::Utc;
 
     use super::*;
-    use crate::provider::message::*;
+    use clankers_provider::message::*;
 
     fn make_user_msg(text: &str) -> AgentMessage {
         AgentMessage::User(UserMessage {

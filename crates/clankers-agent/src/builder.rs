@@ -2,15 +2,15 @@
 
 use std::sync::Arc;
 
-use crate::agent::Agent;
-use crate::config::paths::ClankersPaths;
-use crate::config::settings::Settings;
-use crate::db::Db;
-use crate::model_selection::cost_tracker::CostTracker;
-use crate::model_selection::cost_tracker::pricing_from_models;
-use crate::model_selection::policy::RoutingPolicy;
-use crate::provider::Provider;
-use crate::tools::Tool;
+use crate::Agent;
+use clankers_config::paths::ClankersPaths;
+use clankers_config::settings::Settings;
+use clankers_db::Db;
+use clankers_model_selection::cost_tracker::CostTracker;
+use clankers_model_selection::cost_tracker::pricing_from_models;
+use clankers_model_selection::policy::RoutingPolicy;
+use clankers_provider::Provider;
+use crate::tool::Tool;
 
 /// Builder for constructing an Agent with automatic routing and cost tracking setup.
 ///
@@ -25,7 +25,7 @@ pub struct AgentBuilder {
     tools: Vec<Arc<dyn Tool>>,
     db: Option<Db>,
     paths: Option<ClankersPaths>,
-    thinking: Option<crate::provider::ThinkingConfig>,
+    thinking: Option<clankers_provider::ThinkingConfig>,
 }
 
 impl AgentBuilder {
@@ -56,7 +56,7 @@ impl AgentBuilder {
     }
 
     /// Enable extended thinking with the given config.
-    pub fn with_thinking(mut self, config: crate::provider::ThinkingConfig) -> Self {
+    pub fn with_thinking(mut self, config: clankers_provider::ThinkingConfig) -> Self {
         self.thinking = Some(config);
         self
     }

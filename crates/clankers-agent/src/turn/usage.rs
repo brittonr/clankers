@@ -2,9 +2,9 @@
 
 use tokio::sync::broadcast;
 
-use crate::agent::events::AgentEvent;
-use crate::model_selection::cost_tracker::CostTracker;
-use crate::provider::Usage;
+use crate::events::AgentEvent;
+use clankers_model_selection::cost_tracker::CostTracker;
+use clankers_provider::Usage;
 
 /// Update usage tracking and emit events
 pub(super) fn update_usage_tracking(
@@ -36,13 +36,13 @@ fn record_cost(tracker: &CostTracker, model: &str, usage: &Usage) {
 
     for event in budget_events {
         match event {
-            crate::model_selection::cost_tracker::BudgetEvent::Warning { threshold, current } => {
+            clankers_model_selection::cost_tracker::BudgetEvent::Warning { threshold, current } => {
                 tracing::warn!("Budget warning: ${:.2} spent (soft limit: ${:.2})", current, threshold,);
             }
-            crate::model_selection::cost_tracker::BudgetEvent::Exceeded { limit, current } => {
+            clankers_model_selection::cost_tracker::BudgetEvent::Exceeded { limit, current } => {
                 tracing::warn!("Budget exceeded: ${:.2} spent (hard limit: ${:.2})", current, limit,);
             }
-            crate::model_selection::cost_tracker::BudgetEvent::Milestone { milestone, total: _ } => {
+            clankers_model_selection::cost_tracker::BudgetEvent::Milestone { milestone, total: _ } => {
                 tracing::info!("Cost milestone: ${:.2}", milestone);
             }
         }

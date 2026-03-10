@@ -2,9 +2,9 @@
 
 use tokio::sync::broadcast;
 
-use crate::agent::events::AgentEvent;
+use crate::events::AgentEvent;
 use crate::error::Result;
-use crate::tools::switch_model::ModelSwitchSlot;
+use crate::tool::ModelSwitchSlot;
 
 /// Check for pending model switch from tools
 pub(super) fn check_model_switch(

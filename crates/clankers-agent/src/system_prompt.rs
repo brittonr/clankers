@@ -11,12 +11,12 @@ use std::fmt::Write as _;
 use std::path::Path;
 use std::path::PathBuf;
 
-use crate::config::paths::ClankersPaths;
-use crate::config::paths::ProjectPaths;
+use clankers_config::paths::ClankersPaths;
+use clankers_config::paths::ProjectPaths;
 use clankers_prompts as prompts;
 use clankers_skills as skills;
 #[cfg(feature = "openspec")]
-use crate::specs::SpecEngine;
+use clankers_specs::SpecEngine;
 
 /// A context file with its source path and content
 #[derive(Debug, Clone)]

@@ -1037,6 +1037,7 @@ dependencies = [
  "bolero-generator",
  "bytes",
  "chrono",
+ "clankers-agent",
  "clankers-agent-defs",
  "clankers-auth",
  "clankers-config",
@@ -1116,6 +1117,36 @@ dependencies = [
  "url",
  "uuid",
  "vt100",
+]
+
+[[package]]
+name = "clankers-agent"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "clankers-config",
+ "clankers-db",
+ "clankers-message",
+ "clankers-model-selection",
+ "clankers-procmon",
+ "clankers-prompts",
+ "clankers-provider",
+ "clankers-router",
+ "clankers-skills",
+ "clankers-specs",
+ "clankers-tui-types",
+ "clankers-util",
+ "dirs",
+ "futures",
+ "parking_lot",
+ "regex",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
 ]
 
 [[package]]
@@ -1423,6 +1454,7 @@ dependencies = [
  "base64",
  "clankers-message",
  "clankers-tui-types",
+ "dirs",
  "hex",
  "ignore",
  "rand 0.9.2",
