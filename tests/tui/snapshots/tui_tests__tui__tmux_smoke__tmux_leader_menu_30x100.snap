@@ -1,5 +1,6 @@
 ---
 source: tests/tui/tmux_smoke.rs
+assertion_line: 122
 expression: normalized
 ---
 ┌ Todo (0/0)───────┐┌────────────────────────── h/l:panels j/k:panes ┐┌ Subagents (0/0)────────────┐
