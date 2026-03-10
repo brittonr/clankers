@@ -193,3 +193,224 @@ pub fn help_text() -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_completions_prefix_match() {
+        // Test that "/m" returns commands starting with 'm'
+        let results = completions("/m");
+        
+        assert!(!results.is_empty(), "Should find commands starting with 'm'");
+        
+        // All results should start with 'm'
+        for item in &results {
+            assert!(
+                item.display.starts_with('m'),
+                "Command '{}' doesn't start with 'm'",
+                item.display
+            );
+        }
+        
+        // Should find common 'm' commands (model, memory, merge, etc.)
+        let names: Vec<&str> = results.iter().map(|i| i.display.as_str()).collect();
+        assert!(names.contains(&"model"), "Should include 'model' command");
+        assert!(names.contains(&"memory"), "Should include 'memory' command");
+        assert!(names.contains(&"merge"), "Should include 'merge' command");
+    }
+
+    #[test]
+    fn test_completions_all_commands() {
+        // Test that "/" returns all commands
+        let results = completions("/");
+        
+        assert!(!results.is_empty(), "Should return all commands");
+        
+        // Should include some well-known commands
+        let names: Vec<&str> = results.iter().map(|i| i.display.as_str()).collect();
+        assert!(names.contains(&"help"), "Should include 'help'");
+        assert!(names.contains(&"clear"), "Should include 'clear'");
+        assert!(names.contains(&"model"), "Should include 'model'");
+        assert!(names.contains(&"quit"), "Should include 'quit'");
+        
+        // Should have a reasonable number of commands (at least 20 builtins)
+        assert!(results.len() >= 20, "Should have at least 20 builtin commands");
+    }
+
+    #[test]
+    fn test_completions_no_slash() {
+        // Test that input without slash returns empty
+        let results = completions("no-slash");
+        
+        assert!(results.is_empty(), "Should return empty for non-slash input");
+    }
+
+    #[test]
+    fn test_completions_nonexistent() {
+        // Test that "/nonexistent" returns empty
+        let results = completions("/nonexistent");
+        
+        assert!(results.is_empty(), "Should return empty for nonexistent command");
+    }
+
+    #[test]
+    fn test_completions_subcommands() {
+        // Test that "/account " returns subcommands
+        let results = completions("/account ");
+        
+        assert!(!results.is_empty(), "Should return subcommands for 'account'");
+        
+        // Should include known account subcommands
+        let displays: Vec<&str> = results.iter().map(|i| i.display.as_str()).collect();
+        assert!(
+            displays.iter().any(|d| d.contains("switch")),
+            "Should include 'switch' subcommand"
+        );
+        assert!(
+            displays.iter().any(|d| d.contains("login")),
+            "Should include 'login' subcommand"
+        );
+        assert!(
+            displays.iter().any(|d| d.contains("logout")),
+            "Should include 'logout' subcommand"
+        );
+        
+        // Verify insert_text format includes command name
+        for item in &results {
+            assert!(
+                item.insert_text.starts_with("account "),
+                "Insert text should start with 'account ', got: '{}'",
+                item.insert_text
+            );
+        }
+    }
+
+    #[test]
+    fn test_completions_subcommands_filtered() {
+        // Test that "/account sw" filters to subcommands starting with 'sw'
+        let results = completions("/account sw");
+        
+        assert!(!results.is_empty(), "Should find subcommands starting with 'sw'");
+        
+        // Should only include 'switch' subcommand
+        let displays: Vec<&str> = results.iter().map(|i| i.display.as_str()).collect();
+        assert!(
+            displays.iter().any(|d| d.contains("switch")),
+            "Should include 'switch' subcommand"
+        );
+        
+        // Should NOT include other subcommands like login, logout, etc.
+        assert!(
+            !displays.iter().any(|d| d.contains("login")),
+            "Should NOT include 'login' when filtering by 'sw'"
+        );
+    }
+
+    #[test]
+    fn test_completions_past_subcommand() {
+        // Test that "/account switch foo" returns empty (past subcommand)
+        let results = completions("/account switch foo");
+        
+        assert!(
+            results.is_empty(),
+            "Should return empty when typing past subcommand arguments"
+        );
+    }
+
+    #[test]
+    fn test_help_text_format() {
+        // Test that help_text() contains all builtin commands and proper format
+        let help = help_text();
+        
+        // Should start with "Available"
+        assert!(
+            help.starts_with("Available"),
+            "Help text should start with 'Available'"
+        );
+        
+        // Should contain well-known commands
+        assert!(help.contains("/help"), "Should list 'help' command");
+        assert!(help.contains("/clear"), "Should list 'clear' command");
+        assert!(help.contains("/model"), "Should list 'model' command");
+        assert!(help.contains("/quit"), "Should list 'quit' command");
+        assert!(help.contains("/account"), "Should list 'account' command");
+        
+        // Should have descriptions
+        assert!(
+            help.contains("Show available commands") || help.contains("Clear"),
+            "Should include command descriptions"
+        );
+    }
+
+    #[test]
+    fn test_trailing_space_flag() {
+        // Test that completion items have correct trailing_space
+        let results = completions("/");
+        
+        // Commands that accept arguments should have trailing_space = true
+        let model_cmd = results.iter().find(|i| i.display == "model");
+        assert!(model_cmd.is_some(), "Should find 'model' command");
+        assert!(
+            model_cmd.unwrap().trailing_space,
+            "'model' should have trailing_space=true (accepts args)"
+        );
+        
+        // Commands that don't accept arguments should have trailing_space = false
+        let help_cmd = results.iter().find(|i| i.display == "help");
+        assert!(help_cmd.is_some(), "Should find 'help' command");
+        assert!(
+            !help_cmd.unwrap().trailing_space,
+            "'help' should have trailing_space=false (no args)"
+        );
+        
+        let quit_cmd = results.iter().find(|i| i.display == "quit");
+        assert!(quit_cmd.is_some(), "Should find 'quit' command");
+        assert!(
+            !quit_cmd.unwrap().trailing_space,
+            "'quit' should have trailing_space=false (no args)"
+        );
+    }
+
+    #[test]
+    fn test_completions_from_registry() {
+        // Test that completions_from_registry() with a fresh SlashRegistry works
+        use crate::slash_commands::{BuiltinSlashContributor, SlashContributor, SlashRegistry};
+        
+        let contributor = BuiltinSlashContributor;
+        let (registry, _conflicts) = SlashRegistry::build(&[&contributor as &dyn SlashContributor]);
+        
+        // Test prefix matching
+        let results = completions_from_registry(&registry, "/m");
+        assert!(!results.is_empty(), "Registry should find commands starting with 'm'");
+        for item in &results {
+            assert!(
+                item.display.starts_with('m'),
+                "Command '{}' doesn't start with 'm'",
+                item.display
+            );
+        }
+        
+        // Test all commands
+        let all_results = completions_from_registry(&registry, "/");
+        assert!(!all_results.is_empty(), "Registry should return all commands");
+        assert!(all_results.len() >= 20, "Should have at least 20 commands");
+        
+        // Test no slash
+        let no_slash = completions_from_registry(&registry, "no-slash");
+        assert!(no_slash.is_empty(), "Should return empty for non-slash input");
+        
+        // Test subcommands
+        let subcommands = completions_from_registry(&registry, "/account ");
+        assert!(!subcommands.is_empty(), "Should return account subcommands");
+        
+        // Test subcommand filtering
+        let filtered = completions_from_registry(&registry, "/account sw");
+        assert!(!filtered.is_empty(), "Should find 'sw' subcommands");
+        
+        // Test past subcommand
+        let past_sub = completions_from_registry(&registry, "/account switch foo");
+        assert!(past_sub.is_empty(), "Should return empty past subcommand");
+    }
+}
