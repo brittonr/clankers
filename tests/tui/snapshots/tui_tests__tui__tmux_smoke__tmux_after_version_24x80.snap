@@ -1,0 +1,28 @@
+---
+source: tests/tui/tmux_smoke.rs
+expression: normalized
+---
+┌ Todo (0/0)───┐┌──────────────── h/l:panels j/k:panes ┐┌ Subagents (0/0)──────┐
+│No items. Use ││┌Messages────────────────────────────┐││No subagents running  │
+│/todo add     │││  clankers — MODEL —      │││                      │
+│<text> or the │││keymap: helix — press i to start    │││                      │
+│todo tool.    │││typing                              │││                      │
+│              │││                                    │││                      │
+│              │││  clankers 0.1.0                    │││                      │
+│              │││                                    │││                      │
+│              │││                                    │││                      │
+│              │││                                    │││                      │
+│              │││                                    │││                      │
+└──────────────┘││                                    ││└──────────────────────┘
+┌ Files (0, 0 o┐││                                    ││┌ Peers (0/0)──────────┐
+│No files      │││                                    │││No peers known. /peers│
+│touched yet.  │││                                    │││add <id> <name>       │
+│              │││                                    │││                      │
+│              │││                                    │││                      │
+│              │││                                    │││                      │
+│              ││└────────────────────────────────────┘││                      │
+│              ││┌Input───────────────────────────────┐││                      │
+│              │││>                                   │││                      │
+│              ││└────────────────────────────────────┘││                      │
+│              ││ INSERT  👤 default  ░░░░░░░░N/N.Nk ││                      │
+└──────────────┘└──────────────────────────────────────┘└──────────────────────┘

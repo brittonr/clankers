@@ -186,6 +186,27 @@ impl TuiTestHarness {
         self.type_str("q");
         self.settle(Duration::from_millis(300));
     }
+
+    /// Access the vt100 parser (for snapshot/screenshot capture).
+    pub fn parser(&self) -> std::sync::MutexGuard<'_, Parser> {
+        self.parser.lock().unwrap()
+    }
+
+    /// Terminal dimensions.
+    pub fn size(&self) -> (u16, u16) {
+        (self.rows, self.cols)
+    }
+
+    /// Capture a structured screen snapshot with color/style metadata.
+    pub fn capture(&self) -> super::snapshot::ScreenCapture {
+        super::snapshot::ScreenCapture::from_pty(self)
+    }
+
+    /// Render the current screen to a PNG screenshot and save it.
+    pub fn save_screenshot(&self, name: &str) {
+        let capture = self.capture();
+        super::screenshot::capture_and_save_screenshot(name, &capture);
+    }
 }
 
 use std::io::Read;

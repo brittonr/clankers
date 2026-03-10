@@ -18,3 +18,12 @@ mod slash_menu;
 mod smoke;
 mod status_bar;
 mod thinking;
+
+// Snapshot and screenshot testing infrastructure
+pub mod screenshot;
+pub mod snapshot;
+pub mod tmux_harness;
+
+// Snapshot / visual regression tests
+mod visual;
+mod tmux_smoke;

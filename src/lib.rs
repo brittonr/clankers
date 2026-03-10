@@ -6,6 +6,7 @@ pub mod config;
 pub use clankers_db as db;
 pub mod error;
 pub mod event_translator;
+pub use clankers_message as message;
 pub use clankers_model_selection as model_selection;
 pub mod modes;
 pub mod plugin;

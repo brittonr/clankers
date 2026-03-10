@@ -14,3 +14,9 @@ test-threads = 1
 fail-fast = false
 retries = 1
 slow-timeout = { period = "120s" }
+
+# Snapshot tests only (for `cargo insta test` workflows)
+[profile.snapshot]
+test-threads = 1
+fail-fast = false
+default-filter = "test(visual) | test(tmux_smoke)"

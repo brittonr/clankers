@@ -1042,6 +1042,7 @@ dependencies = [
  "clankers-db",
  "clankers-matrix",
  "clankers-merge",
+ "clankers-message",
  "clankers-model-selection",
  "clankers-procmon",
  "clankers-router",
@@ -1065,6 +1066,7 @@ dependencies = [
  "ignore",
  "image",
  "indexmap",
+ "insta",
  "iroh",
  "iroh-blobs",
  "libc",
@@ -1175,6 +1177,19 @@ version = "0.1.0"
 dependencies = [
  "pretty_assertions",
  "serde",
+]
+
+[[package]]
+name = "clankers-message"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clankers-router",
+ "hex",
+ "pretty_assertions",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1410,6 +1425,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ca0197aee26d1ae37445ee532fefce43251d24cc7c166799f4d46817f1d3973"
 dependencies = [
  "crossbeam-utils",
+]
+
+[[package]]
+name = "console"
+version = "0.15.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "054ccb5b10f9f2cbf51eb355ca1d05c2d279ce1804688d0db74b4733a5aeafd8"
+dependencies = [
+ "encode_unicode",
+ "libc",
+ "once_cell",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2344,6 +2371,12 @@ name = "embedded-io"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "edd0f118536f44f5ccd48bcb8b111bdc3de888b58c74639dfb034a357d0f206d"
+
+[[package]]
+name = "encode_unicode"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "34aa73646ffb006b8f5147f3dc182bd4bcb190227ce861fc4a4844bf8e3cb2c0"
 
 [[package]]
 name = "encoding_rs"
@@ -3782,6 +3815,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf64c2edc8226891a71f127587a2861b132d2b942310843814d5001d99a1d307"
 dependencies = [
  "smallvec",
+]
+
+[[package]]
+name = "insta"
+version = "1.46.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e82db8c87c7f1ccecb34ce0c24399b8a73081427f3c7c50a5d597925356115e4"
+dependencies = [
+ "console",
+ "globset",
+ "once_cell",
+ "similar",
+ "tempfile",
+ "walkdir",
 ]
 
 [[package]]

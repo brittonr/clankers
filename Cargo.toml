@@ -5,6 +5,7 @@ members = [
     "crates/clankers-auth",
     "crates/clankers-db",
     "crates/clankers-merge",
+    "crates/clankers-message",
     "crates/clankers-procmon",
     "crates/clankers-model-selection",
     "crates/clankers-matrix",
@@ -52,6 +53,7 @@ clankers-agent-defs = { version = "0.1.0", path = "crates/clankers-agent-defs" }
 clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
 clankers-db = { version = "0.1.0", path = "crates/clankers-db" }
 clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
+clankers-message = { version = "0.1.0", path = "crates/clankers-message" }
 clankers-model-selection = { version = "0.1.0", path = "crates/clankers-model-selection" }
 clankers-procmon = { version = "0.1.0", path = "crates/clankers-procmon" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
@@ -133,6 +135,7 @@ criterion = { version = "0.5", features = ["html_reports", "async_tokio"] }
 tokio-test = "0.4"
 portable-pty = "0.9"
 vt100 = "0.16"
+insta = { version = "1.46", features = ["glob"] }
 
 [lints]
 workspace = true

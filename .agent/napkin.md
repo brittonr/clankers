@@ -326,6 +326,19 @@
 - `ansi.rs` was NOT a good extraction candidate: `ansi_to_spans`/`ansi_to_lines` are dead outside their own tests, and `strip_ansi` callers are tools (not TUI code)
 - Always check who actually calls a function before deciding to move it — grep for callers, not just the function definition
 
+## Patterns That Work (TUI snapshot/screenshot testing)
+- `insta` for text snapshots: structure-based extraction (`extract_structure()`) isolates panel borders, titles, status bar, input area — ignores volatile message content
+- PTY harness screenshots: `vt100::Parser` → `ScreenCapture::from_pty()` → `render_screenshot()` → PNG with embedded 8×16 VGA font
+- tmux harness: `tmux new-session -d -s NAME -x COLS -y ROWS` → `send-keys -l` for literals → `capture-pane -p` (text) / `capture-pane -e -p` (ANSI)
+- Worktree line ("Worktree: clankers/main-HASH") appears/disappears depending on git session state — must normalize or use structure snapshots
+- Status bar contains timing-dependent artifacts (cursor chars from previous commands) — strip single chars between `|` and border `│`
+- `\s*([│┘┐┤└])` normalizes whitespace before border chars to single space — catches 0-space vs 1-space differences
+- PTY-based screenshots are cleaner than tmux screenshots because vt100 parser has full state; tmux captures only emit ANSI escape sequences
+- Visual tests save PNG screenshots to `tests/tui/captures/` (gitignored) and ANSI captures to same dir
+- Snapshot files in `tests/tui/snapshots/` (tracked) — review with `cargo insta review`
+- Model name normalized to `MODEL` in structure snapshots to avoid breaks when switching default model
+- `normalize_screen_text()` replaces git counters, token counts, worktree IDs, commit hashes, model names
+
 ## Patterns That Work (plugin system maturity)
 - `filter_ui_actions()` gates on `ui` permission — strips UI actions from plugins without it, logs a warning
 - `catch_unwind(AssertUnwindSafe(...))` in `call_plugin` isolates WASM panics per-plugin

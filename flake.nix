@@ -206,6 +206,10 @@
             pkgs.rust-analyzer
             unit2nix.packages.${system}.unit2nix
 
+            # TUI integration testing
+            pkgs.tmux
+            pkgs.cargo-insta
+
             # Allwinner / SDWire tooling
             pkgs.sunxi-tools
             pkgs.sd-mux-ctrl
