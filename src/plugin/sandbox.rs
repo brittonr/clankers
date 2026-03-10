@@ -1,4 +1,14 @@
 //! Plugin sandbox (permission model)
+//!
+//! Permissions declared in `plugin.json` control what a plugin can do:
+//!
+//! - `fs:read` — read files from the host filesystem (via host functions)
+//! - `fs:write` — write files on the host filesystem (via host functions)
+//! - `net` — make HTTP requests (enforced via Extism `allowed_hosts`)
+//! - `exec` — execute shell commands (via host functions)
+//! - `ui` — send UI actions (set_widget, set_status, notify)
+//!
+//! The `"all"` wildcard grants every permission.
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -17,14 +27,43 @@ pub enum Permission {
     Ui,
 }
 
-/// Check if a set of permissions includes a specific permission
+impl Permission {
+    /// String representation matching `plugin.json` format.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Permission::FsRead => "fs:read",
+            Permission::FsWrite => "fs:write",
+            Permission::Net => "net",
+            Permission::Exec => "exec",
+            Permission::Ui => "ui",
+        }
+    }
+}
+
+/// Check if a set of permissions includes a specific permission.
 pub fn has_permission(granted: &[String], required: Permission) -> bool {
-    let required_str = match required {
-        Permission::FsRead => "fs:read",
-        Permission::FsWrite => "fs:write",
-        Permission::Net => "net",
-        Permission::Exec => "exec",
-        Permission::Ui => "ui",
-    };
+    let required_str = required.as_str();
     granted.iter().any(|p| p == required_str || p == "all")
+}
+
+/// Validate that a plugin's tool call is allowed given its permissions.
+/// Returns `Ok(())` if allowed, `Err(reason)` if denied.
+pub fn check_tool_permission(granted: &[String], tool_name: &str) -> Result<(), String> {
+    // All plugins can have their tool functions called — the permission
+    // model gates what the tool *does* (fs, net, exec), not whether
+    // the tool can be invoked at all. Tool invocation is always allowed
+    // if the plugin is Active.
+    let _ = (granted, tool_name);
+    Ok(())
+}
+
+/// Validate that a plugin's event handler response is allowed.
+/// Strips UI actions from plugins without the `ui` permission.
+pub fn filter_ui_actions<T>(granted: &[String], actions: Vec<T>) -> Vec<T> {
+    if has_permission(granted, Permission::Ui) || actions.is_empty() {
+        actions
+    } else {
+        tracing::warn!("Plugin tried to send UI actions without 'ui' permission — stripped");
+        Vec::new()
+    }
 }

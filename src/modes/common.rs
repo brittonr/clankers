@@ -136,9 +136,19 @@ pub fn init_plugin_manager(
     }
     manager.discover();
 
-    // Load all discovered plugins' WASM modules
+    // Restore disabled plugins from persisted state
+    let disabled = crate::slash_commands::handlers::tools::load_disabled_plugins();
+    if !disabled.is_empty() {
+        info!("Restoring {} disabled plugin(s): {}", disabled.len(), disabled.join(", "));
+    }
+
+    // Load all discovered plugins' WASM modules (skip disabled ones)
     let names: Vec<String> = manager.list().iter().map(|p| p.name.clone()).collect();
     for name in &names {
+        if disabled.contains(name) {
+            manager.disable(name).ok();
+            continue;
+        }
         match manager.load_wasm(name) {
             Ok(()) => info!("Loaded plugin: {}", name),
             Err(e) => warn!("Failed to load plugin '{}': {}", name, e),
@@ -269,7 +279,10 @@ pub fn fire_plugin_init(plugin_manager: &Arc<Mutex<PluginManager>>) -> Vec<crate
 
     let mgr = match plugin_manager.lock() {
         Ok(m) => m,
-        Err(_) => return Vec::new(),
+        Err(poisoned) => {
+            tracing::warn!("Plugin manager mutex was poisoned during init, recovering");
+            poisoned.into_inner()
+        }
     };
 
     let mut actions = Vec::new();
@@ -294,7 +307,10 @@ pub fn fire_plugin_init(plugin_manager: &Arc<Mutex<PluginManager>>) -> Vec<crate
         match mgr.call_plugin(&plugin_info.name, "on_event", &input) {
             Ok(output) => {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&output) {
-                    actions.extend(parse_ui_actions(&plugin_info.name, &parsed));
+                    let plugin_actions = parse_ui_actions(&plugin_info.name, &parsed);
+                    let plugin_actions =
+                        crate::plugin::sandbox::filter_ui_actions(&plugin_info.manifest.permissions, plugin_actions);
+                    actions.extend(plugin_actions);
                 }
             }
             Err(e) => {

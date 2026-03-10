@@ -127,15 +127,26 @@ impl PluginManager {
         }
     }
 
-    /// Call a function on a loaded plugin
+    /// Call a function on a loaded plugin.
+    ///
+    /// Recovers from poisoned mutexes (e.g. if a previous call panicked)
+    /// and isolates plugin errors so one bad plugin can't take down others.
     pub fn call_plugin(&self, name: &str, function: &str, input: &str) -> Result<String, String> {
         let instance = self.instances.get(name).ok_or_else(|| format!("Plugin '{}' not loaded", name))?;
 
-        let mut plugin = instance.lock().map_err(|e| format!("Plugin lock error: {}", e))?;
+        let mut plugin = instance.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("Plugin '{}' mutex was poisoned, recovering", name);
+            poisoned.into_inner()
+        });
 
-        let result = plugin.call::<&str, String>(function, input).map_err(|e| format!("Plugin call error: {}", e))?;
-
-        Ok(result)
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| plugin.call::<&str, String>(function, input))) {
+            Ok(Ok(result)) => Ok(result),
+            Ok(Err(e)) => Err(format!("Plugin call error: {}", e)),
+            Err(_) => {
+                tracing::error!("Plugin '{}' panicked during {}()", name, function);
+                Err(format!("Plugin '{}' panicked during {}()", name, function))
+            }
+        }
     }
 
     /// Check if a plugin has a specific function
@@ -162,17 +173,57 @@ impl PluginManager {
         self.plugins.is_empty()
     }
 
-    /// Reload a plugin
+    /// Disable a plugin (unload WASM, set state to Disabled).
+    pub fn disable(&mut self, name: &str) -> Result<(), String> {
+        let info = self.plugins.get_mut(name).ok_or_else(|| format!("Plugin '{}' not found", name))?;
+        self.instances.remove(name);
+        info.state = PluginState::Disabled;
+        Ok(())
+    }
+
+    /// Enable a previously disabled plugin (reload its WASM).
+    pub fn enable(&mut self, name: &str) -> Result<(), String> {
+        let info = self.plugins.get(name).ok_or_else(|| format!("Plugin '{}' not found", name))?;
+        if info.state != PluginState::Disabled {
+            return Err(format!("Plugin '{}' is not disabled (state: {:?})", name, info.state));
+        }
+        self.load_wasm(name)
+    }
+
+    /// Reload a plugin (unload + re-load WASM).
     pub fn reload(&mut self, name: &str) -> Result<(), String> {
         self.instances.remove(name);
         self.load_wasm(name)
     }
 
-    /// Reload all plugins
+    /// Reload all non-disabled plugins.
     pub fn reload_all(&mut self) {
-        let names: Vec<String> = self.plugins.keys().cloned().collect();
+        let names: Vec<String> = self
+            .plugins
+            .iter()
+            .filter(|(_, info)| info.state != PluginState::Disabled)
+            .map(|(name, _)| name.clone())
+            .collect();
         for name in names {
             let _ = self.reload(&name);
+        }
+    }
+
+    /// Get the names of all disabled plugins.
+    pub fn disabled_plugins(&self) -> Vec<String> {
+        self.plugins
+            .iter()
+            .filter(|(_, info)| info.state == PluginState::Disabled)
+            .map(|(name, _)| name.clone())
+            .collect()
+    }
+
+    /// Disable plugins by name (used to restore persisted disabled state).
+    pub fn apply_disabled_set(&mut self, disabled: &[String]) {
+        for name in disabled {
+            if self.plugins.contains_key(name) {
+                let _ = self.disable(name);
+            }
         }
     }
 }

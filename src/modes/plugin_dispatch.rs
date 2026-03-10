@@ -20,14 +20,13 @@ pub(crate) fn dispatch_event_to_plugins(
 ) -> PluginDispatchResult {
     use crate::plugin::PluginState;
     use crate::plugin::bridge::PluginEvent;
+    use crate::plugin::sandbox;
 
     let mgr = match plugin_manager.lock() {
         Ok(m) => m,
-        Err(_) => {
-            return PluginDispatchResult {
-                messages: Vec::new(),
-                ui_actions: Vec::new(),
-            };
+        Err(poisoned) => {
+            tracing::warn!("Plugin manager mutex was poisoned, recovering");
+            poisoned.into_inner()
         }
     };
 
@@ -63,6 +62,9 @@ pub(crate) fn dispatch_event_to_plugins(
             AgentEvent::UserInput { text, .. } => {
                 serde_json::json!({"event": "user_input", "data": {"text": text}})
             }
+            AgentEvent::MessageUpdate { index, .. } => {
+                serde_json::json!({"event": "message_update", "data": {"index": index}})
+            }
             _ => continue,
         };
 
@@ -79,8 +81,9 @@ pub(crate) fn dispatch_event_to_plugins(
                         messages.push((info.name.clone(), msg.to_string()));
                     }
 
-                    // Parse any UI actions from the response
+                    // Parse UI actions, then enforce permission
                     let actions = crate::plugin::bridge::parse_ui_actions(&info.name, &parsed);
+                    let actions = sandbox::filter_ui_actions(&info.manifest.permissions, actions);
                     ui_actions.extend(actions);
                 }
             }

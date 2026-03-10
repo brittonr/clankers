@@ -84,6 +84,8 @@ mod events;
 mod function_calls;
 mod github_plugin;
 mod hash_plugin;
+mod host_functions;
+mod lifecycle;
 mod registry;
 mod sandbox;
 mod test_plugin;

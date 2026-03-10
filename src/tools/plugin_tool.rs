@@ -54,7 +54,10 @@ impl Tool for PluginTool {
 
         let manager = match self.manager.lock() {
             Ok(m) => m,
-            Err(e) => return ToolResult::error(format!("Plugin manager lock error: {}", e)),
+            Err(poisoned) => {
+                tracing::warn!("Plugin manager mutex poisoned, recovering");
+                poisoned.into_inner()
+            }
         };
 
         match manager.call_plugin(&self.plugin_name, &self.function_name, &input) {
@@ -67,6 +70,17 @@ impl Tool for PluginTool {
                 // Try to parse the plugin's standard response format:
                 //   { "tool": "...", "result": "...", "status": "ok" | "error" }
                 if let Ok(parsed) = serde_json::from_str::<Value>(&output) {
+                    // Process host_calls if present
+                    let permissions = manager
+                        .get(&self.plugin_name)
+                        .map(|info| info.manifest.permissions.clone())
+                        .unwrap_or_default();
+                    let host_fns = crate::plugin::host::HostFunctions::new();
+                    let host_results = host_fns.process_host_calls(&parsed, &permissions);
+                    if !host_results.is_empty() {
+                        tracing::debug!("Plugin '{}' made {} host call(s)", self.plugin_name, host_results.len());
+                    }
+
                     let status = parsed.get("status").and_then(|s| s.as_str()).unwrap_or("ok");
                     let result = parsed.get("result").and_then(|r| r.as_str()).unwrap_or(&output);
                     if status == "ok" {
