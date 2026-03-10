@@ -1041,6 +1041,7 @@ dependencies = [
  "clankers-auth",
  "clankers-config",
  "clankers-db",
+ "clankers-loop",
  "clankers-matrix",
  "clankers-merge",
  "clankers-message",
@@ -1050,6 +1051,7 @@ dependencies = [
  "clankers-prompts",
  "clankers-provider",
  "clankers-router",
+ "clankers-scheduler",
  "clankers-session",
  "clankers-skills",
  "clankers-specs",
@@ -1170,6 +1172,21 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "clankers-loop"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-test",
+ "tracing",
+ "uuid",
 ]
 
 [[package]]
@@ -1318,6 +1335,22 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "urlencoding",
+ "uuid",
+]
+
+[[package]]
+name = "clankers-scheduler"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-test",
+ "tokio-util",
+ "tracing",
  "uuid",
 ]
 

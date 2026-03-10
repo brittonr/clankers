@@ -1,0 +1,20 @@
+[package]
+name = "clankers-scheduler"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Cron-like scheduling engine — define, persist, and tick scheduled tasks"
+
+[dependencies]
+chrono = { workspace = true }
+parking_lot = "0.12"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
+tokio-test = "0.4"

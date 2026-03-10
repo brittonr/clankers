@@ -5,6 +5,7 @@ members = [
     "crates/clankers-auth",
     "crates/clankers-config",
     "crates/clankers-db",
+    "crates/clankers-loop",
     "crates/clankers-merge",
     "crates/clankers-message",
     "crates/clankers-session",
@@ -15,6 +16,7 @@ members = [
     "crates/clankers-model-selection",
     "crates/clankers-matrix",
     "crates/clankers-router",
+    "crates/clankers-scheduler",
     "crates/clankers-skills",
     "crates/clankers-specs",
     "crates/clankers-tui",
@@ -60,6 +62,7 @@ clankers-agent-defs = { version = "0.1.0", path = "crates/clankers-agent-defs" }
 clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
 clankers-config = { version = "0.1.0", path = "crates/clankers-config" }
 clankers-db = { version = "0.1.0", path = "crates/clankers-db" }
+clankers-loop = { version = "0.1.0", path = "crates/clankers-loop" }
 clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
 clankers-message = { version = "0.1.0", path = "crates/clankers-message" }
 clankers-model-selection = { version = "0.1.0", path = "crates/clankers-model-selection" }
@@ -70,6 +73,7 @@ clankers-prompts = { version = "0.1.0", path = "crates/clankers-prompts" }
 clankers-provider = { version = "0.1.0", path = "crates/clankers-provider" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
 clankers-router = { version = "0.1.0", path = "crates/clankers-router", features = ["rpc"] }
+clankers-scheduler = { version = "0.1.0", path = "crates/clankers-scheduler" }
 clankers-skills = { version = "0.1.0", path = "crates/clankers-skills" }
 clankers-specs = { version = "0.1.0", path = "crates/clankers-specs", optional = true }
 clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }

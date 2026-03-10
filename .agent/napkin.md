@@ -363,6 +363,16 @@
 - Model name normalized to `MODEL` in structure snapshots to avoid breaks when switching default model
 - `normalize_screen_text()` replaces git counters, token counts, worktree IDs, commit hashes, model names
 
+## Patterns That Work (new crate creation)
+- New crates follow workspace convention: `edition.workspace = true`, `license.workspace = true`, workspace deps for serde/chrono/tokio/etc.
+- `parking_lot` for `Mutex` in shared state (not `std::sync::Mutex`) — matches all other crates
+- `broadcast::channel` for event dispatch — same pattern as AgentEvent, SubagentEvent
+- `CancellationToken` from tokio-util for stopping background loops — same as agent turn loop
+- Schedule test timing: pin `created_at` to a fixed past time to avoid sub-millisecond drift between `Utc::now()` and struct construction
+- `chrono::Duration::from_millis` doesn't exist — use `std::time::Duration::from_millis(N)` for tick intervals
+- Clippy catches: `value % n == 0` -> `value.is_multiple_of(n)`, nested `if let` + `if` -> collapsed `if let && ...`, manual `strip_prefix`/`strip_suffix`
+- Fixed loop count check must come BEFORE generic max_iterations check — otherwise fixed loops get `Stopped` instead of `Completed`
+
 ## Patterns That Work (crate extraction batch 3)
 - `clankers-prompts` at `crates/clankers-prompts/` — prompt template discovery (zero crate deps, serde+std only)
 - `clankers-skills` at `crates/clankers-skills/` — skill directory scanning (zero crate deps, serde+std only)
