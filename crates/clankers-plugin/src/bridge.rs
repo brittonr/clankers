@@ -1,7 +1,5 @@
 //! Bridge between plugin system and agent events
 
-use crate::agent::events::AgentEvent;
-
 /// Events that plugins can subscribe to
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PluginEvent {
@@ -34,25 +32,32 @@ impl PluginEvent {
         }
     }
 
-    /// Check if an AgentEvent matches this plugin event type
-    pub fn matches(&self, event: &AgentEvent) -> bool {
-        matches!(
-            (self, event),
-            (PluginEvent::ToolCall, AgentEvent::ToolCall { .. })
-                | (PluginEvent::ToolResult, AgentEvent::ToolExecutionEnd { .. })
-                | (PluginEvent::AgentStart, AgentEvent::AgentStart)
-                | (PluginEvent::AgentEnd, AgentEvent::AgentEnd { .. })
-                | (PluginEvent::TurnStart, AgentEvent::TurnStart { .. })
-                | (PluginEvent::TurnEnd, AgentEvent::TurnEnd { .. })
-                | (PluginEvent::MessageUpdate, AgentEvent::MessageUpdate { .. })
-                | (PluginEvent::UserInput, AgentEvent::UserInput { .. })
-        )
+    /// Check if an event kind string matches this plugin event type.
+    ///
+    /// Event kinds are the snake_case identifiers used in `AgentEvent` variants:
+    /// `"tool_call"`, `"tool_result"`, `"agent_start"`, `"agent_end"`,
+    /// `"turn_start"`, `"turn_end"`, `"message_update"`, `"user_input"`.
+    pub fn matches_event_kind(&self, kind: &str) -> bool {
+        match (self, kind) {
+            (PluginEvent::ToolCall, "tool_call")
+            | (PluginEvent::ToolResult, "tool_result")
+            | (PluginEvent::AgentStart, "agent_start")
+            | (PluginEvent::AgentEnd, "agent_end")
+            | (PluginEvent::TurnStart, "turn_start")
+            | (PluginEvent::TurnEnd, "turn_end")
+            | (PluginEvent::MessageUpdate, "message_update")
+            | (PluginEvent::UserInput, "user_input") => true,
+            _ => false,
+        }
     }
 }
 
 /// Parse UI actions from a plugin's event handler response.
 /// The response JSON may contain a `"ui"` key with one or more UI actions.
-pub fn parse_ui_actions(plugin_name: &str, response: &serde_json::Value) -> Vec<super::ui::PluginUIAction> {
+pub fn parse_ui_actions(
+    plugin_name: &str,
+    response: &serde_json::Value,
+) -> Vec<super::ui::PluginUIAction> {
     let mut actions = Vec::new();
 
     // Check for "ui" key — can be a single action object or an array
@@ -68,7 +73,10 @@ pub fn parse_ui_actions(plugin_name: &str, response: &serde_json::Value) -> Vec<
             if item.get("plugin").is_none()
                 && let Some(obj) = item.as_object_mut()
             {
-                obj.insert("plugin".to_string(), serde_json::Value::String(plugin_name.to_string()));
+                obj.insert(
+                    "plugin".to_string(),
+                    serde_json::Value::String(plugin_name.to_string()),
+                );
             }
             if let Ok(action) = serde_json::from_value::<super::ui::PluginUIAction>(item) {
                 actions.push(action);

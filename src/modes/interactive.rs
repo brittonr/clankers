@@ -880,16 +880,19 @@ fn rebuild_leader_menu(
     let hidden = settings.leader_menu.hidden_set();
 
     let pm_guard;
+    let pm_menu_contrib;
     let mut contributors: Vec<&dyn MenuContributor> = vec![&builtin, &slash_commands];
     if let Some(pm_arc) = plugin_manager {
         match pm_arc.lock() {
             Ok(guard) => {
                 pm_guard = guard;
-                contributors.push(&*pm_guard);
+                pm_menu_contrib = crate::plugin::contributions::PluginMenuContributor(&*pm_guard);
+                contributors.push(&pm_menu_contrib);
             }
             Err(poisoned) => {
                 pm_guard = poisoned.into_inner();
-                contributors.push(&*pm_guard);
+                pm_menu_contrib = crate::plugin::contributions::PluginMenuContributor(&*pm_guard);
+                contributors.push(&pm_menu_contrib);
             }
         }
     }
@@ -908,16 +911,19 @@ fn build_slash_registry(
 
     let builtin = BuiltinSlashContributor;
     let pm_guard;
+    let pm_contrib;
     let mut contributors: Vec<&dyn SlashContributor> = vec![&builtin];
     if let Some(pm_arc) = plugin_manager {
         match pm_arc.lock() {
             Ok(guard) => {
                 pm_guard = guard;
-                contributors.push(&*pm_guard);
+                pm_contrib = crate::plugin::contributions::PluginSlashContributor(&*pm_guard);
+                contributors.push(&pm_contrib);
             }
             Err(poisoned) => {
                 pm_guard = poisoned.into_inner();
-                contributors.push(&*pm_guard);
+                pm_contrib = crate::plugin::contributions::PluginSlashContributor(&*pm_guard);
+                contributors.push(&pm_contrib);
             }
         }
     }

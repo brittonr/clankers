@@ -8,11 +8,14 @@ members = [
     "crates/clankers-merge",
     "crates/clankers-message",
     "crates/clankers-session",
+    "crates/clankers-plugin",
     "crates/clankers-procmon",
+    "crates/clankers-prompts",
     "crates/clankers-provider",
     "crates/clankers-model-selection",
     "crates/clankers-matrix",
     "crates/clankers-router",
+    "crates/clankers-skills",
     "crates/clankers-specs",
     "crates/clankers-tui",
     "crates/clankers-zellij",
@@ -61,10 +64,13 @@ clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
 clankers-message = { version = "0.1.0", path = "crates/clankers-message" }
 clankers-model-selection = { version = "0.1.0", path = "crates/clankers-model-selection" }
 clankers-session = { version = "0.1.0", path = "crates/clankers-session" }
+clankers-plugin = { version = "0.1.0", path = "crates/clankers-plugin" }
 clankers-procmon = { version = "0.1.0", path = "crates/clankers-procmon" }
+clankers-prompts = { version = "0.1.0", path = "crates/clankers-prompts" }
 clankers-provider = { version = "0.1.0", path = "crates/clankers-provider" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
 clankers-router = { version = "0.1.0", path = "crates/clankers-router", features = ["rpc"] }
+clankers-skills = { version = "0.1.0", path = "crates/clankers-skills" }
 clankers-specs = { version = "0.1.0", path = "crates/clankers-specs", optional = true }
 clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }
 clankers-zellij = { version = "0.1.0", path = "crates/clankers-zellij", optional = true }

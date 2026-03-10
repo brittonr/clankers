@@ -9,6 +9,7 @@
 
 pub mod message;
 pub mod streaming;
+pub mod tool_result;
 
 // Re-export core types at crate root for convenience
 pub use message::generate_id;
@@ -19,3 +20,7 @@ pub use streaming::StreamEvent;
 
 // Re-export Usage from clankers-router (used by AssistantMessage)
 pub use clankers_router::Usage;
+
+// Re-export tool result types at crate root
+pub use tool_result::ToolResult;
+pub use tool_result::ToolResultContent;

@@ -1,3 +1,5 @@
+//! Skills (markdown-based)
+//!
 //! Skill directory scanning and loading
 //!
 //! Skills are markdown files at:

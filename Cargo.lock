@@ -1045,10 +1045,13 @@ dependencies = [
  "clankers-merge",
  "clankers-message",
  "clankers-model-selection",
+ "clankers-plugin",
  "clankers-procmon",
+ "clankers-prompts",
  "clankers-provider",
  "clankers-router",
  "clankers-session",
+ "clankers-skills",
  "clankers-specs",
  "clankers-tui",
  "clankers-tui-types",
@@ -1224,6 +1227,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "clankers-plugin"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clankers-tui-types",
+ "extism",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "clankers-procmon"
 version = "0.1.0"
 dependencies = [
@@ -1233,6 +1248,14 @@ dependencies = [
  "sysinfo",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "clankers-prompts"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "tempfile",
 ]
 
 [[package]]
@@ -1307,6 +1330,14 @@ dependencies = [
  "pretty_assertions",
  "serde",
  "serde_json",
+ "tempfile",
+]
+
+[[package]]
+name = "clankers-skills"
+version = "0.1.0"
+dependencies = [
+ "serde",
  "tempfile",
 ]
 

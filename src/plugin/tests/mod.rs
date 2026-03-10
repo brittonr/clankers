@@ -1,6 +1,8 @@
 use std::path::PathBuf;
+use std::sync::Mutex;
 
-use super::*;
+use clankers_plugin::PluginManager;
+use clankers_plugin::PluginState;
 
 /// Path to the pre-built test plugin directory.
 /// The WASM must be built first via `plugins/clankers-test-plugin/build.sh`.
@@ -53,8 +55,8 @@ pub fn load_email_plugin_no_config() -> PluginManager {
 
     let mut mgr = PluginManager::new(plugins_dir, None);
     mgr.discover();
-    mgr.instances.insert("clankers-email".to_string(), Mutex::new(plugin));
-    if let Some(info) = mgr.plugins.get_mut("clankers-email") {
+    mgr.inject_instance("clankers-email".to_string(), plugin);
+    if let Some(info) = mgr.get_mut("clankers-email") {
         info.state = PluginState::Active;
     }
     mgr
@@ -69,8 +71,8 @@ pub fn load_github_plugin_no_config() -> PluginManager {
 
     let mut mgr = PluginManager::new(plugins_dir, None);
     mgr.discover();
-    mgr.instances.insert("clankers-github".to_string(), Mutex::new(plugin));
-    if let Some(info) = mgr.plugins.get_mut("clankers-github") {
+    mgr.inject_instance("clankers-github".to_string(), plugin);
+    if let Some(info) = mgr.get_mut("clankers-github") {
         info.state = PluginState::Active;
     }
     mgr

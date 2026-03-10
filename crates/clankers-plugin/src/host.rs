@@ -136,8 +136,8 @@ impl HostFunctions {
 
     /// Execute a host call, checking permissions.
     pub fn execute(&self, call: &HostCall, permissions: &[String]) -> HostCallResult {
-        use super::sandbox;
-        use super::sandbox::Permission;
+        use crate::sandbox;
+        use crate::sandbox::Permission;
 
         match call.function.as_str() {
             "log" => self.host_log(&call.args),

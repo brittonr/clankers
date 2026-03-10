@@ -1,28 +1,30 @@
 //! Plugin contributions to the leader menu, slash commands, and filesystem discovery.
+//!
+//! Uses wrapper types to satisfy the orphan rule — `PluginManager` lives in
+//! `clankers-plugin` while the traits live in `clankers-tui` and main crate.
 
 use std::collections::HashMap;
 use std::path::Path;
 
-use super::PluginInfo;
-use super::PluginManager;
-use super::PluginState;
-use super::manifest;
+use clankers_plugin::PluginInfo;
+use clankers_plugin::PluginManager;
 
 // ---------------------------------------------------------------------------
-// MenuContributor — plugins contribute leader menu entries from their manifest
+// MenuContributor — wrapper for PluginManager → leader menu entries
 // ---------------------------------------------------------------------------
 
-impl crate::tui::components::leader_menu::MenuContributor for PluginManager {
+/// Wrapper that implements `MenuContributor` for a borrowed `PluginManager`.
+pub struct PluginMenuContributor<'a>(pub &'a PluginManager);
+
+impl crate::tui::components::leader_menu::MenuContributor for PluginMenuContributor<'_> {
     fn menu_items(&self) -> Vec<crate::tui::components::leader_menu::MenuContribution> {
         use clankers_tui_types::LeaderAction;
         use clankers_tui_types::MenuContribution;
         use clankers_tui_types::MenuPlacement;
+        use clankers_tui_types::PRIORITY_PLUGIN;
 
-        use crate::registry::PRIORITY_PLUGIN;
-
-        self.plugins
-            .values()
-            .filter(|p| matches!(p.state, PluginState::Loaded | PluginState::Active))
+        self.0
+            .active_plugin_infos()
             .flat_map(|plugin| {
                 plugin.manifest.leader_menu.iter().filter_map(move |entry| {
                     // Validate: key must be printable ASCII, command must start with /
@@ -66,14 +68,19 @@ impl crate::tui::components::leader_menu::MenuContributor for PluginManager {
     }
 }
 
-// SlashContributor — plugins contribute slash commands from their manifest
-impl crate::slash_commands::SlashContributor for PluginManager {
-    fn slash_commands(&self) -> Vec<crate::slash_commands::SlashCommandDef> {
-        use crate::registry::PRIORITY_PLUGIN;
+// ---------------------------------------------------------------------------
+// SlashContributor — wrapper for PluginManager → slash command registration
+// ---------------------------------------------------------------------------
 
-        self.plugins
-            .values()
-            .filter(|p| matches!(p.state, PluginState::Loaded | PluginState::Active))
+/// Wrapper that implements `SlashContributor` for a borrowed `PluginManager`.
+pub struct PluginSlashContributor<'a>(pub &'a PluginManager);
+
+impl crate::slash_commands::SlashContributor for PluginSlashContributor<'_> {
+    fn slash_commands(&self) -> Vec<crate::slash_commands::SlashCommandDef> {
+        use clankers_tui_types::PRIORITY_PLUGIN;
+
+        self.0
+            .active_plugin_infos()
             .flat_map(|plugin| {
                 plugin.manifest.commands.iter().map(move |command_name| {
                     let plugin_name = plugin.name.clone();
@@ -82,7 +89,10 @@ impl crate::slash_commands::SlashContributor for PluginManager {
                     crate::slash_commands::SlashCommandDef {
                         name: cmd_name.clone(),
                         description: format!("Plugin command: {}", cmd_name),
-                        help: format!("Execute the '{}' command from the '{}' plugin", cmd_name, plugin_name),
+                        help: format!(
+                            "Execute the '{}' command from the '{}' plugin",
+                            cmd_name, plugin_name
+                        ),
                         accepts_args: true,
                         subcommands: vec![],
                         handler: Box::new(PluginSlashHandler {
@@ -111,10 +121,15 @@ impl crate::slash_commands::handlers::SlashHandler for PluginSlashHandler {
         // We return a placeholder. The real metadata is provided by SlashContributor above.
         crate::slash_commands::SlashCommand {
             name: Box::leak(self.command_name.clone().into_boxed_str()),
-            description: Box::leak(format!("Plugin command: {}", self.command_name).into_boxed_str()),
+            description: Box::leak(
+                format!("Plugin command: {}", self.command_name).into_boxed_str(),
+            ),
             help: Box::leak(
-                format!("Execute the '{}' command from the '{}' plugin", self.command_name, self.plugin_name)
-                    .into_boxed_str(),
+                format!(
+                    "Execute the '{}' command from the '{}' plugin",
+                    self.command_name, self.plugin_name
+                )
+                .into_boxed_str(),
             ),
             accepts_args: true,
             subcommands: vec![],
@@ -135,7 +150,8 @@ impl crate::slash_commands::handlers::SlashHandler for PluginSlashHandler {
                 let input_str = match serde_json::to_string(&input) {
                     Ok(s) => s,
                     Err(e) => {
-                        ctx.app.push_system(format!("Failed to serialize command: {}", e), true);
+                        ctx.app
+                            .push_system(format!("Failed to serialize command: {}", e), true);
                         return;
                     }
                 };
@@ -147,7 +163,9 @@ impl crate::slash_commands::handlers::SlashHandler for PluginSlashHandler {
                         match serde_json::from_str::<serde_json::Value>(&response) {
                             Ok(json) => {
                                 // If there's a "message" field, show it
-                                if let Some(message) = json.get("message").and_then(|v| v.as_str()) {
+                                if let Some(message) =
+                                    json.get("message").and_then(|v| v.as_str())
+                                {
                                     ctx.app.push_system(message.to_string(), false);
                                 } else {
                                     // Otherwise, show the raw JSON response
@@ -165,40 +183,17 @@ impl crate::slash_commands::handlers::SlashHandler for PluginSlashHandler {
                     }
                 }
             } else {
-                ctx.app.push_system("Failed to acquire plugin manager lock".to_string(), true);
+                ctx.app
+                    .push_system("Failed to acquire plugin manager lock".to_string(), true);
             }
         } else {
-            ctx.app.push_system("Plugin manager not available".to_string(), true);
+            ctx.app
+                .push_system("Plugin manager not available".to_string(), true);
         }
     }
 }
 
-pub(super) fn load_plugins_from_dir(dir: &Path, plugins: &mut HashMap<String, PluginInfo>) {
-    if !dir.is_dir() {
-        return;
-    }
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return,
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if !path.is_dir() {
-            continue;
-        }
-        let manifest_path = path.join("plugin.json");
-        if !manifest_path.is_file() {
-            continue;
-        }
-        if let Some(manifest) = manifest::PluginManifest::load(&manifest_path) {
-            let name = manifest.name.clone();
-            plugins.insert(name.clone(), PluginInfo {
-                name,
-                version: manifest.version.clone(),
-                state: PluginState::Loaded,
-                manifest,
-                path,
-            });
-        }
-    }
+/// Load plugins from a directory into the provided HashMap.
+pub fn load_plugins_from_dir(dir: &Path, plugins: &mut HashMap<String, PluginInfo>) {
+    clankers_plugin::load_plugins_from_dir(dir, plugins);
 }

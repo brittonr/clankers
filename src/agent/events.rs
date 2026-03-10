@@ -156,6 +156,26 @@ pub enum AgentEvent {
     },
 }
 
+impl AgentEvent {
+    /// String tag for plugin event matching.
+    ///
+    /// Returns the snake_case identifier that plugin manifests use
+    /// in their `"events"` array to subscribe to this event type.
+    pub fn event_kind(&self) -> &'static str {
+        match self {
+            Self::ToolCall { .. } => "tool_call",
+            Self::ToolExecutionEnd { .. } => "tool_result",
+            Self::AgentStart => "agent_start",
+            Self::AgentEnd { .. } => "agent_end",
+            Self::TurnStart { .. } => "turn_start",
+            Self::TurnEnd { .. } => "turn_end",
+            Self::MessageUpdate { .. } => "message_update",
+            Self::UserInput { .. } => "user_input",
+            _ => "",
+        }
+    }
+}
+
 /// Convert a `ProcessEvent` from the procmon crate into an `AgentEvent`.
 pub fn process_event_to_agent(pe: crate::procmon::ProcessEvent) -> AgentEvent {
     match pe {

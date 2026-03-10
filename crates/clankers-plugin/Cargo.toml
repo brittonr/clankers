@@ -1,0 +1,17 @@
+[package]
+name = "clankers-plugin"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Plugin system (Extism WASM) for clankers"
+
+[dependencies]
+chrono = { workspace = true }
+extism = "1.13"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
+
+[lints]
+workspace = true

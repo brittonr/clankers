@@ -9,10 +9,9 @@ pub mod handlers;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+use clankers_tui_types::Conflict;
 use clankers_tui_types::MenuPlacement;
-
-use crate::registry::Conflict;
-use crate::registry::PRIORITY_BUILTIN;
+use clankers_tui_types::PRIORITY_BUILTIN;
 
 // ---------------------------------------------------------------------------
 // Slash command dispatch is handled by `SlashRegistry::dispatch()` below.

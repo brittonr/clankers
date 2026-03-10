@@ -204,7 +204,8 @@ fn github_plugin_contributes_leader_menu() {
     use clankers_tui_types::MenuContributor;
 
     let mgr = manager_with_test_plugin();
-    let items = mgr.menu_items();
+    let contrib = crate::plugin::contributions::PluginMenuContributor(&mgr);
+    let items = contrib.menu_items();
 
     let github_items: Vec<_> = items.iter().filter(|i| i.source == "clankers-github").collect();
     assert!(!github_items.is_empty(), "GitHub plugin should contribute leader menu items");

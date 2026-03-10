@@ -1,3 +1,5 @@
+//! Prompt templates
+
 //! Prompt template scanning and loading
 //!
 //! Prompts are markdown files at:
