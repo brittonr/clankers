@@ -1,10 +1,14 @@
 //! Run modes
 
 pub(crate) mod agent_commands;
+pub(crate) mod agent_setup;
+pub(crate) mod agent_task;
 pub mod common;
+pub(crate) mod core_actions;
 pub mod daemon;
 pub(crate) mod event_handlers;
 pub(crate) mod event_loop_runner;
+pub(crate) mod extended_actions;
 pub mod interactive;
 pub mod json;
 pub(crate) mod matrix_bridge;
@@ -15,3 +19,4 @@ pub mod print;
 pub mod rpc;
 pub mod rpc_embed;
 pub(crate) mod session_restore;
+pub(crate) mod session_setup;

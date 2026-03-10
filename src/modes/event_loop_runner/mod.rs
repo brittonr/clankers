@@ -17,8 +17,6 @@ use std::time::Duration;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
-use clankers_loop::BreakCondition;
-use clankers_loop::LoopDef;
 use clankers_loop::LoopEngine;
 use clankers_loop::LoopId;
 
@@ -32,6 +30,10 @@ use crate::tui::app::App;
 use crate::tui::event as tui_event;
 use crate::tui::event::AppEvent;
 use crate::tui::render;
+
+mod audit;
+mod key_handler;
+mod loop_mode;
 
 /// Owns the per-loop state and channels for the TUI event loop.
 pub(crate) struct EventLoopRunner<'a> {
@@ -59,16 +61,11 @@ pub(crate) struct EventLoopRunner<'a> {
     // Slash command dispatch
     pub(crate) slash_registry: crate::slash_commands::SlashRegistry,
     // Audit state
-    audit_pending: std::collections::HashMap<String, (String, serde_json::Value, std::time::Instant)>,
-    audit_seq: u32,
-    // Loop mode state — backed by LoopEngine for iteration tracking and
-    // break condition evaluation. The engine is the single source of truth;
-    // `app.loop_status` is a display-only projection updated after each
-    // iteration.
+    audit: audit::AuditTracker,
+    // Loop mode state
     loop_engine: LoopEngine,
     active_loop_id: Option<LoopId>,
-    /// Accumulated tool output from the current turn (fed to the engine
-    /// for break condition checking).
+    /// Accumulated tool output from the current turn.
     loop_turn_output: String,
 }
 
@@ -110,8 +107,7 @@ impl<'a> EventLoopRunner<'a> {
             db,
             settings,
             slash_registry,
-            audit_pending: std::collections::HashMap::new(),
-            audit_seq: 0,
+            audit: audit::AuditTracker::new(),
             loop_engine: LoopEngine::new(),
             active_loop_id: None,
             loop_turn_output: String::new(),
@@ -121,10 +117,11 @@ impl<'a> EventLoopRunner<'a> {
     /// Main event loop. Returns when `app.should_quit` is set.
     pub fn run(&mut self) -> Result<()> {
         loop {
-            // Render
-            self.terminal.draw(|frame| render::render(frame, self.app)).map_err(|e| crate::error::Error::Tui {
-                message: format!("Render failed: {}", e),
-            })?;
+            self.terminal
+                .draw(|frame| render::render(frame, self.app))
+                .map_err(|e| crate::error::Error::Tui {
+                    message: format!("Render failed: {}", e),
+                })?;
 
             if self.app.should_quit {
                 let _ = self.cmd_tx.send(AgentCommand::Quit);
@@ -140,7 +137,6 @@ impl<'a> EventLoopRunner<'a> {
             crate::tui::clipboard::poll_clipboard_result(self.app);
             self.handle_terminal_events()?;
 
-            // Check for deferred external editor request
             if self.app.open_editor_requested {
                 self.app.open_editor_requested = false;
                 crate::tui::clipboard::open_external_editor(self.terminal, self.app);
@@ -149,146 +145,102 @@ impl<'a> EventLoopRunner<'a> {
         Ok(())
     }
 
-    // ── Agent events + audit logging + session persistence ───────────
+    // ── Agent events + audit + session persistence ──────────────────
 
     fn drain_agent_events(&mut self) {
         loop {
             match self.event_rx.try_recv() {
-                Ok(event) => {
-                    // Translate AgentEvent → TuiEvent and forward to TUI
-                    if let Some(tui_event) = crate::event_translator::translate(&event) {
-                        self.app.handle_tui_event(&tui_event);
-                    }
-
-                    // Persist messages to session on AgentEnd
-                    if let AgentEvent::AgentEnd { ref messages } = event
-                        && let Some(ref mut sm) = self.session_manager
-                    {
-                        super::interactive::persist_messages(sm, messages);
-                    }
-
-                    // Record per-turn usage to redb
-                    if let AgentEvent::UsageUpdate { ref turn_usage, .. } = event
-                        && let Some(ref db) = self.db
-                    {
-                        let req = crate::db::usage::RequestUsage::new(
-                            &self.app.model,
-                            turn_usage.input_tokens as u64,
-                            turn_usage.output_tokens as u64,
-                            turn_usage.cache_creation_input_tokens as u64,
-                            turn_usage.cache_read_input_tokens as u64,
-                        );
-                        db.spawn_write(move |db| {
-                            if let Err(e) = db.usage().record(&req) {
-                                tracing::warn!("Failed to record usage: {}", e);
-                            }
-                        });
-                    }
-
-                    // Audit: track tool call start
-                    if let AgentEvent::ToolCall {
-                        ref call_id,
-                        ref tool_name,
-                        ref input,
-                    } = event
-                    {
-                        self.audit_pending
-                            .insert(call_id.clone(), (tool_name.clone(), input.clone(), std::time::Instant::now()));
-                        // Loop mode: signal_loop_success triggers an
-                        // out-of-band break via the engine.
-                        if tool_name == "signal_loop_success"
-                            && let Some(ref id) = self.active_loop_id
-                        {
-                            self.loop_engine.signal_break(id);
-                        }
-                    }
-
-                    // Loop mode: capture tool output for break condition
-                    // checking (fed to LoopEngine::record_iteration).
-                    if self.active_loop_id.is_some() {
-                        if let AgentEvent::ToolExecutionEnd { ref result, .. } = event {
-                            for content in &result.content {
-                                if let crate::tools::ToolResultContent::Text { text } = content {
-                                    self.loop_turn_output.push_str(text);
-                                    self.loop_turn_output.push('\n');
-                                }
-                            }
-                        }
-                    }
-
-                    // Audit: record completed tool calls
-                    if let AgentEvent::ToolExecutionEnd {
-                        ref call_id,
-                        ref result,
-                        is_error,
-                    } = event
-                        && let Some(ref db) = self.db
-                        && !self.app.session_id.is_empty()
-                    {
-                        let (tool_name, input, started_at) = self
-                            .audit_pending
-                            .remove(call_id)
-                            .unwrap_or_else(|| ("unknown".into(), serde_json::json!({}), std::time::Instant::now()));
-                        let duration_ms = started_at.elapsed().as_millis() as u64;
-
-                        let result_preview: String = result
-                            .content
-                            .iter()
-                            .filter_map(|c| match c {
-                                crate::tools::ToolResultContent::Text { text } => Some(text.as_str()),
-                                _ => None,
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n")
-                            .chars()
-                            .take(500)
-                            .collect();
-
-                        let sandbox_blocked = if is_error {
-                            result_preview.strip_prefix("🔒 ").map(|s| s.to_string())
-                        } else {
-                            None
-                        };
-
-                        let session_id = self.app.session_id.clone();
-                        let call_id = call_id.clone();
-                        let seq = self.audit_seq;
-                        self.audit_seq += 1;
-
-                        db.spawn_write(move |db| {
-                            let entry = crate::db::audit::AuditEntry {
-                                session_id,
-                                seq,
-                                tool: tool_name,
-                                call_id,
-                                input,
-                                is_error,
-                                result_preview,
-                                duration_ms,
-                                timestamp: chrono::Utc::now(),
-                                sandbox_blocked,
-                            };
-                            if let Err(e) = db.audit().record(&entry) {
-                                tracing::warn!("Failed to record audit entry: {}", e);
-                            }
-                        });
-                    }
-
-                    // Dispatch to plugins
-                    if let Some(ref pm) = self.plugin_manager {
-                        let result = super::plugin_dispatch::dispatch_event_to_plugins(pm, &event);
-                        for (plugin_name, message) in result.messages {
-                            self.app.push_system(format!("🔌 {}: {}", plugin_name, message), false);
-                        }
-                        for action in result.ui_actions {
-                            crate::plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
-                        }
-                    }
-                }
+                Ok(event) => self.process_agent_event(event),
                 Err(tokio::sync::broadcast::error::TryRecvError::Lagged(n)) => {
                     tracing::warn!("Agent event receiver lagged, skipped {} events", n);
                 }
                 Err(_) => break,
+            }
+        }
+    }
+
+    /// Process a single agent event — translate to TUI, persist, audit, dispatch to plugins.
+    fn process_agent_event(&mut self, event: AgentEvent) {
+        // Translate AgentEvent → TuiEvent and forward to TUI
+        if let Some(tui_event) = crate::event_translator::translate(&event) {
+            self.app.handle_tui_event(&tui_event);
+        }
+
+        // Persist messages to session on AgentEnd
+        if let AgentEvent::AgentEnd { ref messages } = event
+            && let Some(ref mut sm) = self.session_manager
+        {
+            super::interactive::persist_messages(sm, messages);
+        }
+
+        // Record per-turn usage to redb
+        if let AgentEvent::UsageUpdate { ref turn_usage, .. } = event
+            && let Some(ref db) = self.db
+        {
+            let req = crate::db::usage::RequestUsage::new(
+                &self.app.model,
+                turn_usage.input_tokens as u64,
+                turn_usage.output_tokens as u64,
+                turn_usage.cache_creation_input_tokens as u64,
+                turn_usage.cache_read_input_tokens as u64,
+            );
+            db.spawn_write(move |db| {
+                if let Err(e) = db.usage().record(&req) {
+                    tracing::warn!("Failed to record usage: {}", e);
+                }
+            });
+        }
+
+        // Audit: track tool call start
+        if let AgentEvent::ToolCall {
+            ref call_id,
+            ref tool_name,
+            ref input,
+        } = event
+        {
+            self.audit.start_call(call_id, tool_name, input);
+
+            // Loop mode: signal_loop_success triggers break
+            if tool_name == "signal_loop_success"
+                && let Some(ref id) = self.active_loop_id
+            {
+                self.loop_engine.signal_break(id);
+            }
+        }
+
+        // Loop mode: capture tool output for break condition checking
+        if self.active_loop_id.is_some() {
+            if let AgentEvent::ToolExecutionEnd { ref result, .. } = event {
+                for content in &result.content {
+                    if let crate::tools::ToolResultContent::Text { text } = content {
+                        self.loop_turn_output.push_str(text);
+                        self.loop_turn_output.push('\n');
+                    }
+                }
+            }
+        }
+
+        // Audit: record completed tool calls
+        if let AgentEvent::ToolExecutionEnd {
+            ref call_id,
+            ref result,
+            is_error,
+        } = event
+            && let Some(ref db) = self.db
+            && !self.app.session_id.is_empty()
+        {
+            self.audit
+                .end_call(call_id, result, is_error, &self.app.session_id, db);
+        }
+
+        // Dispatch to plugins
+        if let Some(ref pm) = self.plugin_manager {
+            let result = super::plugin_dispatch::dispatch_event_to_plugins(pm, &event);
+            for (plugin_name, message) in result.messages {
+                self.app.push_system(format!("🔌 {}: {}", plugin_name, message), false);
+            }
+            for action in result.ui_actions {
+                crate::plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
             }
         }
     }
@@ -310,7 +262,10 @@ impl<'a> EventLoopRunner<'a> {
                             pid,
                             &mut self.app.layout.tiling,
                         );
-                        self.app.layout.pane_registry.register(pane_id, crate::tui::panes::PaneKind::Subagent(id));
+                        self.app
+                            .layout
+                            .pane_registry
+                            .register(pane_id, crate::tui::panes::PaneKind::Subagent(id));
                         crate::tui::panes::auto_split_for_subagent(
                             &mut self.app.layout.tiling,
                             &self.app.layout.pane_registry,
@@ -331,43 +286,52 @@ impl<'a> EventLoopRunner<'a> {
                     self.app.layout.subagent_panes.mark_error(&id);
                 }
                 SubagentEvent::KillRequest { ref id } => {
-                    let pid_to_kill = self
-                        .app
-                        .layout
-                        .subagent_panes
-                        .get(id)
-                        .filter(|s| s.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
-                        .and_then(|s| s.pid)
-                        .or_else(|| {
-                            subagent_panel(self.app)
-                                .get_by_id(id)
-                                .filter(|e| e.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
-                                .and_then(|e| e.pid)
-                        });
-
-                    if let Some(pid) = pid_to_kill {
-                        #[cfg(unix)]
-                        {
-                            unsafe {
-                                libc::kill(-(pid as i32), libc::SIGKILL);
-                            }
-                        }
-                        #[cfg(not(unix))]
-                        {
-                            let _ =
-                                std::process::Command::new("taskkill").args(&["/PID", &pid.to_string(), "/F"]).spawn();
-                        }
-                        subagent_panel(self.app).mark_error(id);
-                        subagent_panel(self.app).append_output(id, "⚡ Killed by user");
-                        self.app.layout.subagent_panes.mark_error(id);
-                        self.app.layout.subagent_panes.append_output(id, "⚡ Killed by user");
-                    } else {
-                        subagent_panel(self.app).append_output(id, "⚠ Cannot kill: no PID tracked");
-                        self.app.layout.subagent_panes.append_output(id, "⚠ Cannot kill: no PID tracked");
-                    }
+                    self.handle_kill_request(id);
                 }
                 SubagentEvent::InputRequest { .. } => {}
             }
+        }
+    }
+
+    /// Handle a subagent kill request — find the PID and send SIGKILL.
+    fn handle_kill_request(&mut self, id: &str) {
+        let pid_to_kill = self
+            .app
+            .layout
+            .subagent_panes
+            .get(id)
+            .filter(|s| s.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
+            .and_then(|s| s.pid)
+            .or_else(|| {
+                subagent_panel(self.app)
+                    .get_by_id(id)
+                    .filter(|e| e.status == crate::tui::components::subagent_panel::SubagentStatus::Running)
+                    .and_then(|e| e.pid)
+            });
+
+        if let Some(pid) = pid_to_kill {
+            #[cfg(unix)]
+            {
+                unsafe {
+                    libc::kill(-(pid as i32), libc::SIGKILL);
+                }
+            }
+            #[cfg(not(unix))]
+            {
+                let _ = std::process::Command::new("taskkill")
+                    .args(&["/PID", &pid.to_string(), "/F"])
+                    .spawn();
+            }
+            subagent_panel(self.app).mark_error(id);
+            subagent_panel(self.app).append_output(id, "⚡ Killed by user");
+            self.app.layout.subagent_panes.mark_error(id);
+            self.app.layout.subagent_panes.append_output(id, "⚡ Killed by user");
+        } else {
+            subagent_panel(self.app).append_output(id, "⚠ Cannot kill: no PID tracked");
+            self.app
+                .layout
+                .subagent_panes
+                .append_output(id, "⚠ Cannot kill: no PID tracked");
         }
     }
 
@@ -375,60 +339,7 @@ impl<'a> EventLoopRunner<'a> {
 
     fn drain_todo_requests(&mut self) {
         while let Ok((action, resp_tx)) = self.todo_rx.try_recv() {
-            use crate::tools::todo::TodoAction;
-            use crate::tools::todo::TodoResponse;
-            use crate::tui::components::todo_panel::TodoStatus;
-            let todo_panel = todo_panel(self.app);
-
-            let response = match action {
-                TodoAction::Add { text } => {
-                    let id = todo_panel.add(text);
-                    TodoResponse::Added { id }
-                }
-                TodoAction::SetStatus { id, status } => {
-                    if let Some(s) = TodoStatus::parse(&status) {
-                        if todo_panel.set_status(id, s) {
-                            TodoResponse::Updated { id }
-                        } else {
-                            TodoResponse::NotFound
-                        }
-                    } else {
-                        TodoResponse::NotFound
-                    }
-                }
-                TodoAction::SetStatusByText { query, status } => {
-                    if let Some(s) = TodoStatus::parse(&status) {
-                        if let Some(id) = todo_panel.set_status_by_text(&query, s) {
-                            TodoResponse::Updated { id }
-                        } else {
-                            TodoResponse::NotFound
-                        }
-                    } else {
-                        TodoResponse::NotFound
-                    }
-                }
-                TodoAction::SetNote { id, note } => {
-                    if todo_panel.set_note(id, note) {
-                        TodoResponse::Updated { id }
-                    } else {
-                        TodoResponse::NotFound
-                    }
-                }
-                TodoAction::Remove { id } => {
-                    if todo_panel.remove(id) {
-                        TodoResponse::Updated { id }
-                    } else {
-                        TodoResponse::NotFound
-                    }
-                }
-                TodoAction::ClearDone => {
-                    todo_panel.clear_done();
-                    TodoResponse::Cleared
-                }
-                TodoAction::List => TodoResponse::Listed {
-                    summary: todo_panel.summary(),
-                },
-            };
+            let response = process_todo_action(todo_panel(self.app), action);
             let _ = resp_tx.send(response);
         }
     }
@@ -438,7 +349,8 @@ impl<'a> EventLoopRunner<'a> {
     fn drain_bash_confirms(&mut self) {
         while let Ok((message, resp_tx)) = self.bash_confirm_rx.try_recv() {
             self.app.push_system(message, true);
-            self.app.push_system("Type 'y' to approve or 'n' to block. Approving...".to_string(), false);
+            self.app
+                .push_system("Type 'y' to approve or 'n' to block. Approving...".to_string(), false);
             let _ = resp_tx.send(true);
         }
     }
@@ -448,16 +360,16 @@ impl<'a> EventLoopRunner<'a> {
     fn refresh_peers(&mut self) {
         static PEER_REFRESH_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
         let count = PEER_REFRESH_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-        let peers_panel = peers_panel(self.app);
-        if count.is_multiple_of(200) && peers_panel.server_running {
-            let registry = crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(
-                crate::config::ClankersPaths::get(),
-            ));
+        let peers = peers_panel(self.app);
+        if count.is_multiple_of(200) && peers.server_running {
+            let registry = crate::modes::rpc::peers::PeerRegistry::load(
+                &crate::modes::rpc::peers::registry_path(crate::config::ClankersPaths::get()),
+            );
             let entries = crate::tui::components::peers_panel::entries_from_registry(
                 &crate::modes::rpc::peers::peer_info_views(&registry),
                 chrono::Duration::minutes(5),
             );
-            peers_panel.set_peers(entries);
+            peers.set_peers(entries);
         }
     }
 
@@ -467,7 +379,6 @@ impl<'a> EventLoopRunner<'a> {
         while let Ok(result) = self.done_rx.try_recv() {
             match result {
                 TaskResult::PromptDone(Some(e)) => {
-                    // Stop loop on error
                     if self.active_loop_id.is_some() {
                         self.finish_loop("failed (error)");
                     }
@@ -514,11 +425,13 @@ impl<'a> EventLoopRunner<'a> {
                     self.app.thinking_level = level;
                     self.app.push_system(msg, false);
                 }
-
                 TaskResult::AccountSwitched(Ok(name)) => {
                     self.app.active_account.clone_from(&name);
                     self.app.push_system(
-                        format!("Switched to account '{}'. New credentials will be used for the next API call.", name),
+                        format!(
+                            "Switched to account '{}'. New credentials will be used for the next API call.",
+                            name
+                        ),
                         false,
                     );
                 }
@@ -526,125 +439,6 @@ impl<'a> EventLoopRunner<'a> {
                     self.app.push_system(msg, true);
                 }
             }
-        }
-    }
-
-    // ── Loop mode ────────────────────────────────────────────────────
-
-    /// Lazily register the loop with the engine on the first iteration.
-    ///
-    /// The `/loop` slash command writes to `app.loop_status` (display
-    /// state). This method translates that into a `LoopDef` and
-    /// registers it with the `LoopEngine`. Returns the active loop ID.
-    fn ensure_loop_registered(&mut self) -> Option<LoopId> {
-        if let Some(ref id) = self.active_loop_id {
-            return Some(id.clone());
-        }
-
-        let ls = self.app.loop_status.as_ref()?;
-
-        let break_condition = match &ls.break_text {
-            Some(text) => clankers_loop::parse_break_condition(text),
-            None => BreakCondition::Never,
-        };
-
-        let action = serde_json::json!({"prompt": ls.prompt.as_deref().unwrap_or("")});
-
-        let def = if matches!(break_condition, BreakCondition::Never) {
-            LoopDef::fixed(&ls.name, ls.max_iterations, action)
-        } else {
-            LoopDef::until(&ls.name, break_condition, action)
-                .with_max_iterations(ls.max_iterations)
-        };
-
-        let Some(id) = self.loop_engine.register(def) else {
-            tracing::warn!("loop registration failed: too many active loops");
-            return None;
-        };
-        self.loop_engine.start(&id);
-        self.active_loop_id = Some(id.clone());
-        Some(id)
-    }
-
-    /// After a successful turn, check whether to continue the loop.
-    fn maybe_continue_loop(&mut self) {
-        if self.app.loop_status.is_none() {
-            // Slash command `/loop stop` clears display state directly.
-            // Clean up the engine entry if one was registered.
-            if let Some(ref id) = self.active_loop_id {
-                self.loop_engine.stop(id);
-                self.loop_engine.remove(id);
-            }
-            self.active_loop_id = None;
-            self.loop_turn_output.clear();
-            return;
-        }
-
-        let Some(loop_id) = self.ensure_loop_registered() else {
-            return;
-        };
-
-        // Feed accumulated output to the engine. The engine evaluates
-        // break conditions (contains, regex, exit code, etc.) and
-        // manages iteration counting / max-iteration limits.
-        let output = std::mem::take(&mut self.loop_turn_output);
-        let should_continue = self.loop_engine.record_iteration(&loop_id, output, None);
-
-        // Sync engine state back to the display state for the TUI.
-        if let Some(state) = self.loop_engine.get(&loop_id)
-            && let Some(ref mut ls) = self.app.loop_status
-        {
-            ls.iteration = state.current_iteration;
-        }
-
-        if !should_continue {
-            let reason = self.loop_engine.get(&loop_id).map_or("finished", |s| {
-                match s.status {
-                    clankers_loop::LoopStatus::Completed => "completed",
-                    clankers_loop::LoopStatus::Stopped => "max iterations reached",
-                    clankers_loop::LoopStatus::Failed => "failed",
-                    _ => "finished",
-                }
-            });
-            self.finish_loop(reason);
-            return;
-        }
-
-        // Paused — don't re-send, leave state as-is. The user can
-        // resume via `/loop pause` which sends the next prompt directly.
-        if !self.app.loop_status.as_ref().is_some_and(|ls| ls.active) {
-            return;
-        }
-
-        // Continue — re-send the prompt
-        let prompt = self.app.loop_status.as_ref().and_then(|ls| ls.prompt.clone());
-        if let Some(prompt) = prompt {
-            let _ = self.cmd_tx.send(AgentCommand::ResetCancel);
-            let _ = self.cmd_tx.send(AgentCommand::Prompt(prompt));
-        } else {
-            self.finish_loop("no prompt captured");
-        }
-    }
-
-    /// Clean up loop state and notify the user.
-    fn finish_loop(&mut self, reason: &str) {
-        let summary = self.app.loop_status.as_ref().map(|ls| {
-            format!(
-                "Loop '{}' {} after {} iteration(s).",
-                ls.name, reason, ls.iteration,
-            )
-        });
-
-        // Clean up engine state
-        if let Some(ref id) = self.active_loop_id {
-            self.loop_engine.remove(id);
-        }
-        self.active_loop_id = None;
-        self.app.loop_status = None;
-        self.loop_turn_output.clear();
-
-        if let Some(msg) = summary {
-            self.app.push_system(msg, false);
         }
     }
 
@@ -687,26 +481,81 @@ impl<'a> EventLoopRunner<'a> {
     }
 }
 
-// ── Key event handling (extracted to key_handler.rs) ────────────────
-mod key_handler;
+// ── Todo action processor ───────────────────────────────────────────
+
+fn process_todo_action(
+    panel: &mut crate::tui::components::todo_panel::TodoPanel,
+    action: crate::tools::todo::TodoAction,
+) -> crate::tools::todo::TodoResponse {
+    use crate::tools::todo::TodoAction;
+    use crate::tools::todo::TodoResponse;
+    use crate::tui::components::todo_panel::TodoStatus;
+
+    match action {
+        TodoAction::Add { text } => {
+            let id = panel.add(text);
+            TodoResponse::Added { id }
+        }
+        TodoAction::SetStatus { id, status } => {
+            if let Some(s) = TodoStatus::parse(&status) {
+                if panel.set_status(id, s) {
+                    TodoResponse::Updated { id }
+                } else {
+                    TodoResponse::NotFound
+                }
+            } else {
+                TodoResponse::NotFound
+            }
+        }
+        TodoAction::SetStatusByText { query, status } => {
+            if let Some(s) = TodoStatus::parse(&status) {
+                if let Some(id) = panel.set_status_by_text(&query, s) {
+                    TodoResponse::Updated { id }
+                } else {
+                    TodoResponse::NotFound
+                }
+            } else {
+                TodoResponse::NotFound
+            }
+        }
+        TodoAction::SetNote { id, note } => {
+            if panel.set_note(id, note) {
+                TodoResponse::Updated { id }
+            } else {
+                TodoResponse::NotFound
+            }
+        }
+        TodoAction::Remove { id } => {
+            if panel.remove(id) {
+                TodoResponse::Updated { id }
+            } else {
+                TodoResponse::NotFound
+            }
+        }
+        TodoAction::ClearDone => {
+            panel.clear_done();
+            TodoResponse::Cleared
+        }
+        TodoAction::List => TodoResponse::Listed {
+            summary: panel.summary(),
+        },
+    }
+}
 
 // ── Panel accessor helpers ──────────────────────────────────────────
 
-/// Helper to access the SubagentPanel. Panics if panel not registered (should never happen).
 pub(super) fn subagent_panel(app: &mut App) -> &mut crate::tui::components::subagent_panel::SubagentPanel {
     app.panels
         .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(crate::tui::panel::PanelId::Subagents)
         .expect("subagent panel registered at startup")
 }
 
-/// Helper to access the TodoPanel. Panics if panel not registered (should never happen).
 pub(super) fn todo_panel(app: &mut App) -> &mut crate::tui::components::todo_panel::TodoPanel {
     app.panels
         .downcast_mut::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)
         .expect("todo panel registered at startup")
 }
 
-/// Helper to access the PeersPanel. Panics if panel not registered (should never happen).
 pub(super) fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_panel::PeersPanel {
     app.panels
         .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(crate::tui::panel::PanelId::Peers)
