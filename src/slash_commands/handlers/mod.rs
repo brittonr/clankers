@@ -38,7 +38,7 @@ use crate::plugin::PluginManager;
 use crate::tui::app::App;
 
 /// Context passed to every slash command handler.
-#[allow(private_interfaces)]
+#[allow(private_interfaces)] // AgentCommand is pub(crate) by design
 pub struct SlashContext<'a> {
     pub app: &'a mut App,
     pub cmd_tx: &'a tokio::sync::mpsc::UnboundedSender<AgentCommand>,
