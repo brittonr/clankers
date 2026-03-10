@@ -194,7 +194,7 @@ fn slash_tools_lists_plugin_tools() {
 fn slash_tools_shows_total_count() {
     let mut h = TuiTestHarness::spawn(40, 120);
     run_slash(&mut h, "/tools");
-    h.wait_for_text("tool(s) total", TIMEOUT);
+    h.wait_for_text("tool(s) enabled", TIMEOUT);
     h.quit();
 }
 
