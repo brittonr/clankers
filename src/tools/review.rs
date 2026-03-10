@@ -151,15 +151,8 @@ impl ReviewReport {
         let p1 = self.findings.iter().filter(|f| f.priority == Priority::P1).count();
         let p2 = self.findings.iter().filter(|f| f.priority == Priority::P2).count();
         let p3 = self.findings.iter().filter(|f| f.priority == Priority::P3).count();
-        write!(
-            out,
-            "**Findings:** {} total — {} P0 {} P1 {} P2 {} P3\n\n",
-            self.findings.len(),
-            p0,
-            p1,
-            p2,
-            p3
-        ).unwrap();
+        write!(out, "**Findings:** {} total — {} P0 {} P1 {} P2 {} P3\n\n", self.findings.len(), p0, p1, p2, p3)
+            .unwrap();
 
         // Group by priority
         let mut sorted = self.findings.clone();

@@ -318,14 +318,10 @@ pub async fn handle_prompt_streaming_pub(request: &Request, state: &ServerState,
     };
 
     // Create agent and set up event streaming
-    let mut agent = crate::agent::builder::AgentBuilder::new(
-        Arc::clone(&ctx.provider),
-        ctx.settings.clone(),
-        model,
-        system_prompt,
-    )
-    .with_tools(ctx.tools.clone())
-    .build();
+    let mut agent =
+        crate::agent::builder::AgentBuilder::new(Arc::clone(&ctx.provider), ctx.settings.clone(), model, system_prompt)
+            .with_tools(ctx.tools.clone())
+            .build();
     let rx = agent.subscribe();
 
     // Stream events to the QUIC send stream in a background task

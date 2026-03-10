@@ -440,10 +440,8 @@ fn build_agent_with_tools(
 
     // Filter out disabled tools before giving them to the agent.
     // tool_info keeps the full list so the toggle menu shows everything.
-    let active_tools: Vec<std::sync::Arc<dyn crate::tools::Tool>> = tools
-        .into_iter()
-        .filter(|t| !app.disabled_tools.contains(&t.definition().name))
-        .collect();
+    let active_tools: Vec<std::sync::Arc<dyn crate::tools::Tool>> =
+        tools.into_iter().filter(|t| !app.disabled_tools.contains(&t.definition().name)).collect();
 
     // Build the final agent with tools, db, routing, and cost tracking
     let mut agent_builder = crate::agent::builder::AgentBuilder::new(provider, settings.clone(), model, system_prompt)
@@ -518,8 +516,8 @@ async fn run_event_loop(
     // the Arc/sender handles is cheap and gives the spawn block access.
     let tool_env_for_rebuild = crate::modes::common::ToolEnv {
         event_tx: Some(agent.event_sender()),
-        panel_tx: None,     // Rebuild doesn't need panel routing
-        todo_tx: None,      // These stay wired from the original build
+        panel_tx: None, // Rebuild doesn't need panel routing
+        todo_tx: None,  // These stay wired from the original build
         bash_confirm_tx: None,
         process_monitor: None,
     };
@@ -676,10 +674,8 @@ async fn run_event_loop(
                         &tool_env_for_rebuild,
                         plugin_manager_for_rebuild.as_ref(),
                     );
-                    let filtered: Vec<std::sync::Arc<dyn crate::tools::Tool>> = all_tools
-                        .into_iter()
-                        .filter(|t| !disabled.contains(&t.definition().name))
-                        .collect();
+                    let filtered: Vec<std::sync::Arc<dyn crate::tools::Tool>> =
+                        all_tools.into_iter().filter(|t| !disabled.contains(&t.definition().name)).collect();
                     agent = agent.with_tools(filtered);
                 }
                 AgentCommand::Quit => break,

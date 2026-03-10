@@ -166,11 +166,7 @@ impl ToolToggle {
 
     /// Get the current set of disabled tool names.
     pub fn disabled_set(&self) -> HashSet<String> {
-        self.entries
-            .iter()
-            .filter(|e| !e.enabled)
-            .map(|e| e.name.clone())
-            .collect()
+        self.entries.iter().filter(|e| !e.enabled).map(|e| e.name.clone()).collect()
     }
 
     /// Summary line: "N/M tools enabled"
@@ -194,10 +190,7 @@ impl ToolToggle {
         frame.render_widget(Clear, popup_area);
 
         let title = format!(" Tools [{}] — {} ", self.scope, self.summary());
-        let block = Block::default()
-            .title(title)
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Blue));
+        let block = Block::default().title(title).borders(Borders::ALL).border_style(Style::default().fg(Color::Blue));
 
         let inner = block.inner(popup_area);
         frame.render_widget(block, popup_area);

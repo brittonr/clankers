@@ -132,13 +132,17 @@ fn extract_tool_content(content: &[ToolResultContent]) -> (String, Vec<DisplayIm
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::provider::message::{AssistantMessage, Content, MessageId, StopReason};
-    use crate::provider::streaming::ContentDelta;
-    use crate::provider::Usage;
-    use crate::tools::ToolResult;
     use chrono::Utc;
     use serde_json::json;
+
+    use super::*;
+    use crate::provider::Usage;
+    use crate::provider::message::AssistantMessage;
+    use crate::provider::message::Content;
+    use crate::provider::message::MessageId;
+    use crate::provider::message::StopReason;
+    use crate::provider::streaming::ContentDelta;
+    use crate::tools::ToolResult;
 
     #[test]
     fn test_translate_agent_start() {
@@ -163,10 +167,7 @@ mod tests {
             },
         };
         let result = translate(&event);
-        assert!(matches!(
-            result,
-            Some(TuiEvent::ContentBlockStart { is_thinking: true })
-        ));
+        assert!(matches!(result, Some(TuiEvent::ContentBlockStart { is_thinking: true })));
     }
 
     #[test]
@@ -178,10 +179,7 @@ mod tests {
             },
         };
         let result = translate(&event);
-        assert!(matches!(
-            result,
-            Some(TuiEvent::ContentBlockStart { is_thinking: false })
-        ));
+        assert!(matches!(result, Some(TuiEvent::ContentBlockStart { is_thinking: false })));
     }
 
     #[test]
@@ -320,10 +318,7 @@ mod tests {
         };
         let result = translate(&event);
         match result {
-            Some(TuiEvent::UserInput {
-                text,
-                agent_msg_count,
-            }) => {
+            Some(TuiEvent::UserInput { text, agent_msg_count }) => {
                 assert_eq!(text, "Hello, agent!");
                 assert_eq!(agent_msg_count, 5);
             }
@@ -404,12 +399,7 @@ mod tests {
                     "ContentBlockStop should translate to TuiEvent::ContentBlockStop"
                 );
             } else {
-                assert!(
-                    result.is_none(),
-                    "Event {:?} should be ignored, got {:?}",
-                    event,
-                    result
-                );
+                assert!(result.is_none(), "Event {:?} should be ignored, got {:?}", event, result);
             }
         }
     }

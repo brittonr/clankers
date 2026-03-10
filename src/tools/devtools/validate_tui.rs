@@ -418,7 +418,7 @@ fn run_tui_test(
     signal: &CancellationToken,
 ) -> Result<String, String> {
     use std::fmt::Write;
-    
+
     let mut report = String::new();
     write!(report, "## TUI Validation: {}\n\n", description).unwrap();
     writeln!(report, "PTY size: {}x{}", cols, rows).unwrap();

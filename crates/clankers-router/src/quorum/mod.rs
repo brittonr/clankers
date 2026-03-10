@@ -426,7 +426,8 @@ pub fn build_judge_prompt(
            \"agreement\": <0.0 to 1.0 — how much the responses agree with each other>\n\
          }}",
         criteria
-    ).unwrap();
+    )
+    .unwrap();
 
     prompt
 }

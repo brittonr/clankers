@@ -12,19 +12,28 @@ use crate::tui::components::subagent_panel::SubagentPanel;
 /// Get a mutable reference to the peers panel, panicking if not found.
 /// Centralizes the expect call to make it easier to audit and replace.
 fn peers_panel_mut<'a>(ctx: &'a mut SlashContext<'_>) -> &'a mut PeersPanel {
-    ctx.app.panels.downcast_mut::<PeersPanel>(PanelId::Peers).expect("peers panel")
+    ctx.app
+        .panels
+        .downcast_mut::<PeersPanel>(PanelId::Peers)
+        .expect("peers panel registered at startup")
 }
 
 /// Get a mutable reference to the subagent panel, panicking if not found.
 /// Centralizes the expect call to make it easier to audit and replace.
 fn subagent_panel_mut<'a>(ctx: &'a mut SlashContext<'_>) -> &'a mut SubagentPanel {
-    ctx.app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents).expect("subagent panel")
+    ctx.app
+        .panels
+        .downcast_mut::<SubagentPanel>(PanelId::Subagents)
+        .expect("subagent panel registered at startup")
 }
 
 /// Get an immutable reference to the subagent panel, panicking if not found.
 /// Centralizes the expect call to make it easier to audit and replace.
 fn subagent_panel_ref<'a>(ctx: &'a SlashContext<'_>) -> &'a SubagentPanel {
-    ctx.app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents).expect("subagent panel")
+    ctx.app
+        .panels
+        .downcast_ref::<SubagentPanel>(PanelId::Subagents)
+        .expect("subagent panel registered at startup")
 }
 
 pub struct WorkerHandler;

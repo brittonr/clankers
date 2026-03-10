@@ -125,5 +125,3 @@ impl Provider for AnthropicProvider {
         }
     }
 }
-
-

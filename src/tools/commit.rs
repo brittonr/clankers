@@ -87,7 +87,7 @@ impl CommitTool {
 
     async fn analyze(&self, ctx: &ToolContext, files: &[String]) -> ToolResult {
         use std::fmt::Write;
-        
+
         // Get git status
         ctx.emit_progress("git status...");
         let status = match git_ops::status_porcelain().await {
@@ -159,7 +159,7 @@ impl CommitTool {
 
     async fn stage(&self, ctx: &ToolContext, files: &[String]) -> ToolResult {
         use std::fmt::Write;
-        
+
         if files.is_empty() {
             return ToolResult::error("No files specified. Provide 'files' array with paths to stage.");
         }
@@ -241,7 +241,7 @@ impl CommitTool {
 
     async fn split_analysis(&self, ctx: &ToolContext) -> ToolResult {
         use std::fmt::Write;
-        
+
         // Analyze unstaged changes and suggest how to split into multiple commits
         ctx.emit_progress("analyzing working tree for split...");
         let status = git_ops::status_porcelain().await.unwrap_or_default();
@@ -282,7 +282,7 @@ impl CommitTool {
 
     async fn changelog(&self, ctx: &ToolContext, count: usize) -> ToolResult {
         use std::fmt::Write;
-        
+
         ctx.emit_progress(&format!("reading last {} commits...", count));
         match git_ops::log(count).await {
             Ok(entries) => {

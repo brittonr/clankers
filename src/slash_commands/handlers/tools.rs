@@ -153,7 +153,8 @@ impl SlashHandler for PluginHandler {
                             } else {
                                 p.manifest.tools.join(", ")
                             },
-                        ).unwrap();
+                        )
+                        .unwrap();
                     }
                     ctx.app.push_system(out, false);
                 }

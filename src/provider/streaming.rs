@@ -5,14 +5,13 @@
 //! [`Content`](super::message::Content) type (which includes `Image` and
 //! `ToolResult` variants not present in the router's `ContentBlock`).
 
+// Re-export types that are field-identical to the router's definitions.
+pub use clankers_router::streaming::ContentDelta;
+pub use clankers_router::streaming::MessageMetadata;
 use serde::Deserialize;
 use serde::Serialize;
 
 use crate::provider::message::Content;
-
-// Re-export types that are field-identical to the router's definitions.
-pub use clankers_router::streaming::ContentDelta;
-pub use clankers_router::streaming::MessageMetadata;
 
 /// Delta update for streaming messages (alias for ContentDelta).
 pub type StreamDelta = ContentDelta;
