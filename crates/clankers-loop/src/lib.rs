@@ -24,3 +24,5 @@ pub use iteration::LoopId;
 pub use iteration::LoopKind;
 pub use iteration::LoopState;
 pub use iteration::LoopStatus;
+pub use iteration::MAX_ACTIVE_LOOPS;
+pub use iteration::MAX_ITERATIONS_HARD_LIMIT;

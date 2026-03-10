@@ -165,7 +165,7 @@ impl TokenBuilder {
             issued_at: now,
             expires_at: now + self.lifetime.as_secs(),
             nonce: self.nonce,
-            proof: self.parent.as_ref().map(|p| p.hash()),
+            proof: self.parent.as_ref().map(|p| p.hash()).transpose()?,
             delegation_depth,
             signature: [0u8; 64], // Placeholder
         };
@@ -235,21 +235,34 @@ pub fn generate_root_token(secret_key: &SecretKey, lifetime: Duration) -> Result
 /// Compute bytes to sign for a token.
 ///
 /// Signs everything except the signature field itself.
+///
+/// # Tiger Style
+///
+/// Serialization failures are fatal — silently skipping audience or
+/// capabilities would let two tokens with different permissions produce
+/// identical signing bytes, breaking signature security.
+///
+/// # Panics
+///
+/// Panics if audience or capabilities cannot be serialized. This is a
+/// programmer error — all valid `Audience` and `Capability` values
+/// must be serializable.
 pub(crate) fn bytes_to_sign(token: &CapabilityToken) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(256);
 
     bytes.push(token.version);
     bytes.extend_from_slice(token.issuer.as_bytes());
 
-    // Serialize audience
-    if let Ok(audience_bytes) = postcard::to_allocvec(&token.audience) {
-        bytes.extend_from_slice(&audience_bytes);
-    }
+    // Tiger Style: serialization failures are fatal, not silently ignored.
+    // Skipping these fields would cause different tokens to produce
+    // identical signing bytes — a catastrophic security violation.
+    let audience_bytes = postcard::to_allocvec(&token.audience)
+        .expect("audience must be serializable");
+    bytes.extend_from_slice(&audience_bytes);
 
-    // Serialize capabilities
-    if let Ok(cap_bytes) = postcard::to_allocvec(&token.capabilities) {
-        bytes.extend_from_slice(&cap_bytes);
-    }
+    let cap_bytes = postcard::to_allocvec(&token.capabilities)
+        .expect("capabilities must be serializable");
+    bytes.extend_from_slice(&cap_bytes);
 
     bytes.extend_from_slice(&token.issued_at.to_le_bytes());
     bytes.extend_from_slice(&token.expires_at.to_le_bytes());
@@ -263,6 +276,10 @@ pub(crate) fn bytes_to_sign(token: &CapabilityToken) -> Vec<u8> {
 
     // Include delegation_depth to prevent tampering
     bytes.push(token.delegation_depth);
+
+    // Tiger Style: assert signing bytes always include at least version +
+    // issuer (33 bytes) + audience + timestamps (16 bytes) + depth (1 byte)
+    assert!(bytes.len() >= 33 + 16 + 1);
 
     bytes
 }

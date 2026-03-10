@@ -113,6 +113,8 @@ impl Capability {
             }
 
             // ShellExecute operations
+            //
+            // Tiger Style: decomposed compound condition into early returns
             (
                 Capability::ShellExecute {
                     command_pattern,
@@ -123,17 +125,14 @@ impl Capability {
                     working_dir: op_wd,
                 },
             ) => {
-                // Check command pattern match
-                let cmd_match = glob_match(command_pattern, command);
-
-                // Check working directory constraint
-                let wd_match = match (cap_wd, op_wd) {
-                    (None, _) => true, // No constraint
+                if !glob_match(command_pattern, command) {
+                    return false;
+                }
+                match (cap_wd, op_wd) {
+                    (None, _) => true,
                     (Some(cap_dir), Some(req_dir)) => req_dir.starts_with(cap_dir),
-                    (Some(_), None) => false, // Capability requires wd, none provided
-                };
-
-                cmd_match && wd_match
+                    (Some(_), None) => false,
+                }
             }
 
             // FileAccess operations
@@ -202,6 +201,8 @@ impl Capability {
             }
 
             // FileAccess containment
+            //
+            // Tiger Style: decomposed into sequential checks
             (
                 Capability::FileAccess {
                     prefix: p1,
@@ -213,10 +214,14 @@ impl Capability {
                 },
             ) => {
                 // Child must have narrower or equal prefix
-                let prefix_ok = p2.starts_with(p1);
+                if !p2.starts_with(p1) {
+                    return false;
+                }
                 // Child cannot escalate from read-only to read-write
-                let readonly_ok = if *r1 { *r2 } else { true };
-                prefix_ok && readonly_ok
+                if *r1 && !*r2 {
+                    return false;
+                }
+                true
             }
 
             // BotCommand pattern containment
@@ -251,14 +256,15 @@ impl Capability {
                     p1 == p2
                 };
 
-                // Child working_dir must be within parent's constraint
-                let wd_ok = match (wd1, wd2) {
-                    (None, _) => true,        // Parent has no constraint
-                    (Some(_), None) => false, // Parent has constraint, child doesn't
+                // Tiger Style: decomposed — check pattern first, then wd
+                if !pattern_ok {
+                    return false;
+                }
+                match (wd1, wd2) {
+                    (None, _) => true,
+                    (Some(_), None) => false,
                     (Some(parent_wd), Some(child_wd)) => child_wd.starts_with(parent_wd),
-                };
-
-                pattern_ok && wd_ok
+                }
             }
 
             _ => false,

@@ -35,9 +35,21 @@ pub const TOKEN_CLOCK_SKEW_SECS: u64 = 60;
 // Compile-Time Constant Assertions
 // ============================================================================
 
-// Capability limits must be positive
+// Tiger Style: assert positive values
 const _: () = assert!(MAX_CAPABILITIES_PER_TOKEN > 0);
 const _: () = assert!(MAX_DELEGATION_DEPTH > 0);
 const _: () = assert!(MAX_TOKEN_SIZE > 0);
 const _: () = assert!(MAX_REVOCATION_LIST_SIZE > 0);
 const _: () = assert!(TOKEN_CLOCK_SKEW_SECS > 0);
+
+// Tiger Style: assert constant relationships
+// A token with max capabilities must still fit within max token size.
+// Each capability serializes to roughly ~100 bytes max, so 32 * 100 = 3200 bytes
+// plus overhead (~200 bytes) must be under MAX_TOKEN_SIZE.
+const _: () = assert!(MAX_TOKEN_SIZE >= 4096);
+// Delegation depth must fit in a u8 and be reasonable
+const _: () = assert!(MAX_DELEGATION_DEPTH <= 32);
+// Clock skew tolerance must be less than 5 minutes to prevent replay attacks
+const _: () = assert!(TOKEN_CLOCK_SKEW_SECS <= 300);
+// Revocation list must be bounded but useful
+const _: () = assert!(MAX_REVOCATION_LIST_SIZE <= 1_000_000);

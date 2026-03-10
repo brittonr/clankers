@@ -131,7 +131,11 @@ impl LoopTool {
                 .with_max_iterations(max)
         };
 
-        let loop_id = self.engine.register(def);
+        let Some(loop_id) = self.engine.register(def) else {
+            return ToolResult::error(
+                "too many active loops — wait for existing loops to finish or stop them first"
+            );
+        };
         self.engine.start(&loop_id);
 
         info!("loop started: {} ({}) — max {} iterations", name, loop_id, max);

@@ -178,6 +178,10 @@ impl CostTracker {
     ///
     /// Returns any budget events triggered (warnings, exceeded, milestones).
     /// Unknown models are tracked at zero cost (no pricing entry found).
+    /// # Tiger Style
+    ///
+    /// - Asserts costs are non-negative (negative pricing is a configuration error)
+    /// - Uses `expect` on lock since poison here is unrecoverable (usage data is lost)
     pub fn record_usage(&self, model_id: &str, input_tokens: u64, output_tokens: u64) -> (f64, Vec<BudgetEvent>) {
         let (input_cost, output_cost) = if let Some(pricing) = self.pricing.get(model_id) {
             (
@@ -197,6 +201,11 @@ impl CostTracker {
                 (0.0, 0.0)
             }
         };
+
+        // Tiger Style: costs must be non-negative
+        assert!(input_cost >= 0.0, "input cost must be non-negative");
+        assert!(output_cost >= 0.0, "output cost must be non-negative");
+
         let turn_cost = input_cost + output_cost;
 
         let total_cost = {
@@ -208,6 +217,9 @@ impl CostTracker {
             entry.cost_usd += turn_cost;
             usage.values().map(|u| u.cost_usd).sum::<f64>()
         };
+
+        // Tiger Style: total cost must be monotonically non-decreasing
+        assert!(total_cost >= 0.0, "total cost must be non-negative");
 
         let events = self.check_thresholds(total_cost);
         (total_cost, events)
@@ -290,6 +302,8 @@ impl CostTracker {
 
     // ── Internal ────────────────────────────────────────────────────────────
 
+    /// Tiger Style: decomposed compound conditions into sequential checks.
+    /// Each threshold check tests one condition at a time.
     fn check_thresholds(&self, total: f64) -> Vec<BudgetEvent> {
         let mut events = Vec::new();
         let prev = {
@@ -299,39 +313,39 @@ impl CostTracker {
             old
         };
 
-        // Hard limit
-        if let Some(hard) = self.config.hard_limit
-            && total >= hard
-            && prev < hard
-        {
-            events.push(BudgetEvent::Exceeded {
-                limit: hard,
-                current: total,
-            });
+        // Hard limit — decomposed: check existence, then crossing
+        if let Some(hard) = self.config.hard_limit {
+            let just_crossed = total >= hard && prev < hard;
+            if just_crossed {
+                events.push(BudgetEvent::Exceeded {
+                    limit: hard,
+                    current: total,
+                });
+            }
         }
 
-        // Soft limit
-        if let Some(soft) = self.config.soft_limit
-            && total >= soft
-            && prev < soft
-        {
-            events.push(BudgetEvent::Warning {
-                threshold: soft,
-                current: total,
-            });
+        // Soft limit — decomposed: check existence, then crossing
+        if let Some(soft) = self.config.soft_limit {
+            let just_crossed = total >= soft && prev < soft;
+            if just_crossed {
+                events.push(BudgetEvent::Warning {
+                    threshold: soft,
+                    current: total,
+                });
+            }
         }
 
         // Milestone intervals — emit one event per crossed milestone
-        if let Some(interval) = self.config.warning_interval
-            && interval > 0.0
-        {
-            let prev_milestone = (prev / interval).floor() as u64;
-            let curr_milestone = (total / interval).floor() as u64;
-            for m in (prev_milestone + 1)..=curr_milestone {
-                events.push(BudgetEvent::Milestone {
-                    milestone: m as f64 * interval,
-                    total,
-                });
+        if let Some(interval) = self.config.warning_interval {
+            if interval > 0.0 {
+                let prev_milestone = (prev / interval).floor() as u64;
+                let curr_milestone = (total / interval).floor() as u64;
+                for m in (prev_milestone + 1)..=curr_milestone {
+                    events.push(BudgetEvent::Milestone {
+                        milestone: m as f64 * interval,
+                        total,
+                    });
+                }
             }
         }
 

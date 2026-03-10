@@ -557,7 +557,10 @@ impl<'a> EventLoopRunner<'a> {
                 .with_max_iterations(ls.max_iterations)
         };
 
-        let id = self.loop_engine.register(def);
+        let Some(id) = self.loop_engine.register(def) else {
+            tracing::warn!("loop registration failed: too many active loops");
+            return None;
+        };
         self.loop_engine.start(&id);
         self.active_loop_id = Some(id.clone());
         Some(id)

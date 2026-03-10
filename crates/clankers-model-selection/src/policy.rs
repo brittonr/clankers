@@ -105,8 +105,16 @@ impl RoutingPolicy {
         }
     }
 
-    /// Compute a numeric complexity score from signals
+    /// Compute a numeric complexity score from signals.
+    ///
+    /// # Tiger Style
+    ///
+    /// Asserts weights are non-negative — negative weights would invert
+    /// the scoring logic (simple tasks scored as complex).
     pub fn compute_complexity_score(&self, signals: &ComplexitySignals) -> f32 {
+        assert!(self.config.token_weight >= 0.0, "token_weight must be non-negative");
+        assert!(self.config.tool_weight >= 0.0, "tool_weight must be non-negative");
+
         let mut score = 0.0;
 
         // Token count contribution (normalized to ~0-20 range)

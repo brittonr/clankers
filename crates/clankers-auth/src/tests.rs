@@ -477,7 +477,7 @@ fn test_token_builder_delegation() {
         .expect("should build child token");
 
     assert!(child.proof.is_some());
-    assert_eq!(child.proof.unwrap(), root.hash());
+    assert_eq!(child.proof.unwrap(), root.hash().unwrap());
 }
 
 #[test]
@@ -805,7 +805,7 @@ fn test_delegation_depth_tracking() {
 
     assert_eq!(child1.delegation_depth, 1);
     assert!(child1.proof.is_some());
-    assert_eq!(child1.proof.unwrap(), root.hash());
+    assert_eq!(child1.proof.unwrap(), root.hash().unwrap());
 
     // Second level delegation should have depth 2
     let child2_key = test_secret_key();
@@ -816,7 +816,7 @@ fn test_delegation_depth_tracking() {
         .expect("should build child2 token");
 
     assert_eq!(child2.delegation_depth, 2);
-    assert_eq!(child2.proof.unwrap(), child1.hash());
+    assert_eq!(child2.proof.unwrap(), child1.hash().unwrap());
 }
 
 #[test]

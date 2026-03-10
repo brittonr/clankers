@@ -8,6 +8,18 @@ use uuid::Uuid;
 
 use crate::condition::BreakCondition;
 
+/// Tiger Style: fixed limits for loop engine resources.
+/// Maximum number of concurrently tracked loops.
+pub const MAX_ACTIVE_LOOPS: u32 = 64;
+/// Maximum iterations any single loop can run (hard safety valve).
+pub const MAX_ITERATIONS_HARD_LIMIT: u32 = 10_000;
+
+// Tiger Style: compile-time constant assertions
+const _: () = assert!(MAX_ACTIVE_LOOPS > 0);
+const _: () = assert!(MAX_ITERATIONS_HARD_LIMIT > 0);
+const _: () = assert!(MAX_ACTIVE_LOOPS <= 256);
+const _: () = assert!(MAX_ITERATIONS_HARD_LIMIT <= 100_000);
+
 /// Unique loop identifier.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct LoopId(pub String);
@@ -134,8 +146,13 @@ impl LoopDef {
         }
     }
 
+    /// Set maximum iterations.
+    ///
+    /// # Tiger Style
+    ///
+    /// Capped at `MAX_ITERATIONS_HARD_LIMIT` to prevent unbounded execution.
     pub fn with_max_iterations(mut self, max: u32) -> Self {
-        self.max_iterations = max;
+        self.max_iterations = max.min(MAX_ITERATIONS_HARD_LIMIT);
         self
     }
 }
@@ -169,13 +186,31 @@ impl LoopState {
     }
 
     /// Start the loop.
+    ///
+    /// # Tiger Style
+    ///
+    /// Asserts the loop is in `Pending` state before transitioning.
+    /// Starting a non-pending loop is a programmer error.
     pub fn start(&mut self) {
+        assert_eq!(self.status, LoopStatus::Pending, "can only start a pending loop");
+        assert!(self.started_at.is_none(), "started_at must be None before start");
         self.status = LoopStatus::Running;
         self.started_at = Some(Utc::now());
     }
 
     /// Record an iteration result. Returns true if the loop should continue.
+    ///
+    /// # Tiger Style
+    ///
+    /// Asserts the loop is running and iteration index is consistent.
+    /// Bounded by `max_iterations` (safety valve).
     pub fn record_iteration(&mut self, result: IterationResult) -> bool {
+        assert_eq!(self.status, LoopStatus::Running, "can only record in running state");
+        assert_eq!(
+            result.index, self.current_iteration,
+            "iteration index must match current_iteration"
+        );
+
         let broke = result.break_matched;
         self.results.push(result);
         self.current_iteration += 1;
@@ -227,13 +262,25 @@ impl LoopState {
     }
 
     /// Mark the loop as failed.
+    ///
+    /// # Tiger Style
+    ///
+    /// Asserts the loop is running — failing a non-running loop is a programmer error.
     pub fn fail(&mut self) {
+        assert_eq!(self.status, LoopStatus::Running, "can only fail a running loop");
+        assert!(self.finished_at.is_none());
         self.status = LoopStatus::Failed;
         self.finished_at = Some(Utc::now());
     }
 
     /// Mark the loop as explicitly stopped.
+    ///
+    /// # Tiger Style
+    ///
+    /// Asserts the loop is running — stopping a non-running loop is a programmer error.
     pub fn stop(&mut self) {
+        assert_eq!(self.status, LoopStatus::Running, "can only stop a running loop");
+        assert!(self.finished_at.is_none());
         self.status = LoopStatus::Stopped;
         self.finished_at = Some(Utc::now());
     }

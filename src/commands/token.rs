@@ -219,7 +219,7 @@ fn build_scoped_capabilities(
 
 /// Store a token in redb for tracking.
 fn store_token(redb_db: &std::sync::Arc<redb::Database>, token: &clankers_auth::CapabilityToken) {
-    let hash_hex = hex::encode(token.hash());
+    let hash_hex = hex::encode(token.hash().unwrap_or([0u8; 32]));
     let encoded = token.encode().unwrap_or_default();
     if let Ok(tx) = redb_db.begin_write() {
         if let Ok(mut table) = tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE) {
@@ -233,7 +233,7 @@ fn store_token(redb_db: &std::sync::Arc<redb::Database>, token: &clankers_auth::
 
 /// Print token metadata to stderr.
 fn print_token_summary(token: &clankers_auth::CapabilityToken) {
-    let hash_hex = hex::encode(token.hash());
+    let hash_hex = hex::encode(token.hash().unwrap_or([0u8; 32]));
     eprintln!("Token created:");
     eprintln!("  Issuer:  {}", token.issuer.fmt_short());
     eprintln!("  Hash:    {}", &hash_hex[..16]);
@@ -343,7 +343,9 @@ fn handle_revoke(redb_db: &std::sync::Arc<redb::Database>, hash: &str) -> Result
         arr
     } else {
         match clankers_auth::CapabilityToken::from_base64(hash) {
-            Ok(token) => token.hash(),
+            Ok(token) => token.hash().map_err(|e| crate::error::Error::Config {
+                message: format!("Failed to hash token: {}", e),
+            })?,
             Err(_) => {
                 return Err(crate::error::Error::Config {
                     message: "Invalid input: expected 64-char hex hash or base64 token".to_string(),
@@ -371,7 +373,7 @@ fn handle_info(token_b64: &str) -> Result<()> {
         message: format!("Failed to decode token: {}", e),
     })?;
 
-    let hash = hex::encode(token.hash());
+    let hash = hex::encode(token.hash().unwrap_or([0u8; 32]));
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
     let expired = token.expires_at < now;
 

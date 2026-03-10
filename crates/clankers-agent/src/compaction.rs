@@ -62,11 +62,25 @@ impl Default for AutoCompactConfig {
     }
 }
 
-/// Check if auto-compaction should trigger
+/// Check if auto-compaction should trigger.
+///
+/// # Tiger Style
+///
+/// Asserts threshold is in valid range. A threshold outside [0.0, 1.0]
+/// is a programmer error — it would either never trigger or always trigger.
 pub fn should_auto_compact(messages: &[AgentMessage], max_context_tokens: usize, config: &AutoCompactConfig) -> bool {
     if !config.enabled {
         return false;
     }
+
+    // Tiger Style: validate threshold range
+    assert!(
+        (0.0..=1.0).contains(&config.threshold),
+        "compaction threshold must be in [0.0, 1.0], got {}",
+        config.threshold
+    );
+    assert!(max_context_tokens > 0, "max_context_tokens must be positive");
+
     let total: usize = messages.iter().map(estimate_message_tokens).sum();
     let threshold_tokens = (max_context_tokens as f64 * config.threshold) as usize;
     total > threshold_tokens
@@ -228,11 +242,18 @@ fn extract_role_and_text(msg: &AgentMessage) -> (&'static str, String) {
     }
 }
 
-fn truncate_str(s: &str, max: usize) -> String {
-    if s.len() <= max {
+/// Truncate a string to at most `max_bytes` bytes, respecting UTF-8 boundaries.
+///
+/// # Tiger Style
+///
+/// Uses `floor_char_boundary` to avoid panicking on multibyte characters.
+/// The naive `&s[..max]` panics if `max` falls inside a multibyte codepoint.
+fn truncate_str(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
         s.to_string()
     } else {
-        format!("{}...", &s[..max])
+        let boundary = s.floor_char_boundary(max_bytes);
+        format!("{}...", &s[..boundary])
     }
 }
 

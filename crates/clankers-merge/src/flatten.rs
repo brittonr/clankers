@@ -38,6 +38,10 @@ pub enum FlattenBlock {
     },
 }
 
+/// Tiger Style: maximum number of vertices a graggle can have for flattening.
+/// Prevents unbounded traversal of malformed or enormous graphs.
+const MAX_FLATTEN_VERTICES: u32 = 100_000;
+
 /// Flatten a graggle to text, detecting conflicts.
 ///
 /// Uses a topological walk from ROOT to END. At each step:
@@ -45,7 +49,20 @@ pub enum FlattenBlock {
 /// - If multiple alive successors → detect the conflict region, emit markers
 ///
 /// Ghost (deleted) vertices are traversed for graph connectivity but not emitted.
+///
+/// # Tiger Style
+///
+/// - Bounded by `MAX_FLATTEN_VERTICES` to prevent unbounded graph traversal
+/// - Asserts ROOT and END sentinels exist in the topological order
 pub fn flatten(g: &Graggle) -> FlattenResult {
+    // Tiger Style: enforce vertex count bound
+    assert!(
+        (g.vertices.len() as u32) <= MAX_FLATTEN_VERTICES,
+        "graggle has {} vertices, max is {}",
+        g.vertices.len(),
+        MAX_FLATTEN_VERTICES
+    );
+
     let mut blocks = Vec::new();
     let mut current_clean = String::new();
     let mut visited = BTreeSet::new();
@@ -53,6 +70,13 @@ pub fn flatten(g: &Graggle) -> FlattenResult {
     // Topological traversal using Kahn's algorithm variant.
     // We track in-degree of alive+relevant vertices.
     let topo_order = topological_order(g);
+
+    // Tiger Style: assert topological order covers all vertices
+    assert_eq!(
+        topo_order.len(),
+        g.vertices.len(),
+        "topological order must include all vertices (cycle detected?)"
+    );
 
     // Group into clean runs and conflict regions.
     // A conflict happens when a vertex has multiple alive children,
@@ -121,7 +145,13 @@ pub fn flatten(g: &Graggle) -> FlattenResult {
                     // that's not exclusively ours
                     let mut side_content = String::from_utf8_lossy(content).into_owned();
                     let mut cursor = cv;
+                    // Tiger Style: bounded traversal — at most MAX_FLATTEN_VERTICES steps
+                    let mut chain_steps: u32 = 0;
                     loop {
+                        chain_steps += 1;
+                        if chain_steps > MAX_FLATTEN_VERTICES {
+                            break;
+                        }
                         let children: Vec<_> = g.children_of(cursor).filter(|&c| c != END && g.is_alive(c)).collect();
                         if children.len() == 1 && !conflict_vertices.contains(&children[0]) {
                             // Exclusive successor — part of this side
@@ -190,6 +220,10 @@ pub fn flatten(g: &Graggle) -> FlattenResult {
 }
 
 /// Check if `ancestor` is an ancestor of `descendant` in the graggle (BFS).
+///
+/// # Tiger Style
+///
+/// Bounded by vertex count — BFS visits each vertex at most once via `seen` set.
 fn is_ancestor(g: &Graggle, ancestor: VertexId, descendant: VertexId) -> bool {
     if ancestor == descendant {
         return false;

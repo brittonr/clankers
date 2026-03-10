@@ -110,12 +110,17 @@ impl CapabilityToken {
     /// Compute hash of this token (for revocation and proof chains).
     ///
     /// Uses BLAKE3 for fast, secure hashing.
-    pub fn hash(&self) -> [u8; 32] {
-        // Use the encoded form for consistent hashing
-        match self.encode() {
-            Ok(bytes) => *blake3::hash(&bytes).as_bytes(),
-            Err(_) => [0u8; 32], // Should never happen for a valid token
-        }
+    ///
+    /// # Tiger Style
+    ///
+    /// Returns `Result` instead of silently returning zero bytes on failure.
+    /// A zero hash would cause different tokens to collide in revocation
+    /// lookups — a security-critical invariant violation.
+    pub fn hash(&self) -> Result<[u8; 32], AuthError> {
+        let bytes = self.encode()?;
+        // Tiger Style: assert the encoded bytes are non-empty before hashing
+        assert!(!bytes.is_empty());
+        Ok(*blake3::hash(&bytes).as_bytes())
     }
 }
 

@@ -18,6 +18,10 @@ use crate::iteration::LoopDef;
 use crate::iteration::LoopId;
 use crate::iteration::LoopState;
 use crate::iteration::LoopStatus;
+use crate::iteration::MAX_ACTIVE_LOOPS;
+
+/// Tiger Style: named constant for event channel capacity.
+const EVENT_CHANNEL_CAPACITY: usize = 256;
 
 /// Event emitted during loop execution.
 #[derive(Debug, Clone)]
@@ -55,7 +59,7 @@ pub struct LoopEngine {
 
 impl LoopEngine {
     pub fn new() -> Self {
-        let (event_tx, _) = broadcast::channel(256);
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
         Self {
             loops: Arc::new(Mutex::new(HashMap::new())),
             event_tx,
@@ -68,12 +72,28 @@ impl LoopEngine {
     }
 
     /// Register a new loop (in Pending state). Returns the loop ID.
-    pub fn register(&self, def: LoopDef) -> LoopId {
+    ///
+    /// # Tiger Style
+    ///
+    /// Enforces `MAX_ACTIVE_LOOPS` to prevent unbounded resource usage.
+    /// Returns `None` if the limit is reached.
+    pub fn register(&self, def: LoopDef) -> Option<LoopId> {
         let id = def.id.clone();
         let state = LoopState::new(def);
+        let mut loops = self.loops.lock();
+
+        if loops.len() >= MAX_ACTIVE_LOOPS as usize {
+            tracing::warn!(
+                "loop registration rejected: {} active loops (max {})",
+                loops.len(),
+                MAX_ACTIVE_LOOPS
+            );
+            return None;
+        }
+
         info!("loop registered: {} ({})", state.def.name, id);
-        self.loops.lock().insert(id.clone(), state);
-        id
+        loops.insert(id.clone(), state);
+        Some(id)
     }
 
     /// Start a loop (transitions Pending -> Running).
@@ -250,7 +270,7 @@ mod tests {
     fn register_and_list() {
         let engine = LoopEngine::new();
         let def = LoopDef::fixed("test-loop", 5, json!({"cmd": "echo hi"}));
-        let id = engine.register(def);
+        let id = engine.register(def).unwrap();
 
         let all = engine.all();
         assert_eq!(all.len(), 1);
@@ -262,7 +282,7 @@ mod tests {
     fn start_transitions_to_running() {
         let engine = LoopEngine::new();
         let def = LoopDef::fixed("run-me", 3, json!({}));
-        let id = engine.register(def);
+        let id = engine.register(def).unwrap();
 
         assert!(engine.start(&id));
         assert_eq!(engine.get(&id).unwrap().status, LoopStatus::Running);
@@ -274,7 +294,7 @@ mod tests {
         let mut rx = engine.subscribe();
 
         let def = LoopDef::fixed("counter", 3, json!({}));
-        let id = engine.register(def);
+        let id = engine.register(def).unwrap();
         engine.start(&id);
 
         assert!(engine.record_iteration(&id, "iter 0".into(), None));
@@ -301,7 +321,7 @@ mod tests {
             BreakCondition::Contains("OK".into()),
             json!({}),
         );
-        let id = engine.register(def);
+        let id = engine.register(def).unwrap();
         engine.start(&id);
 
         assert!(engine.record_iteration(&id, "not yet".into(), None));
@@ -317,7 +337,7 @@ mod tests {
     fn stop_running_loop() {
         let engine = LoopEngine::new();
         let def = LoopDef::fixed("stoppable", 100, json!({}));
-        let id = engine.register(def);
+        let id = engine.register(def).unwrap();
         engine.start(&id);
 
         engine.record_iteration(&id, "iter 0".into(), None);
@@ -332,12 +352,12 @@ mod tests {
         let engine = LoopEngine::new();
 
         let def1 = LoopDef::fixed("done", 1, json!({}));
-        let id1 = engine.register(def1);
+        let id1 = engine.register(def1).unwrap();
         engine.start(&id1);
         engine.record_iteration(&id1, "".into(), None);
 
         let def2 = LoopDef::fixed("still-running", 100, json!({}));
-        let id2 = engine.register(def2);
+        let id2 = engine.register(def2).unwrap();
         engine.start(&id2);
 
         assert_eq!(engine.all().len(), 2);
@@ -351,7 +371,7 @@ mod tests {
     fn signal_break_stops_loop() {
         let engine = LoopEngine::new();
         let def = LoopDef::fixed("signaled", 100, json!({}));
-        let id = engine.register(def);
+        let id = engine.register(def).unwrap();
         engine.start(&id);
 
         // Run one normal iteration
@@ -373,12 +393,12 @@ mod tests {
         let engine = LoopEngine::new();
 
         let def1 = LoopDef::fixed("finished", 1, json!({}));
-        let id1 = engine.register(def1);
+        let id1 = engine.register(def1).unwrap();
         engine.start(&id1);
         engine.record_iteration(&id1, "".into(), None);
 
         let def2 = LoopDef::fixed("active", 10, json!({}));
-        engine.register(def2);
+        engine.register(def2).unwrap();
 
         assert_eq!(engine.active().len(), 1);
         assert_eq!(engine.active()[0].def.name, "active"); // pending counts as active

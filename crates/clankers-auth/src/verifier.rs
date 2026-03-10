@@ -80,7 +80,7 @@ impl TokenVerifier {
     ///
     /// Returns `Err` if internal lock is poisoned.
     pub fn register_parent_token(&self, token: CapabilityToken) -> Result<(), AuthError> {
-        let hash = token.hash();
+        let hash = token.hash()?;
         let mut cache = self.parent_cache.write().map_err(|_| AuthError::InternalError {
             reason: "parent cache lock poisoned".to_string(),
         })?;
@@ -127,6 +127,12 @@ impl TokenVerifier {
     }
 
     /// Internal recursive verification with depth tracking.
+    ///
+    /// # Tiger Style
+    ///
+    /// - Bounded recursion via `chain_depth` and `MAX_DELEGATION_DEPTH`
+    /// - Assertions verify token structural invariants before crypto checks
+    /// - Decomposed checks: each step tests one thing
     fn verify_internal(
         &self,
         token: &CapabilityToken,
@@ -139,6 +145,21 @@ impl TokenVerifier {
                 depth: chain_depth,
                 max: MAX_DELEGATION_DEPTH,
             });
+        }
+
+        // Tiger Style: assert structural invariants before expensive crypto
+        assert!(token.version > 0, "token version must be positive");
+        assert!(
+            token.expires_at >= token.issued_at,
+            "expires_at must be >= issued_at"
+        );
+
+        // Tiger Style: delegation_depth must match proof presence
+        if token.delegation_depth == 0 {
+            assert!(
+                token.proof.is_none(),
+                "root token (depth 0) must not have proof"
+            );
         }
 
         // 1. Check signature
@@ -186,7 +207,7 @@ impl TokenVerifier {
         }
 
         // 5. Check revocation
-        let hash = token.hash();
+        let hash = token.hash()?;
         let revoked_guard = self.revoked.read().map_err(|_| AuthError::InternalError {
             reason: "revocation lock poisoned".to_string(),
         })?;
@@ -249,7 +270,10 @@ impl TokenVerifier {
         presenter: Option<&PublicKey>,
     ) -> Result<(), AuthError> {
         // Build a temporary lookup map for the chain
-        let chain_map: HashMap<[u8; 32], &CapabilityToken> = chain.iter().map(|t| (t.hash(), t)).collect();
+        let chain_map: HashMap<[u8; 32], &CapabilityToken> = chain
+            .iter()
+            .map(|t| Ok((t.hash()?, t)))
+            .collect::<Result<_, AuthError>>()?;
 
         self.verify_with_chain_internal(token, &chain_map, presenter, 0)
     }
@@ -315,7 +339,7 @@ impl TokenVerifier {
         }
 
         // 5. Check revocation
-        let hash = token.hash();
+        let hash = token.hash()?;
         let revoked_guard = self.revoked.read().map_err(|_| AuthError::InternalError {
             reason: "revocation lock poisoned".to_string(),
         })?;
@@ -360,12 +384,23 @@ impl TokenVerifier {
     /// Check if token authorizes the given operation.
     ///
     /// First verifies the token, then checks if any capability authorizes the operation.
+    ///
+    /// # Tiger Style
+    ///
+    /// Asserts capabilities are non-empty — a token with zero capabilities is
+    /// structurally invalid and should never reach authorization.
     pub fn authorize(
         &self,
         token: &CapabilityToken,
         operation: &Operation,
         presenter: Option<&PublicKey>,
     ) -> Result<(), AuthError> {
+        // Tiger Style: a token with no capabilities is structurally invalid
+        assert!(
+            !token.capabilities.is_empty(),
+            "token must have at least one capability"
+        );
+
         // First verify the token itself
         self.verify(token, presenter)?;
 
@@ -384,20 +419,39 @@ impl TokenVerifier {
     /// Revoke a token by its hash.
     ///
     /// Once revoked, the token will fail verification even if otherwise valid.
-    /// Returns error if internal lock is poisoned.
+    ///
+    /// # Tiger Style
+    ///
+    /// Enforces `MAX_REVOCATION_LIST_SIZE` to prevent unbounded memory growth.
+    /// Returns error if the revocation list is full or the lock is poisoned.
     pub fn revoke(&self, token_hash: [u8; 32]) -> Result<(), AuthError> {
-        self.revoked
-            .write()
-            .map_err(|_| AuthError::InternalError {
-                reason: "revocation lock poisoned".to_string(),
-            })?
-            .insert(token_hash);
+        use crate::constants::MAX_REVOCATION_LIST_SIZE;
+
+        let mut revoked = self.revoked.write().map_err(|_| AuthError::InternalError {
+            reason: "revocation lock poisoned".to_string(),
+        })?;
+
+        // Tiger Style: enforce fixed limit on revocation list size
+        if revoked.len() >= MAX_REVOCATION_LIST_SIZE as usize {
+            if revoked.contains(&token_hash) {
+                return Ok(()); // Already revoked, idempotent
+            }
+            return Err(AuthError::InternalError {
+                reason: format!(
+                    "revocation list full: {} entries (max {}). Prune expired tokens first.",
+                    revoked.len(),
+                    MAX_REVOCATION_LIST_SIZE
+                ),
+            });
+        }
+
+        revoked.insert(token_hash);
         Ok(())
     }
 
     /// Revoke a token directly.
     pub fn revoke_token(&self, token: &CapabilityToken) -> Result<(), AuthError> {
-        self.revoke(token.hash())
+        self.revoke(token.hash()?)
     }
 
     /// Check if a token is revoked.
@@ -425,12 +479,18 @@ impl TokenVerifier {
 
     /// Get the number of revoked tokens.
     ///
+    /// # Tiger Style
+    ///
+    /// Returns `u32` — bounded by `MAX_REVOCATION_LIST_SIZE` (10,000).
+    /// Using `u32` instead of `usize` for consistent cross-platform behavior.
+    ///
     /// Returns `Err` if internal lock is poisoned.
-    pub fn revocation_count(&self) -> Result<usize, AuthError> {
+    pub fn revocation_count(&self) -> Result<u32, AuthError> {
         let guard = self.revoked.read().map_err(|_| AuthError::InternalError {
             reason: "revocation lock poisoned".to_string(),
         })?;
-        Ok(guard.len())
+        // Safe: bounded by MAX_REVOCATION_LIST_SIZE (10,000) which fits in u32
+        Ok(guard.len() as u32)
     }
 
     /// Load revoked tokens from persistent storage.
