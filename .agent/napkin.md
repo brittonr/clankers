@@ -45,6 +45,11 @@
 | 2026-03-08 | self | TUI "near-duplicate" panels (subagent_panel vs subagent_pane, branch_panel vs branch_switcher vs branch_compare) are architecturally distinct | Don't assume same-domain components are duplicates. Read module-level doc comments first: overview list ≠ BSP pane, list panel ≠ fuzzy overlay ≠ diff view. |
 | 2026-03-07 | self | Panel downcast `.expect()` calls aren't bugs (panels always registered at startup) but are noisy | Replace bare `.expect("panel")` with descriptive `.expect("X panel registered at startup")` or wrap in typed helper methods for readability |
 
+## Corrections (continued)
+| 2026-03-10 | self | Plugin extraction: `impl SlashContributor for PluginManager` is orphan when both types are in separate crates | Use wrapper types (`PluginSlashContributor<'a>(&'a PluginManager)`) defined in the main crate for orphan-rule-safe trait impls |
+| 2026-03-10 | self | Plugin extraction: test helpers accessed `mgr.plugins` and `mgr.instances` (private fields) directly | Add `inject_instance()` and `get_mut()` public methods to PluginManager for test injection — avoids exposing the full HashMap |
+| 2026-03-10 | self | Moving PluginEvent::matches(&AgentEvent) to extracted crate creates a crate dep on AgentEvent | Decouple with string tags: `AgentEvent::event_kind() -> &str` + `PluginEvent::matches_event_kind(&str)` — no cross-crate type dependency |
+
 ## User Preferences
 - Don't care about backwards compat — fix the implementation properly
 - Uses Fastmail, not third-party email services (SendGrid, Mailgun)
@@ -357,6 +362,22 @@
 - Snapshot files in `tests/tui/snapshots/` (tracked) — review with `cargo insta review`
 - Model name normalized to `MODEL` in structure snapshots to avoid breaks when switching default model
 - `normalize_screen_text()` replaces git counters, token counts, worktree IDs, commit hashes, model names
+
+## Patterns That Work (crate extraction batch 3)
+- `clankers-prompts` at `crates/clankers-prompts/` — prompt template discovery (zero crate deps, serde+std only)
+- `clankers-skills` at `crates/clankers-skills/` — skill directory scanning (zero crate deps, serde+std only)
+- `clankers-plugin` at `crates/clankers-plugin/` — plugin manager core, manifest, sandbox, host, bridge, UI
+- After extracting prompts/skills with only 1-3 callers each: eliminate the `src/prompts/` and `src/skills/` directories entirely, callers import directly from crate
+- `ToolResult`/`ToolResultContent` canonical home is `clankers-message` (message protocol types), re-exported from `tools/mod.rs`
+- `ResultChunk`/`TruncationConfig`/`ToolResultAccumulator` canonical home is `clankers-message` (result streaming protocol)
+- `ProgressKind`/`ToolProgress` canonical home is `clankers-tui-types`, re-exported from `tools/progress.rs`
+- `tools/progress.rs` is now pure re-exports (14 lines) — all type defs live in their canonical crates
+- Plugin crate bridge: `PluginEvent::matches_event_kind(&str)` decoupled from AgentEvent
+- Plugin contrib wrappers: `PluginMenuContributor<'a>` and `PluginSlashContributor<'a>` for orphan-rule compliance
+- `PluginManager::active_plugin_infos()` iterator replaces direct `.plugins` field access
+- `PluginManager::inject_instance()` + `get_mut()` for test helpers (replaces private field access)
+- `AgentEvent::event_kind()` returns `&'static str` tag for plugin matching — empty string for events plugins don't subscribe to
+- `registry.rs` eliminated (was 4 re-exports from `clankers-tui-types`) — callers import directly
 
 ## Patterns That Work (plugin system maturity)
 - `filter_ui_actions()` gates on `ui` permission — strips UI actions from plugins without it, logs a warning
