@@ -5,7 +5,7 @@ coverage/
 doc/
 
 # Nix
-result*
+/result*
 .direnv/
 
 # IDE
