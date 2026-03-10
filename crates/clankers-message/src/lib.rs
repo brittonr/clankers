@@ -11,6 +11,7 @@ pub mod message;
 pub mod streaming;
 
 // Re-export core types at crate root for convenience
+pub use message::generate_id;
 pub use message::*;
 pub use streaming::ContentDelta;
 pub use streaming::StreamDelta;

@@ -3,9 +3,13 @@
 use std::fmt::Write;
 use std::path::Path;
 
+use clankers_message::AgentMessage;
+use clankers_message::Content;
+
 use super::entry::SessionEntry;
 use super::store::read_entries;
 use crate::error::Result;
+use crate::error::SessionError;
 
 /// Export a session to markdown format
 pub fn export_markdown(path: &Path) -> Result<String> {
@@ -20,63 +24,60 @@ pub fn export_markdown(path: &Path) -> Result<String> {
                 writeln!(out, "- **Model**: {}", h.model).unwrap();
                 write!(out, "- **CWD**: {}\n\n---\n\n", h.cwd).unwrap();
             }
-            SessionEntry::Message(m) => {
-                use crate::provider::message::AgentMessage;
-                match &m.message {
-                    AgentMessage::User(u) => {
-                        out.push_str("## 🧑 User\n\n");
-                        for c in &u.content {
-                            if let crate::provider::message::Content::Text { text } = c {
+            SessionEntry::Message(m) => match &m.message {
+                AgentMessage::User(u) => {
+                    out.push_str("## 🧑 User\n\n");
+                    for c in &u.content {
+                        if let Content::Text { text } = c {
+                            out.push_str(text);
+                            out.push_str("\n\n");
+                        }
+                    }
+                }
+                AgentMessage::Assistant(a) => {
+                    out.push_str("## 🤖 Assistant\n\n");
+                    for c in &a.content {
+                        match c {
+                            Content::Text { text } => {
                                 out.push_str(text);
                                 out.push_str("\n\n");
                             }
-                        }
-                    }
-                    AgentMessage::Assistant(a) => {
-                        out.push_str("## 🤖 Assistant\n\n");
-                        for c in &a.content {
-                            match c {
-                                crate::provider::message::Content::Text { text } => {
-                                    out.push_str(text);
-                                    out.push_str("\n\n");
-                                }
-                                crate::provider::message::Content::ToolUse { name, input, .. } => {
-                                    write!(
-                                        out,
-                                        "**Tool call**: `{}`\n```json\n{}\n```\n\n",
-                                        name,
-                                        serde_json::to_string_pretty(input).unwrap_or_default()
-                                    )
-                                    .unwrap();
-                                }
-                                crate::provider::message::Content::Thinking { thinking } => {
-                                    write!(
-                                        out,
-                                        "<details>\n<summary>💭 Thinking</summary>\n\n{}\n\n</details>\n\n",
-                                        thinking
-                                    )
-                                    .unwrap();
-                                }
-                                _ => {}
+                            Content::ToolUse { name, input, .. } => {
+                                write!(
+                                    out,
+                                    "**Tool call**: `{}`\n```json\n{}\n```\n\n",
+                                    name,
+                                    serde_json::to_string_pretty(input).unwrap_or_default()
+                                )
+                                .unwrap();
                             }
-                        }
-                    }
-                    AgentMessage::ToolResult(tr) => {
-                        let label = if tr.is_error {
-                            "❌ Tool Error"
-                        } else {
-                            "📋 Tool Result"
-                        };
-                        write!(out, "### {} ({})\n\n", label, tr.tool_name).unwrap();
-                        for c in &tr.content {
-                            if let crate::provider::message::Content::Text { text } = c {
-                                write!(out, "```\n{}\n```\n\n", text).unwrap();
+                            Content::Thinking { thinking } => {
+                                write!(
+                                    out,
+                                    "<details>\n<summary>💭 Thinking</summary>\n\n{}\n\n</details>\n\n",
+                                    thinking
+                                )
+                                .unwrap();
                             }
+                            _ => {}
                         }
                     }
-                    _ => {}
                 }
-            }
+                AgentMessage::ToolResult(tr) => {
+                    let label = if tr.is_error {
+                        "❌ Tool Error"
+                    } else {
+                        "📋 Tool Result"
+                    };
+                    write!(out, "### {} ({})\n\n", label, tr.tool_name).unwrap();
+                    for c in &tr.content {
+                        if let Content::Text { text } = c {
+                            write!(out, "```\n{}\n```\n\n", text).unwrap();
+                        }
+                    }
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -103,40 +104,37 @@ pub fn export_text(path: &Path) -> Result<String> {
                 out.push_str(&"─".repeat(60));
                 out.push('\n');
             }
-            SessionEntry::Message(m) => {
-                use crate::provider::message::AgentMessage;
-                match &m.message {
-                    AgentMessage::User(u) => {
-                        out.push_str("\n[User]\n");
-                        for c in &u.content {
-                            if let crate::provider::message::Content::Text { text } = c {
-                                out.push_str(text);
-                                out.push('\n');
-                            }
+            SessionEntry::Message(m) => match &m.message {
+                AgentMessage::User(u) => {
+                    out.push_str("\n[User]\n");
+                    for c in &u.content {
+                        if let Content::Text { text } = c {
+                            out.push_str(text);
+                            out.push('\n');
                         }
                     }
-                    AgentMessage::Assistant(a) => {
-                        out.push_str("\n[Assistant]\n");
-                        for c in &a.content {
-                            if let crate::provider::message::Content::Text { text } = c {
-                                out.push_str(text);
-                                out.push('\n');
-                            }
-                        }
-                    }
-                    AgentMessage::ToolResult(tr) => {
-                        let label = if tr.is_error { "Tool Error" } else { "Tool Result" };
-                        write!(out, "\n[{} - {}]\n", label, tr.tool_name).unwrap();
-                        for c in &tr.content {
-                            if let crate::provider::message::Content::Text { text } = c {
-                                out.push_str(text);
-                                out.push('\n');
-                            }
-                        }
-                    }
-                    _ => {}
                 }
-            }
+                AgentMessage::Assistant(a) => {
+                    out.push_str("\n[Assistant]\n");
+                    for c in &a.content {
+                        if let Content::Text { text } = c {
+                            out.push_str(text);
+                            out.push('\n');
+                        }
+                    }
+                }
+                AgentMessage::ToolResult(tr) => {
+                    let label = if tr.is_error { "Tool Error" } else { "Tool Result" };
+                    write!(out, "\n[{} - {}]\n", label, tr.tool_name).unwrap();
+                    for c in &tr.content {
+                        if let Content::Text { text } = c {
+                            out.push_str(text);
+                            out.push('\n');
+                        }
+                    }
+                }
+                _ => {}
+            },
             _ => {}
         }
     }
@@ -146,24 +144,22 @@ pub fn export_text(path: &Path) -> Result<String> {
 /// Export a session to structured JSON format
 pub fn export_json(path: &Path) -> Result<String> {
     let entries = read_entries(path)?;
-    serde_json::to_string_pretty(&entries).map_err(|e| crate::error::Error::Session {
+    serde_json::to_string_pretty(&entries).map_err(|e| SessionError {
         message: format!("JSON serialization failed: {}", e),
     })
 }
 
 #[cfg(test)]
 mod tests {
+    use clankers_message::MessageId;
+    use clankers_message::UserMessage;
     use tempfile::TempDir;
 
     use super::*;
-    use crate::provider::message::AgentMessage;
-    use crate::provider::message::Content;
-    use crate::provider::message::MessageId;
-    use crate::provider::message::UserMessage;
-    use crate::session::store::append_entry;
+    use crate::store::append_entry;
 
     fn make_header(session_id: &str) -> SessionEntry {
-        SessionEntry::Header(crate::session::entry::HeaderEntry {
+        SessionEntry::Header(crate::entry::HeaderEntry {
             session_id: session_id.to_string(),
             created_at: chrono::Utc::now(),
             cwd: "/tmp/test".to_string(),
@@ -177,7 +173,7 @@ mod tests {
     }
 
     fn make_message(id: MessageId, parent: Option<MessageId>) -> SessionEntry {
-        SessionEntry::Message(crate::session::entry::MessageEntry {
+        SessionEntry::Message(crate::entry::MessageEntry {
             id: id.clone(),
             parent_id: parent,
             message: AgentMessage::User(UserMessage {

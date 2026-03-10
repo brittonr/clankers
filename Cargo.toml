@@ -6,6 +6,7 @@ members = [
     "crates/clankers-db",
     "crates/clankers-merge",
     "crates/clankers-message",
+    "crates/clankers-session",
     "crates/clankers-procmon",
     "crates/clankers-model-selection",
     "crates/clankers-matrix",
@@ -55,6 +56,7 @@ clankers-db = { version = "0.1.0", path = "crates/clankers-db" }
 clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
 clankers-message = { version = "0.1.0", path = "crates/clankers-message" }
 clankers-model-selection = { version = "0.1.0", path = "crates/clankers-model-selection" }
+clankers-session = { version = "0.1.0", path = "crates/clankers-session" }
 clankers-procmon = { version = "0.1.0", path = "crates/clankers-procmon" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
 clankers-router = { version = "0.1.0", path = "crates/clankers-router", features = ["rpc"] }

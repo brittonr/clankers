@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 
 use chrono::Utc;
+use clankers_message::MessageId;
 
 use super::SessionManager;
 use super::entry::*;
@@ -11,35 +12,29 @@ use super::set_message_id;
 use super::store;
 use super::tree::SessionTree;
 use crate::error::Result;
-use crate::provider::message::MessageId;
+use crate::error::SessionError;
 
 impl SessionManager {
     /// Merge messages from one branch into another.
-    ///
-    /// Copies messages unique to `source_leaf` (not shared with `target_leaf`)
-    /// and appends them as children of the target branch's leaf. Returns the
-    /// number of messages merged and the new leaf ID on the target branch.
     pub fn merge_branch(&mut self, source_leaf: MessageId, target_leaf: MessageId) -> Result<(usize, MessageId)> {
         if source_leaf == target_leaf {
-            return Err(crate::error::Error::Session {
+            return Err(SessionError {
                 message: "Cannot merge a branch into itself".into(),
             });
         }
 
         let tree = self.load_tree()?;
 
-        // Verify both leaves exist
-        tree.find_message_public(&source_leaf).ok_or_else(|| crate::error::Error::Session {
+        tree.find_message_public(&source_leaf).ok_or_else(|| SessionError {
             message: format!("Source branch leaf not found: {}", source_leaf.0),
         })?;
-        tree.find_message_public(&target_leaf).ok_or_else(|| crate::error::Error::Session {
+        tree.find_message_public(&target_leaf).ok_or_else(|| SessionError {
             message: format!("Target branch leaf not found: {}", target_leaf.0),
         })?;
 
-        // Find messages unique to source (not shared with target)
         let unique = tree.find_unique_messages(&source_leaf, &target_leaf);
         if unique.is_empty() {
-            return Err(crate::error::Error::Session {
+            return Err(SessionError {
                 message: "No new messages to merge — source branch is already merged or is an ancestor of target"
                     .into(),
             });
@@ -48,7 +43,6 @@ impl SessionManager {
         let merged_count = unique.len();
         let source_ids: Vec<MessageId> = unique.iter().map(|m| m.id.clone()).collect();
 
-        // Copy messages with new IDs, chaining parent_id from target leaf
         let mut parent = target_leaf.clone();
         let mut new_leaf = parent.clone();
         for msg in &unique {
@@ -67,7 +61,6 @@ impl SessionManager {
             new_leaf = new_id;
         }
 
-        // Record merge metadata as a CustomEntry
         let merge_entry = SessionEntry::Custom(CustomEntry {
             id: MessageId::generate(),
             kind: "merge".to_string(),
@@ -82,15 +75,11 @@ impl SessionManager {
         });
         store::append_entry(&self.file_path, &merge_entry)?;
 
-        // Switch to the target branch's new leaf
         self.active_leaf_id = Some(new_leaf.clone());
-
         Ok((merged_count, new_leaf))
     }
 
     /// Merge only selected messages from one branch into another.
-    /// `selected_ids` specifies which source message IDs to copy.
-    /// Messages are copied in their original order (root→leaf).
     pub fn merge_selective(
         &mut self,
         source_leaf: MessageId,
@@ -98,33 +87,31 @@ impl SessionManager {
         selected_ids: &[MessageId],
     ) -> Result<(usize, MessageId)> {
         if source_leaf == target_leaf {
-            return Err(crate::error::Error::Session {
+            return Err(SessionError {
                 message: "Cannot merge a branch into itself".into(),
             });
         }
         if selected_ids.is_empty() {
-            return Err(crate::error::Error::Session {
+            return Err(SessionError {
                 message: "No messages selected for merge".into(),
             });
         }
 
         let tree = self.load_tree()?;
 
-        // Verify both leaves exist
-        tree.find_message_public(&source_leaf).ok_or_else(|| crate::error::Error::Session {
+        tree.find_message_public(&source_leaf).ok_or_else(|| SessionError {
             message: format!("Source branch leaf not found: {}", source_leaf.0),
         })?;
-        tree.find_message_public(&target_leaf).ok_or_else(|| crate::error::Error::Session {
+        tree.find_message_public(&target_leaf).ok_or_else(|| SessionError {
             message: format!("Target branch leaf not found: {}", target_leaf.0),
         })?;
 
-        // Get unique messages and filter to selected ones (preserving order)
         let unique = tree.find_unique_messages(&source_leaf, &target_leaf);
         let selected_set: HashSet<&MessageId> = selected_ids.iter().collect();
         let to_merge: Vec<_> = unique.into_iter().filter(|m| selected_set.contains(&m.id)).collect();
 
         if to_merge.is_empty() {
-            return Err(crate::error::Error::Session {
+            return Err(SessionError {
                 message: "None of the selected messages are unique to the source branch".into(),
             });
         }
@@ -132,7 +119,6 @@ impl SessionManager {
         let merged_count = to_merge.len();
         let source_ids: Vec<MessageId> = to_merge.iter().map(|m| m.id.clone()).collect();
 
-        // Copy selected messages with new IDs
         let mut parent = target_leaf.clone();
         let mut new_leaf = parent.clone();
         for msg in &to_merge {
@@ -151,7 +137,6 @@ impl SessionManager {
             new_leaf = new_id;
         }
 
-        // Record merge metadata
         let merge_entry = SessionEntry::Custom(CustomEntry {
             id: MessageId::generate(),
             kind: "merge".to_string(),
@@ -171,7 +156,6 @@ impl SessionManager {
     }
 
     /// Cherry-pick a single message (and optionally its children) into a target branch.
-    /// Returns the number of messages copied and the new leaf ID.
     pub fn cherry_pick(
         &mut self,
         message_id: MessageId,
@@ -180,17 +164,14 @@ impl SessionManager {
     ) -> Result<(usize, MessageId)> {
         let tree = self.load_tree()?;
 
-        // Verify both exist
-        tree.find_message_public(&message_id).ok_or_else(|| crate::error::Error::Session {
+        tree.find_message_public(&message_id).ok_or_else(|| SessionError {
             message: format!("Message not found: {}", message_id.0),
         })?;
-        tree.find_message_public(&target_leaf).ok_or_else(|| crate::error::Error::Session {
+        tree.find_message_public(&target_leaf).ok_or_else(|| SessionError {
             message: format!("Target branch leaf not found: {}", target_leaf.0),
         })?;
 
-        // Collect messages to copy
         let messages_to_copy = if with_children {
-            // DFS from message_id to collect it and all descendants
             let mut collected = Vec::new();
             Self::collect_subtree(&tree, &message_id, &mut collected);
             collected
@@ -200,15 +181,12 @@ impl SessionManager {
         };
 
         if messages_to_copy.is_empty() {
-            return Err(crate::error::Error::Session {
+            return Err(SessionError {
                 message: "No messages to cherry-pick".into(),
             });
         }
 
         let count = messages_to_copy.len();
-
-        // Copy with new IDs, maintaining relative parent structure
-        // For with_children, we need to map old IDs → new IDs
         let mut id_map: HashMap<MessageId, MessageId> = HashMap::new();
         let mut new_leaf = target_leaf.clone();
 
@@ -216,8 +194,6 @@ impl SessionManager {
             let new_id = MessageId::generate();
             id_map.insert(msg.id.clone(), new_id.clone());
 
-            // Determine parent: if this message's original parent was also copied,
-            // use the new ID; otherwise chain from target_leaf
             let new_parent = if let Some(orig_parent) = &msg.parent_id
                 && let Some(mapped) = id_map.get(orig_parent)
             {
@@ -240,7 +216,6 @@ impl SessionManager {
             new_leaf = new_id;
         }
 
-        // Record cherry-pick metadata
         let cp_entry = SessionEntry::Custom(CustomEntry {
             id: MessageId::generate(),
             kind: "cherry-pick".to_string(),

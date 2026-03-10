@@ -1046,6 +1046,7 @@ dependencies = [
  "clankers-model-selection",
  "clankers-procmon",
  "clankers-router",
+ "clankers-session",
  "clankers-specs",
  "clankers-tui",
  "clankers-tui-types",
@@ -1257,6 +1258,18 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
+]
+
+[[package]]
+name = "clankers-session"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clankers-message",
+ "pretty_assertions",
+ "serde",
+ "serde_json",
+ "tempfile",
 ]
 
 [[package]]

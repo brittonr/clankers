@@ -1,9 +1,10 @@
 //! Tree navigation and traversal methods
 
+use clankers_message::MessageId;
+
 use super::SessionTree;
-use crate::provider::message::MessageId;
-use crate::session::entry::MessageEntry;
-use crate::session::entry::SessionEntry;
+use crate::entry::MessageEntry;
+use crate::entry::SessionEntry;
 
 impl SessionTree {
     /// Walk from a leaf message to the root, collecting message entries.
@@ -64,8 +65,6 @@ impl SessionTree {
             if children.is_empty() {
                 break;
             }
-            // Follow the last child (most recently added branch)
-            // Safe: we just checked children.is_empty() above
             let child = children.last().expect("non-empty checked above");
             last_message = Some(child);
             current_id = Some(child.id.clone());
@@ -78,7 +77,6 @@ impl SessionTree {
         let mut leaves = Vec::new();
         let mut visited = std::collections::HashSet::new();
 
-        // Start DFS from all root messages
         let roots = self.get_children(&None);
         for root in roots {
             self.dfs_collect_leaves(root, &mut leaves, &mut visited);
@@ -101,10 +99,8 @@ impl SessionTree {
 
         let children = self.get_children(&Some(node.id.clone()));
         if children.is_empty() {
-            // This is a leaf
             leaves.push(node);
         } else {
-            // Recurse into children
             for child in children {
                 self.dfs_collect_leaves(child, leaves, visited);
             }

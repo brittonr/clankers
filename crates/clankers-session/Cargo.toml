@@ -1,0 +1,19 @@
+[package]
+name = "clankers-session"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Session persistence and tree management for agent conversations"
+
+[dependencies]
+clankers-message = { version = "0.1.0", path = "../clankers-message" }
+chrono = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+pretty_assertions = "1.0"
+tempfile = "3"
+
+[lints]
+workspace = true

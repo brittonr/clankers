@@ -14,6 +14,7 @@ pub use clankers_procmon as procmon;
 pub mod prompts;
 pub mod provider;
 pub mod registry;
+pub use clankers_session;
 pub mod session;
 pub mod skills;
 pub mod slash_commands;

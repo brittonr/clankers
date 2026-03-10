@@ -55,7 +55,7 @@ impl std::fmt::Display for MessageId {
 // ---------------------------------------------------------------------------
 
 /// Generate a random 8-character lowercase hexadecimal ID.
-fn generate_id() -> String {
+pub fn generate_id() -> String {
     use rand::Rng;
     let mut rng = rand::rng();
     let bytes: [u8; 4] = rng.random();

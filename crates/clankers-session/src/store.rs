@@ -6,21 +6,24 @@ use std::io::Write;
 use std::path::Path;
 use std::path::PathBuf;
 
+use clankers_message::AgentMessage;
+use clankers_message::Content;
+
 use super::entry::SessionEntry;
+use crate::error::session_err;
 use crate::error::Result;
 
 /// Read all entries from a session JSONL file
 pub fn read_entries(path: &Path) -> Result<Vec<SessionEntry>> {
-    use snafu::ResultExt;
-    let file = std::fs::File::open(path).context(crate::error::IoSnafu)?;
+    let file = std::fs::File::open(path).map_err(session_err)?;
     let reader = BufReader::new(file);
     let mut entries = Vec::new();
     for line in reader.lines() {
-        let line = line.context(crate::error::IoSnafu)?;
+        let line = line.map_err(session_err)?;
         if line.trim().is_empty() {
             continue;
         }
-        let entry: SessionEntry = serde_json::from_str(&line).context(crate::error::JsonSnafu)?;
+        let entry: SessionEntry = serde_json::from_str(&line).map_err(session_err)?;
         entries.push(entry);
     }
     Ok(entries)
@@ -28,19 +31,21 @@ pub fn read_entries(path: &Path) -> Result<Vec<SessionEntry>> {
 
 /// Append an entry to a session JSONL file
 pub fn append_entry(path: &Path, entry: &SessionEntry) -> Result<()> {
-    use snafu::ResultExt;
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent).context(crate::error::IoSnafu)?;
+        std::fs::create_dir_all(parent).map_err(session_err)?;
     }
-    let json = serde_json::to_string(entry).context(crate::error::JsonSnafu)?;
-    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).context(crate::error::IoSnafu)?;
-    writeln!(file, "{}", json).context(crate::error::IoSnafu)?;
+    let json = serde_json::to_string(entry).map_err(session_err)?;
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(session_err)?;
+    writeln!(file, "{}", json).map_err(session_err)?;
     Ok(())
 }
 
 /// Generate session file path
 pub fn session_file_path(sessions_dir: &Path, cwd: &str, session_id: &str) -> PathBuf {
-    // Encode cwd as safe directory name
     let encoded_cwd = encode_cwd(cwd);
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
     sessions_dir.join(&encoded_cwd).join(format!("{}_{}.jsonl", timestamp, session_id))
@@ -66,7 +71,7 @@ pub fn list_sessions(sessions_dir: &Path, cwd: &str) -> Vec<PathBuf> {
         .filter(|p| p.extension().is_some_and(|ext| ext == "jsonl"))
         .collect();
     files.sort();
-    files.reverse(); // Most recent first
+    files.reverse();
     files
 }
 
@@ -130,7 +135,6 @@ pub struct SessionSummary {
 
 /// Read session summary (header + first user message) without loading all entries
 pub fn read_session_summary(path: &Path) -> Option<SessionSummary> {
-    use std::io::BufRead;
     let file = std::fs::File::open(path).ok()?;
     let reader = std::io::BufReader::new(file);
 
@@ -149,13 +153,13 @@ pub fn read_session_summary(path: &Path) -> Option<SessionSummary> {
                 SessionEntry::Message(m) => {
                     message_count += 1;
                     if first_user_text.is_none()
-                        && let crate::provider::message::AgentMessage::User(ref u) = m.message
+                        && let AgentMessage::User(ref u) = m.message
                     {
                         let text: String = u
                             .content
                             .iter()
                             .filter_map(|c| {
-                                if let crate::provider::message::Content::Text { text } = c {
+                                if let Content::Text { text } = c {
                                     Some(text.as_str())
                                 } else {
                                     None
@@ -164,7 +168,6 @@ pub fn read_session_summary(path: &Path) -> Option<SessionSummary> {
                             .collect::<Vec<_>>()
                             .join(" ");
                         if !text.is_empty() {
-                            // Truncate to 80 chars for preview
                             let preview = if text.len() > 80 {
                                 format!("{}…", &text[..80])
                             } else {
@@ -197,26 +200,21 @@ pub fn import_session(sessions_dir: &Path, source: &Path) -> Result<PathBuf> {
     let header = entries
         .iter()
         .find_map(|e| if let SessionEntry::Header(h) = e { Some(h) } else { None })
-        .ok_or_else(|| crate::error::Error::Session {
+        .ok_or_else(|| crate::error::SessionError {
             message: "Import file has no header entry".into(),
         })?;
 
     let dest = session_file_path(sessions_dir, &header.cwd, &header.session_id);
     if dest.exists() {
-        return Err(crate::error::Error::Session {
+        return Err(crate::error::SessionError {
             message: format!("Session {} already exists at {}", header.session_id, dest.display()),
         });
     }
 
-    // Copy the file
     if let Some(parent) = dest.parent() {
-        std::fs::create_dir_all(parent).map_err(|e| crate::error::Error::Session {
-            message: format!("Failed to create directory: {}", e),
-        })?;
+        std::fs::create_dir_all(parent).map_err(session_err)?;
     }
-    std::fs::copy(source, &dest).map_err(|e| crate::error::Error::Session {
-        message: format!("Failed to copy session file: {}", e),
-    })?;
+    std::fs::copy(source, &dest).map_err(session_err)?;
 
     Ok(dest)
 }
@@ -231,16 +229,14 @@ pub fn find_session_by_id(sessions_dir: &Path, cwd: &str, partial_id: &str) -> O
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
+    use clankers_message::MessageId;
+    use clankers_message::UserMessage;
     use tempfile::TempDir;
 
     use super::*;
-    use crate::provider::message::AgentMessage;
-    use crate::provider::message::Content;
-    use crate::provider::message::MessageId;
-    use crate::provider::message::UserMessage;
 
     fn make_header(session_id: &str) -> SessionEntry {
-        SessionEntry::Header(crate::session::entry::HeaderEntry {
+        SessionEntry::Header(crate::entry::HeaderEntry {
             session_id: session_id.to_string(),
             created_at: Utc::now(),
             cwd: "/tmp/test".to_string(),
@@ -254,7 +250,7 @@ mod tests {
     }
 
     fn make_message(id: MessageId, parent: Option<MessageId>) -> SessionEntry {
-        SessionEntry::Message(crate::session::entry::MessageEntry {
+        SessionEntry::Message(crate::entry::MessageEntry {
             id: id.clone(),
             parent_id: parent,
             message: AgentMessage::User(UserMessage {
@@ -280,14 +276,12 @@ mod tests {
         let temp = TempDir::new().expect("test: failed to create temp dir");
         let session_file = temp.path().join("test_session.jsonl");
 
-        // Write entries
         let header = make_header("sess1");
         let msg = make_message(MessageId::new("msg1"), None);
 
         append_entry(&session_file, &header)?;
         append_entry(&session_file, &msg)?;
 
-        // Read back
         let entries = read_entries(&session_file)?;
         assert_eq!(entries.len(), 2);
 
@@ -350,15 +344,12 @@ mod tests {
         let cwd_dir = temp.path().join("_test_cwd");
         std::fs::create_dir_all(&cwd_dir).expect("test: failed to create cwd dir");
 
-        // Create files with different timestamps (names sorted alphabetically)
         std::fs::write(cwd_dir.join("20240101_120000_sess1.jsonl"), "{}").expect("test: failed to write session file");
         std::fs::write(cwd_dir.join("20240102_120000_sess2.jsonl"), "{}").expect("test: failed to write session file");
         std::fs::write(cwd_dir.join("20240103_120000_sess3.jsonl"), "{}").expect("test: failed to write session file");
 
         let sessions = list_sessions(temp.path(), "/test/cwd");
         assert_eq!(sessions.len(), 3);
-
-        // Should be reverse sorted (most recent first)
         assert!(sessions[0].to_string_lossy().contains("20240103"));
         assert!(sessions[2].to_string_lossy().contains("20240101"));
     }
@@ -374,7 +365,7 @@ mod tests {
         std::fs::write(cwd_dir.join("session3.json"), "{}").expect("test: failed to write json file");
 
         let sessions = list_sessions(temp.path(), "/test/cwd");
-        assert_eq!(sessions.len(), 1); // Only .jsonl file
+        assert_eq!(sessions.len(), 1);
     }
 
     #[test]
@@ -385,11 +376,10 @@ mod tests {
         let header = make_header("test");
         let json = serde_json::to_string(&header).expect("test: failed to serialize header");
 
-        // Write with empty lines
         std::fs::write(&file, format!("{}\n\n\n{}\n\n", json, json)).expect("test: failed to write file");
 
         let entries = read_entries(&file).expect("test: failed to read entries");
-        assert_eq!(entries.len(), 2); // Empty lines ignored
+        assert_eq!(entries.len(), 2);
     }
 
     #[test]
@@ -411,7 +401,6 @@ mod tests {
     fn test_purge_all_sessions() {
         let temp = TempDir::new().expect("test: failed to create temp dir");
 
-        // Create sessions in two different cwds
         let dir1 = temp.path().join("_cwd1");
         let dir2 = temp.path().join("_cwd2");
         std::fs::create_dir_all(&dir1).expect("test: failed to create dir1");
@@ -505,7 +494,6 @@ mod tests {
         let dest = import_session(&sessions_dir, &source).expect("test: failed to import session");
         assert!(dest.exists());
 
-        // Importing again should fail (already exists)
         let result = import_session(&sessions_dir, &source);
         assert!(result.is_err());
     }

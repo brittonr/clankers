@@ -85,6 +85,12 @@ impl From<clankers_db::DbError> for Error {
     }
 }
 
+impl From<clankers_session::error::SessionError> for Error {
+    fn from(e: clankers_session::error::SessionError) -> Self {
+        Error::Session { message: e.message }
+    }
+}
+
 #[cfg(feature = "zellij-share")]
 impl From<clankers_zellij::ZellijError> for Error {
     fn from(e: clankers_zellij::ZellijError) -> Self {
