@@ -50,6 +50,9 @@
 | 2026-03-10 | self | Plugin extraction: test helpers accessed `mgr.plugins` and `mgr.instances` (private fields) directly | Add `inject_instance()` and `get_mut()` public methods to PluginManager for test injection — avoids exposing the full HashMap |
 | 2026-03-10 | self | Moving PluginEvent::matches(&AgentEvent) to extracted crate creates a crate dep on AgentEvent | Decouple with string tags: `AgentEvent::event_kind() -> &str` + `PluginEvent::matches_event_kind(&str)` — no cross-crate type dependency |
 
+## Corrections (continued 2)
+| 2026-03-10 | self | Session crate (clankers-session) doesn't depend on `tracing` — used `eprintln!` for safety-critical error messages instead | Check Cargo.toml deps before using tracing macros in extracted crates. Use `eprintln!` or add tracing as a dep. |
+
 ## User Preferences
 - Don't care about backwards compat — fix the implementation properly
 - Uses Fastmail, not third-party email services (SendGrid, Mailgun)
@@ -315,6 +318,28 @@
 - Tests referencing main-crate types (e.g., `crate::slash_commands`) cannot live in the TUI crate — move to main crate
 - `crate::tui::` → `crate::` sed replacement is safe (all external refs were eliminated in Phase 5)
 - Git detects file moves as renames when content changes are minimal (< ~20% diff)
+
+## Patterns That Work (decomposition round 2)
+- interactive.rs decomposition: extract setup_session, build_agent_with_tools, agent command spawn → 3 new modules. interactive.rs drops from 941→534 lines.
+- event_handlers.rs decomposition: extract handle_core_action() and handle_extended_action() → 2 new modules. event_handlers.rs drops from 933→467 lines.
+- event_loop_runner/mod.rs: extract AuditTracker and loop_mode methods → 2 new modules. mod.rs drops from 714→563 lines.
+- The agent command `tokio::spawn` block was 180 lines of nested match — extracting to agent_task.rs with per-command helper functions keeps each function under 70 lines.
+- `run_prompt_with_abort()` generic over Future: same abort-during-streaming pattern used for both prompt() and prompt_with_images()
+- Key insight: cli.rs (763 lines) is all clap derive types — declarative data, not logic. Splitting subcommand enums into separate files would be anti-ergonomic. Left it alone.
+
+## Patterns That Work (Tiger Style hardening)
+- Session tree traversals (walk_branch, find_latest_leaf, find_all_leaves): bounded by MAX_TRAVERSAL_DEPTH (50K) with cycle detection via visited set
+- find_all_leaves: converted recursive DFS to iterative DFS with explicit stack — eliminates stack overflow risk on deep trees
+- BreakCondition::check: added depth-bounded recursion via check_bounded() for Any/All nesting (16 levels max)
+- parse_duration_secs: checked_mul + 365-day maximum prevents overflow in schedule tool
+- parse_datetime: i64::try_from(secs) replaces bare `as i64` cast for defense-in-depth
+- estimate_cost: debug_assert on rate signs + is_finite() check prevents NaN propagation
+- AuditTracker: MAX_PENDING_CALLS (1024) warns on leaked tool calls; saturating u128→u64 for duration
+- parse_oauth_input: MAX_INPUT_LEN (4096) rejects oversized payloads before parsing
+- parse_command: MAX_COMMAND_NAME_LEN (64) rejects absurdly long command names
+- format_time_ago: clamps negative durations (future timestamps → "just now")
+- Verus specs scaffolded in clankers-loop/verus/ — proofs for loop state machine invariants (bounded termination, monotonic transitions, well-formedness). Pseudo-code until Verus is installed.
+- Compile-time assertions: `const _: () = assert!(...)` for all Tiger Style constants
 
 ## Patterns That Work (code quality cleanup)
 - CODE_ANALYSIS_REPORT claimed `serde_json` import was unused in settings.rs — wrong, it's used for `Value`, `json!()`, `from_str`, `from_value`
