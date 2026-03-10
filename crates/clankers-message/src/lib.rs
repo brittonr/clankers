@@ -8,6 +8,7 @@
 //! `clankers-router`'s generic streaming with typed [`Content`] blocks.
 
 pub mod message;
+pub mod result_streaming;
 pub mod streaming;
 pub mod tool_result;
 
@@ -24,3 +25,8 @@ pub use clankers_router::Usage;
 // Re-export tool result types at crate root
 pub use tool_result::ToolResult;
 pub use tool_result::ToolResultContent;
+
+// Re-export result streaming types at crate root
+pub use result_streaming::ResultChunk;
+pub use result_streaming::ToolResultAccumulator;
+pub use result_streaming::TruncationConfig;

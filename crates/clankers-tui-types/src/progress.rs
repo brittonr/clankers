@@ -189,3 +189,170 @@ impl ToolProgress {
         self
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn progress_kind_as_percentage_with_known_total() {
+        let bytes = ProgressKind::Bytes {
+            current: 50,
+            total: Some(100),
+        };
+        assert_eq!(bytes.as_percentage(), Some(50.0));
+
+        let lines = ProgressKind::Lines {
+            current: 75,
+            total: Some(100),
+        };
+        assert_eq!(lines.as_percentage(), Some(75.0));
+
+        let items = ProgressKind::Items {
+            current: 25,
+            total: Some(100),
+        };
+        assert_eq!(items.as_percentage(), Some(25.0));
+    }
+
+    #[test]
+    fn progress_kind_as_percentage_with_unknown_total() {
+        assert_eq!(
+            ProgressKind::Bytes {
+                current: 50,
+                total: None
+            }
+            .as_percentage(),
+            None
+        );
+        assert_eq!(
+            ProgressKind::Lines {
+                current: 75,
+                total: None
+            }
+            .as_percentage(),
+            None
+        );
+    }
+
+    #[test]
+    fn progress_kind_as_percentage_with_zero_total() {
+        assert_eq!(
+            ProgressKind::Bytes {
+                current: 0,
+                total: Some(0)
+            }
+            .as_percentage(),
+            None
+        );
+    }
+
+    #[test]
+    fn progress_kind_percentage_variant() {
+        assert_eq!(
+            ProgressKind::Percentage { percent: 42.5 }.as_percentage(),
+            Some(42.5)
+        );
+    }
+
+    #[test]
+    fn progress_kind_phase_with_total_steps() {
+        let phase = ProgressKind::Phase {
+            name: "Building".to_string(),
+            step: 2,
+            total_steps: Some(3),
+        };
+        assert!(
+            (phase
+                .as_percentage()
+                .expect("phase with total should have percentage")
+                - 66.666)
+                .abs()
+                < 0.01
+        );
+    }
+
+    #[test]
+    fn progress_kind_is_complete() {
+        assert!(
+            ProgressKind::Bytes {
+                current: 100,
+                total: Some(100)
+            }
+            .is_complete()
+        );
+        assert!(
+            ProgressKind::Lines {
+                current: 50,
+                total: Some(50)
+            }
+            .is_complete()
+        );
+        assert!(ProgressKind::Percentage { percent: 100.0 }.is_complete());
+        assert!(ProgressKind::Percentage { percent: 101.0 }.is_complete());
+        assert!(
+            !ProgressKind::Bytes {
+                current: 50,
+                total: Some(100)
+            }
+            .is_complete()
+        );
+        assert!(
+            !ProgressKind::Bytes {
+                current: 50,
+                total: None
+            }
+            .is_complete()
+        );
+    }
+
+    #[test]
+    fn progress_kind_display_string() {
+        assert_eq!(
+            ProgressKind::Bytes {
+                current: 50,
+                total: Some(100)
+            }
+            .display_string(),
+            "50/100 bytes"
+        );
+        assert_eq!(
+            ProgressKind::Bytes {
+                current: 50,
+                total: None
+            }
+            .display_string(),
+            "50 bytes"
+        );
+        assert_eq!(
+            ProgressKind::Percentage { percent: 42.5 }.display_string(),
+            "42.5%"
+        );
+        assert_eq!(
+            ProgressKind::Phase {
+                name: "Building".to_string(),
+                step: 2,
+                total_steps: Some(3)
+            }
+            .display_string(),
+            "Phase 2/3: Building"
+        );
+    }
+
+    #[test]
+    fn tool_progress_builders() {
+        let progress = ToolProgress::bytes(50, Some(100)).with_message("Downloading");
+
+        assert!(matches!(
+            progress.kind,
+            ProgressKind::Bytes {
+                current: 50,
+                total: Some(100)
+            }
+        ));
+        assert_eq!(progress.message, Some("Downloading".to_string()));
+
+        let phase = ToolProgress::phase("Building", 1, Some(3));
+        assert!(matches!(phase.kind, ProgressKind::Phase { .. }));
+    }
+}
