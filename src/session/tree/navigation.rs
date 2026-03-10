@@ -11,9 +11,9 @@ impl SessionTree {
     pub fn walk_branch(&self, leaf_id: &MessageId) -> Vec<&MessageEntry> {
         let mut path = Vec::new();
         let mut current_id = Some(leaf_id.clone());
-        while let Some(id) = current_id {
-            if let Some(entry) = self.find_message(&id) {
-                current_id = entry.parent_id.clone();
+        while let Some(id) = current_id.as_ref() {
+            if let Some(entry) = self.find_message(id) {
+                current_id.clone_from(&entry.parent_id);
                 path.push(entry);
             } else {
                 break;

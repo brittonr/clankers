@@ -64,6 +64,7 @@ fn handle_show_current(ctx: &mut SlashContext<'_>) {
 }
 
 fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
+    use std::fmt::Write;
     let paths = crate::config::ClankersPaths::get();
     let limit: usize = if args.is_empty() {
         10
@@ -86,7 +87,8 @@ fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
         if let Some(summary) = crate::session::store::read_session_summary(path) {
             let date = summary.created_at.format("%Y-%m-%d %H:%M");
             let preview = summary.first_user_message.as_deref().unwrap_or("(empty)");
-            out.push_str(&format!(
+            let _ = write!(
+                out,
                 "  {}. [{}] {} ({} msgs, {}){}\n     {}\n\n",
                 i + 1,
                 &summary.session_id[..8.min(summary.session_id.len())],
@@ -95,15 +97,15 @@ fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
                 summary.model,
                 marker,
                 preview,
-            ));
+            );
         } else {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
-            out.push_str(&format!("  {}. {}{}\n", i + 1, name, marker));
+            let _ = writeln!(out, "  {}. {}{}", i + 1, name, marker);
         }
     }
 
     if files.len() > limit {
-        out.push_str(&format!("  ({} more sessions)\n", files.len() - limit));
+        let _ = writeln!(out, "  ({} more sessions)", files.len() - limit);
     }
     out.push_str("\nUse /session resume to pick a session, or /session resume <id>.");
     ctx.app.push_system(out, false);

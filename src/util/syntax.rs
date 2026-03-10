@@ -308,6 +308,7 @@ pub fn highlight(code: &str, language: &str) -> Vec<HighlightSpan> {
 
 /// Highlight code and return an ANSI-colored string for terminal output.
 pub fn highlight_ansi(code: &str, language: &str) -> String {
+    use std::fmt::Write;
     let spans = highlight(code, language);
     let mut out = String::with_capacity(code.len() * 2);
     for span in &spans {
@@ -319,7 +320,7 @@ pub fn highlight_ansi(code: &str, language: &str) -> String {
                 if italic {
                     out.push_str("\x1b[3m");
                 }
-                out.push_str(&format!("\x1b[38;2;{};{};{}m", r, g, b));
+                let _ = write!(out, "\x1b[38;2;{};{};{}m", r, g, b);
             }
             TokenKind::Plain => {
                 out.push_str("\x1b[0m");

@@ -120,14 +120,15 @@ pub fn expand_template(template: &str, vars: &std::collections::HashMap<String, 
 
 /// Format prompts for display (command palette)
 pub fn format_prompts_list(prompts: &[PromptTemplate]) -> String {
+    use std::fmt::Write;
     if prompts.is_empty() {
         return String::from("No prompt templates found.");
     }
     let mut out = String::new();
     for p in prompts {
-        out.push_str(&format!("/{} — {}\n", p.name, p.description));
+        let _ = writeln!(out, "/{} — {}", p.name, p.description);
         if !p.variables.is_empty() {
-            out.push_str(&format!("  Variables: {}\n", p.variables.join(", ")));
+            let _ = writeln!(out, "  Variables: {}", p.variables.join(", "));
         }
     }
     out

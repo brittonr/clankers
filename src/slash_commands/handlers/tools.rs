@@ -70,6 +70,8 @@ impl SlashHandler for ToolsHandler {
         if ctx.app.tool_info.is_empty() {
             ctx.app.push_system("No tools available.".to_string(), false);
         } else {
+            use std::fmt::Write;
+
             let mut out = String::from("Available tools:\n\n");
             let max_name = ctx.app.tool_info.iter().map(|(n, _, _)| n.len()).max().unwrap_or(0);
             let mut current_source = String::new();
@@ -78,8 +80,8 @@ impl SlashHandler for ToolsHandler {
                     if !current_source.is_empty() {
                         out.push('\n');
                     }
-                    out.push_str(&format!("  ── {} ──\n", source));
-                    current_source = source.clone();
+                    writeln!(out, "  ── {} ──", source).unwrap();
+                    current_source.clone_from(source);
                 }
                 let status = if ctx.app.disabled_tools.contains(name) {
                     "✗"
@@ -91,10 +93,10 @@ impl SlashHandler for ToolsHandler {
                 } else {
                     description.clone()
                 };
-                out.push_str(&format!("  {} {:<width$}  {}\n", status, name, desc, width = max_name));
+                writeln!(out, "  {} {:<width$}  {}", status, name, desc, width = max_name).unwrap();
             }
             let enabled = ctx.app.tool_info.iter().filter(|(n, _, _)| !ctx.app.disabled_tools.contains(n)).count();
-            out.push_str(&format!("\n  {}/{} tool(s) enabled", enabled, ctx.app.tool_info.len()));
+            write!(out, "\n  {}/{} tool(s) enabled", enabled, ctx.app.tool_info.len()).unwrap();
             ctx.app.push_system(out, false);
         }
     }
@@ -126,19 +128,22 @@ impl SlashHandler for PluginHandler {
                         false,
                     );
                 } else {
+                    use std::fmt::Write;
+
                     let mut out = String::from("Loaded plugins:\n\n");
                     for p in plugins {
                         let state = match &p.state {
                             crate::plugin::PluginState::Active => "✓",
                             crate::plugin::PluginState::Loaded => "○",
                             crate::plugin::PluginState::Error(e) => {
-                                out.push_str(&format!("  ✗ {} v{} — Error: {}\n", p.name, p.version, e));
+                                writeln!(out, "  ✗ {} v{} — Error: {}", p.name, p.version, e).unwrap();
                                 continue;
                             }
                             crate::plugin::PluginState::Disabled => "−",
                         };
-                        out.push_str(&format!(
-                            "  {} {} v{} — {} (tools: {})\n",
+                        writeln!(
+                            out,
+                            "  {} {} v{} — {} (tools: {})",
                             state,
                             p.name,
                             p.version,
@@ -148,7 +153,7 @@ impl SlashHandler for PluginHandler {
                             } else {
                                 p.manifest.tools.join(", ")
                             },
-                        ));
+                        ).unwrap();
                     }
                     ctx.app.push_system(out, false);
                 }

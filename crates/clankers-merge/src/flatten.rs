@@ -8,6 +8,7 @@
 use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::collections::VecDeque;
+use std::fmt::Write;
 
 use crate::graggle::END;
 use crate::graggle::Graggle;
@@ -170,7 +171,7 @@ pub fn flatten(g: &Graggle) -> FlattenResult {
                     }
                 }
                 for (i, side) in sides.iter().enumerate().skip(1) {
-                    content.push_str(&format!("======= side {}\n", i + 1));
+                    writeln!(content, "======= side {}", i + 1).unwrap();
                     content.push_str(side);
                     if !side.ends_with('\n') {
                         content.push('\n');

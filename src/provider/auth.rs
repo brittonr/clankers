@@ -57,6 +57,7 @@ impl AuthStoreExt for AuthStore {
     }
 
     fn account_summary(&self) -> String {
+        use std::fmt::Write;
         let accounts = self.list_anthropic_accounts();
         if accounts.is_empty() {
             return "No accounts configured. Use /login or `clankers auth login` to add one.".to_string();
@@ -66,7 +67,7 @@ impl AuthStoreExt for AuthStore {
             let marker = if info.is_active { "▸" } else { " " };
             let status = if info.is_expired { " (expired)" } else { "" };
             let label = info.label.as_ref().map(|l| format!(" — {}", l)).unwrap_or_default();
-            out.push_str(&format!("{} {}{}{}\n", marker, info.name, label, status));
+            let _ = writeln!(out, "{} {}{}{}", marker, info.name, label, status);
         }
         out
     }

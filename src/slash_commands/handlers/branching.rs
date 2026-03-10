@@ -129,6 +129,7 @@ impl SlashHandler for BranchesHandler {
     }
 
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
+        use std::fmt::Write;
         if let Some(sm) = ctx.session_manager {
             match sm.find_branches() {
                 Ok(branches) => {
@@ -140,10 +141,11 @@ impl SlashHandler for BranchesHandler {
                             let marker = if branch.is_active { " *" } else { "  " };
                             let active_label = if branch.is_active { " (current)" } else { "" };
                             let ago = crate::modes::interactive::format_time_ago(branch.last_activity);
-                            output.push_str(&format!(
+                            let _ = write!(
+                                output,
                                 "{} {}{}\n    {} messages    {}\n",
                                 marker, branch.name, active_label, branch.message_count, ago,
-                            ));
+                            );
                         }
                         output.push_str("\n  Use /switch <name> to change branches");
                         ctx.app.push_system(output, false);

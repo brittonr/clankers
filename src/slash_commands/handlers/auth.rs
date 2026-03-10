@@ -190,6 +190,7 @@ impl SlashHandler for AccountHandler {
 }
 
 fn handle_account_list(ctx: &mut SlashContext<'_>, store: &crate::provider::auth::AuthStore) {
+    use std::fmt::Write;
     let accounts = store.list_anthropic_accounts();
     if accounts.is_empty() {
         let mut msg = String::from("No accounts configured.\n\n");
@@ -204,9 +205,9 @@ fn handle_account_list(ctx: &mut SlashContext<'_>, store: &crate::provider::auth
             let marker = if info.is_active { "▸" } else { " " };
             let status = if info.is_expired { "✗ expired" } else { "✓ valid" };
             let label = info.label.as_ref().map(|l| format!(" ({})", l)).unwrap_or_default();
-            out.push_str(&format!("  {} {}{} — {}\n", marker, info.name, label, status));
+            let _ = writeln!(out, "  {} {}{} — {}", marker, info.name, label, status);
         }
-        out.push_str(&format!("\n  {} account(s). Use /account switch <name> to change.", accounts.len()));
+        let _ = write!(out, "\n  {} account(s). Use /account switch <name> to change.", accounts.len());
         ctx.app.push_system(out, false);
     }
 }

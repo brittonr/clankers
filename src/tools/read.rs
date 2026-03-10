@@ -246,6 +246,7 @@ impl ReadTool {
 
     /// Format lines with line numbers, emitting progress for large files.
     fn format_lines_with_numbers(ctx: &ToolContext, lines: &[&str], start: usize, end: usize) -> String {
+        use std::fmt::Write;
         let mut output = String::new();
         let line_count = end - start;
         // Stream every N lines for large files
@@ -257,7 +258,7 @@ impl ReadTool {
 
         for (idx, line) in lines[start..end].iter().enumerate() {
             let line_no = start + idx + 1;
-            output.push_str(&format!("{} | {}\n", line_no, line));
+            let _ = writeln!(output, "{} | {}", line_no, line);
 
             if (idx + 1) % stream_interval == 0 {
                 ctx.emit_progress(&format!("{} | ...", line_no));

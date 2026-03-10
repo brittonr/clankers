@@ -346,6 +346,7 @@ impl Tool for MatrixPeersTool {
         let formatted: Vec<String> = peers
             .iter()
             .map(|p| {
+                use std::fmt::Write;
                 let mut info = format!(
                     "• {} ({})\n  Version: {} | Prompts: {}",
                     p.instance_name,
@@ -354,13 +355,13 @@ impl Tool for MatrixPeersTool {
                     if p.accepts_prompts { "yes" } else { "no" },
                 );
                 if !p.tags.is_empty() {
-                    info.push_str(&format!("\n  Tags: {}", p.tags.join(", ")));
+                    let _ = write!(info, "\n  Tags: {}", p.tags.join(", "));
                 }
                 if !p.agents.is_empty() {
-                    info.push_str(&format!("\n  Agents: {}", p.agents.join(", ")));
+                    let _ = write!(info, "\n  Agents: {}", p.agents.join(", "));
                 }
                 if let Some(ref model) = p.model {
-                    info.push_str(&format!("\n  Model: {}", model));
+                    let _ = write!(info, "\n  Model: {}", model);
                 }
                 info
             })

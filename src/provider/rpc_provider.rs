@@ -4,6 +4,7 @@
 //! requests over QUIC. Falls back to in-process routing if the daemon
 //! is unavailable.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -99,7 +100,7 @@ impl Provider for RpcProvider {
             temperature: request.temperature,
             tools: request.tools,
             thinking: request.thinking,
-            extra_params: Default::default(),
+            extra_params: HashMap::new(),
         };
 
         // Send to daemon and translate streaming events

@@ -67,6 +67,7 @@ impl Tool for CostTool {
                 ))
             }
             "breakdown" => {
+                use std::fmt::Write;
                 let mut out = format!("Session cost: ${:.4}\n\n", summary.total_cost);
                 if summary.by_model.is_empty() {
                     out.push_str("No usage recorded yet.");
@@ -74,10 +75,11 @@ impl Tool for CostTool {
                     out.push_str("Model                     | Input tok | Output tok |    Cost | Share\n");
                     out.push_str("--------------------------|-----------|------------|---------|------\n");
                     for m in &summary.by_model {
-                        out.push_str(&format!(
-                            "{:<25} | {:>9} | {:>10} | ${:>6.4} | {:>4.1}%\n",
+                        writeln!(
+                            out,
+                            "{:<25} | {:>9} | {:>10} | ${:>6.4} | {:>4.1}%",
                             m.display_name, m.input_tokens, m.output_tokens, m.cost_usd, m.percentage,
-                        ));
+                        ).unwrap();
                     }
                 }
                 out.push('\n');
@@ -113,6 +115,7 @@ fn format_budget(status: &BudgetStatus) -> String {
 }
 
 fn format_budget_detail(status: &BudgetStatus, total: f64) -> String {
+    use std::fmt::Write;
     let mut out = format!("Total spent: ${:.4}\n", total);
     match status {
         BudgetStatus::NoBudget => {
@@ -121,27 +124,27 @@ fn format_budget_detail(status: &BudgetStatus, total: f64) -> String {
             );
         }
         BudgetStatus::Ok { remaining } => {
-            out.push_str(&format!("Status: ✓ OK\nRemaining: ${:.2}\n", remaining));
+            write!(out, "Status: ✓ OK\nRemaining: ${:.2}\n", remaining).unwrap();
             // Rough projection: if total > 0, estimate turns left
             if total > 0.01 {
                 // remaining / (total / turns) but we don't know turns here
                 // Just show the ratio
                 let ratio = remaining / total;
-                out.push_str(&format!("At current rate, ~{:.0}x more work before limit.", ratio,));
+                write!(out, "At current rate, ~{:.0}x more work before limit.", ratio,).unwrap();
             }
         }
         BudgetStatus::Warning {
             over_soft_by,
             hard_limit_remaining,
         } => {
-            out.push_str(&format!("Status: ⚠ Warning\nOver soft limit by: ${:.2}\n", over_soft_by));
+            write!(out, "Status: ⚠ Warning\nOver soft limit by: ${:.2}\n", over_soft_by).unwrap();
             if hard_limit_remaining.is_finite() {
-                out.push_str(&format!("Hard limit remaining: ${:.2}\n", hard_limit_remaining));
+                writeln!(out, "Hard limit remaining: ${:.2}", hard_limit_remaining).unwrap();
                 out.push_str("Routing policy is biasing toward cheaper models.");
             }
         }
         BudgetStatus::Exceeded { over_hard_by } => {
-            out.push_str(&format!("Status: ✖ Exceeded\nOver hard limit by: ${:.2}\n", over_hard_by));
+            write!(out, "Status: ✖ Exceeded\nOver hard limit by: ${:.2}\n", over_hard_by).unwrap();
             out.push_str("Routing policy is forcing cheapest model (smol/haiku).");
         }
     }

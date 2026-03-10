@@ -473,7 +473,7 @@ impl<'a> EventLoopRunner<'a> {
                 }
 
                 TaskResult::AccountSwitched(Ok(name)) => {
-                    self.app.active_account = name.clone();
+                    self.app.active_account.clone_from(&name);
                     self.app.push_system(
                         format!("Switched to account '{}'. New credentials will be used for the next API call.", name),
                         false,

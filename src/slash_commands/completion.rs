@@ -184,11 +184,12 @@ pub fn completions(input: &str) -> Vec<CompletionItem> {
 
 /// Format help text listing all commands
 pub fn help_text() -> String {
+    use std::fmt::Write;
     let commands = builtin_commands();
     let mut out = String::from("Available slash commands:\n\n");
     let max_name_len = commands.iter().map(|c| c.name.len()).max().unwrap_or(0);
     for cmd in &commands {
-        out.push_str(&format!("  /{:<width$}  {}\n", cmd.name, cmd.description, width = max_name_len));
+        let _ = writeln!(out, "  /{:<width$}  {}", cmd.name, cmd.description, width = max_name_len);
     }
     out
 }

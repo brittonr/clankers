@@ -417,10 +417,12 @@ fn run_tui_test(
     steps: &[TuiStep],
     signal: &CancellationToken,
 ) -> Result<String, String> {
+    use std::fmt::Write;
+    
     let mut report = String::new();
-    report.push_str(&format!("## TUI Validation: {}\n\n", description));
-    report.push_str(&format!("PTY size: {}x{}\n", cols, rows));
-    report.push_str(&format!("Steps: {}\n\n", steps.len()));
+    write!(report, "## TUI Validation: {}\n\n", description).unwrap();
+    writeln!(report, "PTY size: {}x{}", cols, rows).unwrap();
+    write!(report, "Steps: {}\n\n", steps.len()).unwrap();
 
     let mut harness = PtyHarness::spawn(rows, cols, &[])?;
     let mut passed = 0usize;
@@ -429,7 +431,7 @@ fn run_tui_test(
 
     for (i, step) in steps.iter().enumerate() {
         if signal.is_cancelled() {
-            report.push_str(&format!("\n⚠ Cancelled at step {}\n", i + 1));
+            write!(report, "\n⚠ Cancelled at step {}\n", i + 1).unwrap();
             break;
         }
 
@@ -438,23 +440,23 @@ fn run_tui_test(
         // Execute the action
         let action_result = match &step.action {
             StepAction::Type { text } => {
-                report.push_str(&format!("  {} type: {:?}\n", step_label, text));
+                writeln!(report, "  {} type: {:?}", step_label, text).unwrap();
                 harness.type_str(text)
             }
             StepAction::Key { name } => {
-                report.push_str(&format!("  {} key: {}\n", step_label, name));
+                writeln!(report, "  {} key: {}", step_label, name).unwrap();
                 match key_bytes(name) {
                     Some(bytes) => harness.send(bytes),
                     None => Err(format!("Unknown key name: {:?}", name)),
                 }
             }
             StepAction::Wait { ms } => {
-                report.push_str(&format!("  {} wait: {}ms\n", step_label, ms));
+                writeln!(report, "  {} wait: {}ms", step_label, ms).unwrap();
                 std::thread::sleep(Duration::from_millis(*ms));
                 Ok(())
             }
             StepAction::SlashCommand { command } => {
-                report.push_str(&format!("  {} slash: {}\n", step_label, command));
+                writeln!(report, "  {} slash: {}", step_label, command).unwrap();
                 // Enter insert mode, type command, submit
                 harness.type_str(&format!("i{}", command))?;
                 std::thread::sleep(Duration::from_millis(200));
@@ -463,7 +465,7 @@ fn run_tui_test(
         };
 
         if let Err(e) = action_result {
-            report.push_str(&format!("    ✗ FAIL — action error: {}\n", e));
+            writeln!(report, "    ✗ FAIL — action error: {}", e).unwrap();
             failed += 1;
             continue;
         }
@@ -476,10 +478,10 @@ fn run_tui_test(
             let timeout = Duration::from_millis(step.timeout_ms);
             match harness.wait_for(wait_text, timeout) {
                 Ok(()) => {
-                    report.push_str(&format!("    ✓ wait_for {:?} — found\n", wait_text));
+                    writeln!(report, "    ✓ wait_for {:?} — found", wait_text).unwrap();
                 }
                 Err(e) => {
-                    report.push_str(&format!("    ✗ FAIL — {}\n", e));
+                    writeln!(report, "    ✗ FAIL — {}", e).unwrap();
                     failed += 1;
                     if step.capture {
                         captures.push((i + 1, harness.screen_text()));
@@ -492,9 +494,9 @@ fn run_tui_test(
         // Assert visible
         if let Some(ref visible) = step.assert_visible {
             if harness.screen_contains(visible) {
-                report.push_str(&format!("    ✓ assert_visible {:?} — found\n", visible));
+                writeln!(report, "    ✓ assert_visible {:?} — found", visible).unwrap();
             } else {
-                report.push_str(&format!("    ✗ FAIL — assert_visible {:?} not found on screen\n", visible));
+                writeln!(report, "    ✗ FAIL — assert_visible {:?} not found on screen", visible).unwrap();
                 failed += 1;
                 if step.capture {
                     captures.push((i + 1, harness.screen_text()));
@@ -508,10 +510,10 @@ fn run_tui_test(
             let timeout = Duration::from_millis(step.timeout_ms.min(1000));
             match harness.wait_for_absent(absent, timeout) {
                 Ok(()) => {
-                    report.push_str(&format!("    ✓ assert_absent {:?} — confirmed absent\n", absent));
+                    writeln!(report, "    ✓ assert_absent {:?} — confirmed absent", absent).unwrap();
                 }
                 Err(_) => {
-                    report.push_str(&format!("    ✗ FAIL — assert_absent {:?} is still on screen\n", absent));
+                    writeln!(report, "    ✗ FAIL — assert_absent {:?} is still on screen", absent).unwrap();
                     failed += 1;
                     if step.capture {
                         captures.push((i + 1, harness.screen_text()));
@@ -533,7 +535,7 @@ fn run_tui_test(
     harness.quit();
 
     // Summary
-    report.push_str(&format!("\n## Results: {} passed, {} failed out of {} steps\n", passed, failed, steps.len()));
+    write!(report, "\n## Results: {} passed, {} failed out of {} steps\n", passed, failed, steps.len()).unwrap();
 
     if failed == 0 {
         report.push_str("## Status: ✓ PASS\n");
@@ -545,7 +547,7 @@ fn run_tui_test(
     if !captures.is_empty() {
         report.push_str("\n## Screen Captures\n");
         for (step_num, screen) in &captures {
-            report.push_str(&format!("\n### Step {} screen:\n```\n{}\n```\n", step_num, screen));
+            write!(report, "\n### Step {} screen:\n```\n{}\n```\n", step_num, screen).unwrap();
         }
     }
 

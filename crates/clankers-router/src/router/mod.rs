@@ -372,7 +372,7 @@ impl Router {
 
             // Build per-model request
             let mut req = multi_req.request.clone();
-            req.model = resolved_id.clone();
+            req.model.clone_from(&resolved_id);
 
             // Create a channel for this model's stream
             let (tx, rx) = mpsc::channel::<StreamEvent>(256);
@@ -522,7 +522,7 @@ impl Router {
             };
 
             let mut req = quorum_req.request.clone();
-            req.model = resolved_id.clone();
+            req.model.clone_from(&resolved_id);
             if let Some(temp) = slot.temperature {
                 req.temperature = Some(temp);
             }
@@ -685,7 +685,7 @@ impl Router {
             temperature: Some(0.0),
             tools: vec![],
             thinking: None,
-            extra_params: Default::default(),
+            extra_params: HashMap::new(),
         };
 
         let (tx, mut rx) = mpsc::channel::<StreamEvent>(64);

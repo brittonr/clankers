@@ -233,6 +233,8 @@ impl Tool for AskTool {
             }
         } else {
             // No TUI channel — format the question as text for non-interactive modes
+            use std::fmt::Write;
+
             let mut out = format!("**Question:** {}\n\n", question_text);
             match question_type {
                 QuestionType::Choice | QuestionType::Multi => {
@@ -241,22 +243,22 @@ impl Tool for AskTool {
                     } else {
                         "Select one"
                     };
-                    out.push_str(&format!("*{}:*\n", tag));
+                    writeln!(out, "*{}:*", tag).unwrap();
                     for (i, opt) in options.iter().enumerate() {
-                        out.push_str(&format!("  {}. {}", i + 1, opt.label));
+                        write!(out, "  {}. {}", i + 1, opt.label).unwrap();
                         if let Some(ref desc) = opt.description {
-                            out.push_str(&format!(" — {}", desc));
+                            write!(out, " — {}", desc).unwrap();
                         }
                         out.push('\n');
                     }
                 }
                 QuestionType::Confirm => {
                     let def = default.as_deref().unwrap_or("y");
-                    out.push_str(&format!("*Confirm (y/n, default: {})*\n", def));
+                    writeln!(out, "*Confirm (y/n, default: {})*", def).unwrap();
                 }
                 QuestionType::Text => {
                     if let Some(ref def) = default {
-                        out.push_str(&format!("*Default: {}*\n", def));
+                        writeln!(out, "*Default: {}*", def).unwrap();
                     }
                 }
             }

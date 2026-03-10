@@ -123,7 +123,7 @@ impl<'db> UsageTracker<'db> {
             };
 
             // Aggregate at the day level
-            daily.date = date.clone();
+            daily.date.clone_from(&date);
             daily.input_tokens += req.input_tokens;
             daily.output_tokens += req.output_tokens;
             daily.cache_creation_tokens += req.cache_creation_tokens;

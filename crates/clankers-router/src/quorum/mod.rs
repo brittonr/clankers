@@ -39,6 +39,8 @@
 //! }
 //! ```
 
+use std::fmt::Write;
+
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -409,10 +411,11 @@ pub fn build_judge_prompt(
     prompt.push_str("\n\n## Candidate responses\n\n");
 
     for (idx, model, text) in responses {
-        prompt.push_str(&format!("### Response {} (from {})\n\n{}\n\n", idx + 1, model, text));
+        writeln!(prompt, "### Response {} (from {})\n\n{}\n", idx + 1, model, text).unwrap();
     }
 
-    prompt.push_str(&format!(
+    write!(
+        prompt,
         "## Evaluation criteria\n\n{}\n\n\
          ## Instructions\n\n\
          Compare the responses and select the best one.\n\
@@ -423,7 +426,7 @@ pub fn build_judge_prompt(
            \"agreement\": <0.0 to 1.0 — how much the responses agree with each other>\n\
          }}",
         criteria
-    ));
+    ).unwrap();
 
     prompt
 }

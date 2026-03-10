@@ -35,12 +35,13 @@ pub async fn resolve_conflict(
     branches: &[String],
     conflicted_content: &str,
 ) -> Option<String> {
+    use std::fmt::Write;
     let base = git_show(repo_root, parent_branch, file_path).unwrap_or_default();
 
     let mut branch_versions = String::new();
     for branch in branches {
         let content = git_show(repo_root, branch, file_path).unwrap_or_default();
-        branch_versions.push_str(&format!("\n--- Branch: {} ---\n{}\n", branch, content));
+        let _ = write!(branch_versions, "\n--- Branch: {} ---\n{}\n", branch, content);
     }
 
     let prompt = format!(

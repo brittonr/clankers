@@ -17,6 +17,8 @@ const CONTEXT_LINES: usize = 3;
 /// For new files (empty `old`), we show a short "+ N lines" summary instead of
 /// dumping the entire file.
 pub fn unified_diff(path: &str, old: &str, new: &str) -> String {
+    use std::fmt::Write;
+
     // New file – don't dump every line
     if old.is_empty() {
         let line_count = new.lines().count();
@@ -36,22 +38,22 @@ pub fn unified_diff(path: &str, old: &str, new: &str) -> String {
     let mut out = String::new();
 
     // Header
-    out.push_str(&format!("\x1b[1m--- {}\n+++ {}\x1b[0m\n", path, path));
+    write!(out, "\x1b[1m--- {}\n+++ {}\x1b[0m\n", path, path).unwrap();
 
     for hunk in diff.unified_diff().context_radius(CONTEXT_LINES).iter_hunks() {
         // Hunk header
-        out.push_str(&format!("\x1b[36m{}\x1b[0m\n", hunk.header()));
+        writeln!(out, "\x1b[36m{}\x1b[0m", hunk.header()).unwrap();
 
         for change in hunk.iter_changes() {
             match change.tag() {
                 ChangeTag::Delete => {
-                    out.push_str(&format!("\x1b[31m-{}\x1b[0m", change));
+                    write!(out, "\x1b[31m-{}\x1b[0m", change).unwrap();
                 }
                 ChangeTag::Insert => {
-                    out.push_str(&format!("\x1b[32m+{}\x1b[0m", change));
+                    write!(out, "\x1b[32m+{}\x1b[0m", change).unwrap();
                 }
                 ChangeTag::Equal => {
-                    out.push_str(&format!("\x1b[2m {}\x1b[0m", change));
+                    write!(out, "\x1b[2m {}\x1b[0m", change).unwrap();
                 }
             }
             // `similar` change values include trailing newlines for most lines,

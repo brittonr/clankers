@@ -1,5 +1,6 @@
 //! Session export to markdown, plain text, and JSON formats.
 
+use std::fmt::Write;
 use std::path::Path;
 
 use super::entry::SessionEntry;
@@ -14,10 +15,10 @@ pub fn export_markdown(path: &Path) -> Result<String> {
     for entry in &entries {
         match entry {
             SessionEntry::Header(h) => {
-                out.push_str(&format!("# Session: {}\n\n", h.session_id));
-                out.push_str(&format!("- **Date**: {}\n", h.created_at.format("%Y-%m-%d %H:%M:%S UTC")));
-                out.push_str(&format!("- **Model**: {}\n", h.model));
-                out.push_str(&format!("- **CWD**: {}\n\n---\n\n", h.cwd));
+                write!(out, "# Session: {}\n\n", h.session_id).unwrap();
+                writeln!(out, "- **Date**: {}", h.created_at.format("%Y-%m-%d %H:%M:%S UTC")).unwrap();
+                writeln!(out, "- **Model**: {}", h.model).unwrap();
+                write!(out, "- **CWD**: {}\n\n---\n\n", h.cwd).unwrap();
             }
             SessionEntry::Message(m) => {
                 use crate::provider::message::AgentMessage;
@@ -40,17 +41,19 @@ pub fn export_markdown(path: &Path) -> Result<String> {
                                     out.push_str("\n\n");
                                 }
                                 crate::provider::message::Content::ToolUse { name, input, .. } => {
-                                    out.push_str(&format!(
+                                    write!(
+                                        out,
                                         "**Tool call**: `{}`\n```json\n{}\n```\n\n",
                                         name,
                                         serde_json::to_string_pretty(input).unwrap_or_default()
-                                    ));
+                                    ).unwrap();
                                 }
                                 crate::provider::message::Content::Thinking { thinking } => {
-                                    out.push_str(&format!(
+                                    write!(
+                                        out,
                                         "<details>\n<summary>💭 Thinking</summary>\n\n{}\n\n</details>\n\n",
                                         thinking
-                                    ));
+                                    ).unwrap();
                                 }
                                 _ => {}
                             }
@@ -62,10 +65,10 @@ pub fn export_markdown(path: &Path) -> Result<String> {
                         } else {
                             "📋 Tool Result"
                         };
-                        out.push_str(&format!("### {} ({})\n\n", label, tr.tool_name));
+                        write!(out, "### {} ({})\n\n", label, tr.tool_name).unwrap();
                         for c in &tr.content {
                             if let crate::provider::message::Content::Text { text } = c {
-                                out.push_str(&format!("```\n{}\n```\n\n", text));
+                                write!(out, "```\n{}\n```\n\n", text).unwrap();
                             }
                         }
                     }
@@ -86,13 +89,14 @@ pub fn export_text(path: &Path) -> Result<String> {
     for entry in &entries {
         match entry {
             SessionEntry::Header(h) => {
-                out.push_str(&format!(
-                    "Session: {} | Model: {} | {}\n",
+                writeln!(
+                    out,
+                    "Session: {} | Model: {} | {}",
                     h.session_id,
                     h.model,
                     h.created_at.format("%Y-%m-%d %H:%M")
-                ));
-                out.push_str(&format!("CWD: {}\n", h.cwd));
+                ).unwrap();
+                writeln!(out, "CWD: {}", h.cwd).unwrap();
                 out.push_str(&"─".repeat(60));
                 out.push('\n');
             }
@@ -119,7 +123,7 @@ pub fn export_text(path: &Path) -> Result<String> {
                     }
                     AgentMessage::ToolResult(tr) => {
                         let label = if tr.is_error { "Tool Error" } else { "Tool Result" };
-                        out.push_str(&format!("\n[{} - {}]\n", label, tr.tool_name));
+                        write!(out, "\n[{} - {}]\n", label, tr.tool_name).unwrap();
                         for c in &tr.content {
                             if let crate::provider::message::Content::Text { text } = c {
                                 out.push_str(text);

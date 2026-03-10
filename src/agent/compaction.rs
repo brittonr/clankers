@@ -81,6 +81,7 @@ pub async fn compact_with_llm(
     provider: &dyn Provider,
     model: &str,
 ) -> CompactionResult {
+    use std::fmt::Write;
     let keep_first = 1.min(messages.len());
     let keep_last = keep_recent.min(messages.len().saturating_sub(keep_first));
     let drop_start = keep_first;
@@ -102,7 +103,7 @@ pub async fn compact_with_llm(
     let mut convo_text = String::new();
     for msg in dropped {
         let (role, text) = extract_role_and_text(msg);
-        convo_text.push_str(&format!("[{}]: {}\n", role, text));
+        let _ = writeln!(convo_text, "[{}]: {}", role, text);
     }
 
     // Request a summary from the LLM

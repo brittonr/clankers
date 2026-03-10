@@ -2,6 +2,7 @@
 
 use tokio_util::sync::CancellationToken;
 
+use crate::config::Settings;
 use crate::error::Result;
 use crate::tui::app::App;
 
@@ -130,7 +131,7 @@ pub(super) async fn maybe_start_rpc(app: &mut App, paths: &crate::config::Clanke
         heartbeat_interval: Some(std::time::Duration::from_secs(120)),
     };
 
-    match start_embedded_rpc(config, None, Vec::new(), Default::default(), String::new(), String::new()).await {
+    match start_embedded_rpc(config, None, Vec::new(), Settings::default(), String::new(), String::new()).await {
         Ok((node_id, cancel)) => {
             let short_id = if node_id.len() > 12 {
                 format!("{}…", &node_id[..12])

@@ -224,6 +224,7 @@ impl Tool for WebTool {
 
 /// Format Kagi search results, streaming each result as it's processed
 fn format_search_results_streaming(json: &Value, max: usize, ctx: &ToolContext) -> String {
+    use std::fmt::Write;
     let mut output = String::new();
     if let Some(results) = json["data"].as_array() {
         let mut count = 0;
@@ -243,10 +244,10 @@ fn format_search_results_streaming(json: &Value, max: usize, ctx: &ToolContext) 
             // Stream each result as it's formatted
             ctx.emit_progress(&format!("{}. {}", count + 1, title));
 
-            output.push_str(&format!("{}. **{}**\n", count + 1, title));
-            output.push_str(&format!("   {}\n", url));
+            let _ = writeln!(output, "{}. **{}**", count + 1, title);
+            let _ = writeln!(output, "   {}", url);
             if !snippet.is_empty() {
-                output.push_str(&format!("   {}\n", snippet));
+                let _ = writeln!(output, "   {}", snippet);
             }
             output.push('\n');
             count += 1;

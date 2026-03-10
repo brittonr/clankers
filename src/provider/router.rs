@@ -49,7 +49,7 @@ impl Provider for RouterCompatAdapter {
             temperature: request.temperature,
             tools: request.tools,
             thinking: request.thinking,
-            extra_params: Default::default(),
+            extra_params: HashMap::new(),
         };
 
         // Create a channel for router StreamEvents and convert via From impl
@@ -112,7 +112,7 @@ impl RouterProvider {
 
         for (name, provider) in providers {
             if default_provider.is_empty() {
-                default_provider = name.clone();
+                default_provider.clone_from(&name);
             }
 
             let models = provider.models();

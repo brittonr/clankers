@@ -50,6 +50,7 @@ fn open_repo() -> Result<Repository> {
 /// (e.g. ` M src/main.rs`, `?? new.txt`).
 pub async fn status_porcelain() -> Result<String> {
     tokio::task::spawn_blocking(|| {
+        use std::fmt::Write;
         let repo = open_repo()?;
         let mut opts = StatusOptions::new();
         opts.include_untracked(true).recurse_untracked_dirs(true).include_ignored(false);
@@ -59,7 +60,7 @@ pub async fn status_porcelain() -> Result<String> {
         for entry in statuses.iter() {
             let path = entry.path().unwrap_or("(non-utf8)");
             let (x, y) = status_chars(entry.status());
-            out.push_str(&format!("{}{} {}\n", x, y, path));
+            let _ = writeln!(out, "{}{} {}", x, y, path);
         }
         Ok(out)
     })

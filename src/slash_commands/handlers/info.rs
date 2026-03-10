@@ -138,6 +138,8 @@ impl SlashHandler for LeaderHandler {
     }
 
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
+        use std::fmt::Write;
+
         let menu = &ctx.app.overlays.leader_menu;
         let root = menu.root_def();
         let submenus = menu.submenu_defs();
@@ -147,19 +149,19 @@ impl SlashHandler for LeaderHandler {
         out.push_str("\n  ── Root ──\n");
         for item in &root.items {
             let action_str = format_leader_action(&item.action);
-            out.push_str(&format!("  {:>3}  {:<24} {}\n", item.key, item.label, action_str));
+            writeln!(out, "  {:>3}  {:<24} {}", item.key, item.label, action_str).unwrap();
         }
 
         // Submenus
         for sub in submenus {
-            out.push_str(&format!("\n  ── {} ──\n", sub.label));
+            write!(out, "\n  ── {} ──\n", sub.label).unwrap();
             for item in &sub.items {
                 let action_str = format_leader_action(&item.action);
-                out.push_str(&format!("  {:>3}  {:<24} {}\n", item.key, item.label, action_str));
+                writeln!(out, "  {:>3}  {:<24} {}", item.key, item.label, action_str).unwrap();
             }
         }
 
-        out.push_str(&format!("\n  {} root items, {} submenus", root.items.len(), submenus.len(),));
+        write!(out, "\n  {} root items, {} submenus", root.items.len(), submenus.len(),).unwrap();
 
         ctx.app.push_system(out, false);
     }

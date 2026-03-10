@@ -42,6 +42,7 @@
 //! ```
 
 use std::collections::HashMap;
+use std::fmt::Write;
 use std::path::Path;
 
 use serde::Deserialize;
@@ -322,13 +323,13 @@ impl AuthStore {
 
         let mut out = String::new();
         for provider in &providers {
-            out.push_str(&format!("{}:\n", provider));
+            writeln!(out, "{}", provider).unwrap();
             for info in self.list_accounts(provider) {
                 let marker = if info.is_active { "▸" } else { " " };
                 let kind = if info.is_oauth { "oauth" } else { "api-key" };
                 let status = if info.is_expired { " (expired)" } else { "" };
                 let label = info.label.as_ref().map(|l| format!(" — {}", l)).unwrap_or_default();
-                out.push_str(&format!("  {} {} [{}]{}{}\n", marker, info.name, kind, label, status));
+                writeln!(out, "  {} {} [{}]{}{}", marker, info.name, kind, label, status).unwrap();
             }
         }
         out

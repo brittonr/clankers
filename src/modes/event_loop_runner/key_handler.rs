@@ -419,7 +419,7 @@ impl<'a> EventLoopRunner<'a> {
                     .app
                     .panels
                     .downcast_ref::<SubagentPanel>(PanelId::Subagents)
-                    .expect("subagent panel")
+                    .expect("subagent panel registered at startup")
                     .selected_id()
                 {
                     let _ =
@@ -471,7 +471,7 @@ impl<'a> EventLoopRunner<'a> {
         let scope = self.app.overlays.tool_toggle.scope;
 
         // Update app state
-        self.app.disabled_tools = disabled.clone();
+        self.app.disabled_tools.clone_from(&disabled);
 
         // Persist based on scope
         match scope {

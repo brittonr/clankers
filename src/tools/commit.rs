@@ -86,6 +86,8 @@ impl CommitTool {
     }
 
     async fn analyze(&self, ctx: &ToolContext, files: &[String]) -> ToolResult {
+        use std::fmt::Write;
+        
         // Get git status
         ctx.emit_progress("git status...");
         let status = match git_ops::status_porcelain().await {
@@ -111,20 +113,20 @@ impl CommitTool {
         let mut output = String::new();
         output.push_str("# Git Analysis\n\n");
         output.push_str("## Status\n");
-        output.push_str(&format!("```\n{}\n```\n\n", status));
+        write!(output, "```\n{}\n```\n\n", status).unwrap();
 
         if !staged_stat.is_empty() {
             output.push_str("## Staged Changes\n");
-            output.push_str(&format!("```\n{}\n```\n\n", staged_stat));
+            write!(output, "```\n{}\n```\n\n", staged_stat).unwrap();
         }
         if !unstaged_stat.is_empty() {
             output.push_str("## Unstaged Changes\n");
-            output.push_str(&format!("```\n{}\n```\n\n", unstaged_stat));
+            write!(output, "```\n{}\n```\n\n", unstaged_stat).unwrap();
         }
 
         output.push_str("## Change Categories\n");
         for (category, files_in_cat) in &analysis {
-            output.push_str(&format!("- **{}**: {}\n", category, files_in_cat.join(", ")));
+            writeln!(output, "- **{}**: {}", category, files_in_cat.join(", ")).unwrap();
         }
 
         if !detailed_staged.is_empty() {
@@ -135,7 +137,7 @@ impl CommitTool {
             } else {
                 detailed_staged
             };
-            output.push_str(&format!("\n## Detailed Staged Diff\n```diff\n{}\n```\n", diff_display));
+            write!(output, "\n## Detailed Staged Diff\n```diff\n{}\n```\n", diff_display).unwrap();
         }
 
         if !detailed_unstaged.is_empty() {
@@ -145,17 +147,19 @@ impl CommitTool {
             } else {
                 detailed_unstaged
             };
-            output.push_str(&format!("\n## Detailed Unstaged Diff\n```diff\n{}\n```\n", diff_display));
+            write!(output, "\n## Detailed Unstaged Diff\n```diff\n{}\n```\n", diff_display).unwrap();
         }
 
         // Suggest a commit message
         let suggestion = suggest_commit_message(&status, &analysis);
-        output.push_str(&format!("\n## Suggested Commit\n```\n{}\n```\n", suggestion));
+        write!(output, "\n## Suggested Commit\n```\n{}\n```\n", suggestion).unwrap();
 
         ToolResult::text(output)
     }
 
     async fn stage(&self, ctx: &ToolContext, files: &[String]) -> ToolResult {
+        use std::fmt::Write;
+        
         if files.is_empty() {
             return ToolResult::error("No files specified. Provide 'files' array with paths to stage.");
         }
@@ -168,15 +172,15 @@ impl CommitTool {
 
         let mut output = String::new();
         if !staged.is_empty() {
-            output.push_str(&format!("Staged {} file(s):\n", staged.len()));
+            writeln!(output, "Staged {} file(s):", staged.len()).unwrap();
             for f in &staged {
-                output.push_str(&format!("  ✓ {}\n", f));
+                writeln!(output, "  ✓ {}", f).unwrap();
             }
         }
         if !errors.is_empty() {
-            output.push_str(&format!("\nFailed to stage {} file(s):\n", errors.len()));
+            write!(output, "\nFailed to stage {} file(s):\n", errors.len()).unwrap();
             for e in &errors {
-                output.push_str(&format!("  ✗ {}\n", e));
+                writeln!(output, "  ✗ {}", e).unwrap();
             }
         }
 
@@ -236,6 +240,8 @@ impl CommitTool {
     }
 
     async fn split_analysis(&self, ctx: &ToolContext) -> ToolResult {
+        use std::fmt::Write;
+        
         // Analyze unstaged changes and suggest how to split into multiple commits
         ctx.emit_progress("analyzing working tree for split...");
         let status = git_ops::status_porcelain().await.unwrap_or_default();
@@ -258,9 +264,9 @@ impl CommitTool {
                 "style" | "formatting" => "style",
                 _ => "chore",
             };
-            output.push_str(&format!("## Commit {} — `{}({}): ...`\n", i + 1, commit_type, category));
+            writeln!(output, "## Commit {} — `{}({}): ...`", i + 1, commit_type, category).unwrap();
             for f in files {
-                output.push_str(&format!("  - {}\n", f));
+                writeln!(output, "  - {}", f).unwrap();
             }
             output.push('\n');
         }
@@ -275,6 +281,8 @@ impl CommitTool {
     }
 
     async fn changelog(&self, ctx: &ToolContext, count: usize) -> ToolResult {
+        use std::fmt::Write;
+        
         ctx.emit_progress(&format!("reading last {} commits...", count));
         match git_ops::log(count).await {
             Ok(entries) => {
@@ -315,9 +323,9 @@ impl CommitTool {
 
                 for (key, label) in &group_labels {
                     if let Some(entries) = groups.get(*key) {
-                        changelog.push_str(&format!("## {}\n\n", label));
+                        write!(changelog, "## {}\n\n", label).unwrap();
                         for entry in entries {
-                            changelog.push_str(&format!("- {} ({}, {})\n", entry.description, entry.hash, entry.date));
+                            writeln!(changelog, "- {} ({}, {})", entry.description, entry.hash, entry.date).unwrap();
                         }
                         changelog.push('\n');
                     }

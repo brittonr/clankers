@@ -75,7 +75,7 @@ pub(super) async fn collect_stream_events(
     while let Some(event) = stream_rx.recv().await {
         match event {
             StreamEvent::MessageStart { message } => {
-                model = message.model.clone();
+                model.clone_from(&message.model);
             }
             StreamEvent::ContentBlockStart { index, content_block } => {
                 // Ensure we have enough slots

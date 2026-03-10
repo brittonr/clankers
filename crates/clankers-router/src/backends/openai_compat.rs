@@ -13,6 +13,7 @@
 //! The backend translates our generic CompletionRequest into the OpenAI
 //! format and parses the SSE stream back into our StreamEvent types.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -570,7 +571,7 @@ impl OpenAISseHandler {
             model,
             sent_start: false,
             content_block_started: false,
-            tool_blocks: Default::default(),
+            tool_blocks: HashMap::new(),
         }
     }
 

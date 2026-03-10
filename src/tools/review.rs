@@ -134,11 +134,12 @@ pub struct ReviewReport {
 impl ReviewReport {
     /// Render the report as a formatted markdown string
     pub fn render(&self) -> String {
+        use std::fmt::Write;
         let mut out = String::new();
 
         // Header
-        out.push_str(&format!("# Code Review — {} {}\n\n", self.verdict.emoji(), self.verdict.label()));
-        out.push_str(&format!("{}\n\n", self.summary));
+        write!(out, "# Code Review — {} {}\n\n", self.verdict.emoji(), self.verdict.label()).unwrap();
+        write!(out, "{}\n\n", self.summary).unwrap();
 
         if self.findings.is_empty() {
             out.push_str("No findings.\n");
@@ -150,14 +151,15 @@ impl ReviewReport {
         let p1 = self.findings.iter().filter(|f| f.priority == Priority::P1).count();
         let p2 = self.findings.iter().filter(|f| f.priority == Priority::P2).count();
         let p3 = self.findings.iter().filter(|f| f.priority == Priority::P3).count();
-        out.push_str(&format!(
+        write!(
+            out,
             "**Findings:** {} total — {} P0 {} P1 {} P2 {} P3\n\n",
             self.findings.len(),
             p0,
             p1,
             p2,
             p3
-        ));
+        ).unwrap();
 
         // Group by priority
         let mut sorted = self.findings.clone();
@@ -167,7 +169,7 @@ impl ReviewReport {
         for finding in &sorted {
             if current_priority != Some(finding.priority) {
                 current_priority = Some(finding.priority);
-                out.push_str(&format!("## {} {} Priority\n\n", finding.priority.emoji(), finding.priority.label()));
+                write!(out, "## {} {} Priority\n\n", finding.priority.emoji(), finding.priority.label()).unwrap();
             }
 
             let location = if let Some(line) = finding.line {
@@ -176,11 +178,11 @@ impl ReviewReport {
                 finding.file.clone()
             };
 
-            out.push_str(&format!("### {} {} — {}\n", finding.category.emoji(), finding.title, location));
-            out.push_str(&format!("{}\n", finding.description));
+            writeln!(out, "### {} {} — {}", finding.category.emoji(), finding.title, location).unwrap();
+            writeln!(out, "{}", finding.description).unwrap();
 
             if let Some(ref suggestion) = finding.suggestion {
-                out.push_str(&format!("\n> 💡 **Suggestion:** {}\n", suggestion));
+                write!(out, "\n> 💡 **Suggestion:** {}\n", suggestion).unwrap();
             }
             out.push('\n');
         }

@@ -105,13 +105,14 @@ fn extract_description(content: &str) -> String {
 
 /// Format skills for system prompt injection
 pub fn format_skills_for_context(skills: &[Skill]) -> String {
+    use std::fmt::Write;
     if skills.is_empty() {
         return String::new();
     }
     let mut out = String::from("## Available Skills\n\n");
     for skill in skills {
-        out.push_str(&format!("- **{}**: {}\n", skill.name, skill.description));
-        out.push_str(&format!("  Location: {}\n", skill.path.display()));
+        let _ = writeln!(out, "- **{}**: {}", skill.name, skill.description);
+        let _ = writeln!(out, "  Location: {}", skill.path.display());
     }
     out
 }
