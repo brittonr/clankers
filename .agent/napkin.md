@@ -316,6 +316,22 @@
 - system_prompt.rs at 727 lines is fine — 350 impl + 377 thorough tests, well-decomposed already. Not every big file needs splitting.
 - event_handlers.rs is fundamentally a big match statement routing actions — limited decomposition value beyond helper extraction for repeated patterns
 
+## Patterns That Work (crate extraction: message + session)
+- `clankers-message` crate at `crates/clankers-message/` — AgentMessage, Content, MessageId, StreamEvent, etc.
+- `clankers-session` crate at `crates/clankers-session/` — SessionManager, SessionTree, store, merge, export
+- Message types used by 31+ files — extracting them first unlocked session extraction
+- `generate_id()` inlined from util::id into clankers-message (6 lines, avoids util dep), made `pub`
+- `MessageId::generate()` now calls clankers-message's own `generate_id()`
+- `to_merge_view()` stayed in main crate at `src/session/merge_view.rs` — bridges session↔tui-types
+- `SessionError` uses simple struct like `DbError` — not snafu/thiserror, just `Display + Error`
+- `From<SessionError> for crate::Error` in error.rs maps to `Error::Session`
+- Store.rs replaced `snafu::ResultExt` with `.map_err(session_err)` — cleaner for extracted crate
+- `pub(super)` in tree module became `pub(crate)` for crate-internal visibility (find_message, children)
+- `set_message_id()` promoted to `pub` in session crate (needed by merge.rs)
+- Re-export pattern: `src/session/mod.rs` does `pub use clankers_session::*;` + `pub mod merge_view;`
+- `env!("CARGO_PKG_VERSION")` in SessionManager::create() gets session crate version — same as main (both 0.1.0)
+- Git detects file moves as renames when content is mostly unchanged — most session files showed as `R` (rename)
+
 ## Patterns That Work (TUI extraction round 2)
 - Keybindings engine (Keymap, KeyCombo, presets, defaults, parser) moved to `crates/clankers-tui/src/keymap/` — main crate keeps only `KeymapConfig` (settings-layer loading) + re-exports
 - `pub use clankers_tui::keymap::*` in `src/config/keybindings/mod.rs` preserves all import paths
