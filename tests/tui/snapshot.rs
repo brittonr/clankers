@@ -460,15 +460,20 @@ fn normalize_line(line: &str) -> String {
     let re_hash = regex::Regex::new(r"\b[0-9a-f]{7,40}\b").unwrap();
     s = re_hash.replace_all(&s, "HASH").to_string();
 
-    // Replace "Worktree: <anything>" with a stable placeholder
-    // This line appears/disappears depending on git session state
+    // Strip "Worktree: <anything>" entirely — this line appears/disappears
+    // depending on git session state, causing snapshot instability
     let re_worktree = regex::Regex::new(r"Worktree:\s*\S+").unwrap();
-    s = re_worktree.replace_all(&s, "Worktree: <session>").to_string();
+    s = re_worktree.replace_all(&s, "").to_string();
 
-    // Normalize the status bar area — strip model name variants and
-    // trailing cursor artifacts that appear from input timing
-    let re_model = regex::Regex::new(r"claude-[a-z0-9-]+").unwrap();
+    // Normalize model names — covers claude, qwen, gpt, gemini, deepseek, llama, etc.
+    let re_model = regex::Regex::new(
+        r"(?:claude-[a-z0-9.-]+|gpt-[a-z0-9.-]+|o[1-4]-[a-z0-9.-]*|qwen[a-z0-9.:_-]+|gemini[a-z0-9.:/_-]+|deepseek[a-z0-9.:_-]+|llama[a-z0-9.:_-]+|mistral[a-z0-9.:_-]+|phi[a-z0-9.:_-]+)"
+    ).unwrap();
     s = re_model.replace_all(&s, "MODEL").to_string();
+
+    // Catch-all: normalize model name in status bar "idle | <model> |" context
+    let re_sb_model = regex::Regex::new(r"(idle\s*\|\s*)\S+(\s*\|)").unwrap();
+    s = re_sb_model.replace_all(&s, "${1}MODEL${2}").to_string();
 
     // Normalize trailing whitespace differences
     s.trim_end().to_string()
@@ -516,7 +521,8 @@ pub fn extract_structure(harness: &super::harness::TuiTestHarness) -> String {
 
             // Strip volatile chat content bleeding into panel border lines
             // e.g. "│press i to sta┌ Space ──" → "│┌ Space ──"
-            let re_bleed = regex::Regex::new(r"│[a-zA-Z ]{2,}(┌)").unwrap();
+            // Also catches: "│  clankers — c┌ Space ──" (greeting behind popup)
+            let re_bleed = regex::Regex::new(r"│[^│┌┐└┘┤├─]{2,}(┌)").unwrap();
             normalized = re_bleed.replace_all(&normalized, "│$1").to_string();
 
             // Normalize whitespace before border chars — collapse any
