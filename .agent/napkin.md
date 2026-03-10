@@ -325,3 +325,14 @@
 - Selectors with only TUI side-effects (branch switcher, branch compare, merge interactive) keep simple `bool` return — no abstraction needed
 - `ansi.rs` was NOT a good extraction candidate: `ansi_to_spans`/`ansi_to_lines` are dead outside their own tests, and `strip_ansi` callers are tools (not TUI code)
 - Always check who actually calls a function before deciding to move it — grep for callers, not just the function definition
+
+## Patterns That Work (plugin system maturity)
+- `filter_ui_actions()` gates on `ui` permission — strips UI actions from plugins without it, logs a warning
+- `catch_unwind(AssertUnwindSafe(...))` in `call_plugin` isolates WASM panics per-plugin
+- All plugin mutex locks use `unwrap_or_else(|p| p.into_inner())` — poison recovery everywhere
+- `PluginManager::disable()` removes WASM instance + sets state; `enable()` re-loads WASM
+- Disabled plugins persisted to `~/.config/clankers/disabled-plugins.json` via `save_disabled_plugins()`
+- `init_plugin_manager()` skips loading WASM for plugins in the disabled set
+- Host functions (`host.rs`) use permission checks per-call: `read_file`/`list_dir` need `fs:read`, `write_file` needs `fs:write`
+- `process_host_calls()` parses `"host_calls"` array from plugin JSON responses — request-based host interaction
+- `MessageUpdate` event dispatch was missing — just needed one more match arm in `dispatch_event_to_plugins`
