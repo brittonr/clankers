@@ -11,11 +11,9 @@ pub use clankers_model_selection as model_selection;
 pub mod modes;
 pub mod plugin;
 pub use clankers_procmon as procmon;
-pub mod prompts;
 pub mod provider;
 pub use clankers_session;
 pub mod session;
-pub mod skills;
 pub mod slash_commands;
 #[cfg(feature = "openspec")]
 pub use clankers_specs as specs;

@@ -26,11 +26,11 @@ impl SlashHandler for PromptTemplateHandler {
         let global_dir = &crate::config::paths::ClankersPaths::get().global_prompts_dir;
         let project_dir =
             crate::config::paths::ProjectPaths::resolve(&std::env::current_dir().unwrap_or_default()).prompts_dir;
-        let prompts = crate::prompts::discover_prompts(global_dir, Some(&project_dir));
+        let prompts = clankers_prompts::discover_prompts(global_dir, Some(&project_dir));
         if let Some(template) = prompts.iter().find(|p| p.name == self.template_name) {
             let mut vars = std::collections::HashMap::new();
             vars.insert("input".to_string(), args.to_string());
-            let expanded = crate::prompts::expand_template(&template.content, &vars);
+            let expanded = clankers_prompts::expand_template(&template.content, &vars);
             // Strip frontmatter before sending
             let prompt = crate::modes::interactive::strip_frontmatter(&expanded);
             ctx.app.push_system(format!("/{} — {}", self.template_name, template.description), false);

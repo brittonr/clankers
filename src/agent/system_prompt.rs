@@ -13,8 +13,8 @@ use std::path::PathBuf;
 
 use crate::config::paths::ClankersPaths;
 use crate::config::paths::ProjectPaths;
-use crate::prompts;
-use crate::skills;
+use clankers_prompts as prompts;
+use clankers_skills as skills;
 #[cfg(feature = "openspec")]
 use crate::specs::SpecEngine;
 
