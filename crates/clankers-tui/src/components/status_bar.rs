@@ -42,6 +42,8 @@ pub struct StatusBarData<'a> {
     pub budget_status: BudgetStatus,
     /// Active tool activity summary (None if no tools running)
     pub tool_activity: Option<Span<'a>>,
+    /// Loop mode status (None if not in a loop)
+    pub loop_status: Option<Span<'a>>,
 }
 
 /// Render status bar
@@ -141,6 +143,11 @@ fn render_status_badges<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a>)
     // Process stats
     if let Some(ref proc) = data.process_span {
         spans.push(proc.clone());
+    }
+
+    // Loop mode
+    if let Some(ref loop_span) = data.loop_status {
+        spans.push(loop_span.clone());
     }
 
     // Active tool progress

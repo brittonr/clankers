@@ -232,6 +232,36 @@ impl PlanState {
     }
 }
 
+/// Loop mode display state — what the status bar and TUI need to render.
+#[derive(Debug, Clone)]
+pub struct LoopDisplayState {
+    /// Current iteration (1-based for display).
+    pub iteration: u32,
+    /// Maximum iterations (from loop definition).
+    pub max_iterations: u32,
+    /// Loop name.
+    pub name: String,
+    /// Whether the loop is actively running (vs paused).
+    pub active: bool,
+    /// Break condition text (for "until" mode). None for fixed-count loops.
+    pub break_text: Option<String>,
+    /// The prompt to re-send each iteration. Stored here so pause/resume
+    /// can access it from slash command handlers without reaching into
+    /// the event loop runner.
+    pub prompt: Option<String>,
+}
+
+impl LoopDisplayState {
+    /// Status bar label, e.g. "⟳ loop 4/10" or "⏸ loop 4/10".
+    pub fn label(&self) -> String {
+        if self.active {
+            format!("loop {}/{}", self.iteration, self.max_iterations)
+        } else {
+            format!("loop {}/{} paused", self.iteration, self.max_iterations)
+        }
+    }
+}
+
 /// Result of a clipboard read operation.
 #[derive(Debug, Clone)]
 pub enum ClipboardResult {

@@ -299,6 +299,22 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         router_status: app.router_status,
         budget_status,
         tool_activity,
+        loop_status: app.loop_status.as_ref().map(|ls| {
+            use ratatui::style::{Color, Modifier, Style};
+            use ratatui::text::Span;
+            let label = if ls.active {
+                format!(" {} {} ", app.spinner_char(), ls.label())
+            } else {
+                format!(" ⟳ {} ", ls.label())
+            };
+            Span::styled(
+                label,
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Magenta)
+                    .add_modifier(Modifier::BOLD),
+            )
+        }),
     };
     status_bar::render_status_bar(frame, &status_data, &app.theme, chunks[status_idx]);
 }

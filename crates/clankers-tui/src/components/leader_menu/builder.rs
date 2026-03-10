@@ -113,6 +113,8 @@ impl MenuContributor for BuiltinKeymapContributor {
         items.extend(layout_submenu_items());
         items.extend(pane_submenu_opener());
         items.extend(pane_submenu_items());
+        items.extend(loop_submenu_opener());
+        items.extend(loop_submenu_items());
         items
     }
 }
@@ -253,6 +255,25 @@ fn pane_submenu_items() -> Vec<MenuContribution> {
         builtin('L', "move right", ext(ExtendedAction::PaneMoveRight), p()),
         builtin('J', "move down", ext(ExtendedAction::PaneMoveDown), p()),
         builtin('K', "move up", ext(ExtendedAction::PaneMoveUp), p()),
+    ]
+}
+
+fn loop_submenu_opener() -> Vec<MenuContribution> {
+    vec![builtin(
+        'L',
+        "loop",
+        LeaderAction::Submenu("loop".into()),
+        MenuPlacement::Root,
+    )]
+}
+
+fn loop_submenu_items() -> Vec<MenuContribution> {
+    let p = || MenuPlacement::Submenu("loop".into());
+    let cmd = |s: &str| LeaderAction::SlashCommand(s.into());
+    vec![
+        builtin('p', "pause/resume", cmd("/loop pause"), p()),
+        builtin('s', "stop", cmd("/loop stop"), p()),
+        builtin('i', "status", cmd("/loop status"), p()),
     ]
 }
 

@@ -165,6 +165,8 @@ pub struct App {
     pub queued_prompt: Option<String>,
     pub login_verifier: Option<(String, String)>,
     pub tick: u64,
+    /// Loop mode state (None when not in a loop).
+    pub loop_status: Option<clankers_tui_types::LoopDisplayState>,
 
     // Grouped sub-states
     pub streaming: StreamingState,
@@ -229,6 +231,7 @@ impl App {
             queued_prompt: None,
             login_verifier: None,
             tick: 0,
+            loop_status: None,
 
             // Grouped sub-states
             streaming: StreamingState {

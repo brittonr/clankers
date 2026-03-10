@@ -114,6 +114,7 @@ pub fn build_tools_with_env(env: &ToolEnv) -> Vec<Arc<dyn Tool>> {
         Arc::new(crate::tools::matrix::MatrixPeersTool::new()),
         Arc::new(crate::tools::matrix::MatrixJoinTool::new()),
         Arc::new(crate::tools::matrix::MatrixRpcTool::new()),
+        Arc::new(crate::tools::signal_loop::SignalLoopTool::new()),
     ]
 }
 

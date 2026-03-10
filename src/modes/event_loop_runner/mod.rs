@@ -56,6 +56,11 @@ pub(crate) struct EventLoopRunner<'a> {
     // Audit state
     audit_pending: std::collections::HashMap<String, (String, serde_json::Value, std::time::Instant)>,
     audit_seq: u32,
+    // Loop mode state
+    /// Whether signal_loop_success was called during the current turn.
+    loop_break_signaled: bool,
+    /// Accumulated output from the current turn (for break condition checking).
+    loop_turn_output: String,
 }
 
 impl<'a> EventLoopRunner<'a> {
@@ -98,6 +103,8 @@ impl<'a> EventLoopRunner<'a> {
             slash_registry,
             audit_pending: std::collections::HashMap::new(),
             audit_seq: 0,
+            loop_break_signaled: false,
+            loop_turn_output: String::new(),
         }
     }
 
@@ -177,6 +184,22 @@ impl<'a> EventLoopRunner<'a> {
                     {
                         self.audit_pending
                             .insert(call_id.clone(), (tool_name.clone(), input.clone(), std::time::Instant::now()));
+                        // Loop mode: detect signal_loop_success
+                        if tool_name == "signal_loop_success" {
+                            self.loop_break_signaled = true;
+                        }
+                    }
+
+                    // Loop mode: capture tool output for break condition checking
+                    if self.app.loop_status.is_some() {
+                        if let AgentEvent::ToolExecutionEnd { ref result, .. } = event {
+                            for content in &result.content {
+                                if let crate::tools::ToolResultContent::Text { text } = content {
+                                    self.loop_turn_output.push_str(text);
+                                    self.loop_turn_output.push('\n');
+                                }
+                            }
+                        }
                     }
 
                     // Audit: record completed tool calls
@@ -430,6 +453,10 @@ impl<'a> EventLoopRunner<'a> {
         while let Ok(result) = self.done_rx.try_recv() {
             match result {
                 TaskResult::PromptDone(Some(e)) => {
+                    // Stop loop on error
+                    if self.app.loop_status.is_some() {
+                        self.finish_loop("failed (error)");
+                    }
                     if let Some(ref mut block) = self.app.conversation.active_block {
                         block.error = Some(e.to_string());
                     }
@@ -462,6 +489,8 @@ impl<'a> EventLoopRunner<'a> {
                             &mut self.session_manager,
                             &self.slash_registry,
                         );
+                    } else {
+                        self.maybe_continue_loop();
                     }
                 }
                 TaskResult::LoginDone(Ok(msg)) => self.app.push_system(msg, false),
@@ -483,6 +512,86 @@ impl<'a> EventLoopRunner<'a> {
                     self.app.push_system(msg, true);
                 }
             }
+        }
+    }
+
+    // ── Loop mode ────────────────────────────────────────────────────
+
+    /// After a successful turn, check whether to continue the loop.
+    fn maybe_continue_loop(&mut self) {
+        let Some(ref mut ls) = self.app.loop_status else {
+            return;
+        };
+
+        // Advance iteration counter
+        ls.iteration += 1;
+        let iteration = ls.iteration;
+        let max = ls.max_iterations;
+
+        // Check break conditions (in priority order)
+        let broke = if self.loop_break_signaled {
+            self.app.push_system(
+                format!("Loop iteration {}/{} — signal_loop_success called.", iteration, max),
+                false,
+            );
+            true
+        } else if let Some(ref break_text) = ls.break_text {
+            if self.loop_turn_output.contains(break_text.as_str()) {
+                self.app.push_system(
+                    format!("Loop iteration {}/{} — break condition matched.", iteration, max),
+                    false,
+                );
+                true
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        // Reset per-turn state
+        self.loop_break_signaled = false;
+        self.loop_turn_output.clear();
+
+        if broke || iteration >= max {
+            let reason = if broke {
+                "completed"
+            } else {
+                "max iterations reached"
+            };
+            self.finish_loop(reason);
+            return;
+        }
+
+        // Paused — don't re-send, leave state as-is. The user can
+        // resume via `/loop pause` which sends the next prompt directly.
+        if !self.app.loop_status.as_ref().is_some_and(|ls| ls.active) {
+            return;
+        }
+
+        // Continue — re-send the prompt
+        let prompt = self.app.loop_status.as_ref().and_then(|ls| ls.prompt.clone());
+        if let Some(prompt) = prompt {
+            let _ = self.cmd_tx.send(AgentCommand::ResetCancel);
+            let _ = self.cmd_tx.send(AgentCommand::Prompt(prompt));
+        } else {
+            self.finish_loop("no prompt captured");
+        }
+    }
+
+    /// Clean up loop state and notify the user.
+    fn finish_loop(&mut self, reason: &str) {
+        let summary = self.app.loop_status.as_ref().map(|ls| {
+            format!(
+                "Loop '{}' {} after {} iteration(s).",
+                ls.name, reason, ls.iteration,
+            )
+        });
+        self.app.loop_status = None;
+        self.loop_break_signaled = false;
+        self.loop_turn_output.clear();
+        if let Some(msg) = summary {
+            self.app.push_system(msg, false);
         }
     }
 

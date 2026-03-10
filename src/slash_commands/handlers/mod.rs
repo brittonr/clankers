@@ -20,6 +20,7 @@ pub(crate) mod auth;
 pub(crate) mod branching;
 pub(crate) mod context;
 pub(crate) mod info;
+pub(crate) mod loop_cmd;
 pub(crate) mod memory;
 pub(crate) mod model;
 pub(crate) mod prompt_template;
