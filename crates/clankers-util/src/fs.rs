@@ -19,7 +19,7 @@ use ignore::WalkBuilder;
 /// # Examples
 ///
 /// ```no_run
-/// use clankers::util::fs::is_binary_file;
+/// use clankers_util::fs::is_binary_file;
 /// use std::path::Path;
 ///
 /// let is_binary = is_binary_file(Path::new("example.txt"))?;
@@ -69,7 +69,7 @@ impl Default for WalkOptions {
 /// # Examples
 ///
 /// ```no_run
-/// use clankers::util::fs::walk_directory;
+/// use clankers_util::fs::walk_directory;
 /// use std::path::Path;
 ///
 /// let files = walk_directory(Path::new("."));
@@ -84,7 +84,7 @@ pub fn walk_directory(root: &Path) -> Vec<PathBuf> {
 /// # Examples
 ///
 /// ```no_run
-/// use clankers::util::fs::{walk_directory_with_options, WalkOptions};
+/// use clankers_util::fs::{walk_directory_with_options, WalkOptions};
 /// use std::path::Path;
 ///
 /// let opts = WalkOptions {

@@ -79,6 +79,19 @@ impl From<clankers_router::Error> for Error {
     }
 }
 
+impl From<clankers_provider::error::ProviderError> for Error {
+    fn from(e: clankers_provider::error::ProviderError) -> Self {
+        use clankers_provider::error::ProviderErrorKind;
+        match e.kind {
+            ProviderErrorKind::Auth => Error::ProviderAuth { message: e.message },
+            ProviderErrorKind::Streaming => Error::ProviderStreaming { message: e.message },
+            ProviderErrorKind::Io(source) => Error::Io { source },
+            ProviderErrorKind::Json(source) => Error::Json { source },
+            ProviderErrorKind::Api => Error::Provider { message: e.message },
+        }
+    }
+}
+
 impl From<clankers_db::DbError> for Error {
     fn from(e: clankers_db::DbError) -> Self {
         Error::Database { message: e.message }

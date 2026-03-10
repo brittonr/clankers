@@ -191,10 +191,7 @@ pub fn build_router(
     }
 
     if backends.is_empty() {
-        return Err(crate::error::Error::ProviderAuth {
-            message: "No API credentials found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or run 'clankers auth login'. Ollama also supported at localhost:11434."
-                .to_string(),
-        });
+        return Err(crate::error::auth_err("No API credentials found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or run 'clankers auth login'. Ollama also supported at localhost:11434."));
     }
 
     info!(

@@ -11,11 +11,11 @@ use tokio::sync::mpsc;
 use tracing::info;
 
 use crate::error::Result;
-use crate::provider::CompletionRequest;
-use crate::provider::Model;
-use crate::provider::Provider;
-use crate::provider::registry::ModelRegistry;
-use crate::provider::streaming::StreamEvent;
+use crate::CompletionRequest;
+use crate::Model;
+use crate::Provider;
+use crate::registry::ModelRegistry;
+use crate::streaming::StreamEvent;
 
 // ── Adapter for clankers_router providers ───────────────────────────────────
 
@@ -69,7 +69,7 @@ impl Provider for RouterCompatAdapter {
         // Wait for translation to finish
         let _ = translate_handle.await;
 
-        result.map_err(|e| crate::error::Error::Provider { message: e.to_string() })
+        result.map_err(|e| crate::error::provider_err(e.to_string()))
     }
 
     fn models(&self) -> &[Model] {
@@ -211,7 +211,7 @@ impl Provider for RouterProvider {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::streaming::StreamEvent;
+    use crate::streaming::StreamEvent;
 
     // Minimal mock provider for testing
     struct MockProvider {

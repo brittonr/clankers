@@ -1039,17 +1039,20 @@ dependencies = [
  "chrono",
  "clankers-agent-defs",
  "clankers-auth",
+ "clankers-config",
  "clankers-db",
  "clankers-matrix",
  "clankers-merge",
  "clankers-message",
  "clankers-model-selection",
  "clankers-procmon",
+ "clankers-provider",
  "clankers-router",
  "clankers-session",
  "clankers-specs",
  "clankers-tui",
  "clankers-tui-types",
+ "clankers-util",
  "clankers-zellij",
  "clap",
  "criterion",
@@ -1140,6 +1143,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "clankers-config"
+version = "0.1.0"
+dependencies = [
+ "clankers-agent-defs",
+ "clankers-model-selection",
+ "clankers-tui",
+ "clankers-tui-types",
+ "dirs",
+ "indexmap",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "clankers-db"
 version = "0.1.0"
 dependencies = [
@@ -1216,6 +1233,27 @@ dependencies = [
  "sysinfo",
  "tokio",
  "tokio-util",
+]
+
+[[package]]
+name = "clankers-provider"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64",
+ "chrono",
+ "clankers-message",
+ "clankers-router",
+ "clankers-tui-types",
+ "fs4",
+ "futures",
+ "reqwest 0.12.28",
+ "reqwest-eventsource",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1312,6 +1350,26 @@ dependencies = [
  "chrono",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "clankers-util"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "clankers-message",
+ "clankers-tui-types",
+ "hex",
+ "ignore",
+ "rand 0.9.2",
+ "ratatui",
+ "serde",
+ "serde_json",
+ "syntect",
+ "tempfile",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

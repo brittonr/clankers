@@ -15,10 +15,10 @@ use tracing::info;
 use tracing::warn;
 
 use crate::error::Result;
-use crate::provider::CompletionRequest;
-use crate::provider::Model;
-use crate::provider::Provider;
-use crate::provider::streaming::StreamEvent;
+use crate::CompletionRequest;
+use crate::Model;
+use crate::Provider;
+use crate::streaming::StreamEvent;
 
 /// Provider that talks to a clankers-router daemon over iroh QUIC RPC.
 pub struct RpcProvider {
@@ -119,7 +119,7 @@ impl Provider for RpcProvider {
             .client
             .complete(router_request, router_tx)
             .await
-            .map_err(|e| crate::error::Error::Provider { message: e.to_string() });
+            .map_err(|e| crate::error::provider_err(e.to_string()));
 
         let _ = translate_handle.await;
         result
@@ -142,10 +142,10 @@ impl Provider for RpcProvider {
 ///
 /// The router's CompletionRequest expects messages in provider-native format
 /// (e.g. `{"role": "user", "content": "..."}`) not clankers's internal enum format.
-fn convert_messages_to_api(messages: &[crate::provider::message::AgentMessage]) -> Vec<serde_json::Value> {
+fn convert_messages_to_api(messages: &[crate::message::AgentMessage]) -> Vec<serde_json::Value> {
     use serde_json::json;
 
-    use crate::provider::message::AgentMessage;
+    use crate::message::AgentMessage;
 
     let mut out = Vec::new();
     for msg in messages {
@@ -178,11 +178,11 @@ fn convert_messages_to_api(messages: &[crate::provider::message::AgentMessage]) 
 }
 
 /// Convert a single Content block to Anthropic API JSON.
-fn content_to_json(content: &crate::provider::message::Content) -> serde_json::Value {
+fn content_to_json(content: &crate::message::Content) -> serde_json::Value {
     use serde_json::json;
 
-    use crate::provider::message::Content;
-    use crate::provider::message::ImageSource;
+    use crate::message::Content;
+    use crate::message::ImageSource;
 
     match content {
         Content::Text { text } => json!({"type": "text", "text": text}),

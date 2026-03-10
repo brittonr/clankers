@@ -5,8 +5,8 @@ use serde_json::Value;
 use tokio::sync::mpsc;
 
 use crate::error::Result;
-use crate::provider::message::Content;
-use crate::provider::streaming::*;
+use crate::message::Content;
+use crate::streaming::*;
 
 // SSE raw event types from Anthropic
 #[derive(Debug, Deserialize)]
@@ -108,7 +108,7 @@ pub async fn parse_sse_stream(response: reqwest::Response, tx: mpsc::Sender<Stre
     let mut event_type = String::new();
 
     while let Some(chunk) = stream.next().await {
-        let chunk = chunk.map_err(|e| crate::error::Error::ProviderStreaming { message: e.to_string() })?;
+        let chunk = chunk.map_err(|e| crate::error::streaming_err(e.to_string()))?;
         buffer.push_str(&String::from_utf8_lossy(&chunk));
 
         // Process complete lines
@@ -190,7 +190,7 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         }
         "message_delta" => {
             let parsed: SseMessageDelta = serde_json::from_str(data).ok()?;
-            let usage = crate::provider::Usage {
+            let usage = crate::Usage {
                 input_tokens: parsed.usage.input_tokens,
                 output_tokens: parsed.usage.output_tokens,
                 cache_creation_input_tokens: parsed.usage.cache_creation_input_tokens,

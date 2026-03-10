@@ -1,10 +1,3 @@
-//! Configuration loading and path resolution
+//! Configuration loading and path resolution — re-exported from `clankers-config`.
 
-pub mod keybindings;
-pub mod model_roles;
-pub mod paths;
-pub mod settings;
-
-pub use paths::ClankersPaths;
-pub use paths::ProjectPaths;
-pub use settings::Settings;
+pub use clankers_config::*;

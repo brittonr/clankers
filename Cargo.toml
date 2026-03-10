@@ -3,11 +3,13 @@ members = [
     ".",
     "crates/clankers-agent-defs",
     "crates/clankers-auth",
+    "crates/clankers-config",
     "crates/clankers-db",
     "crates/clankers-merge",
     "crates/clankers-message",
     "crates/clankers-session",
     "crates/clankers-procmon",
+    "crates/clankers-provider",
     "crates/clankers-model-selection",
     "crates/clankers-matrix",
     "crates/clankers-router",
@@ -15,6 +17,7 @@ members = [
     "crates/clankers-tui",
     "crates/clankers-zellij",
     "crates/clankers-tui-types",
+    "crates/clankers-util",
     "xtask",
 ]
 resolver = "3"
@@ -52,18 +55,21 @@ path = "src/main.rs"
 [dependencies]
 clankers-agent-defs = { version = "0.1.0", path = "crates/clankers-agent-defs" }
 clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
+clankers-config = { version = "0.1.0", path = "crates/clankers-config" }
 clankers-db = { version = "0.1.0", path = "crates/clankers-db" }
 clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
 clankers-message = { version = "0.1.0", path = "crates/clankers-message" }
 clankers-model-selection = { version = "0.1.0", path = "crates/clankers-model-selection" }
 clankers-session = { version = "0.1.0", path = "crates/clankers-session" }
 clankers-procmon = { version = "0.1.0", path = "crates/clankers-procmon" }
+clankers-provider = { version = "0.1.0", path = "crates/clankers-provider" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
 clankers-router = { version = "0.1.0", path = "crates/clankers-router", features = ["rpc"] }
 clankers-specs = { version = "0.1.0", path = "crates/clankers-specs", optional = true }
 clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }
 clankers-zellij = { version = "0.1.0", path = "crates/clankers-zellij", optional = true }
 clankers-tui-types = { version = "0.1.0", path = "crates/clankers-tui-types" }
+clankers-util = { version = "0.1.0", path = "crates/clankers-util" }
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["codec"] }
 futures = "0.3"

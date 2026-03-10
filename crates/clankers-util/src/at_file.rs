@@ -16,8 +16,8 @@ use std::path::Path;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 
-use crate::provider::message::Content;
-use crate::provider::message::ImageSource;
+use clankers_message::message::Content;
+use clankers_message::message::ImageSource;
 
 /// A detected @file reference in the prompt text
 #[derive(Debug, Clone, PartialEq, Eq)]

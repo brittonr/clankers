@@ -8,7 +8,7 @@
 /// # Examples
 ///
 /// ```
-/// use clankers::util::token::estimate_tokens;
+/// use clankers_util::token::estimate_tokens;
 ///
 /// let text = "Hello, world!";
 /// let tokens = estimate_tokens(text);
@@ -26,7 +26,7 @@ pub fn estimate_tokens(text: &str) -> usize {
 /// # Examples
 ///
 /// ```
-/// use clankers::util::token::estimate_tokens_for_messages;
+/// use clankers_util::token::estimate_tokens_for_messages;
 /// use serde_json::json;
 ///
 /// let messages = vec![

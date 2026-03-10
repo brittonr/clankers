@@ -10,12 +10,12 @@ use tokio::sync::mpsc;
 use tracing::info;
 
 use crate::error::Result;
-use crate::provider::CompletionRequest;
-use crate::provider::Model;
-use crate::provider::Provider;
-use crate::provider::auth::Credential;
-use crate::provider::credential_manager::CredentialManager;
-use crate::provider::streaming::StreamEvent;
+use crate::CompletionRequest;
+use crate::Model;
+use crate::Provider;
+use crate::auth::Credential;
+use crate::credential_manager::CredentialManager;
+use crate::streaming::StreamEvent;
 
 pub struct AnthropicProvider {
     client: api::AnthropicClient,
@@ -54,9 +54,7 @@ impl AnthropicProvider {
         } else if let Some(ref cred) = self.credential {
             Ok(cred.clone())
         } else {
-            Err(crate::error::Error::ProviderAuth {
-                message: "No credential configured".to_string(),
-            })
+            Err(crate::error::auth_err("No credential configured"))
         }
     }
 
@@ -65,9 +63,7 @@ impl AnthropicProvider {
         if let Some(ref cm) = self.credential_manager {
             cm.force_refresh().await
         } else {
-            Err(crate::error::Error::ProviderAuth {
-                message: "Cannot refresh: no credential manager configured".to_string(),
-            })
+            Err(crate::error::auth_err("Cannot refresh: no credential manager configured"))
         }
     }
 }
@@ -95,17 +91,13 @@ impl Provider for AnthropicProvider {
                 if !retry_response.status().is_success() {
                     let retry_status = retry_response.status();
                     let retry_body = retry_response.text().await.unwrap_or_default();
-                    return Err(crate::error::Error::Provider {
-                        message: format!("Anthropic API error {} (after token refresh): {}", retry_status, retry_body),
-                    });
+                    return Err(crate::error::provider_err(format!("Anthropic API error {} (after token refresh): {}", retry_status, retry_body)));
                 }
 
                 return streaming::parse_sse_stream(retry_response, tx).await;
             }
 
-            return Err(crate::error::Error::Provider {
-                message: format!("Anthropic API error {}: {}", status, body),
-            });
+            return Err(crate::error::provider_err(format!("Anthropic API error {}: {}", status, body)));
         }
 
         streaming::parse_sse_stream(response, tx).await

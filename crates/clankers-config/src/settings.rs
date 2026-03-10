@@ -7,9 +7,10 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json;
 
-use crate::agent_defs::definition::AgentScope;
-use crate::config::keybindings::KeymapConfig;
-use crate::config::model_roles::ModelRoles;
+use clankers_agent_defs::definition::AgentScope;
+
+use crate::keybindings::KeymapConfig;
+use crate::model_roles::ModelRoles;
 
 /// Full settings, merged from global + project
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -81,11 +82,11 @@ pub struct Settings {
 
     /// Routing policy configuration (auto model selection by complexity)
     #[serde(default)]
-    pub routing: Option<crate::model_selection::config::RoutingPolicyConfig>,
+    pub routing: Option<clankers_model_selection::config::RoutingPolicyConfig>,
 
     /// Cost tracking configuration (budget limits and warnings)
     #[serde(default)]
-    pub cost_tracking: Option<crate::model_selection::cost_tracker::CostTrackerConfig>,
+    pub cost_tracking: Option<clankers_model_selection::cost_tracker::CostTrackerConfig>,
 
     /// Max number of subagent panes to auto-create in the BSP tiling.
     /// When the limit is reached, new subagents only appear in the overview panel.
@@ -138,12 +139,11 @@ pub struct LeaderMenuHideConfig {
     pub submenu: Option<String>,
 }
 
-impl crate::tui::components::leader_menu::MenuContributor for LeaderMenuConfig {
-    fn menu_items(&self) -> Vec<crate::tui::components::leader_menu::MenuContribution> {
+impl clankers_tui_types::MenuContributor for LeaderMenuConfig {
+    fn menu_items(&self) -> Vec<clankers_tui_types::MenuContribution> {
         use clankers_tui_types::LeaderAction;
         use clankers_tui_types::MenuContribution;
-
-        use crate::registry::PRIORITY_USER;
+        use clankers_tui_types::PRIORITY_USER;
 
         self.items
             .iter()

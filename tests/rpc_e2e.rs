@@ -35,7 +35,7 @@ mod tests {
             &self,
             request: CompletionRequest,
             tx: mpsc::Sender<StreamEvent>,
-        ) -> clankers::error::Result<()> {
+        ) -> clankers::provider::error::Result<()> {
             // Extract the last user message
             let user_text = request
                 .messages

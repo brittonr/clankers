@@ -10,7 +10,7 @@ use rand::Rng;
 /// # Examples
 ///
 /// ```
-/// use clankers::util::id::generate_id;
+/// use clankers_util::id::generate_id;
 ///
 /// let id = generate_id();
 /// assert_eq!(id.len(), 8);
@@ -30,7 +30,7 @@ pub fn generate_id() -> String {
 /// # Examples
 ///
 /// ```
-/// use clankers::util::id::generate_uuid;
+/// use clankers_util::id::generate_uuid;
 ///
 /// let uuid = generate_uuid();
 /// assert_eq!(uuid.len(), 36);

@@ -5,11 +5,11 @@ use serde::Serialize;
 use serde_json::Value;
 
 use crate::error::Result;
-use crate::provider::CompletionRequest;
-use crate::provider::auth::Credential;
-use crate::provider::retry::RetryConfig;
-use crate::provider::retry::is_retryable_status;
-use crate::provider::retry::parse_retry_after;
+use crate::CompletionRequest;
+use crate::auth::Credential;
+use crate::retry::RetryConfig;
+use crate::retry::is_retryable_status;
+use crate::retry::parse_retry_after;
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
 const API_VERSION: &str = "2023-06-01";
@@ -200,14 +200,12 @@ impl AnthropicClient {
 
                     // Non-retryable status or max retries exceeded
                     let body = response.text().await.unwrap_or_default();
-                    return Err(crate::error::Error::Provider {
-                        message: format!("HTTP error {}: {}", status, body),
-                    });
+                    return Err(crate::error::provider_err(format!("HTTP error {}: {}", status, body)));
                 }
                 Err(e) => {
                     // Check if the error message suggests a retryable condition
                     let error_msg = e.to_string();
-                    let is_retryable = crate::provider::retry::is_retryable_error(&error_msg);
+                    let is_retryable = crate::retry::is_retryable_error(&error_msg);
 
                     if is_retryable && attempt < retry_config.max_retries {
                         let backoff = retry_config.backoff_for(attempt);
@@ -225,9 +223,7 @@ impl AnthropicClient {
                     }
 
                     // Non-retryable error or max retries exceeded
-                    return Err(crate::error::Error::Provider {
-                        message: format!("HTTP request failed: {}", e),
-                    });
+                    return Err(crate::error::provider_err(format!("HTTP request failed: {}", e)));
                 }
             }
         }
@@ -289,8 +285,8 @@ pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> 
     }
 }
 
-fn convert_messages(messages: &[crate::provider::message::AgentMessage]) -> Vec<ApiMessage> {
-    use crate::provider::message::AgentMessage;
+fn convert_messages(messages: &[crate::message::AgentMessage]) -> Vec<ApiMessage> {
+    use crate::message::AgentMessage;
     let mut api_messages = Vec::new();
 
     for msg in messages {
@@ -330,9 +326,9 @@ fn convert_messages(messages: &[crate::provider::message::AgentMessage]) -> Vec<
     api_messages
 }
 
-fn convert_content_block(content: &crate::provider::message::Content) -> ApiContentBlock {
-    use crate::provider::message::Content;
-    use crate::provider::message::ImageSource;
+fn convert_content_block(content: &crate::message::Content) -> ApiContentBlock {
+    use crate::message::Content;
+    use crate::message::ImageSource;
     match content {
         Content::Text { text } => ApiContentBlock::Text { text: text.clone() },
         Content::Image { source } => match source {
@@ -374,7 +370,7 @@ fn convert_content_block(content: &crate::provider::message::Content) -> ApiCont
     }
 }
 
-fn convert_tools(tools: &[crate::tools::ToolDefinition]) -> Vec<ApiTool> {
+fn convert_tools(tools: &[clankers_router::provider::ToolDefinition]) -> Vec<ApiTool> {
     let mut api_tools: Vec<_> = tools
         .iter()
         .map(|t| ApiTool {
