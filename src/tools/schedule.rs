@@ -246,11 +246,18 @@ impl Tool for ScheduleTool {
 }
 
 /// Parse a relative or ISO datetime string.
+///
+/// # Tiger Style
+///
+/// Uses `i64::try_from` instead of `as i64` to catch u64→i64 overflow.
+/// The `parse_duration_secs` bounds check (365 days) guarantees this
+/// won't overflow in practice, but the explicit check is defense-in-depth.
 fn parse_datetime(s: &str) -> Result<chrono::DateTime<Utc>, String> {
     // Relative: "+30m", "+2h", "+1d"
     if let Some(rel) = s.strip_prefix('+') {
         let secs = parse_duration_secs(rel)?;
-        return Ok(Utc::now() + Duration::seconds(secs as i64));
+        let secs_i64 = i64::try_from(secs).map_err(|_| format!("duration too large for datetime: {secs}s"))?;
+        return Ok(Utc::now() + Duration::seconds(secs_i64));
     }
     // Try ISO 8601
     s.parse::<chrono::DateTime<Utc>>()
@@ -258,7 +265,15 @@ fn parse_datetime(s: &str) -> Result<chrono::DateTime<Utc>, String> {
 }
 
 /// Parse a duration string like "30s", "5m", "2h", "1d".
+///
+/// # Tiger Style
+///
+/// Uses `checked_mul` to prevent overflow on large numeric inputs.
+/// Rejects durations exceeding 365 days (reasonable upper bound for schedules).
 fn parse_duration_secs(s: &str) -> Result<u64, String> {
+    /// Tiger Style: maximum schedule duration (365 days in seconds).
+    const MAX_DURATION_SECS: u64 = 365 * 86_400;
+
     let s = s.trim();
     if s.is_empty() {
         return Err("empty duration".into());
@@ -279,7 +294,17 @@ fn parse_duration_secs(s: &str) -> Result<u64, String> {
     let n: u64 = num_part
         .parse()
         .map_err(|_| format!("invalid number in duration: {s}"))?;
-    Ok(n * unit)
+
+    // Tiger Style: checked arithmetic to prevent overflow.
+    let total = n
+        .checked_mul(unit)
+        .ok_or_else(|| format!("duration overflow: {s}"))?;
+
+    if total > MAX_DURATION_SECS {
+        return Err(format!("duration too large: {s} ({total}s > {MAX_DURATION_SECS}s max)"));
+    }
+
+    Ok(total)
 }
 
 /// Format seconds as a human-readable duration.
@@ -312,6 +337,25 @@ mod tests {
     fn parse_duration_errors() {
         assert!(parse_duration_secs("").is_err());
         assert!(parse_duration_secs("abc").is_err());
+    }
+
+    // Tiger Style: overflow and bounds tests
+    #[test]
+    fn parse_duration_overflow_rejected() {
+        // u64::MAX seconds would overflow when multiplied by 60
+        assert!(parse_duration_secs("99999999999999999999m").is_err());
+    }
+
+    #[test]
+    fn parse_duration_too_large_rejected() {
+        // 366 days exceeds MAX_DURATION_SECS (365 days)
+        assert!(parse_duration_secs("366d").is_err());
+    }
+
+    #[test]
+    fn parse_duration_boundary_accepted() {
+        // 365 days is exactly at the limit
+        assert_eq!(parse_duration_secs("365d").unwrap(), 365 * 86_400);
     }
 
     #[test]

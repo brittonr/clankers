@@ -45,11 +45,26 @@ fn default_true() -> bool {
 }
 
 impl Model {
-    /// Estimate cost for a given usage
+    /// Estimate cost for a given usage.
+    ///
+    /// # Tiger Style
+    ///
+    /// Asserts positive cost rates and returns `None` if the result would
+    /// be non-finite (NaN/Inf from pathological inputs).
     pub fn estimate_cost(&self, input_tokens: usize, output_tokens: usize) -> Option<f64> {
-        let input_cost = self.input_cost_per_mtok? * (input_tokens as f64 / 1_000_000.0);
-        let output_cost = self.output_cost_per_mtok? * (output_tokens as f64 / 1_000_000.0);
-        Some(input_cost + output_cost)
+        let input_rate = self.input_cost_per_mtok?;
+        let output_rate = self.output_cost_per_mtok?;
+
+        // Tiger Style: rates must be non-negative.
+        debug_assert!(input_rate >= 0.0, "input_cost_per_mtok must be non-negative");
+        debug_assert!(output_rate >= 0.0, "output_cost_per_mtok must be non-negative");
+
+        let input_cost = input_rate * (input_tokens as f64 / 1_000_000.0);
+        let output_cost = output_rate * (output_tokens as f64 / 1_000_000.0);
+        let total = input_cost + output_cost;
+
+        // Tiger Style: reject non-finite results (defense against NaN/Inf propagation).
+        if total.is_finite() { Some(total) } else { None }
     }
 }
 

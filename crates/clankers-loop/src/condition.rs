@@ -27,21 +27,39 @@ pub enum BreakCondition {
     Never,
 }
 
+/// Tiger Style: maximum nesting depth for composite conditions (Any/All).
+/// Prevents stack overflow from deeply nested or circular condition trees.
+const MAX_CONDITION_DEPTH: u32 = 16;
+
+// Tiger Style: compile-time assertion.
+const _: () = assert!(MAX_CONDITION_DEPTH > 0);
+const _: () = assert!(MAX_CONDITION_DEPTH <= 64);
+
 impl BreakCondition {
     /// Check if the condition is satisfied by the given output and exit code.
     pub fn check(&self, output: &str, exit_code: Option<i32>) -> bool {
+        self.check_bounded(output, exit_code, 0)
+    }
+
+    /// Depth-bounded condition check.
+    ///
+    /// # Tiger Style
+    ///
+    /// Tracks recursion depth to prevent stack overflow from deeply
+    /// nested `Any`/`All` conditions.
+    fn check_bounded(&self, output: &str, exit_code: Option<i32>, depth: u32) -> bool {
+        if depth >= MAX_CONDITION_DEPTH {
+            tracing::warn!("break condition nesting depth exceeded ({})", MAX_CONDITION_DEPTH);
+            return false;
+        }
         match self {
             Self::Contains(s) => output.contains(s.as_str()),
-            Self::Regex(pattern) => {
-                // Compile on each check. For hot loops, the caller should
-                // pre-compile; this is fine for the typical 1-100 iteration range.
-                regex_matches(pattern, output)
-            }
+            Self::Regex(pattern) => regex_matches(pattern, output),
             Self::NotContains(s) => !output.contains(s.as_str()),
             Self::Equals(s) => output.trim() == s.as_str(),
             Self::ExitCode(code) => exit_code == Some(*code),
-            Self::Any(conditions) => conditions.iter().any(|c| c.check(output, exit_code)),
-            Self::All(conditions) => conditions.iter().all(|c| c.check(output, exit_code)),
+            Self::Any(conditions) => conditions.iter().any(|c| c.check_bounded(output, exit_code, depth + 1)),
+            Self::All(conditions) => conditions.iter().all(|c| c.check_bounded(output, exit_code, depth + 1)),
             Self::Never => false,
         }
     }

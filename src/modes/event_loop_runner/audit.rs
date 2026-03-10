@@ -1,8 +1,21 @@
 //! Audit tracking for tool calls — records start/end times and results to redb.
 //!
 //! Extracted from the main event loop runner to isolate audit concern.
+//!
+//! # Tiger Style
+//!
+//! Uses explicit capacity limits on the pending map to catch leaked tool
+//! calls (started but never ended). Sequence numbers use checked arithmetic.
 
 use std::collections::HashMap;
+
+/// Tiger Style: maximum in-flight tool calls before we warn.
+/// If more than this many calls are pending, something is wrong
+/// (tool calls started but never completed).
+const MAX_PENDING_CALLS: usize = 1_024;
+
+/// Tiger Style: compile-time assertion.
+const _: () = assert!(MAX_PENDING_CALLS > 0);
 
 /// Tracks in-flight tool calls and writes completed audit entries to the database.
 pub(crate) struct AuditTracker {
@@ -20,8 +33,19 @@ impl AuditTracker {
         }
     }
 
-    /// Record a tool call start. Returns the tool name for further processing.
+    /// Record a tool call start.
+    ///
+    /// # Tiger Style
+    ///
+    /// Warns if pending map grows beyond `MAX_PENDING_CALLS`.
     pub fn start_call(&mut self, call_id: &str, tool_name: &str, input: &serde_json::Value) {
+        if self.pending.len() >= MAX_PENDING_CALLS {
+            tracing::warn!(
+                "audit: {} pending tool calls (max expected: {}) — possible leak",
+                self.pending.len(),
+                MAX_PENDING_CALLS
+            );
+        }
         self.pending.insert(
             call_id.to_string(),
             (tool_name.to_string(), input.clone(), std::time::Instant::now()),
@@ -30,6 +54,11 @@ impl AuditTracker {
 
     /// Record a completed tool call. Writes the audit entry to the database
     /// in a background write task.
+    ///
+    /// # Tiger Style
+    ///
+    /// Uses `saturating_as` for duration conversion (millis → u64).
+    /// Preview is truncated to `RESULT_PREVIEW_MAX_CHARS`.
     pub fn end_call(
         &mut self,
         call_id: &str,
@@ -38,12 +67,17 @@ impl AuditTracker {
         session_id: &str,
         db: &crate::db::Db,
     ) {
+        /// Tiger Style: maximum chars in result preview for audit.
+        const RESULT_PREVIEW_MAX_CHARS: usize = 500;
+
         let (tool_name, input, started_at) = self
             .pending
             .remove(call_id)
             .unwrap_or_else(|| ("unknown".into(), serde_json::json!({}), std::time::Instant::now()));
 
-        let duration_ms = started_at.elapsed().as_millis() as u64;
+        // Tiger Style: saturating conversion for elapsed time.
+        let elapsed_ms = started_at.elapsed().as_millis();
+        let duration_ms = u64::try_from(elapsed_ms).unwrap_or(u64::MAX);
 
         let result_preview: String = result
             .content
@@ -55,8 +89,10 @@ impl AuditTracker {
             .collect::<Vec<_>>()
             .join("\n")
             .chars()
-            .take(500)
+            .take(RESULT_PREVIEW_MAX_CHARS)
             .collect();
+
+        debug_assert!(result_preview.chars().count() <= RESULT_PREVIEW_MAX_CHARS);
 
         let sandbox_blocked = if is_error {
             result_preview.strip_prefix("🔒 ").map(|s| s.to_string())

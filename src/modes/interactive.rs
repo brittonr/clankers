@@ -356,8 +356,21 @@ pub(crate) fn resume_session_from_file(
 }
 
 /// Parse OAuth callback input: code#state, URL with ?code=...&state=..., or space-separated.
+///
+/// # Tiger Style
+///
+/// Pure function — no I/O, no side effects. Validates input bounds
+/// to reject suspiciously large payloads before parsing.
 pub(crate) fn parse_oauth_input(input: &str) -> Option<(String, String)> {
+    /// Tiger Style: reject inputs longer than this (OAuth codes are short).
+    const MAX_INPUT_LEN: usize = 4_096;
+
     let input = input.trim();
+
+    // Tiger Style: reject oversized input before doing any parsing work.
+    if input.is_empty() || input.len() > MAX_INPUT_LEN {
+        return None;
+    }
 
     // Try parsing as a URL
     if input.starts_with("http://") || input.starts_with("https://") {
@@ -398,24 +411,41 @@ pub(crate) fn parse_account_flag(args: &str) -> (Option<String>, String) {
 }
 
 /// Format a timestamp as a human-readable "time ago" string.
+///
+/// # Tiger Style
+///
+/// Pure function. Handles negative durations (future timestamps) gracefully
+/// by clamping to "just now". Threshold constants are explicit.
 pub(crate) fn format_time_ago(ts: chrono::DateTime<chrono::Utc>) -> String {
+    const SECS_PER_MINUTE: i64 = 60;
+    const SECS_PER_HOUR: i64 = 3_600;
+    const SECS_PER_DAY: i64 = 86_400;
+
     let elapsed = chrono::Utc::now().signed_duration_since(ts);
     let secs = elapsed.num_seconds();
-    if secs < 60 {
-        "just now".to_string()
-    } else if secs < 3600 {
+
+    // Tiger Style: clamp negative durations (clock skew, future timestamps).
+    if secs < SECS_PER_MINUTE {
+        return "just now".to_string();
+    }
+
+    if secs < SECS_PER_HOUR {
         let m = elapsed.num_minutes();
-        format!("{} minute{} ago", m, if m == 1 { "" } else { "s" })
-    } else if secs < 86400 {
+        debug_assert!(m > 0, "minutes should be positive when secs >= 60");
+        return format!("{} minute{} ago", m, if m == 1 { "" } else { "s" });
+    }
+
+    if secs < SECS_PER_DAY {
         let h = elapsed.num_hours();
-        format!("{} hour{} ago", h, if h == 1 { "" } else { "s" })
+        debug_assert!(h > 0, "hours should be positive when secs >= 3600");
+        return format!("{} hour{} ago", h, if h == 1 { "" } else { "s" });
+    }
+
+    let d = elapsed.num_days();
+    if d == 1 {
+        "yesterday".to_string()
     } else {
-        let d = elapsed.num_days();
-        if d == 1 {
-            "yesterday".to_string()
-        } else {
-            format!("{} days ago", d)
-        }
+        format!("{} days ago", d)
     }
 }
 

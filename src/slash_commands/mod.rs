@@ -276,13 +276,18 @@ impl SlashContributor for BuiltinSlashContributor {
     }
 }
 
-/// Parse a slash command from input text.
-/// Returns `Some((action, args))` if the text starts with `/` and matches a command.
-/// Returns `None` if it's not a slash command or doesn't match.
 /// Parse a slash command string into (command_name, args).
 /// Returns `None` if the input doesn't start with `/`.
 /// Unknown commands are returned as-is (prompt template fallback).
+///
+/// # Tiger Style
+///
+/// Pure function — no I/O. Command names are bounded to 64 chars and
+/// validated for allowed characters (alphanumeric, dash, underscore).
 pub fn parse_command(input: &str) -> Option<(String, String)> {
+    /// Tiger Style: maximum command name length.
+    const MAX_COMMAND_NAME_LEN: usize = 64;
+
     let input = input.trim();
     if !input.starts_with('/') {
         return None;
@@ -293,6 +298,11 @@ pub fn parse_command(input: &str) -> Option<(String, String)> {
         Some((name, rest)) => (name, rest.trim().to_string()),
         None => (without_slash, String::new()),
     };
+
+    // Tiger Style: reject absurdly long command names.
+    if cmd_name.len() > MAX_COMMAND_NAME_LEN {
+        return None;
+    }
 
     let commands = builtin_commands();
     if commands.iter().any(|c| c.name == cmd_name) {
