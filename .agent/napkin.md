@@ -400,6 +400,20 @@
 - `process_host_calls()` parses `"host_calls"` array from plugin JSON responses — request-based host interaction
 - `MessageUpdate` event dispatch was missing — just needed one more match arm in `dispatch_event_to_plugins`
 
+## Patterns That Work (crate extraction: agent)
+- `clankers-agent` at `crates/clankers-agent/` — Agent struct, AgentEvent, Tool trait, ToolContext, turn loop, compaction, builder, TTSR, system_prompt, context
+- Tool trait + ToolContext moved FROM `src/tools/mod.rs` TO `clankers-agent::tool` — tool impls in main crate depend on `clankers-agent`
+- `AgentEvent` moved to `clankers-agent::events` — all type deps (Usage, AgentMessage, ToolResult, ToolProgress, ProcessMeta) were already in extracted crates
+- `ModelSwitchSlot` type alias + `model_switch_slot()` constructor in `clankers-agent::tool` — shared between agent turn loop and switch_model tool
+- `AgentError` enum: Cancelled, ProviderStreaming, Agent — `From<AgentError> for Error` in main crate's error.rs
+- `Agent::prompt()` returns `Result<(), AgentError>` — callers in main crate convert with `.map_err(Error::from)` or match on `AgentError::Cancelled`
+- `PathPolicy` + `check_path` + `init_policy` moved to `clankers-util::path_policy` — decouples agent crate from sandbox
+- `src/tools/sandbox/policy.rs` keeps only env sanitization (`sanitized_env`), path policy re-exported from `clankers-util`
+- `src/agent/mod.rs` is 12-line re-export file: `pub use clankers_agent::*; pub use clankers_agent::{builder, compaction, ...};`
+- `src/tools/mod.rs` re-exports `Tool`, `ToolContext`, `ToolResult`, etc. from `clankers_agent::tool` — zero API change for callers
+- `openspec` feature flag on `clankers-agent` controls `clankers-specs` optional dep (same pattern as main crate)
+- Git detects file moves as renames when content changes are minimal (< ~20% diff)
+
 ## Patterns That Work (loop system)
 - Loop iteration/break logic lives in `clankers-loop` crate (`LoopEngine`, `BreakCondition`, `LoopDef`)
 - `EventLoopRunner` owns a `LoopEngine` + `active_loop_id: Option<LoopId>` — single source of truth for loop state
