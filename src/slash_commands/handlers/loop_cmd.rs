@@ -16,14 +16,22 @@ impl SlashHandler for LoopHandler {
             description: "Run a prompt in a loop",
             help: "Usage:\n  \
                    /loop <N> <prompt>           — run prompt N times\n  \
-                   /loop until <text> <prompt>  — run until output contains text\n  \
+                   /loop until <cond> <prompt>  — run until condition matches\n  \
                    /loop stop                   — stop the active loop\n  \
                    /loop pause                  — pause/resume the active loop\n  \
                    /loop status                 — show loop status\n\n\
+                   Break conditions:\n  \
+                   contains:<text>    — output contains text (default)\n  \
+                   not_contains:<text> — output does NOT contain text\n  \
+                   exit:<code>        — exit code matches\n  \
+                   equals:<text>      — output equals text exactly\n  \
+                   regex:<pattern>    — output matches pattern\n  \
+                   <bare text>        — same as contains:<text>\n\n\
                    The LLM can also call signal_loop_success to break out.\n\n\
                    Examples:\n  \
                    /loop 5 run cargo test and fix any failures\n  \
-                   /loop until \"0 failed\" run cargo test and fix failures",
+                   /loop until \"0 failed\" run cargo test and fix failures\n  \
+                   /loop until exit:0 run cargo test and fix failures",
             accepts_args: true,
             subcommands: vec![
                 ("stop", "stop the active loop"),
@@ -120,9 +128,8 @@ fn start_loop(args: &str, ctx: &mut SlashContext<'_>) {
     }
 
     // Parse: /loop <N> <prompt>  or  /loop until <text> <prompt>
-    let (max_iterations, break_text, prompt) = if args.starts_with("until ") {
+    let (max_iterations, break_text, prompt) = if let Some(rest) = args.strip_prefix("until ") {
         // /loop until "PASS" run cargo test
-        let rest = &args["until ".len()..];
         let (break_text, prompt) = parse_until_args(rest);
         (100u32, Some(break_text), prompt)
     } else {

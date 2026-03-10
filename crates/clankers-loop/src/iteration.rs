@@ -149,6 +149,10 @@ pub struct LoopState {
     pub results: Vec<IterationResult>,
     pub started_at: Option<DateTime<Utc>>,
     pub finished_at: Option<DateTime<Utc>>,
+    /// Out-of-band break signal. Set by `LoopEngine::signal_break()`,
+    /// consumed by `record_iteration()`.
+    #[serde(skip)]
+    pub(crate) break_signaled: bool,
 }
 
 impl LoopState {
@@ -160,6 +164,7 @@ impl LoopState {
             results: Vec::new(),
             started_at: None,
             finished_at: None,
+            break_signaled: false,
         }
     }
 

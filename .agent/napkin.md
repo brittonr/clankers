@@ -401,10 +401,14 @@
 - `MessageUpdate` event dispatch was missing — just needed one more match arm in `dispatch_event_to_plugins`
 
 ## Patterns That Work (loop system)
-- Two separate loop systems: `loop` tool (agent runs shell commands inline) and `/loop` slash command (event-loop-level prompt re-sending)
-- `/loop` stores prompt in `LoopDisplayState.prompt` on App — accessible to both event loop runner and slash command handlers
-- `maybe_continue_loop()` fires on `PromptDone(None)` when no `queued_prompt` — increments iteration, checks break conditions, re-sends prompt
+- Loop iteration/break logic lives in `clankers-loop` crate (`LoopEngine`, `BreakCondition`, `LoopDef`)
+- `EventLoopRunner` owns a `LoopEngine` + `active_loop_id: Option<LoopId>` — single source of truth for loop state
+- `/loop` slash command writes to `app.loop_status` (display-only projection); `EventLoopRunner` lazily registers with engine on first iteration via `ensure_loop_registered()`
+- `parse_break_condition()` is the canonical parser in `clankers-loop` — supports `contains:`, `exit:`, `not_contains:`, `equals:`, `regex:`, bare text
+- `signal_loop_success` tool call → `engine.signal_break(id)` → engine sets internal flag consumed by next `record_iteration()`
+- `maybe_continue_loop()` feeds accumulated tool output to `engine.record_iteration()` which handles break conditions + max iterations
+- `app.loop_status.iteration` synced from `engine.get(id).current_iteration` after each iteration for TUI display
+- `/loop stop` clears `app.loop_status`; `maybe_continue_loop` detects the mismatch and cleans up engine state
 - Pause: `ls.active = false` → `maybe_continue_loop()` returns early without re-sending; resume: toggle back + send prompt from slash handler
-- `loop_break_signaled` and `loop_turn_output` are per-turn ephemeral state on EventLoopRunner (not on App)
-- `signal_loop_success` tool is detected by name in `AgentEvent::ToolCall` handler — sets `loop_break_signaled = true`
+- `LoopTool` (wraps LoopEngine for shell commands) exists but is NOT registered in production — only in tests
 - Leader menu loop submenu: `Space → L → p/s/i` for pause/stop/status — uses `LeaderAction::SlashCommand` to dispatch

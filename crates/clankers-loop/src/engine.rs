@@ -92,6 +92,23 @@ impl LoopEngine {
         false
     }
 
+    /// Signal an out-of-band break for a running loop. The next call to
+    /// `record_iteration` will treat the iteration as break-matched and
+    /// stop the loop.
+    ///
+    /// Use this for external break signals (e.g. `signal_loop_success`
+    /// tool call) that aren't detectable from iteration output.
+    pub fn signal_break(&self, id: &LoopId) -> bool {
+        let mut loops = self.loops.lock();
+        if let Some(state) = loops.get_mut(id)
+            && state.status == LoopStatus::Running
+        {
+            state.break_signaled = true;
+            return true;
+        }
+        false
+    }
+
     /// Record an iteration result. Returns true if the loop should continue.
     pub fn record_iteration(
         &self,
@@ -108,7 +125,8 @@ impl LoopEngine {
             return false;
         }
 
-        let break_matched = state.check_break(&output, exit_code);
+        let break_matched = state.break_signaled || state.check_break(&output, exit_code);
+        state.break_signaled = false;
         let iteration_idx = state.current_iteration;
 
         let result = IterationResult {
@@ -327,6 +345,27 @@ mod tests {
         assert_eq!(removed, 1);
         assert_eq!(engine.all().len(), 1);
         assert_eq!(engine.all()[0].def.name, "still-running");
+    }
+
+    #[test]
+    fn signal_break_stops_loop() {
+        let engine = LoopEngine::new();
+        let def = LoopDef::fixed("signaled", 100, json!({}));
+        let id = engine.register(def);
+        engine.start(&id);
+
+        // Run one normal iteration
+        assert!(engine.record_iteration(&id, "iter 0".into(), None));
+
+        // Signal break
+        assert!(engine.signal_break(&id));
+
+        // Next record_iteration should return false (loop completed)
+        assert!(!engine.record_iteration(&id, "iter 1".into(), None));
+
+        let state = engine.get(&id).unwrap();
+        assert_eq!(state.status, LoopStatus::Completed);
+        assert_eq!(state.current_iteration, 2);
     }
 
     #[test]

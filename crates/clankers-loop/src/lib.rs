@@ -16,6 +16,7 @@ pub mod engine;
 pub mod iteration;
 
 pub use condition::BreakCondition;
+pub use condition::parse_break_condition;
 pub use engine::LoopEngine;
 pub use engine::LoopEvent;
 pub use iteration::LoopDef;

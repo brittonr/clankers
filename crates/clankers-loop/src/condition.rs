@@ -47,6 +47,35 @@ impl BreakCondition {
     }
 }
 
+/// Parse a break condition from a string.
+///
+/// Supported formats:
+/// - `contains:<text>` — stop when output contains text
+/// - `not_contains:<text>` — stop when text is absent
+/// - `equals:<text>` — stop when output equals text exactly
+/// - `exit:<code>` — stop when exit code matches
+/// - `regex:<pattern>` — stop when output matches regex pattern
+/// - `<bare text>` — treated as `contains:<text>`
+pub fn parse_break_condition(s: &str) -> BreakCondition {
+    if let Some(text) = s.strip_prefix("contains:") {
+        BreakCondition::Contains(text.to_string())
+    } else if let Some(text) = s.strip_prefix("not_contains:") {
+        BreakCondition::NotContains(text.to_string())
+    } else if let Some(text) = s.strip_prefix("equals:") {
+        BreakCondition::Equals(text.to_string())
+    } else if let Some(text) = s.strip_prefix("regex:") {
+        BreakCondition::Regex(text.to_string())
+    } else if let Some(code) = s.strip_prefix("exit:") {
+        if let Ok(c) = code.parse::<i32>() {
+            BreakCondition::ExitCode(c)
+        } else {
+            BreakCondition::Contains(s.to_string())
+        }
+    } else {
+        BreakCondition::Contains(s.to_string())
+    }
+}
+
 /// Regex match without pulling in the `regex` crate as a hard dependency.
 /// Falls back to substring match if the pattern is invalid.
 fn regex_matches(pattern: &str, text: &str) -> bool {
@@ -159,5 +188,53 @@ mod tests {
         let json = serde_json::to_string(&cond).unwrap();
         let parsed: BreakCondition = serde_json::from_str(&json).unwrap();
         assert!(parsed.check("PASS", None));
+    }
+
+    #[test]
+    fn parse_contains() {
+        let cond = parse_break_condition("contains:PASS");
+        assert!(cond.check("all tests PASS", None));
+        assert!(!cond.check("all tests FAIL", None));
+    }
+
+    #[test]
+    fn parse_exit_code() {
+        let cond = parse_break_condition("exit:0");
+        assert!(cond.check("", Some(0)));
+        assert!(!cond.check("", Some(1)));
+    }
+
+    #[test]
+    fn parse_not_contains() {
+        let cond = parse_break_condition("not_contains:error");
+        assert!(cond.check("all good", None));
+        assert!(!cond.check("found error", None));
+    }
+
+    #[test]
+    fn parse_equals() {
+        let cond = parse_break_condition("equals:OK");
+        assert!(cond.check("OK", None));
+        assert!(!cond.check("OK then", None));
+    }
+
+    #[test]
+    fn parse_regex() {
+        let cond = parse_break_condition("regex:^OK$");
+        assert!(cond.check("OK", None));
+        assert!(!cond.check("OK then", None));
+    }
+
+    #[test]
+    fn parse_bare_string() {
+        let cond = parse_break_condition("SUCCESS");
+        assert!(cond.check("BUILD SUCCESS", None));
+    }
+
+    #[test]
+    fn parse_invalid_exit_code_falls_back() {
+        let cond = parse_break_condition("exit:abc");
+        // Falls back to Contains("exit:abc")
+        assert!(cond.check("exit:abc", None));
     }
 }

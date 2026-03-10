@@ -16,6 +16,7 @@ use clankers_loop::BreakCondition;
 use clankers_loop::LoopDef;
 use clankers_loop::LoopEngine;
 use clankers_loop::LoopId;
+use clankers_loop::parse_break_condition;
 use serde_json::Value;
 use serde_json::json;
 use tokio::process::Command;
@@ -282,26 +283,7 @@ impl Tool for LoopTool {
     }
 }
 
-/// Parse a break condition from a string like "contains:PASS", "exit:0", etc.
-fn parse_break_condition(s: &str) -> BreakCondition {
-    if let Some(text) = s.strip_prefix("contains:") {
-        BreakCondition::Contains(text.to_string())
-    } else if let Some(text) = s.strip_prefix("not_contains:") {
-        BreakCondition::NotContains(text.to_string())
-    } else if let Some(text) = s.strip_prefix("equals:") {
-        BreakCondition::Equals(text.to_string())
-    } else if let Some(code) = s.strip_prefix("exit:") {
-        if let Ok(c) = code.parse::<i32>() {
-            BreakCondition::ExitCode(c)
-        } else {
-            // Fall back to substring match
-            BreakCondition::Contains(s.to_string())
-        }
-    } else {
-        // Treat the whole string as a substring to match
-        BreakCondition::Contains(s.to_string())
-    }
-}
+// Break condition parsing delegated to clankers_loop::parse_break_condition.
 
 /// Output from a shell command execution.
 struct CommandOutput {

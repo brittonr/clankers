@@ -17,6 +17,11 @@ use std::time::Duration;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
+use clankers_loop::BreakCondition;
+use clankers_loop::LoopDef;
+use clankers_loop::LoopEngine;
+use clankers_loop::LoopId;
+
 use super::interactive::AgentCommand;
 use super::interactive::TaskResult;
 use crate::agent::events::AgentEvent;
@@ -56,10 +61,14 @@ pub(crate) struct EventLoopRunner<'a> {
     // Audit state
     audit_pending: std::collections::HashMap<String, (String, serde_json::Value, std::time::Instant)>,
     audit_seq: u32,
-    // Loop mode state
-    /// Whether signal_loop_success was called during the current turn.
-    loop_break_signaled: bool,
-    /// Accumulated output from the current turn (for break condition checking).
+    // Loop mode state — backed by LoopEngine for iteration tracking and
+    // break condition evaluation. The engine is the single source of truth;
+    // `app.loop_status` is a display-only projection updated after each
+    // iteration.
+    loop_engine: LoopEngine,
+    active_loop_id: Option<LoopId>,
+    /// Accumulated tool output from the current turn (fed to the engine
+    /// for break condition checking).
     loop_turn_output: String,
 }
 
@@ -103,7 +112,8 @@ impl<'a> EventLoopRunner<'a> {
             slash_registry,
             audit_pending: std::collections::HashMap::new(),
             audit_seq: 0,
-            loop_break_signaled: false,
+            loop_engine: LoopEngine::new(),
+            active_loop_id: None,
             loop_turn_output: String::new(),
         }
     }
@@ -184,14 +194,18 @@ impl<'a> EventLoopRunner<'a> {
                     {
                         self.audit_pending
                             .insert(call_id.clone(), (tool_name.clone(), input.clone(), std::time::Instant::now()));
-                        // Loop mode: detect signal_loop_success
-                        if tool_name == "signal_loop_success" {
-                            self.loop_break_signaled = true;
+                        // Loop mode: signal_loop_success triggers an
+                        // out-of-band break via the engine.
+                        if tool_name == "signal_loop_success"
+                            && let Some(ref id) = self.active_loop_id
+                        {
+                            self.loop_engine.signal_break(id);
                         }
                     }
 
-                    // Loop mode: capture tool output for break condition checking
-                    if self.app.loop_status.is_some() {
+                    // Loop mode: capture tool output for break condition
+                    // checking (fed to LoopEngine::record_iteration).
+                    if self.active_loop_id.is_some() {
                         if let AgentEvent::ToolExecutionEnd { ref result, .. } = event {
                             for content in &result.content {
                                 if let crate::tools::ToolResultContent::Text { text } = content {
@@ -454,7 +468,7 @@ impl<'a> EventLoopRunner<'a> {
             match result {
                 TaskResult::PromptDone(Some(e)) => {
                     // Stop loop on error
-                    if self.app.loop_status.is_some() {
+                    if self.active_loop_id.is_some() {
                         self.finish_loop("failed (error)");
                     }
                     if let Some(ref mut block) = self.app.conversation.active_block {
@@ -517,48 +531,78 @@ impl<'a> EventLoopRunner<'a> {
 
     // ── Loop mode ────────────────────────────────────────────────────
 
+    /// Lazily register the loop with the engine on the first iteration.
+    ///
+    /// The `/loop` slash command writes to `app.loop_status` (display
+    /// state). This method translates that into a `LoopDef` and
+    /// registers it with the `LoopEngine`. Returns the active loop ID.
+    fn ensure_loop_registered(&mut self) -> Option<LoopId> {
+        if let Some(ref id) = self.active_loop_id {
+            return Some(id.clone());
+        }
+
+        let ls = self.app.loop_status.as_ref()?;
+
+        let break_condition = match &ls.break_text {
+            Some(text) => clankers_loop::parse_break_condition(text),
+            None => BreakCondition::Never,
+        };
+
+        let action = serde_json::json!({"prompt": ls.prompt.as_deref().unwrap_or("")});
+
+        let def = if matches!(break_condition, BreakCondition::Never) {
+            LoopDef::fixed(&ls.name, ls.max_iterations, action)
+        } else {
+            LoopDef::until(&ls.name, break_condition, action)
+                .with_max_iterations(ls.max_iterations)
+        };
+
+        let id = self.loop_engine.register(def);
+        self.loop_engine.start(&id);
+        self.active_loop_id = Some(id.clone());
+        Some(id)
+    }
+
     /// After a successful turn, check whether to continue the loop.
     fn maybe_continue_loop(&mut self) {
-        let Some(ref mut ls) = self.app.loop_status else {
+        if self.app.loop_status.is_none() {
+            // Slash command `/loop stop` clears display state directly.
+            // Clean up the engine entry if one was registered.
+            if let Some(ref id) = self.active_loop_id {
+                self.loop_engine.stop(id);
+                self.loop_engine.remove(id);
+            }
+            self.active_loop_id = None;
+            self.loop_turn_output.clear();
+            return;
+        }
+
+        let Some(loop_id) = self.ensure_loop_registered() else {
             return;
         };
 
-        // Advance iteration counter
-        ls.iteration += 1;
-        let iteration = ls.iteration;
-        let max = ls.max_iterations;
+        // Feed accumulated output to the engine. The engine evaluates
+        // break conditions (contains, regex, exit code, etc.) and
+        // manages iteration counting / max-iteration limits.
+        let output = std::mem::take(&mut self.loop_turn_output);
+        let should_continue = self.loop_engine.record_iteration(&loop_id, output, None);
 
-        // Check break conditions (in priority order)
-        let broke = if self.loop_break_signaled {
-            self.app.push_system(
-                format!("Loop iteration {}/{} — signal_loop_success called.", iteration, max),
-                false,
-            );
-            true
-        } else if let Some(ref break_text) = ls.break_text {
-            if self.loop_turn_output.contains(break_text.as_str()) {
-                self.app.push_system(
-                    format!("Loop iteration {}/{} — break condition matched.", iteration, max),
-                    false,
-                );
-                true
-            } else {
-                false
-            }
-        } else {
-            false
-        };
+        // Sync engine state back to the display state for the TUI.
+        if let Some(state) = self.loop_engine.get(&loop_id)
+            && let Some(ref mut ls) = self.app.loop_status
+        {
+            ls.iteration = state.current_iteration;
+        }
 
-        // Reset per-turn state
-        self.loop_break_signaled = false;
-        self.loop_turn_output.clear();
-
-        if broke || iteration >= max {
-            let reason = if broke {
-                "completed"
-            } else {
-                "max iterations reached"
-            };
+        if !should_continue {
+            let reason = self.loop_engine.get(&loop_id).map_or("finished", |s| {
+                match s.status {
+                    clankers_loop::LoopStatus::Completed => "completed",
+                    clankers_loop::LoopStatus::Stopped => "max iterations reached",
+                    clankers_loop::LoopStatus::Failed => "failed",
+                    _ => "finished",
+                }
+            });
             self.finish_loop(reason);
             return;
         }
@@ -587,9 +631,15 @@ impl<'a> EventLoopRunner<'a> {
                 ls.name, reason, ls.iteration,
             )
         });
+
+        // Clean up engine state
+        if let Some(ref id) = self.active_loop_id {
+            self.loop_engine.remove(id);
+        }
+        self.active_loop_id = None;
         self.app.loop_status = None;
-        self.loop_break_signaled = false;
         self.loop_turn_output.clear();
+
         if let Some(msg) = summary {
             self.app.push_system(msg, false);
         }
