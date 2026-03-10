@@ -442,11 +442,11 @@ pub fn normalize_screen_text(text: &str) -> String {
 fn normalize_line(line: &str) -> String {
     let mut s = line.to_string();
 
-    // Normalize git branch status: "main *~6?37" → "main *~N?N"
-    let re_git = regex::Regex::new(r"(\*~?\+?)\d+(\?\d+)?").unwrap();
-    s = re_git.replace_all(&s, "${1}N${2}").to_string();
-    let re_git_q = regex::Regex::new(r"\?\d+").unwrap();
-    s = re_git_q.replace_all(&s, "?N").to_string();
+    // Normalize git branch status: "main *~6?37" / "main *?7" / "main *~3" → "main *N"
+    // Collapse all dirty indicators (~modified, ?untracked, +staged) and their counts
+    // into a single stable "*N" so snapshots don't oscillate with working tree state.
+    let re_git = regex::Regex::new(r"\*[~?+\d]+").unwrap();
+    s = re_git.replace_all(&s, "*N").to_string();
 
     // Normalize token counters: "0/200.0k" → "N/N.Nk"
     let re_tokens = regex::Regex::new(r"\d+/\d+\.\d+k").unwrap();
@@ -508,11 +508,16 @@ pub fn extract_structure(harness: &super::harness::TuiTestHarness) -> String {
         if is_border || is_status || is_input || is_first || is_last || is_panel_title {
             let mut normalized = normalize_line(line);
 
-            // Strip cursor/input artifacts: single characters that appear
-            // between the last content and the border (from PTY timing).
-            // Catches: "idle | /│", "idle | c└", "MODEL | /│"
-            let re_artifact = regex::Regex::new(r"\|\s*[/a-zA-Z`](\s*[│┘┐┤└])").unwrap();
+            // Strip cursor/input artifacts: partial text fragments that appear
+            // between the last status bar pipe and border (from PTY timing).
+            // Catches: "idle | /│", "idle | cla └", "MODEL | /ho │"
+            let re_artifact = regex::Regex::new(r"\|\s*[/a-zA-Z`][/a-zA-Z0-9._-]*(\s*[│┘┐┤└])").unwrap();
             normalized = re_artifact.replace_all(&normalized, "|$1").to_string();
+
+            // Strip volatile chat content bleeding into panel border lines
+            // e.g. "│press i to sta┌ Space ──" → "│┌ Space ──"
+            let re_bleed = regex::Regex::new(r"│[a-zA-Z ]{2,}(┌)").unwrap();
+            normalized = re_bleed.replace_all(&normalized, "│$1").to_string();
 
             // Normalize whitespace before border chars — collapse any
             // amount of whitespace (0+) to exactly one space
