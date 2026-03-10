@@ -442,11 +442,11 @@ pub fn normalize_screen_text(text: &str) -> String {
 fn normalize_line(line: &str) -> String {
     let mut s = line.to_string();
 
-    // Normalize git branch status: "main *~6?37" / "main *?7" / "main *~3" → "main *N"
-    // Collapse all dirty indicators (~modified, ?untracked, +staged) and their counts
-    // into a single stable "*N" so snapshots don't oscillate with working tree state.
-    let re_git = regex::Regex::new(r"\*[~?+\d]+").unwrap();
-    s = re_git.replace_all(&s, "*N").to_string();
+    // Normalize git branch status: strip dirty indicators entirely.
+    // "main *~6?37" / "main *?7" / "main *N" / "main" → "main"
+    // This eliminates snapshot oscillation between clean and dirty working trees.
+    let re_git = regex::Regex::new(r"\s*\*[~?+\dN]+").unwrap();
+    s = re_git.replace_all(&s, "").to_string();
 
     // Normalize token counters: "0/200.0k" → "N/N.Nk"
     let re_tokens = regex::Regex::new(r"\d+/\d+\.\d+k").unwrap();
