@@ -23,14 +23,14 @@
         # and for the devShell.
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
 
-        # ── Main workspace (unit2nix) ──────────────────────────────────────
+        # ── Main workspace (unit2nix auto mode) ─────────────────────────────
         #
-        # Regenerate build-plan.json whenever Cargo.lock changes:
-        #   nix run github:brittonr/unit2nix -- --workspace
-        ws = unit2nix.lib.${system}.buildFromUnitGraph {
+        # Build plan is generated via IFD — no build-plan.json to maintain.
+        # Cargo.lock changes are picked up automatically at eval time.
+        ws = unit2nix.lib.${system}.buildFromUnitGraphAuto {
           inherit pkgs rustToolchain;
           src = ./.;
-          resolvedJson = ./build-plan.json;
+          workspace = true;
           clippyArgs = [ "-D" "warnings" ];
 
           # Use the nightly toolchain — clankers requires edition 2024
