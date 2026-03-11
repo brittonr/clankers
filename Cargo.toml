@@ -6,6 +6,7 @@ members = [
     "crates/clankers-auth",
     "crates/clankers-config",
     "crates/clankers-db",
+    "crates/clankers-hooks",
     "crates/clankers-loop",
     "crates/clankers-merge",
     "crates/clankers-message",
@@ -64,6 +65,7 @@ clankers-agent-defs = { version = "0.1.0", path = "crates/clankers-agent-defs" }
 clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
 clankers-config = { version = "0.1.0", path = "crates/clankers-config" }
 clankers-db = { version = "0.1.0", path = "crates/clankers-db" }
+clankers-hooks = { version = "0.1.0", path = "crates/clankers-hooks" }
 clankers-loop = { version = "0.1.0", path = "crates/clankers-loop" }
 clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
 clankers-message = { version = "0.1.0", path = "crates/clankers-message" }

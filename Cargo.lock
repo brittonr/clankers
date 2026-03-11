@@ -1042,6 +1042,7 @@ dependencies = [
  "clankers-auth",
  "clankers-config",
  "clankers-db",
+ "clankers-hooks",
  "clankers-loop",
  "clankers-matrix",
  "clankers-merge",
@@ -1127,6 +1128,7 @@ dependencies = [
  "chrono",
  "clankers-config",
  "clankers-db",
+ "clankers-hooks",
  "clankers-message",
  "clankers-model-selection",
  "clankers-procmon",
@@ -1183,6 +1185,7 @@ name = "clankers-config"
 version = "0.1.0"
 dependencies = [
  "clankers-agent-defs",
+ "clankers-hooks",
  "clankers-model-selection",
  "clankers-tui",
  "clankers-tui-types",
@@ -1202,6 +1205,20 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "clankers-hooks"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tokio-test",
  "tracing",
 ]
 
@@ -1278,11 +1295,14 @@ dependencies = [
 name = "clankers-plugin"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chrono",
+ "clankers-hooks",
  "clankers-tui-types",
  "extism",
  "serde",
  "serde_json",
+ "tokio",
  "tracing",
 ]
 

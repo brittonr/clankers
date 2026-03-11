@@ -67,6 +67,8 @@ pub(crate) struct EventLoopRunner<'a> {
     active_loop_id: Option<LoopId>,
     /// Accumulated tool output from the current turn.
     loop_turn_output: String,
+    // Hook pipeline
+    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
 }
 
 impl<'a> EventLoopRunner<'a> {
@@ -90,6 +92,7 @@ impl<'a> EventLoopRunner<'a> {
         cmd_tx: tokio::sync::mpsc::UnboundedSender<AgentCommand>,
         done_rx: tokio::sync::mpsc::UnboundedReceiver<TaskResult>,
         slash_registry: crate::slash_commands::SlashRegistry,
+        hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     ) -> Self {
         Self {
             terminal,
@@ -111,6 +114,7 @@ impl<'a> EventLoopRunner<'a> {
             loop_engine: LoopEngine::new(),
             active_loop_id: None,
             loop_turn_output: String::new(),
+            hook_pipeline,
         }
     }
 
@@ -241,6 +245,51 @@ impl<'a> EventLoopRunner<'a> {
             }
             for action in result.ui_actions {
                 crate::plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
+            }
+        }
+
+        // Fire lifecycle hooks (async, fire-and-forget)
+        if let Some(ref pipeline) = self.hook_pipeline {
+            let session_id = self.app.session_id.clone();
+            match &event {
+                AgentEvent::SessionStart { session_id: sid } => {
+                    pipeline.fire_async(
+                        clankers_hooks::HookPoint::SessionStart,
+                        clankers_hooks::HookPayload::session("session-start", sid),
+                    );
+                }
+                AgentEvent::SessionShutdown { session_id: sid } => {
+                    pipeline.fire_async(
+                        clankers_hooks::HookPoint::SessionEnd,
+                        clankers_hooks::HookPayload::session("session-end", sid),
+                    );
+                }
+                AgentEvent::TurnStart { .. } => {
+                    pipeline.fire_async(
+                        clankers_hooks::HookPoint::TurnStart,
+                        clankers_hooks::HookPayload::empty("turn-start", &session_id),
+                    );
+                }
+                AgentEvent::TurnEnd { .. } => {
+                    pipeline.fire_async(
+                        clankers_hooks::HookPoint::TurnEnd,
+                        clankers_hooks::HookPayload::empty("turn-end", &session_id),
+                    );
+                }
+                AgentEvent::ModelChange { from, to, reason } => {
+                    let payload = clankers_hooks::HookPayload {
+                        hook: "model-change".into(),
+                        session_id: session_id.clone(),
+                        timestamp: chrono::Utc::now(),
+                        data: clankers_hooks::HookData::ModelChange {
+                            from: from.clone(),
+                            to: to.clone(),
+                            reason: reason.clone(),
+                        },
+                    };
+                    pipeline.fire_async(clankers_hooks::HookPoint::ModelChange, payload);
+                }
+                _ => {}
             }
         }
     }

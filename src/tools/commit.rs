@@ -228,13 +228,38 @@ impl CommitTool {
             tracing::debug!("Commit message validation: {}", warning);
         }
 
+        // Fire pre-commit hook (can deny the commit)
+        if let Some(pipeline) = ctx.hook_pipeline() {
+            let payload = clankers_hooks::HookPayload::git(
+                "pre-commit", ctx.session_id(), "commit",
+                None, Some(&msg), staged_names.clone(),
+            );
+            match pipeline.fire(clankers_hooks::HookPoint::PreCommit, &payload).await {
+                clankers_hooks::HookVerdict::Deny { reason } => {
+                    return ToolResult::error(format!("🪝 Pre-commit hook denied: {reason}"));
+                }
+                _ => {}
+            }
+        }
+
         // Create the commit
         ctx.emit_progress(&format!("committing: {}", msg));
         match git_ops::commit(msg.clone()).await {
-            Ok(result) => ToolResult::text(format!(
-                "Committed: {}\n\nMessage:\n  {}\n\n{}",
-                result.short_hash, msg, result.summary
-            )),
+            Ok(result) => {
+                // Fire post-commit hook (async, fire-and-forget)
+                if let Some(pipeline) = ctx.hook_pipeline() {
+                    let payload = clankers_hooks::HookPayload::git(
+                        "post-commit", ctx.session_id(), "commit",
+                        Some(&result.short_hash), Some(&msg), staged_names,
+                    );
+                    pipeline.fire_async(clankers_hooks::HookPoint::PostCommit, payload);
+                }
+
+                ToolResult::text(format!(
+                    "Committed: {}\n\nMessage:\n  {}\n\n{}",
+                    result.short_hash, msg, result.summary
+                ))
+            }
             Err(e) => ToolResult::error(format!("Commit failed: {}", e)),
         }
     }

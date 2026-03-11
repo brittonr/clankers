@@ -73,6 +73,10 @@ pub struct ToolContext {
     event_tx: Option<broadcast::Sender<AgentEvent>>,
     /// Throttle state for structured progress updates
     throttle_state: Arc<Mutex<ThrottleState>>,
+    /// Optional hook pipeline for pre/post tool hooks
+    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    /// Session ID for hook payloads
+    session_id: String,
 }
 
 impl ToolContext {
@@ -83,6 +87,32 @@ impl ToolContext {
             signal,
             event_tx,
             throttle_state: Arc::new(Mutex::new(ThrottleState::default())),
+            hook_pipeline: None,
+            session_id: String::new(),
+        }
+    }
+
+    /// Attach a hook pipeline to this context.
+    pub fn with_hooks(mut self, pipeline: Arc<clankers_hooks::HookPipeline>, session_id: String) -> Self {
+        self.hook_pipeline = Some(pipeline);
+        self.session_id = session_id;
+        self
+    }
+
+    /// Access the hook pipeline (if set).
+    pub fn hook_pipeline(&self) -> Option<&Arc<clankers_hooks::HookPipeline>> {
+        self.hook_pipeline.as_ref()
+    }
+
+    /// Session ID for hook payloads.
+    pub fn session_id(&self) -> &str {
+        &self.session_id
+    }
+
+    /// Emit an arbitrary agent event on the event bus.
+    pub fn emit_event(&self, event: AgentEvent) {
+        if let Some(ref tx) = self.event_tx {
+            let _ = tx.send(event);
         }
     }
 

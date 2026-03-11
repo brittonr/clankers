@@ -98,6 +98,10 @@ pub struct Settings {
     /// Tools in this list are not registered with the agent.
     #[serde(default)]
     pub disabled_tools: Vec<String>,
+
+    /// Hook system configuration.
+    #[serde(default)]
+    pub hooks: clankers_hooks::HooksConfig,
 }
 
 // ---------------------------------------------------------------------------
@@ -220,6 +224,7 @@ impl Default for Settings {
             cost_tracking: None,
             max_subagent_panes: default_max_subagent_panes(),
             disabled_tools: Vec::new(),
+            hooks: clankers_hooks::HooksConfig::default(),
         }
     }
 }

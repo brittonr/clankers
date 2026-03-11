@@ -19,6 +19,7 @@
 pub(crate) mod auth;
 pub(crate) mod branching;
 pub(crate) mod context;
+pub(crate) mod hooks;
 pub(crate) mod info;
 pub(crate) mod loop_cmd;
 pub(crate) mod memory;

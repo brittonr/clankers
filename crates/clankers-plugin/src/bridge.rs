@@ -7,12 +7,20 @@ pub enum PluginEvent {
     PluginInit,
     ToolCall,
     ToolResult,
+    ToolExecutionStart,
     AgentStart,
     AgentEnd,
     TurnStart,
     TurnEnd,
     MessageUpdate,
     UserInput,
+    UserCancel,
+    SessionStart,
+    SessionEnd,
+    ModelChange,
+    UsageUpdate,
+    SessionBranch,
+    SessionCompaction,
 }
 
 impl PluginEvent {
@@ -22,31 +30,43 @@ impl PluginEvent {
             "plugin_init" => Some(Self::PluginInit),
             "tool_call" => Some(Self::ToolCall),
             "tool_result" => Some(Self::ToolResult),
+            "tool_execution_start" => Some(Self::ToolExecutionStart),
             "agent_start" => Some(Self::AgentStart),
             "agent_end" => Some(Self::AgentEnd),
             "turn_start" => Some(Self::TurnStart),
             "turn_end" => Some(Self::TurnEnd),
             "message_update" => Some(Self::MessageUpdate),
             "user_input" => Some(Self::UserInput),
+            "user_cancel" => Some(Self::UserCancel),
+            "session_start" => Some(Self::SessionStart),
+            "session_end" => Some(Self::SessionEnd),
+            "model_change" => Some(Self::ModelChange),
+            "usage_update" => Some(Self::UsageUpdate),
+            "session_branch" => Some(Self::SessionBranch),
+            "session_compaction" => Some(Self::SessionCompaction),
             _ => None,
         }
     }
 
     /// Check if an event kind string matches this plugin event type.
-    ///
-    /// Event kinds are the snake_case identifiers used in `AgentEvent` variants:
-    /// `"tool_call"`, `"tool_result"`, `"agent_start"`, `"agent_end"`,
-    /// `"turn_start"`, `"turn_end"`, `"message_update"`, `"user_input"`.
     pub fn matches_event_kind(&self, kind: &str) -> bool {
         match (self, kind) {
-            (PluginEvent::ToolCall, "tool_call")
-            | (PluginEvent::ToolResult, "tool_result")
-            | (PluginEvent::AgentStart, "agent_start")
-            | (PluginEvent::AgentEnd, "agent_end")
-            | (PluginEvent::TurnStart, "turn_start")
-            | (PluginEvent::TurnEnd, "turn_end")
-            | (PluginEvent::MessageUpdate, "message_update")
-            | (PluginEvent::UserInput, "user_input") => true,
+            (Self::ToolCall, "tool_call")
+            | (Self::ToolResult, "tool_result")
+            | (Self::ToolExecutionStart, "tool_execution_start")
+            | (Self::AgentStart, "agent_start")
+            | (Self::AgentEnd, "agent_end")
+            | (Self::TurnStart, "turn_start")
+            | (Self::TurnEnd, "turn_end")
+            | (Self::MessageUpdate, "message_update")
+            | (Self::UserInput, "user_input")
+            | (Self::UserCancel, "user_cancel")
+            | (Self::SessionStart, "session_start")
+            | (Self::SessionEnd, "session_end")
+            | (Self::ModelChange, "model_change")
+            | (Self::UsageUpdate, "usage_update")
+            | (Self::SessionBranch, "session_branch")
+            | (Self::SessionCompaction, "session_compaction") => true,
             _ => false,
         }
     }

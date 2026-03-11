@@ -67,6 +67,10 @@ pub struct Agent {
     cost_tracker: Option<Arc<CostTracker>>,
     /// Shared slot for agent-initiated model switching
     model_switch_slot: Option<ModelSwitchSlot>,
+    /// Hook pipeline for lifecycle/tool/git hooks
+    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    /// Session ID for hook payloads
+    session_id: String,
 }
 
 impl Agent {
@@ -98,6 +102,8 @@ impl Agent {
             model_roles: ModelRoles::default(),
             cost_tracker: None,
             model_switch_slot: None,
+            hook_pipeline: None,
+            session_id: String::new(),
         }
     }
 
@@ -139,6 +145,17 @@ impl Agent {
     pub fn with_model_switch_slot(mut self, slot: ModelSwitchSlot) -> Self {
         self.model_switch_slot = Some(slot);
         self
+    }
+
+    /// Attach a hook pipeline for lifecycle/tool/git hooks
+    pub fn with_hook_pipeline(mut self, pipeline: Arc<clankers_hooks::HookPipeline>) -> Self {
+        self.hook_pipeline = Some(pipeline);
+        self
+    }
+
+    /// Set the session ID (used in hook payloads)
+    pub fn set_session_id(&mut self, id: String) {
+        self.session_id = id;
     }
 
     /// Subscribe to agent events
@@ -214,6 +231,8 @@ impl Agent {
             self.cancel.clone(),
             self.cost_tracker.as_ref(),
             self.model_switch_slot.as_ref(),
+            self.hook_pipeline.clone(),
+            &self.session_id,
         )
         .await;
 
@@ -528,6 +547,8 @@ impl Agent {
                 self.cancel.clone(),
                 self.cost_tracker.as_ref(),
                 self.model_switch_slot.as_ref(),
+                self.hook_pipeline.clone(),
+                &self.session_id,
             )
             .await;
 

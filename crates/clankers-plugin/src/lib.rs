@@ -4,6 +4,7 @@
 //! host functions, and UI action protocol.
 
 pub mod bridge;
+pub mod hooks;
 pub mod host;
 pub mod manifest;
 pub mod registry;

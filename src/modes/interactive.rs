@@ -164,7 +164,10 @@ pub async fn run_interactive(
     // Populate disabled tools from settings (global + project merged)
     app.disabled_tools = settings.disabled_tools.iter().cloned().collect();
 
-    let (agent, event_rx, mut bash_confirm_rx) = super::agent_setup::build_agent_with_tools(
+    // ── Hook pipeline setup ────────────────────────────────────────────
+    let hook_pipeline = build_hook_pipeline(&settings, &cwd, plugin_manager.as_ref());
+
+    let (mut agent, event_rx, mut bash_confirm_rx) = super::agent_setup::build_agent_with_tools(
         provider.clone(),
         &settings,
         model.clone(),
@@ -176,6 +179,12 @@ pub async fn run_interactive(
         paths,
         &db,
     );
+
+    // Attach hook pipeline to the agent
+    if let Some(ref pipeline) = hook_pipeline {
+        agent = agent.with_hook_pipeline(Arc::clone(pipeline));
+    }
+    agent.set_session_id(app.session_id.clone());
 
     // Start embedded RPC for swarm presence (non-fatal if unavailable)
     let _rpc_cancel = maybe_start_rpc(&mut app, paths).await;
@@ -196,6 +205,7 @@ pub async fn run_interactive(
         db.clone(),
         &settings,
         slash_registry,
+        hook_pipeline,
     )
     .await;
 
@@ -263,6 +273,7 @@ async fn run_event_loop(
     db: Option<crate::db::Db>,
     settings: &crate::config::settings::Settings,
     slash_registry: crate::slash_commands::SlashRegistry,
+    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
 ) -> Result<()> {
     let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel::<AgentCommand>();
     let (done_tx, done_rx) = tokio::sync::mpsc::unbounded_channel::<TaskResult>();
@@ -309,6 +320,7 @@ async fn run_event_loop(
         cmd_tx,
         done_rx,
         slash_registry,
+        hook_pipeline,
     );
     runner.run()
 }
@@ -484,6 +496,60 @@ pub(crate) fn persist_messages(
 // ---------------------------------------------------------------------------
 
 use super::rpc_embed::maybe_start_rpc;
+
+// ── Hook pipeline builder ────────────────────────────────────────────
+
+/// Build the hook pipeline from settings (script hooks + git hooks + plugin hooks).
+fn build_hook_pipeline(
+    settings: &crate::config::settings::Settings,
+    cwd: &str,
+    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+) -> Option<Arc<clankers_hooks::HookPipeline>> {
+    if !settings.hooks.enabled {
+        return None;
+    }
+
+    let project_root = std::path::Path::new(cwd);
+    let mut pipeline = clankers_hooks::HookPipeline::new();
+
+    // Disabled hooks from settings
+    pipeline.set_disabled_hooks(settings.hooks.disabled_hooks.iter().cloned());
+
+    // Script hooks from .clankers/hooks/ (or configured dir)
+    let hooks_dir = settings.hooks.resolve_hooks_dir(project_root);
+    let timeout = std::time::Duration::from_secs(settings.hooks.script_timeout_secs);
+    pipeline.register(Arc::new(clankers_hooks::script::ScriptHookHandler::new(
+        hooks_dir, timeout,
+    )));
+
+    // Git hooks from .git/hooks/ (if manage_git_hooks is enabled)
+    if settings.hooks.manage_git_hooks {
+        // Find the git repo root (may differ from cwd in worktrees)
+        if let Some(repo_root) = find_git_root(project_root) {
+            pipeline.register(Arc::new(clankers_hooks::git::GitHookHandler::new(repo_root)));
+        }
+    }
+
+    // Plugin hooks (wraps plugin dispatch as a HookHandler)
+    if let Some(pm) = plugin_manager {
+        pipeline.register(Arc::new(
+            crate::plugin::hooks::PluginHookHandler::new(Arc::clone(pm)),
+        ));
+    }
+
+    Some(Arc::new(pipeline))
+}
+
+/// Find the nearest .git directory walking up from a path.
+fn find_git_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut current = start;
+    loop {
+        if current.join(".git").exists() {
+            return Some(current.to_path_buf());
+        }
+        current = current.parent()?;
+    }
+}
 
 // ── Leader menu + slash registry builders ───────────────────────────
 

@@ -150,6 +150,8 @@ pub(super) async fn execute_tools_parallel(
     tool_calls: &[(String, String, Value)],
     event_tx: &broadcast::Sender<AgentEvent>,
     cancel: CancellationToken,
+    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    session_id: &str,
 ) -> Vec<ToolResultMessage> {
     use futures::future::BoxFuture;
     use futures::future::FutureExt;
@@ -164,6 +166,8 @@ pub(super) async fn execute_tools_parallel(
                 input.clone(),
                 event_tx.clone(),
                 cancel.clone(),
+                hook_pipeline.clone(),
+                session_id.to_string(),
             )
             .boxed()
         })
@@ -180,6 +184,8 @@ async fn execute_single_tool(
     input: Value,
     event_tx: broadcast::Sender<AgentEvent>,
     cancel: CancellationToken,
+    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    session_id: String,
 ) -> ToolResultMessage {
     // Emit ToolCall event
     let _ = event_tx.send(AgentEvent::ToolCall {
@@ -199,13 +205,44 @@ async fn execute_single_tool(
         return create_error_result(call_id, tool_name, format!("🔒 {}", reason), &event_tx);
     }
 
+    // Fire pre-tool hook (can deny or modify input)
+    let effective_input = if let Some(ref pipeline) = hook_pipeline {
+        let payload = clankers_hooks::HookPayload::tool(
+            "pre-tool", &session_id, &tool_name, &call_id, input.clone(), None,
+        );
+        match pipeline.fire(clankers_hooks::HookPoint::PreTool, &payload).await {
+            clankers_hooks::HookVerdict::Deny { reason } => {
+                return create_error_result(
+                    call_id, tool_name, format!("🪝 Hook denied: {reason}"), &event_tx,
+                );
+            }
+            clankers_hooks::HookVerdict::Modify(modified) => modified,
+            clankers_hooks::HookVerdict::Continue => input,
+        }
+    } else {
+        input
+    };
+
     let _ = event_tx.send(AgentEvent::ToolExecutionStart {
         call_id: call_id.clone(),
         tool_name: tool_name.clone(),
     });
 
     // Execute with accumulator
-    let result = execute_tool_with_accumulator(tool, &call_id, input, &event_tx, cancel).await;
+    let result = execute_tool_with_accumulator(
+        tool, &call_id, effective_input, &event_tx, cancel,
+        hook_pipeline.clone(), session_id.clone(),
+    ).await;
+
+    // Fire post-tool hook (async, fire-and-forget)
+    if let Some(ref pipeline) = hook_pipeline {
+        let result_json = serde_json::to_value(&result).ok();
+        let payload = clankers_hooks::HookPayload::tool(
+            "post-tool", &session_id, &tool_name, &call_id,
+            serde_json::json!({}), result_json,
+        );
+        pipeline.fire_async(clankers_hooks::HookPoint::PostTool, payload);
+    }
 
     let _ = event_tx.send(AgentEvent::ToolExecutionEnd {
         call_id: call_id.clone(),
@@ -231,6 +268,8 @@ async fn execute_tool_with_accumulator(
     input: Value,
     event_tx: &broadcast::Sender<AgentEvent>,
     cancel: CancellationToken,
+    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    session_id: String,
 ) -> ToolExecResult {
     // Subscribe to event bus BEFORE tool execution to capture all chunks
     let mut chunk_rx = event_tx.subscribe();
@@ -253,7 +292,10 @@ async fn execute_tool_with_accumulator(
     });
 
     // Execute tool
-    let ctx = ToolContext::new(call_id.to_string(), cancel, Some(event_tx.clone()));
+    let mut ctx = ToolContext::new(call_id.to_string(), cancel, Some(event_tx.clone()));
+    if let Some(pipeline) = hook_pipeline {
+        ctx = ctx.with_hooks(pipeline, session_id);
+    }
     let direct_result = tool.execute(&ctx, input).await;
 
     // Stop collector and decide which result to use

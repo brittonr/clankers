@@ -248,6 +248,7 @@ fn builtin_handlers() -> Vec<Box<dyn handlers::SlashHandler>> {
         Box::new(handlers::branching::MergeHandler),
         Box::new(handlers::branching::MergeInteractiveHandler),
         Box::new(handlers::branching::CherryPickHandler),
+        Box::new(handlers::hooks::HooksHandler),
     ]
 }
 

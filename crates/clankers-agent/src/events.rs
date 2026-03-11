@@ -163,14 +163,22 @@ impl AgentEvent {
     /// in their `"events"` array to subscribe to this event type.
     pub fn event_kind(&self) -> &'static str {
         match self {
-            Self::ToolCall { .. } => "tool_call",
-            Self::ToolExecutionEnd { .. } => "tool_result",
+            Self::SessionStart { .. } => "session_start",
+            Self::SessionShutdown { .. } => "session_end",
             Self::AgentStart => "agent_start",
             Self::AgentEnd { .. } => "agent_end",
             Self::TurnStart { .. } => "turn_start",
             Self::TurnEnd { .. } => "turn_end",
+            Self::ToolCall { .. } => "tool_call",
+            Self::ToolExecutionStart { .. } => "tool_execution_start",
+            Self::ToolExecutionEnd { .. } => "tool_result",
             Self::MessageUpdate { .. } => "message_update",
             Self::UserInput { .. } => "user_input",
+            Self::ModelChange { .. } => "model_change",
+            Self::UsageUpdate { .. } => "usage_update",
+            Self::SessionBranch { .. } => "session_branch",
+            Self::SessionCompaction { .. } => "session_compaction",
+            Self::UserCancel => "user_cancel",
             _ => "",
         }
     }
