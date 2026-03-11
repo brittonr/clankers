@@ -22,6 +22,10 @@ use crate::app::App;
 /// Read from the system clipboard on a background thread. Tries text first,
 /// then image. This avoids freezing the TUI when another application (e.g. a
 /// browser) holds the Wayland clipboard selection.
+///
+/// On Wayland, we try `wl-paste` first because arboard only has an X11
+/// backend — it connects through XWayland and reads the X11 clipboard, which
+/// is usually empty when the content was copied in a native Wayland app.
 pub fn paste_from_clipboard(app: &mut App) {
     if app.clipboard_pending {
         return;
@@ -31,54 +35,128 @@ pub fn paste_from_clipboard(app: &mut App) {
     let (tx, rx) = std::sync::mpsc::channel::<ClipboardResult>();
 
     std::thread::spawn(move || {
-        let result = (|| -> Result<ClipboardResult, ClipboardResult> {
-            let mut clipboard =
-                arboard::Clipboard::new().map_err(|e| ClipboardResult::Error(format!("Clipboard error: {e}")))?;
+        let is_wayland = std::env::var("WAYLAND_DISPLAY").is_ok();
 
-            // Try text first — this is what the user almost always wants with Ctrl+V
-            if let Ok(text) = clipboard.get_text()
-                && !text.is_empty()
-            {
-                return Ok(ClipboardResult::Text(text));
-            }
+        let result = if is_wayland {
+            paste_wayland().unwrap_or_else(|e| e)
+        } else {
+            paste_arboard().unwrap_or_else(|e| e)
+        };
 
-            // Fall back to image
-            match clipboard.get_image() {
-                Ok(img_data) => {
-                    use base64::Engine;
-                    use base64::engine::general_purpose::STANDARD as BASE64;
-
-                    let width = img_data.width as u32;
-                    let height = img_data.height as u32;
-                    let rgba: Vec<u8> = img_data.bytes.into_owned();
-
-                    let img = image::RgbaImage::from_raw(width, height, rgba)
-                        .ok_or_else(|| ClipboardResult::Error("Failed to decode clipboard image data.".to_string()))?;
-
-                    let mut png_buf: Vec<u8> = Vec::new();
-                    let mut cursor = std::io::Cursor::new(&mut png_buf);
-                    img.write_to(&mut cursor, image::ImageFormat::Png)
-                        .map_err(|e| ClipboardResult::Error(format!("Failed to encode image as PNG: {e}")))?;
-
-                    let raw_size = png_buf.len();
-                    let encoded = BASE64.encode(&png_buf);
-
-                    Ok(ClipboardResult::Image {
-                        encoded,
-                        mime: "image/png".to_string(),
-                        raw_size,
-                        width,
-                        height,
-                    })
-                }
-                Err(_) => Err(ClipboardResult::Empty("Clipboard is empty.".to_string())),
-            }
-        })();
-
-        let _ = tx.send(result.unwrap_or_else(|e| e));
+        let _ = tx.send(result);
     });
 
     app.clipboard_rx = Some(rx);
+}
+
+/// Paste via wl-paste (text, then image), falling back to arboard if
+/// wl-paste is unavailable.
+fn paste_wayland() -> Result<ClipboardResult, ClipboardResult> {
+    // Try text first via wl-paste
+    if let Ok(output) = std::process::Command::new("wl-paste")
+        .arg("--no-newline")
+        .output()
+    {
+        if output.status.success() {
+            let text = String::from_utf8_lossy(&output.stdout).to_string();
+            if !text.is_empty() {
+                return Ok(ClipboardResult::Text(text));
+            }
+        }
+
+        // wl-paste ran but no text — try image
+        if let Some(result) = paste_wayland_image() {
+            return Ok(result);
+        }
+
+        // wl-paste exists but clipboard is empty
+        return Err(ClipboardResult::Empty("Clipboard is empty.".to_string()));
+    }
+
+    // wl-paste not found — fall back to arboard (XWayland)
+    paste_arboard()
+}
+
+/// Try to read an image from the Wayland clipboard via wl-paste.
+fn paste_wayland_image() -> Option<ClipboardResult> {
+    let output = std::process::Command::new("wl-paste")
+        .args(["--no-newline", "--type", "image/png"])
+        .output()
+        .ok()?;
+
+    if !output.status.success() || output.stdout.is_empty() {
+        return None;
+    }
+
+    let png_buf = output.stdout;
+
+    // Decode to get dimensions
+    let reader = image::ImageReader::new(std::io::Cursor::new(&png_buf))
+        .with_guessed_format()
+        .ok()?;
+    let img = reader.decode().ok()?;
+    let width = img.width();
+    let height = img.height();
+
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD as BASE64;
+
+    let raw_size = png_buf.len();
+    let encoded = BASE64.encode(&png_buf);
+
+    Some(ClipboardResult::Image {
+        encoded,
+        mime: "image/png".to_string(),
+        raw_size,
+        width,
+        height,
+    })
+}
+
+/// Paste via arboard (X11 / macOS / Windows).
+fn paste_arboard() -> Result<ClipboardResult, ClipboardResult> {
+    let mut clipboard = arboard::Clipboard::new()
+        .map_err(|e| ClipboardResult::Error(format!("Clipboard error: {e}")))?;
+
+    // Try text first — this is what the user almost always wants with Ctrl+V
+    if let Ok(text) = clipboard.get_text()
+        && !text.is_empty()
+    {
+        return Ok(ClipboardResult::Text(text));
+    }
+
+    // Fall back to image
+    match clipboard.get_image() {
+        Ok(img_data) => {
+            use base64::Engine;
+            use base64::engine::general_purpose::STANDARD as BASE64;
+
+            let width = img_data.width as u32;
+            let height = img_data.height as u32;
+            let rgba: Vec<u8> = img_data.bytes.into_owned();
+
+            let img = image::RgbaImage::from_raw(width, height, rgba).ok_or_else(|| {
+                ClipboardResult::Error("Failed to decode clipboard image data.".to_string())
+            })?;
+
+            let mut png_buf: Vec<u8> = Vec::new();
+            let mut cursor = std::io::Cursor::new(&mut png_buf);
+            img.write_to(&mut cursor, image::ImageFormat::Png)
+                .map_err(|e| ClipboardResult::Error(format!("Failed to encode image as PNG: {e}")))?;
+
+            let raw_size = png_buf.len();
+            let encoded = BASE64.encode(&png_buf);
+
+            Ok(ClipboardResult::Image {
+                encoded,
+                mime: "image/png".to_string(),
+                raw_size,
+                width,
+                height,
+            })
+        }
+        Err(_) => Err(ClipboardResult::Empty("Clipboard is empty.".to_string())),
+    }
 }
 
 /// Poll for a completed clipboard read (non-blocking).

@@ -223,12 +223,35 @@ pub fn screen_to_text_pos(
     Some(TextPos::new(logical_line, col_offset + col))
 }
 
-/// Copy text to the system clipboard using the OSC 52 escape sequence.
-/// This works in most modern terminals (iTerm2, kitty, alacritty, Windows Terminal, etc.)
+/// Copy text to the system clipboard.
+///
+/// On Wayland, pipes the text to `wl-copy` so it reaches the Wayland
+/// clipboard directly. Falls back to the OSC 52 terminal escape sequence
+/// which works in most modern terminals (kitty, alacritty, foot, etc.)
+/// but requires the terminal to have OSC 52 write support enabled.
 pub fn copy_to_clipboard(text: &str) {
     if text.is_empty() {
         return;
     }
+
+    // On Wayland, try wl-copy first for reliable clipboard access
+    if std::env::var("WAYLAND_DISPLAY").is_ok() {
+        if let Ok(mut child) = std::process::Command::new("wl-copy")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+        {
+            if let Some(ref mut stdin) = child.stdin {
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            // Don't wait — wl-copy detaches and keeps the content available
+            let _ = child.wait();
+            return;
+        }
+        // wl-copy not found, fall through to OSC 52
+    }
+
     let encoded = base64_encode(text);
     // OSC 52: Set clipboard. 'c' = system clipboard.
     let osc = format!("\x1b]52;c;{}\x07", encoded);
