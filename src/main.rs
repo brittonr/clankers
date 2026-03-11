@@ -102,11 +102,11 @@ async fn main() -> Result<()> {
         .clone()
         .or_else(|| cli.system_prompt_file.as_ref().and_then(|f| std::fs::read_to_string(f).ok()))
         .unwrap_or_else(|| {
-            use clankers::agent::system_prompt::{PromptFeatures, build_default_system_prompt};
+            use clankers::agent::system_prompt::{PromptFeatures, default_system_prompt};
             // In the main entrypoint we don't know the mode yet (dispatch
             // happens later), so we include interactive-appropriate sections.
             // Daemon mode builds its own system prompt via DaemonConfig.
-            build_default_system_prompt(&PromptFeatures {
+            default_system_prompt(&PromptFeatures {
                 nix_available,
                 multi_model: has_multi_model,
                 daemon_mode: false,

@@ -222,10 +222,7 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
     tools
 }
 
-/// Build the default flat tool list (all tiers active). Backward compat wrapper.
-pub fn build_tools_with_env(env: &ToolEnv) -> Vec<Arc<dyn Tool>> {
-    build_tiered_tools(env).into_iter().map(|(_, tool)| tool).collect()
-}
+
 
 /// Initialize the plugin manager, discover and load all plugins from the
 /// given directories. Returns the manager wrapped in Arc<Mutex<>> for sharing.
@@ -380,18 +377,6 @@ fn build_bare_tools(
             Arc::clone(manager),
         )));
     }
-}
-
-/// Build the full tool set (built-in + plugin) from a [`ToolEnv`].
-pub fn build_all_tools_with_env(
-    env: &ToolEnv,
-    plugin_manager: Option<&Arc<Mutex<PluginManager>>>,
-) -> Vec<Arc<dyn Tool>> {
-    let mut tools = build_tools_with_env(env);
-    if let Some(manager) = plugin_manager {
-        tools.extend(build_plugin_tools(&tools, manager, env.panel_tx.as_ref()));
-    }
-    tools
 }
 
 /// Build the full tiered tool set (built-in with tiers + plugin tools as Specialty).

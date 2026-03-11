@@ -91,11 +91,18 @@ pub(crate) fn spawn_agent_task(
                     handle_switch_account(&mut agent, &done_tx, &account_name).await;
                 }
                 AgentCommand::SetDisabledTools(disabled) => {
-                    let all_tools = crate::modes::common::build_all_tools_with_env(
+                    use crate::modes::common::ToolTier;
+                    let tiered = crate::modes::common::build_all_tiered_tools(
                         &tool_env_for_rebuild,
                         plugin_manager.as_ref(),
                     );
-                    let filtered: Vec<Arc<dyn Tool>> = all_tools
+                    // Interactive agent task: Core + Specialty + Orchestration
+                    let tool_set = crate::modes::common::ToolSet::new(
+                        tiered,
+                        [ToolTier::Core, ToolTier::Specialty, ToolTier::Orchestration],
+                    );
+                    let filtered: Vec<Arc<dyn Tool>> = tool_set
+                        .active_tools()
                         .into_iter()
                         .filter(|t| !disabled.contains(&t.definition().name))
                         .collect();

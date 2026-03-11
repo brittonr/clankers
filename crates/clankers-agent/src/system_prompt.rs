@@ -371,8 +371,7 @@ inspect (by PID), history.";
 /// Build the default system prompt with only relevant sections included.
 ///
 /// Sections are conditionally appended based on which features are active.
-/// When `features` is `None`, returns the legacy full prompt for backward compat.
-pub fn build_default_system_prompt(features: &PromptFeatures) -> String {
+pub fn default_system_prompt(features: &PromptFeatures) -> String {
     let mut parts = vec![BASE_PROMPT.to_string()];
 
     if features.nix_available {
@@ -389,19 +388,6 @@ pub fn build_default_system_prompt(features: &PromptFeatures) -> String {
     }
 
     parts.concat()
-}
-
-/// Default base system prompt when no agent definition is specified.
-///
-/// Returns the full prompt with all sections for backward compat.
-/// Prefer `build_default_system_prompt()` with explicit feature flags.
-pub fn default_system_prompt() -> String {
-    build_default_system_prompt(&PromptFeatures {
-        nix_available: true,
-        multi_model: true,
-        daemon_mode: true,
-        process_monitor: true,
-    })
 }
 
 /// Detect whether `nix` is available on this system.
@@ -548,7 +534,13 @@ mod tests {
 
     #[test]
     fn test_default_system_prompt_not_empty() {
-        let prompt = default_system_prompt();
+        let features = PromptFeatures {
+            nix_available: true,
+            multi_model: true,
+            daemon_mode: true,
+            process_monitor: true,
+        };
+        let prompt = default_system_prompt(&features);
         assert!(!prompt.is_empty());
         assert!(prompt.contains("clankers"));
         assert!(prompt.contains("coding agent"));
@@ -748,7 +740,7 @@ mod tests {
         assert_eq!(result.expect("should have APPEND_SYSTEM.md"), "Extra instructions");
     }
 
-    // ── PromptFeatures / build_default_system_prompt ────────────────
+    // ── PromptFeatures / default_system_prompt ────────────────
 
     #[test]
     fn prompt_headless_no_nix() {
@@ -758,7 +750,7 @@ mod tests {
             daemon_mode: false,
             process_monitor: false,
         };
-        let prompt = build_default_system_prompt(&features);
+        let prompt = default_system_prompt(&features);
         assert!(prompt.contains("clankers"));
         assert!(prompt.contains("coding agent"));
         assert!(!prompt.contains("nix-shell"));
@@ -775,7 +767,7 @@ mod tests {
             daemon_mode: false,
             process_monitor: false,
         };
-        let prompt = build_default_system_prompt(&features);
+        let prompt = default_system_prompt(&features);
         assert!(prompt.contains("nix-shell"));
         assert!(!prompt.contains("switch_model"));
         assert!(!prompt.contains("HEARTBEAT"));
@@ -789,7 +781,7 @@ mod tests {
             daemon_mode: false,
             process_monitor: false,
         };
-        let prompt = build_default_system_prompt(&features);
+        let prompt = default_system_prompt(&features);
         assert!(prompt.contains("nix-shell"));
         assert!(prompt.contains("switch_model"));
         assert!(!prompt.contains("HEARTBEAT"));
@@ -803,7 +795,7 @@ mod tests {
             daemon_mode: true,
             process_monitor: true,
         };
-        let prompt = build_default_system_prompt(&features);
+        let prompt = default_system_prompt(&features);
         assert!(prompt.contains("nix-shell"));
         assert!(prompt.contains("switch_model"));
         assert!(prompt.contains("HEARTBEAT"));
@@ -813,7 +805,7 @@ mod tests {
     #[test]
     fn prompt_base_always_present() {
         let features = PromptFeatures::default();
-        let prompt = build_default_system_prompt(&features);
+        let prompt = default_system_prompt(&features);
         assert!(prompt.contains("clankers"));
         assert!(prompt.contains("coding agent"));
         assert!(prompt.contains("Guidelines"));
@@ -827,7 +819,7 @@ mod tests {
             daemon_mode: true,
             process_monitor: true,
         };
-        let conditional_prompt = build_default_system_prompt(&features);
+        let conditional_prompt = default_system_prompt(&features);
         let mut resources = make_test_resources();
         resources.system_prompt_override = Some("Custom system prompt".to_string());
 
@@ -837,9 +829,14 @@ mod tests {
     }
 
     #[test]
-    fn prompt_default_backward_compat() {
-        let prompt = default_system_prompt();
-        // default_system_prompt() with all features should have all sections
+    fn prompt_all_features_has_all_sections() {
+        let features = PromptFeatures {
+            nix_available: true,
+            multi_model: true,
+            daemon_mode: true,
+            process_monitor: true,
+        };
+        let prompt = default_system_prompt(&features);
         assert!(prompt.contains("clankers"));
         assert!(prompt.contains("nix-shell"));
         assert!(prompt.contains("switch_model"));
