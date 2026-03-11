@@ -311,9 +311,21 @@ fn load_spec_context(_project_root: &Path) -> String {
     String::new()
 }
 
-/// Default base system prompt when no agent definition is specified
-pub fn default_system_prompt() -> &'static str {
-    r#"You are clankers, a terminal coding agent. You help users by reading files, executing commands, editing code, and writing new files.
+/// Feature flags controlling which system prompt sections are included.
+#[derive(Debug, Clone, Default)]
+pub struct PromptFeatures {
+    /// Nix is available on this system (`which nix` succeeded at startup).
+    pub nix_available: bool,
+    /// Multiple models/roles are configured (model switching makes sense).
+    pub multi_model: bool,
+    /// Running in daemon or RPC mode (HEARTBEAT.md is relevant).
+    pub daemon_mode: bool,
+    /// Process monitor is active (procmon tool is registered).
+    pub process_monitor: bool,
+}
+
+const BASE_PROMPT: &str = "\
+You are clankers, a terminal coding agent. You help users by reading files, executing commands, editing code, and writing new files.
 
 Guidelines:
 - Use tools to explore the codebase before making changes
@@ -321,77 +333,88 @@ Guidelines:
 - Make precise, surgical edits rather than full file rewrites
 - Run tests after making changes to verify correctness
 - Be concise in responses
-- Show file paths clearly when discussing files
+- Show file paths clearly when discussing files";
+
+const NIX_SECTION: &str = "
 
 ## Handling Missing Commands/Packages
 
-When a command is not found (e.g., `python: command not found`), use Nix to run it ephemerally. **NEVER use `nix profile install`** - it causes conflicts.
+When a command is not found, use Nix to run it ephemerally. **NEVER use `nix profile install`**.
 
-**Quick command execution:**
 ```bash
-nix-shell -p <package> --run "<command>"
-```
+nix-shell -p <package> --run \"<command>\"
+```";
 
-**Examples:**
-```bash
-# Run Python script
-nix-shell -p python3 --run "python3 script.py"
-
-# With multiple packages
-nix-shell -p nodejs nodePackages.npm --run "npm install"
-
-# Compile C code
-nix-shell -p gcc --run "gcc program.c -o program"
-```
-
-**For interactive development:**
-```bash
-# Enter shell with tools
-nix-shell -p python3 nodejs gcc
-
-# Or use nix develop for project environments
-nix develop
-```
-
-**Run applications directly:**
-```bash
-nix run nixpkgs#python3 -- script.py
-nix run nixpkgs#nodejs -- --version
-```
-
-This keeps the system clean while providing access to any package when needed.
+const MODEL_SWITCHING_SECTION: &str = "
 
 ## Model Switching
 
-You have a `switch_model` tool available. Use it when:
-- The task turns out simpler than expected (e.g., just reading a file, listing
-  items, running a grep) — switch to the 'smol' role for speed and cost savings.
-- The task turns out harder than expected (e.g., complex refactoring, multi-file
-  architectural changes, subtle bug requiring deep reasoning) — switch to the
-  'slow' role for maximum capability.
-- You've finished a hard sub-task and are moving to easier follow-up work —
-  switch back to 'smol' or 'default'.
+You have a `switch_model` tool. Use it when the task is simpler than expected \
+(switch to 'smol' for speed/cost savings), harder than expected (switch to 'slow' \
+for maximum capability), or when transitioning between hard and easy sub-tasks. \
+Don't switch unnecessarily. The switch takes effect on your next response.";
 
-Don't switch models unnecessarily. Stay on the current model if it's appropriate
-for the work at hand. The switch takes effect on your next response.
+const HEARTBEAT_SECTION: &str = "
 
 ## HEARTBEAT.md (daemon mode)
 
-You have a file called HEARTBEAT.md in your session directory. A background
-scheduler reads this file periodically and prompts you with its contents.
-Use it for reminders and recurring tasks. When asked to remember or schedule
-something, write it to HEARTBEAT.md. When you act on a task, mark it done
-or remove it.
+You have a HEARTBEAT.md in your session directory. A background scheduler reads \
+it periodically. Use it for reminders and recurring tasks.";
+
+const PROCMON_SECTION: &str = "
 
 ## Process Monitoring
 
-You have a `procmon` tool to inspect child processes spawned by your tools.
-Use it to check on long-running builds, monitor memory usage, or debug hung
-processes. Actions:
-- `list`: show all active processes with CPU/memory/time
-- `summary`: one-line aggregate stats
-- `inspect`: deep-dive on a specific PID (pass `pid` parameter)
-- `history`: recently completed processes with exit codes and peak memory"#
+You have a `procmon` tool to inspect child processes. Actions: list, summary, \
+inspect (by PID), history.";
+
+/// Build the default system prompt with only relevant sections included.
+///
+/// Sections are conditionally appended based on which features are active.
+/// When `features` is `None`, returns the legacy full prompt for backward compat.
+pub fn build_default_system_prompt(features: &PromptFeatures) -> String {
+    let mut parts = vec![BASE_PROMPT.to_string()];
+
+    if features.nix_available {
+        parts.push(NIX_SECTION.to_string());
+    }
+    if features.multi_model {
+        parts.push(MODEL_SWITCHING_SECTION.to_string());
+    }
+    if features.daemon_mode {
+        parts.push(HEARTBEAT_SECTION.to_string());
+    }
+    if features.process_monitor {
+        parts.push(PROCMON_SECTION.to_string());
+    }
+
+    parts.concat()
+}
+
+/// Default base system prompt when no agent definition is specified.
+///
+/// Returns the full prompt with all sections for backward compat.
+/// Prefer `build_default_system_prompt()` with explicit feature flags.
+pub fn default_system_prompt() -> String {
+    build_default_system_prompt(&PromptFeatures {
+        nix_available: true,
+        multi_model: true,
+        daemon_mode: true,
+        process_monitor: true,
+    })
+}
+
+/// Detect whether `nix` is available on this system.
+///
+/// Runs `which nix` once; cache the result for the session.
+pub fn detect_nix() -> bool {
+    std::process::Command::new("which")
+        .arg("nix")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 #[cfg(test)]
@@ -723,5 +746,104 @@ mod tests {
 
         let result = load_append_system_md(&global, &project);
         assert_eq!(result.expect("should have APPEND_SYSTEM.md"), "Extra instructions");
+    }
+
+    // ── PromptFeatures / build_default_system_prompt ────────────────
+
+    #[test]
+    fn prompt_headless_no_nix() {
+        let features = PromptFeatures {
+            nix_available: false,
+            multi_model: false,
+            daemon_mode: false,
+            process_monitor: false,
+        };
+        let prompt = build_default_system_prompt(&features);
+        assert!(prompt.contains("clankers"));
+        assert!(prompt.contains("coding agent"));
+        assert!(!prompt.contains("nix-shell"));
+        assert!(!prompt.contains("switch_model"));
+        assert!(!prompt.contains("HEARTBEAT"));
+        assert!(!prompt.contains("procmon"));
+    }
+
+    #[test]
+    fn prompt_headless_with_nix() {
+        let features = PromptFeatures {
+            nix_available: true,
+            multi_model: false,
+            daemon_mode: false,
+            process_monitor: false,
+        };
+        let prompt = build_default_system_prompt(&features);
+        assert!(prompt.contains("nix-shell"));
+        assert!(!prompt.contains("switch_model"));
+        assert!(!prompt.contains("HEARTBEAT"));
+    }
+
+    #[test]
+    fn prompt_interactive() {
+        let features = PromptFeatures {
+            nix_available: true,
+            multi_model: true,
+            daemon_mode: false,
+            process_monitor: false,
+        };
+        let prompt = build_default_system_prompt(&features);
+        assert!(prompt.contains("nix-shell"));
+        assert!(prompt.contains("switch_model"));
+        assert!(!prompt.contains("HEARTBEAT"));
+    }
+
+    #[test]
+    fn prompt_daemon_all_sections() {
+        let features = PromptFeatures {
+            nix_available: true,
+            multi_model: true,
+            daemon_mode: true,
+            process_monitor: true,
+        };
+        let prompt = build_default_system_prompt(&features);
+        assert!(prompt.contains("nix-shell"));
+        assert!(prompt.contains("switch_model"));
+        assert!(prompt.contains("HEARTBEAT"));
+        assert!(prompt.contains("procmon"));
+    }
+
+    #[test]
+    fn prompt_base_always_present() {
+        let features = PromptFeatures::default();
+        let prompt = build_default_system_prompt(&features);
+        assert!(prompt.contains("clankers"));
+        assert!(prompt.contains("coding agent"));
+        assert!(prompt.contains("Guidelines"));
+    }
+
+    #[test]
+    fn prompt_system_md_overrides_features() {
+        let features = PromptFeatures {
+            nix_available: true,
+            multi_model: true,
+            daemon_mode: true,
+            process_monitor: true,
+        };
+        let conditional_prompt = build_default_system_prompt(&features);
+        let mut resources = make_test_resources();
+        resources.system_prompt_override = Some("Custom system prompt".to_string());
+
+        let result = assemble_system_prompt(&conditional_prompt, &resources, None, None);
+        assert!(result.contains("Custom system prompt"));
+        assert!(!result.contains("nix-shell"));
+    }
+
+    #[test]
+    fn prompt_default_backward_compat() {
+        let prompt = default_system_prompt();
+        // default_system_prompt() with all features should have all sections
+        assert!(prompt.contains("clankers"));
+        assert!(prompt.contains("nix-shell"));
+        assert!(prompt.contains("switch_model"));
+        assert!(prompt.contains("HEARTBEAT"));
+        assert!(prompt.contains("procmon"));
     }
 }

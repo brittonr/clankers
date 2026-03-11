@@ -92,12 +92,27 @@ async fn main() -> Result<()> {
 
     let model = cli.model.clone().unwrap_or(settings.model.clone());
 
+    // Detect system capabilities for conditional prompt sections
+    let nix_available = clankers::agent::system_prompt::detect_nix();
+    let has_multi_model = settings.model_roles.is_configured();
+
     // Build system prompt from multiple sources
     let base_prompt = cli
         .system_prompt
         .clone()
         .or_else(|| cli.system_prompt_file.as_ref().and_then(|f| std::fs::read_to_string(f).ok()))
-        .unwrap_or_else(|| clankers::agent::system_prompt::default_system_prompt().to_string());
+        .unwrap_or_else(|| {
+            use clankers::agent::system_prompt::{PromptFeatures, build_default_system_prompt};
+            // In the main entrypoint we don't know the mode yet (dispatch
+            // happens later), so we include interactive-appropriate sections.
+            // Daemon mode builds its own system prompt via DaemonConfig.
+            build_default_system_prompt(&PromptFeatures {
+                nix_available,
+                multi_model: has_multi_model,
+                daemon_mode: false,
+                process_monitor: true,
+            })
+        });
 
     let resources = clankers::agent::system_prompt::discover_resources(&paths, &project_paths);
     let system_prompt = clankers::agent::system_prompt::assemble_system_prompt(

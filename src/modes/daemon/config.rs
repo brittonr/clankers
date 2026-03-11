@@ -46,7 +46,14 @@ impl Default for DaemonConfig {
     fn default() -> Self {
         Self {
             model: "claude-sonnet-4-5".to_string(),
-            system_prompt: crate::agent::system_prompt::default_system_prompt().to_string(),
+            system_prompt: crate::agent::system_prompt::build_default_system_prompt(
+                &crate::agent::system_prompt::PromptFeatures {
+                    nix_available: crate::agent::system_prompt::detect_nix(),
+                    multi_model: true,
+                    daemon_mode: true,
+                    process_monitor: true,
+                },
+            ),
             settings: Settings::default(),
             tags: Vec::new(),
             allow_all: false,
