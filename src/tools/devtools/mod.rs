@@ -4,4 +4,6 @@
 //! are useful for development, visual debugging, and TUI validation.
 
 #[cfg(feature = "tui-validate")]
+mod pty_harness;
+#[cfg(feature = "tui-validate")]
 pub mod validate_tui;
