@@ -333,7 +333,9 @@ Guidelines:
 - Make precise, surgical edits rather than full file rewrites
 - Run tests after making changes to verify correctness
 - Be concise in responses
-- Show file paths clearly when discussing files";
+- Show file paths clearly when discussing files
+- When you need multiple independent pieces of information, call multiple tools in a single response rather than one at a time
+- Prefer read/grep over bash cat/sed for file operations";
 
 const NIX_SECTION: &str = "
 

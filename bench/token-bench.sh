@@ -166,6 +166,17 @@ turns = 0
 total = {"input": 0, "output": 0, "cache_read": 0, "cache_write": 0, "total_tokens": 0, "cost": 0.0}
 turn_data = []
 
+def extract_usage(u):
+    """Extract usage from a pi usage dict (handles both camelCase and snake_case)"""
+    inp = u.get("input", u.get("input_tokens", 0))
+    out = u.get("output", u.get("output_tokens", 0))
+    cr = u.get("cacheRead", u.get("cache_read", u.get("cache_read_tokens", 0)))
+    cw = u.get("cacheWrite", u.get("cache_write", u.get("cache_write_tokens", 0)))
+    tt = u.get("totalTokens", u.get("total_tokens", inp + out))
+    cost_obj = u.get("cost", {})
+    cost = cost_obj.get("total", 0) if isinstance(cost_obj, dict) else (cost_obj if isinstance(cost_obj, (int, float)) else 0)
+    return inp, out, cr, cw, tt, cost
+
 with open(path) as f:
     for line in f:
         line = line.strip()
@@ -176,18 +187,16 @@ with open(path) as f:
         except json.JSONDecodeError:
             continue
 
-        if evt.get("type") == "message_end":
+        evt_type = evt.get("type", "")
+
+        # Pi message_end with assistant role and usage
+        if evt_type == "message_end":
             msg = evt.get("message", {})
             if msg.get("role") == "assistant":
                 u = msg.get("usage", {})
                 if u:
                     turns += 1
-                    inp = u.get("input", 0)
-                    out = u.get("output", 0)
-                    cr = u.get("cacheRead", 0)
-                    cw = u.get("cacheWrite", 0)
-                    tt = u.get("totalTokens", 0)
-                    cost = u.get("cost", {}).get("total", 0)
+                    inp, out, cr, cw, tt, cost = extract_usage(u)
                     total["input"] += inp
                     total["output"] += out
                     total["cache_read"] += cr
@@ -199,6 +208,24 @@ with open(path) as f:
                         "cache_read": cr, "cache_write": cw,
                         "total_tokens": tt, "cost": round(cost, 6)
                     })
+
+        # Also check result events (pi sometimes wraps usage differently)
+        elif evt_type == "result":
+            u = evt.get("usage", {})
+            if u:
+                turns += 1
+                inp, out, cr, cw, tt, cost = extract_usage(u)
+                total["input"] += inp
+                total["output"] += out
+                total["cache_read"] += cr
+                total["cache_write"] += cw
+                total["total_tokens"] += tt
+                total["cost"] += cost
+                turn_data.append({
+                    "turn": turns, "input": inp, "output": out,
+                    "cache_read": cr, "cache_write": cw,
+                    "total_tokens": tt, "cost": round(cost, 6)
+                })
 
 print(json.dumps({
     "agent": "pi",

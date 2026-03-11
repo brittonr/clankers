@@ -1,7 +1,7 @@
 //! Context building, token estimation, window management
 
 use clankers_config::settings::Settings;
-use clankers_provider::message::AgentMessage;
+use clankers_message::message::*;
 
 /// Built context ready for an LLM request
 #[derive(Debug, Clone)]
@@ -105,6 +105,101 @@ pub fn truncate_messages(
     result
 }
 
+/// Compact old tool results to reduce token usage.
+///
+/// Replaces old ToolResult messages with short summaries while keeping
+/// the last `keep_recent` tool results intact for context.
+pub fn compact_stale_tool_results(messages: &[AgentMessage], keep_recent: usize) -> Vec<AgentMessage> {
+    let mut result = Vec::with_capacity(messages.len());
+
+    // First pass: count ToolResult messages from the end
+    let tool_result_positions: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .rev()
+        .filter_map(|(i, msg)| match msg {
+            AgentMessage::ToolResult(_) => Some(i),
+            _ => None,
+        })
+        .collect();
+
+    // Second pass: process messages, compacting old tool results
+    for (i, message) in messages.iter().enumerate() {
+        match message {
+            AgentMessage::ToolResult(tool_result) => {
+                // Find this message's position in the tool result list
+                let tool_position = tool_result_positions.iter().position(|&pos| pos == i);
+                
+                if let Some(pos) = tool_position {
+                    if pos < keep_recent {
+                        // Keep recent tool results intact
+                        result.push(message.clone());
+                    } else {
+                        // Replace old tool results with summary
+                        let summary = create_tool_result_summary(tool_result);
+                        let compacted_result = ToolResultMessage {
+                            id: tool_result.id.clone(),
+                            call_id: tool_result.call_id.clone(),
+                            tool_name: tool_result.tool_name.clone(),
+                            content: vec![Content::Text { text: summary }],
+                            is_error: tool_result.is_error,
+                            details: tool_result.details.clone(),
+                            timestamp: tool_result.timestamp,
+                        };
+                        result.push(AgentMessage::ToolResult(compacted_result));
+                    }
+                } else {
+                    // Shouldn't happen, but keep as-is if we can't find position
+                    result.push(message.clone());
+                }
+            }
+            _ => {
+                // All non-ToolResult messages pass through unchanged
+                result.push(message.clone());
+            }
+        }
+    }
+
+    result
+}
+
+/// Create a summary string for a tool result
+fn create_tool_result_summary(tool_result: &ToolResultMessage) -> String {
+    let mut text_lines = 0;
+    let mut text_bytes = 0;
+    let mut has_image = false;
+
+    for content in &tool_result.content {
+        match content {
+            Content::Text { text } => {
+                text_lines += text.lines().count();
+                text_bytes += text.len();
+            }
+            Content::Image { .. } => {
+                has_image = true;
+            }
+            Content::Thinking { thinking, .. } => {
+                text_lines += thinking.lines().count();
+                text_bytes += thinking.len();
+            }
+            Content::ToolUse { .. } | Content::ToolResult { .. } => {
+                // These are unlikely in tool result content, but count as text
+                let json_str = serde_json::to_string(content).unwrap_or_default();
+                text_lines += json_str.lines().count();
+                text_bytes += json_str.len();
+            }
+        }
+    }
+
+    if has_image && text_bytes > 0 {
+        format!("[{}: {} lines, {} bytes, image]", tool_result.tool_name, text_lines, text_bytes)
+    } else if has_image {
+        format!("[{}: image]", tool_result.tool_name)
+    } else {
+        format!("[{}: {} lines, {} bytes]", tool_result.tool_name, text_lines, text_bytes)
+    }
+}
+
 /// Estimate tokens for a single message
 fn estimate_message_tokens(message: &AgentMessage) -> usize {
     let json = serde_json::to_string(message).unwrap_or_default();
@@ -114,7 +209,9 @@ fn estimate_message_tokens(message: &AgentMessage) -> usize {
 /// Build full context for an LLM request
 pub fn build_context(messages: &[AgentMessage], system_prompt: &str, max_input_tokens: usize) -> AgentContext {
     let system_tokens = clankers_util::token::estimate_tokens(system_prompt);
-    let truncated = truncate_messages(messages, max_input_tokens, system_tokens);
+    // Compact old tool results before truncation
+    let compacted = compact_stale_tool_results(messages, 3);
+    let truncated = truncate_messages(&compacted, max_input_tokens, system_tokens);
     let msg_tokens: usize = truncated.iter().map(estimate_message_tokens).sum();
 
     AgentContext {
@@ -129,12 +226,40 @@ mod tests {
     use chrono::Utc;
 
     use super::*;
-    use clankers_provider::message::*;
 
     fn make_user_msg(text: &str) -> AgentMessage {
         AgentMessage::User(UserMessage {
             id: MessageId::generate(),
             content: vec![Content::Text { text: text.to_string() }],
+            timestamp: Utc::now(),
+        })
+    }
+
+    fn make_tool_result_msg(tool_name: &str, text: &str) -> AgentMessage {
+        AgentMessage::ToolResult(ToolResultMessage {
+            id: MessageId::generate(),
+            call_id: format!("call_{}", generate_id()),
+            tool_name: tool_name.to_string(),
+            content: vec![Content::Text { text: text.to_string() }],
+            is_error: false,
+            details: None,
+            timestamp: Utc::now(),
+        })
+    }
+
+    fn make_tool_result_with_image(tool_name: &str) -> AgentMessage {
+        AgentMessage::ToolResult(ToolResultMessage {
+            id: MessageId::generate(),
+            call_id: format!("call_{}", generate_id()),
+            tool_name: tool_name.to_string(),
+            content: vec![Content::Image { 
+                source: ImageSource::Base64 {
+                    media_type: "image/png".to_string(),
+                    data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==".to_string(),
+                }
+            }],
+            is_error: false,
+            details: None,
             timestamp: Utc::now(),
         })
     }
@@ -192,5 +317,156 @@ mod tests {
         assert_eq!(ctx.system_prompt, "system prompt");
         assert!(!ctx.messages.is_empty());
         assert!(ctx.estimated_tokens > 0);
+    }
+
+    #[test]
+    fn test_compact_keeps_recent_tool_results() {
+        let msgs = vec![
+            make_user_msg("start"),
+            make_tool_result_msg("read", "old content"),
+            make_tool_result_msg("write", "another old result"),
+            make_tool_result_msg("bash", "recent result 1"),
+            make_tool_result_msg("edit", "recent result 2"),
+            make_tool_result_msg("grep", "recent result 3"),
+            make_user_msg("end"),
+        ];
+
+        let result = compact_stale_tool_results(&msgs, 3);
+        assert_eq!(result.len(), 7);
+
+        // Check that the last 3 tool results are kept intact
+        if let AgentMessage::ToolResult(tool_result) = &result[3] {
+            assert_eq!(tool_result.tool_name, "bash");
+            if let Content::Text { text } = &tool_result.content[0] {
+                assert_eq!(text, "recent result 1");
+            }
+        } else {
+            panic!("Expected ToolResult");
+        }
+
+        // Check that earlier tool results are compacted
+        if let AgentMessage::ToolResult(tool_result) = &result[1] {
+            assert_eq!(tool_result.tool_name, "read");
+            if let Content::Text { text } = &tool_result.content[0] {
+                assert!(text.contains("[read:"));
+                assert!(text.contains("bytes]"));
+            }
+        } else {
+            panic!("Expected ToolResult");
+        }
+    }
+
+    #[test]
+    fn test_compact_replaces_old_tool_results() {
+        let old_content = "This is a multi-line\ntool result\nwith several lines";
+        let msgs = vec![
+            make_tool_result_msg("read", old_content),
+            make_tool_result_msg("write", "recent content"),
+        ];
+
+        let result = compact_stale_tool_results(&msgs, 1);
+        assert_eq!(result.len(), 2);
+
+        // First (old) result should be compacted
+        if let AgentMessage::ToolResult(tool_result) = &result[0] {
+            if let Content::Text { text } = &tool_result.content[0] {
+                assert!(text.starts_with("[read:"));
+                assert!(text.contains("3 lines"));
+                assert!(text.contains(&format!("{} bytes]", old_content.len())));
+            } else {
+                panic!("Expected text content");
+            }
+        } else {
+            panic!("Expected ToolResult");
+        }
+
+        // Second (recent) result should be intact
+        if let AgentMessage::ToolResult(tool_result) = &result[1] {
+            if let Content::Text { text } = &tool_result.content[0] {
+                assert_eq!(text, "recent content");
+            } else {
+                panic!("Expected text content");
+            }
+        } else {
+            panic!("Expected ToolResult");
+        }
+    }
+
+    #[test]
+    fn test_compact_preserves_non_tool_messages() {
+        let msgs = vec![
+            make_user_msg("user message 1"),
+            make_tool_result_msg("read", "old tool result"),
+            make_user_msg("user message 2"),
+            make_tool_result_msg("write", "recent tool result"),
+        ];
+
+        let result = compact_stale_tool_results(&msgs, 1);
+        assert_eq!(result.len(), 4);
+
+        // User messages should be unchanged
+        if let AgentMessage::User(user_msg) = &result[0] {
+            if let Content::Text { text } = &user_msg.content[0] {
+                assert_eq!(text, "user message 1");
+            }
+        } else {
+            panic!("Expected User message");
+        }
+
+        if let AgentMessage::User(user_msg) = &result[2] {
+            if let Content::Text { text } = &user_msg.content[0] {
+                assert_eq!(text, "user message 2");
+            }
+        } else {
+            panic!("Expected User message");
+        }
+    }
+
+    #[test]
+    fn test_compact_with_no_tool_results() {
+        let msgs = vec![
+            make_user_msg("hello"),
+            make_user_msg("world"),
+        ];
+
+        let result = compact_stale_tool_results(&msgs, 3);
+        assert_eq!(result.len(), 2);
+
+        // Messages should be unchanged
+        for (i, msg) in result.iter().enumerate() {
+            if let AgentMessage::User(user_msg) = msg {
+                if let Content::Text { text } = &user_msg.content[0] {
+                    match i {
+                        0 => assert_eq!(text, "hello"),
+                        1 => assert_eq!(text, "world"),
+                        _ => panic!("Unexpected message"),
+                    }
+                }
+            } else {
+                panic!("Expected User message");
+            }
+        }
+    }
+
+    #[test]
+    fn test_compact_with_image_content() {
+        let msgs = vec![
+            make_tool_result_with_image("screenshot"),
+            make_tool_result_msg("read", "recent content"),
+        ];
+
+        let result = compact_stale_tool_results(&msgs, 1);
+        assert_eq!(result.len(), 2);
+
+        // Image result should be compacted
+        if let AgentMessage::ToolResult(tool_result) = &result[0] {
+            if let Content::Text { text } = &tool_result.content[0] {
+                assert_eq!(text, "[screenshot: image]");
+            } else {
+                panic!("Expected text content after compaction");
+            }
+        } else {
+            panic!("Expected ToolResult");
+        }
     }
 }
