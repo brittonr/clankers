@@ -3,38 +3,37 @@
   "workspaceRoot": "/home/brittonr/git/clankers",
   "roots": [
     "path+file:///home/brittonr/git/clankers#0.1.0",
-    "path+file:///home/brittonr/git/clankers#0.1.0",
-    "path+file:///home/brittonr/git/clankers/crates/clankers-agent-defs#0.1.0",
-    "path+file:///home/brittonr/git/clankers/crates/clankers-auth#0.1.0",
-    "path+file:///home/brittonr/git/clankers/crates/clankers-db#0.1.0",
-    "path+file:///home/brittonr/git/clankers/crates/clankers-matrix#0.1.0",
-    "path+file:///home/brittonr/git/clankers/crates/clankers-merge#0.1.0",
-    "path+file:///home/brittonr/git/clankers/crates/clankers-model-selection#0.1.0",
-    "path+file:///home/brittonr/git/clankers/crates/clankers-procmon#0.1.0",
-    "path+file:///home/brittonr/git/clankers/crates/clankers-router#0.1.0",
-    "path+file:///home/brittonr/git/clankers/crates/clankers-specs#0.1.0",
-    "path+file:///home/brittonr/git/clankers/crates/clankers-tui#0.1.0",
-    "path+file:///home/brittonr/git/clankers/crates/clankers-tui-types#0.1.0",
-    "path+file:///home/brittonr/git/clankers/crates/clankers-zellij#0.1.0",
-    "path+file:///home/brittonr/git/clankers/xtask#0.1.0"
+    "path+file:///home/brittonr/git/clankers#0.1.0"
   ],
   "workspaceMembers": {
     "clankers": "path+file:///home/brittonr/git/clankers#0.1.0",
+    "clankers-agent": "path+file:///home/brittonr/git/clankers/crates/clankers-agent#0.1.0",
     "clankers-agent-defs": "path+file:///home/brittonr/git/clankers/crates/clankers-agent-defs#0.1.0",
     "clankers-auth": "path+file:///home/brittonr/git/clankers/crates/clankers-auth#0.1.0",
+    "clankers-config": "path+file:///home/brittonr/git/clankers/crates/clankers-config#0.1.0",
     "clankers-db": "path+file:///home/brittonr/git/clankers/crates/clankers-db#0.1.0",
+    "clankers-hooks": "path+file:///home/brittonr/git/clankers/crates/clankers-hooks#0.1.0",
+    "clankers-loop": "path+file:///home/brittonr/git/clankers/crates/clankers-loop#0.1.0",
     "clankers-matrix": "path+file:///home/brittonr/git/clankers/crates/clankers-matrix#0.1.0",
     "clankers-merge": "path+file:///home/brittonr/git/clankers/crates/clankers-merge#0.1.0",
+    "clankers-message": "path+file:///home/brittonr/git/clankers/crates/clankers-message#0.1.0",
     "clankers-model-selection": "path+file:///home/brittonr/git/clankers/crates/clankers-model-selection#0.1.0",
+    "clankers-plugin": "path+file:///home/brittonr/git/clankers/crates/clankers-plugin#0.1.0",
     "clankers-procmon": "path+file:///home/brittonr/git/clankers/crates/clankers-procmon#0.1.0",
+    "clankers-prompts": "path+file:///home/brittonr/git/clankers/crates/clankers-prompts#0.1.0",
+    "clankers-provider": "path+file:///home/brittonr/git/clankers/crates/clankers-provider#0.1.0",
     "clankers-router": "path+file:///home/brittonr/git/clankers/crates/clankers-router#0.1.0",
+    "clankers-scheduler": "path+file:///home/brittonr/git/clankers/crates/clankers-scheduler#0.1.0",
+    "clankers-session": "path+file:///home/brittonr/git/clankers/crates/clankers-session#0.1.0",
+    "clankers-skills": "path+file:///home/brittonr/git/clankers/crates/clankers-skills#0.1.0",
     "clankers-specs": "path+file:///home/brittonr/git/clankers/crates/clankers-specs#0.1.0",
     "clankers-tui": "path+file:///home/brittonr/git/clankers/crates/clankers-tui#0.1.0",
     "clankers-tui-types": "path+file:///home/brittonr/git/clankers/crates/clankers-tui-types#0.1.0",
+    "clankers-util": "path+file:///home/brittonr/git/clankers/crates/clankers-util#0.1.0",
     "clankers-zellij": "path+file:///home/brittonr/git/clankers/crates/clankers-zellij#0.1.0"
   },
-  "cargoLockHash": "4b8133e4b666352ce37f590e634b6a3d39ff6995fc54502d53a7392092c89098",
-  "inputsHash": "1f4c8669b5daba2b2fa40c257a5c7c98d296f2f61f1c21f4c9b30f4a8e8a1a1e",
+  "cargoLockHash": "14fdf3ce7921889f56820679a377bd87d48adc2dc120fe95534a66d639027f54",
+  "inputsHash": "a3eba836af23dab029b61de70498fd61331bc8e3c35ac742a02d6fd107d0458b",
   "crates": {
     "path+file:///home/brittonr/git/clankers#0.1.0": {
       "crateName": "clankers",
@@ -73,6 +72,10 @@
           "externCrateName": "chrono"
         },
         {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-agent#0.1.0",
+          "externCrateName": "clankers_agent"
+        },
+        {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-agent-defs#0.1.0",
           "externCrateName": "clankers_agent_defs"
         },
@@ -81,8 +84,20 @@
           "externCrateName": "clankers_auth"
         },
         {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-config#0.1.0",
+          "externCrateName": "clankers_config"
+        },
+        {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-db#0.1.0",
           "externCrateName": "clankers_db"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-hooks#0.1.0",
+          "externCrateName": "clankers_hooks"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-loop#0.1.0",
+          "externCrateName": "clankers_loop"
         },
         {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-matrix#0.1.0",
@@ -93,16 +108,44 @@
           "externCrateName": "clankers_merge"
         },
         {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-message#0.1.0",
+          "externCrateName": "clankers_message"
+        },
+        {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-model-selection#0.1.0",
           "externCrateName": "clankers_model_selection"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-plugin#0.1.0",
+          "externCrateName": "clankers_plugin"
         },
         {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-procmon#0.1.0",
           "externCrateName": "clankers_procmon"
         },
         {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-prompts#0.1.0",
+          "externCrateName": "clankers_prompts"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-provider#0.1.0",
+          "externCrateName": "clankers_provider"
+        },
+        {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-router#0.1.0",
           "externCrateName": "clankers_router"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-scheduler#0.1.0",
+          "externCrateName": "clankers_scheduler"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-session#0.1.0",
+          "externCrateName": "clankers_session"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-skills#0.1.0",
+          "externCrateName": "clankers_skills"
         },
         {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-specs#0.1.0",
@@ -115,6 +158,10 @@
         {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-tui-types#0.1.0",
           "externCrateName": "clankers_tui_types"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-util#0.1.0",
+          "externCrateName": "clankers_util"
         },
         {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-zellij#0.1.0",
@@ -322,24 +369,6 @@
         }
       ],
       "buildDependencies": [],
-      "devDependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#criterion@0.5.1",
-          "externCrateName": "criterion"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#pretty_assertions@1.4.1",
-          "externCrateName": "pretty_assertions"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tempfile@3.26.0",
-          "externCrateName": "tempfile"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio-test@0.4.5",
-          "externCrateName": "tokio_test"
-        }
-      ],
       "procMacro": false,
       "build": null,
       "libPath": null,
@@ -355,6 +384,130 @@
       ],
       "links": null,
       "description": "A terminal-based coding agent with LLM tool use, file I/O, code search, and WASM plugins",
+      "license": "AGPL-3.0-or-later"
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-agent#0.1.0": {
+      "crateName": "clankers-agent",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-agent"
+      },
+      "features": [
+        "default",
+        "openspec"
+      ],
+      "dependencies": [
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#async-trait@0.1.89",
+          "externCrateName": "async_trait"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#chrono@0.4.44",
+          "externCrateName": "chrono"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-config#0.1.0",
+          "externCrateName": "clankers_config"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-db#0.1.0",
+          "externCrateName": "clankers_db"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-hooks#0.1.0",
+          "externCrateName": "clankers_hooks"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-message#0.1.0",
+          "externCrateName": "clankers_message"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-model-selection#0.1.0",
+          "externCrateName": "clankers_model_selection"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-procmon#0.1.0",
+          "externCrateName": "clankers_procmon"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-prompts#0.1.0",
+          "externCrateName": "clankers_prompts"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-provider#0.1.0",
+          "externCrateName": "clankers_provider"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-router#0.1.0",
+          "externCrateName": "clankers_router"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-skills#0.1.0",
+          "externCrateName": "clankers_skills"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-specs#0.1.0",
+          "externCrateName": "clankers_specs"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-tui-types#0.1.0",
+          "externCrateName": "clankers_tui_types"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-util#0.1.0",
+          "externCrateName": "clankers_util"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#dirs@6.0.0",
+          "externCrateName": "dirs"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#futures@0.3.32",
+          "externCrateName": "futures"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#parking_lot@0.12.5",
+          "externCrateName": "parking_lot"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#regex@1.12.3",
+          "externCrateName": "regex"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
+          "externCrateName": "serde_json"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio@1.49.0",
+          "externCrateName": "tokio"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio-util@0.7.18",
+          "externCrateName": "tokio_util"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tracing@0.1.44",
+          "externCrateName": "tracing"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
+      "description": "Agent core — turn loop, event bus, tool interface, context management",
       "license": "AGPL-3.0-or-later"
     },
     "path+file:///home/brittonr/git/clankers/crates/clankers-agent-defs#0.1.0": {
@@ -386,12 +539,6 @@
         }
       ],
       "buildDependencies": [],
-      "devDependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tempfile@3.26.0",
-          "externCrateName": "tempfile"
-        }
-      ],
       "procMacro": false,
       "build": null,
       "libPath": null,
@@ -457,16 +604,6 @@
         }
       ],
       "buildDependencies": [],
-      "devDependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tempfile@3.26.0",
-          "externCrateName": "tempfile"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio@1.49.0",
-          "externCrateName": "tokio"
-        }
-      ],
       "procMacro": false,
       "build": null,
       "libPath": null,
@@ -477,6 +614,67 @@
       "crateBin": [],
       "links": null,
       "description": "UCAN-inspired capability-based authorization for clankers agents",
+      "license": "AGPL-3.0-or-later"
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-config#0.1.0": {
+      "crateName": "clankers-config",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-config"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-agent-defs#0.1.0",
+          "externCrateName": "clankers_agent_defs"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-hooks#0.1.0",
+          "externCrateName": "clankers_hooks"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-model-selection#0.1.0",
+          "externCrateName": "clankers_model_selection"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-tui#0.1.0",
+          "externCrateName": "clankers_tui"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-tui-types#0.1.0",
+          "externCrateName": "clankers_tui_types"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#dirs@6.0.0",
+          "externCrateName": "dirs"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#indexmap@2.13.0",
+          "externCrateName": "indexmap"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
+          "externCrateName": "serde_json"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
+      "description": "Configuration loading and path resolution for clankers",
       "license": "AGPL-3.0-or-later"
     },
     "path+file:///home/brittonr/git/clankers/crates/clankers-db#0.1.0": {
@@ -516,12 +714,6 @@
         }
       ],
       "buildDependencies": [],
-      "devDependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tempfile@3.26.0",
-          "externCrateName": "tempfile"
-        }
-      ],
       "procMacro": false,
       "build": null,
       "libPath": null,
@@ -532,6 +724,108 @@
       "crateBin": [],
       "links": null,
       "description": "Embedded redb database for persistent storage (audit, memory, sessions, history, usage)",
+      "license": "AGPL-3.0-or-later"
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-hooks#0.1.0": {
+      "crateName": "clankers-hooks",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-hooks"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#async-trait@0.1.89",
+          "externCrateName": "async_trait"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#chrono@0.4.44",
+          "externCrateName": "chrono"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
+          "externCrateName": "serde_json"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio@1.49.0",
+          "externCrateName": "tokio"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tracing@0.1.44",
+          "externCrateName": "tracing"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
+      "description": "Hook system — lifecycle, git, and plugin hooks with shared dispatch pipeline",
+      "license": "AGPL-3.0-or-later"
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-loop#0.1.0": {
+      "crateName": "clankers-loop",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-loop"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#chrono@0.4.44",
+          "externCrateName": "chrono"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#parking_lot@0.12.5",
+          "externCrateName": "parking_lot"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
+          "externCrateName": "serde_json"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio@1.49.0",
+          "externCrateName": "tokio"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tracing@0.1.44",
+          "externCrateName": "tracing"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#uuid@1.21.0",
+          "externCrateName": "uuid"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
+      "description": "Iterative loop execution engine — fixed iterations, poll-until, and watch loops",
       "license": "AGPL-3.0-or-later"
     },
     "path+file:///home/brittonr/git/clankers/crates/clankers-matrix#0.1.0": {
@@ -632,12 +926,6 @@
         }
       ],
       "buildDependencies": [],
-      "devDependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#pretty_assertions@1.4.1",
-          "externCrateName": "pretty_assertions"
-        }
-      ],
       "procMacro": false,
       "build": null,
       "libPath": null,
@@ -648,6 +936,55 @@
       "crateBin": [],
       "links": null,
       "description": "Order-independent merge engine based on pijul's patch algebra (graggles + categorical pushout)",
+      "license": "AGPL-3.0-or-later"
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-message#0.1.0": {
+      "crateName": "clankers-message",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-message"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#chrono@0.4.44",
+          "externCrateName": "chrono"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-router#0.1.0",
+          "externCrateName": "clankers_router"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#hex@0.4.3",
+          "externCrateName": "hex"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#rand@0.9.2",
+          "externCrateName": "rand"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
+          "externCrateName": "serde_json"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
+      "description": "Message types for LLM agent conversations",
       "license": "AGPL-3.0-or-later"
     },
     "path+file:///home/brittonr/git/clankers/crates/clankers-model-selection#0.1.0": {
@@ -703,6 +1040,67 @@
       "description": "Multi-model routing policy, cost tracking, and orchestration",
       "license": "AGPL-3.0-or-later"
     },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-plugin#0.1.0": {
+      "crateName": "clankers-plugin",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-plugin"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#async-trait@0.1.89",
+          "externCrateName": "async_trait"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#chrono@0.4.44",
+          "externCrateName": "chrono"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-hooks#0.1.0",
+          "externCrateName": "clankers_hooks"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-tui-types#0.1.0",
+          "externCrateName": "clankers_tui_types"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#extism@1.13.0",
+          "externCrateName": "extism"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
+          "externCrateName": "serde_json"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio@1.49.0",
+          "externCrateName": "tokio"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tracing@0.1.44",
+          "externCrateName": "tracing"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
+      "description": "Plugin system (Extism WASM) for clankers",
+      "license": "AGPL-3.0-or-later"
+    },
     "path+file:///home/brittonr/git/clankers/crates/clankers-procmon#0.1.0": {
       "crateName": "clankers-procmon",
       "version": "0.1.0",
@@ -750,6 +1148,119 @@
       "crateBin": [],
       "links": null,
       "description": "Process monitoring — tracks child processes, CPU, and memory usage",
+      "license": "AGPL-3.0-or-later"
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-prompts#0.1.0": {
+      "crateName": "clankers-prompts",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-prompts"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
+      "license": "AGPL-3.0-or-later"
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-provider#0.1.0": {
+      "crateName": "clankers-provider",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-provider"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#async-trait@0.1.89",
+          "externCrateName": "async_trait"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#base64@0.22.1",
+          "externCrateName": "base64"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#chrono@0.4.44",
+          "externCrateName": "chrono"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-message#0.1.0",
+          "externCrateName": "clankers_message"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-router#0.1.0",
+          "externCrateName": "clankers_router"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-tui-types#0.1.0",
+          "externCrateName": "clankers_tui_types"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#fs4@0.13.1",
+          "externCrateName": "fs4"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#futures@0.3.32",
+          "externCrateName": "futures"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#reqwest@0.12.28",
+          "externCrateName": "reqwest"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#reqwest-eventsource@0.6.0",
+          "externCrateName": "reqwest_eventsource"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
+          "externCrateName": "serde_json"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.18",
+          "externCrateName": "thiserror"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio@1.49.0",
+          "externCrateName": "tokio"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tracing@0.1.44",
+          "externCrateName": "tracing"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
+      "description": "LLM provider abstraction layer for clankers",
       "license": "AGPL-3.0-or-later"
     },
     "path+file:///home/brittonr/git/clankers/crates/clankers-router#0.1.0": {
@@ -868,24 +1379,6 @@
         }
       ],
       "buildDependencies": [],
-      "devDependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#pretty_assertions@1.4.1",
-          "externCrateName": "pretty_assertions"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tempfile@3.26.0",
-          "externCrateName": "tempfile"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio-test@0.4.5",
-          "externCrateName": "tokio_test"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tower@0.5.3",
-          "externCrateName": "tower"
-        }
-      ],
       "procMacro": false,
       "build": null,
       "libPath": null,
@@ -896,6 +1389,132 @@
       "crateBin": [],
       "links": null,
       "description": "Model router and auth gateway for LLM providers",
+      "license": "AGPL-3.0-or-later"
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-scheduler#0.1.0": {
+      "crateName": "clankers-scheduler",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-scheduler"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#chrono@0.4.44",
+          "externCrateName": "chrono"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#parking_lot@0.12.5",
+          "externCrateName": "parking_lot"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
+          "externCrateName": "serde_json"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio@1.49.0",
+          "externCrateName": "tokio"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio-util@0.7.18",
+          "externCrateName": "tokio_util"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tracing@0.1.44",
+          "externCrateName": "tracing"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#uuid@1.21.0",
+          "externCrateName": "uuid"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
+      "description": "Cron-like scheduling engine — define, persist, and tick scheduled tasks",
+      "license": "AGPL-3.0-or-later"
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-session#0.1.0": {
+      "crateName": "clankers-session",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-session"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#chrono@0.4.44",
+          "externCrateName": "chrono"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-message#0.1.0",
+          "externCrateName": "clankers_message"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
+          "externCrateName": "serde_json"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
+      "description": "Session persistence and tree management for agent conversations",
+      "license": "AGPL-3.0-or-later"
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-skills#0.1.0": {
+      "crateName": "clankers-skills",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-skills"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
       "license": "AGPL-3.0-or-later"
     },
     "path+file:///home/brittonr/git/clankers/crates/clankers-specs#0.1.0": {
@@ -927,12 +1546,6 @@
         }
       ],
       "buildDependencies": [],
-      "devDependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tempfile@3.26.0",
-          "externCrateName": "tempfile"
-        }
-      ],
       "procMacro": false,
       "build": null,
       "libPath": null,
@@ -1018,12 +1631,6 @@
         }
       ],
       "buildDependencies": [],
-      "devDependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tempfile@3.26.0",
-          "externCrateName": "tempfile"
-        }
-      ],
       "procMacro": false,
       "build": null,
       "libPath": null,
@@ -1069,6 +1676,87 @@
       ],
       "crateBin": [],
       "links": null
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-util#0.1.0": {
+      "crateName": "clankers-util",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-util"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#base64@0.22.1",
+          "externCrateName": "base64"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-message#0.1.0",
+          "externCrateName": "clankers_message"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-tui-types#0.1.0",
+          "externCrateName": "clankers_tui_types"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#dirs@6.0.0",
+          "externCrateName": "dirs"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#hex@0.4.3",
+          "externCrateName": "hex"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#ignore@0.4.25",
+          "externCrateName": "ignore"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#rand@0.9.2",
+          "externCrateName": "rand"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#ratatui@0.30.0",
+          "externCrateName": "ratatui"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
+          "externCrateName": "serde_json"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#syntect@5.3.0",
+          "externCrateName": "syntect"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tracing@0.1.44",
+          "externCrateName": "tracing"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tracing-subscriber@0.3.22",
+          "externCrateName": "tracing_subscriber"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#uuid@1.21.0",
+          "externCrateName": "uuid"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
+      "description": "Shared utility functions for clankers",
+      "license": "AGPL-3.0-or-later"
     },
     "path+file:///home/brittonr/git/clankers/crates/clankers-zellij#0.1.0": {
       "crateName": "clankers-zellij",
@@ -1464,35 +2152,6 @@
       "description": "Ambient Authority",
       "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
       "repository": "https://github.com/sunfishcode/ambient-authority"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#anes@0.1.6": {
-      "crateName": "anes",
-      "version": "0.1.6",
-      "edition": "2018",
-      "sha256": "4b46cbb362ab8752921c97e041f5e366ee6297bd428a31275b9fcf1e380f7299",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [
-        "default"
-      ],
-      "dependencies": [],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Robert Vojta <rvojta@me.com>"
-      ],
-      "description": "ANSI Escape Sequences provider & parser",
-      "license": "MIT OR Apache-2.0",
-      "repository": "https://github.com/zrzka/anes-rs"
     },
     "registry+https://github.com/rust-lang/crates.io-index#anstream@0.6.21": {
       "crateName": "anstream",
@@ -3393,33 +4052,6 @@
       "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
       "repository": "https://github.com/bytecodealliance/cap-std"
     },
-    "registry+https://github.com/rust-lang/crates.io-index#cast@0.3.0": {
-      "crateName": "cast",
-      "version": "0.3.0",
-      "edition": "2018",
-      "sha256": "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [],
-      "dependencies": [],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Jorge Aparicio <jorge@japaric.io>"
-      ],
-      "description": "Ergonomic, checked cast functions for primitive types",
-      "license": "MIT OR Apache-2.0",
-      "repository": "https://github.com/japaric/cast.rs"
-    },
     "registry+https://github.com/rust-lang/crates.io-index#castaway@0.2.4": {
       "crateName": "castaway",
       "version": "0.2.4",
@@ -3839,118 +4471,6 @@
       "homepage": "https://github.com/chronotope/chrono",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/chronotope/chrono"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#ciborium-io@0.2.2": {
-      "crateName": "ciborium-io",
-      "version": "0.2.2",
-      "edition": "2021",
-      "sha256": "05afea1e0a06c9be33d539b876f1ce3692f4afea2cb41f740e7743225ed1c757",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [
-        "alloc",
-        "std"
-      ],
-      "dependencies": [],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Nathaniel McCallum <npmccallum@profian.com>"
-      ],
-      "description": "Simplified Read/Write traits for no_std usage",
-      "homepage": "https://github.com/enarx/ciborium",
-      "license": "Apache-2.0",
-      "repository": "https://github.com/enarx/ciborium"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#ciborium-ll@0.2.2": {
-      "crateName": "ciborium-ll",
-      "version": "0.2.2",
-      "edition": "2021",
-      "sha256": "57663b653d948a338bfb3eeba9bb2fd5fcfaecb9e199e87e1eda4d9e8b240fd9",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#ciborium-io@0.2.2",
-          "externCrateName": "ciborium_io"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#half@2.7.1",
-          "externCrateName": "half"
-        }
-      ],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Nathaniel McCallum <npmccallum@profian.com>"
-      ],
-      "description": "Low-level CBOR codec primitives",
-      "homepage": "https://github.com/enarx/ciborium",
-      "license": "Apache-2.0",
-      "repository": "https://github.com/enarx/ciborium"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#ciborium@0.2.2": {
-      "crateName": "ciborium",
-      "version": "0.2.2",
-      "edition": "2021",
-      "sha256": "42e69ffd6f0917f5c029256a24d0161db17cea3997d185db0d35926308770f0e",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [
-        "default",
-        "std"
-      ],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#ciborium-io@0.2.2",
-          "externCrateName": "ciborium_io"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#ciborium-ll@0.2.2",
-          "externCrateName": "ciborium_ll"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
-          "externCrateName": "serde"
-        }
-      ],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Nathaniel McCallum <npmccallum@profian.com>"
-      ],
-      "description": "serde implementation of CBOR using ciborium-basic",
-      "homepage": "https://github.com/enarx/ciborium",
-      "license": "Apache-2.0",
-      "repository": "https://github.com/enarx/ciborium"
     },
     "registry+https://github.com/rust-lang/crates.io-index#cipher@0.4.4": {
       "crateName": "cipher",
@@ -5149,163 +5669,6 @@
       "description": "Fast, SIMD-accelerated CRC32 (IEEE) checksum computation",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/srijs/rust-crc32fast"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#criterion-plot@0.5.0": {
-      "crateName": "criterion-plot",
-      "version": "0.5.0",
-      "edition": "2018",
-      "sha256": "6b50826342786a51a89e2da3a28f1c32b06e387201bc2d19791f622c673706b1",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#cast@0.3.0",
-          "externCrateName": "cast"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#itertools@0.10.5",
-          "externCrateName": "itertools"
-        }
-      ],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Jorge Aparicio <japaricious@gmail.com>",
-        "Brook Heisler <brookheisler@gmail.com>"
-      ],
-      "description": "Criterion's plotting library",
-      "license": "MIT/Apache-2.0",
-      "repository": "https://github.com/bheisler/criterion.rs"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#criterion@0.5.1": {
-      "crateName": "criterion",
-      "version": "0.5.1",
-      "edition": "2018",
-      "sha256": "f2b12d017a929603d80db1831cd3a24082f8137ce19c69e6447f54f5fc8d692f",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [
-        "async",
-        "async_tokio",
-        "cargo_bench_support",
-        "default",
-        "futures",
-        "html_reports",
-        "plotters",
-        "rayon",
-        "tokio"
-      ],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#anes@0.1.6",
-          "externCrateName": "anes"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#cast@0.3.0",
-          "externCrateName": "cast"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#ciborium@0.2.2",
-          "externCrateName": "ciborium"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#clap@4.5.60",
-          "externCrateName": "clap"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#criterion-plot@0.5.0",
-          "externCrateName": "criterion_plot"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#futures@0.3.32",
-          "externCrateName": "futures"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#is-terminal@0.4.17",
-          "externCrateName": "is_terminal"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#itertools@0.10.5",
-          "externCrateName": "itertools"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#num-traits@0.2.19",
-          "externCrateName": "num_traits"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#once_cell@1.21.3",
-          "externCrateName": "once_cell"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#oorandom@11.1.5",
-          "externCrateName": "oorandom"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#plotters@0.3.7",
-          "externCrateName": "plotters"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#rayon@1.11.0",
-          "externCrateName": "rayon"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#regex@1.12.3",
-          "externCrateName": "regex"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
-          "externCrateName": "serde"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_derive@1.0.228",
-          "externCrateName": "serde_derive"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
-          "externCrateName": "serde_json"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tinytemplate@1.2.1",
-          "externCrateName": "tinytemplate"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio@1.49.0",
-          "externCrateName": "tokio"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#walkdir@2.5.0",
-          "externCrateName": "walkdir"
-        }
-      ],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Jorge Aparicio <japaricious@gmail.com>",
-        "Brook Heisler <brookheisler@gmail.com>"
-      ],
-      "description": "Statistics-driven micro-benchmarking library",
-      "homepage": "https://bheisler.github.io/criterion.rs/book/index.html",
-      "license": "Apache-2.0 OR MIT",
-      "repository": "https://github.com/bheisler/criterion.rs"
     },
     "registry+https://github.com/rust-lang/crates.io-index#critical-section@1.2.0": {
       "crateName": "critical-section",
@@ -6718,34 +7081,6 @@
       "description": "An async, lock-free synchronization primitive for task wakeup. ",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/asynchronics/diatomic-waker"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#diff@0.1.13": {
-      "crateName": "diff",
-      "version": "0.1.13",
-      "edition": "2015",
-      "sha256": "56254986775e3233ffa9c4d7d3faaf6d36a2c09d30b20687e9f88bc8bafc16c8",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [],
-      "dependencies": [],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Utkarsh Kukreti <utkarshkukreti@gmail.com>"
-      ],
-      "description": "An LCS based slice and string diffing implementation.",
-      "homepage": "https://github.com/utkarshkukreti/diff.rs",
-      "license": "MIT OR Apache-2.0",
-      "repository": "https://github.com/utkarshkukreti/diff.rs"
     },
     "registry+https://github.com/rust-lang/crates.io-index#digest@0.10.7": {
       "crateName": "digest",
@@ -10101,42 +10436,6 @@
       "description": "An HTTP/2 client and server",
       "license": "MIT",
       "repository": "https://github.com/hyperium/h2"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#half@2.7.1": {
-      "crateName": "half",
-      "version": "2.7.1",
-      "edition": "2021",
-      "sha256": "6ea2d84b969582b4b1864a92dc5d27cd2b77b622a8d79306834f1be5ba20d84b",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#cfg-if@1.0.4",
-          "externCrateName": "cfg_if"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#zerocopy@0.8.40",
-          "externCrateName": "zerocopy"
-        }
-      ],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Kathryn Long <squeeself@gmail.com>"
-      ],
-      "description": "Half-precision floating point f16 and bf16 types for Rust implementing the IEEE 754-2008 standard binary16 and bfloat16 types.",
-      "license": "MIT OR Apache-2.0",
-      "repository": "https://github.com/VoidStarKat/half-rs"
     },
     "registry+https://github.com/rust-lang/crates.io-index#hash32@0.2.1": {
       "crateName": "hash32",
@@ -13797,39 +14096,6 @@
       "description": "Checks if the process is running inside a Docker container.",
       "license": "MIT",
       "repository": "https://github.com/TheLarkInn/is-docker"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#is-terminal@0.4.17": {
-      "crateName": "is-terminal",
-      "version": "0.4.17",
-      "edition": "2018",
-      "sha256": "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#libc@0.2.182",
-          "externCrateName": "libc"
-        }
-      ],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "softprops <d.tangren@gmail.com>",
-        "Dan Gohman <dev@sunfishcode.online>"
-      ],
-      "description": "Test whether a given stream is a terminal",
-      "license": "MIT",
-      "repository": "https://github.com/sunfishcode/is-terminal"
     },
     "registry+https://github.com/rust-lang/crates.io-index#is-wsl@0.4.0": {
       "crateName": "is-wsl",
@@ -17590,33 +17856,6 @@
       "license": "MIT",
       "repository": "https://github.com/iwillspeak/rust-onig"
     },
-    "registry+https://github.com/rust-lang/crates.io-index#oorandom@11.1.5": {
-      "crateName": "oorandom",
-      "version": "11.1.5",
-      "edition": "2018",
-      "sha256": "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [],
-      "dependencies": [],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Simon Heath <icefox@dreamquest.io>"
-      ],
-      "description": "A tiny, robust PRNG implementation.",
-      "license": "MIT",
-      "repository": "https://hg.sr.ht/~icefox/oorandom"
-    },
     "registry+https://github.com/rust-lang/crates.io-index#opaque-debug@0.3.1": {
       "crateName": "opaque-debug",
       "version": "0.3.1",
@@ -18645,113 +18884,6 @@
       "license": "MIT",
       "repository": "https://github.com/ebarnard/rust-plist/"
     },
-    "registry+https://github.com/rust-lang/crates.io-index#plotters-backend@0.3.7": {
-      "crateName": "plotters-backend",
-      "version": "0.3.7",
-      "edition": "2018",
-      "sha256": "df42e13c12958a16b3f7f4386b9ab1f3e7933914ecea48da7139435263a4172a",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [],
-      "dependencies": [],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Hao Hou <haohou302@gmail.com>"
-      ],
-      "description": "Plotters Backend API",
-      "homepage": "https://plotters-rs.github.io",
-      "license": "MIT",
-      "repository": "https://github.com/plotters-rs/plotters"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#plotters-svg@0.3.7": {
-      "crateName": "plotters-svg",
-      "version": "0.3.7",
-      "edition": "2018",
-      "sha256": "51bae2ac328883f7acdfea3d66a7c35751187f870bc81f94563733a154d7a670",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#plotters-backend@0.3.7",
-          "externCrateName": "plotters_backend"
-        }
-      ],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Hao Hou <haohou302@gmail.com>"
-      ],
-      "description": "Plotters SVG backend",
-      "homepage": "https://plotters-rs.github.io",
-      "license": "MIT",
-      "repository": "https://github.com/plotters-rs/plotters.git"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#plotters@0.3.7": {
-      "crateName": "plotters",
-      "version": "0.3.7",
-      "edition": "2018",
-      "sha256": "5aeb6f403d7a4911efb1e33402027fc44f29b5bf6def3effcc22d7bb75f2b747",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [
-        "area_series",
-        "line_series",
-        "plotters-svg",
-        "svg_backend"
-      ],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#num-traits@0.2.19",
-          "externCrateName": "num_traits"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#plotters-backend@0.3.7",
-          "externCrateName": "plotters_backend"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#plotters-svg@0.3.7",
-          "externCrateName": "plotters_svg"
-        }
-      ],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Hao Hou <haohou302@gmail.com>"
-      ],
-      "description": "A Rust drawing library focus on data plotting for both WASM and native applications",
-      "homepage": "https://plotters-rs.github.io/",
-      "license": "MIT",
-      "repository": "https://github.com/plotters-rs/plotters"
-    },
     "registry+https://github.com/rust-lang/crates.io-index#png@0.18.1": {
       "crateName": "png",
       "version": "0.18.1",
@@ -19269,47 +19401,6 @@
       "description": "Cross-platform cryptography-oriented low-level SIMD library.",
       "license": "MIT OR Apache-2.0",
       "repository": "https://github.com/cryptocorrosion/cryptocorrosion"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#pretty_assertions@1.4.1": {
-      "crateName": "pretty_assertions",
-      "version": "1.4.1",
-      "edition": "2018",
-      "sha256": "3ae130e2f271fbc2ac3a40fb1d07180839cdbbe443c7a27e1e3c13c5cac0116d",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [
-        "default",
-        "std"
-      ],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#diff@0.1.13",
-          "externCrateName": "diff"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#yansi@1.0.1",
-          "externCrateName": "yansi"
-        }
-      ],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Colin Kiegel <kiegel@gmx.de>",
-        "Florent Fayolle <florent.fayolle69@gmail.com>",
-        "Tom Milligan <code@tommilligan.net>"
-      ],
-      "description": "Overwrite `assert_eq!` and `assert_ne!` with drop-in replacements, adding colorful diffs.",
-      "license": "MIT OR Apache-2.0",
-      "repository": "https://github.com/rust-pretty-assertions/rust-pretty-assertions"
     },
     "registry+https://github.com/rust-lang/crates.io-index#proc-macro-crate@3.4.0": {
       "crateName": "proc-macro-crate",
@@ -25560,42 +25651,6 @@
       "license": "Unicode-3.0",
       "repository": "https://github.com/unicode-org/icu4x"
     },
-    "registry+https://github.com/rust-lang/crates.io-index#tinytemplate@1.2.1": {
-      "crateName": "tinytemplate",
-      "version": "1.2.1",
-      "edition": "2015",
-      "sha256": "be4d6b5f19ff7664e8c98d03e2139cb510db9b0a60b55f8e8709b689d939b6bc",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
-          "externCrateName": "serde"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
-          "externCrateName": "serde_json"
-        }
-      ],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Brook Heisler <brookheisler@gmail.com>"
-      ],
-      "description": "Simple, lightweight template engine",
-      "license": "Apache-2.0 OR MIT",
-      "repository": "https://github.com/bheisler/TinyTemplate"
-    },
     "registry+https://github.com/rust-lang/crates.io-index#tinyvec@1.10.0": {
       "crateName": "tinyvec",
       "version": "1.10.0",
@@ -25824,47 +25879,6 @@
         "Tokio Contributors <team@tokio.rs>"
       ],
       "description": "Utilities to work with `Stream` and `tokio`. ",
-      "homepage": "https://tokio.rs",
-      "license": "MIT",
-      "repository": "https://github.com/tokio-rs/tokio"
-    },
-    "registry+https://github.com/rust-lang/crates.io-index#tokio-test@0.4.5": {
-      "crateName": "tokio-test",
-      "version": "0.4.5",
-      "edition": "2021",
-      "sha256": "3f6d24790a10a7af737693a3e8f1d03faef7e6ca0cc99aae5066f533766de545",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#futures-core@0.3.32",
-          "externCrateName": "futures_core"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio@1.49.0",
-          "externCrateName": "tokio"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#tokio-stream@0.1.18",
-          "externCrateName": "tokio_stream"
-        }
-      ],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Tokio Contributors <team@tokio.rs>"
-      ],
-      "description": "Testing utilities for Tokio- and futures-based code ",
       "homepage": "https://tokio.rs",
       "license": "MIT",
       "repository": "https://github.com/tokio-rs/tokio"
@@ -30322,37 +30336,6 @@
       "license": "MIT/Apache-2.0",
       "repository": "https://github.com/chyh1990/yaml-rust"
     },
-    "registry+https://github.com/rust-lang/crates.io-index#yansi@1.0.1": {
-      "crateName": "yansi",
-      "version": "1.0.1",
-      "edition": "2021",
-      "sha256": "cfe53a6657fd280eaa890a3bc59152892ffa3e30101319d168b781ed6529b049",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [
-        "alloc",
-        "default",
-        "std"
-      ],
-      "dependencies": [],
-      "buildDependencies": [],
-      "procMacro": false,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "lib"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Sergio Benitez <sb@sergio.bz>"
-      ],
-      "description": "A dead simple ANSI terminal color painting library.",
-      "license": "MIT OR Apache-2.0",
-      "repository": "https://github.com/SergioBenitez/yansi"
-    },
     "registry+https://github.com/rust-lang/crates.io-index#yasna@0.5.2": {
       "crateName": "yasna",
       "version": "0.5.2",
@@ -30504,47 +30487,6 @@
       "license": "MIT",
       "repository": "https://github.com/nuhvi/z32"
     },
-    "registry+https://github.com/rust-lang/crates.io-index#zerocopy-derive@0.8.40": {
-      "crateName": "zerocopy-derive",
-      "version": "0.8.40",
-      "edition": "2021",
-      "sha256": "f65c489a7071a749c849713807783f70672b28094011623e200cb86dcb835953",
-      "source": {
-        "type": "crates-io"
-      },
-      "features": [],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#proc-macro2@1.0.106",
-          "externCrateName": "proc_macro2"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#quote@1.0.44",
-          "externCrateName": "quote"
-        },
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#syn@2.0.117",
-          "externCrateName": "syn"
-        }
-      ],
-      "buildDependencies": [],
-      "procMacro": true,
-      "build": null,
-      "libPath": null,
-      "libName": null,
-      "libCrateTypes": [
-        "proc-macro"
-      ],
-      "crateBin": [],
-      "links": null,
-      "authors": [
-        "Joshua Liebow-Feeser <joshlf@google.com>",
-        "Jack Wrenn <jswrenn@amazon.com>"
-      ],
-      "description": "Custom derive for traits from the zerocopy crate",
-      "license": "BSD-2-Clause OR Apache-2.0 OR MIT",
-      "repository": "https://github.com/google/zerocopy"
-    },
     "registry+https://github.com/rust-lang/crates.io-index#zerocopy@0.8.40": {
       "crateName": "zerocopy",
       "version": "0.8.40",
@@ -30554,16 +30496,9 @@
         "type": "crates-io"
       },
       "features": [
-        "derive",
-        "simd",
-        "zerocopy-derive"
+        "simd"
       ],
-      "dependencies": [
-        {
-          "packageId": "registry+https://github.com/rust-lang/crates.io-index#zerocopy-derive@0.8.40",
-          "externCrateName": "zerocopy_derive"
-        }
-      ],
+      "dependencies": [],
       "buildDependencies": [],
       "procMacro": false,
       "build": null,

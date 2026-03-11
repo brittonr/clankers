@@ -1,8 +1,15 @@
 //! Top-level layout renderer
 //!
-//! Uses hypertile BSP tiling to split the terminal into panes and render
-//! side-panels via the [`Panel`] trait, while the chat pane
-//! (blocks + editor + status bar) is rendered directly.
+//! Uses a two-level layout approach:
+//! 1. The main terminal area is split into two parts:
+//!    - Upper area: BSP tiling for panels and chat content
+//!    - Lower area: Fixed input editor and status bar
+//!
+//! 2. The BSP tiling system manages the dynamic layout of side panels
+//!    and chat content, while input and status remain fixed at the bottom.
+//!
+//! This separation allows the input area and status bar to remain stable
+//! regardless of panel configuration changes.
 
 use ratatui::Frame;
 use ratatui::layout::Constraint;
@@ -58,24 +65,62 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         pp.refresh_entries();
     }
 
-    // ── Compute BSP tiling layout ───────────────────────────────────
+    // ── Calculate input and status bar heights ──────────────────────
+    
+    let indicator = compute_input_indicator(app.state, app.input_mode);
+    let inner_width = frame.area().width.saturating_sub(2) as usize;
+    let visual_lines = app.editor.visual_line_count(inner_width, indicator.len()) as u16;
+    let editor_height = (visual_lines + 2).clamp(3, 10);
+    let status_bar_height = 1;
 
-    app.layout.tiling.compute_layout(frame.area());
+    // ── Split frame into main area and bottom area ──────────────────
 
-    // ── Render each pane ────────────────────────────────────────────
+    let main_constraints = vec![
+        Constraint::Min(3),                                          // main area (panels + chat)
+        Constraint::Length(editor_height + status_bar_height),       // input + status bar
+    ];
+    
+    let main_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(main_constraints)
+        .split(frame.area());
+
+    let panels_and_chat_area = main_chunks[0];
+    let bottom_area = main_chunks[1];
+
+    // ── Split bottom area into input and status bar ─────────────────
+
+    let bottom_constraints = vec![
+        Constraint::Length(editor_height),     // input/editor
+        Constraint::Length(status_bar_height), // status bar
+    ];
+    
+    let bottom_chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(bottom_constraints)
+        .split(bottom_area);
+
+    app.editor_area = bottom_chunks[0];
+    app.status_area = bottom_chunks[1];
+
+    // ── Compute BSP tiling layout for panels and chat ──────────────
+
+    app.layout.tiling.compute_layout(panels_and_chat_area);
+
+    // ── Render panels and get chat area ─────────────────────────────
 
     let (chat_area, chat_focused) = render_side_panels(frame, app);
 
-    // ── Main (chat) column layout ───────────────────────────────────
+    // ── Render main chat area ───────────────────────────────────────
 
     let border_color = if chat_focused { Color::Cyan } else { Color::DarkGray };
     let block = Block::default()
         .borders(Borders::ALL)
         .border_style(Style::default().fg(border_color));
-    let main_render_area = block.inner(chat_area);
+    let chat_inner = block.inner(chat_area);
     frame.render_widget(block, chat_area);
 
-    render_main_column(frame, app, main_render_area);
+    render_chat_content(frame, app, chat_inner);
 
     // ── Panel navigation hint ───────────────────────────────────────
 
@@ -110,6 +155,14 @@ pub fn render(frame: &mut Frame, app: &mut App) {
             }
         }
     }
+
+    // ── Render input/editor area ────────────────────────────────────
+
+    render_editor_area(frame, app, app.editor_area, indicator);
+
+    // ── Render status bar ───────────────────────────────────────────
+
+    render_status_bar_area(frame, app);
 
     // ── Overlays (rendered on top of everything) ────────────────────
 
@@ -188,14 +241,9 @@ fn render_chrome(frame: &mut Frame, app: &mut App) {
     }
 }
 
-// ── Main column (chat blocks + editor + status bar) ─────────────────────────
+// ── Chat content (messages/blocks + plugin panels) ──────────────────────────
 
-fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
-    let inner_width = main_area.width.saturating_sub(2) as usize;
-    let indicator = compute_input_indicator(app.state, app.input_mode);
-    let visual_lines = app.editor.visual_line_count(inner_width, indicator.len()) as u16;
-    let editor_height = (visual_lines + 2).clamp(3, 10);
-
+fn render_chat_content(frame: &mut Frame, app: &mut App, chat_area: Rect) {
     let plugin_panel_height = if app.plugin_ui.widgets.is_empty() {
         0
     } else {
@@ -207,46 +255,28 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         vec![
             Constraint::Min(3),                      // messages (blocks)
             Constraint::Length(plugin_panel_height), // plugin widget panels
-            Constraint::Length(editor_height),       // editor
-            Constraint::Length(1),                   // status bar
         ]
     } else {
         vec![
-            Constraint::Min(3),                // messages (blocks)
-            Constraint::Length(editor_height), // editor
-            Constraint::Length(1),             // status bar
+            Constraint::Min(3), // messages (blocks) take all space
         ]
     };
 
-    let chunks = Layout::default().direction(Direction::Vertical).constraints(constraints).split(main_area);
-
-    let (messages_idx, plugin_idx, editor_idx, status_idx) = if plugin_panel_height > 0 {
-        (0, Some(1), 2, 3)
-    } else {
-        (0, None, 1, 2)
-    };
-
-    // ── Save editor + status areas for mouse hit-testing ──────────
-
-    app.editor_area = chunks[editor_idx];
-    app.status_area = chunks[status_idx];
+    let chunks = Layout::default().direction(Direction::Vertical).constraints(constraints).split(chat_area);
 
     // ── Messages (block-oriented rendering) ─────────────────────────
 
-    render_messages(frame, app, chunks[messages_idx]);
+    render_messages(frame, app, chunks[0]);
 
     // ── Plugin widget panels ────────────────────────────────────────
 
-    if let Some(idx) = plugin_idx {
-        widget_host::render_plugin_panels(frame, &app.plugin_ui, &app.theme, chunks[idx]);
+    if plugin_panel_height > 0 && chunks.len() > 1 {
+        widget_host::render_plugin_panels(frame, &app.plugin_ui, &app.theme, chunks[1]);
     }
+}
 
-    // ── Editor ──────────────────────────────────────────────────────
-
-    render_editor_area(frame, app, chunks[editor_idx], indicator);
-
-    // ── Status bar ──────────────────────────────────────────────────
-
+/// Render the status bar area
+fn render_status_bar_area(frame: &mut Frame, app: &mut App) {
     let plugin_spans = widget_host::plugin_status_spans(&app.plugin_ui);
     let context_span = app.context_gauge.status_bar_span();
     let git_span = app.git_status.status_bar_span();
@@ -315,7 +345,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
             )
         }),
     };
-    status_bar::render_status_bar(frame, &status_data, &app.theme, chunks[status_idx]);
+    status_bar::render_status_bar(frame, &status_data, &app.theme, app.status_area);
 }
 
 /// Compute the input indicator based on app state and input mode
