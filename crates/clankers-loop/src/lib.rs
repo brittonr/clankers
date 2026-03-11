@@ -14,6 +14,12 @@
 pub mod condition;
 pub mod engine;
 pub mod iteration;
+pub mod truncation;
+
+pub use truncation::OutputTruncationConfig;
+pub use truncation::TruncationResult;
+pub use truncation::cleanup_temp_files;
+pub use truncation::truncate_tool_output;
 
 pub use condition::BreakCondition;
 pub use condition::parse_break_condition;

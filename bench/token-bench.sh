@@ -18,7 +18,7 @@
 set -euo pipefail
 
 # ── Defaults ──────────────────────────────────────────────────────────
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+SCRIPT_DIR="$(unset CDPATH; cd "$(dirname "$0")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 RESULTS_BASE="/tmp/token-bench"
 CLANKERS_BIN="${CLANKERS_BIN:-${CARGO_TARGET_DIR:-$REPO_DIR/target}/debug/clankers}"

@@ -158,6 +158,15 @@ impl Agent {
         self.session_id = id;
     }
 
+    /// Build output truncation config from settings
+    fn output_truncation_config(&self) -> clankers_loop::OutputTruncationConfig {
+        clankers_loop::OutputTruncationConfig {
+            max_bytes: self.settings.max_output_bytes,
+            max_lines: self.settings.max_output_lines,
+            enabled: true,
+        }
+    }
+
     /// Subscribe to agent events
     pub fn subscribe(&self) -> broadcast::Receiver<AgentEvent> {
         self.event_tx.subscribe()
@@ -220,6 +229,7 @@ impl Agent {
             temperature: None,
             thinking: self.thinking.clone(),
             max_turns: 25,
+            output_truncation: self.output_truncation_config(),
         };
 
         let result = turn::run_turn_loop(
@@ -536,6 +546,7 @@ impl Agent {
                 temperature: None,
                 thinking: self.thinking.clone(),
                 max_turns: if phase_idx == 0 { 25 } else { 10 },
+                output_truncation: self.output_truncation_config(),
             };
 
             let result = turn::run_turn_loop(

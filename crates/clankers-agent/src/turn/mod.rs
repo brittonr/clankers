@@ -36,6 +36,8 @@ pub struct TurnConfig {
     pub temperature: Option<f64>,
     pub thinking: Option<ThinkingConfig>,
     pub max_turns: u32,
+    /// Output truncation config for tool results
+    pub output_truncation: clankers_loop::OutputTruncationConfig,
 }
 
 /// Result of collecting a streamed response
@@ -172,11 +174,12 @@ pub async fn run_turn_loop(
             break;
         }
 
-        // Execute tools and append results
+        // Execute tools and append results (with truncation)
         let tool_result_messages = execute_tools_parallel(
             tools, &tool_calls, event_tx, cancel.clone(),
             hook_pipeline.clone(), session_id,
         ).await;
+        let tool_result_messages = apply_output_truncation(tool_result_messages, &config.output_truncation);
         for msg in &tool_result_messages {
             messages.push(AgentMessage::ToolResult(msg.clone()));
         }
@@ -213,6 +216,55 @@ fn extract_tool_calls(content: &[Content]) -> Vec<(String, String, Value)> {
             } else {
                 None
             }
+        })
+        .collect()
+}
+
+/// Apply output truncation to tool result messages.
+///
+/// For each tool result, extracts text content, runs it through the truncation
+/// layer, and rebuilds the message with truncated text and a temp file path
+/// if truncation was applied.
+fn apply_output_truncation(
+    messages: Vec<ToolResultMessage>,
+    config: &clankers_loop::OutputTruncationConfig,
+) -> Vec<ToolResultMessage> {
+    if !config.enabled {
+        return messages;
+    }
+
+    messages
+        .into_iter()
+        .map(|mut msg| {
+            // Extract text content blocks, truncate, and rebuild
+            let mut truncated_content = Vec::new();
+            let mut any_truncated = false;
+
+            for block in &msg.content {
+                match block {
+                    Content::Text { text } => {
+                        let result = clankers_loop::truncate_tool_output(text, config);
+                        if result.truncated {
+                            any_truncated = true;
+                            tracing::info!(
+                                tool = msg.tool_name,
+                                original_lines = result.original_lines,
+                                original_bytes = result.original_bytes,
+                                "Tool output truncated"
+                            );
+                        }
+                        truncated_content.push(Content::Text {
+                            text: result.content,
+                        });
+                    }
+                    other => truncated_content.push(other.clone()),
+                }
+            }
+
+            if any_truncated {
+                msg.content = truncated_content;
+            }
+            msg
         })
         .collect()
 }
