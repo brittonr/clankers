@@ -134,156 +134,104 @@ impl SlashHandler for PluginHandler {
 
         let args = args.trim();
 
-        // /plugin enable <name>
         if let Some(name) = args.strip_prefix("enable").map(|s| s.trim()) {
-            if name.is_empty() {
-                ctx.app.push_system("Usage: /plugin enable <name>".to_string(), true);
-                return;
-            }
-            let mut mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
-            match mgr.enable(name) {
-                Ok(()) => {
-                    ctx.app.push_system(format!("Plugin '{}' enabled.", name), false);
-                    save_disabled_plugins(&mgr);
-                }
-                Err(e) => ctx.app.push_system(format!("Failed to enable '{}': {}", name, e), true),
-            }
-            return;
-        }
-
-        // /plugin disable <name>
-        if let Some(name) = args.strip_prefix("disable").map(|s| s.trim()) {
-            if name.is_empty() {
-                ctx.app.push_system("Usage: /plugin disable <name>".to_string(), true);
-                return;
-            }
-            let mut mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
-            match mgr.disable(name) {
-                Ok(()) => {
-                    ctx.app.push_system(format!("Plugin '{}' disabled.", name), false);
-                    save_disabled_plugins(&mgr);
-                }
-                Err(e) => ctx.app.push_system(format!("Failed to disable '{}': {}", name, e), true),
-            }
-            return;
-        }
-
-        // /plugin reload [name]
-        if let Some(rest) = args.strip_prefix("reload") {
-            let name = rest.trim();
-            let mut mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
-            if name.is_empty() {
-                mgr.reload_all();
-                ctx.app.push_system("All plugins reloaded.".to_string(), false);
-            } else {
-                match mgr.reload(name) {
-                    Ok(()) => ctx.app.push_system(format!("Plugin '{}' reloaded.", name), false),
-                    Err(e) => ctx.app.push_system(format!("Failed to reload '{}': {}", name, e), true),
-                }
-            }
-            return;
-        }
-
-        let mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
-
-        if args.is_empty() {
-            // List all plugins
-            let plugins = mgr.list();
-            if plugins.is_empty() {
-                ctx.app.push_system("No plugins discovered.".to_string(), false);
-            } else {
-                use std::fmt::Write;
-
-                let mut out = String::from("Plugins:\n\n");
-                for p in plugins {
-                    let state = match &p.state {
-                        crate::plugin::PluginState::Active => "✓",
-                        crate::plugin::PluginState::Loaded => "○",
-                        crate::plugin::PluginState::Error(e) => {
-                            writeln!(out, "  ✗ {} v{} — Error: {}", p.name, p.version, e).unwrap();
-                            continue;
-                        }
-                        crate::plugin::PluginState::Disabled => "−",
-                    };
-                    writeln!(
-                        out,
-                        "  {} {} v{} — {} (tools: {})",
-                        state,
-                        p.name,
-                        p.version,
-                        p.manifest.description,
-                        if p.manifest.tools.is_empty() {
-                            "none".to_string()
-                        } else {
-                            p.manifest.tools.join(", ")
-                        },
-                    )
-                    .unwrap();
-                }
-                write!(
-                    out,
-                    "\n  ✓ active  ○ loaded  − disabled  ✗ error\n  \
-                     Use /plugin enable|disable|reload <name>"
-                )
-                .unwrap();
-                ctx.app.push_system(out, false);
-            }
+            plugin_toggle(pm, name, true, ctx);
+        } else if let Some(name) = args.strip_prefix("disable").map(|s| s.trim()) {
+            plugin_toggle(pm, name, false, ctx);
+        } else if let Some(rest) = args.strip_prefix("reload") {
+            plugin_reload(pm, rest.trim(), ctx);
+        } else if args.is_empty() {
+            plugin_list(pm, ctx);
         } else {
-            // Show specific plugin
-            if let Some(p) = mgr.get(args) {
-                use std::fmt::Write;
-
-                let mut out = String::new();
-                writeln!(out, "Plugin: {} v{}", p.name, p.version).unwrap();
-                writeln!(out, "State: {:?}", p.state).unwrap();
-                writeln!(out, "Description: {}", p.manifest.description).unwrap();
-                writeln!(out, "Path: {}", p.path.display()).unwrap();
-                writeln!(
-                    out,
-                    "Tools: {}",
-                    if p.manifest.tools.is_empty() {
-                        "none".into()
-                    } else {
-                        p.manifest.tools.join(", ")
-                    }
-                )
-                .unwrap();
-                writeln!(
-                    out,
-                    "Commands: {}",
-                    if p.manifest.commands.is_empty() {
-                        "none".into()
-                    } else {
-                        p.manifest.commands.join(", ")
-                    }
-                )
-                .unwrap();
-                writeln!(
-                    out,
-                    "Events: {}",
-                    if p.manifest.events.is_empty() {
-                        "none".into()
-                    } else {
-                        p.manifest.events.join(", ")
-                    }
-                )
-                .unwrap();
-                write!(
-                    out,
-                    "Permissions: {}",
-                    if p.manifest.permissions.is_empty() {
-                        "none".into()
-                    } else {
-                        p.manifest.permissions.join(", ")
-                    }
-                )
-                .unwrap();
-                ctx.app.push_system(out, false);
-            } else {
-                ctx.app.push_system(format!("Plugin '{}' not found.", args), true);
-            }
+            plugin_show(pm, args, ctx);
         }
     }
+}
+
+type PluginMutex = std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>;
+
+fn plugin_toggle(pm: &PluginMutex, name: &str, enable: bool, ctx: &mut SlashContext<'_>) {
+    let verb = if enable { "enable" } else { "disable" };
+    if name.is_empty() {
+        ctx.app.push_system(format!("Usage: /plugin {} <name>", verb), true);
+        return;
+    }
+    let mut mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
+    let result = if enable { mgr.enable(name) } else { mgr.disable(name) };
+    match result {
+        Ok(()) => {
+            ctx.app.push_system(format!("Plugin '{}' {}d.", name, verb), false);
+            save_disabled_plugins(&mgr);
+        }
+        Err(e) => ctx.app.push_system(format!("Failed to {} '{}': {}", verb, name, e), true),
+    }
+}
+
+fn plugin_reload(pm: &PluginMutex, name: &str, ctx: &mut SlashContext<'_>) {
+    let mut mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
+    if name.is_empty() {
+        mgr.reload_all();
+        ctx.app.push_system("All plugins reloaded.".to_string(), false);
+    } else {
+        match mgr.reload(name) {
+            Ok(()) => ctx.app.push_system(format!("Plugin '{}' reloaded.", name), false),
+            Err(e) => ctx.app.push_system(format!("Failed to reload '{}': {}", name, e), true),
+        }
+    }
+}
+
+fn plugin_list(pm: &PluginMutex, ctx: &mut SlashContext<'_>) {
+    use std::fmt::Write;
+
+    let mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
+    let plugins = mgr.list();
+    if plugins.is_empty() {
+        ctx.app.push_system("No plugins discovered.".to_string(), false);
+        return;
+    }
+
+    let mut out = String::from("Plugins:\n\n");
+    for p in plugins {
+        let icon = match &p.state {
+            crate::plugin::PluginState::Active => "✓",
+            crate::plugin::PluginState::Loaded => "○",
+            crate::plugin::PluginState::Error(e) => {
+                writeln!(out, "  ✗ {} v{} — Error: {}", p.name, p.version, e).unwrap();
+                continue;
+            }
+            crate::plugin::PluginState::Disabled => "−",
+        };
+        let tools = if p.manifest.tools.is_empty() { "none".to_string() } else { p.manifest.tools.join(", ") };
+        writeln!(out, "  {} {} v{} — {} (tools: {})", icon, p.name, p.version, p.manifest.description, tools)
+            .unwrap();
+    }
+    write!(out, "\n  ✓ active  ○ loaded  − disabled  ✗ error\n  Use /plugin enable|disable|reload <name>").unwrap();
+    ctx.app.push_system(out, false);
+}
+
+fn plugin_show(pm: &PluginMutex, name: &str, ctx: &mut SlashContext<'_>) {
+    use std::fmt::Write;
+
+    let mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
+    let Some(p) = mgr.get(name) else {
+        ctx.app.push_system(format!("Plugin '{}' not found.", name), true);
+        return;
+    };
+
+    let join_or_none = |v: &[String]| -> String {
+        if v.is_empty() { "none".into() } else { v.join(", ") }
+    };
+
+    let mut out = String::new();
+    writeln!(out, "Plugin: {} v{}", p.name, p.version).unwrap();
+    writeln!(out, "State: {:?}", p.state).unwrap();
+    writeln!(out, "Description: {}", p.manifest.description).unwrap();
+    writeln!(out, "Path: {}", p.path.display()).unwrap();
+    writeln!(out, "Tools: {}", join_or_none(&p.manifest.tools)).unwrap();
+    writeln!(out, "Commands: {}", join_or_none(&p.manifest.commands)).unwrap();
+    writeln!(out, "Events: {}", join_or_none(&p.manifest.events)).unwrap();
+    write!(out, "Permissions: {}", join_or_none(&p.manifest.permissions)).unwrap();
+    ctx.app.push_system(out, false);
 }
 
 /// Persist the set of disabled plugins to disk.

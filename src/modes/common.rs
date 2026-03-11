@@ -187,68 +187,10 @@ pub fn build_plugin_tools(
             continue;
         }
 
-        // If the manifest has detailed tool_definitions, use those
         if !plugin_info.manifest.tool_definitions.is_empty() {
-            // Check if this is a validator plugin (has "exec" permission)
-            let is_validator = plugin_info.manifest.permissions.iter().any(|p| p == "exec" || p == "all");
-
-            for tool_def in &plugin_info.manifest.tool_definitions {
-                // Skip plugin tools that collide with built-in tools
-                if builtin_names.contains(&tool_def.name) {
-                    continue;
-                }
-
-                let definition = ToolDefinition {
-                    name: tool_def.name.clone(),
-                    description: tool_def.description.clone(),
-                    input_schema: tool_def.input_schema.clone(),
-                };
-
-                if is_validator && tool_def.name.starts_with("validate") {
-                    // Use ValidatorTool for validation tools — spawns subprocess
-                    let mut vtool = ValidatorTool::new(
-                        definition,
-                        plugin_info.name.clone(),
-                        tool_def.handler.clone(),
-                        Arc::clone(manager),
-                    );
-                    if let Some(ptx) = panel_tx {
-                        vtool = vtool.with_panel_tx(ptx.clone());
-                    }
-                    tools.push(Arc::new(vtool));
-                } else {
-                    // Standard plugin tool — calls WASM directly
-                    tools.push(Arc::new(PluginTool::new(
-                        definition,
-                        plugin_info.name.clone(),
-                        tool_def.handler.clone(),
-                        Arc::clone(manager),
-                    )));
-                }
-            }
+            build_detailed_tools(&plugin_info, manager, &builtin_names, panel_tx, &mut tools);
         } else {
-            // Fall back to bare tool names from manifest — use handle_tool_call as handler
-            for tool_name in &plugin_info.manifest.tools {
-                let definition = ToolDefinition {
-                    name: tool_name.clone(),
-                    description: format!("Tool '{}' provided by plugin '{}'", tool_name, plugin_info.name),
-                    input_schema: serde_json::json!({
-                        "type": "object",
-                        "properties": {
-                            "input": {
-                                "type": "string",
-                                "description": "Input to pass to the tool"
-                            }
-                        }
-                    }),
-                };
-                tools.push(Arc::new(PluginTool::new(
-                    definition,
-                    plugin_info.name.clone(),
-                    "handle_tool_call".to_string(),
-                    Arc::clone(manager),
-                )));
-            }
+            build_bare_tools(&plugin_info, manager, &mut tools);
         }
     }
 
@@ -257,6 +199,78 @@ pub fn build_plugin_tools(
     }
 
     tools
+}
+
+/// Build tools from detailed tool_definitions in a plugin manifest.
+fn build_detailed_tools(
+    plugin_info: &crate::plugin::PluginInfo,
+    manager: &Arc<Mutex<PluginManager>>,
+    builtin_names: &std::collections::HashSet<String>,
+    panel_tx: Option<&tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>>,
+    tools: &mut Vec<Arc<dyn Tool>>,
+) {
+    let is_validator = plugin_info.manifest.permissions.iter().any(|p| p == "exec" || p == "all");
+
+    for tool_def in &plugin_info.manifest.tool_definitions {
+        if builtin_names.contains(&tool_def.name) {
+            continue;
+        }
+
+        let definition = ToolDefinition {
+            name: tool_def.name.clone(),
+            description: tool_def.description.clone(),
+            input_schema: tool_def.input_schema.clone(),
+        };
+
+        if is_validator && tool_def.name.starts_with("validate") {
+            let mut vtool = ValidatorTool::new(
+                definition,
+                plugin_info.name.clone(),
+                tool_def.handler.clone(),
+                Arc::clone(manager),
+            );
+            if let Some(ptx) = panel_tx {
+                vtool = vtool.with_panel_tx(ptx.clone());
+            }
+            tools.push(Arc::new(vtool));
+        } else {
+            tools.push(Arc::new(PluginTool::new(
+                definition,
+                plugin_info.name.clone(),
+                tool_def.handler.clone(),
+                Arc::clone(manager),
+            )));
+        }
+    }
+}
+
+/// Build tools from bare tool names in a plugin manifest (fallback path).
+fn build_bare_tools(
+    plugin_info: &crate::plugin::PluginInfo,
+    manager: &Arc<Mutex<PluginManager>>,
+    tools: &mut Vec<Arc<dyn Tool>>,
+) {
+    for tool_name in &plugin_info.manifest.tools {
+        let definition = ToolDefinition {
+            name: tool_name.clone(),
+            description: format!("Tool '{}' provided by plugin '{}'", tool_name, plugin_info.name),
+            input_schema: serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "input": {
+                        "type": "string",
+                        "description": "Input to pass to the tool"
+                    }
+                }
+            }),
+        };
+        tools.push(Arc::new(PluginTool::new(
+            definition,
+            plugin_info.name.clone(),
+            "handle_tool_call".to_string(),
+            Arc::clone(manager),
+        )));
+    }
 }
 
 /// Build the full tool set (built-in + plugin) from a [`ToolEnv`].
