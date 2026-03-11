@@ -132,6 +132,8 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
         PathBuf::from("/sys"),
         PathBuf::from("/run"),
         home.join(".cargo/bin"),
+        home.join(".cargo/config.toml"),
+        home.join(".cargo/registry"),
         home.join(".rustup"),
         home.join(".local"),
         home.join(".nix-profile"),

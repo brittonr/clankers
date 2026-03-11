@@ -447,6 +447,9 @@ async fn run_interactive(
     .await?;
 
     let mut settings = ctx.settings.clone();
+    if cli.no_worktree {
+        settings.use_worktrees = false;
+    }
     if cli.enable_routing && settings.routing.is_none() {
         settings.routing = Some(clankers::model_selection::config::RoutingPolicyConfig::default());
     }

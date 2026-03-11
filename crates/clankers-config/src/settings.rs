@@ -32,8 +32,9 @@ pub struct Settings {
     #[serde(default = "default_true")]
     pub confirm_project_agents: bool,
 
-    /// Whether to create git worktrees for sessions
-    #[serde(default = "default_true")]
+    /// Whether to create git worktrees for sessions (opt-in — writes go to
+    /// a hidden worktree directory which surprises users expecting in-place edits)
+    #[serde(default)]
     pub use_worktrees: bool,
 
     /// Custom system prompt prefix
@@ -208,7 +209,7 @@ impl Default for Settings {
             max_tokens: default_max_tokens(),
             agent_scope: AgentScope::default(),
             confirm_project_agents: true,
-            use_worktrees: true,
+            use_worktrees: false,
             system_prompt_prefix: None,
             system_prompt_suffix: None,
             theme: None,

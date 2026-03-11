@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-03-11 | user | `use_worktrees` defaulted to `true` — writes went to `.git/clankers-worktrees/` and users never saw changes in their repo. `--no-worktree` CLI flag was dead code (never wired in). | Changed default to `false` so writes go to the actual repo. Wired `--no-worktree` flag into settings override. Worktrees are opt-in via config. |
 | 2026-03-09 | self | Missed serde_json dep when extracting agent_defs (identity.rs uses it) | Always run `rg` for ALL external crate usages including transitive ones like serde_json, not just explicit `use` at top of mod.rs |
 | 2026-03-09 | self | `cargo fix --lib` removed `DbWorktreeExt` import from registry.rs (thought it was unused) — broke tests later | After `cargo fix`, verify extension trait imports are still present in files that use the trait in test modules (glob `use super::*` pulls them in for tests) |
 | 2026-03-09 | self | Extracting procmon: ProcessEvent enum fields didn't match what the code actually constructs | Always grep for actual struct literal construction sites before defining a replacement type — don't guess field names from the original |
