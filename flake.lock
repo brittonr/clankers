@@ -120,11 +120,11 @@
         "nixpkgs": "nixpkgs_2"
       },
       "locked": {
-        "lastModified": 1773087238,
-        "narHash": "sha256-k4BQxiSYm+h54AMHvLnrwGjBmun+FUHSlioCha+zzeQ=",
+        "lastModified": 1773237890,
+        "narHash": "sha256-OLqUbyFwv0GfMC4l5JkwSkZUUVlwQGOlSMN0vMeE9Q4=",
         "owner": "brittonr",
         "repo": "unit2nix",
-        "rev": "dd9288af31297971599a336399f36b3121926beb",
+        "rev": "d2142ac9482904cb5410a839e77579abc1b22b51",
         "type": "github"
       },
       "original": {

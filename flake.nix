@@ -50,12 +50,13 @@
         # ── clankers-router standalone build ───────────────────────────────
         #
         # The router binary requires the `cli` feature which isn't in the
-        # workspace graph (the workspace uses `rpc` only). Separate plan:
-        #   nix run github:brittonr/unit2nix -- -p clankers-router --features cli --include-dev -o build-plan-router.json
-        wsRouter = unit2nix.lib.${system}.buildFromUnitGraph {
+        # workspace graph (the workspace uses `rpc` only).
+        wsRouter = unit2nix.lib.${system}.buildFromUnitGraphAuto {
           inherit pkgs rustToolchain;
           src = ./.;
-          resolvedJson = ./build-plan-router.json;
+          package = "clankers-router";
+          features = "cli";
+          includeDev = true;
 
           buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
             rustc = rustToolchain;
