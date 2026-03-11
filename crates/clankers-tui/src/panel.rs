@@ -189,6 +189,37 @@ pub struct DrawContext<'a> {
     pub focused: bool,
 }
 
+// ── Scrollbar helper ────────────────────────────────────────────────────────
+
+/// Render a vertical scrollbar on the right edge of `area` when content overflows.
+///
+/// Only renders if `content_length > visible_height`. Uses a thin, dim scrollbar
+/// that blends with the panel border.
+///
+/// Call this *after* rendering the panel content so the scrollbar overlays the
+/// right gutter.
+pub fn render_scrollbar(frame: &mut Frame, area: Rect, content_length: usize, position: usize, visible_height: usize) {
+    if content_length <= visible_height || area.height < 2 {
+        return;
+    }
+
+    let mut state = ratatui::widgets::ScrollbarState::new(content_length)
+        .position(position)
+        .viewport_content_length(visible_height);
+
+    frame.render_stateful_widget(
+        ratatui::widgets::Scrollbar::new(ratatui::widgets::ScrollbarOrientation::VerticalRight)
+            .begin_symbol(None)
+            .end_symbol(None)
+            .track_symbol(Some("│"))
+            .thumb_symbol("┃")
+            .track_style(Style::default().fg(Color::Rgb(60, 60, 60)))
+            .thumb_style(Style::default().fg(Color::DarkGray)),
+        area,
+        &mut state,
+    );
+}
+
 // ── PanelFrame — shared border / title / empty rendering ────────────────────
 
 /// Draw the standard panel frame (border + title + focus hints) and return
@@ -237,6 +268,9 @@ pub fn draw_panel_scrolled(frame: &mut Frame, panel: &mut dyn Panel, area: Rect,
             let offset = panel.panel_scroll().map(|s| s.offset_u16()).unwrap_or(0);
             let para = Paragraph::new(lines).scroll((offset, 0)).wrap(Wrap { trim: false });
             frame.render_widget(para, inner);
+
+            // Render scrollbar
+            render_scrollbar(frame, inner, total, offset as usize, visible);
         } else {
             panel.draw(frame, inner, ctx);
         }

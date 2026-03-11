@@ -405,6 +405,7 @@ impl FileActivityPanel {
 
         let para = Paragraph::new(lines).scroll((scroll, 0)).wrap(Wrap { trim: false });
         frame.render_widget(para, area);
+        render_scrollbar(frame, area, total_items, scroll as usize, visible_height);
     }
 }
 

@@ -28,6 +28,7 @@ use super::progress_renderer::ProgressRenderer;
 use super::streaming_output::StreamingOutputManager;
 use crate::app::ActiveToolExecution;
 use crate::components::messages::MessageScroll;
+use crate::panel::render_scrollbar;
 use crate::selection::TextSelection;
 use crate::theme::Theme;
 
@@ -277,6 +278,16 @@ pub fn render_blocks(
         .scroll((residual_offset as u16, 0));
 
     frame.render_widget(paragraph, area);
+
+    // Scrollbar for messages area
+    let messages_inner = Rect {
+        x: area.x + 1,
+        y: area.y + 1,
+        width: area.width.saturating_sub(2),
+        height: area.height.saturating_sub(2),
+    };
+    render_scrollbar(frame, messages_inner, total_visual_lines, scroll.offset, visible_height);
+
     plain_lines
 }
 

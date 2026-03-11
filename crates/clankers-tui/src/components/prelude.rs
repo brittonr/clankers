@@ -15,8 +15,11 @@ pub use ratatui::widgets::Block;
 pub use ratatui::widgets::Borders;
 pub use ratatui::widgets::Clear;
 pub use ratatui::widgets::Paragraph;
+pub use ratatui::widgets::Scrollbar;
+pub use ratatui::widgets::ScrollbarOrientation;
+pub use ratatui::widgets::ScrollbarState;
 pub use ratatui::widgets::Wrap;
 
 // Re-export crate-local TUI plumbing
-pub use crate::panel::{DrawContext, Panel, PanelAction, PanelId};
+pub use crate::panel::{DrawContext, Panel, PanelAction, PanelId, render_scrollbar};
 pub use crate::theme::Theme;

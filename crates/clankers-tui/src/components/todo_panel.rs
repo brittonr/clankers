@@ -320,9 +320,12 @@ impl Panel for TodoPanel {
             }
         }
 
-        let scroll = self.nav.scroll_offset(area.height as usize, 1);
+        let total_lines = lines.len();
+        let visible = area.height as usize;
+        let scroll = self.nav.scroll_offset(visible, 1);
         let para = Paragraph::new(lines).scroll((scroll, 0)).wrap(Wrap { trim: false });
         frame.render_widget(para, area);
+        render_scrollbar(frame, area, total_lines, scroll as usize, visible);
     }
 }
 

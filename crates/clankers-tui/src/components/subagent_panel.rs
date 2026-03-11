@@ -477,6 +477,9 @@ fn render_detail_view(frame: &mut Frame, panel: &mut SubagentPanel, theme: &Them
     let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((scroll, 0));
 
     frame.render_widget(paragraph, content_area);
+
+    // Scrollbar for detail view
+    render_scrollbar(frame, content_area, total as usize, scroll as usize, content_area.height as usize);
 }
 
 // ── Immutable render functions (for Panel::draw) ────────────────────────────
@@ -539,6 +542,9 @@ fn render_detail_view_immut(frame: &mut Frame, panel: &SubagentPanel, _theme: &T
 
     let paragraph = Paragraph::new(lines).wrap(Wrap { trim: false }).scroll((scroll, 0));
     frame.render_widget(paragraph, area);
+
+    // Scrollbar for immutable detail view
+    render_scrollbar(frame, area, total as usize, scroll as usize, area.height as usize);
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────

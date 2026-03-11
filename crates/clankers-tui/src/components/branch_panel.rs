@@ -313,10 +313,12 @@ fn render_list_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &Dr
         lines.push(Line::from(vec![Span::raw("    "), Span::styled(&entry.last_prompt, preview_style)]));
     }
 
+    let total_lines = lines.len();
     let visible_height = area.height as usize;
     let scroll_offset = panel.nav.scroll_offset(visible_height, 2);
 
     frame.render_widget(Paragraph::new(lines).scroll((scroll_offset, 0)).wrap(Wrap { trim: false }), area);
+    render_scrollbar(frame, area, total_lines, scroll_offset as usize, visible_height);
 }
 
 fn render_detail_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &DrawContext) {

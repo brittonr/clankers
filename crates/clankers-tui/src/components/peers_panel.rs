@@ -306,6 +306,7 @@ fn render_list_view(frame: &mut Frame, panel: &PeersPanel, _theme: &Theme, area:
     }
 
     // Scroll if needed
+    let total_lines = lines.len();
     let visible_height = area.height as usize;
     let scroll_offset = if panel.selected * 2 >= visible_height {
         (panel.selected * 2).saturating_sub(visible_height / 2)
@@ -314,6 +315,7 @@ fn render_list_view(frame: &mut Frame, panel: &PeersPanel, _theme: &Theme, area:
     };
 
     frame.render_widget(Paragraph::new(lines).scroll((scroll_offset as u16, 0)).wrap(Wrap { trim: false }), area);
+    render_scrollbar(frame, area, total_lines, scroll_offset, visible_height);
 }
 
 fn render_detail_view(frame: &mut Frame, panel: &PeersPanel, _theme: &Theme, area: Rect, _focused: bool) {
