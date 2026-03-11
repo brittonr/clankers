@@ -451,3 +451,26 @@
 - Pause: `ls.active = false` → `maybe_continue_loop()` returns early without re-sending; resume: toggle back + send prompt from slash handler
 - `LoopTool` (wraps LoopEngine for shell commands) exists but is NOT registered in production — only in tests
 - Leader menu loop submenu: `Space → L → p/s/i` for pause/stop/status — uses `LeaderAction::SlashCommand` to dispatch
+
+## Patterns That Work (hook system)
+- `clankers-hooks` at `crates/clankers-hooks/` — leaf crate, no deps on other clankers crates
+- `HookPoint` enum: PrePrompt, PostPrompt, PreTool, PostTool, PreCommit, PostCommit, SessionStart, SessionEnd, TurnStart, TurnEnd, ModelChange, OnError
+- `HookPayload` with tagged `HookData` enum (Tool, Prompt, Session, Git, Error, ModelChange, Empty)
+- `HookVerdict`: Continue, Modify(Value), Deny{reason} — merge logic: Deny > Modify > Continue
+- `HookPipeline` dispatches to registered `HookHandler` impls sorted by priority (lower = first)
+- Priority constants: PRIORITY_GIT_HOOKS=100, PRIORITY_SCRIPT_HOOKS=200, PRIORITY_PLUGIN_HOOKS=300
+- `ScriptHookHandler`: runs executables from .clankers/hooks/<hook-name>, JSON on stdin, env vars for context
+- Script exit 0 = Continue, non-zero = Deny (for pre-hooks), stdout JSON = Modify
+- `GitHookHandler`: runs .git/hooks/pre-commit and post-commit, standard git hook protocol
+- `install_hook_shim()` / `uninstall_hook_shim()` manage clankers shims with backup/restore
+- `PluginHookHandler`: wraps PluginManager as HookHandler, dispatches to WASM plugins via spawn_blocking
+- `ToolContext.with_hooks(pipeline, session_id)` attaches pipeline for pre/post tool hooks in execution.rs
+- Pre-tool hook fires BEFORE tool.execute(), can deny with error result or modify input JSON
+- Post-tool hook fires after tool.execute() via fire_async (fire-and-forget)
+- EventLoopRunner fires async hooks for SessionStart, SessionEnd, TurnStart, TurnEnd, ModelChange
+- CommitTool fires PreCommit before git_ops::commit(), PostCommit after success
+- `AgentEvent::event_kind()` expanded: session_start, session_end, tool_execution_start, model_change, usage_update, session_branch, session_compaction, user_cancel
+- `PluginEvent` expanded from 9 to 17 variants — all new events are additive (backward compat)
+- `HooksConfig` in settings.json: enabled (default true), hooks_dir, disabled_hooks, script_timeout_secs (default 10), manage_git_hooks (default false)
+- `/hooks` slash command: status, list (shows installed scripts), install-git, uninstall-git
+- `SlashContext` doesn't have settings — use `load_hooks_config()` helper (loads from merged settings files)
