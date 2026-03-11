@@ -1,6 +1,5 @@
 ---
 source: tests/tui/tmux_smoke.rs
-assertion_line: 122
 expression: normalized
 ---
 ┌ Todo (0/0)───────┐┌────────────────────────── h/l:panels j/k:panes ┐┌ Subagents (0/0)────────────┐
@@ -11,24 +10,24 @@ expression: normalized
 │                  │││              │  ?  help                │     │││                            │
 │                  │││              │  C  compact             │     │││                            │
 │                  │││              │  G  GitHub              │     │││                            │
+│                  │││              │  H  hooks               │     │││                            │
 │                  │││              │  L  loop…               │     │││                            │
 │                  │││              │  T  show/hide thinking  │     │││                            │
 │                  │││              │  `  toggle panel        │     │││                            │
 │                  │││              │  a  account             │     │││                            │
 │                  │││              │  c  cancel/abort        │     │││                            │
-│                  │││              │  f  search output       │     │││                            │
-└──────────────────┘││              │  l  layout…             │     ││└────────────────────────────┘
-┌ Files (0, 0 ops)─┐││              │  m  model               │     ││┌ Peers (0/0)────────────────┐
-│No files touched  │││              │  o  external editor     │     │││No peers known. /peers add  │
-│yet.              │││              │  p  pane…               │     │││<id> <name>                 │
+└──────────────────┘││              │  f  search output       │     ││└────────────────────────────┘
+┌ Files (0, 0 ops)─┐││              │  l  layout…             │     ││┌ Peers (0/0)────────────────┐
+│No files touched  │││              │  m  model               │     │││No peers known. /peers add  │
+│yet.              │││              │  o  external editor     │     │││<id> <name>                 │
+│                  │││              │  p  pane…               │     │││                            │
 │                  │││              │  s  session…            │     │││                            │
 │                  │││              │  t  toggle thinking     │     │││                            │
 │                  │││              │  w  tools               │     │││                            │
 │                  │││              │  x  clear input         │     │││                            │
 │                  │││              │                         │     │││                            │
-│                  │││              │  esc close              │     │││                            │
-│                  ││└──────────────└─────────────────────────┘─────┘││                            │
-│                  ││┌Input─────────────────────────────────────────┐││                            │
+│                  ││└──────────────│  esc close              │─────┘││                            │
+│                  ││┌Input─────────└─────────────────────────┘─────┐││                            │
 │                  │││                                              │││                            │
 │                  ││└──────────────────────────────────────────────┘││                            │
 │                  ││ NORMAL  👤 default  ░░░░░░░░N/N.Nk   main││                            │

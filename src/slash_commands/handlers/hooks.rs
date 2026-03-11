@@ -17,7 +17,11 @@ impl SlashHandler for HooksHandler {
                 ("install-git", "Install git hook shims (pre-commit, post-commit)"),
                 ("uninstall-git", "Remove git hook shims"),
             ],
-            leader_key: None,
+            leader_key: Some(super::super::LeaderBinding {
+                key: 'H',
+                placement: clankers_tui_types::MenuPlacement::Root,
+                label: Some("hooks"),
+            }),
         }
     }
 
