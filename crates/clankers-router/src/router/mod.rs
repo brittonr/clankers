@@ -59,7 +59,6 @@ impl FallbackConfig {
         for anthropic in &[
             "claude-sonnet-4-5-20250514",
             "claude-opus-4-20250514",
-            "claude-opus-4-6-20250610",
             "claude-haiku-4-5-20250514",
         ] {
             chains.insert(anthropic.to_string(), vec!["gpt-4o".to_string(), "deepseek-chat".to_string()]);

@@ -68,14 +68,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     // ── Main (chat) column layout ───────────────────────────────────
 
-    let main_render_area = if chat_focused {
-        let block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(Color::Cyan));
-        let inner = block.inner(chat_area);
-        frame.render_widget(block, chat_area);
-        inner
-    } else {
-        chat_area
-    };
+    let border_color = if chat_focused { Color::Cyan } else { Color::DarkGray };
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .border_style(Style::default().fg(border_color));
+    let main_render_area = block.inner(chat_area);
+    frame.render_widget(block, chat_area);
 
     render_main_column(frame, app, main_render_area);
 

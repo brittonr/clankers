@@ -548,18 +548,7 @@ pub fn default_models() -> Vec<Model> {
             input_cost_per_mtok: Some(15.0),
             output_cost_per_mtok: Some(75.0),
         },
-        Model {
-            id: "claude-opus-4-6-20250610".to_string(),
-            name: "Claude Opus 4.6".to_string(),
-            provider: "anthropic".to_string(),
-            max_input_tokens: 200_000,
-            max_output_tokens: 32_000,
-            supports_thinking: true,
-            supports_images: true,
-            supports_tools: true,
-            input_cost_per_mtok: Some(15.0),
-            output_cost_per_mtok: Some(75.0),
-        },
+
         Model {
             id: "claude-haiku-4-5-20250514".to_string(),
             name: "Claude Haiku 4.5".to_string(),
