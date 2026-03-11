@@ -336,20 +336,28 @@ async fn run_headless(
     let tools = if cli.tools.as_deref() == Some("none") || cli.tools.as_deref() == Some("") {
         Vec::new()
     } else {
+        use clankers::modes::common::{ToolTier, ToolSet, build_all_tiered_tools, resolve_tool_tiers};
         let env = clankers::modes::common::ToolEnv {
             process_monitor: Some(headless_process_monitor),
             ..Default::default()
         };
-        let all_tools = clankers::modes::common::build_all_tools_with_env(&env, Some(plugin_manager));
+        let tiered = build_all_tiered_tools(&env, Some(plugin_manager));
+
         if let Some(ref allowed) = cli.tools {
-            let allowed_set: std::collections::HashSet<&str> = allowed.split(',').map(|s| s.trim()).collect();
-            if allowed_set.contains("all") {
-                all_tools
+            // Check if the flag value is tier-based or tool-name-based
+            if let Some(tiers) = resolve_tool_tiers(Some(allowed)) {
+                let tool_set = ToolSet::new(tiered, tiers);
+                tool_set.active_tools()
             } else {
-                all_tools.into_iter().filter(|t| allowed_set.contains(t.definition().name.as_str())).collect()
+                // Legacy: comma-separated tool names
+                let flat: Vec<_> = tiered.into_iter().map(|(_, t)| t).collect();
+                let allowed_set: std::collections::HashSet<&str> = allowed.split(',').map(|s| s.trim()).collect();
+                flat.into_iter().filter(|t| allowed_set.contains(t.definition().name.as_str())).collect()
             }
         } else {
-            all_tools
+            // Default headless: Core + Specialty (no Orchestration, no Matrix)
+            let tool_set = ToolSet::new(tiered, [ToolTier::Core, ToolTier::Specialty]);
+            tool_set.active_tools()
         }
     };
 

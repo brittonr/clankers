@@ -97,6 +97,7 @@ impl SlashHandler for ToolsHandler {
             }
             let enabled = ctx.app.tool_info.iter().filter(|(n, _, _)| !ctx.app.disabled_tools.contains(n)).count();
             write!(out, "\n  {}/{} tool(s) enabled", enabled, ctx.app.tool_info.len()).unwrap();
+            write!(out, "\n  Tiers: core + specialty + orchestration (use --tools to change)").unwrap();
             ctx.app.push_system(out, false);
         }
     }

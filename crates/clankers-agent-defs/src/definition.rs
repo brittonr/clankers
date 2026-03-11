@@ -39,6 +39,10 @@ pub struct AgentConfig {
     pub model: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tools: Option<Vec<String>>,
+    /// Tool tiers to activate (e.g. ["core", "orchestration"]).
+    /// When absent, mode defaults apply.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tiers: Option<Vec<String>>,
     pub system_prompt: String,
     pub source: AgentSource,
     pub file_path: PathBuf,
@@ -86,6 +90,7 @@ pub fn parse_agent_content(content: &str, path: &Path, source: AgentSource) -> R
     let mut description = None;
     let mut model = None;
     let mut tools_str = None;
+    let mut tiers_str = None;
 
     for line in frontmatter.lines() {
         let line = line.trim();
@@ -102,6 +107,7 @@ pub fn parse_agent_content(content: &str, path: &Path, source: AgentSource) -> R
                 "description" => description = Some(value.to_string()),
                 "model" => model = Some(value.to_string()),
                 "tools" => tools_str = Some(value.to_string()),
+                "tiers" => tiers_str = Some(value.to_string()),
                 _ => {
                     // Ignore unknown keys
                 }
@@ -116,11 +122,16 @@ pub fn parse_agent_content(content: &str, path: &Path, source: AgentSource) -> R
     let tools =
         tools_str.map(|s| s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect::<Vec<_>>());
 
+    // Parse tiers from comma-separated string
+    let tiers =
+        tiers_str.map(|s| s.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect::<Vec<_>>());
+
     Ok(AgentConfig {
         name,
         description,
         model,
         tools,
+        tiers,
         system_prompt,
         source,
         file_path: path.to_path_buf(),

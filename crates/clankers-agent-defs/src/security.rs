@@ -38,6 +38,7 @@ mod tests {
             description: "Test agent".to_string(),
             model: None,
             tools: None,
+            tiers: None,
             system_prompt: "Test".to_string(),
             source,
             file_path: PathBuf::from("/test.md"),

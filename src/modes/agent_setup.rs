@@ -59,9 +59,19 @@ pub(crate) fn build_agent_with_tools(
         bash_confirm_tx: Some(bash_confirm_tx),
         process_monitor: Some(process_monitor),
     };
-    let tools = crate::modes::common::build_all_tools_with_env(&tool_env, plugin_manager);
+    let tiered_tools = crate::modes::common::build_all_tiered_tools(&tool_env, plugin_manager);
 
-    populate_tool_info(app, &tools);
+    // Interactive mode: Core + Specialty + Orchestration (no Matrix)
+    let tool_set = crate::modes::common::ToolSet::new(
+        tiered_tools,
+        [crate::modes::common::ToolTier::Core,
+         crate::modes::common::ToolTier::Specialty,
+         crate::modes::common::ToolTier::Orchestration],
+    );
+
+    // tool_info shows ALL tools (for toggle menu); active_tools only sends active tiers to agent
+    let all_tools = tool_set.all_tools();
+    populate_tool_info(app, &all_tools);
 
     // Fire plugin_init event so plugins can set up their initial UI
     if let Some(pm) = plugin_manager {
@@ -70,9 +80,9 @@ pub(crate) fn build_agent_with_tools(
         }
     }
 
-    // Filter out disabled tools before giving them to the agent.
-    // tool_info keeps the full list so the toggle menu shows everything.
-    let active_tools: Vec<Arc<dyn crate::tools::Tool>> = tools
+    // Filter out disabled tools from the active tier set
+    let active_tools: Vec<Arc<dyn crate::tools::Tool>> = tool_set
+        .active_tools()
         .into_iter()
         .filter(|t| !app.disabled_tools.contains(&t.definition().name))
         .collect();

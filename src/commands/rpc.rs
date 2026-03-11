@@ -681,7 +681,16 @@ fn build_agent_context(ctx: &CommandContext) -> Result<crate::modes::rpc::iroh::
         process_monitor: Some(rpc_process_monitor),
         ..Default::default()
     };
-    let tools = crate::modes::common::build_tools_with_env(&env);
+    // RPC mode: all tiers active
+    let tiered = crate::modes::common::build_tiered_tools(&env);
+    let tool_set = crate::modes::common::ToolSet::new(
+        tiered,
+        [crate::modes::common::ToolTier::Core,
+         crate::modes::common::ToolTier::Orchestration,
+         crate::modes::common::ToolTier::Specialty,
+         crate::modes::common::ToolTier::Matrix],
+    );
+    let tools = tool_set.active_tools();
     Ok(crate::modes::rpc::iroh::RpcContext {
         provider,
         tools,

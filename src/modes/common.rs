@@ -1,5 +1,6 @@
 //! Shared mode utilities
 
+use std::collections::HashSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -16,6 +17,103 @@ use crate::tools::Tool;
 use crate::tools::ToolDefinition;
 use crate::tools::plugin_tool::PluginTool;
 use crate::tools::validator_tool::ValidatorTool;
+
+// ── Tool tiers ──────────────────────────────────────────────────────────────
+
+/// Tool tier classification. Tools are grouped by when they're needed.
+/// Only active tiers are sent to the API, reducing schema token cost.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ToolTier {
+    /// Core file/shell tools — always active (read, write, edit, bash, grep, find, ls)
+    Core,
+    /// Orchestration tools — subagent, delegate, signal_loop, procmon
+    Orchestration,
+    /// Specialty tools — nix, web, commit, review, ask, image_gen, todo, switch_model
+    Specialty,
+    /// Matrix tools — matrix_send, matrix_read, etc. (daemon only)
+    Matrix,
+}
+
+/// A tiered collection of tools. Only tools in active tiers are sent to the API.
+pub struct ToolSet {
+    /// All tools with their tier assignment.
+    all: Vec<(ToolTier, Arc<dyn Tool>)>,
+    /// Currently active tiers.
+    active: HashSet<ToolTier>,
+}
+
+impl ToolSet {
+    /// Create a new ToolSet from a tiered tool list with specified active tiers.
+    pub fn new(tiered_tools: Vec<(ToolTier, Arc<dyn Tool>)>, tiers: impl IntoIterator<Item = ToolTier>) -> Self {
+        Self {
+            all: tiered_tools,
+            active: tiers.into_iter().collect(),
+        }
+    }
+
+    /// Tools to send to the API on the current turn.
+    pub fn active_tools(&self) -> Vec<Arc<dyn Tool>> {
+        self.all
+            .iter()
+            .filter(|(tier, _)| self.active.contains(tier))
+            .map(|(_, tool)| tool.clone())
+            .collect()
+    }
+
+    /// All tools regardless of tier (for /tools list, collision detection).
+    pub fn all_tools(&self) -> Vec<Arc<dyn Tool>> {
+        self.all.iter().map(|(_, tool)| tool.clone()).collect()
+    }
+
+    /// Get all tools with their tier info (for display in /tools).
+    pub fn all_tools_with_tiers(&self) -> &[(ToolTier, Arc<dyn Tool>)] {
+        &self.all
+    }
+
+    /// Activate a tier.
+    pub fn activate(&mut self, tier: ToolTier) {
+        self.active.insert(tier);
+    }
+
+    /// Deactivate a tier.
+    pub fn deactivate(&mut self, tier: ToolTier) {
+        self.active.remove(&tier);
+    }
+
+    /// Check if a tier is currently active.
+    pub fn is_active(&self, tier: ToolTier) -> bool {
+        self.active.contains(&tier)
+    }
+
+    /// Get the set of active tiers.
+    pub fn active_tiers(&self) -> &HashSet<ToolTier> {
+        &self.active
+    }
+}
+
+impl std::fmt::Display for ToolTier {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ToolTier::Core => write!(f, "core"),
+            ToolTier::Orchestration => write!(f, "orchestration"),
+            ToolTier::Specialty => write!(f, "specialty"),
+            ToolTier::Matrix => write!(f, "matrix"),
+        }
+    }
+}
+
+impl ToolTier {
+    /// Parse a tier name from a string.
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "core" => Some(ToolTier::Core),
+            "orchestration" | "orch" => Some(ToolTier::Orchestration),
+            "specialty" | "spec" => Some(ToolTier::Specialty),
+            "matrix" => Some(ToolTier::Matrix),
+            _ => None,
+        }
+    }
+}
 
 /// Optional channels and handles that tools may use for live updates.
 ///
@@ -35,12 +133,12 @@ pub struct ToolEnv {
     pub process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
 }
 
-/// Build the default set of tools, wiring up channels from a [`ToolEnv`].
+/// Build all tools with tier assignments, wiring up channels from a [`ToolEnv`].
 ///
 /// Per-tool streaming is handled uniformly via `ToolContext` — the event
 /// channel is passed to every tool at execution time by the turn loop,
 /// so no per-tool wiring is needed here.
-pub fn build_tools_with_env(env: &ToolEnv) -> Vec<Arc<dyn Tool>> {
+pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
     let panel_tx = env.panel_tx.clone();
     let todo_tx = env.todo_tx.clone();
     let bash_confirm_tx = env.bash_confirm_tx.clone();
@@ -87,35 +185,46 @@ pub fn build_tools_with_env(env: &ToolEnv) -> Vec<Arc<dyn Tool>> {
         procmon_tool = procmon_tool.with_monitor(pm.clone());
     }
 
-    vec![
-        Arc::new(crate::tools::read::ReadTool::new()),
-        Arc::new(crate::tools::write::WriteTool::new()),
-        Arc::new(crate::tools::edit::EditTool::new()),
-        Arc::new(bash_tool),
-        Arc::new(crate::tools::grep::GrepTool::new()),
-        Arc::new(crate::tools::find::FindTool::new()),
-        Arc::new(crate::tools::ls::LsTool::new()),
-        Arc::new(subagent_tool),
-        Arc::new(delegate_tool),
-        Arc::new(todo_tool),
-        Arc::new(crate::tools::nix::NixTool::new()),
-        Arc::new(crate::tools::web::WebTool::new()),
-        Arc::new(crate::tools::commit::CommitTool::new()),
-        Arc::new(crate::tools::review::ReviewTool::new()),
-        Arc::new(crate::tools::ask::AskTool::new()),
-        Arc::new(crate::tools::image_gen::ImageGenTool::new()),
-        #[cfg(feature = "tui-validate")]
-        Arc::new(crate::tools::devtools::validate_tui::ValidateTuiTool::new()),
-        Arc::new(procmon_tool),
-        // Matrix tools (always registered; they return helpful errors when not connected)
-        Arc::new(crate::tools::matrix::MatrixSendTool::new()),
-        Arc::new(crate::tools::matrix::MatrixReadTool::new()),
-        Arc::new(crate::tools::matrix::MatrixRoomsTool::new()),
-        Arc::new(crate::tools::matrix::MatrixPeersTool::new()),
-        Arc::new(crate::tools::matrix::MatrixJoinTool::new()),
-        Arc::new(crate::tools::matrix::MatrixRpcTool::new()),
-        Arc::new(crate::tools::signal_loop::SignalLoopTool::new()),
-    ]
+    let mut tools: Vec<(ToolTier, Arc<dyn Tool>)> = vec![
+        // ── Core (always active) ────────────────────────────────────
+        (ToolTier::Core, Arc::new(crate::tools::read::ReadTool::new())),
+        (ToolTier::Core, Arc::new(crate::tools::write::WriteTool::new())),
+        (ToolTier::Core, Arc::new(crate::tools::edit::EditTool::new())),
+        (ToolTier::Core, Arc::new(bash_tool)),
+        (ToolTier::Core, Arc::new(crate::tools::grep::GrepTool::new())),
+        (ToolTier::Core, Arc::new(crate::tools::find::FindTool::new())),
+        (ToolTier::Core, Arc::new(crate::tools::ls::LsTool::new())),
+        // ── Orchestration (on demand) ───────────────────────────────
+        (ToolTier::Orchestration, Arc::new(subagent_tool)),
+        (ToolTier::Orchestration, Arc::new(delegate_tool)),
+        (ToolTier::Orchestration, Arc::new(crate::tools::signal_loop::SignalLoopTool::new())),
+        (ToolTier::Orchestration, Arc::new(procmon_tool)),
+        // ── Specialty (interactive default) ─────────────────────────
+        (ToolTier::Specialty, Arc::new(todo_tool)),
+        (ToolTier::Specialty, Arc::new(crate::tools::nix::NixTool::new())),
+        (ToolTier::Specialty, Arc::new(crate::tools::web::WebTool::new())),
+        (ToolTier::Specialty, Arc::new(crate::tools::commit::CommitTool::new())),
+        (ToolTier::Specialty, Arc::new(crate::tools::review::ReviewTool::new())),
+        (ToolTier::Specialty, Arc::new(crate::tools::ask::AskTool::new())),
+        (ToolTier::Specialty, Arc::new(crate::tools::image_gen::ImageGenTool::new())),
+        // ── Matrix (daemon only) ────────────────────────────────────
+        (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixSendTool::new())),
+        (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixReadTool::new())),
+        (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixRoomsTool::new())),
+        (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixPeersTool::new())),
+        (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixJoinTool::new())),
+        (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixRpcTool::new())),
+    ];
+
+    #[cfg(feature = "tui-validate")]
+    tools.push((ToolTier::Specialty, Arc::new(crate::tools::devtools::validate_tui::ValidateTuiTool::new())));
+
+    tools
+}
+
+/// Build the default flat tool list (all tiers active). Backward compat wrapper.
+pub fn build_tools_with_env(env: &ToolEnv) -> Vec<Arc<dyn Tool>> {
+    build_tiered_tools(env).into_iter().map(|(_, tool)| tool).collect()
 }
 
 /// Initialize the plugin manager, discover and load all plugins from the
@@ -285,6 +394,44 @@ pub fn build_all_tools_with_env(
     tools
 }
 
+/// Build the full tiered tool set (built-in with tiers + plugin tools as Specialty).
+pub fn build_all_tiered_tools(
+    env: &ToolEnv,
+    plugin_manager: Option<&Arc<Mutex<PluginManager>>>,
+) -> Vec<(ToolTier, Arc<dyn Tool>)> {
+    let mut tiered = build_tiered_tools(env);
+    if let Some(manager) = plugin_manager {
+        let flat_tools: Vec<Arc<dyn Tool>> = tiered.iter().map(|(_, t)| t.clone()).collect();
+        let plugin_tools = build_plugin_tools(&flat_tools, manager, env.panel_tx.as_ref());
+        // Plugin tools are Specialty tier by default
+        for tool in plugin_tools {
+            tiered.push((ToolTier::Specialty, tool));
+        }
+    }
+    tiered
+}
+
+/// Resolve active tiers from CLI `--tools` flag value.
+///
+/// Returns `None` when the caller should use mode defaults.
+/// Returns `Some(tiers)` for explicit tier selection.
+pub fn resolve_tool_tiers(tools_flag: Option<&str>) -> Option<Vec<ToolTier>> {
+    match tools_flag {
+        Some("all") => Some(vec![ToolTier::Core, ToolTier::Orchestration, ToolTier::Specialty, ToolTier::Matrix]),
+        Some("core") => Some(vec![ToolTier::Core]),
+        Some("none") | Some("") => None, // handled separately (empty tool vec)
+        Some(custom) => {
+            // Parse comma-separated tier names
+            let tiers: Vec<ToolTier> = custom
+                .split(',')
+                .filter_map(|s| ToolTier::from_str(s.trim()))
+                .collect();
+            if tiers.is_empty() { None } else { Some(tiers) }
+        }
+        None => None,
+    }
+}
+
 /// Fire `plugin_init` event to all active plugins that subscribe to it.
 /// Returns the collected UI actions so the caller can apply them to the TUI.
 pub fn fire_plugin_init(plugin_manager: &Arc<Mutex<PluginManager>>) -> Vec<crate::plugin::ui::PluginUIAction> {
@@ -397,4 +544,169 @@ pub struct HeadlessConfig {
     pub sessions_dir: Option<PathBuf>,
     /// Working directory (for session metadata)
     pub cwd: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Create a minimal mock tool for testing ToolSet
+    struct MockTool {
+        name: String,
+    }
+
+    impl MockTool {
+        fn new(name: &str) -> Self {
+            Self {
+                name: name.to_string(),
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl crate::tools::Tool for MockTool {
+        fn definition(&self) -> &crate::tools::ToolDefinition {
+            // Leak is fine in tests
+            Box::leak(Box::new(crate::tools::ToolDefinition {
+                name: self.name.clone(),
+                description: format!("Mock tool: {}", self.name),
+                input_schema: serde_json::json!({"type": "object"}),
+            }))
+        }
+
+        async fn execute(
+            &self,
+            _ctx: &crate::agent::tool::ToolContext,
+            _params: serde_json::Value,
+        ) -> crate::agent::tool::ToolResult {
+            crate::agent::tool::ToolResult::text("ok")
+        }
+    }
+
+    fn make_tiered_tools() -> Vec<(ToolTier, Arc<dyn crate::tools::Tool>)> {
+        vec![
+            (ToolTier::Core, Arc::new(MockTool::new("read"))),
+            (ToolTier::Core, Arc::new(MockTool::new("write"))),
+            (ToolTier::Core, Arc::new(MockTool::new("bash"))),
+            (ToolTier::Orchestration, Arc::new(MockTool::new("subagent"))),
+            (ToolTier::Orchestration, Arc::new(MockTool::new("delegate_task"))),
+            (ToolTier::Specialty, Arc::new(MockTool::new("nix"))),
+            (ToolTier::Specialty, Arc::new(MockTool::new("web"))),
+            (ToolTier::Specialty, Arc::new(MockTool::new("commit"))),
+            (ToolTier::Matrix, Arc::new(MockTool::new("matrix_send"))),
+            (ToolTier::Matrix, Arc::new(MockTool::new("matrix_read"))),
+        ]
+    }
+
+    fn tool_names(tools: &[Arc<dyn crate::tools::Tool>]) -> Vec<String> {
+        tools.iter().map(|t| t.definition().name.clone()).collect()
+    }
+
+    #[test]
+    fn tool_set_core_only() {
+        let ts = ToolSet::new(make_tiered_tools(), [ToolTier::Core]);
+        let names = tool_names(&ts.active_tools());
+        assert_eq!(names, vec!["read", "write", "bash"]);
+    }
+
+    #[test]
+    fn tool_set_all_tiers() {
+        let ts = ToolSet::new(
+            make_tiered_tools(),
+            [ToolTier::Core, ToolTier::Orchestration, ToolTier::Specialty, ToolTier::Matrix],
+        );
+        let active = ts.active_tools();
+        assert_eq!(active.len(), 10);
+    }
+
+    #[test]
+    fn tool_set_activate_deactivate() {
+        let mut ts = ToolSet::new(make_tiered_tools(), [ToolTier::Core]);
+        assert_eq!(ts.active_tools().len(), 3);
+
+        ts.activate(ToolTier::Orchestration);
+        assert_eq!(ts.active_tools().len(), 5);
+
+        ts.deactivate(ToolTier::Core);
+        assert_eq!(ts.active_tools().len(), 2);
+        let names = tool_names(&ts.active_tools());
+        assert!(names.contains(&"subagent".to_string()));
+    }
+
+    #[test]
+    fn tool_set_all_tools_ignores_tiers() {
+        let ts = ToolSet::new(make_tiered_tools(), [ToolTier::Core]);
+        // active_tools = 3 (core only), all_tools = 10
+        assert_eq!(ts.active_tools().len(), 3);
+        assert_eq!(ts.all_tools().len(), 10);
+    }
+
+    #[test]
+    fn tool_set_collision_uses_all() {
+        let ts = ToolSet::new(make_tiered_tools(), [ToolTier::Core]);
+        // Collision detection should use all_tools, not active_tools
+        let all_names: HashSet<String> = ts.all_tools().iter().map(|t| t.definition().name.clone()).collect();
+        assert!(all_names.contains("matrix_send")); // Matrix tier not active, but in all_tools
+    }
+
+    #[test]
+    fn tool_set_is_active() {
+        let ts = ToolSet::new(make_tiered_tools(), [ToolTier::Core, ToolTier::Specialty]);
+        assert!(ts.is_active(ToolTier::Core));
+        assert!(ts.is_active(ToolTier::Specialty));
+        assert!(!ts.is_active(ToolTier::Orchestration));
+        assert!(!ts.is_active(ToolTier::Matrix));
+    }
+
+    #[test]
+    fn tool_tier_display() {
+        assert_eq!(format!("{}", ToolTier::Core), "core");
+        assert_eq!(format!("{}", ToolTier::Orchestration), "orchestration");
+        assert_eq!(format!("{}", ToolTier::Specialty), "specialty");
+        assert_eq!(format!("{}", ToolTier::Matrix), "matrix");
+    }
+
+    #[test]
+    fn tool_tier_from_str() {
+        assert_eq!(ToolTier::from_str("core"), Some(ToolTier::Core));
+        assert_eq!(ToolTier::from_str("Core"), Some(ToolTier::Core));
+        assert_eq!(ToolTier::from_str("orchestration"), Some(ToolTier::Orchestration));
+        assert_eq!(ToolTier::from_str("orch"), Some(ToolTier::Orchestration));
+        assert_eq!(ToolTier::from_str("specialty"), Some(ToolTier::Specialty));
+        assert_eq!(ToolTier::from_str("spec"), Some(ToolTier::Specialty));
+        assert_eq!(ToolTier::from_str("matrix"), Some(ToolTier::Matrix));
+        assert_eq!(ToolTier::from_str("unknown"), None);
+    }
+
+    #[test]
+    fn resolve_tool_tiers_all() {
+        let tiers = resolve_tool_tiers(Some("all")).unwrap();
+        assert_eq!(tiers.len(), 4);
+    }
+
+    #[test]
+    fn resolve_tool_tiers_core() {
+        let tiers = resolve_tool_tiers(Some("core")).unwrap();
+        assert_eq!(tiers, vec![ToolTier::Core]);
+    }
+
+    #[test]
+    fn resolve_tool_tiers_none_returns_none() {
+        assert!(resolve_tool_tiers(Some("none")).is_none());
+        assert!(resolve_tool_tiers(None).is_none());
+    }
+
+    #[test]
+    fn resolve_tool_tiers_comma_separated() {
+        let tiers = resolve_tool_tiers(Some("core,orchestration")).unwrap();
+        assert_eq!(tiers.len(), 2);
+        assert!(tiers.contains(&ToolTier::Core));
+        assert!(tiers.contains(&ToolTier::Orchestration));
+    }
+
+    #[test]
+    fn resolve_tool_tiers_unknown_names_skipped() {
+        // When all names are unknown, returns None (not an empty Some)
+        assert!(resolve_tool_tiers(Some("read,write,bash")).is_none());
+    }
 }

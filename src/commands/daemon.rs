@@ -30,7 +30,16 @@ pub async fn run_daemon(
         process_monitor: Some(process_monitor),
         ..Default::default()
     };
-    let tools = crate::modes::common::build_tools_with_env(&env);
+    // Daemon mode: all tiers active (needs matrix, orchestration, everything)
+    let tiered = crate::modes::common::build_tiered_tools(&env);
+    let tool_set = crate::modes::common::ToolSet::new(
+        tiered,
+        [crate::modes::common::ToolTier::Core,
+         crate::modes::common::ToolTier::Orchestration,
+         crate::modes::common::ToolTier::Specialty,
+         crate::modes::common::ToolTier::Matrix],
+    );
+    let tools = tool_set.active_tools();
 
     let config = crate::modes::daemon::DaemonConfig {
         model: ctx.model.clone(),

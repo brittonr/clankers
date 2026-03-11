@@ -67,7 +67,8 @@ pub struct Cli {
     #[arg(long, value_name = "FILE")]
     pub system_prompt_file: Option<String>,
 
-    /// Allowed tools (comma-separated, or "all")
+    /// Tool mode: "all", "core", "none", tier names (core,specialty,orchestration,matrix),
+    /// or comma-separated tool names for fine-grained control. Default: auto (mode-dependent).
     #[arg(long, value_name = "TOOLS")]
     pub tools: Option<String>,
 
