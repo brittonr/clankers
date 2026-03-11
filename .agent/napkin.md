@@ -491,3 +491,11 @@
 - Functions over 70 lines in src/: 41 → 31 (eliminated 10)
 - Remaining 31 are mostly: test functions (270-line translator test), pure match routers (translate/event_handlers), setup functions (run_interactive), or linear builders (landlock rules)
 - cli.rs at 763 lines is all declarative clap derive — splitting would reduce ergonomics with no safety gain
+
+## Patterns That Work (decomposition round 3 — large file splits)
+- validate_tui.rs (692→362): PtyHarness + key_bytes → `pty_harness.rs`, tests → `validate_tui_tests.rs`, extract `execute_action()` + `check_assertions()` from `run_tui_test()`
+- git_ops/mod.rs (686→260): diff functions → `diff.rs`, log/time → `log.rs`, tests → `tests.rs`. Shared types (GitError, Result, open_repo) stay in mod.rs
+- sync_ops.rs (672→368): tests → `sync_ops_tests.rs` via `#[path = "sync_ops_tests.rs"]` attribute (non-mod.rs can't use bare `mod tests;`)
+- commands/rpc.rs (731): already well-decomposed (20+ small handlers), no further split needed
+- `#[path = "filename.rs"] #[cfg(test)] mod tests;` is the cleanest way to extract tests from non-mod.rs files
+- TUI snapshots are environment-sensitive (git identity, terminal state) — use `cargo insta test --accept` in non-interactive environments, not `cargo insta review`
