@@ -519,6 +519,10 @@ impl ChunkConverter {
                         chunks.push(json);
                     }
                 }
+                ContentDelta::SignatureDelta { .. } => {
+                    // Signature deltas are internal to the Anthropic protocol;
+                    // they have no OpenAI equivalent, so we skip them here.
+                }
                 ContentDelta::InputJsonDelta { partial_json } => {
                     // Tool call argument streaming — the tool_call_index
                     // was incremented when we saw ContentBlockStart,
@@ -755,6 +759,7 @@ async fn handle_non_streaming(state: Arc<ProxyState>, request: CompletionRequest
                     }
                 }
                 ContentDelta::ThinkingDelta { .. } => {}
+                ContentDelta::SignatureDelta { .. } => {}
             },
             StreamEvent::MessageDelta {
                 stop_reason: sr,

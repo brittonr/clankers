@@ -75,7 +75,12 @@ pub enum ContentBlock {
     Text { text: String },
     /// Extended thinking content
     #[serde(rename = "thinking")]
-    Thinking { thinking: String },
+    Thinking {
+        thinking: String,
+        /// Opaque signature returned by Anthropic; must be echoed back verbatim.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        signature: String,
+    },
     /// Tool use request
     #[serde(rename = "tool_use")]
     ToolUse {
@@ -95,4 +100,6 @@ pub enum ContentDelta {
     ThinkingDelta { thinking: String },
     /// Input JSON delta for tool use
     InputJsonDelta { partial_json: String },
+    /// Thinking signature delta (Anthropic; must be echoed back verbatim)
+    SignatureDelta { signature: String },
 }

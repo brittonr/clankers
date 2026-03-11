@@ -89,6 +89,10 @@ fn format_event_json(event: &AgentEvent) -> String {
                 ContentDelta::InputJsonDelta { partial_json } => {
                     json!({"type": "input_json_delta", "index": index, "json": partial_json}).to_string()
                 }
+                ContentDelta::SignatureDelta { .. } => {
+                    // Internal to Anthropic protocol; not exposed in JSON output
+                    return json!({"type": "unknown"}).to_string();
+                }
             }
         }
         AgentEvent::ToolCall {

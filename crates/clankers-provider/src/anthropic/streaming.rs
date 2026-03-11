@@ -53,7 +53,7 @@ enum SseDelta {
     #[serde(rename = "thinking_delta")]
     Thinking { thinking: String },
     #[serde(rename = "signature_delta")]
-    Signature { _signature: String },
+    Signature { signature: String },
 }
 
 #[derive(Debug, Deserialize)]
@@ -157,7 +157,7 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<StreamEvent> {
                     name,
                     input: Value::Object(serde_json::Map::new()),
                 },
-                SseContentBlock::Thinking { thinking } => Content::Thinking { thinking },
+                SseContentBlock::Thinking { thinking } => Content::Thinking { thinking, signature: String::new() },
             };
             Some(StreamEvent::ContentBlockStart {
                 index: parsed.index,
@@ -170,7 +170,7 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<StreamEvent> {
                 SseDelta::Text { text } => ContentDelta::TextDelta { text },
                 SseDelta::InputJson { partial_json } => ContentDelta::InputJsonDelta { partial_json },
                 SseDelta::Thinking { thinking } => ContentDelta::ThinkingDelta { thinking },
-                SseDelta::Signature { .. } => return None, // skip signature deltas
+                SseDelta::Signature { signature } => ContentDelta::SignatureDelta { signature },
             };
             Some(StreamEvent::ContentBlockDelta {
                 index: parsed.index,

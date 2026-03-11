@@ -431,6 +431,7 @@ impl AnthropicSseHandler {
                     },
                     Some("thinking") => ContentBlock::Thinking {
                         thinking: cb["thinking"].as_str().unwrap_or("").to_string(),
+                        signature: String::new(),
                     },
                     Some("tool_use") => ContentBlock::ToolUse {
                         id: cb["id"].as_str().unwrap_or("").to_string(),
@@ -456,6 +457,9 @@ impl AnthropicSseHandler {
                     },
                     Some("input_json_delta") => ContentDelta::InputJsonDelta {
                         partial_json: d["partial_json"].as_str().unwrap_or("").to_string(),
+                    },
+                    Some("signature_delta") => ContentDelta::SignatureDelta {
+                        signature: d["signature"].as_str().unwrap_or("").to_string(),
                     },
                     _ => ContentDelta::TextDelta { text: String::new() },
                 };

@@ -164,6 +164,7 @@ mod tests {
             index: 0,
             content_block: Content::Thinking {
                 thinking: "Let me think...".to_string(),
+                signature: String::new(),
             },
         };
         let result = translate(&event);

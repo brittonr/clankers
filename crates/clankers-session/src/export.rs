@@ -51,7 +51,7 @@ pub fn export_markdown(path: &Path) -> Result<String> {
                                 )
                                 .unwrap();
                             }
-                            Content::Thinking { thinking } => {
+                            Content::Thinking { thinking, .. } => {
                                 write!(
                                     out,
                                     "<details>\n<summary>💭 Thinking</summary>\n\n{}\n\n</details>\n\n",

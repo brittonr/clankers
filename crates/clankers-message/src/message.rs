@@ -78,6 +78,9 @@ pub enum Content {
     },
     Thinking {
         thinking: String,
+        /// Opaque signature returned by Anthropic; must be echoed back verbatim.
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        signature: String,
     },
     ToolUse {
         id: String,

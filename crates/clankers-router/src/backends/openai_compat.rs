@@ -603,6 +603,7 @@ impl OpenAISseHandler {
                                 index: 0,
                                 content_block: ContentBlock::Thinking {
                                     thinking: String::new(),
+                                    signature: String::new(),
                                 },
                             });
                             self.content_block_started = true;

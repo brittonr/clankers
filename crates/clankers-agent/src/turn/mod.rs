@@ -77,12 +77,20 @@ impl ContentBlockBuilder {
                 text.push_str(delta_text);
             }
             (
-                Content::Thinking { thinking },
+                Content::Thinking { thinking, .. },
                 ContentDelta::ThinkingDelta {
                     thinking: delta_thinking,
                 },
             ) => {
                 thinking.push_str(delta_thinking);
+            }
+            (
+                Content::Thinking { signature, .. },
+                ContentDelta::SignatureDelta {
+                    signature: sig_delta,
+                },
+            ) => {
+                signature.push_str(sig_delta);
             }
             (Content::ToolUse { .. }, ContentDelta::InputJsonDelta { partial_json }) => {
                 self.raw_json.get_or_insert_with(String::new).push_str(partial_json);
@@ -292,6 +300,7 @@ mod tests {
     fn test_content_block_builder_thinking_delta() {
         let mut builder = ContentBlockBuilder::new(Content::Thinking {
             thinking: String::new(),
+            signature: String::new(),
         });
         builder.apply_delta(&ContentDelta::ThinkingDelta {
             thinking: "Let me think...".to_string(),
@@ -301,7 +310,29 @@ mod tests {
         });
 
         match builder.finalize() {
-            Content::Thinking { thinking } => assert_eq!(thinking, "Let me think... more thoughts"),
+            Content::Thinking { thinking, .. } => assert_eq!(thinking, "Let me think... more thoughts"),
+            other => panic!("Expected Thinking, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_content_block_builder_signature_delta() {
+        let mut builder = ContentBlockBuilder::new(Content::Thinking {
+            thinking: "some thought".to_string(),
+            signature: String::new(),
+        });
+        builder.apply_delta(&ContentDelta::SignatureDelta {
+            signature: "sig_part1".to_string(),
+        });
+        builder.apply_delta(&ContentDelta::SignatureDelta {
+            signature: "_part2".to_string(),
+        });
+
+        match builder.finalize() {
+            Content::Thinking { thinking, signature } => {
+                assert_eq!(thinking, "some thought");
+                assert_eq!(signature, "sig_part1_part2");
+            }
             other => panic!("Expected Thinking, got {:?}", other),
         }
     }

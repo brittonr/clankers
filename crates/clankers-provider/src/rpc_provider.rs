@@ -193,7 +193,7 @@ fn content_to_json(content: &crate::message::Content) -> serde_json::Value {
             }),
             ImageSource::Url { url } => json!({"type": "text", "text": format!("[Image URL: {}]", url)}),
         },
-        Content::Thinking { thinking } => json!({"type": "thinking", "thinking": thinking, "signature": ""}),
+        Content::Thinking { thinking, signature } => json!({"type": "thinking", "thinking": thinking, "signature": signature}),
         Content::ToolUse { id, name, input } => json!({
             "type": "tool_use", "id": id, "name": name, "input": input
         }),

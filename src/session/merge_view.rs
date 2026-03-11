@@ -15,7 +15,7 @@ pub fn to_merge_view(entry: &MessageEntry) -> clankers_tui_types::MergeMessageVi
             .iter()
             .filter_map(|c| match c {
                 Content::Text { text } => Some(text.as_str()),
-                Content::Thinking { thinking } => Some(thinking.as_str()),
+                Content::Thinking { thinking, .. } => Some(thinking.as_str()),
                 _ => None,
             })
             .collect::<Vec<_>>()

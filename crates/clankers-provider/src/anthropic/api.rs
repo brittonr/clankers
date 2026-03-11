@@ -346,9 +346,11 @@ fn convert_content_block(content: &crate::message::Content) -> ApiContentBlock {
                 }
             }
         },
-        Content::Thinking { thinking } => ApiContentBlock::Thinking {
-            thinking: thinking.clone(),
-            signature: String::new(),
+        Content::Thinking { signature, .. } => ApiContentBlock::Thinking {
+            // Anthropic requires thinking text to be redacted when echoing back;
+            // only the opaque signature is sent.
+            thinking: String::new(),
+            signature: signature.clone(),
         },
         Content::ToolUse { id, name, input } => ApiContentBlock::ToolUse {
             id: id.clone(),

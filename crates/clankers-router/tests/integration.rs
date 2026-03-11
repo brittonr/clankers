@@ -931,6 +931,7 @@ fn test_stream_event_serialization_roundtrip() {
             index: 1,
             content_block: ContentBlock::Thinking {
                 thinking: String::new(),
+                signature: String::new(),
             },
         },
         StreamEvent::ContentBlockStart {

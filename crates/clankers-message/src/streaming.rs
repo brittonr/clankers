@@ -52,7 +52,7 @@ impl From<clankers_router::streaming::ContentBlock> for Content {
         use clankers_router::streaming::ContentBlock;
         match block {
             ContentBlock::Text { text } => Content::Text { text },
-            ContentBlock::Thinking { thinking } => Content::Thinking { thinking },
+            ContentBlock::Thinking { thinking, signature } => Content::Thinking { thinking, signature },
             ContentBlock::ToolUse { id, name, input } => Content::ToolUse { id, name, input },
         }
     }
