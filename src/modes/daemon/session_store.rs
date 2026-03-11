@@ -136,7 +136,6 @@ pub(crate) fn create_auth_layer(
 /// If capabilities include `ToolUse { "*" }`, all tools are kept.
 /// Otherwise, only tools whose name appears in the ToolUse pattern are kept.
 pub(crate) fn filter_tools_by_capabilities(tools: &[Arc<dyn Tool>], capabilities: &[Capability]) -> Vec<Arc<dyn Tool>> {
-    // Find the ToolUse capability (if any)
     let tool_pattern = capabilities.iter().find_map(|c| {
         if let Capability::ToolUse { tool_pattern } = c {
             Some(tool_pattern.as_str())
@@ -145,14 +144,18 @@ pub(crate) fn filter_tools_by_capabilities(tools: &[Arc<dyn Tool>], capabilities
         }
     });
 
-    match tool_pattern {
+    let result = match tool_pattern {
         None => Vec::new(),          // No ToolUse capability → no tools
         Some("*") => tools.to_vec(), // Wildcard → all tools
         Some(pattern) => {
             let allowed: std::collections::HashSet<&str> = pattern.split(',').map(|s| s.trim()).collect();
             tools.iter().filter(|t| allowed.contains(t.definition().name.as_str())).cloned().collect()
         }
-    }
+    };
+
+    // Tiger Style: result can never exceed input
+    debug_assert!(result.len() <= tools.len());
+    result
 }
 
 // ── Session types ───────────────────────────────────────────────────────────
@@ -246,6 +249,9 @@ impl SessionStore {
         max_sessions: usize,
         auth: Option<Arc<AuthLayer>>,
     ) -> Self {
+        debug_assert!(max_sessions > 0, "max_sessions must be positive");
+        debug_assert!(!model.is_empty(), "model must not be empty");
+
         Self {
             sessions: HashMap::new(),
             prompt_locks: HashMap::new(),
@@ -271,6 +277,9 @@ impl SessionStore {
     /// ToolUse capability. If None, all tools are available (allowlist user).
     pub(crate) fn get_or_create(&mut self, key: &SessionKey, capabilities: Option<&[Capability]>) -> &mut LiveSession {
         if !self.sessions.contains_key(key) {
+            // Tiger Style: sessions must not exceed max_sessions
+            debug_assert!(self.sessions.len() <= self.max_sessions);
+
             // Evict oldest session if at capacity
             if self.sessions.len() >= self.max_sessions {
                 self.evict_oldest();
@@ -326,11 +335,14 @@ impl SessionStore {
 
     /// Remove the least recently used session.
     fn evict_oldest(&mut self) {
+        debug_assert!(!self.sessions.is_empty(), "evict_oldest called on empty store");
+        let before = self.sessions.len();
         if let Some(oldest_key) = self.sessions.iter().min_by_key(|(_, s)| s.last_active).map(|(k, _)| k.clone()) {
             info!("Evicting stale session: {}", oldest_key);
             self.sessions.remove(&oldest_key);
             self.prompt_locks.remove(&oldest_key);
         }
+        debug_assert!(self.sessions.len() < before, "evict_oldest must remove a session");
     }
 
     /// Number of active sessions.

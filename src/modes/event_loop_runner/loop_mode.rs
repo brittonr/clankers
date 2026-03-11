@@ -116,6 +116,11 @@ impl<'a> EventLoopRunner<'a> {
         self.app.loop_status = None;
         self.loop_turn_output.clear();
 
+        // Tiger Style: post-condition — loop state fully cleaned up
+        debug_assert!(self.active_loop_id.is_none());
+        debug_assert!(self.app.loop_status.is_none());
+        debug_assert!(self.loop_turn_output.is_empty());
+
         if let Some(msg) = summary {
             self.app.push_system(msg, false);
         }
