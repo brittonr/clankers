@@ -220,6 +220,43 @@ pub fn render_scrollbar(frame: &mut Frame, area: Rect, content_length: usize, po
     );
 }
 
+/// Render a vertical scrollbar and register it for mouse interaction.
+///
+/// Same as `render_scrollbar` but also computes and returns scrollbar info
+/// for mouse hit testing.
+pub fn render_scrollbar_tracked(
+    frame: &mut Frame,
+    area: Rect,
+    content_length: usize,
+    position: usize,
+    visible_height: usize,
+) -> Option<super::scrollbar_registry::ScrollbarInfo> {
+    if content_length <= visible_height || area.height < 2 {
+        return None;
+    }
+
+    // Render the scrollbar
+    render_scrollbar(frame, area, content_length, position, visible_height);
+
+    // Calculate thumb geometry
+    let (thumb_start, thumb_height) = super::scrollbar_registry::calculate_thumb_geometry(
+        area.height,
+        content_length,
+        visible_height,
+        position,
+    );
+
+    // Create scrollbar info
+    Some(super::scrollbar_registry::ScrollbarInfo {
+        area,
+        content_length,
+        position,
+        visible_height,
+        thumb_start,
+        thumb_height,
+    })
+}
+
 // ── PanelFrame — shared border / title / empty rendering ────────────────────
 
 /// Draw the standard panel frame (border + title + focus hints) and return

@@ -14,12 +14,12 @@ expression: normalized
 │                  │││              │  L  loop…               │     │││                            │
 │                  │││              │  T  show/hide thinking  │     │││                            │
 │                  │││              │  `  toggle panel        │     │││                            │
-│                  │││              │  a  account             │     │││                            │
-│                  │││              │  c  cancel/abort        │     │││                            │
-└──────────────────┘││              │  f  search output       │     ││└────────────────────────────┘
-┌ Files (0, 0 ops)─┐││              │  l  layout…             │     ││┌ Peers (0/0)────────────────┐
-│No files touched  │││              │  m  model               │     │││No peers known. /peers add  │
-│yet.              │││              │  o  external editor     │     │││<id> <name>                 │
+└──────────────────┘││              │  a  account             │     ││└────────────────────────────┘
+┌ Files (0, 0 ops)─┐││              │  c  cancel/abort        │     ││┌ Peers (0/0)────────────────┐
+│No files touched  │││              │  f  search output       │     │││No peers known. /peers add  │
+│yet.              │││              │  l  layout…             │     │││<id> <name>                 │
+│                  │││              │  m  model               │     │││                            │
+│                  │││              │  o  external editor     │     │││                            │
 │                  │││              │  p  pane…               │     │││                            │
 │                  │││              │  s  session…            │     │││                            │
 │                  │││              │  t  toggle thinking     │     │││                            │
@@ -27,8 +27,8 @@ expression: normalized
 │                  │││              │  x  clear input         │     │││                            │
 │                  │││              │                         │     │││                            │
 │                  ││└──────────────│  esc close              │─────┘││                            │
-│                  ││┌Input─────────└─────────────────────────┘─────┐││                            │
-│                  │││                                              │││                            │
-│                  ││└──────────────────────────────────────────────┘││                            │
-│                  ││ NORMAL  👤 default  ░░░░░░░░N/N.Nk   main││                            │
-└──────────────────┘└────────────────────────────────────────────────┘└────────────────────────────┘
+└──────────────────┘└───────────────└─────────────────────────┘──────┘└────────────────────────────┘
+┌Input─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────────┘
+ NORMAL  👤 default  ░░░░░░░░N/N.Nk   main  idle | MODEL | /home/brittonr/git/cla

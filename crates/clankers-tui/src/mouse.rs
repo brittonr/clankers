@@ -17,6 +17,59 @@ pub fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
     match button {
         Button::Left => {
             match region {
+                HitRegion::PanelScrollbar(panel_id) => {
+                    // Start scrollbar drag for panel
+                    if let Some(info) = app.scrollbar_registry.panels.get(&panel_id) {
+                        let new_pos = crate::scrollbar_registry::ScrollbarRegistry::position_from_mouse(info, row);
+                        
+                        // Update scroll position
+                        if let Some(panel) = app.panels.get_mut(panel_id) {
+                            if let Some(scroll) = panel.panel_scroll_mut() {
+                                scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
+                            }
+                        }
+                        
+                        // Start drag tracking
+                        app.scrollbar_drag = Some(crate::app::ScrollbarDrag {
+                            region: region.clone(),
+                            initial_position: new_pos,
+                            initial_mouse_y: row,
+                        });
+                    }
+                }
+                HitRegion::MessagesScrollbar => {
+                    // Start scrollbar drag for messages
+                    if let Some(info) = &app.scrollbar_registry.messages {
+                        let new_pos = crate::scrollbar_registry::ScrollbarRegistry::position_from_mouse(info, row);
+                        app.conversation.scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
+                        
+                        // Start drag tracking
+                        app.scrollbar_drag = Some(crate::app::ScrollbarDrag {
+                            region: region.clone(),
+                            initial_position: new_pos,
+                            initial_mouse_y: row,
+                        });
+                    }
+                }
+                HitRegion::SubagentScrollbar(ref id) => {
+                    // Start scrollbar drag for subagent
+                    if let Some(info) = app.scrollbar_registry.subagents.get(id) {
+                        let new_pos = crate::scrollbar_registry::ScrollbarRegistry::position_from_mouse(info, row);
+                        
+                        // Update subagent scroll
+                        if let Some(state) = app.layout.subagent_panes.get_mut(id) {
+                            state.scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
+                            state.auto_scroll = false;
+                        }
+                        
+                        // Start drag tracking
+                        app.scrollbar_drag = Some(crate::app::ScrollbarDrag {
+                            region: region.clone(),
+                            initial_position: new_pos,
+                            initial_mouse_y: row,
+                        });
+                    }
+                }
                 HitRegion::Messages => {
                     // Start text selection in the messages area
                     if let Some(pos) = crate::selection::screen_to_text_pos(
@@ -99,14 +152,48 @@ pub fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
 }
 
 /// Handle mouse drag (button held + moved).
-pub fn handle_mouse_drag(app: &mut App, button: Button, col: u16, row: u16) {
+pub fn handle_mouse_drag(app: &mut App, button: Button, _col: u16, row: u16) {
     if button != Button::Left {
         return;
     }
+
+    // Handle scrollbar drag
+    if let Some(ref drag_state) = app.scrollbar_drag {
+        match &drag_state.region {
+            HitRegion::PanelScrollbar(panel_id) => {
+                if let Some(info) = app.scrollbar_registry.panels.get(panel_id) {
+                    let new_pos = crate::scrollbar_registry::ScrollbarRegistry::position_from_mouse(info, row);
+                    if let Some(panel) = app.panels.get_mut(*panel_id) {
+                        if let Some(scroll) = panel.panel_scroll_mut() {
+                            scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
+                        }
+                    }
+                }
+            }
+            HitRegion::MessagesScrollbar => {
+                if let Some(info) = &app.scrollbar_registry.messages {
+                    let new_pos = crate::scrollbar_registry::ScrollbarRegistry::position_from_mouse(info, row);
+                    app.conversation.scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
+                }
+            }
+            HitRegion::SubagentScrollbar(id) => {
+                if let Some(info) = app.scrollbar_registry.subagents.get(id) {
+                    let new_pos = crate::scrollbar_registry::ScrollbarRegistry::position_from_mouse(info, row);
+                    if let Some(state) = app.layout.subagent_panes.get_mut(id) {
+                        state.scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
+                        state.auto_scroll = false;
+                    }
+                }
+            }
+            _ => {}
+        }
+        return;
+    }
+
     // Continue text selection in messages area
     if let Some(ref mut sel) = app.selection
         && let Some(pos) = crate::selection::screen_to_text_pos(
-            col,
+            _col,
             row,
             app.messages_area,
             app.conversation.scroll.offset,
@@ -122,6 +209,10 @@ pub fn handle_mouse_up(app: &mut App, button: Button, col: u16, row: u16) {
     if button != Button::Left {
         return;
     }
+
+    // Clear scrollbar drag state
+    app.scrollbar_drag = None;
+
     if let Some(ref mut sel) = app.selection {
         if let Some(pos) = crate::selection::screen_to_text_pos(
             col,

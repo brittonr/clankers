@@ -190,14 +190,25 @@ pub struct App {
     pub messages_area: Rect,
     pub editor_area: Rect,
     pub status_area: Rect,
+    pub scrollbar_registry: super::scrollbar_registry::ScrollbarRegistry,
 
     // Clipboard
     pub pending_images: Vec<PendingImage>,
     pub clipboard_pending: bool,
     pub clipboard_rx: Option<std::sync::mpsc::Receiver<clankers_tui_types::ClipboardResult>>,
 
+    // Mouse state
+    pub scrollbar_drag: Option<ScrollbarDrag>,
+
     // External services
     pub highlighter: Box<dyn clankers_tui_types::SyntaxHighlighter>,
+}
+
+/// State for an active scrollbar drag operation
+pub struct ScrollbarDrag {
+    pub region: HitRegion,
+    pub initial_position: usize,
+    pub initial_mouse_y: u16,
 }
 
 // PendingImage re-exported from clankers-tui-types above.
@@ -296,11 +307,15 @@ impl App {
             messages_area: Rect::default(),
             editor_area: Rect::default(),
             status_area: Rect::default(),
+            scrollbar_registry: super::scrollbar_registry::ScrollbarRegistry::new(),
 
             // Clipboard
             pending_images: Vec::new(),
             clipboard_pending: false,
             clipboard_rx: None,
+
+            // Mouse state
+            scrollbar_drag: None,
 
             highlighter: Box::new(clankers_tui_types::PlainHighlighter),
         }
@@ -638,6 +653,21 @@ impl App {
 
     /// Determine which UI region a screen coordinate falls in.
     pub fn hit_test(&self, col: u16, row: u16) -> HitRegion {
+        // Check scrollbars first (they overlay content)
+        if let Some(hit) = self.scrollbar_registry.hit_test(col, row) {
+            match hit {
+                super::scrollbar_registry::ScrollbarHit::Panel(panel_id, _) => {
+                    return HitRegion::PanelScrollbar(panel_id);
+                }
+                super::scrollbar_registry::ScrollbarHit::Subagent(id, _) => {
+                    return HitRegion::SubagentScrollbar(id);
+                }
+                super::scrollbar_registry::ScrollbarHit::Messages(_) => {
+                    return HitRegion::MessagesScrollbar;
+                }
+            }
+        }
+
         // Check editor area first (it overlaps with "main column")
         if rect_contains(self.editor_area, col, row) {
             return HitRegion::Editor;

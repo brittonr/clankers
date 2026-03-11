@@ -9,6 +9,7 @@ pub mod mouse;
 pub mod panel;
 pub mod panes;
 pub mod render;
+pub mod scrollbar_registry;
 pub mod selection;
 pub mod selectors;
 pub mod theme;

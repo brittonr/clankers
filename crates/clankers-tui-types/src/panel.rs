@@ -75,6 +75,12 @@ pub enum HitRegion {
     Subagent(String),
     /// The status bar.
     StatusBar,
+    /// A scrollbar in a panel.
+    PanelScrollbar(PanelId),
+    /// A scrollbar in the messages area.
+    MessagesScrollbar,
+    /// A scrollbar in a subagent pane.
+    SubagentScrollbar(String),
     /// Outside any tracked region.
     None,
 }
