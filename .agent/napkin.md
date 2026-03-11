@@ -474,3 +474,20 @@
 - `HooksConfig` in settings.json: enabled (default true), hooks_dir, disabled_hooks, script_timeout_secs (default 10), manage_git_hooks (default false)
 - `/hooks` slash command: status, list (shows installed scripts), install-git, uninstall-git
 - `SlashContext` doesn't have settings — use `load_hooks_config()` helper (loads from merged settings files)
+
+## Patterns That Work (Tiger Style modularization round 3)
+- commands/rpc.rs: 591-line `run()` → 14 handler functions. Key: `parse_node_id()`, `truncate_id()`, `rpc_error()`, `parse_capabilities()` shared helpers eliminate duplication
+- NixOutputState struct groups 5 mutable params into a single bundle — callers write `state.messages` not 5 separate args
+- `push_bounded(vec, item, max)` drops 10% when full — amortizes O(n) drain instead of shifting on every push
+- `emit_deduped(ctx, last, msg)` eliminates repeated 3-line dedup pattern in nix parser
+- `collect_line()` / `drain_reader()` in bash.rs: eliminated 4x copy-paste of 7-line "process a line" block
+- `search_file_into()` in grep.rs: shared between single-file and walker paths (eliminated `search_single_file`)
+- LoopTool: `RunParams` struct + `parse_run_params()` pure function, `run_loop_iterations()` async body, `format_loop_result()` pure output
+- process_agent_event decomposed to: `record_usage()`, `process_tool_events()`, `dispatch_to_plugins()`, `fire_lifecycle_hooks()`
+- Daemon `run_daemon` decomposed into: `build_endpoint()`, `build_rpc_state()`, `spawn_*()` family (5 spawners)
+- Plugin `/plugin` handler: generic `plugin_toggle(pm, name, enable, ctx)` handles both enable/disable with one function
+- `plugin_show` uses `join_or_none()` closure to eliminate 4x identical `if empty { "none" } else { join }` blocks
+- Assertion density in daemon/session_store.rs: evict_oldest pre/post, max_sessions invariant, filter_tools output bound
+- Functions over 70 lines in src/: 41 → 31 (eliminated 10)
+- Remaining 31 are mostly: test functions (270-line translator test), pure match routers (translate/event_handlers), setup functions (run_interactive), or linear builders (landlock rules)
+- cli.rs at 763 lines is all declarative clap derive — splitting would reduce ergonomics with no safety gain
