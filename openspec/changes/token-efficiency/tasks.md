@@ -4,67 +4,69 @@
 
 _Highest impact. ~70K token savings across the 10-prompt benchmark._
 
-- [ ] **1.1** Add `ToolTier` enum to `src/modes/common.rs`
-- [ ] **1.2** Add `ToolSet` struct with `active_tools()`, `all_tools()`,
+- [x] **1.1** Add `ToolTier` enum to `src/modes/common.rs`
+- [x] **1.2** Add `ToolSet` struct with `active_tools()`, `all_tools()`,
       `activate()`, `deactivate()`, `is_active()`
-- [ ] **1.3** Refactor `build_tools_with_env()` → `build_all_tools()` returning
+- [x] **1.3** Refactor `build_tools_with_env()` → `build_tiered_tools()` returning
       `Vec<(ToolTier, Arc<dyn Tool>)>` with tier assignments
-- [ ] **1.4** Update interactive mode to create `ToolSet` with `[Core, Specialty]`
-- [ ] **1.5** Update headless `-p` mode to create `ToolSet` with `[Core]`
-- [ ] **1.6** Update daemon mode to create `ToolSet` with all tiers
-- [ ] **1.7** Update RPC server to create `ToolSet` with all tiers
-- [ ] **1.8** Update agent loop to call `tool_set.active_tools()` instead of
-      using flat tool vec
-- [ ] **1.9** Update plugin collision detection to use `tool_set.all_tools()`
-- [ ] **1.10** Add `--tools` CLI flag: `all`, `core`, `none`, `auto` (default)
-- [ ] **1.11** Add `tiers` field to agent definition YAML parsing
-- [ ] **1.12** Update `/tools` slash command to show tier info
-- [ ] **1.13** Tests: core-only, all-tiers, activate/deactivate, collision
-       detection, mode defaults
+- [x] **1.4** Update interactive mode to create `ToolSet` with `[Core, Specialty, Orchestration]`
+- [x] **1.5** Update headless `-p` mode to create `ToolSet` with `[Core, Specialty]`
+- [x] **1.6** Update daemon mode to create `ToolSet` with all tiers
+- [x] **1.7** Update RPC server to create `ToolSet` with all tiers
+- [x] **1.8** Update agent loop — truncation applied between tool execution
+      and message assembly via `apply_output_truncation()`
+- [x] **1.9** Plugin collision detection uses `all_tools()` via existing build_plugin_tools
+- [x] **1.10** Add `--tools` CLI flag: `all`, `core`, `none`, tier names, or
+      comma-separated tool names
+- [x] **1.11** Add `tiers` field to agent definition frontmatter parsing
+- [x] **1.12** Update `/tools` slash command to show tier info
+- [x] **1.13** Tests: core-only, all-tiers, activate/deactivate, collision
+       detection, tier parsing (13 tests)
 
 ## Phase 2: System Prompt Trimming
 
 _Moderate impact. ~400 tokens/turn savings._
 
-- [ ] **2.1** Break `default_system_prompt()` static string into named section
+- [x] **2.1** Break `default_system_prompt()` static string into named section
       constants: `BASE_PROMPT`, `NIX_SECTION`, `MODEL_SWITCHING_SECTION`,
       `HEARTBEAT_SECTION`, `PROCMON_SECTION`
-- [ ] **2.2** Add `PromptFeatures` struct with `nix_available`, `multi_model`,
+- [x] **2.2** Add `PromptFeatures` struct with `nix_available`, `multi_model`,
       `daemon_mode`, `process_monitor` fields
-- [ ] **2.3** Change `default_system_prompt()` signature from `() -> &'static str`
-      to `(&PromptFeatures) -> String`
-- [ ] **2.4** Implement conditional assembly: only include sections whose
+- [x] **2.3** Add `build_default_system_prompt(&PromptFeatures) -> String`;
+      backward-compat `default_system_prompt() -> String` returns all sections
+- [x] **2.4** Implement conditional assembly: only include sections whose
       feature flag is true
-- [ ] **2.5** Trim section content — Nix section from 6 examples to 1,
+- [x] **2.5** Trim section content — Nix section from 6 examples to 1,
       model switching from bullet list to single sentence, heartbeat and
       procmon to 1–2 sentences each
-- [ ] **2.6** Add `detect_nix()` function, cache result in startup context
-- [ ] **2.7** Wire `PromptFeatures` at all call sites:
-      - Interactive mode: `nix_available` + `multi_model`
-      - Daemon mode: all features true
-      - Headless mode: `nix_available` only
-- [ ] **2.8** Update all callers of `default_system_prompt()` to pass features
-- [ ] **2.9** Verify `SYSTEM.md` override still replaces entire base prompt
-- [ ] **2.10** Tests: each scenario (headless/interactive/daemon × nix/no-nix),
-       SYSTEM.md override, section presence/absence
+- [x] **2.6** Add `detect_nix()` function in system_prompt.rs
+- [x] **2.7** Wire `PromptFeatures` at all call sites:
+      - Interactive mode (main.rs): `nix_available` + `multi_model`
+      - Daemon mode (DaemonConfig): all features true, `detect_nix()`
+      - Headless mode: shares interactive path
+- [x] **2.8** Updated all callers of `default_system_prompt()`
+- [x] **2.9** Verified `SYSTEM.md` override still replaces entire base prompt (test)
+- [x] **2.10** Tests: 8 new tests covering headless/interactive/daemon scenarios,
+       section presence/absence, SYSTEM.md override, backward compat
 
 ## Phase 3: Tool Output Truncation
 
 _Safety net. Prevents catastrophic context blowups._
 
-- [ ] **3.1** Create `crates/clankers-loop/src/truncation.rs` with
-      `TruncationConfig`, `TruncationResult`, `truncate_tool_output()`
-- [ ] **3.2** Implement line-boundary truncation (whichever limit hit first)
-- [ ] **3.3** Implement temp file saving for full output
-- [ ] **3.4** Format footer with file path and `read` command with offset
-- [ ] **3.5** Integrate into agent loop: apply truncation between tool execution
-      and message assembly
-- [ ] **3.6** Add tracing::info log when truncation is applied
-- [ ] **3.7** Add settings integration: `[tools] max_output_bytes`,
-      `max_output_lines`, `truncate_output`
-- [ ] **3.8** Add temp file cleanup: purge files older than 24h on startup
-- [ ] **3.9** Tests: within-limits passthrough, line-limit, byte-limit,
-      footer content, temp file integrity, empty content, single long line
+- [x] **3.1** Create `crates/clankers-loop/src/truncation.rs` with
+      `OutputTruncationConfig`, `TruncationResult`, `truncate_tool_output()`
+- [x] **3.2** Implement line-boundary truncation (whichever limit hit first)
+- [x] **3.3** Implement temp file saving for full output
+- [x] **3.4** Format footer with file path and `read` command with offset
+- [x] **3.5** Integrate into agent turn loop via `apply_output_truncation()`
+      between tool execution and message assembly
+- [x] **3.6** Add tracing::info log when truncation is applied
+- [x] **3.7** Settings integration via existing `max_output_bytes` and
+      `max_output_lines` fields (already in Settings)
+- [x] **3.8** Add temp file cleanup: purge files older than 24h on startup
+- [x] **3.9** Tests: 13 tests covering within-limits passthrough, line-limit,
+      byte-limit, footer content, temp file integrity, empty content,
+      single long line, disabled mode, cleanup
 
 ## Phase 4: Benchmark Validation
 
