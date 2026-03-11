@@ -493,6 +493,19 @@
 - Remaining 31 are mostly: test functions (270-line translator test), pure match routers (translate/event_handlers), setup functions (run_interactive), or linear builders (landlock rules)
 - cli.rs at 763 lines is all declarative clap derive — splitting would reduce ergonomics with no safety gain
 
+## Patterns That Work (token efficiency)
+- `OutputTruncationConfig` in clankers-loop, applied in turn loop via `apply_output_truncation()` after `execute_tools_parallel()` returns
+- `ToolTier` enum (Core/Orchestration/Specialty/Matrix) + `ToolSet` struct — `active_tools()` filters by tier, `all_tools()` returns everything
+- `build_tiered_tools()` replaces `build_tools_with_env()` as canonical builder; backward-compat wrapper kept
+- `build_all_tiered_tools()` adds plugin tools as Specialty tier
+- Interactive: Core+Specialty+Orchestration (no Matrix). Headless: Core+Specialty. Daemon/RPC: all tiers.
+- `--tools` flag accepts tier names (core, orchestration, specialty, matrix), "all", "core", "none", or comma-separated tool names
+- `PromptFeatures` struct controls which system prompt sections are included; `build_default_system_prompt()` is the conditional builder
+- `detect_nix()` runs `which nix` once at startup; result wired into PromptFeatures
+- `default_system_prompt()` changed from `-> &'static str` to `-> String` — callers with `.to_string()` still work (redundant but harmless)
+- `TurnConfig.output_truncation` field added; `Agent::output_truncation_config()` derives it from Settings
+- AgentConfig now has optional `tiers: Option<Vec<String>>` field in frontmatter
+
 ## Patterns That Work (decomposition round 3 — large file splits)
 - validate_tui.rs (692→362): PtyHarness + key_bytes → `pty_harness.rs`, tests → `validate_tui_tests.rs`, extract `execute_action()` + `check_assertions()` from `run_tui_test()`
 - git_ops/mod.rs (686→260): diff functions → `diff.rs`, log/time → `log.rs`, tests → `tests.rs`. Shared types (GitError, Result, open_repo) stay in mod.rs
