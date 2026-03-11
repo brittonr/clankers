@@ -9,6 +9,7 @@ mod markdown_rendering;
 mod navigation;
 mod panels;
 mod plugins;
+mod prompt_improve;
 mod quit;
 mod resize;
 mod scroll;

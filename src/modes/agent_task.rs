@@ -232,7 +232,7 @@ async fn handle_switch_account(
 /// Makes a lightweight completion request with a meta-prompt that asks
 /// the model to improve the user's prompt for clarity and specificity.
 /// Falls back to the original text if the rewrite call fails.
-async fn rewrite_prompt(
+pub(crate) async fn rewrite_prompt(
     provider: &std::sync::Arc<dyn crate::provider::Provider>,
     model: &str,
     original: &str,
@@ -306,6 +306,7 @@ async fn rewrite_prompt(
 }
 
 /// Format a thinking level change into a user-facing message.
+#[allow(clippy::needless_pass_by_value)]
 fn thinking_msg(level: &crate::provider::ThinkingLevel) -> String {
     if level.is_enabled() {
         format!(
@@ -315,5 +316,183 @@ fn thinking_msg(level: &crate::provider::ThinkingLevel) -> String {
         )
     } else {
         "Thinking: off".to_string()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use async_trait::async_trait;
+    use tokio::sync::mpsc;
+
+    use crate::provider::CompletionRequest;
+    use crate::provider::Model;
+    use crate::provider::Provider;
+    use crate::provider::streaming::ContentDelta;
+    use crate::provider::streaming::StreamEvent;
+
+    /// Mock provider that streams back a fixed response.
+    struct MockRewriteProvider {
+        response: String,
+    }
+
+    #[async_trait]
+    impl Provider for MockRewriteProvider {
+        async fn complete(
+            &self,
+            _request: CompletionRequest,
+            tx: mpsc::Sender<StreamEvent>,
+        ) -> crate::provider::error::Result<()> {
+            let _ = tx
+                .send(StreamEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: ContentDelta::TextDelta {
+                        text: self.response.clone(),
+                    },
+                })
+                .await;
+            let _ = tx.send(StreamEvent::MessageStop).await;
+            Ok(())
+        }
+
+        fn models(&self) -> &[Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "mock"
+        }
+    }
+
+    /// Mock provider that always returns an error.
+    struct FailingProvider;
+
+    #[async_trait]
+    impl Provider for FailingProvider {
+        async fn complete(
+            &self,
+            _request: CompletionRequest,
+            _tx: mpsc::Sender<StreamEvent>,
+        ) -> crate::provider::error::Result<()> {
+            Err(crate::provider::error::provider_err("intentional test failure"))
+        }
+
+        fn models(&self) -> &[Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "failing"
+        }
+    }
+
+    /// Mock provider that streams an empty response.
+    struct EmptyProvider;
+
+    #[async_trait]
+    impl Provider for EmptyProvider {
+        async fn complete(
+            &self,
+            _request: CompletionRequest,
+            tx: mpsc::Sender<StreamEvent>,
+        ) -> crate::provider::error::Result<()> {
+            let _ = tx.send(StreamEvent::MessageStop).await;
+            Ok(())
+        }
+
+        fn models(&self) -> &[Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "empty"
+        }
+    }
+
+    #[tokio::test]
+    async fn rewrite_prompt_returns_improved_text() {
+        let provider: Arc<dyn Provider> = Arc::new(MockRewriteProvider {
+            response: "Improved version of the prompt".to_string(),
+        });
+        let result = super::rewrite_prompt(&provider, "test-model", "fix the bug").await;
+        assert_eq!(result, "Improved version of the prompt");
+    }
+
+    #[tokio::test]
+    async fn rewrite_prompt_falls_back_on_error() {
+        let provider: Arc<dyn Provider> = Arc::new(FailingProvider);
+        let result = super::rewrite_prompt(&provider, "test-model", "fix the bug").await;
+        assert_eq!(result, "fix the bug");
+    }
+
+    #[tokio::test]
+    async fn rewrite_prompt_falls_back_on_empty_response() {
+        let provider: Arc<dyn Provider> = Arc::new(EmptyProvider);
+        let result = super::rewrite_prompt(&provider, "test-model", "fix the bug").await;
+        assert_eq!(result, "fix the bug");
+    }
+
+    #[tokio::test]
+    async fn rewrite_prompt_strips_whitespace() {
+        let provider: Arc<dyn Provider> = Arc::new(MockRewriteProvider {
+            response: "  improved prompt  \n".to_string(),
+        });
+        let result = super::rewrite_prompt(&provider, "test-model", "original").await;
+        assert_eq!(result, "improved prompt");
+    }
+
+    #[tokio::test]
+    async fn rewrite_prompt_constructs_correct_request() {
+        use std::sync::Mutex;
+
+        /// Provider that captures the request for inspection.
+        struct CapturingProvider {
+            captured: Mutex<Option<CompletionRequest>>,
+        }
+
+        #[async_trait]
+        impl Provider for CapturingProvider {
+            async fn complete(
+                &self,
+                request: CompletionRequest,
+                tx: mpsc::Sender<StreamEvent>,
+            ) -> crate::provider::error::Result<()> {
+                *self.captured.lock().unwrap() = Some(request);
+                let _ = tx
+                    .send(StreamEvent::ContentBlockDelta {
+                        index: 0,
+                        delta: ContentDelta::TextDelta {
+                            text: "rewritten".into(),
+                        },
+                    })
+                    .await;
+                let _ = tx.send(StreamEvent::MessageStop).await;
+                Ok(())
+            }
+
+            fn models(&self) -> &[Model] {
+                &[]
+            }
+
+            fn name(&self) -> &str {
+                "capturing"
+            }
+        }
+
+        let provider = Arc::new(CapturingProvider {
+            captured: Mutex::new(None),
+        });
+        let provider_dyn: Arc<dyn Provider> = provider.clone();
+
+        let _ = super::rewrite_prompt(&provider_dyn, "my-model", "do the thing").await;
+
+        let req = provider.captured.lock().unwrap().take().unwrap();
+        assert_eq!(req.model, "my-model");
+        assert!(req.system_prompt.is_some());
+        assert!(req.system_prompt.unwrap().contains("prompt engineer"));
+        assert!(req.tools.is_empty(), "rewrite call should have no tools");
+        assert_eq!(req.messages.len(), 1);
+        assert!(req.thinking.is_none());
     }
 }
