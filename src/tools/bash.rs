@@ -201,115 +201,46 @@ impl BashTool {
 
     /// Stream stdout and stderr from a child process, emitting progress and collecting output.
     /// Returns (collected_output, line_count).
+    /// Stream stdout and stderr, emitting progress. Returns (output, line_count).
     async fn stream_output(
         &self,
         child: &mut tokio::process::Child,
         ctx: &ToolContext,
         timeout_secs: u64,
     ) -> Result<(String, usize), ToolResult> {
-        let stdout = child
-            .stdout
-            .take()
+        let stdout = child.stdout.take()
             .ok_or_else(|| ToolResult::error("Failed to capture stdout from child process"))?;
-        let stderr = child
-            .stderr
-            .take()
+        let stderr = child.stderr.take()
             .ok_or_else(|| ToolResult::error("Failed to capture stderr from child process"))?;
-
-        let mut stdout_reader = BufReader::new(stdout).lines();
-        let mut stderr_reader = BufReader::new(stderr).lines();
-
+        let mut out = BufReader::new(stdout).lines();
+        let mut err = BufReader::new(stderr).lines();
         let mut collected = String::new();
         let mut line_count: usize = 0;
+        let deadline = (timeout_secs > 0)
+            .then(|| tokio::time::Instant::now() + Duration::from_secs(timeout_secs));
 
-        let deadline = if timeout_secs > 0 {
-            Some(tokio::time::Instant::now() + Duration::from_secs(timeout_secs))
-        } else {
-            None
-        };
-
-        // Read lines from both streams, emitting updates as we go
         loop {
-            // Check timeout
-            if let Some(dl) = deadline
-                && tokio::time::Instant::now() >= dl
-            {
+            if deadline.is_some_and(|dl| tokio::time::Instant::now() >= dl) {
                 let _ = child.start_kill();
-                ctx.emit_structured_progress(ToolProgress::phase("Timeout", 1, Some(1)));
                 return Err(ToolResult::error(format!("Command timeout after {}s", timeout_secs)));
             }
-
             tokio::select! {
                 () = ctx.signal.cancelled() => {
                     let _ = child.start_kill();
-                    ctx.emit_structured_progress(ToolProgress::phase("Cancelling", 1, Some(1)));
                     return Err(ToolResult::error("Command cancelled"));
                 }
-                line = stdout_reader.next_line() => {
-                    match line {
-                        Ok(Some(raw)) => {
-                            let line = strip_ansi(&raw);
-                            ctx.emit_progress(&line);
-                            ctx.emit_result_chunk(ResultChunk::text(&line));
-                            if !collected.is_empty() {
-                                collected.push('\n');
-                            }
-                            collected.push_str(&line);
-                            line_count += 1;
-                            ctx.emit_structured_progress(ToolProgress::lines(line_count as u64, None));
-                        }
-                        Ok(None) => {
-                            // stdout closed — drain remaining stderr then break
-                            while let Ok(Some(raw)) = stderr_reader.next_line().await {
-                                let line = strip_ansi(&raw);
-                                ctx.emit_progress(&line);
-                                ctx.emit_result_chunk(ResultChunk::text(&line));
-                                if !collected.is_empty() {
-                                    collected.push('\n');
-                                }
-                                collected.push_str(&line);
-                                line_count += 1;
-                                ctx.emit_structured_progress(ToolProgress::lines(line_count as u64, None));
-                            }
-                            break;
-                        }
-                        Err(e) => return Err(ToolResult::error(format!("Read error: {}", e))),
-                    }
-                }
-                line = stderr_reader.next_line() => {
-                    match line {
-                        Ok(Some(raw)) => {
-                            let line = strip_ansi(&raw);
-                            ctx.emit_progress(&line);
-                            ctx.emit_result_chunk(ResultChunk::text(&line));
-                            if !collected.is_empty() {
-                                collected.push('\n');
-                            }
-                            collected.push_str(&line);
-                            line_count += 1;
-                            ctx.emit_structured_progress(ToolProgress::lines(line_count as u64, None));
-                        }
-                        Ok(None) => {
-                            // stderr closed — drain remaining stdout then break
-                            while let Ok(Some(raw)) = stdout_reader.next_line().await {
-                                let line = strip_ansi(&raw);
-                                ctx.emit_progress(&line);
-                                ctx.emit_result_chunk(ResultChunk::text(&line));
-                                if !collected.is_empty() {
-                                    collected.push('\n');
-                                }
-                                collected.push_str(&line);
-                                line_count += 1;
-                                ctx.emit_structured_progress(ToolProgress::lines(line_count as u64, None));
-                            }
-                            break;
-                        }
-                        Err(e) => return Err(ToolResult::error(format!("Read error: {}", e))),
-                    }
-                }
+                line = out.next_line() => match line {
+                    Ok(Some(raw)) => collect_line(&raw, ctx, &mut collected, &mut line_count),
+                    Ok(None) => { drain_reader(&mut err, ctx, &mut collected, &mut line_count).await; break; }
+                    Err(e) => return Err(ToolResult::error(format!("Read error: {}", e))),
+                },
+                line = err.next_line() => match line {
+                    Ok(Some(raw)) => collect_line(&raw, ctx, &mut collected, &mut line_count),
+                    Ok(None) => { drain_reader(&mut out, ctx, &mut collected, &mut line_count).await; break; }
+                    Err(e) => return Err(ToolResult::error(format!("Read error: {}", e))),
+                },
             }
         }
-
         Ok((collected, line_count))
     }
 
@@ -393,6 +324,33 @@ impl Tool for BashTool {
 
         // Format and return the final result
         self.format_result(collected_output, exit_code)
+    }
+}
+
+// ── Stream helpers ──────────────────────────────────────────────────────────
+
+/// Process a single raw output line: strip ANSI, emit progress, collect.
+fn collect_line(raw: &str, ctx: &ToolContext, collected: &mut String, line_count: &mut usize) {
+    let line = strip_ansi(raw);
+    ctx.emit_progress(&line);
+    ctx.emit_result_chunk(ResultChunk::text(&line));
+    if !collected.is_empty() {
+        collected.push('\n');
+    }
+    collected.push_str(&line);
+    *line_count += 1;
+    ctx.emit_structured_progress(ToolProgress::lines(*line_count as u64, None));
+}
+
+/// Drain remaining lines from an async line reader after the other stream closes.
+async fn drain_reader(
+    reader: &mut tokio::io::Lines<BufReader<impl tokio::io::AsyncRead + Unpin>>,
+    ctx: &ToolContext,
+    collected: &mut String,
+    line_count: &mut usize,
+) {
+    while let Ok(Some(raw)) = reader.next_line().await {
+        collect_line(&raw, ctx, collected, line_count);
     }
 }
 

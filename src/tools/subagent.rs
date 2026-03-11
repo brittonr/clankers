@@ -261,19 +261,15 @@ async fn run_chain(
 
 // ── Subprocess spawning ─────────────────────────────────────────────────────
 
-/// Spawn a clankers subprocess in print mode, streaming output to panel only
-async fn spawn_subprocess(
-    task: &str,
-    agent: Option<&str>,
-    cwd: Option<&str>,
-    panel_tx: Option<&PanelTx>,
-    call_id: &str,
-    signal: CancellationToken,
-    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
-) -> Result<String, String> {
-    use tokio::io::AsyncBufReadExt;
-    use tokio::io::BufReader;
+/// Maximum collected output size (bytes) to prevent unbounded memory growth.
+const MAX_COLLECTED_BYTES: usize = 10 * 1024 * 1024; // 10 MB
 
+// Tiger Style: compile-time bounds
+const _: () = assert!(MAX_COLLECTED_BYTES > 0);
+const _: () = assert!(MAX_COLLECTED_BYTES <= 100 * 1024 * 1024); // sanity: ≤ 100 MB
+
+/// Derive a short display name and task preview from the call ID and task text.
+fn subagent_display_names(call_id: &str, task: &str) -> (String, String, String) {
     let sub_id = call_id.to_string();
     let short_name = if sub_id.contains(':') {
         sub_id.rsplit(':').next().unwrap_or(&sub_id).to_string()
@@ -281,7 +277,15 @@ async fn spawn_subprocess(
         sub_id.chars().take(8).collect()
     };
     let task_preview: String = task.chars().take(60).collect();
+    (sub_id, short_name, task_preview)
+}
 
+/// Build the clankers subprocess command.
+fn build_subprocess_command(
+    task: &str,
+    agent: Option<&str>,
+    cwd: Option<&str>,
+) -> Result<tokio::process::Command, String> {
     let exe = std::env::current_exe().map_err(|e| format!("Cannot find clankers executable: {}", e))?;
 
     let mut cmd = tokio::process::Command::new(&exe);
@@ -290,7 +294,6 @@ async fn spawn_subprocess(
     if let Some(a) = agent {
         cmd.arg("--agent").arg(a);
     }
-
     if let Some(dir) = cwd {
         cmd.current_dir(dir);
     }
@@ -299,7 +302,7 @@ async fn spawn_subprocess(
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped());
 
-    // Create a new process group so we can kill the entire tree
+    // New process group — kill the entire tree on cancel
     #[cfg(unix)]
     unsafe {
         cmd.pre_exec(|| {
@@ -308,33 +311,54 @@ async fn spawn_subprocess(
         });
     }
 
-    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn: {}", e))?;
-    let child_pid = child.id();
+    Ok(cmd)
+}
 
-    // Register process with monitor
+/// Register a spawned child with the process monitor and send a Started event.
+fn register_subprocess(
+    child_pid: Option<u32>,
+    task: &str,
+    call_id: &str,
+    sub_id: &str,
+    short_name: &str,
+    task_preview: &str,
+    panel_tx: Option<&PanelTx>,
+    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+) {
     if let Some(monitor) = process_monitor
         && let Some(pid) = child_pid
     {
-        let task_preview_full: String = task.chars().take(200).collect();
+        let full_preview: String = task.chars().take(200).collect();
         monitor.register(pid, crate::procmon::ProcessMeta {
             tool_name: "subagent".to_string(),
-            command: format!("subagent: {}", task_preview_full),
+            command: format!("subagent: {}", full_preview),
             call_id: call_id.to_string(),
         });
     }
 
     if let Some(tx) = panel_tx {
         let _ = tx.send(SubagentEvent::Started {
-            id: sub_id.clone(),
-            name: short_name,
-            task: task_preview,
+            id: sub_id.to_string(),
+            name: short_name.to_string(),
+            task: task_preview.to_string(),
             pid: child_pid,
         });
     }
+}
+
+/// Stream stdout from a subprocess, forwarding lines to the panel.
+///
+/// Returns the collected output on success. Handles cancellation via the signal token.
+async fn stream_subprocess_output(
+    child: &mut tokio::process::Child,
+    sub_id: &str,
+    panel_tx: Option<&PanelTx>,
+    signal: &CancellationToken,
+) -> Result<String, String> {
+    use tokio::io::AsyncBufReadExt;
+    use tokio::io::BufReader;
 
     let stdout = child.stdout.take().ok_or("Failed to capture stdout")?;
-    let stderr_handle = child.stderr.take();
-
     let mut reader = BufReader::new(stdout).lines();
     let mut collected = String::new();
 
@@ -345,14 +369,17 @@ async fn spawn_subprocess(
                     Ok(Some(line)) => {
                         if let Some(tx) = panel_tx {
                             let _ = tx.send(SubagentEvent::Output {
-                                id: sub_id.clone(),
+                                id: sub_id.to_string(),
                                 line: line.clone(),
                             });
                         }
-                        if !collected.is_empty() {
-                            collected.push('\n');
+                        // Tiger Style: bounded collection
+                        if collected.len() < MAX_COLLECTED_BYTES {
+                            if !collected.is_empty() {
+                                collected.push('\n');
+                            }
+                            collected.push_str(&line);
                         }
-                        collected.push_str(&line);
                     }
                     Ok(None) => break,
                     Err(e) => return Err(format!("Read error: {}", e)),
@@ -361,12 +388,42 @@ async fn spawn_subprocess(
             () = signal.cancelled() => {
                 let _ = child.kill().await;
                 if let Some(tx) = panel_tx {
-                    let _ = tx.send(SubagentEvent::Error { id: sub_id, message: "Cancelled".into() });
+                    let _ = tx.send(SubagentEvent::Error {
+                        id: sub_id.to_string(),
+                        message: "Cancelled".into(),
+                    });
                 }
                 return Err("Cancelled".to_string());
             }
         }
     }
+
+    Ok(collected)
+}
+
+/// Spawn a clankers subprocess in print mode, streaming output to panel only.
+async fn spawn_subprocess(
+    task: &str,
+    agent: Option<&str>,
+    cwd: Option<&str>,
+    panel_tx: Option<&PanelTx>,
+    call_id: &str,
+    signal: CancellationToken,
+    process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+) -> Result<String, String> {
+    let (sub_id, short_name, task_preview) = subagent_display_names(call_id, task);
+
+    let mut cmd = build_subprocess_command(task, agent, cwd)?;
+    let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn: {}", e))?;
+    let child_pid = child.id();
+
+    register_subprocess(
+        child_pid, task, call_id, &sub_id, &short_name, &task_preview,
+        panel_tx, process_monitor,
+    );
+
+    let stderr_handle = child.stderr.take();
+    let collected = stream_subprocess_output(&mut child, &sub_id, panel_tx, &signal).await?;
 
     let status = child.wait().await.map_err(|e| format!("Wait error: {}", e))?;
 
@@ -376,14 +433,7 @@ async fn spawn_subprocess(
         }
         Ok(collected)
     } else {
-        let stderr_text = if let Some(stderr) = stderr_handle {
-            let mut buf = String::new();
-            let mut reader = BufReader::new(stderr);
-            let _ = tokio::io::AsyncReadExt::read_to_string(&mut reader, &mut buf).await;
-            buf
-        } else {
-            String::new()
-        };
+        let stderr_text = read_stderr(stderr_handle).await;
         let err_msg = format!("Exit code: {}\nstdout: {}\nstderr: {}", status, collected, stderr_text);
         if let Some(tx) = panel_tx {
             let _ = tx.send(SubagentEvent::Error {
@@ -393,4 +443,17 @@ async fn spawn_subprocess(
         }
         Err(err_msg)
     }
+}
+
+/// Read remaining stderr from a child process (best-effort).
+async fn read_stderr(stderr_handle: Option<tokio::process::ChildStderr>) -> String {
+    use tokio::io::BufReader;
+
+    let Some(stderr) = stderr_handle else {
+        return String::new();
+    };
+    let mut buf = String::new();
+    let mut reader = BufReader::new(stderr);
+    let _ = tokio::io::AsyncReadExt::read_to_string(&mut reader, &mut buf).await;
+    buf
 }

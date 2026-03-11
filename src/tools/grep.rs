@@ -140,15 +140,17 @@ impl Tool for GrepTool {
     }
 }
 
-/// Perform the actual in-process search.
-fn search_files(
+/// Maximum matches before truncation (prevents unbounded output).
+const MAX_MATCHES: usize = 10_000;
+
+// Tiger Style: compile-time bounds
+const _: () = assert!(MAX_MATCHES > 0);
+
+/// Build a regex matcher with the given case sensitivity.
+fn build_matcher(
     pattern: &str,
-    path: &str,
-    glob: Option<&str>,
     case_sensitive: Option<bool>,
-    cancel: &CancellationToken,
-    progress: impl Fn(&str),
-) -> Result<String, String> {
+) -> Result<RegexMatcher, String> {
     let mut builder = grep_regex::RegexMatcherBuilder::new();
     builder.line_terminator(Some(b'\n'));
 
@@ -160,49 +162,93 @@ fn search_files(
             builder.case_insensitive(true).case_smart(false);
         }
         None => {
-            // Smart case: case-insensitive unless pattern has uppercase
             builder.case_smart(true);
         }
     }
 
-    let matcher = builder.build(pattern).map_err(|e| format!("Invalid regex pattern: {}", e))?;
+    builder.build(pattern).map_err(|e| format!("Invalid regex pattern: {}", e))
+}
 
-    let search_path = Path::new(path);
-
-    // For single-file searches, skip the walker
-    if search_path.is_file() {
-        let output = Arc::new(Mutex::new(Vec::<u8>::new()));
-        search_single_file(search_path, &matcher, &output)?;
-        let buf = output.lock().unwrap_or_else(|e| e.into_inner());
-        return Ok(String::from_utf8_lossy(&buf).to_string());
-    }
-
-    // Build the directory walker
+/// Build a directory walker with gitignore support and optional glob filter.
+fn build_walker(
+    search_path: &Path,
+    glob: Option<&str>,
+) -> Result<ignore::Walk, String> {
     let mut walker_builder = WalkBuilder::new(search_path);
     walker_builder
-        .hidden(true) // skip hidden files
-        .git_ignore(true) // respect .gitignore
+        .hidden(true)
+        .git_ignore(true)
         .git_global(true)
         .git_exclude(true)
-        .ignore(true) // respect .ignore files
+        .ignore(true)
         .max_depth(None)
         .follow_links(false);
 
-    // Apply glob filter
     if let Some(g) = glob {
-        // Use an override to filter by glob
         let mut overrides = ignore::overrides::OverrideBuilder::new(search_path);
         overrides.add(g).map_err(|e| format!("Invalid glob pattern '{}': {}", g, e))?;
-        let overrides = overrides.build().map_err(|e| format!("Failed to build glob: {}", e))?;
-        walker_builder.overrides(overrides);
+        let built = overrides.build().map_err(|e| format!("Failed to build glob: {}", e))?;
+        walker_builder.overrides(built);
     }
+
+    Ok(walker_builder.build())
+}
+
+/// Search a single file and append matches to the output buffer.
+fn search_file_into(
+    path: &Path,
+    matcher: &RegexMatcher,
+    output: &Arc<Mutex<Vec<u8>>>,
+    match_count: &std::sync::atomic::AtomicUsize,
+) {
+    let mut searcher = Searcher::new();
+    let out = Arc::clone(output);
+    let file_path_str = path.display().to_string();
+
+    let _ = searcher.search_path(
+        matcher,
+        path,
+        UTF8(|line_num, line| {
+            let c = match_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            if c >= MAX_MATCHES {
+                return Ok(false);
+            }
+            let mut buf = out.lock().unwrap_or_else(|e| e.into_inner());
+            let _ = write!(buf, "{}:{}:{}", file_path_str, line_num, line);
+            if !line.ends_with('\n') {
+                let _ = writeln!(buf);
+            }
+            Ok(true)
+        }),
+    );
+}
+
+/// Perform the actual in-process search.
+fn search_files(
+    pattern: &str,
+    path: &str,
+    glob: Option<&str>,
+    case_sensitive: Option<bool>,
+    cancel: &CancellationToken,
+    progress: impl Fn(&str),
+) -> Result<String, String> {
+    let matcher = build_matcher(pattern, case_sensitive)?;
+    let search_path = Path::new(path);
 
     let output = Arc::new(Mutex::new(Vec::<u8>::with_capacity(64 * 1024)));
     let match_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));
 
-    // Walk and search
-    for entry in walker_builder.build() {
-        // Check cancellation periodically
+    // Single-file fast path
+    if search_path.is_file() {
+        search_file_into(search_path, &matcher, &output, &match_count);
+        let buf = output.lock().unwrap_or_else(|e| e.into_inner());
+        return Ok(String::from_utf8_lossy(&buf).to_string());
+    }
+
+    // Directory walk
+    let walker = build_walker(search_path, glob)?;
+
+    for entry in walker {
         if cancel.is_cancelled() {
             return Err("Search cancelled".to_string());
         }
@@ -212,74 +258,25 @@ fn search_files(
             Err(_) => continue,
         };
 
-        // Skip directories
         if entry.file_type().is_some_and(|ft| ft.is_dir()) {
             continue;
         }
 
         let file_path = entry.path();
-
-        // Stream file path being searched
         let count = match_count.load(std::sync::atomic::Ordering::Relaxed);
         progress(&format!("{} ({} matches)", file_path.display(), count));
 
-        // Search this file
-        let mut searcher = Searcher::new();
-        let out = Arc::clone(&output);
-        let count = Arc::clone(&match_count);
-        let file_path_str = file_path.display().to_string();
+        search_file_into(file_path, &matcher, &output, &match_count);
 
-        let _ = searcher.search_path(
-            &matcher,
-            file_path,
-            UTF8(|line_num, line| {
-                let c = count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-                // Safety valve: stop after 10000 matches to prevent OOM
-                if c >= 10_000 {
-                    return Ok(false);
-                }
-                let mut buf = out.lock().unwrap_or_else(|e| e.into_inner());
-                let _ = write!(buf, "{}:{}:{}", file_path_str, line_num, line);
-                if !line.ends_with('\n') {
-                    let _ = writeln!(buf);
-                }
-                Ok(true)
-            }),
-        );
-
-        if match_count.load(std::sync::atomic::Ordering::Relaxed) >= 10_000 {
+        if match_count.load(std::sync::atomic::Ordering::Relaxed) >= MAX_MATCHES {
             let mut buf = output.lock().unwrap_or_else(|e| e.into_inner());
-            let _ = writeln!(buf, "\n[Truncated: more than 10000 matches]");
+            let _ = writeln!(buf, "\n[Truncated: more than {} matches]", MAX_MATCHES);
             break;
         }
     }
 
     let buf = output.lock().unwrap_or_else(|e| e.into_inner());
     Ok(String::from_utf8_lossy(&buf).to_string())
-}
-
-/// Search a single file (not a directory walk).
-fn search_single_file(path: &Path, matcher: &RegexMatcher, output: &Arc<Mutex<Vec<u8>>>) -> Result<(), String> {
-    let mut searcher = Searcher::new();
-    let path_str = path.display().to_string();
-    let out = Arc::clone(output);
-
-    searcher
-        .search_path(
-            matcher,
-            path,
-            UTF8(|line_num, line| {
-                let mut buf = out.lock().unwrap_or_else(|e| e.into_inner());
-                let _ = write!(buf, "{}:{}:{}", path_str, line_num, line);
-                if !line.ends_with('\n') {
-                    let _ = writeln!(buf);
-                }
-                Ok(true)
-            }),
-        )
-        .map_err(|e| format!("Failed to search {}: {}", path_str, e))?;
-
-    Ok(())
 }
 
 #[cfg(test)]

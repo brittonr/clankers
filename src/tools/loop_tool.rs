@@ -96,96 +96,76 @@ impl LoopTool {
     }
 
     async fn handle_run(&self, ctx: &ToolContext, params: &Value) -> ToolResult {
-        let command = match params.get("command").and_then(|v| v.as_str()) {
-            Some(c) => c.to_string(),
-            None => return ToolResult::error("'run' requires 'command' parameter"),
-        };
-        let name = params
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("loop")
-            .to_string();
-        let max = params
-            .get("max")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10) as u32;
-        let interval_secs = params
-            .get("interval")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0);
-
-        let break_condition = match params.get("break_on").and_then(|v| v.as_str()) {
-            Some(s) => parse_break_condition(s),
-            None => BreakCondition::Never,
+        let parsed = match parse_run_params(params) {
+            Ok(p) => p,
+            Err(e) => return e,
         };
 
-        let action_payload = json!({"command": command});
-
-        let def = if interval_secs > 0 {
-            LoopDef::poll(&name, interval_secs, break_condition, None, action_payload)
-                .with_max_iterations(max)
-        } else if matches!(break_condition, BreakCondition::Never) {
-            LoopDef::fixed(&name, max, action_payload)
-        } else {
-            LoopDef::until(&name, break_condition, action_payload)
-                .with_max_iterations(max)
-        };
-
-        let Some(loop_id) = self.engine.register(def) else {
-            return ToolResult::error(
-                "too many active loops — wait for existing loops to finish or stop them first"
-            );
+        let loop_id = match self.register_loop(&parsed) {
+            Ok(id) => id,
+            Err(e) => return e,
         };
         self.engine.start(&loop_id);
 
-        info!("loop started: {} ({}) — max {} iterations", name, loop_id, max);
-        ctx.emit_progress(&format!("Starting loop '{name}' (max {max} iterations)"));
+        info!("loop started: {} ({}) — max {} iterations", parsed.name, loop_id, parsed.max);
+        ctx.emit_progress(&format!("Starting loop '{}' (max {} iterations)", parsed.name, parsed.max));
 
-        // Run the loop inline (blocking the tool call until done or cancelled).
+        self.run_loop_iterations(ctx, &loop_id, &parsed).await
+    }
+
+    fn register_loop(&self, params: &RunParams) -> Result<LoopId, ToolResult> {
+        let action_payload = json!({"command": params.command});
+
+        let def = if params.interval_secs > 0 {
+            LoopDef::poll(&params.name, params.interval_secs, params.break_condition.clone(), None, action_payload)
+                .with_max_iterations(params.max)
+        } else if matches!(params.break_condition, BreakCondition::Never) {
+            LoopDef::fixed(&params.name, params.max, action_payload)
+        } else {
+            LoopDef::until(&params.name, params.break_condition.clone(), action_payload)
+                .with_max_iterations(params.max)
+        };
+
+        self.engine.register(def).ok_or_else(|| {
+            ToolResult::error("too many active loops — wait for existing loops to finish or stop them first")
+        })
+    }
+
+    async fn run_loop_iterations(
+        &self,
+        ctx: &ToolContext,
+        loop_id: &LoopId,
+        params: &RunParams,
+    ) -> ToolResult {
+        let name = &params.name;
         let mut iteration = 0u32;
         let mut last_output = String::new();
 
         loop {
             if ctx.signal.is_cancelled() {
-                self.engine.stop(&loop_id);
+                self.engine.stop(loop_id);
                 return ToolResult::text(format!(
                     "Loop '{name}' cancelled after {iteration} iteration(s).\nLast output:\n{last_output}"
                 ));
             }
 
-            // Wait interval if polling
-            if interval_secs > 0 && iteration > 0 {
-                tokio::select! {
-                    () = tokio::time::sleep(Duration::from_secs(interval_secs)) => {}
-                    () = ctx.signal.cancelled() => {
-                        self.engine.stop(&loop_id);
-                        return ToolResult::text(format!(
-                            "Loop '{name}' cancelled during wait after {iteration} iteration(s)."
-                        ));
-                    }
-                }
+            if let Err(result) = self.wait_interval(ctx, loop_id, params, iteration).await {
+                return result;
             }
 
             ctx.emit_progress(&format!("[{name}] iteration {iteration}"));
 
-            // Execute the command
-            let output = match run_shell_command(&command).await {
+            let output = match run_shell_command(&params.command).await {
                 Ok(o) => o,
                 Err(e) => {
-                    self.engine.fail(&loop_id);
-                    return ToolResult::error(format!(
-                        "Loop '{name}' failed on iteration {iteration}: {e}"
-                    ));
+                    self.engine.fail(loop_id);
+                    return ToolResult::error(format!("Loop '{name}' failed on iteration {iteration}: {e}"));
                 }
             };
 
-            last_output = output.stdout.clone();
+            output.stdout.clone_into(&mut last_output);
             let exit_code = output.exit_code;
-
-            // Report to engine
-            let should_continue =
-                self.engine
-                    .record_iteration(&loop_id, output.stdout.clone(), exit_code);
+            let should_continue = self.engine.record_iteration(loop_id, output.stdout.clone(), exit_code);
 
             ctx.emit_progress(&format!(
                 "[{name}] iteration {iteration}: exit={} ({} bytes output)",
@@ -193,24 +173,37 @@ impl LoopTool {
                 output.stdout.len(),
             ));
 
-            iteration += 1;
+            iteration = iteration.saturating_add(1);
 
             if !should_continue {
                 break;
             }
         }
 
-        // Build final result
-        let state = self.engine.get(&loop_id);
-        let status = state
-            .as_ref()
-            .map(|s| format!("{:?}", s.status))
-            .unwrap_or_else(|| "unknown".into());
-        let elapsed = state.as_ref().map(|s| s.elapsed_secs()).unwrap_or(0);
+        format_loop_result(&self.engine, loop_id, name, iteration, &last_output)
+    }
 
-        ToolResult::text(format!(
-            "Loop '{name}' {status} after {iteration} iteration(s) ({elapsed}s).\nLast output:\n{last_output}"
-        ))
+    /// Wait for the poll interval between iterations. Returns Err(ToolResult) on cancel.
+    async fn wait_interval(
+        &self,
+        ctx: &ToolContext,
+        loop_id: &LoopId,
+        params: &RunParams,
+        iteration: u32,
+    ) -> Result<(), ToolResult> {
+        if params.interval_secs == 0 || iteration == 0 {
+            return Ok(());
+        }
+        tokio::select! {
+            () = tokio::time::sleep(Duration::from_secs(params.interval_secs)) => Ok(()),
+            () = ctx.signal.cancelled() => {
+                self.engine.stop(loop_id);
+                Err(ToolResult::text(format!(
+                    "Loop '{}' cancelled during wait after {} iteration(s).",
+                    params.name, iteration,
+                )))
+            }
+        }
     }
 
     fn handle_status(&self, params: &Value) -> ToolResult {
@@ -287,7 +280,68 @@ impl Tool for LoopTool {
     }
 }
 
-// Break condition parsing delegated to clankers_loop::parse_break_condition.
+// ── Run parameter parsing (pure) ────────────────────────────────────────────
+
+/// Parsed parameters for a `run` action.
+struct RunParams {
+    command: String,
+    name: String,
+    max: u32,
+    interval_secs: u64,
+    break_condition: BreakCondition,
+}
+
+/// Parse and validate `run` action parameters. Pure function — no side effects.
+fn parse_run_params(params: &Value) -> Result<RunParams, ToolResult> {
+    let command = params
+        .get("command")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| ToolResult::error("'run' requires 'command' parameter"))?
+        .to_string();
+    let name = params
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("loop")
+        .to_string();
+    let max = params.get("max").and_then(|v| v.as_u64()).unwrap_or(10) as u32;
+    let interval_secs = params.get("interval").and_then(|v| v.as_u64()).unwrap_or(0);
+    let break_condition = match params.get("break_on").and_then(|v| v.as_str()) {
+        Some(s) => parse_break_condition(s),
+        None => BreakCondition::Never,
+    };
+
+    debug_assert!(!command.is_empty(), "command must not be empty");
+
+    Ok(RunParams {
+        command,
+        name,
+        max,
+        interval_secs,
+        break_condition,
+    })
+}
+
+/// Build the final ToolResult summary from loop engine state.
+fn format_loop_result(
+    engine: &LoopEngine,
+    loop_id: &LoopId,
+    name: &str,
+    iteration: u32,
+    last_output: &str,
+) -> ToolResult {
+    let state = engine.get(loop_id);
+    let status = state
+        .as_ref()
+        .map(|s| format!("{:?}", s.status))
+        .unwrap_or_else(|| "unknown".into());
+    let elapsed = state.as_ref().map(|s| s.elapsed_secs()).unwrap_or(0);
+
+    ToolResult::text(format!(
+        "Loop '{name}' {status} after {iteration} iteration(s) ({elapsed}s).\nLast output:\n{last_output}"
+    ))
+}
+
+// ── Shell command execution ─────────────────────────────────────────────────
 
 /// Output from a shell command execution.
 struct CommandOutput {

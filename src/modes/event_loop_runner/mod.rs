@@ -165,20 +165,34 @@ impl<'a> EventLoopRunner<'a> {
 
     /// Process a single agent event — translate to TUI, persist, audit, dispatch to plugins.
     fn process_agent_event(&mut self, event: AgentEvent) {
-        // Translate AgentEvent → TuiEvent and forward to TUI
+        // 1. Translate → TUI
         if let Some(tui_event) = crate::event_translator::translate(&event) {
             self.app.handle_tui_event(&tui_event);
         }
 
-        // Persist messages to session on AgentEnd
+        // 2. Persist on agent end
         if let AgentEvent::AgentEnd { ref messages } = event
             && let Some(ref mut sm) = self.session_manager
         {
             super::interactive::persist_messages(sm, messages);
         }
 
-        // Record per-turn usage to redb
-        if let AgentEvent::UsageUpdate { ref turn_usage, .. } = event
+        // 3. Record usage
+        self.record_usage(&event);
+
+        // 4. Audit + loop tracking
+        self.process_tool_events(&event);
+
+        // 5. Dispatch to plugins
+        self.dispatch_to_plugins(&event);
+
+        // 6. Fire lifecycle hooks
+        self.fire_lifecycle_hooks(&event);
+    }
+
+    /// Record per-turn usage to redb.
+    fn record_usage(&self, event: &AgentEvent) {
+        if let AgentEvent::UsageUpdate { turn_usage, .. } = event
             && let Some(ref db) = self.db
         {
             let req = crate::db::usage::RequestUsage::new(
@@ -194,17 +208,18 @@ impl<'a> EventLoopRunner<'a> {
                 }
             });
         }
+    }
 
-        // Audit: track tool call start
+    /// Handle tool call start/end: audit tracking, loop signal, output capture.
+    fn process_tool_events(&mut self, event: &AgentEvent) {
         if let AgentEvent::ToolCall {
-            ref call_id,
-            ref tool_name,
-            ref input,
+            call_id,
+            tool_name,
+            input,
         } = event
         {
             self.audit.start_call(call_id, tool_name, input);
 
-            // Loop mode: signal_loop_success triggers break
             if tool_name == "signal_loop_success"
                 && let Some(ref id) = self.active_loop_id
             {
@@ -212,85 +227,91 @@ impl<'a> EventLoopRunner<'a> {
             }
         }
 
-        // Loop mode: capture tool output for break condition checking
-        if self.active_loop_id.is_some() {
-            if let AgentEvent::ToolExecutionEnd { ref result, .. } = event {
-                for content in &result.content {
-                    if let crate::tools::ToolResultContent::Text { text } = content {
-                        self.loop_turn_output.push_str(text);
-                        self.loop_turn_output.push('\n');
-                    }
+        // Capture tool output for loop break condition checking
+        if self.active_loop_id.is_some()
+            && let AgentEvent::ToolExecutionEnd { result, .. } = event
+        {
+            for content in &result.content {
+                if let crate::tools::ToolResultContent::Text { text } = content {
+                    self.loop_turn_output.push_str(text);
+                    self.loop_turn_output.push('\n');
                 }
             }
         }
 
-        // Audit: record completed tool calls
+        // Record completed tool calls to audit
         if let AgentEvent::ToolExecutionEnd {
-            ref call_id,
-            ref result,
+            call_id,
+            result,
             is_error,
         } = event
             && let Some(ref db) = self.db
             && !self.app.session_id.is_empty()
         {
             self.audit
-                .end_call(call_id, result, is_error, &self.app.session_id, db);
+                .end_call(call_id, result, *is_error, &self.app.session_id, db);
         }
+    }
 
-        // Dispatch to plugins
-        if let Some(ref pm) = self.plugin_manager {
-            let result = super::plugin_dispatch::dispatch_event_to_plugins(pm, &event);
-            for (plugin_name, message) in result.messages {
-                self.app.push_system(format!("🔌 {}: {}", plugin_name, message), false);
-            }
-            for action in result.ui_actions {
-                crate::plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
-            }
+    /// Forward events to WASM plugins and apply any UI actions they return.
+    fn dispatch_to_plugins(&mut self, event: &AgentEvent) {
+        let Some(ref pm) = self.plugin_manager else {
+            return;
+        };
+        let result = super::plugin_dispatch::dispatch_event_to_plugins(pm, event);
+        for (plugin_name, message) in result.messages {
+            self.app.push_system(format!("🔌 {}: {}", plugin_name, message), false);
         }
+        for action in result.ui_actions {
+            crate::plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
+        }
+    }
 
-        // Fire lifecycle hooks (async, fire-and-forget)
-        if let Some(ref pipeline) = self.hook_pipeline {
-            let session_id = self.app.session_id.clone();
-            match &event {
-                AgentEvent::SessionStart { session_id: sid } => {
-                    pipeline.fire_async(
-                        clankers_hooks::HookPoint::SessionStart,
-                        clankers_hooks::HookPayload::session("session-start", sid),
-                    );
-                }
-                AgentEvent::SessionShutdown { session_id: sid } => {
-                    pipeline.fire_async(
-                        clankers_hooks::HookPoint::SessionEnd,
-                        clankers_hooks::HookPayload::session("session-end", sid),
-                    );
-                }
-                AgentEvent::TurnStart { .. } => {
-                    pipeline.fire_async(
-                        clankers_hooks::HookPoint::TurnStart,
-                        clankers_hooks::HookPayload::empty("turn-start", &session_id),
-                    );
-                }
-                AgentEvent::TurnEnd { .. } => {
-                    pipeline.fire_async(
-                        clankers_hooks::HookPoint::TurnEnd,
-                        clankers_hooks::HookPayload::empty("turn-end", &session_id),
-                    );
-                }
-                AgentEvent::ModelChange { from, to, reason } => {
-                    let payload = clankers_hooks::HookPayload {
-                        hook: "model-change".into(),
-                        session_id: session_id.clone(),
-                        timestamp: chrono::Utc::now(),
-                        data: clankers_hooks::HookData::ModelChange {
-                            from: from.clone(),
-                            to: to.clone(),
-                            reason: reason.clone(),
-                        },
-                    };
-                    pipeline.fire_async(clankers_hooks::HookPoint::ModelChange, payload);
-                }
-                _ => {}
+    /// Fire lifecycle hooks (async, fire-and-forget) for session/turn/model events.
+    fn fire_lifecycle_hooks(&self, event: &AgentEvent) {
+        let Some(ref pipeline) = self.hook_pipeline else {
+            return;
+        };
+        let session_id = self.app.session_id.clone();
+        match event {
+            AgentEvent::SessionStart { session_id: sid } => {
+                pipeline.fire_async(
+                    clankers_hooks::HookPoint::SessionStart,
+                    clankers_hooks::HookPayload::session("session-start", sid),
+                );
             }
+            AgentEvent::SessionShutdown { session_id: sid } => {
+                pipeline.fire_async(
+                    clankers_hooks::HookPoint::SessionEnd,
+                    clankers_hooks::HookPayload::session("session-end", sid),
+                );
+            }
+            AgentEvent::TurnStart { .. } => {
+                pipeline.fire_async(
+                    clankers_hooks::HookPoint::TurnStart,
+                    clankers_hooks::HookPayload::empty("turn-start", &session_id),
+                );
+            }
+            AgentEvent::TurnEnd { .. } => {
+                pipeline.fire_async(
+                    clankers_hooks::HookPoint::TurnEnd,
+                    clankers_hooks::HookPayload::empty("turn-end", &session_id),
+                );
+            }
+            AgentEvent::ModelChange { from, to, reason } => {
+                let payload = clankers_hooks::HookPayload {
+                    hook: "model-change".into(),
+                    session_id: session_id.clone(),
+                    timestamp: chrono::Utc::now(),
+                    data: clankers_hooks::HookData::ModelChange {
+                        from: from.clone(),
+                        to: to.clone(),
+                        reason: reason.clone(),
+                    },
+                };
+                pipeline.fire_async(clankers_hooks::HookPoint::ModelChange, payload);
+            }
+            _ => {}
         }
     }
 

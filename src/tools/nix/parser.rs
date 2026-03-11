@@ -192,15 +192,50 @@ impl ActivityTracker {
     }
 }
 
-/// Parse a single stderr line from nix's internal-json output
+/// Collects mutable output state for nix line processing.
+///
+/// Groups the 5 mutable parameters that `process_nix_line` previously took
+/// individually. Each field has a clear role:
+pub struct NixOutputState {
+    pub tracker: ActivityTracker,
+    pub build_log_lines: Vec<String>,
+    pub messages: Vec<String>,
+    pub errors: Vec<String>,
+    pub last_progress_text: Option<String>,
+}
+
+impl NixOutputState {
+    pub fn new() -> Self {
+        Self {
+            tracker: ActivityTracker::new(),
+            build_log_lines: Vec::new(),
+            messages: Vec::new(),
+            errors: Vec::new(),
+            last_progress_text: None,
+        }
+    }
+}
+
+/// Maximum build log lines retained (prevents unbounded growth on long builds).
+const MAX_BUILD_LOG_LINES: usize = 10_000;
+/// Maximum message lines retained.
+const MAX_MESSAGES: usize = 5_000;
+/// Maximum error lines retained.
+const MAX_ERRORS: usize = 1_000;
+
+// Tiger Style: compile-time bounds validation
+const _: () = assert!(MAX_BUILD_LOG_LINES > 0);
+const _: () = assert!(MAX_MESSAGES > 0);
+const _: () = assert!(MAX_ERRORS > 0);
+const _: () = assert!(MAX_BUILD_LOG_LINES >= MAX_ERRORS);
+
+/// Parse a single stderr line from nix's internal-json output.
+///
+/// Dispatches to focused per-action handlers. Each handler is under 40 lines.
 pub fn process_nix_line(
     line: &str,
     ctx: &ToolContext,
-    tracker: &mut ActivityTracker,
-    build_log_lines: &mut Vec<String>,
-    messages: &mut Vec<String>,
-    errors: &mut Vec<String>,
-    last_progress_text: &mut Option<String>,
+    state: &mut NixOutputState,
 ) {
     // Internal-json lines start with "@nix "
     let json_str = match line.strip_prefix("@nix ") {
@@ -209,7 +244,7 @@ pub fn process_nix_line(
             // Not a nix structured line — treat as raw output
             if !line.is_empty() {
                 ctx.emit_progress(line);
-                messages.push(line.to_string());
+                push_bounded(&mut state.messages, line.to_string(), MAX_MESSAGES);
             }
             return;
         }
@@ -221,134 +256,154 @@ pub fn process_nix_line(
     };
 
     match event.action.as_str() {
-        "start" => {
-            let activity_type = ActivityType::from_u64(event.activity_type);
-            let level = NixLogLevel::from_u64(event.level);
-            let text = event.text.clone();
+        "start" => handle_start_event(&event, ctx, state),
+        "stop" => state.tracker.stop(event.id),
+        "result" => handle_result_event(&event, ctx, state),
+        "msg" => handle_msg_event(&event, ctx, state),
+        _ => {}
+    }
+}
 
-            tracker.start(event.id, text.clone(), activity_type);
+/// Handle a nix "start" event — registers the activity and emits progress.
+fn handle_start_event(event: &NixEvent, ctx: &ToolContext, state: &mut NixOutputState) {
+    let activity_type = ActivityType::from_u64(event.activity_type);
+    let level = NixLogLevel::from_u64(event.level);
+    let text = event.text.clone();
 
-            // Only emit progress for interesting activities
-            match activity_type {
-                ActivityType::Build | ActivityType::Substitute => {
-                    // Extract derivation name from text like "building '/nix/store/...-name.drv'"
-                    let display = shorten_drv_path(&text);
-                    let msg = format!("⚙ {} {}", activity_type.label(), display);
-                    ctx.emit_progress(&msg);
-                    messages.push(msg);
-                }
-                ActivityType::FileTransfer => {
-                    if level <= NixLogLevel::Talkative {
-                        let msg = format!("↓ {}", shorten_url(&text));
-                        ctx.emit_progress(&msg);
-                    }
-                }
-                ActivityType::FetchTree => {
-                    let msg = format!("🌲 fetching {}", shorten_url(&text));
-                    ctx.emit_progress(&msg);
-                    messages.push(msg);
-                }
-                ActivityType::CopyPath | ActivityType::CopyPaths => {
-                    if level <= NixLogLevel::Info && !text.is_empty() {
-                        let msg = format!("📦 {}", shorten_store_path(&text));
-                        // Dedup noisy copy messages
-                        if last_progress_text.as_deref() != Some(&msg) {
-                            ctx.emit_progress(&msg);
-                            *last_progress_text = Some(msg);
-                        }
-                    }
-                }
-                ActivityType::PostBuildHook => {
-                    let msg = format!("🪝 post-build hook: {}", text);
-                    ctx.emit_progress(&msg);
-                    messages.push(msg);
-                }
-                _ => {
-                    // Emit non-trivial activities at info level or below
-                    if level <= NixLogLevel::Info && !text.is_empty() {
-                        ctx.emit_progress(&text);
-                    }
-                }
+    state.tracker.start(event.id, text.clone(), activity_type);
+
+    match activity_type {
+        ActivityType::Build | ActivityType::Substitute => {
+            let display = shorten_drv_path(&text);
+            let msg = format!("⚙ {} {}", activity_type.label(), display);
+            ctx.emit_progress(&msg);
+            push_bounded(&mut state.messages, msg, MAX_MESSAGES);
+        }
+        ActivityType::FileTransfer => {
+            if level <= NixLogLevel::Talkative {
+                let msg = format!("↓ {}", shorten_url(&text));
+                ctx.emit_progress(&msg);
             }
         }
-        "stop" => {
-            tracker.stop(event.id);
+        ActivityType::FetchTree => {
+            let msg = format!("🌲 fetching {}", shorten_url(&text));
+            ctx.emit_progress(&msg);
+            push_bounded(&mut state.messages, msg, MAX_MESSAGES);
         }
-        "result" => {
-            if let Some(result_type) = ResultType::from_u64(event.activity_type) {
-                match result_type {
-                    ResultType::BuildLogLine => {
-                        // fields[0] is the log line
-                        if let Some(log_line) = event.fields.first().and_then(|v| v.as_str()) {
-                            let clean = strip_ansi(log_line);
-                            ctx.emit_progress(&format!("  │ {}", clean));
-                            build_log_lines.push(clean);
-                        }
-                    }
-                    ResultType::SetPhase => {
-                        if let Some(phase) = event.fields.first().and_then(|v| v.as_str()) {
-                            tracker.set_phase(event.id, phase.to_string());
-                            // Get the activity name for context
-                            let activity_name =
-                                tracker.get(event.id).map(|a| shorten_drv_path(&a.text)).unwrap_or_default();
-                            let msg = format!("  ▸ phase: {} ({})", phase, activity_name);
-                            ctx.emit_progress(&msg);
-                            messages.push(msg);
-                        }
-                    }
-                    ResultType::Progress => {
-                        // fields: [done, expected, running, failed]
-                        // Only emit when there's meaningful progress
-                        if event.fields.len() >= 2 {
-                            let done = event.fields[0].as_u64().unwrap_or(0);
-                            let expected = event.fields[1].as_u64().unwrap_or(0);
-                            if expected > 0 && done > 0 {
-                                // Look up what activity this belongs to
-                                let label =
-                                    tracker.get(event.id).map(|a| a.activity_type.label()).unwrap_or("progress");
-                                let msg = format!("  {} {}/{}", label, done, expected);
-                                if last_progress_text.as_deref() != Some(&msg) {
-                                    ctx.emit_progress(&msg);
-                                    *last_progress_text = Some(msg);
-                                }
-                            }
-                        }
-                    }
-                    _ => {}
-                }
+        ActivityType::CopyPath | ActivityType::CopyPaths => {
+            if level <= NixLogLevel::Info && !text.is_empty() {
+                let msg = format!("📦 {}", shorten_store_path(&text));
+                emit_deduped(ctx, &mut state.last_progress_text, msg);
             }
         }
-        "msg" => {
-            let level = NixLogLevel::from_u64(event.level);
-            // Use raw_msg if available (cleaner), fall back to msg
-            let text = if !event.raw_msg.is_empty() {
-                strip_ansi(&event.raw_msg)
-            } else {
-                strip_ansi(&event.msg)
-            };
-
-            if text.is_empty() {
-                return;
+        ActivityType::PostBuildHook => {
+            let msg = format!("🪝 post-build hook: {}", text);
+            ctx.emit_progress(&msg);
+            push_bounded(&mut state.messages, msg, MAX_MESSAGES);
+        }
+        _ => {
+            if level <= NixLogLevel::Info && !text.is_empty() {
+                ctx.emit_progress(&text);
             }
+        }
+    }
+}
 
-            match level {
-                NixLogLevel::Error => {
-                    let msg = format!("✗ {}", text);
-                    ctx.emit_progress(&msg);
-                    errors.push(text);
-                }
-                NixLogLevel::Warn => {
-                    let msg = format!("⚠ {}", text);
-                    ctx.emit_progress(&msg);
-                    messages.push(msg);
-                }
-                _ => {
-                    ctx.emit_progress(&text);
-                    messages.push(text);
+/// Handle a nix "result" event — build log lines, phase changes, and progress.
+fn handle_result_event(event: &NixEvent, ctx: &ToolContext, state: &mut NixOutputState) {
+    let result_type = match ResultType::from_u64(event.activity_type) {
+        Some(rt) => rt,
+        None => return,
+    };
+
+    match result_type {
+        ResultType::BuildLogLine => {
+            if let Some(log_line) = event.fields.first().and_then(|v| v.as_str()) {
+                let clean = strip_ansi(log_line);
+                ctx.emit_progress(&format!("  │ {}", clean));
+                push_bounded(&mut state.build_log_lines, clean, MAX_BUILD_LOG_LINES);
+            }
+        }
+        ResultType::SetPhase => {
+            if let Some(phase) = event.fields.first().and_then(|v| v.as_str()) {
+                state.tracker.set_phase(event.id, phase.to_string());
+                let activity_name = state
+                    .tracker
+                    .get(event.id)
+                    .map(|a| shorten_drv_path(&a.text))
+                    .unwrap_or_default();
+                let msg = format!("  ▸ phase: {} ({})", phase, activity_name);
+                ctx.emit_progress(&msg);
+                push_bounded(&mut state.messages, msg, MAX_MESSAGES);
+            }
+        }
+        ResultType::Progress => {
+            if event.fields.len() >= 2 {
+                let done = event.fields[0].as_u64().unwrap_or(0);
+                let expected = event.fields[1].as_u64().unwrap_or(0);
+                if expected > 0 && done > 0 {
+                    let label = state
+                        .tracker
+                        .get(event.id)
+                        .map(|a| a.activity_type.label())
+                        .unwrap_or("progress");
+                    let msg = format!("  {} {}/{}", label, done, expected);
+                    emit_deduped(ctx, &mut state.last_progress_text, msg);
                 }
             }
         }
         _ => {}
+    }
+}
+
+/// Handle a nix "msg" event — error, warning, or info messages.
+fn handle_msg_event(event: &NixEvent, ctx: &ToolContext, state: &mut NixOutputState) {
+    let level = NixLogLevel::from_u64(event.level);
+    let text = if !event.raw_msg.is_empty() {
+        strip_ansi(&event.raw_msg)
+    } else {
+        strip_ansi(&event.msg)
+    };
+
+    if text.is_empty() {
+        return;
+    }
+
+    match level {
+        NixLogLevel::Error => {
+            let msg = format!("✗ {}", text);
+            ctx.emit_progress(&msg);
+            push_bounded(&mut state.errors, text, MAX_ERRORS);
+        }
+        NixLogLevel::Warn => {
+            let msg = format!("⚠ {}", text);
+            ctx.emit_progress(&msg);
+            push_bounded(&mut state.messages, msg, MAX_MESSAGES);
+        }
+        _ => {
+            ctx.emit_progress(&text);
+            push_bounded(&mut state.messages, text, MAX_MESSAGES);
+        }
+    }
+}
+
+/// Push to a Vec with an upper bound — drops oldest when full.
+fn push_bounded(vec: &mut Vec<String>, item: String, max: usize) {
+    debug_assert!(max > 0, "bound must be positive");
+    if vec.len() >= max {
+        // Drop the first 10% to amortize shifts
+        let drop_count = max / 10;
+        debug_assert!(drop_count > 0);
+        vec.drain(..drop_count);
+    }
+    vec.push(item);
+}
+
+/// Emit progress only if the message differs from the last (deduplication).
+fn emit_deduped(ctx: &ToolContext, last: &mut Option<String>, msg: String) {
+    if last.as_deref() != Some(&msg) {
+        ctx.emit_progress(&msg);
+        *last = Some(msg);
     }
 }
 

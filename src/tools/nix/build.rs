@@ -7,7 +7,7 @@ use tokio::time::Duration;
 
 use super::super::ToolContext;
 use super::super::ToolResult;
-use super::parser::ActivityTracker;
+use super::parser::NixOutputState;
 use super::parser::format_nix_result;
 use super::parser::process_nix_line;
 use crate::util::ansi::strip_ansi;
@@ -100,12 +100,7 @@ pub async fn stream_nix_output(
 
     // Collected outputs
     let mut stdout_lines: Vec<String> = Vec::new();
-    let mut build_log_lines: Vec<String> = Vec::new();
-    let mut messages: Vec<String> = Vec::new();
-    let mut errors: Vec<String> = Vec::new();
-
-    let mut tracker = ActivityTracker::new();
-    let mut last_progress_text: Option<String> = None;
+    let mut nix_state = NixOutputState::new();
 
     // Stream and parse output
     loop {
@@ -135,14 +130,10 @@ pub async fn stream_nix_output(
                         while let Ok(Some(raw)) = stderr_reader.next_line().await {
                             let line = strip_ansi(&raw);
                             if use_structured {
-                                process_nix_line(
-                                    &line, ctx, &mut tracker,
-                                    &mut build_log_lines, &mut messages, &mut errors,
-                                    &mut last_progress_text,
-                                );
+                                process_nix_line(&line, ctx, &mut nix_state);
                             } else if !line.is_empty() {
                                 ctx.emit_progress(&line);
-                                messages.push(line);
+                                nix_state.messages.push(line);
                             }
                         }
                         break;
@@ -155,14 +146,10 @@ pub async fn stream_nix_output(
                     Ok(Some(raw)) => {
                         let line = strip_ansi(&raw);
                         if use_structured {
-                            process_nix_line(
-                                &line, ctx, &mut tracker,
-                                &mut build_log_lines, &mut messages, &mut errors,
-                                &mut last_progress_text,
-                            );
+                            process_nix_line(&line, ctx, &mut nix_state);
                         } else if !line.is_empty() {
                             ctx.emit_progress(&line);
-                            messages.push(line);
+                            nix_state.messages.push(line);
                         }
                     }
                     Ok(None) => {
@@ -185,7 +172,7 @@ pub async fn stream_nix_output(
     let status = child.wait().await.map_err(|e| ToolResult::error(format!("Failed to wait for nix: {}", e)))?;
 
     let exit_code = status.code().unwrap_or(-1);
-    Ok((exit_code, stdout_lines, build_log_lines, messages, errors))
+    Ok((exit_code, stdout_lines, nix_state.build_log_lines, nix_state.messages, nix_state.errors))
 }
 
 /// Format and truncate the nix result for LLM consumption
