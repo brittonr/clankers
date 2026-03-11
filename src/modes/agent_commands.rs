@@ -7,6 +7,13 @@ pub(crate) enum AgentCommand {
         text: String,
         images: Vec<crate::tui::app::PendingImage>,
     },
+    /// Rewrite/improve the prompt before sending it to the agent.
+    RewriteAndPrompt(String),
+    /// Rewrite/improve the prompt (with images) before sending it to the agent.
+    RewriteAndPromptWithImages {
+        text: String,
+        images: Vec<crate::tui::app::PendingImage>,
+    },
     Abort,
     ResetCancel,
     SetModel(String),

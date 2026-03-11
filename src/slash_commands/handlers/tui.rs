@@ -473,6 +473,39 @@ impl SlashHandler for ReviewHandler {
     }
 }
 
+pub struct ImproveHandler;
+
+impl SlashHandler for ImproveHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "improve",
+            description: "Toggle prompt improvement before sending",
+            help: "Toggle automatic prompt rewriting. When enabled, your prompt is \
+                   rewritten by the LLM for clarity and specificity before being sent \
+                   to the agent.\n\n\
+                   Usage:\n  \
+                   /improve        — toggle prompt improve\n  \
+                   /improve on     — enable prompt improve\n  \
+                   /improve off    — disable prompt improve\n\n\
+                   Keybindings: Shift+P (normal mode), Ctrl+R (insert mode)",
+            accepts_args: true,
+            subcommands: vec![("on", "enable prompt improve"), ("off", "disable prompt improve")],
+            leader_key: None,
+        }
+    }
+
+    fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
+        let new_state = match args.trim().to_lowercase().as_str() {
+            "on" | "true" | "1" => true,
+            "off" | "false" | "0" => false,
+            _ => !ctx.app.prompt_improve,
+        };
+        ctx.app.prompt_improve = new_state;
+        let state = if new_state { "on" } else { "off" };
+        ctx.app.push_system(format!("Prompt improve: {}.", state), false);
+    }
+}
+
 // ── Panel accessor helpers ──────────────────────────────────────────
 
 /// Helper to access the TodoPanel immutably. Panics if panel not registered (should never happen).

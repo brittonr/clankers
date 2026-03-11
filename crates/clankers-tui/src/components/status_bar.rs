@@ -44,6 +44,8 @@ pub struct StatusBarData<'a> {
     pub tool_activity: Option<Span<'a>>,
     /// Loop mode status (None if not in a loop)
     pub loop_status: Option<Span<'a>>,
+    /// Whether prompt improve is enabled
+    pub prompt_improve: bool,
 }
 
 /// Render status bar
@@ -98,6 +100,14 @@ fn render_mode_indicators<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a
         spans.push(Span::styled(
             level_label,
             Style::default().fg(Color::Black).bg(level_color).add_modifier(Modifier::BOLD),
+        ));
+    }
+
+    // Prompt improve indicator
+    if data.prompt_improve {
+        spans.push(Span::styled(
+            " ✨ improve ",
+            Style::default().fg(Color::Black).bg(Color::Magenta).add_modifier(Modifier::BOLD),
         ));
     }
 }

@@ -135,6 +135,8 @@ pub enum ExtendedAction {
     PaneMoveDown,
     // Tool toggle
     OpenToolToggle,
+    // Prompt improve
+    TogglePromptImprove,
 }
 
 // Name mapping table for ExtendedAction.
@@ -182,6 +184,7 @@ const EXTENDED_ACTION_NAMES: &[(ExtendedAction, &[&str])] = &[
     (ExtendedAction::PaneMoveUp, &["pane_move_up"]),
     (ExtendedAction::PaneMoveDown, &["pane_move_down"]),
     (ExtendedAction::OpenToolToggle, &["open_tool_toggle", "tool_toggle"]),
+    (ExtendedAction::TogglePromptImprove, &["toggle_prompt_improve", "prompt_improve"]),
 ];
 
 impl ExtendedAction {

@@ -42,6 +42,23 @@ pub(crate) fn spawn_agent_task(
                         .collect();
                     handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &text, Some(img_contents)).await;
                 }
+                AgentCommand::RewriteAndPrompt(text) => {
+                    let improved = rewrite_prompt(agent.provider(), agent.model(), &text).await;
+                    handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &improved, None).await;
+                }
+                AgentCommand::RewriteAndPromptWithImages { text, images } => {
+                    let improved = rewrite_prompt(agent.provider(), agent.model(), &text).await;
+                    let img_contents: Vec<crate::provider::message::Content> = images
+                        .into_iter()
+                        .map(|img| crate::provider::message::Content::Image {
+                            source: crate::provider::message::ImageSource::Base64 {
+                                media_type: img.media_type,
+                                data: img.data,
+                            },
+                        })
+                        .collect();
+                    handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &improved, Some(img_contents)).await;
+                }
                 AgentCommand::Login {
                     code,
                     state,
@@ -207,6 +224,84 @@ async fn handle_switch_account(
             "No account '{}'",
             account_name
         ))));
+    }
+}
+
+/// Rewrite/improve a user prompt using a one-off LLM call.
+///
+/// Makes a lightweight completion request with a meta-prompt that asks
+/// the model to improve the user's prompt for clarity and specificity.
+/// Falls back to the original text if the rewrite call fails.
+async fn rewrite_prompt(
+    provider: &std::sync::Arc<dyn crate::provider::Provider>,
+    model: &str,
+    original: &str,
+) -> String {
+    use crate::provider::message::{AgentMessage, Content, MessageId, UserMessage};
+    use crate::provider::streaming::StreamEvent;
+    use crate::provider::CompletionRequest;
+
+    let system = "You are a prompt engineer. Your job is to rewrite the user's prompt \
+        to be clearer, more specific, and more effective for an AI coding assistant. \
+        Preserve the original intent completely. Output ONLY the improved prompt text — \
+        no commentary, no explanation, no wrapping quotes.";
+
+    let user_msg = AgentMessage::User(UserMessage {
+        id: MessageId::generate(),
+        content: vec![Content::Text {
+            text: original.to_string(),
+        }],
+        timestamp: chrono::Utc::now(),
+    });
+
+    let request = CompletionRequest {
+        model: model.to_string(),
+        messages: vec![user_msg],
+        system_prompt: Some(system.to_string()),
+        max_tokens: Some(4096),
+        temperature: Some(0.3),
+        tools: vec![],
+        thinking: None,
+    };
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel::<StreamEvent>(64);
+
+    let complete_handle = {
+        let provider = provider.clone();
+        tokio::spawn(async move {
+            provider.complete(request, tx).await
+        })
+    };
+
+    let mut result = String::new();
+    while let Some(event) = rx.recv().await {
+        if let StreamEvent::ContentBlockDelta {
+            delta: crate::provider::streaming::ContentDelta::TextDelta { text },
+            ..
+        } = event
+        {
+            result.push_str(&text);
+        }
+    }
+
+    // Wait for the completion to finish
+    match complete_handle.await {
+        Ok(Ok(())) => {}
+        Ok(Err(e)) => {
+            tracing::warn!("Prompt rewrite failed: {}", e);
+            return original.to_string();
+        }
+        Err(e) => {
+            tracing::warn!("Prompt rewrite task panicked: {}", e);
+            return original.to_string();
+        }
+    }
+
+    let improved = result.trim().to_string();
+    if improved.is_empty() {
+        original.to_string()
+    } else {
+        improved
     }
 }
 

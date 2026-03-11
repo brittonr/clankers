@@ -75,6 +75,7 @@ fn common_normal() -> HashMap<KeyCombo, Action> {
         (KeyCode::Char('T'), false, false, true, Action::Extended(EA::ToggleShowThinking)),
         (KeyCode::Char('C'), false, false, true, Action::Extended(EA::ToggleCostOverlay)),
         (KeyCode::Char('I'), false, false, true, Action::Extended(EA::ToggleBlockIds)),
+        (KeyCode::Char('P'), false, false, true, Action::Extended(EA::TogglePromptImprove)),
         // ── Popups / panels ──────────────────────────────
         (KeyCode::Char('s'), false, false, false, Action::Extended(EA::ToggleSessionPopup)),
         (KeyCode::Char('b'), false, false, false, Action::Extended(EA::ToggleBranchPanel)),
@@ -217,6 +218,7 @@ fn common_insert() -> HashMap<KeyCombo, Action> {
         (KeyCode::Char('s'), true, false, false, Action::Extended(EA::ToggleSessionPopup)),
         (KeyCode::Char('b'), true, false, false, Action::Extended(EA::ToggleBranchPanel)),
         (KeyCode::Char('i'), true, false, false, Action::Extended(EA::ToggleBlockIds)),
+        (KeyCode::Char('r'), true, false, false, Action::Extended(EA::TogglePromptImprove)),
         // ── Selectors (Ctrl+M model, Ctrl+A account) ────
         (KeyCode::Char('m'), true, false, false, Action::Extended(EA::OpenModelSelector)),
         (KeyCode::Char('a'), true, false, false, Action::Extended(EA::OpenAccountSelector)),

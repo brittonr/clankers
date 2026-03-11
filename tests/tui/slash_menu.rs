@@ -100,11 +100,11 @@ fn slash_menu_scrolls_past_visible_items() {
     h.type_str("i/");
     h.settle(SETTLE);
 
-    // The menu shows 10 items at most. We have 37+ commands total.
+    // The menu shows 10 items at most. We have 45+ commands total.
     // Navigate down past all 10 visible items to reach commands
     // beyond the initial window.
     // Use Down arrow (HistoryDown) which is handled by the menu when visible.
-    for _ in 0..15 {
+    for _ in 0..16 {
         h.send_key(Key::Down);
         h.settle(Duration::from_millis(50));
     }
@@ -130,7 +130,7 @@ fn slash_menu_scrolls_with_arrows() {
     h.settle(SETTLE);
 
     // Navigate down past visible window using Down arrow
-    for _ in 0..15 {
+    for _ in 0..16 {
         h.send_key(Key::Down);
         h.settle(Duration::from_millis(50));
     }
@@ -144,7 +144,7 @@ fn slash_menu_scrolls_with_arrows() {
     );
 
     // Now navigate back up with Up arrow
-    for _ in 0..15 {
+    for _ in 0..16 {
         h.send_key(Key::Up);
         h.settle(Duration::from_millis(50));
     }

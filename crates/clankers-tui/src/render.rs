@@ -299,6 +299,7 @@ fn render_main_column(frame: &mut Frame, app: &mut App, main_area: Rect) {
         router_status: app.router_status,
         budget_status,
         tool_activity,
+        prompt_improve: app.prompt_improve,
         loop_status: app.loop_status.as_ref().map(|ls| {
             use ratatui::style::{Color, Modifier, Style};
             use ratatui::text::Span;
@@ -429,11 +430,14 @@ fn compute_search_scroll_target(output_search: &mut crate::components::output_se
 /// Render the editor/input area with slash menu
 fn render_editor_area(frame: &mut Frame, app: &mut App, editor_area: Rect, indicator: &str) {
     let image_count = app.pending_images.len();
-    let title = if image_count > 0 {
+    let mut title = if image_count > 0 {
         format!("Input 📎 {} image{}", image_count, if image_count == 1 { "" } else { "s" })
     } else {
         "Input".to_string()
     };
+    if app.prompt_improve {
+        title.push_str(" ✨ improve");
+    }
     editor_component::render_editor(frame, &app.editor, editor_area, indicator, app.theme.border, &title);
 
     let editor_inner_width = editor_area.width.saturating_sub(2) as usize;

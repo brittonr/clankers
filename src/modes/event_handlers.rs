@@ -89,6 +89,7 @@ fn handle_panel_focused_action(
                 | ExtendedAction::OpenBranchSwitcher
                 | ExtendedAction::OpenEditor
                 | ExtendedAction::OpenToolToggle
+                | ExtendedAction::TogglePromptImprove
         ),
     };
 
@@ -455,7 +456,16 @@ pub(crate) fn handle_input_with_plugins(
             .collect();
         pending_images.extend(at_file_images);
 
-        if pending_images.is_empty() {
+        if app.prompt_improve {
+            if pending_images.is_empty() {
+                let _ = cmd_tx.send(super::interactive::AgentCommand::RewriteAndPrompt(prompt_text));
+            } else {
+                let _ = cmd_tx.send(super::interactive::AgentCommand::RewriteAndPromptWithImages {
+                    text: prompt_text,
+                    images: pending_images,
+                });
+            }
+        } else if pending_images.is_empty() {
             let _ = cmd_tx.send(super::interactive::AgentCommand::Prompt(prompt_text));
         } else {
             let _ = cmd_tx.send(super::interactive::AgentCommand::PromptWithImages {

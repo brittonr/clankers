@@ -236,6 +236,7 @@ fn builtin_handlers() -> Vec<Box<dyn handlers::SlashHandler>> {
         Box::new(handlers::tui::LayoutHandler),
         Box::new(handlers::tui::PlanHandler),
         Box::new(handlers::tui::ReviewHandler),
+        Box::new(handlers::tui::ImproveHandler),
         Box::new(handlers::memory::SystemPromptHandler),
         Box::new(handlers::memory::MemoryHandler),
         Box::new(handlers::branching::ForkHandler),

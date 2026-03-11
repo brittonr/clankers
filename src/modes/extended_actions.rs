@@ -155,6 +155,13 @@ pub(crate) fn handle_extended_action(
             app.overlays.tool_toggle.open(tools, &app.disabled_tools);
         }
 
+        // ── Prompt improve toggle ────────────────────
+        ExtendedAction::TogglePromptImprove => {
+            app.prompt_improve = !app.prompt_improve;
+            let state = if app.prompt_improve { "on" } else { "off" };
+            app.push_system(format!("Prompt improve: {}.", state), false);
+        }
+
         // Remaining extended actions handled elsewhere (tiling, etc.)
         _ => {}
     }
