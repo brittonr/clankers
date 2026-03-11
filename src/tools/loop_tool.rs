@@ -303,7 +303,11 @@ fn parse_run_params(params: &Value) -> Result<RunParams, ToolResult> {
         .and_then(|v| v.as_str())
         .unwrap_or("loop")
         .to_string();
-    let max = params.get("max").and_then(|v| v.as_u64()).unwrap_or(10) as u32;
+    let max = params
+        .get("max")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(10)
+        .min(u32::MAX as u64) as u32;
     let interval_secs = params.get("interval").and_then(|v| v.as_u64()).unwrap_or(0);
     let break_condition = match params.get("break_on").and_then(|v| v.as_str()) {
         Some(s) => parse_break_condition(s),
