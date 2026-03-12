@@ -114,6 +114,70 @@ pub async fn run(action: DaemonSessionAction) -> Result<()> {
     Ok(())
 }
 
+/// `clankers ps` — compact session listing (docker-ps style).
+pub async fn run_ps(show_all: bool) -> Result<()> {
+    let resp = send_control(ControlCommand::ListSessions).await?;
+    match resp {
+        ControlResponse::Sessions(sessions) => {
+            if sessions.is_empty() {
+                println!("No active sessions.");
+                return Ok(());
+            }
+            if show_all {
+                println!(
+                    "{:<10} {:<28} {:>5} {:>7} {:<20} SOCKET",
+                    "SESSION", "MODEL", "TURNS", "CLIENTS", "LAST ACTIVE"
+                );
+                for s in &sessions {
+                    let sid = if s.session_id.len() > 8 {
+                        &s.session_id[..8]
+                    } else {
+                        &s.session_id
+                    };
+                    let model = if s.model.len() > 26 {
+                        format!("{}…", &s.model[..25])
+                    } else {
+                        s.model.clone()
+                    };
+                    println!(
+                        "{:<10} {:<28} {:>5} {:>7} {:<20} {}",
+                        sid, model, s.turn_count, s.client_count, s.last_active, s.socket_path
+                    );
+                }
+            } else {
+                println!(
+                    "{:<10} {:<28} {:>5} {:>7} LAST ACTIVE",
+                    "SESSION", "MODEL", "TURNS", "CLIENTS"
+                );
+                for s in &sessions {
+                    let sid = if s.session_id.len() > 8 {
+                        &s.session_id[..8]
+                    } else {
+                        &s.session_id
+                    };
+                    let model = if s.model.len() > 26 {
+                        format!("{}…", &s.model[..25])
+                    } else {
+                        s.model.clone()
+                    };
+                    println!(
+                        "{:<10} {:<28} {:>5} {:>7} {}",
+                        sid, model, s.turn_count, s.client_count, s.last_active
+                    );
+                }
+            }
+            println!("{} session(s)", sessions.len());
+        }
+        ControlResponse::Error { message } => {
+            eprintln!("Error: {message}");
+        }
+        other => {
+            eprintln!("Unexpected response: {other:?}");
+        }
+    }
+    Ok(())
+}
+
 /// Send a control command to the daemon and return the response.
 async fn send_control(cmd: ControlCommand) -> Result<ControlResponse> {
     let path = control_socket_path();

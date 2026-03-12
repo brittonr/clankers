@@ -348,6 +348,12 @@ pub enum Commands {
         #[arg(long)]
         model: Option<String>,
     },
+    /// List daemon sessions (shorthand for daemon-sessions list)
+    Ps {
+        /// Show all details including socket paths
+        #[arg(short, long)]
+        all: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

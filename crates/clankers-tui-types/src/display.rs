@@ -22,6 +22,18 @@ pub enum RouterStatus {
     Disconnected,
 }
 
+/// How the TUI is connected to the agent backend.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConnectionMode {
+    /// Agent runs in-process (normal interactive mode).
+    #[default]
+    Embedded,
+    /// Attached to a daemon session via socket.
+    Attached,
+    /// Was attached but lost the connection (reconnecting).
+    Reconnecting,
+}
+
 /// A message for display in the chat view.
 #[derive(Debug, Clone)]
 pub struct DisplayMessage {

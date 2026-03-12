@@ -24,6 +24,8 @@ pub struct ClientAdapter {
     cmd_tx: mpsc::UnboundedSender<SessionCommand>,
     /// Receive events from the daemon.
     event_rx: mpsc::UnboundedReceiver<DaemonEvent>,
+    /// True once the reader task exits (daemon disconnected).
+    disconnected: bool,
 }
 
 impl ClientAdapter {
@@ -88,7 +90,11 @@ impl ClientAdapter {
             }
         });
 
-        Ok(Self { cmd_tx, event_rx })
+        Ok(Self {
+            cmd_tx,
+            event_rx,
+            disconnected: false,
+        })
     }
 
     /// Send a command to the daemon.
@@ -102,8 +108,23 @@ impl ClientAdapter {
     }
 
     /// Try to receive an event without blocking.
+    ///
+    /// Returns `None` when no event is pending. Sets `disconnected` when
+    /// the event channel closes (daemon reader task exited).
     pub fn try_recv(&mut self) -> Option<DaemonEvent> {
-        self.event_rx.try_recv().ok()
+        match self.event_rx.try_recv() {
+            Ok(event) => Some(event),
+            Err(mpsc::error::TryRecvError::Empty) => None,
+            Err(mpsc::error::TryRecvError::Disconnected) => {
+                self.disconnected = true;
+                None
+            }
+        }
+    }
+
+    /// Whether the daemon connection has been lost.
+    pub fn is_disconnected(&self) -> bool {
+        self.disconnected || self.cmd_tx.is_closed()
     }
 
     /// Send a prompt to the daemon.

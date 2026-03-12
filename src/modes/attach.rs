@@ -111,6 +111,8 @@ pub async fn run_attach(
     // Build leader menu from builtins
     crate::modes::interactive::rebuild_leader_menu(&mut app, None, settings);
 
+    app.connection_mode = clankers_tui_types::ConnectionMode::Attached;
+
     app.push_system(
         format!(
             "attached to session {} (model: {}, prompt hash: {})",
@@ -128,14 +130,89 @@ pub async fn run_attach(
 
     let max_subagent_panes = settings.max_subagent_panes;
 
-    // Run the event loop
-    let result = run_attach_loop(&mut term, &mut app, &mut client, keymap, &slash_registry, max_subagent_panes);
-
-    // Clean disconnect
-    client.disconnect();
+    // Run the event loop with reconnection support
+    let result = run_attach_with_reconnect(
+        &mut term,
+        &mut app,
+        client,
+        keymap,
+        &slash_registry,
+        max_subagent_panes,
+        &socket_path,
+        &resolved_session_id,
+    )
+    .await;
 
     super::common::restore_terminal(&mut term);
     result
+}
+
+/// Run the attach event loop with automatic reconnection on disconnect.
+async fn run_attach_with_reconnect(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+    mut client: ClientAdapter,
+    keymap: Keymap,
+    slash_registry: &slash_commands::SlashRegistry,
+    max_subagent_panes: usize,
+    socket_path: &str,
+    session_id: &str,
+) -> Result<()> {
+    let mut replaying_history = true;
+
+    loop {
+        terminal
+            .draw(|frame| render::render(frame, app))
+            .map_err(|e| crate::error::Error::Tui {
+                message: format!("Render failed: {e}"),
+            })?;
+
+        if app.should_quit {
+            client.disconnect();
+            break;
+        }
+
+        // Drain daemon events
+        drain_daemon_events(app, &mut client, &mut replaying_history, max_subagent_panes);
+
+        // Detect disconnect and attempt reconnection
+        if client.is_disconnected()
+            && app.connection_mode != clankers_tui_types::ConnectionMode::Reconnecting
+        {
+            app.connection_mode = clankers_tui_types::ConnectionMode::Reconnecting;
+            app.push_system(
+                "Connection to daemon lost. Attempting to reconnect...".to_string(),
+                true,
+            );
+
+            match try_reconnect(socket_path, session_id).await {
+                Some(new_client) => {
+                    client = new_client;
+                    client.replay_history();
+                    replaying_history = true;
+                    app.connection_mode = clankers_tui_types::ConnectionMode::Attached;
+                    app.push_system("Reconnected to daemon session.".to_string(), false);
+                }
+                None => {
+                    app.push_system(
+                        "Failed to reconnect after multiple attempts. Use /quit to exit."
+                            .to_string(),
+                        true,
+                    );
+                }
+            }
+        }
+
+        // Handle terminal events (keys, mouse, paste)
+        handle_terminal_events(app, &mut client, terminal, &keymap, slash_registry)?;
+
+        if app.open_editor_requested {
+            app.open_editor_requested = false;
+            crate::tui::clipboard::open_external_editor(terminal, app);
+        }
+    }
+
+    Ok(())
 }
 
 // ── Session resolution ──────────────────────────────────────────────────────
@@ -362,44 +439,52 @@ fn pick_session(sessions: &[clankers_protocol::SessionSummary]) -> Result<&clank
 
 // ── Attach event loop ───────────────────────────────────────────────────────
 
-/// Main event loop for attach mode.
+/// Reconnection backoff parameters.
+const RECONNECT_INITIAL_MS: u64 = 500;
+const RECONNECT_MAX_MS: u64 = 15_000;
+const RECONNECT_MAX_ATTEMPTS: u32 = 20;
+
+/// Attempt to reconnect to a daemon session with exponential backoff.
 ///
-/// Similar to `EventLoopRunner::run()` but reads `DaemonEvent` from the
-/// `ClientAdapter` instead of `AgentEvent` from a broadcast receiver.
-fn run_attach_loop(
-    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
-    app: &mut App,
-    client: &mut ClientAdapter,
-    keymap: Keymap,
-    slash_registry: &slash_commands::SlashRegistry,
-    max_subagent_panes: usize,
-) -> Result<()> {
-    let mut replaying_history = true;
+/// Returns a new `ClientAdapter` on success, or `None` after exhausting
+/// all retry attempts or if the user cancels.
+async fn try_reconnect(
+    socket_path: &str,
+    session_id: &str,
+) -> Option<ClientAdapter> {
+    let mut delay_ms = RECONNECT_INITIAL_MS;
 
-    loop {
-        terminal
-            .draw(|frame| render::render(frame, app))
-            .map_err(|e| crate::error::Error::Tui {
-                message: format!("Render failed: {e}"),
-            })?;
+    for attempt in 1..=RECONNECT_MAX_ATTEMPTS {
+        info!("reconnect attempt {attempt}/{RECONNECT_MAX_ATTEMPTS} (delay {delay_ms}ms)");
 
-        if app.should_quit {
-            break;
-        }
+        tokio::time::sleep(Duration::from_millis(delay_ms)).await;
 
-        // Drain daemon events
-        drain_daemon_events(app, client, &mut replaying_history, max_subagent_panes);
+        let stream = match UnixStream::connect(socket_path).await {
+            Ok(s) => s,
+            Err(e) => {
+                debug!("reconnect failed: {e}");
+                delay_ms = (delay_ms * 2).min(RECONNECT_MAX_MS);
+                continue;
+            }
+        };
 
-        // Handle terminal events (keys, mouse, paste)
-        handle_terminal_events(app, client, terminal, &keymap, slash_registry)?;
-
-        if app.open_editor_requested {
-            app.open_editor_requested = false;
-            crate::tui::clipboard::open_external_editor(terminal, app);
+        match ClientAdapter::connect(
+            stream,
+            "clankers-tui",
+            None,
+            Some(session_id.to_string()),
+        )
+        .await
+        {
+            Ok(adapter) => return Some(adapter),
+            Err(e) => {
+                debug!("reconnect handshake failed: {e}");
+                delay_ms = (delay_ms * 2).min(RECONNECT_MAX_MS);
+            }
         }
     }
 
-    Ok(())
+    None
 }
 
 /// Drain available DaemonEvents from the client and apply them to App state.

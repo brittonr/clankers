@@ -13,6 +13,7 @@ pub use clankers_tui_types::DisplayImage;
 pub use clankers_tui_types::DisplayMessage;
 use clankers_tui_types::InputMode;
 pub use clankers_tui_types::MessageRole;
+pub use clankers_tui_types::ConnectionMode;
 pub use clankers_tui_types::PendingImage;
 use clankers_tui_types::PluginUIState;
 pub use clankers_tui_types::RouterStatus;
@@ -173,6 +174,7 @@ pub struct App {
     pub active_account: String,
     pub available_models: Vec<String>,
     pub router_status: RouterStatus,
+    pub connection_mode: ConnectionMode,
     pub prompt_improve: bool,
     pub queued_prompt: Option<String>,
     pub login_verifier: Option<(String, String)>,
@@ -255,6 +257,7 @@ impl App {
             active_account: String::new(),
             available_models: Vec::new(),
             router_status: RouterStatus::Disconnected,
+            connection_mode: ConnectionMode::Embedded,
             prompt_improve: false,
             queued_prompt: None,
             login_verifier: None,

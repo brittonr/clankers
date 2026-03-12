@@ -650,4 +650,22 @@
 - `drain_and_broadcast()` combines controller events + panel events into a single broadcast sweep
 - SubagentEvent::KillRequest/InputRequest are TUI→tool direction — filtered out in daemon drain (not forwarded to clients)
 - The factory rebuilds tools from scratch via `build_tiered_tools(env)` rather than cloning pre-built Arc'd tools — Arc<dyn Tool> is immutable, can't inject panel_tx after construction
-- Next: `clankers ps` command, daemon full-mode verification, Phase 3 remaining items (reconnection, detach, daemon status bar indicator)
+## Patterns That Work (Phase 3 completion: ps, reconnect, status bar)
+- `clankers ps` is a top-level CLI command (`Commands::Ps { all }`) routing to `daemon_sessions::run_ps(all)` — shorthand for `daemon-sessions list`
+- `clankers ps -a` shows socket paths; without flag, compact docker-ps-style output
+- `ConnectionMode` enum in `clankers-tui-types::display`: Embedded (default), Attached, Reconnecting
+- `App.connection_mode` field — set to `Attached` in `run_attach()`, `Reconnecting` on disconnect
+- Status bar renders `ATTACHED` (blue) or `RECONNECTING` (red) badges via `render_mode_indicators()`
+- `StatusBarData.connection_mode` field wired in `render_status_bar_area()`
+- `ClientAdapter.is_disconnected()` detects closed event channel or closed command sender
+- `ClientAdapter.try_recv()` sets `disconnected = true` on `TryRecvError::Disconnected`
+- Reconnection: `try_reconnect(socket_path, session_id)` with exponential backoff (500ms initial, 15s max, 20 attempts)
+- On reconnect success: swap client, `replay_history()`, reset `connection_mode` to Attached
+- `run_attach_with_reconnect()` replaces `run_attach_loop()` — owns the reconnection state machine
+- `/detach` sets `should_quit = true`, `run_attach_with_reconnect` calls `client.disconnect()` on exit
+- AgentEvent::MessageUpdate field is `index` not `message_index`, delta is `StreamDelta` (alias for `ContentDelta`)
+- AgentEvent::TurnStart/TurnEnd use `index` not `turn_number`
+- AgentEvent::Context has only `messages` field (no `system_prompt`)
+- `ModelChange` AgentEvent is NOT forwarded via `agent_event_to_daemon_event()` — handled by hooks only. Daemon emits `ModelChanged` only from `handle_command(SetModel)`
+- `auto_test_in_progress` flag blocks recursive auto-test: first `check_post_prompt()` returns `RunAutoTest`, second returns `None` until `clear_auto_test()` is called
+- Embedded controller integration test: 30 tests covering feed_event→take_outgoing, auto-test, loop, audit, daemon round-trip

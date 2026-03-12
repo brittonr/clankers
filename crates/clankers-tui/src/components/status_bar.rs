@@ -1,6 +1,7 @@
 //! Footer status bar
 
 use clankers_tui_types::BudgetStatus;
+use clankers_tui_types::ConnectionMode;
 use clankers_tui_types::InputMode;
 use ratatui::Frame;
 use ratatui::layout::Rect;
@@ -46,6 +47,8 @@ pub struct StatusBarData<'a> {
     pub loop_status: Option<Span<'a>>,
     /// Whether prompt improve is enabled
     pub prompt_improve: bool,
+    /// Connection mode (embedded, attached, reconnecting)
+    pub connection_mode: ConnectionMode,
 }
 
 /// Render status bar
@@ -101,6 +104,31 @@ fn render_mode_indicators<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a
             level_label,
             Style::default().fg(Color::Black).bg(level_color).add_modifier(Modifier::BOLD),
         ));
+    }
+
+    // Connection mode badge
+    match data.connection_mode {
+        ConnectionMode::Embedded => {
+            // No badge in embedded mode (normal, quiet)
+        }
+        ConnectionMode::Attached => {
+            spans.push(Span::styled(
+                " ATTACHED ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Blue)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
+        ConnectionMode::Reconnecting => {
+            spans.push(Span::styled(
+                " RECONNECTING ",
+                Style::default()
+                    .fg(Color::Black)
+                    .bg(Color::Red)
+                    .add_modifier(Modifier::BOLD),
+            ));
+        }
     }
 
     // Prompt improve indicator
