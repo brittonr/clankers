@@ -51,7 +51,6 @@ impl SlashHandler for WorkerHandler {
                    Requires running inside a Zellij session (clankers --zellij or clankers --swarm).",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -102,7 +101,6 @@ impl SlashHandler for ShareHandler {
                    Requires running inside a Zellij session.",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -132,7 +130,6 @@ impl SlashHandler for SubagentsHandler {
                 ("remove <id>", "remove a subagent entry"),
                 ("clear", "remove all completed/failed subagents"),
             ],
-            leader_key: None,
         }
     }
 
@@ -431,7 +428,6 @@ impl SlashHandler for PeersHandler {
                 ("deny <node-id>", "remove from allowlist"),
                 ("server [on|off]", "start/stop RPC server"),
             ],
-            leader_key: None,
         }
     }
 

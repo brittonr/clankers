@@ -101,7 +101,6 @@ impl crate::slash_commands::SlashContributor for PluginSlashContributor<'_> {
                         }),
                         priority: PRIORITY_PLUGIN,
                         source: format!("plugin:{}", plugin_name),
-                        leader_key: None,
                     }
                 })
             })
@@ -133,7 +132,6 @@ impl crate::slash_commands::handlers::SlashHandler for PluginSlashHandler {
             ),
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 

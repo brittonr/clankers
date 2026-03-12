@@ -17,7 +17,6 @@ impl SlashHandler for PromptTemplateHandler {
             help: "Executes a custom prompt template from ~/.pi/prompts/ or .pi/prompts/",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 

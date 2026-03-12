@@ -12,7 +12,7 @@ const TIMEOUT: Duration = Duration::from_secs(3);
 
 #[test]
 fn space_opens_leader_menu() {
-    let mut h = TuiTestHarness::spawn(24, 80);
+    let mut h = TuiTestHarness::spawn(40, 100);
 
     // Press Space in normal mode
     h.type_str(" ");

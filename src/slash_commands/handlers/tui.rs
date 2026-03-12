@@ -24,7 +24,6 @@ impl SlashHandler for LayoutHandler {
                 ("right", "all panels on the right"),
                 ("toggle <panel>", "show/hide a panel"),
             ],
-            leader_key: None,
         }
     }
 
@@ -211,7 +210,6 @@ impl SlashHandler for PreviewHandler {
                    /preview <markdown>   — render the provided markdown text",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -268,7 +266,6 @@ impl SlashHandler for EditorHandler {
                    Keybindings: Ctrl+O (insert mode), o (normal mode)",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -302,7 +299,6 @@ impl SlashHandler for TodoHandler {
                 ("remove <id>", "remove an item"),
                 ("clear", "remove all completed items"),
             ],
-            leader_key: None,
         }
     }
 
@@ -401,7 +397,6 @@ impl SlashHandler for PlanHandler {
                    /plan off    — disable plan mode",
             accepts_args: true,
             subcommands: vec![("on", "enable plan mode"), ("off", "disable plan mode")],
-            leader_key: None,
         }
     }
 
@@ -443,7 +438,6 @@ impl SlashHandler for ReviewHandler {
                    /review staged      — review only staged changes",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -490,7 +484,6 @@ impl SlashHandler for ImproveHandler {
                    Keybindings: Shift+P (normal mode), Ctrl+R (insert mode)",
             accepts_args: true,
             subcommands: vec![("on", "enable prompt improve"), ("off", "disable prompt improve")],
-            leader_key: None,
         }
     }
 

@@ -10,7 +10,6 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 
 use clankers_tui_types::Conflict;
-use clankers_tui_types::MenuPlacement;
 use clankers_tui_types::PRIORITY_BUILTIN;
 
 // ---------------------------------------------------------------------------
@@ -33,17 +32,6 @@ pub fn register_prompt_templates(templates: &[(String, String)]) {
     });
 }
 
-/// Binding for a slash command in the leader menu.
-#[derive(Debug, Clone)]
-pub struct LeaderBinding {
-    /// Key to press in the leader menu.
-    pub key: char,
-    /// Where in the menu this appears.
-    pub placement: MenuPlacement,
-    /// Override label (defaults to SlashCommand.description if None).
-    pub label: Option<&'static str>,
-}
-
 /// A registered slash command.
 #[derive(Debug, Clone)]
 pub struct SlashCommand {
@@ -57,9 +45,6 @@ pub struct SlashCommand {
     pub accepts_args: bool,
     /// Subcommands shown in the autocomplete menu (name, description)
     pub subcommands: Vec<(&'static str, &'static str)>,
-    /// Optional leader menu binding. When set, this command appears
-    /// in the leader menu automatically.
-    pub leader_key: Option<LeaderBinding>,
 }
 
 /// A fully registered slash command with handler.
@@ -80,8 +65,6 @@ pub struct SlashCommandDef {
     pub priority: u16,
     /// Source identifier (e.g. "builtin", "plugin:calendar", "user")
     pub source: String,
-    /// Optional leader menu binding
-    pub leader_key: Option<LeaderBinding>,
 }
 
 // SlashAction enum deleted — dispatch uses command name strings directly.
@@ -93,21 +76,13 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
     builtin_handlers().into_iter().map(|h| h.command()).collect()
 }
 
-/// Get builtin command info (for leader menu building without importing SlashCommand).
+/// Get builtin command info.
 pub fn builtin_command_infos() -> Vec<clankers_tui_types::SlashCommandInfo> {
     builtin_commands()
         .iter()
-        .map(|cmd| {
-            let leader_key = cmd.leader_key.as_ref().map(|b| clankers_tui_types::LeaderBinding {
-                key: b.key,
-                placement: b.placement.clone(),
-                label: b.label.map(|s| s.to_string()),
-            });
-            clankers_tui_types::SlashCommandInfo {
-                name: cmd.name.to_string(),
-                description: cmd.description.to_string(),
-                leader_key,
-            }
+        .map(|cmd| clankers_tui_types::SlashCommandInfo {
+            name: cmd.name.to_string(),
+            description: cmd.description.to_string(),
         })
         .collect()
 }
@@ -271,7 +246,7 @@ impl SlashContributor for BuiltinSlashContributor {
                     handler,
                     priority: PRIORITY_BUILTIN,
                     source: "builtin".to_string(),
-                    leader_key: cmd.leader_key,
+
                 }
             })
             .collect()
@@ -341,17 +316,9 @@ impl clankers_tui_types::CompletionSource for SlashRegistry {
     fn slash_commands(&self) -> Vec<clankers_tui_types::SlashCommandInfo> {
         self.all_commands()
             .into_iter()
-            .map(|def| {
-                let leader_key = def.leader_key.as_ref().map(|binding| clankers_tui_types::LeaderBinding {
-                    key: binding.key,
-                    placement: binding.placement.clone(),
-                    label: binding.label.map(|s| s.to_string()),
-                });
-                clankers_tui_types::SlashCommandInfo {
-                    name: def.name.clone(),
-                    description: def.description.clone(),
-                    leader_key,
-                }
+            .map(|def| clankers_tui_types::SlashCommandInfo {
+                name: def.name.clone(),
+                description: def.description.clone(),
             })
             .collect()
     }

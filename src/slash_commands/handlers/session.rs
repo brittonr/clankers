@@ -23,7 +23,6 @@ impl SlashHandler for SessionHandler {
                 ("delete <id>", "delete a session"),
                 ("purge", "delete all sessions for this directory"),
             ],
-            leader_key: None,
         }
     }
 

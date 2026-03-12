@@ -18,7 +18,7 @@ pub mod types;
 // Re-export public types
 // Re-export public builder items
 pub use builder::BuiltinKeymapContributor;
-pub use builder::SlashCommandContributor;
+// SlashCommandContributor removed — all bindings in BuiltinKeymapContributor.
 pub use types::BuildResult;
 pub use types::HiddenSet;
 pub use types::LeaderAction;

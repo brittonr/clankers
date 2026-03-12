@@ -16,7 +16,6 @@ impl SlashHandler for ClearHandler {
             help: "Clears the visible message history. Does not affect the agent's context window.",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -38,7 +37,6 @@ impl SlashHandler for ResetHandler {
             help: "Clears conversation history and resets the agent context, starting fresh.",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -69,11 +67,6 @@ impl SlashHandler for CompactHandler {
                    replacing the full history to reduce token usage.",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: Some(super::super::LeaderBinding {
-                key: 'C',
-                placement: crate::tui::components::leader_menu::MenuPlacement::Root,
-                label: Some("compact"),
-            }),
         }
     }
 
@@ -92,7 +85,6 @@ impl SlashHandler for UndoHandler {
             help: "Removes the last user message and assistant response from the conversation.",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -125,7 +117,6 @@ impl SlashHandler for CdHandler {
             help: "Change the working directory. Usage: /cd <path>",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -165,7 +156,6 @@ impl SlashHandler for ShellHandler {
             help: "Execute a shell command without going through the agent. Usage: /shell <command>",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 

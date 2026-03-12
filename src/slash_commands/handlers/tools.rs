@@ -17,11 +17,6 @@ impl SlashHandler for ToolsHandler {
                 ("enable", "Enable a tool by name"),
                 ("disable", "Disable a tool by name"),
             ],
-            leader_key: Some(super::super::LeaderBinding {
-                key: 'w',
-                placement: clankers_tui_types::MenuPlacement::Root,
-                label: Some("tools"),
-            }),
         }
     }
 
@@ -123,7 +118,6 @@ impl SlashHandler for PluginHandler {
                 ("disable", "Disable a plugin"),
                 ("reload", "Reload a plugin (or all)"),
             ],
-            leader_key: None,
         }
     }
 

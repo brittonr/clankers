@@ -38,7 +38,6 @@ impl SlashHandler for LoopHandler {
                 ("status", "show loop status"),
                 ("pause", "pause/resume the active loop"),
             ],
-            leader_key: None,
         }
     }
 

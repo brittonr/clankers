@@ -132,7 +132,6 @@ impl SlashHandler for SystemPromptHandler {
                 ("reset", "restore the original system prompt"),
                 ("file <path>", "load system prompt from a file"),
             ],
-            leader_key: None,
         }
     }
 
@@ -355,7 +354,6 @@ impl SlashHandler for MemoryHandler {
                 ("search <query>", "search memories"),
                 ("clear", "remove all memories"),
             ],
-            leader_key: None,
         }
     }
 

@@ -14,7 +14,6 @@ impl SlashHandler for ModelHandler {
             help: "Switch to a different model. Usage: /model <model-name>",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -56,7 +55,6 @@ impl SlashHandler for ThinkHandler {
                 ("high", "deep reasoning (~32k tokens)"),
                 ("max", "maximum reasoning (~128k tokens)"),
             ],
-            leader_key: None,
         }
     }
 
@@ -94,7 +92,6 @@ impl SlashHandler for RoleHandler {
                 ("<name> <model>", "set a role's model"),
                 ("reset", "clear all role overrides"),
             ],
-            leader_key: None,
         }
     }
 

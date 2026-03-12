@@ -21,7 +21,6 @@ impl SlashHandler for LoginHandler {
                    See also: /account (list, switch, logout, status)",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -148,7 +147,6 @@ impl SlashHandler for AccountHandler {
                 ("status [name]", "show account status"),
                 ("list", "list all accounts"),
             ],
-            leader_key: None,
         }
     }
 

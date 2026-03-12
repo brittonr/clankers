@@ -17,11 +17,6 @@ impl SlashHandler for HelpHandler {
             help: "Lists all available slash commands with descriptions.",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: Some(super::super::LeaderBinding {
-                key: '?',
-                placement: crate::tui::components::leader_menu::MenuPlacement::Root,
-                label: Some("help"),
-            }),
         }
     }
 
@@ -40,7 +35,6 @@ impl SlashHandler for StatusHandler {
             help: "Displays the current model, token usage, and session information.",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -63,7 +57,6 @@ impl SlashHandler for UsageHandler {
             help: "Shows detailed token usage and estimated cost for this session.",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -86,7 +79,6 @@ impl SlashHandler for VersionHandler {
             help: "Displays the clankers version and build information.",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -105,7 +97,6 @@ impl SlashHandler for QuitHandler {
             help: "Exit the application.",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -133,7 +124,6 @@ impl SlashHandler for LeaderHandler {
                    to remove entries.",
             accepts_args: false,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -186,7 +176,6 @@ impl SlashHandler for ExportHandler {
             help: "Exports the conversation to a file. Usage: /export [filename]",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 

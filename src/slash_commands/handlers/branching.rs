@@ -18,11 +18,6 @@ impl SlashHandler for ForkHandler {
                    /fork <reason>       — fork with a descriptive name",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: Some(super::super::LeaderBinding {
-                key: 'f',
-                placement: crate::tui::components::leader_menu::MenuPlacement::Submenu("session".into()),
-                label: Some("fork"),
-            }),
         }
     }
 
@@ -79,7 +74,6 @@ impl SlashHandler for RewindHandler {
                    /rewind <label>        — jump to a labeled message",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -124,7 +118,6 @@ impl SlashHandler for BranchesHandler {
                    /branches --verbose    — show detailed branch tree",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -172,7 +165,6 @@ impl SlashHandler for SwitchHandler {
                    /switch <message-id>   — switch to specific message",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -248,7 +240,6 @@ impl SlashHandler for CompareHandler {
                    and keybindings: ←/→ switch pane, j/k scroll, s switch to branch.",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -312,7 +303,6 @@ impl SlashHandler for MergeHandler {
                    after merging. Use /branches to see available branch names.",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -395,7 +385,6 @@ impl SlashHandler for MergeInteractiveHandler {
                    then press Enter to merge only the selected messages. Press Esc to cancel.",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -501,7 +490,6 @@ impl SlashHandler for CherryPickHandler {
                    leaf. Use --with-children to copy the entire subtree.",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 
@@ -576,7 +564,6 @@ impl SlashHandler for LabelHandler {
                    Labels can be used with /rewind and /switch for easy navigation.",
             accepts_args: true,
             subcommands: vec![],
-            leader_key: None,
         }
     }
 

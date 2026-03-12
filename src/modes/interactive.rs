@@ -567,16 +567,13 @@ fn rebuild_leader_menu(
 ) {
     use crate::tui::components::leader_menu::BuiltinKeymapContributor;
     use crate::tui::components::leader_menu::MenuContributor;
-    use crate::tui::components::leader_menu::SlashCommandContributor;
 
     let builtin = BuiltinKeymapContributor;
-    let slash_cmds = clankers_tui_types::CompletionSource::slash_commands(&*app.completion_source);
-    let slash_commands = SlashCommandContributor::new(slash_cmds);
     let hidden = settings.leader_menu.hidden_set();
 
     let pm_guard;
     let pm_menu_contrib;
-    let mut contributors: Vec<&dyn MenuContributor> = vec![&builtin, &slash_commands];
+    let mut contributors: Vec<&dyn MenuContributor> = vec![&builtin];
     if let Some(pm_arc) = plugin_manager {
         match pm_arc.lock() {
             Ok(guard) => {

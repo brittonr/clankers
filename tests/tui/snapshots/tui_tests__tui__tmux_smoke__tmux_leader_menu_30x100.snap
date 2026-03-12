@@ -4,31 +4,31 @@ expression: normalized
 ---
 ┌ Todo (0/0)───────┐┌────────────────────────── h/l:panels j/k:panes ┐┌ Subagents (0/0)────────────┐
 │No items. Use     ││┌Messages──────────────────────────────────────┐││No subagents running        │
-│/todo add <text>  │││  clankers — MODEL — keymap: helix —│││                            │
-│or the todo tool. │││press i to sta┌ Space ──────────────────┐     │││                            │
-│                  │││              │  ?  help                │     │││                            │
+│/todo add <text>  │││  clankers — c┌ Space ──────────────────┐lix —│││                            │
+│or the todo tool. │││press i to sta│  ?  help                │     │││                            │
 │                  │││              │  A  auto-test           │     │││                            │
 │                  │││              │  C  compact             │     │││                            │
 │                  │││              │  G  GitHub              │     │││                            │
-│                  │││              │  H  hooks               │     │││                            │
+│                  │││              │  I  prompt improve      │     │││                            │
 │                  │││              │  L  loop…               │     │││                            │
-│                  │││              │  T  show/hide thinking  │     │││                            │
-│                  │││              │  `  toggle panel        │     │││                            │
-└──────────────────┘││              │  a  account             │     ││└────────────────────────────┘
-┌ Files (0, 0 ops)─┐││              │  c  cancel/abort        │     ││┌ Peers (0/0)────────────────┐
-│No files touched  │││              │  f  search output       │     │││No peers known. /peers add  │
-│yet.              │││              │  l  layout…             │     │││<id> <name>                 │
+│                  │││              │  M  model/thinking…     │     │││                            │
+│                  │││              │  P  plan mode           │     │││                            │
+│                  │││              │  R  code review         │     │││                            │
+└──────────────────┘││              │  S  system/memory…      │     ││└────────────────────────────┘
+┌ Files (0, 0 ops)─┐││              │  T  show/hide thinking  │     ││┌ Peers (0/0)────────────────┐
+│No files touched  │││              │  `  toggle panel        │     │││No peers known. /peers add  │
+│yet.              │││              │  a  account             │     │││<id> <name>                 │
+│                  │││              │  b  branch…             │     │││                            │
+│                  │││              │  c  cancel/abort        │     │││                            │
+│                  │││              │  d  debug…              │     │││                            │
+│                  │││              │  e  export              │     │││                            │
+│                  │││              │  f  search output       │     │││                            │
+│                  │││              │  i  info…               │     │││                            │
+│                  │││              │  l  layout…             │     │││                            │
 │                  │││              │  m  model               │     │││                            │
-│                  │││              │  o  external editor     │     │││                            │
-│                  │││              │  p  pane…               │     │││                            │
-│                  │││              │  s  session…            │     │││                            │
-│                  │││              │  t  toggle thinking     │     │││                            │
-│                  │││              │  w  tools               │     │││                            │
-│                  │││              │  x  clear input         │     │││                            │
-│                  │││              │                         │     │││                            │
-│                  ││└──────────────│  esc close              │─────┘││                            │
-└──────────────────┘└───────────────└─────────────────────────┘──────┘└────────────────────────────┘
-┌Input─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                                                                                  │
+│                  ││└──────────────│  o  external editor     │─────┘││                            │
+└──────────────────┘└───────────────│  p  pane…               │──────┘└────────────────────────────┘
+┌Input──────────────────────────────│  q  quit                │────────────────────────────────────┐
+│                                   └─────────────────────────┘                                    │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
- NORMAL  👤 default  ░░░░░░░░N/N.Nk   main  idle | MODEL | /home/brittonr/git/
+ NORMAL  👤 default  ░░░░░░░░N/N.Nk   main  idle | MODEL | /home/brittonr/git/clank
