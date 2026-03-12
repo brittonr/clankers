@@ -164,6 +164,12 @@ pub async fn run_interactive(
     // Populate disabled tools from settings (global + project merged)
     app.disabled_tools = settings.disabled_tools.iter().cloned().collect();
 
+    // Auto-test: initialize from settings
+    if let Some(ref cmd) = settings.auto_test_command {
+        app.auto_test_command = Some(cmd.clone());
+        app.auto_test_enabled = true;
+    }
+
     // ── Hook pipeline setup ────────────────────────────────────────────
     let hook_pipeline = build_hook_pipeline(&settings, &cwd, plugin_manager.as_ref());
 

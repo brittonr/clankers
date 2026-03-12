@@ -325,8 +325,11 @@ fn test_registry_build_from_builtins() {
     // Should have no conflicts when building from a single contributor
     assert_eq!(conflicts.len(), 0);
 
-    // Should have all builtin commands
-    assert_eq!(registry.all_commands().len(), 45);
+    // Registry should contain every builtin command.
+    // Floor guard: catch catastrophic loss (empty vec, half the handlers gone).
+    let expected = builtin_commands();
+    assert!(expected.len() >= 40, "builtin command count dropped below floor: {}", expected.len());
+    assert_eq!(registry.all_commands().len(), expected.len());
 
     // Verify a few specific commands are present
     assert!(registry.get("help").is_some());
@@ -386,7 +389,9 @@ fn test_registry_completions() {
 
     // Test empty partial returns all
     let all_completions = registry.completions("");
-    assert_eq!(all_completions.len(), 45);
+    let expected_count = builtin_commands().len();
+    assert!(expected_count >= 40, "builtin command count dropped below floor: {}", expected_count);
+    assert_eq!(all_completions.len(), expected_count);
 
     // Test no matches
     let no_match = registry.completions("xyz");
@@ -447,7 +452,9 @@ fn test_registry_help_text_via_all_commands() {
     let (registry, _) = SlashRegistry::build(&contributors);
 
     let all_cmds = registry.all_commands();
-    assert_eq!(all_cmds.len(), 45);
+    let expected_count = builtin_commands().len();
+    assert!(expected_count >= 40, "builtin command count dropped below floor: {}", expected_count);
+    assert_eq!(all_cmds.len(), expected_count);
 
     // Commands should be sorted
     let names: Vec<_> = all_cmds.iter().map(|c| &c.name).collect();

@@ -162,6 +162,27 @@ pub(crate) fn handle_extended_action(
             app.push_system(format!("Prompt improve: {}.", state), false);
         }
 
+        // ── Auto-test toggle ────────────────────────
+        ExtendedAction::ToggleAutoTest => {
+            if app.auto_test_command.is_none() {
+                app.push_system(
+                    "No test command configured. Set \"autoTestCommand\" in settings.json.".to_string(),
+                    true,
+                );
+            } else {
+                app.auto_test_enabled = !app.auto_test_enabled;
+                let state = if app.auto_test_enabled { "on" } else { "off" };
+                app.push_system(
+                    format!(
+                        "Auto-test {}: {}",
+                        state,
+                        app.auto_test_command.as_deref().unwrap_or("(none)")
+                    ),
+                    false,
+                );
+            }
+        }
+
         // Remaining extended actions handled elsewhere (tiling, etc.)
         _ => {}
     }

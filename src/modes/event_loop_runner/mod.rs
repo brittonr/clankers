@@ -33,6 +33,7 @@ use crate::tui::event::AppEvent;
 use crate::tui::render;
 
 mod audit;
+mod auto_test;
 mod key_handler;
 mod loop_mode;
 
@@ -72,6 +73,8 @@ pub(crate) struct EventLoopRunner<'a> {
     loop_turn_output: String,
     // Hook pipeline
     hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    /// True while an auto-test turn is in progress (prevents recursive triggers).
+    auto_test_in_progress: bool,
 }
 
 impl<'a> EventLoopRunner<'a> {
@@ -119,6 +122,7 @@ impl<'a> EventLoopRunner<'a> {
             active_loop_id: None,
             loop_turn_output: String::new(),
             hook_pipeline,
+            auto_test_in_progress: false,
         }
     }
 
@@ -526,8 +530,10 @@ impl<'a> EventLoopRunner<'a> {
                             &mut self.session_manager,
                             &self.slash_registry,
                         );
-                    } else {
+                    } else if self.active_loop_id.is_some() {
                         self.maybe_continue_loop();
+                    } else {
+                        self.maybe_run_auto_test();
                     }
                 }
                 TaskResult::LoginDone(Ok(msg)) => self.app.push_system(msg, false),

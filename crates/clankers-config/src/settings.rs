@@ -103,6 +103,12 @@ pub struct Settings {
     /// Hook system configuration.
     #[serde(default)]
     pub hooks: clankers_hooks::HooksConfig,
+
+    /// Command to run automatically after the agent finishes a turn.
+    /// When set, enables auto-test mode (e.g. "cargo nextest run", "npm test").
+    /// Use `/autotest` to toggle on/off during a session.
+    #[serde(default)]
+    pub auto_test_command: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -226,6 +232,7 @@ impl Default for Settings {
             max_subagent_panes: default_max_subagent_panes(),
             disabled_tools: Vec::new(),
             hooks: clankers_hooks::HooksConfig::default(),
+            auto_test_command: None,
         }
     }
 }
@@ -319,5 +326,27 @@ mod tests {
         let settings = Settings::merge_layers(None, Some(global), Some(project));
         // Project replaces global (field-level merge, not array merge)
         assert_eq!(settings.disabled_tools, vec!["commit".to_string(), "review".to_string()]);
+    }
+
+    #[test]
+    fn auto_test_command_from_json() {
+        let json = r#"{"autoTestCommand": "cargo nextest run"}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.auto_test_command, Some("cargo nextest run".to_string()));
+    }
+
+    #[test]
+    fn auto_test_command_default_none() {
+        let json = r#"{}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert!(settings.auto_test_command.is_none());
+    }
+
+    #[test]
+    fn auto_test_command_project_overrides_global() {
+        let global = serde_json::json!({"autoTestCommand": "cargo test"});
+        let project = serde_json::json!({"autoTestCommand": "cargo nextest run"});
+        let settings = Settings::merge_layers(None, Some(global), Some(project));
+        assert_eq!(settings.auto_test_command, Some("cargo nextest run".to_string()));
     }
 }

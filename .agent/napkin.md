@@ -513,3 +513,14 @@
 - commands/rpc.rs (731): already well-decomposed (20+ small handlers), no further split needed
 - `#[path = "filename.rs"] #[cfg(test)] mod tests;` is the cleanest way to extract tests from non-mod.rs files
 - TUI snapshots are environment-sensitive (git identity, terminal state) — use `cargo insta test --accept` in non-interactive environments, not `cargo insta review`
+
+## Patterns That Work (auto-test)
+- `Settings.auto_test_command: Option<String>` — persistent config in settings.json (`"autoTestCommand": "cargo nextest run"`)
+- `App.auto_test_enabled: bool` + `App.auto_test_command: Option<String>` — runtime state, initialized from settings in interactive.rs
+- `EventLoopRunner.auto_test_in_progress: bool` — prevents recursive triggers (auto-test turn → PromptDone → would trigger another auto-test)
+- Auto-test fires in `handle_task_results()` on `PromptDone(None)` when no queued prompt and no active loop
+- Sends a prompt to the agent so it sees test results and can fix failures
+- `/autotest` slash command: toggle on/off, `set <cmd>`, `status`
+- Adding a new slash command shifts visual snapshots (use `cargo insta accept --all`); count assertions now use `builtin_commands().len()` so they self-adjust
+- Leader menu entries: add to `root_keymap_actions()` in builder.rs, register the `ExtendedAction` in actions.rs (enum + name table), dispatch in extended_actions.rs, mark global in event_handlers.rs
+- Fixed 3 hardcoded `45` counts in slash_commands/tests.rs → `builtin_commands().len()` — no more breakage on command add/remove

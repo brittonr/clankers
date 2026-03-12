@@ -199,6 +199,12 @@ fn root_keymap_actions() -> Vec<MenuContribution> {
             LeaderAction::KeymapAction(Action::Core(CoreAction::ClearLine)),
             MenuPlacement::Root,
         ),
+        builtin(
+            'A',
+            "auto-test",
+            LeaderAction::KeymapAction(Action::Extended(ExtendedAction::ToggleAutoTest)),
+            MenuPlacement::Root,
+        ),
     ]
 }
 

@@ -168,6 +168,10 @@ pub struct App {
     pub tick: u64,
     /// Loop mode state (None when not in a loop).
     pub loop_status: Option<clankers_tui_types::LoopDisplayState>,
+    /// Auto-test: run this command after the agent finishes a turn.
+    pub auto_test_command: Option<String>,
+    /// Auto-test: whether the feature is currently enabled.
+    pub auto_test_enabled: bool,
 
     // Grouped sub-states
     pub streaming: StreamingState,
@@ -245,6 +249,8 @@ impl App {
             login_verifier: None,
             tick: 0,
             loop_status: None,
+            auto_test_command: None,
+            auto_test_enabled: false,
 
             // Grouped sub-states
             streaming: StreamingState {

@@ -90,6 +90,7 @@ fn handle_panel_focused_action(
                 | ExtendedAction::OpenEditor
                 | ExtendedAction::OpenToolToggle
                 | ExtendedAction::TogglePromptImprove
+                | ExtendedAction::ToggleAutoTest
         ),
     };
 
