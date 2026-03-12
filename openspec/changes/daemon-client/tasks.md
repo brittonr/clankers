@@ -119,7 +119,7 @@
 - [x] Support `--remote <peer-name>` lookup from `peers.json` in addition to raw node IDs
 - [x] Add remote status bar indicator (`🌐 node-id-short`)
 - [x] Add process resource tracking (memory, CPU, uptime) to `ProcessInfo`
-- [ ] Documentation: update AGENTS.md, README, man page
+- [x] Documentation: update AGENTS.md, README, man page
 
 ## Phase 5b: CRDT Session Layer
 
