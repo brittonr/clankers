@@ -332,6 +332,15 @@ pub enum Commands {
         /// Connect to a remote daemon via iroh QUIC (node ID or peer name)
         #[arg(long)]
         remote: Option<String>,
+        /// Auto-start daemon if not running
+        #[arg(long)]
+        auto_daemon: bool,
+        /// Create session with read-only capabilities (no write tools)
+        #[arg(long)]
+        read_only: bool,
+        /// Comma-separated capability list for session scoping (e.g., "read,grep,bash")
+        #[arg(long, value_delimiter = ',')]
+        capabilities: Vec<String>,
     },
     /// List daemon sessions (shorthand for `daemon sessions`)
     Ps {

@@ -197,6 +197,26 @@ impl ProcessRegistry {
         }
     }
 
+    /// Send Shutdown to all processes, wait for timeout, then Kill survivors.
+    pub async fn shutdown_all(&self, timeout: Duration) {
+        let all = self.all_ids();
+        if all.is_empty() {
+            return;
+        }
+
+        for &id in &all {
+            self.send(id, Signal::Shutdown { timeout });
+        }
+
+        tokio::time::sleep(timeout).await;
+
+        for &id in &all {
+            if self.inner.processes.contains_key(&id) {
+                self.send(id, Signal::Kill);
+            }
+        }
+    }
+
     /// Remove a process from the registry. Called internally on exit.
     fn remove(&self, id: ProcessId) {
         if let Some((_, handle)) = self.inner.processes.remove(&id)

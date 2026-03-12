@@ -189,6 +189,64 @@ fn start_background(
     Ok(())
 }
 
+/// Ensure a daemon is running. If not, start one in background with defaults.
+/// Used by `--auto-daemon` on attach.
+pub async fn ensure_daemon_running() -> Result<()> {
+    if transport::running_daemon_pid().is_some() {
+        // Already running — verify socket responds
+        if send_control(ControlCommand::Status).await.is_ok() {
+            return Ok(());
+        }
+        // PID alive but socket dead — stale, try starting fresh
+        eprintln!("Stale daemon detected, starting fresh...");
+    }
+
+    eprintln!("Starting daemon in background...");
+    let exe = std::env::current_exe().map_err(|e| crate::error::Error::Io { source: e })?;
+
+    let sock_dir = transport::socket_dir();
+    std::fs::create_dir_all(&sock_dir).map_err(|e| crate::error::Error::Io { source: e })?;
+    let log_path = transport::daemon_log_path();
+
+    let log_file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|e| crate::error::Error::Io { source: e })?;
+    let log_err = log_file
+        .try_clone()
+        .map_err(|e| crate::error::Error::Io { source: e })?;
+
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg("--log-file").arg(&log_path);
+    cmd.arg("--log-level").arg("info");
+    cmd.args(["daemon", "start"]);
+    cmd.stdin(std::process::Stdio::null());
+    cmd.stdout(log_file);
+    cmd.stderr(log_err);
+
+    let child = cmd.spawn().map_err(|e| crate::error::Error::Io { source: e })?;
+    let pid = child.id();
+
+    // Wait for the control socket to become responsive
+    for _ in 0..20 {
+        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+        if send_control(ControlCommand::Status).await.is_ok() {
+            eprintln!("Daemon running (PID {pid}).");
+            return Ok(());
+        }
+    }
+
+    if is_process_alive(pid) {
+        eprintln!("Daemon started (PID {pid}) but socket not yet responsive.");
+        Ok(())
+    } else {
+        Err(crate::error::Error::Provider {
+            message: format!("Daemon failed to start. Check logs: {}", log_path.display()),
+        })
+    }
+}
+
 // ── Stop ────────────────────────────────────────────────────────────────────
 
 async fn stop() -> Result<()> {

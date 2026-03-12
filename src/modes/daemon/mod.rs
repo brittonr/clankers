@@ -149,6 +149,10 @@ pub async fn run_daemon(
     // Phase 6: Wait for shutdown
     tokio::signal::ctrl_c().await.ok();
     println!("\nShutting down...");
+
+    // Send Shutdown to all actor processes, then wait briefly for graceful exit
+    process_registry.shutdown_all(std::time::Duration::from_secs(5)).await;
+
     cancel.cancel();
     let _ = shutdown_tx.send(true);
 

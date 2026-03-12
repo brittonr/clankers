@@ -102,9 +102,9 @@
 
 ## Phase 5: Polish
 
-- [ ] Implement `clankers ps` command (query `ProcessTree` via control socket, render tree)
-- [ ] Implement `clankers kill <session-id>` command
-- [ ] Implement `clankers attach` with no args (attach to most recent session)
+- [x] Implement `clankers ps` command (query `ProcessTree` via control socket, render tree)
+- [x] Implement `clankers kill <session-id>` command
+- [x] Implement `clankers attach` with no args (attach to most recent session)
 - [ ] Add `--auto-daemon` flag (auto-start daemon if not running, then attach)
 - [ ] Add `--read-only` flag (creates session with read-only capability token)
 - [ ] Add `--capabilities` flag (comma-separated capability spec for session scoping)
