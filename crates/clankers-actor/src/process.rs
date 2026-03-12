@@ -43,6 +43,10 @@ pub struct ProcessHandle {
     pub name: Option<String>,
     pub parent: Option<ProcessId>,
     pub started_at: Instant,
+    /// When true (default), a linked process dying with a non-normal
+    /// reason kills this process. When false (supervisors), LinkDied is
+    /// delivered as a signal instead.
+    pub die_when_link_dies: bool,
 }
 
 impl ProcessHandle {

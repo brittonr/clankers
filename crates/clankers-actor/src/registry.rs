@@ -45,11 +45,30 @@ impl ProcessRegistry {
         }
     }
 
-    /// Spawn a new actor process.
+    /// Spawn a new actor process with default settings (`die_when_link_dies = true`).
     ///
     /// The `factory` receives the signal receiver and must return a future
     /// that runs the actor logic and produces a `DeathReason` on exit.
     pub fn spawn<F, Fut>(&self, name: Option<String>, parent: Option<ProcessId>, factory: F) -> ProcessId
+    where
+        F: FnOnce(ProcessId, mpsc::UnboundedReceiver<Signal>) -> Fut,
+        Fut: Future<Output = DeathReason> + Send + 'static,
+    {
+        self.spawn_opts(name, parent, true, factory)
+    }
+
+    /// Spawn a new actor process with explicit options.
+    ///
+    /// When `die_when_link_dies` is false, the process receives `LinkDied`
+    /// signals instead of being killed — used by supervisors that need to
+    /// handle child deaths.
+    pub fn spawn_opts<F, Fut>(
+        &self,
+        name: Option<String>,
+        parent: Option<ProcessId>,
+        die_when_link_dies: bool,
+        factory: F,
+    ) -> ProcessId
     where
         F: FnOnce(ProcessId, mpsc::UnboundedReceiver<Signal>) -> Fut,
         Fut: Future<Output = DeathReason> + Send + 'static,
@@ -73,6 +92,7 @@ impl ProcessRegistry {
             name: name.clone(),
             parent,
             started_at: Instant::now(),
+            die_when_link_dies,
         };
 
         if let Some(ref n) = name {
@@ -189,7 +209,13 @@ impl ProcessRegistry {
     }
 
     /// Called when a process exits. Notifies linked and monitoring processes.
+    ///
+    /// Linked processes with `die_when_link_dies = true` are killed on
+    /// abnormal exits (Failed/Killed). Supervisors set this to false so
+    /// they receive `LinkDied` signals instead.
     fn on_process_exit(&self, id: ProcessId, reason: &DeathReason) {
+        let is_abnormal = matches!(reason, DeathReason::Failed(_) | DeathReason::Killed);
+
         // Notify linked processes
         if let Some((_, links)) = self.inner.links.remove(&id) {
             for (linked_id, tag) in links {
@@ -197,12 +223,24 @@ impl ProcessRegistry {
                 if let Some(mut reverse) = self.inner.links.get_mut(&linked_id) {
                     reverse.retain(|(pid, _)| *pid != id);
                 }
-                // Send LinkDied
-                self.send(linked_id, Signal::LinkDied {
-                    process_id: id,
-                    tag,
-                    reason: reason.clone(),
-                });
+
+                // Check if the linked process should die automatically
+                let should_kill = is_abnormal
+                    && self
+                        .inner
+                        .processes
+                        .get(&linked_id)
+                        .is_some_and(|h| h.die_when_link_dies);
+
+                if should_kill {
+                    self.send(linked_id, Signal::Kill);
+                } else {
+                    self.send(linked_id, Signal::LinkDied {
+                        process_id: id,
+                        tag,
+                        reason: reason.clone(),
+                    });
+                }
             }
         }
 
@@ -315,7 +353,8 @@ mod tests {
 
         let (notify_tx, mut notify_rx) = mpsc::unbounded_channel::<(ProcessId, DeathReason)>();
 
-        let a_id = reg.spawn(Some("a".to_string()), None, move |_id, mut rx| async move {
+        // die_when_link_dies=false so "a" receives LinkDied instead of Kill
+        let a_id = reg.spawn_opts(Some("a".to_string()), None, false, move |_id, mut rx| async move {
             while let Some(signal) = rx.recv().await {
                 if let Signal::LinkDied { process_id, reason, .. } = signal {
                     let _ = notify_tx.send((process_id, reason));
@@ -467,5 +506,127 @@ mod tests {
         reg.send(_child, Signal::Kill);
         reg.send(parent_id, Signal::Kill);
         tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+
+    #[tokio::test]
+    async fn test_die_when_link_dies_kills_on_abnormal() {
+        let reg = ProcessRegistry::new();
+        let (done_tx, mut done_rx) = mpsc::unbounded_channel::<DeathReason>();
+
+        // Process A: die_when_link_dies = true (default)
+        let a_id = reg.spawn(Some("a".to_string()), None, move |_id, mut rx| async move {
+            while let Some(signal) = rx.recv().await {
+                match signal {
+                    Signal::Kill => {
+                        let _ = done_tx.send(DeathReason::Killed);
+                        return DeathReason::Killed;
+                    }
+                    Signal::LinkDied { .. } => {
+                        // Should NOT reach here with die_when_link_dies=true
+                        let _ = done_tx.send(DeathReason::Normal);
+                        return DeathReason::Normal;
+                    }
+                    _ => {}
+                }
+            }
+            DeathReason::Normal
+        });
+
+        // Process B: dies with failure
+        let b_id = reg.spawn(Some("b".to_string()), None, |_id, _rx| async {
+            DeathReason::Failed("crash".to_string())
+        });
+
+        reg.link(a_id, b_id, None);
+
+        // Wait for B to die and cascade
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // A should have received Kill (not LinkDied)
+        let reason = done_rx.recv().await.unwrap();
+        assert_eq!(reason, DeathReason::Killed);
+    }
+
+    #[tokio::test]
+    async fn test_die_when_link_dies_false_gets_signal() {
+        let reg = ProcessRegistry::new();
+        let (done_tx, mut done_rx) = mpsc::unbounded_channel::<DeathReason>();
+
+        // Process A: die_when_link_dies = false (supervisor behavior)
+        let a_id = reg.spawn_opts(
+            Some("supervisor".to_string()),
+            None,
+            false,
+            move |_id, mut rx| async move {
+                while let Some(signal) = rx.recv().await {
+                    match signal {
+                        Signal::Kill => {
+                            let _ = done_tx.send(DeathReason::Killed);
+                            return DeathReason::Killed;
+                        }
+                        Signal::LinkDied { reason, .. } => {
+                            // Should reach here with die_when_link_dies=false
+                            let _ = done_tx.send(reason);
+                            return DeathReason::Normal;
+                        }
+                        _ => {}
+                    }
+                }
+                DeathReason::Normal
+            },
+        );
+
+        // Process B: dies with failure
+        let b_id = reg.spawn(Some("child".to_string()), None, |_id, _rx| async {
+            DeathReason::Failed("crash".to_string())
+        });
+
+        reg.link(a_id, b_id, None);
+
+        // Wait for B to die
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // A should have received LinkDied (not Kill)
+        let reason = done_rx.recv().await.unwrap();
+        assert_eq!(reason, DeathReason::Failed("crash".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_die_when_link_dies_normal_exit_no_kill() {
+        let reg = ProcessRegistry::new();
+        let (done_tx, mut done_rx) = mpsc::unbounded_channel::<DeathReason>();
+
+        // Process A: die_when_link_dies = true, but B exits normally
+        let a_id = reg.spawn(Some("a".to_string()), None, move |_id, mut rx| async move {
+            while let Some(signal) = rx.recv().await {
+                match signal {
+                    Signal::Kill => {
+                        let _ = done_tx.send(DeathReason::Killed);
+                        return DeathReason::Killed;
+                    }
+                    Signal::LinkDied { reason, .. } => {
+                        // Normal exit should deliver LinkDied, not Kill
+                        let _ = done_tx.send(reason);
+                        return DeathReason::Normal;
+                    }
+                    _ => {}
+                }
+            }
+            DeathReason::Normal
+        });
+
+        // Process B: exits normally
+        let b_id = reg.spawn(Some("b".to_string()), None, |_id, _rx| async {
+            DeathReason::Normal
+        });
+
+        reg.link(a_id, b_id, None);
+
+        // Wait for B to die
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        // A should get LinkDied (not Kill) because B exited normally
+        let reason = done_rx.recv().await.unwrap();
+        assert_eq!(reason, DeathReason::Normal);
     }
 }

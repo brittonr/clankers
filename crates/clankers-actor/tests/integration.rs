@@ -86,8 +86,9 @@ async fn link_cascade_propagates_death() {
     let reg = ProcessRegistry::new();
     let (done_tx, mut done_rx) = mpsc::unbounded_channel::<(String, DeathReason)>();
 
+    // die_when_link_dies=false so a and b observe LinkDied instead of being killed
     let tx1 = done_tx.clone();
-    let a = reg.spawn(Some("a".into()), None, move |_id, mut rx| async move {
+    let a = reg.spawn_opts(Some("a".into()), None, false, move |_id, mut rx| async move {
         while let Some(signal) = rx.recv().await {
             if let Signal::LinkDied { reason, .. } = signal {
                 let _ = tx1.send(("a".into(), reason));
@@ -98,7 +99,7 @@ async fn link_cascade_propagates_death() {
     });
 
     let tx2 = done_tx.clone();
-    let b = reg.spawn(Some("b".into()), None, move |_id, mut rx| async move {
+    let b = reg.spawn_opts(Some("b".into()), None, false, move |_id, mut rx| async move {
         while let Some(signal) = rx.recv().await {
             if let Signal::LinkDied { reason, .. } = signal {
                 let _ = tx2.send(("b".into(), reason));
