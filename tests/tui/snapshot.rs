@@ -425,10 +425,31 @@ macro_rules! assert_tmux_styled_snapshot {
         let (rows, cols) = $harness.size();
         let capture = super::snapshot::ScreenCapture::from_ansi(&ansi, rows, cols);
         let styled = capture.styled_text();
+        let styled = super::snapshot::normalize_styled_text(&styled);
         insta::assert_snapshot!($name, styled);
     }};
 }
 pub(crate) use assert_tmux_styled_snapshot;
+
+/// Normalize styled text (with `{color/color}` tags) for stable snapshots.
+///
+/// Strips git dirty indicators like ` *+1~2` that change with every commit,
+/// and normalizes the working directory path from the status bar.
+pub fn normalize_styled_text(text: &str) -> String {
+    let mut s = text.to_string();
+
+    // Strip git dirty indicators: " *+1~2", " *~6?37", " *N" etc.
+    // In styled text these appear as plain text between color tags.
+    let re_git = regex::Regex::new(r" \*[~?+\d]+").unwrap();
+    s = re_git.replace_all(&s, "").to_string();
+
+    // Strip working directory path from status bar (after last " | /")
+    // In styled text the path may span color tags, so match broadly.
+    let re_cwd = regex::Regex::new(r"(\| /)\S*").unwrap();
+    s = re_cwd.replace_all(&s, "${1}CWD").to_string();
+
+    s
+}
 
 /// Normalize dynamic content in screen text for stable snapshot comparison.
 ///
