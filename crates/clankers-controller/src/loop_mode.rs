@@ -97,7 +97,7 @@ impl SessionController {
     }
 
     /// Clean up loop state and notify clients.
-    fn finish_loop(&mut self, reason: &str) {
+    pub(crate) fn finish_loop(&mut self, reason: &str) {
         let iteration = self
             .active_loop_id
             .as_ref()

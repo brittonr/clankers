@@ -624,4 +624,18 @@
 - `\r\n` line endings required in raw mode (no automatic LF→CRLF translation)
 - Column layout: SESSION(10) MODEL(28) TURNS(5) LAST ACTIVE(20) CLIENTS — session ID truncated to 8 chars, model to 26
 - Navigation: j/k or ↑/↓, Enter to select, q/Esc to cancel
-- Next: wire EventLoopRunner to SessionController (embedded mode), bash confirm UI over protocol, subagent event routing
+## Patterns That Work (embedded-mode SessionController wiring)
+- `SessionController::new_embedded(config)` creates a controller without an agent — events fed via `feed_event()`, outgoing via `take_outgoing()`
+- `SessionController::new(agent, config)` wraps agent in `Option<Agent>` — daemon mode methods use `self.agent.as_ref()/.as_mut()`
+- `handle_prompt()` uses `self.agent.take()` / `self.agent = Some(agent)` to avoid borrow conflicts between agent and self.emit()
+- `drain_events()` collects from event_rx into a Vec first to avoid borrow conflict between rx and process_agent_event
+- EventLoopRunner keeps direct `broadcast::Receiver<AgentEvent>` subscription for real-time TUI rendering
+- Controller's `feed_event()` is called in the runner's `process_agent_event()` — handles audit, hooks, loop output accumulation
+- Loop/auto-test decisions delegated via `controller.check_post_prompt()` → returns `PostPromptAction::{ContinueLoop, RunAutoTest, None}`
+- `controller.sync_loop_from_tui(app.loop_status.as_ref())` syncs TUI loop state to controller before checking post-prompt
+- Session persistence stays in the runner (on AgentEnd) — runner keeps `session_manager` for branch/merge access
+- Plugin dispatch stays in the runner (needs AgentEvent, TUI-side concern)
+- Usage/tool result recording to redb stays in the runner (needs db handle)
+- Eliminated: audit.rs (124 lines), auto_test.rs (45 lines), loop_mode.rs (127 lines) from EventLoopRunner
+- EventLoopRunner: 1529 → 1188 lines (341 lines removed)
+- Next: bash confirm UI over protocol, subagent event routing, wire EventLoopRunner to SessionController for daemon mode (full mode), `clankers ps` command

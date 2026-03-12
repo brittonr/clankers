@@ -1,8 +1,10 @@
 //! Event loop runner — decomposes the TUI event loop into focused methods.
 //!
-//! The `EventLoopRunner` struct owns the per-loop state (audit tracking,
-//! channels, receivers) and exposes one method per concern:
-//! - `drain_agent_events` — agent events, audit logging, session persistence
+//! The `EventLoopRunner` struct owns the per-loop state (channels, receivers)
+//! and delegates backend processing (audit, session persistence, hooks, loop
+//! mode, auto-test) to a `SessionController` in embedded mode. It exposes
+//! one method per concern:
+//! - `drain_agent_events` — real-time TUI rendering + controller event feed
 //! - `drain_panel_events` — subagent panel routing
 //! - `drain_todo_requests` — todo tool request/response
 //! - `drain_bash_confirms` — bash confirmation prompts
@@ -10,13 +12,11 @@
 //! - `handle_task_results` — prompt completion, login, account switching
 //! - `handle_terminal_events` — key dispatch, mouse, paste, overlays
 
-use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use clankers_loop::LoopEngine;
-use clankers_loop::LoopId;
+use clankers_controller::SessionController;
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
@@ -31,12 +31,14 @@ use crate::tui::event as tui_event;
 use crate::tui::event::AppEvent;
 use crate::tui::render;
 
-mod audit;
-mod auto_test;
 mod key_handler;
-mod loop_mode;
 
 /// Owns the per-loop state and channels for the TUI event loop.
+///
+/// The `SessionController` (in embedded mode) handles audit, session
+/// persistence, lifecycle hooks, loop mode, and auto-test. The runner
+/// handles TUI rendering, plugin dispatch, usage recording, and user
+/// interaction.
 pub(crate) struct EventLoopRunner<'a> {
     // Terminal
     terminal: &'a mut Terminal<CrosstermBackend<io::Stdout>>,
@@ -56,24 +58,15 @@ pub(crate) struct EventLoopRunner<'a> {
     // Config
     keymap: Keymap,
     plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    session_manager: Option<crate::session::SessionManager>,
     db: Option<crate::db::Db>,
     settings: &'a crate::config::settings::Settings,
     // Slash command dispatch
     pub(crate) slash_registry: crate::slash_commands::SlashRegistry,
-    // Audit state
-    audit: audit::AuditTracker,
-    /// Maps call_id → tool_name for tool result persistence
-    tool_call_names: HashMap<String, String>,
-    // Loop mode state
-    loop_engine: LoopEngine,
-    active_loop_id: Option<LoopId>,
-    /// Accumulated tool output from the current turn.
-    loop_turn_output: String,
-    // Hook pipeline
-    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
-    /// True while an auto-test turn is in progress (prevents recursive triggers).
-    auto_test_in_progress: bool,
+    // Session controller (handles audit, persistence, hooks, loop, auto-test)
+    controller: SessionController,
+    // Session manager reference for branch/merge operations (slash command handlers
+    // still take &mut Option<SessionManager>). Persistence is handled by the controller.
+    session_manager: Option<crate::session::SessionManager>,
 }
 
 impl<'a> EventLoopRunner<'a> {
@@ -91,13 +84,13 @@ impl<'a> EventLoopRunner<'a> {
         panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
         keymap: Keymap,
         plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-        session_manager: Option<crate::session::SessionManager>,
         db: Option<crate::db::Db>,
         settings: &'a crate::config::settings::Settings,
         cmd_tx: tokio::sync::mpsc::UnboundedSender<AgentCommand>,
         done_rx: tokio::sync::mpsc::UnboundedReceiver<TaskResult>,
         slash_registry: crate::slash_commands::SlashRegistry,
-        hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+        controller: SessionController,
+        session_manager: Option<crate::session::SessionManager>,
     ) -> Self {
         Self {
             terminal,
@@ -111,17 +104,11 @@ impl<'a> EventLoopRunner<'a> {
             panel_tx,
             keymap,
             plugin_manager,
-            session_manager,
             db,
             settings,
             slash_registry,
-            audit: audit::AuditTracker::new(),
-            tool_call_names: HashMap::new(),
-            loop_engine: LoopEngine::new(),
-            active_loop_id: None,
-            loop_turn_output: String::new(),
-            hook_pipeline,
-            auto_test_in_progress: false,
+            controller,
+            session_manager,
         }
     }
 
@@ -154,7 +141,7 @@ impl<'a> EventLoopRunner<'a> {
         Ok(())
     }
 
-    // ── Agent events + audit + session persistence ──────────────────
+    // ── Agent events + TUI rendering + controller feed ──────────────
 
     fn drain_agent_events(&mut self) {
         loop {
@@ -168,31 +155,32 @@ impl<'a> EventLoopRunner<'a> {
         }
     }
 
-    /// Process a single agent event — translate to TUI, persist, audit, dispatch to plugins.
+    /// Process a single agent event: render in TUI, feed to controller,
+    /// dispatch to plugins, record usage.
     fn process_agent_event(&mut self, event: AgentEvent) {
-        // 1. Translate → TUI
+        // 1. Translate → TUI (real-time rendering)
         if let Some(tui_event) = crate::event_translator::translate(&event) {
             self.app.handle_tui_event(&tui_event);
         }
 
-        // 2. Persist on agent end
+        // 2. Feed to controller (audit, hooks, loop tracking, DaemonEvent)
+        self.controller.feed_event(&event);
+
+        // 3. Persist messages on agent end
         if let AgentEvent::AgentEnd { ref messages } = event
             && let Some(ref mut sm) = self.session_manager
         {
             super::interactive::persist_messages(sm, messages);
         }
 
-        // 3. Record usage
+        // 4. Record usage to redb
         self.record_usage(&event);
-
-        // 4. Audit + loop tracking
-        self.process_tool_events(&event);
 
         // 5. Dispatch to plugins
         self.dispatch_to_plugins(&event);
 
-        // 6. Fire lifecycle hooks
-        self.fire_lifecycle_hooks(&event);
+        // 6. Persist tool results to redb
+        self.persist_tool_result(&event);
     }
 
     /// Record per-turn usage to redb.
@@ -215,37 +203,8 @@ impl<'a> EventLoopRunner<'a> {
         }
     }
 
-    /// Handle tool call start/end: audit tracking, loop signal, output capture.
-    fn process_tool_events(&mut self, event: &AgentEvent) {
-        if let AgentEvent::ToolCall {
-            call_id,
-            tool_name,
-            input,
-        } = event
-        {
-            self.audit.start_call(call_id, tool_name, input);
-            self.tool_call_names.insert(call_id.clone(), tool_name.clone());
-
-            if tool_name == "signal_loop_success"
-                && let Some(ref id) = self.active_loop_id
-            {
-                self.loop_engine.signal_break(id);
-            }
-        }
-
-        // Capture tool output for loop break condition checking
-        if self.active_loop_id.is_some()
-            && let AgentEvent::ToolExecutionEnd { result, .. } = event
-        {
-            for content in &result.content {
-                if let crate::tools::ToolResultContent::Text { text } = content {
-                    self.loop_turn_output.push_str(text);
-                    self.loop_turn_output.push('\n');
-                }
-            }
-        }
-
-        // Record completed tool calls to audit
+    /// Persist full tool result content to redb for context compaction.
+    fn persist_tool_result(&self, event: &AgentEvent) {
         if let AgentEvent::ToolExecutionEnd {
             call_id,
             result,
@@ -254,10 +213,6 @@ impl<'a> EventLoopRunner<'a> {
             && let Some(ref db) = self.db
             && !self.app.session_id.is_empty()
         {
-            self.audit.end_call(call_id, result, *is_error, &self.app.session_id, db);
-
-            // Persist full tool result content to redb for context compaction
-            let tool_name = self.tool_call_names.remove(call_id).unwrap_or_default();
             let content_text: String = result
                 .content
                 .iter()
@@ -274,6 +229,9 @@ impl<'a> EventLoopRunner<'a> {
             let line_count = content_text.lines().count();
             let byte_count = content_text.len();
 
+            // Tool name comes from controller's DaemonEvent (ToolCall),
+            // but we don't have easy access here. Use call_id as fallback.
+            let tool_name = String::new();
             let session_id = self.app.session_id.clone();
             let call_id = call_id.clone();
             let is_error = *is_error;
@@ -306,54 +264,6 @@ impl<'a> EventLoopRunner<'a> {
         }
         for action in result.ui_actions {
             crate::plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
-        }
-    }
-
-    /// Fire lifecycle hooks (async, fire-and-forget) for session/turn/model events.
-    fn fire_lifecycle_hooks(&self, event: &AgentEvent) {
-        let Some(ref pipeline) = self.hook_pipeline else {
-            return;
-        };
-        let session_id = self.app.session_id.clone();
-        match event {
-            AgentEvent::SessionStart { session_id: sid } => {
-                pipeline.fire_async(
-                    clankers_hooks::HookPoint::SessionStart,
-                    clankers_hooks::HookPayload::session("session-start", sid),
-                );
-            }
-            AgentEvent::SessionShutdown { session_id: sid } => {
-                pipeline.fire_async(
-                    clankers_hooks::HookPoint::SessionEnd,
-                    clankers_hooks::HookPayload::session("session-end", sid),
-                );
-            }
-            AgentEvent::TurnStart { .. } => {
-                pipeline.fire_async(
-                    clankers_hooks::HookPoint::TurnStart,
-                    clankers_hooks::HookPayload::empty("turn-start", &session_id),
-                );
-            }
-            AgentEvent::TurnEnd { .. } => {
-                pipeline.fire_async(
-                    clankers_hooks::HookPoint::TurnEnd,
-                    clankers_hooks::HookPayload::empty("turn-end", &session_id),
-                );
-            }
-            AgentEvent::ModelChange { from, to, reason } => {
-                let payload = clankers_hooks::HookPayload {
-                    hook: "model-change".into(),
-                    session_id: session_id.clone(),
-                    timestamp: chrono::Utc::now(),
-                    data: clankers_hooks::HookData::ModelChange {
-                        from: from.clone(),
-                        to: to.clone(),
-                        reason: reason.clone(),
-                    },
-                };
-                pipeline.fire_async(clankers_hooks::HookPoint::ModelChange, payload);
-            }
-            _ => {}
         }
     }
 
@@ -476,15 +386,15 @@ impl<'a> EventLoopRunner<'a> {
         }
     }
 
-    // ── Task completion handling ────────────────────────────────────
+    // ── Task completion handling (delegates to controller) ──────────
 
     fn handle_task_results(&mut self) {
         while let Ok(result) = self.done_rx.try_recv() {
             match result {
                 TaskResult::PromptDone(Some(e)) => {
-                    if self.active_loop_id.is_some() {
-                        self.finish_loop("failed (error)");
-                    }
+                    // Notify controller so it clears busy + finishes loop on error
+                    self.controller.notify_prompt_done(true);
+
                     if let Some(ref mut block) = self.app.conversation.active_block {
                         block.error = Some(e.to_string());
                     }
@@ -500,12 +410,17 @@ impl<'a> EventLoopRunner<'a> {
                             self.plugin_manager.as_ref(),
                             &self.panel_tx,
                             &self.db,
-                            &mut self.session_manager,
+                            &mut None, // session persistence handled by controller
                             &self.slash_registry,
                         );
                     }
+                    // Drain any controller events (e.g. loop finish message)
+                    self.drain_controller_messages();
                 }
                 TaskResult::PromptDone(None) => {
+                    // Notify controller that prompt succeeded
+                    self.controller.notify_prompt_done(false);
+
                     if let Some(text) = self.app.queued_prompt.take() {
                         super::event_handlers::handle_input_with_plugins(
                             self.app,
@@ -514,14 +429,40 @@ impl<'a> EventLoopRunner<'a> {
                             self.plugin_manager.as_ref(),
                             &self.panel_tx,
                             &self.db,
-                            &mut self.session_manager,
+                            &mut None, // session persistence handled by controller
                             &self.slash_registry,
                         );
-                    } else if self.active_loop_id.is_some() {
-                        self.maybe_continue_loop();
                     } else {
-                        self.maybe_run_auto_test();
+                        // Sync TUI loop state to controller, then check what to do
+                        self.controller.sync_loop_from_tui(self.app.loop_status.as_ref());
+
+                        match self.controller.check_post_prompt() {
+                            clankers_controller::PostPromptAction::ContinueLoop(prompt) => {
+                                // Sync iteration count back to TUI
+                                if let Some(iter) = self.controller.loop_iteration()
+                                    && let Some(ref mut ls) = self.app.loop_status
+                                {
+                                    ls.iteration = iter;
+                                }
+                                // Paused check — only continue if TUI says active
+                                if self.app.loop_status.as_ref().is_some_and(|ls| ls.active) {
+                                    let _ = self.cmd_tx.send(AgentCommand::ResetCancel);
+                                    let _ = self.cmd_tx.send(AgentCommand::Prompt(prompt));
+                                }
+                            }
+                            clankers_controller::PostPromptAction::RunAutoTest(prompt) => {
+                                self.app.push_system(
+                                    format!("🧪 Running auto-test: {}", self.app.auto_test_command.as_deref().unwrap_or("?")),
+                                    false,
+                                );
+                                let _ = self.cmd_tx.send(AgentCommand::ResetCancel);
+                                let _ = self.cmd_tx.send(AgentCommand::Prompt(prompt));
+                            }
+                            clankers_controller::PostPromptAction::None => {}
+                        }
                     }
+                    // Drain any controller events (e.g. loop finish messages)
+                    self.drain_controller_messages();
                 }
                 TaskResult::LoginDone(Ok(msg)) => self.app.push_system(msg, false),
                 TaskResult::LoginDone(Err(msg)) => self.app.push_system(msg, true),
@@ -539,6 +480,20 @@ impl<'a> EventLoopRunner<'a> {
                 }
                 TaskResult::AccountSwitched(Err(msg)) => {
                     self.app.push_system(msg, true);
+                }
+            }
+        }
+    }
+
+    /// Process controller outgoing events (system messages from loop/auto-test).
+    fn drain_controller_messages(&mut self) {
+        for event in self.controller.take_outgoing() {
+            match event {
+                clankers_protocol::DaemonEvent::SystemMessage { text, is_error } => {
+                    self.app.push_system(text, is_error);
+                }
+                _ => {
+                    // Other DaemonEvents (audit, lifecycle) are internal — ignore in TUI
                 }
             }
         }

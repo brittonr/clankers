@@ -40,16 +40,32 @@ use self::config::ControllerConfig;
 use self::confirm::ConfirmStore;
 use self::convert::agent_event_to_daemon_event;
 
+/// Action the TUI should take after a prompt completes.
+#[derive(Debug)]
+pub enum PostPromptAction {
+    /// No continuation — prompt is done.
+    None,
+    /// Continue a loop iteration with this prompt.
+    ContinueLoop(String),
+    /// Run an auto-test with this prompt.
+    RunAutoTest(String),
+}
+
 /// Transport-agnostic orchestrator that owns one agent session.
 ///
 /// Accepts `SessionCommand`, emits `DaemonEvent`. Does not know about
 /// terminals, sockets, or rendering.
+///
+/// Two modes:
+/// - **Daemon mode** (`new`): owns the Agent, drives prompts directly.
+/// - **Embedded mode** (`new_embedded`): no agent ownership. Events fed
+///   via `feed_event()`, agent managed externally by `agent_task`.
 #[allow(dead_code)] // Fields used incrementally as phases are implemented
 pub struct SessionController {
-    /// The agent instance.
-    agent: Agent,
-    /// Receiver for agent events.
-    event_rx: broadcast::Receiver<AgentEvent>,
+    /// The agent instance (None in embedded mode).
+    agent: Option<Agent>,
+    /// Receiver for agent events (None in embedded mode).
+    event_rx: Option<broadcast::Receiver<AgentEvent>>,
     /// Session persistence.
     session_manager: Option<SessionManager>,
     /// Loop engine for loop/retry iteration.
@@ -87,14 +103,14 @@ pub struct SessionController {
 }
 
 impl SessionController {
-    /// Create a new controller from an Agent and supporting config.
+    /// Create a new controller that owns the Agent (daemon mode).
     pub fn new(agent: Agent, config: ControllerConfig) -> Self {
         let event_rx = agent.subscribe();
         let model = config.model.clone();
 
         Self {
-            agent,
-            event_rx,
+            agent: Some(agent),
+            event_rx: Some(event_rx),
             session_manager: config.session_manager,
             loop_engine: LoopEngine::new(),
             active_loop_id: None,
@@ -115,14 +131,56 @@ impl SessionController {
         }
     }
 
-    /// Process a command from a client.
+    /// Create a controller without an Agent (embedded mode).
+    ///
+    /// In this mode the agent is managed externally by `agent_task`.
+    /// Events are fed via [`feed_event`] instead of draining an internal
+    /// broadcast receiver. Use [`take_outgoing`] to collect emitted
+    /// `DaemonEvent`s.
+    pub fn new_embedded(config: ControllerConfig) -> Self {
+        let model = config.model.clone();
+
+        Self {
+            agent: None,
+            event_rx: None,
+            session_manager: config.session_manager,
+            loop_engine: LoopEngine::new(),
+            active_loop_id: None,
+            loop_turn_output: String::new(),
+            hook_pipeline: config.hook_pipeline,
+            audit: AuditTracker::new(),
+            tool_call_names: HashMap::new(),
+            bash_confirms: ConfirmStore::new(),
+            todo_confirms: ConfirmStore::new(),
+            outgoing: Vec::new(),
+            busy: false,
+            auto_test_in_progress: false,
+            auto_test_command: config.auto_test_command,
+            auto_test_enabled: config.auto_test_enabled,
+            session_id: config.session_id,
+            capabilities: config.capabilities,
+            model,
+        }
+    }
+
+    /// Process a command from a client. Requires daemon mode (agent owned).
+    ///
+    /// In embedded mode, commands are handled by the agent_task;
+    /// the controller only processes events via `feed_event()`.
     pub async fn handle_command(&mut self, cmd: SessionCommand) {
+        if self.agent.is_none() {
+            warn!("handle_command called in embedded mode (no agent)");
+            return;
+        }
+
         match cmd {
             SessionCommand::Prompt { text, images } => {
                 self.handle_prompt(text, images).await;
             }
             SessionCommand::Abort => {
-                self.agent.abort();
+                if let Some(ref mut agent) = self.agent {
+                    agent.abort();
+                }
                 self.busy = false;
                 self.emit(DaemonEvent::SystemMessage {
                     text: "Operation cancelled".to_string(),
@@ -130,11 +188,15 @@ impl SessionController {
                 });
             }
             SessionCommand::ResetCancel => {
-                self.agent.reset_cancel();
+                if let Some(ref mut agent) = self.agent {
+                    agent.reset_cancel();
+                }
             }
             SessionCommand::SetModel { model } => {
                 let from = self.model.clone();
-                self.agent.set_model(model.clone());
+                if let Some(ref mut agent) = self.agent {
+                    agent.set_model(model.clone());
+                }
                 self.model = model.clone();
                 self.emit(DaemonEvent::ModelChanged {
                     from,
@@ -143,14 +205,18 @@ impl SessionController {
                 });
             }
             SessionCommand::ClearHistory => {
-                self.agent.clear_messages();
+                if let Some(ref mut agent) = self.agent {
+                    agent.clear_messages();
+                }
                 self.emit(DaemonEvent::SystemMessage {
                     text: "History cleared".to_string(),
                     is_error: false,
                 });
             }
             SessionCommand::TruncateMessages { count } => {
-                self.agent.truncate_messages(count);
+                if let Some(ref mut agent) = self.agent {
+                    agent.truncate_messages(count);
+                }
                 self.emit(DaemonEvent::SystemMessage {
                     text: format!("Truncated to {count} messages"),
                     is_error: false,
@@ -158,11 +224,13 @@ impl SessionController {
             }
             SessionCommand::SetThinkingLevel { level } => {
                 if let Some(parsed) = clankers_tui_types::ThinkingLevel::from_str_or_budget(&level) {
-                    let prev = self.agent.set_thinking_level(parsed);
-                    self.emit(DaemonEvent::SystemMessage {
-                        text: format!("Thinking: {} → {}", prev.label(), parsed.label()),
-                        is_error: false,
-                    });
+                    if let Some(ref mut agent) = self.agent {
+                        let prev = agent.set_thinking_level(parsed);
+                        self.emit(DaemonEvent::SystemMessage {
+                            text: format!("Thinking: {} → {}", prev.label(), parsed.label()),
+                            is_error: false,
+                        });
+                    }
                 } else {
                     self.emit(DaemonEvent::SystemMessage {
                         text: format!("Unknown thinking level: {level}"),
@@ -171,7 +239,9 @@ impl SessionController {
                 }
             }
             SessionCommand::CycleThinkingLevel => {
-                self.agent.cycle_thinking_level();
+                if let Some(ref mut agent) = self.agent {
+                    agent.cycle_thinking_level();
+                }
                 self.emit(DaemonEvent::SystemMessage {
                     text: "Thinking level cycled".to_string(),
                     is_error: false,
@@ -180,21 +250,29 @@ impl SessionController {
             SessionCommand::SeedMessages { messages } => {
                 let agent_messages = self.convert_seed_messages(&messages);
                 let count = agent_messages.len();
-                self.agent.seed_messages(agent_messages);
+                if let Some(ref mut agent) = self.agent {
+                    agent.seed_messages(agent_messages);
+                }
                 self.emit(DaemonEvent::SystemMessage {
                     text: format!("Seeded {count} messages"),
                     is_error: false,
                 });
             }
             SessionCommand::SetSystemPrompt { prompt } => {
-                self.agent.set_system_prompt(prompt);
+                if let Some(ref mut agent) = self.agent {
+                    agent.set_system_prompt(prompt);
+                }
                 self.emit(DaemonEvent::SystemMessage {
                     text: "System prompt updated".to_string(),
                     is_error: false,
                 });
             }
             SessionCommand::GetSystemPrompt => {
-                let prompt = self.agent.system_prompt().to_string();
+                let prompt = self
+                    .agent
+                    .as_ref()
+                    .map(|a| a.system_prompt().to_string())
+                    .unwrap_or_default();
                 self.emit(DaemonEvent::SystemPromptResponse { prompt });
             }
             SessionCommand::SwitchAccount { account } => {
@@ -241,12 +319,40 @@ impl SessionController {
     }
 
     /// Drain pending events. Called in a loop by the transport layer.
+    ///
+    /// In daemon mode, reads from the internal agent event receiver.
+    /// In embedded mode, events must be fed via [`feed_event`] first.
     pub fn drain_events(&mut self) -> Vec<DaemonEvent> {
-        // Drain agent events and translate them
-        while let Ok(event) = self.event_rx.try_recv() {
-            self.process_agent_event(&event);
+        // Drain agent events from internal receiver (daemon mode).
+        // Collect into a Vec to avoid borrowing event_rx and self simultaneously.
+        let events: Vec<AgentEvent> = if let Some(ref mut rx) = self.event_rx {
+            let mut buf = Vec::new();
+            while let Ok(event) = rx.try_recv() {
+                buf.push(event);
+            }
+            buf
+        } else {
+            Vec::new()
+        };
+        for event in &events {
+            self.process_agent_event(event);
         }
         std::mem::take(&mut self.outgoing)
+    }
+
+    /// Take accumulated outgoing events without draining the internal
+    /// receiver. Used in embedded mode after calling [`feed_event`].
+    pub fn take_outgoing(&mut self) -> Vec<DaemonEvent> {
+        std::mem::take(&mut self.outgoing)
+    }
+
+    /// Feed a single agent event for processing (embedded mode).
+    ///
+    /// Performs audit tracking, session persistence, lifecycle hooks,
+    /// loop output accumulation, and DaemonEvent translation — the same
+    /// processing that `drain_events` does internally.
+    pub fn feed_event(&mut self, event: &AgentEvent) {
+        self.process_agent_event(event);
     }
 
     /// Check if the agent is currently processing a prompt.
@@ -266,8 +372,10 @@ impl SessionController {
 
     /// Graceful shutdown.
     pub async fn shutdown(&mut self) {
-        if self.busy {
-            self.agent.abort();
+        if self.busy
+            && let Some(ref mut agent) = self.agent
+        {
+            agent.abort();
         }
         if let Some(ref pipeline) = self.hook_pipeline {
             debug!("firing SessionEnd hook");
@@ -279,10 +387,15 @@ impl SessionController {
 
     // ── Internal ─────────────────────────────────────────────────
 
-    /// Handle a prompt command.
+    /// Handle a prompt command (daemon mode only).
     async fn handle_prompt(&mut self, text: String, images: Vec<clankers_protocol::ImageData>) {
+        if self.agent.is_none() {
+            warn!("handle_prompt called in embedded mode");
+            return;
+        }
+
         if self.busy {
-            self.emit(DaemonEvent::SystemMessage {
+            self.outgoing.push(DaemonEvent::SystemMessage {
                 text: "A prompt is already in progress".to_string(),
                 is_error: true,
             });
@@ -290,10 +403,13 @@ impl SessionController {
         }
 
         self.busy = true;
-        self.emit(DaemonEvent::AgentStart);
+        self.outgoing.push(DaemonEvent::AgentStart);
+
+        // Take the agent out to avoid borrow conflicts with self
+        let mut agent = self.agent.take().unwrap();
 
         let result = if images.is_empty() {
-            self.agent.prompt(&text).await
+            agent.prompt(&text).await
         } else {
             let image_content: Vec<Content> = images
                 .into_iter()
@@ -304,9 +420,11 @@ impl SessionController {
                     },
                 })
                 .collect();
-            self.agent.prompt_with_images(&text, image_content).await
+            agent.prompt_with_images(&text, image_content).await
         };
 
+        // Put the agent back
+        self.agent = Some(agent);
         self.busy = false;
 
         match result {
@@ -413,11 +531,13 @@ impl SessionController {
         }
     }
 
-    /// Replay conversation history to a newly-attached client.
+    /// Replay conversation history to a newly-attached client (daemon mode).
     fn replay_history(&mut self) {
-        for msg in self.agent.messages() {
-            let block = serde_json::to_value(msg).unwrap_or_default();
-            self.outgoing.push(DaemonEvent::HistoryBlock { block });
+        if let Some(ref agent) = self.agent {
+            for msg in agent.messages() {
+                let block = serde_json::to_value(msg).unwrap_or_default();
+                self.outgoing.push(DaemonEvent::HistoryBlock { block });
+            }
         }
         self.emit(DaemonEvent::HistoryEnd);
     }
@@ -485,6 +605,106 @@ impl SessionController {
     /// Clear the auto-test guard (call after the auto-test prompt completes).
     pub fn clear_auto_test(&mut self) {
         self.auto_test_in_progress = false;
+    }
+
+    /// Determine what to do after a prompt completes (embedded mode).
+    ///
+    /// Call this from the TUI's `handle_task_results` after receiving
+    /// `PromptDone(None)` and confirming there's no queued user prompt.
+    /// Returns the action the TUI should take.
+    pub fn check_post_prompt(&mut self) -> PostPromptAction {
+        // Loop continuation takes priority
+        if self.active_loop_id.is_some()
+            && let Some(prompt) = self.maybe_continue_loop()
+        {
+            return PostPromptAction::ContinueLoop(prompt);
+        }
+
+        // Auto-test
+        if let Some(prompt) = self.maybe_auto_test() {
+            return PostPromptAction::RunAutoTest(prompt);
+        }
+        self.clear_auto_test();
+
+        PostPromptAction::None
+    }
+
+    /// Sync loop state from the TUI's loop_status.
+    ///
+    /// Called before `check_post_prompt()` to ensure the controller's
+    /// loop engine matches the TUI's `/loop` command state.
+    pub fn sync_loop_from_tui(
+        &mut self,
+        loop_status: Option<&clankers_tui_types::LoopDisplayState>,
+    ) {
+        match (loop_status, &self.active_loop_id) {
+            // TUI has loop but controller doesn't → register it
+            (Some(ls), None) => {
+                let config = loop_mode::LoopConfig {
+                    name: ls.name.clone(),
+                    prompt: ls.prompt.clone(),
+                    max_iterations: ls.max_iterations,
+                    break_text: ls.break_text.clone(),
+                };
+                self.start_loop(config);
+            }
+            // TUI cleared loop but controller still has one → stop it
+            (None, Some(_)) => {
+                if let Some(ref id) = self.active_loop_id {
+                    self.loop_engine.stop(id);
+                    self.loop_engine.remove(id);
+                }
+                self.active_loop_id = None;
+                self.loop_turn_output.clear();
+            }
+            // Both in sync (or neither has a loop)
+            _ => {}
+        }
+    }
+
+    /// Get the current loop iteration count (for TUI display sync).
+    pub fn loop_iteration(&self) -> Option<u32> {
+        self.active_loop_id
+            .as_ref()
+            .and_then(|id| self.loop_engine.get(id))
+            .map(|s| s.current_iteration)
+    }
+
+    /// Notify the controller that a prompt completed (embedded mode).
+    ///
+    /// Updates busy state. Called from the TUI when `TaskResult::PromptDone`
+    /// is received, before calling `check_post_prompt()`.
+    pub fn notify_prompt_done(&mut self, had_error: bool) {
+        self.busy = false;
+        if had_error && self.active_loop_id.is_some() {
+            self.finish_loop("failed (error)");
+        }
+    }
+
+    /// Update the session ID (e.g., after session resume).
+    pub fn set_session_id(&mut self, id: String) {
+        self.session_id = id;
+    }
+
+    /// Update the model name (e.g., after model switch from TUI).
+    pub fn set_model_name(&mut self, model: String) {
+        self.model = model;
+    }
+
+    /// Update auto-test settings from the TUI.
+    pub fn set_auto_test(&mut self, enabled: bool, command: Option<String>) {
+        self.auto_test_enabled = enabled;
+        self.auto_test_command = command;
+    }
+
+    /// Access the session manager (for branch/merge operations).
+    pub fn session_manager(&self) -> Option<&SessionManager> {
+        self.session_manager.as_ref()
+    }
+
+    /// Mutably access the session manager (for branch/merge operations).
+    pub fn session_manager_mut(&mut self) -> Option<&mut SessionManager> {
+        self.session_manager.as_mut()
     }
 
     /// Queue an outgoing event.
@@ -721,7 +941,7 @@ mod tests {
             |e| matches!(e, DaemonEvent::SystemMessage { text, .. } if text.contains("2"))
         ));
         // Agent should have 2 messages now
-        assert_eq!(ctrl.agent.messages().len(), 2);
+        assert_eq!(ctrl.agent.as_ref().unwrap().messages().len(), 2);
     }
 
     #[test]

@@ -148,6 +148,24 @@ pub async fn run_interactive(
     // Start embedded RPC for swarm presence (non-fatal if unavailable)
     let _rpc_cancel = maybe_start_rpc(&mut app, paths).await;
 
+    // Build the embedded-mode SessionController for audit, hooks, loop, auto-test.
+    // Session persistence is shared: controller persists on AgentEnd, runner
+    // keeps the SessionManager for branch/merge operations.
+    let controller = {
+        let mut ctrl_config = clankers_controller::config::ControllerConfig {
+            session_id: app.session_id.clone(),
+            model: model.clone(),
+            session_manager: None, // Runner keeps ownership for branch/merge access
+            hook_pipeline,
+            ..Default::default()
+        };
+        if let Some(ref cmd) = settings.auto_test_command {
+            ctrl_config.auto_test_command = Some(cmd.clone());
+            ctrl_config.auto_test_enabled = true;
+        }
+        clankers_controller::SessionController::new_embedded(ctrl_config)
+    };
+
     let result = run_event_loop(
         &mut terminal,
         &mut app,
@@ -159,12 +177,12 @@ pub async fn run_interactive(
         panel_tx_for_slash,
         keymap,
         plugin_manager,
-        session_manager,
         seed_messages,
         db.clone(),
         &settings,
         slash_registry,
-        hook_pipeline,
+        controller,
+        session_manager,
     )
     .await;
 
@@ -222,12 +240,12 @@ async fn run_event_loop(
     panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
     keymap: Keymap,
     plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
-    session_manager: Option<crate::session::SessionManager>,
     seed_messages: Vec<crate::provider::message::AgentMessage>,
     db: Option<crate::db::Db>,
     settings: &crate::config::settings::Settings,
     slash_registry: crate::slash_commands::SlashRegistry,
-    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    controller: clankers_controller::SessionController,
+    session_manager: Option<crate::session::SessionManager>,
 ) -> Result<()> {
     let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel::<AgentCommand>();
     let (done_tx, done_rx) = tokio::sync::mpsc::unbounded_channel::<TaskResult>();
@@ -252,6 +270,8 @@ async fn run_event_loop(
 
     // Delegate to EventLoopRunner which decomposes the loop body into
     // focused methods (drain_agent_events, drain_panel_events, etc.)
+    // The SessionController handles audit, lifecycle hooks, loop mode,
+    // and auto-test. The runner handles TUI rendering + interaction.
     let mut runner = super::event_loop_runner::EventLoopRunner::new(
         terminal,
         app,
@@ -262,13 +282,13 @@ async fn run_event_loop(
         panel_tx,
         keymap,
         plugin_manager,
-        session_manager,
         db,
         settings,
         cmd_tx,
         done_rx,
         slash_registry,
-        hook_pipeline,
+        controller,
+        session_manager,
     );
     runner.run()
 }
