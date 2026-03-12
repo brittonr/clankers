@@ -31,8 +31,8 @@
 - [x] Move bash confirmation routing: controller holds oneshot senders, assigns request_ids, emits `ConfirmRequest`
 - [x] Move todo request routing: same pattern as bash confirms
 - [x] Move agent command dispatch (agent_task.rs logic) into `SessionController::handle_command()`
-- [ ] Wire `EventLoopRunner` to use `SessionController` internally (embedded mode)
-- [ ] Verify: all existing tests pass, TUI behavior unchanged
+- [x] Wire `EventLoopRunner` to use `SessionController` internally (embedded mode)
+- [x] Verify: all existing tests pass, TUI behavior unchanged
 - [x] Write unit tests for `SessionController` with mock provider (no terminal needed)
 
 ## Phase 2: Unix Socket Transport
