@@ -337,6 +337,17 @@ pub enum Commands {
         #[arg(long)]
         once: bool,
     },
+    /// Attach TUI to a daemon session (reads events from socket instead of local agent)
+    Attach {
+        /// Session ID to attach to (omit to list sessions interactively)
+        session_id: Option<String>,
+        /// Create a new session if none specified
+        #[arg(long)]
+        new: bool,
+        /// Model for new sessions (only with --new)
+        #[arg(long)]
+        model: Option<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

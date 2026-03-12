@@ -79,7 +79,7 @@ pub async fn run_control_socket_with_factory(
                     }
                 }
             }
-            _ = shutdown_signal(&shutdown) => {
+            () = shutdown_signal(&shutdown) => {
                 info!("control socket shutting down");
                 break;
             }
@@ -278,7 +278,7 @@ async fn run_session_driver(
             }
 
             // Periodic drain of background agent events (tool execution, etc.)
-            _ = tokio::time::sleep(tokio::time::Duration::from_millis(50)) => {
+            () = tokio::time::sleep(tokio::time::Duration::from_millis(50)) => {
                 let events = controller.drain_events();
                 for event in events {
                     let _ = event_tx.send(event);

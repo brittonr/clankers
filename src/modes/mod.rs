@@ -3,6 +3,7 @@
 pub(crate) mod agent_commands;
 pub(crate) mod agent_setup;
 pub(crate) mod agent_task;
+pub mod attach;
 pub mod common;
 pub(crate) mod core_actions;
 pub mod daemon;

@@ -579,4 +579,30 @@
 - Test isolation: `set_test_socket_dir()` sets XDG_RUNTIME_DIR to tempdir, must `create_dir_all(socket_dir())` before starting control socket
 - `std::env::set_var` is unsafe in Rust 2024 — wrap in `unsafe {}` block with SAFETY comment
 - Existing iroh chat/1, rpc/1, and Matrix transports completely unchanged — socket layer is additive
-- Next: TUI attach mode (connect ClientAdapter to session socket, replace EventLoopRunner's agent polling with DaemonEvent stream)
+## Patterns That Work (TUI attach mode — Phase 4)
+- `clankers attach [session-id]` — top-level CLI command, not a DaemonSessions subcommand (launches full TUI)
+- `--new` flag creates a new session via CreateSession before attaching; `--model` sets the model for new sessions
+- No session_id given: lists sessions via control socket, auto-attaches to the first one
+- `src/modes/attach.rs` — ~950 lines, self-contained module with `run_attach()` entry point
+- `ClientAdapter::connect()` does handshake, spawns reader/writer tasks; TUI reads events via `try_recv()` in the render loop
+- First event after connect is always `SessionInfo { session_id, model, system_prompt_hash }`
+- `ReplayHistory` sent immediately after connect — daemon replays all messages as `HistoryBlock` events, then `HistoryEnd`
+- Event processing: `daemon_event_to_tui_event()` handles streaming/tool/session events → `app.handle_tui_event()`. Non-TUI events (ConfirmRequest, SystemMessage, SubagentStarted, etc.) handled in a separate match arm.
+- Return-early pattern: try `daemon_event_to_tui_event()` first, return if Some; then match non-TUI events with wildcard `_ => {}` fallthrough
+- Input flow: user types → `submit_input_attach()` → `is_client_side_command()` check → local (quit, detach, zoom, help) or forward (`SessionCommand::Prompt` / `SessionCommand::SlashCommand`)
+- ConfirmRequest auto-approved in attach mode — daemon handles actual sandboxing
+- TodoRequest auto-responded with empty JSON object — daemon handles actual todo panel state
+- Key handler: full overlay support (model selector, leader menu, output search, slash menu, panels) but simplified action dispatch — no agent-side state mutations
+- `handle_local_action()` covers mode switching, navigation, scrolling, editing, history, zoom, search, selectors, copy block, quit
+- `handle_leader_action_attach()` routes LeaderAction::SlashCommand through is_client_side_command, LeaderAction::KeymapAction through handle_local_action
+- `build_client_slash_registry()` reuses the full builtin registry for completion menu — commands that aren't client-side are forwarded to daemon
+- `rebuild_leader_menu()` and `build_slash_registry()` promoted to `pub(crate)` in interactive.rs for attach mode reuse
+- Editor methods: `move_home()`/`move_end()` (not `move_to_line_start/end`), `history_up()`/`history_down()` (not `history_prev/next`)
+- Leader menu: `open()` not `show()`; Model selector: `open()` not `show()`
+- `Direction` comes from `ratatui::layout::Direction`, `Towards` from `ratatui_hypertile::Towards` — FocusDirection takes `{ direction, towards }` struct
+- CoreAction variants: `Cancel` (not `Abort`), `ScrollPageUp/Down` (not `HalfPageUp/Down`), `MoveLeft/Right/Home/End` (not `CursorLeft/Right/LineStart/LineEnd`), `DeleteWord` (not `DeleteWordBack`), `ClearLine` (not `ChangeLine`)
+- ExtendedAction variants: `PaneZoom` (not `ToggleZoom`), `OpenLeaderMenu` (not `Leader`), `OpenModelSelector` (not `ModelSelector`), `SearchOutput` (not `OutputSearch`), `ToggleCostOverlay` (not `CostOverlay`), `ToggleSessionPopup` (not `SessionPopup`)
+- No `CopyLastResponse`/`CopyLastCodeBlock` extended actions — only `CopyBlock` exists
+- Terminal init/restore duplicated (not extracted) — keeps attach.rs self-contained, same pattern as interactive.rs
+- clippy: `if a && b { if c {} }` → `if a && b && c {}`, `args.to_string()` → `args.clone()` when args is already String
+- Next: proper history replay rendering (currently shows as system messages), interactive session picker when multiple sessions exist, shared terminal init/restore helpers

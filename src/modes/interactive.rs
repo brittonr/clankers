@@ -522,7 +522,7 @@ fn find_git_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
 // ── Leader menu + slash registry builders ───────────────────────────
 
 /// Build the leader menu from builtins + slash commands + plugins + user config.
-fn rebuild_leader_menu(
+pub(crate) fn rebuild_leader_menu(
     app: &mut App,
     plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     settings: &crate::config::settings::Settings,
@@ -556,7 +556,7 @@ fn rebuild_leader_menu(
 }
 
 /// Build the slash command registry from builtins + plugins.
-fn build_slash_registry(
+pub(crate) fn build_slash_registry(
     plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
 ) -> crate::slash_commands::SlashRegistry {
     use crate::slash_commands::BuiltinSlashContributor;

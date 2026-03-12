@@ -1,0 +1,1017 @@
+//! TUI attach mode — connect to a daemon session via socket.
+//!
+//! Instead of running an in-process agent, the TUI reads `DaemonEvent`s from a
+//! `ClientAdapter` connected to a daemon session socket. User input is forwarded
+//! as `SessionCommand::Prompt`. Client-side commands (zoom, layout, theme, quit)
+//! are handled locally; everything else goes to the daemon.
+
+use std::io;
+use std::time::Duration;
+
+use clankers_controller::client::ClientAdapter;
+use clankers_controller::client::is_client_side_command;
+use clankers_controller::convert::daemon_event_to_tui_event;
+use clankers_protocol::DaemonEvent;
+use clankers_protocol::SessionCommand;
+use clankers_protocol::control::ControlCommand;
+use clankers_protocol::control::ControlResponse;
+use clankers_protocol::frame;
+use crossterm::event::DisableBracketedPaste;
+use crossterm::event::DisableMouseCapture;
+use crossterm::event::EnableBracketedPaste;
+use crossterm::event::EnableMouseCapture;
+use crossterm::execute;
+use crossterm::terminal::EnterAlternateScreen;
+use crossterm::terminal::LeaveAlternateScreen;
+use crossterm::terminal::{self};
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
+use tokio::net::UnixStream;
+use tracing::debug;
+use tracing::info;
+use tracing::warn;
+
+use crate::config::keybindings::InputMode;
+use crate::config::keybindings::Keymap;
+use crate::config::settings::Settings;
+use crate::error::Result;
+use crate::slash_commands;
+use crate::tui::app::App;
+use crate::tui::event as tui_event;
+use crate::tui::event::AppEvent;
+use crate::tui::render;
+use crate::tui::theme::Theme;
+
+// ── Entry point ─────────────────────────────────────────────────────────────
+
+/// Launch the TUI in attach mode, connecting to a daemon session.
+pub async fn run_attach(
+    session_id: Option<String>,
+    create_new: bool,
+    model: Option<String>,
+    settings: &Settings,
+) -> Result<()> {
+    // Resolve the session socket path
+    let (resolved_session_id, socket_path) = resolve_session(session_id, create_new, model).await?;
+
+    info!("attaching to session {resolved_session_id} at {socket_path}");
+
+    // Connect to the session socket
+    let stream = UnixStream::connect(&socket_path).await.map_err(|e| {
+        crate::error::Error::Provider {
+            message: format!("Cannot connect to session socket {socket_path}: {e}"),
+        }
+    })?;
+
+    let mut client = ClientAdapter::connect(stream, "clankers-tui", None, Some(resolved_session_id.clone()))
+        .await
+        .map_err(|e| crate::error::Error::Provider {
+            message: format!("Handshake failed: {e}"),
+        })?;
+
+    // Read the initial SessionInfo
+    let (model_name, session_hash) = match client.recv().await {
+        Some(DaemonEvent::SessionInfo {
+            model,
+            system_prompt_hash,
+            ..
+        }) => (model, system_prompt_hash),
+        Some(other) => {
+            warn!("expected SessionInfo, got: {other:?}");
+            (String::new(), String::new())
+        }
+        None => {
+            return Err(crate::error::Error::Provider {
+                message: "Session disconnected before sending SessionInfo".to_string(),
+            });
+        }
+    };
+
+    // Request history replay so we see the existing conversation
+    client.replay_history();
+
+    // Set up the terminal
+    let mut term = init_terminal()?;
+
+    let display_model = if model_name.is_empty() {
+        "daemon".to_string()
+    } else {
+        model_name
+    };
+
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let theme = Theme::dark();
+    let keymap = settings.keymap.clone().into_keymap();
+
+    let mut app = App::new(display_model.clone(), cwd, theme);
+    app.session_id = resolved_session_id.clone();
+    app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
+
+    // Minimal slash registry for client-side commands only
+    let slash_registry = build_client_slash_registry();
+    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(
+        &slash_registry,
+    )));
+
+    // Build leader menu from builtins
+    crate::modes::interactive::rebuild_leader_menu(&mut app, None, settings);
+
+    app.push_system(
+        format!(
+            "attached to session {} (model: {}, prompt hash: {})",
+            resolved_session_id,
+            display_model,
+            if session_hash.is_empty() {
+                "n/a"
+            } else {
+                &session_hash
+            }
+        ),
+        false,
+    );
+    app.push_system("Type /detach or Ctrl+Q to disconnect.".to_string(), false);
+
+    // Run the event loop
+    let result = run_attach_loop(&mut term, &mut app, &mut client, keymap, &slash_registry);
+
+    // Clean disconnect
+    client.disconnect();
+
+    restore_terminal(&mut term);
+    result
+}
+
+// ── Session resolution ──────────────────────────────────────────────────────
+
+/// Resolve a session ID + socket path via the control socket.
+///
+/// If `session_id` is None and `create_new` is true, creates a new session.
+/// If `session_id` is None and `create_new` is false, lists sessions and picks
+/// the first one (or errors if none exist).
+async fn resolve_session(
+    session_id: Option<String>,
+    create_new: bool,
+    model: Option<String>,
+) -> Result<(String, String)> {
+    if create_new {
+        let resp = send_control(ControlCommand::CreateSession {
+            model,
+            system_prompt: None,
+            token: None,
+        })
+        .await?;
+        return match resp {
+            ControlResponse::Created {
+                session_id,
+                socket_path,
+            } => Ok((session_id, socket_path)),
+            ControlResponse::Error { message } => Err(crate::error::Error::Provider {
+                message: format!("Failed to create session: {message}"),
+            }),
+            other => Err(crate::error::Error::Provider {
+                message: format!("Unexpected response: {other:?}"),
+            }),
+        };
+    }
+
+    if let Some(sid) = session_id {
+        let resp = send_control(ControlCommand::AttachSession {
+            session_id: sid.clone(),
+        })
+        .await?;
+        return match resp {
+            ControlResponse::Attached { socket_path } => Ok((sid, socket_path)),
+            ControlResponse::Error { message } => Err(crate::error::Error::Provider {
+                message: format!("Failed to attach to session: {message}"),
+            }),
+            other => Err(crate::error::Error::Provider {
+                message: format!("Unexpected response: {other:?}"),
+            }),
+        };
+    }
+
+    // No session ID given — list and pick the first, or error.
+    let resp = send_control(ControlCommand::ListSessions).await?;
+    match resp {
+        ControlResponse::Sessions(sessions) if sessions.is_empty() => Err(crate::error::Error::Provider {
+            message: "No active sessions. Use --new to create one, or start a daemon first.".to_string(),
+        }),
+        ControlResponse::Sessions(sessions) => {
+            let s = &sessions[0];
+            eprintln!("Attaching to session {} (model: {})", s.session_id, s.model);
+            Ok((s.session_id.clone(), s.socket_path.clone()))
+        }
+        ControlResponse::Error { message } => Err(crate::error::Error::Provider {
+            message: format!("Failed to list sessions: {message}"),
+        }),
+        other => Err(crate::error::Error::Provider {
+            message: format!("Unexpected response: {other:?}"),
+        }),
+    }
+}
+
+/// Send a control command to the daemon and return the response.
+async fn send_control(cmd: ControlCommand) -> Result<ControlResponse> {
+    let path = clankers_controller::transport::control_socket_path();
+    let stream = UnixStream::connect(&path).await.map_err(|e| {
+        crate::error::Error::Provider {
+            message: format!(
+                "Cannot connect to daemon at {}: {e}\nIs the daemon running? Start with: clankers daemon",
+                path.display()
+            ),
+        }
+    })?;
+
+    let (mut reader, mut writer) = stream.into_split();
+
+    frame::write_frame(&mut writer, &cmd).await.map_err(|e| {
+        crate::error::Error::Provider {
+            message: format!("Failed to send command: {e}"),
+        }
+    })?;
+
+    let resp: ControlResponse = frame::read_frame(&mut reader).await.map_err(|e| {
+        crate::error::Error::Provider {
+            message: format!("Failed to read response: {e}"),
+        }
+    })?;
+
+    Ok(resp)
+}
+
+// ── Attach event loop ───────────────────────────────────────────────────────
+
+/// Main event loop for attach mode.
+///
+/// Similar to `EventLoopRunner::run()` but reads `DaemonEvent` from the
+/// `ClientAdapter` instead of `AgentEvent` from a broadcast receiver.
+fn run_attach_loop(
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    app: &mut App,
+    client: &mut ClientAdapter,
+    keymap: Keymap,
+    slash_registry: &slash_commands::SlashRegistry,
+) -> Result<()> {
+    let mut replaying_history = true;
+
+    loop {
+        terminal
+            .draw(|frame| render::render(frame, app))
+            .map_err(|e| crate::error::Error::Tui {
+                message: format!("Render failed: {e}"),
+            })?;
+
+        if app.should_quit {
+            break;
+        }
+
+        // Drain daemon events
+        drain_daemon_events(app, client, &mut replaying_history);
+
+        // Handle terminal events (keys, mouse, paste)
+        handle_terminal_events(app, client, terminal, &keymap, slash_registry)?;
+
+        if app.open_editor_requested {
+            app.open_editor_requested = false;
+            crate::tui::clipboard::open_external_editor(terminal, app);
+        }
+    }
+
+    Ok(())
+}
+
+/// Drain available DaemonEvents from the client and apply them to App state.
+fn drain_daemon_events(app: &mut App, client: &mut ClientAdapter, replaying_history: &mut bool) {
+    while let Some(event) = client.try_recv() {
+        process_daemon_event(app, client, &event, replaying_history);
+    }
+}
+
+/// Process a single DaemonEvent — update App state, handle non-TUI events.
+fn process_daemon_event(
+    app: &mut App,
+    client: &ClientAdapter,
+    event: &DaemonEvent,
+    replaying_history: &mut bool,
+) {
+    // First, try the TuiEvent conversion for all streaming/tool/session events.
+    if let Some(tui_event) = daemon_event_to_tui_event(event) {
+        app.handle_tui_event(&tui_event);
+        return;
+    }
+
+    // Handle events that don't map to TuiEvent.
+    match event {
+        // ── Session metadata ────────────────────────
+        DaemonEvent::SessionInfo { model, .. } => {
+            if !model.is_empty() {
+                app.model.clone_from(model);
+            }
+        }
+        DaemonEvent::ModelChanged { to, .. } => {
+            app.model.clone_from(to);
+            app.push_system(format!("Model changed to {to}"), false);
+        }
+
+        // ── System messages ─────────────────────────
+        DaemonEvent::SystemMessage { text, is_error } => {
+            app.push_system(text.clone(), *is_error);
+        }
+
+        // ── Prompt lifecycle ────────────────────────
+        DaemonEvent::PromptDone { error } => {
+            if let Some(err) = error {
+                if let Some(ref mut block) = app.conversation.active_block {
+                    block.error = Some(err.clone());
+                }
+                app.finalize_active_block();
+                app.push_system(format!("Error: {err}"), true);
+            } else {
+                app.finalize_active_block();
+            }
+            // If the user typed something while the agent was busy, send it now
+            if let Some(text) = app.queued_prompt.take() {
+                client.prompt(text);
+            }
+        }
+
+        // ── Confirmation requests ───────────────────
+        DaemonEvent::ConfirmRequest {
+            request_id,
+            command,
+            working_dir,
+        } => {
+            app.push_system(
+                format!("🔒 Bash confirm ({working_dir}): {command}"),
+                true,
+            );
+            app.push_system("Auto-approving in attach mode.".to_string(), false);
+            // Auto-approve — the daemon handles actual sandboxing
+            client.send(SessionCommand::ConfirmBash {
+                request_id: request_id.clone(),
+                approved: true,
+            });
+        }
+        DaemonEvent::TodoRequest {
+            request_id,
+            action,
+        } => {
+            debug!("todo request in attach mode: {action:?}");
+            // Auto-respond with empty object — daemon handles the actual todo
+            client.send(SessionCommand::TodoResponse {
+                request_id: request_id.clone(),
+                response: serde_json::json!({}),
+            });
+        }
+
+        // ── Capability events ───────────────────────
+        DaemonEvent::Capabilities { capabilities } => {
+            if let Some(caps) = capabilities {
+                app.push_system(format!("Capabilities: {}", caps.join(", ")), false);
+            }
+        }
+        DaemonEvent::ToolBlocked {
+            tool_name, reason, ..
+        } => {
+            app.push_system(format!("⛔ Tool blocked: {tool_name} — {reason}"), true);
+        }
+
+        // ── Subagent events ─────────────────────────
+        DaemonEvent::SubagentStarted { id, name, task, pid } => {
+            if let Some(panel) = app
+                .panels
+                .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
+                    crate::tui::panel::PanelId::Subagents,
+                )
+            {
+                panel.add(id.clone(), name.clone(), task.clone(), *pid);
+            }
+        }
+        DaemonEvent::SubagentOutput { id, line } => {
+            if let Some(panel) = app
+                .panels
+                .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
+                    crate::tui::panel::PanelId::Subagents,
+                )
+            {
+                panel.append_output(id, line);
+            }
+            app.layout.subagent_panes.append_output(id, line);
+        }
+        DaemonEvent::SubagentDone { id } => {
+            if let Some(panel) = app
+                .panels
+                .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
+                    crate::tui::panel::PanelId::Subagents,
+                )
+            {
+                panel.mark_done(id);
+            }
+            app.layout.subagent_panes.mark_done(id);
+        }
+        DaemonEvent::SubagentError { id, message } => {
+            if let Some(panel) = app
+                .panels
+                .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
+                    crate::tui::panel::PanelId::Subagents,
+                )
+            {
+                panel.mark_error(id);
+                panel.append_output(id, &format!("Error: {message}"));
+            }
+            app.layout.subagent_panes.mark_error(id);
+        }
+
+        // ── History replay ──────────────────────────
+        DaemonEvent::HistoryBlock { block } => {
+            // During replay, show history blocks as system messages
+            if *replaying_history {
+                let preview = block.as_str().unwrap_or("(complex block)");
+                let truncated = if preview.len() > 120 {
+                    format!("{}...", &preview[..120])
+                } else {
+                    preview.to_string()
+                };
+                app.push_system(format!("📜 {truncated}"), false);
+            }
+        }
+        DaemonEvent::HistoryEnd => {
+            *replaying_history = false;
+            app.push_system("History replay complete.".to_string(), false);
+        }
+
+        // ── Ignored events ──────────────────────────
+        DaemonEvent::SystemPromptResponse { .. } => {
+            // We didn't request this — ignore
+        }
+
+        // Events already handled by daemon_event_to_tui_event above
+        _ => {}
+    }
+}
+
+// ── Terminal event handling ──────────────────────────────────────────────────
+
+fn handle_terminal_events(
+    app: &mut App,
+    client: &mut ClientAdapter,
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    keymap: &Keymap,
+    slash_registry: &slash_commands::SlashRegistry,
+) -> Result<()> {
+    let mut poll_timeout = Duration::from_millis(50);
+    while let Some(event) = tui_event::poll_event(poll_timeout) {
+        poll_timeout = Duration::ZERO;
+        match event {
+            AppEvent::Paste(text) => {
+                app.input_mode = InputMode::Insert;
+                app.selection = None;
+                app.editor.insert_str(&text);
+                app.update_slash_menu();
+            }
+            AppEvent::Key(key) => {
+                handle_key_event(app, client, terminal, key, keymap, slash_registry);
+            }
+            AppEvent::MouseDown(button, col, row) => {
+                crate::tui::mouse::handle_mouse_down(app, button, col, row);
+            }
+            AppEvent::MouseDrag(button, col, row) => {
+                crate::tui::mouse::handle_mouse_drag(app, button, col, row);
+            }
+            AppEvent::MouseUp(button, col, row) => {
+                crate::tui::mouse::handle_mouse_up(app, button, col, row);
+            }
+            AppEvent::ScrollUp(col, row, n) => {
+                crate::tui::mouse::handle_mouse_scroll(app, col, row, true, n);
+            }
+            AppEvent::ScrollDown(col, row, n) => {
+                crate::tui::mouse::handle_mouse_scroll(app, col, row, false, n);
+            }
+            AppEvent::Resize(_, _) => {}
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// Key handler for attach mode.
+///
+/// Supports the same overlays, mode switching, and navigation as the embedded
+/// TUI. The key difference is input submission: instead of dispatching to an
+/// in-process agent, we send SessionCommand to the daemon.
+fn handle_key_event(
+    app: &mut App,
+    client: &mut ClientAdapter,
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    key: crossterm::event::KeyEvent,
+    keymap: &Keymap,
+    slash_registry: &slash_commands::SlashRegistry,
+) {
+    use crate::config::keybindings::Action;
+    use crate::config::keybindings::CoreAction;
+    use crate::config::keybindings::ExtendedAction;
+    use crate::tui::selectors;
+    use crossterm::event::KeyCode;
+    use crossterm::event::KeyModifiers;
+
+    app.selection = None;
+
+    // Force quit (Ctrl+Q)
+    if key.code == KeyCode::Char('q') && key.modifiers.contains(KeyModifiers::CONTROL) {
+        app.should_quit = true;
+        return;
+    }
+
+    // Overlay intercepts — same as embedded mode
+    if app.overlays.cost_overlay_visible && matches!(key.code, KeyCode::Esc | KeyCode::Char('C' | 'c' | 'q')) {
+        app.overlays.cost_overlay_visible = false;
+        return;
+    }
+
+    if app.overlays.model_selector.visible {
+        let (consumed, action) = selectors::handle_model_selector_key(app, &key);
+        if let Some(clankers_tui_types::SelectorAction::SetModel(model)) = action {
+            client.send(SessionCommand::SetModel {
+                model: model.clone(),
+            });
+            app.model = model;
+        }
+        if consumed {
+            return;
+        }
+    }
+
+    // Leader menu
+    if app.overlays.leader_menu.visible {
+        if let Some(leader_action) = app.overlays.leader_menu.handle_key(&key) {
+            handle_leader_action_attach(app, client, leader_action, slash_registry);
+        }
+        return;
+    }
+
+    // Output search
+    if app.overlays.output_search.active {
+        crate::modes::event_handlers::handle_output_search_key(app, &key);
+        return;
+    }
+
+    // Slash menu (insert mode only)
+    if app.input_mode == InputMode::Insert
+        && app.slash_menu.visible
+        && handle_slash_menu_key_attach(app, client, &key, keymap, slash_registry)
+    {
+        return;
+    }
+
+    // Panel focus keys
+    if app.has_panel_focus()
+        && app.input_mode == InputMode::Normal
+        && handle_panel_focused_key_attach(app, key)
+    {
+        return;
+    }
+
+    // Resolve through keymap
+    let action = keymap.resolve(app.input_mode, &key);
+    if let Some(action) = action {
+        if matches!(&action, Action::Extended(ExtendedAction::OpenEditor)) {
+            crate::tui::clipboard::open_external_editor(terminal, app);
+            return;
+        }
+
+        match &action {
+            // Submit: send input to daemon
+            Action::Core(CoreAction::Submit) => {
+                app.accept_slash_completion();
+                if let Some(text) = app.submit_input() {
+                    submit_input_attach(app, client, &text, slash_registry);
+                }
+            }
+            // Cancel: tell daemon to abort
+            Action::Core(CoreAction::Cancel) => {
+                client.abort();
+                app.push_system("Abort sent to daemon.".to_string(), false);
+            }
+            // Client-side TUI actions handled locally
+            _ => {
+                handle_local_action(app, &action, &key);
+            }
+        }
+    } else if app.input_mode == InputMode::Insert {
+        crate::modes::event_handlers::handle_insert_char(app, &key);
+    }
+}
+
+/// Submit input in attach mode — client-side commands handled locally,
+/// everything else forwarded to the daemon.
+fn submit_input_attach(
+    app: &mut App,
+    client: &ClientAdapter,
+    text: &str,
+    slash_registry: &slash_commands::SlashRegistry,
+) {
+    if let Some((command, args)) = slash_commands::parse_command(text) {
+        if is_client_side_command(&command) {
+            // Handle locally — these are TUI-only commands
+            handle_client_side_slash(app, &command, &args, slash_registry);
+        } else {
+            // Forward to daemon
+            client.send(SessionCommand::SlashCommand {
+                command,
+                args: args.clone(),
+            });
+        }
+    } else {
+        // Regular prompt — expand @file references, then send
+        let expanded = crate::util::at_file::expand_at_refs_with_images(text, &app.cwd);
+        client.prompt(expanded.text);
+    }
+}
+
+/// Handle a client-side slash command locally.
+fn handle_client_side_slash(
+    app: &mut App,
+    command: &str,
+    args: &str,
+    _slash_registry: &slash_commands::SlashRegistry,
+) {
+    match command {
+        "quit" | "q" => {
+            app.should_quit = true;
+        }
+        "detach" => {
+            app.should_quit = true;
+            app.push_system("Detaching from session.".to_string(), false);
+        }
+        "zoom" => {
+            app.zoom_toggle();
+        }
+        "help" => {
+            app.push_system("Attach mode — limited commands available:".to_string(), false);
+            app.push_system("  /quit, /detach — disconnect from session".to_string(), false);
+            app.push_system("  /zoom — toggle zoom on focused pane".to_string(), false);
+            app.push_system("  /help — this message".to_string(), false);
+            app.push_system("  All other commands are forwarded to the daemon.".to_string(), false);
+        }
+        _ => {
+            app.push_system(
+                format!("Client command /{command} not implemented in attach mode."),
+                true,
+            );
+        }
+    }
+
+    let _ = args; // Some commands will use args later
+}
+
+/// Handle a leader menu action in attach mode.
+fn handle_leader_action_attach(
+    app: &mut App,
+    client: &ClientAdapter,
+    action: clankers_tui_types::LeaderAction,
+    slash_registry: &slash_commands::SlashRegistry,
+) {
+    use clankers_tui_types::LeaderAction;
+
+    match action {
+        LeaderAction::SlashCommand(cmd) => {
+            if let Some((command, args)) = slash_commands::parse_command(&cmd) {
+                if is_client_side_command(&command) {
+                    handle_client_side_slash(app, &command, &args, slash_registry);
+                } else {
+                    client.send(SessionCommand::SlashCommand {
+                        command,
+                        args: args.clone(),
+                    });
+                }
+            }
+        }
+        LeaderAction::KeymapAction(action) => {
+            // Handle keymap actions from leader menu as local actions
+            let dummy_key = crossterm::event::KeyEvent::new(
+                crossterm::event::KeyCode::Null,
+                crossterm::event::KeyModifiers::empty(),
+            );
+            handle_local_action(app, &action, &dummy_key);
+        }
+        LeaderAction::Submenu(_) => {
+            // Submenus are handled by the leader menu widget itself
+        }
+    }
+}
+
+/// Handle the slash menu key event in attach mode.
+fn handle_slash_menu_key_attach(
+    app: &mut App,
+    client: &ClientAdapter,
+    key: &crossterm::event::KeyEvent,
+    keymap: &Keymap,
+    slash_registry: &slash_commands::SlashRegistry,
+) -> bool {
+    use crate::config::keybindings::Action;
+    use crate::config::keybindings::CoreAction;
+    use crossterm::event::KeyCode;
+
+    // Menu navigation keys
+    match key.code {
+        KeyCode::Up => {
+            app.slash_menu.select_prev();
+            return true;
+        }
+        KeyCode::Down => {
+            app.slash_menu.select_next();
+            return true;
+        }
+        _ => {}
+    }
+
+    let action = keymap.resolve(app.input_mode, key);
+    match action {
+        Some(Action::Core(CoreAction::MenuUp)) => {
+            app.slash_menu.select_prev();
+            true
+        }
+        Some(Action::Core(CoreAction::MenuDown)) => {
+            app.slash_menu.select_next();
+            true
+        }
+        Some(Action::Core(CoreAction::MenuClose)) => {
+            app.slash_menu.hide();
+            true
+        }
+        Some(Action::Core(CoreAction::EnterNormal)) => {
+            app.slash_menu.hide();
+            app.input_mode = InputMode::Normal;
+            true
+        }
+        Some(Action::Core(CoreAction::Submit)) => {
+            app.accept_slash_completion();
+            if let Some(text) = app.submit_input() {
+                submit_input_attach(app, client, &text, slash_registry);
+            }
+            true
+        }
+        Some(Action::Core(CoreAction::DeleteBack)) => {
+            app.editor.delete_back();
+            app.update_slash_menu();
+            true
+        }
+        _ => false,
+    }
+}
+
+/// Handle local TUI actions (mode switching, navigation, etc.).
+fn handle_local_action(
+    app: &mut App,
+    action: &crate::config::keybindings::Action,
+    _key: &crossterm::event::KeyEvent,
+) {
+    use crate::config::keybindings::Action;
+    use crate::config::keybindings::CoreAction;
+    use crate::config::keybindings::ExtendedAction;
+    use ratatui::layout::Direction;
+    use ratatui_hypertile::HypertileAction;
+    use ratatui_hypertile::Towards;
+
+    match action {
+        // Mode switching
+        Action::Core(CoreAction::EnterInsert) => {
+            app.input_mode = InputMode::Insert;
+        }
+        Action::Core(CoreAction::EnterNormal) => {
+            app.input_mode = InputMode::Normal;
+            app.slash_menu.hide();
+        }
+        // Navigation
+        Action::Core(CoreAction::ScrollUp) => {
+            app.conversation.scroll.scroll_up(3);
+        }
+        Action::Core(CoreAction::ScrollDown) => {
+            app.conversation.scroll.scroll_down(3);
+        }
+        Action::Core(CoreAction::ScrollPageUp) => {
+            app.conversation.scroll.scroll_up(15);
+        }
+        Action::Core(CoreAction::ScrollPageDown) => {
+            app.conversation.scroll.scroll_down(15);
+        }
+        Action::Core(CoreAction::ScrollToTop) => {
+            app.conversation.scroll.scroll_to_top();
+        }
+        Action::Core(CoreAction::ScrollToBottom) => {
+            app.conversation.scroll.scroll_to_bottom();
+        }
+        // Leader menu
+        Action::Extended(ExtendedAction::OpenLeaderMenu) => {
+            app.overlays.leader_menu.open();
+        }
+        // Panel focus (h/l/j/k)
+        Action::Extended(ExtendedAction::PanelNextTab | ExtendedAction::BranchNext) => {
+            app.apply_tiling_action(HypertileAction::FocusDirection {
+                direction: Direction::Horizontal,
+                towards: Towards::End,
+            });
+        }
+        Action::Extended(ExtendedAction::PanelPrevTab | ExtendedAction::BranchPrev) => {
+            app.apply_tiling_action(HypertileAction::FocusDirection {
+                direction: Direction::Horizontal,
+                towards: Towards::Start,
+            });
+        }
+        Action::Core(CoreAction::FocusPrevBlock) => {
+            app.apply_tiling_action(HypertileAction::FocusDirection {
+                direction: Direction::Vertical,
+                towards: Towards::Start,
+            });
+        }
+        Action::Core(CoreAction::FocusNextBlock) => {
+            app.apply_tiling_action(HypertileAction::FocusDirection {
+                direction: Direction::Vertical,
+                towards: Towards::End,
+            });
+        }
+        // Zoom
+        Action::Extended(ExtendedAction::PaneZoom) => {
+            app.zoom_toggle();
+        }
+        // Editor cursor movement
+        Action::Core(CoreAction::MoveLeft) => {
+            app.editor.move_left();
+        }
+        Action::Core(CoreAction::MoveRight) => {
+            app.editor.move_right();
+        }
+        Action::Core(CoreAction::MoveHome) => {
+            app.editor.move_home();
+        }
+        Action::Core(CoreAction::MoveEnd) => {
+            app.editor.move_end();
+        }
+        // Editor editing
+        Action::Core(CoreAction::DeleteBack) => {
+            app.editor.delete_back();
+            app.update_slash_menu();
+        }
+        Action::Core(CoreAction::DeleteForward) => {
+            app.editor.delete_forward();
+            app.update_slash_menu();
+        }
+        Action::Core(CoreAction::DeleteWord) => {
+            app.editor.delete_word_back();
+            app.update_slash_menu();
+        }
+        Action::Core(CoreAction::ClearLine) => {
+            app.editor.clear();
+            app.input_mode = InputMode::Insert;
+        }
+        // History
+        Action::Core(CoreAction::HistoryUp) => {
+            app.editor.history_up();
+        }
+        Action::Core(CoreAction::HistoryDown) => {
+            app.editor.history_down();
+        }
+        // Unfocus
+        Action::Core(CoreAction::Unfocus) => {
+            app.unfocus_panel();
+        }
+        // Search
+        Action::Extended(ExtendedAction::SearchOutput) => {
+            app.overlays.output_search.active = true;
+            app.overlays.output_search.query.clear();
+        }
+        // Model selector
+        Action::Extended(ExtendedAction::OpenModelSelector) => {
+            app.overlays.model_selector.open();
+        }
+        // Cost overlay
+        Action::Extended(ExtendedAction::ToggleCostOverlay) => {
+            app.overlays.cost_overlay_visible = !app.overlays.cost_overlay_visible;
+        }
+        // Session popup
+        Action::Extended(ExtendedAction::ToggleSessionPopup) => {
+            app.overlays.session_popup_visible = !app.overlays.session_popup_visible;
+        }
+        // Copy
+        Action::Extended(ExtendedAction::CopyBlock) => {
+            app.copy_focused_block();
+        }
+        // Quit
+        Action::Core(CoreAction::Quit) => {
+            app.should_quit = true;
+        }
+        // Cancel
+        Action::Core(CoreAction::Cancel) => {
+            // Cancel is used for abort in embedded — in attach mode, handled elsewhere
+        }
+        // Other unhandled actions — ignore in attach mode
+        _ => {}
+    }
+}
+
+/// Handle panel-focused key events in attach mode.
+///
+/// Returns true if the key was consumed.
+fn handle_panel_focused_key_attach(app: &mut App, key: crossterm::event::KeyEvent) -> bool {
+    use clankers_tui_types::PanelAction;
+    use crossterm::event::KeyCode;
+
+    // Tab / Shift+Tab cycles focus
+    if matches!(key.code, KeyCode::Tab) {
+        app.apply_tiling_action(ratatui_hypertile::HypertileAction::FocusNext);
+        return true;
+    }
+    if matches!(key.code, KeyCode::BackTab) {
+        app.apply_tiling_action(ratatui_hypertile::HypertileAction::FocusPrev);
+        return true;
+    }
+
+    // Delegate to focused panel
+    if let Some(focused_id) = app.layout.focused_panel
+        && let Some(panel) = app.panel_mut(focused_id)
+    {
+        let result = panel.handle_key_event(key);
+        match result {
+            Some(PanelAction::Consumed) => return true,
+            Some(PanelAction::Unfocus) => {
+                app.unfocus_panel();
+                return true;
+            }
+            Some(PanelAction::SlashCommand(_cmd)) => return true,
+            Some(PanelAction::FocusPanel(id)) => {
+                app.focus_panel(id);
+                return true;
+            }
+            _ => {}
+        }
+    }
+
+    false
+}
+
+// ── Slash registry for attach mode ──────────────────────────────────────────
+
+/// Build a minimal slash registry with client-side commands only.
+fn build_client_slash_registry() -> slash_commands::SlashRegistry {
+    // We build a full registry so the completion menu works, but in attach mode
+    // only client-side commands are handled locally — the rest are forwarded.
+    crate::modes::interactive::build_slash_registry(None)
+}
+
+// ── Terminal helpers ────────────────────────────────────────────────────────
+
+fn init_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
+    terminal::enable_raw_mode().map_err(|e| crate::error::Error::Tui {
+        message: format!("Failed to enable raw mode: {e}"),
+    })?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste).map_err(|e| {
+        crate::error::Error::Tui {
+            message: format!("Failed to enter alternate screen: {e}"),
+        }
+    })?;
+    let backend = CrosstermBackend::new(stdout);
+    Terminal::new(backend).map_err(|e| crate::error::Error::Tui {
+        message: format!("Failed to create terminal: {e}"),
+    })
+}
+
+fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) {
+    terminal::disable_raw_mode().ok();
+    execute!(
+        terminal.backend_mut(),
+        DisableBracketedPaste,
+        DisableMouseCapture,
+        LeaveAlternateScreen
+    )
+    .ok();
+    terminal.show_cursor().ok();
+}
+
+#[cfg(test)]
+mod tests {
+    use clankers_controller::client::is_client_side_command;
+
+    #[test]
+    fn test_client_side_commands_classified_correctly() {
+        // Client-side commands stay local
+        assert!(is_client_side_command("quit"));
+        assert!(is_client_side_command("detach"));
+        assert!(is_client_side_command("zoom"));
+        assert!(is_client_side_command("layout"));
+        assert!(is_client_side_command("theme"));
+        assert!(is_client_side_command("help"));
+        assert!(is_client_side_command("copy"));
+
+        // Agent-side commands go to daemon
+        assert!(!is_client_side_command("model"));
+        assert!(!is_client_side_command("thinking"));
+        assert!(!is_client_side_command("clear"));
+        assert!(!is_client_side_command("compact"));
+        assert!(!is_client_side_command("autotest"));
+        assert!(!is_client_side_command("loop"));
+    }
+}

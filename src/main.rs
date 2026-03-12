@@ -230,6 +230,9 @@ async fn dispatch(
         Some(Commands::Plugin { action }) => {
             clankers::commands::plugin::run(&ctx, action)?;
         }
+        Some(Commands::Attach { session_id, new, model }) => {
+            clankers::modes::attach::run_attach(session_id, new, model, &ctx.settings).await?;
+        }
         Some(_) => {
             eprintln!("This command is not yet implemented.");
             std::process::exit(1);

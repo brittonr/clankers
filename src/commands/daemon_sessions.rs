@@ -18,7 +18,7 @@ pub async fn run(action: DaemonSessionAction) -> Result<()> {
                     if sessions.is_empty() {
                         println!("No active sessions.");
                     } else {
-                        println!("{:<24} {:<20} {:>5} {:>8} {}", "SESSION", "MODEL", "TURNS", "CLIENTS", "LAST ACTIVE");
+                        println!("{:<24} {:<20} {:>5} {:>8} LAST ACTIVE", "SESSION", "MODEL", "TURNS", "CLIENTS");
                         for s in &sessions {
                             println!(
                                 "{:<24} {:<20} {:>5} {:>8} {}",
