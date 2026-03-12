@@ -285,12 +285,15 @@ impl ProcessRegistry {
             .iter()
             .map(|entry| {
                 let h = entry.value();
+                let link_count = self.inner.links.get(&h.id).map_or(0, |s| s.len());
                 ProcessInfo {
                     id: h.id,
                     name: h.name.clone(),
                     parent: h.parent,
                     children: self.children(h.id),
                     uptime: h.uptime(),
+                    link_count,
+                    die_when_link_dies: h.die_when_link_dies,
                 }
             })
             .collect()
@@ -311,6 +314,8 @@ pub struct ProcessInfo {
     pub parent: Option<ProcessId>,
     pub children: Vec<ProcessId>,
     pub uptime: Duration,
+    pub link_count: usize,
+    pub die_when_link_dies: bool,
 }
 
 #[cfg(test)]

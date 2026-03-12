@@ -109,16 +109,16 @@
 - [x] Add `--read-only` flag (creates session with read-only capability token)
 - [x] Add `--capabilities` flag (comma-separated capability spec for session scoping)
 - [x] Graceful shutdown cascade: SIGTERM → Shutdown to all agents → wait → cleanup
-- [ ] Session idle reaping in daemon (configurable timeout)
-- [ ] Implement `IrohBiStream` wrapper (combines `SendStream` + `RecvStream` into `AsyncRead + AsyncWrite`)
-- [ ] Define `clankers/session/1` ALPN constant
-- [ ] Add `clankers/session/1` handler to daemon's iroh endpoint (same protocol as Unix socket)
-- [ ] Add `clankers attach --remote <node-id>` subcommand
-- [ ] Implement remote attach: create local iroh endpoint, connect to node, open bidi stream, wrap in `IrohBiStream`, instantiate `ClientAdapter`
+- [x] Session idle reaping in daemon (configurable timeout)
+- [x] Implement `IrohBiStream` wrapper (combines `SendStream` + `RecvStream` into `AsyncRead + AsyncWrite`)
+- [x] Define `clankers/session/1` ALPN constant
+- [x] Add `clankers/session/1` handler to daemon's iroh endpoint (same protocol as Unix socket)
+- [x] Add `clankers attach --remote <node-id>` subcommand
+- [x] Implement remote attach: create local iroh endpoint, connect to node, open bidi stream, wrap in `IrohBiStream`, instantiate `ClientAdapter`
 - [ ] Add UCAN token requirement for remote connections (reject if no token in handshake)
-- [ ] Support `--remote <peer-name>` lookup from `peers.json` in addition to raw node IDs
+- [x] Support `--remote <peer-name>` lookup from `peers.json` in addition to raw node IDs
 - [ ] Add remote status bar indicator (`🌐 node-id-short`)
-- [ ] Add process resource tracking (memory, CPU, uptime) to `ProcessInfo`
+- [x] Add process resource tracking (memory, CPU, uptime) to `ProcessInfo`
 - [ ] Documentation: update AGENTS.md, README, man page
 
 ## Phase 5b: CRDT Session Layer

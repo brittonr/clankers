@@ -1297,10 +1297,20 @@ pub async fn run_remote_attach(
     let identity_path = iroh::identity_path(paths);
     let identity = iroh::Identity::load_or_generate(&identity_path);
 
-    // Parse remote peer ID
-    let remote_pk: ::iroh::PublicKey = remote_id.parse().map_err(|e| {
+    // Resolve remote_id: try as peer name from peers.json first, then as raw node ID
+    let resolved_id = {
+        let registry_path = crate::modes::rpc::peers::registry_path(paths);
+        let registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
+        if let Some(peer) = registry.peers.values().find(|p| p.name == remote_id) {
+            peer.node_id.clone()
+        } else {
+            remote_id.to_string()
+        }
+    };
+
+    let remote_pk: ::iroh::PublicKey = resolved_id.parse().map_err(|e| {
         crate::error::Error::Provider {
-            message: format!("Invalid remote node ID '{remote_id}': {e}"),
+            message: format!("Invalid remote node ID '{resolved_id}' (from '{remote_id}'): {e}"),
         }
     })?;
 
