@@ -41,7 +41,7 @@
 - [x] Implement PID file creation and stale detection
 - [x] Implement control socket listener (accept `ControlCommand`, respond with `ControlResponse`)
 - [x] Implement `ControlCommand::ListSessions` handler
-- [ ] Implement `ControlCommand::CreateSession` — spawns `SessionController`, creates session socket
+- [x] Implement `ControlCommand::CreateSession` — spawns `SessionController`, creates session socket
 - [x] Implement `ControlCommand::AttachSession` — returns socket path for existing session
 - [x] Implement `ControlCommand::ProcessTree` handler
 - [x] Implement `ControlCommand::KillSession` handler
@@ -54,7 +54,7 @@
 - [x] Handle client disconnect (remove from broadcast, agent continues)
 - [x] Socket cleanup on graceful shutdown
 - [x] Stale socket cleanup on startup
-- [ ] Verify: `clankers daemon` starts, `socat` can connect and see JSON frames
+- [x] Verify: `clankers daemon` starts, `socat` can connect and see JSON frames
 
 ## Phase 3: TUI Client Mode
 
