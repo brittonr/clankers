@@ -1,22 +1,66 @@
 //! Shared mode utilities
 
 use std::collections::HashSet;
+use std::io;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use crossterm::event::DisableBracketedPaste;
+use crossterm::event::DisableMouseCapture;
+use crossterm::event::EnableBracketedPaste;
+use crossterm::event::EnableMouseCapture;
+use crossterm::execute;
+use crossterm::terminal::EnterAlternateScreen;
+use crossterm::terminal::LeaveAlternateScreen;
+use crossterm::terminal::{self};
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 use tokio::sync::broadcast;
 use tracing::info;
 use tracing::warn;
 
 use crate::agent::events::AgentEvent;
+use crate::error::Result;
 use crate::plugin::PluginManager;
 use crate::plugin::PluginState;
 use crate::tools::Tool;
 use crate::tools::ToolDefinition;
 use crate::tools::plugin_tool::PluginTool;
 use crate::tools::validator_tool::ValidatorTool;
+
+// ── Terminal setup ──────────────────────────────────────────────────────────
+
+/// Set up the crossterm terminal (raw mode, alternate screen, mouse capture).
+pub fn init_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
+    terminal::enable_raw_mode().map_err(|e| crate::error::Error::Tui {
+        message: format!("Failed to enable raw mode: {e}"),
+    })?;
+    let mut stdout = io::stdout();
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste).map_err(
+        |e| crate::error::Error::Tui {
+            message: format!("Failed to enter alternate screen: {e}"),
+        },
+    )?;
+    let backend = CrosstermBackend::new(stdout);
+    Terminal::new(backend).map_err(|e| crate::error::Error::Tui {
+        message: format!("Failed to create terminal: {e}"),
+    })
+}
+
+/// Tear down the crossterm terminal (restore normal mode).
+pub fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) {
+    terminal::disable_raw_mode().ok();
+    execute!(
+        terminal.backend_mut(),
+        DisableBracketedPaste,
+        DisableMouseCapture,
+        LeaveAlternateScreen,
+    )
+    .ok();
+    terminal.show_cursor().ok();
+}
 
 // ── Tool tiers ──────────────────────────────────────────────────────────────
 

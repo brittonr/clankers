@@ -603,6 +603,25 @@
 - CoreAction variants: `Cancel` (not `Abort`), `ScrollPageUp/Down` (not `HalfPageUp/Down`), `MoveLeft/Right/Home/End` (not `CursorLeft/Right/LineStart/LineEnd`), `DeleteWord` (not `DeleteWordBack`), `ClearLine` (not `ChangeLine`)
 - ExtendedAction variants: `PaneZoom` (not `ToggleZoom`), `OpenLeaderMenu` (not `Leader`), `OpenModelSelector` (not `ModelSelector`), `SearchOutput` (not `OutputSearch`), `ToggleCostOverlay` (not `CostOverlay`), `ToggleSessionPopup` (not `SessionPopup`)
 - No `CopyLastResponse`/`CopyLastCodeBlock` extended actions — only `CopyBlock` exists
-- Terminal init/restore duplicated (not extracted) — keeps attach.rs self-contained, same pattern as interactive.rs
+- Terminal `init_terminal()`/`restore_terminal()` shared in `src/modes/common.rs` — both attach.rs and interactive.rs call `super::common::{init,restore}_terminal()`
 - clippy: `if a && b { if c {} }` → `if a && b && c {}`, `args.to_string()` → `args.clone()` when args is already String
-- Next: proper history replay rendering (currently shows as system messages), interactive session picker when multiple sessions exist, shared terminal init/restore helpers
+- `RawGuard` drop struct for session picker — ensures `disable_raw_mode` + `show_cursor` on panic
+
+## Patterns That Work (history replay — proper rendering)
+- `replay_history()` now serializes with `serde_json::to_value(msg)` (not `format!("{msg:?}")`) — AgentMessage derives Serialize with `#[serde(tag = "type")]`
+- `agent_message_to_tui_events()` in convert.rs converts each AgentMessage variant to a sequence of TuiEvents
+- User → `UserInput`, Assistant → `AgentStart` + content blocks + `AgentEnd`, ToolResult → `ToolDone`, BashExecution → `ToolDone`, CompactionSummary → `SessionCompaction`
+- Assistant content blocks: Text → `ContentBlockStart(thinking=false)` + `TextDelta` + `ContentBlockStop`, Thinking → same with `thinking=true`, ToolUse → `ToolCall` + `ToolStart`
+- Graceful fallback: `serde_json::from_value` failure on old-format blocks shows "📜 (unrecognized block)" system message
+- `HistoryEnd` no longer pushes a system message — cleaner attach experience
+- `extract_user_text()` and `extract_display_images()` are local helpers in convert.rs (not shared with `extract_tool_content` which takes `ToolResultContent`)
+
+## Patterns That Work (session picker)
+- `pick_session()` runs BEFORE `init_terminal()` — standalone raw-mode mini-TUI, not full ratatui
+- `crossterm::style::Stylize` for `.bold()`, `.dim()`, `.reverse()` on styled content
+- `crossterm::style::PrintStyledContent` for writing styled text to stdout
+- Single-session auto-pick: `sessions.len() == 1` bypasses picker entirely
+- `\r\n` line endings required in raw mode (no automatic LF→CRLF translation)
+- Column layout: SESSION(10) MODEL(28) TURNS(5) LAST ACTIVE(20) CLIENTS — session ID truncated to 8 chars, model to 26
+- Navigation: j/k or ↑/↓, Enter to select, q/Esc to cancel
+- Next: wire EventLoopRunner to SessionController (embedded mode), bash confirm UI over protocol, subagent event routing

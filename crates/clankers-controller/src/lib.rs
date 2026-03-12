@@ -415,17 +415,9 @@ impl SessionController {
 
     /// Replay conversation history to a newly-attached client.
     fn replay_history(&mut self) {
-        let blocks: Vec<DaemonEvent> = self
-            .agent
-            .messages()
-            .iter()
-            .map(|msg| {
-                let block = serde_json::to_value(format!("{msg:?}")).unwrap_or_default();
-                DaemonEvent::HistoryBlock { block }
-            })
-            .collect();
-        for event in blocks {
-            self.outgoing.push(event);
+        for msg in self.agent.messages() {
+            let block = serde_json::to_value(msg).unwrap_or_default();
+            self.outgoing.push(DaemonEvent::HistoryBlock { block });
         }
         self.emit(DaemonEvent::HistoryEnd);
     }

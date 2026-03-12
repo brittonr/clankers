@@ -220,6 +220,141 @@ pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_typ
     }
 }
 
+// ── History replay conversion ───────────────────────────────────────────────
+
+/// Convert a stored `AgentMessage` into TUI events for history replay.
+///
+/// Returns the sequence of `TuiEvent`s that reconstruct this message in the
+/// TUI's block-based conversation view. For assistant messages this includes
+/// the `AgentStart`/`AgentEnd` lifecycle wrapper so the TUI state machine
+/// creates and finalises a response block.
+pub fn agent_message_to_tui_events(msg: &clankers_message::AgentMessage) -> Vec<clankers_tui_types::TuiEvent> {
+    use clankers_message::{AgentMessage, Content};
+    use clankers_tui_types::TuiEvent;
+
+    match msg {
+        AgentMessage::User(m) => {
+            let text = extract_user_text(&m.content);
+            vec![TuiEvent::UserInput {
+                text,
+                agent_msg_count: 0,
+            }]
+        }
+
+        AgentMessage::Assistant(m) => {
+            let mut events = vec![TuiEvent::AgentStart];
+
+            for block in &m.content {
+                match block {
+                    Content::Text { text } => {
+                        events.push(TuiEvent::ContentBlockStart { is_thinking: false });
+                        events.push(TuiEvent::TextDelta(text.clone()));
+                        events.push(TuiEvent::ContentBlockStop);
+                    }
+                    Content::Thinking { thinking, .. } => {
+                        events.push(TuiEvent::ContentBlockStart { is_thinking: true });
+                        events.push(TuiEvent::ThinkingDelta(thinking.clone()));
+                        events.push(TuiEvent::ContentBlockStop);
+                    }
+                    Content::ToolUse { id, name, input } => {
+                        events.push(TuiEvent::ToolCall {
+                            tool_name: name.clone(),
+                            call_id: id.clone(),
+                            input: input.clone(),
+                        });
+                        events.push(TuiEvent::ToolStart {
+                            call_id: id.clone(),
+                            tool_name: name.clone(),
+                        });
+                    }
+                    // Images and ToolResults inside assistant blocks are rare;
+                    // skip for replay.
+                    _ => {}
+                }
+            }
+
+            events.push(TuiEvent::AgentEnd);
+            events
+        }
+
+        AgentMessage::ToolResult(m) => {
+            let text = extract_user_text(&m.content);
+            vec![TuiEvent::ToolDone {
+                call_id: m.call_id.clone(),
+                text,
+                images: extract_display_images(&m.content),
+                is_error: m.is_error,
+            }]
+        }
+
+        AgentMessage::BashExecution(m) => {
+            let mut text = String::new();
+            if !m.stdout.is_empty() {
+                text.push_str(&m.stdout);
+            }
+            if !m.stderr.is_empty() {
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+                text.push_str(&m.stderr);
+            }
+            if let Some(code) = m.exit_code {
+                if !text.is_empty() {
+                    text.push('\n');
+                }
+                text.push_str(&format!("exit code: {code}"));
+            }
+            vec![TuiEvent::ToolDone {
+                call_id: format!("bash-{}", m.id),
+                text,
+                images: vec![],
+                is_error: m.exit_code.is_some_and(|c| c != 0),
+            }]
+        }
+
+        AgentMessage::CompactionSummary(m) => {
+            vec![TuiEvent::SessionCompaction {
+                compacted_count: m.compacted_ids.len(),
+                tokens_saved: m.tokens_saved,
+            }]
+        }
+
+        // BranchSummary and Custom messages don't map to conversation blocks.
+        AgentMessage::BranchSummary(_) | AgentMessage::Custom(_) => vec![],
+    }
+}
+
+/// Extract display text from content blocks.
+fn extract_user_text(content: &[clankers_message::Content]) -> String {
+    let mut text = String::new();
+    for block in content {
+        if let clankers_message::Content::Text { text: t } = block {
+            if !text.is_empty() {
+                text.push('\n');
+            }
+            text.push_str(t);
+        }
+    }
+    text
+}
+
+/// Extract images from content blocks as `DisplayImage`.
+fn extract_display_images(content: &[clankers_message::Content]) -> Vec<clankers_tui_types::DisplayImage> {
+    let mut images = Vec::new();
+    for block in content {
+        if let clankers_message::Content::Image {
+            source: clankers_message::ImageSource::Base64 { media_type, data },
+        } = block
+        {
+            images.push(clankers_tui_types::DisplayImage {
+                data: data.clone(),
+                media_type: media_type.clone(),
+            });
+        }
+    }
+    images
+}
+
 /// Extract text and images from ToolResult content.
 fn extract_tool_content(content: &[ToolResultContent]) -> (String, Vec<ImageData>) {
     let mut text = String::new();
@@ -370,5 +505,173 @@ mod tests {
         assert_eq!(text, "line1\nline2");
         assert_eq!(images.len(), 1);
         assert_eq!(images[0].media_type, "image/png");
+    }
+
+    // ── History replay tests ────────────────────────────────────────
+
+    fn user_msg(text: &str) -> clankers_message::AgentMessage {
+        clankers_message::AgentMessage::User(clankers_message::UserMessage {
+            id: clankers_message::MessageId::new("u1"),
+            content: vec![clankers_message::Content::Text {
+                text: text.to_string(),
+            }],
+            timestamp: chrono::Utc::now(),
+        })
+    }
+
+    fn assistant_msg(text: &str) -> clankers_message::AgentMessage {
+        clankers_message::AgentMessage::Assistant(clankers_message::AssistantMessage {
+            id: clankers_message::MessageId::new("a1"),
+            content: vec![clankers_message::Content::Text {
+                text: text.to_string(),
+            }],
+            model: "test-model".to_string(),
+            usage: clankers_message::Usage::default(),
+            stop_reason: clankers_message::StopReason::Stop,
+            timestamp: chrono::Utc::now(),
+        })
+    }
+
+    #[test]
+    fn history_user_message_to_tui_events() {
+        let events = agent_message_to_tui_events(&user_msg("hello"));
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], clankers_tui_types::TuiEvent::UserInput { text, .. } if text == "hello"));
+    }
+
+    #[test]
+    fn history_assistant_message_to_tui_events() {
+        let events = agent_message_to_tui_events(&assistant_msg("world"));
+        // AgentStart, ContentBlockStart, TextDelta, ContentBlockStop, AgentEnd
+        assert_eq!(events.len(), 5);
+        assert!(matches!(&events[0], clankers_tui_types::TuiEvent::AgentStart));
+        assert!(matches!(&events[1], clankers_tui_types::TuiEvent::ContentBlockStart { is_thinking: false }));
+        assert!(matches!(&events[2], clankers_tui_types::TuiEvent::TextDelta(t) if t == "world"));
+        assert!(matches!(&events[3], clankers_tui_types::TuiEvent::ContentBlockStop));
+        assert!(matches!(&events[4], clankers_tui_types::TuiEvent::AgentEnd));
+    }
+
+    #[test]
+    fn history_assistant_with_thinking_and_tool() {
+        let msg = clankers_message::AgentMessage::Assistant(clankers_message::AssistantMessage {
+            id: clankers_message::MessageId::new("a2"),
+            content: vec![
+                clankers_message::Content::Thinking {
+                    thinking: "let me think".to_string(),
+                    signature: String::new(),
+                },
+                clankers_message::Content::Text {
+                    text: "here's my answer".to_string(),
+                },
+                clankers_message::Content::ToolUse {
+                    id: "call_1".to_string(),
+                    name: "bash".to_string(),
+                    input: serde_json::json!({"command": "ls"}),
+                },
+            ],
+            model: "test".to_string(),
+            usage: clankers_message::Usage::default(),
+            stop_reason: clankers_message::StopReason::ToolUse,
+            timestamp: chrono::Utc::now(),
+        });
+
+        let events = agent_message_to_tui_events(&msg);
+        // AgentStart, think block (3), text block (3), tool call + start (2), AgentEnd
+        assert_eq!(events.len(), 10);
+        assert!(matches!(&events[0], clankers_tui_types::TuiEvent::AgentStart));
+        assert!(matches!(&events[1], clankers_tui_types::TuiEvent::ContentBlockStart { is_thinking: true }));
+        assert!(matches!(&events[4], clankers_tui_types::TuiEvent::ContentBlockStart { is_thinking: false }));
+        assert!(matches!(&events[7], clankers_tui_types::TuiEvent::ToolCall { tool_name, .. } if tool_name == "bash"));
+        assert!(matches!(&events[8], clankers_tui_types::TuiEvent::ToolStart { call_id, .. } if call_id == "call_1"));
+        assert!(matches!(&events[9], clankers_tui_types::TuiEvent::AgentEnd));
+    }
+
+    #[test]
+    fn history_tool_result_to_tui_events() {
+        let msg = clankers_message::AgentMessage::ToolResult(clankers_message::ToolResultMessage {
+            id: clankers_message::MessageId::new("tr1"),
+            call_id: "call_1".to_string(),
+            tool_name: "bash".to_string(),
+            content: vec![clankers_message::Content::Text {
+                text: "output".to_string(),
+            }],
+            is_error: false,
+            details: None,
+            timestamp: chrono::Utc::now(),
+        });
+
+        let events = agent_message_to_tui_events(&msg);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], clankers_tui_types::TuiEvent::ToolDone { call_id, text, is_error, .. }
+            if call_id == "call_1" && text == "output" && !is_error));
+    }
+
+    #[test]
+    fn history_bash_execution_to_tui_events() {
+        let msg = clankers_message::AgentMessage::BashExecution(clankers_message::BashExecutionMessage {
+            id: clankers_message::MessageId::new("be1"),
+            command: "ls".to_string(),
+            stdout: "file.txt".to_string(),
+            stderr: String::new(),
+            exit_code: Some(0),
+            timestamp: chrono::Utc::now(),
+        });
+
+        let events = agent_message_to_tui_events(&msg);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], clankers_tui_types::TuiEvent::ToolDone { text, is_error, .. }
+            if text.contains("file.txt") && !is_error));
+    }
+
+    #[test]
+    fn history_compaction_to_tui_events() {
+        let msg = clankers_message::AgentMessage::CompactionSummary(clankers_message::CompactionSummaryMessage {
+            id: clankers_message::MessageId::new("cs1"),
+            compacted_ids: vec![
+                clankers_message::MessageId::new("m1"),
+                clankers_message::MessageId::new("m2"),
+            ],
+            summary: "compacted".to_string(),
+            tokens_saved: 1000,
+            timestamp: chrono::Utc::now(),
+        });
+
+        let events = agent_message_to_tui_events(&msg);
+        assert_eq!(events.len(), 1);
+        assert!(matches!(&events[0], clankers_tui_types::TuiEvent::SessionCompaction {
+            compacted_count: 2,
+            tokens_saved: 1000,
+        }));
+    }
+
+    #[test]
+    fn history_branch_and_custom_produce_no_events() {
+        let branch = clankers_message::AgentMessage::BranchSummary(clankers_message::BranchSummaryMessage {
+            id: clankers_message::MessageId::new("bs1"),
+            from_id: clankers_message::MessageId::new("m1"),
+            summary: "branched".to_string(),
+            timestamp: chrono::Utc::now(),
+        });
+        assert!(agent_message_to_tui_events(&branch).is_empty());
+
+        let custom = clankers_message::AgentMessage::Custom(clankers_message::CustomMessage {
+            id: clankers_message::MessageId::new("cu1"),
+            kind: "test".to_string(),
+            data: serde_json::json!({}),
+            timestamp: chrono::Utc::now(),
+        });
+        assert!(agent_message_to_tui_events(&custom).is_empty());
+    }
+
+    #[test]
+    fn history_serialization_round_trip() {
+        // Verify that AgentMessage survives serde_json::to_value → from_value
+        let msg = assistant_msg("round trip test");
+        let value = serde_json::to_value(&msg).expect("serialize");
+        let restored: clankers_message::AgentMessage =
+            serde_json::from_value(value).expect("deserialize");
+        let events = agent_message_to_tui_events(&restored);
+        assert_eq!(events.len(), 5);
+        assert!(matches!(&events[2], clankers_tui_types::TuiEvent::TextDelta(t) if t == "round trip test"));
     }
 }

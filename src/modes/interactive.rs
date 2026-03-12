@@ -9,14 +9,6 @@
 use std::io;
 use std::sync::Arc;
 
-use crossterm::event::DisableBracketedPaste;
-use crossterm::event::DisableMouseCapture;
-use crossterm::event::EnableBracketedPaste;
-use crossterm::event::EnableMouseCapture;
-use crossterm::execute;
-use crossterm::terminal::EnterAlternateScreen;
-use crossterm::terminal::LeaveAlternateScreen;
-use crossterm::terminal::{self};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 
@@ -38,30 +30,6 @@ pub struct ResumeOptions {
     pub no_session: bool,
 }
 
-/// Set up the crossterm terminal (raw mode, alternate screen, mouse capture).
-fn init_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
-    terminal::enable_raw_mode().map_err(|e| crate::error::Error::Tui {
-        message: format!("Failed to enable raw mode: {}", e),
-    })?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste).map_err(|e| {
-        crate::error::Error::Tui {
-            message: format!("Failed to enter alternate screen: {}", e),
-        }
-    })?;
-    let backend = CrosstermBackend::new(stdout);
-    Terminal::new(backend).map_err(|e| crate::error::Error::Tui {
-        message: format!("Failed to create terminal: {}", e),
-    })
-}
-
-/// Tear down the crossterm terminal (restore normal mode).
-fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) {
-    terminal::disable_raw_mode().ok();
-    execute!(terminal.backend_mut(), DisableBracketedPaste, DisableMouseCapture, LeaveAlternateScreen).ok();
-    terminal.show_cursor().ok();
-}
-
 /// Run the interactive TUI mode.
 pub async fn run_interactive(
     provider: Arc<dyn crate::provider::Provider>,
@@ -72,7 +40,7 @@ pub async fn run_interactive(
     plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     resume_opts: ResumeOptions,
 ) -> Result<()> {
-    let mut terminal = init_terminal()?;
+    let mut terminal = super::common::init_terminal()?;
 
     let theme = Theme::dark();
     let keymap = settings.keymap.clone().into_keymap();
@@ -205,7 +173,7 @@ pub async fn run_interactive(
         cancel.cancel();
     }
 
-    restore_terminal(&mut terminal);
+    super::common::restore_terminal(&mut terminal);
 
     // ── Worktree cleanup: mark completed, merge, and GC ─────────────
     if let Some(ref wt) = worktree_setup

@@ -16,14 +16,6 @@ use clankers_protocol::SessionCommand;
 use clankers_protocol::control::ControlCommand;
 use clankers_protocol::control::ControlResponse;
 use clankers_protocol::frame;
-use crossterm::event::DisableBracketedPaste;
-use crossterm::event::DisableMouseCapture;
-use crossterm::event::EnableBracketedPaste;
-use crossterm::event::EnableMouseCapture;
-use crossterm::execute;
-use crossterm::terminal::EnterAlternateScreen;
-use crossterm::terminal::LeaveAlternateScreen;
-use crossterm::terminal::{self};
 use ratatui::Terminal;
 use ratatui::backend::CrosstermBackend;
 use tokio::net::UnixStream;
@@ -91,7 +83,7 @@ pub async fn run_attach(
     client.replay_history();
 
     // Set up the terminal
-    let mut term = init_terminal()?;
+    let mut term = super::common::init_terminal()?;
 
     let display_model = if model_name.is_empty() {
         "daemon".to_string()
@@ -140,7 +132,7 @@ pub async fn run_attach(
     // Clean disconnect
     client.disconnect();
 
-    restore_terminal(&mut term);
+    super::common::restore_terminal(&mut term);
     result
 }
 
@@ -193,15 +185,19 @@ async fn resolve_session(
         };
     }
 
-    // No session ID given — list and pick the first, or error.
+    // No session ID given — list and pick, or error.
     let resp = send_control(ControlCommand::ListSessions).await?;
     match resp {
         ControlResponse::Sessions(sessions) if sessions.is_empty() => Err(crate::error::Error::Provider {
             message: "No active sessions. Use --new to create one, or start a daemon first.".to_string(),
         }),
-        ControlResponse::Sessions(sessions) => {
+        ControlResponse::Sessions(sessions) if sessions.len() == 1 => {
             let s = &sessions[0];
             eprintln!("Attaching to session {} (model: {})", s.session_id, s.model);
+            Ok((s.session_id.clone(), s.socket_path.clone()))
+        }
+        ControlResponse::Sessions(sessions) => {
+            let s = pick_session(&sessions)?;
             Ok((s.session_id.clone(), s.socket_path.clone()))
         }
         ControlResponse::Error { message } => Err(crate::error::Error::Provider {
@@ -240,6 +236,126 @@ async fn send_control(cmd: ControlCommand) -> Result<ControlResponse> {
     })?;
 
     Ok(resp)
+}
+
+// ── Session picker ──────────────────────────────────────────────────────────
+
+/// Interactive terminal picker for choosing a daemon session.
+///
+/// Enters raw mode, draws a navigable list, returns the selected session.
+/// Runs BEFORE the full TUI is initialised.
+fn pick_session(sessions: &[clankers_protocol::SessionSummary]) -> Result<&clankers_protocol::SessionSummary> {
+    use crossterm::cursor;
+    use crossterm::event::{self as ct_event, Event, KeyCode, KeyEventKind};
+    use crossterm::execute;
+    use crossterm::style::{self, Stylize};
+    use crossterm::terminal::{self};
+
+    debug_assert!(!sessions.is_empty());
+
+    // Enter raw mode with a drop guard for crash safety.
+    terminal::enable_raw_mode().map_err(|e| crate::error::Error::Tui {
+        message: format!("Session picker: failed to enable raw mode: {e}"),
+    })?;
+    let mut stdout = std::io::stdout();
+    execute!(stdout, cursor::Hide).ok();
+
+    struct RawGuard;
+    impl Drop for RawGuard {
+        fn drop(&mut self) {
+            crossterm::terminal::disable_raw_mode().ok();
+            crossterm::execute!(std::io::stdout(), crossterm::cursor::Show).ok();
+        }
+    }
+    let _guard = RawGuard;
+
+    let mut selected: usize = 0;
+
+    loop {
+        // Clear and redraw.
+        execute!(
+            stdout,
+            terminal::Clear(terminal::ClearType::All),
+            cursor::MoveTo(0, 0),
+        )
+        .ok();
+
+        // Header
+        execute!(
+            stdout,
+            style::PrintStyledContent("Select a session to attach:\r\n\r\n".bold()),
+        )
+        .ok();
+
+        // Column header
+        let header = format!(
+            "  {:<10} {:<28} {:>5}  {:<20}  {}\r\n",
+            "SESSION", "MODEL", "TURNS", "LAST ACTIVE", "CLIENTS"
+        );
+        execute!(stdout, style::PrintStyledContent(header.dim())).ok();
+
+        // Session rows
+        for (i, s) in sessions.iter().enumerate() {
+            let sid = if s.session_id.len() > 8 {
+                &s.session_id[..8]
+            } else {
+                &s.session_id
+            };
+            let model = if s.model.len() > 26 {
+                format!("{}…", &s.model[..25])
+            } else {
+                s.model.clone()
+            };
+            let line = format!(
+                "  {:<10} {:<28} {:>5}  {:<20}  {}\r\n",
+                sid, model, s.turn_count, s.last_active, s.client_count
+            );
+
+            if i == selected {
+                execute!(stdout, style::PrintStyledContent(format!("▸ {line}").reverse())).ok();
+            } else {
+                execute!(stdout, style::PrintStyledContent(format!("  {line}").stylize())).ok();
+            }
+        }
+
+        // Footer
+        execute!(
+            stdout,
+            style::PrintStyledContent("\r\n  ↑/↓ navigate  Enter select  q/Esc cancel\r\n".dim()),
+        )
+        .ok();
+
+        // Wait for key
+        if ct_event::poll(std::time::Duration::from_millis(200)).unwrap_or(false)
+            && let Ok(Event::Key(key)) = ct_event::read()
+        {
+            if key.kind != KeyEventKind::Press {
+                continue;
+            }
+            match key.code {
+                KeyCode::Up | KeyCode::Char('k') => {
+                    selected = selected.saturating_sub(1);
+                }
+                KeyCode::Down | KeyCode::Char('j') => {
+                    if selected + 1 < sessions.len() {
+                        selected += 1;
+                    }
+                }
+                KeyCode::Enter => {
+                    // Clear screen before returning
+                    execute!(stdout, terminal::Clear(terminal::ClearType::All), cursor::MoveTo(0, 0)).ok();
+                    return Ok(&sessions[selected]);
+                }
+                KeyCode::Esc | KeyCode::Char('q') => {
+                    execute!(stdout, terminal::Clear(terminal::ClearType::All), cursor::MoveTo(0, 0)).ok();
+                    return Err(crate::error::Error::Provider {
+                        message: "Session selection cancelled.".to_string(),
+                    });
+                }
+                _ => {}
+            }
+        }
+    }
 }
 
 // ── Attach event loop ───────────────────────────────────────────────────────
@@ -427,20 +543,30 @@ fn process_daemon_event(
 
         // ── History replay ──────────────────────────
         DaemonEvent::HistoryBlock { block } => {
-            // During replay, show history blocks as system messages
             if *replaying_history {
-                let preview = block.as_str().unwrap_or("(complex block)");
-                let truncated = if preview.len() > 120 {
-                    format!("{}...", &preview[..120])
-                } else {
-                    preview.to_string()
-                };
-                app.push_system(format!("📜 {truncated}"), false);
+                match serde_json::from_value::<clankers_message::AgentMessage>(block.clone()) {
+                    Ok(msg) => {
+                        let events =
+                            clankers_controller::convert::agent_message_to_tui_events(&msg);
+                        for tui_event in &events {
+                            app.handle_tui_event(tui_event);
+                        }
+                    }
+                    Err(_) => {
+                        // Graceful fallback for old-format or unrecognized blocks
+                        let preview = block.as_str().unwrap_or("(unrecognized block)");
+                        let truncated = if preview.len() > 120 {
+                            format!("{}...", &preview[..120])
+                        } else {
+                            preview.to_string()
+                        };
+                        app.push_system(format!("📜 {truncated}"), false);
+                    }
+                }
             }
         }
         DaemonEvent::HistoryEnd => {
             *replaying_history = false;
-            app.push_system("History replay complete.".to_string(), false);
         }
 
         // ── Ignored events ──────────────────────────
@@ -959,36 +1085,6 @@ fn build_client_slash_registry() -> slash_commands::SlashRegistry {
     // We build a full registry so the completion menu works, but in attach mode
     // only client-side commands are handled locally — the rest are forwarded.
     crate::modes::interactive::build_slash_registry(None)
-}
-
-// ── Terminal helpers ────────────────────────────────────────────────────────
-
-fn init_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
-    terminal::enable_raw_mode().map_err(|e| crate::error::Error::Tui {
-        message: format!("Failed to enable raw mode: {e}"),
-    })?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste).map_err(|e| {
-        crate::error::Error::Tui {
-            message: format!("Failed to enter alternate screen: {e}"),
-        }
-    })?;
-    let backend = CrosstermBackend::new(stdout);
-    Terminal::new(backend).map_err(|e| crate::error::Error::Tui {
-        message: format!("Failed to create terminal: {e}"),
-    })
-}
-
-fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) {
-    terminal::disable_raw_mode().ok();
-    execute!(
-        terminal.backend_mut(),
-        DisableBracketedPaste,
-        DisableMouseCapture,
-        LeaveAlternateScreen
-    )
-    .ok();
-    terminal.show_cursor().ok();
 }
 
 #[cfg(test)]
