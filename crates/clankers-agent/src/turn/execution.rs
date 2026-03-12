@@ -152,6 +152,7 @@ pub(super) async fn execute_tools_parallel(
     cancel: CancellationToken,
     hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     session_id: &str,
+    db: Option<clankers_db::Db>,
 ) -> Vec<ToolResultMessage> {
     use futures::future::BoxFuture;
     use futures::future::FutureExt;
@@ -168,6 +169,7 @@ pub(super) async fn execute_tools_parallel(
                 cancel.clone(),
                 hook_pipeline.clone(),
                 session_id.to_string(),
+                db.clone(),
             )
             .boxed()
         })
@@ -186,6 +188,7 @@ async fn execute_single_tool(
     cancel: CancellationToken,
     hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     session_id: String,
+    db: Option<clankers_db::Db>,
 ) -> ToolResultMessage {
     // Emit ToolCall event
     let _ = event_tx.send(AgentEvent::ToolCall {
@@ -231,7 +234,7 @@ async fn execute_single_tool(
     // Execute with accumulator
     let result = execute_tool_with_accumulator(
         tool, &call_id, effective_input, &event_tx, cancel,
-        hook_pipeline.clone(), session_id.clone(),
+        hook_pipeline.clone(), session_id.clone(), db,
     ).await;
 
     // Fire post-tool hook (async, fire-and-forget)
@@ -270,6 +273,7 @@ async fn execute_tool_with_accumulator(
     cancel: CancellationToken,
     hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     session_id: String,
+    db: Option<clankers_db::Db>,
 ) -> ToolExecResult {
     // Subscribe to event bus BEFORE tool execution to capture all chunks
     let mut chunk_rx = event_tx.subscribe();
@@ -295,6 +299,9 @@ async fn execute_tool_with_accumulator(
     let mut ctx = ToolContext::new(call_id.to_string(), cancel, Some(event_tx.clone()));
     if let Some(pipeline) = hook_pipeline {
         ctx = ctx.with_hooks(pipeline, session_id);
+    }
+    if let Some(db) = db {
+        ctx = ctx.with_db(db);
     }
     let direct_result = tool.execute(&ctx, input).await;
 

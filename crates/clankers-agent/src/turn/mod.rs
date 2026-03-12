@@ -137,6 +137,7 @@ pub async fn run_turn_loop(
     model_switch_slot: Option<&ModelSwitchSlot>,
     hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     session_id: &str,
+    db: Option<clankers_db::Db>,
 ) -> Result<()> {
     let tool_defs: Vec<_> = tools.values().map(|t| t.definition().clone()).collect();
     let mut cumulative_usage = Usage::default();
@@ -177,7 +178,7 @@ pub async fn run_turn_loop(
         // Execute tools and append results (with truncation)
         let tool_result_messages = execute_tools_parallel(
             tools, &tool_calls, event_tx, cancel.clone(),
-            hook_pipeline.clone(), session_id,
+            hook_pipeline.clone(), session_id, db.clone(),
         ).await;
         let tool_result_messages = apply_output_truncation(tool_result_messages, &config.output_truncation);
         for msg in &tool_result_messages {
@@ -607,7 +608,7 @@ mod tests {
 
         let tool_calls = vec![("call-1".to_string(), "chunk_tool".to_string(), json!({}))];
 
-        let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel, None, "").await;
+        let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel, None, "", None).await;
 
         assert_eq!(results.len(), 1);
         let msg = &results[0];
@@ -640,7 +641,7 @@ mod tests {
 
         let tool_calls = vec![("call-2".to_string(), "direct_tool".to_string(), json!({}))];
 
-        let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel, None, "").await;
+        let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel, None, "", None).await;
 
         assert_eq!(results.len(), 1);
         let msg = &results[0];

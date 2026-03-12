@@ -77,6 +77,8 @@ pub struct ToolContext {
     hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     /// Session ID for hook payloads
     session_id: String,
+    /// Optional database handle for tools that need persistent storage
+    db: Option<clankers_db::Db>,
 }
 
 impl ToolContext {
@@ -89,6 +91,7 @@ impl ToolContext {
             throttle_state: Arc::new(Mutex::new(ThrottleState::default())),
             hook_pipeline: None,
             session_id: String::new(),
+            db: None,
         }
     }
 
@@ -97,6 +100,17 @@ impl ToolContext {
         self.hook_pipeline = Some(pipeline);
         self.session_id = session_id;
         self
+    }
+
+    /// Attach a database handle to this context.
+    pub fn with_db(mut self, db: clankers_db::Db) -> Self {
+        self.db = Some(db);
+        self
+    }
+
+    /// Access the database handle (if set).
+    pub fn db(&self) -> Option<&clankers_db::Db> {
+        self.db.as_ref()
     }
 
     /// Access the hook pipeline (if set).

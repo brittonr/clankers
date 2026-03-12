@@ -29,7 +29,7 @@ const META_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("_meta");
 const VERSION_KEY: &str = "schema_version";
 
 /// Current schema version. Bump this when adding a migration.
-pub const CURRENT_VERSION: u32 = 1;
+pub const CURRENT_VERSION: u32 = 3;
 
 /// Each migration function advances the schema by one version.
 /// Index 0 = migration from v0→v1, index 1 = v1→v2, etc.
@@ -37,7 +37,7 @@ pub const CURRENT_VERSION: u32 = 1;
 /// Migrations receive a write transaction that already has the `_meta`
 /// table open. They must NOT commit — the caller commits once after
 /// all pending migrations succeed.
-const MIGRATIONS: &[fn(&WriteTransaction) -> Result<()>] = &[migrate_0_to_1];
+const MIGRATIONS: &[fn(&WriteTransaction) -> Result<()>] = &[migrate_0_to_1, migrate_1_to_2, migrate_2_to_3];
 
 /// Run all pending migrations. Called from [`Db::open`] on every startup.
 ///
@@ -141,6 +141,20 @@ fn migrate_0_to_1(tx: &WriteTransaction) -> Result<()> {
     Ok(())
 }
 
+/// v1 → v2: Add tool result content store.
+fn migrate_1_to_2(tx: &WriteTransaction) -> Result<()> {
+    use crate::tool_results;
+    tx.open_table(tool_results::TABLE).map_err(db_err)?;
+    Ok(())
+}
+
+/// v2 → v3: Add file read cache.
+fn migrate_2_to_3(tx: &WriteTransaction) -> Result<()> {
+    use crate::file_cache;
+    tx.open_table(file_cache::TABLE).map_err(db_err)?;
+    Ok(())
+}
+
 /// Read the schema version from an already-open database.
 /// Useful for diagnostics / status commands.
 pub fn version(db: &redb::Database) -> Result<u32> {
@@ -239,9 +253,9 @@ mod tests {
         // No _meta table → version 0.
         assert_eq!(read_version(&db)?, 0);
 
-        // Migrate should stamp it as v1 without breaking existing tables.
+        // Migrate should stamp it as current version without breaking existing tables.
         migrate(&db)?;
-        assert_eq!(read_version(&db)?, 1);
+        assert_eq!(read_version(&db)?, CURRENT_VERSION);
         Ok(())
     }
 

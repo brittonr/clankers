@@ -109,11 +109,59 @@ impl Tool for ReadTool {
             return error;
         }
 
+        // Check file read cache for text files (skip if offset/limit specified)
+        if offset.is_none() && limit.is_none() && !Self::is_image_file(path) {
+            if let Some(db) = ctx.db() {
+                if let Ok(metadata) = std::fs::metadata(path) {
+                    use std::os::unix::fs::MetadataExt;
+                    let mtime = metadata.mtime();
+                    let size = metadata.len();
+                    if let Ok(crate::db::file_cache::CacheLookup::Hit(cached)) =
+                        db.file_cache().check(&ctx.session_id(), path_str, mtime, size)
+                    {
+                        ctx.emit_progress(&format!(
+                            "{} ({} lines, cached — read #{} this session)",
+                            path_str, cached.line_count, cached.hit_count + 1
+                        ));
+                        let _ = db.file_cache().record_hit(&ctx.session_id(), path_str);
+                    }
+                }
+            }
+        }
+
         // Handle different file types
         match Self::detect_file_type(path) {
             FileType::Image => Self::read_image_file(ctx, path, path_str).await,
             FileType::Binary => ToolResult::error("Binary file, cannot read"),
-            FileType::Text => Self::read_text_file(ctx, path, path_str, offset, limit).await,
+            FileType::Text => {
+                let result = Self::read_text_file(ctx, path, path_str, offset, limit).await;
+                // Record successful text reads to the file cache
+                if !result.is_error && offset.is_none() && limit.is_none() {
+                    if let Some(db) = ctx.db() {
+                        if let Ok(metadata) = std::fs::metadata(path) {
+                            use std::os::unix::fs::MetadataExt;
+                            let line_count = result.content.iter().filter_map(|c| {
+                                if let ToolResultContent::Text { text } = c { Some(text.lines().count()) } else { None }
+                            }).sum();
+                            let entry = crate::db::file_cache::CachedFileRead {
+                                session_id: ctx.session_id().to_string(),
+                                path: path_str.to_string(),
+                                mtime_secs: metadata.mtime(),
+                                file_size: metadata.len(),
+                                line_count,
+                                hit_count: 0,
+                            };
+                            let db = db.clone();
+                            db.spawn_write(move |db| {
+                                if let Err(e) = db.file_cache().record(&entry) {
+                                    tracing::warn!("Failed to cache file read: {}", e);
+                                }
+                            });
+                        }
+                    }
+                }
+                result
+            },
         }
     }
 }

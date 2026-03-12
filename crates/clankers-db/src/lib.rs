@@ -6,6 +6,7 @@
 //! - **session_index** — fast session listing without scanning JSONL files
 //! - **history** — prompt history for Ctrl+R search
 //! - **usage** — daily token usage / cost tracking
+//! - **tool_results** — full tool result content for compacted context recovery
 //!
 //! ## Async safety
 //!
@@ -14,6 +15,7 @@
 
 pub mod audit;
 pub mod error;
+pub mod file_cache;
 pub mod history;
 
 pub use error::DbError;
@@ -21,6 +23,7 @@ pub use error::db_err;
 pub mod memory;
 pub mod schema;
 pub mod session_index;
+pub mod tool_results;
 pub mod usage;
 
 use std::path::Path;
@@ -145,6 +148,16 @@ impl Db {
     pub fn usage(&self) -> usage::UsageTracker<'_> {
         usage::UsageTracker::new(self)
     }
+
+    /// Tool result content store accessor.
+    pub fn tool_results(&self) -> tool_results::ToolResultStore<'_> {
+        tool_results::ToolResultStore::new(self)
+    }
+
+    /// File read cache accessor.
+    pub fn file_cache(&self) -> file_cache::FileReadCache<'_> {
+        file_cache::FileReadCache::new(self)
+    }
 }
 
 impl std::fmt::Debug for Db {
@@ -183,6 +196,7 @@ mod tests {
         let _ = db.sessions();
         let _ = db.history();
         let _ = db.usage();
+        let _ = db.file_cache();
     }
 
     #[test]

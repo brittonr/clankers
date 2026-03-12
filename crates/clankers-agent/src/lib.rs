@@ -243,6 +243,7 @@ impl Agent {
             self.model_switch_slot.as_ref(),
             self.hook_pipeline.clone(),
             &self.session_id,
+            self.db.clone(),
         )
         .await;
 
@@ -560,6 +561,7 @@ impl Agent {
                 self.model_switch_slot.as_ref(),
                 self.hook_pipeline.clone(),
                 &self.session_id,
+                self.db.clone(),
             )
             .await;
 

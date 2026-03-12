@@ -10,6 +10,7 @@
 //! - `handle_task_results` — prompt completion, login, account switching
 //! - `handle_terminal_events` — key dispatch, mouse, paste, overlays
 
+use std::collections::HashMap;
 use std::io;
 use std::sync::Arc;
 use std::time::Duration;
@@ -62,6 +63,8 @@ pub(crate) struct EventLoopRunner<'a> {
     pub(crate) slash_registry: crate::slash_commands::SlashRegistry,
     // Audit state
     audit: audit::AuditTracker,
+    /// Maps call_id → tool_name for tool result persistence
+    tool_call_names: HashMap<String, String>,
     // Loop mode state
     loop_engine: LoopEngine,
     active_loop_id: Option<LoopId>,
@@ -111,6 +114,7 @@ impl<'a> EventLoopRunner<'a> {
             settings,
             slash_registry,
             audit: audit::AuditTracker::new(),
+            tool_call_names: HashMap::new(),
             loop_engine: LoopEngine::new(),
             active_loop_id: None,
             loop_turn_output: String::new(),
@@ -219,6 +223,7 @@ impl<'a> EventLoopRunner<'a> {
         } = event
         {
             self.audit.start_call(call_id, tool_name, input);
+            self.tool_call_names.insert(call_id.clone(), tool_name.clone());
 
             if tool_name == "signal_loop_success"
                 && let Some(ref id) = self.active_loop_id
@@ -250,6 +255,43 @@ impl<'a> EventLoopRunner<'a> {
         {
             self.audit
                 .end_call(call_id, result, *is_error, &self.app.session_id, db);
+
+            // Persist full tool result content to redb for context compaction
+            let tool_name = self.tool_call_names.remove(call_id).unwrap_or_default();
+            let content_text: String = result
+                .content
+                .iter()
+                .filter_map(|c| {
+                    if let crate::tools::ToolResultContent::Text { text } = c {
+                        Some(text.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            let has_image = result.content.iter().any(|c| matches!(c, crate::tools::ToolResultContent::Image { .. }));
+            let line_count = content_text.lines().count();
+            let byte_count = content_text.len();
+
+            let session_id = self.app.session_id.clone();
+            let call_id = call_id.clone();
+            let is_error = *is_error;
+            db.spawn_write(move |db| {
+                let entry = crate::db::tool_results::StoredToolResult {
+                    session_id,
+                    call_id,
+                    tool_name,
+                    content_text,
+                    has_image,
+                    is_error,
+                    byte_count,
+                    line_count,
+                };
+                if let Err(e) = db.tool_results().store(&entry) {
+                    tracing::warn!("Failed to store tool result: {}", e);
+                }
+            });
         }
     }
 
