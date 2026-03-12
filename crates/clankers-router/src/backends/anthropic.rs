@@ -337,7 +337,7 @@ fn build_request_body(request: &CompletionRequest, is_oauth: bool) -> Result<Val
     }
 
     if !request.tools.is_empty() {
-        let tools: Vec<Value> = request
+        let mut tools: Vec<Value> = request
             .tools
             .iter()
             .map(|t| {
@@ -348,7 +348,30 @@ fn build_request_body(request: &CompletionRequest, is_oauth: bool) -> Result<Val
                 })
             })
             .collect();
+
+        // Cache the last tool definition (Anthropic caching convention)
+        if let Some(last) = tools.last_mut() {
+            last["cache_control"] = json!({"type": "ephemeral"});
+        }
+
         body["tools"] = json!(tools);
+    }
+
+    // Conversation caching: tag the last user message's last content block.
+    // Anthropic caches the request prefix up to each cache_control breakpoint.
+    // Since conversations are append-only, the prefix through the last user
+    // message is identical across turns → near-perfect cache hits.
+    if let Some(messages) = body["messages"].as_array_mut() {
+        for msg in messages.iter_mut().rev() {
+            if msg["role"] == "user" {
+                if let Some(content) = msg["content"].as_array_mut() {
+                    if let Some(last_block) = content.last_mut() {
+                        last_block["cache_control"] = json!({"type": "ephemeral"});
+                    }
+                }
+                break;
+            }
+        }
     }
 
     if let Some(thinking) = &request.thinking

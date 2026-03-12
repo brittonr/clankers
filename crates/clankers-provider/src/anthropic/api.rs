@@ -77,7 +77,11 @@ pub(crate) struct ApiMessage {
 #[serde(tag = "type")]
 pub(crate) enum ApiContentBlock {
     #[serde(rename = "text")]
-    Text { text: String },
+    Text {
+        text: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
+    },
     #[serde(rename = "image")]
     Image { source: ApiImageSource },
     #[serde(rename = "tool_use")]
@@ -88,9 +92,23 @@ pub(crate) enum ApiContentBlock {
         content: Vec<ApiContentBlock>,
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        cache_control: Option<CacheControl>,
     },
     #[serde(rename = "thinking")]
     Thinking { thinking: String, signature: String },
+}
+
+impl ApiContentBlock {
+    /// Set cache_control on content blocks that support it (Text, ToolResult).
+    /// No-op for Image, ToolUse, Thinking.
+    pub fn set_cache_control(&mut self, cc: CacheControl) {
+        match self {
+            Self::Text { cache_control, .. } => *cache_control = Some(cc),
+            Self::ToolResult { cache_control, .. } => *cache_control = Some(cc),
+            _ => {}
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -252,7 +270,18 @@ pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> 
         });
     }
 
-    let messages = convert_messages(&request.messages);
+    let mut messages = convert_messages(&request.messages);
+
+    // Conversation caching: tag the last user message's last content block.
+    // Anthropic caches the request prefix up to each cache_control breakpoint.
+    // Since conversations are append-only, the prefix through the last user
+    // message is identical across turns → near-perfect cache hits.
+    if let Some(last_user) = messages.iter_mut().rev().find(|m| m.role == "user") {
+        if let Some(last_block) = last_user.content.last_mut() {
+            last_block.set_cache_control(CacheControl::ephemeral());
+        }
+    }
+
     let tools = if request.tools.is_empty() {
         None
     } else {
@@ -314,6 +343,7 @@ fn convert_messages(messages: &[crate::message::AgentMessage]) -> Vec<ApiMessage
                         tool_use_id: result.call_id.clone(),
                         content: content_blocks,
                         is_error: if result.is_error { Some(true) } else { None },
+                        cache_control: None,
                     }],
                 });
             }
@@ -330,7 +360,10 @@ fn convert_content_block(content: &crate::message::Content) -> ApiContentBlock {
     use crate::message::Content;
     use crate::message::ImageSource;
     match content {
-        Content::Text { text } => ApiContentBlock::Text { text: text.clone() },
+        Content::Text { text } => ApiContentBlock::Text {
+            text: text.clone(),
+            cache_control: None,
+        },
         Content::Image { source } => match source {
             ImageSource::Base64 { media_type, data } => ApiContentBlock::Image {
                 source: ApiImageSource {
@@ -343,6 +376,7 @@ fn convert_content_block(content: &crate::message::Content) -> ApiContentBlock {
                 // Anthropic doesn't support URL images directly, convert to text fallback
                 ApiContentBlock::Text {
                     text: format!("[Image URL: {}]", url),
+                    cache_control: None,
                 }
             }
         },
@@ -367,6 +401,7 @@ fn convert_content_block(content: &crate::message::Content) -> ApiContentBlock {
                 tool_use_id: tool_use_id.clone(),
                 content: blocks,
                 is_error: *is_error,
+                cache_control: None,
             }
         }
     }
