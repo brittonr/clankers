@@ -20,6 +20,15 @@ pub struct SubagentTool {
     definition: ToolDefinition,
     panel_tx: Option<PanelTx>,
     process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
+    /// When set, spawn in-process agent actors instead of subprocesses.
+    actor_ctx: Option<ActorContext>,
+}
+
+/// Context for in-process agent spawning (daemon mode).
+#[derive(Clone)]
+pub struct ActorContext {
+    pub registry: clankers_actor::ProcessRegistry,
+    pub factory: std::sync::Arc<crate::modes::daemon::socket_bridge::SessionFactory>,
 }
 
 impl Default for SubagentTool {
@@ -33,6 +42,7 @@ impl SubagentTool {
         Self {
             panel_tx: None,
             process_monitor: None,
+            actor_ctx: None,
             definition: Self::make_definition(),
         }
     }
@@ -45,6 +55,12 @@ impl SubagentTool {
     /// Attach a process monitor to track spawned subagents.
     pub fn with_process_monitor(mut self, monitor: crate::procmon::ProcessMonitorHandle) -> Self {
         self.process_monitor = Some(monitor);
+        self
+    }
+
+    /// Enable in-process agent spawning (daemon mode).
+    pub fn with_actor_ctx(mut self, ctx: ActorContext) -> Self {
+        self.actor_ctx = Some(ctx);
         self
     }
 
@@ -110,6 +126,7 @@ impl Tool for SubagentTool {
         let call_id = ctx.call_id.clone();
         let signal = ctx.signal.clone();
         let process_monitor = self.process_monitor.as_ref();
+        let actor_ctx = self.actor_ctx.as_ref();
 
         if let Some(task) = params.get("task").and_then(|v| v.as_str()) {
             let preview: String = task.chars().take(80).collect();
@@ -122,6 +139,7 @@ impl Tool for SubagentTool {
                 &call_id,
                 signal,
                 process_monitor,
+                actor_ctx,
             )
             .await
         } else if let Some(tasks) = params.get("tasks").and_then(|v| v.as_array()) {
@@ -134,6 +152,7 @@ impl Tool for SubagentTool {
                 &call_id,
                 signal,
                 process_monitor,
+                actor_ctx,
             )
             .await
         } else if let Some(chain) = params.get("chain").and_then(|v| v.as_array()) {
@@ -146,6 +165,7 @@ impl Tool for SubagentTool {
                 &call_id,
                 signal,
                 process_monitor,
+                actor_ctx,
             )
             .await
         } else {
@@ -164,8 +184,24 @@ async fn run_single(
     call_id: &str,
     signal: CancellationToken,
     process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    actor_ctx: Option<&ActorContext>,
 ) -> ToolResult {
-    match spawn_subprocess(task, agent, cwd, panel_tx, call_id, signal, process_monitor).await {
+    let result = if let Some(ctx) = actor_ctx {
+        crate::modes::daemon::agent_process::run_ephemeral_agent(
+            &ctx.registry,
+            &ctx.factory,
+            task,
+            agent,
+            None,
+            panel_tx,
+            call_id,
+            signal,
+        )
+        .await
+    } else {
+        spawn_subprocess(task, agent, cwd, panel_tx, call_id, signal, process_monitor).await
+    };
+    match result {
         Ok(output) => ToolResult::text(output),
         Err(e) => ToolResult::error(format!("Subagent failed: {}", e)),
     }
@@ -181,6 +217,7 @@ async fn run_parallel(
     call_id: &str,
     signal: CancellationToken,
     process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    actor_ctx: Option<&ActorContext>,
 ) -> ToolResult {
     if tasks.len() > 8 {
         return ToolResult::error("Maximum 8 parallel tasks allowed");
@@ -204,11 +241,26 @@ async fn run_parallel(
         let sig = signal.clone();
         let ptx = panel_tx.cloned();
         let pmon = process_monitor.cloned();
+        let actx = actor_ctx.cloned();
         let cid = format!("{}:parallel:{}", call_id, i);
 
         handles.push(tokio::spawn(async move {
             let _permit = sem.acquire().await;
-            spawn_subprocess(&task_text, agent.as_deref(), cwd.as_deref(), ptx.as_ref(), &cid, sig, pmon.as_ref()).await
+            if let Some(ctx) = &actx {
+                crate::modes::daemon::agent_process::run_ephemeral_agent(
+                    &ctx.registry,
+                    &ctx.factory,
+                    &task_text,
+                    agent.as_deref(),
+                    None,
+                    ptx.as_ref(),
+                    &cid,
+                    sig,
+                )
+                .await
+            } else {
+                spawn_subprocess(&task_text, agent.as_deref(), cwd.as_deref(), ptx.as_ref(), &cid, sig, pmon.as_ref()).await
+            }
         }));
     }
 
@@ -234,6 +286,7 @@ async fn run_chain(
     call_id: &str,
     signal: CancellationToken,
     process_monitor: Option<&crate::procmon::ProcessMonitorHandle>,
+    actor_ctx: Option<&ActorContext>,
 ) -> ToolResult {
     let mut previous_output = String::new();
 
@@ -246,7 +299,22 @@ async fn run_chain(
         let agent = step.get("agent").and_then(|v| v.as_str()).or(default_agent);
         let step_cid = format!("{}:chain:{}", call_id, i);
 
-        match spawn_subprocess(&task_text, agent, cwd, panel_tx, &step_cid, signal.clone(), process_monitor).await {
+        let result = if let Some(ctx) = actor_ctx {
+            crate::modes::daemon::agent_process::run_ephemeral_agent(
+                &ctx.registry,
+                &ctx.factory,
+                &task_text,
+                agent,
+                None,
+                panel_tx,
+                &step_cid,
+                signal.clone(),
+            )
+            .await
+        } else {
+            spawn_subprocess(&task_text, agent, cwd, panel_tx, &step_cid, signal.clone(), process_monitor).await
+        };
+        match result {
             Ok(output) => previous_output = output,
             Err(e) => return ToolResult::error(format!("Chain step {} failed: {}", i, e)),
         }

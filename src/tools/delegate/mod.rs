@@ -54,6 +54,8 @@ pub struct DelegateTool {
     shared_endpoint: SharedEndpoint,
     /// Process monitor for tracking spawned workers
     process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
+    /// When set, spawn in-process agent actors instead of subprocesses.
+    actor_ctx: Option<crate::tools::subagent::ActorContext>,
 }
 
 impl Default for DelegateTool {
@@ -68,6 +70,7 @@ impl DelegateTool {
             shared_endpoint: Arc::new(tokio::sync::OnceCell::new()),
             panel_tx: None,
             process_monitor: None,
+            actor_ctx: None,
             definition: ToolDefinition {
                 name: "delegate_task".to_string(),
                 description: "Delegate a task to a worker. Can route to a local subprocess or a remote clankers peer via iroh P2P.\n\nRouting:\n- Specify 'peer' (name or node_id) to target a specific remote peer\n- Specify 'tag' to auto-find a peer with that capability tag\n- Otherwise runs locally as a subprocess".to_string(),
@@ -123,6 +126,12 @@ impl DelegateTool {
     /// Attach a process monitor to track spawned workers.
     pub fn with_process_monitor(mut self, monitor: crate::procmon::ProcessMonitorHandle) -> Self {
         self.process_monitor = Some(monitor);
+        self
+    }
+
+    /// Enable in-process agent spawning (daemon mode).
+    pub fn with_actor_ctx(mut self, ctx: crate::tools::subagent::ActorContext) -> Self {
+        self.actor_ctx = Some(ctx);
         self
     }
 
@@ -228,7 +237,7 @@ impl Tool for DelegateTool {
             .await
         } else {
             ctx.emit_progress(&format!("spawning local worker '{}'", worker_name));
-            // Local subprocess
+            // Local worker
             {
                 let mut workers = self.workers.lock().await;
                 workers.entry(worker_name.clone()).or_insert_with(|| {
@@ -236,16 +245,36 @@ impl Tool for DelegateTool {
                 });
             }
 
-            run_worker_subprocess(
-                &worker_name,
-                &task,
-                agent.as_deref(),
-                cwd.as_deref(),
-                self.panel_tx.as_ref(),
-                signal,
-                self.process_monitor.as_ref(),
-            )
-            .await
+            if let Some(actx) = &self.actor_ctx {
+                // In-process agent actor (daemon mode)
+                match crate::modes::daemon::agent_process::run_ephemeral_agent(
+                    &actx.registry,
+                    &actx.factory,
+                    &task,
+                    agent.as_deref(),
+                    None,
+                    self.panel_tx.as_ref(),
+                    &worker_name,
+                    signal,
+                )
+                .await
+                {
+                    Ok(output) => ToolResult::text(output),
+                    Err(e) => ToolResult::error(format!("Worker failed: {}", e)),
+                }
+            } else {
+                // Subprocess fallback
+                run_worker_subprocess(
+                    &worker_name,
+                    &task,
+                    agent.as_deref(),
+                    cwd.as_deref(),
+                    self.panel_tx.as_ref(),
+                    signal,
+                    self.process_monitor.as_ref(),
+                )
+                .await
+            }
         }
     }
 }

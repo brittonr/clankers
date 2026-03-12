@@ -96,15 +96,16 @@ pub async fn run_daemon(
         clankers_controller::transport::DaemonState::new(),
     ));
 
+    let process_registry = clankers_actor::ProcessRegistry::new();
+
     let session_factory = Arc::new(socket_bridge::SessionFactory {
         provider: Arc::clone(&provider),
         tools: tools.clone(),
         settings: config.settings.clone(),
         default_model: config.model.clone(),
         default_system_prompt: config.system_prompt.clone(),
+        registry: Some(process_registry.clone()),
     });
-
-    let process_registry = clankers_actor::ProcessRegistry::new();
 
     let socket_handle = spawn_socket_control_plane_shared(
         Arc::clone(&daemon_state),

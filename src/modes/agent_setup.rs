@@ -49,6 +49,7 @@ pub(crate) fn build_agent_with_tools(
         todo_tx: Some(todo_tx),
         bash_confirm_tx: Some(bash_confirm_tx),
         process_monitor: Some(process_monitor),
+        actor_ctx: None,
     };
     let tiered_tools = crate::modes::common::build_all_tiered_tools(&tool_env, plugin_manager);
 

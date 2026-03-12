@@ -262,6 +262,7 @@ async fn run_event_loop(
         todo_tx: None,
         bash_confirm_tx: None,
         process_monitor: None,
+        actor_ctx: None,
     };
 
     super::agent_task::spawn_agent_task(agent, cmd_rx, done_tx, tool_env_for_rebuild, plugin_manager.clone());

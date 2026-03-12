@@ -56,6 +56,7 @@ async fn test_control_socket_list_empty() {
         settings: clankers_config::settings::Settings::default(),
         default_model: "test-model".to_string(),
         default_system_prompt: "You are a test.".to_string(),
+        registry: None,
     });
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
@@ -113,6 +114,7 @@ async fn test_control_socket_create_session() {
         settings: clankers_config::settings::Settings::default(),
         default_model: "test-model".to_string(),
         default_system_prompt: "You are a test.".to_string(),
+        registry: None,
     });
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);

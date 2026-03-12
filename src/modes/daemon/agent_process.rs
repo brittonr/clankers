@@ -22,10 +22,15 @@ use clankers_protocol::SessionCommand;
 use clankers_tui_types::SubagentEvent;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use tracing::info;
+use tracing::warn;
 
 use super::socket_bridge::SessionFactory;
+
+/// Maximum bytes collected from agent text output.
+const MAX_COLLECTED_BYTES: usize = 512 * 1024;
 
 /// Spawn a session controller as a named actor process.
 ///
@@ -176,4 +181,136 @@ async fn run_agent_actor(
     controller.shutdown().await;
     info!("agent process stopped: {session_id}");
     DeathReason::Normal
+}
+
+// ── Ephemeral agent runner ──────────────────────────────────────────────────
+
+/// Spawn an in-process agent, send a single prompt, collect text output,
+/// and return when the agent finishes.
+///
+/// Used by SubagentTool and DelegateTool in daemon mode instead of
+/// forking a subprocess.
+///
+/// `panel_tx` receives `SubagentEvent`s for TUI streaming.
+/// `signal` cancels the agent on parent abort.
+pub async fn run_ephemeral_agent(
+    registry: &ProcessRegistry,
+    factory: &SessionFactory,
+    task: &str,
+    agent_def: Option<&str>,
+    parent_pid: Option<ProcessId>,
+    panel_tx: Option<&mpsc::UnboundedSender<SubagentEvent>>,
+    sub_id: &str,
+    signal: CancellationToken,
+) -> Result<String, String> {
+    let session_id = clankers_message::generate_id();
+
+    // Resolve agent definition to model + system prompt overrides
+    let (model, system_prompt) = resolve_agent_def(agent_def, factory);
+
+    let (pid, cmd_tx, event_tx) = spawn_agent_process(
+        registry,
+        factory,
+        session_id.clone(),
+        model,
+        system_prompt,
+        parent_pid,
+    );
+
+    let mut event_rx = event_tx.subscribe();
+
+    // Send the prompt
+    let _ = cmd_tx.send(SessionCommand::Prompt {
+        text: task.to_string(),
+        images: vec![],
+    });
+
+    // Collect text from DaemonEvent stream
+    let mut collected = String::new();
+
+    loop {
+        tokio::select! {
+            event = event_rx.recv() => {
+                match event {
+                    Ok(DaemonEvent::TextDelta { text, .. }) => {
+                        if let Some(tx) = panel_tx {
+                            let _ = tx.send(SubagentEvent::Output {
+                                id: sub_id.to_string(),
+                                line: text.clone(),
+                            });
+                        }
+                        if collected.len() < MAX_COLLECTED_BYTES {
+                            collected.push_str(&text);
+                        }
+                    }
+                    Ok(DaemonEvent::AgentEnd) => {
+                        if let Some(tx) = panel_tx {
+                            let _ = tx.send(SubagentEvent::Done {
+                                id: sub_id.to_string(),
+                            });
+                        }
+                        break;
+                    }
+                    Ok(DaemonEvent::PromptDone { error: Some(msg) }) => {
+                        if let Some(tx) = panel_tx {
+                            let _ = tx.send(SubagentEvent::Error {
+                                id: sub_id.to_string(),
+                                message: msg.clone(),
+                            });
+                        }
+                        let _ = cmd_tx.send(SessionCommand::Disconnect);
+                        return Err(msg);
+                    }
+                    Err(broadcast::error::RecvError::Closed) => break,
+                    Err(broadcast::error::RecvError::Lagged(n)) => {
+                        warn!("ephemeral agent {session_id}: skipped {n} events");
+                    }
+                    _ => {}
+                }
+            }
+            () = signal.cancelled() => {
+                // Parent cancelled — kill the agent actor
+                registry.send(pid, Signal::Kill);
+                if let Some(tx) = panel_tx {
+                    let _ = tx.send(SubagentEvent::Error {
+                        id: sub_id.to_string(),
+                        message: "Cancelled".into(),
+                    });
+                }
+                return Err("Cancelled".to_string());
+            }
+        }
+    }
+
+    // Disconnect cleanly
+    let _ = cmd_tx.send(SessionCommand::Disconnect);
+
+    Ok(collected)
+}
+
+/// Resolve agent definition name to (model, system_prompt) overrides.
+fn resolve_agent_def(
+    agent_def: Option<&str>,
+    _factory: &SessionFactory,
+) -> (Option<String>, Option<String>) {
+    let Some(name) = agent_def else {
+        return (None, None);
+    };
+
+    let paths = clankers_config::paths::ClankersPaths::resolve();
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let project_paths = clankers_config::paths::ProjectPaths::resolve(&cwd);
+
+    let registry = crate::agent_defs::discovery::discover_agents(
+        &paths.global_agents_dir,
+        Some(&project_paths.agents_dir),
+        &crate::agent_defs::definition::AgentScope::Both,
+    );
+
+    if let Some(def) = registry.get(name) {
+        (def.model.clone(), Some(def.system_prompt.clone()))
+    } else {
+        debug!("agent definition '{name}' not found, using defaults");
+        (None, None)
+    }
 }

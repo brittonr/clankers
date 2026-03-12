@@ -183,6 +183,8 @@ pub struct ToolEnv {
     pub bash_confirm_tx: Option<crate::tools::bash::ConfirmTx>,
     /// Shared process monitor for tracking child processes.
     pub process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
+    /// Actor context for in-process subagent/delegate spawning (daemon mode).
+    pub actor_ctx: Option<crate::tools::subagent::ActorContext>,
 }
 
 /// Build all tools with tier assignments, wiring up channels from a [`ToolEnv`].
@@ -211,6 +213,9 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
     if let Some(ref pm) = process_monitor {
         subagent_tool = subagent_tool.with_process_monitor(pm.clone());
     }
+    if let Some(ref actx) = env.actor_ctx {
+        subagent_tool = subagent_tool.with_actor_ctx(actx.clone());
+    }
 
     let mut delegate_tool = crate::tools::delegate::DelegateTool::new();
     if let Some(ref ptx) = panel_tx {
@@ -225,6 +230,9 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
     }
     if let Some(ref pm) = process_monitor {
         delegate_tool = delegate_tool.with_process_monitor(pm.clone());
+    }
+    if let Some(ref actx) = env.actor_ctx {
+        delegate_tool = delegate_tool.with_actor_ctx(actx.clone());
     }
 
     let mut todo_tool = crate::tools::todo::TodoTool::new();

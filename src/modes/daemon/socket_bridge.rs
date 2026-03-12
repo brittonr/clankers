@@ -37,6 +37,7 @@ pub struct SessionFactory {
     pub settings: Settings,
     pub default_model: String,
     pub default_system_prompt: String,
+    pub registry: Option<ProcessRegistry>,
 }
 
 impl SessionFactory {
@@ -48,8 +49,23 @@ impl SessionFactory {
         &self,
         panel_tx: mpsc::UnboundedSender<SubagentEvent>,
     ) -> Vec<Arc<dyn Tool>> {
+        let actor_ctx = self.registry.as_ref().map(|reg| {
+            crate::tools::subagent::ActorContext {
+                registry: reg.clone(),
+                factory: std::sync::Arc::new(Self {
+                    provider: Arc::clone(&self.provider),
+                    tools: self.tools.clone(),
+                    settings: self.settings.clone(),
+                    default_model: self.default_model.clone(),
+                    default_system_prompt: self.default_system_prompt.clone(),
+                    // Don't recurse — child agents use subprocess fallback
+                    registry: None,
+                }),
+            }
+        });
         let env = crate::modes::common::ToolEnv {
             panel_tx: Some(panel_tx),
+            actor_ctx,
             ..Default::default()
         };
         let tiered = crate::modes::common::build_tiered_tools(&env);
