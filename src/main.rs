@@ -212,17 +212,8 @@ async fn dispatch(
         Some(Commands::Token { action }) => {
             clankers::commands::token::run(&ctx, action)?;
         }
-        Some(Commands::Daemon {
-            tags,
-            allow_all,
-            matrix,
-            heartbeat,
-            max_sessions,
-        }) => {
-            clankers::commands::daemon::run_daemon(&ctx, tags, allow_all, matrix, heartbeat, max_sessions).await?;
-        }
-        Some(Commands::DaemonSessions { action }) => {
-            clankers::commands::daemon_sessions::run(action).await?;
+        Some(Commands::Daemon { action }) => {
+            clankers::commands::daemon::dispatch(&ctx, action).await?;
         }
         Some(Commands::MergeDaemon { interval, once }) => {
             clankers::commands::daemon::run_merge_daemon(&ctx, interval, once).await?;
@@ -234,7 +225,7 @@ async fn dispatch(
             clankers::modes::attach::run_attach(session_id, new, model, &ctx.settings).await?;
         }
         Some(Commands::Ps { all }) => {
-            clankers::commands::daemon_sessions::run_ps(all).await?;
+            clankers::commands::daemon::dispatch_sessions(all).await?;
         }
         Some(_) => {
             eprintln!("This command is not yet implemented.");

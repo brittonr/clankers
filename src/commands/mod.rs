@@ -7,7 +7,7 @@
 pub mod auth;
 pub mod config;
 pub mod daemon;
-pub mod daemon_sessions;
+
 pub mod plugin;
 pub mod rpc;
 pub mod session;

@@ -300,33 +300,15 @@ pub enum Commands {
         #[command(subcommand)]
         action: RpcAction,
     },
-    /// Run as a headless daemon — listens on iroh (+ optional Matrix) for incoming messages
+    /// Run and manage the background daemon
     Daemon {
-        /// Capability tags to advertise (comma-separated)
-        #[arg(long, value_delimiter = ',')]
-        tags: Vec<String>,
-        /// Allow all iroh peers (no allowlist check)
-        #[arg(long)]
-        allow_all: bool,
-        /// Enable Matrix bridge
-        #[arg(long)]
-        matrix: bool,
-        /// Heartbeat interval in seconds (0 = disabled)
-        #[arg(long, default_value_t = 60)]
-        heartbeat: u64,
-        /// Maximum concurrent sessions
-        #[arg(long, default_value_t = 32)]
-        max_sessions: usize,
+        #[command(subcommand)]
+        action: DaemonAction,
     },
     /// Manage capability tokens (UCAN auth)
     Token {
         #[command(subcommand)]
         action: TokenAction,
-    },
-    /// List or manage daemon sessions (via control socket)
-    DaemonSessions {
-        #[command(subcommand)]
-        action: DaemonSessionAction,
     },
     /// Run the merge daemon (watches for completed workers and auto-merges)
     MergeDaemon {
@@ -348,7 +330,7 @@ pub enum Commands {
         #[arg(long)]
         model: Option<String>,
     },
-    /// List daemon sessions (shorthand for daemon-sessions list)
+    /// List daemon sessions (shorthand for `daemon sessions`)
     Ps {
         /// Show all details including socket paths
         #[arg(short, long)]
@@ -786,11 +768,38 @@ pub enum TokenAction {
 }
 
 #[derive(Subcommand, Debug)]
-pub enum DaemonSessionAction {
-    /// List active daemon sessions
-    List,
+pub enum DaemonAction {
+    /// Start the daemon (foreground by default, -d to background)
+    Start {
+        /// Run in the background (daemonize)
+        #[arg(short = 'd', long)]
+        background: bool,
+        /// Capability tags to advertise (comma-separated)
+        #[arg(long, value_delimiter = ',')]
+        tags: Vec<String>,
+        /// Allow all iroh peers (no allowlist check)
+        #[arg(long)]
+        allow_all: bool,
+        /// Enable Matrix bridge
+        #[arg(long)]
+        matrix: bool,
+        /// Heartbeat interval in seconds (0 = disabled)
+        #[arg(long, default_value_t = 60)]
+        heartbeat: u64,
+        /// Maximum concurrent sessions
+        #[arg(long, default_value_t = 32)]
+        max_sessions: usize,
+    },
+    /// Stop the running daemon
+    Stop,
     /// Show daemon status
     Status,
+    /// List active sessions
+    Sessions {
+        /// Show all details including socket paths
+        #[arg(short, long)]
+        all: bool,
+    },
     /// Create a new session on the daemon
     Create {
         /// Model to use (default: daemon's default)
@@ -805,6 +814,13 @@ pub enum DaemonSessionAction {
         /// Session ID
         session_id: String,
     },
-    /// Shutdown the daemon
-    Shutdown,
+    /// Tail daemon logs
+    Logs {
+        /// Follow log output (like tail -f)
+        #[arg(short, long)]
+        follow: bool,
+        /// Number of lines to show (default: 50)
+        #[arg(short, long, default_value_t = 50)]
+        lines: usize,
+    },
 }

@@ -61,6 +61,20 @@ pub fn pid_file_path() -> PathBuf {
     socket_dir().join("daemon.pid")
 }
 
+/// Path to the daemon log file.
+pub fn daemon_log_path() -> PathBuf {
+    socket_dir().join("daemon.log")
+}
+
+/// Read the PID from the PID file, if it exists and the process is alive.
+/// Returns `None` if no daemon is running.
+pub fn running_daemon_pid() -> Option<u32> {
+    let pid_path = pid_file_path();
+    let pid_str = std::fs::read_to_string(pid_path).ok()?;
+    let pid: u32 = pid_str.trim().parse().ok()?;
+    if is_process_alive(pid) { Some(pid) } else { None }
+}
+
 /// Create the socket directory and write the PID file.
 /// Returns an error if another daemon is already running.
 pub fn init_socket_dir() -> std::io::Result<()> {

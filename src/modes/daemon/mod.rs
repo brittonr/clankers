@@ -102,10 +102,14 @@ pub async fn run_daemon(
     spawn_idle_reaper(&config, Arc::clone(&store), cancel.clone());
 
     let ctrl_sock = clankers_controller::transport::control_socket_path();
+    let log_path = clankers_controller::transport::daemon_log_path();
     println!("\nListening... (Ctrl+C to stop)\n");
     println!("Chat:    clankers rpc prompt {} \"hello\"", node_id);
     println!("Ping:    clankers rpc ping {}", node_id);
     println!("Control: {}", ctrl_sock.display());
+    println!("Logs:    {}", log_path.display());
+    println!("Status:  clankers daemon status");
+    println!("Attach:  clankers attach");
 
     // Phase 6: Wait for shutdown
     tokio::signal::ctrl_c().await.ok();
