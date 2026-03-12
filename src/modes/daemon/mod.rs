@@ -29,6 +29,7 @@ use crate::modes::rpc::iroh;
 use crate::provider::Provider;
 use crate::tools::Tool;
 
+pub mod agent_process;
 mod config;
 mod handlers;
 pub mod quic_bridge;
@@ -88,7 +89,7 @@ pub async fn run_daemon(
 
     print_startup_banner(&config, &node_id);
 
-    // Phase 4: Unix domain socket control plane + shared factory
+    // Phase 4: Unix domain socket control plane + shared factory + actor registry
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
     let daemon_state = Arc::new(tokio::sync::Mutex::new(
@@ -103,9 +104,12 @@ pub async fn run_daemon(
         default_system_prompt: config.system_prompt.clone(),
     });
 
+    let process_registry = clankers_actor::ProcessRegistry::new();
+
     let socket_handle = spawn_socket_control_plane_shared(
         Arc::clone(&daemon_state),
         Arc::clone(&session_factory),
+        process_registry.clone(),
         shutdown_rx.clone(),
     );
 
@@ -164,6 +168,7 @@ pub async fn run_daemon(
 fn spawn_socket_control_plane_shared(
     daemon_state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
     factory: Arc<socket_bridge::SessionFactory>,
+    registry: clankers_actor::ProcessRegistry,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) -> tokio::task::JoinHandle<()> {
     // Init socket directory (PID file, stale cleanup)
@@ -173,7 +178,7 @@ fn spawn_socket_control_plane_shared(
     }
 
     tokio::spawn(async move {
-        socket_bridge::run_control_socket_with_factory(daemon_state, factory, shutdown_rx).await;
+        socket_bridge::run_control_socket_with_factory(daemon_state, factory, registry, shutdown_rx).await;
     })
 }
 

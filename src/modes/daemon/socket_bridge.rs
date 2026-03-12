@@ -6,8 +6,8 @@
 
 use std::sync::Arc;
 
+use clankers_actor::ProcessRegistry;
 use clankers_controller::SessionController;
-use clankers_controller::config::ControllerConfig;
 use clankers_controller::transport::DaemonState;
 use clankers_controller::transport::SessionHandle;
 use clankers_controller::transport::session_socket_path;
@@ -71,6 +71,7 @@ impl SessionFactory {
 pub async fn run_control_socket_with_factory(
     state: Arc<Mutex<DaemonState>>,
     factory: Arc<SessionFactory>,
+    registry: ProcessRegistry,
     shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
     let path = clankers_controller::transport::control_socket_path();
@@ -92,9 +93,10 @@ pub async fn run_control_socket_with_factory(
                     Ok((stream, _)) => {
                         let state = Arc::clone(&state);
                         let factory = Arc::clone(&factory);
+                        let registry = registry.clone();
                         let shutdown = shutdown.clone();
                         tokio::spawn(async move {
-                            if let Err(e) = handle_control(stream, state, factory, shutdown).await {
+                            if let Err(e) = handle_control(stream, state, factory, registry, shutdown).await {
                                 debug!("control connection ended: {e}");
                             }
                         });
@@ -116,6 +118,7 @@ async fn handle_control(
     mut stream: tokio::net::UnixStream,
     state: Arc<Mutex<DaemonState>>,
     factory: Arc<SessionFactory>,
+    registry: ProcessRegistry,
     shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), clankers_protocol::frame::FrameError> {
     let (mut reader, mut writer) = stream.split();
@@ -129,38 +132,17 @@ async fn handle_control(
             token: _,
         } => {
             let session_id = clankers_message::generate_id();
-            let model = model.unwrap_or_else(|| factory.default_model.clone());
-            let system_prompt =
-                system_prompt.unwrap_or_else(|| factory.default_system_prompt.clone());
+            let resolved_model = model.clone().unwrap_or_else(|| factory.default_model.clone());
 
-            // Create subagent event channel for this session
-            let (panel_tx, panel_rx) = mpsc::unbounded_channel::<SubagentEvent>();
-
-            // Build tools with panel_tx for subagent event routing
-            let tools = factory.build_tools_with_panel_tx(panel_tx);
-
-            // Build the agent
-            let agent = crate::agent::builder::AgentBuilder::new(
-                Arc::clone(&factory.provider),
-                factory.settings.clone(),
-                model.clone(),
-                system_prompt.clone(),
-            )
-            .with_tools(tools)
-            .build();
-
-            let config = ControllerConfig {
-                session_id: session_id.clone(),
-                model: model.clone(),
-                system_prompt: Some(system_prompt),
-                ..Default::default()
-            };
-
-            let controller = SessionController::new(agent, config);
-
-            // Create channels
-            let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<SessionCommand>();
-            let (event_tx, _) = broadcast::channel::<DaemonEvent>(256);
+            // Spawn as an actor process in the registry
+            let (_pid, cmd_tx, event_tx) = super::agent_process::spawn_agent_process(
+                &registry,
+                &factory,
+                session_id.clone(),
+                model,
+                system_prompt,
+                None,
+            );
 
             let socket_path = session_socket_path(&session_id);
 
@@ -169,7 +151,7 @@ async fn handle_control(
                 let mut st = state.lock().await;
                 st.sessions.insert(session_id.clone(), SessionHandle {
                     session_id: session_id.clone(),
-                    model: model.clone(),
+                    model: resolved_model.clone(),
                     turn_count: 0,
                     last_active: chrono::Utc::now().to_rfc3339(),
                     client_count: 0,
@@ -178,13 +160,6 @@ async fn handle_control(
                     socket_path: socket_path.clone(),
                 });
             }
-
-            // Spawn the session driver (controller loop)
-            let driver_event_tx = event_tx.clone();
-            let driver_session_id = session_id.clone();
-            tokio::spawn(async move {
-                run_session_driver(controller, cmd_rx, driver_event_tx, driver_session_id, panel_rx).await;
-            });
 
             // Spawn the session socket listener
             let sock_shutdown = shutdown.clone();
@@ -201,7 +176,7 @@ async fn handle_control(
                 .await;
             });
 
-            info!("created session {session_id} (model: {model})");
+            info!("created session {session_id} (model: {resolved_model})");
             ControlResponse::Created {
                 session_id,
                 socket_path: socket_path.to_string_lossy().into_owned(),
@@ -325,7 +300,7 @@ async fn run_session_driver(
 }
 
 /// Drain controller events and subagent panel events, broadcasting all as DaemonEvents.
-fn drain_and_broadcast(
+pub fn drain_and_broadcast(
     controller: &mut SessionController,
     event_tx: &broadcast::Sender<DaemonEvent>,
     panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,

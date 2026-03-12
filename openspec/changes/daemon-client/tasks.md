@@ -86,7 +86,7 @@
 - [x] Implement `ProcessRegistry` with DashMap
 - [x] Implement `registry.spawn()` — wraps tokio::spawn with signal channel and death notification loop
 - [x] Implement linking: bidirectional death notification between linked processes
-- [ ] Implement `die_when_link_dies` flag (default true)
+- [x] Implement `die_when_link_dies` flag (default true)
 - [x] Implement hierarchical shutdown: parent Kill → children Shutdown → timeout → children Kill
 - [x] Implement monitoring (unidirectional, monitor gets `ProcessDied`)
 - [x] Implement `SupervisorStrategy` enum (OneForOne, OneForAll, RestForOne)
