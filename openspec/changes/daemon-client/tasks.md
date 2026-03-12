@@ -92,8 +92,8 @@
 - [x] Implement `SupervisorStrategy` enum (OneForOne, OneForAll, RestForOne)
 - [x] Implement `Supervisor` — watches children, restarts per strategy, tracks restart rate
 - [x] Implement max restart rate enforcement (shut down supervisor on too many restarts)
-- [ ] Wrap `SessionController` in `AgentProcess` actor
-- [ ] Root daemon becomes a `Supervisor` that spawns `AgentProcess` actors
+- [x] Wrap `SessionController` in `AgentProcess` actor
+- [x] Root daemon becomes a `Supervisor` that spawns `AgentProcess` actors
 - [ ] Migrate `SubagentTool` to spawn child `AgentProcess` via registry instead of `clankers -p`
 - [ ] Migrate `DelegateTool` to spawn child `AgentProcess` for local workers
 - [ ] Implement capability delegation enforcement (child ⊆ parent)
