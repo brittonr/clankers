@@ -221,6 +221,9 @@ async fn dispatch(
         }) => {
             clankers::commands::daemon::run_daemon(&ctx, tags, allow_all, matrix, heartbeat, max_sessions).await?;
         }
+        Some(Commands::DaemonSessions { action }) => {
+            clankers::commands::daemon_sessions::run(action).await?;
+        }
         Some(Commands::MergeDaemon { interval, once }) => {
             clankers::commands::daemon::run_merge_daemon(&ctx, interval, once).await?;
         }

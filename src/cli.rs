@@ -323,6 +323,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: TokenAction,
     },
+    /// List or manage daemon sessions (via control socket)
+    DaemonSessions {
+        #[command(subcommand)]
+        action: DaemonSessionAction,
+    },
     /// Run the merge daemon (watches for completed workers and auto-merges)
     MergeDaemon {
         /// Polling interval in seconds
@@ -761,4 +766,28 @@ pub enum TokenAction {
         /// Base64-encoded token
         token: String,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum DaemonSessionAction {
+    /// List active daemon sessions
+    List,
+    /// Show daemon status
+    Status,
+    /// Create a new session on the daemon
+    Create {
+        /// Model to use (default: daemon's default)
+        #[arg(long)]
+        model: Option<String>,
+        /// System prompt (default: daemon's default)
+        #[arg(long)]
+        system_prompt: Option<String>,
+    },
+    /// Kill a session
+    Kill {
+        /// Session ID
+        session_id: String,
+    },
+    /// Shutdown the daemon
+    Shutdown,
 }
