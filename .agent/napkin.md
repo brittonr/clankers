@@ -62,6 +62,14 @@
 - Session picker runs BEFORE `init_terminal()` — standalone raw-mode mini-TUI
 - Input split: `is_client_side_command()` routes locally (quit, detach, zoom) vs forward to daemon
 - BashConfirmState popup in attach mode — higher priority than other overlay intercepts
+- **Remote attach via iroh QUIC**: `clankers attach --remote <node-id>`
+  - `clankers/daemon/1` ALPN carries `DaemonRequest` discriminant as first frame
+  - `DaemonRequest::Control` for one-shot commands, `DaemonRequest::Attach` for session streams
+  - `QuicBiStream` combines iroh `SendStream`/`RecvStream` into single `AsyncRead+AsyncWrite`
+  - iroh `SendStream::poll_write` returns `WriteError`, not `io::Error` — must map in `AsyncWrite` impl
+  - `ClientAdapter::from_channels()` skips handshake for pre-negotiated QUIC streams
+  - After `DaemonRequest::Attach` + `AttachResponse` + `SessionInfo`, stream is standard session protocol
+  - Reuse `run_attach_with_reconnect()` event loop — reconnection won't work for remote (empty socket path), but disconnect detection works
 
 ### TUI patterns
 - `SlashContext<'a>` wraps `&'a mut App` + all params — single struct to every handler
