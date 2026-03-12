@@ -29,6 +29,23 @@ pub struct ClientAdapter {
 }
 
 impl ClientAdapter {
+    /// Build a `ClientAdapter` from pre-wired channels.
+    ///
+    /// Use when the handshake has already been performed out-of-band
+    /// (e.g., QUIC streams where DaemonRequest::Attach was sent before
+    /// the session protocol starts). The caller is responsible for spawning
+    /// background reader/writer tasks that feed these channels.
+    pub fn from_channels(
+        cmd_tx: mpsc::UnboundedSender<SessionCommand>,
+        event_rx: mpsc::UnboundedReceiver<DaemonEvent>,
+    ) -> Self {
+        Self {
+            cmd_tx,
+            event_rx,
+            disconnected: false,
+        }
+    }
+
     /// Connect to a daemon session over the given stream.
     ///
     /// Performs the handshake, then spawns background tasks for reading/writing.

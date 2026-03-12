@@ -31,6 +31,7 @@ use crate::tools::Tool;
 
 mod config;
 mod handlers;
+pub mod quic_bridge;
 mod session_store;
 pub mod socket_bridge;
 
@@ -38,7 +39,6 @@ pub mod socket_bridge;
 pub(crate) use config::ALPN_CHAT;
 pub use config::DaemonConfig;
 pub(crate) use config::ProactiveConfig;
-use handlers::handle_iroh_connection;
 pub(crate) use session_store::SessionKey;
 pub(crate) use session_store::SessionStore;
 use session_store::create_auth_layer;
@@ -82,19 +82,39 @@ pub async fn run_daemon(
 
     print_startup_banner(&config, &node_id);
 
-    // Phase 4: Unix domain socket control plane
+    // Phase 4: Unix domain socket control plane + shared factory
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
-    let socket_handle = spawn_socket_control_plane(
-        &provider,
-        &tools,
-        &config,
+
+    let daemon_state = Arc::new(tokio::sync::Mutex::new(
+        clankers_controller::transport::DaemonState::new(),
+    ));
+
+    let session_factory = Arc::new(socket_bridge::SessionFactory {
+        provider: Arc::clone(&provider),
+        tools: tools.clone(),
+        settings: config.settings.clone(),
+        default_model: config.model.clone(),
+        default_system_prompt: config.system_prompt.clone(),
+    });
+
+    let socket_handle = spawn_socket_control_plane_shared(
+        Arc::clone(&daemon_state),
+        Arc::clone(&session_factory),
         shutdown_rx.clone(),
     );
 
     // Phase 5: Background tasks
     let rpc_state = build_rpc_state(&config, &provider, &tools, paths);
-    let iroh_handle =
-        spawn_iroh_accept_loop(endpoint.clone(), Arc::clone(&store), Arc::clone(&acl), rpc_state, cancel.clone());
+    let iroh_handle = spawn_iroh_accept_loop(
+        endpoint.clone(),
+        Arc::clone(&store),
+        Arc::clone(&acl),
+        rpc_state,
+        Arc::clone(&daemon_state),
+        Arc::clone(&session_factory),
+        shutdown_rx.clone(),
+        cancel.clone(),
+    );
 
     let matrix_handle = spawn_matrix_bridge(&config, &store, paths, cancel.clone());
     spawn_heartbeat(&config, &identity, paths, cancel.clone()).await;
@@ -129,10 +149,9 @@ pub async fn run_daemon(
     Ok(())
 }
 
-fn spawn_socket_control_plane(
-    provider: &Arc<dyn Provider>,
-    tools: &[Arc<dyn Tool>],
-    config: &DaemonConfig,
+fn spawn_socket_control_plane_shared(
+    daemon_state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
+    factory: Arc<socket_bridge::SessionFactory>,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) -> tokio::task::JoinHandle<()> {
     // Init socket directory (PID file, stale cleanup)
@@ -140,18 +159,6 @@ fn spawn_socket_control_plane(
         warn!("socket dir init failed: {e} — control socket disabled");
         return tokio::spawn(async {});
     }
-
-    let daemon_state = Arc::new(tokio::sync::Mutex::new(
-        clankers_controller::transport::DaemonState::new(),
-    ));
-
-    let factory = Arc::new(socket_bridge::SessionFactory {
-        provider: Arc::clone(provider),
-        tools: tools.to_vec(),
-        settings: config.settings.clone(),
-        default_model: config.model.clone(),
-        default_system_prompt: config.system_prompt.clone(),
-    });
 
     tokio::spawn(async move {
         socket_bridge::run_control_socket_with_factory(daemon_state, factory, shutdown_rx).await;
@@ -170,7 +177,11 @@ async fn build_endpoint(
 
     let endpoint = ::iroh::Endpoint::builder()
         .secret_key(identity.secret_key.clone())
-        .alpns(vec![iroh::ALPN.to_vec(), ALPN_CHAT.to_vec()])
+        .alpns(vec![
+            iroh::ALPN.to_vec(),
+            ALPN_CHAT.to_vec(),
+            quic_bridge::ALPN_DAEMON.to_vec(),
+        ])
         .address_lookup(mdns_service)
         .bind()
         .await
@@ -245,6 +256,9 @@ fn spawn_iroh_accept_loop(
     store: Arc<RwLock<SessionStore>>,
     acl: Arc<iroh::AccessControl>,
     rpc_state: Arc<iroh::ServerState>,
+    daemon_state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
+    session_factory: Arc<socket_bridge::SessionFactory>,
+    shutdown_rx: tokio::sync::watch::Receiver<bool>,
     cancel: CancellationToken,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -256,10 +270,46 @@ fn spawn_iroh_accept_loop(
                     let store = Arc::clone(&store);
                     let acl = Arc::clone(&acl);
                     let rpc_state = Arc::clone(&rpc_state);
+                    let daemon_state = Arc::clone(&daemon_state);
+                    let session_factory = Arc::clone(&session_factory);
+                    let shutdown_rx = shutdown_rx.clone();
 
                     tokio::spawn(async move {
-                        if let Err(e) = handle_iroh_connection(incoming, store, acl, rpc_state).await {
-                            warn!("iroh connection error: {e}");
+                        // Peek at the ALPN to route to the right handler.
+                        // For daemon/1, use the QUIC bridge directly.
+                        let conn = match incoming.await {
+                            Ok(c) => c,
+                            Err(e) => {
+                                warn!("iroh connection failed: {e}");
+                                return;
+                            }
+                        };
+
+                        let remote = conn.remote_id();
+                        if !acl.is_allowed(&remote) {
+                            warn!("Rejected unauthorized peer {}", remote.fmt_short());
+                            conn.close(1u32.into(), b"unauthorized");
+                            return;
+                        }
+
+                        let alpn = conn.alpn().to_vec();
+                        match alpn.as_slice() {
+                            x if x == quic_bridge::ALPN_DAEMON => {
+                                quic_bridge::handle_daemon_quic_connection(
+                                    conn,
+                                    daemon_state,
+                                    session_factory,
+                                    shutdown_rx,
+                                ).await;
+                            }
+                            _ => {
+                                // Delegate rpc/1 and chat/1 to existing handlers
+                                if let Err(e) = handle_iroh_connection_from_conn(
+                                    conn, store, rpc_state,
+                                ).await {
+                                    warn!("iroh connection error: {e}");
+                                }
+                            }
                         }
                     });
                 }
@@ -267,6 +317,35 @@ fn spawn_iroh_accept_loop(
             }
         }
     })
+}
+
+/// Handle an already-accepted iroh connection (rpc/1 or chat/1).
+///
+/// This wraps the existing handlers but skips the ACL check (already done
+/// in the accept loop) and incoming.await (already awaited).
+async fn handle_iroh_connection_from_conn(
+    conn: ::iroh::endpoint::Connection,
+    store: Arc<RwLock<SessionStore>>,
+    rpc_state: Arc<iroh::ServerState>,
+) -> Result<()> {
+    let remote = conn.remote_id();
+    let alpn = conn.alpn();
+    info!("Connection from {} (ALPN: {:?})", remote.fmt_short(), String::from_utf8_lossy(alpn));
+
+    match &*alpn {
+        x if x == ALPN_CHAT => {
+            handlers::handle_chat_connection(conn, store, &remote.to_string()).await;
+        }
+        x if x == iroh::ALPN => {
+            handlers::handle_rpc_v1_connection(conn, rpc_state).await;
+        }
+        _ => {
+            warn!("Unknown ALPN: {:?}", String::from_utf8_lossy(alpn));
+            conn.close(2u32.into(), b"unknown alpn");
+        }
+    }
+
+    Ok(())
 }
 
 fn spawn_matrix_bridge(

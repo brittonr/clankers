@@ -329,6 +329,9 @@ pub enum Commands {
         /// Model for new sessions (only with --new)
         #[arg(long)]
         model: Option<String>,
+        /// Connect to a remote daemon via iroh QUIC (node ID or peer name)
+        #[arg(long)]
+        remote: Option<String>,
     },
     /// List daemon sessions (shorthand for `daemon sessions`)
     Ps {

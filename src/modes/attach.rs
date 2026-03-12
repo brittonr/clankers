@@ -1221,11 +1221,365 @@ fn handle_panel_focused_key_attach(app: &mut App, key: crossterm::event::KeyEven
 
 // ── Slash registry for attach mode ──────────────────────────────────────────
 
-/// Build a minimal slash registry with client-side commands only.
 fn build_client_slash_registry() -> slash_commands::SlashRegistry {
     // We build a full registry so the completion menu works, but in attach mode
     // only client-side commands are handled locally — the rest are forwarded.
     crate::modes::interactive::build_slash_registry(None)
+}
+
+// ── Remote attach (iroh QUIC) ───────────────────────────────────────────────
+
+/// Combine iroh QUIC send + recv into a single `AsyncRead + AsyncWrite` stream.
+///
+/// This lets us pass QUIC bidirectional streams to `ClientAdapter::connect()`
+/// which expects a unified stream type (same as `UnixStream`, `TcpStream`).
+struct QuicBiStream {
+    send: ::iroh::endpoint::SendStream,
+    recv: ::iroh::endpoint::RecvStream,
+}
+
+impl tokio::io::AsyncRead for QuicBiStream {
+    fn poll_read(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &mut tokio::io::ReadBuf<'_>,
+    ) -> std::task::Poll<io::Result<()>> {
+        std::pin::Pin::new(&mut self.recv).poll_read(cx, buf)
+    }
+}
+
+impl tokio::io::AsyncWrite for QuicBiStream {
+    fn poll_write(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        buf: &[u8],
+    ) -> std::task::Poll<io::Result<usize>> {
+        std::pin::Pin::new(&mut self.send)
+            .poll_write(cx, buf)
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    fn poll_flush(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<io::Result<()>> {
+        std::pin::Pin::new(&mut self.send)
+            .poll_flush(cx)
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+
+    fn poll_shutdown(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<io::Result<()>> {
+        std::pin::Pin::new(&mut self.send)
+            .poll_shutdown(cx)
+            .map_err(|e| io::Error::other(e.to_string()))
+    }
+}
+
+/// Launch the TUI in remote attach mode over iroh QUIC.
+///
+/// Connects to a remote daemon's `clankers/daemon/1` ALPN, performs the
+/// attach handshake, then reuses the same `ClientAdapter` + event loop as
+/// local Unix socket attach.
+pub async fn run_remote_attach(
+    remote_id: &str,
+    session_id: Option<String>,
+    create_new: bool,
+    model: Option<String>,
+    settings: &Settings,
+    paths: &crate::config::ClankersPaths,
+) -> Result<()> {
+    use crate::modes::rpc::iroh;
+
+    // Load or generate identity
+    let identity_path = iroh::identity_path(paths);
+    let identity = iroh::Identity::load_or_generate(&identity_path);
+
+    // Parse remote peer ID
+    let remote_pk: ::iroh::PublicKey = remote_id.parse().map_err(|e| {
+        crate::error::Error::Provider {
+            message: format!("Invalid remote node ID '{remote_id}': {e}"),
+        }
+    })?;
+
+    // Start endpoint
+    let endpoint = iroh::start_endpoint(&identity).await?;
+    info!("local node: {}", endpoint.id().fmt_short());
+    println!("Connecting to {}...", remote_pk.fmt_short());
+
+    // Connect with daemon ALPN
+    let conn = endpoint
+        .connect(remote_pk, clankers_protocol::types::ALPN_DAEMON)
+        .await
+        .map_err(|e| crate::error::Error::Provider {
+            message: format!("Failed to connect to remote daemon: {e}"),
+        })?;
+    info!("connected to remote daemon {}", remote_pk.fmt_short());
+
+    // If --new, create the session first via a control stream
+    let target_session_id = if create_new {
+        let sid = create_remote_session(&conn, model.clone()).await?;
+        println!("Created remote session: {sid}");
+        Some(sid)
+    } else {
+        session_id
+    };
+
+    // Open an attach stream
+    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| {
+        crate::error::Error::Provider {
+            message: format!("Failed to open QUIC stream: {e}"),
+        }
+    })?;
+
+    // Send DaemonRequest::Attach as the first frame, then the normal
+    // session protocol continues over the same stream.
+    let handshake = clankers_protocol::Handshake {
+        protocol_version: clankers_protocol::types::PROTOCOL_VERSION,
+        client_name: format!("clankers-tui/{}", env!("CARGO_PKG_VERSION")),
+        token: None,
+        session_id: target_session_id.clone(),
+    };
+    let request = clankers_protocol::DaemonRequest::Attach { handshake: handshake.clone() };
+    quic_write_frame(&mut send, &request).await?;
+
+    // Read AttachResponse
+    let response: clankers_protocol::AttachResponse = quic_read_frame(&mut recv).await?;
+    let resolved_session_id = match response {
+        clankers_protocol::AttachResponse::Ok { session_id } => session_id,
+        clankers_protocol::AttachResponse::Error { message } => {
+            return Err(crate::error::Error::Provider {
+                message: format!("Remote attach failed: {message}"),
+            });
+        }
+    };
+
+    println!("Attached to remote session: {resolved_session_id}");
+
+    // Now the QUIC stream carries the standard session protocol:
+    // DaemonEvent frames (recv) and SessionCommand frames (send).
+    // Wrap send+recv into a single stream and hand to ClientAdapter.
+    //
+    // Note: ClientAdapter performs its own handshake (Handshake frame),
+    // but the daemon-side QUIC handler already consumed our DaemonRequest
+    // and sent back SessionInfo. We need to skip the ClientAdapter handshake.
+    //
+    // Instead, we read the SessionInfo ourselves and feed events manually.
+    let (model_name, _session_hash) = match quic_read_frame::<DaemonEvent>(&mut recv).await {
+        Ok(DaemonEvent::SessionInfo {
+            model,
+            system_prompt_hash,
+            ..
+        }) => (model, system_prompt_hash),
+        Ok(other) => {
+            warn!("expected SessionInfo, got: {other:?}");
+            (String::new(), String::new())
+        }
+        Err(e) => {
+            return Err(crate::error::Error::Provider {
+                message: format!("Session disconnected before sending SessionInfo: {e}"),
+            });
+        }
+    };
+
+    // Now wrap the remaining stream into a QuicBiStream and create a
+    // ClientAdapter. The handshake is already done (we consumed Attach +
+    // SessionInfo above), but ClientAdapter::connect() will try to send
+    // another handshake and read SessionInfo. So instead, we write a
+    // synthetic handshake frame that the daemon will ignore (the session
+    // stream is already established), and the daemon's next frames will
+    // be treated as events.
+    //
+    // Actually, the cleaner approach: build the ClientAdapter directly
+    // from channels, bypassing the handshake. But ClientAdapter's ctor
+    // requires a stream. Let's create it from the QUIC bi-stream — the
+    // daemon side has already sent SessionInfo, and any subsequent frames
+    // are events. ClientAdapter::connect would send a Handshake and expect
+    // a SessionInfo — that won't work here since those already happened.
+    //
+    // Solution: build ClientAdapter manually from channels with a thin
+    // adapter that reads/writes frames on the QUIC stream.
+    let bi = QuicBiStream { send, recv };
+    let client = build_quic_client_adapter(bi);
+
+    // Replay history
+    client.replay_history();
+
+    // Set up TUI
+    let mut term = super::common::init_terminal()?;
+
+    let display_model = if model_name.is_empty() {
+        "remote".to_string()
+    } else {
+        model_name
+    };
+
+    let cwd = std::env::current_dir()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
+    let theme = Theme::dark();
+    let keymap = settings.keymap.clone().into_keymap();
+
+    let mut app = App::new(display_model.clone(), cwd, theme);
+    app.session_id = resolved_session_id.clone();
+    app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
+
+    let slash_registry = build_client_slash_registry();
+    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(
+        &slash_registry,
+    )));
+    crate::modes::interactive::rebuild_leader_menu(&mut app, None, settings);
+    app.connection_mode = clankers_tui_types::ConnectionMode::Attached;
+
+    app.push_system(
+        format!(
+            "attached to remote session {} at {} (model: {})",
+            resolved_session_id,
+            remote_pk.fmt_short(),
+            display_model,
+        ),
+        false,
+    );
+    app.push_system("Type /detach or Ctrl+Q to disconnect.".to_string(), false);
+
+    let max_subagent_panes = settings.max_subagent_panes;
+
+    // Reuse the existing attach event loop — ClientAdapter handles everything
+    let result = run_attach_with_reconnect(
+        &mut term,
+        &mut app,
+        client,
+        keymap,
+        &slash_registry,
+        max_subagent_panes,
+        // No reconnection for remote — use empty socket path
+        "",
+        &resolved_session_id,
+    )
+    .await;
+
+    super::common::restore_terminal(&mut term);
+    endpoint.close().await;
+    result
+}
+
+/// Build a ClientAdapter from a QUIC stream, skipping the handshake.
+///
+/// The DaemonRequest::Attach + AttachResponse + SessionInfo exchange has
+/// already completed. The stream now carries raw DaemonEvent/SessionCommand
+/// frames, which is exactly what ClientAdapter's background tasks expect.
+fn build_quic_client_adapter(stream: QuicBiStream) -> ClientAdapter {
+    use tokio::sync::mpsc;
+
+    let (reader, writer) = tokio::io::split(stream);
+
+    let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<SessionCommand>();
+    let (event_tx, event_rx) = mpsc::unbounded_channel::<DaemonEvent>();
+
+    // Spawn writer: SessionCommand → QUIC
+    tokio::spawn(async move {
+        let mut writer = writer;
+        while let Some(cmd) = cmd_rx.recv().await {
+            if frame::write_frame(&mut writer, &cmd).await.is_err() {
+                break;
+            }
+        }
+        let _ = tokio::io::AsyncWriteExt::shutdown(&mut writer).await;
+    });
+
+    // Spawn reader: QUIC → DaemonEvent
+    tokio::spawn(async move {
+        let mut reader = reader;
+        while let Ok(event) = frame::read_frame::<_, DaemonEvent>(&mut reader).await {
+            if event_tx.send(event).is_err() {
+                break;
+            }
+        }
+    });
+
+    // SAFETY: ClientAdapter fields are private, so we can't construct one
+    // directly. Use the `from_channels` constructor (which we need to add
+    // to clankers-controller).
+    ClientAdapter::from_channels(cmd_tx, event_rx)
+}
+
+/// Create a new session on the remote daemon via a control stream.
+async fn create_remote_session(
+    conn: &::iroh::endpoint::Connection,
+    model: Option<String>,
+) -> Result<String> {
+    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| {
+        crate::error::Error::Provider {
+            message: format!("Failed to open control stream: {e}"),
+        }
+    })?;
+
+    let request = clankers_protocol::DaemonRequest::Control {
+        command: clankers_protocol::ControlCommand::CreateSession {
+            model,
+            system_prompt: None,
+            token: None,
+        },
+    };
+    quic_write_frame(&mut send, &request).await?;
+    send.finish().ok();
+
+    let response: clankers_protocol::ControlResponse = quic_read_frame(&mut recv).await?;
+    match response {
+        clankers_protocol::ControlResponse::Created { session_id, .. } => Ok(session_id),
+        clankers_protocol::ControlResponse::Error { message } => {
+            Err(crate::error::Error::Provider {
+                message: format!("Failed to create remote session: {message}"),
+            })
+        }
+        other => Err(crate::error::Error::Provider {
+            message: format!("Unexpected response: {other:?}"),
+        }),
+    }
+}
+
+// ── QUIC frame helpers ──────────────────────────────────────────────────────
+
+async fn quic_write_frame<T: serde::Serialize>(
+    send: &mut ::iroh::endpoint::SendStream,
+    value: &T,
+) -> Result<()> {
+    let data = serde_json::to_vec(value).map_err(|e| crate::error::Error::Provider {
+        message: format!("Serialize error: {e}"),
+    })?;
+    let len = (data.len() as u32).to_be_bytes();
+    send.write_all(&len).await.map_err(|e| crate::error::Error::Provider {
+        message: format!("QUIC write error: {e}"),
+    })?;
+    send.write_all(&data).await.map_err(|e| crate::error::Error::Provider {
+        message: format!("QUIC write error: {e}"),
+    })?;
+    Ok(())
+}
+
+async fn quic_read_frame<T: serde::de::DeserializeOwned>(
+    recv: &mut ::iroh::endpoint::RecvStream,
+) -> Result<T> {
+    let mut len_buf = [0u8; 4];
+    recv.read_exact(&mut len_buf).await.map_err(|e| crate::error::Error::Provider {
+        message: format!("QUIC read error: {e}"),
+    })?;
+    let len = u32::from_be_bytes(len_buf) as usize;
+    if len > 10_000_000 {
+        return Err(crate::error::Error::Provider {
+            message: format!("Frame too large: {len}"),
+        });
+    }
+    let mut data = vec![0u8; len];
+    recv.read_exact(&mut data).await.map_err(|e| crate::error::Error::Provider {
+        message: format!("QUIC read error: {e}"),
+    })?;
+    serde_json::from_slice(&data).map_err(|e| crate::error::Error::Provider {
+        message: format!("Deserialize error: {e}"),
+    })
 }
 
 #[cfg(test)]

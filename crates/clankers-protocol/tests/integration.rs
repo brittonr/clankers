@@ -431,3 +431,144 @@ async fn large_payload_round_trip() {
         panic!("expected Prompt");
     }
 }
+
+// ── DaemonRequest / AttachResponse round-trips ──────────────
+
+#[tokio::test]
+async fn daemon_request_control_round_trip() {
+    use clankers_protocol::types::DaemonRequest;
+
+    let (mut client, mut server) = duplex(4096);
+
+    let req = DaemonRequest::Control {
+        command: ControlCommand::ListSessions,
+    };
+    write_frame(&mut client, &req).await.unwrap();
+
+    let decoded: DaemonRequest = read_frame(&mut server).await.unwrap();
+    assert_eq!(req, decoded);
+}
+
+#[tokio::test]
+async fn daemon_request_attach_round_trip() {
+    use clankers_protocol::types::DaemonRequest;
+
+    let (mut client, mut server) = duplex(4096);
+
+    let req = DaemonRequest::Attach {
+        handshake: Handshake {
+            protocol_version: PROTOCOL_VERSION,
+            client_name: "test-client".to_string(),
+            token: Some("tok123".to_string()),
+            session_id: Some("session-abc".to_string()),
+        },
+    };
+    write_frame(&mut client, &req).await.unwrap();
+
+    let decoded: DaemonRequest = read_frame(&mut server).await.unwrap();
+    assert_eq!(req, decoded);
+}
+
+#[tokio::test]
+async fn attach_response_round_trip() {
+    use clankers_protocol::types::AttachResponse;
+
+    let (mut client, mut server) = duplex(4096);
+
+    let ok_resp = AttachResponse::Ok {
+        session_id: "sess-123".to_string(),
+    };
+    write_frame(&mut client, &ok_resp).await.unwrap();
+    let decoded: AttachResponse = read_frame(&mut server).await.unwrap();
+    assert_eq!(ok_resp, decoded);
+
+    let err_resp = AttachResponse::Error {
+        message: "session not found".to_string(),
+    };
+    write_frame(&mut client, &err_resp).await.unwrap();
+    let decoded: AttachResponse = read_frame(&mut server).await.unwrap();
+    assert_eq!(err_resp, decoded);
+}
+
+#[tokio::test]
+async fn daemon_request_create_session_round_trip() {
+    use clankers_protocol::types::DaemonRequest;
+
+    let (mut client, mut server) = duplex(4096);
+
+    let req = DaemonRequest::Control {
+        command: ControlCommand::CreateSession {
+            model: Some("opus".to_string()),
+            system_prompt: None,
+            token: Some("ucan-token".to_string()),
+        },
+    };
+    write_frame(&mut client, &req).await.unwrap();
+
+    let decoded: DaemonRequest = read_frame(&mut server).await.unwrap();
+    assert_eq!(req, decoded);
+}
+
+#[tokio::test]
+async fn full_daemon_attach_flow() {
+    use clankers_protocol::types::AttachResponse;
+    use clankers_protocol::types::DaemonRequest;
+
+    let (mut client, mut server) = duplex(8192);
+
+    // 1. Client sends DaemonRequest::Attach
+    let req = DaemonRequest::Attach {
+        handshake: Handshake {
+            protocol_version: PROTOCOL_VERSION,
+            client_name: "test".to_string(),
+            token: None,
+            session_id: Some("s1".to_string()),
+        },
+    };
+    write_frame(&mut client, &req).await.unwrap();
+
+    // 2. Server reads and responds
+    let decoded: DaemonRequest = read_frame(&mut server).await.unwrap();
+    assert!(matches!(decoded, DaemonRequest::Attach { .. }));
+
+    let resp = AttachResponse::Ok {
+        session_id: "s1".to_string(),
+    };
+    write_frame(&mut server, &resp).await.unwrap();
+
+    // 3. Server sends SessionInfo
+    let info = DaemonEvent::SessionInfo {
+        session_id: "s1".to_string(),
+        model: "sonnet".to_string(),
+        system_prompt_hash: "abc".to_string(),
+    };
+    write_frame(&mut server, &info).await.unwrap();
+
+    // 4. Client reads AttachResponse
+    let client_resp: AttachResponse = read_frame(&mut client).await.unwrap();
+    assert!(matches!(client_resp, AttachResponse::Ok { session_id } if session_id == "s1"));
+
+    // 5. Client reads SessionInfo
+    let client_info: DaemonEvent = read_frame(&mut client).await.unwrap();
+    assert!(matches!(client_info, DaemonEvent::SessionInfo { model, .. } if model == "sonnet"));
+
+    // 6. Client sends a command
+    let cmd = SessionCommand::Prompt {
+        text: "hello".to_string(),
+        images: vec![],
+    };
+    write_frame(&mut client, &cmd).await.unwrap();
+
+    // 7. Server reads the command
+    let server_cmd: SessionCommand = read_frame(&mut server).await.unwrap();
+    assert!(matches!(server_cmd, SessionCommand::Prompt { text, .. } if text == "hello"));
+
+    // 8. Server sends events back
+    let event = DaemonEvent::TextDelta {
+        text: "world".to_string(),
+    };
+    write_frame(&mut server, &event).await.unwrap();
+
+    let client_event: DaemonEvent = read_frame(&mut client).await.unwrap();
+    assert!(matches!(client_event, DaemonEvent::TextDelta { text } if text == "world"));
+}

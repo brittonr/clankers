@@ -221,8 +221,19 @@ async fn dispatch(
         Some(Commands::Plugin { action }) => {
             clankers::commands::plugin::run(&ctx, action)?;
         }
-        Some(Commands::Attach { session_id, new, model }) => {
-            clankers::modes::attach::run_attach(session_id, new, model, &ctx.settings).await?;
+        Some(Commands::Attach { session_id, new, model, remote }) => {
+            if let Some(ref remote_id) = remote {
+                clankers::modes::attach::run_remote_attach(
+                    remote_id,
+                    session_id,
+                    new,
+                    model,
+                    &ctx.settings,
+                    &ctx.paths,
+                ).await?;
+            } else {
+                clankers::modes::attach::run_attach(session_id, new, model, &ctx.settings).await?;
+            }
         }
         Some(Commands::Ps { all }) => {
             clankers::commands::daemon::dispatch_sessions(all).await?;

@@ -9,11 +9,9 @@ use tokio::sync::RwLock;
 use tracing::info;
 use tracing::warn;
 
-use super::config::ALPN_CHAT;
 use super::session_store::SessionKey;
 use super::session_store::SessionStore;
 use crate::agent::events::AgentEvent;
-use crate::error::Result;
 use crate::modes::rpc::iroh;
 use crate::modes::rpc::iroh::write_frame;
 use crate::modes::rpc::protocol::Request;
@@ -22,48 +20,9 @@ use crate::provider::streaming::ContentDelta;
 
 // ── iroh connection handler ─────────────────────────────────────────────────
 
-pub(crate) async fn handle_iroh_connection(
-    incoming: ::iroh::endpoint::Incoming,
-    store: Arc<RwLock<SessionStore>>,
-    acl: Arc<iroh::AccessControl>,
-    rpc_state: Arc<iroh::ServerState>,
-) -> Result<()> {
-    let conn = incoming.await.map_err(|e| crate::error::Error::Provider {
-        message: format!("Connection failed: {e}"),
-    })?;
-
-    let remote = conn.remote_id();
-
-    // Auth check
-    if !acl.is_allowed(&remote) {
-        warn!("Rejected unauthorized peer {}", remote.fmt_short());
-        conn.close(1u32.into(), b"unauthorized");
-        return Ok(());
-    }
-
-    let alpn = conn.alpn();
-    info!("Connection from {} (ALPN: {:?})", remote.fmt_short(), String::from_utf8_lossy(alpn));
-
-    match &*alpn {
-        // ── chat/1: conversational sessions ─────────────────────────
-        x if x == ALPN_CHAT => {
-            handle_chat_connection(conn, store, &remote.to_string()).await;
-        }
-
-        // ── rpc/1: legacy protocol (delegated to existing handler) ──
-        x if x == iroh::ALPN => {
-            // Reuse the existing RPC server logic
-            handle_rpc_v1_connection(conn, rpc_state).await;
-        }
-
-        _ => {
-            warn!("Unknown ALPN: {:?}", String::from_utf8_lossy(alpn));
-            conn.close(2u32.into(), b"unknown alpn");
-        }
-    }
-
-    Ok(())
-}
+// NOTE: The accept loop in mod.rs now handles ALPN dispatch directly,
+// using handle_iroh_connection_from_conn() for rpc/1 and chat/1, and
+// quic_bridge::handle_daemon_quic_connection() for daemon/1.
 
 /// Handle a clankers/chat/1 connection: bidirectional conversational stream.
 ///

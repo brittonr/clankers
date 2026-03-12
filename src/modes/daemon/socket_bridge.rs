@@ -44,7 +44,7 @@ impl SessionFactory {
     ///
     /// Clones all tools, injecting the panel sender into SubagentTool,
     /// DelegateTool, and ValidatorTool. Other tools are passed through.
-    fn build_tools_with_panel_tx(
+    pub fn build_tools_with_panel_tx(
         &self,
         panel_tx: mpsc::UnboundedSender<SubagentEvent>,
     ) -> Vec<Arc<dyn Tool>> {
@@ -255,6 +255,17 @@ async fn dispatch_control_command(
         }
         ControlCommand::Shutdown => ControlResponse::ShuttingDown,
     }
+}
+
+/// Public entry point for the session driver, callable from quic_bridge.
+pub async fn run_session_driver_pub(
+    controller: SessionController,
+    cmd_rx: mpsc::UnboundedReceiver<SessionCommand>,
+    event_tx: broadcast::Sender<DaemonEvent>,
+    session_id: String,
+    panel_rx: mpsc::UnboundedReceiver<SubagentEvent>,
+) {
+    run_session_driver(controller, cmd_rx, event_tx, session_id, panel_rx).await;
 }
 
 /// Session driver: reads commands from the channel, feeds them to the
