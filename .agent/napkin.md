@@ -13,6 +13,9 @@
 | recurring | self | Assumed similar components are duplicates (panels with same-domain names) | Read module-level doc comments first. Overview list ≠ BSP pane ≠ fuzzy overlay ≠ diff view. |
 | 2026-03-12 | self | `target/debug/clankers` was stale — `CARGO_TARGET_DIR=~/.cargo-target/` | Always use `$CARGO_TARGET_DIR/debug/clankers` or full path. `target/debug/` is a decoy. |
 | 2026-03-12 | self | Background daemon passed `--model` after subcommand (`daemon start --model X`) | Top-level flags go BEFORE the subcommand: `clankers --model X daemon start`. |
+| 2026-03-12 | self | `die_when_link_dies` default broke existing tests expecting `LinkDied` on failure | Tests that observe `LinkDied` on abnormal exits must use `spawn_opts(die_when_link_dies=false)`. |
+| 2026-03-12 | self | Added field to `SessionFactory` struct broke integration tests | Always grep tests/ for struct literal construction when adding required fields. |
+| 2026-03-12 | self | Used `GlobalPaths::detect()` / `ClankersPaths::new()` — actual API is `ClankersPaths::resolve()` | Check actual method names with grep before using path helper types. |
 | 2026-03-09 | self | Glob re-exports (`pub use module::*`) bring all public items — conflicts with sibling imports | Check for conflicts before adding imports when a sibling module has glob re-exports. |
 | 2026-03-09 | self | `map_err(db_err)` as tail returns wrong Result type | When helper returns a different error type, wrap: `Ok(expr.map_err(helper)?)` to trigger `From` via `?`. |
 | 2026-03-10 | self | Plugin `serde` needs direct dep for derive macros even though SDK re-exports crate | Check Cargo.toml deps before using macros that need proc-macro resolution. |

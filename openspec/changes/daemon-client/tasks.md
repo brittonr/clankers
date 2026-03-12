@@ -105,10 +105,10 @@
 - [x] Implement `clankers ps` command (query `ProcessTree` via control socket, render tree)
 - [x] Implement `clankers kill <session-id>` command
 - [x] Implement `clankers attach` with no args (attach to most recent session)
-- [ ] Add `--auto-daemon` flag (auto-start daemon if not running, then attach)
-- [ ] Add `--read-only` flag (creates session with read-only capability token)
-- [ ] Add `--capabilities` flag (comma-separated capability spec for session scoping)
-- [ ] Graceful shutdown cascade: SIGTERM → Shutdown to all agents → wait → cleanup
+- [x] Add `--auto-daemon` flag (auto-start daemon if not running, then attach)
+- [x] Add `--read-only` flag (creates session with read-only capability token)
+- [x] Add `--capabilities` flag (comma-separated capability spec for session scoping)
+- [x] Graceful shutdown cascade: SIGTERM → Shutdown to all agents → wait → cleanup
 - [ ] Session idle reaping in daemon (configurable timeout)
 - [ ] Implement `IrohBiStream` wrapper (combines `SendStream` + `RecvStream` into `AsyncRead + AsyncWrite`)
 - [ ] Define `clankers/session/1` ALPN constant
