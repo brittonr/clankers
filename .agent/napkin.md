@@ -638,4 +638,16 @@
 - Usage/tool result recording to redb stays in the runner (needs db handle)
 - Eliminated: audit.rs (124 lines), auto_test.rs (45 lines), loop_mode.rs (127 lines) from EventLoopRunner
 - EventLoopRunner: 1529 → 1188 lines (341 lines removed)
-- Next: bash confirm UI over protocol, subagent event routing, wire EventLoopRunner to SessionController for daemon mode (full mode), `clankers ps` command
+## Patterns That Work (Phase 3 completion: confirm + subagent routing)
+- `BashConfirmState` in `OverlayState` — attach mode shows a popup dialog on `ConfirmRequest` instead of auto-approving
+- Confirm dialog keys: `←/→/h/l/Tab` toggle Yes/No, `y/Y` approve, `n/N/Esc` deny, `Enter` submit current selection
+- `render_bash_confirm()` is a standalone function (not `ConfirmDialog::render`) — different data source (protocol vs local channel)
+- Confirm intercept goes BEFORE overlay intercepts in key handler (higher priority than leader menu, cost overlay, etc.)
+- Subagent BSP pane creation in attach mode: `SubagentStarted` now creates panes + registers `PaneKind::Subagent` + calls `auto_split_for_subagent` — matches embedded mode
+- `max_subagent_panes` threaded through `run_attach_loop` → `drain_daemon_events` → `process_daemon_event` (not stored on App)
+- Daemon subagent routing: `SessionFactory::build_tools_with_panel_tx()` rebuilds all tools per-session with a fresh `panel_tx`
+- Per-session `mpsc::unbounded_channel::<SubagentEvent>()` — each session gets isolated subagent event streams
+- `drain_and_broadcast()` combines controller events + panel events into a single broadcast sweep
+- SubagentEvent::KillRequest/InputRequest are TUI→tool direction — filtered out in daemon drain (not forwarded to clients)
+- The factory rebuilds tools from scratch via `build_tiered_tools(env)` rather than cloning pre-built Arc'd tools — Arc<dyn Tool> is immutable, can't inject panel_tx after construction
+- Next: `clankers ps` command, daemon full-mode verification, Phase 3 remaining items (reconnection, detach, daemon status bar indicator)

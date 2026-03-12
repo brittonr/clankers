@@ -68,9 +68,9 @@
 - [x] Split slash command registry into agent-side and client-side categories
 - [x] Client-side slash commands handled locally (zoom, layout, panel, theme, copy, help, quit)
 - [x] Agent-side slash commands sent as `SessionCommand::SlashCommand`
-- [ ] Implement bash confirmation UI over protocol (`ConfirmRequest` → render prompt → `ConfirmBash`)
+- [x] Implement bash confirmation UI over protocol (`ConfirmRequest` → render prompt → `ConfirmBash`)
 - [ ] Implement todo request UI over protocol
-- [ ] Implement subagent event routing from `DaemonEvent` to SubagentPanel/SubagentPaneManager
+- [x] Implement subagent event routing from `DaemonEvent` to SubagentPanel/SubagentPaneManager
 - [ ] Add daemon indicator to status bar
 - [ ] Implement `/detach` command (disconnect without killing agent)
 - [ ] Implement reconnection with exponential backoff
