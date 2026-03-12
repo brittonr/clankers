@@ -44,11 +44,11 @@ fn init_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
         message: format!("Failed to enable raw mode: {}", e),
     })?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste).map_err(
-        |e| crate::error::Error::Tui {
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste).map_err(|e| {
+        crate::error::Error::Tui {
             message: format!("Failed to enter alternate screen: {}", e),
-        },
-    )?;
+        }
+    })?;
     let backend = CrosstermBackend::new(stdout);
     Terminal::new(backend).map_err(|e| crate::error::Error::Tui {
         message: format!("Failed to create terminal: {}", e),
@@ -58,13 +58,7 @@ fn init_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
 /// Tear down the crossterm terminal (restore normal mode).
 fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) {
     terminal::disable_raw_mode().ok();
-    execute!(
-        terminal.backend_mut(),
-        DisableBracketedPaste,
-        DisableMouseCapture,
-        LeaveAlternateScreen
-    )
-    .ok();
+    execute!(terminal.backend_mut(), DisableBracketedPaste, DisableMouseCapture, LeaveAlternateScreen).ok();
     terminal.show_cursor().ok();
 }
 
@@ -88,9 +82,7 @@ pub async fn run_interactive(
 
     // Build slash command registry and set completion source on app
     let slash_registry = build_slash_registry(plugin_manager.as_ref());
-    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(
-        &slash_registry,
-    )));
+    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(&slash_registry)));
 
     // Build leader menu from all contributors (builtins + plugins + user config)
     rebuild_leader_menu(&mut app, plugin_manager.as_ref(), &settings);
@@ -106,8 +98,7 @@ pub async fn run_interactive(
     // Run startup GC in the background if we're in a git repo with worktrees enabled
     if settings.use_worktrees
         && let Some(ref db) = db
-        && let Some(repo_root) =
-            crate::worktree::WorktreeManager::find_repo_root(std::path::Path::new(&cwd))
+        && let Some(repo_root) = crate::worktree::WorktreeManager::find_repo_root(std::path::Path::new(&cwd))
     {
         let db_clone = db.clone();
         crate::worktree::gc::spawn_startup_gc(db_clone, repo_root);
@@ -123,13 +114,7 @@ pub async fn run_interactive(
         app.push_system(format!("Warning: failed to enter worktree: {}", e), true);
     }
 
-    app.push_system(
-        format!(
-            "clankers — {} — keymap: {} — press i to start typing",
-            model, keymap.preset
-        ),
-        false,
-    );
+    app.push_system(format!("clankers — {} — keymap: {} — press i to start typing", model, keymap.preset), false);
 
     let (panel_tx, mut panel_rx) =
         tokio::sync::mpsc::unbounded_channel::<crate::tui::components::subagent_event::SubagentEvent>();
@@ -227,12 +212,7 @@ pub async fn run_interactive(
         && let Some(ref db) = db
     {
         let _ = std::env::set_current_dir(&original_cwd);
-        match crate::worktree::session_bridge::complete_and_merge(
-            db,
-            wt,
-            Some(provider_for_merge),
-            model_for_merge,
-        ) {
+        match crate::worktree::session_bridge::complete_and_merge(db, wt, Some(provider_for_merge), model_for_merge) {
             Ok(handle) => {
                 eprintln!("Merging worktree branches...");
                 if let Err(e) = handle.await {
@@ -300,13 +280,7 @@ async fn run_event_loop(
         process_monitor: None,
     };
 
-    super::agent_task::spawn_agent_task(
-        agent,
-        cmd_rx,
-        done_tx,
-        tool_env_for_rebuild,
-        plugin_manager.clone(),
-    );
+    super::agent_task::spawn_agent_task(agent, cmd_rx, done_tx, tool_env_for_rebuild, plugin_manager.clone());
 
     // Delegate to EventLoopRunner which decomposes the loop body into
     // focused methods (drain_agent_events, drain_panel_events, etc.)
@@ -346,12 +320,11 @@ pub(crate) fn resume_session_from_file(
             let msgs = mgr.build_context().unwrap_or_default();
             let msg_count = msgs.len();
             app.session_id = mgr.session_id().to_string();
-            let resume_entry =
-                crate::session::entry::SessionEntry::Resume(crate::session::entry::ResumeEntry {
-                    id: crate::provider::message::MessageId::generate(),
-                    resumed_at: chrono::Utc::now(),
-                    from_entry_id: crate::provider::message::MessageId::new("slash-resume"),
-                });
+            let resume_entry = crate::session::entry::SessionEntry::Resume(crate::session::entry::ResumeEntry {
+                id: crate::provider::message::MessageId::generate(),
+                resumed_at: chrono::Utc::now(),
+                from_entry_id: crate::provider::message::MessageId::new("slash-resume"),
+            });
             let _ = crate::session::store::append_entry(mgr.file_path(), &resume_entry);
 
             app.conversation.blocks.clear();
@@ -361,10 +334,7 @@ pub(crate) fn resume_session_from_file(
 
             let _ = cmd_tx.send(AgentCommand::SeedMessages(msgs));
 
-            app.push_system(
-                format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count),
-                false,
-            );
+            app.push_system(format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count), false);
             app.conversation.scroll.scroll_to_bottom();
         }
         Err(e) => {
@@ -417,11 +387,7 @@ pub(crate) fn parse_account_flag(args: &str) -> (Option<String>, String) {
     for (i, part) in parts.iter().enumerate() {
         if *part == "--account" && i + 1 < parts.len() {
             let account = parts[i + 1].to_string();
-            let remaining: Vec<&str> = parts[..i]
-                .iter()
-                .chain(parts[i + 2..].iter())
-                .copied()
-                .collect();
+            let remaining: Vec<&str> = parts[..i].iter().chain(parts[i + 2..].iter()).copied().collect();
             return (Some(account), remaining.join(" "));
         }
     }
@@ -524,9 +490,7 @@ fn build_hook_pipeline(
     // Script hooks from .clankers/hooks/ (or configured dir)
     let hooks_dir = settings.hooks.resolve_hooks_dir(project_root);
     let timeout = std::time::Duration::from_secs(settings.hooks.script_timeout_secs);
-    pipeline.register(Arc::new(clankers_hooks::script::ScriptHookHandler::new(
-        hooks_dir, timeout,
-    )));
+    pipeline.register(Arc::new(clankers_hooks::script::ScriptHookHandler::new(hooks_dir, timeout)));
 
     // Git hooks from .git/hooks/ (if manage_git_hooks is enabled)
     if settings.hooks.manage_git_hooks {
@@ -538,9 +502,7 @@ fn build_hook_pipeline(
 
     // Plugin hooks (wraps plugin dispatch as a HookHandler)
     if let Some(pm) = plugin_manager {
-        pipeline.register(Arc::new(
-            crate::plugin::hooks::PluginHookHandler::new(Arc::clone(pm)),
-        ));
+        pipeline.register(Arc::new(crate::plugin::hooks::PluginHookHandler::new(Arc::clone(pm))));
     }
 
     Some(Arc::new(pipeline))
@@ -578,12 +540,12 @@ fn rebuild_leader_menu(
         match pm_arc.lock() {
             Ok(guard) => {
                 pm_guard = guard;
-                pm_menu_contrib = crate::plugin::contributions::PluginMenuContributor(&*pm_guard);
+                pm_menu_contrib = crate::plugin::contributions::PluginMenuContributor(&pm_guard);
                 contributors.push(&pm_menu_contrib);
             }
             Err(poisoned) => {
                 pm_guard = poisoned.into_inner();
-                pm_menu_contrib = crate::plugin::contributions::PluginMenuContributor(&*pm_guard);
+                pm_menu_contrib = crate::plugin::contributions::PluginMenuContributor(&pm_guard);
                 contributors.push(&pm_menu_contrib);
             }
         }
@@ -609,12 +571,12 @@ fn build_slash_registry(
         match pm_arc.lock() {
             Ok(guard) => {
                 pm_guard = guard;
-                pm_contrib = crate::plugin::contributions::PluginSlashContributor(&*pm_guard);
+                pm_contrib = crate::plugin::contributions::PluginSlashContributor(&pm_guard);
                 contributors.push(&pm_contrib);
             }
             Err(poisoned) => {
                 pm_guard = poisoned.into_inner();
-                pm_contrib = crate::plugin::contributions::PluginSlashContributor(&*pm_guard);
+                pm_contrib = crate::plugin::contributions::PluginSlashContributor(&pm_guard);
                 contributors.push(&pm_contrib);
             }
         }

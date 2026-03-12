@@ -84,9 +84,11 @@ impl PtyHarness {
                 dir.join("clankers"),
                 dir.parent().map(|p| p.join("clankers")).unwrap_or_default(),
             ];
-            candidates.iter().find(|p| p.exists() && p.is_file()).cloned().unwrap_or_else(|| {
-                std::path::PathBuf::from("clankers")
-            })
+            candidates
+                .iter()
+                .find(|p| p.exists() && p.is_file())
+                .cloned()
+                .unwrap_or_else(|| std::path::PathBuf::from("clankers"))
         };
         let mut cmd = CommandBuilder::new(&clankers_bin);
         cmd.args(["--no-zellij"]);

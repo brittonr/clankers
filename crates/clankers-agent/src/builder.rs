@@ -2,7 +2,6 @@
 
 use std::sync::Arc;
 
-use crate::Agent;
 use clankers_config::paths::ClankersPaths;
 use clankers_config::settings::Settings;
 use clankers_db::Db;
@@ -10,6 +9,8 @@ use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_model_selection::cost_tracker::pricing_from_models;
 use clankers_model_selection::policy::RoutingPolicy;
 use clankers_provider::Provider;
+
+use crate::Agent;
 use crate::tool::Tool;
 
 /// Builder for constructing an Agent with automatic routing and cost tracking setup.

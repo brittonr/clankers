@@ -16,8 +16,7 @@ async fn validate_tui_basic_smoke() {
             }
         ]
     });
-    let result =
-        tool.execute(&ToolContext::new("test-1".to_string(), CancellationToken::new(), None), params).await;
+    let result = tool.execute(&ToolContext::new("test-1".to_string(), CancellationToken::new(), None), params).await;
     assert!(!result.is_error, "Should pass: {:?}", result);
     let text = match &result.content[0] {
         ToolResultContent::Text { text } => text,
@@ -46,8 +45,7 @@ async fn validate_tui_slash_command_and_panel() {
             }
         ]
     });
-    let result =
-        tool.execute(&ToolContext::new("test-2".to_string(), CancellationToken::new(), None), params).await;
+    let result = tool.execute(&ToolContext::new("test-2".to_string(), CancellationToken::new(), None), params).await;
     assert!(!result.is_error, "Should pass: {:?}", result);
     let text = match &result.content[0] {
         ToolResultContent::Text { text } => text,
@@ -95,8 +93,7 @@ async fn validate_tui_panel_focus_with_backtick() {
             }
         ]
     });
-    let result =
-        tool.execute(&ToolContext::new("test-3".to_string(), CancellationToken::new(), None), params).await;
+    let result = tool.execute(&ToolContext::new("test-3".to_string(), CancellationToken::new(), None), params).await;
     assert!(!result.is_error, "Should pass: {:?}", result);
     let text = match &result.content[0] {
         ToolResultContent::Text { text } => text,
@@ -120,8 +117,7 @@ async fn validate_tui_failing_assertion() {
             }
         ]
     });
-    let result =
-        tool.execute(&ToolContext::new("test-4".to_string(), CancellationToken::new(), None), params).await;
+    let result = tool.execute(&ToolContext::new("test-4".to_string(), CancellationToken::new(), None), params).await;
     assert!(result.is_error, "Should fail");
     let text = match &result.content[0] {
         ToolResultContent::Text { text } => text,

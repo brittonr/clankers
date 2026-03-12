@@ -54,7 +54,8 @@ impl LoopTool {
                     "  Poll a URL every 30s until it returns 'ready':\n",
                     "    {action: 'run', command: 'curl -s http://...', break_on: 'contains:ready', ",
                     "     interval: 30, max: 60}",
-                ).to_string(),
+                )
+                .to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -122,8 +123,7 @@ impl LoopTool {
         } else if matches!(params.break_condition, BreakCondition::Never) {
             LoopDef::fixed(&params.name, params.max, action_payload)
         } else {
-            LoopDef::until(&params.name, params.break_condition.clone(), action_payload)
-                .with_max_iterations(params.max)
+            LoopDef::until(&params.name, params.break_condition.clone(), action_payload).with_max_iterations(params.max)
         };
 
         self.engine.register(def).ok_or_else(|| {
@@ -131,12 +131,7 @@ impl LoopTool {
         })
     }
 
-    async fn run_loop_iterations(
-        &self,
-        ctx: &ToolContext,
-        loop_id: &LoopId,
-        params: &RunParams,
-    ) -> ToolResult {
+    async fn run_loop_iterations(&self, ctx: &ToolContext, loop_id: &LoopId, params: &RunParams) -> ToolResult {
         let name = &params.name;
         let mut iteration = 0u32;
         let mut last_output = String::new();
@@ -216,11 +211,7 @@ impl LoopTool {
         match self.engine.get(&id) {
             Some(state) => {
                 let summary = state.summary();
-                let last_output = state
-                    .results
-                    .last()
-                    .map(|r| r.output.as_str())
-                    .unwrap_or("(no output yet)");
+                let last_output = state.results.last().map(|r| r.output.as_str()).unwrap_or("(no output yet)");
                 ToolResult::text(format!("{summary}\nLast output:\n{last_output}"))
             }
             None => ToolResult::error(format!("Loop {id} not found.")),
@@ -298,16 +289,8 @@ fn parse_run_params(params: &Value) -> Result<RunParams, ToolResult> {
         .and_then(|v| v.as_str())
         .ok_or_else(|| ToolResult::error("'run' requires 'command' parameter"))?
         .to_string();
-    let name = params
-        .get("name")
-        .and_then(|v| v.as_str())
-        .unwrap_or("loop")
-        .to_string();
-    let max = params
-        .get("max")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(10)
-        .min(u32::MAX as u64) as u32;
+    let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("loop").to_string();
+    let max = params.get("max").and_then(|v| v.as_u64()).unwrap_or(10).min(u64::from(u32::MAX)) as u32;
     let interval_secs = params.get("interval").and_then(|v| v.as_u64()).unwrap_or(0);
     let break_condition = match params.get("break_on").and_then(|v| v.as_str()) {
         Some(s) => parse_break_condition(s),
@@ -334,10 +317,7 @@ fn format_loop_result(
     last_output: &str,
 ) -> ToolResult {
     let state = engine.get(loop_id);
-    let status = state
-        .as_ref()
-        .map(|s| format!("{:?}", s.status))
-        .unwrap_or_else(|| "unknown".into());
+    let status = state.as_ref().map(|s| format!("{:?}", s.status)).unwrap_or_else(|| "unknown".into());
     let elapsed = state.as_ref().map(|s| s.elapsed_secs()).unwrap_or(0);
 
     ToolResult::text(format!(

@@ -8,6 +8,12 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use clankers_model_selection::cost_tracker::CostTracker;
+use clankers_provider::Provider;
+use clankers_provider::ThinkingConfig;
+use clankers_provider::Usage;
+use clankers_provider::message::*;
+use clankers_provider::streaming::*;
 use execution::execute_tools_parallel;
 use execution::execute_turn;
 use model_switch::check_model_switch;
@@ -16,17 +22,11 @@ use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
 use usage::update_usage_tracking;
 
-use crate::events::AgentEvent;
 use crate::error::AgentError;
 use crate::error::Result;
-use clankers_model_selection::cost_tracker::CostTracker;
-use clankers_provider::Provider;
-use clankers_provider::ThinkingConfig;
-use clankers_provider::Usage;
-use clankers_provider::message::*;
-use clankers_provider::streaming::*;
-use crate::tool::Tool;
+use crate::events::AgentEvent;
 use crate::tool::ModelSwitchSlot;
+use crate::tool::Tool;
 
 /// Configuration for a turn loop run
 pub struct TurnConfig {
@@ -86,12 +86,7 @@ impl ContentBlockBuilder {
             ) => {
                 thinking.push_str(delta_thinking);
             }
-            (
-                Content::Thinking { signature, .. },
-                ContentDelta::SignatureDelta {
-                    signature: sig_delta,
-                },
-            ) => {
+            (Content::Thinking { signature, .. }, ContentDelta::SignatureDelta { signature: sig_delta }) => {
                 signature.push_str(sig_delta);
             }
             (Content::ToolUse { .. }, ContentDelta::InputJsonDelta { partial_json }) => {
@@ -126,6 +121,7 @@ impl ContentBlockBuilder {
 /// 3. Collect response, extract tool calls
 /// 4. If tool_use: execute tools in parallel, append results, loop
 /// 5. If stop/max_tokens: return
+#[allow(clippy::too_many_arguments)]
 pub async fn run_turn_loop(
     provider: &dyn Provider,
     tools: &HashMap<String, Arc<dyn Tool>>,
@@ -177,9 +173,15 @@ pub async fn run_turn_loop(
 
         // Execute tools and append results (with truncation)
         let tool_result_messages = execute_tools_parallel(
-            tools, &tool_calls, event_tx, cancel.clone(),
-            hook_pipeline.clone(), session_id, db.clone(),
-        ).await;
+            tools,
+            &tool_calls,
+            event_tx,
+            cancel.clone(),
+            hook_pipeline.clone(),
+            session_id,
+            db.clone(),
+        )
+        .await;
         let tool_result_messages = apply_output_truncation(tool_result_messages, &config.output_truncation);
         for msg in &tool_result_messages {
             messages.push(AgentMessage::ToolResult(msg.clone()));
@@ -254,9 +256,7 @@ fn apply_output_truncation(
                                 "Tool output truncated"
                             );
                         }
-                        truncated_content.push(Content::Text {
-                            text: result.content,
-                        });
+                        truncated_content.push(Content::Text { text: result.content });
                     }
                     other => truncated_content.push(other.clone()),
                 }

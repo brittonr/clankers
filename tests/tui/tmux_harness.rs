@@ -12,18 +12,16 @@
 //! Tests using this harness are skipped when tmux is not installed.
 
 use std::process::Command;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::{Duration, Instant};
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+use std::time::Duration;
+use std::time::Instant;
 
 static SESSION_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 /// Check whether tmux is available on PATH.
 pub fn tmux_available() -> bool {
-    Command::new("tmux")
-        .arg("-V")
-        .output()
-        .map(|o| o.status.success())
-        .unwrap_or(false)
+    Command::new("tmux").arg("-V").output().map(|o| o.status.success()).unwrap_or(false)
 }
 
 /// Skip the calling test if tmux is not installed.
@@ -55,11 +53,7 @@ impl TmuxTestHarness {
         }
 
         let id = SESSION_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let session = format!(
-            "clankers-test-{}-{}",
-            std::process::id(),
-            id
-        );
+        let session = format!("clankers-test-{}-{}", std::process::id(), id);
 
         let binary = env!("CARGO_BIN_EXE_clankers");
         let cwd = env!("CARGO_MANIFEST_DIR");
@@ -88,11 +82,7 @@ impl TmuxTestHarness {
 
         assert!(status.success(), "tmux new-session failed: {status}");
 
-        let harness = Self {
-            session,
-            rows,
-            cols,
-        };
+        let harness = Self { session, rows, cols };
 
         // Wait for the TUI to start rendering
         harness.wait_for_text("NORMAL", Duration::from_secs(10));
@@ -170,9 +160,9 @@ impl TmuxTestHarness {
                 &self.session,
                 "-p",
                 "-S",
-                "-",  // start of history
+                "-", // start of history
                 "-E",
-                "-",  // end of history
+                "-", // end of history
             ])
             .output()
             .expect("tmux capture-pane full failed");
@@ -190,10 +180,7 @@ impl TmuxTestHarness {
             if text.contains(needle) {
                 return;
             }
-            assert!(
-                start.elapsed() < timeout,
-                "Timed out after {timeout:?} waiting for {needle:?}\nScreen:\n{text}"
-            );
+            assert!(start.elapsed() < timeout, "Timed out after {timeout:?} waiting for {needle:?}\nScreen:\n{text}");
             std::thread::sleep(Duration::from_millis(50));
         }
     }
@@ -206,10 +193,7 @@ impl TmuxTestHarness {
     /// Get a specific row of the captured text (0-indexed).
     pub fn row_text(&self, row: u16) -> String {
         let text = self.capture_text();
-        text.lines()
-            .nth(row as usize)
-            .unwrap_or("")
-            .to_string()
+        text.lines().nth(row as usize).unwrap_or("").to_string()
     }
 
     /// Get the status bar text (last non-empty, non-border row).
@@ -260,9 +244,7 @@ impl TmuxTestHarness {
 impl Drop for TmuxTestHarness {
     fn drop(&mut self) {
         // Kill the session on cleanup — ignore errors (may already be dead)
-        let _ = Command::new("tmux")
-            .args(["kill-session", "-t", &self.session])
-            .status();
+        let _ = Command::new("tmux").args(["kill-session", "-t", &self.session]).status();
     }
 }
 

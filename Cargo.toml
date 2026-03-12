@@ -25,6 +25,9 @@ members = [
     "crates/clankers-zellij",
     "crates/clankers-tui-types",
     "crates/clankers-util",
+    "crates/clankers-protocol",
+    "crates/clankers-actor",
+    "crates/clankers-controller",
     "xtask",
 ]
 resolver = "3"
@@ -79,6 +82,9 @@ clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
 clankers-router = { version = "0.1.0", path = "crates/clankers-router", features = ["rpc"] }
 clankers-scheduler = { version = "0.1.0", path = "crates/clankers-scheduler" }
 clankers-skills = { version = "0.1.0", path = "crates/clankers-skills" }
+clankers-protocol = { version = "0.1.0", path = "crates/clankers-protocol" }
+clankers-actor = { version = "0.1.0", path = "crates/clankers-actor" }
+clankers-controller = { version = "0.1.0", path = "crates/clankers-controller" }
 clankers-specs = { version = "0.1.0", path = "crates/clankers-specs", optional = true }
 clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }
 clankers-zellij = { version = "0.1.0", path = "crates/clankers-zellij", optional = true }

@@ -150,10 +150,7 @@ mod tests {
 
     #[test]
     fn any_matches_first_true() {
-        let cond = BreakCondition::Any(vec![
-            BreakCondition::Contains("PASS".into()),
-            BreakCondition::ExitCode(0),
-        ]);
+        let cond = BreakCondition::Any(vec![BreakCondition::Contains("PASS".into()), BreakCondition::ExitCode(0)]);
         assert!(cond.check("PASS", Some(1)));
         assert!(cond.check("FAIL", Some(0)));
         assert!(!cond.check("FAIL", Some(1)));
@@ -161,10 +158,7 @@ mod tests {
 
     #[test]
     fn all_requires_everything() {
-        let cond = BreakCondition::All(vec![
-            BreakCondition::Contains("done".into()),
-            BreakCondition::ExitCode(0),
-        ]);
+        let cond = BreakCondition::All(vec![BreakCondition::Contains("done".into()), BreakCondition::ExitCode(0)]);
         assert!(cond.check("done", Some(0)));
         assert!(!cond.check("done", Some(1)));
         assert!(!cond.check("pending", Some(0))); // no "done" substring
@@ -199,10 +193,7 @@ mod tests {
 
     #[test]
     fn condition_serializes() {
-        let cond = BreakCondition::Any(vec![
-            BreakCondition::Contains("PASS".into()),
-            BreakCondition::ExitCode(0),
-        ]);
+        let cond = BreakCondition::Any(vec![BreakCondition::Contains("PASS".into()), BreakCondition::ExitCode(0)]);
         let json = serde_json::to_string(&cond).unwrap();
         let parsed: BreakCondition = serde_json::from_str(&json).unwrap();
         assert!(parsed.check("PASS", None));

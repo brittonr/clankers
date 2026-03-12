@@ -2,12 +2,11 @@
 
 use std::path::Path;
 
+use clankers_agent_defs::definition::AgentScope;
 use clankers_tui_types::MenuPlacement;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json;
-
-use clankers_agent_defs::definition::AgentScope;
 
 use crate::keybindings::KeymapConfig;
 use crate::model_roles::ModelRoles;

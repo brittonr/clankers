@@ -8,8 +8,12 @@
 use std::time::Duration;
 
 use super::snapshot;
-use super::snapshot::{assert_tmux_normalized_snapshot, assert_tmux_snapshot, assert_tmux_styled_snapshot};
-use super::tmux_harness::{require_tmux, TmuxKey, TmuxTestHarness};
+use super::snapshot::assert_tmux_normalized_snapshot;
+use super::snapshot::assert_tmux_snapshot;
+use super::snapshot::assert_tmux_styled_snapshot;
+use super::tmux_harness::TmuxKey;
+use super::tmux_harness::TmuxTestHarness;
+use super::tmux_harness::require_tmux;
 
 const SETTLE: Duration = Duration::from_millis(300);
 const TIMEOUT: Duration = Duration::from_secs(5);
@@ -32,10 +36,7 @@ fn tmux_captures_ansi_output() {
     let ansi = h.capture_ansi();
 
     // ANSI output should contain escape sequences (color codes)
-    assert!(
-        ansi.contains('\x1b') || ansi.contains("\u{1b}"),
-        "ANSI capture should contain escape sequences"
-    );
+    assert!(ansi.contains('\x1b') || ansi.contains("\u{1b}"), "ANSI capture should contain escape sequences");
 
     // Save for manual inspection
     snapshot::save_ansi_capture("tmux_startup", &ansi);

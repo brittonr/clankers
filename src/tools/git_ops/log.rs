@@ -1,7 +1,10 @@
 //! Git log operations via libgit2.
 
 use git2::Sort;
-use super::{open_repo, GitError, Result};
+
+use super::GitError;
+use super::Result;
+use super::open_repo;
 
 // ── Log ────────────────────────────────────────────────────────────────
 

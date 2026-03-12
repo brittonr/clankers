@@ -77,9 +77,7 @@ impl ModelAliases {
     pub fn resolve(alias: &str) -> Option<&'static str> {
         match alias {
             "sonnet" | "claude-sonnet" | "claude-sonnet-4-5" => Some("claude-sonnet-4-5-20250514"),
-            "opus" | "claude-opus" | "claude-opus-4" | "opus-4-6" | "claude-opus-4-6" => {
-                Some("claude-opus-4-20250514")
-            }
+            "opus" | "claude-opus" | "claude-opus-4" | "opus-4-6" | "claude-opus-4-6" => Some("claude-opus-4-20250514"),
             "haiku" | "claude-haiku" | "claude-haiku-4-5" => Some("claude-haiku-4-5-20250514"),
             "gpt-4o" | "4o" => Some("gpt-4o"),
             "gpt-4o-mini" | "4o-mini" => Some("gpt-4o-mini"),

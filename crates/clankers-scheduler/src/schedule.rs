@@ -26,17 +26,11 @@ impl std::fmt::Display for ScheduleId {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ScheduleKind {
     /// Fire once at a specific time.
-    Once {
-        at: DateTime<Utc>,
-    },
+    Once { at: DateTime<Utc> },
     /// Fire every `interval_secs` seconds.
-    Interval {
-        interval_secs: u64,
-    },
+    Interval { interval_secs: u64 },
     /// Fire on a cron-like pattern.
-    Cron {
-        pattern: crate::cron::CronPattern,
-    },
+    Cron { pattern: crate::cron::CronPattern },
 }
 
 /// Current state of a schedule.
@@ -85,11 +79,7 @@ impl Schedule {
     }
 
     /// Create a new interval schedule.
-    pub fn interval(
-        name: impl Into<String>,
-        interval_secs: u64,
-        payload: serde_json::Value,
-    ) -> Self {
+    pub fn interval(name: impl Into<String>, interval_secs: u64, payload: serde_json::Value) -> Self {
         Self {
             id: ScheduleId::generate(),
             name: name.into(),
@@ -104,11 +94,7 @@ impl Schedule {
     }
 
     /// Create a new cron schedule.
-    pub fn cron(
-        name: impl Into<String>,
-        pattern: crate::cron::CronPattern,
-        payload: serde_json::Value,
-    ) -> Self {
+    pub fn cron(name: impl Into<String>, pattern: crate::cron::CronPattern, payload: serde_json::Value) -> Self {
         Self {
             id: ScheduleId::generate(),
             name: name.into(),

@@ -1,0 +1,53 @@
+//! Client-to-daemon commands.
+
+use serde::Deserialize;
+use serde::Serialize;
+
+use crate::types::ImageData;
+use crate::types::SerializedMessage;
+
+/// Commands sent from a client (TUI, CLI, etc.) to the daemon session.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum SessionCommand {
+    /// Send a prompt to the agent.
+    Prompt { text: String, images: Vec<ImageData> },
+    /// Cancel the current operation.
+    Abort,
+    /// Reset cancellation state (allow new prompts after abort).
+    ResetCancel,
+    /// Switch the active model.
+    SetModel { model: String },
+    /// Clear conversation history.
+    ClearHistory,
+    /// Truncate to N messages.
+    TruncateMessages { count: usize },
+    /// Set thinking level.
+    SetThinkingLevel { level: String },
+    /// Cycle thinking level.
+    CycleThinkingLevel,
+    /// Seed initial messages (session restore).
+    SeedMessages { messages: Vec<SerializedMessage> },
+    /// Replace the system prompt.
+    SetSystemPrompt { prompt: String },
+    /// Get the current system prompt.
+    GetSystemPrompt,
+    /// Switch account credentials.
+    SwitchAccount { account: String },
+    /// Update disabled tools.
+    SetDisabledTools { tools: Vec<String> },
+    /// Respond to a bash confirmation request.
+    ConfirmBash { request_id: String, approved: bool },
+    /// Respond to a todo action request.
+    TodoResponse {
+        request_id: String,
+        response: serde_json::Value,
+    },
+    /// Execute a slash command (agent-side only).
+    SlashCommand { command: String, args: String },
+    /// Request session history replay (on attach).
+    ReplayHistory,
+    /// Query the session's active capabilities.
+    GetCapabilities,
+    /// Graceful disconnect.
+    Disconnect,
+}

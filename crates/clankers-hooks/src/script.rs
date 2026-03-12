@@ -1,12 +1,14 @@
 //! Script-based hook handler — runs user shell scripts from .clankers/hooks/
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use tracing;
 
-use crate::dispatcher::{HookHandler, PRIORITY_SCRIPT_HOOKS};
+use crate::dispatcher::HookHandler;
+use crate::dispatcher::PRIORITY_SCRIPT_HOOKS;
 use crate::payload::HookPayload;
 use crate::point::HookPoint;
 use crate::verdict::HookVerdict;
@@ -34,8 +36,12 @@ impl ScriptHookHandler {
 
 #[async_trait]
 impl HookHandler for ScriptHookHandler {
-    fn name(&self) -> &str { "script" }
-    fn priority(&self) -> u32 { PRIORITY_SCRIPT_HOOKS }
+    fn name(&self) -> &str {
+        "script"
+    }
+    fn priority(&self) -> u32 {
+        PRIORITY_SCRIPT_HOOKS
+    }
 
     fn subscribes_to(&self, point: HookPoint) -> bool {
         self.script_exists(point)
@@ -60,7 +66,9 @@ impl HookHandler for ScriptHookHandler {
             Err(e) => {
                 tracing::warn!(hook = %point, error = %e, "hook script failed");
                 if point.is_pre_hook() {
-                    HookVerdict::Deny { reason: format!("hook script error: {e}") }
+                    HookVerdict::Deny {
+                        reason: format!("hook script error: {e}"),
+                    }
                 } else {
                     HookVerdict::Continue
                 }
@@ -83,8 +91,8 @@ async fn run_script(
     payload: &HookPayload,
     timeout: Duration,
 ) -> Result<ScriptOutput, String> {
-    use tokio::process::Command;
     use tokio::io::AsyncWriteExt;
+    use tokio::process::Command;
 
     let mut cmd = Command::new(path);
     cmd.stdin(std::process::Stdio::piped());
@@ -101,10 +109,16 @@ async fn run_script(
             cmd.env("CLANKERS_TOOL_NAME", tool_name);
             cmd.env("CLANKERS_CALL_ID", call_id);
         }
-        crate::payload::HookData::Git { action, hash, message, .. } => {
+        crate::payload::HookData::Git {
+            action, hash, message, ..
+        } => {
             cmd.env("CLANKERS_GIT_ACTION", action);
-            if let Some(h) = hash { cmd.env("CLANKERS_COMMIT_HASH", h); }
-            if let Some(m) = message { cmd.env("CLANKERS_COMMIT_MESSAGE", m); }
+            if let Some(h) = hash {
+                cmd.env("CLANKERS_COMMIT_HASH", h);
+            }
+            if let Some(m) = message {
+                cmd.env("CLANKERS_COMMIT_MESSAGE", m);
+            }
         }
         crate::payload::HookData::Error { message, .. } => {
             cmd.env("CLANKERS_ERROR_MESSAGE", message);
@@ -157,10 +171,12 @@ fn parse_script_output(point: HookPoint, output: &ScriptOutput) -> HookVerdict {
     }
 
     // For pre-hooks, check if stdout contains JSON modifications
-    if point.is_pre_hook() && !output.stdout.trim().is_empty()
-        && let Ok(modified) = serde_json::from_str::<serde_json::Value>(output.stdout.trim()) {
-            return HookVerdict::Modify(modified);
-        }
+    if point.is_pre_hook()
+        && !output.stdout.trim().is_empty()
+        && let Ok(modified) = serde_json::from_str::<serde_json::Value>(output.stdout.trim())
+    {
+        return HookVerdict::Modify(modified);
+    }
 
     HookVerdict::Continue
 }
@@ -169,9 +185,7 @@ fn parse_script_output(point: HookPoint, output: &ScriptOutput) -> HookVerdict {
 #[cfg(unix)]
 fn is_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path)
-        .map(|m| m.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
+    std::fs::metadata(path).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
 }
 
 #[cfg(not(unix))]
@@ -181,9 +195,11 @@ fn is_executable(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use tempfile::TempDir;
     use std::fs;
+
+    use tempfile::TempDir;
+
+    use super::*;
 
     fn make_script(dir: &Path, name: &str, content: &str) -> PathBuf {
         let path = dir.join(name);
@@ -246,10 +262,7 @@ mod tests {
     async fn script_receives_payload_on_stdin() {
         let dir = TempDir::new().unwrap();
         let output_file = dir.path().join("received.json");
-        let script = format!(
-            "#!/bin/sh\ncat > {}\n",
-            output_file.display()
-        );
+        let script = format!("#!/bin/sh\ncat > {}\n", output_file.display());
         make_script(dir.path(), "post-tool", &script);
 
         let handler = ScriptHookHandler::new(dir.path().to_path_buf(), Duration::from_secs(5));

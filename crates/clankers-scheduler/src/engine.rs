@@ -15,7 +15,6 @@ use tokio_util::sync::CancellationToken;
 use tracing::debug;
 use tracing::info;
 
-
 use crate::schedule::Schedule;
 use crate::schedule::ScheduleId;
 use crate::schedule::ScheduleStatus;
@@ -322,13 +321,10 @@ mod tests {
         let handle = engine.start();
 
         // Wait for at least one event.
-        let event = tokio::time::timeout(
-            std::time::Duration::from_secs(2),
-            rx.recv(),
-        )
-        .await
-        .expect("should receive within 2s")
-        .expect("should receive event");
+        let event = tokio::time::timeout(std::time::Duration::from_secs(2), rx.recv())
+            .await
+            .expect("should receive within 2s")
+            .expect("should receive event");
 
         assert_eq!(event.schedule_name, "bg-test");
 

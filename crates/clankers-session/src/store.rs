@@ -10,8 +10,8 @@ use clankers_message::AgentMessage;
 use clankers_message::Content;
 
 use super::entry::SessionEntry;
-use crate::error::session_err;
 use crate::error::Result;
+use crate::error::session_err;
 
 /// Read all entries from a session JSONL file
 pub fn read_entries(path: &Path) -> Result<Vec<SessionEntry>> {
@@ -35,11 +35,7 @@ pub fn append_entry(path: &Path, entry: &SessionEntry) -> Result<()> {
         std::fs::create_dir_all(parent).map_err(session_err)?;
     }
     let json = serde_json::to_string(entry).map_err(session_err)?;
-    let mut file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)
-        .map_err(session_err)?;
+    let mut file = std::fs::OpenOptions::new().create(true).append(true).open(path).map_err(session_err)?;
     writeln!(file, "{}", json).map_err(session_err)?;
     Ok(())
 }

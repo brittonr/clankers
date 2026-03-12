@@ -1,12 +1,14 @@
 //! Git hook handler — runs standard .git/hooks/ scripts and manages shims.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 use std::time::Duration;
 
 use async_trait::async_trait;
 use tracing;
 
-use crate::dispatcher::{HookHandler, PRIORITY_GIT_HOOKS};
+use crate::dispatcher::HookHandler;
+use crate::dispatcher::PRIORITY_GIT_HOOKS;
 use crate::payload::HookPayload;
 use crate::point::HookPoint;
 use crate::verdict::HookVerdict;
@@ -40,16 +42,18 @@ impl GitHookHandler {
     }
 
     fn hook_exists(&self, point: HookPoint) -> bool {
-        self.hook_path(point)
-            .map(|p| p.is_file() && is_executable(&p))
-            .unwrap_or(false)
+        self.hook_path(point).map(|p| p.is_file() && is_executable(&p)).unwrap_or(false)
     }
 }
 
 #[async_trait]
 impl HookHandler for GitHookHandler {
-    fn name(&self) -> &str { "git" }
-    fn priority(&self) -> u32 { PRIORITY_GIT_HOOKS }
+    fn name(&self) -> &str {
+        "git"
+    }
+    fn priority(&self) -> u32 {
+        PRIORITY_GIT_HOOKS
+    }
 
     fn subscribes_to(&self, point: HookPoint) -> bool {
         self.hook_exists(point)
@@ -78,7 +82,9 @@ impl HookHandler for GitHookHandler {
             Err(e) => {
                 tracing::warn!(hook = %point, error = %e, "git hook execution failed");
                 if point.is_pre_hook() {
-                    HookVerdict::Deny { reason: format!("git hook error: {e}") }
+                    HookVerdict::Deny {
+                        reason: format!("git hook error: {e}"),
+                    }
                 } else {
                     HookVerdict::Continue
                 }
@@ -122,8 +128,7 @@ pub fn install_hook_shim(repo_root: &Path, hook_name: &str) -> Result<(), String
     // Back up existing hook
     if hook_path.exists() {
         let backup = hooks_dir.join(format!("{hook_name}.clankers-backup"));
-        std::fs::rename(&hook_path, &backup)
-            .map_err(|e| format!("backup existing hook: {e}"))?;
+        std::fs::rename(&hook_path, &backup).map_err(|e| format!("backup existing hook: {e}"))?;
         tracing::info!(hook = hook_name, backup = %backup.display(), "backed up existing git hook");
     }
 
@@ -160,8 +165,7 @@ pub fn uninstall_hook_shim(repo_root: &Path, hook_name: &str) -> Result<(), Stri
 
             // Restore backup
             if backup.exists() {
-                std::fs::rename(&backup, &hook_path)
-                    .map_err(|e| format!("restore backup: {e}"))?;
+                std::fs::rename(&backup, &hook_path).map_err(|e| format!("restore backup: {e}"))?;
                 tracing::info!(hook = hook_name, "restored original git hook from backup");
             }
         }
@@ -173,9 +177,7 @@ pub fn uninstall_hook_shim(repo_root: &Path, hook_name: &str) -> Result<(), Stri
 #[cfg(unix)]
 fn is_executable(path: &Path) -> bool {
     use std::os::unix::fs::PermissionsExt;
-    std::fs::metadata(path)
-        .map(|m| m.permissions().mode() & 0o111 != 0)
-        .unwrap_or(false)
+    std::fs::metadata(path).map(|m| m.permissions().mode() & 0o111 != 0).unwrap_or(false)
 }
 
 #[cfg(not(unix))]
@@ -185,9 +187,11 @@ fn is_executable(path: &Path) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use tempfile::TempDir;
     use std::fs;
+
+    use tempfile::TempDir;
+
+    use super::*;
 
     fn make_git_repo() -> TempDir {
         let dir = TempDir::new().unwrap();

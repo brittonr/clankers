@@ -91,7 +91,7 @@ fn format_event_json(event: &AgentEvent) -> String {
                 }
                 ContentDelta::SignatureDelta { .. } => {
                     // Internal to Anthropic protocol; not exposed in JSON output
-                    return json!({"type": "unknown"}).to_string();
+                    json!({"type": "unknown"}).to_string()
                 }
             }
         }

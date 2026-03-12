@@ -53,10 +53,7 @@ pub fn paste_from_clipboard(app: &mut App) {
 /// wl-paste is unavailable.
 fn paste_wayland() -> Result<ClipboardResult, ClipboardResult> {
     // Try text first via wl-paste
-    if let Ok(output) = std::process::Command::new("wl-paste")
-        .arg("--no-newline")
-        .output()
-    {
+    if let Ok(output) = std::process::Command::new("wl-paste").arg("--no-newline").output() {
         if output.status.success() {
             let text = String::from_utf8_lossy(&output.stdout).to_string();
             if !text.is_empty() {
@@ -79,10 +76,7 @@ fn paste_wayland() -> Result<ClipboardResult, ClipboardResult> {
 
 /// Try to read an image from the Wayland clipboard via wl-paste.
 fn paste_wayland_image() -> Option<ClipboardResult> {
-    let output = std::process::Command::new("wl-paste")
-        .args(["--no-newline", "--type", "image/png"])
-        .output()
-        .ok()?;
+    let output = std::process::Command::new("wl-paste").args(["--no-newline", "--type", "image/png"]).output().ok()?;
 
     if !output.status.success() || output.stdout.is_empty() {
         return None;
@@ -91,9 +85,7 @@ fn paste_wayland_image() -> Option<ClipboardResult> {
     let png_buf = output.stdout;
 
     // Decode to get dimensions
-    let reader = image::ImageReader::new(std::io::Cursor::new(&png_buf))
-        .with_guessed_format()
-        .ok()?;
+    let reader = image::ImageReader::new(std::io::Cursor::new(&png_buf)).with_guessed_format().ok()?;
     let img = reader.decode().ok()?;
     let width = img.width();
     let height = img.height();
@@ -115,8 +107,8 @@ fn paste_wayland_image() -> Option<ClipboardResult> {
 
 /// Paste via arboard (X11 / macOS / Windows).
 fn paste_arboard() -> Result<ClipboardResult, ClipboardResult> {
-    let mut clipboard = arboard::Clipboard::new()
-        .map_err(|e| ClipboardResult::Error(format!("Clipboard error: {e}")))?;
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| ClipboardResult::Error(format!("Clipboard error: {e}")))?;
 
     // Try text first — this is what the user almost always wants with Ctrl+V
     if let Ok(text) = clipboard.get_text()
@@ -135,9 +127,8 @@ fn paste_arboard() -> Result<ClipboardResult, ClipboardResult> {
             let height = img_data.height as u32;
             let rgba: Vec<u8> = img_data.bytes.into_owned();
 
-            let img = image::RgbaImage::from_raw(width, height, rgba).ok_or_else(|| {
-                ClipboardResult::Error("Failed to decode clipboard image data.".to_string())
-            })?;
+            let img = image::RgbaImage::from_raw(width, height, rgba)
+                .ok_or_else(|| ClipboardResult::Error("Failed to decode clipboard image data.".to_string()))?;
 
             let mut png_buf: Vec<u8> = Vec::new();
             let mut cursor = std::io::Cursor::new(&mut png_buf);

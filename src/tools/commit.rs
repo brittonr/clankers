@@ -231,14 +231,17 @@ impl CommitTool {
         // Fire pre-commit hook (can deny the commit)
         if let Some(pipeline) = ctx.hook_pipeline() {
             let payload = clankers_hooks::HookPayload::git(
-                "pre-commit", ctx.session_id(), "commit",
-                None, Some(&msg), staged_names.clone(),
+                "pre-commit",
+                ctx.session_id(),
+                "commit",
+                None,
+                Some(&msg),
+                staged_names.clone(),
             );
-            match pipeline.fire(clankers_hooks::HookPoint::PreCommit, &payload).await {
-                clankers_hooks::HookVerdict::Deny { reason } => {
-                    return ToolResult::error(format!("🪝 Pre-commit hook denied: {reason}"));
-                }
-                _ => {}
+            if let clankers_hooks::HookVerdict::Deny { reason } =
+                pipeline.fire(clankers_hooks::HookPoint::PreCommit, &payload).await
+            {
+                return ToolResult::error(format!("🪝 Pre-commit hook denied: {reason}"));
             }
         }
 
@@ -249,8 +252,12 @@ impl CommitTool {
                 // Fire post-commit hook (async, fire-and-forget)
                 if let Some(pipeline) = ctx.hook_pipeline() {
                     let payload = clankers_hooks::HookPayload::git(
-                        "post-commit", ctx.session_id(), "commit",
-                        Some(&result.short_hash), Some(&msg), staged_names,
+                        "post-commit",
+                        ctx.session_id(),
+                        "commit",
+                        Some(&result.short_hash),
+                        Some(&msg),
+                        staged_names,
                     );
                     pipeline.fire_async(clankers_hooks::HookPoint::PostCommit, payload);
                 }

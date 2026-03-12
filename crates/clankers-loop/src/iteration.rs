@@ -110,11 +110,7 @@ impl LoopDef {
         }
     }
 
-    pub fn until(
-        name: impl Into<String>,
-        condition: BreakCondition,
-        action: serde_json::Value,
-    ) -> Self {
+    pub fn until(name: impl Into<String>, condition: BreakCondition, action: serde_json::Value) -> Self {
         Self {
             id: LoopId::generate(),
             name: name.into(),
@@ -206,10 +202,7 @@ impl LoopState {
     /// Bounded by `max_iterations` (safety valve).
     pub fn record_iteration(&mut self, result: IterationResult) -> bool {
         assert_eq!(self.status, LoopStatus::Running, "can only record in running state");
-        assert_eq!(
-            result.index, self.current_iteration,
-            "iteration index must match current_iteration"
-        );
+        assert_eq!(result.index, self.current_iteration, "iteration index must match current_iteration");
 
         let broke = result.break_matched;
         self.results.push(result);
@@ -238,7 +231,10 @@ impl LoopState {
         }
 
         // Check poll timeout
-        if let LoopKind::Poll { timeout_secs: Some(timeout), .. } = &self.def.kind
+        if let LoopKind::Poll {
+            timeout_secs: Some(timeout),
+            ..
+        } = &self.def.kind
             && let Some(started) = self.started_at
         {
             let elapsed = (Utc::now() - started).num_seconds();
@@ -287,9 +283,7 @@ impl LoopState {
 
     /// Total elapsed time since the loop started.
     pub fn elapsed_secs(&self) -> i64 {
-        self.started_at
-            .map(|s| (self.finished_at.unwrap_or_else(Utc::now) - s).num_seconds())
-            .unwrap_or(0)
+        self.started_at.map(|s| (self.finished_at.unwrap_or_else(Utc::now) - s).num_seconds()).unwrap_or(0)
     }
 
     /// Summary string for display.
@@ -346,11 +340,8 @@ mod tests {
 
     #[test]
     fn until_loop_breaks_on_condition() {
-        let def = LoopDef::until(
-            "wait-for-pass",
-            BreakCondition::Contains("PASS".into()),
-            json!({"cmd": "cargo test"}),
-        );
+        let def =
+            LoopDef::until("wait-for-pass", BreakCondition::Contains("PASS".into()), json!({"cmd": "cargo test"}));
         let mut state = LoopState::new(def);
         state.start();
 
@@ -383,12 +374,8 @@ mod tests {
 
     #[test]
     fn max_iterations_stops_loop() {
-        let def = LoopDef::until(
-            "never-matches",
-            BreakCondition::Contains("NEVER".into()),
-            json!({}),
-        )
-        .with_max_iterations(5);
+        let def =
+            LoopDef::until("never-matches", BreakCondition::Contains("NEVER".into()), json!({})).with_max_iterations(5);
 
         let mut state = LoopState::new(def);
         state.start();

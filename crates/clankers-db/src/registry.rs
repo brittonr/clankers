@@ -47,6 +47,19 @@ pub enum ResourceKind {
     Agent,
 }
 
+impl std::str::FromStr for ResourceKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> std::result::Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "skill" => Ok(Self::Skill),
+            "prompt" => Ok(Self::Prompt),
+            "agent" => Ok(Self::Agent),
+            _ => Err(format!("Unknown resource kind: {}", s)),
+        }
+    }
+}
+
 impl ResourceKind {
     fn as_str(self) -> &'static str {
         match self {
@@ -56,13 +69,9 @@ impl ResourceKind {
         }
     }
 
-    fn parse(s: &str) -> Option<Self> {
-        match s {
-            "skill" => Some(Self::Skill),
-            "prompt" => Some(Self::Prompt),
-            "agent" => Some(Self::Agent),
-            _ => None,
-        }
+    /// Parse a resource kind from a string.
+    pub fn parse(s: &str) -> Option<Self> {
+        s.parse().ok()
     }
 }
 
@@ -122,11 +131,6 @@ impl RegistryEntry {
 /// Build the table key from kind and name.
 fn make_key(kind: &str, name: &str) -> String {
     format!("{kind}:{name}")
-}
-
-/// Parse a table key into (kind_str, name).
-fn parse_key(key: &str) -> Option<(&str, &str)> {
-    key.split_once(':')
 }
 
 /// Accessor for the resource registry table.
@@ -243,10 +247,10 @@ impl<'db> Registry<'db> {
 
         for item in table.iter().map_err(db_err)? {
             let (key, value) = item.map_err(db_err)?;
-            if key.value().starts_with(&prefix) {
-                if let Ok(entry) = serde_json::from_slice::<RegistryEntry>(value.value()) {
-                    entries.push(entry);
-                }
+            if key.value().starts_with(&prefix)
+                && let Ok(entry) = serde_json::from_slice::<RegistryEntry>(value.value())
+            {
+                entries.push(entry);
             }
         }
 
@@ -267,12 +271,7 @@ impl<'db> Registry<'db> {
             }
         }
 
-        entries.sort_by(|a, b| {
-            a.kind
-                .as_str()
-                .cmp(b.kind.as_str())
-                .then_with(|| a.name.cmp(&b.name))
-        });
+        entries.sort_by(|a, b| a.kind.as_str().cmp(b.kind.as_str()).then_with(|| a.name.cmp(&b.name)));
         Ok(entries)
     }
 
@@ -415,11 +414,7 @@ pub struct SyncReport {
 
 impl std::fmt::Display for SyncReport {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}s: {} total, {} new, {} removed",
-            self.kind, self.total, self.registered, self.removed
-        )
+        write!(f, "{}s: {} total, {} new, {} removed", self.kind, self.total, self.registered, self.removed)
     }
 }
 
@@ -654,7 +649,11 @@ mod tests {
         let reg = db.registry();
 
         // Initial sync: register 3 skills
-        let resources = vec![("napkin", "/s/napkin"), ("nix", "/s/nix"), ("web-fetch", "/s/web-fetch")];
+        let resources = vec![
+            ("napkin", "/s/napkin"),
+            ("nix", "/s/nix"),
+            ("web-fetch", "/s/web-fetch"),
+        ];
         let report = reg.sync_from_disk(ResourceKind::Skill, &resources)?;
         assert_eq!(report.total, 3);
         assert_eq!(report.registered, 3);
@@ -664,7 +663,11 @@ mod tests {
         reg.record_use("skill", "napkin")?;
 
         // Re-sync with one removed and one added
-        let resources = vec![("napkin", "/s/napkin"), ("nix", "/s/nix"), ("tigerstyle", "/s/tigerstyle")];
+        let resources = vec![
+            ("napkin", "/s/napkin"),
+            ("nix", "/s/nix"),
+            ("tigerstyle", "/s/tigerstyle"),
+        ];
         let report = reg.sync_from_disk(ResourceKind::Skill, &resources)?;
         assert_eq!(report.total, 3);
         assert_eq!(report.registered, 1); // tigerstyle is new

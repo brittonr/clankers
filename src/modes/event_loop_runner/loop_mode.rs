@@ -102,12 +102,11 @@ impl<'a> EventLoopRunner<'a> {
 
     /// Clean up loop state and notify the user.
     pub(super) fn finish_loop(&mut self, reason: &str) {
-        let summary = self.app.loop_status.as_ref().map(|ls| {
-            format!(
-                "Loop '{}' {} after {} iteration(s).",
-                ls.name, reason, ls.iteration,
-            )
-        });
+        let summary = self
+            .app
+            .loop_status
+            .as_ref()
+            .map(|ls| format!("Loop '{}' {} after {} iteration(s).", ls.name, reason, ls.iteration,));
 
         if let Some(ref id) = self.active_loop_id {
             self.loop_engine.remove(id);

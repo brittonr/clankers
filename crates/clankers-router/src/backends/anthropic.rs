@@ -364,10 +364,10 @@ fn build_request_body(request: &CompletionRequest, is_oauth: bool) -> Result<Val
     if let Some(messages) = body["messages"].as_array_mut() {
         for msg in messages.iter_mut().rev() {
             if msg["role"] == "user" {
-                if let Some(content) = msg["content"].as_array_mut() {
-                    if let Some(last_block) = content.last_mut() {
-                        last_block["cache_control"] = json!({"type": "ephemeral"});
-                    }
+                if let Some(content) = msg["content"].as_array_mut()
+                    && let Some(last_block) = content.last_mut()
+                {
+                    last_block["cache_control"] = json!({"type": "ephemeral"});
                 }
                 break;
             }
@@ -575,7 +575,6 @@ pub fn default_models() -> Vec<Model> {
             input_cost_per_mtok: Some(15.0),
             output_cost_per_mtok: Some(75.0),
         },
-
         Model {
             id: "claude-haiku-4-5-20250514".to_string(),
             name: "Claude Haiku 4.5".to_string(),

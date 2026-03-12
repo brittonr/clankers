@@ -147,10 +147,7 @@ const MAX_MATCHES: usize = 10_000;
 const _: () = assert!(MAX_MATCHES > 0);
 
 /// Build a regex matcher with the given case sensitivity.
-fn build_matcher(
-    pattern: &str,
-    case_sensitive: Option<bool>,
-) -> Result<RegexMatcher, String> {
+fn build_matcher(pattern: &str, case_sensitive: Option<bool>) -> Result<RegexMatcher, String> {
     let mut builder = grep_regex::RegexMatcherBuilder::new();
     builder.line_terminator(Some(b'\n'));
 
@@ -170,10 +167,7 @@ fn build_matcher(
 }
 
 /// Build a directory walker with gitignore support and optional glob filter.
-fn build_walker(
-    search_path: &Path,
-    glob: Option<&str>,
-) -> Result<ignore::Walk, String> {
+fn build_walker(search_path: &Path, glob: Option<&str>) -> Result<ignore::Walk, String> {
     let mut walker_builder = WalkBuilder::new(search_path);
     walker_builder
         .hidden(true)

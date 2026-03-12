@@ -157,7 +157,10 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<StreamEvent> {
                     name,
                     input: Value::Object(serde_json::Map::new()),
                 },
-                SseContentBlock::Thinking { thinking } => Content::Thinking { thinking, signature: String::new() },
+                SseContentBlock::Thinking { thinking } => Content::Thinking {
+                    thinking,
+                    signature: String::new(),
+                },
             };
             Some(StreamEvent::ContentBlockStart {
                 index: parsed.index,

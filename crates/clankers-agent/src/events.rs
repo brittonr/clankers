@@ -1,12 +1,12 @@
 //! AgentEvent enum (lifecycle, tool, message events)
 
-use serde_json::Value;
-
 use clankers_provider::Usage;
 use clankers_provider::message::AgentMessage;
 use clankers_provider::message::AssistantMessage;
 use clankers_provider::message::Content;
 use clankers_provider::message::MessageId;
+use serde_json::Value;
+
 use crate::tool::ToolResult;
 
 /// All lifecycle events emitted by the agent during execution.

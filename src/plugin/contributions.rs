@@ -89,10 +89,7 @@ impl crate::slash_commands::SlashContributor for PluginSlashContributor<'_> {
                     crate::slash_commands::SlashCommandDef {
                         name: cmd_name.clone(),
                         description: format!("Plugin command: {}", cmd_name),
-                        help: format!(
-                            "Execute the '{}' command from the '{}' plugin",
-                            cmd_name, plugin_name
-                        ),
+                        help: format!("Execute the '{}' command from the '{}' plugin", cmd_name, plugin_name),
                         accepts_args: true,
                         subcommands: vec![],
                         handler: Box::new(PluginSlashHandler {
@@ -120,15 +117,10 @@ impl crate::slash_commands::handlers::SlashHandler for PluginSlashHandler {
         // We return a placeholder. The real metadata is provided by SlashContributor above.
         crate::slash_commands::SlashCommand {
             name: Box::leak(self.command_name.clone().into_boxed_str()),
-            description: Box::leak(
-                format!("Plugin command: {}", self.command_name).into_boxed_str(),
-            ),
+            description: Box::leak(format!("Plugin command: {}", self.command_name).into_boxed_str()),
             help: Box::leak(
-                format!(
-                    "Execute the '{}' command from the '{}' plugin",
-                    self.command_name, self.plugin_name
-                )
-                .into_boxed_str(),
+                format!("Execute the '{}' command from the '{}' plugin", self.command_name, self.plugin_name)
+                    .into_boxed_str(),
             ),
             accepts_args: true,
             subcommands: vec![],
@@ -148,8 +140,7 @@ impl crate::slash_commands::handlers::SlashHandler for PluginSlashHandler {
                 let input_str = match serde_json::to_string(&input) {
                     Ok(s) => s,
                     Err(e) => {
-                        ctx.app
-                            .push_system(format!("Failed to serialize command: {}", e), true);
+                        ctx.app.push_system(format!("Failed to serialize command: {}", e), true);
                         return;
                     }
                 };
@@ -161,9 +152,7 @@ impl crate::slash_commands::handlers::SlashHandler for PluginSlashHandler {
                         match serde_json::from_str::<serde_json::Value>(&response) {
                             Ok(json) => {
                                 // If there's a "message" field, show it
-                                if let Some(message) =
-                                    json.get("message").and_then(|v| v.as_str())
-                                {
+                                if let Some(message) = json.get("message").and_then(|v| v.as_str()) {
                                     ctx.app.push_system(message.to_string(), false);
                                 } else {
                                     // Otherwise, show the raw JSON response
@@ -181,12 +170,10 @@ impl crate::slash_commands::handlers::SlashHandler for PluginSlashHandler {
                     }
                 }
             } else {
-                ctx.app
-                    .push_system("Failed to acquire plugin manager lock".to_string(), true);
+                ctx.app.push_system("Failed to acquire plugin manager lock".to_string(), true);
             }
         } else {
-            ctx.app
-                .push_system("Plugin manager not available".to_string(), true);
+            ctx.app.push_system("Plugin manager not available".to_string(), true);
         }
     }
 }

@@ -4,12 +4,12 @@
 //! `clankers-agent` and re-exported here for backward compatibility.
 
 // Core tool types — canonical definitions in clankers-agent
+pub use clankers_agent::tool::ModelSwitchSlot;
 pub use clankers_agent::tool::Tool;
 pub use clankers_agent::tool::ToolContext;
 pub use clankers_agent::tool::ToolDefinition;
 pub use clankers_agent::tool::ToolResult;
 pub use clankers_agent::tool::ToolResultContent;
-pub use clankers_agent::tool::ModelSwitchSlot;
 pub use clankers_agent::tool::model_switch_slot;
 
 /// Output truncation utilities — re-exported from `crate::util::truncation`.
@@ -34,7 +34,6 @@ pub mod grep;
 pub mod image_gen;
 pub mod loop_tool;
 pub mod ls;
-pub mod signal_loop;
 pub mod matrix;
 pub mod nix;
 pub mod plugin_tool;
@@ -43,6 +42,7 @@ pub mod read;
 pub mod review;
 pub mod sandbox;
 pub mod schedule;
+pub mod signal_loop;
 pub mod subagent;
 pub mod switch_model;
 pub mod todo;

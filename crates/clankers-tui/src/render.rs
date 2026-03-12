@@ -5,8 +5,8 @@
 //!    - Upper area: BSP tiling for panels and chat content
 //!    - Lower area: Fixed input editor and status bar
 //!
-//! 2. The BSP tiling system manages the dynamic layout of side panels
-//!    and chat content, while input and status remain fixed at the bottom.
+//! 2. The BSP tiling system manages the dynamic layout of side panels and chat content, while input
+//!    and status remain fixed at the bottom.
 //!
 //! This separation allows the input area and status bar to remain stable
 //! regardless of panel configuration changes.
@@ -66,7 +66,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     }
 
     // ── Calculate input and status bar heights ──────────────────────
-    
+
     let indicator = compute_input_indicator(app.state, app.input_mode);
     let inner_width = frame.area().width.saturating_sub(2) as usize;
     let visual_lines = app.editor.visual_line_count(inner_width, indicator.len()) as u16;
@@ -76,14 +76,12 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // ── Split frame into main area and bottom area ──────────────────
 
     let main_constraints = vec![
-        Constraint::Min(3),                                          // main area (panels + chat)
-        Constraint::Length(editor_height + status_bar_height),       // input + status bar
+        Constraint::Min(3),                                    // main area (panels + chat)
+        Constraint::Length(editor_height + status_bar_height), // input + status bar
     ];
-    
-    let main_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(main_constraints)
-        .split(frame.area());
+
+    let main_chunks =
+        Layout::default().direction(Direction::Vertical).constraints(main_constraints).split(frame.area());
 
     let panels_and_chat_area = main_chunks[0];
     let bottom_area = main_chunks[1];
@@ -94,11 +92,9 @@ pub fn render(frame: &mut Frame, app: &mut App) {
         Constraint::Length(editor_height),     // input/editor
         Constraint::Length(status_bar_height), // status bar
     ];
-    
-    let bottom_chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints(bottom_constraints)
-        .split(bottom_area);
+
+    let bottom_chunks =
+        Layout::default().direction(Direction::Vertical).constraints(bottom_constraints).split(bottom_area);
 
     app.editor_area = bottom_chunks[0];
     app.status_area = bottom_chunks[1];
@@ -114,9 +110,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
     // ── Render main chat area ───────────────────────────────────────
 
     let border_color = if chat_focused { Color::Cyan } else { Color::DarkGray };
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .border_style(Style::default().fg(border_color));
+    let block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(border_color));
     let chat_inner = block.inner(chat_area);
     frame.render_widget(block, chat_area);
 
@@ -329,20 +323,16 @@ fn render_status_bar_area(frame: &mut Frame, app: &mut App) {
         tool_activity,
         prompt_improve: app.prompt_improve,
         loop_status: app.loop_status.as_ref().map(|ls| {
-            use ratatui::style::{Color, Modifier, Style};
+            use ratatui::style::Color;
+            use ratatui::style::Modifier;
+            use ratatui::style::Style;
             use ratatui::text::Span;
             let label = if ls.active {
                 format!(" {} {} ", app.spinner_char(), ls.label())
             } else {
                 format!(" ⟳ {} ", ls.label())
             };
-            Span::styled(
-                label,
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Magenta)
-                    .add_modifier(Modifier::BOLD),
-            )
+            Span::styled(label, Style::default().fg(Color::Black).bg(Color::Magenta).add_modifier(Modifier::BOLD))
         }),
     };
     status_bar::render_status_bar(frame, &status_data, &app.theme, app.status_area);

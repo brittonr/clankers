@@ -4,9 +4,9 @@ use reqwest::Client;
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::error::Result;
 use crate::CompletionRequest;
 use crate::auth::Credential;
+use crate::error::Result;
 use crate::retry::RetryConfig;
 use crate::retry::is_retryable_status;
 use crate::retry::parse_retry_after;
@@ -276,10 +276,10 @@ pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> 
     // Anthropic caches the request prefix up to each cache_control breakpoint.
     // Since conversations are append-only, the prefix through the last user
     // message is identical across turns → near-perfect cache hits.
-    if let Some(last_user) = messages.iter_mut().rev().find(|m| m.role == "user") {
-        if let Some(last_block) = last_user.content.last_mut() {
-            last_block.set_cache_control(CacheControl::ephemeral());
-        }
+    if let Some(last_user) = messages.iter_mut().rev().find(|m| m.role == "user")
+        && let Some(last_block) = last_user.content.last_mut()
+    {
+        last_block.set_cache_control(CacheControl::ephemeral());
     }
 
     let tools = if request.tools.is_empty() {

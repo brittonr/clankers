@@ -27,9 +27,7 @@ impl std::error::Error for AgentError {}
 
 impl From<clankers_router::Error> for AgentError {
     fn from(e: clankers_router::Error) -> Self {
-        Self::ProviderStreaming {
-            message: e.to_string(),
-        }
+        Self::ProviderStreaming { message: e.to_string() }
     }
 }
 

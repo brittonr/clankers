@@ -6,9 +6,9 @@
 //! `ToolResult` variants not present in the router's `ContentBlock`).
 
 // Re-export types that are field-identical to the router's definitions.
+pub use clankers_router::Usage;
 pub use clankers_router::streaming::ContentDelta;
 pub use clankers_router::streaming::MessageMetadata;
-pub use clankers_router::Usage;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -33,10 +33,7 @@ pub enum StreamEvent {
     /// Content block completed
     ContentBlockStop { index: usize },
     /// Message-level delta (stop reason + final usage)
-    MessageDelta {
-        stop_reason: Option<String>,
-        usage: Usage,
-    },
+    MessageDelta { stop_reason: Option<String>, usage: Usage },
     /// Message stream completed
     MessageStop,
     /// Error occurred during streaming

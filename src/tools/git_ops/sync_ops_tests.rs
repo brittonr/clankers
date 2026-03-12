@@ -1,9 +1,11 @@
-use super::*;
 use std::fs;
+
 use git2::Oid;
 use git2::Repository;
 use git2::Signature;
 use tempfile::TempDir;
+
+use super::*;
 
 /// Helper to create a test repository with initial commit
 fn setup_test_repo() -> (TempDir, Repository) {

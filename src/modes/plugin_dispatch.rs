@@ -39,7 +39,11 @@ pub(crate) fn dispatch_event_to_plugins(
         }
         // Check if this plugin subscribes to this event type
         let event_kind = event.event_kind();
-        let subscribed = info.manifest.events.iter().any(|e| PluginEvent::parse(e).is_some_and(|pe| pe.matches_event_kind(event_kind)));
+        let subscribed = info
+            .manifest
+            .events
+            .iter()
+            .any(|e| PluginEvent::parse(e).is_some_and(|pe| pe.matches_event_kind(event_kind)));
         if !subscribed {
             continue;
         }

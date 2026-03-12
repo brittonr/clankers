@@ -73,7 +73,11 @@ pub(crate) fn handle_extended_action(
         }
         ExtendedAction::ToggleBlockIds => {
             app.overlays.show_block_ids = !app.overlays.show_block_ids;
-            let state = if app.overlays.show_block_ids { "visible" } else { "hidden" };
+            let state = if app.overlays.show_block_ids {
+                "visible"
+            } else {
+                "hidden"
+            };
             app.push_system(format!("Block IDs now {}.", state), false);
         }
 
@@ -173,11 +177,7 @@ pub(crate) fn handle_extended_action(
                 app.auto_test_enabled = !app.auto_test_enabled;
                 let state = if app.auto_test_enabled { "on" } else { "off" };
                 app.push_system(
-                    format!(
-                        "Auto-test {}: {}",
-                        state,
-                        app.auto_test_command.as_deref().unwrap_or("(none)")
-                    ),
+                    format!("Auto-test {}: {}", state, app.auto_test_command.as_deref().unwrap_or("(none)")),
                     false,
                 );
             }
@@ -233,6 +233,7 @@ fn handle_directional_focus(app: &mut App, towards: ratatui_hypertile::Towards) 
 
 fn handle_panel_scroll(app: &mut App, up: bool) {
     use clankers_tui_types::PanelId;
+
     use crate::tui::components::subagent_panel::SubagentPanel;
     if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
         if up {
@@ -245,6 +246,7 @@ fn handle_panel_scroll(app: &mut App, up: bool) {
 
 fn handle_panel_clear_done(app: &mut App) {
     use clankers_tui_types::PanelId;
+
     use crate::tui::components::subagent_panel::SubagentPanel;
     if let Some(subagent_panel) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
         subagent_panel.clear_done();
@@ -259,6 +261,7 @@ fn handle_panel_kill(
     panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
 ) {
     use clankers_tui_types::PanelId;
+
     use crate::tui::components::subagent_panel::SubagentPanel;
     if let Some(sp) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
         && let Some(id) = sp.selected_id()
@@ -269,6 +272,7 @@ fn handle_panel_kill(
 
 fn handle_panel_remove(app: &mut App) {
     use clankers_tui_types::PanelId;
+
     use crate::tui::components::subagent_panel::SubagentPanel;
     if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
         sp.remove_selected();
@@ -288,6 +292,7 @@ fn handle_toggle_session_popup(app: &mut App) {
 
 fn handle_toggle_branch_panel(app: &mut App) {
     use clankers_tui_types::PanelId;
+
     use crate::tui::components::branch_panel::BranchPanel;
 
     if app.layout.focused_panel == Some(PanelId::Branches) {
@@ -326,20 +331,13 @@ fn handle_open_account_selector(app: &mut App) {
         })
         .collect();
     if accounts.is_empty() {
-        app.push_system(
-            "No accounts configured. Use /login to authenticate.".to_string(),
-            true,
-        );
+        app.push_system("No accounts configured. Use /login to authenticate.".to_string(), true);
     } else {
         app.overlays.account_selector.open(accounts);
     }
 }
 
-fn move_focused_pane(
-    app: &mut App,
-    direction: ratatui::layout::Direction,
-    towards: ratatui_hypertile::Towards,
-) {
+fn move_focused_pane(app: &mut App, direction: ratatui::layout::Direction, towards: ratatui_hypertile::Towards) {
     app.apply_tiling_action(ratatui_hypertile::HypertileAction::MoveFocused {
         direction,
         towards,

@@ -16,11 +16,6 @@ pub mod engine;
 pub mod iteration;
 pub mod truncation;
 
-pub use truncation::OutputTruncationConfig;
-pub use truncation::TruncationResult;
-pub use truncation::cleanup_temp_files;
-pub use truncation::truncate_tool_output;
-
 pub use condition::BreakCondition;
 pub use condition::parse_break_condition;
 pub use engine::LoopEngine;
@@ -32,3 +27,7 @@ pub use iteration::LoopState;
 pub use iteration::LoopStatus;
 pub use iteration::MAX_ACTIVE_LOOPS;
 pub use iteration::MAX_ITERATIONS_HARD_LIMIT;
+pub use truncation::OutputTruncationConfig;
+pub use truncation::TruncationResult;
+pub use truncation::cleanup_temp_files;
+pub use truncation::truncate_tool_output;

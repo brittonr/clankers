@@ -62,10 +62,7 @@ fn create_new_session(
         None => None,
     };
     let (wt_path, wt_branch) = match &wt_setup {
-        Some(s) => (
-            Some(s.working_dir.to_string_lossy().to_string()),
-            Some(s.branch.clone()),
-        ),
+        Some(s) => (Some(s.working_dir.to_string_lossy().to_string()), Some(s.branch.clone())),
         None => (None, None),
     };
     match crate::session::SessionManager::create(
@@ -112,10 +109,7 @@ fn resume_session(
     let _ = crate::session::store::append_entry(mgr.file_path(), &resume_entry);
 
     let msg_count = msgs.len();
-    app.push_system(
-        format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count),
-        false,
-    );
+    app.push_system(format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count), false);
 
     // Re-enter the worktree if this session had one
     let wt_setup = crate::worktree::session_bridge::resume_worktree(mgr.worktree_path(), mgr.worktree_branch());

@@ -9,12 +9,12 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tracing::info;
 
-use crate::error::Result;
 use crate::CompletionRequest;
 use crate::Model;
 use crate::Provider;
 use crate::auth::Credential;
 use crate::credential_manager::CredentialManager;
+use crate::error::Result;
 use crate::streaming::StreamEvent;
 
 pub struct AnthropicProvider {
@@ -91,7 +91,10 @@ impl Provider for AnthropicProvider {
                 if !retry_response.status().is_success() {
                     let retry_status = retry_response.status();
                     let retry_body = retry_response.text().await.unwrap_or_default();
-                    return Err(crate::error::provider_err(format!("Anthropic API error {} (after token refresh): {}", retry_status, retry_body)));
+                    return Err(crate::error::provider_err(format!(
+                        "Anthropic API error {} (after token refresh): {}",
+                        retry_status, retry_body
+                    )));
                 }
 
                 return streaming::parse_sse_stream(retry_response, tx).await;

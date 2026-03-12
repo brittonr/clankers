@@ -129,7 +129,7 @@ pub fn compact_stale_tool_results(messages: &[AgentMessage], keep_recent: usize)
             AgentMessage::ToolResult(tool_result) => {
                 // Find this message's position in the tool result list
                 let tool_position = tool_result_positions.iter().position(|&pos| pos == i);
-                
+
                 if let Some(pos) = tool_position {
                     if pos < keep_recent {
                         // Keep recent tool results intact
@@ -252,7 +252,7 @@ mod tests {
             id: MessageId::generate(),
             call_id: format!("call_{}", generate_id()),
             tool_name: tool_name.to_string(),
-            content: vec![Content::Image { 
+            content: vec![Content::Image {
                 source: ImageSource::Base64 {
                     media_type: "image/png".to_string(),
                     data: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==".to_string(),
@@ -424,10 +424,7 @@ mod tests {
 
     #[test]
     fn test_compact_with_no_tool_results() {
-        let msgs = vec![
-            make_user_msg("hello"),
-            make_user_msg("world"),
-        ];
+        let msgs = vec![make_user_msg("hello"), make_user_msg("world")];
 
         let result = compact_stale_tool_results(&msgs, 3);
         assert_eq!(result.len(), 2);

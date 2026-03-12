@@ -50,34 +50,31 @@ impl PluginEvent {
 
     /// Check if an event kind string matches this plugin event type.
     pub fn matches_event_kind(&self, kind: &str) -> bool {
-        match (self, kind) {
+        matches!(
+            (self, kind),
             (Self::ToolCall, "tool_call")
-            | (Self::ToolResult, "tool_result")
-            | (Self::ToolExecutionStart, "tool_execution_start")
-            | (Self::AgentStart, "agent_start")
-            | (Self::AgentEnd, "agent_end")
-            | (Self::TurnStart, "turn_start")
-            | (Self::TurnEnd, "turn_end")
-            | (Self::MessageUpdate, "message_update")
-            | (Self::UserInput, "user_input")
-            | (Self::UserCancel, "user_cancel")
-            | (Self::SessionStart, "session_start")
-            | (Self::SessionEnd, "session_end")
-            | (Self::ModelChange, "model_change")
-            | (Self::UsageUpdate, "usage_update")
-            | (Self::SessionBranch, "session_branch")
-            | (Self::SessionCompaction, "session_compaction") => true,
-            _ => false,
-        }
+                | (Self::ToolResult, "tool_result")
+                | (Self::ToolExecutionStart, "tool_execution_start")
+                | (Self::AgentStart, "agent_start")
+                | (Self::AgentEnd, "agent_end")
+                | (Self::TurnStart, "turn_start")
+                | (Self::TurnEnd, "turn_end")
+                | (Self::MessageUpdate, "message_update")
+                | (Self::UserInput, "user_input")
+                | (Self::UserCancel, "user_cancel")
+                | (Self::SessionStart, "session_start")
+                | (Self::SessionEnd, "session_end")
+                | (Self::ModelChange, "model_change")
+                | (Self::UsageUpdate, "usage_update")
+                | (Self::SessionBranch, "session_branch")
+                | (Self::SessionCompaction, "session_compaction")
+        )
     }
 }
 
 /// Parse UI actions from a plugin's event handler response.
 /// The response JSON may contain a `"ui"` key with one or more UI actions.
-pub fn parse_ui_actions(
-    plugin_name: &str,
-    response: &serde_json::Value,
-) -> Vec<super::ui::PluginUIAction> {
+pub fn parse_ui_actions(plugin_name: &str, response: &serde_json::Value) -> Vec<super::ui::PluginUIAction> {
     let mut actions = Vec::new();
 
     // Check for "ui" key — can be a single action object or an array
@@ -93,10 +90,7 @@ pub fn parse_ui_actions(
             if item.get("plugin").is_none()
                 && let Some(obj) = item.as_object_mut()
             {
-                obj.insert(
-                    "plugin".to_string(),
-                    serde_json::Value::String(plugin_name.to_string()),
-                );
+                obj.insert("plugin".to_string(), serde_json::Value::String(plugin_name.to_string()));
             }
             if let Ok(action) = serde_json::from_value::<super::ui::PluginUIAction>(item) {
                 actions.push(action);

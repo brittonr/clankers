@@ -256,12 +256,10 @@ pub(crate) fn bytes_to_sign(token: &CapabilityToken) -> Vec<u8> {
     // Tiger Style: serialization failures are fatal, not silently ignored.
     // Skipping these fields would cause different tokens to produce
     // identical signing bytes — a catastrophic security violation.
-    let audience_bytes = postcard::to_allocvec(&token.audience)
-        .expect("audience must be serializable");
+    let audience_bytes = postcard::to_allocvec(&token.audience).expect("audience must be serializable");
     bytes.extend_from_slice(&audience_bytes);
 
-    let cap_bytes = postcard::to_allocvec(&token.capabilities)
-        .expect("capabilities must be serializable");
+    let cap_bytes = postcard::to_allocvec(&token.capabilities).expect("capabilities must be serializable");
     bytes.extend_from_slice(&cap_bytes);
 
     bytes.extend_from_slice(&token.issued_at.to_le_bytes());
@@ -279,7 +277,7 @@ pub(crate) fn bytes_to_sign(token: &CapabilityToken) -> Vec<u8> {
 
     // Tiger Style: assert signing bytes always include at least version +
     // issuer (33 bytes) + audience + timestamps (16 bytes) + depth (1 byte)
-    assert!(bytes.len() >= 33 + 16 + 1);
+    assert!(bytes.len() > 33 + 16);
 
     bytes
 }

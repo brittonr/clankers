@@ -29,19 +29,10 @@ pub(crate) fn build_agent_with_tools(
     plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     paths: &crate::config::ClankersPaths,
     db: &Option<crate::db::Db>,
-) -> (
-    Agent,
-    tokio::sync::broadcast::Receiver<AgentEvent>,
-    crate::tools::bash::ConfirmRx,
-) {
+) -> (Agent, tokio::sync::broadcast::Receiver<AgentEvent>, crate::tools::bash::ConfirmRx) {
     // Create a temporary agent with empty tools to get event_tx for tool construction
-    let temp_agent = Agent::new(
-        Arc::clone(&provider),
-        Vec::new(),
-        settings.clone(),
-        model.clone(),
-        system_prompt.clone(),
-    );
+    let temp_agent =
+        Agent::new(Arc::clone(&provider), Vec::new(), settings.clone(), model.clone(), system_prompt.clone());
     let event_tx = temp_agent.event_sender();
     let (bash_confirm_tx, bash_confirm_rx) = crate::tools::bash::confirm_channel();
 
@@ -62,12 +53,11 @@ pub(crate) fn build_agent_with_tools(
     let tiered_tools = crate::modes::common::build_all_tiered_tools(&tool_env, plugin_manager);
 
     // Interactive mode: Core + Specialty + Orchestration (no Matrix)
-    let tool_set = crate::modes::common::ToolSet::new(
-        tiered_tools,
-        [crate::modes::common::ToolTier::Core,
-         crate::modes::common::ToolTier::Specialty,
-         crate::modes::common::ToolTier::Orchestration],
-    );
+    let tool_set = crate::modes::common::ToolSet::new(tiered_tools, [
+        crate::modes::common::ToolTier::Core,
+        crate::modes::common::ToolTier::Specialty,
+        crate::modes::common::ToolTier::Orchestration,
+    ]);
 
     // tool_info shows ALL tools (for toggle menu); active_tools only sends active tiers to agent
     let all_tools = tool_set.all_tools();
@@ -102,8 +92,7 @@ pub(crate) fn build_agent_with_tools(
 
     // Extract cost tracker reference for the app UI
     if settings.cost_tracking.is_some() {
-        app.cost_tracker =
-            agent.cost_tracker().map(|ct| ct.clone() as Arc<dyn clankers_tui_types::CostProvider>);
+        app.cost_tracker = agent.cost_tracker().map(|ct| ct.clone() as Arc<dyn clankers_tui_types::CostProvider>);
     }
 
     let event_rx = agent.subscribe();
@@ -114,9 +103,7 @@ pub(crate) fn build_agent_with_tools(
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /// Create and start the process monitor, bridging ProcessEvent → AgentEvent.
-fn create_process_monitor(
-    agent_tx: tokio::sync::broadcast::Sender<AgentEvent>,
-) -> Arc<crate::procmon::ProcessMonitor> {
+fn create_process_monitor(agent_tx: tokio::sync::broadcast::Sender<AgentEvent>) -> Arc<crate::procmon::ProcessMonitor> {
     let config = crate::procmon::ProcessMonitorConfig::default();
     let (proc_tx, mut proc_rx) = tokio::sync::broadcast::channel::<crate::procmon::ProcessEvent>(256);
     let monitor = Arc::new(crate::procmon::ProcessMonitor::new(config, Some(proc_tx)));

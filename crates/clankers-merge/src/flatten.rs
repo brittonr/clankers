@@ -72,11 +72,7 @@ pub fn flatten(g: &Graggle) -> FlattenResult {
     let topo_order = topological_order(g);
 
     // Tiger Style: assert topological order covers all vertices
-    assert_eq!(
-        topo_order.len(),
-        g.vertices.len(),
-        "topological order must include all vertices (cycle detected?)"
-    );
+    assert_eq!(topo_order.len(), g.vertices.len(), "topological order must include all vertices (cycle detected?)");
 
     // Group into clean runs and conflict regions.
     // A conflict happens when a vertex has multiple alive children,

@@ -83,13 +83,8 @@ pub async fn run_daemon(
 
     // Phase 4: Background tasks
     let rpc_state = build_rpc_state(&config, &provider, &tools, paths);
-    let iroh_handle = spawn_iroh_accept_loop(
-        endpoint.clone(),
-        Arc::clone(&store),
-        Arc::clone(&acl),
-        rpc_state,
-        cancel.clone(),
-    );
+    let iroh_handle =
+        spawn_iroh_accept_loop(endpoint.clone(), Arc::clone(&store), Arc::clone(&acl), rpc_state, cancel.clone());
 
     let matrix_handle = spawn_matrix_bridge(&config, &store, paths, cancel.clone());
     spawn_heartbeat(&config, &identity, paths, cancel.clone()).await;
@@ -123,8 +118,7 @@ async fn build_endpoint(
     config: &DaemonConfig,
     paths: &ClankersPaths,
 ) -> Result<(::iroh::Endpoint, iroh::AccessControl)> {
-    let mdns_service = ::iroh::address_lookup::MdnsAddressLookup::builder()
-        .service_name("_clankers._udp.local.");
+    let mdns_service = ::iroh::address_lookup::MdnsAddressLookup::builder().service_name("_clankers._udp.local.");
 
     let endpoint = ::iroh::Endpoint::builder()
         .secret_key(identity.secret_key.clone())
@@ -296,11 +290,7 @@ fn spawn_status_logger(store: Arc<RwLock<SessionStore>>, cancel: CancellationTok
     });
 }
 
-fn spawn_idle_reaper(
-    config: &DaemonConfig,
-    store: Arc<RwLock<SessionStore>>,
-    cancel: CancellationToken,
-) {
+fn spawn_idle_reaper(config: &DaemonConfig, store: Arc<RwLock<SessionStore>>, cancel: CancellationToken) {
     if config.idle_timeout_secs == 0 {
         return;
     }

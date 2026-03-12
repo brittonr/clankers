@@ -1,10 +1,11 @@
 //! Plugin hook handler — wraps plugin dispatch as a HookHandler.
 
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
+use std::sync::Mutex;
 
 use async_trait::async_trait;
-
-use clankers_hooks::dispatcher::{HookHandler, PRIORITY_PLUGIN_HOOKS};
+use clankers_hooks::dispatcher::HookHandler;
+use clankers_hooks::dispatcher::PRIORITY_PLUGIN_HOOKS;
 use clankers_hooks::payload::HookPayload;
 use clankers_hooks::point::HookPoint;
 use clankers_hooks::verdict::HookVerdict;
@@ -57,10 +58,10 @@ impl HookHandler for PluginHookHandler {
 
         let pm = self.plugin_manager.lock().unwrap_or_else(|p| p.into_inner());
         pm.active_plugin_infos().any(|info| {
-            info.manifest.events.iter().any(|e| {
-                crate::bridge::PluginEvent::parse(e)
-                    .is_some_and(|pe| pe.matches_event_kind(kind))
-            })
+            info.manifest
+                .events
+                .iter()
+                .any(|e| crate::bridge::PluginEvent::parse(e).is_some_and(|pe| pe.matches_event_kind(kind)))
         })
     }
 
@@ -90,8 +91,7 @@ impl HookHandler for PluginHookHandler {
                     .active_plugin_infos()
                     .filter(|info| {
                         info.manifest.events.iter().any(|e| {
-                            crate::bridge::PluginEvent::parse(e)
-                                .is_some_and(|pe| pe.matches_event_kind(&kind))
+                            crate::bridge::PluginEvent::parse(e).is_some_and(|pe| pe.matches_event_kind(&kind))
                         })
                     })
                     .map(|info| info.name.clone())
@@ -100,16 +100,16 @@ impl HookHandler for PluginHookHandler {
                 for name in active_names {
                     match pm.call_plugin(&name, "on_event", &input) {
                         Ok(response) => {
-                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&response) {
-                                if val.get("deny").and_then(|v| v.as_bool()).unwrap_or(false) {
-                                    let reason = val
-                                        .get("reason")
-                                        .and_then(|v| v.as_str())
-                                        .unwrap_or("denied by plugin")
-                                        .to_string();
-                                    deny_reason = Some(reason);
-                                    break;
-                                }
+                            if let Ok(val) = serde_json::from_str::<serde_json::Value>(&response)
+                                && val.get("deny").and_then(|v| v.as_bool()).unwrap_or(false)
+                            {
+                                let reason = val
+                                    .get("reason")
+                                    .and_then(|v| v.as_str())
+                                    .unwrap_or("denied by plugin")
+                                    .to_string();
+                                deny_reason = Some(reason);
+                                break;
                             }
                         }
                         Err(e) => {

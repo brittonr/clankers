@@ -15,11 +15,10 @@ use std::io;
 use std::sync::Arc;
 use std::time::Duration;
 
-use ratatui::Terminal;
-use ratatui::backend::CrosstermBackend;
-
 use clankers_loop::LoopEngine;
 use clankers_loop::LoopId;
+use ratatui::Terminal;
+use ratatui::backend::CrosstermBackend;
 
 use super::interactive::AgentCommand;
 use super::interactive::TaskResult;
@@ -129,11 +128,9 @@ impl<'a> EventLoopRunner<'a> {
     /// Main event loop. Returns when `app.should_quit` is set.
     pub fn run(&mut self) -> Result<()> {
         loop {
-            self.terminal
-                .draw(|frame| render::render(frame, self.app))
-                .map_err(|e| crate::error::Error::Tui {
-                    message: format!("Render failed: {}", e),
-                })?;
+            self.terminal.draw(|frame| render::render(frame, self.app)).map_err(|e| crate::error::Error::Tui {
+                message: format!("Render failed: {}", e),
+            })?;
 
             if self.app.should_quit {
                 let _ = self.cmd_tx.send(AgentCommand::Quit);
@@ -257,8 +254,7 @@ impl<'a> EventLoopRunner<'a> {
             && let Some(ref db) = self.db
             && !self.app.session_id.is_empty()
         {
-            self.audit
-                .end_call(call_id, result, *is_error, &self.app.session_id, db);
+            self.audit.end_call(call_id, result, *is_error, &self.app.session_id, db);
 
             // Persist full tool result content to redb for context compaction
             let tool_name = self.tool_call_names.remove(call_id).unwrap_or_default();
@@ -378,10 +374,7 @@ impl<'a> EventLoopRunner<'a> {
                             pid,
                             &mut self.app.layout.tiling,
                         );
-                        self.app
-                            .layout
-                            .pane_registry
-                            .register(pane_id, crate::tui::panes::PaneKind::Subagent(id));
+                        self.app.layout.pane_registry.register(pane_id, crate::tui::panes::PaneKind::Subagent(id));
                         crate::tui::panes::auto_split_for_subagent(
                             &mut self.app.layout.tiling,
                             &self.app.layout.pane_registry,
@@ -434,9 +427,7 @@ impl<'a> EventLoopRunner<'a> {
             }
             #[cfg(not(unix))]
             {
-                let _ = std::process::Command::new("taskkill")
-                    .args(&["/PID", &pid.to_string(), "/F"])
-                    .spawn();
+                let _ = std::process::Command::new("taskkill").args(&["/PID", &pid.to_string(), "/F"]).spawn();
             }
             subagent_panel(self.app).mark_error(id);
             subagent_panel(self.app).append_output(id, "⚡ Killed by user");
@@ -444,10 +435,7 @@ impl<'a> EventLoopRunner<'a> {
             self.app.layout.subagent_panes.append_output(id, "⚡ Killed by user");
         } else {
             subagent_panel(self.app).append_output(id, "⚠ Cannot kill: no PID tracked");
-            self.app
-                .layout
-                .subagent_panes
-                .append_output(id, "⚠ Cannot kill: no PID tracked");
+            self.app.layout.subagent_panes.append_output(id, "⚠ Cannot kill: no PID tracked");
         }
     }
 
@@ -465,8 +453,7 @@ impl<'a> EventLoopRunner<'a> {
     fn drain_bash_confirms(&mut self) {
         while let Ok((message, resp_tx)) = self.bash_confirm_rx.try_recv() {
             self.app.push_system(message, true);
-            self.app
-                .push_system("Type 'y' to approve or 'n' to block. Approving...".to_string(), false);
+            self.app.push_system("Type 'y' to approve or 'n' to block. Approving...".to_string(), false);
             let _ = resp_tx.send(true);
         }
     }
@@ -478,9 +465,9 @@ impl<'a> EventLoopRunner<'a> {
         let count = PEER_REFRESH_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         let peers = peers_panel(self.app);
         if count.is_multiple_of(200) && peers.server_running {
-            let registry = crate::modes::rpc::peers::PeerRegistry::load(
-                &crate::modes::rpc::peers::registry_path(crate::config::ClankersPaths::get()),
-            );
+            let registry = crate::modes::rpc::peers::PeerRegistry::load(&crate::modes::rpc::peers::registry_path(
+                crate::config::ClankersPaths::get(),
+            ));
             let entries = crate::tui::components::peers_panel::entries_from_registry(
                 &crate::modes::rpc::peers::peer_info_views(&registry),
                 chrono::Duration::minutes(5),
@@ -546,10 +533,7 @@ impl<'a> EventLoopRunner<'a> {
                 TaskResult::AccountSwitched(Ok(name)) => {
                     self.app.active_account.clone_from(&name);
                     self.app.push_system(
-                        format!(
-                            "Switched to account '{}'. New credentials will be used for the next API call.",
-                            name
-                        ),
+                        format!("Switched to account '{}'. New credentials will be used for the next API call.", name),
                         false,
                     );
                 }

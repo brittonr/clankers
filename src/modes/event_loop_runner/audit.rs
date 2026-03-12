@@ -46,10 +46,8 @@ impl AuditTracker {
                 MAX_PENDING_CALLS
             );
         }
-        self.pending.insert(
-            call_id.to_string(),
-            (tool_name.to_string(), input.clone(), std::time::Instant::now()),
-        );
+        self.pending
+            .insert(call_id.to_string(), (tool_name.to_string(), input.clone(), std::time::Instant::now()));
     }
 
     /// Record a completed tool call. Writes the audit entry to the database

@@ -1,9 +1,10 @@
 use std::sync::Arc;
+
 use async_trait::async_trait;
 use tracing;
 
-use crate::point::HookPoint;
 use crate::payload::HookPayload;
+use crate::point::HookPoint;
 use crate::verdict::HookVerdict;
 
 /// Priority constants — lower number runs first.
@@ -97,11 +98,8 @@ impl HookPipeline {
             return;
         }
 
-        let handlers: Vec<Arc<dyn HookHandler>> = self.handlers
-            .iter()
-            .filter(|h| h.subscribes_to(point))
-            .cloned()
-            .collect();
+        let handlers: Vec<Arc<dyn HookHandler>> =
+            self.handlers.iter().filter(|h| h.subscribes_to(point)).cloned().collect();
 
         if handlers.is_empty() {
             return;
@@ -117,8 +115,7 @@ impl HookPipeline {
 
     /// Whether any handler is registered for this hook point.
     pub fn has_handlers(&self, point: HookPoint) -> bool {
-        !self.disabled_hooks.contains(point.to_filename())
-            && self.handlers.iter().any(|h| h.subscribes_to(point))
+        !self.disabled_hooks.contains(point.to_filename()) && self.handlers.iter().any(|h| h.subscribes_to(point))
     }
 
     /// Number of registered handlers.
@@ -142,9 +139,15 @@ mod tests {
 
     #[async_trait]
     impl HookHandler for AlwaysContinue {
-        fn name(&self) -> &str { "always-continue" }
-        fn priority(&self) -> u32 { 200 }
-        fn subscribes_to(&self, _point: HookPoint) -> bool { true }
+        fn name(&self) -> &str {
+            "always-continue"
+        }
+        fn priority(&self) -> u32 {
+            200
+        }
+        fn subscribes_to(&self, _point: HookPoint) -> bool {
+            true
+        }
         async fn handle(&self, _point: HookPoint, _payload: &HookPayload) -> HookVerdict {
             HookVerdict::Continue
         }
@@ -154,11 +157,19 @@ mod tests {
 
     #[async_trait]
     impl HookHandler for AlwaysDeny {
-        fn name(&self) -> &str { "always-deny" }
-        fn priority(&self) -> u32 { 100 }
-        fn subscribes_to(&self, point: HookPoint) -> bool { point.is_pre_hook() }
+        fn name(&self) -> &str {
+            "always-deny"
+        }
+        fn priority(&self) -> u32 {
+            100
+        }
+        fn subscribes_to(&self, point: HookPoint) -> bool {
+            point.is_pre_hook()
+        }
         async fn handle(&self, _point: HookPoint, _payload: &HookPayload) -> HookVerdict {
-            HookVerdict::Deny { reason: "denied by test".into() }
+            HookVerdict::Deny {
+                reason: "denied by test".into(),
+            }
         }
     }
 
@@ -166,8 +177,12 @@ mod tests {
 
     #[async_trait]
     impl HookHandler for OnlyTools {
-        fn name(&self) -> &str { "only-tools" }
-        fn priority(&self) -> u32 { 150 }
+        fn name(&self) -> &str {
+            "only-tools"
+        }
+        fn priority(&self) -> u32 {
+            150
+        }
         fn subscribes_to(&self, point: HookPoint) -> bool {
             matches!(point, HookPoint::PreTool | HookPoint::PostTool)
         }
@@ -206,7 +221,7 @@ mod tests {
         let mut p = HookPipeline::new();
         // Register in reverse priority order
         p.register(Arc::new(AlwaysContinue)); // 200
-        p.register(Arc::new(AlwaysDeny));     // 100
+        p.register(Arc::new(AlwaysDeny)); // 100
         // AlwaysDeny (100) should run first — deny short-circuits
         let v = p.fire(HookPoint::PreTool, &test_payload()).await;
         assert!(matches!(v, HookVerdict::Deny { .. }));

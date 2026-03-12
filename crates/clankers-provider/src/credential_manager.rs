@@ -75,9 +75,7 @@ impl CredentialManager {
         let refresh_token = match cred.refresh_token() {
             Some(rt) => rt.to_string(),
             None => {
-                return Err(crate::error::auth_err(
-"Cannot refresh a non-OAuth credential".to_string(),
-));
+                return Err(crate::error::auth_err("Cannot refresh a non-OAuth credential".to_string()));
             }
         };
         drop(cred);
@@ -160,11 +158,13 @@ fn refresh_with_file_lock(
         fs::create_dir_all(parent).ok();
     }
     if !auth_path.exists() {
-        let mut f = fs::File::create(auth_path).map_err(|e| crate::error::auth_err(format!("Failed to create auth file: {}", e)))?;
+        let mut f = fs::File::create(auth_path)
+            .map_err(|e| crate::error::auth_err(format!("Failed to create auth file: {}", e)))?;
         f.write_all(b"{}").ok();
     }
 
-    let lock_file = fs::File::open(auth_path).map_err(|e| crate::error::auth_err(format!("Failed to open auth file for locking: {}", e)))?;
+    let lock_file = fs::File::open(auth_path)
+        .map_err(|e| crate::error::auth_err(format!("Failed to open auth file for locking: {}", e)))?;
 
     let mut locked = false;
     for attempt in 0..30 {
@@ -198,9 +198,10 @@ fn refresh_with_file_lock(
     }
 
     // Still expired — refresh
-    let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().map_err(|e| {
-        crate::error::auth_err(format!("Failed to create runtime for token refresh: {}", e))
-    })?;
+    let rt = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|e| crate::error::auth_err(format!("Failed to create runtime for token refresh: {}", e)))?;
 
     let new_creds = rt.block_on(oauth::refresh_token(refresh_token))?;
 
@@ -208,7 +209,9 @@ fn refresh_with_file_lock(
     let mut store = AuthStore::load(auth_path);
     let account_name = store.active_account_name().to_string();
     store.set_credentials(&account_name, new_creds.clone());
-    store.save(auth_path).map_err(|e| crate::error::auth_err(format!("Failed to save refreshed credentials: {}", e)))?;
+    store
+        .save(auth_path)
+        .map_err(|e| crate::error::auth_err(format!("Failed to save refreshed credentials: {}", e)))?;
 
     info!("OAuth token refreshed successfully, new expiry: {}", new_creds.expires);
 

@@ -1,10 +1,10 @@
 //! Token usage tracking and cost calculation
 
+use clankers_model_selection::cost_tracker::CostTracker;
+use clankers_provider::Usage;
 use tokio::sync::broadcast;
 
 use crate::events::AgentEvent;
-use clankers_model_selection::cost_tracker::CostTracker;
-use clankers_provider::Usage;
 
 /// Update usage tracking and emit events
 pub(super) fn update_usage_tracking(

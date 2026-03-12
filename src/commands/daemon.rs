@@ -32,13 +32,12 @@ pub async fn run_daemon(
     };
     // Daemon mode: all tiers active (needs matrix, orchestration, everything)
     let tiered = crate::modes::common::build_tiered_tools(&env);
-    let tool_set = crate::modes::common::ToolSet::new(
-        tiered,
-        [crate::modes::common::ToolTier::Core,
-         crate::modes::common::ToolTier::Orchestration,
-         crate::modes::common::ToolTier::Specialty,
-         crate::modes::common::ToolTier::Matrix],
-    );
+    let tool_set = crate::modes::common::ToolSet::new(tiered, [
+        crate::modes::common::ToolTier::Core,
+        crate::modes::common::ToolTier::Orchestration,
+        crate::modes::common::ToolTier::Specialty,
+        crate::modes::common::ToolTier::Matrix,
+    ]);
     let tools = tool_set.active_tools();
 
     let config = crate::modes::daemon::DaemonConfig {

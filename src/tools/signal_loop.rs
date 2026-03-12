@@ -17,6 +17,12 @@ pub struct SignalLoopTool {
     definition: ToolDefinition,
 }
 
+impl Default for SignalLoopTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SignalLoopTool {
     pub fn new() -> Self {
         Self {

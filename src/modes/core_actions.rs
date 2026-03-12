@@ -149,10 +149,7 @@ fn handle_submit(
     }
 }
 
-fn handle_cancel(
-    app: &mut App,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>,
-) {
+fn handle_cancel(app: &mut App, cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>) {
     if app.state == AppState::Streaming {
         let _ = cmd_tx.send(super::interactive::AgentCommand::Abort);
     } else if !app.editor.is_empty() {

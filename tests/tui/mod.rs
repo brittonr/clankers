@@ -26,5 +26,5 @@ pub mod snapshot;
 pub mod tmux_harness;
 
 // Snapshot / visual regression tests
-mod visual;
 mod tmux_smoke;
+mod visual;

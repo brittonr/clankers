@@ -109,9 +109,10 @@ pub struct ResumeEntry {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clankers_message::Content;
     use clankers_message::UserMessage;
+
+    use super::*;
 
     #[test]
     fn test_header_entry_serialize() {

@@ -64,16 +64,16 @@ fn handle_panel_focused_action(
     action: &Action,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>,
 ) -> bool {
-    use crate::config::keybindings::CoreAction;
     use ratatui::layout::Direction;
     use ratatui_hypertile::HypertileAction;
     use ratatui_hypertile::Towards;
 
+    use crate::config::keybindings::CoreAction;
+
     let is_global = match action {
-        Action::Core(c) => matches!(
-            c,
-            CoreAction::Quit | CoreAction::Cancel | CoreAction::EnterNormal | CoreAction::PasteImage
-        ),
+        Action::Core(c) => {
+            matches!(c, CoreAction::Quit | CoreAction::Cancel | CoreAction::EnterNormal | CoreAction::PasteImage)
+        }
         Action::Extended(ea) => matches!(
             ea,
             ExtendedAction::OpenLeaderMenu
@@ -290,7 +290,14 @@ pub(crate) fn handle_slash_menu_key(
                 app.accept_slash_completion();
                 if let Some(text) = app.submit_input() {
                     handle_input_with_plugins(
-                        app, &text, cmd_tx, plugin_manager, panel_tx, db, session_manager, slash_registry,
+                        app,
+                        &text,
+                        cmd_tx,
+                        plugin_manager,
+                        panel_tx,
+                        db,
+                        session_manager,
+                        slash_registry,
                     );
                 }
                 return true;
@@ -320,11 +327,7 @@ pub(crate) fn handle_slash_menu_key(
 // Session popup
 // ---------------------------------------------------------------------------
 
-pub(crate) fn handle_session_popup_key(
-    app: &mut App,
-    key: &crossterm::event::KeyEvent,
-    keymap: &Keymap,
-) -> bool {
+pub(crate) fn handle_session_popup_key(app: &mut App, key: &crossterm::event::KeyEvent, keymap: &Keymap) -> bool {
     use crate::config::keybindings::CoreAction;
 
     let action = keymap.resolve(app.input_mode, key);
@@ -446,11 +449,7 @@ pub(crate) fn handle_input_with_plugins(
                     let size = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, &data)
                         .map(|b| b.len())
                         .unwrap_or(0);
-                    Some(crate::tui::app::PendingImage {
-                        data,
-                        media_type,
-                        size,
-                    })
+                    Some(crate::tui::app::PendingImage { data, media_type, size })
                 }
                 _ => None,
             })

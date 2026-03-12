@@ -80,7 +80,7 @@ impl TermColor {
     /// Convert to an RGBA color for screenshot rendering.
     pub fn to_rgba(&self) -> [u8; 4] {
         match self {
-            TermColor::Default => [0, 0, 0, 255],     // black bg default
+            TermColor::Default => [0, 0, 0, 255], // black bg default
             TermColor::Black => [0, 0, 0, 255],
             TermColor::Red => [170, 0, 0, 255],
             TermColor::Green => [0, 170, 0, 255],
@@ -423,8 +423,7 @@ macro_rules! assert_tmux_styled_snapshot {
     ($name:expr, $harness:expr) => {{
         let ansi = $harness.capture_ansi();
         let (rows, cols) = $harness.size();
-        let capture =
-            super::snapshot::ScreenCapture::from_ansi(&ansi, rows, cols);
+        let capture = super::snapshot::ScreenCapture::from_ansi(&ansi, rows, cols);
         let styled = capture.styled_text();
         insta::assert_snapshot!($name, styled);
     }};
@@ -481,8 +480,7 @@ fn normalize_line(line: &str) -> String {
     // visible; clean = narrower → more visible, e.g. "id" from truncated "idle").
     // Only apply to status bar lines (contain mode badge).
     if s.contains(" NORMAL ") || s.contains(" INSERT ") {
-        let re_state_leak =
-            regex::Regex::new(r"\s+(idle|id|streaming|str|command|com|dialog|dia)\s*$").unwrap();
+        let re_state_leak = regex::Regex::new(r"\s+(idle|id|streaming|str|command|com|dialog|dia)\s*$").unwrap();
         s = re_state_leak.replace_all(&s, "").to_string();
     }
 
@@ -508,8 +506,10 @@ pub fn extract_structure(harness: &super::harness::TuiTestHarness) -> String {
 
         // Keep structural lines: borders, titles, status bar, input
         let is_border = trimmed.chars().any(|c| matches!(c, '┌' | '┐' | '└' | '┘' | '├' | '┤'));
-        let is_status = trimmed.contains("NORMAL") || trimmed.contains("INSERT")
-            || trimmed.contains("VISUAL") || trimmed.contains("COMMAND");
+        let is_status = trimmed.contains("NORMAL")
+            || trimmed.contains("INSERT")
+            || trimmed.contains("VISUAL")
+            || trimmed.contains("COMMAND");
         let is_input = trimmed.contains("Input");
         let is_first = i == 0;
         let is_last = i == lines.len() - 1;
@@ -562,10 +562,7 @@ pub fn extract_structure(harness: &super::harness::TuiTestHarness) -> String {
 /// Save a raw ANSI capture to a file for visual inspection.
 /// View with `cat tests/tui/captures/NAME.ansi` in a terminal.
 pub fn save_ansi_capture(name: &str, ansi: &str) {
-    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join("tui")
-        .join("captures");
+    let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests").join("tui").join("captures");
     std::fs::create_dir_all(&dir).ok();
     let path = dir.join(format!("{name}.ansi"));
     std::fs::write(&path, ansi).expect("failed to write ANSI capture");

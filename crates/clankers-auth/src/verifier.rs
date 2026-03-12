@@ -149,17 +149,11 @@ impl TokenVerifier {
 
         // Tiger Style: assert structural invariants before expensive crypto
         assert!(token.version > 0, "token version must be positive");
-        assert!(
-            token.expires_at >= token.issued_at,
-            "expires_at must be >= issued_at"
-        );
+        assert!(token.expires_at >= token.issued_at, "expires_at must be >= issued_at");
 
         // Tiger Style: delegation_depth must match proof presence
         if token.delegation_depth == 0 {
-            assert!(
-                token.proof.is_none(),
-                "root token (depth 0) must not have proof"
-            );
+            assert!(token.proof.is_none(), "root token (depth 0) must not have proof");
         }
 
         // 1. Check signature
@@ -270,10 +264,8 @@ impl TokenVerifier {
         presenter: Option<&PublicKey>,
     ) -> Result<(), AuthError> {
         // Build a temporary lookup map for the chain
-        let chain_map: HashMap<[u8; 32], &CapabilityToken> = chain
-            .iter()
-            .map(|t| Ok((t.hash()?, t)))
-            .collect::<Result<_, AuthError>>()?;
+        let chain_map: HashMap<[u8; 32], &CapabilityToken> =
+            chain.iter().map(|t| Ok((t.hash()?, t))).collect::<Result<_, AuthError>>()?;
 
         self.verify_with_chain_internal(token, &chain_map, presenter, 0)
     }
@@ -396,10 +388,7 @@ impl TokenVerifier {
         presenter: Option<&PublicKey>,
     ) -> Result<(), AuthError> {
         // Tiger Style: a token with no capabilities is structurally invalid
-        assert!(
-            !token.capabilities.is_empty(),
-            "token must have at least one capability"
-        );
+        assert!(!token.capabilities.is_empty(), "token must have at least one capability");
 
         // First verify the token itself
         self.verify(token, presenter)?;

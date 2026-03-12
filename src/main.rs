@@ -102,7 +102,8 @@ async fn main() -> Result<()> {
         .clone()
         .or_else(|| cli.system_prompt_file.as_ref().and_then(|f| std::fs::read_to_string(f).ok()))
         .unwrap_or_else(|| {
-            use clankers::agent::system_prompt::{PromptFeatures, default_system_prompt};
+            use clankers::agent::system_prompt::PromptFeatures;
+            use clankers::agent::system_prompt::default_system_prompt;
             // In the main entrypoint we don't know the mode yet (dispatch
             // happens later), so we include interactive-appropriate sections.
             // Daemon mode builds its own system prompt via DaemonConfig.
@@ -336,7 +337,10 @@ async fn run_headless(
     let tools = if cli.tools.as_deref() == Some("none") || cli.tools.as_deref() == Some("") {
         Vec::new()
     } else {
-        use clankers::modes::common::{ToolTier, ToolSet, build_all_tiered_tools, resolve_tool_tiers};
+        use clankers::modes::common::ToolSet;
+        use clankers::modes::common::ToolTier;
+        use clankers::modes::common::build_all_tiered_tools;
+        use clankers::modes::common::resolve_tool_tiers;
         let env = clankers::modes::common::ToolEnv {
             process_monitor: Some(headless_process_monitor),
             ..Default::default()

@@ -232,11 +232,7 @@ const _: () = assert!(MAX_BUILD_LOG_LINES >= MAX_ERRORS);
 /// Parse a single stderr line from nix's internal-json output.
 ///
 /// Dispatches to focused per-action handlers. Each handler is under 40 lines.
-pub fn process_nix_line(
-    line: &str,
-    ctx: &ToolContext,
-    state: &mut NixOutputState,
-) {
+pub fn process_nix_line(line: &str, ctx: &ToolContext, state: &mut NixOutputState) {
     // Internal-json lines start with "@nix "
     let json_str = match line.strip_prefix("@nix ") {
         Some(s) => s,
@@ -327,11 +323,7 @@ fn handle_result_event(event: &NixEvent, ctx: &ToolContext, state: &mut NixOutpu
         ResultType::SetPhase => {
             if let Some(phase) = event.fields.first().and_then(|v| v.as_str()) {
                 state.tracker.set_phase(event.id, phase.to_string());
-                let activity_name = state
-                    .tracker
-                    .get(event.id)
-                    .map(|a| shorten_drv_path(&a.text))
-                    .unwrap_or_default();
+                let activity_name = state.tracker.get(event.id).map(|a| shorten_drv_path(&a.text)).unwrap_or_default();
                 let msg = format!("  ▸ phase: {} ({})", phase, activity_name);
                 ctx.emit_progress(&msg);
                 push_bounded(&mut state.messages, msg, MAX_MESSAGES);
@@ -342,11 +334,7 @@ fn handle_result_event(event: &NixEvent, ctx: &ToolContext, state: &mut NixOutpu
                 let done = event.fields[0].as_u64().unwrap_or(0);
                 let expected = event.fields[1].as_u64().unwrap_or(0);
                 if expected > 0 && done > 0 {
-                    let label = state
-                        .tracker
-                        .get(event.id)
-                        .map(|a| a.activity_type.label())
-                        .unwrap_or("progress");
+                    let label = state.tracker.get(event.id).map(|a| a.activity_type.label()).unwrap_or("progress");
                     let msg = format!("  {} {}/{}", label, done, expected);
                     emit_deduped(ctx, &mut state.last_progress_text, msg);
                 }

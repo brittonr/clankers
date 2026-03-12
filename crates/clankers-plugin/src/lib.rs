@@ -74,10 +74,7 @@ impl PluginManager {
 
     /// Load a discovered plugin's WASM module
     pub fn load_wasm(&mut self, name: &str) -> Result<(), String> {
-        let info = self
-            .plugins
-            .get_mut(name)
-            .ok_or_else(|| format!("Plugin '{}' not found", name))?;
+        let info = self.plugins.get_mut(name).ok_or_else(|| format!("Plugin '{}' not found", name))?;
 
         let wasm_filename = info.manifest.wasm.as_deref().unwrap_or("plugin.wasm");
         let wasm_path = info.path.join(wasm_filename);
@@ -92,11 +89,7 @@ impl PluginManager {
 
         // HTTP sandboxing: only plugins with "net" permission get allowed_hosts
         if has_net {
-            let hosts = info
-                .manifest
-                .allowed_hosts
-                .clone()
-                .unwrap_or_else(|| vec!["*".to_string()]);
+            let hosts = info.manifest.allowed_hosts.clone().unwrap_or_else(|| vec!["*".to_string()]);
             manifest = manifest.with_allowed_hosts(hosts.into_iter());
         }
 
@@ -110,10 +103,8 @@ impl PluginManager {
         // Always inject current UTC time so plugins can do time-aware work.
         {
             let now = chrono::Utc::now();
-            manifest =
-                manifest.with_config_key("current_time", now.format("%Y%m%dT%H%M%SZ").to_string());
-            manifest =
-                manifest.with_config_key("current_time_unix", now.timestamp().to_string());
+            manifest = manifest.with_config_key("current_time", now.format("%Y%m%dT%H%M%SZ").to_string());
+            manifest = manifest.with_config_key("current_time_unix", now.timestamp().to_string());
         }
 
         // Timeout for network plugins
@@ -123,8 +114,7 @@ impl PluginManager {
 
         match extism::Plugin::new(manifest, [], true) {
             Ok(plugin) => {
-                self.instances
-                    .insert(name.to_string(), Mutex::new(plugin));
+                self.instances.insert(name.to_string(), Mutex::new(plugin));
                 if let Some(info) = self.plugins.get_mut(name) {
                     info.state = PluginState::Active;
                 }
@@ -144,25 +134,15 @@ impl PluginManager {
     ///
     /// Recovers from poisoned mutexes (e.g. if a previous call panicked)
     /// and isolates plugin errors so one bad plugin can't take down others.
-    pub fn call_plugin(
-        &self,
-        name: &str,
-        function: &str,
-        input: &str,
-    ) -> Result<String, String> {
-        let instance = self
-            .instances
-            .get(name)
-            .ok_or_else(|| format!("Plugin '{}' not loaded", name))?;
+    pub fn call_plugin(&self, name: &str, function: &str, input: &str) -> Result<String, String> {
+        let instance = self.instances.get(name).ok_or_else(|| format!("Plugin '{}' not loaded", name))?;
 
         let mut plugin = instance.lock().unwrap_or_else(|poisoned| {
             tracing::warn!("Plugin '{}' mutex was poisoned, recovering", name);
             poisoned.into_inner()
         });
 
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            plugin.call::<&str, String>(function, input)
-        })) {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| plugin.call::<&str, String>(function, input))) {
             Ok(Ok(result)) => Ok(result),
             Ok(Err(e)) => Err(format!("Plugin call error: {}", e)),
             Err(_) => {
@@ -174,10 +154,7 @@ impl PluginManager {
 
     /// Check if a plugin has a specific function
     pub fn has_function(&self, name: &str, function: &str) -> bool {
-        self.instances
-            .get(name)
-            .and_then(|i| i.lock().ok())
-            .is_some_and(|p| p.function_exists(function))
+        self.instances.get(name).and_then(|i| i.lock().ok()).is_some_and(|p| p.function_exists(function))
     }
 
     /// Get a loaded plugin's info
@@ -201,10 +178,7 @@ impl PluginManager {
 
     /// Disable a plugin (unload WASM, set state to Disabled).
     pub fn disable(&mut self, name: &str) -> Result<(), String> {
-        let info = self
-            .plugins
-            .get_mut(name)
-            .ok_or_else(|| format!("Plugin '{}' not found", name))?;
+        let info = self.plugins.get_mut(name).ok_or_else(|| format!("Plugin '{}' not found", name))?;
         self.instances.remove(name);
         info.state = PluginState::Disabled;
         Ok(())
@@ -212,15 +186,9 @@ impl PluginManager {
 
     /// Enable a previously disabled plugin (reload its WASM).
     pub fn enable(&mut self, name: &str) -> Result<(), String> {
-        let info = self
-            .plugins
-            .get(name)
-            .ok_or_else(|| format!("Plugin '{}' not found", name))?;
+        let info = self.plugins.get(name).ok_or_else(|| format!("Plugin '{}' not found", name))?;
         if info.state != PluginState::Disabled {
-            return Err(format!(
-                "Plugin '{}' is not disabled (state: {:?})",
-                name, info.state
-            ));
+            return Err(format!("Plugin '{}' is not disabled (state: {:?})", name, info.state));
         }
         self.load_wasm(name)
     }
@@ -255,15 +223,12 @@ impl PluginManager {
 
     /// Iterate active/loaded plugins (for external trait impls and contribution collection).
     pub fn active_plugin_infos(&self) -> impl Iterator<Item = &PluginInfo> {
-        self.plugins
-            .values()
-            .filter(|p| matches!(p.state, PluginState::Loaded | PluginState::Active))
+        self.plugins.values().filter(|p| matches!(p.state, PluginState::Loaded | PluginState::Active))
     }
 
     /// Inject a pre-built WASM plugin instance (for testing).
     pub fn inject_instance(&mut self, name: String, plugin: extism::Plugin) {
-        self.instances
-            .insert(name, Mutex::new(plugin));
+        self.instances.insert(name, Mutex::new(plugin));
     }
 
     /// Get mutable access to a plugin's info (for testing state overrides).
@@ -282,10 +247,7 @@ impl PluginManager {
 }
 
 /// Load plugins from a directory (shared helper for discover).
-pub fn load_plugins_from_dir(
-    dir: &std::path::Path,
-    plugins: &mut HashMap<String, PluginInfo>,
-) {
+pub fn load_plugins_from_dir(dir: &std::path::Path, plugins: &mut HashMap<String, PluginInfo>) {
     if !dir.is_dir() {
         return;
     }
@@ -304,16 +266,13 @@ pub fn load_plugins_from_dir(
         }
         if let Some(manifest) = manifest::PluginManifest::load(&manifest_path) {
             let name = manifest.name.clone();
-            plugins.insert(
-                name.clone(),
-                PluginInfo {
-                    name,
-                    version: manifest.version.clone(),
-                    state: PluginState::Loaded,
-                    manifest,
-                    path,
-                },
-            );
+            plugins.insert(name.clone(), PluginInfo {
+                name,
+                version: manifest.version.clone(),
+                state: PluginState::Loaded,
+                manifest,
+                path,
+            });
         }
     }
 }

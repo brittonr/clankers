@@ -10,11 +10,10 @@
 //!
 //! Hooks allow custom behavior before/after compaction.
 
-use tokio::sync::mpsc;
-
 use clankers_provider::Provider;
 use clankers_provider::message::AgentMessage;
 use clankers_util::token::estimate_tokens;
+use tokio::sync::mpsc;
 
 /// Compaction result
 #[derive(Debug)]
@@ -326,9 +325,9 @@ fn estimate_message_tokens(msg: &AgentMessage) -> usize {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
+    use clankers_provider::message::*;
 
     use super::*;
-    use clankers_provider::message::*;
 
     fn make_msg(text: &str) -> AgentMessage {
         AgentMessage::User(UserMessage {

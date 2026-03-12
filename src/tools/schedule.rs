@@ -40,7 +40,8 @@ impl ScheduleTool {
                     "  resume  — Resume a paused schedule\n",
                     "  delete  — Remove a schedule by ID\n",
                     "  info    — Get details about a specific schedule",
-                ).to_string(),
+                )
+                .to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
@@ -91,18 +92,9 @@ impl ScheduleTool {
     }
 
     fn handle_create(&self, params: &Value) -> ToolResult {
-        let name = params
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unnamed");
-        let kind = params
-            .get("kind")
-            .and_then(|v| v.as_str())
-            .unwrap_or("interval");
-        let payload = params
-            .get("payload")
-            .cloned()
-            .unwrap_or_else(|| json!({}));
+        let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
+        let kind = params.get("kind").and_then(|v| v.as_str()).unwrap_or("interval");
+        let payload = params.get("payload").cloned().unwrap_or_else(|| json!({}));
 
         let mut schedule = match kind {
             "once" => {
@@ -119,9 +111,7 @@ impl ScheduleTool {
             "interval" => {
                 let interval_str = match params.get("interval").and_then(|v| v.as_str()) {
                     Some(s) => s,
-                    None => {
-                        return ToolResult::error("'interval' schedule requires 'interval' parameter")
-                    }
+                    None => return ToolResult::error("'interval' schedule requires 'interval' parameter"),
                 };
                 let secs = match parse_duration_secs(interval_str) {
                     Ok(s) => s,
@@ -176,11 +166,7 @@ impl ScheduleTool {
         ToolResult::text(format!("{} schedule(s):\n{}", schedules.len(), lines.join("\n")))
     }
 
-    fn handle_action_by_id(
-        &self,
-        params: &Value,
-        action: &str,
-    ) -> ToolResult {
+    fn handle_action_by_id(&self, params: &Value, action: &str) -> ToolResult {
         let id_str = match params.get("id").and_then(|v| v.as_str()) {
             Some(s) => s,
             None => return ToolResult::error(format!("'{action}' requires 'id' parameter")),
@@ -237,9 +223,7 @@ impl Tool for ScheduleTool {
         match action.as_str() {
             "create" => self.handle_create(&params),
             "list" => self.handle_list(),
-            "pause" | "resume" | "delete" | "info" => {
-                self.handle_action_by_id(&params, &action)
-            }
+            "pause" | "resume" | "delete" | "info" => self.handle_action_by_id(&params, &action),
             other => ToolResult::error(format!("Unknown action: {other}")),
         }
     }
@@ -260,8 +244,7 @@ fn parse_datetime(s: &str) -> Result<chrono::DateTime<Utc>, String> {
         return Ok(Utc::now() + Duration::seconds(secs_i64));
     }
     // Try ISO 8601
-    s.parse::<chrono::DateTime<Utc>>()
-        .map_err(|e| format!("cannot parse datetime '{s}': {e}"))
+    s.parse::<chrono::DateTime<Utc>>().map_err(|e| format!("cannot parse datetime '{s}': {e}"))
 }
 
 /// Parse a duration string like "30s", "5m", "2h", "1d".
@@ -278,27 +261,23 @@ fn parse_duration_secs(s: &str) -> Result<u64, String> {
     if s.is_empty() {
         return Err("empty duration".into());
     }
-    let (num_part, unit) = if s.ends_with('s') {
-        (&s[..s.len() - 1], 1u64)
-    } else if s.ends_with('m') {
-        (&s[..s.len() - 1], 60)
-    } else if s.ends_with('h') {
-        (&s[..s.len() - 1], 3600)
-    } else if s.ends_with('d') {
-        (&s[..s.len() - 1], 86400)
+    let (num_part, unit) = if let Some(stripped) = s.strip_suffix('s') {
+        (stripped, 1u64)
+    } else if let Some(stripped) = s.strip_suffix('m') {
+        (stripped, 60)
+    } else if let Some(stripped) = s.strip_suffix('h') {
+        (stripped, 3600)
+    } else if let Some(stripped) = s.strip_suffix('d') {
+        (stripped, 86400)
     } else {
         // Bare number = seconds
         (s, 1)
     };
 
-    let n: u64 = num_part
-        .parse()
-        .map_err(|_| format!("invalid number in duration: {s}"))?;
+    let n: u64 = num_part.parse().map_err(|_| format!("invalid number in duration: {s}"))?;
 
     // Tiger Style: checked arithmetic to prevent overflow.
-    let total = n
-        .checked_mul(unit)
-        .ok_or_else(|| format!("duration overflow: {s}"))?;
+    let total = n.checked_mul(unit).ok_or_else(|| format!("duration overflow: {s}"))?;
 
     if total > MAX_DURATION_SECS {
         return Err(format!("duration too large: {s} ({total}s > {MAX_DURATION_SECS}s max)"));

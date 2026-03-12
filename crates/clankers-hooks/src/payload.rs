@@ -1,5 +1,7 @@
-use chrono::{DateTime, Utc};
-use serde::{Serialize, Deserialize};
+use chrono::DateTime;
+use chrono::Utc;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 
 /// Payload delivered to every hook handler.
@@ -40,9 +42,7 @@ pub enum HookData {
     },
     /// Session lifecycle data
     #[serde(rename = "session")]
-    Session {
-        session_id: String,
-    },
+    Session { session_id: String },
     /// Git operation data
     #[serde(rename = "git")]
     Git {
@@ -63,11 +63,7 @@ pub enum HookData {
     },
     /// Model change data
     #[serde(rename = "model_change")]
-    ModelChange {
-        from: String,
-        to: String,
-        reason: String,
-    },
+    ModelChange { from: String, to: String, reason: String },
     /// Minimal / no data (e.g. turn start/end)
     #[serde(rename = "empty")]
     Empty {},
@@ -75,7 +71,14 @@ pub enum HookData {
 
 impl HookPayload {
     /// Create a tool hook payload.
-    pub fn tool(hook: &str, session_id: &str, tool_name: &str, call_id: &str, input: Value, result: Option<Value>) -> Self {
+    pub fn tool(
+        hook: &str,
+        session_id: &str,
+        tool_name: &str,
+        call_id: &str,
+        input: Value,
+        result: Option<Value>,
+    ) -> Self {
         Self {
             hook: hook.to_string(),
             session_id: session_id.to_string(),
@@ -115,7 +118,14 @@ impl HookPayload {
     }
 
     /// Create a git hook payload.
-    pub fn git(hook: &str, session_id: &str, action: &str, hash: Option<&str>, message: Option<&str>, files: Vec<String>) -> Self {
+    pub fn git(
+        hook: &str,
+        session_id: &str,
+        action: &str,
+        hash: Option<&str>,
+        message: Option<&str>,
+        files: Vec<String>,
+    ) -> Self {
         Self {
             hook: hook.to_string(),
             session_id: session_id.to_string(),

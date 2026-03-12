@@ -2,8 +2,8 @@
 
 use tokio::sync::broadcast;
 
-use crate::events::AgentEvent;
 use crate::error::Result;
+use crate::events::AgentEvent;
 use crate::tool::ModelSwitchSlot;
 
 /// Check for pending model switch from tools

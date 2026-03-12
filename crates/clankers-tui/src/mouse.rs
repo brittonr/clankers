@@ -21,14 +21,14 @@ pub fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
                     // Start scrollbar drag for panel
                     if let Some(info) = app.scrollbar_registry.panels.get(&panel_id) {
                         let new_pos = crate::scrollbar_registry::ScrollbarRegistry::position_from_mouse(info, row);
-                        
+
                         // Update scroll position
-                        if let Some(panel) = app.panels.get_mut(panel_id) {
-                            if let Some(scroll) = panel.panel_scroll_mut() {
-                                scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
-                            }
+                        if let Some(panel) = app.panels.get_mut(panel_id)
+                            && let Some(scroll) = panel.panel_scroll_mut()
+                        {
+                            scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
                         }
-                        
+
                         // Start drag tracking
                         app.scrollbar_drag = Some(crate::app::ScrollbarDrag {
                             region: region.clone(),
@@ -41,8 +41,9 @@ pub fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
                     // Start scrollbar drag for messages
                     if let Some(info) = &app.scrollbar_registry.messages {
                         let new_pos = crate::scrollbar_registry::ScrollbarRegistry::position_from_mouse(info, row);
-                        app.conversation.scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
-                        
+                        app.conversation.scroll.offset =
+                            new_pos.min(info.content_length.saturating_sub(info.visible_height));
+
                         // Start drag tracking
                         app.scrollbar_drag = Some(crate::app::ScrollbarDrag {
                             region: region.clone(),
@@ -55,13 +56,13 @@ pub fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
                     // Start scrollbar drag for subagent
                     if let Some(info) = app.scrollbar_registry.subagents.get(id) {
                         let new_pos = crate::scrollbar_registry::ScrollbarRegistry::position_from_mouse(info, row);
-                        
+
                         // Update subagent scroll
                         if let Some(state) = app.layout.subagent_panes.get_mut(id) {
                             state.scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
                             state.auto_scroll = false;
                         }
-                        
+
                         // Start drag tracking
                         app.scrollbar_drag = Some(crate::app::ScrollbarDrag {
                             region: region.clone(),
@@ -163,17 +164,18 @@ pub fn handle_mouse_drag(app: &mut App, button: Button, _col: u16, row: u16) {
             HitRegion::PanelScrollbar(panel_id) => {
                 if let Some(info) = app.scrollbar_registry.panels.get(panel_id) {
                     let new_pos = crate::scrollbar_registry::ScrollbarRegistry::position_from_mouse(info, row);
-                    if let Some(panel) = app.panels.get_mut(*panel_id) {
-                        if let Some(scroll) = panel.panel_scroll_mut() {
-                            scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
-                        }
+                    if let Some(panel) = app.panels.get_mut(*panel_id)
+                        && let Some(scroll) = panel.panel_scroll_mut()
+                    {
+                        scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
                     }
                 }
             }
             HitRegion::MessagesScrollbar => {
                 if let Some(info) = &app.scrollbar_registry.messages {
                     let new_pos = crate::scrollbar_registry::ScrollbarRegistry::position_from_mouse(info, row);
-                    app.conversation.scroll.offset = new_pos.min(info.content_length.saturating_sub(info.visible_height));
+                    app.conversation.scroll.offset =
+                        new_pos.min(info.content_length.saturating_sub(info.visible_height));
                 }
             }
             HitRegion::SubagentScrollbar(id) => {

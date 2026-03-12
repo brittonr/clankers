@@ -208,16 +208,19 @@ impl BashTool {
         ctx: &ToolContext,
         timeout_secs: u64,
     ) -> Result<(String, usize), ToolResult> {
-        let stdout = child.stdout.take()
+        let stdout = child
+            .stdout
+            .take()
             .ok_or_else(|| ToolResult::error("Failed to capture stdout from child process"))?;
-        let stderr = child.stderr.take()
+        let stderr = child
+            .stderr
+            .take()
             .ok_or_else(|| ToolResult::error("Failed to capture stderr from child process"))?;
         let mut out = BufReader::new(stdout).lines();
         let mut err = BufReader::new(stderr).lines();
         let mut collected = String::new();
         let mut line_count: usize = 0;
-        let deadline = (timeout_secs > 0)
-            .then(|| tokio::time::Instant::now() + Duration::from_secs(timeout_secs));
+        let deadline = (timeout_secs > 0).then(|| tokio::time::Instant::now() + Duration::from_secs(timeout_secs));
 
         loop {
             if deadline.is_some_and(|dl| tokio::time::Instant::now() >= dl) {

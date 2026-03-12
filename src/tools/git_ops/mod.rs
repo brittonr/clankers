@@ -101,8 +101,6 @@ fn status_chars(s: git2::Status) -> (char, char) {
     (index, wt)
 }
 
-
-
 // ── Staging ────────────────────────────────────────────────────────────
 
 /// Stage files (like `git add <files>`).
@@ -236,16 +234,22 @@ pub async fn head_short_hash() -> Result<String> {
     .map_err(|e| GitError(format!("join error: {}", e)))?
 }
 
-
-
 // ── Modules ────────────────────────────────────────────────────────────
 
 pub mod diff;
 pub mod log;
 
 // Re-export public items from modules
-pub use diff::{DiffTarget, diff_staged, diff_unstaged, diff_staged_stat, diff_unstaged_stat, diff_ref, diff_ref_stat, staged_file_names};
-pub use log::{LogEntry, log};
+pub use diff::DiffTarget;
+pub use diff::diff_ref;
+pub use diff::diff_ref_stat;
+pub use diff::diff_staged;
+pub use diff::diff_staged_stat;
+pub use diff::diff_unstaged;
+pub use diff::diff_unstaged_stat;
+pub use diff::staged_file_names;
+pub use log::LogEntry;
+pub use log::log;
 
 #[cfg(test)]
 mod tests;
@@ -256,5 +260,3 @@ mod tests;
 
 pub mod sync_ops;
 pub use sync_ops as sync;
-
-

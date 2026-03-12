@@ -102,16 +102,24 @@ impl std::fmt::Display for ToolTier {
     }
 }
 
+impl std::str::FromStr for ToolTier {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "core" => Ok(ToolTier::Core),
+            "orchestration" | "orch" => Ok(ToolTier::Orchestration),
+            "specialty" | "spec" => Ok(ToolTier::Specialty),
+            "matrix" => Ok(ToolTier::Matrix),
+            _ => Err(format!("Unknown tool tier: {}", s)),
+        }
+    }
+}
+
 impl ToolTier {
     /// Parse a tier name from a string.
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "core" => Some(ToolTier::Core),
-            "orchestration" | "orch" => Some(ToolTier::Orchestration),
-            "specialty" | "spec" => Some(ToolTier::Specialty),
-            "matrix" => Some(ToolTier::Matrix),
-            _ => None,
-        }
+    pub fn parse_tier(s: &str) -> Option<Self> {
+        s.parse().ok()
     }
 }
 
@@ -222,8 +230,6 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
     tools
 }
 
-
-
 /// Initialize the plugin manager, discover and load all plugins from the
 /// given directories. Returns the manager wrapped in Arc<Mutex<>> for sharing.
 ///
@@ -294,9 +300,9 @@ pub fn build_plugin_tools(
         }
 
         if !plugin_info.manifest.tool_definitions.is_empty() {
-            build_detailed_tools(&plugin_info, manager, &builtin_names, panel_tx, &mut tools);
+            build_detailed_tools(plugin_info, manager, &builtin_names, panel_tx, &mut tools);
         } else {
-            build_bare_tools(&plugin_info, manager, &mut tools);
+            build_bare_tools(plugin_info, manager, &mut tools);
         }
     }
 
@@ -329,12 +335,8 @@ fn build_detailed_tools(
         };
 
         if is_validator && tool_def.name.starts_with("validate") {
-            let mut vtool = ValidatorTool::new(
-                definition,
-                plugin_info.name.clone(),
-                tool_def.handler.clone(),
-                Arc::clone(manager),
-            );
+            let mut vtool =
+                ValidatorTool::new(definition, plugin_info.name.clone(), tool_def.handler.clone(), Arc::clone(manager));
             if let Some(ptx) = panel_tx {
                 vtool = vtool.with_panel_tx(ptx.clone());
             }
@@ -402,15 +404,17 @@ pub fn build_all_tiered_tools(
 /// Returns `Some(tiers)` for explicit tier selection.
 pub fn resolve_tool_tiers(tools_flag: Option<&str>) -> Option<Vec<ToolTier>> {
     match tools_flag {
-        Some("all") => Some(vec![ToolTier::Core, ToolTier::Orchestration, ToolTier::Specialty, ToolTier::Matrix]),
+        Some("all") => Some(vec![
+            ToolTier::Core,
+            ToolTier::Orchestration,
+            ToolTier::Specialty,
+            ToolTier::Matrix,
+        ]),
         Some("core") => Some(vec![ToolTier::Core]),
-        Some("none") | Some("") => None, // handled separately (empty tool vec)
+        Some("none" | "") => None, // handled separately (empty tool vec)
         Some(custom) => {
             // Parse comma-separated tier names
-            let tiers: Vec<ToolTier> = custom
-                .split(',')
-                .filter_map(|s| ToolTier::from_str(s.trim()))
-                .collect();
+            let tiers: Vec<ToolTier> = custom.split(',').filter_map(|s| ToolTier::parse_tier(s.trim())).collect();
             if tiers.is_empty() { None } else { Some(tiers) }
         }
         None => None,
@@ -542,9 +546,7 @@ mod tests {
 
     impl MockTool {
         fn new(name: &str) -> Self {
-            Self {
-                name: name.to_string(),
-            }
+            Self { name: name.to_string() }
         }
     }
 
@@ -596,10 +598,12 @@ mod tests {
 
     #[test]
     fn tool_set_all_tiers() {
-        let ts = ToolSet::new(
-            make_tiered_tools(),
-            [ToolTier::Core, ToolTier::Orchestration, ToolTier::Specialty, ToolTier::Matrix],
-        );
+        let ts = ToolSet::new(make_tiered_tools(), [
+            ToolTier::Core,
+            ToolTier::Orchestration,
+            ToolTier::Specialty,
+            ToolTier::Matrix,
+        ]);
         let active = ts.active_tools();
         assert_eq!(active.len(), 10);
     }
@@ -653,14 +657,14 @@ mod tests {
 
     #[test]
     fn tool_tier_from_str() {
-        assert_eq!(ToolTier::from_str("core"), Some(ToolTier::Core));
-        assert_eq!(ToolTier::from_str("Core"), Some(ToolTier::Core));
-        assert_eq!(ToolTier::from_str("orchestration"), Some(ToolTier::Orchestration));
-        assert_eq!(ToolTier::from_str("orch"), Some(ToolTier::Orchestration));
-        assert_eq!(ToolTier::from_str("specialty"), Some(ToolTier::Specialty));
-        assert_eq!(ToolTier::from_str("spec"), Some(ToolTier::Specialty));
-        assert_eq!(ToolTier::from_str("matrix"), Some(ToolTier::Matrix));
-        assert_eq!(ToolTier::from_str("unknown"), None);
+        assert_eq!(ToolTier::parse_tier("core"), Some(ToolTier::Core));
+        assert_eq!(ToolTier::parse_tier("Core"), Some(ToolTier::Core));
+        assert_eq!(ToolTier::parse_tier("orchestration"), Some(ToolTier::Orchestration));
+        assert_eq!(ToolTier::parse_tier("orch"), Some(ToolTier::Orchestration));
+        assert_eq!(ToolTier::parse_tier("specialty"), Some(ToolTier::Specialty));
+        assert_eq!(ToolTier::parse_tier("spec"), Some(ToolTier::Specialty));
+        assert_eq!(ToolTier::parse_tier("matrix"), Some(ToolTier::Matrix));
+        assert_eq!(ToolTier::parse_tier("unknown"), None);
     }
 
     #[test]

@@ -39,9 +39,7 @@ impl ToolResult {
 
     pub fn error(message: impl Into<String>) -> Self {
         Self {
-            content: vec![ToolResultContent::Text {
-                text: message.into(),
-            }],
+            content: vec![ToolResultContent::Text { text: message.into() }],
             is_error: true,
             details: None,
             full_output_path: None,

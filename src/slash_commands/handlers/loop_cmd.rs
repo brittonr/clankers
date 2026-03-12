@@ -71,10 +71,8 @@ fn show_status(ctx: &mut SlashContext<'_>) {
     match &ctx.app.loop_status {
         Some(ls) => {
             let state = if ls.active { "running" } else { "paused" };
-            ctx.app.push_system(
-                format!("Loop '{}': {} ({}/{})", ls.name, state, ls.iteration, ls.max_iterations),
-                false,
-            );
+            ctx.app
+                .push_system(format!("Loop '{}': {} ({}/{})", ls.name, state, ls.iteration, ls.max_iterations), false);
         }
         None => {
             ctx.app.push_system("No active loop.".into(), false);
@@ -175,10 +173,7 @@ fn start_loop(args: &str, ctx: &mut SlashContext<'_>) {
         format!(
             "Loop started: {} iteration(s){}",
             max_iterations,
-            break_text
-                .as_ref()
-                .map(|t| format!(" (break on: \"{}\")", t))
-                .unwrap_or_default(),
+            break_text.as_ref().map(|t| format!(" (break on: \"{}\")", t)).unwrap_or_default(),
         ),
         false,
     );
@@ -191,10 +186,10 @@ fn start_loop(args: &str, ctx: &mut SlashContext<'_>) {
 /// Parse "until" args: either `"quoted text" rest` or `word rest`.
 fn parse_until_args(s: &str) -> (String, String) {
     let s = s.trim();
-    if s.starts_with('"') {
+    if let Some(stripped) = s.strip_prefix('"') {
         // Find closing quote
-        if let Some(end) = s[1..].find('"') {
-            let break_text = s[1..=end].to_string();
+        if let Some(end) = stripped.find('"') {
+            let break_text = stripped[..end].to_string();
             let prompt = s[end + 2..].trim().to_string();
             return (break_text, prompt);
         }

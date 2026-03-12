@@ -3,8 +3,9 @@
 //! Maintains a registry of scrollbar regions to enable mouse dragging and clicking
 //! on scrollbars to navigate content.
 
-use ratatui::layout::Rect;
 use std::collections::HashMap;
+
+use ratatui::layout::Rect;
 
 use crate::panel::PanelId;
 
@@ -81,10 +82,10 @@ impl ScrollbarRegistry {
         }
 
         // Check messages scrollbar
-        if let Some(info) = &self.messages {
-            if rect_contains(info.area, col, row) {
-                return Some(ScrollbarHit::Messages(info.clone()));
-            }
+        if let Some(info) = &self.messages
+            && rect_contains(info.area, col, row)
+        {
+            return Some(ScrollbarHit::Messages(info.clone()));
         }
 
         None
@@ -95,7 +96,7 @@ impl ScrollbarRegistry {
         let relative_y = mouse_y.saturating_sub(info.area.y);
         let scrollbar_height = info.area.height as f64;
         let ratio = relative_y as f64 / scrollbar_height;
-        
+
         let max_scroll = info.content_length.saturating_sub(info.visible_height);
         (ratio * max_scroll as f64).round() as usize
     }
@@ -136,7 +137,7 @@ pub fn calculate_thumb_geometry(
     } else {
         0.0
     };
-    
+
     let max_thumb_pos = scrollbar_height.saturating_sub(thumb_height);
     let thumb_start = (max_thumb_pos as f64 * scroll_ratio).round() as u16;
 

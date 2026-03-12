@@ -10,10 +10,10 @@ use async_trait::async_trait;
 use tokio::sync::mpsc;
 use tracing::info;
 
-use crate::error::Result;
 use crate::CompletionRequest;
 use crate::Model;
 use crate::Provider;
+use crate::error::Result;
 use crate::registry::ModelRegistry;
 use crate::streaming::StreamEvent;
 

@@ -196,9 +196,12 @@ fn plugin_list(pm: &PluginMutex, ctx: &mut SlashContext<'_>) {
             }
             crate::plugin::PluginState::Disabled => "−",
         };
-        let tools = if p.manifest.tools.is_empty() { "none".to_string() } else { p.manifest.tools.join(", ") };
-        writeln!(out, "  {} {} v{} — {} (tools: {})", icon, p.name, p.version, p.manifest.description, tools)
-            .unwrap();
+        let tools = if p.manifest.tools.is_empty() {
+            "none".to_string()
+        } else {
+            p.manifest.tools.join(", ")
+        };
+        writeln!(out, "  {} {} v{} — {} (tools: {})", icon, p.name, p.version, p.manifest.description, tools).unwrap();
     }
     write!(out, "\n  ✓ active  ○ loaded  − disabled  ✗ error\n  Use /plugin enable|disable|reload <name>").unwrap();
     ctx.app.push_system(out, false);
@@ -213,9 +216,7 @@ fn plugin_show(pm: &PluginMutex, name: &str, ctx: &mut SlashContext<'_>) {
         return;
     };
 
-    let join_or_none = |v: &[String]| -> String {
-        if v.is_empty() { "none".into() } else { v.join(", ") }
-    };
+    let join_or_none = |v: &[String]| -> String { if v.is_empty() { "none".into() } else { v.join(", ") } };
 
     let mut out = String::new();
     writeln!(out, "Plugin: {} v{}", p.name, p.version).unwrap();

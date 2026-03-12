@@ -160,16 +160,8 @@ impl ToolResultAccumulator {
 
         // Apply truncation if needed
         let result_text = if lines.len() > self.config.max_lines {
-            let head: Vec<_> = lines
-                .iter()
-                .take(self.config.head_lines)
-                .map(|s| s.as_str())
-                .collect();
-            let tail: Vec<_> = lines
-                .iter()
-                .skip(lines.len() - self.config.tail_lines)
-                .map(|s| s.as_str())
-                .collect();
+            let head: Vec<_> = lines.iter().take(self.config.head_lines).map(|s| s.as_str()).collect();
+            let tail: Vec<_> = lines.iter().skip(lines.len() - self.config.tail_lines).map(|s| s.as_str()).collect();
 
             let omitted = lines.len() - self.config.head_lines - self.config.tail_lines;
             let marker = format!("\n... [{} lines omitted] ...\n", omitted);
@@ -183,8 +175,7 @@ impl ToolResultAccumulator {
         };
 
         // Check if truncated
-        let is_truncated =
-            lines.len() > self.config.max_lines || self.total_bytes > self.config.max_bytes;
+        let is_truncated = lines.len() > self.config.max_lines || self.total_bytes > self.config.max_bytes;
 
         ToolResult::text(result_text).with_details(serde_json::json!({
             "total_lines": self.total_lines,

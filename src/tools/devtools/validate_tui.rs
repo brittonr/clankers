@@ -12,12 +12,12 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio_util::sync::CancellationToken;
 
+use super::pty_harness::PtyHarness;
+use super::pty_harness::key_bytes;
 use crate::tools::Tool;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
 use crate::tools::ToolResult;
-
-use super::pty_harness::{key_bytes, PtyHarness};
 
 // ── Step types ──────────────────────────────────────────────────────
 

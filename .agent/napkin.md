@@ -524,3 +524,43 @@
 - Adding a new slash command shifts visual snapshots (use `cargo insta accept --all`); count assertions now use `builtin_commands().len()` so they self-adjust
 - Leader menu entries: add to `root_keymap_actions()` in builder.rs, register the `ExtendedAction` in actions.rs (enum + name table), dispatch in extended_actions.rs, mark global in event_handlers.rs
 - Fixed 3 hardcoded `45` counts in slash_commands/tests.rs → `builtin_commands().len()` — no more breakage on command add/remove
+
+## Domain Notes (daemon-client architecture)
+- rkyv rejected for wire protocol: wrong tool (small text messages, not large structs), loses debuggability, versioning pain on enum changes
+- Lunatic rejected as actor foundation: WASM process model mismatches native agent resources (HTTP clients, file handles, Arc providers). Wasmtime 41 conflicts with extism's wasmtime 37. Only ~400 lines of lunatic's process model are relevant.
+- Native actor layer: steal Signal/Link/Monitor concepts from lunatic, implement on tokio tasks. ~500 lines, no WASM dependency.
+- Protocol: serde_json + length-prefixed frames. Reuse existing write_frame/read_frame from iroh RPC.
+- Transport: Unix domain sockets (local), iroh QUIC (remote). One control socket + one socket per session.
+- SessionController: transport-agnostic agent orchestrator extracted from EventLoopRunner. Owns agent, session mgr, loop engine, hooks, audit.
+- Embedded mode preserved as default. `--daemon` and `attach` are opt-in.
+- Slash commands split: agent-side (model, session, auth) via SessionCommand, client-side (zoom, panel, theme) handled locally.
+- OpenSpec for this work lives at `openspec/changes/daemon-client/`
+- Automerge for session tree: session is already an append-only DAG with unique IDs + parent pointers — that's what Automerge stores natively. Eliminates ~300 lines of manual merge/cherry-pick code. Enables concurrent writes from multiple agents/clients.
+- Automerge for todo list: eliminates todo_tx/todo_rx channel pair. Agent writes to doc, TUI reads from local replica. No oneshot round-trip.
+- Automerge for napkin: concurrent corrections from multiple agents merge without file conflicts.
+- Automerge NOT for: settings (LWW is correct), auth tokens (need immediate authority), streaming output (ephemeral, high-frequency).
+- iroh-docs syncs Automerge documents between daemon and TUI clients. Complementary to DaemonEvent stream — events for real-time rendering, iroh-docs for persistence consistency.
+- Aspen backend: SessionBackend trait with local (Automerge files) and aspen (KV+blobs) impls. Agent work as aspen jobs for distributed execution. Opt-in via --backend aspen.
+
+## Patterns That Work (daemon-client Phase 0-2)
+- `clankers-protocol` at `crates/clankers-protocol/` — wire types only, deps: serde + serde_json + tokio (for AsyncRead/AsyncWrite in frame helpers)
+- `write_frame`/`read_frame` generic over `AsyncWrite`/`AsyncRead` — no transport dependency, works with UnixStream, QUIC streams, `Vec<u8>`, `Cursor`
+- `SessionCommand` and `DaemonEvent` enums with full serde Serialize+Deserialize round-trip tests for every variant
+- `ControlCommand`/`ControlResponse` for control socket (session listing, creation, attach)
+- `Handshake` struct with protocol_version, client_name, optional token+session_id
+- `FrameError` enum: Io, TooLarge, Json, Eof — UnexpectedEof maps to Eof for clean disconnect detection
+- MAX_FRAME_SIZE = 10MB, validated on both read and write
+- `clankers-actor` at `crates/clankers-actor/` — native tokio tasks, NOT WASM. Deps: tokio + dashmap + tracing only
+- `ProcessId = u64`, monotonic via AtomicU64, never reused
+- `Signal` enum uses `Box<dyn Any + Send>` for Message — no generic type parameter on the enum itself
+- `ProcessRegistry` uses DashMap (thread-safe) for processes + names + links + monitors
+- `registry.spawn()` takes a factory closure `FnOnce(ProcessId, UnboundedReceiver<Signal>) -> Future<Output = DeathReason>` — actor receives its own ID and signal channel
+- Death notifications: linked processes get `LinkDied`, monitors get `ProcessDied` — via `on_process_exit()` callback in the spawned task wrapper
+- `Supervisor` is strategy + restart rate tracking, NOT a running task itself — `run()` method takes signal_rx and restart_fn
+- `clankers-controller` at `crates/clankers-controller/` — owns Agent, SessionManager, LoopEngine, HookPipeline, AuditTracker
+- `ConfirmStore<T>` generic over response type — handles both bash confirms (bool) and todo responses (Value)
+- `agent_event_to_daemon_event()` and `daemon_event_to_tui_event()` are the two conversion points — AgentEvent → DaemonEvent → TuiEvent
+- `Content::Image { source: ImageSource::Base64 { media_type, data } }` — not flat fields
+- `ToolProgress` has `kind: ProgressKind, message, timestamp: Instant` — Instant is not serializable, convert to JSON with message only
+- Controller test mock: inline `MockProvider` struct with `#[async_trait]` — no public mock in clankers-provider
+- Provider::complete return type: `clankers_provider::error::Result<()>` (not `clankers_provider::Result`)

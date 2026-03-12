@@ -239,12 +239,8 @@ pub fn render_scrollbar_tracked(
     render_scrollbar(frame, area, content_length, position, visible_height);
 
     // Calculate thumb geometry
-    let (thumb_start, thumb_height) = super::scrollbar_registry::calculate_thumb_geometry(
-        area.height,
-        content_length,
-        visible_height,
-        position,
-    );
+    let (thumb_start, thumb_height) =
+        super::scrollbar_registry::calculate_thumb_geometry(area.height, content_length, visible_height, position);
 
     // Create scrollbar info
     Some(super::scrollbar_registry::ScrollbarInfo {

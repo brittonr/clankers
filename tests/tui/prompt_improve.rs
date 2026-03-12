@@ -56,11 +56,7 @@ fn status_bar_shows_improve_badge() {
     let mut h = TuiTestHarness::spawn(24, 120);
 
     // Badge should not be present initially
-    assert!(
-        !h.status_bar().contains("improve"),
-        "No improve badge initially.\nBar: {}",
-        h.status_bar()
-    );
+    assert!(!h.status_bar().contains("improve"), "No improve badge initially.\nBar: {}", h.status_bar());
 
     // Enable via slash command
     run_slash(&mut h, "/improve on");
@@ -80,11 +76,7 @@ fn status_bar_shows_improve_badge() {
     h.send_key(Key::Escape);
     h.settle(SETTLE);
 
-    assert!(
-        !h.status_bar().contains("improve"),
-        "Improve badge should disappear.\nBar: {}",
-        h.status_bar()
-    );
+    assert!(!h.status_bar().contains("improve"), "Improve badge should disappear.\nBar: {}", h.status_bar());
 
     h.quit();
 }
@@ -102,11 +94,7 @@ fn editor_title_shows_improve_indicator() {
 
     // The editor title should contain "improve"
     let screen = h.screen_text();
-    assert!(
-        screen.contains("improve"),
-        "Editor title should show improve indicator.\nScreen:\n{}",
-        screen
-    );
+    assert!(screen.contains("improve"), "Editor title should show improve indicator.\nScreen:\n{}", screen);
 
     h.quit();
 }

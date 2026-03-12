@@ -355,7 +355,6 @@ fn test_registry_conflict_resolution() {
                 handler: Box::new(handlers::info::HelpHandler),
                 priority: PRIORITY_PLUGIN, // Higher than builtin
                 source: "test_plugin".to_string(),
-
             }]
         }
     }

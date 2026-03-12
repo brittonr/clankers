@@ -1,5 +1,7 @@
 use std::path::PathBuf;
-use serde::{Serialize, Deserialize};
+
+use serde::Deserialize;
+use serde::Serialize;
 
 /// Hook system configuration (appears in settings.json as "hooks").
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -27,8 +29,12 @@ pub struct HooksConfig {
     pub manage_git_hooks: bool,
 }
 
-fn default_true() -> bool { true }
-fn default_script_timeout() -> u64 { 10 }
+fn default_true() -> bool {
+    true
+}
+fn default_script_timeout() -> u64 {
+    10
+}
 
 impl Default for HooksConfig {
     fn default() -> Self {
@@ -87,7 +93,10 @@ mod tests {
 
     #[test]
     fn resolve_hooks_dir_custom() {
-        let cfg = HooksConfig { hooks_dir: Some(PathBuf::from("/custom/hooks")), ..Default::default() };
+        let cfg = HooksConfig {
+            hooks_dir: Some(PathBuf::from("/custom/hooks")),
+            ..Default::default()
+        };
         let dir = cfg.resolve_hooks_dir(std::path::Path::new("/project"));
         assert_eq!(dir, PathBuf::from("/custom/hooks"));
     }

@@ -4,12 +4,11 @@
 pub use clankers_plugin::PluginInfo;
 pub use clankers_plugin::PluginManager;
 pub use clankers_plugin::PluginState;
-pub use clankers_plugin::load_plugins_from_dir;
-
 // Re-export sub-modules
 pub use clankers_plugin::bridge;
 pub use clankers_plugin::hooks;
 pub use clankers_plugin::host;
+pub use clankers_plugin::load_plugins_from_dir;
 pub use clankers_plugin::manifest;
 pub use clankers_plugin::registry;
 pub use clankers_plugin::sandbox;

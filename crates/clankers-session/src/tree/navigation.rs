@@ -144,10 +144,7 @@ impl SessionTree {
             }
 
             // Tiger Style: safety valve — total visited nodes bounded by entry count.
-            debug_assert!(
-                visited.len() <= self.entries().len(),
-                "DFS visited more nodes than entries exist"
-            );
+            debug_assert!(visited.len() <= self.entries().len(), "DFS visited more nodes than entries exist");
         }
 
         leaves

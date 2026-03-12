@@ -72,8 +72,6 @@ impl From<clankers_router::Error> for ProviderError {
     }
 }
 
-
-
 /// Convenience constructors.
 pub fn provider_err(msg: impl Into<String>) -> ProviderError {
     ProviderError {

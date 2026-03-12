@@ -234,10 +234,10 @@ mod tests {
 
         let sess1_results = store.for_session("sess-1")?;
         assert_eq!(sess1_results.len(), 3);
-        
+
         let sess2_results = store.for_session("sess-2")?;
         assert_eq!(sess2_results.len(), 1);
-        
+
         let sess3_results = store.for_session("sess-3")?;
         assert_eq!(sess3_results.len(), 0);
         Ok(())

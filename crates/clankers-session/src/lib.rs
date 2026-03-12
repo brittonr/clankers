@@ -266,10 +266,10 @@ impl SessionManager {
         for entry in entries.iter().rev() {
             if let SessionEntry::Branch(branch) = entry
                 && branch_ids.contains(&branch.from_message_id)
+                && !branch.reason.is_empty()
+                && branch.reason.len() < 50
             {
-                if !branch.reason.is_empty() && branch.reason.len() < 50 {
-                    return branch.reason.clone();
-                }
+                return branch.reason.clone();
             }
         }
 

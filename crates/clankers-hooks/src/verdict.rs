@@ -48,7 +48,9 @@ mod tests {
 
     #[test]
     fn merge_deny_wins_over_modify() {
-        let v = HookVerdict::Modify(serde_json::json!({})).merge(HookVerdict::Deny { reason: "blocked".into() });
+        let v = HookVerdict::Modify(serde_json::json!({})).merge(HookVerdict::Deny {
+            reason: "blocked".into(),
+        });
         assert!(matches!(v, HookVerdict::Deny { .. }));
     }
 
@@ -61,7 +63,9 @@ mod tests {
     #[test]
     fn first_deny_preserved() {
         let d1 = HookVerdict::Deny { reason: "first".into() };
-        let d2 = HookVerdict::Deny { reason: "second".into() };
+        let d2 = HookVerdict::Deny {
+            reason: "second".into(),
+        };
         let v = d1.merge(d2);
         match v {
             HookVerdict::Deny { reason } => assert_eq!(reason, "first"),

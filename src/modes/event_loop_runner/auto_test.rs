@@ -29,8 +29,7 @@ impl<'a> EventLoopRunner<'a> {
         let cmd = cmd.clone();
         self.auto_test_in_progress = true;
 
-        self.app
-            .push_system(format!("🧪 Running auto-test: {}", cmd), false);
+        self.app.push_system(format!("🧪 Running auto-test: {}", cmd), false);
 
         // Send the test command as a prompt so the agent sees the results
         // and can act on failures.

@@ -249,10 +249,7 @@ mod tests {
 
     #[test]
     fn progress_kind_percentage_variant() {
-        assert_eq!(
-            ProgressKind::Percentage { percent: 42.5 }.as_percentage(),
-            Some(42.5)
-        );
+        assert_eq!(ProgressKind::Percentage { percent: 42.5 }.as_percentage(), Some(42.5));
     }
 
     #[test]
@@ -262,14 +259,7 @@ mod tests {
             step: 2,
             total_steps: Some(3),
         };
-        assert!(
-            (phase
-                .as_percentage()
-                .expect("phase with total should have percentage")
-                - 66.666)
-                .abs()
-                < 0.01
-        );
+        assert!((phase.as_percentage().expect("phase with total should have percentage") - 66.666).abs() < 0.01);
     }
 
     #[test]
@@ -324,10 +314,7 @@ mod tests {
             .display_string(),
             "50 bytes"
         );
-        assert_eq!(
-            ProgressKind::Percentage { percent: 42.5 }.display_string(),
-            "42.5%"
-        );
+        assert_eq!(ProgressKind::Percentage { percent: 42.5 }.display_string(), "42.5%");
         assert_eq!(
             ProgressKind::Phase {
                 name: "Building".to_string(),
@@ -343,13 +330,10 @@ mod tests {
     fn tool_progress_builders() {
         let progress = ToolProgress::bytes(50, Some(100)).with_message("Downloading");
 
-        assert!(matches!(
-            progress.kind,
-            ProgressKind::Bytes {
-                current: 50,
-                total: Some(100)
-            }
-        ));
+        assert!(matches!(progress.kind, ProgressKind::Bytes {
+            current: 50,
+            total: Some(100)
+        }));
         assert_eq!(progress.message, Some("Downloading".to_string()));
 
         let phase = ToolProgress::phase("Building", 1, Some(3));

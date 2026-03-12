@@ -12,12 +12,10 @@ mod landlock;
 mod policy;
 
 // Re-export public API
-pub use landlock::apply_landlock_to_current;
-
 // Path policy — canonical definitions in clankers-util
 pub use clankers_util::path_policy::PathPolicy;
 pub use clankers_util::path_policy::check_path;
 pub use clankers_util::path_policy::init_policy;
-
+pub use landlock::apply_landlock_to_current;
 // Environment sanitization — stays local
 pub use policy::sanitized_env;

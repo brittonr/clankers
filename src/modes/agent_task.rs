@@ -5,11 +5,10 @@
 
 use std::sync::Arc;
 
-use crate::agent::Agent;
-use crate::tools::Tool;
-
 use super::interactive::AgentCommand;
 use super::interactive::TaskResult;
+use crate::agent::Agent;
+use crate::tools::Tool;
 
 /// Spawn the background agent task that processes commands.
 ///
@@ -92,15 +91,14 @@ pub(crate) fn spawn_agent_task(
                 }
                 AgentCommand::SetDisabledTools(disabled) => {
                     use crate::modes::common::ToolTier;
-                    let tiered = crate::modes::common::build_all_tiered_tools(
-                        &tool_env_for_rebuild,
-                        plugin_manager.as_ref(),
-                    );
+                    let tiered =
+                        crate::modes::common::build_all_tiered_tools(&tool_env_for_rebuild, plugin_manager.as_ref());
                     // Interactive agent task: Core + Specialty + Orchestration
-                    let tool_set = crate::modes::common::ToolSet::new(
-                        tiered,
-                        [ToolTier::Core, ToolTier::Specialty, ToolTier::Orchestration],
-                    );
+                    let tool_set = crate::modes::common::ToolSet::new(tiered, [
+                        ToolTier::Core,
+                        ToolTier::Specialty,
+                        ToolTier::Orchestration,
+                    ]);
                     let filtered: Vec<Arc<dyn Tool>> = tool_set
                         .active_tools()
                         .into_iter()
@@ -197,10 +195,7 @@ async fn handle_login(
                     ))));
                 }
                 Err(e) => {
-                    let _ = done_tx.send(TaskResult::LoginDone(Err(format!(
-                        "Failed to save credentials: {}",
-                        e
-                    ))));
+                    let _ = done_tx.send(TaskResult::LoginDone(Err(format!("Failed to save credentials: {}", e))));
                 }
             }
         }
@@ -227,10 +222,7 @@ async fn handle_switch_account(
             let _ = done_tx.send(TaskResult::AccountSwitched(Ok(account_name.to_string())));
         }
     } else {
-        let _ = done_tx.send(TaskResult::AccountSwitched(Err(format!(
-            "No account '{}'",
-            account_name
-        ))));
+        let _ = done_tx.send(TaskResult::AccountSwitched(Err(format!("No account '{}'", account_name))));
     }
 }
 
@@ -244,9 +236,12 @@ pub(crate) async fn rewrite_prompt(
     model: &str,
     original: &str,
 ) -> String {
-    use crate::provider::message::{AgentMessage, Content, MessageId, UserMessage};
-    use crate::provider::streaming::StreamEvent;
     use crate::provider::CompletionRequest;
+    use crate::provider::message::AgentMessage;
+    use crate::provider::message::Content;
+    use crate::provider::message::MessageId;
+    use crate::provider::message::UserMessage;
+    use crate::provider::streaming::StreamEvent;
 
     let system = "You are a prompt engineer. Your job is to rewrite the user's prompt \
         to be clearer, more specific, and more effective for an AI coding assistant. \
@@ -275,9 +270,7 @@ pub(crate) async fn rewrite_prompt(
 
     let complete_handle = {
         let provider = provider.clone();
-        tokio::spawn(async move {
-            provider.complete(request, tx).await
-        })
+        tokio::spawn(async move { provider.complete(request, tx).await })
     };
 
     let mut result = String::new();
@@ -316,11 +309,7 @@ pub(crate) async fn rewrite_prompt(
 #[allow(clippy::needless_pass_by_value)]
 fn thinking_msg(level: &crate::provider::ThinkingLevel) -> String {
     if level.is_enabled() {
-        format!(
-            "Thinking: {} ({} tokens)",
-            level.label(),
-            level.budget_tokens().unwrap_or(0)
-        )
+        format!("Thinking: {} ({} tokens)", level.label(), level.budget_tokens().unwrap_or(0))
     } else {
         "Thinking: off".to_string()
     }

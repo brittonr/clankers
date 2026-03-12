@@ -417,10 +417,7 @@ async fn spawn_subprocess(
     let mut child = cmd.spawn().map_err(|e| format!("Failed to spawn: {}", e))?;
     let child_pid = child.id();
 
-    register_subprocess(
-        child_pid, task, call_id, &sub_id, &short_name, &task_preview,
-        panel_tx, process_monitor,
-    );
+    register_subprocess(child_pid, task, call_id, &sub_id, &short_name, &task_preview, panel_tx, process_monitor);
 
     let stderr_handle = child.stderr.take();
     let collected = stream_subprocess_output(&mut child, &sub_id, panel_tx, &signal).await?;

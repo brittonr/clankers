@@ -1,4 +1,5 @@
-use serde::{Serialize, Deserialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 /// All hook points in the system.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -50,12 +51,17 @@ impl HookPoint {
     /// All hook points (for iteration).
     pub fn all() -> &'static [HookPoint] {
         &[
-            Self::PrePrompt, Self::PostPrompt,
-            Self::SessionStart, Self::SessionEnd,
+            Self::PrePrompt,
+            Self::PostPrompt,
+            Self::SessionStart,
+            Self::SessionEnd,
             Self::OnError,
-            Self::PreTool, Self::PostTool,
-            Self::PreCommit, Self::PostCommit,
-            Self::TurnStart, Self::TurnEnd,
+            Self::PreTool,
+            Self::PostTool,
+            Self::PreCommit,
+            Self::PostCommit,
+            Self::TurnStart,
+            Self::TurnEnd,
             Self::ModelChange,
         ]
     }

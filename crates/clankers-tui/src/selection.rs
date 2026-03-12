@@ -235,22 +235,21 @@ pub fn copy_to_clipboard(text: &str) {
     }
 
     // On Wayland, try wl-copy first for reliable clipboard access
-    if std::env::var("WAYLAND_DISPLAY").is_ok() {
-        if let Ok(mut child) = std::process::Command::new("wl-copy")
+    if std::env::var("WAYLAND_DISPLAY").is_ok()
+        && let Ok(mut child) = std::process::Command::new("wl-copy")
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn()
-        {
-            if let Some(ref mut stdin) = child.stdin {
-                let _ = stdin.write_all(text.as_bytes());
-            }
-            // Don't wait — wl-copy detaches and keeps the content available
-            let _ = child.wait();
-            return;
+    {
+        if let Some(ref mut stdin) = child.stdin {
+            let _ = stdin.write_all(text.as_bytes());
         }
-        // wl-copy not found, fall through to OSC 52
+        // Don't wait — wl-copy detaches and keeps the content available
+        let _ = child.wait();
+        return;
     }
+    // wl-copy not found or not Wayland, fall through to OSC 52
 
     let encoded = base64_encode(text);
     // OSC 52: Set clipboard. 'c' = system clipboard.

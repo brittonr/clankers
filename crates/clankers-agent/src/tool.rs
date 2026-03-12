@@ -5,6 +5,11 @@ use std::time::Duration;
 use std::time::Instant;
 
 use async_trait::async_trait;
+// ToolResult and ToolResultContent — canonical definitions in clankers-message.
+pub use clankers_message::ToolResult;
+pub use clankers_message::ToolResultContent;
+// Re-export ToolDefinition from clankers-router (canonical definition)
+pub use clankers_router::provider::ToolDefinition;
 use parking_lot::Mutex;
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -12,23 +17,15 @@ use tokio_util::sync::CancellationToken;
 
 use crate::events::AgentEvent;
 
-// Re-export ToolDefinition from clankers-router (canonical definition)
-pub use clankers_router::provider::ToolDefinition;
-
-// ToolResult and ToolResultContent — canonical definitions in clankers-message.
-pub use clankers_message::ToolResult;
-pub use clankers_message::ToolResultContent;
-
 /// Re-export progress types from their canonical crates.
 pub mod progress {
     // ProgressKind and ToolProgress — canonical definitions in clankers-tui-types.
-    pub use clankers_tui_types::ProgressKind;
-    pub use clankers_tui_types::ToolProgress;
-
     // ResultChunk, TruncationConfig, ToolResultAccumulator — canonical definitions in clankers-message.
     pub use clankers_message::ResultChunk;
     pub use clankers_message::ToolResultAccumulator;
     pub use clankers_message::TruncationConfig;
+    pub use clankers_tui_types::ProgressKind;
+    pub use clankers_tui_types::ToolProgress;
 }
 
 /// Shared slot the turn loop reads after each tool execution round.

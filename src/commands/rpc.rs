@@ -31,9 +31,7 @@ pub async fn run(ctx: &CommandContext, identity_path: Option<String>, action: Rp
             allow_all,
             heartbeat,
             heartbeat_interval,
-        } => {
-            handle_start(ctx, &identity, with_agent, tags, allow_all, heartbeat, heartbeat_interval).await
-        }
+        } => handle_start(ctx, &identity, with_agent, tags, allow_all, heartbeat, heartbeat_interval).await,
         RpcAction::Ping { node_id } => handle_simple_rpc(&identity, &node_id, "ping", true).await,
         RpcAction::Version { node_id } => handle_simple_rpc(&identity, &node_id, "version", false).await,
         RpcAction::Status { node_id } => handle_simple_rpc(&identity, &node_id, "status", false).await,
@@ -117,12 +115,7 @@ async fn handle_start(
         let interval = std::time::Duration::from_secs(heartbeat_interval);
         let ep = std::sync::Arc::new(crate::modes::rpc::iroh::start_endpoint(identity).await?);
         println!("Heartbeat: every {}s", heartbeat_interval);
-        tokio::spawn(crate::modes::rpc::iroh::run_heartbeat(
-            ep,
-            registry_path,
-            interval,
-            cancel.clone(),
-        ));
+        tokio::spawn(crate::modes::rpc::iroh::run_heartbeat(ep, registry_path, interval, cancel.clone()));
     }
 
     println!("\nListening... (Ctrl+C to stop)\n");
@@ -170,15 +163,10 @@ async fn handle_simple_rpc(
 
 // ── Streaming prompt ────────────────────────────────────────────────────────
 
-async fn handle_prompt(
-    identity: &crate::modes::rpc::iroh::Identity,
-    node_id: &str,
-    text: &str,
-) -> Result<()> {
+async fn handle_prompt(identity: &crate::modes::rpc::iroh::Identity, node_id: &str, text: &str) -> Result<()> {
     let remote = parse_node_id(node_id)?;
     let endpoint = crate::modes::rpc::iroh::start_endpoint(identity).await?;
-    let request =
-        crate::modes::rpc::protocol::Request::new("prompt", serde_json::json!({ "text": text }));
+    let request = crate::modes::rpc::protocol::Request::new("prompt", serde_json::json!({ "text": text }));
     eprintln!("Sending prompt to {}...", remote.fmt_short());
 
     let (_notifications, response) =
@@ -205,11 +193,7 @@ fn handle_prompt_notification(notification: &serde_json::Value) {
     };
     match method {
         "agent.text_delta" => {
-            if let Some(text) = notification
-                .get("params")
-                .and_then(|p| p.get("text"))
-                .and_then(|v| v.as_str())
-            {
+            if let Some(text) = notification.get("params").and_then(|p| p.get("text")).and_then(|v| v.as_str()) {
                 print!("{}", text);
                 use std::io::Write;
                 let _ = std::io::stdout().flush();
@@ -255,12 +239,8 @@ async fn handle_peers(
             println!("Added peer '{}' ({})", name, truncate_id(&node_id));
             Ok(())
         }
-        PeerAction::Remove { peer } => {
-            remove_peer(&mut registry, &registry_path, &peer)
-        }
-        PeerAction::Probe { peer } => {
-            probe_peers(identity, &mut registry, &registry_path, &peer).await
-        }
+        PeerAction::Remove { peer } => remove_peer(&mut registry, &registry_path, &peer),
+        PeerAction::Probe { peer } => probe_peers(identity, &mut registry, &registry_path, &peer).await,
     }
 }
 
@@ -311,11 +291,7 @@ fn remove_peer(
         true
     } else {
         // Search by name
-        let found = registry
-            .peers
-            .values()
-            .find(|p| p.name == peer)
-            .map(|p| p.node_id.clone());
+        let found = registry.peers.values().find(|p| p.name == peer).map(|p| p.node_id.clone());
         if let Some(nid) = found {
             registry.remove(&nid)
         } else {
@@ -396,8 +372,7 @@ fn handle_allow(ctx: &CommandContext, node_id: &str) -> Result<()> {
     let acl_path = crate::modes::rpc::iroh::allowlist_path(&ctx.paths);
     let mut allowed = crate::modes::rpc::iroh::load_allowlist(&acl_path);
     allowed.insert(node_id.to_string());
-    crate::modes::rpc::iroh::save_allowlist(&acl_path, &allowed)
-        .map_err(|e| crate::error::Error::Io { source: e })?;
+    crate::modes::rpc::iroh::save_allowlist(&acl_path, &allowed).map_err(|e| crate::error::Error::Io { source: e })?;
     println!("Allowed peer: {}", truncate_id(node_id));
     println!("Total allowed: {}", allowed.len());
     Ok(())
@@ -537,13 +512,7 @@ fn print_probe_result(
         } else {
             format!(" [{}]", caps.tags.join(", "))
         };
-        println!(
-            "  ● {} ({}) — {} prompts{}",
-            name,
-            truncate_id(node_id),
-            prompt_icon,
-            tags_str
-        );
+        println!("  ● {} ({}) — {} prompts{}", name, truncate_id(node_id), prompt_icon, tags_str);
         registry.update_capabilities(node_id, caps);
     } else {
         println!("  ● {} — online", name);
@@ -553,11 +522,7 @@ fn print_probe_result(
 
 // ── File transfer ───────────────────────────────────────────────────────────
 
-async fn handle_send_file(
-    identity: &crate::modes::rpc::iroh::Identity,
-    node_id: &str,
-    file: &str,
-) -> Result<()> {
+async fn handle_send_file(identity: &crate::modes::rpc::iroh::Identity, node_id: &str, file: &str) -> Result<()> {
     let remote = parse_node_id(node_id)?;
     let file_path = std::path::Path::new(file);
     if !file_path.exists() {
@@ -567,12 +532,7 @@ async fn handle_send_file(
     }
     let endpoint = crate::modes::rpc::iroh::start_endpoint(identity).await?;
     let file_size = std::fs::metadata(file_path).map(|m| m.len()).unwrap_or(0);
-    println!(
-        "Sending '{}' ({} bytes) to {}...",
-        file_path.display(),
-        file_size,
-        remote.fmt_short()
-    );
+    println!("Sending '{}' ({} bytes) to {}...", file_path.display(), file_size, remote.fmt_short());
     let response = crate::modes::rpc::iroh::send_file(&endpoint, remote, file_path).await?;
     if let Some(result) = response.ok {
         let remote_path = result.get("path").and_then(|v| v.as_str()).unwrap_or("?");
@@ -594,20 +554,12 @@ async fn handle_recv_file(
     let local_path = match output {
         Some(p) => std::path::PathBuf::from(p),
         None => {
-            let name = std::path::Path::new(remote_path)
-                .file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("downloaded");
+            let name = std::path::Path::new(remote_path).file_name().and_then(|n| n.to_str()).unwrap_or("downloaded");
             std::path::PathBuf::from(name)
         }
     };
     let endpoint = crate::modes::rpc::iroh::start_endpoint(identity).await?;
-    println!(
-        "Downloading '{}' from {} → {}...",
-        remote_path,
-        remote.fmt_short(),
-        local_path.display()
-    );
+    println!("Downloading '{}' from {} → {}...", remote_path, remote.fmt_short(), local_path.display());
     let total = crate::modes::rpc::iroh::recv_file(&endpoint, remote, remote_path, &local_path).await?;
     println!("✓ Received {} bytes → {}", total, local_path.display());
     Ok(())
@@ -630,9 +582,7 @@ fn truncate_id(node_id: &str) -> &str {
 /// Convert an optional error string into a Provider error.
 fn rpc_error(error: Option<String>) -> crate::error::Error {
     crate::error::Error::Provider {
-        message: error
-            .map(|e| format!("RPC error: {}", e))
-            .unwrap_or_else(|| "No response from peer".to_string()),
+        message: error.map(|e| format!("RPC error: {}", e)).unwrap_or_else(|| "No response from peer".to_string()),
     }
 }
 
@@ -683,13 +633,12 @@ fn build_agent_context(ctx: &CommandContext) -> Result<crate::modes::rpc::iroh::
     };
     // RPC mode: all tiers active
     let tiered = crate::modes::common::build_tiered_tools(&env);
-    let tool_set = crate::modes::common::ToolSet::new(
-        tiered,
-        [crate::modes::common::ToolTier::Core,
-         crate::modes::common::ToolTier::Orchestration,
-         crate::modes::common::ToolTier::Specialty,
-         crate::modes::common::ToolTier::Matrix],
-    );
+    let tool_set = crate::modes::common::ToolSet::new(tiered, [
+        crate::modes::common::ToolTier::Core,
+        crate::modes::common::ToolTier::Orchestration,
+        crate::modes::common::ToolTier::Specialty,
+        crate::modes::common::ToolTier::Matrix,
+    ]);
     let tools = tool_set.active_tools();
     Ok(crate::modes::rpc::iroh::RpcContext {
         provider,
@@ -720,16 +669,9 @@ fn parse_capabilities(result: &serde_json::Value) -> crate::modes::rpc::peers::P
 }
 
 /// Resolve a peer identifier (node_id or name) to (node_id, display_name).
-fn resolve_peer_target(
-    registry: &crate::modes::rpc::peers::PeerRegistry,
-    peer: &str,
-) -> (String, String) {
+fn resolve_peer_target(registry: &crate::modes::rpc::peers::PeerRegistry, peer: &str) -> (String, String) {
     if let Some(_p) = registry.peers.get(peer) {
-        let name = registry
-            .peers
-            .get(peer)
-            .map(|p| p.name.clone())
-            .unwrap_or_else(|| truncate_id(peer).to_string());
+        let name = registry.peers.get(peer).map(|p| p.name.clone()).unwrap_or_else(|| truncate_id(peer).to_string());
         (peer.to_string(), name)
     } else if let Some(p) = registry.peers.values().find(|p| p.name == peer) {
         (p.node_id.clone(), p.name.clone())

@@ -36,9 +36,7 @@ impl CronField {
             return Ok(Self::Any);
         }
         if let Some(step) = s.strip_prefix("*/") {
-            let n: u32 = step
-                .parse()
-                .map_err(|_| CronParseError(format!("invalid step: {s}")))?;
+            let n: u32 = step.parse().map_err(|_| CronParseError(format!("invalid step: {s}")))?;
             if n == 0 {
                 return Err(CronParseError("step cannot be 0".into()));
             }
@@ -46,25 +44,16 @@ impl CronField {
         }
         if s.contains(',') {
             let values: Result<Vec<u32>, _> = s.split(',').map(|v| v.trim().parse::<u32>()).collect();
-            return Ok(Self::List(
-                values.map_err(|_| CronParseError(format!("invalid list: {s}")))?,
-            ));
+            return Ok(Self::List(values.map_err(|_| CronParseError(format!("invalid list: {s}")))?));
         }
         if s.contains('-') {
             let parts: Vec<&str> = s.splitn(2, '-').collect();
-            let start: u32 = parts[0]
-                .trim()
-                .parse()
-                .map_err(|_| CronParseError(format!("invalid range start: {s}")))?;
-            let end: u32 = parts[1]
-                .trim()
-                .parse()
-                .map_err(|_| CronParseError(format!("invalid range end: {s}")))?;
+            let start: u32 =
+                parts[0].trim().parse().map_err(|_| CronParseError(format!("invalid range start: {s}")))?;
+            let end: u32 = parts[1].trim().parse().map_err(|_| CronParseError(format!("invalid range end: {s}")))?;
             return Ok(Self::Range(start, end));
         }
-        let n: u32 = s
-            .parse()
-            .map_err(|_| CronParseError(format!("invalid number: {s}")))?;
+        let n: u32 = s.parse().map_err(|_| CronParseError(format!("invalid number: {s}")))?;
         Ok(Self::Exact(n))
     }
 
@@ -99,10 +88,7 @@ impl CronPattern {
     pub fn parse(s: &str) -> Result<Self, CronParseError> {
         let fields: Vec<&str> = s.split_whitespace().collect();
         if fields.len() != 3 {
-            return Err(CronParseError(format!(
-                "expected 3 fields (minute hour day_of_week), got {}",
-                fields.len()
-            )));
+            return Err(CronParseError(format!("expected 3 fields (minute hour day_of_week), got {}", fields.len())));
         }
         Ok(Self {
             minute: CronField::parse(fields[0])?,
@@ -209,10 +195,7 @@ mod tests {
 
     #[test]
     fn parse_field_list() {
-        assert_eq!(
-            CronField::parse("1,3,5").unwrap(),
-            CronField::List(vec![1, 3, 5])
-        );
+        assert_eq!(CronField::parse("1,3,5").unwrap(), CronField::List(vec![1, 3, 5]));
     }
 
     #[test]

@@ -4,6 +4,11 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use clankers_provider::CompletionRequest;
+use clankers_provider::Provider;
+use clankers_provider::Usage;
+use clankers_provider::message::*;
+use clankers_provider::streaming::*;
 use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -12,14 +17,9 @@ use tokio_util::sync::CancellationToken;
 use super::CollectedResponse;
 use super::ContentBlockBuilder;
 use super::TurnConfig;
-use crate::events::AgentEvent;
 use crate::error::AgentError;
 use crate::error::Result;
-use clankers_provider::CompletionRequest;
-use clankers_provider::Provider;
-use clankers_provider::Usage;
-use clankers_provider::message::*;
-use clankers_provider::streaming::*;
+use crate::events::AgentEvent;
 use crate::tool::Tool;
 use crate::tool::ToolContext;
 use crate::tool::ToolDefinition;
@@ -210,14 +210,11 @@ async fn execute_single_tool(
 
     // Fire pre-tool hook (can deny or modify input)
     let effective_input = if let Some(ref pipeline) = hook_pipeline {
-        let payload = clankers_hooks::HookPayload::tool(
-            "pre-tool", &session_id, &tool_name, &call_id, input.clone(), None,
-        );
+        let payload =
+            clankers_hooks::HookPayload::tool("pre-tool", &session_id, &tool_name, &call_id, input.clone(), None);
         match pipeline.fire(clankers_hooks::HookPoint::PreTool, &payload).await {
             clankers_hooks::HookVerdict::Deny { reason } => {
-                return create_error_result(
-                    call_id, tool_name, format!("🪝 Hook denied: {reason}"), &event_tx,
-                );
+                return create_error_result(call_id, tool_name, format!("🪝 Hook denied: {reason}"), &event_tx);
             }
             clankers_hooks::HookVerdict::Modify(modified) => modified,
             clankers_hooks::HookVerdict::Continue => input,
@@ -233,16 +230,27 @@ async fn execute_single_tool(
 
     // Execute with accumulator
     let result = execute_tool_with_accumulator(
-        tool, &call_id, effective_input, &event_tx, cancel,
-        hook_pipeline.clone(), session_id.clone(), db,
-    ).await;
+        tool,
+        &call_id,
+        effective_input,
+        &event_tx,
+        cancel,
+        hook_pipeline.clone(),
+        session_id.clone(),
+        db,
+    )
+    .await;
 
     // Fire post-tool hook (async, fire-and-forget)
     if let Some(ref pipeline) = hook_pipeline {
         let result_json = serde_json::to_value(&result).ok();
         let payload = clankers_hooks::HookPayload::tool(
-            "post-tool", &session_id, &tool_name, &call_id,
-            serde_json::json!({}), result_json,
+            "post-tool",
+            &session_id,
+            &tool_name,
+            &call_id,
+            serde_json::json!({}),
+            result_json,
         );
         pipeline.fire_async(clankers_hooks::HookPoint::PostTool, payload);
     }

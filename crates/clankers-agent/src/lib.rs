@@ -14,11 +14,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
-use tokio::sync::broadcast;
-use tokio_util::sync::CancellationToken;
-
-use self::events::AgentEvent;
-use self::turn::TurnConfig;
 use clankers_config::model_roles::ModelRoles;
 use clankers_config::settings::Settings;
 use clankers_db::Db;
@@ -31,9 +26,20 @@ use clankers_provider::Provider;
 use clankers_provider::ThinkingConfig;
 use clankers_provider::ThinkingLevel;
 use clankers_provider::message::*;
+use tokio::sync::broadcast;
+use tokio_util::sync::CancellationToken;
 
-pub use self::error::{AgentError, Result};
-pub use self::tool::{ModelSwitchSlot, Tool, ToolContext, ToolDefinition, ToolResult, ToolResultContent, model_switch_slot};
+pub use self::error::AgentError;
+pub use self::error::Result;
+use self::events::AgentEvent;
+pub use self::tool::ModelSwitchSlot;
+pub use self::tool::Tool;
+pub use self::tool::ToolContext;
+pub use self::tool::ToolDefinition;
+pub use self::tool::ToolResult;
+pub use self::tool::ToolResultContent;
+pub use self::tool::model_switch_slot;
+use self::turn::TurnConfig;
 
 /// The main agent that manages the conversation loop
 pub struct Agent {
@@ -316,10 +322,7 @@ impl Agent {
     }
 
     /// Select model based on complexity signals, returning orchestration plan if needed
-    fn select_model_for_turn(
-        &mut self,
-        text: &str,
-    ) -> Result<Option<orchestration::OrchestrationPlan>> {
+    fn select_model_for_turn(&mut self, text: &str) -> Result<Option<orchestration::OrchestrationPlan>> {
         let Some(policy) = &self.routing_policy else {
             return Ok(None);
         };

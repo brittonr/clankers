@@ -27,10 +27,7 @@ const EVENT_CHANNEL_CAPACITY: usize = 256;
 #[derive(Debug, Clone)]
 pub enum LoopEvent {
     /// A loop was started.
-    Started {
-        loop_id: LoopId,
-        name: String,
-    },
+    Started { loop_id: LoopId, name: String },
     /// An iteration completed.
     IterationComplete {
         loop_id: LoopId,
@@ -83,11 +80,7 @@ impl LoopEngine {
         let mut loops = self.loops.lock();
 
         if loops.len() >= MAX_ACTIVE_LOOPS as usize {
-            tracing::warn!(
-                "loop registration rejected: {} active loops (max {})",
-                loops.len(),
-                MAX_ACTIVE_LOOPS
-            );
+            tracing::warn!("loop registration rejected: {} active loops (max {})", loops.len(), MAX_ACTIVE_LOOPS);
             return None;
         }
 
@@ -130,12 +123,7 @@ impl LoopEngine {
     }
 
     /// Record an iteration result. Returns true if the loop should continue.
-    pub fn record_iteration(
-        &self,
-        id: &LoopId,
-        output: String,
-        exit_code: Option<i32>,
-    ) -> bool {
+    pub fn record_iteration(&self, id: &LoopId, output: String, exit_code: Option<i32>) -> bool {
         let mut loops = self.loops.lock();
         let Some(state) = loops.get_mut(id) else {
             return false;
@@ -316,11 +304,7 @@ mod tests {
     #[test]
     fn until_loop_breaks_on_match() {
         let engine = LoopEngine::new();
-        let def = LoopDef::until(
-            "wait-for-ok",
-            BreakCondition::Contains("OK".into()),
-            json!({}),
-        );
+        let def = LoopDef::until("wait-for-ok", BreakCondition::Contains("OK".into()), json!({}));
         let id = engine.register(def).unwrap();
         engine.start(&id);
 

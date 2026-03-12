@@ -115,10 +115,10 @@ pub fn cleanup_temp_files(max_age: std::time::Duration) {
         let Ok(modified) = metadata.modified() else {
             continue;
         };
-        if let Ok(age) = now.duration_since(modified) {
-            if age > max_age {
-                let _ = std::fs::remove_file(entry.path());
-            }
+        if let Ok(age) = now.duration_since(modified)
+            && age > max_age
+        {
+            let _ = std::fs::remove_file(entry.path());
         }
     }
 }

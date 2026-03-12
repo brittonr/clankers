@@ -246,7 +246,6 @@ impl SlashContributor for BuiltinSlashContributor {
                     handler,
                     priority: PRIORITY_BUILTIN,
                     source: "builtin".to_string(),
-
                 }
             })
             .collect()

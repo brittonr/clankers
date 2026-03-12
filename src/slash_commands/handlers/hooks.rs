@@ -33,10 +33,7 @@ impl SlashHandler for HooksHandler {
             "install-git" => install_git_hooks(ctx),
             "uninstall-git" => uninstall_git_hooks(ctx),
             other => {
-                ctx.app.push_system(
-                    format!("Unknown hooks subcommand: '{}'. Try /hooks list", other),
-                    true,
-                );
+                ctx.app.push_system(format!("Unknown hooks subcommand: '{}'. Try /hooks list", other), true);
             }
         }
     }
@@ -48,10 +45,7 @@ fn show_hook_status(ctx: &mut SlashContext<'_>) {
     let mut lines = Vec::new();
     lines.push("## Hook System Status".to_string());
     lines.push(String::new());
-    lines.push(format!(
-        "- **Enabled:** {}",
-        if hooks_config.enabled { "yes" } else { "no" }
-    ));
+    lines.push(format!("- **Enabled:** {}", if hooks_config.enabled { "yes" } else { "no" }));
 
     let cwd = std::env::current_dir().unwrap_or_default();
     let hooks_dir = hooks_config.resolve_hooks_dir(&cwd);
@@ -66,24 +60,11 @@ fn show_hook_status(ctx: &mut SlashContext<'_>) {
         })
         .count();
     lines.push(format!("- **Installed scripts:** {script_count}"));
-    lines.push(format!(
-        "- **Script timeout:** {}s",
-        hooks_config.script_timeout_secs
-    ));
-    lines.push(format!(
-        "- **Git hooks managed:** {}",
-        if hooks_config.manage_git_hooks {
-            "yes"
-        } else {
-            "no"
-        }
-    ));
+    lines.push(format!("- **Script timeout:** {}s", hooks_config.script_timeout_secs));
+    lines.push(format!("- **Git hooks managed:** {}", if hooks_config.manage_git_hooks { "yes" } else { "no" }));
 
     if !hooks_config.disabled_hooks.is_empty() {
-        lines.push(format!(
-            "- **Disabled hooks:** {}",
-            hooks_config.disabled_hooks.join(", ")
-        ));
+        lines.push(format!("- **Disabled hooks:** {}", hooks_config.disabled_hooks.join(", ")));
     }
 
     ctx.app.push_system(lines.join("\n"), false);
@@ -94,11 +75,12 @@ fn list_hook_points(ctx: &mut SlashContext<'_>) {
     let hooks_config = load_hooks_config();
     let hooks_dir = hooks_config.resolve_hooks_dir(&cwd);
 
-    let mut lines = Vec::new();
-    lines.push("## Hook Points".to_string());
-    lines.push(String::new());
-    lines.push("| Hook | Type | Script |".to_string());
-    lines.push("|------|------|--------|".to_string());
+    let mut lines = vec![
+        "## Hook Points".to_string(),
+        String::new(),
+        "| Hook | Type | Script |".to_string(),
+        "|------|------|--------|".to_string(),
+    ];
 
     for point in clankers_hooks::HookPoint::all() {
         let kind = if point.is_pre_hook() {
@@ -107,19 +89,12 @@ fn list_hook_points(ctx: &mut SlashContext<'_>) {
             "post (notify)"
         };
         let script_path = hooks_dir.join(point.to_filename());
-        let installed = if script_path.is_file() {
-            "✅ installed"
-        } else {
-            "—"
-        };
+        let installed = if script_path.is_file() { "✅ installed" } else { "—" };
         lines.push(format!("| `{}` | {} | {} |", point.to_filename(), kind, installed));
     }
 
     lines.push(String::new());
-    lines.push(format!(
-        "Scripts go in: `{}`",
-        hooks_dir.display()
-    ));
+    lines.push(format!("Scripts go in: `{}`", hooks_dir.display()));
 
     ctx.app.push_system(lines.join("\n"), false);
 }
@@ -129,8 +104,7 @@ fn install_git_hooks(ctx: &mut SlashContext<'_>) {
 
     // Find git repo root
     let Some(repo_root) = find_git_root(&cwd) else {
-        ctx.app
-            .push_system("Not in a git repository.".to_string(), true);
+        ctx.app.push_system("Not in a git repository.".to_string(), true);
         return;
     };
 
@@ -146,16 +120,10 @@ fn install_git_hooks(ctx: &mut SlashContext<'_>) {
     }
 
     if !installed.is_empty() {
-        ctx.app.push_system(
-            format!("Installed git hook shims: {}", installed.join(", ")),
-            false,
-        );
+        ctx.app.push_system(format!("Installed git hook shims: {}", installed.join(", ")), false);
     }
     if !errors.is_empty() {
-        ctx.app.push_system(
-            format!("Errors: {}", errors.join("; ")),
-            true,
-        );
+        ctx.app.push_system(format!("Errors: {}", errors.join("; ")), true);
     }
 }
 
@@ -163,8 +131,7 @@ fn uninstall_git_hooks(ctx: &mut SlashContext<'_>) {
     let cwd = std::env::current_dir().unwrap_or_default();
 
     let Some(repo_root) = find_git_root(&cwd) else {
-        ctx.app
-            .push_system("Not in a git repository.".to_string(), true);
+        ctx.app.push_system("Not in a git repository.".to_string(), true);
         return;
     };
 
@@ -180,16 +147,10 @@ fn uninstall_git_hooks(ctx: &mut SlashContext<'_>) {
     }
 
     if !removed.is_empty() {
-        ctx.app.push_system(
-            format!("Removed git hook shims: {}", removed.join(", ")),
-            false,
-        );
+        ctx.app.push_system(format!("Removed git hook shims: {}", removed.join(", ")), false);
     }
     if !errors.is_empty() {
-        ctx.app.push_system(
-            format!("Errors: {}", errors.join("; ")),
-            true,
-        );
+        ctx.app.push_system(format!("Errors: {}", errors.join("; ")), true);
     }
 }
 

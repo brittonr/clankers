@@ -336,16 +336,16 @@ impl CostTracker {
         }
 
         // Milestone intervals — emit one event per crossed milestone
-        if let Some(interval) = self.config.warning_interval {
-            if interval > 0.0 {
-                let prev_milestone = (prev / interval).floor() as u64;
-                let curr_milestone = (total / interval).floor() as u64;
-                for m in (prev_milestone + 1)..=curr_milestone {
-                    events.push(BudgetEvent::Milestone {
-                        milestone: m as f64 * interval,
-                        total,
-                    });
-                }
+        if let Some(interval) = self.config.warning_interval
+            && interval > 0.0
+        {
+            let prev_milestone = (prev / interval).floor() as u64;
+            let curr_milestone = (total / interval).floor() as u64;
+            for m in (prev_milestone + 1)..=curr_milestone {
+                events.push(BudgetEvent::Milestone {
+                    milestone: m as f64 * interval,
+                    total,
+                });
             }
         }
 

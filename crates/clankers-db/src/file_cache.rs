@@ -57,8 +57,8 @@ impl<'db> FileReadCache<'db> {
 
         match table.get(key.as_str()).map_err(db_err)? {
             Some(value) => {
-                let entry: CachedFileRead = serde_json::from_slice(value.value())
-                    .map_err(|e| crate::error::DbError {
+                let entry: CachedFileRead =
+                    serde_json::from_slice(value.value()).map_err(|e| crate::error::DbError {
                         message: format!("failed to deserialize file cache entry: {e}"),
                     })?;
                 if entry.mtime_secs == current_mtime && entry.file_size == current_size {
@@ -90,16 +90,15 @@ impl<'db> FileReadCache<'db> {
     /// Increment the hit count for a cache entry.
     pub fn record_hit(&self, session_id: &str, path: &str) -> Result<()> {
         let key = make_key(session_id, path);
-        
+
         // First read the current entry
         let current_entry = {
             let tx = self.db.begin_read()?;
             let table = tx.open_table(TABLE).map_err(db_err)?;
             if let Some(value) = table.get(key.as_str()).map_err(db_err)? {
-                serde_json::from_slice::<CachedFileRead>(value.value())
-                    .map_err(|e| crate::error::DbError {
-                        message: format!("failed to deserialize file cache entry: {e}"),
-                    })?
+                serde_json::from_slice::<CachedFileRead>(value.value()).map_err(|e| crate::error::DbError {
+                    message: format!("failed to deserialize file cache entry: {e}"),
+                })?
             } else {
                 return Ok(()); // Entry doesn't exist, nothing to do
             }
@@ -108,7 +107,7 @@ impl<'db> FileReadCache<'db> {
         // Then update it
         let mut updated_entry = current_entry;
         updated_entry.hit_count += 1;
-        
+
         let bytes = serde_json::to_vec(&updated_entry).map_err(|e| crate::error::DbError {
             message: format!("failed to serialize file cache entry: {e}"),
         })?;
@@ -184,7 +183,8 @@ impl<'db> FileReadCache<'db> {
 /// Uses a hash of the path to keep keys short and avoid special characters.
 fn make_key(session_id: &str, path: &str) -> String {
     use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
+    use std::hash::Hash;
+    use std::hash::Hasher;
     let mut hasher = DefaultHasher::new();
     path.hash(&mut hasher);
     format!("{}:{:016x}", session_id, hasher.finish())
@@ -243,7 +243,7 @@ mod tests {
         cache.record(&entry)?;
 
         match cache.check("sess-1", "/file.txt", 1000, 500)? {
-            CacheLookup::Hit(_) => {}, // Expected
+            CacheLookup::Hit(_) => {} // Expected
             CacheLookup::Miss => panic!("Expected cache hit"),
         }
         Ok(())
@@ -259,7 +259,7 @@ mod tests {
 
         match cache.check("sess-1", "/file.txt", 1001, 500)? {
             CacheLookup::Hit(_) => panic!("Expected cache miss due to mtime change"),
-            CacheLookup::Miss => {}, // Expected
+            CacheLookup::Miss => {} // Expected
         }
         Ok(())
     }
@@ -274,7 +274,7 @@ mod tests {
 
         match cache.check("sess-1", "/file.txt", 1000, 501)? {
             CacheLookup::Hit(_) => panic!("Expected cache miss due to size change"),
-            CacheLookup::Miss => {}, // Expected
+            CacheLookup::Miss => {} // Expected
         }
         Ok(())
     }
@@ -286,7 +286,7 @@ mod tests {
 
         match cache.check("sess-1", "/nonexistent.txt", 1000, 500)? {
             CacheLookup::Hit(_) => panic!("Expected miss for nonexistent entry"),
-            CacheLookup::Miss => {}, // Expected
+            CacheLookup::Miss => {} // Expected
         }
         Ok(())
     }
@@ -359,7 +359,7 @@ mod tests {
         // Should still be a miss
         match cache.check("sess-1", "/nonexistent.rs", 1000, 500)? {
             CacheLookup::Hit(_) => panic!("Should not have created entry"),
-            CacheLookup::Miss => {}, // Expected
+            CacheLookup::Miss => {} // Expected
         }
         Ok(())
     }
@@ -421,7 +421,7 @@ mod tests {
 
         match cache.check("sess-a", "/file.rs", 2000, 200)? {
             CacheLookup::Hit(_) => panic!("Should not find sess-b entry from sess-a"),
-            CacheLookup::Miss => {}, // Expected
+            CacheLookup::Miss => {} // Expected
         }
         Ok(())
     }
@@ -532,7 +532,7 @@ mod tests {
         // Old entry should not match
         match cache.check("sess-1", "/file.rs", 1000, 100)? {
             CacheLookup::Hit(_) => panic!("Should not match old mtime/size"),
-            CacheLookup::Miss => {}, // Expected
+            CacheLookup::Miss => {} // Expected
         }
         Ok(())
     }

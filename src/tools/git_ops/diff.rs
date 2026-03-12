@@ -1,7 +1,14 @@
 //! Git diff operations via libgit2.
 
-use git2::{Diff, DiffFormat, DiffOptions, DiffStatsFormat, Repository};
-use super::{open_repo, GitError, Result};
+use git2::Diff;
+use git2::DiffFormat;
+use git2::DiffOptions;
+use git2::DiffStatsFormat;
+use git2::Repository;
+
+use super::GitError;
+use super::Result;
+use super::open_repo;
 
 // ── Diff helpers ───────────────────────────────────────────────────────
 
