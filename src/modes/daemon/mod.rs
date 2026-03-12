@@ -32,6 +32,7 @@ use crate::tools::Tool;
 mod config;
 mod handlers;
 mod session_store;
+pub(crate) mod socket_bridge;
 
 // Re-export public types
 pub(crate) use config::ALPN_CHAT;
@@ -81,7 +82,16 @@ pub async fn run_daemon(
 
     print_startup_banner(&config, &node_id);
 
-    // Phase 4: Background tasks
+    // Phase 4: Unix domain socket control plane
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+    let socket_handle = spawn_socket_control_plane(
+        &provider,
+        &tools,
+        &config,
+        shutdown_rx.clone(),
+    );
+
+    // Phase 5: Background tasks
     let rpc_state = build_rpc_state(&config, &provider, &tools, paths);
     let iroh_handle =
         spawn_iroh_accept_loop(endpoint.clone(), Arc::clone(&store), Arc::clone(&acl), rpc_state, cancel.clone());
@@ -91,23 +101,57 @@ pub async fn run_daemon(
     spawn_status_logger(Arc::clone(&store), cancel.clone());
     spawn_idle_reaper(&config, Arc::clone(&store), cancel.clone());
 
+    let ctrl_sock = clankers_controller::transport::control_socket_path();
     println!("\nListening... (Ctrl+C to stop)\n");
-    println!("Chat:  clankers rpc prompt {} \"hello\"", node_id);
-    println!("Ping:  clankers rpc ping {}", node_id);
+    println!("Chat:    clankers rpc prompt {} \"hello\"", node_id);
+    println!("Ping:    clankers rpc ping {}", node_id);
+    println!("Control: {}", ctrl_sock.display());
 
-    // Phase 5: Wait for shutdown
+    // Phase 6: Wait for shutdown
     tokio::signal::ctrl_c().await.ok();
     println!("\nShutting down...");
     cancel.cancel();
+    let _ = shutdown_tx.send(true);
 
     iroh_handle.await.ok();
+    socket_handle.await.ok();
     if let Some(h) = matrix_handle {
         h.await.ok();
     }
 
+    clankers_controller::transport::cleanup_socket_dir();
     let store = store.read().await;
     println!("Daemon stopped ({} sessions served).", store.len());
     Ok(())
+}
+
+fn spawn_socket_control_plane(
+    provider: &Arc<dyn Provider>,
+    tools: &[Arc<dyn Tool>],
+    config: &DaemonConfig,
+    shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) -> tokio::task::JoinHandle<()> {
+    // Init socket directory (PID file, stale cleanup)
+    if let Err(e) = clankers_controller::transport::init_socket_dir() {
+        warn!("socket dir init failed: {e} — control socket disabled");
+        return tokio::spawn(async {});
+    }
+
+    let daemon_state = Arc::new(tokio::sync::Mutex::new(
+        clankers_controller::transport::DaemonState::new(),
+    ));
+
+    let factory = Arc::new(socket_bridge::SessionFactory {
+        provider: Arc::clone(provider),
+        tools: tools.to_vec(),
+        settings: config.settings.clone(),
+        default_model: config.model.clone(),
+        default_system_prompt: config.system_prompt.clone(),
+    });
+
+    tokio::spawn(async move {
+        socket_bridge::run_control_socket_with_factory(daemon_state, factory, shutdown_rx).await;
+    })
 }
 
 // ── Setup helpers ───────────────────────────────────────────────────────────
