@@ -75,9 +75,15 @@ pub async fn run_daemon(
         auth_layer.clone(),
     )));
 
-    // Phase 3: iroh endpoint + ACL
-    let (endpoint, acl) = build_endpoint(&identity, &config, paths).await?;
-    let acl = Arc::new(acl);
+    // Phase 3: iroh endpoint + ACL (non-fatal — daemon works without iroh)
+    let iroh_result = build_endpoint(&identity, &config, paths).await;
+    let (endpoint, acl) = match iroh_result {
+        Ok((ep, a)) => (Some(ep), Some(Arc::new(a))),
+        Err(e) => {
+            warn!("iroh endpoint unavailable: {e} — running with control socket only");
+            (None, None)
+        }
+    };
     let node_id = identity.public_key();
 
     print_startup_banner(&config, &node_id);
@@ -104,17 +110,21 @@ pub async fn run_daemon(
     );
 
     // Phase 5: Background tasks
-    let rpc_state = build_rpc_state(&config, &provider, &tools, paths);
-    let iroh_handle = spawn_iroh_accept_loop(
-        endpoint.clone(),
-        Arc::clone(&store),
-        Arc::clone(&acl),
-        rpc_state,
-        Arc::clone(&daemon_state),
-        Arc::clone(&session_factory),
-        shutdown_rx.clone(),
-        cancel.clone(),
-    );
+    let iroh_handle = if let (Some(endpoint), Some(acl)) = (endpoint, acl) {
+        let rpc_state = build_rpc_state(&config, &provider, &tools, paths);
+        Some(spawn_iroh_accept_loop(
+            endpoint.clone(),
+            Arc::clone(&store),
+            acl,
+            rpc_state,
+            Arc::clone(&daemon_state),
+            Arc::clone(&session_factory),
+            shutdown_rx.clone(),
+            cancel.clone(),
+        ))
+    } else {
+        None
+    };
 
     let matrix_handle = spawn_matrix_bridge(&config, &store, paths, cancel.clone());
     spawn_heartbeat(&config, &identity, paths, cancel.clone()).await;
@@ -137,7 +147,9 @@ pub async fn run_daemon(
     cancel.cancel();
     let _ = shutdown_tx.send(true);
 
-    iroh_handle.await.ok();
+    if let Some(h) = iroh_handle {
+        h.await.ok();
+    }
     socket_handle.await.ok();
     if let Some(h) = matrix_handle {
         h.await.ok();
@@ -394,12 +406,15 @@ async fn spawn_heartbeat(
 
     let registry_path = crate::modes::rpc::peers::registry_path(paths);
     let interval = std::time::Duration::from_secs(config.heartbeat_secs);
-    let hb_endpoint = Arc::new(
-        iroh::start_endpoint(identity)
-            .await
-            .unwrap_or_else(|_| panic!("failed to start heartbeat endpoint")),
-    );
-    tokio::spawn(iroh::run_heartbeat(hb_endpoint, registry_path, interval, cancel));
+    match iroh::start_endpoint(identity).await {
+        Ok(ep) => {
+            let hb_endpoint = Arc::new(ep);
+            tokio::spawn(iroh::run_heartbeat(hb_endpoint, registry_path, interval, cancel));
+        }
+        Err(e) => {
+            warn!("heartbeat disabled: iroh endpoint unavailable: {e}");
+        }
+    }
 }
 
 fn spawn_status_logger(store: Arc<RwLock<SessionStore>>, cancel: CancellationToken) {

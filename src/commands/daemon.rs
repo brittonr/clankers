@@ -127,12 +127,20 @@ fn start_background(
 
     let log_path = transport::daemon_log_path();
 
-    // Build the command to re-exec ourselves in foreground mode
+    // Build the command to re-exec ourselves in foreground mode.
+    // Top-level flags (--model, --log-file, --log-level) go BEFORE the
+    // subcommand; daemon start flags go after.
     let exe = std::env::current_exe().map_err(|e| crate::error::Error::Io { source: e })?;
     let mut cmd = std::process::Command::new(exe);
+
+    // Forward model and logging as top-level flags (before subcommand)
+    cmd.args(["--model", &ctx.model]);
+    cmd.arg("--log-file").arg(&log_path);
+    cmd.arg("--log-level").arg("info");
+
     cmd.arg("daemon").arg("start");
 
-    // Forward flags
+    // Forward daemon start flags
     if allow_all {
         cmd.arg("--allow-all");
     }
@@ -148,11 +156,6 @@ fn start_background(
     if !tags.is_empty() {
         cmd.args(["--tags", &tags.join(",")]);
     }
-
-    // Forward model and auth context
-    cmd.args(["--model", &ctx.model]);
-    cmd.arg("--log-file").arg(&log_path);
-    cmd.arg("--log-level").arg("info");
 
     // Redirect stdout/stderr to log file, detach stdin
     let log_file = std::fs::OpenOptions::new()
