@@ -94,10 +94,10 @@
 - [x] Implement max restart rate enforcement (shut down supervisor on too many restarts)
 - [x] Wrap `SessionController` in `AgentProcess` actor
 - [x] Root daemon becomes a `Supervisor` that spawns `AgentProcess` actors
-- [ ] Migrate `SubagentTool` to spawn child `AgentProcess` via registry instead of `clankers -p`
-- [ ] Migrate `DelegateTool` to spawn child `AgentProcess` for local workers
-- [ ] Implement capability delegation enforcement (child ⊆ parent)
-- [ ] Event forwarding: child `DaemonEvent` → parent `SubagentOutput` / `SubagentDone` / `SubagentError`
+- [x] Migrate `SubagentTool` to spawn child `AgentProcess` via registry instead of `clankers -p`
+- [x] Migrate `DelegateTool` to spawn child `AgentProcess` for local workers
+- [x] Implement capability delegation enforcement (child ⊆ parent)
+- [x] Event forwarding: child `DaemonEvent` → parent `SubagentOutput` / `SubagentDone` / `SubagentError`
 - [ ] Verify: subagent/delegate tools work through actor system, process tree visible
 
 ## Phase 5: Polish

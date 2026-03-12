@@ -193,6 +193,7 @@ async fn run_agent_actor(
 ///
 /// `panel_tx` receives `SubagentEvent`s for TUI streaming.
 /// `signal` cancels the agent on parent abort.
+/// `parent_capabilities` — if set, child capabilities are clamped to this set.
 pub async fn run_ephemeral_agent(
     registry: &ProcessRegistry,
     factory: &SessionFactory,
