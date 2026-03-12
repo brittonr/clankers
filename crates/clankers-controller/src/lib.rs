@@ -156,13 +156,19 @@ impl SessionController {
                     is_error: false,
                 });
             }
-            SessionCommand::SetThinkingLevel { level: _ } => {
-                // Thinking level is set via the enum API; string parsing
-                // would need to be added to Agent. For now, emit feedback.
-                self.emit(DaemonEvent::SystemMessage {
-                    text: "Thinking level update requested".to_string(),
-                    is_error: false,
-                });
+            SessionCommand::SetThinkingLevel { level } => {
+                if let Some(parsed) = clankers_tui_types::ThinkingLevel::from_str_or_budget(&level) {
+                    let prev = self.agent.set_thinking_level(parsed);
+                    self.emit(DaemonEvent::SystemMessage {
+                        text: format!("Thinking: {} → {}", prev.label(), parsed.label()),
+                        is_error: false,
+                    });
+                } else {
+                    self.emit(DaemonEvent::SystemMessage {
+                        text: format!("Unknown thinking level: {level}"),
+                        is_error: true,
+                    });
+                }
             }
             SessionCommand::CycleThinkingLevel => {
                 self.agent.cycle_thinking_level();
@@ -172,12 +178,11 @@ impl SessionController {
                 });
             }
             SessionCommand::SeedMessages { messages } => {
-                // Convert serialized messages to agent messages
-                for msg in &messages {
-                    debug!("seeding message: role={}", msg.role);
-                }
+                let agent_messages = self.convert_seed_messages(&messages);
+                let count = agent_messages.len();
+                self.agent.seed_messages(agent_messages);
                 self.emit(DaemonEvent::SystemMessage {
-                    text: format!("Seeded {} messages", messages.len()),
+                    text: format!("Seeded {count} messages"),
                     is_error: false,
                 });
             }
@@ -392,6 +397,18 @@ impl SessionController {
                     clankers_hooks::HookPayload::empty("turn-end", &session_id),
                 );
             }
+            AgentEvent::ModelChange { from, to, reason } => {
+                pipeline.fire_async(
+                    clankers_hooks::HookPoint::ModelChange,
+                    clankers_hooks::HookPayload::model_change(
+                        "model-change",
+                        &session_id,
+                        from,
+                        to,
+                        reason,
+                    ),
+                );
+            }
             _ => {}
         }
     }
@@ -411,6 +428,71 @@ impl SessionController {
             self.outgoing.push(event);
         }
         self.emit(DaemonEvent::HistoryEnd);
+    }
+
+    /// Convert serialized messages to agent messages for seeding.
+    fn convert_seed_messages(
+        &self,
+        messages: &[clankers_protocol::SerializedMessage],
+    ) -> Vec<clankers_message::AgentMessage> {
+        use clankers_message::{
+            AgentMessage, AssistantMessage, Content, MessageId, StopReason, UserMessage,
+        };
+
+        messages
+            .iter()
+            .filter_map(|msg| {
+                let id = MessageId::generate();
+                let now = chrono::Utc::now();
+                match msg.role.as_str() {
+                    "user" => Some(AgentMessage::User(UserMessage {
+                        id,
+                        content: vec![Content::Text {
+                            text: msg.content.clone(),
+                        }],
+                        timestamp: now,
+                    })),
+                    "assistant" => Some(AgentMessage::Assistant(AssistantMessage {
+                        id,
+                        content: vec![Content::Text {
+                            text: msg.content.clone(),
+                        }],
+                        model: msg.model.clone().unwrap_or_default(),
+                        usage: Default::default(),
+                        stop_reason: StopReason::Stop,
+                        timestamp: now,
+                    })),
+                    other => {
+                        warn!("skipping unknown role in seed message: {other}");
+                        None
+                    }
+                }
+            })
+            .collect()
+    }
+
+    /// Check if auto-test should run after a prompt completes. Returns a
+    /// prompt string to send to the agent, or None.
+    pub fn maybe_auto_test(&mut self) -> Option<String> {
+        if !self.auto_test_enabled {
+            return None;
+        }
+        if self.auto_test_in_progress {
+            return None;
+        }
+        if self.active_loop_id.is_some() {
+            return None;
+        }
+        let cmd = self.auto_test_command.as_ref()?;
+        self.auto_test_in_progress = true;
+        Some(format!(
+            "Run `{cmd}` and fix any failures. Do not ask for confirmation."
+        ))
+    }
+
+    /// Clear the auto-test guard (call after the auto-test prompt completes).
+    pub fn clear_auto_test(&mut self) {
+        self.auto_test_in_progress = false;
     }
 
     /// Queue an outgoing event.
@@ -591,5 +673,96 @@ mod tests {
     fn test_session_id() {
         let ctrl = make_test_controller();
         assert_eq!(ctrl.session_id(), "test-session");
+    }
+
+    #[tokio::test]
+    async fn test_set_thinking_level_valid() {
+        let mut ctrl = make_test_controller();
+        ctrl.handle_command(SessionCommand::SetThinkingLevel {
+            level: "high".to_string(),
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(events.iter().any(
+            |e| matches!(e, DaemonEvent::SystemMessage { text, is_error: false } if text.contains("high"))
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_set_thinking_level_invalid() {
+        let mut ctrl = make_test_controller();
+        ctrl.handle_command(SessionCommand::SetThinkingLevel {
+            level: "bogus".to_string(),
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, DaemonEvent::SystemMessage { is_error: true, .. })));
+    }
+
+    #[tokio::test]
+    async fn test_seed_messages() {
+        let mut ctrl = make_test_controller();
+        ctrl.handle_command(SessionCommand::SeedMessages {
+            messages: vec![
+                clankers_protocol::SerializedMessage {
+                    role: "user".to_string(),
+                    content: "hello".to_string(),
+                    model: None,
+                    timestamp: None,
+                },
+                clankers_protocol::SerializedMessage {
+                    role: "assistant".to_string(),
+                    content: "hi".to_string(),
+                    model: Some("opus".to_string()),
+                    timestamp: None,
+                },
+            ],
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(events.iter().any(
+            |e| matches!(e, DaemonEvent::SystemMessage { text, .. } if text.contains("2"))
+        ));
+        // Agent should have 2 messages now
+        assert_eq!(ctrl.agent.messages().len(), 2);
+    }
+
+    #[test]
+    fn test_auto_test_disabled() {
+        let mut ctrl = make_test_controller();
+        assert!(ctrl.maybe_auto_test().is_none());
+    }
+
+    #[test]
+    fn test_auto_test_fires() {
+        let mut ctrl = make_test_controller();
+        ctrl.auto_test_enabled = true;
+        ctrl.auto_test_command = Some("cargo test".to_string());
+
+        let prompt = ctrl.maybe_auto_test();
+        assert!(prompt.is_some());
+        assert!(prompt.unwrap().contains("cargo test"));
+
+        // Second call blocked (in progress)
+        assert!(ctrl.maybe_auto_test().is_none());
+
+        // After clearing, can fire again
+        ctrl.clear_auto_test();
+        assert!(ctrl.maybe_auto_test().is_some());
+    }
+
+    #[test]
+    fn test_auto_test_blocked_during_loop() {
+        let mut ctrl = make_test_controller();
+        ctrl.auto_test_enabled = true;
+        ctrl.auto_test_command = Some("cargo test".to_string());
+        ctrl.active_loop_id = Some(clankers_loop::LoopId("test-loop".to_string()));
+
+        assert!(ctrl.maybe_auto_test().is_none());
     }
 }

@@ -152,6 +152,20 @@ impl HookPayload {
         }
     }
 
+    /// Create a model change hook payload.
+    pub fn model_change(hook: &str, session_id: &str, from: &str, to: &str, reason: &str) -> Self {
+        Self {
+            hook: hook.to_string(),
+            session_id: session_id.to_string(),
+            timestamp: Utc::now(),
+            data: HookData::ModelChange {
+                from: from.to_string(),
+                to: to.to_string(),
+                reason: reason.to_string(),
+            },
+        }
+    }
+
     /// Create an empty hook payload (e.g. turn start).
     pub fn empty(hook: &str, session_id: &str) -> Self {
         Self {
