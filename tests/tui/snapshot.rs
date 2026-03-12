@@ -474,12 +474,20 @@ fn normalize_line(line: &str) -> String {
     let re_sb_model = regex::Regex::new(r"(idle\s*\|\s*)\S+(\s*\|)").unwrap();
     s = re_sb_model.replace_all(&s, "${1}MODEL${2}").to_string();
 
-    // Strip trailing state info that leaks through width-truncation on status bar lines.
-    // The status bar renders "idle | model | cwd" after the git span, but the visible
-    // portion varies with git dirty-indicator width (dirty = wider → less trailing info
-    // visible; clean = narrower → more visible, e.g. "id" from truncated "idle").
+    // Strip the working directory path from status bar lines.
+    // The status bar renders "idle | model | /path/to/cwd" but the path varies by
+    // machine and gets truncated differently depending on terminal width.
     // Only apply to status bar lines (contain mode badge).
     if s.contains(" NORMAL ") || s.contains(" INSERT ") {
+        // Strip "| /path..." suffix (absolute path after last pipe)
+        let re_cwd = regex::Regex::new(r"\s*\|\s*/\S*\s*$").unwrap();
+        s = re_cwd.replace_all(&s, "").to_string();
+
+        // Strip trailing bare "|" left over from truncated paths on narrow terminals
+        let re_bare_pipe = regex::Regex::new(r"\s*\|\s*$").unwrap();
+        s = re_bare_pipe.replace_all(&s, "").to_string();
+
+        // Strip trailing state info that leaks through width-truncation.
         let re_state_leak = regex::Regex::new(r"\s+(idle|id|streaming|str|command|com|dialog|dia)\s*$").unwrap();
         s = re_state_leak.replace_all(&s, "").to_string();
     }
