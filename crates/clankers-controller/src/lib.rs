@@ -65,7 +65,7 @@ pub struct SessionController {
     /// Receiver for agent events (None in embedded mode).
     pub(crate) event_rx: Option<broadcast::Receiver<AgentEvent>>,
     /// Session persistence.
-    pub(crate) session_manager: Option<SessionManager>,
+    pub session_manager: Option<SessionManager>,
     /// Loop engine for loop/retry iteration.
     pub(crate) loop_engine: LoopEngine,
     /// Active loop ID.

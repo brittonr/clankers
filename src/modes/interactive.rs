@@ -149,13 +149,13 @@ pub async fn run_interactive(
     let _rpc_cancel = maybe_start_rpc(&mut app, paths).await;
 
     // Build the embedded-mode SessionController for audit, hooks, loop, auto-test.
-    // Session persistence is shared: controller persists on AgentEnd, runner
-    // keeps the SessionManager for branch/merge operations.
+    // The controller owns the SessionManager for persistence; slash commands
+    // and branch/merge operations access it via controller.session_manager.
     let controller = {
         let mut ctrl_config = clankers_controller::config::ControllerConfig {
             session_id: app.session_id.clone(),
             model: model.clone(),
-            session_manager: None, // Runner keeps ownership for branch/merge access
+            session_manager,
             hook_pipeline,
             ..Default::default()
         };
@@ -182,7 +182,6 @@ pub async fn run_interactive(
         &settings,
         slash_registry,
         controller,
-        session_manager,
     )
     .await;
 
@@ -245,7 +244,6 @@ async fn run_event_loop(
     settings: &crate::config::settings::Settings,
     slash_registry: crate::slash_commands::SlashRegistry,
     controller: clankers_controller::SessionController,
-    session_manager: Option<crate::session::SessionManager>,
 ) -> Result<()> {
     let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel::<AgentCommand>();
     let (done_tx, done_rx) = tokio::sync::mpsc::unbounded_channel::<TaskResult>();
@@ -288,7 +286,6 @@ async fn run_event_loop(
         done_rx,
         slash_registry,
         controller,
-        session_manager,
     );
     runner.run()
 }
@@ -430,25 +427,6 @@ pub(crate) fn strip_frontmatter(content: &str) -> String {
         return rest[end + 4..].trim_start().to_string();
     }
     content.to_string()
-}
-
-/// Persist the latest messages from an agent turn into the session file.
-pub(crate) fn persist_messages(
-    session_manager: &mut crate::session::SessionManager,
-    messages: &[crate::provider::message::AgentMessage],
-) {
-    let mut prev_id: Option<crate::provider::message::MessageId> = None;
-    for msg in messages {
-        let id = msg.id().clone();
-        if session_manager.is_persisted(&id) {
-            prev_id = Some(id);
-            continue;
-        }
-        if let Err(e) = session_manager.append_message(msg.clone(), prev_id.clone()) {
-            tracing::warn!("Failed to persist message {}: {}", id, e);
-        }
-        prev_id = Some(id);
-    }
 }
 
 // ---------------------------------------------------------------------------

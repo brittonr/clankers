@@ -62,11 +62,10 @@ pub(crate) struct EventLoopRunner<'a> {
     settings: &'a crate::config::settings::Settings,
     // Slash command dispatch
     pub(crate) slash_registry: crate::slash_commands::SlashRegistry,
-    // Session controller (handles audit, persistence, hooks, loop, auto-test)
+    // Session controller (handles audit, persistence, hooks, loop, auto-test).
+    // Also owns the SessionManager for session persistence and branch/merge
+    // operations. Slash commands access it via controller.session_manager.
     controller: SessionController,
-    // Session manager reference for branch/merge operations (slash command handlers
-    // still take &mut Option<SessionManager>). Persistence is handled by the controller.
-    session_manager: Option<crate::session::SessionManager>,
 }
 
 impl<'a> EventLoopRunner<'a> {
@@ -90,7 +89,6 @@ impl<'a> EventLoopRunner<'a> {
         done_rx: tokio::sync::mpsc::UnboundedReceiver<TaskResult>,
         slash_registry: crate::slash_commands::SlashRegistry,
         controller: SessionController,
-        session_manager: Option<crate::session::SessionManager>,
     ) -> Self {
         Self {
             terminal,
@@ -108,7 +106,6 @@ impl<'a> EventLoopRunner<'a> {
             settings,
             slash_registry,
             controller,
-            session_manager,
         }
     }
 
@@ -163,23 +160,16 @@ impl<'a> EventLoopRunner<'a> {
             self.app.handle_tui_event(&tui_event);
         }
 
-        // 2. Feed to controller (audit, hooks, loop tracking, DaemonEvent)
+        // 2. Feed to controller (audit, hooks, loop tracking, persistence, DaemonEvent)
         self.controller.feed_event(&event);
 
-        // 3. Persist messages on agent end
-        if let AgentEvent::AgentEnd { ref messages } = event
-            && let Some(ref mut sm) = self.session_manager
-        {
-            super::interactive::persist_messages(sm, messages);
-        }
-
-        // 4. Record usage to redb
+        // 3. Record usage to redb
         self.record_usage(&event);
 
-        // 5. Dispatch to plugins
+        // 4. Dispatch to plugins
         self.dispatch_to_plugins(&event);
 
-        // 6. Persist tool results to redb
+        // 5. Persist tool results to redb
         self.persist_tool_result(&event);
     }
 

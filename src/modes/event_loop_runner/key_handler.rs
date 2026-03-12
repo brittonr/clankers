@@ -99,7 +99,7 @@ impl<'a> EventLoopRunner<'a> {
                     self.plugin_manager.as_ref(),
                     &self.panel_tx,
                     &self.db,
-                    &mut self.session_manager,
+                    &mut self.controller.session_manager,
                     &self.slash_registry,
                 );
             }
@@ -123,7 +123,7 @@ impl<'a> EventLoopRunner<'a> {
                 self.plugin_manager.as_ref(),
                 &self.panel_tx,
                 &self.db,
-                &mut self.session_manager,
+                &mut self.controller.session_manager,
                 &self.slash_registry,
             )
         {
@@ -152,13 +152,13 @@ impl<'a> EventLoopRunner<'a> {
                 self.plugin_manager.as_ref(),
                 &self.panel_tx,
                 &self.db,
-                &mut self.session_manager,
+                &mut self.controller.session_manager,
                 &self.slash_registry,
             );
 
             // Record branch in session if one was initiated
             if let Some(checkpoint) = self.app.branching.last_branch_checkpoint.take()
-                && let Some(ref mut sm) = self.session_manager
+                && let Some(ref mut sm) = self.controller.session_manager
                 && let Ok(tree) = sm.load_tree()
             {
                 let active_leaf = sm.active_leaf_id().cloned();
@@ -547,7 +547,7 @@ impl<'a> EventLoopRunner<'a> {
             self.app.branching.merge_interactive.target_leaf().map(|s| MessageId::from(s.to_owned()));
         self.app.branching.merge_interactive.close();
         if let (Some(src), Some(tgt)) = (source, target)
-            && let Some(sm) = self.session_manager.as_mut()
+            && let Some(sm) = self.controller.session_manager.as_mut()
         {
             match sm.merge_selective(src, tgt, &selected) {
                 Ok((count, _new_leaf)) => {
