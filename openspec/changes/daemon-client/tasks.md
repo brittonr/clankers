@@ -58,23 +58,23 @@
 
 ## Phase 3: TUI Client Mode
 
-- [ ] Add `--daemon` flag to CLI (connect to daemon instead of in-process)
-- [ ] Add `clankers attach [session-id]` subcommand
+- [x] Add `--daemon` flag to CLI (connect to daemon instead of in-process)
+- [x] Add `clankers attach [session-id]` subcommand
 - [x] Implement `ClientAdapter<S: AsyncRead + AsyncWrite>` — generic over transport stream
 - [x] Implement `ClientAdapter` event reader — stream → `DaemonEvent` → `App::handle_tui_event()`
 - [x] Implement `ClientAdapter` command writer — `SessionCommand` → stream
-- [ ] Instantiate `ClientAdapter` with `UnixStream` for local connections
-- [ ] Implement history replay on attach (`ReplayHistory` → `HistoryBlock`* → `HistoryEnd`)
+- [x] Instantiate `ClientAdapter` with `UnixStream` for local connections
+- [x] Implement history replay on attach (`ReplayHistory` → `HistoryBlock`* → `HistoryEnd`)
 - [x] Split slash command registry into agent-side and client-side categories
 - [x] Client-side slash commands handled locally (zoom, layout, panel, theme, copy, help, quit)
 - [x] Agent-side slash commands sent as `SessionCommand::SlashCommand`
 - [x] Implement bash confirmation UI over protocol (`ConfirmRequest` → render prompt → `ConfirmBash`)
-- [ ] Implement todo request UI over protocol
+- [x] Implement todo request UI over protocol
 - [x] Implement subagent event routing from `DaemonEvent` to SubagentPanel/SubagentPaneManager
-- [ ] Add daemon indicator to status bar
-- [ ] Implement `/detach` command (disconnect without killing agent)
-- [ ] Implement reconnection with exponential backoff
-- [ ] Verify: TUI in client mode looks and feels identical to embedded mode
+- [x] Add daemon indicator to status bar
+- [x] Implement `/detach` command (disconnect without killing agent)
+- [x] Implement reconnection with exponential backoff
+- [x] Verify: TUI in client mode looks and feels identical to embedded mode
 
 ## Phase 4: Actor Layer
 
