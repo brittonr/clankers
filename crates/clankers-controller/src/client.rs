@@ -275,4 +275,111 @@ mod tests {
         // Give the server time to process
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
+
+    #[test]
+    fn test_from_channels() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+
+        let adapter = ClientAdapter::from_channels(cmd_tx, event_rx);
+        assert!(!adapter.is_disconnected());
+
+        // Send a test event
+        event_tx.send(DaemonEvent::TextDelta {
+            text: "test".to_string(),
+        }).unwrap();
+
+        // Should be able to send commands
+        assert!(adapter.send(SessionCommand::Abort));
+    }
+
+    #[test]
+    fn test_is_disconnected_when_sender_dropped() {
+        let (cmd_tx, cmd_rx) = mpsc::unbounded_channel();
+        let (_event_tx, event_rx) = mpsc::unbounded_channel();
+
+        let adapter = ClientAdapter::from_channels(cmd_tx, event_rx);
+        assert!(!adapter.is_disconnected());
+
+        // Drop the command receiver (simulates daemon disconnect)
+        drop(cmd_rx);
+
+        assert!(adapter.is_disconnected());
+    }
+
+    #[test]
+    fn test_try_recv_when_empty() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (_event_tx, event_rx) = mpsc::unbounded_channel();
+
+        let mut adapter = ClientAdapter::from_channels(cmd_tx, event_rx);
+
+        // try_recv should return None when no events pending
+        assert!(adapter.try_recv().is_none());
+        assert!(!adapter.is_disconnected());
+    }
+
+    #[test]
+    fn test_try_recv_when_channel_closed() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+
+        let mut adapter = ClientAdapter::from_channels(cmd_tx, event_rx);
+
+        // Drop the event sender (simulates server shutdown)
+        drop(event_tx);
+
+        // try_recv should set disconnected flag
+        assert!(adapter.try_recv().is_none());
+        assert!(adapter.is_disconnected());
+    }
+
+    #[test]
+    fn test_convenience_methods() {
+        let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel();
+        let (_event_tx, event_rx) = mpsc::unbounded_channel();
+
+        let adapter = ClientAdapter::from_channels(cmd_tx, event_rx);
+
+        // Test prompt method
+        adapter.prompt("test prompt".to_string());
+        let cmd = cmd_rx.try_recv().unwrap();
+        assert!(matches!(cmd, SessionCommand::Prompt { text, .. } if text == "test prompt"));
+
+        // Test abort method
+        adapter.abort();
+        let cmd = cmd_rx.try_recv().unwrap();
+        assert!(matches!(cmd, SessionCommand::Abort));
+
+        // Test replay_history method
+        adapter.replay_history();
+        let cmd = cmd_rx.try_recv().unwrap();
+        assert!(matches!(cmd, SessionCommand::ReplayHistory));
+
+        // Test disconnect method
+        adapter.disconnect();
+        let cmd = cmd_rx.try_recv().unwrap();
+        assert!(matches!(cmd, SessionCommand::Disconnect));
+    }
+
+    #[tokio::test]
+    async fn test_try_recv_with_pending_events() {
+        let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
+        let (event_tx, event_rx) = mpsc::unbounded_channel();
+
+        let mut adapter = ClientAdapter::from_channels(cmd_tx, event_rx);
+
+        // Send an event
+        let test_event = DaemonEvent::TextDelta {
+            text: "test message".to_string(),
+        };
+        event_tx.send(test_event.clone()).unwrap();
+
+        // try_recv should return the event
+        let received = adapter.try_recv().unwrap();
+        assert!(matches!(received, DaemonEvent::TextDelta { text } if text == "test message"));
+
+        // Second try_recv should return None
+        assert!(adapter.try_recv().is_none());
+    }
 }
