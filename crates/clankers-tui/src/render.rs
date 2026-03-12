@@ -327,7 +327,7 @@ fn render_status_bar_area(frame: &mut Frame, app: &mut App) {
         budget_status,
         tool_activity,
         prompt_improve: app.prompt_improve,
-        connection_mode: app.connection_mode,
+        connection_mode: app.connection_mode.clone(),
         loop_status: app.loop_status.as_ref().map(|ls| {
             use ratatui::style::Color;
             use ratatui::style::Modifier;

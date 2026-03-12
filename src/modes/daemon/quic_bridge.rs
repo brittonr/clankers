@@ -97,9 +97,16 @@ async fn handle_control_stream(
         clankers_protocol::ControlCommand::CreateSession {
             model,
             system_prompt,
-            token: _,
+            token,
         } => {
-            create_session_over_quic(model, system_prompt, state, factory, shutdown).await
+            if token.is_none() {
+                warn!("QUIC CreateSession rejected: no auth token");
+                clankers_protocol::ControlResponse::Error {
+                    message: "authentication token required for remote session creation".to_string(),
+                }
+            } else {
+                create_session_over_quic(model, system_prompt, state, factory, shutdown).await
+            }
         }
         other => {
             let st = state.lock().await;
@@ -260,6 +267,17 @@ async fn handle_attach_stream(
                 "unsupported protocol version {} (expected {PROTOCOL_VERSION})",
                 handshake.protocol_version,
             ),
+        };
+        write_quic_frame(&mut send, &resp).await?;
+        send.finish().ok();
+        return Ok(());
+    }
+
+    // Require token for remote QUIC connections
+    if handshake.token.is_none() {
+        warn!("QUIC attach rejected: no auth token in handshake");
+        let resp = AttachResponse::Error {
+            message: "authentication token required for remote connections".to_string(),
         };
         write_quic_frame(&mut send, &resp).await?;
         send.finish().ok();

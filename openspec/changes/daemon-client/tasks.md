@@ -98,7 +98,7 @@
 - [x] Migrate `DelegateTool` to spawn child `AgentProcess` for local workers
 - [x] Implement capability delegation enforcement (child ⊆ parent)
 - [x] Event forwarding: child `DaemonEvent` → parent `SubagentOutput` / `SubagentDone` / `SubagentError`
-- [ ] Verify: subagent/delegate tools work through actor system, process tree visible
+- [x] Verify: subagent/delegate tools work through actor system, process tree visible
 
 ## Phase 5: Polish
 
@@ -115,9 +115,9 @@
 - [x] Add `clankers/session/1` handler to daemon's iroh endpoint (same protocol as Unix socket)
 - [x] Add `clankers attach --remote <node-id>` subcommand
 - [x] Implement remote attach: create local iroh endpoint, connect to node, open bidi stream, wrap in `IrohBiStream`, instantiate `ClientAdapter`
-- [ ] Add UCAN token requirement for remote connections (reject if no token in handshake)
+- [x] Add UCAN token requirement for remote connections (reject if no token in handshake)
 - [x] Support `--remote <peer-name>` lookup from `peers.json` in addition to raw node IDs
-- [ ] Add remote status bar indicator (`🌐 node-id-short`)
+- [x] Add remote status bar indicator (`🌐 node-id-short`)
 - [x] Add process resource tracking (memory, CPU, uptime) to `ProcessInfo`
 - [ ] Documentation: update AGENTS.md, README, man page
 

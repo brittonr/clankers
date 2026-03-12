@@ -23,13 +23,15 @@ pub enum RouterStatus {
 }
 
 /// How the TUI is connected to the agent backend.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ConnectionMode {
     /// Agent runs in-process (normal interactive mode).
     #[default]
     Embedded,
     /// Attached to a daemon session via socket.
     Attached,
+    /// Attached to a remote daemon via iroh QUIC.
+    Remote { node_id_short: String },
     /// Was attached but lost the connection (reconnecting).
     Reconnecting,
 }

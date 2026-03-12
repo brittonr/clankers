@@ -1442,7 +1442,9 @@ pub async fn run_remote_attach(
         &slash_registry,
     )));
     crate::modes::interactive::rebuild_leader_menu(&mut app, None, settings);
-    app.connection_mode = clankers_tui_types::ConnectionMode::Attached;
+    app.connection_mode = clankers_tui_types::ConnectionMode::Remote {
+        node_id_short: remote_pk.fmt_short().to_string(),
+    };
 
     app.push_system(
         format!(
