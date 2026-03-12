@@ -16,6 +16,7 @@ use clankers_protocol::SessionCommand;
 use clankers_protocol::control::ControlCommand;
 use clankers_protocol::control::ControlResponse;
 use clankers_protocol::frame::{self};
+use clankers_tui_types::SubagentEvent;
 use tokio::net::UnixListener;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast;
@@ -36,6 +37,30 @@ pub struct SessionFactory {
     pub settings: Settings,
     pub default_model: String,
     pub default_system_prompt: String,
+}
+
+impl SessionFactory {
+    /// Rebuild tools with a panel_tx for subagent event routing.
+    ///
+    /// Clones all tools, injecting the panel sender into SubagentTool,
+    /// DelegateTool, and ValidatorTool. Other tools are passed through.
+    fn build_tools_with_panel_tx(
+        &self,
+        panel_tx: mpsc::UnboundedSender<SubagentEvent>,
+    ) -> Vec<Arc<dyn Tool>> {
+        let env = crate::modes::common::ToolEnv {
+            panel_tx: Some(panel_tx),
+            ..Default::default()
+        };
+        let tiered = crate::modes::common::build_tiered_tools(&env);
+        let tool_set = crate::modes::common::ToolSet::new(tiered, [
+            crate::modes::common::ToolTier::Core,
+            crate::modes::common::ToolTier::Orchestration,
+            crate::modes::common::ToolTier::Specialty,
+            crate::modes::common::ToolTier::Matrix,
+        ]);
+        tool_set.active_tools()
+    }
 }
 
 /// Run the control socket with session creation support.
@@ -108,6 +133,12 @@ async fn handle_control(
             let system_prompt =
                 system_prompt.unwrap_or_else(|| factory.default_system_prompt.clone());
 
+            // Create subagent event channel for this session
+            let (panel_tx, panel_rx) = mpsc::unbounded_channel::<SubagentEvent>();
+
+            // Build tools with panel_tx for subagent event routing
+            let tools = factory.build_tools_with_panel_tx(panel_tx);
+
             // Build the agent
             let agent = crate::agent::builder::AgentBuilder::new(
                 Arc::clone(&factory.provider),
@@ -115,7 +146,7 @@ async fn handle_control(
                 model.clone(),
                 system_prompt.clone(),
             )
-            .with_tools(factory.tools.clone())
+            .with_tools(tools)
             .build();
 
             let config = ControllerConfig {
@@ -152,7 +183,7 @@ async fn handle_control(
             let driver_event_tx = event_tx.clone();
             let driver_session_id = session_id.clone();
             tokio::spawn(async move {
-                run_session_driver(controller, cmd_rx, driver_event_tx, driver_session_id).await;
+                run_session_driver(controller, cmd_rx, driver_event_tx, driver_session_id, panel_rx).await;
             });
 
             // Spawn the session socket listener
@@ -233,6 +264,7 @@ async fn run_session_driver(
     mut cmd_rx: mpsc::UnboundedReceiver<SessionCommand>,
     event_tx: broadcast::Sender<DaemonEvent>,
     session_id: String,
+    mut panel_rx: mpsc::UnboundedReceiver<SubagentEvent>,
 ) {
     info!("session driver started: {session_id}");
 
@@ -249,11 +281,7 @@ async fn run_session_driver(
                 controller.handle_command(cmd).await;
 
                 // Drain and broadcast events
-                let events = controller.drain_events();
-                for event in events {
-                    // Ignore send errors (no receivers)
-                    let _ = event_tx.send(event);
-                }
+                drain_and_broadcast(&mut controller, &event_tx, &mut panel_rx);
 
                 // After prompt completion, check for auto-test or loop continuation
                 if !controller.is_busy() {
@@ -264,10 +292,7 @@ async fn run_session_driver(
                                 images: vec![],
                             })
                             .await;
-                        let events = controller.drain_events();
-                        for event in events {
-                            let _ = event_tx.send(event);
-                        }
+                        drain_and_broadcast(&mut controller, &event_tx, &mut panel_rx);
                     }
                     controller.clear_auto_test();
                 }
@@ -279,16 +304,41 @@ async fn run_session_driver(
 
             // Periodic drain of background agent events (tool execution, etc.)
             () = tokio::time::sleep(tokio::time::Duration::from_millis(50)) => {
-                let events = controller.drain_events();
-                for event in events {
-                    let _ = event_tx.send(event);
-                }
+                drain_and_broadcast(&mut controller, &event_tx, &mut panel_rx);
             }
         }
     }
 
     controller.shutdown().await;
     info!("session driver stopped: {session_id}");
+}
+
+/// Drain controller events and subagent panel events, broadcasting all as DaemonEvents.
+fn drain_and_broadcast(
+    controller: &mut SessionController,
+    event_tx: &broadcast::Sender<DaemonEvent>,
+    panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,
+) {
+    // Drain controller events
+    let events = controller.drain_events();
+    for event in events {
+        let _ = event_tx.send(event);
+    }
+
+    // Drain subagent panel events → DaemonEvent
+    while let Ok(panel_event) = panel_rx.try_recv() {
+        let daemon_event = match panel_event {
+            SubagentEvent::Started { id, name, task, pid } => {
+                DaemonEvent::SubagentStarted { id, name, task, pid }
+            }
+            SubagentEvent::Output { id, line } => DaemonEvent::SubagentOutput { id, line },
+            SubagentEvent::Done { id } => DaemonEvent::SubagentDone { id },
+            SubagentEvent::Error { id, message } => DaemonEvent::SubagentError { id, message },
+            // KillRequest and InputRequest are TUI→tool direction, not relevant here
+            SubagentEvent::KillRequest { .. } | SubagentEvent::InputRequest { .. } => continue,
+        };
+        let _ = event_tx.send(daemon_event);
+    }
 }
 
 async fn shutdown_signal(shutdown: &tokio::sync::watch::Receiver<bool>) {

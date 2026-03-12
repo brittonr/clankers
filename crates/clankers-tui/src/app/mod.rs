@@ -95,6 +95,15 @@ pub struct BranchingState {
     pub merge_interactive: super::components::merge_interactive::MergeInteractiveView,
 }
 
+/// Bash confirm dialog state for attach mode
+#[derive(Debug, Clone)]
+pub struct BashConfirmState {
+    pub request_id: String,
+    pub command: String,
+    pub working_dir: String,
+    pub approved: bool, // true = Yes selected, false = No selected
+}
+
 /// Overlay/popup state — all modal dialogs and selectors
 pub struct OverlayState {
     /// Whether the session/branch popup is visible
@@ -119,6 +128,8 @@ pub struct OverlayState {
     pub leader_menu: super::components::leader_menu::LeaderMenu,
     /// Tool toggle popup (enable/disable tools)
     pub tool_toggle: super::components::tool_toggle::ToolToggle,
+    /// Bash confirm dialog (attach mode)
+    pub confirm_dialog: Option<BashConfirmState>,
 }
 
 /// Tiling state — BSP layout and pane focus
@@ -289,6 +300,7 @@ impl App {
                 session_selector: SessionSelector::new(),
                 leader_menu: super::components::leader_menu::LeaderMenu::new(),
                 tool_toggle: super::components::tool_toggle::ToolToggle::new(),
+                confirm_dialog: None,
             },
             layout: TilingState {
                 tiling: super::panes::default_tiling(),

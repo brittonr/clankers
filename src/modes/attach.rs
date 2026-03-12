@@ -126,8 +126,10 @@ pub async fn run_attach(
     );
     app.push_system("Type /detach or Ctrl+Q to disconnect.".to_string(), false);
 
+    let max_subagent_panes = settings.max_subagent_panes;
+
     // Run the event loop
-    let result = run_attach_loop(&mut term, &mut app, &mut client, keymap, &slash_registry);
+    let result = run_attach_loop(&mut term, &mut app, &mut client, keymap, &slash_registry, max_subagent_panes);
 
     // Clean disconnect
     client.disconnect();
@@ -370,6 +372,7 @@ fn run_attach_loop(
     client: &mut ClientAdapter,
     keymap: Keymap,
     slash_registry: &slash_commands::SlashRegistry,
+    max_subagent_panes: usize,
 ) -> Result<()> {
     let mut replaying_history = true;
 
@@ -385,7 +388,7 @@ fn run_attach_loop(
         }
 
         // Drain daemon events
-        drain_daemon_events(app, client, &mut replaying_history);
+        drain_daemon_events(app, client, &mut replaying_history, max_subagent_panes);
 
         // Handle terminal events (keys, mouse, paste)
         handle_terminal_events(app, client, terminal, &keymap, slash_registry)?;
@@ -400,9 +403,9 @@ fn run_attach_loop(
 }
 
 /// Drain available DaemonEvents from the client and apply them to App state.
-fn drain_daemon_events(app: &mut App, client: &mut ClientAdapter, replaying_history: &mut bool) {
+fn drain_daemon_events(app: &mut App, client: &mut ClientAdapter, replaying_history: &mut bool, max_subagent_panes: usize) {
     while let Some(event) = client.try_recv() {
-        process_daemon_event(app, client, &event, replaying_history);
+        process_daemon_event(app, client, &event, replaying_history, max_subagent_panes);
     }
 }
 
@@ -412,6 +415,7 @@ fn process_daemon_event(
     client: &ClientAdapter,
     event: &DaemonEvent,
     replaying_history: &mut bool,
+    max_subagent_panes: usize,
 ) {
     // First, try the TuiEvent conversion for all streaming/tool/session events.
     if let Some(tui_event) = daemon_event_to_tui_event(event) {
@@ -460,21 +464,20 @@ fn process_daemon_event(
             command,
             working_dir,
         } => {
-            app.push_system(
-                format!("🔒 Bash confirm ({working_dir}): {command}"),
-                true,
-            );
-            app.push_system("Auto-approving in attach mode.".to_string(), false);
-            // Auto-approve — the daemon handles actual sandboxing
-            client.send(SessionCommand::ConfirmBash {
+            app.overlays.confirm_dialog = Some(clankers_tui::app::BashConfirmState {
                 request_id: request_id.clone(),
-                approved: true,
+                command: command.clone(),
+                working_dir: working_dir.clone(),
+                approved: true, // default to Yes
             });
         }
         DaemonEvent::TodoRequest {
             request_id,
             action,
         } => {
+            // Todo actions are TUI-local state updates (add/update/remove items).
+            // The daemon sends these for panel synchronization. Auto-respond since
+            // attach mode doesn't own the todo panel state.
             debug!("todo request in attach mode: {action:?}");
             // Auto-respond with empty object — daemon handles the actual todo
             client.send(SessionCommand::TodoResponse {
@@ -504,6 +507,25 @@ fn process_daemon_event(
                 )
             {
                 panel.add(id.clone(), name.clone(), task.clone(), *pid);
+            }
+            // Create a dedicated BSP pane for this subagent (same as embedded mode)
+            if max_subagent_panes > 0 && app.layout.subagent_panes.len() < max_subagent_panes {
+                let pane_id = app.layout.subagent_panes.create(
+                    id.clone(),
+                    name.clone(),
+                    task.clone(),
+                    *pid,
+                    &mut app.layout.tiling,
+                );
+                app.layout.pane_registry.register(
+                    pane_id,
+                    crate::tui::panes::PaneKind::Subagent(id.clone()),
+                );
+                crate::tui::panes::auto_split_for_subagent(
+                    &mut app.layout.tiling,
+                    &app.layout.pane_registry,
+                    pane_id,
+                );
             }
         }
         DaemonEvent::SubagentOutput { id, line } => {
@@ -648,6 +670,40 @@ fn handle_key_event(
     // Force quit (Ctrl+Q)
     if key.code == KeyCode::Char('q') && key.modifiers.contains(KeyModifiers::CONTROL) {
         app.should_quit = true;
+        return;
+    }
+
+    // Bash confirm dialog
+    if let Some(ref mut confirm) = app.overlays.confirm_dialog {
+        match key.code {
+            KeyCode::Left | KeyCode::Right | KeyCode::Char('h' | 'l') | KeyCode::Tab => {
+                confirm.approved = !confirm.approved;
+            }
+            KeyCode::Char('y' | 'Y') => {
+                let request_id = confirm.request_id.clone();
+                app.overlays.confirm_dialog = None;
+                client.send(SessionCommand::ConfirmBash { request_id, approved: true });
+                app.push_system("✅ Command approved.".to_string(), false);
+            }
+            KeyCode::Char('n' | 'N') | KeyCode::Esc => {
+                let request_id = confirm.request_id.clone();
+                app.overlays.confirm_dialog = None;
+                client.send(SessionCommand::ConfirmBash { request_id, approved: false });
+                app.push_system("❌ Command denied.".to_string(), true);
+            }
+            KeyCode::Enter => {
+                let request_id = confirm.request_id.clone();
+                let approved = confirm.approved;
+                app.overlays.confirm_dialog = None;
+                client.send(SessionCommand::ConfirmBash { request_id, approved });
+                if approved {
+                    app.push_system("✅ Command approved.".to_string(), false);
+                } else {
+                    app.push_system("❌ Command denied.".to_string(), true);
+                }
+            }
+            _ => {}
+        }
         return;
     }
 

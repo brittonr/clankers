@@ -227,6 +227,11 @@ fn render_chrome(frame: &mut Frame, app: &mut App) {
     app.overlays.tool_toggle.render(frame, frame.area());
     app.branching.switcher.render(frame, frame.area());
     app.branching.compare.render(frame, frame.area());
+
+    // Bash confirm dialog (attach mode)
+    if let Some(ref confirm) = app.overlays.confirm_dialog {
+        crate::components::confirm::render_bash_confirm(frame, frame.area(), confirm);
+    }
     app.branching.merge_interactive.render(frame, frame.area());
     app.overlays.leader_menu.render(frame, frame.area());
 
