@@ -28,6 +28,8 @@ data/
 !README.md
 !**/README.md
 !CHANGES.md
+!AGENTS.md
+!CLAUDE.md
 !TODO.md
 !CONTRIBUTING.md
 !openspec/**/*.md

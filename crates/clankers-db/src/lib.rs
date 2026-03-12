@@ -17,6 +17,7 @@ pub mod audit;
 pub mod error;
 pub mod file_cache;
 pub mod history;
+pub mod registry;
 
 pub use error::DbError;
 pub use error::db_err;
@@ -157,6 +158,11 @@ impl Db {
     /// File read cache accessor.
     pub fn file_cache(&self) -> file_cache::FileReadCache<'_> {
         file_cache::FileReadCache::new(self)
+    }
+
+    /// Resource registry accessor.
+    pub fn registry(&self) -> registry::Registry<'_> {
+        registry::Registry::new(self)
     }
 }
 
