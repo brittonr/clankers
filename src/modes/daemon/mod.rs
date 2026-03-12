@@ -32,7 +32,7 @@ use crate::tools::Tool;
 mod config;
 mod handlers;
 mod session_store;
-pub(crate) mod socket_bridge;
+pub mod socket_bridge;
 
 // Re-export public types
 pub(crate) use config::ALPN_CHAT;

@@ -30,7 +30,7 @@ use crate::provider::Provider;
 use crate::tools::Tool;
 
 /// Resources needed to create new sessions.
-pub(crate) struct SessionFactory {
+pub struct SessionFactory {
     pub provider: Arc<dyn Provider>,
     pub tools: Vec<Arc<dyn Tool>>,
     pub settings: Settings,
@@ -43,7 +43,7 @@ pub(crate) struct SessionFactory {
 /// Unlike `transport::run_control_socket`, this version handles
 /// `CreateSession` by constructing a `SessionController` and spawning
 /// the session socket + driver tasks.
-pub(crate) async fn run_control_socket_with_factory(
+pub async fn run_control_socket_with_factory(
     state: Arc<Mutex<DaemonState>>,
     factory: Arc<SessionFactory>,
     shutdown: tokio::sync::watch::Receiver<bool>,
