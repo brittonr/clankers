@@ -564,3 +564,19 @@
 - `ToolProgress` has `kind: ProgressKind, message, timestamp: Instant` — Instant is not serializable, convert to JSON with message only
 - Controller test mock: inline `MockProvider` struct with `#[async_trait]` — no public mock in clankers-provider
 - Provider::complete return type: `clankers_provider::error::Result<()>` (not `clankers_provider::Result`)
+
+## Patterns That Work (daemon-client Phase 3 — wiring)
+- Controller gaps closed: SetThinkingLevel parses via `ThinkingLevel::from_str_or_budget`, SeedMessages converts to AgentMessage, auto-test via `maybe_auto_test()`/`clear_auto_test()`, ModelChange hook fires via `HookPayload::model_change()` (new constructor)
+- `socket_bridge.rs` in `src/modes/daemon/` bridges clankers-controller's transport layer into the daemon
+- `SessionFactory` holds provider/tools/settings/model/prompt — shared resources for creating SessionController instances
+- `run_control_socket_with_factory()` replaces `run_control_socket()` — handles CreateSession by building Agent → ControllerConfig → SessionController
+- `run_session_driver()` is the per-session event loop: reads SessionCommand from mpsc channel, feeds to controller, drains DaemonEvent via `drain_events()`, broadcasts to connected clients
+- Session driver uses `tokio::select!` with 50ms sleep for background event draining (tool execution events arrive asynchronously)
+- Control socket spawned alongside existing iroh/Matrix in `run_daemon()` via `spawn_socket_control_plane()`
+- `daemon-sessions` CLI subcommand (list, status, create, kill, shutdown) talks to control socket
+- `send_control()` helper: connect UnixStream → write_frame(ControlCommand) → read_frame(ControlResponse)
+- Integration tests: `tests/socket_bridge.rs` exercises full round-trip (control connect → create session → session socket handshake → GetSystemPrompt → SystemPromptResponse → disconnect)
+- Test isolation: `set_test_socket_dir()` sets XDG_RUNTIME_DIR to tempdir, must `create_dir_all(socket_dir())` before starting control socket
+- `std::env::set_var` is unsafe in Rust 2024 — wrap in `unsafe {}` block with SAFETY comment
+- Existing iroh chat/1, rpc/1, and Matrix transports completely unchanged — socket layer is additive
+- Next: TUI attach mode (connect ClientAdapter to session socket, replace EventLoopRunner's agent polling with DaemonEvent stream)
