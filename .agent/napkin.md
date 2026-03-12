@@ -11,6 +11,8 @@
 | recurring | self | sed-based struct-literal→fn-call conversion leaves mismatched braces | For syntax-level transforms, read each call site and fix with targeted edits. Don't sed. |
 | recurring | self | Moving types with methods that reference crate-internal types | Extract those methods as standalone functions or convert to free functions taking `&mut self`. |
 | recurring | self | Assumed similar components are duplicates (panels with same-domain names) | Read module-level doc comments first. Overview list ≠ BSP pane ≠ fuzzy overlay ≠ diff view. |
+| 2026-03-12 | self | `target/debug/clankers` was stale — `CARGO_TARGET_DIR=~/.cargo-target/` | Always use `$CARGO_TARGET_DIR/debug/clankers` or full path. `target/debug/` is a decoy. |
+| 2026-03-12 | self | Background daemon passed `--model` after subcommand (`daemon start --model X`) | Top-level flags go BEFORE the subcommand: `clankers --model X daemon start`. |
 | 2026-03-09 | self | Glob re-exports (`pub use module::*`) bring all public items — conflicts with sibling imports | Check for conflicts before adding imports when a sibling module has glob re-exports. |
 | 2026-03-09 | self | `map_err(db_err)` as tail returns wrong Result type | When helper returns a different error type, wrap: `Ok(expr.map_err(helper)?)` to trigger `From` via `?`. |
 | 2026-03-10 | self | Plugin `serde` needs direct dep for derive macros even though SDK re-exports crate | Check Cargo.toml deps before using macros that need proc-macro resolution. |
@@ -90,6 +92,11 @@
 - `TurnStart`/`TurnEnd`: use `index` not `turn_number`
 - `Context`: only `messages` field (no `system_prompt`)
 - `ModelChange` NOT forwarded via `agent_event_to_daemon_event()` — hooks only
+
+### Daemon resilience
+- iroh endpoint failure is non-fatal — daemon runs with control socket only
+- Heartbeat endpoint failure is non-fatal — heartbeat disabled with warning
+- `build_endpoint()` returns `Result` — caller `match`es to degrade gracefully
 
 ### Nix tool
 - Nix daemon socket needs **write** access — Landlock `/nix` as RO blocks `connect()`
