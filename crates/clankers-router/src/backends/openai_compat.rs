@@ -1294,6 +1294,7 @@ mod tests {
             }],
             thinking: None,
             no_cache: false,
+            cache_ttl: None,
         extra_params: Default::default(),
         };
 
@@ -1318,6 +1319,7 @@ mod tests {
             tools: vec![],
             thinking: None,
             no_cache: false,
+            cache_ttl: None,
         extra_params: Default::default(),
         };
         let oai_req = build_openai_request(&request);

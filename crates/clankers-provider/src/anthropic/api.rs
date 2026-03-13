@@ -46,12 +46,15 @@ pub(crate) struct SystemBlock {
 pub(crate) struct CacheControl {
     #[serde(rename = "type")]
     pub control_type: String, // "ephemeral"
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub ttl: Option<String>,
 }
 
 impl CacheControl {
-    pub fn ephemeral() -> Self {
+    pub fn with_ttl(ttl: Option<String>) -> Self {
         Self {
             control_type: "ephemeral".to_string(),
+            ttl,
         }
     }
 }
@@ -251,7 +254,11 @@ impl AnthropicClient {
 /// Convert our CompletionRequest into the Anthropic API format
 pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> ApiRequest {
     let mut system_blocks = Vec::new();
-    let cache_control = if request.no_cache { None } else { Some(CacheControl::ephemeral()) };
+    let cache_control = if request.no_cache {
+        None
+    } else {
+        Some(CacheControl::with_ttl(request.cache_ttl.clone()))
+    };
 
     // OAuth requires Claude Code identity prefix
     if is_oauth {
@@ -281,7 +288,7 @@ pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> 
         && let Some(last_user) = messages.iter_mut().rev().find(|m| m.role == "user")
         && let Some(last_block) = last_user.content.last_mut()
     {
-        last_block.set_cache_control(CacheControl::ephemeral());
+        last_block.set_cache_control(CacheControl::with_ttl(request.cache_ttl.clone()));
     }
 
     let tools = if request.tools.is_empty() {
@@ -291,7 +298,7 @@ pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> 
         if !request.no_cache
             && let Some(last) = api_tools.last_mut()
         {
-            last.cache_control = Some(CacheControl::ephemeral());
+            last.cache_control = Some(CacheControl::with_ttl(request.cache_ttl.clone()));
         }
         Some(api_tools)
     };

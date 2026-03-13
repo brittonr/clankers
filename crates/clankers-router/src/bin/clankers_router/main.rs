@@ -574,6 +574,7 @@ async fn run_ask(
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
 

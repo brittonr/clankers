@@ -50,6 +50,7 @@ impl Provider for RouterCompatAdapter {
             tools: request.tools,
             thinking: request.thinking,
             no_cache: request.no_cache,
+            cache_ttl: request.cache_ttl,
             extra_params: HashMap::new(),
         };
 
@@ -327,6 +328,7 @@ mod tests {
             tools: vec![],
             thinking: None,
             no_cache: false,
+            cache_ttl: None,
         };
 
         router.complete(request, tx).await.expect("router should complete successfully");

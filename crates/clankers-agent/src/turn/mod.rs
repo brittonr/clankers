@@ -39,6 +39,7 @@ pub struct TurnConfig {
     /// Output truncation config for tool results
     pub output_truncation: clankers_loop::OutputTruncationConfig,
     pub no_cache: bool,
+    pub cache_ttl: Option<String>,
 }
 
 /// Result of collecting a streamed response

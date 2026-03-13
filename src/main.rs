@@ -497,6 +497,9 @@ async fn run_interactive(
     if cli.no_cache {
         settings.no_cache = true;
     }
+    if let Some(ttl) = &cli.cache_ttl {
+        settings.cache_ttl = Some(ttl.clone());
+    }
     if cli.enable_routing && settings.routing.is_none() {
         settings.routing = Some(clankers::model_selection::config::RoutingPolicyConfig::default());
     }

@@ -685,6 +685,7 @@ impl Router {
             tools: vec![],
             thinking: None,
             no_cache: false,
+            cache_ttl: None,
             extra_params: HashMap::new(),
         };
 

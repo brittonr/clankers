@@ -108,6 +108,10 @@ pub struct Cli {
     #[arg(long)]
     pub no_cache: bool,
 
+    /// Cache TTL for prompt caching ("5m" default, "1h" for 1-hour at 2× cost)
+    #[arg(long, value_name = "TTL")]
+    pub cache_ttl: Option<String>,
+
     /// Agent definition to use
     #[arg(long, value_name = "AGENT")]
     pub agent: Option<String>,

@@ -101,6 +101,7 @@ impl Provider for RpcProvider {
             tools: request.tools,
             thinking: request.thinking,
             no_cache: request.no_cache,
+            cache_ttl: request.cache_ttl,
             extra_params: HashMap::new(),
         };
 

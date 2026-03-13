@@ -45,6 +45,7 @@ pub(super) async fn execute_turn(
         tools: tool_defs.to_vec(),
         thinking: config.thinking.clone(),
         no_cache: config.no_cache,
+        cache_ttl: config.cache_ttl.clone(),
     };
 
     let (stream_tx, mut stream_rx) = mpsc::channel(256);

@@ -74,6 +74,10 @@ pub struct CompletionRequest {
     #[serde(default)]
     pub no_cache: bool,
 
+    /// Cache TTL override (e.g. "1h" for 1-hour cache). None = default 5m ephemeral.
+    #[serde(default)]
+    pub cache_ttl: Option<String>,
+
     /// Extra provider-specific parameters passed through verbatim.
     ///
     /// Parameters like `response_format`, `seed`, `top_p`, `frequency_penalty`,

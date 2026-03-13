@@ -355,6 +355,7 @@ fn convert_request(req: ChatCompletionRequest) -> CompletionRequest {
         tools,
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: req.extra,
     }
 }

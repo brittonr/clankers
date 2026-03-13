@@ -84,6 +84,10 @@ pub struct CompletionRequest {
     /// Disable prompt caching (skip cache_control breakpoints)
     #[serde(default)]
     pub no_cache: bool,
+
+    /// Cache TTL override (e.g. "1h" for 1-hour cache). None = default 5m ephemeral.
+    #[serde(default)]
+    pub cache_ttl: Option<String>,
 }
 
 // Re-export ThinkingConfig from clankers-router (canonical definition)

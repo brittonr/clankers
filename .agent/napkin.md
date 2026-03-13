@@ -53,8 +53,11 @@
 - Compaction invalidates cache prefixes — skip compaction when prompt caching is active
 - `build_context(compact: bool)` — compact only when `--no-cache` (i.e., `settings.no_cache`)
 - `prompt-caching-2024-07-31` beta header needed in ALL Anthropic request paths (provider + router, OAuth + API key)
-- Two `CompletionRequest` types: provider (`clankers-provider/src/lib.rs`) and router (`clankers-router/src/provider.rs`) — both need `no_cache`
+- Two `CompletionRequest` types: provider (`clankers-provider/src/lib.rs`) and router (`clankers-router/src/provider.rs`) — both need `no_cache` and `cache_ttl`
+- Third `CompletionRequest` construction site in `clankers-provider/src/router.rs` (test module) — easy to miss
+- `CacheControl::with_ttl(None)` = ephemeral (5m), `with_ttl(Some("1h"))` = 1-hour. TTL serialized only when `Some`.
 - Clippy `collapsible_if`: `if !flag { if let Some(x) = ... }` → `if !flag && let Some(x) = ...`
+- Clippy `format_push_string`: use `write!(string, ...)` not `string.push_str(&format!(...))`
 
 ### Daemon-client architecture
 - Protocol: serde_json + length-prefixed frames over Unix sockets (local) / iroh QUIC (remote)

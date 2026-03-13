@@ -165,6 +165,7 @@ fn simple_request(model: &str) -> CompletionRequest {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     }
 }
@@ -1065,6 +1066,7 @@ fn test_completion_request_with_all_fields() {
             budget_tokens: Some(10_000),
         }),
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
 

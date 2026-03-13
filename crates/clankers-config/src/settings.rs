@@ -114,6 +114,12 @@ pub struct Settings {
     /// prompt caching provides larger cost savings than compaction.
     #[serde(default)]
     pub no_cache: bool,
+
+    /// Cache TTL for prompt caching. Default is "5m" (ephemeral).
+    /// Set to "1h" for 1-hour cache at 2× base input cost (useful for
+    /// long-running agentic tasks where turns exceed the 5-minute window).
+    #[serde(default)]
+    pub cache_ttl: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -239,6 +245,7 @@ impl Default for Settings {
             hooks: clankers_hooks::HooksConfig::default(),
             auto_test_command: None,
             no_cache: false,
+            cache_ttl: None,
         }
     }
 }

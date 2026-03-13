@@ -1,5 +1,6 @@
 //! One-shot print mode (-p)
 
+use std::fmt::Write as _;
 use std::io::Write;
 use std::sync::Arc;
 
@@ -142,13 +143,24 @@ pub async fn run_print_with_options(
                     turn_usage,
                     cumulative_usage,
                 } if show_stats => {
-                    eprintln!(
+                    let mut line = format!(
                         "[usage] turn: {}in/{}out  total: {}in/{}out",
                         turn_usage.input_tokens,
                         turn_usage.output_tokens,
                         cumulative_usage.input_tokens,
                         cumulative_usage.output_tokens,
                     );
+                    if cumulative_usage.cache_read_input_tokens > 0
+                        || cumulative_usage.cache_creation_input_tokens > 0
+                    {
+                        let _ = write!(
+                            line,
+                            "  cache: {}read/{}write",
+                            cumulative_usage.cache_read_input_tokens,
+                            cumulative_usage.cache_creation_input_tokens,
+                        );
+                    }
+                    eprintln!("{}", line);
                 }
                 AgentEvent::AgentEnd { .. } => break,
                 _ => {}

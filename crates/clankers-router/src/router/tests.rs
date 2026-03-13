@@ -100,6 +100,7 @@ async fn test_complete_routes_correctly() {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
 
@@ -274,6 +275,7 @@ async fn test_fallback_on_retryable_error() {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
 
@@ -303,6 +305,7 @@ async fn test_no_fallback_on_auth_error() {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
 
@@ -336,6 +339,7 @@ async fn test_fallback_skips_unhealthy_providers() {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
 
@@ -370,6 +374,7 @@ async fn test_primary_in_cooldown_skips_to_fallback() {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
 
@@ -399,6 +404,7 @@ async fn test_all_fallbacks_exhausted() {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
 
@@ -423,6 +429,7 @@ async fn test_no_fallback_configured_returns_error() {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
 
@@ -529,6 +536,7 @@ async fn test_complete_records_usage() {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
     router.complete(request, tx).await.unwrap();
@@ -555,6 +563,7 @@ async fn test_complete_records_request_log() {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
     router.complete(request, tx).await.unwrap();
@@ -583,6 +592,7 @@ async fn test_cache_write_back_and_hit() {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
     router.complete(request.clone(), tx1).await.unwrap();
@@ -635,6 +645,7 @@ async fn test_fallback_records_rate_limit_error() {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
 

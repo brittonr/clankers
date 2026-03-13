@@ -13,6 +13,14 @@ use serde_json::json;
 use tokio::sync::RwLock;
 use tokio::sync::mpsc;
 use tracing::debug;
+
+/// Build a cache_control JSON value, optionally including a TTL.
+fn cache_control_json(ttl: Option<&str>) -> Value {
+    match ttl {
+        Some(ttl) => json!({"type": "ephemeral", "ttl": ttl}),
+        None => json!({"type": "ephemeral"}),
+    }
+}
 use tracing::info;
 use tracing::warn;
 
@@ -325,8 +333,9 @@ fn build_request_body(request: &CompletionRequest, is_oauth: bool) -> Result<Val
             }));
         }
         if !request.no_cache {
+            let cc = cache_control_json(request.cache_ttl.as_deref());
             for block in &mut blocks {
-                block["cache_control"] = json!({"type": "ephemeral"});
+                block["cache_control"] = cc.clone();
             }
         }
         body["system"] = json!(blocks);
@@ -336,7 +345,7 @@ fn build_request_body(request: &CompletionRequest, is_oauth: bool) -> Result<Val
             "text": system,
         });
         if !request.no_cache {
-            block["cache_control"] = json!({"type": "ephemeral"});
+            block["cache_control"] = cache_control_json(request.cache_ttl.as_deref());
         }
         body["system"] = json!([block]);
     }
@@ -357,7 +366,7 @@ fn build_request_body(request: &CompletionRequest, is_oauth: bool) -> Result<Val
         if !request.no_cache
             && let Some(last) = tools.last_mut()
         {
-            last["cache_control"] = json!({"type": "ephemeral"});
+            last["cache_control"] = cache_control_json(request.cache_ttl.as_deref());
         }
 
         body["tools"] = json!(tools);
@@ -370,12 +379,13 @@ fn build_request_body(request: &CompletionRequest, is_oauth: bool) -> Result<Val
     if !request.no_cache
         && let Some(messages) = body["messages"].as_array_mut()
     {
+        let cc = cache_control_json(request.cache_ttl.as_deref());
         for msg in messages.iter_mut().rev() {
             if msg["role"] == "user" {
                 if let Some(content) = msg["content"].as_array_mut()
                     && let Some(last_block) = content.last_mut()
                 {
-                    last_block["cache_control"] = json!({"type": "ephemeral"});
+                    last_block["cache_control"] = cc;
                 }
                 break;
             }

@@ -33,7 +33,8 @@
   - Result: cost $1.49 → $0.45 (70% reduction), cache_read 96K → 502K
 - [x] **3.2** Run `./bench/token-bench.sh` — confirm no regression on single-prompt
   - Result: 14% cheaper on single-prompt bench too
-- [ ] **3.3** Manual multi-turn session with `--stats`
+- [x] **3.3** Manual multi-turn session with `--stats`
+  - Added cache_read/cache_creation stats to print mode `--stats` output
 
 ## Phase 4: Polish
 
@@ -44,4 +45,9 @@
 - [x] **4.2** Ensure `prompt-caching-2024-07-31` beta header in all paths
   - Added to provider path: both OAuth and API key branches
   - Added to router path: OAuth branch (API key already had it)
-- [ ] **4.3** Consider `ttl: "1h"` support for long sessions
+- [x] **4.3** `ttl` support for long sessions
+  - Added `cache_ttl` setting (None = 5m default, "1h" = 1-hour at 2× base input cost)
+  - `--cache-ttl 1h` CLI flag threads through Settings → TurnConfig → CompletionRequest → API
+  - Provider path: `CacheControl::with_ttl()` serializes optional `ttl` field
+  - Router path: `cache_control_json()` helper builds JSON with optional `ttl`
+  - Also configurable in settings.json: `"cache_ttl": "1h"`

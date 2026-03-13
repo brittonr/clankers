@@ -265,6 +265,7 @@ pub(crate) async fn rewrite_prompt(
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
     };
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<StreamEvent>(64);

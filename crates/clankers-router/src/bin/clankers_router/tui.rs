@@ -378,6 +378,7 @@ async fn submit_message(app: &mut App, stream_tx: mpsc::Sender<StreamEvent>) {
         tools: vec![],
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
         extra_params: Default::default(),
     };
 

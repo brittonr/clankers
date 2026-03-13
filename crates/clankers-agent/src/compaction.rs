@@ -144,6 +144,7 @@ pub async fn compact_with_llm(
         tools: Vec::new(),
         thinking: None,
         no_cache: false,
+        cache_ttl: None,
     };
 
     let (tx, mut rx) = mpsc::channel(64);

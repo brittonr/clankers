@@ -237,6 +237,7 @@ impl Agent {
             max_turns: 25,
             output_truncation: self.output_truncation_config(),
             no_cache: self.settings.no_cache,
+            cache_ttl: self.settings.cache_ttl.clone(),
         };
 
         let result = turn::run_turn_loop(
@@ -558,6 +559,7 @@ impl Agent {
                 max_turns: if phase_idx == 0 { 25 } else { 10 },
                 output_truncation: self.output_truncation_config(),
                 no_cache: self.settings.no_cache,
+                cache_ttl: self.settings.cache_ttl.clone(),
             };
 
             let result = turn::run_turn_loop(
