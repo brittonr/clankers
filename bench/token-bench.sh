@@ -99,6 +99,8 @@ PROMPTS=(
 )
 
 # ── Filter prompts ────────────────────────────────────────────────────
+# Entries carry their original 1-based index for verification lookup:
+#   ORIGINAL_INDEX|SUITE|PROMPT
 FILTERED_PROMPTS=()
 for i in "${!PROMPTS[@]}"; do
     entry="${PROMPTS[$i]}"
@@ -112,7 +114,7 @@ for i in "${!PROMPTS[@]}"; do
     if [[ -n "$SUITE" && "$suite" != "$SUITE" ]]; then
         continue
     fi
-    FILTERED_PROMPTS+=("$entry")
+    FILTERED_PROMPTS+=("${idx}|${entry}")
 done
 
 if [[ ${#FILTERED_PROMPTS[@]} -eq 0 ]]; then
@@ -350,6 +352,191 @@ run_clankers() {
         2>/dev/null > "$outfile" || true
 }
 
+# ── Extract assistant text from JSONL ─────────────────────────────────
+# Works for both pi and clankers output formats.
+extract_text() {
+    local jsonl_file="$1"
+    python3 - "$jsonl_file" <<'PYEOF'
+import json, sys
+
+path = sys.argv[1]
+text_parts = []
+
+with open(path) as f:
+    for line in f:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            evt = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        t = evt.get("type", "")
+
+        # clankers: text_delta events
+        if t == "text_delta":
+            text_parts.append(evt.get("text", ""))
+
+        # pi: message_update with assistantMessageEvent.type == "text_delta"
+        elif t == "message_update":
+            ae = evt.get("assistantMessageEvent", {})
+            if ae.get("type") == "text_delta":
+                text_parts.append(ae.get("delta", ""))
+
+        # pi: content_block_delta with text_delta (older format)
+        elif t == "content_block_delta":
+            delta = evt.get("delta", {})
+            if delta.get("type") == "text_delta":
+                text_parts.append(delta.get("text", ""))
+
+        # pi: assistant_text (some versions)
+        elif t == "assistant_text":
+            text_parts.append(evt.get("text", ""))
+
+print("".join(text_parts))
+PYEOF
+}
+
+# ── Verify prompt correctness ────────────────────────────────────────
+# Computes ground truth dynamically and checks the agent's response.
+# Returns JSON: {"pass": bool, "checks": [...], "failures": [...]}
+verify_prompt() {
+    local prompt_idx="$1"
+    local text_file="$2"
+    local workdir="$3"
+
+    python3 - "$prompt_idx" "$text_file" "$workdir" <<'PYEOF'
+import json, sys, subprocess, os, re
+
+prompt_idx = int(sys.argv[1])
+text_file = sys.argv[2]
+workdir = sys.argv[3]
+
+with open(text_file) as f:
+    text = f.read()
+
+text_lower = text.lower()
+
+def run(cmd):
+    """Run a shell command in workdir, return stdout."""
+    r = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd=workdir)
+    return r.stdout.strip()
+
+def check_contains(label, needle):
+    """Check text contains a substring (case-insensitive)."""
+    if needle.lower() in text_lower:
+        return {"check": label, "pass": True}
+    return {"check": label, "pass": False, "detail": f"missing: {needle!r}"}
+
+def check_number(label, expected, tolerance=0):
+    """Check text contains a number within tolerance of expected."""
+    # Find all numbers in the text
+    numbers = [int(n) for n in re.findall(r'\b(\d+)\b', text)]
+    for n in numbers:
+        if abs(n - expected) <= tolerance:
+            return {"check": label, "pass": True, "detail": f"found {n} (expected {expected})"}
+    return {"check": label, "pass": False, "detail": f"expected ~{expected} (±{tolerance}), found numbers: {sorted(set(numbers))[:10]}"}
+
+def check_file_unchanged(label, filepath):
+    """Check a file matches its git HEAD version."""
+    diff = run(f"git diff HEAD -- {filepath}")
+    if not diff:
+        return {"check": label, "pass": True}
+    return {"check": label, "pass": False, "detail": f"{filepath} has uncommitted changes"}
+
+checks = []
+
+if prompt_idx == 1:
+    # "Read Cargo.toml and list workspace members"
+    member_count = int(run("sed -n '/^members/,/^\\]/p' Cargo.toml | grep -c '\"'"))
+    checks.append(check_number("workspace member count", member_count, tolerance=2))
+    # spot-check a few members
+    for crate in ["clankers-agent", "clankers-tui", "clankers-router", "clankers-config", "xtask"]:
+        checks.append(check_contains(f"mentions {crate}", crate))
+
+elif prompt_idx == 2:
+    # "What license does this project use?"
+    checks.append(check_contains("mentions AGPL", "agpl"))
+    checks.append(check_contains("mentions version 3", "3"))
+
+elif prompt_idx == 3:
+    # "Find all files that contain 'Usage' and list them"
+    file_list = run("grep -rl 'Usage' --include='*.rs' --include='*.md' --include='*.sh' --include='*.toml' --include='*.nix' . 2>/dev/null | grep -v target/ | grep -v .git/")
+    known_files = [f for f in file_list.split('\n') if f]
+    # spot-check that some known files appear
+    spot_checks = ["token-bench.sh", "usage.rs", "commands.md"]
+    for sc in spot_checks:
+        matching = [f for f in known_files if sc in f]
+        if matching:
+            checks.append(check_contains(f"mentions {sc}", sc))
+
+elif prompt_idx == 4:
+    # "How many Rust source files in crates/?"
+    actual_count = int(run("find crates/ -name '*.rs' | wc -l"))
+    checks.append(check_number("rust file count", actual_count, tolerance=5))
+
+elif prompt_idx == 5:
+    # "Add comment then remove it" — file should be unchanged
+    checks.append(check_file_unchanged("src/main.rs unchanged", "src/main.rs"))
+    checks.append(check_contains("mentions adding", "add"))
+    checks.append(check_contains("mentions removing", "remov"))
+
+elif prompt_idx == 6:
+    # "3 largest crates by line count"
+    # compute ground truth
+    lines_per_crate = {}
+    crates_output = run("ls -d crates/*/")
+    for d in crates_output.split('\n'):
+        d = d.strip().rstrip('/')
+        if not d:
+            continue
+        name = os.path.basename(d)
+        count = run(f"find {d} -name '*.rs' -exec cat {{}} + 2>/dev/null | wc -l")
+        if count:
+            lines_per_crate[name] = int(count)
+    top3 = sorted(lines_per_crate.items(), key=lambda x: -x[1])[:3]
+    for name, count in top3:
+        checks.append(check_contains(f"top-3 includes {name}", name))
+
+elif prompt_idx == 7:
+    # "Read README.md, count words with wc -w"
+    actual_wc = int(run("wc -w < README.md"))
+    checks.append(check_number("word count", actual_wc, tolerance=5))
+
+elif prompt_idx == 8:
+    # "Explain relationship between provider and router"
+    checks.append(check_contains("mentions provider", "provider"))
+    checks.append(check_contains("mentions router", "router"))
+    checks.append(check_contains("mentions routing or fallback", "rout"))
+
+elif prompt_idx == 9:
+    # "SessionEntry variants"
+    variants = run("grep -oP '^\s+(\w+)\(' crates/clankers-session/src/entry.rs | sed 's/.*\\s//' | sed 's/(//'")
+    for v in variants.split('\n'):
+        v = v.strip()
+        if v:
+            checks.append(check_contains(f"mentions variant {v}", v))
+
+elif prompt_idx == 10:
+    # "Write a haiku" — just check non-empty and has multiple lines
+    lines = [l for l in text.strip().split('\n') if l.strip()]
+    if len(lines) >= 3:
+        checks.append({"check": "haiku has 3+ lines", "pass": True})
+    else:
+        checks.append({"check": "haiku has 3+ lines", "pass": False, "detail": f"got {len(lines)} lines"})
+
+failures = [c for c in checks if not c["pass"]]
+result = {
+    "pass": len(failures) == 0,
+    "checks_total": len(checks),
+    "checks_passed": len(checks) - len(failures),
+    "failures": failures
+}
+print(json.dumps(result))
+PYEOF
+}
+
 # ── Comparison table ──────────────────────────────────────────────────
 print_comparison() {
     local pi_json="$1"
@@ -519,10 +706,71 @@ elif ck_count > 0:
 else:
     print("  No results collected.")
 
+# Correctness verification summary
+pi_verify = {"total": 0, "passed": 0, "checks_total": 0, "checks_passed": 0, "failures": []}
+ck_verify = {"total": 0, "passed": 0, "checks_total": 0, "checks_passed": 0, "failures": []}
+
+for f in sorted(glob.glob(os.path.join(results_dir, "*_pi_verify.json"))):
+    try:
+        with open(f) as fh:
+            data = json.load(fh)
+        pi_verify["total"] += 1
+        pi_verify["checks_total"] += data.get("checks_total", 0)
+        pi_verify["checks_passed"] += data.get("checks_passed", 0)
+        if data.get("pass"):
+            pi_verify["passed"] += 1
+        else:
+            prompt_num = os.path.basename(f).split("_")[0]
+            for fail in data.get("failures", []):
+                pi_verify["failures"].append(f"#{prompt_num} {fail['check']}: {fail.get('detail', '')}")
+    except Exception:
+        pass
+
+for f in sorted(glob.glob(os.path.join(results_dir, "*_ck_verify.json"))):
+    try:
+        with open(f) as fh:
+            data = json.load(fh)
+        ck_verify["total"] += 1
+        ck_verify["checks_total"] += data.get("checks_total", 0)
+        ck_verify["checks_passed"] += data.get("checks_passed", 0)
+        if data.get("pass"):
+            ck_verify["passed"] += 1
+        else:
+            prompt_num = os.path.basename(f).split("_")[0]
+            for fail in data.get("failures", []):
+                ck_verify["failures"].append(f"#{prompt_num} {fail['check']}: {fail.get('detail', '')}")
+    except Exception:
+        pass
+
+if pi_verify["total"] > 0 or ck_verify["total"] > 0:
+    print(f"\n\033[1m{'═' * 60}\033[0m")
+    print(f"\033[1m  CORRECTNESS\033[0m")
+    print(f"\033[1m{'═' * 60}\033[0m")
+
+    if pi_verify["total"] > 0 and ck_verify["total"] > 0:
+        print(f"  {'Metric':<22} {'pi':>12} {'clankers':>12}")
+        print(f"  {'─' * 22} {'─' * 12} {'─' * 12}")
+        print(f"  {'Prompts passed':<22} {pi_verify['passed']}/{pi_verify['total']:>9} {ck_verify['passed']}/{ck_verify['total']:>9}")
+        print(f"  {'Checks passed':<22} {pi_verify['checks_passed']}/{pi_verify['checks_total']:>9} {ck_verify['checks_passed']}/{ck_verify['checks_total']:>9}")
+    elif pi_verify["total"] > 0:
+        print(f"  pi:       {pi_verify['passed']}/{pi_verify['total']} prompts, {pi_verify['checks_passed']}/{pi_verify['checks_total']} checks")
+    elif ck_verify["total"] > 0:
+        print(f"  clankers: {ck_verify['passed']}/{ck_verify['total']} prompts, {ck_verify['checks_passed']}/{ck_verify['checks_total']} checks")
+
+    all_failures = []
+    if pi_verify["failures"]:
+        all_failures += [f"  pi:       {f}" for f in pi_verify["failures"]]
+    if ck_verify["failures"]:
+        all_failures += [f"  clankers: {f}" for f in ck_verify["failures"]]
+    if all_failures:
+        print(f"\n  \033[0;31mFailures:\033[0m")
+        for f in all_failures:
+            print(f"    ✗ {f}")
+
 # Save summary JSON
 summary = {
-    "pi": {"count": pi_count, **pi_totals},
-    "clankers": {"count": ck_count, **ck_totals}
+    "pi": {"count": pi_count, **pi_totals, "verify": pi_verify},
+    "clankers": {"count": ck_count, **ck_totals, "verify": ck_verify}
 }
 summary_path = os.path.join(results_dir, "summary.json")
 with open(summary_path, "w") as f:
@@ -540,9 +788,12 @@ for run in $(seq 1 "$RUNS"); do
         echo -e "\n${BOLD}━━━ Run $run / $RUNS ━━━${RESET}"
     fi
 
-    for entry in "${FILTERED_PROMPTS[@]}"; do
-        suite="${entry%%|*}"
-        prompt="${entry#*|}"
+    for full_entry in "${FILTERED_PROMPTS[@]}"; do
+        # Parse: ORIGINAL_INDEX|SUITE|PROMPT
+        orig_idx="${full_entry%%|*}"
+        rest="${full_entry#*|}"
+        suite="${rest%%|*}"
+        prompt="${rest#*|}"
         prompt_idx=$((prompt_idx + 1))
         tag=$(printf "%03d_r%d" "$prompt_idx" "$run")
 
@@ -567,6 +818,27 @@ for run in $(seq 1 "$RUNS"); do
                 echo "{}" > "$pi_usage"
                 echo -e "${RED}no output${RESET} (${elapsed_ms}ms)"
             fi
+
+            # ── Verify pi ─────────────────────────────────────────
+            if [[ -s "$pi_raw" ]]; then
+                pi_text="$RESULTS_DIR/${tag}_pi_text.txt"
+                extract_text "$pi_raw" > "$pi_text"
+                pi_verify_json="$RESULTS_DIR/${tag}_pi_verify.json"
+                verify_prompt "$orig_idx" "$pi_text" "$WORKDIR" > "$pi_verify_json" 2>/dev/null
+                pi_pass=$(python3 -c "import json; d=json.load(open('$pi_verify_json')); print(f'{d[\"checks_passed\"]}/{d[\"checks_total\"]}')")
+                pi_ok=$(python3 -c "import json; print(json.load(open('$pi_verify_json')).get('pass', False))")
+                if [[ "$pi_ok" == "True" ]]; then
+                    echo -e "  ${BLUE}pi${RESET}       verify: ${GREEN}PASS${RESET} ($pi_pass checks)"
+                else
+                    echo -e "  ${BLUE}pi${RESET}       verify: ${RED}FAIL${RESET} ($pi_pass checks)"
+                    python3 -c "
+import json
+d = json.load(open('$pi_verify_json'))
+for f in d.get('failures', []):
+    print(f'             ✗ {f[\"check\"]}: {f.get(\"detail\", \"\")}')
+"
+                fi
+            fi
         fi
 
         # ── Run clankers ──────────────────────────────────────────
@@ -587,6 +859,27 @@ for run in $(seq 1 "$RUNS"); do
             else
                 echo "{}" > "$ck_usage"
                 echo -e "${RED}no output${RESET} (${elapsed_ms}ms)"
+            fi
+
+            # ── Verify clankers ───────────────────────────────────
+            if [[ -s "$ck_raw" ]]; then
+                ck_text="$RESULTS_DIR/${tag}_ck_text.txt"
+                extract_text "$ck_raw" > "$ck_text"
+                ck_verify_json="$RESULTS_DIR/${tag}_ck_verify.json"
+                verify_prompt "$orig_idx" "$ck_text" "$WORKDIR" > "$ck_verify_json" 2>/dev/null
+                ck_pass=$(python3 -c "import json; d=json.load(open('$ck_verify_json')); print(f'{d[\"checks_passed\"]}/{d[\"checks_total\"]}')")
+                ck_ok=$(python3 -c "import json; print(json.load(open('$ck_verify_json')).get('pass', False))")
+                if [[ "$ck_ok" == "True" ]]; then
+                    echo -e "  ${BLUE}clankers${RESET} verify: ${GREEN}PASS${RESET} ($ck_pass checks)"
+                else
+                    echo -e "  ${BLUE}clankers${RESET} verify: ${RED}FAIL${RESET} ($ck_pass checks)"
+                    python3 -c "
+import json
+d = json.load(open('$ck_verify_json'))
+for f in d.get('failures', []):
+    print(f'             ✗ {f[\"check\"]}: {f.get(\"detail\", \"\")}')
+"
+                fi
             fi
         fi
 
