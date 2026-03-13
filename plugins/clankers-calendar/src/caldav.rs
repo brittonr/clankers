@@ -3,7 +3,6 @@
 //! Speaks CalDAV (HTTP + WebDAV + iCalendar) to any standards-compliant
 //! calendar server. Uses `clankers_plugin_sdk::http` for HTTPS requests.
 
-use std::cell::RefCell;
 use std::collections::BTreeMap;
 
 use clankers_plugin_sdk::http;
@@ -22,7 +21,6 @@ pub struct CalDavConfig {
     pub password: String,
     pub default_timezone: String,
     pub default_calendar: Option<String>,
-    pub allowed_attendees: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -40,16 +38,6 @@ impl CalDavConfig {
         let password = require_config("caldav_password")?;
         let default_timezone = get_config("default_timezone").unwrap_or_else(|| "UTC".to_string());
         let default_calendar = get_config("default_calendar");
-        let allowed_attendees = get_config("allowed_attendees");
-
-        // Reject non-HTTPS URLs — credentials are sent via Basic auth
-        if !url.starts_with("https://") {
-            return Err(
-                "CALDAV_URL must use HTTPS — credentials are sent via Basic auth and \
-                 would be exposed in cleartext over HTTP."
-                    .to_string(),
-            );
-        }
 
         // Ensure URL ends with /
         let url = if url.ends_with('/') {
@@ -64,7 +52,6 @@ impl CalDavConfig {
             password,
             default_timezone,
             default_calendar,
-            allowed_attendees,
         })
     }
 }
@@ -82,24 +69,6 @@ fn get_config(key: &str) -> Option<String> {
         .ok()
         .flatten()
         .filter(|s| !s.is_empty())
-}
-
-// ═══════════════════════════════════════════════════════════════════════
-//  Calendar URL cache — avoids PROPFIND on every tool call
-// ═══════════════════════════════════════════════════════════════════════
-
-thread_local! {
-    static CALENDAR_CACHE: RefCell<Option<Vec<CalendarInfo>>> = RefCell::new(None);
-}
-
-fn get_cached_calendars() -> Option<Vec<CalendarInfo>> {
-    CALENDAR_CACHE.with(|c| c.borrow().clone())
-}
-
-fn set_cached_calendars(calendars: Vec<CalendarInfo>) {
-    CALENDAR_CACHE.with(|c| {
-        *c.borrow_mut() = Some(calendars);
-    });
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -128,12 +97,8 @@ fn make_headers(config: &CalDavConfig) -> BTreeMap<String, String> {
 //  CalDAV operations
 // ═══════════════════════════════════════════════════════════════════════
 
-/// Discover calendars via PROPFIND. Results are cached for the plugin lifetime.
+/// Discover calendars via PROPFIND.
 pub fn discover_calendars(config: &CalDavConfig) -> Result<Vec<CalendarInfo>, String> {
-    if let Some(cached) = get_cached_calendars() {
-        return Ok(cached);
-    }
-
     let mut headers = make_headers(config);
     headers.insert("Depth".to_string(), "1".to_string());
 
@@ -153,9 +118,7 @@ pub fn discover_calendars(config: &CalDavConfig) -> Result<Vec<CalendarInfo>, St
         return Err(http_status_to_error(resp.status, "Calendar discovery"));
     }
 
-    let calendars = parse_multistatus_calendars(&resp.text());
-    set_cached_calendars(calendars.clone());
-    Ok(calendars)
+    Ok(parse_multistatus_calendars(&resp.text()))
 }
 
 /// Query events in a date range via REPORT calendar-query.
@@ -222,18 +185,27 @@ pub fn create_event(
     );
     headers.insert("If-None-Match".to_string(), "*".to_string());
 
-    let base = if calendar_url.ends_with('/') {
-        calendar_url.to_string()
-    } else {
-        format!("{calendar_url}/")
-    };
-    let url = format!("{base}{uid}.ics");
+    let url = format!(
+        "{}{}.ics",
+        if calendar_url.ends_with('/') {
+            calendar_url
+        } else {
+            calendar_url
+        },
+        uid
+    );
 
     let resp = http::request("PUT", &url, &headers, Some(ical_body))
         .map_err(|e| format!("Create event failed: {e}"))?;
 
     if resp.status == 201 || resp.status == 204 {
-        Ok(uid.to_string())
+        // Extract ETag from response — if available in body
+        Ok(resp
+            .text()
+            .lines()
+            .find(|l| l.to_lowercase().contains("etag"))
+            .unwrap_or("")
+            .to_string())
     } else {
         Err(http_status_to_error(resp.status, "Create event"))
     }
@@ -278,36 +250,25 @@ pub fn delete_event(config: &CalDavConfig, event_url: &str) -> Result<(), String
 }
 
 /// Fetch a single event by URL. Returns (ical_body, etag).
-///
-/// Uses a PROPFIND to get both the calendar data and the ETag in one
-/// request, since the SDK's HTTP response doesn't expose headers.
 pub fn fetch_event(config: &CalDavConfig, event_url: &str) -> Result<(String, String), String> {
     let mut headers = make_headers(config);
-    headers.insert("Depth".to_string(), "0".to_string());
+    headers.insert(
+        "Content-Type".to_string(),
+        "text/calendar; charset=utf-8".to_string(),
+    );
 
-    let body = r#"<?xml version="1.0" encoding="UTF-8"?>
-<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">
-  <D:prop>
-    <D:getetag/>
-    <C:calendar-data/>
-  </D:prop>
-</D:propfind>"#;
-
-    let resp = http::request("PROPFIND", event_url, &headers, Some(body))
+    let resp = http::request("GET", event_url, &headers, None)
         .map_err(|e| format!("Fetch event failed: {e}"))?;
 
-    if !resp.is_success() && resp.status != 207 {
+    if !resp.is_success() {
         return Err(http_status_to_error(resp.status, "Fetch event"));
     }
 
-    let entries = parse_multistatus_events(&resp.text());
-    let (_href, etag, cal_data) = entries
-        .into_iter()
-        .next()
-        .ok_or("Server returned no event data for PROPFIND.")?;
-
-    let cal_data = xml_unescape(&cal_data);
-    Ok((cal_data, etag))
+    // ETag is typically in response headers, but we get body here
+    let body = resp.text();
+    // Try to extract etag from the response text if it's in the headers
+    let etag = String::new(); // CalDAV servers return ETag in headers, not body
+    Ok((body, etag))
 }
 
 /// Resolve a calendar URL by name, or use default.
@@ -354,10 +315,12 @@ pub fn resolve_calendar_url(
 pub fn parse_multistatus_events(xml: &str) -> Vec<(String, String, String)> {
     let mut results = Vec::new();
 
+    // Split on <d:response or <D:response
     let response_tags = ["<d:response", "<D:response", "<response"];
     let mut remaining = xml;
 
     while !remaining.is_empty() {
+        // Find next response block
         let start = response_tags
             .iter()
             .filter_map(|tag| remaining.find(tag))
@@ -370,6 +333,7 @@ pub fn parse_multistatus_events(xml: &str) -> Vec<(String, String, String)> {
 
         remaining = &remaining[start..];
 
+        // Find end of response block
         let end_tags = ["</d:response>", "</D:response>", "</response>"];
         let end = end_tags
             .iter()
@@ -438,6 +402,7 @@ pub fn parse_multistatus_calendars(xml: &str) -> Vec<CalendarInfo> {
         let block = &remaining[..end];
         remaining = &remaining[end..];
 
+        // Check if this response is a calendar (has calendar resourcetype)
         let is_calendar = calendar_tags.iter().any(|tag| block.contains(tag));
         if !is_calendar {
             continue;
@@ -457,6 +422,7 @@ pub fn parse_multistatus_calendars(xml: &str) -> Vec<CalendarInfo> {
 
         if !href.is_empty() {
             let display_name = if name.is_empty() {
+                // Use last path segment as name
                 href.trim_end_matches('/')
                     .rsplit('/')
                     .next()
@@ -593,6 +559,7 @@ mod tests {
     fn auth_header_special_chars() {
         let header = auth_header("me@fastmail.com", "s3cr3t!@#");
         assert!(header.starts_with("Basic "));
+        // Verify base64 of "me@fastmail.com:s3cr3t!@#"
         assert_eq!(
             header,
             format!("Basic {}", base64_encode(b"me@fastmail.com:s3cr3t!@#"))
@@ -677,6 +644,7 @@ END:VCALENDAR</cal:calendar-data>
 
         let results = parse_multistatus_events(xml);
         assert_eq!(results.len(), 1);
+        // calendar-data should contain the entity as-is; xml_unescape is called by caller
         assert!(results[0].2.contains("&amp;") || results[0].2.contains("& B"));
     }
 
@@ -717,7 +685,7 @@ END:VCALENDAR</cal:calendar-data>
 </d:multistatus>"#;
 
         let calendars = parse_multistatus_calendars(xml);
-        assert_eq!(calendars.len(), 2);
+        assert_eq!(calendars.len(), 2); // should skip the non-calendar collection
         assert_eq!(calendars[0].name, "Personal");
         assert_eq!(calendars[0].url, "/dav/calendars/user/me/personal/");
         assert_eq!(calendars[0].color, Some("#0000FF".to_string()));

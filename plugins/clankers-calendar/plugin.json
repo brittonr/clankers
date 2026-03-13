@@ -5,35 +5,34 @@
   "wasm": "clankers_calendar.wasm",
   "kind": "extism",
   "permissions": ["net", "ui"],
-  "allowed_hosts": ["caldav.fastmail.com", "www.googleapis.com", "apidata.googleusercontent.com"],
+  "allowed_hosts": [],
   "config_env": {
     "caldav_url": "CALDAV_URL",
     "caldav_username": "CALDAV_USERNAME",
     "caldav_password": "CALDAV_PASSWORD",
     "default_timezone": "CLANKERS_TIMEZONE",
-    "default_calendar": "CALDAV_DEFAULT_CALENDAR",
-    "allowed_attendees": "CALDAV_ALLOWED_ATTENDEES"
+    "default_calendar": "CALDAV_DEFAULT_CALENDAR"
   },
   "tools": ["list_events", "create_event", "update_event", "delete_event", "check_availability"],
-  "commands": [],
+  "commands": ["calendar"],
   "events": ["agent_start", "turn_start"],
   "tool_definitions": [
     {
       "name": "list_events",
-      "description": "List calendar events in a date/time range from your CalDAV calendar. Returns events sorted chronologically with title, time, location, and UID. Defaults to today if no range specified.",
+      "description": "List calendar events in a date/time range from your CalDAV calendar. Returns events sorted chronologically with title, time, location. Defaults to today if no range specified.",
       "handler": "handle_tool_call",
       "input_schema": {
         "type": "object",
         "properties": {
-          "start": { "type": "string", "description": "Start of range (ISO 8601 date or datetime). Defaults to today." },
+          "start": { "type": "string", "description": "Start of range (ISO 8601 date or datetime). Defaults to now." },
           "end": { "type": "string", "description": "End of range (ISO 8601). Defaults to end of day." },
-          "calendar": { "type": "string", "description": "Calendar name to query. Defaults to primary." }
+          "calendar": { "type": "string", "description": "Calendar name to query. Defaults to all." }
         }
       }
     },
     {
       "name": "create_event",
-      "description": "Create a new calendar event on your CalDAV calendar. Supports title, start/end time, duration, location, description, and attendees. Returns the event UID. Attendees are restricted to addresses matching CALDAV_ALLOWED_ATTENDEES.",
+      "description": "Create a new calendar event on your CalDAV calendar. Supports title, start/end time, duration, location, description, and attendees. Returns the event UID.",
       "handler": "handle_tool_call",
       "input_schema": {
         "type": "object",
@@ -44,7 +43,7 @@
           "duration": { "type": "string", "description": "Duration (e.g. '1h', '30m', '1h30m')" },
           "location": { "type": "string", "description": "Event location" },
           "description": { "type": "string", "description": "Event notes" },
-          "attendees": { "type": "string", "description": "Comma-separated attendee emails (restricted by CALDAV_ALLOWED_ATTENDEES)" },
+          "attendees": { "type": "string", "description": "Comma-separated attendee emails" },
           "calendar": { "type": "string", "description": "Target calendar name" },
           "all_day": { "type": "boolean", "description": "Create all-day event" }
         },
