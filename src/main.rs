@@ -494,6 +494,9 @@ async fn run_interactive(
     if cli.no_worktree {
         settings.use_worktrees = false;
     }
+    if cli.no_cache {
+        settings.no_cache = true;
+    }
     if cli.enable_routing && settings.routing.is_none() {
         settings.routing = Some(clankers::model_selection::config::RoutingPolicyConfig::default());
     }

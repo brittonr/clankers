@@ -100,6 +100,7 @@ impl Provider for RpcProvider {
             temperature: request.temperature,
             tools: request.tools,
             thinking: request.thinking,
+            no_cache: request.no_cache,
             extra_params: HashMap::new(),
         };
 

@@ -207,11 +207,14 @@ fn estimate_message_tokens(message: &AgentMessage) -> usize {
 }
 
 /// Build full context for an LLM request
-pub fn build_context(messages: &[AgentMessage], system_prompt: &str, max_input_tokens: usize) -> AgentContext {
+pub fn build_context(messages: &[AgentMessage], system_prompt: &str, max_input_tokens: usize, compact: bool) -> AgentContext {
     let system_tokens = clankers_util::token::estimate_tokens(system_prompt);
-    // Compact old tool results before truncation
-    let compacted = compact_stale_tool_results(messages, 3);
-    let truncated = truncate_messages(&compacted, max_input_tokens, system_tokens);
+    let effective_messages = if compact {
+        compact_stale_tool_results(messages, 3)
+    } else {
+        messages.to_vec()
+    };
+    let truncated = truncate_messages(&effective_messages, max_input_tokens, system_tokens);
     let msg_tokens: usize = truncated.iter().map(estimate_message_tokens).sum();
 
     AgentContext {
@@ -313,7 +316,7 @@ mod tests {
     #[test]
     fn test_build_context() {
         let msgs = vec![make_user_msg("hello")];
-        let ctx = build_context(&msgs, "system prompt", 100_000);
+        let ctx = build_context(&msgs, "system prompt", 100_000, true);
         assert_eq!(ctx.system_prompt, "system prompt");
         assert!(!ctx.messages.is_empty());
         assert!(ctx.estimated_tokens > 0);

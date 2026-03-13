@@ -70,6 +70,10 @@ pub struct CompletionRequest {
     /// Extended thinking configuration
     pub thinking: Option<ThinkingConfig>,
 
+    /// Disable prompt caching (skip cache_control breakpoints)
+    #[serde(default)]
+    pub no_cache: bool,
+
     /// Extra provider-specific parameters passed through verbatim.
     ///
     /// Parameters like `response_format`, `seed`, `top_p`, `frequency_penalty`,

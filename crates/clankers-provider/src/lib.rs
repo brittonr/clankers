@@ -80,6 +80,10 @@ pub struct CompletionRequest {
 
     /// Extended thinking configuration (if supported)
     pub thinking: Option<ThinkingConfig>,
+
+    /// Disable prompt caching (skip cache_control breakpoints)
+    #[serde(default)]
+    pub no_cache: bool,
 }
 
 // Re-export ThinkingConfig from clankers-router (canonical definition)

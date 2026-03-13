@@ -143,6 +143,7 @@ pub async fn compact_with_llm(
         temperature: Some(0.3),
         tools: Vec::new(),
         thinking: None,
+        no_cache: false,
     };
 
     let (tx, mut rx) = mpsc::channel(64);

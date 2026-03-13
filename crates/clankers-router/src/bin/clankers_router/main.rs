@@ -573,6 +573,7 @@ async fn run_ask(
         temperature,
         tools: vec![],
         thinking: None,
+        no_cache: false,
         extra_params: Default::default(),
     };
 

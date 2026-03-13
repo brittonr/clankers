@@ -237,7 +237,7 @@ impl AnthropicProvider {
                 Credential::OAuth(token) => {
                     builder = builder
                         .header("authorization", format!("Bearer {}", token))
-                        .header("anthropic-beta", "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14")
+                        .header("anthropic-beta", "prompt-caching-2024-07-31,claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14")
                         .header("user-agent", "claude-cli/2.1.2 (external, cli)")
                         .header("x-app", "cli")
                         .header("anthropic-dangerous-direct-browser-access", "true");
@@ -317,23 +317,28 @@ fn build_request_body(request: &CompletionRequest, is_oauth: bool) -> Result<Val
         let mut blocks = vec![json!({
             "type": "text",
             "text": "You are Claude Code, Anthropic's official CLI for Claude.",
-            "cache_control": { "type": "ephemeral" }
         })];
         if let Some(system) = &request.system_prompt {
             blocks.push(json!({
                 "type": "text",
                 "text": system,
-                "cache_control": { "type": "ephemeral" }
             }));
+        }
+        if !request.no_cache {
+            for block in &mut blocks {
+                block["cache_control"] = json!({"type": "ephemeral"});
+            }
         }
         body["system"] = json!(blocks);
     } else if let Some(system) = &request.system_prompt {
-        // API key: use structured blocks with cache_control for prompt caching
-        body["system"] = json!([{
+        let mut block = json!({
             "type": "text",
             "text": system,
-            "cache_control": { "type": "ephemeral" }
-        }]);
+        });
+        if !request.no_cache {
+            block["cache_control"] = json!({"type": "ephemeral"});
+        }
+        body["system"] = json!([block]);
     }
 
     if !request.tools.is_empty() {
@@ -349,8 +354,9 @@ fn build_request_body(request: &CompletionRequest, is_oauth: bool) -> Result<Val
             })
             .collect();
 
-        // Cache the last tool definition (Anthropic caching convention)
-        if let Some(last) = tools.last_mut() {
+        if !request.no_cache
+            && let Some(last) = tools.last_mut()
+        {
             last["cache_control"] = json!({"type": "ephemeral"});
         }
 
@@ -361,7 +367,9 @@ fn build_request_body(request: &CompletionRequest, is_oauth: bool) -> Result<Val
     // Anthropic caches the request prefix up to each cache_control breakpoint.
     // Since conversations are append-only, the prefix through the last user
     // message is identical across turns → near-perfect cache hits.
-    if let Some(messages) = body["messages"].as_array_mut() {
+    if !request.no_cache
+        && let Some(messages) = body["messages"].as_array_mut()
+    {
         for msg in messages.iter_mut().rev() {
             if msg["role"] == "user" {
                 if let Some(content) = msg["content"].as_array_mut()

@@ -108,6 +108,12 @@ pub struct Settings {
     /// Use `/autotest` to toggle on/off during a session.
     #[serde(default)]
     pub auto_test_command: Option<String>,
+
+    /// Disable prompt caching (send requests without cache_control breakpoints).
+    /// When false (default), tool result compaction is also skipped because
+    /// prompt caching provides larger cost savings than compaction.
+    #[serde(default)]
+    pub no_cache: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -232,6 +238,7 @@ impl Default for Settings {
             disabled_tools: Vec::new(),
             hooks: clankers_hooks::HooksConfig::default(),
             auto_test_command: None,
+            no_cache: false,
         }
     }
 }

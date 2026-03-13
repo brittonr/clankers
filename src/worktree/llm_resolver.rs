@@ -84,6 +84,7 @@ pub async fn resolve_conflict(
         temperature: Some(0.0),
         tools: vec![],
         thinking: None,
+        no_cache: false,
     };
 
     let (tx, mut rx) = mpsc::channel(64);

@@ -168,14 +168,14 @@ impl AnthropicClient {
             if credential.is_oauth() {
                 builder = builder
                     .header("authorization", format!("Bearer {}", credential.token()))
-                    .header("anthropic-beta", "claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14")
+                    .header("anthropic-beta", "prompt-caching-2024-07-31,claude-code-20250219,oauth-2025-04-20,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14")
                     .header("user-agent", format!("claude-cli/{} (external, cli)", "2.1.2"))
                     .header("x-app", "cli")
                     .header("anthropic-dangerous-direct-browser-access", "true");
             } else {
                 builder = builder
                     .header("x-api-key", credential.token())
-                    .header("anthropic-beta", "fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14")
+                    .header("anthropic-beta", "prompt-caching-2024-07-31,fine-grained-tool-streaming-2025-05-14,interleaved-thinking-2025-05-14")
                     .header("user-agent", format!("clankers/{}", CLANKERS_VERSION));
             }
 
@@ -251,14 +251,14 @@ impl AnthropicClient {
 /// Convert our CompletionRequest into the Anthropic API format
 pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> ApiRequest {
     let mut system_blocks = Vec::new();
-    let cache = CacheControl::ephemeral();
+    let cache_control = if request.no_cache { None } else { Some(CacheControl::ephemeral()) };
 
     // OAuth requires Claude Code identity prefix
     if is_oauth {
         system_blocks.push(SystemBlock {
             block_type: "text".to_string(),
             text: "You are Claude Code, Anthropic's official CLI for Claude.".to_string(),
-            cache_control: Some(cache.clone()),
+            cache_control: cache_control.clone(),
         });
     }
 
@@ -266,7 +266,7 @@ pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> 
         system_blocks.push(SystemBlock {
             block_type: "text".to_string(),
             text: prompt.clone(),
-            cache_control: Some(cache.clone()),
+            cache_control: cache_control.clone(),
         });
     }
 
@@ -276,7 +276,9 @@ pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> 
     // Anthropic caches the request prefix up to each cache_control breakpoint.
     // Since conversations are append-only, the prefix through the last user
     // message is identical across turns → near-perfect cache hits.
-    if let Some(last_user) = messages.iter_mut().rev().find(|m| m.role == "user")
+    // Skipped when --no-cache is set.
+    if !request.no_cache
+        && let Some(last_user) = messages.iter_mut().rev().find(|m| m.role == "user")
         && let Some(last_block) = last_user.content.last_mut()
     {
         last_block.set_cache_control(CacheControl::ephemeral());
@@ -285,7 +287,13 @@ pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> 
     let tools = if request.tools.is_empty() {
         None
     } else {
-        Some(convert_tools(&request.tools))
+        let mut api_tools = convert_tools(&request.tools);
+        if !request.no_cache
+            && let Some(last) = api_tools.last_mut()
+        {
+            last.cache_control = Some(CacheControl::ephemeral());
+        }
+        Some(api_tools)
     };
 
     let thinking = request.thinking.as_ref().and_then(|t| {
@@ -408,7 +416,7 @@ fn convert_content_block(content: &crate::message::Content) -> ApiContentBlock {
 }
 
 fn convert_tools(tools: &[clankers_router::provider::ToolDefinition]) -> Vec<ApiTool> {
-    let mut api_tools: Vec<_> = tools
+    tools
         .iter()
         .map(|t| ApiTool {
             name: t.name.clone(),
@@ -416,12 +424,5 @@ fn convert_tools(tools: &[clankers_router::provider::ToolDefinition]) -> Vec<Api
             input_schema: t.input_schema.clone(),
             cache_control: None,
         })
-        .collect();
-
-    // Add cache_control to the LAST tool (Anthropic caching convention)
-    if let Some(last) = api_tools.last_mut() {
-        last.cache_control = Some(CacheControl::ephemeral());
-    }
-
-    api_tools
+        .collect()
 }

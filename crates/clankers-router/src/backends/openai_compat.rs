@@ -1293,7 +1293,8 @@ mod tests {
                 input_schema: json!({"type": "object", "properties": {"command": {"type": "string"}}}),
             }],
             thinking: None,
-            extra_params: Default::default(),
+            no_cache: false,
+        extra_params: Default::default(),
         };
 
         let oai_req = build_openai_request(&request);
@@ -1316,7 +1317,8 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
-            extra_params: Default::default(),
+            no_cache: false,
+        extra_params: Default::default(),
         };
         let oai_req = build_openai_request(&request);
         assert!(oai_req.tools.is_none());

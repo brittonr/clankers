@@ -49,6 +49,13 @@
 - `push_bounded(vec, item, max)` drops 10% when full — amortizes O(n) drain
 - `debug_assert` on rate signs + `is_finite()` check prevents NaN propagation
 
+### Conversation caching
+- Compaction invalidates cache prefixes — skip compaction when prompt caching is active
+- `build_context(compact: bool)` — compact only when `--no-cache` (i.e., `settings.no_cache`)
+- `prompt-caching-2024-07-31` beta header needed in ALL Anthropic request paths (provider + router, OAuth + API key)
+- Two `CompletionRequest` types: provider (`clankers-provider/src/lib.rs`) and router (`clankers-router/src/provider.rs`) — both need `no_cache`
+- Clippy `collapsible_if`: `if !flag { if let Some(x) = ... }` → `if !flag && let Some(x) = ...`
+
 ### Daemon-client architecture
 - Protocol: serde_json + length-prefixed frames over Unix sockets (local) / iroh QUIC (remote)
 - rkyv rejected: wrong tool for small text messages, loses debuggability

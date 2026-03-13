@@ -21,9 +21,11 @@
 
 ## Phase 2: Make Compaction Cache-Safe
 
-- [ ] **2.1** Choose compaction strategy (Option A: compact immediately, Option B: disable when caching)
-- [ ] **2.2** Implement chosen strategy in `build_context()` / `compact_stale_tool_results()`
+- [x] **2.1** Choose compaction strategy (Option A: compact immediately, Option B: disable when caching)
+  - Chose Option B: skip compaction when caching is active. Caching saves ~90% on reads vs compaction's ~23% context reduction. LLM auto-compaction handles overflow.
+- [x] **2.2** Implement chosen strategy in `build_context()` / `compact_stale_tool_results()`
   - File: `crates/clankers-agent/src/context.rs`
+  - `build_context()` accepts `compact: bool`; `prepare_turn_context()` passes `self.settings.no_cache` (compact only when caching disabled)
 
 ## Phase 3: Verify
 
@@ -35,6 +37,11 @@
 
 ## Phase 4: Polish
 
-- [ ] **4.1** Wire up `--no-cache` flag (currently dead code)
-- [ ] **4.2** Ensure `prompt-caching-2024-07-31` beta header in all paths
+- [x] **4.1** Wire up `--no-cache` flag (currently dead code)
+  - Added `no_cache: bool` to Settings, both CompletionRequest types, TurnConfig
+  - Threaded from CLI → Settings → Agent → TurnConfig → CompletionRequest → provider/router
+  - All cache_control insertion guarded behind `!no_cache`
+- [x] **4.2** Ensure `prompt-caching-2024-07-31` beta header in all paths
+  - Added to provider path: both OAuth and API key branches
+  - Added to router path: OAuth branch (API key already had it)
 - [ ] **4.3** Consider `ttl: "1h"` support for long sessions

@@ -684,6 +684,7 @@ impl Router {
             temperature: Some(0.0),
             tools: vec![],
             thinking: None,
+            no_cache: false,
             extra_params: HashMap::new(),
         };
 

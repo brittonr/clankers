@@ -44,6 +44,7 @@ pub(super) async fn execute_turn(
         temperature: config.temperature,
         tools: tool_defs.to_vec(),
         thinking: config.thinking.clone(),
+        no_cache: config.no_cache,
     };
 
     let (stream_tx, mut stream_rx) = mpsc::channel(256);

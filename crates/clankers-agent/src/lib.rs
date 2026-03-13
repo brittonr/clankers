@@ -236,6 +236,7 @@ impl Agent {
             thinking: self.thinking.clone(),
             max_turns: 25,
             output_truncation: self.output_truncation_config(),
+            no_cache: self.settings.no_cache,
         };
 
         let result = turn::run_turn_loop(
@@ -361,7 +362,11 @@ impl Agent {
     /// Prepare context for turn execution
     fn prepare_turn_context(&self, max_input: usize) -> context::AgentContext {
         let system_prompt_with_memory = self.system_prompt_with_memory();
-        context::build_context(&self.messages, &system_prompt_with_memory, max_input)
+        // Skip tool result compaction when prompt caching is active (default).
+        // Compaction changes the token prefix, invalidating cache hits.
+        // Caching saves ~90% on reads vs compaction's ~23% context reduction.
+        let compact = self.settings.no_cache;
+        context::build_context(&self.messages, &system_prompt_with_memory, max_input, compact)
     }
 
     /// Sync model switch from tool-requested slot
@@ -531,7 +536,8 @@ impl Agent {
 
             // Build phase system prompt
             let phase_system = format!("{}{}", base_system_prompt, phase.system_suffix);
-            let ctx = context::build_context(&self.messages, &phase_system, max_input);
+            let compact = self.settings.no_cache;
+            let ctx = context::build_context(&self.messages, &phase_system, max_input, compact);
 
             let _ = self.event_tx.send(AgentEvent::BeforeAgentStart {
                 prompt: if phase_idx == 0 {
@@ -551,6 +557,7 @@ impl Agent {
                 thinking: self.thinking.clone(),
                 max_turns: if phase_idx == 0 { 25 } else { 10 },
                 output_truncation: self.output_truncation_config(),
+                no_cache: self.settings.no_cache,
             };
 
             let result = turn::run_turn_loop(

@@ -38,6 +38,7 @@ pub struct TurnConfig {
     pub max_turns: u32,
     /// Output truncation config for tool results
     pub output_truncation: clankers_loop::OutputTruncationConfig,
+    pub no_cache: bool,
 }
 
 /// Result of collecting a streamed response

@@ -49,6 +49,7 @@ impl Provider for RouterCompatAdapter {
             temperature: request.temperature,
             tools: request.tools,
             thinking: request.thinking,
+            no_cache: request.no_cache,
             extra_params: HashMap::new(),
         };
 
@@ -325,6 +326,7 @@ mod tests {
             temperature: None,
             tools: vec![],
             thinking: None,
+            no_cache: false,
         };
 
         router.complete(request, tx).await.expect("router should complete successfully");
