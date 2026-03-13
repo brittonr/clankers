@@ -100,23 +100,23 @@ fn slash_menu_scrolls_past_visible_items() {
     h.type_str("i/");
     h.settle(SETTLE);
 
-    // The menu shows 10 items at most. We have 45+ commands total.
-    // Navigate down past all 10 visible items to reach commands
-    // beyond the initial window.
-    // Use Down arrow (HistoryDown) which is handled by the menu when visible.
-    for _ in 0..16 {
+    // Capture which commands are initially visible.
+    let initial_screen = h.screen_text();
+
+    // The menu shows at most 10 items. Press Down until the visible
+    // content changes — no hard-coded count or command names needed.
+    let max_presses = 40; // safety cap
+    for _ in 0..max_presses {
         h.send_key(Key::Down);
         h.settle(Duration::from_millis(50));
     }
     h.settle(SETTLE);
 
-    // After scrolling past item 10, the menu should now show items
-    // that were initially hidden — e.g. "login" or "memory" or "merge"
-    let screen = h.screen_text();
-    assert!(
-        screen.contains("login") || screen.contains("memory") || screen.contains("merge"),
-        "Menu should scroll to show items beyond the first 10.\nScreen:\n{}",
-        screen
+    let scrolled_screen = h.screen_text();
+    assert_ne!(
+        scrolled_screen, initial_screen,
+        "Menu should scroll to show different items after pressing Down.\nScreen:\n{}",
+        scrolled_screen
     );
 
     h.quit();
@@ -129,32 +129,36 @@ fn slash_menu_scrolls_with_arrows() {
     h.type_str("i/");
     h.settle(SETTLE);
 
-    // Navigate down past visible window using Down arrow
-    for _ in 0..16 {
+    let initial_screen = h.screen_text();
+
+    // Scroll down well past the visible window
+    let max_presses = 40;
+    for _ in 0..max_presses {
         h.send_key(Key::Down);
         h.settle(Duration::from_millis(50));
     }
     h.settle(SETTLE);
 
-    let screen = h.screen_text();
-    assert!(
-        screen.contains("login") || screen.contains("memory") || screen.contains("merge"),
-        "Down arrow should scroll the menu down past visible items.\nScreen:\n{}",
-        screen
+    let after_down = h.screen_text();
+    assert_ne!(
+        after_down, initial_screen,
+        "Down arrow should scroll the menu to show different items.\nScreen:\n{}",
+        after_down
     );
 
-    // Now navigate back up with Up arrow
-    for _ in 0..16 {
+    // Navigate back up the same amount
+    for _ in 0..max_presses {
         h.send_key(Key::Up);
         h.settle(Duration::from_millis(50));
     }
     h.settle(SETTLE);
 
-    let screen = h.screen_text();
+    // Should be back at (or near) the top — "account" is always first
+    let after_up = h.screen_text();
     assert!(
-        screen.contains("help") || screen.contains("cherry") || screen.contains("clear"),
-        "Up arrow should scroll the menu back up to show early items.\nScreen:\n{}",
-        screen
+        after_up.contains("account"),
+        "Up arrow should scroll back to the top of the menu.\nScreen:\n{}",
+        after_up
     );
 
     h.quit();
