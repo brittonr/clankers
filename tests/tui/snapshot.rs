@@ -311,6 +311,7 @@ impl ScreenCapture {
     }
 
     /// Format as plain text (one row per line, trailing spaces trimmed).
+    #[allow(dead_code)]
     pub fn plain_text(&self) -> String {
         let mut out = String::new();
         for (row_idx, row) in self.cells.iter().enumerate() {
@@ -335,17 +336,20 @@ impl ScreenCapture {
 }
 
 /// Assert that the current PTY screen matches an insta text snapshot.
+#[allow(unused_macros)]
 macro_rules! assert_text_snapshot {
     ($name:expr, $harness:expr) => {{
         let text = $harness.screen_text();
         insta::assert_snapshot!($name, text);
     }};
 }
+#[allow(unused_imports)]
 pub(crate) use assert_text_snapshot;
 
 /// Assert that the current PTY screen matches an insta styled snapshot.
 ///
 /// Captures cell-level color and style information.
+#[allow(unused_macros)]
 macro_rules! assert_styled_snapshot {
     ($name:expr, $harness:expr) => {{
         let capture = super::snapshot::ScreenCapture::from_pty($harness);
@@ -353,9 +357,11 @@ macro_rules! assert_styled_snapshot {
         insta::assert_snapshot!($name, styled);
     }};
 }
+#[allow(unused_imports)]
 pub(crate) use assert_styled_snapshot;
 
 /// Assert that tmux pane text matches an insta snapshot.
+#[allow(unused_macros)]
 macro_rules! assert_tmux_snapshot {
     ($name:expr, $harness:expr) => {{
         let text = $harness.capture_text();
@@ -374,10 +380,12 @@ macro_rules! assert_tmux_snapshot {
         insta::assert_snapshot!($name, trimmed);
     }};
 }
+#[allow(unused_imports)]
 pub(crate) use assert_tmux_snapshot;
 
 /// Assert that the current PTY screen matches an insta snapshot,
 /// with dynamic content (git status, token counts) normalized.
+#[allow(unused_macros)]
 macro_rules! assert_normalized_snapshot {
     ($name:expr, $harness:expr) => {{
         let text = $harness.screen_text();
@@ -385,6 +393,7 @@ macro_rules! assert_normalized_snapshot {
         insta::assert_snapshot!($name, normalized);
     }};
 }
+#[allow(unused_imports)]
 pub(crate) use assert_normalized_snapshot;
 
 /// Assert on just the structural elements: first row, status bar, and
@@ -456,7 +465,7 @@ pub fn normalize_styled_text(text: &str) -> String {
 /// Replaces volatile fields (git status counters, timestamps, etc.)
 /// with stable placeholders so snapshots don't break on unrelated changes.
 pub fn normalize_screen_text(text: &str) -> String {
-    text.lines().map(|l| normalize_line(l)).collect::<Vec<_>>().join("\n")
+    text.lines().map(normalize_line).collect::<Vec<_>>().join("\n")
 }
 
 fn normalize_line(line: &str) -> String {
@@ -530,6 +539,11 @@ pub fn extract_structure(harness: &super::harness::TuiTestHarness) -> String {
     let lines: Vec<&str> = text.lines().collect();
     let mut out = Vec::new();
 
+    // Pre-compile regexes outside the loop
+    let re_artifact = regex::Regex::new(r"\|\s*[/a-zA-Z`][/a-zA-Z0-9._-]*(\s*[│┘┐┤└])").unwrap();
+    let re_bleed = regex::Regex::new(r"│[^│┌┐└┘┤├─]{2,}(┌)").unwrap();
+    let re_space = regex::Regex::new(r"\s*([│┘┐┤└])").unwrap();
+
     for (i, line) in lines.iter().enumerate() {
         let trimmed = line.trim();
 
@@ -556,22 +570,19 @@ pub fn extract_structure(harness: &super::harness::TuiTestHarness) -> String {
             // Strip cursor/input artifacts: partial text fragments that appear
             // between the last status bar pipe and border (from PTY timing).
             // Catches: "idle | /│", "idle | cla └", "MODEL | /ho │"
-            let re_artifact = regex::Regex::new(r"\|\s*[/a-zA-Z`][/a-zA-Z0-9._-]*(\s*[│┘┐┤└])").unwrap();
             normalized = re_artifact.replace_all(&normalized, "|$1").to_string();
 
             // Strip volatile chat content bleeding into panel border lines
             // e.g. "│press i to sta┌ Space ──" → "│┌ Space ──"
             // Also catches: "│  clankers — c┌ Space ──" (greeting behind popup)
-            let re_bleed = regex::Regex::new(r"│[^│┌┐└┘┤├─]{2,}(┌)").unwrap();
             normalized = re_bleed.replace_all(&normalized, "│$1").to_string();
 
             // Normalize whitespace before border chars — collapse any
             // amount of whitespace (0+) to exactly one space
-            let re_space = regex::Regex::new(r"\s*([│┘┐┤└])").unwrap();
             normalized = re_space.replace_all(&normalized, " $1").to_string();
 
             // Strip artifacts after the last border char
-            if let Some(pos) = normalized.rfind(|c: char| matches!(c, '│' | '┘' | '┐' | '┤' | '└')) {
+            if let Some(pos) = normalized.rfind(['│', '┘', '┐', '┤', '└']) {
                 let end = pos + '│'.len_utf8();
                 if end < normalized.len() {
                     let trailing = &normalized[end..];

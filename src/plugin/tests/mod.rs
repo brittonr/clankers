@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::sync::Mutex;
 
 use clankers_plugin::PluginManager;
 use clankers_plugin::PluginState;

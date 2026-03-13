@@ -25,8 +25,8 @@ const PADDING: u32 = 8;
 
 /// Render a terminal screen capture to a PNG-compatible RGBA image.
 pub fn render_screenshot(capture: &ScreenCapture) -> RgbaImage {
-    let img_w = (capture.cols as u32) * CELL_W + PADDING * 2;
-    let img_h = (capture.rows as u32) * CELL_H + PADDING * 2;
+    let img_w = u32::from(capture.cols) * CELL_W + PADDING * 2;
+    let img_h = u32::from(capture.rows) * CELL_H + PADDING * 2;
 
     let mut img = RgbaImage::from_pixel(img_w, img_h, Rgba([0x1a, 0x1a, 0x2e, 0xff]));
 
@@ -89,16 +89,14 @@ pub fn render_screenshot(capture: &ScreenCapture) -> RgbaImage {
                 }
 
                 // Bold: shift right by 1px (classic VGA bold effect)
-                if cell.bold {
-                    if let Some(glyph) = get_glyph(ch) {
-                        for (dy, &row_bits) in glyph.iter().enumerate() {
-                            for dx in 0..7u32 {
-                                if row_bits & (0x80 >> dx) != 0 {
-                                    let px = x0 + dx + 1;
-                                    let py = y0 + dy as u32;
-                                    if px < img_w && py < img_h {
-                                        img.put_pixel(px, py, Rgba(fg));
-                                    }
+                if cell.bold && let Some(glyph) = get_glyph(ch) {
+                    for (dy, &row_bits) in glyph.iter().enumerate() {
+                        for dx in 0..7u32 {
+                            if row_bits & (0x80 >> dx) != 0 {
+                                let px = x0 + dx + 1;
+                                let py = y0 + dy as u32;
+                                if px < img_w && py < img_h {
+                                    img.put_pixel(px, py, Rgba(fg));
                                 }
                             }
                         }

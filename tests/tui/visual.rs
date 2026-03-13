@@ -15,8 +15,6 @@ use std::time::Duration;
 
 use super::harness::Key;
 use super::harness::TuiTestHarness;
-use super::snapshot::ScreenCapture;
-use super::snapshot::assert_normalized_snapshot;
 use super::snapshot::assert_structure_snapshot;
 
 const SETTLE: Duration = Duration::from_millis(300);

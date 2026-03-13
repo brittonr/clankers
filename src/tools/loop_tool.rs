@@ -361,6 +361,7 @@ async fn run_shell_command(command: &str) -> Result<CommandOutput, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio_util::sync::CancellationToken;
 
     #[test]
     fn parse_break_contains() {
@@ -393,7 +394,7 @@ mod tests {
     async fn run_loop_fixed_count() {
         let engine = Arc::new(LoopEngine::new());
         let tool = LoopTool::new(engine);
-        let ctx = ToolContext::new("test".into(), Default::default(), None);
+        let ctx = ToolContext::new("test".into(), CancellationToken::default(), None);
 
         let result = tool
             .execute(
@@ -420,7 +421,7 @@ mod tests {
     async fn run_loop_until_condition() {
         let engine = Arc::new(LoopEngine::new());
         let tool = LoopTool::new(engine);
-        let ctx = ToolContext::new("test".into(), Default::default(), None);
+        let ctx = ToolContext::new("test".into(), CancellationToken::default(), None);
 
         // This command always exits 0, so break_on exit:0 should stop after 1 iteration
         let result = tool

@@ -302,6 +302,7 @@ fn format_duration(secs: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tokio_util::sync::CancellationToken;
 
     #[test]
     fn parse_duration_units() {
@@ -341,7 +342,7 @@ mod tests {
     fn parse_relative_datetime() {
         let dt = parse_datetime("+1h").unwrap();
         let diff = (dt - Utc::now()).num_seconds();
-        assert!(diff >= 3590 && diff <= 3610);
+        assert!((3590..=3610).contains(&diff));
     }
 
     #[test]
@@ -356,7 +357,7 @@ mod tests {
     async fn create_and_list() {
         let engine = Arc::new(ScheduleEngine::new());
         let tool = ScheduleTool::new(engine);
-        let ctx = ToolContext::new("test".into(), Default::default(), None);
+        let ctx = ToolContext::new("test".into(), CancellationToken::default(), None);
 
         let result = tool
             .execute(

@@ -110,6 +110,7 @@ impl TmuxTestHarness {
     }
 
     /// Send raw bytes as hex key codes.
+    #[allow(dead_code)]
     pub fn send_hex(&self, hex: &str) {
         let status = Command::new("tmux")
             .args(["send-keys", "-t", &self.session, "-H", hex])
@@ -152,6 +153,7 @@ impl TmuxTestHarness {
     }
 
     /// Capture with full scroll-back history (not just visible area).
+    #[allow(dead_code)]
     pub fn capture_full(&self) -> String {
         let output = Command::new("tmux")
             .args([
@@ -191,6 +193,7 @@ impl TmuxTestHarness {
     }
 
     /// Get a specific row of the captured text (0-indexed).
+    #[allow(dead_code)]
     pub fn row_text(&self, row: u16) -> String {
         let text = self.capture_text();
         text.lines().nth(row as usize).unwrap_or("").to_string()
@@ -236,6 +239,7 @@ impl TmuxTestHarness {
     }
 
     /// Session name (for debugging).
+    #[allow(dead_code)]
     pub fn session_name(&self) -> &str {
         &self.session
     }
@@ -249,6 +253,7 @@ impl Drop for TmuxTestHarness {
 }
 
 /// Named keys for tmux `send-keys`.
+#[allow(dead_code)]
 pub enum TmuxKey {
     Enter,
     Escape,
