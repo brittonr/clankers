@@ -1,0 +1,21 @@
+{
+  "pi": {
+    "count": 0,
+    "input": 0,
+    "output": 0,
+    "cache_read": 0,
+    "cache_write": 0,
+    "total": 0,
+    "cost": 0.0,
+    "turns": 0
+  },
+  "clankers": {
+    "count": 10,
+    "input": 121,
+    "output": 4688,
+    "cache_read": 234003,
+    "cache_write": 144569,
+    "total": 4809,
+    "turns": 30
+  }
+}

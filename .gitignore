@@ -34,6 +34,7 @@ data/
 !CONTRIBUTING.md
 !openspec/**/*.md
 !docs/**/*.md
+!bench/results/*.md
 
 # TUI test captures (generated PNG screenshots, ANSI files)
 tests/tui/captures/
