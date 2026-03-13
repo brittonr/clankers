@@ -256,7 +256,7 @@ pub async fn run_session_driver_pub(
     session_id: String,
     panel_rx: mpsc::UnboundedReceiver<SubagentEvent>,
 ) {
-    run_session_driver(controller, cmd_rx, event_tx, session_id, panel_rx).await;
+    Box::pin(run_session_driver(controller, cmd_rx, event_tx, session_id, panel_rx)).await;
 }
 
 /// Session driver: reads commands from the channel, feeds them to the

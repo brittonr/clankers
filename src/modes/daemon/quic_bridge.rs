@@ -222,10 +222,9 @@ async fn create_session_over_quic(
     // Spawn session driver
     let driver_event_tx = event_tx.clone();
     let driver_session_id = session_id.clone();
-    tokio::spawn(async move {
+    tokio::spawn(Box::pin(
         super::socket_bridge::run_session_driver_pub(controller, cmd_rx, driver_event_tx, driver_session_id, panel_rx)
-            .await;
-    });
+    ));
 
     // Spawn the Unix session socket too (local clients can still connect)
     let sock_shutdown = shutdown.clone();

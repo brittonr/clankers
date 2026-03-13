@@ -285,7 +285,7 @@ async fn run_agent_mode(
     if let Some(prompt) = prompt {
         run_headless(&cli, &ctx, model, system_prompt, &prompt, &plugin_manager).await
     } else {
-        run_interactive(&cli, &ctx, model, system_prompt, resources, &plugin_manager).await
+        Box::pin(run_interactive(&cli, &ctx, model, system_prompt, resources, &plugin_manager)).await
     }
 }
 
@@ -521,7 +521,7 @@ async fn run_interactive(
         resources.prompts.iter().map(|p| (p.name.clone(), p.description.clone())).collect();
     clankers::slash_commands::register_prompt_templates(&template_names);
 
-    clankers::modes::interactive::run_interactive(
+    Box::pin(clankers::modes::interactive::run_interactive(
         provider,
         settings,
         model,
@@ -529,7 +529,7 @@ async fn run_interactive(
         ctx.cwd.clone(),
         Some(plugin_manager.clone()),
         resume_opts,
-    )
+    ))
     .await?;
 
     Ok(())

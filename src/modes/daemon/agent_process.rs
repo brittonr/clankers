@@ -85,14 +85,14 @@ pub fn spawn_agent_process(
         Some(process_name),
         parent,
         move |_pid, mut signal_rx| async move {
-            run_agent_actor(
+            Box::pin(run_agent_actor(
                 controller,
                 cmd_rx,
                 driver_event_tx,
                 session_id,
                 panel_rx,
                 &mut signal_rx,
-            )
+            ))
             .await
         },
     );
