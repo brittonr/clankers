@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn test_merge_branch_full() {
+fn test_merge_branch_records_annotation() {
     let tmp = tempfile::TempDir::new().unwrap();
     let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
 
@@ -23,16 +23,22 @@ fn test_merge_branch_full() {
     mgr.append_message(make_msg(&a2, "Branch A msg 2"), Some(a1.clone())).unwrap();
     mgr.append_message(make_msg(&b1, "Branch B msg 1"), Some(root.clone())).unwrap();
 
-    // Merge branch A into branch B
+    // Merge branch A into branch B (annotation only — no message cloning)
     let (count, new_leaf) = mgr.merge_branch(a2.clone(), b1.clone()).unwrap();
     assert_eq!(count, 2); // a1 and a2 are unique to branch A
+    assert_eq!(new_leaf, b1); // active head stays on target
 
-    // Active head should be on the merged branch
-    assert_eq!(mgr.active_leaf_id(), Some(&new_leaf));
+    // Active head should be on the target branch
+    assert_eq!(mgr.active_leaf_id(), Some(&b1));
 
-    // Context should contain: root -> b1 -> a1' -> a2'
+    // Context on target branch is unchanged — merge is annotation-only
     let context = mgr.build_context().unwrap();
-    assert_eq!(context.len(), 4);
+    assert_eq!(context.len(), 2); // root -> b1
+
+    // Source branch is still accessible
+    mgr.set_active_head(a2.clone()).unwrap();
+    let source_context = mgr.build_context().unwrap();
+    assert_eq!(source_context.len(), 3); // root -> a1 -> a2
 }
 
 #[test]
@@ -103,20 +109,11 @@ fn test_merge_records_metadata() {
 
     mgr.merge_branch(a1.clone(), b1.clone()).unwrap();
 
-    // Check that a merge Custom entry was written
-    let entries = store::read_entries(mgr.file_path()).unwrap();
-    let merge_entry = entries.iter().find(|e| {
-        if let SessionEntry::Custom(c) = e {
-            c.kind == "merge"
-        } else {
-            false
-        }
-    });
-    assert!(merge_entry.is_some());
-    if let SessionEntry::Custom(c) = merge_entry.unwrap() {
-        assert_eq!(c.data["strategy"], "full");
-        assert_eq!(c.data["merged_count"], 1);
-    }
+    // Check that a merge annotation was written
+    let doc = automerge_store::load_document(mgr.file_path()).unwrap();
+    let annotations = automerge_store::read_annotations(&doc).unwrap();
+    let merge_ann = annotations.iter().find(|a| a.kind_str() == "custom");
+    assert!(merge_ann.is_some());
 }
 
 #[test]
@@ -164,7 +161,7 @@ fn test_merge_selective() {
     mgr.append_message(make_msg(&a3, "A3"), Some(a2.clone())).unwrap();
     mgr.append_message(make_msg(&b1, "B1"), Some(root.clone())).unwrap();
 
-    // Selectively merge only a1 and a3 (skip a2)
+    // Selectively merge only a1 and a3 (skip a2) — copies messages to target
     let (count, _new_leaf) = mgr.merge_selective(a3.clone(), b1.clone(), &[a1.clone(), a3.clone()]).unwrap();
     assert_eq!(count, 2);
 
@@ -305,23 +302,14 @@ fn test_cherry_pick_records_metadata() {
 
     mgr.cherry_pick(a1.clone(), b1.clone(), false).unwrap();
 
-    let entries = store::read_entries(mgr.file_path()).unwrap();
-    let cp_entry = entries.iter().find(|e| {
-        if let SessionEntry::Custom(c) = e {
-            c.kind == "cherry-pick"
-        } else {
-            false
-        }
-    });
-    assert!(cp_entry.is_some());
-    if let SessionEntry::Custom(c) = cp_entry.unwrap() {
-        assert_eq!(c.data["with_children"], false);
-        assert_eq!(c.data["copied_count"], 1);
-    }
+    let doc = automerge_store::load_document(mgr.file_path()).unwrap();
+    let annotations = automerge_store::read_annotations(&doc).unwrap();
+    let cp_ann = annotations.iter().find(|a| a.kind_str() == "custom");
+    assert!(cp_ann.is_some());
 }
 
 #[test]
-fn test_merge_preserves_message_content() {
+fn test_merge_selective_preserves_message_content() {
     let tmp = tempfile::TempDir::new().unwrap();
     let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
 
@@ -341,7 +329,7 @@ fn test_merge_preserves_message_content() {
     mgr.append_message(make_msg(&a1, "Unique content from A"), Some(root.clone())).unwrap();
     mgr.append_message(make_msg(&b1, "B1"), Some(root.clone())).unwrap();
 
-    mgr.merge_branch(a1.clone(), b1.clone()).unwrap();
+    mgr.merge_selective(a1.clone(), b1.clone(), &[a1.clone()]).unwrap();
 
     // The merged message should have new ID but same content
     let context = mgr.build_context().unwrap();

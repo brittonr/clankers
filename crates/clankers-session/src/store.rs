@@ -40,16 +40,28 @@ pub fn append_entry(path: &Path, entry: &SessionEntry) -> Result<()> {
     Ok(())
 }
 
-/// Generate session file path
+/// Generate session file path (JSONL format — legacy).
 pub fn session_file_path(sessions_dir: &Path, cwd: &str, session_id: &str) -> PathBuf {
     let encoded_cwd = encode_cwd(cwd);
     let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
     sessions_dir.join(&encoded_cwd).join(format!("{}_{}.jsonl", timestamp, session_id))
 }
 
+/// Generate session file path (Automerge format).
+pub fn session_file_path_automerge(sessions_dir: &Path, cwd: &str, session_id: &str) -> PathBuf {
+    let encoded_cwd = encode_cwd(cwd);
+    let timestamp = chrono::Utc::now().format("%Y%m%d_%H%M%S");
+    sessions_dir.join(&encoded_cwd).join(format!("{}_{}.automerge", timestamp, session_id))
+}
+
 /// Encode a cwd path into a safe directory name
 fn encode_cwd(cwd: &str) -> String {
     cwd.replace(['/', '\\', ':'], "_")
+}
+
+/// Returns true if the path has a recognized session file extension.
+fn is_session_file(path: &Path) -> bool {
+    path.extension().is_some_and(|ext| ext == "jsonl" || ext == "automerge")
 }
 
 /// List session files for a given cwd
@@ -64,7 +76,7 @@ pub fn list_sessions(sessions_dir: &Path, cwd: &str) -> Vec<PathBuf> {
         .flatten()
         .filter_map(|e| e.ok())
         .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|ext| ext == "jsonl"))
+        .filter(|p| is_session_file(p))
         .collect();
     files.sort();
     files.reverse();
@@ -85,7 +97,7 @@ pub fn list_all_sessions(sessions_dir: &Path) -> Vec<PathBuf> {
             {
                 for file_entry in files.flatten() {
                     let path = file_entry.path();
-                    if path.extension().is_some_and(|ext| ext == "jsonl") {
+                    if is_session_file(&path) {
                         all_files.push(path);
                     }
                 }
@@ -129,8 +141,60 @@ pub struct SessionSummary {
     pub file_path: PathBuf,
 }
 
-/// Read session summary (header + first user message) without loading all entries
+/// Read session summary (header + first user message) without loading all entries.
+///
+/// Supports both `.automerge` and `.jsonl` files.
 pub fn read_session_summary(path: &Path) -> Option<SessionSummary> {
+    if path.extension().is_some_and(|ext| ext == "automerge") {
+        return read_session_summary_automerge(path);
+    }
+    read_session_summary_jsonl(path)
+}
+
+fn read_session_summary_automerge(path: &Path) -> Option<SessionSummary> {
+    let doc = crate::automerge_store::load_document(path).ok()?;
+    let header = crate::automerge_store::read_header(&doc).ok()?;
+    let messages = crate::automerge_store::read_messages(&doc).ok()?;
+
+    let message_count = messages.len();
+    let first_user_text = messages.iter().find_map(|m| {
+        if let AgentMessage::User(ref u) = m.message {
+            let text: String = u
+                .content
+                .iter()
+                .filter_map(|c| {
+                    if let Content::Text { text } = c {
+                        Some(text.as_str())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join(" ");
+            if text.is_empty() {
+                None
+            } else if text.len() > 80 {
+                Some(format!("{}…", &text[..80]))
+            } else {
+                Some(text)
+            }
+        } else {
+            None
+        }
+    });
+
+    Some(SessionSummary {
+        session_id: header.session_id,
+        cwd: header.cwd,
+        model: header.model,
+        created_at: header.created_at,
+        message_count,
+        first_user_message: first_user_text,
+        file_path: path.to_path_buf(),
+    })
+}
+
+fn read_session_summary_jsonl(path: &Path) -> Option<SessionSummary> {
     let file = std::fs::File::open(path).ok()?;
     let reader = std::io::BufReader::new(file);
 
@@ -215,11 +279,21 @@ pub fn import_session(sessions_dir: &Path, source: &Path) -> Result<PathBuf> {
     Ok(dest)
 }
 
-/// Find a session file by partial ID match
+/// Find a session file by partial ID match.
+///
+/// Prefers `.automerge` files over `.jsonl` when both exist for the same session.
 pub fn find_session_by_id(sessions_dir: &Path, cwd: &str, partial_id: &str) -> Option<PathBuf> {
-    list_sessions(sessions_dir, cwd)
+    let candidates: Vec<PathBuf> = list_sessions(sessions_dir, cwd)
         .into_iter()
-        .find(|f| f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(partial_id)))
+        .filter(|f| f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(partial_id)))
+        .collect();
+
+    // Prefer .automerge over .jsonl
+    candidates
+        .iter()
+        .find(|f| f.extension().is_some_and(|ext| ext == "automerge"))
+        .cloned()
+        .or_else(|| candidates.into_iter().next())
 }
 
 #[cfg(test)]

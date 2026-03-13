@@ -57,13 +57,8 @@ fn test_session_resume_with_resume_entry() {
     });
     mgr.append_message(user_msg, None).unwrap();
 
-    // Write a resume entry
-    let resume = entry::SessionEntry::Resume(entry::ResumeEntry {
-        id: MessageId::generate(),
-        resumed_at: Utc::now(),
-        from_entry_id: MessageId::new("resume"),
-    });
-    store::append_entry(mgr.file_path(), &resume).unwrap();
+    // Record a resume via the new API
+    mgr.record_resume(MessageId::new("resume")).unwrap();
 
     // Re-open and verify context still works
     let mgr2 = SessionManager::open(mgr.file_path().to_path_buf()).unwrap();

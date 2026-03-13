@@ -8,6 +8,7 @@ use clankers_message::StopReason;
 use clankers_message::Usage;
 use clankers_message::UserMessage;
 
+use super::automerge_store;
 use super::entry;
 use super::entry::SessionEntry;
 use super::store;

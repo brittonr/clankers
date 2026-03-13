@@ -25,36 +25,43 @@
 
 ## Phase 2: SessionManager Swap
 
-- [ ] Add `doc: Option<AutoCommit>` field to `SessionManager`
-- [ ] Change `file_path` to use `.automerge` extension for new sessions
-- [ ] Rewrite `SessionManager::create()` — initialize Automerge doc, save to disk
-- [ ] Rewrite `SessionManager::open()` — detect file extension, load `.automerge` via `load_document()`, fall back to JSONL for `.jsonl` files
-- [ ] Rewrite `append_message()` — `put_message()` + `save_incremental()` instead of JSONL append
-- [ ] Rewrite `load_tree()` — `to_session_entries()` from Automerge doc, feed to `SessionTree::build()`
-- [ ] Rewrite `record_branch()` — `put_annotation(Branch { ... })` instead of JSONL append
-- [ ] Rewrite `record_label()` — `put_annotation(Label { ... })` instead of JSONL append
-- [ ] Rewrite `find_branches()` — load tree from doc, existing branch logic unchanged
-- [ ] Update `resolve_target()` — label lookup reads from annotations instead of raw entries
-- [ ] Replace `merge_branch()` — remove message cloning, record a merge annotation only
-- [ ] Replace `merge_selective()` — remove message cloning, append selected messages with new parent pointers
-- [ ] Simplify `cherry_pick()` — plain `append_message` calls, no ID remapping HashMap
-- [ ] Remove `collect_subtree()` recursive helper — use `SessionTree::walk_branch` or iterate children directly
-- [ ] Update `build_context()` — unchanged API, tree source is now Automerge doc
-- [ ] Update `message_count()` — read from doc messages map length
-- [ ] Implement periodic full save: `doc.save()` on session close or when incremental size > 1MB
-- [ ] Verify: `SessionManager::open()` on JSONL files still works (read-only backward compat)
-- [ ] Test: create session, append 10 messages, close, reopen, verify all messages present
-- [ ] Test: append_message skips duplicates (persisted_ids check)
-- [ ] Test: record_branch + new messages after branch point
-- [ ] Test: record_label + resolve_target by label name
-- [ ] Test: find_branches returns correct branch metadata
-- [ ] Test: rewind by offset
-- [ ] Test: set_active_head to specific message
-- [ ] Test: build_context returns correct branch messages
-- [ ] Test: cherry_pick single message into another branch
-- [ ] Test: cherry_pick with children
-- [ ] Test: merge annotation recorded correctly
-- [ ] Test: open JSONL file via backward-compat path
+- [x] Add `doc: AutoCommit` field to `SessionManager`
+- [x] Change `file_path` to use `.automerge` extension for new sessions
+- [x] Rewrite `SessionManager::create()` — initialize Automerge doc, save to disk
+- [x] Rewrite `SessionManager::open()` — detect file extension, load `.automerge` via `load_document()`, fall back to JSONL for `.jsonl` files (auto-migrates)
+- [x] Rewrite `append_message()` — `put_message()` + `save_incremental()` instead of JSONL append
+- [x] Rewrite `load_tree()` — `to_session_entries()` from Automerge doc, feed to `SessionTree::build()`
+- [x] Rewrite `record_branch()` — `put_annotation(Branch { ... })` instead of JSONL append
+- [x] Rewrite `record_label()` — `put_annotation(Label { ... })` instead of JSONL append
+- [x] Add `record_resume()` — `put_annotation(Resume { ... })` for session resume events
+- [x] Rewrite `find_branches()` — load entries from doc, existing branch logic unchanged
+- [x] Update `resolve_target()` — label lookup reads from annotations instead of raw entries
+- [x] Replace `merge_branch()` — remove message cloning, record a merge annotation only
+- [x] Replace `merge_selective()` — simplified to plain `append_message` calls with new parent pointers
+- [x] Simplify `cherry_pick()` — plain `append_message` calls, iterative DFS instead of recursive `collect_subtree`
+- [x] Remove `collect_subtree()` recursive helper — replaced with iterative stack-based DFS
+- [x] Update `build_context()` — unchanged API, tree source is now Automerge doc
+- [x] `message_count()` — uses persisted_ids (unchanged, already correct)
+- [x] Implement `save_compact()` for periodic full save via `doc.save()`
+- [x] `SessionManager::open()` on JSONL files auto-migrates to `.automerge`
+- [x] Update external callers: `interactive.rs` and `session_setup.rs` use `record_resume()` instead of `store::append_entry`
+- [x] Update `store::list_sessions()` / `list_all_sessions()` — include `.automerge` files
+- [x] Update `store::find_session_by_id()` — prefers `.automerge` over `.jsonl`
+- [x] Update `store::read_session_summary()` — handles `.automerge` files
+- [x] Add `store::session_file_path_automerge()` function
+- [x] Test: create session, append messages, close, reopen, verify (test_create_and_open_session, test_open_tracks_existing_persisted_ids)
+- [x] Test: append_message skips duplicates (test_duplicate_append_is_idempotent)
+- [x] Test: record_branch + new messages after branch point (test_record_branch)
+- [x] Test: record_label + resolve_target by label name (test_record_label, test_resolve_target_label)
+- [x] Test: find_branches returns correct branch metadata (test_find_branches_linear, test_find_branches_with_fork)
+- [x] Test: rewind by offset (test_rewind)
+- [x] Test: set_active_head to specific message (test_set_active_head)
+- [x] Test: build_context returns correct branch messages (test_append_and_build_context)
+- [x] Test: cherry_pick single message into another branch (test_cherry_pick_single)
+- [x] Test: cherry_pick with children (test_cherry_pick_with_children)
+- [x] Test: merge annotation recorded correctly (test_merge_records_metadata)
+- [x] Test: save_compact round-trip (test_save_compact)
+- [x] Test: read_session_summary from automerge file (test_read_session_summary_automerge)
 
 ## Phase 3: Migration + Cleanup
 

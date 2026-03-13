@@ -302,16 +302,11 @@ pub(crate) fn resume_session_from_file(
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
 ) {
     match crate::session::SessionManager::open(file_path) {
-        Ok(mgr) => {
+        Ok(mut mgr) => {
             let msgs = mgr.build_context().unwrap_or_default();
             let msg_count = msgs.len();
             app.session_id = mgr.session_id().to_string();
-            let resume_entry = crate::session::entry::SessionEntry::Resume(crate::session::entry::ResumeEntry {
-                id: crate::provider::message::MessageId::generate(),
-                resumed_at: chrono::Utc::now(),
-                from_entry_id: crate::provider::message::MessageId::new("slash-resume"),
-            });
-            let _ = crate::session::store::append_entry(mgr.file_path(), &resume_entry);
+            let _ = mgr.record_resume(crate::provider::message::MessageId::new("slash-resume"));
 
             app.conversation.blocks.clear();
             app.conversation.all_blocks.clear();

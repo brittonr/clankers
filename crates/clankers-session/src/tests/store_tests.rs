@@ -9,6 +9,7 @@ fn test_create_and_open_session() {
     let mgr = SessionManager::create(sessions_dir, cwd, "claude-sonnet", None, None, None).unwrap();
     assert!(!mgr.session_id().is_empty());
     assert!(mgr.file_path().exists());
+    assert!(mgr.file_path().extension().unwrap() == "automerge");
 
     // Should be able to open the session
     let mgr2 = SessionManager::open(mgr.file_path().to_path_buf()).unwrap();
@@ -110,4 +111,49 @@ fn test_model_accessor() {
     let tmp = tempfile::TempDir::new().unwrap();
     let mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-opus", None, None, None).unwrap();
     assert_eq!(mgr.model(), "claude-opus");
+}
+
+#[test]
+fn test_save_compact() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+
+    let id = MessageId::generate();
+    let msg = AgentMessage::User(UserMessage {
+        id: id.clone(),
+        content: vec![Content::Text {
+            text: "Hello".to_string(),
+        }],
+        timestamp: Utc::now(),
+    });
+    mgr.append_message(msg, None).unwrap();
+
+    // Full compacted save
+    mgr.save_compact().unwrap();
+
+    // Re-open and verify
+    let mgr2 = SessionManager::open(mgr.file_path().to_path_buf()).unwrap();
+    assert_eq!(mgr2.message_count(), 1);
+    assert!(mgr2.is_persisted(&id));
+}
+
+#[test]
+fn test_read_session_summary_automerge() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let mut mgr = SessionManager::create(tmp.path(), "/tmp/test", "test-model", None, None, None).unwrap();
+
+    let id = MessageId::generate();
+    let msg = AgentMessage::User(UserMessage {
+        id: id.clone(),
+        content: vec![Content::Text {
+            text: "First user message".to_string(),
+        }],
+        timestamp: Utc::now(),
+    });
+    mgr.append_message(msg, None).unwrap();
+
+    let summary = store::read_session_summary(mgr.file_path()).unwrap();
+    assert_eq!(summary.model, "test-model");
+    assert_eq!(summary.message_count, 1);
+    assert_eq!(summary.first_user_message.as_deref(), Some("First user message"));
 }

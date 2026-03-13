@@ -341,7 +341,7 @@ pub fn save_incremental(doc: &mut AutoCommit, path: &Path) -> Result<()> {
 /// is serialized as JSON into the Automerge document and tagged with a
 /// `kind` discriminator for O(1) dispatch on read.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(tag = "kind")]
+#[serde(tag = "ann_type")]
 pub enum AnnotationEntry {
     Label(LabelEntry),
     Compaction(CompactionEntry),

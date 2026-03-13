@@ -130,7 +130,10 @@
 - `save_incremental()` appends bytes to existing file; `load()` reads full + incremental chunks
 - `doc.keys()` returns insertion-order iteration for maps
 - `doc.length()` for list length, index with `doc.get(&obj, i)` for `usize` indices
-- `AnnotationEntry` is `#[serde(tag = "kind")]` — serde handles the discriminator
+- `AnnotationEntry` uses `#[serde(tag = "ann_type")]` NOT `"kind"` — `CustomEntry` already has a `kind` field, so `#[serde(tag = "kind")]` causes duplicate field error on deserialization
+- `merge_branch` is annotation-only (no message cloning). `merge_selective` and `cherry_pick` still copy messages via `append_message`.
+- JSONL backward compat: `open()` auto-migrates .jsonl → .automerge alongside (original untouched)
+- External callers (`interactive.rs`, `session_setup.rs`) must use `record_resume()` not `store::append_entry()` — file is binary automerge now
 
 ## Domain Notes
 - JMAP (RFC 8620/8621): pure HTTP+JSON email, Fastmail is reference impl

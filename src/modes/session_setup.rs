@@ -91,7 +91,7 @@ fn create_new_session(
 /// the worktree if the session had one.
 fn resume_session(
     app: &mut App,
-    mgr: crate::session::SessionManager,
+    mut mgr: crate::session::SessionManager,
     from_label: &str,
 ) -> (
     Option<crate::session::SessionManager>,
@@ -101,12 +101,7 @@ fn resume_session(
     let msgs = mgr.build_context().unwrap_or_default();
     app.session_id = mgr.session_id().to_string();
 
-    let resume_entry = crate::session::entry::SessionEntry::Resume(crate::session::entry::ResumeEntry {
-        id: crate::provider::message::MessageId::generate(),
-        resumed_at: chrono::Utc::now(),
-        from_entry_id: crate::provider::message::MessageId::new(from_label),
-    });
-    let _ = crate::session::store::append_entry(mgr.file_path(), &resume_entry);
+    let _ = mgr.record_resume(crate::provider::message::MessageId::new(from_label));
 
     let msg_count = msgs.len();
     app.push_system(format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count), false);
