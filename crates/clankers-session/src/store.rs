@@ -109,22 +109,31 @@ pub fn list_all_sessions(sessions_dir: &Path) -> Vec<PathBuf> {
     all_files
 }
 
-/// Delete all sessions for a given cwd
+/// Delete all sessions for a given cwd.
+///
+/// Also removes `.jsonl.bak` files left by migration.
 pub fn purge_sessions(sessions_dir: &Path, cwd: &str) -> std::io::Result<usize> {
     let files = list_sessions(sessions_dir, cwd);
     let count = files.len();
     for f in &files {
         std::fs::remove_file(f)?;
+        // Clean up migration backup if present
+        let bak = f.with_extension("jsonl.bak");
+        let _ = std::fs::remove_file(bak);
     }
     Ok(count)
 }
 
-/// Delete all sessions across all cwds
+/// Delete all sessions across all cwds.
+///
+/// Also removes `.jsonl.bak` files left by migration.
 pub fn purge_all_sessions(sessions_dir: &Path) -> std::io::Result<usize> {
     let files = list_all_sessions(sessions_dir);
     let count = files.len();
     for f in &files {
         std::fs::remove_file(f)?;
+        let bak = f.with_extension("jsonl.bak");
+        let _ = std::fs::remove_file(bak);
     }
     Ok(count)
 }
@@ -254,17 +263,32 @@ fn read_session_summary_jsonl(path: &Path) -> Option<SessionSummary> {
     })
 }
 
-/// Import a session from a JSONL file into the sessions directory
+/// Import a session file into the sessions directory.
+///
+/// Supports both `.automerge` and `.jsonl` formats. JSONL files are imported
+/// as-is (can be migrated later). Automerge files are copied directly.
 pub fn import_session(sessions_dir: &Path, source: &Path) -> Result<PathBuf> {
-    let entries = read_entries(source)?;
-    let header = entries
-        .iter()
-        .find_map(|e| if let SessionEntry::Header(h) = e { Some(h) } else { None })
-        .ok_or_else(|| crate::error::SessionError {
-            message: "Import file has no header entry".into(),
-        })?;
+    let is_automerge = source.extension().is_some_and(|ext| ext == "automerge");
 
-    let dest = session_file_path(sessions_dir, &header.cwd, &header.session_id);
+    let header = if is_automerge {
+        let doc = crate::automerge_store::load_document(source)?;
+        crate::automerge_store::read_header(&doc)?
+    } else {
+        let entries = read_entries(source)?;
+        entries
+            .into_iter()
+            .find_map(|e| if let SessionEntry::Header(h) = e { Some(h) } else { None })
+            .ok_or_else(|| crate::error::SessionError {
+                message: "Import file has no header entry".into(),
+            })?
+    };
+
+    let dest = if is_automerge {
+        session_file_path_automerge(sessions_dir, &header.cwd, &header.session_id)
+    } else {
+        session_file_path(sessions_dir, &header.cwd, &header.session_id)
+    };
+
     if dest.exists() {
         return Err(crate::error::SessionError {
             message: format!("Session {} already exists at {}", header.session_id, dest.display()),

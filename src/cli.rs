@@ -511,6 +511,14 @@ pub enum SessionAction {
         /// Input file path
         file: String,
     },
+    /// Migrate JSONL sessions to Automerge format
+    Migrate {
+        /// Session ID to migrate (or --all for all sessions)
+        session_id: Option<String>,
+        /// Migrate all JSONL sessions
+        #[arg(long)]
+        all: bool,
+    },
 }
 
 #[derive(ValueEnum, Clone, Debug)]

@@ -2,6 +2,7 @@ use crate::cli::ExportFormat;
 use crate::cli::SessionAction;
 use crate::commands::CommandContext;
 use crate::error::Result;
+use crate::session::automerge_store;
 use crate::session::export;
 use crate::session::store;
 use crate::util::fs;
@@ -18,6 +19,7 @@ pub fn run(ctx: &CommandContext, action: SessionAction) -> Result<()> {
             format,
         } => handle_export(ctx, &session_id, output, format),
         SessionAction::Import { file } => handle_import(ctx, &file),
+        SessionAction::Migrate { session_id, all } => handle_migrate(ctx, session_id.as_deref(), all),
     }
 }
 
@@ -139,6 +141,66 @@ fn handle_import(ctx: &CommandContext, file: &str) -> Result<()> {
     }
     let dest = store::import_session(&ctx.paths.global_sessions_dir, source)?;
     println!("Imported session to {}", dest.display());
+    Ok(())
+}
+
+fn handle_migrate(ctx: &CommandContext, session_id: Option<&str>, all: bool) -> Result<()> {
+    if !all && session_id.is_none() {
+        return Err(crate::error::Error::Session {
+            message: "specify a session ID or use --all".to_string(),
+        });
+    }
+
+    let jsonl_files: Vec<std::path::PathBuf> = if all {
+        store::list_all_sessions(&ctx.paths.global_sessions_dir)
+            .into_iter()
+            .filter(|p| p.extension().is_some_and(|ext| ext == "jsonl"))
+            .collect()
+    } else {
+        let id = session_id.expect("checked above");
+        let path = store::find_session_by_id(&ctx.paths.global_sessions_dir, &ctx.cwd, id).ok_or_else(|| {
+            crate::error::Error::Session {
+                message: format!("session not found: {}", id),
+            }
+        })?;
+        if path.extension().is_some_and(|ext| ext == "automerge") {
+            println!("Session {} is already in Automerge format.", id);
+            return Ok(());
+        }
+        vec![path]
+    };
+
+    if jsonl_files.is_empty() {
+        println!("No JSONL sessions to migrate.");
+        return Ok(());
+    }
+
+    let mut migrated = 0usize;
+    let mut skipped = 0usize;
+    let mut failed = 0usize;
+
+    for path in &jsonl_files {
+        match automerge_store::migrate_jsonl_to_automerge(path) {
+            Ok(automerge_store::MigrateResult::Migrated { message_count, .. }) => {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+                println!("  ✓ {} ({} messages)", name, message_count);
+                migrated += 1;
+            }
+            Ok(automerge_store::MigrateResult::Skipped) => {
+                skipped += 1;
+            }
+            Err(e) => {
+                let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
+                eprintln!("  ✗ {}: {}", name, e);
+                failed += 1;
+            }
+        }
+    }
+
+    println!(
+        "\nMigration complete: {} migrated, {} skipped, {} failed",
+        migrated, skipped, failed
+    );
     Ok(())
 }
 

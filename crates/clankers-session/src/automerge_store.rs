@@ -391,6 +391,76 @@ impl AnnotationEntry {
     }
 }
 
+/// Migrate a JSONL session file to Automerge format.
+///
+/// Reads the JSONL file, builds an Automerge document, saves it with
+/// `.automerge` extension alongside the original, and renames the
+/// original to `.jsonl.bak`.
+///
+/// Returns the path to the new `.automerge` file.
+///
+/// Skips (returns Ok) if an `.automerge` file already exists for this session.
+pub fn migrate_jsonl_to_automerge(jsonl_path: &Path) -> Result<MigrateResult> {
+    let automerge_path = jsonl_path.with_extension("automerge");
+    if automerge_path.exists() {
+        return Ok(MigrateResult::Skipped);
+    }
+
+    let entries = crate::store::read_entries(jsonl_path)?;
+
+    let header = entries
+        .iter()
+        .find_map(|e| {
+            if let SessionEntry::Header(h) = e {
+                Some(h.clone())
+            } else {
+                None
+            }
+        })
+        .ok_or_else(|| session_err("JSONL file has no header entry"))?;
+
+    let mut doc = create_document(&header)?;
+
+    for entry in &entries {
+        match entry {
+            SessionEntry::Message(m) => {
+                put_message(&mut doc, m)?;
+            }
+            SessionEntry::Header(_) => {} // already handled
+            other => {
+                if let Some(annotation) = AnnotationEntry::from_session_entry(other) {
+                    put_annotation(&mut doc, &annotation)?;
+                }
+            }
+        }
+    }
+
+    save_document(&mut doc, &automerge_path)?;
+
+    // Rename original to .jsonl.bak
+    let backup_path = jsonl_path.with_extension("jsonl.bak");
+    std::fs::rename(jsonl_path, &backup_path).map_err(session_err)?;
+
+    let message_count = entries.iter().filter(|e| matches!(e, SessionEntry::Message(_))).count();
+
+    Ok(MigrateResult::Migrated {
+        path: automerge_path,
+        message_count,
+    })
+}
+
+/// Result of a migration operation.
+#[derive(Debug)]
+pub enum MigrateResult {
+    /// File was already migrated (`.automerge` exists).
+    Skipped,
+    /// Successfully migrated.
+    Migrated {
+        path: std::path::PathBuf,
+        message_count: usize,
+    },
+}
+
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
@@ -823,5 +893,118 @@ mod tests {
     fn test_load_nonexistent_file() {
         let result = load_document(Path::new("/tmp/nonexistent-automerge-file.automerge"));
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_migrate_jsonl_to_automerge() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let jsonl_path = tmp.path().join("test_session.jsonl");
+
+        // Write a JSONL session file
+        let header = crate::entry::SessionEntry::Header(test_header());
+        crate::store::append_entry(&jsonl_path, &header).unwrap();
+
+        let msg = crate::entry::SessionEntry::Message(test_message("msg-1", None, "Hello"));
+        crate::store::append_entry(&jsonl_path, &msg).unwrap();
+
+        let msg2 = crate::entry::SessionEntry::Message(test_message("msg-2", Some("msg-1"), "World"));
+        crate::store::append_entry(&jsonl_path, &msg2).unwrap();
+
+        // Migrate
+        let result = migrate_jsonl_to_automerge(&jsonl_path).unwrap();
+        match result {
+            MigrateResult::Migrated { path, message_count } => {
+                assert!(path.exists());
+                assert_eq!(message_count, 2);
+                assert!(path.extension().unwrap() == "automerge");
+
+                // Original renamed to .bak
+                assert!(!jsonl_path.exists());
+                assert!(jsonl_path.with_extension("jsonl.bak").exists());
+
+                // Verify the migrated doc
+                let doc = load_document(&path).unwrap();
+                let h = read_header(&doc).unwrap();
+                assert_eq!(h.session_id, "test-session-123");
+                let msgs = read_messages(&doc).unwrap();
+                assert_eq!(msgs.len(), 2);
+            }
+            MigrateResult::Skipped => panic!("expected migration, got skip"),
+        }
+    }
+
+    #[test]
+    fn test_migrate_skips_already_migrated() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let jsonl_path = tmp.path().join("test_session.jsonl");
+        let automerge_path = tmp.path().join("test_session.automerge");
+
+        // Write both files
+        let header = crate::entry::SessionEntry::Header(test_header());
+        crate::store::append_entry(&jsonl_path, &header).unwrap();
+        std::fs::write(&automerge_path, b"existing").unwrap();
+
+        let result = migrate_jsonl_to_automerge(&jsonl_path).unwrap();
+        assert!(matches!(result, MigrateResult::Skipped));
+
+        // Original .jsonl still exists (not renamed)
+        assert!(jsonl_path.exists());
+    }
+
+    #[test]
+    fn test_migrate_preserves_tree_structure() {
+        use crate::tree::SessionTree;
+
+        let tmp = tempfile::TempDir::new().unwrap();
+        let jsonl_path = tmp.path().join("branched.jsonl");
+
+        // Build a JSONL session with branches
+        let header = crate::entry::SessionEntry::Header(test_header());
+        crate::store::append_entry(&jsonl_path, &header).unwrap();
+
+        let root = test_message("root", None, "Root");
+        let a1 = test_message("a1", Some("root"), "Branch A");
+        let b1 = test_message("b1", Some("root"), "Branch B");
+        let a2 = test_message("a2", Some("a1"), "Branch A continued");
+
+        for msg in [root, a1, b1, a2] {
+            crate::store::append_entry(&jsonl_path, &crate::entry::SessionEntry::Message(msg)).unwrap();
+        }
+
+        // Add a label annotation via JSONL
+        let label = crate::entry::SessionEntry::Label(crate::entry::LabelEntry {
+            id: MessageId::new("lbl-1"),
+            target_message_id: MessageId::new("a1"),
+            label: "checkpoint".to_string(),
+            timestamp: Utc::now(),
+        });
+        crate::store::append_entry(&jsonl_path, &label).unwrap();
+
+        // Migrate
+        let result = migrate_jsonl_to_automerge(&jsonl_path).unwrap();
+        let path = match result {
+            MigrateResult::Migrated { path, .. } => path,
+            MigrateResult::Skipped => panic!("expected migration"),
+        };
+
+        // Verify tree structure in migrated doc
+        let doc = load_document(&path).unwrap();
+        let entries = to_session_entries(&doc).unwrap();
+        let tree = SessionTree::build(entries.clone());
+
+        assert_eq!(tree.message_count(), 4);
+        assert!(tree.is_branch_point(&MessageId::new("root")));
+
+        let branch_a = tree.walk_branch(&MessageId::new("a2"));
+        assert_eq!(branch_a.len(), 3);
+
+        let branch_b = tree.walk_branch(&MessageId::new("b1"));
+        assert_eq!(branch_b.len(), 2);
+
+        // Label annotation preserved
+        let has_label = entries.iter().any(|e| {
+            matches!(e, crate::entry::SessionEntry::Label(l) if l.label == "checkpoint")
+        });
+        assert!(has_label);
     }
 }

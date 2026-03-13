@@ -7,13 +7,22 @@ use clankers_message::AgentMessage;
 use clankers_message::Content;
 
 use super::entry::SessionEntry;
-use super::store::read_entries;
 use crate::error::Result;
 use crate::error::SessionError;
 
+/// Read session entries from a file, supporting both `.automerge` and `.jsonl` formats.
+fn load_entries(path: &Path) -> Result<Vec<SessionEntry>> {
+    if path.extension().is_some_and(|ext| ext == "automerge") {
+        let doc = crate::automerge_store::load_document(path)?;
+        crate::automerge_store::to_session_entries(&doc)
+    } else {
+        crate::store::read_entries(path)
+    }
+}
+
 /// Export a session to markdown format
 pub fn export_markdown(path: &Path) -> Result<String> {
-    let entries = read_entries(path)?;
+    let entries = load_entries(path)?;
     let mut out = String::new();
 
     for entry in &entries {
@@ -86,7 +95,7 @@ pub fn export_markdown(path: &Path) -> Result<String> {
 
 /// Export a session to plain text format
 pub fn export_text(path: &Path) -> Result<String> {
-    let entries = read_entries(path)?;
+    let entries = load_entries(path)?;
     let mut out = String::new();
 
     for entry in &entries {
@@ -141,9 +150,26 @@ pub fn export_text(path: &Path) -> Result<String> {
     Ok(out)
 }
 
+/// Export a session to JSONL format (one entry per line).
+///
+/// For `.automerge` files, reads the document and serializes entries as JSONL.
+/// For `.jsonl` files, re-serializes (normalizes) entries.
+pub fn export_jsonl(path: &Path) -> Result<String> {
+    let entries = load_entries(path)?;
+    let mut out = String::new();
+    for entry in &entries {
+        let line = serde_json::to_string(entry).map_err(|e| SessionError {
+            message: format!("JSONL serialization failed: {}", e),
+        })?;
+        out.push_str(&line);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
 /// Export a session to structured JSON format
 pub fn export_json(path: &Path) -> Result<String> {
-    let entries = read_entries(path)?;
+    let entries = load_entries(path)?;
     serde_json::to_string_pretty(&entries).map_err(|e| SessionError {
         message: format!("JSON serialization failed: {}", e),
     })
