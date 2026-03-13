@@ -55,6 +55,50 @@ pub enum ProcessState {
     Dead,
 }
 
+/// Identifies a session by transport + sender.
+///
+/// Used to map incoming connections (iroh peers, Matrix users) to persistent
+/// agent sessions. Shared across daemon modules so both the control plane
+/// and transport bridges can look up sessions by key.
+#[derive(Debug, Clone, Hash, Eq, PartialEq, Serialize, Deserialize)]
+pub enum SessionKey {
+    /// iroh peer identified by public key.
+    Iroh(String),
+    /// Matrix user in a room.
+    Matrix { user_id: String, room_id: String },
+}
+
+impl std::fmt::Display for SessionKey {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Iroh(id) => write!(f, "iroh:{}", &id[..12.min(id.len())]),
+            Self::Matrix { user_id, room_id } => write!(f, "matrix:{}@{}", user_id, room_id),
+        }
+    }
+}
+
+impl SessionKey {
+    /// Deterministic directory name for this session's working files.
+    pub fn dir_name(&self) -> String {
+        match self {
+            Self::Iroh(id) => format!("daemon_iroh_{}", &id[..12.min(id.len())]),
+            Self::Matrix { user_id, room_id } => {
+                let user = user_id.replace(':', "_").replace('@', "");
+                let room = room_id.replace(':', "_").replace('!', "");
+                format!("daemon_matrix_{}_{}", user, room)
+            }
+        }
+    }
+
+    /// Extract the Matrix room_id if this is a Matrix session.
+    pub fn matrix_room_id(&self) -> Option<&str> {
+        match self {
+            Self::Matrix { room_id, .. } => Some(room_id),
+            _ => None,
+        }
+    }
+}
+
 /// Current protocol version.
 pub const PROTOCOL_VERSION: u32 = 1;
 

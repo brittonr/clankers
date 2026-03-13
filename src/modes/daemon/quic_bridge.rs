@@ -36,6 +36,7 @@ pub async fn handle_daemon_quic_connection(
     conn: iroh::endpoint::Connection,
     state: Arc<Mutex<DaemonState>>,
     factory: Arc<SessionFactory>,
+    registry: clankers_actor::ProcessRegistry,
     shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
     let remote = conn.remote_id();
@@ -49,9 +50,10 @@ pub async fn handle_daemon_quic_connection(
 
         let state = Arc::clone(&state);
         let factory = Arc::clone(&factory);
+        let registry = registry.clone();
         let shutdown = shutdown.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_daemon_stream(send, recv, state, factory, shutdown).await {
+            if let Err(e) = handle_daemon_stream(send, recv, state, factory, registry, shutdown).await {
                 debug!("daemon QUIC stream ended: {e}");
             }
         });
@@ -66,6 +68,7 @@ async fn handle_daemon_stream(
     mut recv: iroh::endpoint::RecvStream,
     state: Arc<Mutex<DaemonState>>,
     factory: Arc<SessionFactory>,
+    registry: clankers_actor::ProcessRegistry,
     shutdown: tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), clankers_protocol::FrameError> {
     // Read the first frame to determine the stream type.
@@ -73,7 +76,7 @@ async fn handle_daemon_stream(
 
     match request {
         DaemonRequest::Control { command } => {
-            handle_control_stream(command, &mut send, &state, &factory, &shutdown).await?;
+            handle_control_stream(command, &mut send, &state, &factory, &registry, &shutdown).await?;
         }
         DaemonRequest::Attach { handshake } => {
             handle_attach_stream(handshake, send, recv, &state).await?;
@@ -89,6 +92,7 @@ async fn handle_control_stream(
     send: &mut iroh::endpoint::SendStream,
     state: &Arc<Mutex<DaemonState>>,
     factory: &Arc<SessionFactory>,
+    registry: &clankers_actor::ProcessRegistry,
     shutdown: &tokio::sync::watch::Receiver<bool>,
 ) -> Result<(), clankers_protocol::FrameError> {
     debug!("QUIC control command: {command:?}");
@@ -105,7 +109,7 @@ async fn handle_control_stream(
                     message: "authentication token required for remote session creation".to_string(),
                 }
             } else {
-                create_session_over_quic(model, system_prompt, state, factory, shutdown).await
+                create_session_over_quic(model, system_prompt, state, factory, registry, shutdown).await
             }
         }
         other => {
@@ -161,55 +165,40 @@ fn dispatch_readonly_control(
 
 /// Create a new session, wiring up the controller and session socket.
 ///
-/// Mirrors `socket_bridge::handle_control` CreateSession branch.
+/// Uses `spawn_agent_process` so the session lives in the actor registry
+/// with proper link/monitor semantics and in-process subagent support.
 async fn create_session_over_quic(
     model: Option<String>,
     system_prompt: Option<String>,
     state: &Arc<Mutex<DaemonState>>,
     factory: &Arc<SessionFactory>,
+    registry: &clankers_actor::ProcessRegistry,
     shutdown: &tokio::sync::watch::Receiver<bool>,
 ) -> clankers_protocol::ControlResponse {
-    use clankers_controller::SessionController;
-    use clankers_controller::config::ControllerConfig;
     use clankers_controller::transport::SessionHandle;
     use clankers_controller::transport::session_socket_path;
-    use clankers_tui_types::SubagentEvent;
-    use tokio::sync::mpsc;
 
     let session_id = clankers_message::generate_id();
-    let model = model.unwrap_or_else(|| factory.default_model.clone());
-    let system_prompt = system_prompt.unwrap_or_else(|| factory.default_system_prompt.clone());
+    let resolved_model = model.clone().unwrap_or_else(|| factory.default_model.clone());
 
-    let (panel_tx, panel_rx) = mpsc::unbounded_channel::<SubagentEvent>();
-    let tools = factory.build_tools_with_panel_tx(panel_tx);
+    // Spawn as an actor process in the registry
+    let (_pid, cmd_tx, event_tx) = super::agent_process::spawn_agent_process(
+        registry,
+        factory,
+        session_id.clone(),
+        model,
+        system_prompt,
+        None,
+    );
 
-    let agent = crate::agent::builder::AgentBuilder::new(
-        Arc::clone(&factory.provider),
-        factory.settings.clone(),
-        model.clone(),
-        system_prompt.clone(),
-    )
-    .with_tools(tools)
-    .build();
-
-    let config = ControllerConfig {
-        session_id: session_id.clone(),
-        model: model.clone(),
-        system_prompt: Some(system_prompt),
-        ..Default::default()
-    };
-
-    let controller = SessionController::new(agent, config);
-
-    let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<SessionCommand>();
-    let (event_tx, _) = broadcast::channel::<DaemonEvent>(256);
     let socket_path = session_socket_path(&session_id);
 
+    // Register in daemon state
     {
         let mut st = state.lock().await;
         st.sessions.insert(session_id.clone(), SessionHandle {
             session_id: session_id.clone(),
-            model: model.clone(),
+            model: resolved_model.clone(),
             turn_count: 0,
             last_active: chrono::Utc::now().to_rfc3339(),
             client_count: 0,
@@ -219,14 +208,7 @@ async fn create_session_over_quic(
         });
     }
 
-    // Spawn session driver
-    let driver_event_tx = event_tx.clone();
-    let driver_session_id = session_id.clone();
-    tokio::spawn(Box::pin(
-        super::socket_bridge::run_session_driver_pub(controller, cmd_rx, driver_event_tx, driver_session_id, panel_rx)
-    ));
-
-    // Spawn the Unix session socket too (local clients can still connect)
+    // Spawn the Unix session socket (local clients can still connect)
     let sock_shutdown = shutdown.clone();
     let sock_cmd_tx = cmd_tx.clone();
     let sock_event_tx = event_tx.clone();
@@ -241,7 +223,7 @@ async fn create_session_over_quic(
         .await;
     });
 
-    info!("created session {session_id} via QUIC (model: {model})");
+    info!("created session {session_id} via QUIC (model: {resolved_model})");
     clankers_protocol::ControlResponse::Created {
         session_id,
         socket_path: socket_path.to_string_lossy().into_owned(),

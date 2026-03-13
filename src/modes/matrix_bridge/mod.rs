@@ -2,6 +2,8 @@
 //!
 //! Handles Matrix transport: user messages, bot commands, media uploads,
 //! and proactive agent features (heartbeats, trigger pipes).
+//!
+//! All sessions are backed by actor processes via `get_or_create_keyed_session`.
 
 mod allowlist;
 mod bot_commands;
@@ -9,13 +11,14 @@ mod proactive;
 mod prompt;
 mod sendfile;
 
-// Internal imports
 use std::sync::Arc;
 
 use allowlist::is_user_allowed;
 use allowlist::resolve_matrix_allowlist;
 use bot_commands::handle_bot_command;
-use clankers_auth::Capability;
+use clankers_actor::ProcessRegistry;
+use clankers_controller::transport::DaemonState;
+use clankers_protocol::SessionKey;
 use proactive::ensure_trigger_pipe;
 use proactive::run_session_heartbeat;
 use prompt::run_matrix_prompt;
@@ -23,22 +26,23 @@ use prompt::run_matrix_prompt_with_images;
 use sendfile::extract_sendfile_tags;
 use sendfile::guess_mime;
 use sendfile::upload_sendfiles;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 use tracing::info;
 use tracing::warn;
 
+use super::daemon::session_store::AuthLayer;
+use super::daemon::socket_bridge::SessionFactory;
 use super::daemon::ProactiveConfig;
-use super::daemon::SessionKey;
-use super::daemon::SessionStore;
 use crate::config::ClankersPaths;
 use crate::error::Result;
-use crate::provider::message::Content;
-use crate::provider::message::ImageSource;
 
 pub(crate) async fn run_matrix_bridge(
-    store: Arc<RwLock<SessionStore>>,
+    state: Arc<Mutex<DaemonState>>,
+    registry: ProcessRegistry,
+    factory: Arc<SessionFactory>,
+    auth: Option<Arc<AuthLayer>>,
     cancel: CancellationToken,
     paths: &ClankersPaths,
     daemon_allowed_users: Vec<String>,
@@ -53,7 +57,6 @@ pub(crate) async fn run_matrix_bridge(
         message: format!("Matrix config not found at {}. Run `clankers matrix login` first.", config_path.display()),
     })?;
 
-    // Resolve allowlist
     let allowlist = resolve_matrix_allowlist(&config, &daemon_allowed_users);
     if allowlist.is_empty() {
         info!("Matrix allowlist: open (all users accepted)");
@@ -82,15 +85,23 @@ pub(crate) async fn run_matrix_bridge(
 
     info!("Matrix bridge started for {}", our_user_id);
 
-    // ── Heartbeat scheduler ─────────────────────────────────────────
+    let sessions_dir = paths.global_sessions_dir.clone();
+
+    // Heartbeat scheduler
     if proactive.session_heartbeat_secs > 0 {
-        let hb_store = Arc::clone(&store);
+        let hb_state = Arc::clone(&state);
+        let hb_registry = registry.clone();
+        let hb_factory = Arc::clone(&factory);
+        let hb_sessions_dir = sessions_dir.clone();
         let hb_client = Arc::clone(&client);
         let hb_cancel = cancel.clone();
         let hb_interval = std::time::Duration::from_secs(proactive.session_heartbeat_secs);
         let hb_prompt = proactive.heartbeat_prompt.clone();
         tokio::spawn(async move {
-            run_session_heartbeat(hb_store, hb_client, hb_interval, hb_prompt, hb_cancel).await;
+            run_session_heartbeat(
+                hb_state, hb_registry, hb_factory, hb_sessions_dir,
+                hb_client, hb_interval, hb_prompt, hb_cancel,
+            ).await;
         });
         info!("Session heartbeat scheduler started (interval: {}s)", proactive.session_heartbeat_secs);
     }
@@ -102,52 +113,17 @@ pub(crate) async fn run_matrix_bridge(
                 match event {
                     BridgeEvent::TextMessage { sender, body, room_id }
                     | BridgeEvent::ChatMessage { sender, body, room_id, .. } => {
-                        // ── Auth check: token → allowlist fallback ──
-                        let sender_capabilities: Option<Vec<Capability>> = {
-                            let store_guard = store.read().await;
-                            if let Some(ref auth) = store_guard.auth {
-                                match auth.resolve_capabilities(&sender) {
-                                    Some(Ok(caps)) => Some(caps),
-                                    Some(Err(e)) => {
-                                        // Token exists but is invalid (expired, revoked, etc.)
-                                        warn!("Matrix: token error for {}: {e}", sender);
-                                        let room_id_parsed = clankers_matrix::ruma::RoomId::parse(&room_id).ok();
-                                        if let Some(rid) = room_id_parsed {
-                                            let c = client.read().await;
-                                            let msg = format!(
-                                                "Your access token is invalid: {e}\n\
-                                                 Request a new one from the daemon owner, \
-                                                 or register with `!token <base64>`."
-                                            );
-                                            let _ = c.send_markdown(&rid, &msg).await;
-                                        }
-                                        continue;
-                                    }
-                                    None => {
-                                        // No token — fall back to allowlist
-                                        if !is_user_allowed(&allowlist, &sender) {
-                                            info!("Matrix: denied message from {} (no token, not on allowlist)", sender);
-                                            continue;
-                                        }
-                                        None // Full access via allowlist
-                                    }
-                                }
-                            } else {
-                                // No auth layer — use allowlist only
-                                if !is_user_allowed(&allowlist, &sender) {
-                                    info!("Matrix: denied message from {}", sender);
-                                    continue;
-                                }
-                                None
-                            }
-                        };
+                        // Auth check
+                        let sender_ok = check_sender_auth(
+                            &sender, &auth, &allowlist, &client, &room_id,
+                        ).await;
+                        let SendCheckResult::Allowed = sender_ok else { continue };
 
-                        // ── Skip client slash commands ──────────────
                         if body.starts_with('/') {
                             continue;
                         }
 
-                        // ── Bot command dispatch ────────────────────
+                        // Bot command dispatch
                         if body.starts_with('!') {
                             let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(&room_id) {
                                 Ok(rid) => rid.clone(),
@@ -158,9 +134,11 @@ pub(crate) async fn run_matrix_bridge(
                                 room_id: room_id.clone(),
                             };
                             let response = handle_bot_command(
-                                &body,
-                                &key,
-                                Arc::clone(&store),
+                                &body, &key,
+                                Arc::clone(&state),
+                                registry.clone(),
+                                Arc::clone(&factory),
+                                auth.clone(),
                             ).await;
                             let c = client.read().await;
                             if let Err(e) = c.send_markdown(&room_id_parsed, &response).await {
@@ -181,71 +159,50 @@ pub(crate) async fn run_matrix_bridge(
                             Err(_) => continue,
                         };
 
-                        // ── Typing indicator: start ─────────────────
+                        // Typing indicator
                         {
                             let c = client.read().await;
-                            if let Err(e) = c.set_typing(&room_id_parsed, true).await {
-                                warn!("Typing indicator start failed: {e}");
-                            }
+                            let _ = c.set_typing(&room_id_parsed, true).await;
                         }
+                        let typing_cancel = spawn_typing_refresh(Arc::clone(&client), room_id_parsed.clone());
 
-                        // Spawn a typing refresh task (re-sends every 25s)
-                        let typing_cancel = CancellationToken::new();
-                        let typing_client = Arc::clone(&client);
-                        let typing_room = room_id_parsed.clone();
-                        let typing_token = typing_cancel.clone();
-                        tokio::spawn(async move {
-                            let mut interval = tokio::time::interval(std::time::Duration::from_secs(25));
-                            interval.tick().await; // skip the immediate tick
-                            loop {
-                                tokio::select! {
-                                    _ = interval.tick() => {
-                                        let c = typing_client.read().await;
-                                        let _ = c.set_typing(&typing_room, true).await;
-                                    }
-                                    () = typing_token.cancelled() => break,
-                                }
-                            }
-                        });
-
-                        // ── Run prompt ──────────────────────────────
+                        // Run prompt
                         let mut response = run_matrix_prompt(
-                            Arc::clone(&store), key, body,
-                            sender_capabilities.as_deref(),
+                            Arc::clone(&state),
+                            registry.clone(),
+                            Arc::clone(&factory),
+                            key.clone(),
+                            body,
                         ).await;
 
-                        // ── Empty response re-prompt ────────────────
+                        // Empty response re-prompt
                         if response.trim().is_empty() {
                             info!("Empty response, re-prompting for summary");
-                            let re_key = SessionKey::Matrix {
-                                user_id: sender.clone(),
-                                room_id: room_id.clone(),
-                            };
                             let retry = run_matrix_prompt(
-                                Arc::clone(&store),
-                                re_key,
+                                Arc::clone(&state),
+                                registry.clone(),
+                                Arc::clone(&factory),
+                                key.clone(),
                                 "You completed some actions but your response contained \
                                  no text. Briefly summarize what you did.".to_string(),
-                                sender_capabilities.as_deref(),
                             ).await;
-                            if retry.trim().is_empty() {
-                                response = "(completed actions — no summary available)".to_string();
+                            response = if retry.trim().is_empty() {
+                                "(completed actions — no summary available)".to_string()
                             } else {
-                                response = retry;
-                            }
+                                retry
+                            };
                         }
 
-                        // ── Typing indicator: stop ──────────────────
+                        // Stop typing
                         typing_cancel.cancel();
                         {
                             let c = client.read().await;
                             let _ = c.set_typing(&room_id_parsed, false).await;
                         }
 
-                        // ── Sendfile extraction + upload ─────────────
+                        // Sendfile extraction + upload
                         let (cleaned, sendfiles) = extract_sendfile_tags(&response);
                         response = cleaned;
-
                         if !sendfiles.is_empty() {
                             let errors = upload_sendfiles(&client, &room_id_parsed, &sendfiles).await;
                             for err in errors {
@@ -254,24 +211,22 @@ pub(crate) async fn run_matrix_bridge(
                             }
                         }
 
-                        // ── Send response ───────────────────────────
+                        // Send response
                         let c = client.read().await;
                         if let Err(e) = c.send_markdown(&room_id_parsed, &response).await {
                             error!("Matrix send failed: {e}");
                         }
 
-                        // ── Trigger pipe setup ──────────────────────
+                        // Trigger pipe setup
                         if proactive.trigger_pipe_enabled {
-                            let tp_key = SessionKey::Matrix {
-                                user_id: sender.clone(),
-                                room_id: room_id.clone(),
-                            };
                             ensure_trigger_pipe(
-                                Arc::clone(&store),
-                                &tp_key,
+                                Arc::clone(&state),
+                                registry.clone(),
+                                Arc::clone(&factory),
+                                &key,
+                                &sessions_dir,
                                 Arc::clone(&client),
-                            )
-                            .await;
+                            ).await;
                         }
                     }
                     BridgeEvent::MediaMessage {
@@ -282,32 +237,10 @@ pub(crate) async fn run_matrix_bridge(
                         source,
                         room_id,
                     } => {
-                        // ── Auth check: token → allowlist fallback ──
-                        let sender_capabilities: Option<Vec<Capability>> = {
-                            let store_guard = store.read().await;
-                            if let Some(ref auth) = store_guard.auth {
-                                match auth.resolve_capabilities(&sender) {
-                                    Some(Ok(caps)) => Some(caps),
-                                    Some(Err(_)) => {
-                                        info!("Matrix: denied media from {} (invalid token)", sender);
-                                        continue;
-                                    }
-                                    None => {
-                                        if !is_user_allowed(&allowlist, &sender) {
-                                            info!("Matrix: denied media from {}", sender);
-                                            continue;
-                                        }
-                                        None
-                                    }
-                                }
-                            } else {
-                                if !is_user_allowed(&allowlist, &sender) {
-                                    info!("Matrix: denied media from {}", sender);
-                                    continue;
-                                }
-                                None
-                            }
-                        };
+                        let sender_ok = check_sender_auth(
+                            &sender, &auth, &allowlist, &client, &room_id,
+                        ).await;
+                        let SendCheckResult::Allowed = sender_ok else { continue };
 
                         let key = SessionKey::Matrix {
                             user_id: sender.clone(),
@@ -321,39 +254,14 @@ pub(crate) async fn run_matrix_bridge(
                             Err(_) => continue,
                         };
 
-                        // ── Typing indicator: start ─────────────────
                         {
                             let c = client.read().await;
-                            if let Err(e) = c.set_typing(&room_id_parsed, true).await {
-                                warn!("Typing indicator start failed: {e}");
-                            }
+                            let _ = c.set_typing(&room_id_parsed, true).await;
                         }
+                        let typing_cancel = spawn_typing_refresh(Arc::clone(&client), room_id_parsed.clone());
 
-                        let typing_cancel = CancellationToken::new();
-                        let typing_client = Arc::clone(&client);
-                        let typing_room = room_id_parsed.clone();
-                        let typing_token = typing_cancel.clone();
-                        tokio::spawn(async move {
-                            let mut interval = tokio::time::interval(std::time::Duration::from_secs(25));
-                            interval.tick().await;
-                            loop {
-                                tokio::select! {
-                                    _ = interval.tick() => {
-                                        let c = typing_client.read().await;
-                                        let _ = c.set_typing(&typing_room, true).await;
-                                    }
-                                    () = typing_token.cancelled() => break,
-                                }
-                            }
-                        });
-
-                        // ── Download the attachment ─────────────────
-                        let download_result = {
-                            let c = client.read().await;
-                            c.download_media(&source).await
-                        };
-
-                        let file_bytes = match download_result {
+                        // Download the attachment
+                        let file_bytes = match client.read().await.download_media(&source).await {
                             Ok(bytes) => bytes,
                             Err(e) => {
                                 error!("Failed to download media {}: {e}", filename);
@@ -367,48 +275,34 @@ pub(crate) async fn run_matrix_bridge(
                             }
                         };
 
-                        // ── Save to session attachments dir ─────────
-                        let attachments_dir = paths
-                            .global_sessions_dir
-                            .join(format!(
-                                "matrix_{}_{}",
-                                sender.replace(':', "_"),
-                                room_id.replace(':', "_")
-                            ))
+                        // Save to session attachments dir
+                        let attachments_dir = sessions_dir
+                            .join(key.dir_name())
                             .join("attachments");
-                        if let Err(e) = std::fs::create_dir_all(&attachments_dir) {
-                            error!("Failed to create attachments dir: {e}");
-                        }
-
+                        let _ = std::fs::create_dir_all(&attachments_dir);
                         let save_path = attachments_dir.join(&filename);
                         if let Err(e) = std::fs::write(&save_path, &file_bytes) {
                             error!("Failed to save attachment {}: {e}", save_path.display());
                         }
 
-                        // ── Build prompt with image if applicable ───
                         let caption = if body != filename { &body } else { "" };
                         let is_image = media_type == "image";
 
                         let mut response = if is_image {
-                            // Pass image as base64 content block for vision
                             let b64 = base64::Engine::encode(
                                 &base64::engine::general_purpose::STANDARD,
                                 &file_bytes,
                             );
                             let mime_str = guess_mime(&save_path).to_string();
-
-                            let image_content = Content::Image {
-                                source: ImageSource::Base64 {
-                                    media_type: mime_str,
-                                    data: b64,
-                                },
+                            let image_data = clankers_protocol::ImageData {
+                                data: b64,
+                                media_type: mime_str,
                             };
 
                             let prompt_text = if caption.is_empty() {
                                 format!(
                                     "User sent an image: {} (saved to {})",
-                                    filename,
-                                    save_path.display()
+                                    filename, save_path.display()
                                 )
                             } else {
                                 format!(
@@ -418,13 +312,13 @@ pub(crate) async fn run_matrix_bridge(
                             };
 
                             run_matrix_prompt_with_images(
-                                Arc::clone(&store),
-                                key,
+                                Arc::clone(&state),
+                                registry.clone(),
+                                Arc::clone(&factory),
+                                key.clone(),
                                 prompt_text,
-                                vec![image_content],
-                                sender_capabilities.as_deref(),
-                            )
-                            .await
+                                vec![image_data],
+                            ).await
                         } else {
                             let prompt_text = if caption.is_empty() {
                                 format!(
@@ -438,24 +332,25 @@ pub(crate) async fn run_matrix_bridge(
                                 )
                             };
 
-                            run_matrix_prompt(Arc::clone(&store), key, prompt_text, sender_capabilities.as_deref()).await
+                            run_matrix_prompt(
+                                Arc::clone(&state),
+                                registry.clone(),
+                                Arc::clone(&factory),
+                                key.clone(),
+                                prompt_text,
+                            ).await
                         };
 
-                        // ── Empty response re-prompt ────────────────
+                        // Empty response re-prompt
                         if response.trim().is_empty() {
-                            let re_key = SessionKey::Matrix {
-                                user_id: sender.clone(),
-                                room_id: room_id.clone(),
-                            };
                             let retry = run_matrix_prompt(
-                                Arc::clone(&store),
-                                re_key,
+                                Arc::clone(&state),
+                                registry.clone(),
+                                Arc::clone(&factory),
+                                key.clone(),
                                 "You processed a file but your response contained no text. \
-                                 Briefly summarize what you did."
-                                    .to_string(),
-                                sender_capabilities.as_deref(),
-                            )
-                            .await;
+                                 Briefly summarize what you did.".to_string(),
+                            ).await;
                             response = if retry.trim().is_empty() {
                                 "(processed file — no summary available)".to_string()
                             } else {
@@ -463,10 +358,8 @@ pub(crate) async fn run_matrix_bridge(
                             };
                         }
 
-                        // ── Sendfile extraction + upload ────────────
                         let (cleaned, sendfiles) = extract_sendfile_tags(&response);
                         response = cleaned;
-
                         if !sendfiles.is_empty() {
                             let errors = upload_sendfiles(&client, &room_id_parsed, &sendfiles).await;
                             for err in errors {
@@ -475,31 +368,26 @@ pub(crate) async fn run_matrix_bridge(
                             }
                         }
 
-                        // ── Typing indicator: stop ──────────────────
                         typing_cancel.cancel();
                         {
                             let c = client.read().await;
                             let _ = c.set_typing(&room_id_parsed, false).await;
                         }
 
-                        // ── Send response ───────────────────────────
                         let c = client.read().await;
                         if let Err(e) = c.send_markdown(&room_id_parsed, &response).await {
                             error!("Matrix send failed: {e}");
                         }
 
-                        // ── Trigger pipe setup ──────────────────────
                         if proactive.trigger_pipe_enabled {
-                            let tp_key = SessionKey::Matrix {
-                                user_id: sender.clone(),
-                                room_id: room_id.clone(),
-                            };
                             ensure_trigger_pipe(
-                                Arc::clone(&store),
-                                &tp_key,
+                                Arc::clone(&state),
+                                registry.clone(),
+                                Arc::clone(&factory),
+                                &key,
+                                &sessions_dir,
                                 Arc::clone(&client),
-                            )
-                            .await;
+                            ).await;
                         }
                     }
                     BridgeEvent::PeerUpdate(peer) => {
@@ -513,4 +401,75 @@ pub(crate) async fn run_matrix_bridge(
     }
 
     Ok(())
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+
+enum SendCheckResult {
+    Allowed,
+    Denied,
+}
+
+/// Check auth for a Matrix sender: token → allowlist fallback.
+async fn check_sender_auth(
+    sender: &str,
+    auth: &Option<Arc<AuthLayer>>,
+    allowlist: &[String],
+    client: &tokio::sync::RwLock<clankers_matrix::MatrixClient>,
+    room_id: &str,
+) -> SendCheckResult {
+    if let Some(auth) = auth {
+        match auth.resolve_capabilities(sender) {
+            Some(Ok(_caps)) => SendCheckResult::Allowed,
+            Some(Err(e)) => {
+                warn!("Matrix: token error for {}: {e}", sender);
+                if let Ok(rid) = clankers_matrix::ruma::RoomId::parse(room_id) {
+                    let c = client.read().await;
+                    let msg = format!(
+                        "Your access token is invalid: {e}\n\
+                         Request a new one from the daemon owner, \
+                         or register with `!token <base64>`."
+                    );
+                    let _ = c.send_markdown(&rid, &msg).await;
+                }
+                SendCheckResult::Denied
+            }
+            None => {
+                if is_user_allowed(allowlist, sender) {
+                    SendCheckResult::Allowed
+                } else {
+                    info!("Matrix: denied message from {} (no token, not on allowlist)", sender);
+                    SendCheckResult::Denied
+                }
+            }
+        }
+    } else if is_user_allowed(allowlist, sender) {
+        SendCheckResult::Allowed
+    } else {
+        info!("Matrix: denied message from {}", sender);
+        SendCheckResult::Denied
+    }
+}
+
+/// Spawn a typing indicator refresh task (re-sends every 25s).
+fn spawn_typing_refresh(
+    client: Arc<tokio::sync::RwLock<clankers_matrix::MatrixClient>>,
+    room_id: clankers_matrix::ruma::OwnedRoomId,
+) -> CancellationToken {
+    let cancel = CancellationToken::new();
+    let token = cancel.clone();
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(25));
+        interval.tick().await;
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    let c = client.read().await;
+                    let _ = c.set_typing(&room_id, true).await;
+                }
+                () = token.cancelled() => break,
+            }
+        }
+    });
+    cancel
 }

@@ -30,3 +30,4 @@ pub use types::ImageData;
 pub use types::ProcessInfo;
 pub use types::ProcessState;
 pub use types::SerializedMessage;
+pub use types::SessionKey;

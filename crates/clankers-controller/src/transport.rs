@@ -150,6 +150,8 @@ fn is_process_alive(pid: u32) -> bool {
 pub struct DaemonState {
     /// Active sessions: session_id → session handle
     pub sessions: HashMap<String, SessionHandle>,
+    /// Secondary index: SessionKey → session_id for transport lookups.
+    pub key_index: HashMap<clankers_protocol::SessionKey, String>,
     /// Daemon start time
     pub started_at: Instant,
 }
@@ -178,8 +180,42 @@ impl DaemonState {
     pub fn new() -> Self {
         Self {
             sessions: HashMap::new(),
+            key_index: HashMap::new(),
             started_at: Instant::now(),
         }
+    }
+
+    /// Look up a session by transport key (iroh peer, Matrix user+room).
+    pub fn session_by_key(
+        &self,
+        key: &clankers_protocol::SessionKey,
+    ) -> Option<&SessionHandle> {
+        let session_id = self.key_index.get(key)?;
+        self.sessions.get(session_id)
+    }
+
+    /// Register a session key → session_id mapping.
+    pub fn register_key(
+        &mut self,
+        key: clankers_protocol::SessionKey,
+        session_id: String,
+    ) {
+        self.key_index.insert(key, session_id);
+    }
+
+    /// Remove a session and its key index entry.
+    pub fn remove_session(&mut self, session_id: &str) {
+        self.sessions.remove(session_id);
+        self.key_index.retain(|_, v| v != session_id);
+    }
+
+    /// List all keys associated with Matrix sessions.
+    pub fn matrix_keys(&self) -> Vec<(clankers_protocol::SessionKey, String)> {
+        self.key_index
+            .iter()
+            .filter(|(k, _)| matches!(k, clankers_protocol::SessionKey::Matrix { .. }))
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     }
 
     pub fn session_summaries(&self) -> Vec<SessionSummary> {

@@ -17,7 +17,6 @@
 
 use std::sync::Arc;
 
-use tokio::sync::RwLock;
 use tokio_util::sync::CancellationToken;
 use tracing::error;
 use tracing::info;
@@ -33,15 +32,13 @@ pub mod agent_process;
 mod config;
 mod handlers;
 pub mod quic_bridge;
-mod session_store;
+pub(crate) mod session_store;
 pub mod socket_bridge;
 
 // Re-export public types
 pub(crate) use config::ALPN_CHAT;
 pub use config::DaemonConfig;
 pub(crate) use config::ProactiveConfig;
-pub(crate) use session_store::SessionKey;
-pub(crate) use session_store::SessionStore;
 use session_store::create_auth_layer;
 
 // ── Daemon entry point ──────────────────────────────────────────────────────
@@ -64,19 +61,7 @@ pub async fn run_daemon(
     let db_path = paths.global_config_dir.join("clankers.db");
     let auth_layer = create_auth_layer(&db_path, &identity);
 
-    // Phase 2: Session store
-    let store = Arc::new(RwLock::new(SessionStore::new(
-        Arc::clone(&provider),
-        tools.clone(),
-        config.settings.clone(),
-        config.model.clone(),
-        config.system_prompt.clone(),
-        paths.global_sessions_dir.clone(),
-        config.max_sessions,
-        auth_layer.clone(),
-    )));
-
-    // Phase 3: iroh endpoint + ACL (non-fatal — daemon works without iroh)
+    // Phase 2: iroh endpoint + ACL (non-fatal — daemon works without iroh)
     let iroh_result = build_endpoint(&identity, &config, paths).await;
     let (endpoint, acl) = match iroh_result {
         Ok((ep, a)) => (Some(ep), Some(Arc::new(a))),
@@ -89,7 +74,7 @@ pub async fn run_daemon(
 
     print_startup_banner(&config, &node_id);
 
-    // Phase 4: Unix domain socket control plane + shared factory + actor registry
+    // Phase 3: Unix domain socket control plane + shared factory + actor registry
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
     let daemon_state = Arc::new(tokio::sync::Mutex::new(
@@ -114,16 +99,17 @@ pub async fn run_daemon(
         shutdown_rx.clone(),
     );
 
-    // Phase 5: Background tasks
+    // Phase 4: Background tasks
     let iroh_handle = if let (Some(endpoint), Some(acl)) = (endpoint, acl) {
         let rpc_state = build_rpc_state(&config, &provider, &tools, paths);
         Some(spawn_iroh_accept_loop(
             endpoint.clone(),
-            Arc::clone(&store),
             acl,
             rpc_state,
             Arc::clone(&daemon_state),
             Arc::clone(&session_factory),
+            process_registry.clone(),
+            auth_layer.clone(),
             shutdown_rx.clone(),
             cancel.clone(),
         ))
@@ -131,10 +117,18 @@ pub async fn run_daemon(
         None
     };
 
-    let matrix_handle = spawn_matrix_bridge(&config, &store, paths, cancel.clone());
+    let matrix_handle = spawn_matrix_bridge(
+        &config,
+        &daemon_state,
+        &session_factory,
+        &process_registry,
+        &auth_layer,
+        paths,
+        cancel.clone(),
+    );
     spawn_heartbeat(&config, &identity, paths, cancel.clone()).await;
-    spawn_status_logger(Arc::clone(&store), cancel.clone());
-    spawn_idle_reaper(&config, Arc::clone(&store), cancel.clone());
+    spawn_status_logger(Arc::clone(&daemon_state), cancel.clone());
+    spawn_idle_reaper(&config, Arc::clone(&daemon_state), process_registry.clone(), cancel.clone());
 
     let ctrl_sock = clankers_controller::transport::control_socket_path();
     let log_path = clankers_controller::transport::daemon_log_path();
@@ -165,8 +159,8 @@ pub async fn run_daemon(
     }
 
     clankers_controller::transport::cleanup_socket_dir();
-    let store = store.read().await;
-    println!("Daemon stopped ({} sessions served).", store.len());
+    let session_count = daemon_state.lock().await.sessions.len();
+    println!("Daemon stopped ({session_count} sessions served).");
     Ok(())
 }
 
@@ -275,11 +269,12 @@ fn build_rpc_state(
 
 fn spawn_iroh_accept_loop(
     endpoint: ::iroh::Endpoint,
-    store: Arc<RwLock<SessionStore>>,
     acl: Arc<iroh::AccessControl>,
     rpc_state: Arc<iroh::ServerState>,
     daemon_state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
     session_factory: Arc<socket_bridge::SessionFactory>,
+    registry: clankers_actor::ProcessRegistry,
+    auth: Option<Arc<session_store::AuthLayer>>,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
     cancel: CancellationToken,
 ) -> tokio::task::JoinHandle<()> {
@@ -289,16 +284,15 @@ fn spawn_iroh_accept_loop(
             tokio::select! {
                 incoming = endpoint.accept() => {
                     let Some(incoming) = incoming else { break };
-                    let store = Arc::clone(&store);
                     let acl = Arc::clone(&acl);
                     let rpc_state = Arc::clone(&rpc_state);
                     let daemon_state = Arc::clone(&daemon_state);
                     let session_factory = Arc::clone(&session_factory);
+                    let registry = registry.clone();
+                    let auth = auth.clone();
                     let shutdown_rx = shutdown_rx.clone();
 
                     tokio::spawn(async move {
-                        // Peek at the ALPN to route to the right handler.
-                        // For daemon/1, use the QUIC bridge directly.
                         let conn = match incoming.await {
                             Ok(c) => c,
                             Err(e) => {
@@ -321,13 +315,18 @@ fn spawn_iroh_accept_loop(
                                     conn,
                                     daemon_state,
                                     session_factory,
+                                    registry,
                                     shutdown_rx,
                                 ).await;
                             }
                             _ => {
-                                // Delegate rpc/1 and chat/1 to existing handlers
                                 if let Err(e) = handle_iroh_connection_from_conn(
-                                    conn, store, rpc_state,
+                                    conn,
+                                    rpc_state,
+                                    daemon_state,
+                                    session_factory,
+                                    registry,
+                                    auth,
                                 ).await {
                                     warn!("iroh connection error: {e}");
                                 }
@@ -347,8 +346,11 @@ fn spawn_iroh_accept_loop(
 /// in the accept loop) and incoming.await (already awaited).
 async fn handle_iroh_connection_from_conn(
     conn: ::iroh::endpoint::Connection,
-    store: Arc<RwLock<SessionStore>>,
     rpc_state: Arc<iroh::ServerState>,
+    daemon_state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
+    session_factory: Arc<socket_bridge::SessionFactory>,
+    registry: clankers_actor::ProcessRegistry,
+    auth: Option<Arc<session_store::AuthLayer>>,
 ) -> Result<()> {
     let remote = conn.remote_id();
     let alpn = conn.alpn();
@@ -356,7 +358,14 @@ async fn handle_iroh_connection_from_conn(
 
     match &*alpn {
         x if x == ALPN_CHAT => {
-            handlers::handle_chat_connection(conn, store, &remote.to_string()).await;
+            handlers::handle_chat_connection(
+                conn,
+                daemon_state,
+                registry,
+                session_factory,
+                auth,
+                &remote.to_string(),
+            ).await;
         }
         x if x == iroh::ALPN => {
             handlers::handle_rpc_v1_connection(conn, rpc_state).await;
@@ -372,7 +381,10 @@ async fn handle_iroh_connection_from_conn(
 
 fn spawn_matrix_bridge(
     config: &DaemonConfig,
-    store: &Arc<RwLock<SessionStore>>,
+    daemon_state: &Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
+    session_factory: &Arc<socket_bridge::SessionFactory>,
+    registry: &clankers_actor::ProcessRegistry,
+    auth: &Option<Arc<session_store::AuthLayer>>,
     paths: &ClankersPaths,
     cancel: CancellationToken,
 ) -> Option<tokio::task::JoinHandle<()>> {
@@ -380,7 +392,10 @@ fn spawn_matrix_bridge(
         return None;
     }
 
-    let matrix_store = Arc::clone(store);
+    let state = Arc::clone(daemon_state);
+    let registry = registry.clone();
+    let factory = Arc::clone(session_factory);
+    let auth = auth.clone();
     let matrix_paths = paths.clone();
     let matrix_allowed = config.matrix_allowed_users.clone();
     let proactive_config = ProactiveConfig {
@@ -391,7 +406,10 @@ fn spawn_matrix_bridge(
 
     Some(tokio::spawn(async move {
         if let Err(e) = super::matrix_bridge::run_matrix_bridge(
-            matrix_store,
+            state,
+            registry,
+            factory,
+            auth,
             cancel,
             &matrix_paths,
             matrix_allowed,
@@ -427,14 +445,17 @@ async fn spawn_heartbeat(
     }
 }
 
-fn spawn_status_logger(store: Arc<RwLock<SessionStore>>, cancel: CancellationToken) {
+fn spawn_status_logger(
+    state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
+    cancel: CancellationToken,
+) {
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    let store = store.read().await;
-                    info!("daemon status: {} active session(s)", store.len());
+                    let st = state.lock().await;
+                    info!("daemon status: {} active session(s)", st.sessions.len());
                 }
                 () = cancel.cancelled() => break,
             }
@@ -442,7 +463,12 @@ fn spawn_status_logger(store: Arc<RwLock<SessionStore>>, cancel: CancellationTok
     });
 }
 
-fn spawn_idle_reaper(config: &DaemonConfig, store: Arc<RwLock<SessionStore>>, cancel: CancellationToken) {
+fn spawn_idle_reaper(
+    config: &DaemonConfig,
+    state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
+    _registry: clankers_actor::ProcessRegistry,
+    cancel: CancellationToken,
+) {
     if config.idle_timeout_secs == 0 {
         return;
     }
@@ -453,9 +479,32 @@ fn spawn_idle_reaper(config: &DaemonConfig, store: Arc<RwLock<SessionStore>>, ca
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    let reaped = store.write().await.reap_idle(idle_timeout);
-                    if reaped > 0 {
-                        info!("Reaped {} idle session(s)", reaped);
+                    let stale = {
+                        let st = state.lock().await;
+                        let now = chrono::Utc::now();
+                        st.sessions
+                            .iter()
+                            .filter(|(_, h)| {
+                                if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(&h.last_active) {
+                                    let idle = now.signed_duration_since(ts);
+                                    idle.to_std().unwrap_or_default() > idle_timeout
+                                } else {
+                                    false
+                                }
+                            })
+                            .map(|(id, _)| id.clone())
+                            .collect::<Vec<_>>()
+                    };
+
+                    if !stale.is_empty() {
+                        let mut st = state.lock().await;
+                        for session_id in &stale {
+                            if let Some(handle) = st.sessions.get(session_id) {
+                                let _ = handle.cmd_tx.send(clankers_protocol::SessionCommand::Disconnect);
+                            }
+                            st.remove_session(session_id);
+                        }
+                        info!("Reaped {} idle session(s)", stale.len());
                     }
                 }
                 () = cancel.cancelled() => break,

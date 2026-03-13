@@ -289,6 +289,127 @@ pub async fn run_ephemeral_agent(
     Ok(collected)
 }
 
+// ── Prompt-and-collect for non-TUI consumers ────────────────────────────────
+
+/// Maximum bytes collected from agent text output for prompt_and_collect.
+const MAX_PROMPT_COLLECT_BYTES: usize = 512 * 1024;
+
+/// Send a prompt to an actor session and collect the full text response.
+///
+/// Subscribes to the session's broadcast channel, sends the prompt via
+/// `cmd_tx`, and collects `DaemonEvent::TextDelta` until `AgentEnd` or
+/// `PromptDone`. Used by chat/1 and Matrix bridge instead of the old
+/// clone-seed-prompt pattern.
+///
+/// If `update_last_active` is false (proactive prompts like heartbeats),
+/// the session handle's timestamp is not updated, so idle reaping still
+/// works correctly.
+pub async fn prompt_and_collect(
+    cmd_tx: &tokio::sync::mpsc::UnboundedSender<SessionCommand>,
+    event_tx: &tokio::sync::broadcast::Sender<DaemonEvent>,
+    text: String,
+    images: Vec<clankers_protocol::ImageData>,
+) -> String {
+    let mut event_rx = event_tx.subscribe();
+
+    // Send the prompt
+    if cmd_tx
+        .send(SessionCommand::Prompt {
+            text,
+            images,
+        })
+        .is_err()
+    {
+        return String::new();
+    }
+
+    // Collect text until the agent finishes
+    let mut collected = String::new();
+    loop {
+        match event_rx.recv().await {
+            Ok(DaemonEvent::TextDelta { text, .. }) => {
+                if collected.len() < MAX_PROMPT_COLLECT_BYTES {
+                    collected.push_str(&text);
+                }
+            }
+            Ok(DaemonEvent::AgentEnd) => break,
+            Ok(DaemonEvent::PromptDone { .. }) => break,
+            Err(broadcast::error::RecvError::Closed) => break,
+            Err(broadcast::error::RecvError::Lagged(n)) => {
+                warn!("prompt_and_collect: skipped {n} events");
+            }
+            _ => {}
+        }
+    }
+
+    collected
+}
+
+/// Get or create an actor session for a transport key.
+///
+/// Looks up the session in `DaemonState` by key. If not found, spawns a
+/// new actor process via `spawn_agent_process`, registers it in the state
+/// with the key index, and returns the session's command/event channels.
+///
+/// Returns `(session_id, cmd_tx, event_tx)`.
+pub async fn get_or_create_keyed_session(
+    state: &tokio::sync::Mutex<clankers_controller::transport::DaemonState>,
+    registry: &clankers_actor::ProcessRegistry,
+    factory: &super::socket_bridge::SessionFactory,
+    key: &clankers_protocol::SessionKey,
+) -> (
+    String,
+    tokio::sync::mpsc::UnboundedSender<SessionCommand>,
+    tokio::sync::broadcast::Sender<DaemonEvent>,
+) {
+    // Fast path: session already exists
+    {
+        let st = state.lock().await;
+        if let Some(handle) = st.session_by_key(key) {
+            return (
+                handle.session_id.clone(),
+                handle.cmd_tx.clone(),
+                handle.event_tx.clone(),
+            );
+        }
+    }
+
+    // Slow path: create a new session
+    let session_id = clankers_message::generate_id();
+    let (_pid, cmd_tx, event_tx) = spawn_agent_process(
+        registry,
+        factory,
+        session_id.clone(),
+        None,
+        None,
+        None,
+    );
+
+    let socket_path =
+        clankers_controller::transport::session_socket_path(&session_id);
+
+    {
+        let mut st = state.lock().await;
+        st.sessions.insert(
+            session_id.clone(),
+            clankers_controller::transport::SessionHandle {
+                session_id: session_id.clone(),
+                model: factory.default_model.clone(),
+                turn_count: 0,
+                last_active: chrono::Utc::now().to_rfc3339(),
+                client_count: 0,
+                cmd_tx: cmd_tx.clone(),
+                event_tx: event_tx.clone(),
+                socket_path,
+            },
+        );
+        st.register_key(key.clone(), session_id.clone());
+    }
+
+    info!("created keyed session {} for {}", session_id, key);
+    (session_id, cmd_tx, event_tx)
+}
+
 /// Resolve agent definition name to (model, system_prompt) overrides.
 fn resolve_agent_def(
     agent_def: Option<&str>,
