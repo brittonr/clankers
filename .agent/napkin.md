@@ -122,6 +122,16 @@
 - `Plugin.serde_json` via `use clankers_plugin_sdk::serde_json` — needs direct dep
 - Workers for multi-file refactors — changes don't persist reliably
 
+### Automerge session storage
+- `automerge 0.7.4`: `AutoCommit` for single-writer, `Value::Scalar(s).to_str()` returns `Option<&str>`
+- Document schema: root has 3 keys — `header` (Map), `messages` (Map), `annotations` (List)
+- Messages stored as JSON strings in `message_json` field — write-once, no partial merge needed
+- Annotations stored as JSON strings in `data` field with `kind` discriminator
+- `save_incremental()` appends bytes to existing file; `load()` reads full + incremental chunks
+- `doc.keys()` returns insertion-order iteration for maps
+- `doc.length()` for list length, index with `doc.get(&obj, i)` for `usize` indices
+- `AnnotationEntry` is `#[serde(tag = "kind")]` — serde handles the discriminator
+
 ## Domain Notes
 - JMAP (RFC 8620/8621): pure HTTP+JSON email, Fastmail is reference impl
 - Matrix SDK 0.9: `Room::typing_notice(bool)`, `send_attachment()` for files, `ClankersEvent::Text` has `room_id`

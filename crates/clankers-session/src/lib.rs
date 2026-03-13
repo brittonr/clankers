@@ -3,6 +3,7 @@
 //! Manages JSONL session files that record the full conversation history
 //! as an append-only log with branching, merging, and label support.
 
+pub mod automerge_store;
 pub mod context;
 pub mod entry;
 pub mod error;
