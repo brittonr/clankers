@@ -64,15 +64,15 @@ pub(crate) async fn handle_chat_connection(
                 if let Some(token_b64) = request.get("token").and_then(|v| v.as_str())
                     && let Some(ref auth) = auth
                 {
-                    match clankers_auth::CapabilityToken::from_base64(token_b64) {
-                        Ok(token) => match auth.verify_token(&token) {
+                    match clankers_auth::Credential::from_base64(token_b64) {
+                        Ok(cred) => match auth.verify_credential(&cred) {
                             Ok(caps) => {
                                 info!("[{}] authenticated with {} capabilities", key, caps.len());
                                 _authenticated = true;
-                                auth.store_token(peer_id, &token);
+                                auth.store_credential(peer_id, &cred);
                             }
                             Err(e) => {
-                                warn!("[{}] token verification failed: {e}", key);
+                                warn!("[{}] credential verification failed: {e}", key);
                                 let err = json!({ "type": "error", "message": format!("Token rejected: {e}") });
                                 let mut send = send;
                                 let _ = write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await;

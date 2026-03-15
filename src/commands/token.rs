@@ -94,24 +94,25 @@ fn handle_create(
     from: Option<String>,
     scope: TokenScope,
 ) -> Result<()> {
-    use clankers_auth::CapabilityToken;
+    use clankers_auth::Credential;
     use clankers_auth::TokenBuilder;
 
     let lifetime = parse_duration(expire).ok_or_else(|| crate::error::Error::Config {
         message: format!("Invalid duration: '{}'. Examples: 1h, 24h, 7d, 30d, 365d", expire),
     })?;
 
-    let parent: Option<CapabilityToken> = from
+    let parent_cred: Option<Credential> = from
         .as_ref()
         .map(|parent_b64| {
-            CapabilityToken::from_base64(parent_b64).map_err(|e| crate::error::Error::Config {
-                message: format!("Invalid parent token: {}", e),
+            Credential::from_base64(parent_b64).map_err(|e| crate::error::Error::Config {
+                message: format!("Invalid parent credential: {}", e),
             })
         })
         .transpose()?;
 
-    let mut builder = if let Some(parent) = parent {
-        TokenBuilder::new(identity.secret_key.clone()).delegated_from(parent)
+    // Build the leaf token
+    let mut builder = if let Some(ref parent) = parent_cred {
+        TokenBuilder::new(identity.secret_key.clone()).delegated_from(parent.token.clone())
     } else {
         TokenBuilder::new(identity.secret_key.clone())
     };
@@ -135,12 +136,22 @@ fn handle_create(
         message: format!("Failed to create token: {}", e),
     })?;
 
-    let b64 = token.to_base64().map_err(|e| crate::error::Error::Config {
-        message: format!("Failed to encode token: {}", e),
+    // Wrap in a Credential with the parent chain
+    let cred = if let Some(parent) = parent_cred {
+        let mut proofs = Vec::with_capacity(parent.proofs.len().saturating_add(1));
+        proofs.push(parent.token);
+        proofs.extend(parent.proofs);
+        Credential { token, proofs }
+    } else {
+        Credential::from_root(token)
+    };
+
+    let b64 = cred.to_base64().map_err(|e| crate::error::Error::Config {
+        message: format!("Failed to encode credential: {}", e),
     })?;
 
-    store_token(redb_db, &token);
-    print_token_summary(&token);
+    store_credential(redb_db, &cred);
+    print_credential_summary(&cred);
     println!("{}", b64);
     Ok(())
 }
@@ -217,36 +228,39 @@ fn build_scoped_capabilities(
     builder
 }
 
-/// Store a token in redb for tracking.
-fn store_token(redb_db: &std::sync::Arc<redb::Database>, token: &clankers_auth::CapabilityToken) {
-    let hash_hex = hex::encode(token.hash().unwrap_or([0u8; 32]));
-    let encoded = token.encode().unwrap_or_default();
+/// Store a credential in redb for tracking.
+fn store_credential(redb_db: &std::sync::Arc<redb::Database>, cred: &clankers_auth::Credential) {
+    let hash_hex = hex::encode(cred.token.hash().unwrap_or([0u8; 32]));
+    let encoded = cred.encode().unwrap_or_default();
     if let Ok(tx) = redb_db.begin_write() {
         if let Ok(mut table) = tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE) {
             let _ = table.insert(hash_hex.as_str(), encoded.as_slice());
         }
         if let Err(e) = tx.commit() {
-            eprintln!("Warning: failed to store token in database: {}", e);
+            eprintln!("Warning: failed to store credential in database: {}", e);
         }
     }
 }
 
-/// Print token metadata to stderr.
-fn print_token_summary(token: &clankers_auth::CapabilityToken) {
-    let hash_hex = hex::encode(token.hash().unwrap_or([0u8; 32]));
-    eprintln!("Token created:");
-    eprintln!("  Issuer:  {}", token.issuer.fmt_short());
+/// Print credential metadata to stderr.
+fn print_credential_summary(cred: &clankers_auth::Credential) {
+    let hash_hex = hex::encode(cred.token.hash().unwrap_or([0u8; 32]));
+    eprintln!("Credential created:");
+    eprintln!("  Issuer:  {}", cred.token.issuer.fmt_short());
     eprintln!("  Hash:    {}", &hash_hex[..16]);
     eprintln!(
         "  Expires: {}",
-        chrono::DateTime::from_timestamp(token.expires_at as i64, 0)
+        chrono::DateTime::from_timestamp(cred.token.expires_at as i64, 0)
             .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
             .unwrap_or_else(|| "unknown".to_string())
     );
-    let cap_strs: Vec<String> = token.capabilities.iter().map(|c| format!("{:?}", c)).collect();
+    let cap_strs: Vec<String> = cred.token.capabilities.iter().map(|c| format!("{:?}", c)).collect();
     eprintln!("  Caps:    {}", cap_strs.join(", "));
-    if token.delegation_depth > 0 {
-        eprintln!("  Depth:   {}", token.delegation_depth);
+    if cred.token.delegation_depth > 0 {
+        eprintln!("  Depth:   {}", cred.token.delegation_depth);
+    }
+    if !cred.proofs.is_empty() {
+        eprintln!("  Chain:   {} proof(s)", cred.proofs.len());
     }
     eprintln!();
 }
@@ -275,7 +289,7 @@ fn handle_list(redb_db: &std::sync::Arc<redb::Database>) -> Result<()> {
                 let hash_hex = key.value().to_string();
                 let encoded = value.value().to_vec();
                 count += 1;
-                print_token_list_entry(&hash_hex, &encoded);
+                print_credential_list_entry(&hash_hex, &encoded);
             }
             if count == 0 {
                 println!("No tokens issued. Create one with: clankers token create");
@@ -290,24 +304,30 @@ fn handle_list(redb_db: &std::sync::Arc<redb::Database>) -> Result<()> {
     Ok(())
 }
 
-/// Print a single token entry for the list command.
-fn print_token_list_entry(hash_hex: &str, encoded: &[u8]) {
-    match clankers_auth::CapabilityToken::decode(encoded) {
-        Ok(token) => {
+/// Print a single credential entry for the list command.
+fn print_credential_list_entry(hash_hex: &str, encoded: &[u8]) {
+    match clankers_auth::Credential::decode(encoded) {
+        Ok(cred) => {
             let now =
                 std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-            let status = if token.expires_at < now { "expired" } else { "valid" };
-            let expires = chrono::DateTime::from_timestamp(token.expires_at as i64, 0)
+            let status = if cred.token.expires_at < now { "expired" } else { "valid" };
+            let expires = chrono::DateTime::from_timestamp(cred.token.expires_at as i64, 0)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
                 .unwrap_or_else(|| "?".to_string());
-            let caps: Vec<&str> = token.capabilities.iter().map(cap_short_name).collect();
+            let caps: Vec<&str> = cred.token.capabilities.iter().map(cap_short_name).collect();
+            let chain = if cred.proofs.is_empty() {
+                String::new()
+            } else {
+                format!(" chain={}", cred.proofs.len())
+            };
             println!(
-                "  {}  {} | {} | {} | depth={}",
+                "  {}  {} | {} | {} | depth={}{}",
                 &hash_hex[..16],
                 status,
                 expires,
                 caps.join(","),
-                token.delegation_depth,
+                cred.token.delegation_depth,
+                chain,
             );
         }
         Err(e) => {
@@ -342,8 +362,8 @@ fn handle_revoke(redb_db: &std::sync::Arc<redb::Database>, hash: &str) -> Result
         arr.copy_from_slice(&bytes);
         arr
     } else {
-        match clankers_auth::CapabilityToken::from_base64(hash) {
-            Ok(token) => token.hash().map_err(|e| crate::error::Error::Config {
+        match clankers_auth::Credential::from_base64(hash) {
+            Ok(cred) => cred.token.hash().map_err(|e| crate::error::Error::Config {
                 message: format!("Failed to hash token: {}", e),
             })?,
             Err(_) => {
@@ -367,37 +387,57 @@ fn handle_revoke(redb_db: &std::sync::Arc<redb::Database>, hash: &str) -> Result
     Ok(())
 }
 
-/// Display detailed token info.
+/// Display detailed credential info.
 fn handle_info(token_b64: &str) -> Result<()> {
-    let token = clankers_auth::CapabilityToken::from_base64(token_b64).map_err(|e| crate::error::Error::Config {
-        message: format!("Failed to decode token: {}", e),
+    let cred = clankers_auth::Credential::from_base64(token_b64).map_err(|e| crate::error::Error::Config {
+        message: format!("Failed to decode credential: {}", e),
     })?;
 
-    let hash = hex::encode(token.hash().unwrap_or([0u8; 32]));
+    let hash = hex::encode(cred.token.hash().unwrap_or([0u8; 32]));
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let expired = token.expires_at < now;
+    let expired = cred.token.expires_at < now;
 
-    println!("Token Info:");
-    println!("  Version:    {}", token.version);
-    println!("  Issuer:     {}", token.issuer);
-    println!("  Audience:   {:?}", token.audience);
+    println!("Credential Info:");
+    println!("  Version:    {}", cred.token.version);
+    println!("  Issuer:     {}", cred.token.issuer);
+    println!("  Audience:   {:?}", cred.token.audience);
     println!("  Hash:       {}", hash);
-    println!("  Issued:     {}", format_timestamp(token.issued_at, "%Y-%m-%d %H:%M:%S UTC"),);
+    println!("  Issued:     {}", format_timestamp(cred.token.issued_at, "%Y-%m-%d %H:%M:%S UTC"),);
     println!(
         "  Expires:    {} {}",
-        format_timestamp(token.expires_at, "%Y-%m-%d %H:%M:%S UTC"),
+        format_timestamp(cred.token.expires_at, "%Y-%m-%d %H:%M:%S UTC"),
         if expired { "(EXPIRED)" } else { "" }
     );
-    println!("  Depth:      {}", token.delegation_depth);
-    if let Some(proof) = token.proof {
+    println!("  Depth:      {}", cred.token.delegation_depth);
+    if let Some(proof) = cred.token.proof {
         println!("  Parent:     {}", hex::encode(proof));
     }
-    if let Some(nonce) = token.nonce {
+    if let Some(nonce) = cred.token.nonce {
         println!("  Nonce:      {}", hex::encode(nonce));
     }
+    if !cred.token.facts.is_empty() {
+        println!("  Facts:");
+        for (key, value) in &cred.token.facts {
+            let val_str = std::str::from_utf8(value).unwrap_or("(binary)");
+            println!("    {}: {}", key, val_str);
+        }
+    }
     println!("  Capabilities:");
-    for cap in &token.capabilities {
+    for cap in &cred.token.capabilities {
         print_capability_detail(cap);
+    }
+    if !cred.proofs.is_empty() {
+        println!("  Proof chain ({} token(s)):", cred.proofs.len());
+        for (i, proof_token) in cred.proofs.iter().enumerate() {
+            let proof_hash = hex::encode(proof_token.hash().unwrap_or([0u8; 32]));
+            println!(
+                "    [{}] issuer={} depth={} hash={}",
+                i,
+                proof_token.issuer.fmt_short(),
+                proof_token.delegation_depth,
+                &proof_hash[..16],
+            );
+        }
     }
     Ok(())
 }

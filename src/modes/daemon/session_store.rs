@@ -7,7 +7,7 @@
 
 use std::sync::Arc;
 
-use clankers_auth::CapabilityToken;
+use clankers_auth::Credential;
 use clankers_auth::RedbRevocationStore;
 use clankers_auth::RevocationStore;
 use clankers_auth::TokenVerifier;
@@ -30,18 +30,18 @@ pub(crate) struct AuthLayer {
 }
 
 impl AuthLayer {
-    /// Look up a stored token for a user ID (Matrix user ID or iroh pubkey).
-    pub(crate) fn lookup_token(&self, user_id: &str) -> Option<CapabilityToken> {
+    /// Look up a stored credential for a user ID (Matrix user ID or iroh pubkey).
+    pub(crate) fn lookup_credential(&self, user_id: &str) -> Option<Credential> {
         let read_txn = self.db.begin_read().ok()?;
         let table = read_txn.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE).ok()?;
         let guard = table.get(user_id).ok()??;
         let bytes = guard.value().to_vec();
-        CapabilityToken::decode(&bytes).ok()
+        Credential::decode(&bytes).ok()
     }
 
-    /// Store a token for a user ID.
-    pub(crate) fn store_token(&self, user_id: &str, token: &CapabilityToken) {
-        let encoded = match token.encode() {
+    /// Store a credential for a user ID.
+    pub(crate) fn store_credential(&self, user_id: &str, cred: &Credential) {
+        let encoded = match cred.encode() {
             Ok(e) => e,
             Err(e) => {
                 warn!("Failed to encode token for storage: {e}");
@@ -60,17 +60,19 @@ impl AuthLayer {
         }
     }
 
-    /// Verify a token and return its capabilities, or an error message.
-    pub(crate) fn verify_token(&self, token: &CapabilityToken) -> std::result::Result<Vec<Capability>, String> {
-        self.verifier.verify(token, None).map_err(|e| format!("{e}"))?;
-        Ok(token.capabilities.clone())
+    /// Verify a credential and return its leaf token's capabilities, or an error message.
+    pub(crate) fn verify_credential(&self, cred: &Credential) -> std::result::Result<Vec<Capability>, String> {
+        self.verifier
+            .verify_with_chain(&cred.token, &cred.proofs, None)
+            .map_err(|e| format!("{e}"))?;
+        Ok(cred.token.capabilities.clone())
     }
 
-    /// Resolve capabilities for a user: token → verify → capabilities,
-    /// or None if no token (fall back to allowlist).
+    /// Resolve capabilities for a user: credential → verify → capabilities,
+    /// or None if no credential (fall back to allowlist).
     pub(crate) fn resolve_capabilities(&self, user_id: &str) -> Option<std::result::Result<Vec<Capability>, String>> {
-        let token = self.lookup_token(user_id)?;
-        Some(self.verify_token(&token))
+        let cred = self.lookup_credential(user_id)?;
+        Some(self.verify_credential(&cred))
     }
 }
 

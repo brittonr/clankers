@@ -4,8 +4,7 @@ use std::sync::Arc;
 
 use clanker_actor::ProcessRegistry;
 use clankers_auth::Capability;
-use clankers_auth::CapabilityToken;
-use clankers_auth::TokenBuilder;
+use clankers_auth::Credential;
 use clankers_controller::transport::DaemonState;
 use clankers_protocol::SessionCommand;
 use clankers_protocol::SessionKey;
@@ -143,19 +142,19 @@ async fn handle_token_command(
         return "Token auth is not enabled on this daemon.".to_string();
     };
 
-    let token = match CapabilityToken::from_base64(args) {
-        Ok(t) => t,
-        Err(e) => return format!("Invalid token: {e}"),
+    let cred = match Credential::from_base64(args) {
+        Ok(c) => c,
+        Err(e) => return format!("Invalid credential: {e}"),
     };
 
-    match auth.verify_token(&token) {
+    match auth.verify_credential(&cred) {
         Ok(caps) => {
             let user_id = match key {
                 SessionKey::Matrix { user_id, .. } => user_id.clone(),
                 SessionKey::Iroh(id) => id.clone(),
             };
 
-            auth.store_token(&user_id, &token);
+            auth.store_credential(&user_id, &cred);
 
             // Kill existing session so the next message picks up new capabilities
             {
@@ -182,22 +181,22 @@ async fn handle_token_command(
                 })
                 .collect();
 
-            let expires = chrono::DateTime::from_timestamp(token.expires_at as i64, 0)
+            let expires = chrono::DateTime::from_timestamp(cred.token.expires_at as i64, 0)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
                 .unwrap_or_else(|| "unknown".to_string());
 
             format!(
-                "**Token accepted** ✓\n\n\
+                "**Credential accepted** ✓\n\n\
                  • Capabilities: {}\n\
                  • Expires: {}\n\
                  • Depth: {}\n\n\
                  Your session has been restarted with the new capabilities.",
                 cap_names.join(", "),
                 expires,
-                token.delegation_depth,
+                cred.token.delegation_depth,
             )
         }
-        Err(e) => format!("**Token rejected:** {e}"),
+        Err(e) => format!("**Credential rejected:** {e}"),
     }
 }
 
@@ -229,16 +228,16 @@ fn handle_delegate_command(
         SessionKey::Iroh(id) => id.clone(),
     };
 
-    let parent_token = match auth.lookup_token(&user_id) {
-        Some(t) => t,
-        None => return "You don't have a registered token. Use `!token <base64>` first.".to_string(),
+    let parent_cred = match auth.lookup_credential(&user_id) {
+        Some(c) => c,
+        None => return "You don't have a registered credential. Use `!token <base64>` first.".to_string(),
     };
 
-    if let Err(e) = auth.verify_token(&parent_token) {
-        return format!("Your token is invalid: {e}");
+    if let Err(e) = auth.verify_credential(&parent_cred) {
+        return format!("Your credential is invalid: {e}");
     }
 
-    if !parent_token.capabilities.contains(&Capability::Delegate) {
+    if !parent_cred.token.capabilities.contains(&Capability::Delegate) {
         return "Your token does not have the Delegate capability.".to_string();
     }
 
@@ -300,7 +299,7 @@ fn handle_delegate_command(
     };
 
     let now = clankers_auth::utils::current_time_secs();
-    let parent_remaining = parent_token.expires_at.saturating_sub(now);
+    let parent_remaining = parent_cred.token.expires_at.saturating_sub(now);
     let lifetime = lifetime.min(std::time::Duration::from_secs(parent_remaining));
 
     let mut child_caps = vec![Capability::Prompt];
@@ -317,20 +316,15 @@ fn handle_delegate_command(
         child_caps.push(Capability::Delegate);
     }
 
-    let builder = TokenBuilder::new(auth.owner_key.clone())
-        .delegated_from(parent_token)
-        .with_capabilities(child_caps)
-        .with_lifetime(lifetime)
-        .with_random_nonce();
-
-    match builder.build() {
-        Ok(child_token) => {
-            let b64 = match child_token.to_base64() {
+    match parent_cred.delegate_bearer(&auth.owner_key, child_caps, lifetime) {
+        Ok(child_cred) => {
+            let b64 = match child_cred.to_base64() {
                 Ok(b) => b,
-                Err(e) => return format!("Failed to encode child token: {e}"),
+                Err(e) => return format!("Failed to encode child credential: {e}"),
             };
 
-            let cap_names: Vec<&str> = child_token
+            let cap_names: Vec<&str> = child_cred
+                .token
                 .capabilities
                 .iter()
                 .map(|c| match c {
@@ -345,20 +339,22 @@ fn handle_delegate_command(
                 })
                 .collect();
 
-            let expires = chrono::DateTime::from_timestamp(child_token.expires_at as i64, 0)
+            let expires = chrono::DateTime::from_timestamp(child_cred.token.expires_at as i64, 0)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M UTC").to_string())
                 .unwrap_or_else(|| "unknown".to_string());
 
             format!(
-                "**Child token created** ✓\n\n\
+                "**Child credential created** ✓\n\n\
                  • Capabilities: {}\n\
                  • Expires: {}\n\
-                 • Depth: {}\n\n\
+                 • Depth: {}\n\
+                 • Proof chain: {} token(s)\n\n\
                  ```\n{}\n```\n\n\
-                 Share this with the recipient. They register it with `!token <token>`.",
+                 Share this with the recipient. They register it with `!token <credential>`.",
                 cap_names.join(", "),
                 expires,
-                child_token.delegation_depth,
+                child_cred.token.delegation_depth,
+                child_cred.proofs.len(),
                 b64,
             )
         }
