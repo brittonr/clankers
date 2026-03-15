@@ -1420,8 +1420,7 @@ dependencies = [
 name = "clankers-merge"
 version = "0.1.0"
 dependencies = [
- "pretty_assertions",
- "serde",
+ "graggle",
 ]
 
 [[package]]
@@ -3639,6 +3638,14 @@ dependencies = [
  "serde_json",
  "wasm-bindgen",
  "web-sys",
+]
+
+[[package]]
+name = "graggle"
+version = "0.1.0"
+source = "git+https://github.com/brittonr/graggle#aaebeab007d51c24b524c7f3dae8cbcf89430bc9"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

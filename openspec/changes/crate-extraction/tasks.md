@@ -1,0 +1,135 @@
+# crate-extraction — Tasks
+
+## Phase 1: graggle (clankers-merge)
+
+Estimated effort: small. Zero refactoring needed.
+
+- [ ] Create `graggle` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-merge -b extract-merge`
+- [ ] Push split branch to new repo
+- [ ] Rename crate in Cargo.toml (`name = "graggle"`)
+- [ ] Replace 2 "clankers" references in `lib.rs` doc comments
+- [ ] Update `use clankers_merge::` in doc example to `use graggle::`
+- [ ] Add README.md with theory background and usage example
+- [ ] Add CI (cargo test, clippy, fmt, nextest)
+- [ ] In clankers workspace: update `crates/clankers-merge/Cargo.toml` to git dep on `graggle`
+- [ ] In clankers workspace: replace `src/lib.rs` with `pub use graggle::*;`
+- [ ] Remove moved source files from workspace
+- [ ] `cargo check && cargo nextest run` on full workspace
+- [ ] Verify `verus/merge_spec.rs` still compiles
+- [ ] Verify `src/worktree/merge_strategy.rs` still compiles
+
+## Phase 2: erlactor (clankers-actor)
+
+Estimated effort: small. One doc comment to update.
+
+- [ ] Create `erlactor` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-actor -b extract-actor`
+- [ ] Push split branch to new repo
+- [ ] Rename crate in Cargo.toml
+- [ ] Fix 1 "clankers" reference in `registry.rs` doc comment
+- [ ] Add crate-level documentation with Erlang-style actor overview
+- [ ] Add doc-test: spawn, link, cascading death
+- [ ] Add README.md
+- [ ] Add CI
+- [ ] In clankers workspace: update `crates/clankers-actor/Cargo.toml` to git dep
+- [ ] In clankers workspace: replace `src/lib.rs` with `pub use erlactor::*;`
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run` on full workspace
+- [ ] Verify all 14 call sites compile (daemon, matrix bridge, subagent, tests, verus)
+- [ ] Run `tests/socket_bridge.rs` integration test specifically
+
+## Phase 3: cron-tick (clankers-scheduler)
+
+Estimated effort: small. One call site.
+
+- [ ] Create `cron-tick` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-scheduler -b extract-scheduler`
+- [ ] Push split branch to new repo
+- [ ] Rename crate
+- [ ] Strip 1 "clankers" reference in `lib.rs`
+- [ ] Add README.md, CI
+- [ ] In clankers workspace: thin wrapper with git dep
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run`
+- [ ] Verify `src/tools/schedule.rs` compiles
+
+## Phase 4: iter-engine (clankers-loop)
+
+Estimated effort: small. One doc comment rewrite in truncation.rs.
+
+- [ ] Create `iter-engine` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-loop -b extract-loop`
+- [ ] Push split branch to new repo
+- [ ] Rename crate
+- [ ] Rewrite "clankers" references in `lib.rs` and `truncation.rs`
+- [ ] Add README.md, CI
+- [ ] In clankers workspace: thin wrapper with git dep
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run`
+- [ ] Verify all 7 call sites compile (controller, agent, loop_tool, main)
+
+## Phase 5: llm-router (clankers-router)
+
+Estimated effort: medium. Largest crate (16k lines), ALPN string rename,
+config path migration, binary rename.
+
+- [ ] Create `llm-router` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-router -b extract-router`
+- [ ] Push split branch to new repo
+- [ ] Rename crate and binary in Cargo.toml
+- [ ] Global find-replace "clankers" in source (doc comments, error messages, ALPN)
+- [ ] Replace `clankers/router/1` ALPN with `llm-router/1`
+- [ ] Replace `~/.clankers/` config paths with XDG-compliant defaults
+- [ ] Rename binary from `clankers-router` to `llm-router`
+- [ ] Update `src/bin/clankers_router/` directory to `src/bin/llm_router/`
+- [ ] Add README.md with provider list, architecture diagram, usage examples
+- [ ] Add CI (the crate has `proxy`, `rpc`, `cli` features — test all combos)
+- [ ] In clankers workspace: update `crates/clankers-router/Cargo.toml`
+  to git dep on `llm-router` with `rpc` feature
+- [ ] In clankers workspace: `pub use llm_router::*;` re-export
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run`
+- [ ] Verify all 26 importing files compile
+- [ ] Verify `clankers-provider` re-exports still work
+- [ ] Verify `clankers-message` `Usage` re-export still works
+- [ ] Add ALPN compatibility: accept both old and new ALPN during transition
+- [ ] Test iroh RPC connectivity with new ALPN
+
+## Phase 6: ucan-cap (clankers-auth)
+
+Estimated effort: medium-large. Requires generalizing Capability from
+concrete enum to trait-based generic. Most invasive refactor.
+
+- [ ] Create `ucan-cap` repo on GitHub
+- [ ] Define `Capability` trait with `authorizes()` and `contains()` methods
+- [ ] Define associated `Operation` type on the trait
+- [ ] Make `CapabilityToken<C: Capability>` generic
+- [ ] Make `TokenBuilder<C: Capability>` generic
+- [ ] Make `TokenVerifier<C: Capability>` generic
+- [ ] Extract `RevocationStore` trait (already exists, just move it)
+- [ ] Write tests with a simple `TestCap` enum to validate the generic API
+- [ ] `git subtree split` the generic modules
+- [ ] Push to `ucan-cap` repo
+- [ ] Strip all clankers references
+- [ ] Add README.md, CI
+- [ ] In clankers workspace: `crates/clankers-auth/` depends on `ucan-cap` via git dep
+- [ ] Define `ClankerCapability` implementing `Capability` trait
+- [ ] Define type alias `type ClankerToken = CapabilityToken<ClankerCapability>`
+- [ ] Update all 7 call sites for the generic parameter
+- [ ] Keep `RedbRevocationStore` in `clankers-auth` (redb is clankers-specific)
+- [ ] `cargo check && cargo nextest run`
+- [ ] Verify `src/commands/token.rs` compiles
+- [ ] Verify `src/modes/daemon/` auth integration compiles
+- [ ] Verify `src/modes/matrix_bridge/bot_commands.rs` compiles
+- [ ] Run full authorization matrix tests
+
+## Phase 7: Cleanup
+
+After all extractions are stable:
+
+- [ ] Grep workspace for remaining `clankers_merge`, `clankers_actor`, etc. imports
+- [ ] Replace direct imports with extracted crate names where convenient
+- [ ] Consider removing thin wrapper crates once all imports are migrated
+- [ ] Update `AGENTS.md` architecture section to note extracted crates
+- [ ] Update `openspec/config.yaml` context if needed
