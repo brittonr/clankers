@@ -89,33 +89,26 @@ Completed. Repo: github.com/brittonr/clanker-router
 - [x] `cargo check` on full workspace — all 26 importing files compile
 - [x] Re-export chain works: clankers-provider, clankers-message, etc.
 
-## Phase 6: ucan-cap (clankers-auth)
+## Phase 6: clanker-auth (clankers-auth) ✅
 
-Estimated effort: medium-large. Requires generalizing Capability from
-concrete enum to trait-based generic. Most invasive refactor.
+Completed. Repo: github.com/brittonr/clanker-auth
 
-- [ ] Create `ucan-cap` repo on GitHub
-- [ ] Define `Capability` trait with `authorizes()` and `contains()` methods
-- [ ] Define associated `Operation` type on the trait
-- [ ] Make `CapabilityToken<C: Capability>` generic
-- [ ] Make `TokenBuilder<C: Capability>` generic
-- [ ] Make `TokenVerifier<C: Capability>` generic
-- [ ] Extract `RevocationStore` trait (already exists, just move it)
-- [ ] Write tests with a simple `TestCap` enum to validate the generic API
-- [ ] `git subtree split` the generic modules
-- [ ] Push to `ucan-cap` repo
-- [ ] Strip all clankers references
-- [ ] Add README.md, CI
-- [ ] In clankers workspace: `crates/clankers-auth/` depends on `ucan-cap` via git dep
-- [ ] Define `ClankerCapability` implementing `Capability` trait
-- [ ] Define type alias `type ClankerToken = CapabilityToken<ClankerCapability>`
-- [ ] Update all 7 call sites for the generic parameter
-- [ ] Keep `RedbRevocationStore` in `clankers-auth` (redb is clankers-specific)
-- [ ] `cargo check && cargo nextest run`
-- [ ] Verify `src/commands/token.rs` compiles
-- [ ] Verify `src/modes/daemon/` auth integration compiles
-- [ ] Verify `src/modes/matrix_bridge/bot_commands.rs` compiles
-- [ ] Run full authorization matrix tests
+- [x] Create repo on GitHub
+- [x] Define `Cap` trait with `authorizes()`, `contains()`, `is_delegate()`
+- [x] Define associated `Operation` type on the trait
+- [x] Make `CapabilityToken<C: Cap>` generic (with `#[serde(bound)]`)
+- [x] Make `TokenBuilder<C: Cap>` generic
+- [x] Make `TokenVerifier<C: Cap>` generic
+- [x] Move `RevocationStore` trait to extracted crate
+- [x] Write 14 tests with `TestCap` enum validating generic API
+- [x] Push to `clanker-auth` repo with README, LICENSE, CI
+- [x] In workspace: `Capability` enum implements `Cap` trait
+- [x] Type aliases: `CapabilityToken`, `TokenBuilder`, `TokenVerifier`
+- [x] `constants.rs` and `utils.rs` re-export from `clanker-auth`
+- [x] `RedbRevocationStore` stays in `clankers-auth` (uses `clanker_auth::RevocationStore`)
+- [x] `generate_root_token()` stays in `clankers-auth`
+- [x] All 52 existing tests pass unchanged
+- [x] All 5 call sites compile (token.rs, session_store.rs, handlers.rs, bot_commands.rs, path_policy.rs)
 
 ## Phase 7: Cleanup
 
