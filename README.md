@@ -1,5 +1,7 @@
 # clankers
 
+**This project is in heavy development and experimentation. Expect lots of breakages, outdated, generated docs, etc.**
+
 A terminal coding agent in Rust. Inspired by [pi](https://pi.dev), built to be hacked on.
 
 ## Build
