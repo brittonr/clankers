@@ -94,10 +94,8 @@ impl Tool for NixEvalTool {
 
                 let mut output = json_str;
                 if !result.warnings.is_empty() {
-                    output.push_str(&format!(
-                        "\n\n[{} warning(s)]",
-                        result.warnings.len()
-                    ));
+                    use std::fmt::Write;
+                    write!(output, "\n\n[{} warning(s)]", result.warnings.len()).ok();
                 }
 
                 ToolResult::text(output)

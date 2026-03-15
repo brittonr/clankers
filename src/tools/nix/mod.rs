@@ -67,6 +67,21 @@ impl Default for NixTool {
     }
 }
 
+/// Check if store path annotation is enabled in settings.
+///
+/// Reads the `annotateStoreRefs` setting from the global/project config.
+/// Returns false if the setting is absent or the config can't be read.
+fn should_annotate_store_refs() -> bool {
+    let config_paths = clankers_config::paths::ClankersPaths::resolve();
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let project_paths = clankers_config::paths::ProjectPaths::resolve(&cwd);
+    let settings = clankers_config::settings::Settings::load(
+        &config_paths.global_settings,
+        &project_paths.settings,
+    );
+    settings.annotate_store_refs
+}
+
 /// Nix subcommands that accept flake references as arguments.
 fn accepts_flake_ref(subcommand: &str) -> bool {
     matches!(
@@ -176,6 +191,19 @@ impl Tool for NixTool {
             if !parsed.is_empty() {
                 let section = format_build_outputs(&parsed);
                 append_to_result(&mut result, &section);
+            }
+        }
+
+        // Annotate store path references in all output (opt-in via config)
+        if should_annotate_store_refs() {
+            let all_output = format!(
+                "{}\n{}\n{}",
+                stdout_lines.join("\n"),
+                build_log_lines.join("\n"),
+                errors.join("\n")
+            );
+            if let Some(annotation) = clankers_nix::annotate_store_refs(&all_output) {
+                append_to_result(&mut result, &annotation);
             }
         }
 

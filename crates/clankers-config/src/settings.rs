@@ -120,6 +120,11 @@ pub struct Settings {
     /// long-running agentic tasks where turns exceed the 5-minute window).
     #[serde(default)]
     pub cache_ttl: Option<String>,
+
+    /// When true, scan nix/bash tool output for /nix/store/ paths and append
+    /// a compact annotation listing referenced packages. Default: false.
+    #[serde(default)]
+    pub annotate_store_refs: bool,
 }
 
 // ---------------------------------------------------------------------------
@@ -246,6 +251,7 @@ impl Default for Settings {
             auto_test_command: None,
             no_cache: false,
             cache_ttl: None,
+            annotate_store_refs: false,
         }
     }
 }

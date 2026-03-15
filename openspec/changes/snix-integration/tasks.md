@@ -46,15 +46,15 @@ No dependencies on other open changes.
 
 ## Phase 3: store reference scanning
 
-- [ ] Add `snix-castore` as optional dep behind `refscan` feature (default-features = false)
-- [ ] Write `refscan.rs` — `scan_store_refs()` regex-based scanner
-- [ ] Write `refscan.rs` — `annotate_store_refs()` summary formatter
-- [ ] Add `[nix] annotate_store_refs` config option to clankers-config
-- [ ] Wire annotation into NixTool post-processing (when config enabled)
+- [x] Add `snix-castore` as optional dep behind `refscan` feature (default-features = false)
+- [x] Write `refscan.rs` — `scan_store_refs()` regex-based scanner
+- [x] Write `refscan.rs` — `annotate_store_refs()` summary formatter
+- [x] Add `annotateStoreRefs` config option to clankers-config Settings
+- [x] Wire annotation into NixTool post-processing (when config enabled)
 - [ ] Wire annotation into BashTool post-processing (when config enabled)
-- [ ] Tests: scanning text with 0, 1, many store paths
-- [ ] Tests: deduplication of repeated paths
-- [ ] Tests: annotation format
-- [ ] Tests: performance on large output (>100 KB)
-- [ ] Tests: skip scanning for >1 MB outputs
-- [ ] `cargo nextest run -p clankers-nix --features refscan`
+- [x] Tests: scanning text with 0, 1, many store paths
+- [x] Tests: deduplication of repeated paths
+- [x] Tests: annotation format
+- [x] Tests: performance on large output (>100 KB)
+- [x] Tests: skip scanning for >1 MB outputs
+- [x] `cargo nextest run -p clankers-nix --features refscan`
