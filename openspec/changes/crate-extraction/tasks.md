@@ -19,25 +19,24 @@ Completed. Repo: github.com/brittonr/graggle
 - [x] Verify `verus/merge_spec.rs` still compiles (standalone verus file, no import change needed)
 - [x] Verify `src/worktree/merge_strategy.rs` still compiles
 
-## Phase 2: erlactor (clankers-actor)
+## Phase 2: clanker-actor (clankers-actor) ✅
 
-Estimated effort: small. One doc comment to update.
+Completed. Repo: github.com/brittonr/clanker-actor
 
-- [ ] Create `erlactor` repo on GitHub
-- [ ] `git subtree split -P crates/clankers-actor -b extract-actor`
-- [ ] Push split branch to new repo
-- [ ] Rename crate in Cargo.toml
-- [ ] Fix 1 "clankers" reference in `registry.rs` doc comment
-- [ ] Add crate-level documentation with Erlang-style actor overview
-- [ ] Add doc-test: spawn, link, cascading death
-- [ ] Add README.md
-- [ ] Add CI
-- [ ] In clankers workspace: update `crates/clankers-actor/Cargo.toml` to git dep
-- [ ] In clankers workspace: replace `src/lib.rs` with `pub use erlactor::*;`
-- [ ] Remove moved source files
-- [ ] `cargo check && cargo nextest run` on full workspace
-- [ ] Verify all 14 call sites compile (daemon, matrix bridge, subagent, tests, verus)
-- [ ] Run `tests/socket_bridge.rs` integration test specifically
+- [x] Create `clanker-actor` repo on GitHub
+- [x] `git subtree split -P crates/clankers-actor -b extract-actor`
+- [x] Push split branch to new repo
+- [x] Rename crate in Cargo.toml (`name = "clanker-actor"`)
+- [x] Fix 1 "clankers" reference in `registry.rs` doc comment
+- [x] Update integration test imports from `clankers_actor` to `clanker_actor`
+- [x] Add README.md
+- [x] Add LICENSE (MIT)
+- [x] Add CI (cargo test, clippy, fmt, nextest)
+- [x] In clankers workspace: update `crates/clankers-actor/Cargo.toml` to git dep
+- [x] In clankers workspace: replace `src/lib.rs` with `pub use clanker_actor::*;`
+- [x] Remove moved source files + integration tests
+- [x] `cargo check` on full workspace
+- [x] Verify all 14 call sites compile (daemon, controller, matrix bridge, subagent)
 
 ## Phase 3: cron-tick (clankers-scheduler)
 
