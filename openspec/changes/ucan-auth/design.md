@@ -1,5 +1,9 @@
 # ucan-auth — Design
 
+## Status
+
+Phases 1–4 are implemented. Phase 5 (Credential type) is the remaining work.
+
 ## Decisions
 
 ### Fork aspen-auth rather than depend on it
@@ -13,6 +17,21 @@ the capability types diverge freely.
 **Alternatives considered:** Depend on aspen-auth with feature flags.  Would
 require making aspen-auth's `Capability` enum generic, which changes its API
 for aspen's benefit with no gain.
+
+### Credential type needed for delegation chains
+
+**Choice:** Port `Credential` from aspen-auth (token + proof chain bundle)
+**Rationale:** The current implementation stores bare `CapabilityToken` per
+user. Delegated tokens need their parent chain to be verifiable — without
+`Credential`, the daemon must maintain a parent token cache (stateful, fragile).
+`Credential` is self-contained: the verifier walks the chain offline using
+only the credential contents. This also makes `!delegate` work properly —
+the child receives the full chain, not just a leaf token that can't be
+verified without the daemon already having the parent cached.
+**Source:** `aspen-auth/src/credential.rs` — 133 lines + 200 lines tests.
+**Impact:** `AuthLayer.store_token()` and `lookup_token()` change from bare
+token to credential. `!token` and `!delegate` commands switch to credential
+encoding. QUIC handshake sends credential instead of bare token.
 
 ### Allowlist as implicit full-access token
 
