@@ -3,9 +3,10 @@ name = "clankers-actor"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "Lightweight native actor primitives for agent process trees"
+description = "Re-exports clanker-actor (extracted crate)"
 
 [dependencies]
-tokio = { workspace = true }
-dashmap = "6"
-tracing = { workspace = true }
+clanker-actor = { git = "https://github.com/brittonr/clanker-actor" }
+
+[lints]
+workspace = true

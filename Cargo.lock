@@ -1148,6 +1148,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "clanker-actor"
+version = "0.1.0"
+source = "git+https://github.com/brittonr/clanker-actor#55af40af659d7087a9459c7cccd5b34020e63e07"
+dependencies = [
+ "dashmap",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "clankers"
 version = "0.1.0"
 dependencies = [
@@ -1249,9 +1259,7 @@ dependencies = [
 name = "clankers-actor"
 version = "0.1.0"
 dependencies = [
- "dashmap",
- "tokio",
- "tracing",
+ "clanker-actor",
 ]
 
 [[package]]
