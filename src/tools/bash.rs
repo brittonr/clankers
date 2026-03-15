@@ -340,7 +340,17 @@ impl Tool for BashTool {
         let exit_code = status.code().unwrap_or(-1); // Process terminated by signal or had no exit code
 
         // Format and return the final result
-        self.format_result(collected_output, exit_code)
+        let mut result = self.format_result(collected_output, exit_code);
+
+        // Annotate store path references in output (opt-in via config)
+        if crate::tools::nix::should_annotate_store_refs()
+            && let Some(crate::tools::ToolResultContent::Text { text }) = result.content.first()
+            && let Some(annotation) = clankers_nix::annotate_store_refs(text)
+        {
+            crate::tools::nix::append_to_result(&mut result, &annotation);
+        }
+
+        result
     }
 }
 

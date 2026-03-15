@@ -262,7 +262,6 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         // ── Specialty (interactive default) ─────────────────────────
         (ToolTier::Specialty, Arc::new(todo_tool)),
         (ToolTier::Specialty, Arc::new(crate::tools::nix::NixTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::nix::eval_tool::NixEvalTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::web::WebTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::commit::CommitTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::review::ReviewTool::new())),
@@ -276,6 +275,17 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixJoinTool::new())),
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixRpcTool::new())),
     ];
+
+    // Register nix_eval only when nix is on PATH
+    if std::process::Command::new("nix")
+        .arg("--version")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .is_ok()
+    {
+        tools.push((ToolTier::Specialty, Arc::new(crate::tools::nix::eval_tool::NixEvalTool::new())));
+    }
 
     #[cfg(feature = "tui-validate")]
     tools.push((ToolTier::Specialty, Arc::new(crate::tools::devtools::validate_tui::ValidateTuiTool::new())));

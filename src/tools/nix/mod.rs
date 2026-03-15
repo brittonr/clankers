@@ -71,7 +71,7 @@ impl Default for NixTool {
 ///
 /// Reads the `annotateStoreRefs` setting from the global/project config.
 /// Returns false if the setting is absent or the config can't be read.
-fn should_annotate_store_refs() -> bool {
+pub(crate) fn should_annotate_store_refs() -> bool {
     let config_paths = clankers_config::paths::ClankersPaths::resolve();
     let cwd = std::env::current_dir().unwrap_or_default();
     let project_paths = clankers_config::paths::ProjectPaths::resolve(&cwd);
@@ -126,7 +126,7 @@ fn format_derivation_summary(info: &clankers_nix::DerivationInfo) -> String {
 }
 
 /// Append a section to a ToolResult's text content.
-fn append_to_result(result: &mut ToolResult, section: &str) {
+pub(crate) fn append_to_result(result: &mut ToolResult, section: &str) {
     if let Some(ToolResultContent::Text { text }) = result.content.first_mut() {
         text.push_str("\n\n");
         text.push_str(section);
