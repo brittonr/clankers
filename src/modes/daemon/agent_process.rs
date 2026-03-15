@@ -52,8 +52,12 @@ pub fn spawn_agent_process(
     // Create subagent event channel
     let (panel_tx, panel_rx) = mpsc::unbounded_channel::<SubagentEvent>();
 
+    // Create bash confirm channel so dangerous commands can be approved
+    // by attached clients via the ConfirmRequest/ConfirmBash protocol.
+    let (bash_confirm_tx, bash_confirm_rx) = crate::tools::bash::confirm_channel();
+
     // Build tools with panel_tx for subagent event routing
-    let tools = factory.build_tools_with_panel_tx(panel_tx);
+    let tools = factory.build_tools_with_panel_tx(panel_tx, Some(bash_confirm_tx));
 
     // Build the agent
     let agent = crate::agent::builder::AgentBuilder::new(
@@ -91,6 +95,7 @@ pub fn spawn_agent_process(
                 driver_event_tx,
                 session_id,
                 panel_rx,
+                bash_confirm_rx,
                 &mut signal_rx,
             ))
             .await
@@ -100,14 +105,15 @@ pub fn spawn_agent_process(
     (pid, cmd_tx, event_tx)
 }
 
-/// The actor loop: multiplexes session commands, actor signals, and
-/// periodic event draining.
+/// The actor loop: multiplexes session commands, actor signals,
+/// bash confirm requests, and periodic event draining.
 async fn run_agent_actor(
     mut controller: SessionController,
     mut cmd_rx: mpsc::UnboundedReceiver<SessionCommand>,
     event_tx: broadcast::Sender<DaemonEvent>,
     session_id: String,
     mut panel_rx: mpsc::UnboundedReceiver<SubagentEvent>,
+    mut bash_confirm_rx: crate::tools::bash::ConfirmRx,
     signal_rx: &mut mpsc::UnboundedReceiver<Signal>,
 ) -> DeathReason {
     info!("agent process started: {session_id}");
@@ -167,6 +173,42 @@ async fn run_agent_actor(
                 }
 
                 if is_disconnect { break; }
+            }
+
+            // Bash tool requesting confirmation for a dangerous command.
+            // Bridge it into the protocol: register in ConfirmStore, emit
+            // ConfirmRequest, and spawn a task that forwards the client's
+            // response back to the bash tool's oneshot.
+            Some(req) = bash_confirm_rx.recv() => {
+                let cwd = std::env::current_dir()
+                    .unwrap_or_default()
+                    .to_string_lossy()
+                    .into_owned();
+                let (request_id, confirm_result_rx) =
+                    controller.register_bash_confirm();
+                let _ = event_tx.send(DaemonEvent::ConfirmRequest {
+                    request_id,
+                    command: req.command,
+                    working_dir: cwd,
+                });
+                // Bridge ConfirmStore's oneshot → bash tool's oneshot.
+                // Times out after 60s with no client response → command blocked.
+                tokio::spawn(async move {
+                    match tokio::time::timeout(
+                        tokio::time::Duration::from_secs(60),
+                        confirm_result_rx,
+                    )
+                    .await
+                    {
+                        Ok(Ok(approved)) => {
+                            let _ = req.resp_tx.send(approved);
+                        }
+                        _ => {
+                            // Timeout or channel dropped — block the command
+                            let _ = req.resp_tx.send(false);
+                        }
+                    }
+                });
             }
 
             // Periodic drain of background agent events

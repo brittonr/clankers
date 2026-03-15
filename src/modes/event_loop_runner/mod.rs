@@ -351,10 +351,13 @@ impl<'a> EventLoopRunner<'a> {
     // ── Bash confirmations ──────────────────────────────────────────
 
     fn drain_bash_confirms(&mut self) {
-        while let Ok((message, resp_tx)) = self.bash_confirm_rx.try_recv() {
-            self.app.push_system(message, true);
+        while let Ok(req) = self.bash_confirm_rx.try_recv() {
+            self.app.push_system(
+                format!("⚠️  Dangerous command detected ({}): {}", req.reason, req.command),
+                true,
+            );
             self.app.push_system("Type 'y' to approve or 'n' to block. Approving...".to_string(), false);
-            let _ = resp_tx.send(true);
+            let _ = req.resp_tx.send(true);
         }
     }
 

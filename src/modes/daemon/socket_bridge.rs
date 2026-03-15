@@ -48,6 +48,7 @@ impl SessionFactory {
     pub fn build_tools_with_panel_tx(
         &self,
         panel_tx: mpsc::UnboundedSender<SubagentEvent>,
+        bash_confirm_tx: Option<crate::tools::bash::ConfirmTx>,
     ) -> Vec<Arc<dyn Tool>> {
         let actor_ctx = self.registry.as_ref().map(|reg| {
             crate::tools::subagent::ActorContext {
@@ -65,6 +66,7 @@ impl SessionFactory {
         });
         let env = crate::modes::common::ToolEnv {
             panel_tx: Some(panel_tx),
+            bash_confirm_tx,
             actor_ctx,
             ..Default::default()
         };

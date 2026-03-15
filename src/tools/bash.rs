@@ -17,10 +17,20 @@ use super::progress::ResultChunk;
 use super::progress::ToolProgress;
 use crate::util::ansi::strip_ansi;
 
+/// A structured request sent on the confirmation channel.
+pub struct ConfirmRequest {
+    /// The raw shell command that was flagged.
+    pub command: String,
+    /// Why it was flagged (e.g. "forced deletion", "sudo").
+    pub reason: &'static str,
+    /// Send `true` to approve, `false` to block.
+    pub resp_tx: tokio::sync::oneshot::Sender<bool>,
+}
+
 /// Confirmation channel for dangerous commands.
 /// When set, the bash tool sends a request and waits for approval.
-pub type ConfirmTx = tokio::sync::mpsc::UnboundedSender<(String, tokio::sync::oneshot::Sender<bool>)>;
-pub type ConfirmRx = tokio::sync::mpsc::UnboundedReceiver<(String, tokio::sync::oneshot::Sender<bool>)>;
+pub type ConfirmTx = tokio::sync::mpsc::UnboundedSender<ConfirmRequest>;
+pub type ConfirmRx = tokio::sync::mpsc::UnboundedReceiver<ConfirmRequest>;
 
 /// Create a confirmation channel pair.
 pub fn confirm_channel() -> (ConfirmTx, ConfirmRx) {
@@ -140,8 +150,12 @@ impl BashTool {
         if let Some(reason) = check_dangerous(command) {
             if let Some(ref tx) = self.confirm_tx {
                 let (resp_tx, resp_rx) = tokio::sync::oneshot::channel();
-                let msg = format!("⚠️  Dangerous command detected ({}): {}", reason, command);
-                if tx.send((msg, resp_tx)).is_ok() {
+                let req = ConfirmRequest {
+                    command: command.to_string(),
+                    reason,
+                    resp_tx,
+                };
+                if tx.send(req).is_ok() {
                     match resp_rx.await {
                         Ok(true) => { /* approved, continue */ }
                         _ => {

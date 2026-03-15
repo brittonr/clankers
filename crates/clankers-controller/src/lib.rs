@@ -211,6 +211,15 @@ impl SessionController {
         self.auto_test_command = command;
     }
 
+    /// Register a pending bash confirmation request.
+    ///
+    /// Returns a `(request_id, receiver)` pair. The daemon actor emits a
+    /// `ConfirmRequest` event with the `request_id`, and when the client
+    /// responds with `ConfirmBash`, the receiver resolves.
+    pub fn register_bash_confirm(&mut self) -> (String, tokio::sync::oneshot::Receiver<bool>) {
+        self.bash_confirms.register()
+    }
+
     /// Access the session manager (for branch/merge operations).
     pub fn session_manager(&self) -> Option<&SessionManager> {
         self.session_manager.as_ref()
