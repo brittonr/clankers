@@ -1108,7 +1108,7 @@ dependencies = [
 [[package]]
 name = "clanker-auth"
 version = "0.1.0"
-source = "git+https://github.com/brittonr/clanker-auth#9c9c3eaf0d3f7538db0e586ae33a307903274d52"
+source = "git+https://github.com/brittonr/clanker-auth#9b052ebf0591e72288b342845caf066b36d51795"
 dependencies = [
  "base64",
  "blake3",
@@ -4008,7 +4008,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.57.0",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -6077,7 +6077,7 @@ version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff32365de1b6743cb203b710788263c44a03de03802daf96092f2da4fe6ba4d7"
 dependencies = [
- "proc-macro-crate 2.0.0",
+ "proc-macro-crate 3.4.0",
  "proc-macro2",
  "quote",
  "syn 2.0.117",

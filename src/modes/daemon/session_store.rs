@@ -36,7 +36,23 @@ impl AuthLayer {
         let table = read_txn.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE).ok()?;
         let guard = table.get(user_id).ok()??;
         let bytes = guard.value().to_vec();
-        Credential::decode(&bytes).ok()
+        match Credential::decode(&bytes) {
+            Ok(cred) => Some(cred),
+            Err(e) => {
+                warn!("Failed to decode credential for {user_id}, removing stale entry: {e}");
+                // Remove the stale entry so we don't warn on every lookup
+                drop(guard);
+                drop(table);
+                drop(read_txn);
+                if let Ok(tx) = self.db.begin_write() {
+                    if let Ok(mut table) = tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE) {
+                        let _ = table.remove(user_id);
+                    }
+                    let _ = tx.commit();
+                }
+                None
+            }
+        }
     }
 
     /// Store a credential for a user ID.

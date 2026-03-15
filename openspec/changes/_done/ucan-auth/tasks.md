@@ -70,11 +70,11 @@ Depends on: `matrix-daemon-v2` phase 1 (allowlist + bot commands must exist firs
 - [x] Update `!delegate` to return Credential (child token + parent chain)
 - [x] Update iroh QUIC handshake to send/verify Credential instead of bare token
 - [x] Update `AuthLayer` to store + verify Credentials
-- [x] Add `facts` field to token (metadata: model preferences, audit context)
-- [x] `TokenBuilder::with_fact()` / `with_facts()` methods
+- [ ] Add `facts` field to token (deferred — no consumer yet)
+- [ ] `TokenBuilder::with_fact()` / `with_facts()` methods (deferred — no consumer yet)
 - [x] Tests: Credential encode/decode roundtrip
 - [x] Tests: Credential delegation chain roundtrip (2-level, 3-level)
 - [x] Tests: broken chain rejected
 - [x] Tests: max delegation depth enforced through Credential
 - [x] Tests: capability escalation rejected through Credential
-- [x] Tests: facts roundtrip, backward compat, tamper detection
+

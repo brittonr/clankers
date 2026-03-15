@@ -415,13 +415,6 @@ fn handle_info(token_b64: &str) -> Result<()> {
     if let Some(nonce) = cred.token.nonce {
         println!("  Nonce:      {}", hex::encode(nonce));
     }
-    if !cred.token.facts.is_empty() {
-        println!("  Facts:");
-        for (key, value) in &cred.token.facts {
-            let val_str = std::str::from_utf8(value).unwrap_or("(binary)");
-            println!("    {}: {}", key, val_str);
-        }
-    }
     println!("  Capabilities:");
     for cap in &cred.token.capabilities {
         print_capability_detail(cap);
