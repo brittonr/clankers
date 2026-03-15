@@ -18,20 +18,20 @@ use tracing::warn;
 // ── Auth layer ──────────────────────────────────────────────────────────────
 
 /// Shared auth state for token verification + user→token mappings.
-pub(crate) struct AuthLayer {
+pub struct AuthLayer {
     /// Verifier with the daemon owner's key as trusted root
     verifier: TokenVerifier,
     /// Persistent revocation store (redb-backed)
     _revocation_store: RedbRevocationStore,
     /// redb database for token storage
-    db: Arc<redb::Database>,
+    pub db: Arc<redb::Database>,
     /// Daemon owner's secret key (for signing delegated child tokens)
-    pub(crate) owner_key: ::iroh::SecretKey,
+    pub owner_key: ::iroh::SecretKey,
 }
 
 impl AuthLayer {
     /// Look up a stored credential for a user ID (Matrix user ID or iroh pubkey).
-    pub(crate) fn lookup_credential(&self, user_id: &str) -> Option<Credential> {
+    pub fn lookup_credential(&self, user_id: &str) -> Option<Credential> {
         let read_txn = self.db.begin_read().ok()?;
         let table = read_txn.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE).ok()?;
         let guard = table.get(user_id).ok()??;
@@ -56,7 +56,7 @@ impl AuthLayer {
     }
 
     /// Store a credential for a user ID.
-    pub(crate) fn store_credential(&self, user_id: &str, cred: &Credential) {
+    pub fn store_credential(&self, user_id: &str, cred: &Credential) {
         let encoded = match cred.encode() {
             Ok(e) => e,
             Err(e) => {
@@ -77,7 +77,7 @@ impl AuthLayer {
     }
 
     /// Verify a credential and return its leaf token's capabilities, or an error message.
-    pub(crate) fn verify_credential(&self, cred: &Credential) -> std::result::Result<Vec<Capability>, String> {
+    pub fn verify_credential(&self, cred: &Credential) -> std::result::Result<Vec<Capability>, String> {
         self.verifier
             .verify_with_chain(&cred.token, &cred.proofs, None)
             .map_err(|e| format!("{e}"))?;
@@ -86,14 +86,14 @@ impl AuthLayer {
 
     /// Resolve capabilities for a user: credential → verify → capabilities,
     /// or None if no credential (fall back to allowlist).
-    pub(crate) fn resolve_capabilities(&self, user_id: &str) -> Option<std::result::Result<Vec<Capability>, String>> {
+    pub fn resolve_capabilities(&self, user_id: &str) -> Option<std::result::Result<Vec<Capability>, String>> {
         let cred = self.lookup_credential(user_id)?;
         Some(self.verify_credential(&cred))
     }
 }
 
 /// Create the auth layer if possible, or None if auth database setup fails.
-pub(crate) fn create_auth_layer(
+pub fn create_auth_layer(
     db_path: &std::path::Path,
     identity: &crate::modes::rpc::iroh::Identity,
 ) -> Option<Arc<AuthLayer>> {

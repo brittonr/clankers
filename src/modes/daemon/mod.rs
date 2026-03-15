@@ -32,7 +32,7 @@ pub mod agent_process;
 mod config;
 mod handlers;
 pub mod quic_bridge;
-pub(crate) mod session_store;
+pub mod session_store;
 pub mod socket_bridge;
 
 // Re-export public types
