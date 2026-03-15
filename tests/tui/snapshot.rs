@@ -452,6 +452,11 @@ pub fn normalize_styled_text(text: &str) -> String {
     let re_git = regex::Regex::new(r" \*[~?+\d]+").unwrap();
     s = re_git.replace_all(&s, "").to_string();
 
+    // Normalize git branch color: magenta (clean) vs yellow (dirty) →
+    // always magenta so snapshots don't flip with worktree state.
+    let re_branch_color = regex::Regex::new(r"\{\*(yel|mag)/-\}").unwrap();
+    s = re_branch_color.replace_all(&s, "{*mag/-}").to_string();
+
     // Strip working directory path from status bar (after last " | /")
     // In styled text the path may span color tags, so match broadly.
     let re_cwd = regex::Regex::new(r"(\| /)\S*").unwrap();
