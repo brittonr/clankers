@@ -1172,6 +1172,45 @@ dependencies = [
 ]
 
 [[package]]
+name = "clanker-router"
+version = "0.1.0"
+source = "git+https://github.com/brittonr/clanker-router#fe50bb1174cedc3b18e663a253d02842c19ef328"
+dependencies = [
+ "async-trait",
+ "axum 0.8.8",
+ "base64",
+ "chrono",
+ "clap",
+ "crossterm",
+ "dirs 6.0.0",
+ "fs4",
+ "futures-buffered",
+ "futures-lite",
+ "hex",
+ "iroh",
+ "libc",
+ "open",
+ "rand 0.9.2",
+ "ratatui",
+ "redb 2.6.3",
+ "reqwest 0.12.28",
+ "reqwest-eventsource",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "urlencoding",
+ "uuid",
+]
+
+[[package]]
 name = "clanker-scheduler"
 version = "0.1.0"
 source = "git+https://github.com/brittonr/clanker-scheduler#68b5170b83f9bf84446feb9b0e31b0912956df0b"
@@ -1565,42 +1604,7 @@ dependencies = [
 name = "clankers-router"
 version = "0.1.0"
 dependencies = [
- "async-trait",
- "axum 0.8.8",
- "base64",
- "chrono",
- "clap",
- "crossterm",
- "dirs 6.0.0",
- "fs4",
- "futures-buffered",
- "futures-lite",
- "hex",
- "iroh",
- "libc",
- "open",
- "pretty_assertions",
- "rand 0.9.2",
- "ratatui",
- "redb 2.6.3",
- "reqwest 0.12.28",
- "reqwest-eventsource",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-stream",
- "tokio-test",
- "tokio-util",
- "tower 0.5.3",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "url",
- "urlencoding",
- "uuid",
+ "clanker-router",
 ]
 
 [[package]]
