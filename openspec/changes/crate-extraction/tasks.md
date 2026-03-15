@@ -68,32 +68,26 @@ Completed. Repo: github.com/brittonr/clanker-loop
 - [x] `cargo check` on full workspace
 - [x] Verify all callers compile (controller, agent, schedule tool)
 
-## Phase 5: llm-router (clankers-router)
+## Phase 5: clanker-router (clankers-router) ✅
 
-Estimated effort: medium. Largest crate (16k lines), ALPN string rename,
-config path migration, binary rename.
+Completed. Repo: github.com/brittonr/clanker-router
 
-- [ ] Create `llm-router` repo on GitHub
-- [ ] `git subtree split -P crates/clankers-router -b extract-router`
-- [ ] Push split branch to new repo
-- [ ] Rename crate and binary in Cargo.toml
-- [ ] Global find-replace "clankers" in source (doc comments, error messages, ALPN)
-- [ ] Replace `clankers/router/1` ALPN with `llm-router/1`
-- [ ] Replace `~/.clankers/` config paths with XDG-compliant defaults
-- [ ] Rename binary from `clankers-router` to `llm-router`
-- [ ] Update `src/bin/clankers_router/` directory to `src/bin/llm_router/`
-- [ ] Add README.md with provider list, architecture diagram, usage examples
-- [ ] Add CI (the crate has `proxy`, `rpc`, `cli` features — test all combos)
-- [ ] In clankers workspace: update `crates/clankers-router/Cargo.toml`
-  to git dep on `llm-router` with `rpc` feature
-- [ ] In clankers workspace: `pub use llm_router::*;` re-export
-- [ ] Remove moved source files
-- [ ] `cargo check && cargo nextest run`
-- [ ] Verify all 26 importing files compile
-- [ ] Verify `clankers-provider` re-exports still work
-- [ ] Verify `clankers-message` `Usage` re-export still works
-- [ ] Add ALPN compatibility: accept both old and new ALPN during transition
-- [ ] Test iroh RPC connectivity with new ALPN
+- [x] Create repo on GitHub
+- [x] `git subtree split -P crates/clankers-router -b extract-router`
+- [x] Push split branch to new repo
+- [x] Rename crate and binary (`clanker-router`)
+- [x] Global find-replace: 93 "clankers" references across 13 files
+- [x] ALPN: `clankers/router/1` → `clanker/router/1`
+- [x] ALPN: `clankers-router-http/1` → `clanker-router-http/1`
+- [x] Config paths: `~/.config/clankers-router/` → `~/.config/clanker-router/`
+- [x] Cache paths: `~/.cache/clankers-router/` → `~/.cache/clanker-router/`
+- [x] mDNS: `_clankers-router._udp.local` → `_clanker-router._udp.local`
+- [x] Binary directory: `src/bin/clankers_router/` → `src/bin/clanker_router/`
+- [x] Add README.md, LICENSE, CI
+- [x] In workspace: thin wrapper with `rpc` feature, re-export
+- [x] Remove all moved source files (39 .rs files)
+- [x] `cargo check` on full workspace — all 26 importing files compile
+- [x] Re-export chain works: clankers-provider, clankers-message, etc.
 
 ## Phase 6: ucan-cap (clankers-auth)
 
