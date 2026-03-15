@@ -18,6 +18,7 @@ pub use clanker_auth::Cap;
 pub use clanker_auth::RevocationStore;
 pub use clanker_auth::Audience;
 pub use clanker_auth::bytes_to_sign;
+pub use clanker_auth::MAX_CREDENTIAL_SIZE;
 
 // Domain-specific types
 pub use capability::Capability;
@@ -28,6 +29,7 @@ pub use revocation::RedbRevocationStore;
 pub type CapabilityToken = clanker_auth::CapabilityToken<Capability>;
 pub type TokenBuilder = clanker_auth::TokenBuilder<Capability>;
 pub type TokenVerifier = clanker_auth::TokenVerifier<Capability>;
+pub type Credential = clanker_auth::Credential<Capability>;
 
 /// Generate a root capability token with full clankers agent access.
 pub fn generate_root_token(
