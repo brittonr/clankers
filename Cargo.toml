@@ -155,6 +155,7 @@ tokio-test = "0.4"
 portable-pty = "0.9"
 vt100 = "0.16"
 insta = { version = "1.46", features = ["glob"] }
+image = "0.25.10"
 
 [lints]
 workspace = true
