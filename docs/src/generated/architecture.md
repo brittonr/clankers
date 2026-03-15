@@ -15,13 +15,11 @@ graph TD
     agent --> config
     agent --> db
     agent --> hooks
-    agent --> loop
     agent --> message
     agent --> model-selection
     agent --> procmon
     agent --> prompts
     agent --> provider
-    agent --> router
     agent --> skills
     agent --> specs
     agent --> tui-types
@@ -34,20 +32,16 @@ graph TD
     controller --> agent
     controller --> config
     controller --> hooks
-    controller --> loop
     controller --> message
     controller --> protocol
     controller --> provider
     controller --> session
     controller --> tui-types
-    message --> router
-    model-selection --> router
     model-selection --> tui-types
     plugin --> hooks
     plugin --> tui-types
     procmon --> tui-types
     provider --> message
-    provider --> router
     provider --> tui-types
     session --> message
     tui --> tui-types
@@ -71,26 +65,23 @@ graph TD
 |-------|------:|------:|-------------|
 | `agent` | 3971 | 78 | Agent core — turn loop, event bus, tool interface, context management |
 | `agent-defs` | 872 | 29 | Agent definition system (first-class) |
-| `controller` | 3534 | 89 | Transport-agnostic session controller for agent orchestration. |
-| `loop` | 1417 | 46 | Iterative loop execution engine for clankers. |
+| `controller` | 3542 | 89 | Transport-agnostic session controller for agent orchestration. |
 
 ### LLM routing
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
 | `provider` | 1883 | 12 | LLM provider abstraction |
-| `router` | 16472 | 303 | clankers-router — Model router and auth gateway for LLM providers |
 | `model-selection` | 1477 | 49 | Multi-model routing policy |
 
 ### Infrastructure
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `actor` | 1270 | 27 | Lightweight native actor primitives for agent process trees. |
-| `protocol` | 1279 | 28 | Wire protocol types for daemon-client communication. |
-| `session` | 3902 | 101 | Session persistence and tree management for agent conversations |
+| `protocol` | 1289 | 28 | Wire protocol types for daemon-client communication. |
+| `session` | 3910 | 101 | Session persistence and tree management for agent conversations |
 | `db` | 3954 | 144 | Embedded database (redb) for structured persistent storage. |
-| `config` | 792 | 17 | Configuration loading and path resolution for clankers. |
+| `config` | 797 | 17 | Configuration loading and path resolution for clankers. |
 
 ### Extensions
 
@@ -106,7 +97,7 @@ graph TD
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `auth` | 2478 | 52 | Capability-based authorization for clankers agents. |
+| `auth` | 1418 | 52 | Clankers-specific capability tokens over clanker-auth generic infrastructure. |
 | `matrix` | 1485 | 8 |  |
 
 ### Utilities
@@ -115,8 +106,6 @@ graph TD
 |-------|------:|------:|-------------|
 | `message` | 866 | 25 | Message types for LLM agent conversations |
 | `prompts` | 163 | 5 | Prompt templates Prompt template scanning and loading |
-| `merge` | 1829 | 39 |  |
-| `scheduler` | 736 | 28 | Cron-like scheduling engine for clankers. |
 | `procmon` | 467 | 5 | Core process monitor for tracking child processes and resource usage. |
 | `util` | 1920 | 79 | Shared utility functions for clankers. |
 

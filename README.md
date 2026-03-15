@@ -66,11 +66,11 @@ Works in CI, cron jobs, and scripts.
 
 ## Providers
 
-`clankers-router` talks to Anthropic through its native API, and to OpenAI, Google, DeepSeek, Groq, Mistral, xAI, OpenRouter, Together, Fireworks, Perplexity, and HuggingFace through an OpenAI-compatible backend. Ollama is auto-detected on localhost. Any OpenAI-compatible local server (LM Studio, vLLM, etc.) works via `--api-base`.
+`clanker-router` talks to Anthropic through its native API, and to OpenAI, Google, DeepSeek, Groq, Mistral, xAI, OpenRouter, Together, Fireworks, Perplexity, and HuggingFace through an OpenAI-compatible backend. Ollama is auto-detected on localhost. Any OpenAI-compatible local server (LM Studio, vLLM, etc.) works via `--api-base`.
 
 ## Router
 
-`clankers-router` is a standalone daemon that sits between the agent and LLM providers. Run it separately or let clankers auto-start it.
+`clanker-router` is a standalone daemon that sits between the agent and LLM providers. Run it separately or let clankers auto-start it.
 
 It routes across all configured providers with automatic failover when one is rate-limited or down. Per-provider/model health state with exponential backoff keeps requests away from unhealthy endpoints. Responses are cached by SHA-256 request hash with configurable TTL.
 
@@ -238,16 +238,16 @@ Plugins add additional tools at runtime.
 | Crate | Purpose |
 |---|---|
 | `clankers-agent` | Agent loop, system prompt, tool dispatch |
-| `clankers-actor` | Erlang-style actor system (ProcessRegistry, signals, links) |
+| [`clanker-actor`](https://github.com/brittonr/clanker-actor) | Erlang-style actor system (ProcessRegistry, signals, links) |
 | `clankers-agent-defs` | Agent definition discovery and loading |
 | `clankers-auth` | OAuth and credential management |
 | `clankers-config` | Settings, paths, keybindings |
 | `clankers-controller` | SessionController (transport-agnostic agent driver) |
 | `clankers-db` | Embedded database (redb) |
 | `clankers-hooks` | Event hooks (pre-commit, session start, etc.) |
-| `clankers-loop` | Loop/retry engine |
+| [`clanker-loop`](https://github.com/brittonr/clanker-loop) | Loop/retry engine |
 | `clankers-matrix` | Matrix protocol bridge |
-| `clankers-merge` | LLM-powered merge conflict resolution |
+| [`graggle`](https://github.com/brittonr/graggle) | Order-independent merge algorithm |
 | `clankers-message` | Message types and serialization |
 | `clankers-model-selection` | Complexity routing and cost tracking |
 | `clankers-plugin` | WASM plugin host (Extism) |
@@ -256,8 +256,8 @@ Plugins add additional tools at runtime.
 | `clankers-prompts` | Prompt template system |
 | `clankers-protocol` | Daemon-client wire protocol (frames, events, commands) |
 | `clankers-provider` | LLM provider abstraction |
-| `clankers-router` | Multi-provider routing, fallback, caching, proxy |
-| `clankers-scheduler` | Task scheduling |
+| [`clanker-router`](https://github.com/brittonr/clanker-router) | Multi-provider routing, fallback, caching, proxy |
+| [`clanker-scheduler`](https://github.com/brittonr/clanker-scheduler) | Task scheduling |
 | `clankers-session` | JSONL session persistence |
 | `clankers-skills` | Skill discovery and loading |
 | `clankers-specs` | OpenSpec integration |

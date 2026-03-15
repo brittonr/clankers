@@ -497,7 +497,6 @@ fn gen_architecture(_root: &Path, crates: &[CrateInfo]) -> String {
         (
             "Infrastructure",
             &[
-                "clankers-actor",
                 "clankers-protocol",
                 "clankers-session",
                 "clankers-db",
@@ -523,8 +522,6 @@ fn gen_architecture(_root: &Path, crates: &[CrateInfo]) -> String {
             &[
                 "clankers-message",
                 "clankers-prompts",
-                "clankers-merge",
-                "clankers-scheduler",
                 "clankers-procmon",
                 "clankers-util",
             ],

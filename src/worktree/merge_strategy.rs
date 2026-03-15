@@ -27,7 +27,7 @@ pub enum MergeResult {
     NeedsHuman { conflicting_files: Vec<PathBuf> },
 }
 
-/// Merge a single file from multiple branches using clankers-merge's graggle algorithm.
+/// Merge a single file from multiple branches using graggle's order-independent algorithm.
 ///
 /// 1. Read base content from parent branch
 /// 2. Read each branch's version
@@ -48,7 +48,7 @@ pub fn merge_file(
 
     let branch_refs: Vec<&str> = branch_contents.iter().map(|s| s.as_str()).collect();
 
-    // Use clankers-merge graggle algorithm
+    // Use graggle algorithm
     let base_graggle = graggle::Graggle::from_text(&base_content);
     let result = graggle::merge(&base_graggle, &branch_refs);
 

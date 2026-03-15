@@ -14,7 +14,7 @@ tracing = { workspace = true }
 rand = { workspace = true }
 
 [dev-dependencies]
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+tokio = { workspace = true }
 tempfile = "3"
 
 [lints]

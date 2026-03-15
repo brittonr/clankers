@@ -10,5 +10,5 @@ clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
 parking_lot = "0.12"
 serde = { workspace = true }
 sysinfo = "0.34"
-tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
+tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["codec"] }

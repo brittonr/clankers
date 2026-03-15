@@ -51,7 +51,7 @@ See `crates/clankers-protocol/` for frame types, `DaemonEvent`, and `SessionComm
 
 ## Actor system
 
-The actor system (`clankers-actor`) provides Erlang-style process management:
+The actor system ([`clanker-actor`](https://github.com/brittonr/clanker-actor)) provides Erlang-style process management:
 
 - **ProcessRegistry** — Named actor registration with spawn, link, and shutdown
 - **Signals** — Shutdown, Kill, Link, Monitor

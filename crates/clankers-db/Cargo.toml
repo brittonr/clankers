@@ -10,7 +10,7 @@ chrono = { workspace = true }
 redb = "2.6"
 serde = { workspace = true }
 serde_json = { workspace = true }
-tokio = { version = "1", features = ["rt"] }
+tokio = { workspace = true }
 tracing = { workspace = true }
 
 [dev-dependencies]
