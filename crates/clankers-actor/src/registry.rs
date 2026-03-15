@@ -62,6 +62,7 @@ impl ProcessRegistry {
     /// When `die_when_link_dies` is false, the process receives `LinkDied`
     /// signals instead of being killed — used by supervisors that need to
     /// handle child deaths.
+    // r[impl actor.name.unique]
     pub fn spawn_opts<F, Fut>(
         &self,
         name: Option<String>,
@@ -148,12 +149,14 @@ impl ProcessRegistry {
     }
 
     /// Establish a bidirectional link between two processes.
+    // r[impl actor.link.bidirectional]
     pub fn link(&self, a: ProcessId, b: ProcessId, tag: Option<i64>) {
         self.inner.links.entry(a).or_default().push((b, tag));
         self.inner.links.entry(b).or_default().push((a, tag));
     }
 
     /// Remove a link between two processes.
+    // r[impl actor.unlink.bidirectional]
     pub fn unlink(&self, a: ProcessId, b: ProcessId) {
         if let Some(mut links) = self.inner.links.get_mut(&a) {
             links.retain(|(pid, _)| *pid != b);
@@ -229,6 +232,8 @@ impl ProcessRegistry {
     }
 
     /// Called when a process exits. Notifies linked and monitoring processes.
+    // r[impl actor.exit.link-cleanup]
+    // r[impl actor.exit.monitor-cleanup]
     ///
     /// Linked processes with `die_when_link_dies = true` are killed on
     /// abnormal exits (Failed/Killed). Supervisors set this to false so
@@ -322,6 +327,7 @@ pub struct ProcessInfo {
 mod tests {
     use super::*;
 
+    // r[verify actor.name.unique]
     #[tokio::test]
     async fn test_spawn_and_lookup() {
         let reg = ProcessRegistry::new();
@@ -372,6 +378,8 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
+    // r[verify actor.link.bidirectional]
+    // r[verify actor.exit.link-cleanup]
     #[tokio::test]
     async fn test_link_death_notification() {
         let reg = ProcessRegistry::new();
@@ -405,6 +413,7 @@ mod tests {
         assert_eq!(reason, DeathReason::Failed("test error".to_string()));
     }
 
+    // r[verify actor.exit.monitor-cleanup]
     #[tokio::test]
     async fn test_monitor() {
         let reg = ProcessRegistry::new();
@@ -533,6 +542,7 @@ mod tests {
         tokio::time::sleep(Duration::from_millis(50)).await;
     }
 
+    // r[verify actor.exit.link-cleanup]
     #[tokio::test]
     async fn test_die_when_link_dies_kills_on_abnormal() {
         let reg = ProcessRegistry::new();
@@ -573,6 +583,7 @@ mod tests {
     }
 
     #[tokio::test]
+    // r[verify actor.unlink.bidirectional]
     async fn test_die_when_link_dies_false_gets_signal() {
         let reg = ProcessRegistry::new();
         let (done_tx, mut done_rx) = mpsc::unbounded_channel::<DeathReason>();

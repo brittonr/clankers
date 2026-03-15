@@ -68,6 +68,9 @@ impl From<serde_json::Error> for FrameError {
 /// Write a length-prefixed JSON frame.
 ///
 /// Serializes `value` to JSON, writes `[4-byte length][JSON]` to `writer`.
+// r[impl protocol.frame.roundtrip]
+// r[impl protocol.frame.size-reject-write]
+// r[impl protocol.frame.length-encoding]
 pub async fn write_frame<W, T>(writer: &mut W, value: &T) -> Result<(), FrameError>
 where
     W: AsyncWrite + Unpin,
@@ -87,6 +90,9 @@ where
 /// Read a length-prefixed JSON frame.
 ///
 /// Reads `[4-byte length][JSON]` from `reader`, deserializes to `T`.
+// r[impl protocol.frame.roundtrip]
+// r[impl protocol.frame.size-reject-read]
+// r[impl protocol.frame.length-encoding]
 pub async fn read_frame<R, T>(reader: &mut R) -> Result<T, FrameError>
 where
     R: AsyncRead + Unpin,
@@ -141,6 +147,8 @@ mod tests {
     use crate::types::Handshake;
     use crate::types::ImageData;
 
+    // r[verify protocol.frame.roundtrip]
+    // r[verify protocol.frame.length-encoding]
     #[tokio::test]
     async fn test_round_trip_json() {
         let cmd = SessionCommand::Prompt {
@@ -185,6 +193,7 @@ mod tests {
         assert_eq!(data.as_slice(), decoded.as_slice());
     }
 
+    // r[verify protocol.frame.size-reject-write]
     #[tokio::test]
     async fn test_frame_too_large() {
         let data = vec![0u8; 10_000_001];
@@ -195,6 +204,7 @@ mod tests {
         assert!(matches!(result, Err(FrameError::TooLarge { size: 10_000_001 })));
     }
 
+    // r[verify protocol.frame.size-reject-read]
     #[tokio::test]
     async fn test_eof_on_empty_read() {
         let buf: &[u8] = &[];

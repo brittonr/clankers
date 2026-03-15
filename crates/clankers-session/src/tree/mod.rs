@@ -19,6 +19,7 @@ pub struct SessionTree {
 }
 
 impl SessionTree {
+    // r[impl session.index.consistent]
     pub fn build(entries: Vec<SessionEntry>) -> Self {
         let mut children: HashMap<Option<MessageId>, Vec<usize>> = HashMap::new();
         let mut index: HashMap<MessageId, usize> = HashMap::new();
@@ -108,6 +109,9 @@ mod tests {
         assert_eq!(latest.expect("should have latest message").id, id);
     }
 
+    // r[verify session.walk.path-valid]
+    // r[verify session.walk.root-anchored]
+    // r[verify session.walk.terminates]
     #[test]
     fn test_linear_branch() {
         let id1 = MessageId::new("test-id-1");
@@ -276,6 +280,7 @@ mod tests {
         assert!(tree.find_message_public(&MessageId::new("nonexistent")).is_none());
     }
 
+    // r[verify session.index.consistent]
     #[test]
     fn test_message_count() {
         let id1 = MessageId::new("msg-1");

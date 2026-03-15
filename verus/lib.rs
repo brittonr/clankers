@@ -12,5 +12,8 @@
 use vstd::prelude::*;
 
 mod merge_spec;
+mod actor_spec;
+mod session_spec;
+mod protocol_spec;
 
 verus! {} // ensure the crate compiles as a verus crate

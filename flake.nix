@@ -262,13 +262,40 @@
           # Docs build — verifies xtask generation + mdbook build succeed
           docs = clankers-docs;
 
-          # Tracey — requirement coverage (merge invariants must be covered)
+          # Tracey — requirement coverage (all requirements must be covered + tested)
           tracey-coverage = pkgs.runCommand "tracey-coverage" {
             nativeBuildInputs = [ pkgs.tracey ];
             src = ./.;
           } ''
             cd $src
             tracey query status
+
+            # Fail if any requirement lacks an impl annotation
+            uncovered=$(tracey query uncovered 2>&1)
+            if ! echo "$uncovered" | grep -q "0 uncovered"; then
+              echo "ERROR: uncovered requirements found"
+              echo "$uncovered"
+              exit 1
+            fi
+
+            # Fail if any implemented requirement lacks a verify annotation
+            untested=$(tracey query untested 2>&1)
+            if ! echo "$untested" | grep -q "0 untested"; then
+              echo "ERROR: untested implementations found"
+              echo "$untested"
+              exit 1
+            fi
+
+            touch $out
+          '';
+
+          # Verus — machine-checked proofs for core invariants
+          verus-proofs = pkgs.runCommand "verus-proofs" {
+            nativeBuildInputs = [ verus ];
+            src = ./.;
+          } ''
+            cd $src
+            verus --crate-type=lib verus/lib.rs
             touch $out
           '';
         }

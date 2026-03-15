@@ -111,6 +111,13 @@
 - Heartbeat endpoint failure is non-fatal — heartbeat disabled with warning
 - `build_endpoint()` returns `Result` — caller `match`es to degrade gracefully
 
+### Verus proofs
+- Bitvector proofs: `assert(...) by (bit_vector)` — must work entirely in fixed-width types, no `as u8`/`as u32` casts inside the block
+- u8↔u32 roundtrip: prove separately with a lemma `(x as u8) as u32 == x` when `x == x & 0xff`, then use the lemma to bridge the gap between spec fns that go through u8 and bit_vector proofs that need u32
+- Recursive spec fns: SMT solver won't auto-unfold recursive definitions — manually call inner `walk_branch_rec(t, parent, fuel-1)` and `assert(path =~= inner.push(entry))` to help unfolding
+- `=~=` (extensional equality) needed for Seq comparisons, not `==`
+- Build tree with explicit `Map::empty().insert(...)` chains, not `Map::new(|..| choose)` — the latter triggers low-confidence trigger warnings
+
 ### Nix tool
 - Nix daemon socket needs **write** access — Landlock `/nix` as RO blocks `connect()`
 - Fix: add nix-specific RW paths before broad `/nix` RO rule (Landlock merges permissions)

@@ -21,34 +21,34 @@
 
 ## Phase 2: Actor + Session Proofs
 
-- [ ] Create `verus/actor_spec.rs` — RegistryModel type
-- [ ] Prove `r[actor.link.bidirectional]`
-- [ ] Prove `r[actor.unlink.bidirectional]`
-- [ ] Prove `r[actor.exit.link-cleanup]`
-- [ ] Prove `r[actor.exit.monitor-cleanup]`
-- [ ] Prove `r[actor.name.unique]`
-- [ ] Annotate `crates/clankers-actor/src/registry.rs` with `r[impl actor.*]`
-- [ ] Create `verus/session_spec.rs` — TreeModel type
-- [ ] Prove `r[session.walk.path-valid]`
-- [ ] Prove `r[session.walk.root-anchored]`
-- [ ] Prove `r[session.walk.terminates]`
-- [ ] Prove `r[session.index.consistent]`
-- [ ] Annotate `crates/clankers-session/src/tree/mod.rs` with `r[impl session.*]`
-- [ ] Annotate `crates/clankers-session/src/tree/navigation.rs` with `r[impl session.walk.*]`
-- [ ] `tracey query uncovered` returns 0 for actor + session requirements
+- [x] Create `verus/actor_spec.rs` — RegistryModel type
+- [x] Prove `r[actor.link.bidirectional]`
+- [x] Prove `r[actor.unlink.bidirectional]`
+- [x] Prove `r[actor.exit.link-cleanup]`
+- [x] Prove `r[actor.exit.monitor-cleanup]`
+- [x] Prove `r[actor.name.unique]`
+- [x] Annotate `crates/clankers-actor/src/registry.rs` with `r[impl actor.*]`
+- [x] Create `verus/session_spec.rs` — TreeModel type
+- [x] Prove `r[session.walk.path-valid]`
+- [x] Prove `r[session.walk.root-anchored]`
+- [x] Prove `r[session.walk.terminates]`
+- [x] Prove `r[session.index.consistent]`
+- [x] Annotate `crates/clankers-session/src/tree/mod.rs` with `r[impl session.*]`
+- [x] Annotate `crates/clankers-session/src/tree/navigation.rs` with `r[impl session.walk.*]`
+- [x] `tracey query uncovered` returns 0 for actor + session requirements
 
 ## Phase 3: Protocol Proofs + CI
 
-- [ ] Create `verus/protocol_spec.rs` — frame model
-- [ ] Prove `r[protocol.frame.roundtrip]` (modulo serde axiom)
-- [ ] Prove `r[protocol.frame.size-reject-write]`
-- [ ] Prove `r[protocol.frame.size-reject-read]`
-- [ ] Prove `r[protocol.frame.length-encoding]`
-- [ ] Annotate `crates/clankers-protocol/src/frame.rs` with `r[impl protocol.*]`
-- [ ] Add existing frame tests as `r[verify protocol.*]`
-- [ ] Create `scripts/verify.sh` — runs verus + tracey
-- [ ] Add `checks.verus-proofs` to flake.nix
-- [ ] Add `checks.tracey-coverage` to flake.nix
-- [ ] `tracey query uncovered` returns 0 for all requirements
-- [ ] `tracey query untested` returns 0 for all requirements
-- [ ] `verus --crate-type=lib verus/lib.rs` passes
+- [x] Create `verus/protocol_spec.rs` — frame model
+- [x] Prove `r[protocol.frame.roundtrip]` (modulo serde axiom)
+- [x] Prove `r[protocol.frame.size-reject-write]`
+- [x] Prove `r[protocol.frame.size-reject-read]`
+- [x] Prove `r[protocol.frame.length-encoding]`
+- [x] Annotate `crates/clankers-protocol/src/frame.rs` with `r[impl protocol.*]`
+- [x] Add existing frame tests as `r[verify protocol.*]`
+- [x] Create `scripts/verify.sh` — runs verus + tracey
+- [x] Add `checks.verus-proofs` to flake.nix
+- [x] Add `checks.tracey-coverage` to flake.nix (updated to fail on gaps)
+- [x] `tracey query uncovered` returns 0 for all requirements
+- [x] `tracey query untested` returns 0 for all requirements
+- [x] `verus --crate-type=lib verus/lib.rs` passes

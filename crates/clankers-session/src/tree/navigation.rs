@@ -30,6 +30,9 @@ impl SessionTree {
     ///
     /// Bounded by `MAX_TRAVERSAL_DEPTH` to prevent infinite loops if
     /// the tree contains a cycle (corrupted session data).
+    // r[impl session.walk.path-valid]
+    // r[impl session.walk.root-anchored]
+    // r[impl session.walk.terminates]
     pub fn walk_branch(&self, leaf_id: &MessageId) -> Vec<&MessageEntry> {
         let mut path = Vec::new();
         let mut current_id = Some(leaf_id.clone());
