@@ -184,21 +184,34 @@ fn spawn_socket_control_plane_shared(
 // ── Setup helpers ───────────────────────────────────────────────────────────
 
 /// Build the iroh endpoint with mDNS and both ALPNs, plus the ACL.
+///
+/// Set `CLANKERS_NO_MDNS=1` to skip mDNS address lookup (useful in VMs
+/// or environments without multicast support).
 async fn build_endpoint(
     identity: &iroh::Identity,
     config: &DaemonConfig,
     paths: &ClankersPaths,
 ) -> Result<(::iroh::Endpoint, iroh::AccessControl)> {
-    let mdns_service = ::iroh::address_lookup::MdnsAddressLookup::builder().service_name("_clankers._udp.local.");
+    let no_mdns = std::env::var("CLANKERS_NO_MDNS").unwrap_or_default() == "1";
 
-    let endpoint = ::iroh::Endpoint::builder()
+    // Start from the default builder which includes DNS pkarr discovery.
+    // Only add mDNS on top if not disabled.
+    let mut builder = ::iroh::Endpoint::builder()
         .secret_key(identity.secret_key.clone())
         .alpns(vec![
             iroh::ALPN.to_vec(),
             ALPN_CHAT.to_vec(),
             quic_bridge::ALPN_DAEMON.to_vec(),
-        ])
-        .address_lookup(mdns_service)
+        ]);
+
+    if no_mdns {
+        info!("mDNS disabled (CLANKERS_NO_MDNS=1), DNS/pkarr discovery still active");
+    } else {
+        let mdns_service = ::iroh::address_lookup::MdnsAddressLookup::builder().service_name("_clankers._udp.local.");
+        builder = builder.address_lookup(mdns_service);
+    }
+
+    let endpoint = builder
         .bind()
         .await
         .map_err(|e| crate::error::Error::Provider {
@@ -308,6 +321,7 @@ fn spawn_iroh_accept_loop(
                             return;
                         }
 
+                        let skip_token = acl.allow_all;
                         let alpn = conn.alpn().to_vec();
                         match alpn.as_slice() {
                             x if x == quic_bridge::ALPN_DAEMON => {
@@ -317,6 +331,7 @@ fn spawn_iroh_accept_loop(
                                     session_factory,
                                     registry,
                                     shutdown_rx,
+                                    skip_token,
                                 ).await;
                             }
                             _ => {

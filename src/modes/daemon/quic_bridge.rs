@@ -32,12 +32,17 @@ pub const ALPN_DAEMON: &[u8] = clankers_protocol::types::ALPN_DAEMON;
 ///
 /// Each bidirectional stream is dispatched independently: control streams
 /// get a single response, attach streams stay open for the session lifetime.
+///
+/// When `skip_token_check` is true (daemon started with `--allow-all`),
+/// the per-stream token requirement is bypassed — the ACL already
+/// admitted this peer at the connection level.
 pub async fn handle_daemon_quic_connection(
     conn: iroh::endpoint::Connection,
     state: Arc<Mutex<DaemonState>>,
     factory: Arc<SessionFactory>,
     registry: clankers_actor::ProcessRegistry,
     shutdown: tokio::sync::watch::Receiver<bool>,
+    skip_token_check: bool,
 ) {
     let remote = conn.remote_id();
     info!("daemon QUIC connection from {}", remote.fmt_short());
@@ -53,7 +58,7 @@ pub async fn handle_daemon_quic_connection(
         let registry = registry.clone();
         let shutdown = shutdown.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_daemon_stream(send, recv, state, factory, registry, shutdown).await {
+            if let Err(e) = handle_daemon_stream(send, recv, state, factory, registry, shutdown, skip_token_check).await {
                 debug!("daemon QUIC stream ended: {e}");
             }
         });
@@ -70,16 +75,17 @@ async fn handle_daemon_stream(
     factory: Arc<SessionFactory>,
     registry: clankers_actor::ProcessRegistry,
     shutdown: tokio::sync::watch::Receiver<bool>,
+    skip_token_check: bool,
 ) -> Result<(), clankers_protocol::FrameError> {
     // Read the first frame to determine the stream type.
     let request: DaemonRequest = read_quic_frame(&mut recv).await?;
 
     match request {
         DaemonRequest::Control { command } => {
-            handle_control_stream(command, &mut send, &state, &factory, &registry, &shutdown).await?;
+            handle_control_stream(command, &mut send, &state, &factory, &registry, &shutdown, skip_token_check).await?;
         }
         DaemonRequest::Attach { handshake } => {
-            handle_attach_stream(handshake, send, recv, &state).await?;
+            handle_attach_stream(handshake, send, recv, &state, skip_token_check).await?;
         }
     }
 
@@ -94,6 +100,7 @@ async fn handle_control_stream(
     factory: &Arc<SessionFactory>,
     registry: &clankers_actor::ProcessRegistry,
     shutdown: &tokio::sync::watch::Receiver<bool>,
+    skip_token_check: bool,
 ) -> Result<(), clankers_protocol::FrameError> {
     debug!("QUIC control command: {command:?}");
 
@@ -103,7 +110,7 @@ async fn handle_control_stream(
             system_prompt,
             token,
         } => {
-            if token.is_none() {
+            if !skip_token_check && token.is_none() {
                 warn!("QUIC CreateSession rejected: no auth token");
                 clankers_protocol::ControlResponse::Error {
                     message: "authentication token required for remote session creation".to_string(),
@@ -240,6 +247,7 @@ async fn handle_attach_stream(
     mut send: iroh::endpoint::SendStream,
     mut recv: iroh::endpoint::RecvStream,
     state: &Arc<Mutex<DaemonState>>,
+    skip_token_check: bool,
 ) -> Result<(), clankers_protocol::FrameError> {
     // Validate protocol version
     if handshake.protocol_version != PROTOCOL_VERSION {
@@ -254,8 +262,8 @@ async fn handle_attach_stream(
         return Ok(());
     }
 
-    // Require token for remote QUIC connections
-    if handshake.token.is_none() {
+    // Require token for remote QUIC connections (unless --allow-all)
+    if !skip_token_check && handshake.token.is_none() {
         warn!("QUIC attach rejected: no auth token in handshake");
         let resp = AttachResponse::Error {
             message: "authentication token required for remote connections".to_string(),

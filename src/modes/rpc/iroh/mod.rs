@@ -196,12 +196,20 @@ pub fn identity_path(paths: &crate::config::ClankersPaths) -> PathBuf {
 /// connections (server) and initiate outgoing connections (client), enabling
 /// bidirectional communication through a single endpoint.
 pub async fn start_endpoint(identity: &Identity) -> Result<Endpoint, crate::error::Error> {
-    let mdns = iroh::address_lookup::MdnsAddressLookup::builder().service_name(MDNS_SERVICE_NAME);
+    let no_mdns = std::env::var("CLANKERS_NO_MDNS").unwrap_or_default() == "1";
 
-    let endpoint = Endpoint::builder()
+    // Default builder includes DNS pkarr discovery for WAN.
+    // Only add mDNS (LAN auto-discovery) if not disabled.
+    let mut builder = Endpoint::builder()
         .secret_key(identity.secret_key.clone())
-        .alpns(vec![ALPN.to_vec()])
-        .address_lookup(mdns)
+        .alpns(vec![ALPN.to_vec()]);
+
+    if !no_mdns {
+        let mdns = iroh::address_lookup::MdnsAddressLookup::builder().service_name(MDNS_SERVICE_NAME);
+        builder = builder.address_lookup(mdns);
+    }
+
+    let endpoint = builder
         .bind()
         .await
         .map_err(|e| crate::error::Error::Provider {

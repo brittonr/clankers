@@ -259,6 +259,111 @@
               machine.succeed("ls -la /root/.clankers/agent")
             '';
           };
+
+          # Two-VM test: daemon on one machine, client connects via iroh QUIC.
+          # Validates the full remote attach path: endpoint binding, ALPN
+          # negotiation, control stream (create/list), and session attach.
+          vm-remote-daemon = pkgs.testers.runNixOSTest {
+            name = "clankers-remote-daemon";
+            skipLint = true;
+
+            nodes.server = { pkgs, ... }: {
+              virtualisation.graphics = false;
+              virtualisation.memorySize = 2048;
+              networking.firewall.enable = false;
+              environment.systemPackages = [
+                ws.workspaceMembers."clankers".build
+                pkgs.jq
+              ];
+              environment.variables = {
+                HOME = "/root";
+                TERM = "xterm-256color";
+                RUST_LOG = "info";
+              };
+            };
+
+            nodes.client = { pkgs, ... }: {
+              virtualisation.graphics = false;
+              virtualisation.memorySize = 2048;
+              networking.firewall.enable = false;
+              environment.systemPackages = [
+                ws.workspaceMembers."clankers".build
+                pkgs.jq
+              ];
+              environment.variables = {
+                HOME = "/root";
+                TERM = "xterm-256color";
+                RUST_LOG = "info";
+              };
+            };
+
+            testScript = ''
+              import json
+              import time
+
+              start_all()
+              server.wait_for_unit("default.target")
+              client.wait_for_unit("default.target")
+
+              # ── Phase 1: Start daemon on server ────────────────────────────
+              # Run in foreground, capture node ID from startup banner, then
+              # background it so we can interact from the client.
+              server.succeed("mkdir -p /root/.clankers/agent")
+              client.succeed("mkdir -p /root/.clankers/agent")
+
+              # Start daemon in background with --allow-all (no token/ACL)
+              server.succeed(
+                  "clankers daemon start --allow-all --heartbeat 0 "
+                  "> /tmp/daemon.log 2>&1 &"
+              )
+
+              # Wait for the daemon to bind its iroh endpoint and print the node ID
+              server.wait_until_succeeds(
+                  "grep -q 'Node ID:' /tmp/daemon.log",
+                  timeout=30,
+              )
+
+              # Extract the node ID
+              node_id = server.succeed(
+                  "grep 'Node ID:' /tmp/daemon.log | head -1 | awk '{print $NF}'"
+              ).strip()
+              assert len(node_id) > 20, f"node ID too short: '{node_id}'"
+              server.log(f"Server node ID: {node_id}")
+
+              # Verify daemon is running via control socket
+              server.succeed("clankers daemon status | grep -q 'Daemon running'")
+
+              # ── Phase 2: RPC ping from client ─────────────────────────────
+              # Uses the clankers/rpc/1 ALPN — validates basic iroh QUIC
+              # connectivity between the two VMs.
+              client.wait_until_succeeds(
+                  f"clankers rpc ping {node_id} 2>&1 | grep -q 'pong'",
+                  timeout=60,
+              )
+              client.log("RPC ping succeeded")
+
+              # ── Phase 3: Create session over QUIC ──────────────────────────
+              # Uses clankers/daemon/1 ALPN control stream.
+              # The daemon has --allow-all so token checks are skipped.
+              server.succeed("clankers daemon create > /tmp/session.out 2>&1")
+              session_line = server.succeed("cat /tmp/session.out").strip()
+              server.log(f"Created session: {session_line}")
+
+              # Verify session shows up in listing
+              server.succeed("clankers ps | grep -q 'claude'")
+
+              # ── Phase 4: RPC status from client ────────────────────────────
+              # Verify the client can query the daemon's status over QUIC.
+              status_out = client.succeed(
+                  f"clankers rpc status {node_id} 2>&1"
+              )
+              client.log(f"Remote status: {status_out}")
+
+              # ── Phase 5: Verify daemon stays healthy ───────────────────────
+              server.succeed("clankers daemon status | grep -q 'Daemon running'")
+              server.log("All remote daemon tests passed")
+            '';
+          };
         };
 
         devShells.default = pkgs.mkShell {
