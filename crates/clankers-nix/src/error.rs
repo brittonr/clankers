@@ -27,4 +27,21 @@ pub enum NixError {
     /// The .drv file contents are malformed.
     #[snafu(display("failed to parse derivation '{path}': {reason}"))]
     DerivationParse { path: String, reason: String },
+
+    /// Nix expression evaluation failed.
+    #[snafu(display("eval failed for '{expr}': {reason}"))]
+    EvalFailed {
+        expr: String,
+        reason: String,
+        /// Whether the failure was due to impure operations (import, IO, etc.)
+        is_impure: bool,
+    },
+
+    /// Evaluation exceeded the time limit.
+    #[snafu(display("eval timed out after {seconds}s"))]
+    EvalTimeout { seconds: u64 },
+
+    /// Serialized evaluation output exceeded the size limit.
+    #[snafu(display("eval output too large: {size} bytes (max {max})"))]
+    EvalOutputTooLarge { size: usize, max: usize },
 }

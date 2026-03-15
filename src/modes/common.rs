@@ -262,6 +262,7 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         // ── Specialty (interactive default) ─────────────────────────
         (ToolTier::Specialty, Arc::new(todo_tool)),
         (ToolTier::Specialty, Arc::new(crate::tools::nix::NixTool::new())),
+        (ToolTier::Specialty, Arc::new(crate::tools::nix::eval_tool::NixEvalTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::web::WebTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::commit::CommitTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::review::ReviewTool::new())),

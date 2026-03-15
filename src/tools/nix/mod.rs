@@ -8,6 +8,7 @@
 //! structured store path parsing of build outputs.
 
 mod build;
+pub mod eval_tool;
 mod parser;
 
 use async_trait::async_trait;

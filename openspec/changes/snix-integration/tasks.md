@@ -26,23 +26,23 @@ No dependencies on other open changes.
 
 ## Phase 2: in-process evaluation (NixEvalTool)
 
-- [ ] Add `snix-eval` and `snix-serde` as optional deps behind `eval` feature
-- [ ] Write `eval.rs` — `evaluate()` function using `EvaluationBuilder`
-- [ ] Write `eval.rs` — `introspect_flake()` convenience function
-- [ ] Write `eval.rs` — JSON serialization of Nix values
-- [ ] Write `eval.rs` — impure detection and CLI fallback logic
-- [ ] Write `eval.rs` — evaluation limits (step count, output size, timeout)
-- [ ] Create `src/tools/nix/eval_tool.rs` — `NixEvalTool` implementation
-- [ ] Register `NixEvalTool` at `ToolTier::Specialty` in `src/modes/common.rs`
+- [x] Add `snix-eval` and `snix-serde` as optional deps behind `eval` feature
+- [x] Write `eval.rs` — `evaluate()` function using `EvaluationBuilder`
+- [x] Write `eval.rs` — `introspect_flake()` convenience function
+- [x] Write `eval.rs` — JSON serialization of Nix values
+- [x] Write `eval.rs` — impure detection and CLI fallback logic
+- [x] Write `eval.rs` — evaluation limits (step count, output size, timeout)
+- [x] Create `src/tools/nix/eval_tool.rs` — `NixEvalTool` implementation
+- [x] Register `NixEvalTool` at `ToolTier::Specialty` in `src/modes/common.rs`
 - [ ] Conditionally register only when nix is detected (same gate as NixTool)
-- [ ] Tests: pure expression evaluation (arithmetic, attrsets, lists, strings)
-- [ ] Tests: impure fallback trigger (import, nixpkgs lookup)
-- [ ] Tests: value serialization (all Nix types → JSON)
-- [ ] Tests: flake introspection (needs a fixture flake directory)
-- [ ] Tests: evaluation limits (step count exceeded, output size exceeded)
-- [ ] Tests: timeout enforcement
-- [ ] Add `eval` feature to default features in clankers-nix
-- [ ] `cargo nextest run -p clankers-nix --features eval`
+- [x] Tests: pure expression evaluation (arithmetic, attrsets, lists, strings)
+- [x] Tests: impure fallback trigger (import, nixpkgs lookup)
+- [x] Tests: value serialization (all Nix types → JSON)
+- [x] Tests: flake introspection (needs a fixture flake directory)
+- [x] Tests: evaluation limits (step count exceeded, output size exceeded)
+- [x] Tests: timeout enforcement
+- [x] Add `eval` feature to default features in clankers-nix
+- [x] `cargo nextest run -p clankers-nix --features eval`
 
 ## Phase 3: store reference scanning
 

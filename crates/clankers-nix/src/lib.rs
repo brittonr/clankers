@@ -28,6 +28,8 @@
 
 pub mod derivation;
 pub mod error;
+#[cfg(feature = "eval")]
+pub mod eval;
 pub mod flakeref;
 pub mod refscan;
 pub mod store_path;
@@ -35,6 +37,8 @@ pub mod store_path;
 // Re-exports for convenience
 pub use derivation::{DerivationInfo, InputDrvInfo, OutputInfo, dependency_summary, read_derivation};
 pub use error::NixError;
+#[cfg(feature = "eval")]
+pub use eval::{EvalResult, FlakeOutputs, evaluate, evaluate_file, evaluate_with_timeout, introspect_flake};
 pub use flakeref::{
     FlakeInfo, FlakeSourceType, ParsedFlakeRef, detect_flake, looks_like_flake_ref, parse_flake_ref,
 };
