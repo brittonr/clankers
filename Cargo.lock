@@ -1158,6 +1158,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "clanker-loop"
+version = "0.1.0"
+source = "git+https://github.com/brittonr/clanker-loop#332249348396cbccb623ddc6bbde35af91a8aeaf"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
+name = "clanker-scheduler"
+version = "0.1.0"
+source = "git+https://github.com/brittonr/clanker-scheduler#68b5170b83f9bf84446feb9b0e31b0912956df0b"
+dependencies = [
+ "chrono",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "clankers"
 version = "0.1.0"
 dependencies = [
@@ -1392,16 +1421,7 @@ dependencies = [
 name = "clankers-loop"
 version = "0.1.0"
 dependencies = [
- "chrono",
- "filetime",
- "parking_lot",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-test",
- "tracing",
- "uuid",
+ "clanker-loop",
 ]
 
 [[package]]
@@ -1587,16 +1607,7 @@ dependencies = [
 name = "clankers-scheduler"
 version = "0.1.0"
 dependencies = [
- "chrono",
- "parking_lot",
- "serde",
- "serde_json",
- "tempfile",
- "tokio",
- "tokio-test",
- "tokio-util",
- "tracing",
- "uuid",
+ "clanker-scheduler",
 ]
 
 [[package]]
@@ -9995,6 +10006,7 @@ dependencies = [
  "atomic",
  "getrandom 0.4.1",
  "js-sys",
+ "serde_core",
  "wasm-bindgen",
 ]
 

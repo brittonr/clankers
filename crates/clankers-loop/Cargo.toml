@@ -3,18 +3,10 @@ name = "clankers-loop"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "Iterative loop execution engine — fixed iterations, poll-until, and watch loops"
+description = "Re-exports clanker-loop (extracted crate)"
 
 [dependencies]
-chrono = { workspace = true }
-parking_lot = "0.12"
-serde = { workspace = true }
-serde_json = { workspace = true }
-tokio = { version = "1", features = ["rt", "time", "sync", "macros"] }
-tracing = { workspace = true }
-uuid = { workspace = true }
+clanker-loop = { git = "https://github.com/brittonr/clanker-loop" }
 
-[dev-dependencies]
-filetime = "0.2"
-tempfile = "3"
-tokio-test = "0.4"
+[lints]
+workspace = true
