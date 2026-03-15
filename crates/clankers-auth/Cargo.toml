@@ -3,19 +3,15 @@ name = "clankers-auth"
 version = "0.1.0"
 edition.workspace = true
 license.workspace = true
-description = "UCAN-inspired capability-based authorization for clankers agents"
+description = "Clankers-specific capability types over clanker-auth generic tokens"
 
 [dependencies]
+clanker-auth = { git = "https://github.com/brittonr/clanker-auth" }
 iroh = { version = "0.96", features = ["address-lookup-mdns"] }
 serde = { workspace = true }
-postcard = { version = "1.0", features = ["alloc"] }
-blake3 = "1.5"
-base64 = "0.22"
-hex = "0.4"
-thiserror = { workspace = true }
-rand = { workspace = true }
-tracing = { workspace = true }
 redb = "2.6"
+tracing = { workspace = true }
+rand = { workspace = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }

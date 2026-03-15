@@ -3,6 +3,7 @@
 //! Capabilities represent what operations a token holder can perform
 //! with the clankers agent system.
 
+use clanker_auth::Cap;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -356,5 +357,21 @@ impl std::fmt::Display for Operation {
             Operation::SessionManage { action } => write!(f, "SessionManage({})", action),
             Operation::ModelSwitch { model } => write!(f, "ModelSwitch({})", model),
         }
+    }
+}
+
+impl Cap for Capability {
+    type Operation = Operation;
+
+    fn authorizes(&self, op: &Operation) -> bool {
+        self.authorizes(op)
+    }
+
+    fn contains(&self, child: &Capability) -> bool {
+        self.contains(child)
+    }
+
+    fn is_delegate(&self) -> bool {
+        matches!(self, Capability::Delegate)
     }
 }

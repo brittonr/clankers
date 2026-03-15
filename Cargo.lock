@@ -1158,6 +1158,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "clanker-auth"
+version = "0.1.0"
+source = "git+https://github.com/brittonr/clanker-auth#9724f365b839fd50e9c28c86e45fedf01d4a5531"
+dependencies = [
+ "base64",
+ "blake3",
+ "iroh",
+ "postcard",
+ "rand 0.9.2",
+ "serde",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "clanker-loop"
 version = "0.1.0"
 source = "git+https://github.com/brittonr/clanker-loop#332249348396cbccb623ddc6bbde35af91a8aeaf"
@@ -1377,16 +1391,12 @@ dependencies = [
 name = "clankers-auth"
 version = "0.1.0"
 dependencies = [
- "base64",
- "blake3",
- "hex",
+ "clanker-auth",
  "iroh",
- "postcard",
  "rand 0.9.2",
  "redb 2.6.3",
  "serde",
  "tempfile",
- "thiserror 2.0.18",
  "tokio",
  "tracing",
 ]

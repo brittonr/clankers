@@ -26,32 +26,7 @@ pub const REVOKED_TOKENS_TABLE: TableDefinition<&[u8], u64> = TableDefinition::n
 /// Table: user_id (str) -> encoded token bytes
 pub const AUTH_TOKENS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("auth_tokens");
 
-/// Storage backend for token revocation list.
-///
-/// Implementations provide persistent storage for revoked token hashes,
-/// ensuring revocations survive restarts.
-pub trait RevocationStore: Send + Sync {
-    /// Check if a token hash is revoked.
-    ///
-    /// Returns `true` if the token is in the revocation list, `false` otherwise.
-    fn is_revoked(&self, token_hash: &[u8; 32]) -> bool;
-
-    /// Add a token hash to the revocation list.
-    ///
-    /// This operation is idempotent - revoking an already-revoked token succeeds.
-    ///
-    /// # Arguments
-    ///
-    /// * `hash` - The token hash to revoke
-    /// * `timestamp` - Unix timestamp when the revocation occurred
-    fn revoke(&self, hash: [u8; 32], timestamp: u64);
-
-    /// Load all revoked token hashes from storage.
-    ///
-    /// Used during startup to populate the in-memory revocation cache.
-    /// Results are limited to prevent unbounded memory usage.
-    fn load_all(&self) -> Vec<[u8; 32]>;
-}
+use clanker_auth::RevocationStore;
 
 /// Revocation store backed by redb.
 ///
