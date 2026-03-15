@@ -1,0 +1,25 @@
+specs (
+  {
+    name clankers-invariants
+    include (docs/requirements.md)
+    impls (
+      {
+        name rust
+        include (
+          crates/clankers-merge/src/**/*.rs
+          crates/clankers-actor/src/**/*.rs
+          crates/clankers-session/src/**/*.rs
+          crates/clankers-protocol/src/**/*.rs
+          verus/**/*.rs
+        )
+        exclude (target/** .cargo-target/**)
+        test_include (
+          crates/clankers-merge/src/*_tests.rs
+          crates/clankers-actor/src/*_tests.rs
+          crates/clankers-session/src/tests/**/*.rs
+          crates/clankers-protocol/src/*_tests.rs
+        )
+      }
+    )
+  }
+)

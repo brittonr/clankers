@@ -53,6 +53,7 @@ pub struct MergeResult {
 ///
 /// When two branches edit completely different regions, the merge is
 /// clean — no conflicts, even if applied in any order.
+// r[impl merge.order-independence]
 pub fn merge(base: &Graggle, branches: &[&str]) -> MergeResult {
     let mut merged = base.clone();
     let mut patches = Vec::with_capacity(branches.len());
@@ -107,6 +108,7 @@ mod tests {
 
     use super::*;
 
+    // r[verify merge.order-independence]
     #[test]
     fn merge_no_conflict_different_regions() {
         // Base: a, b, c
@@ -160,6 +162,7 @@ mod tests {
         assert_eq!(result.output.content, "X\na\nb\nY\nc\nd\nZ\n");
     }
 
+    // r[verify merge.order-independence]
     #[test]
     fn merge_order_independence_3way() {
         // Verify that 3-way merge gives the same result regardless of branch order
@@ -327,6 +330,7 @@ mod tests {
         assert!(result.output.content.contains("println!(\"baz\");\n"));
     }
 
+    // r[verify merge.order-independence]
     #[test]
     fn merge_order_independence_4agents() {
         let base = Graggle::from_text("a\nb\nc\nd\ne\n");

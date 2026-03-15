@@ -66,6 +66,9 @@ pub struct Vertex {
 /// - Every content vertex is reachable from ROOT
 /// - Every content vertex can reach END
 /// - The graph is acyclic
+// r[impl merge.dag.sentinels]
+// r[impl merge.dag.reachability]
+// r[impl merge.dag.acyclicity]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct Graggle {
     /// All vertices indexed by their ID.
@@ -84,6 +87,7 @@ pub struct Graggle {
 
 impl Graggle {
     /// Create an empty graggle with only ROOT and END (ROOT → END).
+    // r[impl merge.dag.sentinels]
     pub fn new() -> Self {
         let mut vertices = BTreeMap::new();
         vertices.insert(ROOT, Vertex {
@@ -114,6 +118,7 @@ impl Graggle {
     /// Build a graggle from text content.
     ///
     /// Creates a linear chain: ROOT → line1 → line2 → ... → lineN → END
+    // r[impl merge.from-text.linear]
     pub fn from_text(text: &str) -> Self {
         let mut g = Self::new();
         let patch_id = PatchId(g.next_patch_id);
@@ -167,6 +172,7 @@ impl Graggle {
     /// For each (parent, child) pair where parent → child exists:
     /// - Remove parent → child
     /// - Add parent → new_vertex → child
+    // r[impl merge.insert.preserves-dag]
     pub(crate) fn insert_vertex(
         &mut self,
         id: VertexId,
@@ -192,6 +198,7 @@ impl Graggle {
     }
 
     /// Mark a vertex as deleted (ghost).
+    // r[impl merge.delete.ghost]
     pub(crate) fn delete_vertex(&mut self, id: VertexId) {
         if let Some(v) = self.vertices.get_mut(&id) {
             v.alive = false;
@@ -239,6 +246,7 @@ impl Default for Graggle {
 mod tests {
     use super::*;
 
+    // r[verify merge.dag.sentinels]
     #[test]
     fn empty_graggle() {
         let g = Graggle::new();
@@ -247,6 +255,7 @@ mod tests {
         assert!(g.parents_of(END).collect::<Vec<_>>() == vec![ROOT]);
     }
 
+    // r[verify merge.from-text.linear]
     #[test]
     fn from_text_basic() {
         let g = Graggle::from_text("hello\nworld\n");
@@ -285,6 +294,7 @@ mod tests {
         assert_eq!(g.content(line0).unwrap(), b"hello");
     }
 
+    // r[verify merge.insert.preserves-dag]
     #[test]
     fn insert_vertex_between() {
         let mut g = Graggle::from_text("a\nb\n");
@@ -315,6 +325,7 @@ mod tests {
         assert_eq!(new_children, vec![line_b]);
     }
 
+    // r[verify merge.delete.ghost]
     #[test]
     fn delete_vertex() {
         let mut g = Graggle::from_text("a\nb\n");

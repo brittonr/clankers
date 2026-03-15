@@ -2,22 +2,22 @@
 
 ## Phase 1: Scaffold + Graggle Proofs
 
-- [ ] Pin verus in flake.nix inputs, add to devshell
-- [ ] Create `docs/requirements.md` (sync from openspec specs)
-- [ ] Create `.config/tracey/config.styx`
-- [ ] Run `tracey query status` — baseline should show all uncovered
-- [ ] Create `verus/lib.rs` module root
-- [ ] Create `verus/merge_spec.rs` — GraggleModel type, well_formed spec fn
-- [ ] Prove `r[merge.dag.sentinels]` — new() produces sentinels
-- [ ] Prove `r[merge.dag.reachability]` — from_text maintains reachability
-- [ ] Prove `r[merge.dag.acyclicity]` — from_text produces acyclic graph
-- [ ] Prove `r[merge.insert.preserves-dag]` — insert_vertex on well-formed → well-formed
-- [ ] Prove `r[merge.from-text.linear]` — linear chain structure
-- [ ] Prove `r[merge.delete.ghost]` — alive=false, edges unchanged
-- [ ] Prove `r[merge.order-independence]` — 2-way commutativity lemma
-- [ ] Annotate `crates/clankers-merge/src/graggle.rs` with `r[impl merge.*]`
-- [ ] Annotate `crates/clankers-merge/src/merge.rs` with `r[impl merge.order-independence]`
-- [ ] `tracey query uncovered` returns 0 for merge requirements
+- [x] Pin verus in flake.nix inputs, add to devshell
+- [x] Create `docs/requirements.md` (sync from openspec specs)
+- [x] Create `.config/tracey/config.styx`
+- [x] Run `tracey query status` — baseline should show all uncovered
+- [x] Create `verus/lib.rs` module root
+- [x] Create `verus/merge_spec.rs` — GraggleModel type, well_formed spec fn
+- [x] Prove `r[merge.dag.sentinels]` — new() produces sentinels
+- [x] Prove `r[merge.dag.reachability]` — from_text maintains reachability
+- [x] Prove `r[merge.dag.acyclicity]` — from_text produces acyclic graph
+- [x] Prove `r[merge.insert.preserves-dag]` — insert_vertex on well-formed → well-formed
+- [x] Prove `r[merge.from-text.linear]` — linear chain structure
+- [x] Prove `r[merge.delete.ghost]` — alive=false, edges unchanged
+- [x] Prove `r[merge.order-independence]` — 2-way commutativity lemma
+- [x] Annotate `crates/clankers-merge/src/graggle.rs` with `r[impl merge.*]`
+- [x] Annotate `crates/clankers-merge/src/merge.rs` with `r[impl merge.order-independence]`
+- [x] `tracey query uncovered` returns 0 for merge requirements
 
 ## Phase 2: Actor + Session Proofs
 
