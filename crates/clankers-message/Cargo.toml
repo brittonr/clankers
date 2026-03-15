@@ -11,7 +11,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 rand = { workspace = true }
 hex = "0.4"
-clanker-router = { git = "https://github.com/brittonr/clanker-router" }
+clanker-router = { workspace = true }
 
 [dev-dependencies]
 pretty_assertions = "1.0"

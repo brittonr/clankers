@@ -43,6 +43,11 @@ chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 rand = "0.9"
 reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"] }
+clanker-actor = { git = "https://github.com/brittonr/clanker-actor" }
+clanker-loop = { git = "https://github.com/brittonr/clanker-loop" }
+clanker-router = { git = "https://github.com/brittonr/clanker-router" }
+clanker-scheduler = { git = "https://github.com/brittonr/clanker-scheduler" }
+graggle = { git = "https://github.com/brittonr/graggle" }
 
 [package]
 name = "clankers"
@@ -66,8 +71,8 @@ clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
 clankers-config = { version = "0.1.0", path = "crates/clankers-config" }
 clankers-db = { version = "0.1.0", path = "crates/clankers-db" }
 clankers-hooks = { version = "0.1.0", path = "crates/clankers-hooks" }
-clanker-loop = { git = "https://github.com/brittonr/clanker-loop" }
-graggle = { git = "https://github.com/brittonr/graggle" }
+clanker-loop = { workspace = true }
+graggle = { workspace = true }
 clankers-message = { version = "0.1.0", path = "crates/clankers-message" }
 clankers-model-selection = { version = "0.1.0", path = "crates/clankers-model-selection" }
 clankers-session = { version = "0.1.0", path = "crates/clankers-session" }
@@ -76,11 +81,11 @@ clankers-procmon = { version = "0.1.0", path = "crates/clankers-procmon" }
 clankers-prompts = { version = "0.1.0", path = "crates/clankers-prompts" }
 clankers-provider = { version = "0.1.0", path = "crates/clankers-provider" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
-clanker-router = { git = "https://github.com/brittonr/clanker-router", features = ["rpc"] }
-clanker-scheduler = { git = "https://github.com/brittonr/clanker-scheduler" }
+clanker-router = { workspace = true, features = ["rpc"] }
+clanker-scheduler = { workspace = true }
 clankers-skills = { version = "0.1.0", path = "crates/clankers-skills" }
 clankers-protocol = { version = "0.1.0", path = "crates/clankers-protocol" }
-clanker-actor = { git = "https://github.com/brittonr/clanker-actor" }
+clanker-actor = { workspace = true }
 clankers-controller = { version = "0.1.0", path = "crates/clankers-controller" }
 clankers-specs = { version = "0.1.0", path = "crates/clankers-specs", optional = true }
 clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }
@@ -107,19 +112,14 @@ parking_lot = "0.12"
 dirs = "6"
 libc = "0.2"
 uuid = { workspace = true }
-strum = { version = "0.27", features = ["derive"] }
 reqwest = { workspace = true, features = ["blocking"] }
-reqwest-eventsource = "0.6"
 redb = "2.6"
 base64 = "0.22"
 mime = "0.3"
 sha2 = "0.10"
 tokio-stream = "0.1"
-fs4 = { version = "0.13", features = ["tokio"] }
 regex = "1"
-pulldown-cmark = "0.12"
 serde_yaml = "0.9"
-petgraph = "0.7"
 ratatui = "0.30"
 ratatui-hypertile = { version = "0.1", features = ["serde"] }
 unicode-width = "0.2"
@@ -128,8 +128,6 @@ iroh = { version = "0.96", features = ["address-lookup-mdns"] }
 iroh-blobs = "0.98"
 extism = "1.13"
 ignore = "0.4"
-arboard = { version = "3", features = ["image-data"] }
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 open = "5"
 
 # PTY support for TUI validation tool
@@ -143,15 +141,11 @@ madsim = { version = "0.2", features = ["macros"], optional = true }
 bolero = { version = "0.13", optional = true }
 bolero-generator = { version = "0.13", optional = true }
 proptest = { version = "1.0", optional = true }
-syntect = "5.3.0"
 grep-regex = "0.1.14"
 grep-searcher = "0.1.16"
-grep-matcher = "0.1.8"
 similar = "2.7"
-sysinfo = "0.34"
 git2 = "0.20"
 glob = "0.3"
-indexmap = { version = "2.13.0", features = ["serde"] }
 
 [dev-dependencies]
 pretty_assertions = "1.0"

@@ -6,7 +6,7 @@ license.workspace = true
 description = "Multi-model routing policy, cost tracking, and orchestration"
 
 [dependencies]
-clanker-router = { git = "https://github.com/brittonr/clanker-router" }
+clanker-router = { workspace = true }
 clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
 tracing = { workspace = true }
 parking_lot = "0.12"
