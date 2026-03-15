@@ -38,35 +38,35 @@ Completed. Repo: github.com/brittonr/clanker-actor
 - [x] `cargo check` on full workspace
 - [x] Verify all 14 call sites compile (daemon, controller, matrix bridge, subagent)
 
-## Phase 3: cron-tick (clankers-scheduler)
+## Phase 3: clanker-scheduler (clankers-scheduler) ✅
 
-Estimated effort: small. One call site.
+Completed. Repo: github.com/brittonr/clanker-scheduler
 
-- [ ] Create `cron-tick` repo on GitHub
-- [ ] `git subtree split -P crates/clankers-scheduler -b extract-scheduler`
-- [ ] Push split branch to new repo
-- [ ] Rename crate
-- [ ] Strip 1 "clankers" reference in `lib.rs`
-- [ ] Add README.md, CI
-- [ ] In clankers workspace: thin wrapper with git dep
-- [ ] Remove moved source files
-- [ ] `cargo check && cargo nextest run`
-- [ ] Verify `src/tools/schedule.rs` compiles
+- [x] Create repo on GitHub
+- [x] `git subtree split -P crates/clankers-scheduler -b extract-scheduler`
+- [x] Push split branch to new repo
+- [x] Rename crate (`name = "clanker-scheduler"`)
+- [x] Strip 1 "clankers" reference in `lib.rs`
+- [x] Add README.md, LICENSE, CI
+- [x] In clankers workspace: thin wrapper with git dep
+- [x] Remove moved source files
+- [x] `cargo check` on full workspace
+- [x] Verify `src/tools/schedule.rs` compiles and tests pass
 
-## Phase 4: iter-engine (clankers-loop)
+## Phase 4: clanker-loop (clankers-loop) ✅
 
-Estimated effort: small. One doc comment rewrite in truncation.rs.
+Completed. Repo: github.com/brittonr/clanker-loop
 
-- [ ] Create `iter-engine` repo on GitHub
-- [ ] `git subtree split -P crates/clankers-loop -b extract-loop`
-- [ ] Push split branch to new repo
-- [ ] Rename crate
-- [ ] Rewrite "clankers" references in `lib.rs` and `truncation.rs`
-- [ ] Add README.md, CI
-- [ ] In clankers workspace: thin wrapper with git dep
-- [ ] Remove moved source files
-- [ ] `cargo check && cargo nextest run`
-- [ ] Verify all 7 call sites compile (controller, agent, loop_tool, main)
+- [x] Create repo on GitHub
+- [x] `git subtree split -P crates/clankers-loop -b extract-loop`
+- [x] Push split branch to new repo
+- [x] Rename crate (`name = "clanker-loop"`)
+- [x] Rewrite "clankers" references in `lib.rs` and `truncation.rs`
+- [x] Add README.md, LICENSE, CI
+- [x] In clankers workspace: thin wrapper with git dep
+- [x] Remove moved source files
+- [x] `cargo check` on full workspace
+- [x] Verify all callers compile (controller, agent, schedule tool)
 
 ## Phase 5: llm-router (clankers-router)
 
