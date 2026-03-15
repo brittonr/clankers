@@ -62,18 +62,19 @@ Depends on: `matrix-daemon-v2` phase 1 (allowlist + bot commands must exist firs
 - [x] Validate containment (no escalation)
 - [x] Reply with base64 child token
 
-## Phase 5: Missing from original spec (from aspen-auth review)
+## Phase 5: Credential type + facts ✅
 
-- [ ] Port `Credential` type (token + proof chain bundle) from aspen-auth
-- [ ] `Credential::from_root()`, `delegate()`, `verify()`, `encode()`/`decode()`, `to_base64()`/`from_base64()`
-- [ ] Update `!token` to accept Credential (base64-encoded chain, not bare token)
-- [ ] Update `!delegate` to return Credential (child token + parent chain)
-- [ ] Update iroh QUIC handshake to send/verify Credential instead of bare token
-- [ ] Update `AuthLayer` to store + verify Credentials
-- [ ] Add `facts` field to token (metadata: model preferences, audit context)
-- [ ] `TokenBuilder::with_fact()` / `with_facts()` methods
-- [ ] Tests: Credential encode/decode roundtrip
-- [ ] Tests: Credential delegation chain roundtrip (2-level, 3-level)
-- [ ] Tests: broken chain rejected
-- [ ] Tests: max delegation depth enforced through Credential
-- [ ] Tests: capability escalation rejected through Credential
+- [x] Port `Credential` type (token + proof chain bundle) — generic `Credential<C>` in clanker-auth
+- [x] `Credential::from_root()`, `delegate()`, `delegate_bearer()`, `verify()`, `encode()`/`decode()`, `to_base64()`/`from_base64()`
+- [x] Update `!token` to accept Credential (base64-encoded chain, not bare token)
+- [x] Update `!delegate` to return Credential (child token + parent chain)
+- [x] Update iroh QUIC handshake to send/verify Credential instead of bare token
+- [x] Update `AuthLayer` to store + verify Credentials
+- [x] Add `facts` field to token (metadata: model preferences, audit context)
+- [x] `TokenBuilder::with_fact()` / `with_facts()` methods
+- [x] Tests: Credential encode/decode roundtrip
+- [x] Tests: Credential delegation chain roundtrip (2-level, 3-level)
+- [x] Tests: broken chain rejected
+- [x] Tests: max delegation depth enforced through Credential
+- [x] Tests: capability escalation rejected through Credential
+- [x] Tests: facts roundtrip, backward compat, tamper detection

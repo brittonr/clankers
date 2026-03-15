@@ -2,7 +2,7 @@
 
 ## Status
 
-Phases 1–4 are implemented. Phase 5 (Credential type) is the remaining work.
+All phases complete. UCAN auth is fully implemented.
 
 ## Decisions
 
