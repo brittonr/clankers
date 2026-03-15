@@ -1,0 +1,19 @@
+[book]
+title = "Clankers"
+description = "A terminal coding agent in Rust"
+authors = ["brittonr"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+git-repository-url = "https://github.com/brittonr/clankers"
+edit-url-template = "https://github.com/brittonr/clankers/edit/main/docs/{path}"
+additional-css = ["src/custom.css"]
+
+[output.html.search]
+enable = true
+
+

@@ -99,6 +99,33 @@
             ++ [ "${rustToolchain}/lib/rustlib/src/rust/library/Cargo.lock" ];
         };
 
+        # ── Documentation site ──────────────────────────────────────────
+        #
+        # Runs docs/generate.sh to extract crate metadata from source,
+        # then mdbook to produce a static HTML site.
+        clankers-docs = pkgs.stdenv.mkDerivation {
+          pname = "clankers-docs";
+          version = "0.1.0";
+          src = pkgs.lib.cleanSourceWith {
+            src = ./.;
+            filter = path: type:
+              (builtins.match ".*\\.(rs|toml|lock|md|css|json|sh)$" path != null)
+              || type == "directory";
+          };
+          nativeBuildInputs = [ pkgs.mdbook ];
+          buildPhase = ''
+            runHook preBuild
+            bash docs/generate.sh "$PWD"
+            mdbook build docs
+            runHook postBuild
+          '';
+          installPhase = ''
+            runHook preInstall
+            cp -r docs/book $out
+            runHook postInstall
+          '';
+        };
+
         clankers-plugins = pkgs.stdenv.mkDerivation {
           pname = "clankers-plugins";
           version = "0.1.0";
@@ -142,6 +169,7 @@
           clankers = ws.workspaceMembers."clankers".build;
           clankers-router = wsRouter.workspaceMembers."clankers-router".build;
           all = ws.allWorkspaceMembers;
+          docs = clankers-docs;
           inherit clankers-plugins;
         };
 
@@ -182,6 +210,9 @@
             cargo fmt --check
             touch $out
           '';
+
+          # Docs build — verifies xtask generation + mdbook build succeed
+          docs = clankers-docs;
         }
         // pkgs.lib.optionalAttrs pkgs.stdenv.isLinux {
           # NixOS VM integration test — builds and runs the binary in a VM.
@@ -259,6 +290,9 @@
             # TUI integration testing
             pkgs.tmux
             pkgs.cargo-insta
+
+            # Docs
+            pkgs.mdbook
 
             # Allwinner / SDWire tooling
             pkgs.sunxi-tools
