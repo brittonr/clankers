@@ -40,7 +40,7 @@ pub async fn handle_daemon_quic_connection(
     conn: iroh::endpoint::Connection,
     state: Arc<Mutex<DaemonState>>,
     factory: Arc<SessionFactory>,
-    registry: clankers_actor::ProcessRegistry,
+    registry: clanker_actor::ProcessRegistry,
     shutdown: tokio::sync::watch::Receiver<bool>,
     skip_token_check: bool,
 ) {
@@ -73,7 +73,7 @@ async fn handle_daemon_stream(
     mut recv: iroh::endpoint::RecvStream,
     state: Arc<Mutex<DaemonState>>,
     factory: Arc<SessionFactory>,
-    registry: clankers_actor::ProcessRegistry,
+    registry: clanker_actor::ProcessRegistry,
     shutdown: tokio::sync::watch::Receiver<bool>,
     skip_token_check: bool,
 ) -> Result<(), clankers_protocol::FrameError> {
@@ -98,7 +98,7 @@ async fn handle_control_stream(
     send: &mut iroh::endpoint::SendStream,
     state: &Arc<Mutex<DaemonState>>,
     factory: &Arc<SessionFactory>,
-    registry: &clankers_actor::ProcessRegistry,
+    registry: &clanker_actor::ProcessRegistry,
     shutdown: &tokio::sync::watch::Receiver<bool>,
     skip_token_check: bool,
 ) -> Result<(), clankers_protocol::FrameError> {
@@ -179,7 +179,7 @@ async fn create_session_over_quic(
     system_prompt: Option<String>,
     state: &Arc<Mutex<DaemonState>>,
     factory: &Arc<SessionFactory>,
-    registry: &clankers_actor::ProcessRegistry,
+    registry: &clanker_actor::ProcessRegistry,
     shutdown: &tokio::sync::watch::Receiver<bool>,
 ) -> clankers_protocol::ControlResponse {
     use clankers_controller::transport::SessionHandle;

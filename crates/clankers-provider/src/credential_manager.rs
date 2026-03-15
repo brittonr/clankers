@@ -13,9 +13,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use clankers_router::auth::AuthStore;
-use clankers_router::oauth;
-use clankers_router::oauth::OAuthCredentials;
+use clanker_router::auth::AuthStore;
+use clanker_router::oauth;
+use clanker_router::oauth::OAuthCredentials;
 use tokio::sync::Mutex;
 use tracing::info;
 use tracing::warn;

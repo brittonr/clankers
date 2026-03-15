@@ -64,14 +64,14 @@ pub enum Error {
     Cancelled,
 }
 
-impl From<clankers_router::Error> for Error {
-    fn from(e: clankers_router::Error) -> Self {
+impl From<clanker_router::Error> for Error {
+    fn from(e: clanker_router::Error) -> Self {
         match e {
-            clankers_router::Error::Auth { message } => Error::ProviderAuth { message },
-            clankers_router::Error::Provider { message, .. } => Error::Provider { message },
-            clankers_router::Error::Streaming { message } => Error::ProviderStreaming { message },
-            clankers_router::Error::Io(source) => Error::Io { source },
-            clankers_router::Error::Json(source) => Error::Json { source },
+            clanker_router::Error::Auth { message } => Error::ProviderAuth { message },
+            clanker_router::Error::Provider { message, .. } => Error::Provider { message },
+            clanker_router::Error::Streaming { message } => Error::ProviderStreaming { message },
+            clanker_router::Error::Io(source) => Error::Io { source },
+            clanker_router::Error::Json(source) => Error::Json { source },
             other => Error::Provider {
                 message: other.to_string(),
             },

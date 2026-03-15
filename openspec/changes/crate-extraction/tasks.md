@@ -110,12 +110,15 @@ Completed. Repo: github.com/brittonr/clanker-auth
 - [x] All 52 existing tests pass unchanged
 - [x] All 5 call sites compile (token.rs, session_store.rs, handlers.rs, bot_commands.rs, path_policy.rs)
 
-## Phase 7: Cleanup
+## Phase 7: Cleanup ✅
 
-After all extractions are stable:
+Completed. All thin wrapper crates removed, imports point directly to extracted crates.
 
-- [ ] Grep workspace for remaining `clankers_merge`, `clankers_actor`, etc. imports
-- [ ] Replace direct imports with extracted crate names where convenient
-- [ ] Consider removing thin wrapper crates once all imports are migrated
-- [ ] Update `AGENTS.md` architecture section to note extracted crates
-- [ ] Update `openspec/config.yaml` context if needed
+- [x] Grep workspace for remaining `clankers_merge`, `clankers_actor`, etc. imports
+- [x] Replace direct imports with extracted crate names where convenient
+- [x] Remove thin wrapper crates (merge, actor, scheduler, loop, router) — all imports migrated
+- [x] Update `AGENTS.md` architecture section to note extracted crates
+- [x] Update filesystem paths (`~/.config/clankers-router/` → `~/.config/clanker-router/`)
+- [x] Update Verus spec comments to reference new crate names
+- [x] Update xtask crate list
+- [x] `cargo check` + `cargo nextest run` — 576 passed, 0 failed

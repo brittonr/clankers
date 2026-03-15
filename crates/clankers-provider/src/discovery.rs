@@ -2,7 +2,7 @@
 //!
 //! Builds a [`RouterProvider`](super::router::RouterProvider) by probing for
 //! available API credentials (env vars, auth store, Ollama) and optionally
-//! connecting to a running `clankers-router` daemon over iroh RPC.
+//! connecting to a running `clanker-router` daemon over iroh RPC.
 
 use std::sync::Arc;
 
@@ -17,8 +17,8 @@ use crate::error::Result;
 /// Build a multi-provider router that auto-discovers available providers.
 ///
 /// Resolution order:
-/// 1. Try connecting to a running clankers-router daemon (iroh RPC)
-/// 2. Try auto-starting the daemon if `clankers-router` is in PATH
+/// 1. Try connecting to a running clanker-router daemon (iroh RPC)
+/// 2. Try auto-starting the daemon if `clanker-router` is in PATH
 /// 3. Fall back to in-process provider construction
 ///
 /// In-process discovers providers from:
@@ -55,8 +55,8 @@ pub fn build_router(
     fallback_auth_path: Option<&std::path::Path>,
     account: Option<&str>,
 ) -> Result<Arc<dyn Provider>> {
-    use clankers_router::backends::openai_compat::OpenAICompatConfig;
-    use clankers_router::backends::openai_compat::OpenAICompatProvider;
+    use clanker_router::backends::openai_compat::OpenAICompatConfig;
+    use clanker_router::backends::openai_compat::OpenAICompatProvider;
 
     use super::router::RouterCompatAdapter;
     use super::router::RouterProvider;
@@ -155,7 +155,7 @@ pub fn build_router(
                 if let Some(data) = body.get("data").and_then(|d| d.as_array()) {
                     for m in data {
                         if let Some(id) = m.get("id").and_then(|v| v.as_str()) {
-                            models.push(clankers_router::Model {
+                            models.push(clanker_router::Model {
                                 id: id.to_string(),
                                 name: id.to_string(),
                                 provider: "ollama".to_string(),

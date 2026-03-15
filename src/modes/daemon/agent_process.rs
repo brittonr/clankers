@@ -11,10 +11,10 @@
 
 use std::sync::Arc;
 
-use clankers_actor::DeathReason;
-use clankers_actor::ProcessId;
-use clankers_actor::ProcessRegistry;
-use clankers_actor::Signal;
+use clanker_actor::DeathReason;
+use clanker_actor::ProcessId;
+use clanker_actor::ProcessRegistry;
+use clanker_actor::Signal;
 use clankers_controller::SessionController;
 use clankers_controller::config::ControllerConfig;
 use clankers_protocol::DaemonEvent;
@@ -396,7 +396,7 @@ pub async fn prompt_and_collect(
 /// Returns `(session_id, cmd_tx, event_tx)`.
 pub async fn get_or_create_keyed_session(
     state: &tokio::sync::Mutex<clankers_controller::transport::DaemonState>,
-    registry: &clankers_actor::ProcessRegistry,
+    registry: &clanker_actor::ProcessRegistry,
     factory: &super::socket_bridge::SessionFactory,
     key: &clankers_protocol::SessionKey,
 ) -> (

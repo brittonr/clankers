@@ -63,8 +63,8 @@ impl From<serde_json::Error> for ProviderError {
     }
 }
 
-impl From<clankers_router::Error> for ProviderError {
-    fn from(e: clankers_router::Error) -> Self {
+impl From<clanker_router::Error> for ProviderError {
+    fn from(e: clanker_router::Error) -> Self {
         Self {
             message: e.to_string(),
             kind: ProviderErrorKind::Api,

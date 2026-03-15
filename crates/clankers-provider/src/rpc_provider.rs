@@ -1,6 +1,6 @@
-//! Provider that delegates to a clankers-router daemon over iroh RPC
+//! Provider that delegates to a clanker-router daemon over iroh RPC
 //!
-//! Connects to a running clankers-router daemon and forwards completion
+//! Connects to a running clanker-router daemon and forwards completion
 //! requests over QUIC. Falls back to in-process routing if the daemon
 //! is unavailable.
 
@@ -8,8 +8,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use clankers_router::rpc::client::RpcClient;
-use clankers_router::rpc::daemon::DaemonInfo;
+use clanker_router::rpc::client::RpcClient;
+use clanker_router::rpc::daemon::DaemonInfo;
 use tokio::sync::mpsc;
 use tracing::info;
 use tracing::warn;
@@ -20,7 +20,7 @@ use crate::Provider;
 use crate::error::Result;
 use crate::streaming::StreamEvent;
 
-/// Provider that talks to a clankers-router daemon over iroh QUIC RPC.
+/// Provider that talks to a clanker-router daemon over iroh QUIC RPC.
 pub struct RpcProvider {
     client: RpcClient,
     models: Vec<Model>,
@@ -29,7 +29,7 @@ pub struct RpcProvider {
 impl RpcProvider {
     /// Connect to a running daemon and fetch its model list.
     pub async fn connect() -> Option<Arc<dyn Provider>> {
-        let info_path = clankers_router::rpc::daemon::daemon_info_path();
+        let info_path = clanker_router::rpc::daemon::daemon_info_path();
 
         // Try loading daemon info
         let info = DaemonInfo::load(&info_path)?;
@@ -79,7 +79,7 @@ impl RpcProvider {
 
         // Try auto-starting
         info!("Attempting to auto-start router daemon...");
-        clankers_router::rpc::daemon::auto_start_daemon()?;
+        clanker_router::rpc::daemon::auto_start_daemon()?;
 
         // Try connecting again
         Self::connect().await
@@ -92,7 +92,7 @@ impl Provider for RpcProvider {
         // Convert clankers CompletionRequest → router CompletionRequest
         // Messages must be in Anthropic API format (role + content), not clankers
         // internal AgentMessage enum format.
-        let router_request = clankers_router::CompletionRequest {
+        let router_request = clanker_router::CompletionRequest {
             model: request.model,
             messages: convert_messages_to_api(&request.messages),
             system_prompt: request.system_prompt,

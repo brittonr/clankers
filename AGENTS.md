@@ -15,19 +15,22 @@ cargo clippy -- -D warnings    # lint
 
 - `src/` — main binary crate (CLI, TUI, modes, commands)
 - `crates/clankers-agent/` — agent loop, system prompt, tool dispatch
-- `crates/clankers-actor/` — Erlang-style actor system (ProcessRegistry, signals, supervisors)
 - `crates/clankers-config/` — settings, paths, keybindings
 - `crates/clankers-controller/` — SessionController (transport-agnostic agent driver)
 - `crates/clankers-protocol/` — daemon↔client wire protocol (DaemonEvent, SessionCommand, frames)
 - `crates/clankers-provider/` — LLM provider abstraction
-- `crates/clankers-router/` — multi-provider routing, fallback, caching
 - `crates/clankers-tui/` — terminal UI (ratatui-based)
 - `crates/clankers-session/` — JSONL session persistence
 - `crates/clankers-model-selection/` — complexity routing, cost tracking
 - `crates/clankers-hooks/` — event hooks (pre-commit, session start, etc.)
-- `crates/clankers-merge/` — graggle merge algorithm for worktrees
-- `crates/clankers-loop/` — loop/retry engine
 - `crates/clankers-matrix/` — Matrix bridge for multi-agent chat
+
+**Extracted crates** (standalone repos, direct git deps):
+- `graggle` — order-independent merge algorithm for worktrees
+- `clanker-actor` — Erlang-style actor system (ProcessRegistry, signals, supervisors)
+- `clanker-scheduler` — cron/interval/one-shot schedule engine
+- `clanker-loop` — loop/retry engine with output truncation
+- `clanker-router` — multi-provider routing, fallback, caching, OAuth, RPC
 
 ### Daemon-Client Architecture
 
@@ -75,5 +78,5 @@ clankers daemon stop           # stop daemon
 - `src/main.rs` — CLI entrypoint and mode dispatch
 - `src/modes/daemon/agent_process.rs` — AgentProcess actor + run_ephemeral_agent
 - `src/modes/daemon/socket_bridge.rs` — control socket, SessionFactory, drain_and_broadcast
-- `crates/clankers-actor/src/registry.rs` — ProcessRegistry (spawn, link, shutdown)
+- `clanker-actor` (external) — ProcessRegistry (spawn, link, shutdown)
 - `crates/clankers-controller/src/lib.rs` — SessionController (handle_command, feed_event)

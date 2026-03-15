@@ -3,10 +3,10 @@
 //! Mirrors the loop logic from EventLoopRunner, but emits DaemonEvents
 //! instead of mutating App state.
 
-use clankers_loop::BreakCondition;
-use clankers_loop::LoopDef;
-use clankers_loop::LoopId;
-use clankers_loop::LoopStatus;
+use clanker_loop::BreakCondition;
+use clanker_loop::LoopDef;
+use clanker_loop::LoopId;
+use clanker_loop::LoopStatus;
 use clankers_protocol::DaemonEvent;
 use tracing::warn;
 
@@ -25,7 +25,7 @@ impl SessionController {
     /// Register and start a loop from a client-provided config.
     pub fn start_loop(&mut self, config: LoopConfig) -> Option<LoopId> {
         let break_condition = match &config.break_text {
-            Some(text) => clankers_loop::parse_break_condition(text),
+            Some(text) => clanker_loop::parse_break_condition(text),
             None => BreakCondition::Never,
         };
 

@@ -33,7 +33,7 @@ impl AnthropicProvider {
             client: api::AnthropicClient::new(base_url),
             credential: Some(credential),
             credential_manager: None,
-            models: clankers_router::backends::anthropic::default_models(),
+            models: clanker_router::backends::anthropic::default_models(),
         }
     }
 
@@ -43,7 +43,7 @@ impl AnthropicProvider {
             client: api::AnthropicClient::new(base_url),
             credential: None,
             credential_manager: Some(credential_manager),
-            models: clankers_router::backends::anthropic::default_models(),
+            models: clanker_router::backends::anthropic::default_models(),
         }
     }
 

@@ -50,14 +50,14 @@ fn try_load_user_pricing(config_dir: Option<&Path>) -> Option<HashMap<String, Mo
 ///
 /// This is the preferred way to build a pricing table — it reads
 /// `input_cost_per_mtok` / `output_cost_per_mtok` from each
-/// [`clankers_router::Model`], so prices stay in sync with the
+/// [`clanker_router::Model`], so prices stay in sync with the
 /// model catalog automatically.  Models without pricing data are
 /// skipped (tracked at $0).
 ///
 /// An optional `config_dir` is checked first for a user-override
 /// `pricing.json`; if present, that takes priority.
 pub fn pricing_from_models(
-    models: &[clankers_router::Model],
+    models: &[clanker_router::Model],
     config_dir: Option<&Path>,
 ) -> HashMap<String, ModelPricing> {
     if let Some(user) = try_load_user_pricing(config_dir) {
@@ -452,7 +452,7 @@ mod tests {
     #[test]
     fn test_pricing_from_models() {
         let models = vec![
-            clankers_router::Model {
+            clanker_router::Model {
                 id: "test-model".to_string(),
                 name: "Test Model".to_string(),
                 provider: "test".to_string(),
@@ -464,7 +464,7 @@ mod tests {
                 input_cost_per_mtok: Some(5.0),
                 output_cost_per_mtok: Some(25.0),
             },
-            clankers_router::Model {
+            clanker_router::Model {
                 id: "free-model".to_string(),
                 name: "Free Model".to_string(),
                 provider: "test".to_string(),

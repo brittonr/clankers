@@ -6,7 +6,7 @@
 
 use std::sync::Arc;
 
-use clankers_actor::ProcessRegistry;
+use clanker_actor::ProcessRegistry;
 use clankers_controller::SessionController;
 use clankers_controller::transport::DaemonState;
 use clankers_controller::transport::SessionHandle;

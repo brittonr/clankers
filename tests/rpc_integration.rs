@@ -1,18 +1,18 @@
 //! Integration test for iroh RPC client → daemon communication
 //!
-//! Prerequisites: `clankers-router serve` must be running with a valid daemon.json.
+//! Prerequisites: `clanker-router serve` must be running with a valid daemon.json.
 //! Skip this test in CI by checking for daemon.json first.
 
-use clankers_router::rpc::client::RpcClient;
-use clankers_router::rpc::daemon::DaemonInfo;
+use clanker_router::rpc::client::RpcClient;
+use clanker_router::rpc::daemon::DaemonInfo;
 
 #[tokio::test]
 async fn test_rpc_status() {
-    let info_path = clankers_router::rpc::daemon::daemon_info_path();
+    let info_path = clanker_router::rpc::daemon::daemon_info_path();
     let info = match DaemonInfo::load(&info_path) {
         Some(i) if i.is_alive() => i,
         _ => {
-            eprintln!("SKIP: no running daemon (start with `clankers-router serve`)");
+            eprintln!("SKIP: no running daemon (start with `clanker-router serve`)");
             return;
         }
     };

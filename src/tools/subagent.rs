@@ -27,7 +27,7 @@ pub struct SubagentTool {
 /// Context for in-process agent spawning (daemon mode).
 #[derive(Clone)]
 pub struct ActorContext {
-    pub registry: clankers_actor::ProcessRegistry,
+    pub registry: clanker_actor::ProcessRegistry,
     pub factory: std::sync::Arc<crate::modes::daemon::socket_bridge::SessionFactory>,
 }
 

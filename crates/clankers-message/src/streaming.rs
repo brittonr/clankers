@@ -1,14 +1,14 @@
 //! Streaming response types
 //!
-//! Re-exports identical types from `clankers_router::streaming` and defines
+//! Re-exports identical types from `clanker_router::streaming` and defines
 //! `StreamEvent` locally because `ContentBlockStart` uses the richer
 //! [`Content`](super::message::Content) type (which includes `Image` and
 //! `ToolResult` variants not present in the router's `ContentBlock`).
 
 // Re-export types that are field-identical to the router's definitions.
-pub use clankers_router::Usage;
-pub use clankers_router::streaming::ContentDelta;
-pub use clankers_router::streaming::MessageMetadata;
+pub use clanker_router::Usage;
+pub use clanker_router::streaming::ContentDelta;
+pub use clanker_router::streaming::MessageMetadata;
 use serde::Deserialize;
 use serde::Serialize;
 
@@ -19,7 +19,7 @@ pub type StreamDelta = ContentDelta;
 
 /// Events streamed during model completion.
 ///
-/// Mirrors `clankers_router::streaming::StreamEvent` but uses the richer
+/// Mirrors `clanker_router::streaming::StreamEvent` but uses the richer
 /// [`Content`] enum for `ContentBlockStart` instead of `ContentBlock`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -44,9 +44,9 @@ pub enum StreamEvent {
 ///
 /// All three router variants (`Text`, `Thinking`, `ToolUse`) map 1:1
 /// to `Content` variants of the same name.
-impl From<clankers_router::streaming::ContentBlock> for Content {
-    fn from(block: clankers_router::streaming::ContentBlock) -> Self {
-        use clankers_router::streaming::ContentBlock;
+impl From<clanker_router::streaming::ContentBlock> for Content {
+    fn from(block: clanker_router::streaming::ContentBlock) -> Self {
+        use clanker_router::streaming::ContentBlock;
         match block {
             ContentBlock::Text { text } => Content::Text { text },
             ContentBlock::Thinking { thinking, signature } => Content::Thinking { thinking, signature },
@@ -59,9 +59,9 @@ impl From<clankers_router::streaming::ContentBlock> for Content {
 ///
 /// All variants map 1:1. `ContentBlockStart` converts `ContentBlock` → `Content`
 /// via the `From` impl above. `Usage` fields are identical.
-impl From<clankers_router::streaming::StreamEvent> for StreamEvent {
-    fn from(event: clankers_router::streaming::StreamEvent) -> Self {
-        use clankers_router::streaming::StreamEvent as RouterEvent;
+impl From<clanker_router::streaming::StreamEvent> for StreamEvent {
+    fn from(event: clanker_router::streaming::StreamEvent) -> Self {
+        use clanker_router::streaming::StreamEvent as RouterEvent;
         match event {
             RouterEvent::MessageStart { message } => StreamEvent::MessageStart { message },
             RouterEvent::ContentBlockStart { index, content_block } => StreamEvent::ContentBlockStart {

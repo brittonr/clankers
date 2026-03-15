@@ -18,10 +18,10 @@ pub mod auth;
 pub mod credential_manager;
 pub mod discovery;
 pub mod message;
-/// Model registry — re-exported from `clankers-router`.
-pub use clankers_router::registry;
-/// Retry logic — re-exported from `clankers-router`.
-pub use clankers_router::retry;
+/// Model registry — re-exported from `clanker-router`.
+pub use clanker_router::registry;
+/// Retry logic — re-exported from `clanker-router`.
+pub use clanker_router::retry;
 pub mod router;
 pub mod rpc_provider;
 pub mod streaming;
@@ -51,8 +51,8 @@ pub trait Provider: Send + Sync {
     async fn reload_credentials(&self) {}
 }
 
-// Re-export Model from clankers-router (canonical definition)
-pub use clankers_router::Model;
+// Re-export Model from clanker-router (canonical definition)
+pub use clanker_router::Model;
 
 /// Request for a model completion.
 ///
@@ -76,7 +76,7 @@ pub struct CompletionRequest {
     pub temperature: Option<f64>,
 
     /// Available tools for the model to call
-    pub tools: Vec<clankers_router::provider::ToolDefinition>,
+    pub tools: Vec<clanker_router::provider::ToolDefinition>,
 
     /// Extended thinking configuration (if supported)
     pub thinking: Option<ThinkingConfig>,
@@ -90,8 +90,8 @@ pub struct CompletionRequest {
     pub cache_ttl: Option<String>,
 }
 
-// Re-export ThinkingConfig from clankers-router (canonical definition)
-pub use clankers_router::ThinkingConfig;
+// Re-export ThinkingConfig from clanker-router (canonical definition)
+pub use clanker_router::ThinkingConfig;
 // ThinkingLevel re-exported from clankers-tui-types (canonical definition).
 pub use clankers_tui_types::ThinkingLevel;
 
@@ -107,6 +107,6 @@ pub fn thinking_level_to_config(level: ThinkingLevel) -> Option<ThinkingConfig> 
     }
 }
 
-// Re-export Usage and Cost from clankers-router (canonical definitions)
-pub use clankers_router::Usage;
-pub use clankers_router::provider::Cost;
+// Re-export Usage and Cost from clanker-router (canonical definitions)
+pub use clanker_router::Usage;
+pub use clanker_router::provider::Cost;

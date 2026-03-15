@@ -179,7 +179,7 @@ async fn handle_login(
     account: &str,
 ) {
     use crate::provider::auth::AuthStoreExt;
-    let result = clankers_router::oauth::exchange_code(code, state, verifier).await;
+    let result = clanker_router::oauth::exchange_code(code, state, verifier).await;
     match result {
         Ok(creds) => {
             let paths = crate::config::ClankersPaths::get();

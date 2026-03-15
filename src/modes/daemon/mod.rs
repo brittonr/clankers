@@ -81,7 +81,7 @@ pub async fn run_daemon(
         clankers_controller::transport::DaemonState::new(),
     ));
 
-    let process_registry = clankers_actor::ProcessRegistry::new();
+    let process_registry = clanker_actor::ProcessRegistry::new();
 
     let session_factory = Arc::new(socket_bridge::SessionFactory {
         provider: Arc::clone(&provider),
@@ -167,7 +167,7 @@ pub async fn run_daemon(
 fn spawn_socket_control_plane_shared(
     daemon_state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
     factory: Arc<socket_bridge::SessionFactory>,
-    registry: clankers_actor::ProcessRegistry,
+    registry: clanker_actor::ProcessRegistry,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) -> tokio::task::JoinHandle<()> {
     // Init socket directory (PID file, stale cleanup)
@@ -286,7 +286,7 @@ fn spawn_iroh_accept_loop(
     rpc_state: Arc<iroh::ServerState>,
     daemon_state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
     session_factory: Arc<socket_bridge::SessionFactory>,
-    registry: clankers_actor::ProcessRegistry,
+    registry: clanker_actor::ProcessRegistry,
     auth: Option<Arc<session_store::AuthLayer>>,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
     cancel: CancellationToken,
@@ -364,7 +364,7 @@ async fn handle_iroh_connection_from_conn(
     rpc_state: Arc<iroh::ServerState>,
     daemon_state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
     session_factory: Arc<socket_bridge::SessionFactory>,
-    registry: clankers_actor::ProcessRegistry,
+    registry: clanker_actor::ProcessRegistry,
     auth: Option<Arc<session_store::AuthLayer>>,
 ) -> Result<()> {
     let remote = conn.remote_id();
@@ -398,7 +398,7 @@ fn spawn_matrix_bridge(
     config: &DaemonConfig,
     daemon_state: &Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
     session_factory: &Arc<socket_bridge::SessionFactory>,
-    registry: &clankers_actor::ProcessRegistry,
+    registry: &clanker_actor::ProcessRegistry,
     auth: &Option<Arc<session_store::AuthLayer>>,
     paths: &ClankersPaths,
     cancel: CancellationToken,
@@ -481,7 +481,7 @@ fn spawn_status_logger(
 fn spawn_idle_reaper(
     config: &DaemonConfig,
     state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
-    _registry: clankers_actor::ProcessRegistry,
+    _registry: clanker_actor::ProcessRegistry,
     cancel: CancellationToken,
 ) {
     if config.idle_timeout_secs == 0 {

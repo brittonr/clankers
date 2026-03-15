@@ -5,7 +5,7 @@
 //! metadata messages (branching, compaction, custom).
 //!
 //! Also provides the richer streaming event types that wrap
-//! `clankers-router`'s generic streaming with typed [`Content`] blocks.
+//! `clanker-router`'s generic streaming with typed [`Content`] blocks.
 
 pub mod message;
 pub mod result_streaming;
@@ -13,8 +13,8 @@ pub mod streaming;
 pub mod tool_result;
 
 // Re-export core types at crate root for convenience
-// Re-export Usage from clankers-router (used by AssistantMessage)
-pub use clankers_router::Usage;
+// Re-export Usage from clanker-router (used by AssistantMessage)
+pub use clanker_router::Usage;
 pub use message::generate_id;
 pub use message::*;
 // Re-export result streaming types at crate root

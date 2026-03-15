@@ -17,19 +17,19 @@ use crate::error::Result;
 use crate::registry::ModelRegistry;
 use crate::streaming::StreamEvent;
 
-// ── Adapter for clankers_router providers ───────────────────────────────────
+// ── Adapter for clanker_router providers ───────────────────────────────────
 
-/// Wraps a `clankers_router::Provider` to implement `clankers::provider::Provider`.
+/// Wraps a `clanker_router::Provider` to implement `clankers::provider::Provider`.
 ///
 /// This adapter converts between the two CompletionRequest formats
 /// (clankers uses AgentMessage, router uses serde_json::Value).
 pub struct RouterCompatAdapter {
-    inner: std::sync::Arc<dyn clankers_router::Provider>,
+    inner: std::sync::Arc<dyn clanker_router::Provider>,
     models_cache: Vec<Model>,
 }
 
 impl RouterCompatAdapter {
-    pub fn new(inner: std::sync::Arc<dyn clankers_router::Provider>) -> Self {
+    pub fn new(inner: std::sync::Arc<dyn clanker_router::Provider>) -> Self {
         let models_cache = inner.models().to_vec();
         Self { inner, models_cache }
     }
@@ -40,8 +40,8 @@ impl Provider for RouterCompatAdapter {
     async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
         // Convert clankers CompletionRequest → router CompletionRequest.
         // The only real conversion is AgentMessage → serde_json::Value for messages.
-        // ToolDefinition is the same type (re-exported from clankers-router).
-        let router_request = clankers_router::CompletionRequest {
+        // ToolDefinition is the same type (re-exported from clanker-router).
+        let router_request = clanker_router::CompletionRequest {
             model: request.model,
             messages: request.messages.iter().filter_map(|m| serde_json::to_value(m).ok()).collect(),
             system_prompt: request.system_prompt,

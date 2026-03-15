@@ -40,7 +40,7 @@ impl SlashHandler for LoginHandler {
 }
 
 fn handle_login_start(ctx: &mut SlashContext<'_>, account_name: &str) {
-    let (url, verifier) = clankers_router::oauth::build_auth_url();
+    let (url, verifier) = clanker_router::oauth::build_auth_url();
     ctx.app.login_verifier = Some((verifier.clone(), account_name.to_string()));
 
     // Also persist verifier to disk so `clankers auth login --code` can use it

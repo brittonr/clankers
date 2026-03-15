@@ -4,7 +4,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use clankers_actor::ProcessRegistry;
+use clanker_actor::ProcessRegistry;
 use clankers_controller::transport::DaemonState;
 use clankers_protocol::SessionKey;
 use tokio::sync::Mutex;

@@ -36,7 +36,7 @@ static SENSITIVE_PATHS: &[&str] = &[
     ".config/gh",
     ".netrc",
     // Our own auth store
-    ".config/clankers-router/auth.json",
+    ".config/clanker-router/auth.json",
     ".clankers/agent/auth.json",
     ".pi/agent/auth.json",
     // Shell history (may contain pasted secrets)
@@ -169,7 +169,7 @@ mod tests {
     fn blocks_clankers_auth() {
         let policy = PathPolicy::new();
         if let Some(home) = dirs::home_dir() {
-            let p = home.join(".config/clankers-router/auth.json");
+            let p = home.join(".config/clanker-router/auth.json");
             assert!(policy.check(p.to_str().unwrap()).is_some());
         }
     }

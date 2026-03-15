@@ -8,8 +8,8 @@ use async_trait::async_trait;
 // ToolResult and ToolResultContent — canonical definitions in clankers-message.
 pub use clankers_message::ToolResult;
 pub use clankers_message::ToolResultContent;
-// Re-export ToolDefinition from clankers-router (canonical definition)
-pub use clankers_router::provider::ToolDefinition;
+// Re-export ToolDefinition from clanker-router (canonical definition)
+pub use clanker_router::provider::ToolDefinition;
 use parking_lot::Mutex;
 use serde_json::Value;
 use tokio::sync::broadcast;

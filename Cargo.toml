@@ -5,30 +5,25 @@ members = [
     "crates/clankers-agent-defs",
     "crates/clankers-auth",
     "crates/clankers-config",
+    "crates/clankers-controller",
     "crates/clankers-db",
     "crates/clankers-hooks",
-    "crates/clankers-loop",
-    "crates/clankers-merge",
+    "crates/clankers-matrix",
     "crates/clankers-message",
-    "crates/clankers-session",
+    "crates/clankers-model-selection",
+    "crates/clankers-nix",
     "crates/clankers-plugin",
     "crates/clankers-procmon",
     "crates/clankers-prompts",
+    "crates/clankers-protocol",
     "crates/clankers-provider",
-    "crates/clankers-model-selection",
-    "crates/clankers-matrix",
-    "crates/clankers-router",
-    "crates/clankers-scheduler",
+    "crates/clankers-session",
     "crates/clankers-skills",
     "crates/clankers-specs",
     "crates/clankers-tui",
-    "crates/clankers-zellij",
     "crates/clankers-tui-types",
     "crates/clankers-util",
-    "crates/clankers-protocol",
-    "crates/clankers-actor",
-    "crates/clankers-controller",
-    "crates/clankers-nix",
+    "crates/clankers-zellij",
     "xtask",
 ]
 resolver = "3"
@@ -71,8 +66,8 @@ clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
 clankers-config = { version = "0.1.0", path = "crates/clankers-config" }
 clankers-db = { version = "0.1.0", path = "crates/clankers-db" }
 clankers-hooks = { version = "0.1.0", path = "crates/clankers-hooks" }
-clankers-loop = { version = "0.1.0", path = "crates/clankers-loop" }
-clankers-merge = { version = "0.1.0", path = "crates/clankers-merge" }
+clanker-loop = { git = "https://github.com/brittonr/clanker-loop" }
+graggle = { git = "https://github.com/brittonr/graggle" }
 clankers-message = { version = "0.1.0", path = "crates/clankers-message" }
 clankers-model-selection = { version = "0.1.0", path = "crates/clankers-model-selection" }
 clankers-session = { version = "0.1.0", path = "crates/clankers-session" }
@@ -81,11 +76,11 @@ clankers-procmon = { version = "0.1.0", path = "crates/clankers-procmon" }
 clankers-prompts = { version = "0.1.0", path = "crates/clankers-prompts" }
 clankers-provider = { version = "0.1.0", path = "crates/clankers-provider" }
 clankers-matrix = { version = "0.1.0", path = "crates/clankers-matrix" }
-clankers-router = { version = "0.1.0", path = "crates/clankers-router", features = ["rpc"] }
-clankers-scheduler = { version = "0.1.0", path = "crates/clankers-scheduler" }
+clanker-router = { git = "https://github.com/brittonr/clanker-router", features = ["rpc"] }
+clanker-scheduler = { git = "https://github.com/brittonr/clanker-scheduler" }
 clankers-skills = { version = "0.1.0", path = "crates/clankers-skills" }
 clankers-protocol = { version = "0.1.0", path = "crates/clankers-protocol" }
-clankers-actor = { version = "0.1.0", path = "crates/clankers-actor" }
+clanker-actor = { git = "https://github.com/brittonr/clanker-actor" }
 clankers-controller = { version = "0.1.0", path = "crates/clankers-controller" }
 clankers-specs = { version = "0.1.0", path = "crates/clankers-specs", optional = true }
 clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }

@@ -108,7 +108,7 @@ impl SessionController {
 #[cfg(test)]
 mod tests {
     use crate::{test_helpers::make_test_controller, PostPromptAction};
-    use clankers_loop::LoopId;
+    use clanker_loop::LoopId;
     use clankers_tui_types::LoopDisplayState;
 
     #[test]
@@ -140,7 +140,7 @@ mod tests {
         let mut ctrl = make_test_controller();
         ctrl.auto_test_enabled = true;
         ctrl.auto_test_command = Some("cargo test".to_string());
-        ctrl.active_loop_id = Some(clankers_loop::LoopId("test-loop".to_string()));
+        ctrl.active_loop_id = Some(clanker_loop::LoopId("test-loop".to_string()));
 
         assert!(ctrl.maybe_auto_test().is_none());
     }

@@ -1,6 +1,6 @@
 //! Merge strategy: graggle -> rerere -> LLM -> human
 //!
-//! Tiered merge resolution using clankers-merge's order-independent graggle algorithm.
+//! Tiered merge resolution using graggle's order-independent algorithm.
 //! Uses in-process git2 operations instead of shelling out to git CLI.
 
 use std::collections::HashSet;
@@ -31,7 +31,7 @@ pub enum MergeResult {
 ///
 /// 1. Read base content from parent branch
 /// 2. Read each branch's version
-/// 3. Run clankers_merge::merge() for order-independent result
+/// 3. Run graggle::merge() for order-independent result
 /// 4. Return clean content or content with conflict markers
 pub fn merge_file(
     repo_root: &Path,
@@ -49,8 +49,8 @@ pub fn merge_file(
     let branch_refs: Vec<&str> = branch_contents.iter().map(|s| s.as_str()).collect();
 
     // Use clankers-merge graggle algorithm
-    let base_graggle = clankers_merge::Graggle::from_text(&base_content);
-    let result = clankers_merge::merge(&base_graggle, &branch_refs);
+    let base_graggle = graggle::Graggle::from_text(&base_content);
+    let result = graggle::merge(&base_graggle, &branch_refs);
 
     if result.output.has_conflicts {
         Ok(FileMergeResult::Conflict {

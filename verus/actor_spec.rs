@@ -11,7 +11,7 @@ verus! {
 
 // ── Types ───────────────────────────────────────────────────────────────
 
-/// A process identifier, matching `clankers_actor::ProcessId` (u64).
+/// A process identifier, matching `clanker_actor::ProcessId` (u64).
 pub type ProcessId = u64;
 
 /// Model of the process registry's link/monitor/name state.

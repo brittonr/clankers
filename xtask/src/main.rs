@@ -483,14 +483,14 @@ fn gen_architecture(_root: &Path, crates: &[CrateInfo]) -> String {
                 "clankers-agent",
                 "clankers-agent-defs",
                 "clankers-controller",
-                "clankers-loop",
+                "clanker-loop",
             ],
         ),
         (
             "LLM routing",
             &[
                 "clankers-provider",
-                "clankers-router",
+                "clanker-router",
                 "clankers-model-selection",
             ],
         ),

@@ -6,7 +6,7 @@
 
 use chrono::DateTime;
 use chrono::Utc;
-use clankers_router::Usage;
+use clanker_router::Usage;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;

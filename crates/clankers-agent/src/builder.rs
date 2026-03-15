@@ -74,7 +74,7 @@ impl AgentBuilder {
     /// Build the Agent, automatically wiring routing policy and cost tracking from settings
     pub fn build(self) -> Agent {
         // Snapshot model pricing before moving the provider into the agent
-        let provider_models: Vec<clankers_router::Model> = self.provider.models().to_vec();
+        let provider_models: Vec<clanker_router::Model> = self.provider.models().to_vec();
 
         let mut agent = Agent::new(self.provider, self.tools, self.settings.clone(), self.model, self.system_prompt);
 

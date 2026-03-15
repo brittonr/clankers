@@ -16,7 +16,7 @@ use std::sync::Arc;
 use allowlist::is_user_allowed;
 use allowlist::resolve_matrix_allowlist;
 use bot_commands::handle_bot_command;
-use clankers_actor::ProcessRegistry;
+use clanker_actor::ProcessRegistry;
 use clankers_controller::transport::DaemonState;
 use clankers_protocol::SessionKey;
 use proactive::ensure_trigger_pipe;

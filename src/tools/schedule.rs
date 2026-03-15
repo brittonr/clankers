@@ -1,6 +1,6 @@
 //! Schedule tool — create, list, pause, resume, and delete scheduled tasks.
 //!
-//! Wraps `clankers_scheduler::ScheduleEngine` as an agent tool. The LLM can
+//! Wraps `clanker_scheduler::ScheduleEngine` as an agent tool. The LLM can
 //! create schedules that fire prompts or commands at specified times.
 
 use std::sync::Arc;
@@ -8,9 +8,9 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use chrono::Duration;
 use chrono::Utc;
-use clankers_scheduler::ScheduleEngine;
-use clankers_scheduler::ScheduleId;
-use clankers_scheduler::schedule::Schedule;
+use clanker_scheduler::ScheduleEngine;
+use clanker_scheduler::ScheduleId;
+use clanker_scheduler::schedule::Schedule;
 use serde_json::Value;
 use serde_json::json;
 
@@ -124,7 +124,7 @@ impl ScheduleTool {
                     Some(s) => s,
                     None => return ToolResult::error("'cron' schedule requires 'cron' parameter"),
                 };
-                let pattern = match clankers_scheduler::cron::CronPattern::parse(pattern_str) {
+                let pattern = match clanker_scheduler::cron::CronPattern::parse(pattern_str) {
                     Ok(p) => p,
                     Err(e) => return ToolResult::error(format!("invalid cron pattern: {e}")),
                 };
@@ -150,13 +150,13 @@ impl ScheduleTool {
         let mut lines = Vec::new();
         for s in &schedules {
             let kind_str = match &s.kind {
-                clankers_scheduler::ScheduleKind::Once { at } => {
+                clanker_scheduler::ScheduleKind::Once { at } => {
                     format!("once at {}", at.format("%Y-%m-%d %H:%M:%S UTC"))
                 }
-                clankers_scheduler::ScheduleKind::Interval { interval_secs } => {
+                clanker_scheduler::ScheduleKind::Interval { interval_secs } => {
                     format!("every {}", format_duration(*interval_secs))
                 }
-                clankers_scheduler::ScheduleKind::Cron { .. } => "cron".to_string(),
+                clanker_scheduler::ScheduleKind::Cron { .. } => "cron".to_string(),
             };
             lines.push(format!(
                 "  {} | {} | {} | fired {} time(s) | {:?}",

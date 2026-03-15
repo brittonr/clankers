@@ -11,7 +11,7 @@ verus! {
 // ── Types ───────────────────────────────────────────────────────────────
 
 /// A vertex identifier: (patch_id, index_within_patch).
-/// Mirrors `clankers_merge::VertexId`.
+/// Mirrors `graggle::VertexId`.
 pub struct VertexIdModel {
     pub patch: u64,
     pub index: u32,
@@ -34,7 +34,7 @@ pub struct VertexModel {
 }
 
 /// The graggle model: a DAG of vertices with forward and reverse edges.
-/// Mirrors `clankers_merge::Graggle` but uses vstd mathematical types.
+/// Mirrors `graggle::Graggle` but uses vstd mathematical types.
 pub struct GraggleModel {
     pub vertices: Map<VertexIdModel, VertexModel>,
     pub children: Map<VertexIdModel, Set<VertexIdModel>>,

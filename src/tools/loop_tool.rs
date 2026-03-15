@@ -1,6 +1,6 @@
 //! Loop tool — create and run iterative workflows.
 //!
-//! Wraps `clankers_loop::LoopEngine` as an agent tool. The LLM can run
+//! Wraps `clanker_loop::LoopEngine` as an agent tool. The LLM can run
 //! commands or prompts repeatedly with break conditions.
 //!
 //! Three modes:
@@ -12,11 +12,11 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use async_trait::async_trait;
-use clankers_loop::BreakCondition;
-use clankers_loop::LoopDef;
-use clankers_loop::LoopEngine;
-use clankers_loop::LoopId;
-use clankers_loop::parse_break_condition;
+use clanker_loop::BreakCondition;
+use clanker_loop::LoopDef;
+use clanker_loop::LoopEngine;
+use clanker_loop::LoopId;
+use clanker_loop::parse_break_condition;
 use serde_json::Value;
 use serde_json::json;
 use tokio::process::Command;

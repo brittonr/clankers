@@ -37,7 +37,7 @@ pub struct TurnConfig {
     pub thinking: Option<ThinkingConfig>,
     pub max_turns: u32,
     /// Output truncation config for tool results
-    pub output_truncation: clankers_loop::OutputTruncationConfig,
+    pub output_truncation: clanker_loop::OutputTruncationConfig,
     pub no_cache: bool,
     pub cache_ttl: Option<String>,
 }
@@ -232,7 +232,7 @@ fn extract_tool_calls(content: &[Content]) -> Vec<(String, String, Value)> {
 /// if truncation was applied.
 fn apply_output_truncation(
     messages: Vec<ToolResultMessage>,
-    config: &clankers_loop::OutputTruncationConfig,
+    config: &clanker_loop::OutputTruncationConfig,
 ) -> Vec<ToolResultMessage> {
     if !config.enabled {
         return messages;
@@ -248,7 +248,7 @@ fn apply_output_truncation(
             for block in &msg.content {
                 match block {
                     Content::Text { text } => {
-                        let result = clankers_loop::truncate_tool_output(text, config);
+                        let result = clanker_loop::truncate_tool_output(text, config);
                         if result.truncated {
                             any_truncated = true;
                             tracing::info!(

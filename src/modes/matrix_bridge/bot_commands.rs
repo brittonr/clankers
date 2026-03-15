@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 
-use clankers_actor::ProcessRegistry;
+use clanker_actor::ProcessRegistry;
 use clankers_auth::Capability;
 use clankers_auth::CapabilityToken;
 use clankers_auth::TokenBuilder;

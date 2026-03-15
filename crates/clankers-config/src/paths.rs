@@ -14,7 +14,7 @@ pub struct ClankersPaths {
     pub global_config_dir: PathBuf,
     /// Global settings file: ~/.clankers/agent/settings.json
     pub global_settings: PathBuf,
-    /// Global auth file: ~/.config/clankers-router/auth.json (shared with clankers-router)
+    /// Global auth file: ~/.config/clanker-router/auth.json (shared with clanker-router)
     pub global_auth: PathBuf,
     /// Global agents directory: ~/.clankers/agent/agents/
     pub global_agents_dir: PathBuf,
@@ -97,9 +97,9 @@ impl ClankersPaths {
             (None, None, None)
         };
 
-        // Auth is shared with clankers-router at the XDG config location
+        // Auth is shared with clanker-router at the XDG config location
         let auth_path =
-            dirs::config_dir().unwrap_or_else(|| home.join(".config")).join("clankers-router").join("auth.json");
+            dirs::config_dir().unwrap_or_else(|| home.join(".config")).join("clanker-router").join("auth.json");
 
         Self {
             global_settings: base.join("settings.json"),

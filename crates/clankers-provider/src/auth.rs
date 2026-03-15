@@ -1,15 +1,15 @@
-//! Auth — delegates to `clankers_router::auth` and `clankers_router::oauth`
+//! Auth — delegates to `clanker_router::auth` and `clanker_router::oauth`
 //!
-//! All credential storage uses clankers-router's multi-provider auth store
-//! at `~/.config/clankers-router/auth.json`.
+//! All credential storage uses clanker-router's multi-provider auth store
+//! at `~/.config/clanker-router/auth.json`.
 
 use std::path::Path;
 
-// Re-export the canonical types from clankers-router
-pub use clankers_router::auth::{
+// Re-export the canonical types from clanker-router
+pub use clanker_router::auth::{
     AccountInfo, AuthStore, ProviderAuth, StoredCredential, env_var_for_provider, is_oauth_token,
 };
-pub use clankers_router::oauth::OAuthCredentials;
+pub use clanker_router::oauth::OAuthCredentials;
 
 /// Resolved credential for making API calls.
 pub type Credential = StoredCredential;
@@ -45,11 +45,11 @@ impl AuthStoreExt for AuthStore {
     }
 
     fn switch_anthropic_account(&mut self, account: &str) -> bool {
-        clankers_router::auth::AuthStore::switch_account(self, "anthropic", account)
+        clanker_router::auth::AuthStore::switch_account(self, "anthropic", account)
     }
 
     fn remove_anthropic_account(&mut self, account: &str) -> bool {
-        clankers_router::auth::AuthStore::remove_account(self, "anthropic", account)
+        clanker_router::auth::AuthStore::remove_account(self, "anthropic", account)
     }
 
     fn list_anthropic_accounts(&self) -> Vec<AccountInfo> {
@@ -79,7 +79,7 @@ impl AuthStoreExt for AuthStore {
 
 /// Resolve credentials for API access (Anthropic).
 ///
-/// Delegates to `clankers_router::auth::resolve_credential`.
+/// Delegates to `clanker_router::auth::resolve_credential`.
 pub fn resolve_credential(runtime_override: Option<&str>, auth_store_path: &Path) -> Option<Credential> {
     resolve_credential_with_fallback(runtime_override, auth_store_path, None, None)
 }
@@ -101,7 +101,7 @@ pub fn resolve_credential_with_fallback(
         return Some(cred.clone());
     }
 
-    clankers_router::auth::resolve_credential("anthropic", runtime_override, &store, fallback.as_ref())
+    clanker_router::auth::resolve_credential("anthropic", runtime_override, &store, fallback.as_ref())
 }
 
 #[cfg(test)]

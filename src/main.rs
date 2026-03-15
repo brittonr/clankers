@@ -52,7 +52,7 @@ async fn main() -> Result<()> {
     info!(?cli, "parsed CLI arguments");
 
     // Clean up stale tool output temp files (older than 24h)
-    clankers_loop::cleanup_temp_files(std::time::Duration::from_secs(24 * 3600));
+    clanker_loop::cleanup_temp_files(std::time::Duration::from_secs(24 * 3600));
 
     // ── CLI validation ─────────────────────────────────────────────
     validate_cli(&cli)?;

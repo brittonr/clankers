@@ -11,7 +11,7 @@ pub enum AppState {
     Dialog,
 }
 
-/// Connection status to the clankers-router daemon.
+/// Connection status to the clanker-router daemon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RouterStatus {
     /// Connected to the router daemon via RPC.

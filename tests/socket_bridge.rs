@@ -62,7 +62,7 @@ async fn test_control_socket_list_empty() {
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
     // Start control socket
-    let registry = clankers_actor::ProcessRegistry::new();
+    let registry = clanker_actor::ProcessRegistry::new();
     let server = tokio::spawn({
         let state = Arc::clone(&state);
         async move {
@@ -119,7 +119,7 @@ async fn test_control_socket_create_session() {
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-    let registry = clankers_actor::ProcessRegistry::new();
+    let registry = clanker_actor::ProcessRegistry::new();
     let server = tokio::spawn({
         let state = Arc::clone(&state);
         let factory = Arc::clone(&factory);

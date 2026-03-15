@@ -10,7 +10,7 @@ clankers-protocol = { version = "0.1.0", path = "../clankers-protocol" }
 clankers-agent = { version = "0.1.0", path = "../clankers-agent" }
 clankers-session = { version = "0.1.0", path = "../clankers-session" }
 clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
-clankers-loop = { version = "0.1.0", path = "../clankers-loop" }
+clanker-loop = { git = "https://github.com/brittonr/clanker-loop" }
 clankers-message = { version = "0.1.0", path = "../clankers-message" }
 clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
 clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }

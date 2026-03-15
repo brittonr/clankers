@@ -165,8 +165,8 @@ impl Agent {
     }
 
     /// Build output truncation config from settings
-    fn output_truncation_config(&self) -> clankers_loop::OutputTruncationConfig {
-        clankers_loop::OutputTruncationConfig {
+    fn output_truncation_config(&self) -> clanker_loop::OutputTruncationConfig {
+        clanker_loop::OutputTruncationConfig {
             max_bytes: self.settings.max_output_bytes,
             max_lines: self.settings.max_output_lines,
             enabled: true,
