@@ -34,7 +34,7 @@ No dependencies on other open changes.
 - [x] Write `eval.rs` — evaluation limits (step count, output size, timeout)
 - [x] Create `src/tools/nix/eval_tool.rs` — `NixEvalTool` implementation
 - [x] Register `NixEvalTool` at `ToolTier::Specialty` in `src/modes/common.rs`
-- [ ] Conditionally register only when nix is detected (same gate as NixTool)
+- [x] Conditionally register only when nix is detected (same gate as NixTool)
 - [x] Tests: pure expression evaluation (arithmetic, attrsets, lists, strings)
 - [x] Tests: impure fallback trigger (import, nixpkgs lookup)
 - [x] Tests: value serialization (all Nix types → JSON)
@@ -51,7 +51,7 @@ No dependencies on other open changes.
 - [x] Write `refscan.rs` — `annotate_store_refs()` summary formatter
 - [x] Add `annotateStoreRefs` config option to clankers-config Settings
 - [x] Wire annotation into NixTool post-processing (when config enabled)
-- [ ] Wire annotation into BashTool post-processing (when config enabled)
+- [x] Wire annotation into BashTool post-processing (when config enabled)
 - [x] Tests: scanning text with 0, 1, many store paths
 - [x] Tests: deduplication of repeated paths
 - [x] Tests: annotation format
