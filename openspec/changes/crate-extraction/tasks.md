@@ -1,23 +1,23 @@
 # crate-extraction — Tasks
 
-## Phase 1: graggle (clankers-merge)
+## Phase 1: graggle (clankers-merge) ✅
 
-Estimated effort: small. Zero refactoring needed.
+Completed. Repo: github.com/brittonr/graggle
 
-- [ ] Create `graggle` repo on GitHub
-- [ ] `git subtree split -P crates/clankers-merge -b extract-merge`
-- [ ] Push split branch to new repo
-- [ ] Rename crate in Cargo.toml (`name = "graggle"`)
-- [ ] Replace 2 "clankers" references in `lib.rs` doc comments
-- [ ] Update `use clankers_merge::` in doc example to `use graggle::`
-- [ ] Add README.md with theory background and usage example
-- [ ] Add CI (cargo test, clippy, fmt, nextest)
-- [ ] In clankers workspace: update `crates/clankers-merge/Cargo.toml` to git dep on `graggle`
-- [ ] In clankers workspace: replace `src/lib.rs` with `pub use graggle::*;`
-- [ ] Remove moved source files from workspace
-- [ ] `cargo check && cargo nextest run` on full workspace
-- [ ] Verify `verus/merge_spec.rs` still compiles
-- [ ] Verify `src/worktree/merge_strategy.rs` still compiles
+- [x] Create `graggle` repo on GitHub
+- [x] `git subtree split -P crates/clankers-merge -b extract-merge`
+- [x] Push split branch to new repo
+- [x] Rename crate in Cargo.toml (`name = "graggle"`)
+- [x] Replace 2 "clankers" references in `lib.rs` doc comments
+- [x] Update `use clankers_merge::` in doc example to `use graggle::`
+- [x] Add README.md with theory background and usage example
+- [x] Add CI (cargo test, clippy, fmt, nextest)
+- [x] In clankers workspace: update `crates/clankers-merge/Cargo.toml` to git dep on `graggle`
+- [x] In clankers workspace: replace `src/lib.rs` with `pub use graggle::*;`
+- [x] Remove moved source files from workspace
+- [x] `cargo check && cargo nextest run` on full workspace
+- [x] Verify `verus/merge_spec.rs` still compiles (standalone verus file, no import change needed)
+- [x] Verify `src/worktree/merge_strategy.rs` still compiles
 
 ## Phase 2: erlactor (clankers-actor)
 
