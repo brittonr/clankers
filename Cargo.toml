@@ -28,6 +28,7 @@ members = [
     "crates/clankers-protocol",
     "crates/clankers-actor",
     "crates/clankers-controller",
+    "crates/clankers-nix",
     "xtask",
 ]
 resolver = "3"
@@ -64,6 +65,7 @@ path = "src/main.rs"
 
 [dependencies]
 clankers-agent = { version = "0.1.0", path = "crates/clankers-agent" }
+clankers-nix = { version = "0.1.0", path = "crates/clankers-nix" }
 clankers-agent-defs = { version = "0.1.0", path = "crates/clankers-agent-defs" }
 clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
 clankers-config = { version = "0.1.0", path = "crates/clankers-config" }

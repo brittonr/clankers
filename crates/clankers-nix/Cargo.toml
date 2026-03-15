@@ -1,0 +1,36 @@
+[package]
+name = "clankers-nix"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Nix integration via snix crates — typed store paths, derivation reading, flake ref validation"
+
+[features]
+default = []
+# Phase 2: in-process Nix evaluation
+eval = ["dep:snix-eval", "dep:snix-serde"]
+# Phase 3: store reference scanning with Wu-Manber acceleration
+refscan = ["dep:snix-castore"]
+
+[dependencies]
+nix-compat = { path = "../../../snix/snix/nix-compat", default-features = false, features = ["flakeref"] }
+snafu = "0.8"
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+regex = "1"
+bstr = "1"
+
+# Phase 2 (optional)
+snix-eval = { path = "../../../snix/snix/eval", optional = true }
+snix-serde = { path = "../../../snix/snix/serde", optional = true }
+
+# Phase 3 (optional)
+snix-castore = { path = "../../../snix/snix/castore", optional = true, default-features = false }
+
+[dev-dependencies]
+tempfile = "3"
+pretty_assertions = "1"
+
+[lints]
+workspace = true
