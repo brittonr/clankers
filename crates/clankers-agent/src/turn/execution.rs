@@ -156,6 +156,7 @@ pub(super) async fn execute_tools_parallel(
     session_id: &str,
     db: Option<clankers_db::Db>,
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
+    user_tool_filter: Option<Vec<String>>,
 ) -> Vec<ToolResultMessage> {
     use futures::future::BoxFuture;
     use futures::future::FutureExt;
@@ -174,6 +175,7 @@ pub(super) async fn execute_tools_parallel(
                 session_id.to_string(),
                 db.clone(),
                 capability_gate.clone(),
+                user_tool_filter.clone(),
             )
             .boxed()
         })
@@ -183,6 +185,7 @@ pub(super) async fn execute_tools_parallel(
 }
 
 /// Execute a single tool and return its result message
+#[allow(clippy::too_many_arguments)]
 async fn execute_single_tool(
     tool: Option<Arc<dyn Tool>>,
     call_id: String,
@@ -194,6 +197,7 @@ async fn execute_single_tool(
     session_id: String,
     db: Option<clankers_db::Db>,
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
+    user_tool_filter: Option<Vec<String>>,
 ) -> ToolResultMessage {
     // Emit ToolCall event
     let _ = event_tx.send(AgentEvent::ToolCall {
@@ -202,11 +206,26 @@ async fn execute_single_tool(
         input: input.clone(),
     });
 
-    // Check capability gate (UCAN token authorization)
+    // Check capability gate (UCAN token authorization — immutable ceiling)
     if let Some(ref gate) = capability_gate
         && let Err(reason) = gate.check_tool_call(&tool_name, &input)
     {
         return create_error_result(call_id, tool_name, format!("🔒 {reason}"), &event_tx);
+    }
+
+    // Check user tool filter (user-adjustable — within ceiling)
+    if let Some(ref filter) = user_tool_filter {
+        let allowed = filter.iter().any(|pattern| {
+            pattern == "*" || pattern.split(',').any(|p| p.trim() == tool_name)
+        });
+        if !allowed {
+            return create_error_result(
+                call_id,
+                tool_name,
+                "🔒 Tool not in active capability set (use /capabilities to adjust)".to_string(),
+                &event_tx,
+            );
+        }
     }
 
     // Check if tool exists

@@ -137,6 +137,7 @@ pub async fn run_turn_loop(
     session_id: &str,
     db: Option<clankers_db::Db>,
     capability_gate: Option<&Arc<dyn crate::tool::CapabilityGate>>,
+    user_tool_filter: Option<&Vec<String>>,
 ) -> Result<()> {
     let tool_defs: Vec<_> = tools.values().map(|t| t.definition().clone()).collect();
     let mut cumulative_usage = Usage::default();
@@ -184,6 +185,7 @@ pub async fn run_turn_loop(
             session_id,
             db.clone(),
             capability_gate.cloned(),
+            user_tool_filter.cloned(),
         )
         .await;
         let tool_result_messages = apply_output_truncation(tool_result_messages, &config.output_truncation);
@@ -612,7 +614,7 @@ mod tests {
 
         let tool_calls = vec![("call-1".to_string(), "chunk_tool".to_string(), json!({}))];
 
-        let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel, None, "", None, None).await;
+        let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel, None, "", None, None, None).await;
 
         assert_eq!(results.len(), 1);
         let msg = &results[0];
@@ -645,7 +647,7 @@ mod tests {
 
         let tool_calls = vec![("call-2".to_string(), "direct_tool".to_string(), json!({}))];
 
-        let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel, None, "", None, None).await;
+        let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel, None, "", None, None, None).await;
 
         assert_eq!(results.len(), 1);
         let msg = &results[0];
@@ -660,5 +662,75 @@ mod tests {
 
         // No details (direct result has no accumulator metadata)
         assert!(msg.details.is_none());
+    }
+
+    #[tokio::test]
+    async fn user_tool_filter_blocks_unlisted_tools() {
+        let tool: Arc<dyn Tool> = Arc::new(DirectResultTool::new());
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("direct_tool".to_string(), tool);
+
+        let (event_tx, _rx) = broadcast::channel(256);
+        let cancel = CancellationToken::new();
+
+        let tool_calls = vec![("call-1".to_string(), "direct_tool".to_string(), json!({}))];
+
+        // Filter only allows "read" — direct_tool should be blocked
+        let filter = Some(vec!["read".to_string()]);
+        let results = execute_tools_parallel(
+            &tools, &tool_calls, &event_tx, cancel, None, "", None, None, filter,
+        )
+        .await;
+
+        assert_eq!(results.len(), 1);
+        assert!(results[0].is_error);
+        let text = match &results[0].content[0] {
+            Content::Text { text } => text,
+            other => panic!("expected Text, got {:?}", other),
+        };
+        assert!(text.contains("🔒"), "expected locked error, got: {text}");
+    }
+
+    #[tokio::test]
+    async fn user_tool_filter_allows_listed_tools() {
+        let tool: Arc<dyn Tool> = Arc::new(DirectResultTool::new());
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("direct_tool".to_string(), tool);
+
+        let (event_tx, _rx) = broadcast::channel(256);
+        let cancel = CancellationToken::new();
+
+        let tool_calls = vec![("call-1".to_string(), "direct_tool".to_string(), json!({}))];
+
+        // Filter allows direct_tool
+        let filter = Some(vec!["direct_tool,read".to_string()]);
+        let results = execute_tools_parallel(
+            &tools, &tool_calls, &event_tx, cancel, None, "", None, None, filter,
+        )
+        .await;
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].is_error);
+    }
+
+    #[tokio::test]
+    async fn user_tool_filter_none_allows_all() {
+        let tool: Arc<dyn Tool> = Arc::new(DirectResultTool::new());
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("direct_tool".to_string(), tool);
+
+        let (event_tx, _rx) = broadcast::channel(256);
+        let cancel = CancellationToken::new();
+
+        let tool_calls = vec![("call-1".to_string(), "direct_tool".to_string(), json!({}))];
+
+        // No filter — full access
+        let results = execute_tools_parallel(
+            &tools, &tool_calls, &event_tx, cancel, None, "", None, None, None,
+        )
+        .await;
+
+        assert_eq!(results.len(), 1);
+        assert!(!results[0].is_error);
     }
 }

@@ -16,6 +16,10 @@ pub struct ControllerConfig {
     pub system_prompt: Option<String>,
     /// Capability restrictions (None = full access).
     pub capabilities: Option<Vec<String>>,
+    /// Capability ceiling — the maximum capabilities this session can have.
+    /// Set from the UCAN token + settings at creation time. Immutable.
+    /// `None` = no ceiling (local owner, full access).
+    pub capability_ceiling: Option<Vec<String>>,
     /// Session persistence manager.
     pub session_manager: Option<SessionManager>,
     /// Hook pipeline for lifecycle events.

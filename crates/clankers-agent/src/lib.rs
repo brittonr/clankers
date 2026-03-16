@@ -78,8 +78,13 @@ pub struct Agent {
     hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     /// Session ID for hook payloads
     session_id: String,
-    /// Capability gate for tool call authorization (None = full access)
+    /// Capability gate for tool call authorization (None = full access).
+    /// Set at session creation from UCAN token + settings. Immutable.
     capability_gate: Option<Arc<dyn tool::CapabilityGate>>,
+    /// User-adjustable tool filter (None = no additional restriction).
+    /// Checked after capability_gate. Can only be narrowed within the
+    /// session's capability ceiling — never escalated.
+    user_tool_filter: Option<Vec<String>>,
 }
 
 impl Agent {
@@ -114,6 +119,7 @@ impl Agent {
             hook_pipeline: None,
             session_id: String::new(),
             capability_gate: None,
+            user_tool_filter: None,
         }
     }
 
@@ -172,6 +178,15 @@ impl Agent {
     pub fn with_capability_gate(mut self, gate: Arc<dyn tool::CapabilityGate>) -> Self {
         self.capability_gate = Some(gate);
         self
+    }
+
+    /// Set or clear the user-adjustable tool filter.
+    ///
+    /// This is a second layer checked after the capability gate.
+    /// The controller validates that filters don't exceed the session's
+    /// capability ceiling before calling this.
+    pub fn set_user_tool_filter(&mut self, filter: Option<Vec<String>>) {
+        self.user_tool_filter = filter;
     }
 
     /// Build output truncation config from settings
@@ -263,6 +278,7 @@ impl Agent {
             &self.session_id,
             self.db.clone(),
             self.capability_gate.as_ref(),
+            self.user_tool_filter.as_ref(),
         )
         .await;
 
@@ -586,6 +602,7 @@ impl Agent {
                 &self.session_id,
                 self.db.clone(),
                 self.capability_gate.as_ref(),
+                self.user_tool_filter.as_ref(),
             )
             .await;
 

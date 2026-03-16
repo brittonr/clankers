@@ -90,11 +90,13 @@ pub fn spawn_agent_process(
 
     let agent = builder.build();
 
+    let tool_patterns = effective_caps.as_deref().and_then(crate::capability_gate::extract_tool_patterns);
     let config = ControllerConfig {
         session_id: session_id.clone(),
         model: model.clone(),
         system_prompt: Some(system_prompt),
-        capabilities: effective_caps.as_deref().and_then(crate::capability_gate::extract_tool_patterns),
+        capabilities: tool_patterns.clone(),
+        capability_ceiling: tool_patterns,
         ..Default::default()
     };
 

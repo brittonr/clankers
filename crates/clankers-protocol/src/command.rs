@@ -48,6 +48,14 @@ pub enum SessionCommand {
     ReplayHistory,
     /// Query the session's active capabilities.
     GetCapabilities,
+    /// Update the session's active tool capabilities.
+    ///
+    /// `None` = remove user restrictions (restore to ceiling).
+    /// `Some(patterns)` = restrict to these tool patterns.
+    /// Rejected if the requested capabilities exceed the session's ceiling.
+    SetCapabilities {
+        capabilities: Option<Vec<String>>,
+    },
     /// Graceful disconnect.
     Disconnect,
 }

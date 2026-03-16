@@ -96,6 +96,10 @@ pub struct SessionController {
     pub(crate) session_id: String,
     /// Capability restrictions (None = full access).
     pub(crate) capabilities: Option<Vec<String>>,
+    /// Maximum capabilities this session can have (immutable after creation).
+    /// `None` = no ceiling (local owner). `SetCapabilities` commands are
+    /// validated against this — the user can attenuate but never escalate.
+    pub(crate) capability_ceiling: Option<Vec<String>>,
     /// Current model name.
     pub(crate) model: String,
 }
@@ -124,7 +128,8 @@ impl SessionController {
             auto_test_command: config.auto_test_command,
             auto_test_enabled: config.auto_test_enabled,
             session_id: config.session_id,
-            capabilities: config.capabilities,
+            capabilities: config.capabilities.clone(),
+            capability_ceiling: config.capability_ceiling.or(config.capabilities),
             model,
         }
     }
@@ -156,7 +161,8 @@ impl SessionController {
             auto_test_command: config.auto_test_command,
             auto_test_enabled: config.auto_test_enabled,
             session_id: config.session_id,
-            capabilities: config.capabilities,
+            capabilities: config.capabilities.clone(),
+            capability_ceiling: config.capability_ceiling.or(config.capabilities),
             model,
         }
     }

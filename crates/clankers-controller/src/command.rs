@@ -162,6 +162,44 @@ impl SessionController {
                     capabilities: self.capabilities.clone(),
                 });
             }
+            SessionCommand::SetCapabilities { capabilities } => {
+                // Validate against ceiling: clamped result must match request
+                let effective = crate::capability::clamp_capabilities(
+                    &self.capability_ceiling,
+                    &capabilities,
+                );
+                if effective != capabilities {
+                    // User tried to escalate beyond their ceiling
+                    let ceiling_desc = self
+                        .capability_ceiling
+                        .as_ref()
+                        .map(|c| c.join(", "))
+                        .unwrap_or_else(|| "none".to_string());
+                    self.emit(DaemonEvent::SystemMessage {
+                        text: format!(
+                            "Cannot set capabilities: request exceeds session ceiling [{}]",
+                            ceiling_desc,
+                        ),
+                        is_error: true,
+                    });
+                } else {
+                    self.capabilities = capabilities.clone();
+                    if let Some(ref mut agent) = self.agent {
+                        agent.set_user_tool_filter(capabilities.clone());
+                    }
+                    let desc = capabilities
+                        .as_ref()
+                        .map(|c| c.join(", "))
+                        .unwrap_or_else(|| "full access".to_string());
+                    self.emit(DaemonEvent::SystemMessage {
+                        text: format!("Capabilities updated: {desc}"),
+                        is_error: false,
+                    });
+                    self.emit(DaemonEvent::Capabilities {
+                        capabilities: self.capabilities.clone(),
+                    });
+                }
+            }
             SessionCommand::Disconnect => {
                 tracing::debug!("client disconnected");
             }
@@ -453,5 +491,140 @@ mod tests {
         ));
         // Agent should have 2 messages now
         assert_eq!(ctrl.agent.as_ref().unwrap().messages().len(), 2);
+    }
+
+    // ── SetCapabilities tests ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_set_capabilities_no_ceiling_allows_anything() {
+        let mut ctrl = make_test_controller();
+        // No ceiling (local session) — anything goes
+        assert!(ctrl.capability_ceiling.is_none());
+
+        ctrl.handle_command(SessionCommand::SetCapabilities {
+            capabilities: Some(vec!["read,grep".to_string()]),
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(events.iter().any(|e| matches!(
+            e,
+            DaemonEvent::SystemMessage { text, is_error: false } if text.contains("updated")
+        )));
+        assert_eq!(
+            ctrl.capabilities,
+            Some(vec!["read,grep".to_string()])
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_capabilities_within_ceiling_succeeds() {
+        let mut ctrl = make_test_controller();
+        ctrl.capability_ceiling = Some(vec!["read,grep,bash".to_string()]);
+        ctrl.capabilities = Some(vec!["read,grep,bash".to_string()]);
+
+        // Narrow to just read,grep — within ceiling
+        ctrl.handle_command(SessionCommand::SetCapabilities {
+            capabilities: Some(vec!["read,grep".to_string()]),
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(events.iter().any(|e| matches!(
+            e,
+            DaemonEvent::SystemMessage { text, is_error: false } if text.contains("updated")
+        )));
+        assert_eq!(
+            ctrl.capabilities,
+            Some(vec!["read,grep".to_string()])
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_capabilities_exceeding_ceiling_rejected() {
+        let mut ctrl = make_test_controller();
+        ctrl.capability_ceiling = Some(vec!["read,grep".to_string()]);
+        ctrl.capabilities = Some(vec!["read,grep".to_string()]);
+
+        // Try to add bash — exceeds ceiling
+        ctrl.handle_command(SessionCommand::SetCapabilities {
+            capabilities: Some(vec!["read,grep,bash".to_string()]),
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(events.iter().any(|e| matches!(
+            e,
+            DaemonEvent::SystemMessage { is_error: true, .. }
+        )));
+        // Capabilities unchanged
+        assert_eq!(
+            ctrl.capabilities,
+            Some(vec!["read,grep".to_string()])
+        );
+    }
+
+    #[tokio::test]
+    async fn test_set_capabilities_none_with_ceiling_rejected() {
+        let mut ctrl = make_test_controller();
+        ctrl.capability_ceiling = Some(vec!["read".to_string()]);
+        ctrl.capabilities = Some(vec!["read".to_string()]);
+
+        // Try to remove all restrictions — exceeds ceiling
+        ctrl.handle_command(SessionCommand::SetCapabilities {
+            capabilities: None,
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(events.iter().any(|e| matches!(
+            e,
+            DaemonEvent::SystemMessage { is_error: true, .. }
+        )));
+        // Capabilities unchanged
+        assert_eq!(ctrl.capabilities, Some(vec!["read".to_string()]));
+    }
+
+    #[tokio::test]
+    async fn test_set_capabilities_none_without_ceiling_succeeds() {
+        let mut ctrl = make_test_controller();
+        // No ceiling, currently restricted
+        ctrl.capabilities = Some(vec!["read".to_string()]);
+
+        // Remove restrictions — allowed since no ceiling
+        ctrl.handle_command(SessionCommand::SetCapabilities {
+            capabilities: None,
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(events.iter().any(|e| matches!(
+            e,
+            DaemonEvent::SystemMessage { text, is_error: false } if text.contains("full access")
+        )));
+        assert!(ctrl.capabilities.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_set_capabilities_restore_to_ceiling() {
+        let mut ctrl = make_test_controller();
+        ctrl.capability_ceiling = Some(vec!["read,grep,bash".to_string()]);
+        ctrl.capabilities = Some(vec!["read".to_string()]);
+
+        // Restore to full ceiling — allowed
+        ctrl.handle_command(SessionCommand::SetCapabilities {
+            capabilities: Some(vec!["read,grep,bash".to_string()]),
+        })
+        .await;
+
+        let events = ctrl.drain_events();
+        assert!(events.iter().any(|e| matches!(
+            e,
+            DaemonEvent::SystemMessage { text, is_error: false } if text.contains("updated")
+        )));
+        assert_eq!(
+            ctrl.capabilities,
+            Some(vec!["read,grep,bash".to_string()])
+        );
     }
 }
