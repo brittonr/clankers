@@ -91,7 +91,7 @@ impl PtyHarness {
                 .unwrap_or_else(|| std::path::PathBuf::from("clankers"))
         };
         let mut cmd = CommandBuilder::new(&clankers_bin);
-        cmd.args(["--no-zellij"]);
+        cmd.args(["--no-zellij", "--no-daemon"]);
         for arg in extra_args {
             cmd.arg(arg);
         }

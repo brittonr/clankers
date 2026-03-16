@@ -13,6 +13,12 @@ use clankers_protocol::{DaemonEvent, SessionCommand};
 use tokio::net::UnixStream;
 use tokio::sync::Mutex;
 
+/// Serialize tests that mutate XDG_RUNTIME_DIR.
+/// `cargo test` runs tests in one process concurrently; without this,
+/// two tests can stomp on each other's env var and connect to the
+/// wrong control socket. (nextest is immune because it forks per test.)
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// Override socket dir to a temp directory so tests don't conflict with a real
 /// daemon or each other.
 fn set_test_socket_dir(dir: &std::path::Path) {
@@ -45,6 +51,7 @@ impl clankers::provider::Provider for MockProvider {
 
 #[tokio::test]
 async fn test_control_socket_list_empty() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().unwrap();
     set_test_socket_dir(tmp.path());
     std::fs::create_dir_all(clankers_controller::transport::socket_dir()).unwrap();
@@ -103,6 +110,7 @@ async fn test_control_socket_list_empty() {
 
 #[tokio::test]
 async fn test_control_socket_create_session() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().unwrap();
     set_test_socket_dir(tmp.path());
     std::fs::create_dir_all(clankers_controller::transport::socket_dir()).unwrap();
