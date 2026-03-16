@@ -159,6 +159,8 @@ pub struct AutoDaemonOptions {
     pub continue_last: bool,
     pub no_session: bool,
     pub cwd: String,
+    /// Enable extended thinking (from --thinking CLI flag).
+    pub thinking: bool,
 }
 
 /// Default interactive mode through a background daemon.
@@ -226,6 +228,13 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
 
     client.replay_history();
 
+    // Forward CLI flags that translate to session commands
+    if opts.thinking {
+        client.send(SessionCommand::SetThinkingLevel {
+            level: "high".to_string(),
+        });
+    }
+
     // 4. Set up the terminal and run the attach event loop
     let mut term = super::common::init_terminal()?;
 
@@ -254,12 +263,18 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     let resumed = opts.resume_id.is_some() || opts.continue_last;
     if resumed {
         app.push_system(
-            format!("resumed session {} via daemon (model: {})", session_id, display_model),
+            format!(
+                "clankers — {} — resumed session {} — keymap: {} — press i to start typing",
+                display_model, session_id, keymap.preset
+            ),
             false,
         );
     } else {
         app.push_system(
-            format!("clankers — {} — daemon mode", display_model),
+            format!(
+                "clankers — {} — keymap: {} — press i to start typing",
+                display_model, keymap.preset
+            ),
             false,
         );
     }
@@ -279,6 +294,18 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     .await;
 
     super::common::restore_terminal(&mut term);
+
+    // Auto-daemon owns the session — kill it on quit so the daemon
+    // doesn't accumulate orphans. If the user wants the session to
+    // persist, they can use `clankers attach` explicitly.
+    if let Err(e) = send_control(ControlCommand::KillSession {
+        session_id: session_id.clone(),
+    })
+    .await
+    {
+        debug!("auto-daemon: failed to kill session on exit: {e}");
+    }
+
     result
 }
 

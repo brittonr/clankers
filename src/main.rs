@@ -299,6 +299,7 @@ async fn run_agent_mode(
             continue_last: cli.r#continue,
             no_session: cli.no_session,
             cwd: ctx.cwd.clone(),
+            thinking: cli.thinking,
         };
         return clankers::modes::attach::run_auto_daemon_attach(opts).await;
     }
