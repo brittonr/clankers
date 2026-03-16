@@ -215,7 +215,10 @@
         packages = {
           default = ws.workspaceMembers."clankers".build;
           clankers = ws.workspaceMembers."clankers".build;
-          clankers-router = wsRouter.workspaceMembers."clankers-router".build;
+          # clankers-router — disabled: clanker-router is an external git dep,
+          # cargo rejects --features for non-workspace packages in --unit-graph.
+          # Build with: cargo build -p clanker-router --features cli
+          # clankers-router = wsRouter.workspaceMembers."clankers-router".build;
           all = ws.allWorkspaceMembers;
           docs = clankers-docs;
           inherit clankers-plugins verus;
@@ -487,8 +490,10 @@
             # Formal verification
             verus
 
-            # Router daemon (auto-started by clankers on `cargo run`)
-            wsRouter.workspaceMembers."clankers-router".build
+            # Router daemon — built via `cargo build -p clanker-router --features cli`
+            # (wsRouter nix build disabled: clanker-router is an external git dep
+            # and cargo rejects --features for non-workspace packages in --unit-graph)
+            # wsRouter.workspaceMembers."clankers-router".build
 
             # Allwinner / SDWire tooling
             pkgs.sunxi-tools

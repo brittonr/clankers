@@ -1,15 +1,15 @@
 {
-  "https://github.com/brittonr/clanker-actor#clanker-actor@0.1.0": "0j7qyvfvn4vwl1difylkxm6fkwbdrk26fd1gadqfymhazh5myfqb",
-  "https://github.com/brittonr/clanker-auth#clanker-auth@0.1.0": "0r78hjvg3k88qnlizyw05mjfkxw3vkhq6r9jg16yy5dzgpfizxa0",
-  "https://github.com/brittonr/clanker-loop#clanker-loop@0.1.0": "0pxz18ga6bs5fdx2w0liayrw573nrx8xncr6c12fx8wrlgsr5rcj",
-  "https://github.com/brittonr/clanker-router#clanker-router@0.1.0": "070r47i2imsrphlr2irnprv4nzg2hi2dmvisjyady5jh2v9g6403",
-  "https://github.com/brittonr/clanker-scheduler#clanker-scheduler@0.1.0": "1czb25rwvy985azgm57r8zdw0jiag4kihrvz6mqz98zkhczlwqnb",
-  "https://github.com/brittonr/graggle#graggle@0.1.0": "159vfpn66cwkp96ghs51b2247x3d4mmas8821xd7vsb4j6i2b1xr",
-  "https://github.com/tvlfyi/wu-manber.git#wu-manber@0.1.0": "1zhk83lbq99xzyjwphv2qrb8f8qgfqwa5bbbvyzm0z0bljsjv0pd",
-  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#nix-compat@0.1.0": "11807awhan4k8gh76h615bvhz1ihl2l2ljf3wqjvlx91n919ndin",
-  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-castore@0.1.0": "11807awhan4k8gh76h615bvhz1ihl2l2ljf3wqjvlx91n919ndin",
-  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-eval@0.1.0": "11807awhan4k8gh76h615bvhz1ihl2l2ljf3wqjvlx91n919ndin",
-  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-eval-builtin-macros@0.0.1": "11807awhan4k8gh76h615bvhz1ihl2l2ljf3wqjvlx91n919ndin",
-  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-serde@0.1.0": "11807awhan4k8gh76h615bvhz1ihl2l2ljf3wqjvlx91n919ndin",
-  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-tracing@0.1.0": "11807awhan4k8gh76h615bvhz1ihl2l2ljf3wqjvlx91n919ndin"
+  "https://github.com/brittonr/clanker-actor#clanker-actor@0.1.0": "0cpzcg3fk07p7d01azpjsvyn8inmv8cpk6y65pl6whrzgxzi1jjl",
+  "https://github.com/brittonr/clanker-auth#clanker-auth@0.1.0": "1d8gaa8xwbn7bn5iwcjjfqwksqbim98hh43rb616y539jwaa2a9k",
+  "https://github.com/brittonr/clanker-loop#clanker-loop@0.1.0": "0rs8iv0my7mhaq4d2df818xparmap5aa1b7fpr5xik5jzb5lvns8",
+  "https://github.com/brittonr/clanker-router#clanker-router@0.1.0": "1nf82z1frrxmq3db32lv2b2lbaa4m1jjjbj3xniya2sbgn4fgcqd",
+  "https://github.com/brittonr/clanker-scheduler#clanker-scheduler@0.1.0": "1cwb6jl25c8l51y6raishh11ld5470r9plml16afvgllnlimc7dy",
+  "https://github.com/brittonr/graggle#graggle@0.1.0": "1fjpbq4vr6i2bscmllndidkh0kdskykf1f6k757nzawqgzxrc35m",
+  "https://github.com/tvlfyi/wu-manber.git#wu-manber@0.1.0": "1c3v86annsgyd7rhnbgpps1i6z59xw2ivbsbwmbyvqhhpaz3radp",
+  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#nix-compat@0.1.0": "080gqd3dbf22vd4mfs3wp8k8gzzqxr46ra450rv303rxqsg7qnc6",
+  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-castore@0.1.0": "080gqd3dbf22vd4mfs3wp8k8gzzqxr46ra450rv303rxqsg7qnc6",
+  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-eval@0.1.0": "080gqd3dbf22vd4mfs3wp8k8gzzqxr46ra450rv303rxqsg7qnc6",
+  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-eval-builtin-macros@0.0.1": "080gqd3dbf22vd4mfs3wp8k8gzzqxr46ra450rv303rxqsg7qnc6",
+  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-serde@0.1.0": "080gqd3dbf22vd4mfs3wp8k8gzzqxr46ra450rv303rxqsg7qnc6",
+  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-tracing@0.1.0": "080gqd3dbf22vd4mfs3wp8k8gzzqxr46ra450rv303rxqsg7qnc6"
 }
