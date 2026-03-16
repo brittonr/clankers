@@ -87,6 +87,17 @@
   - After `DaemonRequest::Attach` + `AttachResponse` + `SessionInfo`, stream is standard session protocol
   - Reuse `run_attach_with_reconnect()` event loop — reconnection won't work for remote (empty socket path), but disconnect detection works
 
+### Auto-daemon mode (Phase 3)
+- Default interactive mode (`clankers` no subcommand) routes through daemon when `use_daemon=true`
+- `run_auto_daemon_attach()` in `src/modes/attach.rs` — ensure daemon → CreateSession → connect → TUI
+- Session killed on quit (via `ControlCommand::KillSession`) — auto-daemon owns its session lifecycle
+- `ConnectionMode` stays `Embedded` (no "ATTACHED" badge) — user shouldn't see implementation details
+- CLI overrides: `--daemon` forces daemon mode, `--no-daemon` forces in-process
+- Headless modes (`--print`, `--stdin`, `--mode json`) bypass daemon — no TUI, no daemon overhead
+- `--thinking` forwarded as `SetThinkingLevel` command after connect
+- `--model`, `--agent`, `--resume`, `--continue`, `--cwd` all forward through `CreateSession`
+- `ensure_daemon_running()` uses tracing not eprintln — TUI takes over stdout immediately after
+
 ### TUI patterns
 - `SlashContext<'a>` wraps `&'a mut App` + all params — single struct to every handler
 - `std::mem::take()` to temporarily move a field out, dispatch, put back — for Default-able types
