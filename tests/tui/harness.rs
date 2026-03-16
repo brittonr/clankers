@@ -40,9 +40,12 @@ impl TuiTestHarness {
             .expect("Failed to open PTY");
 
         let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_clankers"));
-        cmd.args(["--no-zellij"]);
+        cmd.args(["--no-zellij", "--no-daemon"]);
         cmd.env("RUST_LOG", "off");
         cmd.env("TERM", "xterm-256color");
+        // Belt-and-suspenders: block daemon/router auto-start even if
+        // --no-daemon is ever accidentally removed from the args above.
+        cmd.env("CLANKERS_NO_DAEMON", "1");
         // Ensure CWD is the project root so plugins/ dir is discovered
         cmd.cwd(env!("CARGO_MANIFEST_DIR"));
 

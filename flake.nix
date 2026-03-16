@@ -487,6 +487,9 @@
             # Formal verification
             verus
 
+            # Router daemon (auto-started by clankers on `cargo run`)
+            wsRouter.workspaceMembers."clankers-router".build
+
             # Allwinner / SDWire tooling
             pkgs.sunxi-tools
             pkgs.sd-mux-ctrl

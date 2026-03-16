@@ -73,8 +73,11 @@ impl TmuxTestHarness {
                 "TERM=xterm-256color",
                 "-e",
                 "RUST_LOG=off",
+                "-e",
+                "CLANKERS_NO_DAEMON=1",
                 binary,
                 "--no-zellij",
+                "--no-daemon",
             ])
             .current_dir(cwd)
             .status()
