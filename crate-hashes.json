@@ -1,9 +1,15 @@
 {
   "https://github.com/brittonr/clanker-actor#clanker-actor@0.1.0": "0j7qyvfvn4vwl1difylkxm6fkwbdrk26fd1gadqfymhazh5myfqb",
-  "https://github.com/brittonr/clanker-auth#clanker-auth@0.1.0": "003zvg48zd32y7r2ppgjn827mgrmnzzdq06h9qjnb0n12j646h7l",
+  "https://github.com/brittonr/clanker-auth#clanker-auth@0.1.0": "0r78hjvg3k88qnlizyw05mjfkxw3vkhq6r9jg16yy5dzgpfizxa0",
   "https://github.com/brittonr/clanker-loop#clanker-loop@0.1.0": "0pxz18ga6bs5fdx2w0liayrw573nrx8xncr6c12fx8wrlgsr5rcj",
   "https://github.com/brittonr/clanker-router#clanker-router@0.1.0": "070r47i2imsrphlr2irnprv4nzg2hi2dmvisjyady5jh2v9g6403",
   "https://github.com/brittonr/clanker-scheduler#clanker-scheduler@0.1.0": "1czb25rwvy985azgm57r8zdw0jiag4kihrvz6mqz98zkhczlwqnb",
   "https://github.com/brittonr/graggle#graggle@0.1.0": "159vfpn66cwkp96ghs51b2247x3d4mmas8821xd7vsb4j6i2b1xr",
-  "https://github.com/tvlfyi/wu-manber.git#wu-manber@0.1.0": "1zhk83lbq99xzyjwphv2qrb8f8qgfqwa5bbbvyzm0z0bljsjv0pd"
+  "https://github.com/tvlfyi/wu-manber.git#wu-manber@0.1.0": "1zhk83lbq99xzyjwphv2qrb8f8qgfqwa5bbbvyzm0z0bljsjv0pd",
+  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#nix-compat@0.1.0": "11807awhan4k8gh76h615bvhz1ihl2l2ljf3wqjvlx91n919ndin",
+  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-castore@0.1.0": "11807awhan4k8gh76h615bvhz1ihl2l2ljf3wqjvlx91n919ndin",
+  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-eval@0.1.0": "11807awhan4k8gh76h615bvhz1ihl2l2ljf3wqjvlx91n919ndin",
+  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-eval-builtin-macros@0.0.1": "11807awhan4k8gh76h615bvhz1ihl2l2ljf3wqjvlx91n919ndin",
+  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-serde@0.1.0": "11807awhan4k8gh76h615bvhz1ihl2l2ljf3wqjvlx91n919ndin",
+  "https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#snix-tracing@0.1.0": "11807awhan4k8gh76h615bvhz1ihl2l2ljf3wqjvlx91n919ndin"
 }
