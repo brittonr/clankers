@@ -189,6 +189,18 @@ impl ToolContext {
     }
 }
 
+/// Gate for checking if a tool call is allowed by the session's capabilities.
+///
+/// Implementations inspect the tool name and input parameters to decide
+/// whether to allow or block execution. Returning `Err(reason)` blocks
+/// the call and sends the reason back to the LLM as an error result.
+pub trait CapabilityGate: Send + Sync {
+    /// Check if a tool call is allowed.
+    ///
+    /// Returns `Ok(())` if the call should proceed, `Err(reason)` if blocked.
+    fn check_tool_call(&self, tool_name: &str, input: &Value) -> std::result::Result<(), String>;
+}
+
 #[async_trait]
 pub trait Tool: Send + Sync {
     /// Returns the tool's definition (name, description, parameters schema)

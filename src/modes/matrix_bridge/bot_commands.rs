@@ -74,6 +74,7 @@ pub(crate) async fn handle_bot_command(
                 factory,
                 key.clone(),
                 "/compact".to_string(),
+                None, // session already exists with capabilities from initial auth
             )
             .await;
             "Context compacted.".to_string()
@@ -120,7 +121,7 @@ pub(crate) async fn handle_bot_command(
         "!delegate" => handle_delegate_command(args, key, &auth),
         _ => {
             // Unknown ! command — pass to agent as a normal prompt
-            run_matrix_prompt(state, registry, factory, key.clone(), body.to_string()).await
+            run_matrix_prompt(state, registry, factory, key.clone(), body.to_string(), None).await
         }
     }
 }

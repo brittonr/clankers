@@ -27,6 +27,7 @@ pub struct AgentBuilder {
     db: Option<Db>,
     paths: Option<ClankersPaths>,
     thinking: Option<clankers_provider::ThinkingConfig>,
+    capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
 }
 
 impl AgentBuilder {
@@ -41,6 +42,7 @@ impl AgentBuilder {
             db: None,
             paths: None,
             thinking: None,
+            capability_gate: None,
         }
     }
 
@@ -59,6 +61,12 @@ impl AgentBuilder {
     /// Enable extended thinking with the given config.
     pub fn with_thinking(mut self, config: clankers_provider::ThinkingConfig) -> Self {
         self.thinking = Some(config);
+        self
+    }
+
+    /// Attach a capability gate for tool call authorization.
+    pub fn with_capability_gate(mut self, gate: Arc<dyn crate::tool::CapabilityGate>) -> Self {
+        self.capability_gate = Some(gate);
         self
     }
 
@@ -104,6 +112,11 @@ impl AgentBuilder {
             && thinking.enabled
         {
             agent.toggle_thinking(thinking.budget_tokens.unwrap_or(10_000));
+        }
+
+        // Attach capability gate if provided
+        if let Some(gate) = self.capability_gate {
+            agent = agent.with_capability_gate(gate);
         }
 
         agent

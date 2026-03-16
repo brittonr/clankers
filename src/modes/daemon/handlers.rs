@@ -39,7 +39,11 @@ pub(crate) async fn handle_chat_connection(
 ) {
     let key = SessionKey::Iroh(peer_id.to_string());
     let mut first_frame = true;
-    let mut _authenticated = false;
+    // When auth layer exists, peers must authenticate before sending prompts.
+    // Verified capabilities are stored here and passed to sessions.
+    let auth_required = auth.is_some();
+    let mut authenticated = !auth_required; // open access when no auth layer
+    let mut verified_capabilities: Option<Vec<clankers_ucan::Capability>> = None;
 
     loop {
         let (send, mut recv) = match conn.accept_bi().await {
@@ -57,7 +61,7 @@ pub(crate) async fn handle_chat_connection(
             Err(_) => continue,
         };
 
-        // Check for optional auth frame (first frame only)
+        // Check for auth frame (first frame only)
         if first_frame {
             first_frame = false;
             if request.get("type").and_then(|v| v.as_str()) == Some("auth") {
@@ -68,7 +72,8 @@ pub(crate) async fn handle_chat_connection(
                         Ok(cred) => match auth.verify_credential(&cred) {
                             Ok(caps) => {
                                 info!("[{}] authenticated with {} capabilities", key, caps.len());
-                                _authenticated = true;
+                                authenticated = true;
+                                verified_capabilities = Some(caps);
                                 auth.store_credential(peer_id, &cred);
                             }
                             Err(e) => {
@@ -88,6 +93,19 @@ pub(crate) async fn handle_chat_connection(
             }
         }
 
+        // Reject prompts from unauthenticated peers when auth is required
+        if !authenticated {
+            warn!("[{}] rejected prompt from unauthenticated peer", key);
+            let err = json!({
+                "type": "error",
+                "message": "Authentication required. Send an auth frame with a valid token first."
+            });
+            let mut send = send;
+            let _ = write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await;
+            let _ = send.finish();
+            continue;
+        }
+
         let text = match request.get("text").and_then(|v| v.as_str()) {
             Some(t) => t.to_string(),
             None => continue,
@@ -95,13 +113,14 @@ pub(crate) async fn handle_chat_connection(
 
         info!("[{}] prompt: {}", key, &text[..80.min(text.len())]);
 
-        // Get or create an actor session for this peer
+        // Get or create an actor session for this peer (with capability enforcement)
         let state = Arc::clone(&state);
         let registry = registry.clone();
         let factory = Arc::clone(&factory);
         let key = key.clone();
+        let caps = verified_capabilities.clone();
         tokio::spawn(async move {
-            run_chat_prompt(state, registry, factory, key, text, send).await;
+            run_chat_prompt(state, registry, factory, key, text, send, caps).await;
         });
     }
 }
@@ -114,9 +133,10 @@ async fn run_chat_prompt(
     key: SessionKey,
     text: String,
     mut send: ::iroh::endpoint::SendStream,
+    capabilities: Option<Vec<clankers_ucan::Capability>>,
 ) {
     let (_session_id, cmd_tx, event_tx) =
-        get_or_create_keyed_session(&state, &registry, &factory, &key).await;
+        get_or_create_keyed_session(&state, &registry, &factory, &key, capabilities).await;
 
     // Subscribe before sending the prompt so we don't miss events
     let mut event_rx = event_tx.subscribe();
@@ -206,7 +226,16 @@ async fn run_chat_prompt(
 // ── RPC/1 handler (unchanged) ───────────────────────────────────────────────
 
 /// Handle a clankers/rpc/1 connection using the existing server code.
-pub(crate) async fn handle_rpc_v1_connection(conn: ::iroh::endpoint::Connection, state: Arc<iroh::ServerState>) {
+pub(crate) async fn handle_rpc_v1_connection(
+    conn: ::iroh::endpoint::Connection,
+    state: Arc<iroh::ServerState>,
+    auth: Option<Arc<super::session_store::AuthLayer>>,
+) {
+    let peer_id = conn.remote_id().to_string();
+    let mut first_frame = true;
+    let auth_required = auth.is_some();
+    let mut authenticated = !auth_required;
+
     loop {
         let (send, mut recv) = match conn.accept_bi().await {
             Ok(streams) => streams,
@@ -218,7 +247,53 @@ pub(crate) async fn handle_rpc_v1_connection(conn: ::iroh::endpoint::Connection,
             Err(_) => break,
         };
 
-        let request: Request = match serde_json::from_slice(&data) {
+        let request: serde_json::Value = match serde_json::from_slice(&data) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+
+        // Accept auth frame on first message
+        if first_frame {
+            first_frame = false;
+            if request.get("type").and_then(|v| v.as_str()) == Some("auth") {
+                if let Some(token_b64) = request.get("token").and_then(|v| v.as_str())
+                    && let Some(ref auth) = auth
+                {
+                    match clankers_ucan::Credential::from_base64(token_b64) {
+                        Ok(cred) => match auth.verify_credential(&cred) {
+                            Ok(caps) => {
+                                info!("[rpc/1 {}] authenticated with {} capabilities", &peer_id[..8.min(peer_id.len())], caps.len());
+                                authenticated = true;
+                                auth.store_credential(&peer_id, &cred);
+                            }
+                            Err(e) => {
+                                warn!("[rpc/1 {}] credential verification failed: {e}", &peer_id[..8.min(peer_id.len())]);
+                                let err = json!({ "error": format!("Token rejected: {e}") });
+                                let mut send = send;
+                                let _ = write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await;
+                                let _ = send.finish();
+                            }
+                        },
+                        Err(e) => {
+                            warn!("[rpc/1] invalid token encoding: {e}");
+                        }
+                    }
+                }
+                continue;
+            }
+        }
+
+        // Reject unauthenticated requests when auth is required
+        if !authenticated {
+            let err = json!({ "error": "Authentication required. Send an auth frame first." });
+            let mut send = send;
+            let _ = write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await;
+            let _ = send.finish();
+            continue;
+        }
+
+        // Parse as RPC request
+        let request: Request = match serde_json::from_value(request) {
             Ok(r) => r,
             Err(_) => continue,
         };

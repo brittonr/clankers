@@ -155,6 +155,7 @@ pub(super) async fn execute_tools_parallel(
     hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     session_id: &str,
     db: Option<clankers_db::Db>,
+    capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
 ) -> Vec<ToolResultMessage> {
     use futures::future::BoxFuture;
     use futures::future::FutureExt;
@@ -172,6 +173,7 @@ pub(super) async fn execute_tools_parallel(
                 hook_pipeline.clone(),
                 session_id.to_string(),
                 db.clone(),
+                capability_gate.clone(),
             )
             .boxed()
         })
@@ -191,6 +193,7 @@ async fn execute_single_tool(
     hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     session_id: String,
     db: Option<clankers_db::Db>,
+    capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
 ) -> ToolResultMessage {
     // Emit ToolCall event
     let _ = event_tx.send(AgentEvent::ToolCall {
@@ -198,6 +201,13 @@ async fn execute_single_tool(
         call_id: call_id.clone(),
         input: input.clone(),
     });
+
+    // Check capability gate (UCAN token authorization)
+    if let Some(ref gate) = capability_gate
+        && let Err(reason) = gate.check_tool_call(&tool_name, &input)
+    {
+        return create_error_result(call_id, tool_name, format!("🔒 {reason}"), &event_tx);
+    }
 
     // Check if tool exists
     let Some(tool) = tool else {

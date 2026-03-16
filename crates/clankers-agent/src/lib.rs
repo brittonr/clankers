@@ -32,6 +32,7 @@ use tokio_util::sync::CancellationToken;
 pub use self::error::AgentError;
 pub use self::error::Result;
 use self::events::AgentEvent;
+pub use self::tool::CapabilityGate;
 pub use self::tool::ModelSwitchSlot;
 pub use self::tool::Tool;
 pub use self::tool::ToolContext;
@@ -77,6 +78,8 @@ pub struct Agent {
     hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
     /// Session ID for hook payloads
     session_id: String,
+    /// Capability gate for tool call authorization (None = full access)
+    capability_gate: Option<Arc<dyn tool::CapabilityGate>>,
 }
 
 impl Agent {
@@ -110,6 +113,7 @@ impl Agent {
             model_switch_slot: None,
             hook_pipeline: None,
             session_id: String::new(),
+            capability_gate: None,
         }
     }
 
@@ -162,6 +166,12 @@ impl Agent {
     /// Set the session ID (used in hook payloads)
     pub fn set_session_id(&mut self, id: String) {
         self.session_id = id;
+    }
+
+    /// Attach a capability gate for tool call authorization.
+    pub fn with_capability_gate(mut self, gate: Arc<dyn tool::CapabilityGate>) -> Self {
+        self.capability_gate = Some(gate);
+        self
     }
 
     /// Build output truncation config from settings
@@ -252,6 +262,7 @@ impl Agent {
             self.hook_pipeline.clone(),
             &self.session_id,
             self.db.clone(),
+            self.capability_gate.as_ref(),
         )
         .await;
 
@@ -574,6 +585,7 @@ impl Agent {
                 self.hook_pipeline.clone(),
                 &self.session_id,
                 self.db.clone(),
+                self.capability_gate.as_ref(),
             )
             .await;
 

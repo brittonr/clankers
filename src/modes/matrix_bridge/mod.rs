@@ -113,11 +113,13 @@ pub(crate) async fn run_matrix_bridge(
                 match event {
                     BridgeEvent::TextMessage { sender, body, room_id }
                     | BridgeEvent::ChatMessage { sender, body, room_id, .. } => {
-                        // Auth check
-                        let sender_ok = check_sender_auth(
+                        // Auth check — extract capabilities from token
+                        let sender_caps = match check_sender_auth(
                             &sender, &auth, &allowlist, &client, &room_id,
-                        ).await;
-                        let SendCheckResult::Allowed = sender_ok else { continue };
+                        ).await {
+                            SendCheckResult::Allowed(caps) => caps,
+                            SendCheckResult::Denied => continue,
+                        };
 
                         if body.starts_with('/') {
                             continue;
@@ -166,13 +168,14 @@ pub(crate) async fn run_matrix_bridge(
                         }
                         let typing_cancel = spawn_typing_refresh(Arc::clone(&client), room_id_parsed.clone());
 
-                        // Run prompt
+                        // Run prompt (with UCAN capabilities for tool enforcement)
                         let mut response = run_matrix_prompt(
                             Arc::clone(&state),
                             registry.clone(),
                             Arc::clone(&factory),
                             key.clone(),
                             body,
+                            sender_caps.clone(),
                         ).await;
 
                         // Empty response re-prompt
@@ -185,6 +188,7 @@ pub(crate) async fn run_matrix_bridge(
                                 key.clone(),
                                 "You completed some actions but your response contained \
                                  no text. Briefly summarize what you did.".to_string(),
+                                sender_caps.clone(),
                             ).await;
                             response = if retry.trim().is_empty() {
                                 "(completed actions — no summary available)".to_string()
@@ -237,10 +241,12 @@ pub(crate) async fn run_matrix_bridge(
                         source,
                         room_id,
                     } => {
-                        let sender_ok = check_sender_auth(
+                        let media_caps = match check_sender_auth(
                             &sender, &auth, &allowlist, &client, &room_id,
-                        ).await;
-                        let SendCheckResult::Allowed = sender_ok else { continue };
+                        ).await {
+                            SendCheckResult::Allowed(caps) => caps,
+                            SendCheckResult::Denied => continue,
+                        };
 
                         let key = SessionKey::Matrix {
                             user_id: sender.clone(),
@@ -318,6 +324,7 @@ pub(crate) async fn run_matrix_bridge(
                                 key.clone(),
                                 prompt_text,
                                 vec![image_data],
+                                media_caps.clone(),
                             ).await
                         } else {
                             let prompt_text = if caption.is_empty() {
@@ -338,6 +345,7 @@ pub(crate) async fn run_matrix_bridge(
                                 Arc::clone(&factory),
                                 key.clone(),
                                 prompt_text,
+                                media_caps.clone(),
                             ).await
                         };
 
@@ -350,6 +358,7 @@ pub(crate) async fn run_matrix_bridge(
                                 key.clone(),
                                 "You processed a file but your response contained no text. \
                                  Briefly summarize what you did.".to_string(),
+                                media_caps.clone(),
                             ).await;
                             response = if retry.trim().is_empty() {
                                 "(processed file — no summary available)".to_string()
@@ -406,11 +415,15 @@ pub(crate) async fn run_matrix_bridge(
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 enum SendCheckResult {
-    Allowed,
+    /// Allowed with optional UCAN capabilities (None = full access)
+    Allowed(Option<Vec<clankers_ucan::Capability>>),
     Denied,
 }
 
 /// Check auth for a Matrix sender: token → allowlist fallback.
+///
+/// Returns `Allowed(capabilities)` where capabilities are `Some` if the
+/// sender has a UCAN token, or `None` for allowlist-only users (full access).
 async fn check_sender_auth(
     sender: &str,
     auth: &Option<Arc<AuthLayer>>,
@@ -420,7 +433,7 @@ async fn check_sender_auth(
 ) -> SendCheckResult {
     if let Some(auth) = auth {
         match auth.resolve_capabilities(sender) {
-            Some(Ok(_caps)) => SendCheckResult::Allowed,
+            Some(Ok(caps)) => SendCheckResult::Allowed(Some(caps)),
             Some(Err(e)) => {
                 warn!("Matrix: token error for {}: {e}", sender);
                 if let Ok(rid) = clankers_matrix::ruma::RoomId::parse(room_id) {
@@ -436,7 +449,7 @@ async fn check_sender_auth(
             }
             None => {
                 if is_user_allowed(allowlist, sender) {
-                    SendCheckResult::Allowed
+                    SendCheckResult::Allowed(None) // allowlist users get full access
                 } else {
                     info!("Matrix: denied message from {} (no token, not on allowlist)", sender);
                     SendCheckResult::Denied
@@ -444,7 +457,7 @@ async fn check_sender_auth(
             }
         }
     } else if is_user_allowed(allowlist, sender) {
-        SendCheckResult::Allowed
+        SendCheckResult::Allowed(None) // no auth layer = full access
     } else {
         info!("Matrix: denied message from {}", sender);
         SendCheckResult::Denied

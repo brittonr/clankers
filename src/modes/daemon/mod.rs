@@ -332,6 +332,7 @@ fn spawn_iroh_accept_loop(
                                     registry,
                                     shutdown_rx,
                                     skip_token,
+                                    auth,
                                 ).await;
                             }
                             _ => {
@@ -383,7 +384,7 @@ async fn handle_iroh_connection_from_conn(
             ).await;
         }
         x if x == iroh::ALPN => {
-            handlers::handle_rpc_v1_connection(conn, rpc_state).await;
+            handlers::handle_rpc_v1_connection(conn, rpc_state, auth).await;
         }
         _ => {
             warn!("Unknown ALPN: {:?}", String::from_utf8_lossy(alpn));

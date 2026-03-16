@@ -38,6 +38,9 @@ const MAX_COLLECTED_BYTES: usize = 512 * 1024;
 /// The session socket listener is NOT started here — call
 /// `transport::run_session_socket` separately if clients need
 /// to connect via Unix socket.
+///
+/// `capabilities` — if set, tool calls are checked against these UCAN
+/// capabilities. `None` means full access (local sessions, root tokens).
 pub fn spawn_agent_process(
     registry: &ProcessRegistry,
     factory: &SessionFactory,
@@ -45,6 +48,7 @@ pub fn spawn_agent_process(
     model: Option<String>,
     system_prompt: Option<String>,
     parent: Option<ProcessId>,
+    capabilities: Option<Vec<clankers_ucan::Capability>>,
 ) -> (ProcessId, mpsc::UnboundedSender<SessionCommand>, broadcast::Sender<DaemonEvent>) {
     let model = model.unwrap_or_else(|| factory.default_model.clone());
     let system_prompt = system_prompt.unwrap_or_else(|| factory.default_system_prompt.clone());
@@ -59,20 +63,27 @@ pub fn spawn_agent_process(
     // Build tools with panel_tx for subagent event routing
     let tools = factory.build_tools_with_panel_tx(panel_tx, Some(bash_confirm_tx));
 
-    // Build the agent
-    let agent = crate::agent::builder::AgentBuilder::new(
+    // Build the agent, attaching capability gate if UCAN capabilities are provided
+    let mut builder = crate::agent::builder::AgentBuilder::new(
         Arc::clone(&factory.provider),
         factory.settings.clone(),
         model.clone(),
         system_prompt.clone(),
     )
-    .with_tools(tools)
-    .build();
+    .with_tools(tools);
+
+    if let Some(caps) = &capabilities {
+        let gate = std::sync::Arc::new(crate::capability_gate::UcanCapabilityGate::new(caps.clone()));
+        builder = builder.with_capability_gate(gate);
+    }
+
+    let agent = builder.build();
 
     let config = ControllerConfig {
         session_id: session_id.clone(),
         model: model.clone(),
         system_prompt: Some(system_prompt),
+        capabilities: capabilities.as_deref().and_then(crate::capability_gate::extract_tool_patterns),
         ..Default::default()
     };
 
@@ -258,6 +269,7 @@ pub async fn run_ephemeral_agent(
         model,
         system_prompt,
         parent_pid,
+        None, // ephemeral agents inherit parent's capabilities via actor links
     );
 
     let mut event_rx = event_tx.subscribe();
@@ -393,12 +405,16 @@ pub async fn prompt_and_collect(
 /// new actor process via `spawn_agent_process`, registers it in the state
 /// with the key index, and returns the session's command/event channels.
 ///
+/// `capabilities` — UCAN capabilities for the session (None = full access).
+/// Only used when creating a new session; ignored if session already exists.
+///
 /// Returns `(session_id, cmd_tx, event_tx)`.
 pub async fn get_or_create_keyed_session(
     state: &tokio::sync::Mutex<clankers_controller::transport::DaemonState>,
     registry: &clanker_actor::ProcessRegistry,
     factory: &super::socket_bridge::SessionFactory,
     key: &clankers_protocol::SessionKey,
+    capabilities: Option<Vec<clankers_ucan::Capability>>,
 ) -> (
     String,
     tokio::sync::mpsc::UnboundedSender<SessionCommand>,
@@ -425,6 +441,7 @@ pub async fn get_or_create_keyed_session(
         None,
         None,
         None,
+        capabilities,
     );
 
     let socket_path =

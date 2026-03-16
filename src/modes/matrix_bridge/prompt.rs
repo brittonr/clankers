@@ -18,9 +18,10 @@ pub(crate) async fn run_matrix_prompt(
     factory: Arc<SessionFactory>,
     key: SessionKey,
     text: String,
+    capabilities: Option<Vec<clankers_ucan::Capability>>,
 ) -> String {
     let (session_id, cmd_tx, event_tx) =
-        get_or_create_keyed_session(&state, &registry, &factory, &key).await;
+        get_or_create_keyed_session(&state, &registry, &factory, &key, capabilities).await;
 
     let response = prompt_and_collect(&cmd_tx, &event_tx, text, vec![]).await;
 
@@ -47,7 +48,7 @@ pub(crate) async fn run_proactive_prompt(
     text: String,
 ) -> String {
     let (_session_id, cmd_tx, event_tx) =
-        get_or_create_keyed_session(&state, &registry, &factory, &key).await;
+        get_or_create_keyed_session(&state, &registry, &factory, &key, None).await;
 
     prompt_and_collect(&cmd_tx, &event_tx, text, vec![]).await
 }
@@ -63,9 +64,10 @@ pub(crate) async fn run_matrix_prompt_with_images(
     key: SessionKey,
     text: String,
     images: Vec<clankers_protocol::ImageData>,
+    capabilities: Option<Vec<clankers_ucan::Capability>>,
 ) -> String {
     let (session_id, cmd_tx, event_tx) =
-        get_or_create_keyed_session(&state, &registry, &factory, &key).await;
+        get_or_create_keyed_session(&state, &registry, &factory, &key, capabilities).await;
 
     let response = prompt_and_collect(&cmd_tx, &event_tx, text, images).await;
 

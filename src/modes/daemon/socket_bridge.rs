@@ -160,6 +160,7 @@ async fn handle_control(
                 model,
                 system_prompt,
                 None,
+                None, // local sessions get full access
             );
 
             let socket_path = session_socket_path(&session_id);

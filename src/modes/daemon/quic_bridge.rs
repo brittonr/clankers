@@ -43,6 +43,7 @@ pub async fn handle_daemon_quic_connection(
     registry: clanker_actor::ProcessRegistry,
     shutdown: tokio::sync::watch::Receiver<bool>,
     skip_token_check: bool,
+    auth: Option<Arc<super::session_store::AuthLayer>>,
 ) {
     let remote = conn.remote_id();
     info!("daemon QUIC connection from {}", remote.fmt_short());
@@ -57,8 +58,9 @@ pub async fn handle_daemon_quic_connection(
         let factory = Arc::clone(&factory);
         let registry = registry.clone();
         let shutdown = shutdown.clone();
+        let auth = auth.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_daemon_stream(send, recv, state, factory, registry, shutdown, skip_token_check).await {
+            if let Err(e) = handle_daemon_stream(send, recv, state, factory, registry, shutdown, skip_token_check, auth).await {
                 debug!("daemon QUIC stream ended: {e}");
             }
         });
@@ -76,13 +78,14 @@ async fn handle_daemon_stream(
     registry: clanker_actor::ProcessRegistry,
     shutdown: tokio::sync::watch::Receiver<bool>,
     skip_token_check: bool,
+    auth: Option<Arc<super::session_store::AuthLayer>>,
 ) -> Result<(), clankers_protocol::FrameError> {
     // Read the first frame to determine the stream type.
     let request: DaemonRequest = read_quic_frame(&mut recv).await?;
 
     match request {
         DaemonRequest::Control { command } => {
-            handle_control_stream(command, &mut send, &state, &factory, &registry, &shutdown, skip_token_check).await?;
+            handle_control_stream(command, &mut send, &state, &factory, &registry, &shutdown, skip_token_check, auth.as_deref()).await?;
         }
         DaemonRequest::Attach { handshake } => {
             handle_attach_stream(handshake, send, recv, &state, skip_token_check).await?;
@@ -101,6 +104,7 @@ async fn handle_control_stream(
     registry: &clanker_actor::ProcessRegistry,
     shutdown: &tokio::sync::watch::Receiver<bool>,
     skip_token_check: bool,
+    auth: Option<&super::session_store::AuthLayer>,
 ) -> Result<(), clankers_protocol::FrameError> {
     debug!("QUIC control command: {command:?}");
 
@@ -116,7 +120,32 @@ async fn handle_control_stream(
                     message: "authentication token required for remote session creation".to_string(),
                 }
             } else {
-                create_session_over_quic(model, system_prompt, state, factory, registry, shutdown).await
+                // Verify token and extract capabilities when auth is available
+                let capabilities = if let Some(token_b64) = token.as_deref()
+                    && let Some(auth) = auth
+                {
+                    match clankers_ucan::Credential::from_base64(token_b64) {
+                        Ok(cred) => match auth.verify_credential(&cred) {
+                            Ok(caps) => Some(caps),
+                            Err(e) => {
+                                warn!("QUIC CreateSession: token verification failed: {e}");
+                                return write_quic_frame(send, &clankers_protocol::ControlResponse::Error {
+                                    message: format!("token verification failed: {e}"),
+                                }).await;
+                            }
+                        },
+                        Err(e) => {
+                            warn!("QUIC CreateSession: invalid token encoding: {e}");
+                            return write_quic_frame(send, &clankers_protocol::ControlResponse::Error {
+                                message: format!("invalid token encoding: {e}"),
+                            }).await;
+                        }
+                    }
+                } else {
+                    None // skip_token_check or no auth layer = full access
+                };
+
+                create_session_over_quic(model, system_prompt, state, factory, registry, shutdown, capabilities).await
             }
         }
         other => {
@@ -174,6 +203,8 @@ fn dispatch_readonly_control(
 ///
 /// Uses `spawn_agent_process` so the session lives in the actor registry
 /// with proper link/monitor semantics and in-process subagent support.
+///
+/// `capabilities` — UCAN capabilities from the verified token (None = full access).
 async fn create_session_over_quic(
     model: Option<String>,
     system_prompt: Option<String>,
@@ -181,6 +212,7 @@ async fn create_session_over_quic(
     factory: &Arc<SessionFactory>,
     registry: &clanker_actor::ProcessRegistry,
     shutdown: &tokio::sync::watch::Receiver<bool>,
+    capabilities: Option<Vec<clankers_ucan::Capability>>,
 ) -> clankers_protocol::ControlResponse {
     use clankers_controller::transport::SessionHandle;
     use clankers_controller::transport::session_socket_path;
@@ -188,7 +220,7 @@ async fn create_session_over_quic(
     let session_id = clankers_message::generate_id();
     let resolved_model = model.clone().unwrap_or_else(|| factory.default_model.clone());
 
-    // Spawn as an actor process in the registry
+    // Spawn as an actor process in the registry (with UCAN capability enforcement)
     let (_pid, cmd_tx, event_tx) = super::agent_process::spawn_agent_process(
         registry,
         factory,
@@ -196,6 +228,7 @@ async fn create_session_over_quic(
         model,
         system_prompt,
         None,
+        capabilities,
     );
 
     let socket_path = session_socket_path(&session_id);
