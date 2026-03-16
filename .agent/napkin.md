@@ -111,6 +111,14 @@
 - Heartbeat endpoint failure is non-fatal — heartbeat disabled with warning
 - `build_endpoint()` returns `Result` — caller `match`es to degrade gracefully
 
+### Verus proofs — UCAN
+- `verus/ucan_spec.rs`: 7 UCAN requirements, all specs + proofs pass
+- Models: `PatternModel` (Wildcard|Items), `FileAccessModel` (prefix+read_only), `FileOp`, `ToolGate`
+- Key proof: `prove_file_access_no_escalation` — uses `prefix_transitive` lemma for Seq<u8> prefix transitivity
+- `prefix_transitive` lemma: `is_prefix_of(a,b) && is_prefix_of(b,c) ==> is_prefix_of(a,c)` — proved via element-wise reasoning through subrange
+- Tracey config: UCAN source files in `include` (not `test_include`) because they carry both `impl` and `verify` annotations
+- `src/capability_gate.rs` has mixed `impl`/`verify` in one file — keep in `include` only (include allows all annotation types)
+
 ### Verus proofs
 - Bitvector proofs: `assert(...) by (bit_vector)` — must work entirely in fixed-width types, no `as u8`/`as u32` casts inside the block
 - u8↔u32 roundtrip: prove separately with a lemma `(x as u8) as u32 == x` when `x == x & 0xff`, then use the lemma to bridge the gap between spec fns that go through u8 and bit_vector proofs that need u32

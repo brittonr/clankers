@@ -99,3 +99,37 @@ indicates a size > MAX_FRAME_SIZE, without allocating a buffer of that size.
 r[protocol.frame.length-encoding]
 Frames MUST use 4-byte big-endian length prefix. The length field encodes
 the payload size only, not including the 4 length bytes themselves.
+
+## UCAN Authorization
+
+r[ucan.auth.no-escalation]
+During delegation, if a parent capability contains a child capability,
+then any operation the child authorizes MUST also be authorized by the
+parent. No delegated token can grant access the parent does not have.
+
+r[ucan.auth.read-only-blocks-write]
+A FileAccess capability with read_only=true MUST authorize FileRead
+operations on matching paths and MUST NOT authorize FileWrite operations
+regardless of path.
+
+r[ucan.auth.wildcard-matches-all]
+A capability pattern of "*" MUST match any value in its domain — tool
+names, shell commands, or bot commands.
+
+r[ucan.auth.pattern-set-containment]
+For comma-separated patterns, pattern P1 contains pattern P2 if and only
+if every item in P2's set is also present in P1's set. A wildcard "*"
+contains any pattern. No non-wildcard pattern contains "*".
+
+r[ucan.gate.tool-check]
+The capability gate MUST reject tool calls where no ToolUse capability in
+the token matches the requested tool name.
+
+r[ucan.gate.file-read-check]
+For file read tools (read, rg, grep, find, ls), the capability gate MUST
+verify a matching FileAccess capability whose prefix covers the file path.
+
+r[ucan.gate.file-write-check]
+For file write tools (write, edit), the capability gate MUST verify a
+matching FileAccess capability with read_only=false whose prefix covers
+the file path.

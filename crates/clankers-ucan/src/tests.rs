@@ -23,6 +23,7 @@ fn test_secret_key() -> SecretKey {
 // Capability Authorization Tests
 // ============================================================================
 
+// r[verify ucan.auth.wildcard-matches-all]
 #[test]
 fn test_capability_prompt() {
     let cap = Capability::Prompt;
@@ -64,6 +65,7 @@ fn test_capability_tool_use_comma_separated() {
     }));
 }
 
+// r[verify ucan.auth.wildcard-matches-all]
 #[test]
 fn test_capability_tool_use_wildcard() {
     let cap = Capability::ToolUse {
@@ -80,6 +82,7 @@ fn test_capability_tool_use_wildcard() {
     }));
 }
 
+// r[verify ucan.auth.wildcard-matches-all]
 #[test]
 fn test_capability_shell_execute_wildcard() {
     let cap = Capability::ShellExecute {
@@ -160,6 +163,7 @@ fn test_capability_file_access_read_write() {
     }));
 }
 
+// r[verify ucan.auth.read-only-blocks-write]
 #[test]
 fn test_capability_file_access_read_only() {
     let cap = Capability::FileAccess {
@@ -202,6 +206,7 @@ fn test_capability_bot_command_comma_separated() {
     }));
 }
 
+// r[verify ucan.auth.wildcard-matches-all]
 #[test]
 fn test_capability_bot_command_wildcard() {
     let cap = Capability::BotCommand {
@@ -252,6 +257,7 @@ fn test_contains_tool_use_wildcard() {
     assert!(parent.contains(&child));
 }
 
+// r[verify ucan.auth.pattern-set-containment]
 #[test]
 fn test_contains_tool_use_subset() {
     let parent = Capability::ToolUse {
@@ -263,6 +269,7 @@ fn test_contains_tool_use_subset() {
     assert!(parent.contains(&child));
 }
 
+// r[verify ucan.auth.pattern-set-containment]
 #[test]
 fn test_contains_tool_use_not_subset() {
     let parent = Capability::ToolUse {
@@ -274,6 +281,7 @@ fn test_contains_tool_use_not_subset() {
     assert!(!parent.contains(&child)); // Child has bash, parent doesn't
 }
 
+// r[verify ucan.auth.pattern-set-containment]
 #[test]
 fn test_contains_tool_use_child_wildcard() {
     let parent = Capability::ToolUse {
@@ -311,6 +319,7 @@ fn test_contains_file_access_wider_prefix() {
     assert!(!parent.contains(&child)); // Child wants wider access
 }
 
+// r[verify ucan.auth.no-escalation]
 #[test]
 fn test_contains_file_access_readonly_escalation() {
     let parent = Capability::FileAccess {
@@ -497,6 +506,7 @@ fn test_token_builder_delegation_without_delegate_cap() {
     assert!(matches!(result, Err(AuthError::DelegationNotAllowed)));
 }
 
+// r[verify ucan.auth.no-escalation]
 #[test]
 fn test_token_builder_capability_escalation() {
     let root_key = test_secret_key();

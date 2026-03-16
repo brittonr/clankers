@@ -31,6 +31,9 @@ impl UcanCapabilityGate {
 }
 
 impl CapabilityGate for UcanCapabilityGate {
+    // r[impl ucan.gate.tool-check]
+    // r[impl ucan.gate.file-read-check]
+    // r[impl ucan.gate.file-write-check]
     fn check_tool_call(&self, tool_name: &str, input: &Value) -> Result<(), String> {
         // 1. Check ToolUse capability
         let tool_allowed = self.capabilities.iter().any(|c| {
@@ -111,6 +114,7 @@ mod tests {
 
     use super::*;
 
+    // r[verify ucan.gate.tool-check]
     #[test]
     fn wildcard_tool_allows_all() {
         let gate = UcanCapabilityGate::new(vec![Capability::ToolUse {
@@ -121,6 +125,7 @@ mod tests {
         assert!(gate.check_tool_call("anything", &json!({})).is_ok());
     }
 
+    // r[verify ucan.gate.tool-check]
     #[test]
     fn specific_tools_block_unlisted() {
         let gate = UcanCapabilityGate::new(vec![Capability::ToolUse {
@@ -155,6 +160,7 @@ mod tests {
             .is_err());
     }
 
+    // r[verify ucan.gate.file-read-check]
     #[test]
     fn file_read_enforced() {
         let gate = UcanCapabilityGate::new(vec![
@@ -175,6 +181,8 @@ mod tests {
             .is_err());
     }
 
+    // r[verify ucan.gate.file-write-check]
+    // r[verify ucan.auth.read-only-blocks-write]
     #[test]
     fn file_write_blocked_by_read_only() {
         let gate = UcanCapabilityGate::new(vec![
@@ -195,6 +203,8 @@ mod tests {
             .is_err());
     }
 
+    // r[verify ucan.gate.file-read-check]
+    // r[verify ucan.gate.file-write-check]
     #[test]
     fn no_file_capability_blocks_file_tools() {
         let gate = UcanCapabilityGate::new(vec![

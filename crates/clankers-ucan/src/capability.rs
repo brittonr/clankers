@@ -103,6 +103,8 @@ impl Capability {
     /// Check if this capability authorizes the given operation.
     ///
     /// Returns true if this capability grants permission for the operation.
+    // r[impl ucan.auth.wildcard-matches-all]
+    // r[impl ucan.auth.read-only-blocks-write]
     pub fn authorizes(&self, op: &Operation) -> bool {
         match (self, op) {
             // Prompt operations
@@ -188,6 +190,8 @@ impl Capability {
     /// subsets of the parent's capabilities. This prevents privilege escalation.
     ///
     /// Returns true if `self` contains `other`.
+    // r[impl ucan.auth.no-escalation]
+    // r[impl ucan.auth.pattern-set-containment]
     pub fn contains(&self, other: &Capability) -> bool {
         match (self, other) {
             // Simple capabilities only contain themselves
@@ -280,6 +284,7 @@ impl Capability {
 /// - `match_pattern("read,grep,find", "grep")` => true
 /// - `match_pattern("*", "anything")` => true
 /// - `match_pattern("read,grep", "bash")` => false
+// r[impl ucan.auth.wildcard-matches-all]
 fn match_pattern(pattern: &str, value: &str) -> bool {
     if pattern == "*" {
         return true;
@@ -294,6 +299,7 @@ fn match_pattern(pattern: &str, value: &str) -> bool {
 /// - "*" contains anything
 /// - "a,b,c" contains "a,b" (all items in p2 must be in p1)
 /// - Exact match contains itself
+// r[impl ucan.auth.pattern-set-containment]
 fn pattern_contains(p1: &str, p2: &str) -> bool {
     if p1 == "*" {
         return true;
