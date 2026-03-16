@@ -351,20 +351,18 @@ fn resolve_session_resume(
         let files = clankers_session::store::list_sessions(sessions_dir, effective_cwd);
         if let Some(file) = files.into_iter().find(|f| {
             f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(id))
-        }) {
-            if let Some(result) = try_open(file) {
-                return result;
-            }
+        }) && let Some(result) = try_open(file) {
+            return result;
         }
     }
 
     // Try continue last
     if continue_last {
         let files = clankers_session::store::list_sessions(sessions_dir, effective_cwd);
-        if let Some(file) = files.into_iter().next() {
-            if let Some(result) = try_open(file) {
-                return result;
-            }
+        if let Some(file) = files.into_iter().next()
+            && let Some(result) = try_open(file)
+        {
+            return result;
         }
     }
 

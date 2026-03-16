@@ -714,7 +714,7 @@ fn process_daemon_event(
                 app.push_system("Auto-test disabled".to_string(), false);
             }
             app.auto_test_enabled = *enabled;
-            app.auto_test_command = command.clone();
+            app.auto_test_command.clone_from(command);
         }
         DaemonEvent::CostUpdate { total_cost_usd, .. } => {
             app.push_system(format!("Session cost: ${total_cost_usd:.4}"), false);
@@ -855,6 +855,18 @@ fn handle_key_event(
         }
     }
 
+    // Tool toggle overlay
+    if app.overlays.tool_toggle.visible {
+        let (consumed, dirty) = crate::tui::selectors::handle_tool_toggle_key(app, &key);
+        if dirty {
+            let disabled: Vec<String> = app.overlays.tool_toggle.disabled_set()
+                .into_iter().collect();
+            app.disabled_tools = disabled.iter().cloned().collect();
+            client.send(SessionCommand::SetDisabledTools { tools: disabled });
+        }
+        if consumed { return; }
+    }
+
     // Leader menu
     if app.overlays.leader_menu.visible {
         if let Some(leader_action) = app.overlays.leader_menu.handle_key(&key) {
@@ -908,7 +920,7 @@ fn handle_key_event(
             }
             // Client-side TUI actions handled locally
             _ => {
-                handle_local_action(app, &action, &key);
+                handle_local_action(app, client, &action, &key);
             }
         }
     } else if app.input_mode == InputMode::Insert {
@@ -1006,7 +1018,7 @@ fn handle_leader_action_attach(
                 crossterm::event::KeyCode::Null,
                 crossterm::event::KeyModifiers::empty(),
             );
-            handle_local_action(app, &action, &dummy_key);
+            handle_local_action(app, client, &action, &dummy_key);
         }
         LeaderAction::Submenu(_) => {
             // Submenus are handled by the leader menu widget itself
@@ -1075,20 +1087,26 @@ fn handle_slash_menu_key_attach(
 }
 
 /// Handle local TUI actions (mode switching, navigation, etc.).
+///
+/// Handles all client-side actions. Daemon-dependent actions (thinking
+/// toggle, rerun, auto-test) are forwarded via the client.
 fn handle_local_action(
     app: &mut App,
+    client: &ClientAdapter,
     action: &crate::config::keybindings::Action,
     _key: &crossterm::event::KeyEvent,
 ) {
     use crate::config::keybindings::Action;
     use crate::config::keybindings::CoreAction;
     use crate::config::keybindings::ExtendedAction;
+    use clankers_tui_types::AppState;
+    use clankers_tui_types::BlockEntry;
     use ratatui::layout::Direction;
     use ratatui_hypertile::HypertileAction;
     use ratatui_hypertile::Towards;
 
     match action {
-        // Mode switching
+        // ── Mode switching ──────────────────────────
         Action::Core(CoreAction::EnterInsert) => {
             app.input_mode = InputMode::Insert;
         }
@@ -1096,72 +1114,30 @@ fn handle_local_action(
             app.input_mode = InputMode::Normal;
             app.slash_menu.hide();
         }
-        // Navigation
-        Action::Core(CoreAction::ScrollUp) => {
-            app.conversation.scroll.scroll_up(3);
-        }
-        Action::Core(CoreAction::ScrollDown) => {
-            app.conversation.scroll.scroll_down(3);
-        }
-        Action::Core(CoreAction::ScrollPageUp) => {
-            app.conversation.scroll.scroll_up(15);
-        }
-        Action::Core(CoreAction::ScrollPageDown) => {
-            app.conversation.scroll.scroll_down(15);
-        }
-        Action::Core(CoreAction::ScrollToTop) => {
-            app.conversation.scroll.scroll_to_top();
-        }
-        Action::Core(CoreAction::ScrollToBottom) => {
-            app.conversation.scroll.scroll_to_bottom();
-        }
-        // Leader menu
-        Action::Extended(ExtendedAction::OpenLeaderMenu) => {
-            app.overlays.leader_menu.open();
-        }
-        // Panel focus (h/l/j/k)
-        Action::Extended(ExtendedAction::PanelNextTab | ExtendedAction::BranchNext) => {
-            app.apply_tiling_action(HypertileAction::FocusDirection {
-                direction: Direction::Horizontal,
-                towards: Towards::End,
-            });
-        }
-        Action::Extended(ExtendedAction::PanelPrevTab | ExtendedAction::BranchPrev) => {
-            app.apply_tiling_action(HypertileAction::FocusDirection {
-                direction: Direction::Horizontal,
-                towards: Towards::Start,
-            });
-        }
+
+        // ── Navigation / scroll ─────────────────────
+        Action::Core(CoreAction::ScrollUp) => app.conversation.scroll.scroll_up(3),
+        Action::Core(CoreAction::ScrollDown) => app.conversation.scroll.scroll_down(3),
+        Action::Core(CoreAction::ScrollPageUp) => app.conversation.scroll.scroll_up(15),
+        Action::Core(CoreAction::ScrollPageDown) => app.conversation.scroll.scroll_down(15),
+        Action::Core(CoreAction::ScrollToTop) => app.conversation.scroll.scroll_to_top(),
+        Action::Core(CoreAction::ScrollToBottom) => app.conversation.scroll.scroll_to_bottom(),
         Action::Core(CoreAction::FocusPrevBlock) => {
             app.apply_tiling_action(HypertileAction::FocusDirection {
-                direction: Direction::Vertical,
-                towards: Towards::Start,
+                direction: Direction::Vertical, towards: Towards::Start,
             });
         }
         Action::Core(CoreAction::FocusNextBlock) => {
             app.apply_tiling_action(HypertileAction::FocusDirection {
-                direction: Direction::Vertical,
-                towards: Towards::End,
+                direction: Direction::Vertical, towards: Towards::End,
             });
         }
-        // Zoom
-        Action::Extended(ExtendedAction::PaneZoom) => {
-            app.zoom_toggle();
-        }
-        // Editor cursor movement
-        Action::Core(CoreAction::MoveLeft) => {
-            app.editor.move_left();
-        }
-        Action::Core(CoreAction::MoveRight) => {
-            app.editor.move_right();
-        }
-        Action::Core(CoreAction::MoveHome) => {
-            app.editor.move_home();
-        }
-        Action::Core(CoreAction::MoveEnd) => {
-            app.editor.move_end();
-        }
-        // Editor editing
+
+        // ── Editor ──────────────────────────────────
+        Action::Core(CoreAction::MoveLeft) => app.editor.move_left(),
+        Action::Core(CoreAction::MoveRight) => app.editor.move_right(),
+        Action::Core(CoreAction::MoveHome) => app.editor.move_home(),
+        Action::Core(CoreAction::MoveEnd) => app.editor.move_end(),
         Action::Core(CoreAction::DeleteBack) => {
             app.editor.delete_back();
             app.update_slash_menu();
@@ -1178,47 +1154,266 @@ fn handle_local_action(
             app.editor.clear();
             app.input_mode = InputMode::Insert;
         }
-        // History
-        Action::Core(CoreAction::HistoryUp) => {
-            app.editor.history_up();
-        }
-        Action::Core(CoreAction::HistoryDown) => {
-            app.editor.history_down();
-        }
-        // Unfocus
-        Action::Core(CoreAction::Unfocus) => {
-            app.unfocus_panel();
-        }
-        // Search
+        Action::Core(CoreAction::HistoryUp) => app.editor.history_up(),
+        Action::Core(CoreAction::HistoryDown) => app.editor.history_down(),
+        Action::Core(CoreAction::Unfocus) => app.unfocus_panel(),
+
+        // ── Search ──────────────────────────────────
         Action::Extended(ExtendedAction::SearchOutput) => {
-            app.overlays.output_search.active = true;
-            app.overlays.output_search.query.clear();
+            app.overlays.output_search.activate();
         }
-        // Model selector
+        Action::Extended(ExtendedAction::SearchNext) => {
+            if !app.overlays.output_search.matches.is_empty() {
+                app.overlays.output_search.next_match();
+                app.overlays.output_search.scroll_to_current = true;
+            }
+        }
+        Action::Extended(ExtendedAction::SearchPrev) => {
+            if !app.overlays.output_search.matches.is_empty() {
+                app.overlays.output_search.prev_match();
+                app.overlays.output_search.scroll_to_current = true;
+            }
+        }
+
+        // ── Block operations ────────────────────────
+        Action::Extended(ExtendedAction::ToggleBlockCollapse) => {
+            if app.conversation.focused_block.is_some() {
+                app.toggle_focused_block();
+            }
+        }
+        Action::Extended(ExtendedAction::CollapseAllBlocks) => app.collapse_all_blocks(),
+        Action::Extended(ExtendedAction::ExpandAllBlocks) => app.expand_all_blocks(),
+        Action::Extended(ExtendedAction::CopyBlock) => app.copy_focused_block(),
+        Action::Extended(ExtendedAction::RerunBlock) => {
+            if let Some(prompt) = app.get_focused_block_prompt() {
+                client.prompt(prompt);
+            }
+        }
+        Action::Extended(ExtendedAction::EditBlock) => {
+            if app.conversation.focused_block.is_some()
+                && app.state == AppState::Idle
+                && app.edit_focused_block_prompt()
+            {
+                app.input_mode = InputMode::Insert;
+            }
+        }
+        Action::Extended(ExtendedAction::ToggleBlockIds) => {
+            app.overlays.show_block_ids = !app.overlays.show_block_ids;
+        }
+        Action::Extended(ExtendedAction::ToggleShowThinking) => {
+            app.show_thinking = !app.show_thinking;
+            let state = if app.show_thinking { "visible" } else { "hidden" };
+            app.push_system(format!("Thinking content now {state}."), false);
+        }
+
+        // ── Branch navigation ───────────────────────
+        Action::Extended(ExtendedAction::BranchPrev) => {
+            if app.conversation.focused_block.is_some() {
+                app.branch_prev();
+            } else {
+                app.apply_tiling_action(HypertileAction::FocusDirection {
+                    direction: Direction::Horizontal, towards: Towards::Start,
+                });
+                app.input_mode = InputMode::Normal;
+            }
+        }
+        Action::Extended(ExtendedAction::BranchNext) => {
+            if app.conversation.focused_block.is_some() {
+                app.branch_next();
+            } else {
+                app.apply_tiling_action(HypertileAction::FocusDirection {
+                    direction: Direction::Horizontal, towards: Towards::End,
+                });
+                app.input_mode = InputMode::Normal;
+            }
+        }
+        Action::Extended(ExtendedAction::ToggleBranchPanel) => {
+            use clankers_tui_types::PanelId;
+            if app.layout.focused_panel == Some(PanelId::Branches) {
+                app.unfocus_panel();
+            } else {
+                let active_ids: std::collections::HashSet<usize> = app.conversation.blocks.iter()
+                    .filter_map(|e| match e { BlockEntry::Conversation(b) => Some(b.id), _ => None })
+                    .collect();
+                if let Some(bp) = app.panels.downcast_mut::<crate::tui::components::branch_panel::BranchPanel>(PanelId::Branches) {
+                    bp.refresh(&app.conversation.all_blocks.clone(), &active_ids);
+                }
+                app.focus_panel(PanelId::Branches);
+            }
+        }
+        Action::Extended(ExtendedAction::OpenBranchSwitcher) => {
+            let active_ids: std::collections::HashSet<usize> = app.conversation.blocks.iter()
+                .filter_map(|e| match e { BlockEntry::Conversation(b) => Some(b.id), _ => None })
+                .collect();
+            app.branching.switcher.open(&app.conversation.all_blocks.clone(), &active_ids);
+        }
+
+        // ── Panel focus ─────────────────────────────
+        Action::Extended(ExtendedAction::TogglePanelFocus) => {
+            if app.has_panel_focus() {
+                app.unfocus_panel();
+            } else {
+                app.apply_tiling_action(HypertileAction::FocusNext);
+                app.input_mode = InputMode::Normal;
+            }
+        }
+        Action::Extended(ExtendedAction::PanelNextTab) => {
+            app.apply_tiling_action(HypertileAction::FocusDirection {
+                direction: Direction::Horizontal, towards: Towards::End,
+            });
+            app.input_mode = InputMode::Normal;
+        }
+        Action::Extended(ExtendedAction::PanelPrevTab) => {
+            app.apply_tiling_action(HypertileAction::FocusDirection {
+                direction: Direction::Horizontal, towards: Towards::Start,
+            });
+            app.input_mode = InputMode::Normal;
+        }
+
+        // ── Pane tiling ─────────────────────────────
+        Action::Extended(ExtendedAction::PaneSplitVertical) => {
+            app.split_focused_pane(Direction::Vertical);
+        }
+        Action::Extended(ExtendedAction::PaneSplitHorizontal) => {
+            app.split_focused_pane(Direction::Horizontal);
+        }
+        Action::Extended(ExtendedAction::PaneClose) => app.close_focused_pane(),
+        Action::Extended(ExtendedAction::PaneEqualize) => {
+            app.apply_tiling_action(HypertileAction::SetFocusedRatio { ratio: 0.5 });
+        }
+        Action::Extended(ExtendedAction::PaneGrow) => {
+            app.apply_tiling_action(HypertileAction::ResizeFocused { delta: 0.05 });
+        }
+        Action::Extended(ExtendedAction::PaneShrink) => {
+            app.apply_tiling_action(HypertileAction::ResizeFocused { delta: -0.05 });
+        }
+        Action::Extended(ExtendedAction::PaneMoveLeft) => {
+            app.apply_tiling_action(HypertileAction::MoveFocused {
+                direction: Direction::Horizontal, towards: Towards::Start,
+                scope: ratatui_hypertile::MoveScope::Window,
+            });
+        }
+        Action::Extended(ExtendedAction::PaneMoveRight) => {
+            app.apply_tiling_action(HypertileAction::MoveFocused {
+                direction: Direction::Horizontal, towards: Towards::End,
+                scope: ratatui_hypertile::MoveScope::Window,
+            });
+        }
+        Action::Extended(ExtendedAction::PaneMoveUp) => {
+            app.apply_tiling_action(HypertileAction::MoveFocused {
+                direction: Direction::Vertical, towards: Towards::Start,
+                scope: ratatui_hypertile::MoveScope::Window,
+            });
+        }
+        Action::Extended(ExtendedAction::PaneMoveDown) => {
+            app.apply_tiling_action(HypertileAction::MoveFocused {
+                direction: Direction::Vertical, towards: Towards::End,
+                scope: ratatui_hypertile::MoveScope::Window,
+            });
+        }
+        Action::Extended(ExtendedAction::PaneZoom) => app.zoom_toggle(),
+        Action::Extended(ExtendedAction::PanelScrollUp) => {
+            use clankers_tui_types::PanelId;
+            if let Some(sp) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents) {
+                sp.scroll.scroll_up(3);
+            }
+        }
+        Action::Extended(ExtendedAction::PanelScrollDown) => {
+            use clankers_tui_types::PanelId;
+            if let Some(sp) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents) {
+                sp.scroll.scroll_down(3);
+            }
+        }
+        Action::Extended(ExtendedAction::PanelClearDone) => {
+            use clankers_tui_types::PanelId;
+            if let Some(sp) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents) {
+                sp.clear_done();
+                if !sp.is_visible() { app.unfocus_panel(); }
+            }
+        }
+        Action::Extended(ExtendedAction::PanelKill) => {
+            // No panel_tx in attach mode — kill not supported yet
+        }
+        Action::Extended(ExtendedAction::PanelRemove) => {
+            use clankers_tui_types::PanelId;
+            if let Some(sp) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents) {
+                sp.remove_selected();
+            }
+        }
+
+        // ── Overlays ────────────────────────────────
+        Action::Extended(ExtendedAction::OpenLeaderMenu) => app.overlays.leader_menu.open(),
         Action::Extended(ExtendedAction::OpenModelSelector) => {
-            app.overlays.model_selector.open();
+            let models = app.available_models.clone();
+            if models.is_empty() {
+                app.push_system("No models available.".to_string(), true);
+            } else {
+                app.overlays.model_selector = crate::tui::components::model_selector::ModelSelector::new(models);
+                app.overlays.model_selector.open();
+            }
         }
-        // Cost overlay
+        Action::Extended(ExtendedAction::OpenAccountSelector) => {
+            use crate::provider::auth::AuthStoreExt;
+            let paths = crate::config::ClankersPaths::get();
+            let store = crate::provider::auth::AuthStore::load(&paths.global_auth);
+            let accounts: Vec<crate::tui::components::account_selector::AccountItem> = store
+                .list_anthropic_accounts()
+                .into_iter()
+                .map(|info| crate::tui::components::account_selector::AccountItem {
+                    name: info.name, label: info.label,
+                    is_active: info.is_active, is_expired: info.is_expired,
+                })
+                .collect();
+            if accounts.is_empty() {
+                app.push_system("No accounts configured.".to_string(), true);
+            } else {
+                app.overlays.account_selector.open(accounts);
+            }
+        }
         Action::Extended(ExtendedAction::ToggleCostOverlay) => {
             app.overlays.cost_overlay_visible = !app.overlays.cost_overlay_visible;
         }
-        // Session popup
         Action::Extended(ExtendedAction::ToggleSessionPopup) => {
             app.overlays.session_popup_visible = !app.overlays.session_popup_visible;
+            if app.overlays.session_popup_visible && app.conversation.focused_block.is_none() {
+                let last_id = app.conversation.blocks.iter().rev().find_map(|e| match e {
+                    BlockEntry::Conversation(b) => Some(b.id), _ => None,
+                });
+                app.conversation.focused_block = last_id;
+            }
         }
-        // Copy
-        Action::Extended(ExtendedAction::CopyBlock) => {
-            app.copy_focused_block();
+        Action::Extended(ExtendedAction::OpenToolToggle) => {
+            let tools = app.tool_info.clone();
+            app.overlays.tool_toggle.open(tools, &app.disabled_tools);
         }
-        // Quit
-        Action::Core(CoreAction::Quit) => {
-            app.should_quit = true;
+        Action::Extended(ExtendedAction::TogglePromptImprove) => {
+            app.prompt_improve = !app.prompt_improve;
+            let state = if app.prompt_improve { "on" } else { "off" };
+            app.push_system(format!("Prompt improve: {state}."), false);
         }
-        // Cancel
+
+        // ── Daemon-forwarded toggles ────────────────
+        Action::Extended(ExtendedAction::ToggleThinking) => {
+            client.send(SessionCommand::CycleThinkingLevel);
+        }
+        Action::Extended(ExtendedAction::ToggleAutoTest) => {
+            if app.auto_test_command.is_none() {
+                app.push_system("No test command configured.".to_string(), true);
+            } else {
+                let enabled = !app.auto_test_enabled;
+                client.send(SessionCommand::SetAutoTest {
+                    enabled,
+                    command: None,
+                });
+            }
+        }
+
+        // ── Quit ────────────────────────────────────
+        Action::Core(CoreAction::Quit) => app.should_quit = true,
         Action::Core(CoreAction::Cancel) => {
-            // Cancel is used for abort in embedded — in attach mode, handled elsewhere
+            // In attach mode, Cancel/abort is handled in handle_key_event
         }
-        // Other unhandled actions — ignore in attach mode
+
         _ => {}
     }
 }
