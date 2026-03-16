@@ -214,6 +214,32 @@ impl Agent {
         self
     }
 
+    /// Replace the active tool set (hot-reload for tool toggles).
+    pub fn set_tools(&mut self, tools: Vec<Arc<dyn Tool>>) {
+        self.tools = tools.into_iter().map(|t| (t.definition().name.clone(), t)).collect();
+    }
+
+    /// Get the active tools.
+    pub fn tools(&self) -> Vec<&Arc<dyn Tool>> {
+        self.tools.values().collect()
+    }
+
+    /// Remove the last user+assistant exchange from history.
+    pub fn pop_last_exchange(&mut self) {
+        // Remove from the end: last assistant, then last user
+        if let Some(pos) = self.messages.iter().rposition(|m| matches!(m, AgentMessage::Assistant(_))) {
+            self.messages.truncate(pos);
+        }
+        if let Some(pos) = self.messages.iter().rposition(|m| matches!(m, AgentMessage::User(_))) {
+            self.messages.truncate(pos);
+        }
+    }
+
+    /// Compact messages by truncating stale tool results.
+    pub fn compact_messages(&mut self) {
+        self.messages = crate::context::compact_stale_tool_results(&self.messages, 3);
+    }
+
     /// Run the agent with a user prompt and optional image content blocks
     pub async fn prompt_with_images(&mut self, text: &str, images: Vec<Content>) -> Result<()> {
         let mut content = vec![Content::Text { text: text.to_string() }];

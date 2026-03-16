@@ -102,6 +102,15 @@ pub struct SessionController {
     pub(crate) capability_ceiling: Option<Vec<String>>,
     /// Current model name.
     pub(crate) model: String,
+    /// Currently disabled tools.
+    pub(crate) disabled_tools: Vec<String>,
+    /// Optional tool rebuilder for hot-reloading tools on toggle.
+    pub(crate) tool_rebuilder: Option<Arc<dyn ToolRebuilder>>,
+}
+
+/// Trait for rebuilding the filtered tool set when disabled tools change.
+pub trait ToolRebuilder: Send + Sync {
+    fn rebuild_filtered(&self, disabled: &[String]) -> Vec<Arc<dyn clankers_agent::Tool>>;
 }
 
 impl SessionController {
@@ -131,6 +140,8 @@ impl SessionController {
             capabilities: config.capabilities.clone(),
             capability_ceiling: config.capability_ceiling.or(config.capabilities),
             model,
+            disabled_tools: Vec::new(),
+            tool_rebuilder: None,
         }
     }
 
@@ -164,7 +175,14 @@ impl SessionController {
             capabilities: config.capabilities.clone(),
             capability_ceiling: config.capability_ceiling.or(config.capabilities),
             model,
+            disabled_tools: Vec::new(),
+            tool_rebuilder: None,
         }
+    }
+
+    /// Set the tool rebuilder for hot-reloading tools on toggle.
+    pub fn set_tool_rebuilder(&mut self, rebuilder: Arc<dyn ToolRebuilder>) {
+        self.tool_rebuilder = Some(rebuilder);
     }
 
 

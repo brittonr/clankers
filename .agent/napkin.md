@@ -3,6 +3,7 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-03-15 | self | Delegated `DaemonEvent::SessionInfo` field fixes to worker; worker reverted my prior event.rs edits (new variants + ToolInfo struct) | Don't delegate edits to files you've already modified in this session. Workers can't see your uncommitted changes and may overwrite them. |
 | recurring | self | `delegate_task`/`subagent` workers report success on multi-file refactors but changes don't persist | Workers are reliable for single-file edits and read-only analysis. Multi-file refactors: do directly. Always verify with `cargo check` + file existence after delegation. |
 | recurring | self | Extracting crates: `pub(crate)` items accessed by main crate break | Grep all callers before extracting. Items used cross-crate must become `pub`. |
 | recurring | self | Orphan rule: `impl ForeignTrait for ForeignType` in main crate | Use wrapper types (`MyWrapper<'a>(&'a Foreign)`) defined in the crate that owns the trait impl. |

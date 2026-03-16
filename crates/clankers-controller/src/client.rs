@@ -242,6 +242,10 @@ mod tests {
                 session_id: "test".to_string(),
                 model: "model".to_string(),
                 system_prompt_hash: "hash".to_string(),
+                available_models: Vec::new(),
+                active_account: String::new(),
+                disabled_tools: Vec::new(),
+                auto_test_command: None,
             })
             .await
             .unwrap();

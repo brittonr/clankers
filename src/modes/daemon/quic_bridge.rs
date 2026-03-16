@@ -354,6 +354,10 @@ async fn handle_attach_stream(
         session_id: session_id.clone(),
         model: String::new(),
         system_prompt_hash: String::new(),
+        available_models: Vec::new(),
+        active_account: String::new(),
+        disabled_tools: Vec::new(),
+        auto_test_command: None,
     };
     write_quic_frame(&mut send, &session_info).await?;
 

@@ -44,6 +44,25 @@ pub enum SessionCommand {
     },
     /// Execute a slash command (agent-side only).
     SlashCommand { command: String, args: String },
+    /// Rewrite last user prompt and re-submit.
+    RewriteAndPrompt { text: String },
+    /// Compact conversation history.
+    CompactHistory,
+    /// Start a loop.
+    StartLoop {
+        iterations: u32,
+        prompt: String,
+        break_condition: Option<String>,
+    },
+    /// Stop the active loop.
+    StopLoop,
+    /// Set auto-test command.
+    SetAutoTest {
+        enabled: bool,
+        command: Option<String>,
+    },
+    /// Request the tool list.
+    GetToolList,
     /// Request session history replay (on attach).
     ReplayHistory,
     /// Query the session's active capabilities.

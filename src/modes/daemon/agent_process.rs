@@ -91,13 +91,49 @@ pub fn spawn_agent_process(
     let agent = builder.build();
 
     let tool_patterns = effective_caps.as_deref().and_then(crate::capability_gate::extract_tool_patterns);
+
+    // ── Session persistence ──────────────────────────────────────────
+    // Create a SessionManager so daemon sessions get JSONL persistence
+    // (same as standalone mode). Without this, conversation history is
+    // lost when the daemon stops.
+    let session_manager = {
+        let paths = crate::config::ClankersPaths::get();
+        let cwd = std::env::current_dir()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .into_owned();
+        match clankers_session::SessionManager::create(
+            &paths.global_sessions_dir,
+            &cwd,
+            &model,
+            None,
+            None,
+            None,
+        ) {
+            Ok(mgr) => {
+                info!("session {session_id}: persistence enabled at {:?}", mgr.file_path());
+                Some(mgr)
+            }
+            Err(e) => {
+                warn!("session {session_id}: failed to create session file: {e}");
+                None
+            }
+        }
+    };
+
+    // ── Hook pipeline ────────────────────────────────────────────────
+    let hook_pipeline = build_session_hook_pipeline(&factory.settings);
+
     let config = ControllerConfig {
         session_id: session_id.clone(),
         model: model.clone(),
         system_prompt: Some(system_prompt),
         capabilities: tool_patterns.clone(),
         capability_ceiling: tool_patterns,
-        ..Default::default()
+        session_manager,
+        hook_pipeline,
+        auto_test_command: factory.settings.auto_test_command.clone(),
+        auto_test_enabled: factory.settings.auto_test_command.is_some(),
     };
 
     let controller = SessionController::new(agent, config);
@@ -507,6 +543,48 @@ fn resolve_agent_def(
         debug!("agent definition '{name}' not found, using defaults");
         (None, None)
     }
+}
+
+/// Build a hook pipeline for a daemon session from settings.
+///
+/// Mirrors the standalone `interactive.rs::build_hook_pipeline` but
+/// without plugin hooks (plugins are client-side in daemon mode).
+fn build_session_hook_pipeline(
+    settings: &crate::config::settings::Settings,
+) -> Option<std::sync::Arc<clankers_hooks::HookPipeline>> {
+    if !settings.hooks.enabled {
+        return None;
+    }
+
+    let cwd = std::env::current_dir().unwrap_or_default();
+    let mut pipeline = clankers_hooks::HookPipeline::new();
+    pipeline.set_disabled_hooks(settings.hooks.disabled_hooks.iter().cloned());
+
+    // Script hooks
+    let hooks_dir = settings.hooks.resolve_hooks_dir(&cwd);
+    let timeout = std::time::Duration::from_secs(settings.hooks.script_timeout_secs);
+    pipeline.register(std::sync::Arc::new(
+        clankers_hooks::script::ScriptHookHandler::new(hooks_dir, timeout),
+    ));
+
+    // Git hooks
+    if settings.hooks.manage_git_hooks {
+        let mut current = cwd.as_path();
+        loop {
+            if current.join(".git").exists() {
+                pipeline.register(std::sync::Arc::new(
+                    clankers_hooks::git::GitHookHandler::new(current.to_path_buf()),
+                ));
+                break;
+            }
+            match current.parent() {
+                Some(p) => current = p,
+                None => break,
+            }
+        }
+    }
+
+    Some(std::sync::Arc::new(pipeline))
 }
 
 /// Merge UCAN token capabilities with settings default_capabilities.

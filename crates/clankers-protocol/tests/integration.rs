@@ -156,6 +156,10 @@ async fn handshake_then_commands() {
         session_id: "sess-001".into(),
         model: "claude-sonnet-4-20250514".into(),
         system_prompt_hash: "abc123".into(),
+        available_models: Vec::new(),
+        active_account: String::new(),
+        disabled_tools: Vec::new(),
+        auto_test_command: None,
     };
     write_frame(&mut server, &info).await.unwrap();
 
@@ -541,6 +545,10 @@ async fn full_daemon_attach_flow() {
         session_id: "s1".to_string(),
         model: "sonnet".to_string(),
         system_prompt_hash: "abc".to_string(),
+        available_models: Vec::new(),
+        active_account: String::new(),
+        disabled_tools: Vec::new(),
+        auto_test_command: None,
     };
     write_frame(&mut server, &info).await.unwrap();
 

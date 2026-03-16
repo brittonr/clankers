@@ -132,6 +132,17 @@ impl SessionController {
                 });
             }
             SessionCommand::SetDisabledTools { tools } => {
+                self.disabled_tools = tools.clone();
+                // Rebuild tools with new disabled set if we have a tool rebuilder
+                if let Some(ref rebuilder) = self.tool_rebuilder {
+                    let filtered = rebuilder.rebuild_filtered(&tools);
+                    if let Some(ref mut agent) = self.agent {
+                        agent.set_tools(filtered);
+                    }
+                }
+                self.emit(DaemonEvent::DisabledToolsChanged {
+                    tools: tools.clone(),
+                });
                 self.emit(DaemonEvent::SystemMessage {
                     text: format!("Disabled tools updated: {}", tools.join(", ")),
                     is_error: false,
@@ -147,12 +158,61 @@ impl SessionController {
                     warn!("todo response for unknown request: {request_id}");
                 }
             }
+            SessionCommand::RewriteAndPrompt { text } => {
+                // Remove the last user message and re-prompt
+                if let Some(ref mut agent) = self.agent {
+                    agent.pop_last_exchange();
+                }
+                self.handle_prompt(text, vec![]).await;
+            }
+            SessionCommand::CompactHistory => {
+                if let Some(ref mut agent) = self.agent {
+                    let before = agent.messages().len();
+                    agent.compact_messages();
+                    let after = agent.messages().len();
+                    self.emit(DaemonEvent::SessionCompaction {
+                        compacted_count: before.saturating_sub(after),
+                        tokens_saved: 0,
+                    });
+                }
+            }
+            SessionCommand::StartLoop { iterations, prompt, break_condition } => {
+                let config = crate::loop_mode::LoopConfig {
+                    name: format!("loop-{}", self.session_id),
+                    prompt: Some(prompt),
+                    max_iterations: iterations,
+                    break_text: break_condition,
+                };
+                self.start_loop(config);
+            }
+            SessionCommand::StopLoop => {
+                self.stop_loop();
+            }
+            SessionCommand::SetAutoTest { enabled, command } => {
+                self.auto_test_enabled = enabled;
+                if let Some(cmd) = command.clone() {
+                    self.auto_test_command = Some(cmd);
+                }
+                self.emit(DaemonEvent::AutoTestChanged {
+                    enabled,
+                    command: self.auto_test_command.clone(),
+                });
+            }
+            SessionCommand::GetToolList => {
+                let tools = self.agent.as_ref()
+                    .map(|a| a.tools().iter().map(|t| {
+                        let def = t.definition();
+                        clankers_protocol::ToolInfo {
+                            name: def.name.clone(),
+                            description: def.description.clone(),
+                        }
+                    }).collect())
+                    .unwrap_or_default();
+                self.emit(DaemonEvent::ToolList { tools });
+            }
             SessionCommand::SlashCommand { command, args } => {
                 info!("slash command: /{command} {args}");
-                self.emit(DaemonEvent::SystemMessage {
-                    text: format!("Slash command /{command} {args}"),
-                    is_error: false,
-                });
+                self.handle_slash_command_sync(&command, &args);
             }
             SessionCommand::ReplayHistory => {
                 self.replay_history();
@@ -272,6 +332,116 @@ impl SessionController {
             }
         }
         self.emit(DaemonEvent::HistoryEnd);
+    }
+
+    /// Handle slash commands forwarded from the client.
+    ///
+    /// Routes well-known commands directly instead of recursing through
+    /// `handle_command` (which would require boxing the future).
+    fn handle_slash_command_sync(&mut self, command: &str, args: &str) {
+        match command {
+            "model" => {
+                if args.is_empty() {
+                    let model = self.model.clone();
+                    self.emit(DaemonEvent::SystemMessage {
+                        text: format!("Current model: {model}"),
+                        is_error: false,
+                    });
+                } else {
+                    let from = self.model.clone();
+                    if let Some(ref mut agent) = self.agent {
+                        agent.set_model(args.to_string());
+                    }
+                    self.model = args.to_string();
+                    self.emit(DaemonEvent::ModelChanged {
+                        from,
+                        to: args.to_string(),
+                        reason: "slash command".to_string(),
+                    });
+                }
+            }
+            "clear" => {
+                if let Some(ref mut agent) = self.agent {
+                    agent.clear_messages();
+                }
+                self.emit(DaemonEvent::SystemMessage {
+                    text: "History cleared".to_string(),
+                    is_error: false,
+                });
+            }
+            "compact" => {
+                if let Some(ref mut agent) = self.agent {
+                    let before = agent.messages().len();
+                    agent.compact_messages();
+                    let after = agent.messages().len();
+                    self.emit(DaemonEvent::SessionCompaction {
+                        compacted_count: before.saturating_sub(after),
+                        tokens_saved: 0,
+                    });
+                }
+            }
+            "thinking" => {
+                if let Some(ref mut agent) = self.agent {
+                    if args.is_empty() {
+                        let level = agent.cycle_thinking_level();
+                        self.emit(DaemonEvent::SystemMessage {
+                            text: format!("Thinking: {}", level.label()),
+                            is_error: false,
+                        });
+                    } else if let Some(parsed) = clankers_tui_types::ThinkingLevel::from_str_or_budget(args) {
+                        let prev = agent.set_thinking_level(parsed);
+                        self.emit(DaemonEvent::ThinkingLevelChanged {
+                            from: prev.label().to_string(),
+                            to: parsed.label().to_string(),
+                        });
+                    } else {
+                        self.emit(DaemonEvent::SystemMessage {
+                            text: format!("Unknown thinking level: {args}"),
+                            is_error: true,
+                        });
+                    }
+                }
+            }
+            "stop" => {
+                self.stop_loop();
+            }
+            "autotest" => {
+                if args.is_empty() {
+                    self.auto_test_enabled = !self.auto_test_enabled;
+                } else {
+                    self.auto_test_enabled = true;
+                    self.auto_test_command = Some(args.to_string());
+                }
+                self.emit(DaemonEvent::AutoTestChanged {
+                    enabled: self.auto_test_enabled,
+                    command: self.auto_test_command.clone(),
+                });
+            }
+            "tools" => {
+                let tools = self.agent.as_ref()
+                    .map(|a| a.tools().iter().map(|t| {
+                        let def = t.definition();
+                        clankers_protocol::ToolInfo {
+                            name: def.name.clone(),
+                            description: def.description.clone(),
+                        }
+                    }).collect())
+                    .unwrap_or_default();
+                self.emit(DaemonEvent::ToolList { tools });
+            }
+            "prompt" => {
+                let prompt = self.agent.as_ref()
+                    .map(|a| a.system_prompt().to_string())
+                    .unwrap_or_default();
+                self.emit(DaemonEvent::SystemPromptResponse { prompt });
+            }
+            _ => {
+                self.emit(DaemonEvent::SystemMessage {
+                    text: format!("/{command}: not implemented in daemon mode"),
+                    is_error: true,
+                });
+            }
+        }
     }
 
     /// Convert serialized messages to agent messages for seeding.

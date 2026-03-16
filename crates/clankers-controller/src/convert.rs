@@ -474,6 +474,10 @@ mod tests {
                 session_id: "s1".to_string(),
                 model: "m".to_string(),
                 system_prompt_hash: "h".to_string(),
+                available_models: Vec::new(),
+                active_account: String::new(),
+                disabled_tools: Vec::new(),
+                auto_test_command: None,
             },
             DaemonEvent::SystemMessage {
                 text: "hi".to_string(),

@@ -95,6 +95,14 @@ pub enum DaemonEvent {
         session_id: String,
         model: String,
         system_prompt_hash: String,
+        #[serde(default)]
+        available_models: Vec<String>,
+        #[serde(default)]
+        active_account: String,
+        #[serde(default)]
+        disabled_tools: Vec<String>,
+        #[serde(default)]
+        auto_test_command: Option<String>,
     },
     /// Response to GetSystemPrompt.
     SystemPromptResponse { prompt: String },
@@ -124,6 +132,43 @@ pub enum DaemonEvent {
         reason: String,
     },
 
+    // ── Tool metadata ────────────────────────────
+    /// Full tool list available in this session.
+    ToolList {
+        tools: Vec<ToolInfo>,
+    },
+    /// Disabled tools changed.
+    DisabledToolsChanged {
+        tools: Vec<String>,
+    },
+
+    // ── Thinking / loop / auto-test state ───────
+    /// Thinking level changed.
+    ThinkingLevelChanged {
+        from: String,
+        to: String,
+    },
+    /// Loop status update.
+    LoopStatus {
+        active: bool,
+        iteration: Option<u32>,
+        max_iterations: Option<u32>,
+        break_condition: Option<String>,
+    },
+    /// Auto-test state changed.
+    AutoTestChanged {
+        enabled: bool,
+        command: Option<String>,
+    },
+
+    // ── Cost / accounting ───────────────────────
+    /// Cumulative cost update for the session.
+    CostUpdate {
+        total_cost_usd: f64,
+        total_input_tokens: u64,
+        total_output_tokens: u64,
+    },
+
     // ── System messages ─────────────────────────
     /// System message for display.
     SystemMessage { text: String, is_error: bool },
@@ -135,4 +180,11 @@ pub enum DaemonEvent {
     HistoryBlock { block: serde_json::Value },
     /// History replay is complete.
     HistoryEnd,
+}
+
+/// Metadata about a single tool.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ToolInfo {
+    pub name: String,
+    pub description: String,
 }

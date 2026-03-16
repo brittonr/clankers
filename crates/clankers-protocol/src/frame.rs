@@ -414,6 +414,10 @@ mod tests {
                 session_id: "s1".to_string(),
                 model: "sonnet".to_string(),
                 system_prompt_hash: "abc".to_string(),
+                available_models: Vec::new(),
+                active_account: String::new(),
+                disabled_tools: Vec::new(),
+                auto_test_command: None,
             },
             DaemonEvent::SystemPromptResponse {
                 prompt: "You are helpful.".to_string(),
