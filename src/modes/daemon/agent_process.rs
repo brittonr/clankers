@@ -136,7 +136,20 @@ pub fn spawn_agent_process(
         auto_test_enabled: factory.settings.auto_test_command.is_some(),
     };
 
-    let controller = SessionController::new(agent, config);
+    let mut controller = SessionController::new(agent, config);
+
+    // Wire tool rebuilder so SetDisabledTools can hot-reload the agent's tools.
+    let rebuilder = DaemonToolRebuilder {
+        factory: Arc::new(SessionFactory {
+            provider: Arc::clone(&factory.provider),
+            tools: factory.tools.clone(),
+            settings: factory.settings.clone(),
+            default_model: factory.default_model.clone(),
+            default_system_prompt: factory.default_system_prompt.clone(),
+            registry: None, // child tools use subprocess fallback
+        }),
+    };
+    controller.set_tool_rebuilder(Arc::new(rebuilder));
 
     // Create channels for external command/event access
     let (cmd_tx, cmd_rx) = mpsc::unbounded_channel::<SessionCommand>();
@@ -542,6 +555,26 @@ fn resolve_agent_def(
     } else {
         debug!("agent definition '{name}' not found, using defaults");
         (None, None)
+    }
+}
+
+/// Tool rebuilder that uses the daemon's SessionFactory to rebuild
+/// the filtered tool set when disabled tools change.
+struct DaemonToolRebuilder {
+    factory: Arc<SessionFactory>,
+}
+
+impl clankers_controller::ToolRebuilder for DaemonToolRebuilder {
+    fn rebuild_filtered(&self, disabled: &[String]) -> Vec<Arc<dyn crate::tools::Tool>> {
+        let disabled_set: std::collections::HashSet<&str> =
+            disabled.iter().map(|s| s.as_str()).collect();
+        // Build a fresh panel_tx (events go nowhere — we only need the tool list)
+        let (panel_tx, _) = tokio::sync::mpsc::unbounded_channel();
+        let all_tools = self.factory.build_tools_with_panel_tx(panel_tx, None);
+        all_tools
+            .into_iter()
+            .filter(|t| !disabled_set.contains(t.definition().name.as_str()))
+            .collect()
     }
 }
 

@@ -676,6 +676,47 @@ fn process_daemon_event(
             *replaying_history = false;
         }
 
+        // ── Tool metadata ────────────────────────────
+        DaemonEvent::ToolList { tools } => {
+            app.tool_info = tools.iter().map(|t| {
+                (t.name.clone(), t.description.clone(), String::new())
+            }).collect();
+        }
+        DaemonEvent::DisabledToolsChanged { tools } => {
+            app.disabled_tools = tools.iter().cloned().collect();
+        }
+
+        // ── State sync events ───────────────────────
+        DaemonEvent::ThinkingLevelChanged { from, to } => {
+            app.push_system(format!("Thinking: {from} → {to}"), false);
+        }
+        DaemonEvent::LoopStatus { active, iteration, max_iterations, break_condition } => {
+            if *active {
+                let iter_str = match (iteration, max_iterations) {
+                    (Some(i), Some(m)) => format!(" ({i}/{m})"),
+                    (Some(i), None) => format!(" ({i})"),
+                    _ => String::new(),
+                };
+                let cond_str = break_condition.as_deref().unwrap_or("");
+                app.push_system(format!("Loop active{iter_str} {cond_str}"), false);
+            } else {
+                app.push_system("Loop finished".to_string(), false);
+            }
+        }
+        DaemonEvent::AutoTestChanged { enabled, command } => {
+            if *enabled {
+                let cmd = command.as_deref().unwrap_or("(default)");
+                app.push_system(format!("Auto-test enabled: {cmd}"), false);
+            } else {
+                app.push_system("Auto-test disabled".to_string(), false);
+            }
+            app.auto_test_enabled = *enabled;
+            app.auto_test_command = command.clone();
+        }
+        DaemonEvent::CostUpdate { total_cost_usd, .. } => {
+            app.push_system(format!("Session cost: ${total_cost_usd:.4}"), false);
+        }
+
         // ── Ignored events ──────────────────────────
         DaemonEvent::SystemPromptResponse { .. } => {
             // We didn't request this — ignore

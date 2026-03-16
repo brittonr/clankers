@@ -324,7 +324,38 @@ impl SessionController {
     }
 
     /// Replay conversation history to a newly-attached client (daemon mode).
+    ///
+    /// Also emits current session state (tool list, disabled tools, etc.)
+    /// so the client can sync its UI.
     fn replay_history(&mut self) {
+        // Emit tool list so client knows what's available
+        if let Some(ref agent) = self.agent {
+            let tools = agent.tools().iter().map(|t| {
+                let def = t.definition();
+                clankers_protocol::ToolInfo {
+                    name: def.name.clone(),
+                    description: def.description.clone(),
+                }
+            }).collect();
+            self.outgoing.push(DaemonEvent::ToolList { tools });
+        }
+
+        // Emit disabled tools
+        if !self.disabled_tools.is_empty() {
+            self.outgoing.push(DaemonEvent::DisabledToolsChanged {
+                tools: self.disabled_tools.clone(),
+            });
+        }
+
+        // Emit auto-test state
+        if self.auto_test_command.is_some() {
+            self.outgoing.push(DaemonEvent::AutoTestChanged {
+                enabled: self.auto_test_enabled,
+                command: self.auto_test_command.clone(),
+            });
+        }
+
+        // Replay conversation messages
         if let Some(ref agent) = self.agent {
             for msg in agent.messages() {
                 let block = serde_json::to_value(msg).unwrap_or_default();

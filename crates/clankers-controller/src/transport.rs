@@ -346,6 +346,16 @@ async fn handle_control_connection(mut stream: UnixStream, state: Arc<Mutex<Daem
 ///
 /// Each connected client receives all DaemonEvents via broadcast and can
 /// send SessionCommands.
+/// Configuration for the session socket's initial SessionInfo event.
+#[derive(Default, Clone)]
+pub struct SessionSocketInfo {
+    pub model: String,
+    pub available_models: Vec<String>,
+    pub active_account: String,
+    pub disabled_tools: Vec<String>,
+    pub auto_test_command: Option<String>,
+}
+
 pub async fn run_session_socket(
     session_id: String,
     cmd_tx: mpsc::UnboundedSender<SessionCommand>,
