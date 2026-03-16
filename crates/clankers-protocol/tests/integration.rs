@@ -187,6 +187,9 @@ async fn control_create_session() {
         model: Some("opus".into()),
         system_prompt: Some("You are helpful.".into()),
         token: None,
+        resume_id: None,
+        continue_last: false,
+        cwd: None,
     };
     write_frame(&mut client, &cmd).await.unwrap();
 
@@ -505,6 +508,9 @@ async fn daemon_request_create_session_round_trip() {
             model: Some("opus".to_string()),
             system_prompt: None,
             token: Some("ucan-token".to_string()),
+            resume_id: None,
+            continue_last: false,
+            cwd: None,
         },
     };
     write_frame(&mut client, &req).await.unwrap();

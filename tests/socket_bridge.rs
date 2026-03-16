@@ -152,6 +152,9 @@ async fn test_control_socket_create_session() {
             model: Some("opus".to_string()),
             system_prompt: None,
             token: None,
+            resume_id: None,
+            continue_last: false,
+            cwd: None,
         },
     )
     .await

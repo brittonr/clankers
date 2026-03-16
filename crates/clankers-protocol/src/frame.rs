@@ -244,6 +244,9 @@ mod tests {
             model: Some("sonnet".to_string()),
             system_prompt: None,
             token: Some("base64token".to_string()),
+            resume_id: None,
+            continue_last: false,
+            cwd: None,
         };
 
         let mut buf = Vec::new();

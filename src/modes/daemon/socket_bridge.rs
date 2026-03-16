@@ -148,8 +148,16 @@ async fn handle_control(
             model,
             system_prompt,
             token: _,
+            resume_id,
+            continue_last,
+            cwd,
         } => {
-            let session_id = clankers_message::generate_id();
+            // If resuming, try to load seed messages from the session file.
+            let (session_id, seed_messages) = resolve_session_resume(
+                resume_id.as_deref(),
+                continue_last,
+                cwd.as_deref(),
+            );
             let resolved_model = model.clone().unwrap_or_else(|| factory.default_model.clone());
 
             // Spawn as an actor process in the registry
@@ -195,7 +203,17 @@ async fn handle_control(
                 .await;
             });
 
-            info!("created session {session_id} (model: {resolved_model})");
+            // Seed resumed messages if any
+            if !seed_messages.is_empty() {
+                let count = seed_messages.len();
+                let _ = cmd_tx.send(SessionCommand::SeedMessages {
+                    messages: seed_messages,
+                });
+                info!("created session {session_id} (model: {resolved_model}, resumed {count} messages)");
+            } else {
+                info!("created session {session_id} (model: {resolved_model})");
+            }
+
             ControlResponse::Created {
                 session_id,
                 socket_path: socket_path.to_string_lossy().into_owned(),
@@ -277,6 +295,81 @@ pub fn drain_and_broadcast(
         };
         let _ = event_tx.send(daemon_event);
     }
+}
+
+/// Resolve session resume: look up an existing session file by ID or
+/// most-recent, returning seed messages to inject. Falls back to a
+/// fresh session (new ID, empty messages) if nothing matches.
+fn resolve_session_resume(
+    resume_id: Option<&str>,
+    continue_last: bool,
+    cwd: Option<&str>,
+) -> (String, Vec<clankers_protocol::SerializedMessage>) {
+    let paths = crate::config::ClankersPaths::get();
+    let sessions_dir = &paths.global_sessions_dir;
+    let effective_cwd = cwd.unwrap_or(".");
+
+    let try_open = |file: std::path::PathBuf| -> Option<(String, Vec<clankers_protocol::SerializedMessage>)> {
+        let mgr = clankers_session::SessionManager::open(file).ok()?;
+        let msgs = mgr.build_context().ok()?;
+        let session_id = mgr.session_id().to_string();
+        let serialized = msgs.iter().map(|m| {
+            let (role, content, model) = match m {
+                clankers_message::AgentMessage::User(u) => {
+                    let text = u.content.iter().filter_map(|c| match c {
+                        clankers_message::Content::Text { text } => Some(text.as_str()),
+                        _ => None,
+                    }).collect::<Vec<_>>().join("\n");
+                    ("user", text, None)
+                }
+                clankers_message::AgentMessage::Assistant(a) => {
+                    let text = a.content.iter().filter_map(|c| match c {
+                        clankers_message::Content::Text { text } => Some(text.as_str()),
+                        _ => None,
+                    }).collect::<Vec<_>>().join("\n");
+                    ("assistant", text, Some(a.model.clone()))
+                }
+                _ => return clankers_protocol::SerializedMessage {
+                    role: "user".to_string(),
+                    content: String::new(),
+                    model: None,
+                    timestamp: None,
+                },
+            };
+            clankers_protocol::SerializedMessage {
+                role: role.to_string(),
+                content,
+                model,
+                timestamp: None,
+            }
+        }).filter(|m| !m.content.is_empty()).collect();
+        Some((session_id, serialized))
+    };
+
+    // Try resume by ID
+    if let Some(id) = resume_id {
+        let files = clankers_session::store::list_sessions(sessions_dir, effective_cwd);
+        if let Some(file) = files.into_iter().find(|f| {
+            f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(id))
+        }) {
+            if let Some(result) = try_open(file) {
+                return result;
+            }
+        }
+    }
+
+    // Try continue last
+    if continue_last {
+        let files = clankers_session::store::list_sessions(sessions_dir, effective_cwd);
+        if let Some(file) = files.into_iter().next() {
+            if let Some(result) = try_open(file) {
+                return result;
+            }
+        }
+    }
+
+    // New session
+    (clankers_message::generate_id(), Vec::new())
 }
 
 async fn shutdown_signal(shutdown: &tokio::sync::watch::Receiver<bool>) {

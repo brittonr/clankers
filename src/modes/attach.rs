@@ -232,6 +232,9 @@ async fn resolve_session(
             model,
             system_prompt: None,
             token: None,
+            resume_id: None,
+            continue_last: false,
+            cwd: None,
         })
         .await?;
         return match resp {
@@ -1705,6 +1708,9 @@ async fn create_remote_session(
             model,
             system_prompt: None,
             token: None,
+            resume_id: None,
+            continue_last: false,
+            cwd: None,
         },
     };
     quic_write_frame(&mut send, &request).await?;

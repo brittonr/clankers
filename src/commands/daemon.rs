@@ -383,6 +383,9 @@ async fn create(model: Option<String>, system_prompt: Option<String>) -> Result<
         model,
         system_prompt,
         token: None,
+        resume_id: None,
+        continue_last: false,
+        cwd: None,
     })
     .await?;
     match resp {

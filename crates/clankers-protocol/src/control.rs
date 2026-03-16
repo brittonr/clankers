@@ -15,6 +15,15 @@ pub enum ControlCommand {
         model: Option<String>,
         system_prompt: Option<String>,
         token: Option<String>,
+        /// Resume a specific session by ID.
+        #[serde(default)]
+        resume_id: Option<String>,
+        /// Continue the most recent session for this cwd.
+        #[serde(default)]
+        continue_last: bool,
+        /// Working directory for session context.
+        #[serde(default)]
+        cwd: Option<String>,
     },
     /// Attach to an existing session (returns the session socket path).
     AttachSession { session_id: String },

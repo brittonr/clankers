@@ -113,6 +113,7 @@ async fn handle_control_stream(
             model,
             system_prompt,
             token,
+            ..
         } => {
             if !skip_token_check && token.is_none() {
                 warn!("QUIC CreateSession rejected: no auth token");
