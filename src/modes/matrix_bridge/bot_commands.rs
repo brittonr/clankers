@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use clanker_actor::ProcessRegistry;
-use clankers_auth::Capability;
-use clankers_auth::Credential;
+use clankers_ucan::Capability;
+use clankers_ucan::Credential;
 use clankers_controller::transport::DaemonState;
 use clankers_protocol::SessionCommand;
 use clankers_protocol::SessionKey;
@@ -298,7 +298,7 @@ fn handle_delegate_command(
         None => std::time::Duration::from_secs(3600),
     };
 
-    let now = clankers_auth::utils::current_time_secs();
+    let now = clankers_ucan::utils::current_time_secs();
     let parent_remaining = parent_cred.token.expires_at.saturating_sub(now);
     let lifetime = lifetime.min(std::time::Duration::from_secs(parent_remaining));
 

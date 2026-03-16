@@ -3,7 +3,7 @@ members = [
     ".",
     "crates/clankers-agent",
     "crates/clankers-agent-defs",
-    "crates/clankers-auth",
+    "crates/clankers-ucan",
     "crates/clankers-config",
     "crates/clankers-controller",
     "crates/clankers-db",
@@ -67,7 +67,7 @@ path = "src/main.rs"
 clankers-agent = { version = "0.1.0", path = "crates/clankers-agent" }
 clankers-nix = { version = "0.1.0", path = "crates/clankers-nix", features = ["eval"] }
 clankers-agent-defs = { version = "0.1.0", path = "crates/clankers-agent-defs" }
-clankers-auth = { version = "0.1.0", path = "crates/clankers-auth" }
+clankers-ucan = { version = "0.1.0", path = "crates/clankers-ucan" }
 clankers-config = { version = "0.1.0", path = "crates/clankers-config" }
 clankers-db = { version = "0.1.0", path = "crates/clankers-db" }
 clankers-hooks = { version = "0.1.0", path = "crates/clankers-hooks" }

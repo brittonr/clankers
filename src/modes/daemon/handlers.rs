@@ -64,7 +64,7 @@ pub(crate) async fn handle_chat_connection(
                 if let Some(token_b64) = request.get("token").and_then(|v| v.as_str())
                     && let Some(ref auth) = auth
                 {
-                    match clankers_auth::Credential::from_base64(token_b64) {
+                    match clankers_ucan::Credential::from_base64(token_b64) {
                         Ok(cred) => match auth.verify_credential(&cred) {
                             Ok(caps) => {
                                 info!("[{}] authenticated with {} capabilities", key, caps.len());

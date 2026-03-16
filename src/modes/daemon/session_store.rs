@@ -7,11 +7,11 @@
 
 use std::sync::Arc;
 
-use clankers_auth::Credential;
-use clankers_auth::RedbRevocationStore;
-use clankers_auth::RevocationStore;
-use clankers_auth::TokenVerifier;
-use clankers_auth::Capability;
+use clankers_ucan::Credential;
+use clankers_ucan::RedbRevocationStore;
+use clankers_ucan::RevocationStore;
+use clankers_ucan::TokenVerifier;
+use clankers_ucan::Capability;
 use tracing::info;
 use tracing::warn;
 
@@ -33,7 +33,7 @@ impl AuthLayer {
     /// Look up a stored credential for a user ID (Matrix user ID or iroh pubkey).
     pub fn lookup_credential(&self, user_id: &str) -> Option<Credential> {
         let read_txn = self.db.begin_read().ok()?;
-        let table = read_txn.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE).ok()?;
+        let table = read_txn.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE).ok()?;
         let guard = table.get(user_id).ok()??;
         let bytes = guard.value().to_vec();
         match Credential::decode(&bytes) {
@@ -45,7 +45,7 @@ impl AuthLayer {
                 drop(table);
                 drop(read_txn);
                 if let Ok(tx) = self.db.begin_write() {
-                    if let Ok(mut table) = tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE) {
+                    if let Ok(mut table) = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE) {
                         let _ = table.remove(user_id);
                     }
                     let _ = tx.commit();
@@ -66,7 +66,7 @@ impl AuthLayer {
         };
         if let Ok(tx) = self.db.begin_write() {
             {
-                if let Ok(mut table) = tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE) {
+                if let Ok(mut table) = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE) {
                     let _ = table.insert(user_id, encoded.as_slice());
                 }
             }
@@ -103,8 +103,8 @@ pub fn create_auth_layer(
             let db = Arc::new(db);
             // Ensure auth tables exist
             if let Ok(tx) = db.begin_write() {
-                let _ = tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE);
-                let _ = tx.open_table(clankers_auth::revocation::REVOKED_TOKENS_TABLE);
+                let _ = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE);
+                let _ = tx.open_table(clankers_ucan::revocation::REVOKED_TOKENS_TABLE);
                 let _ = tx.commit();
             }
 

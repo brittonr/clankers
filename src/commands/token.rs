@@ -76,8 +76,8 @@ fn open_auth_db(ctx: &CommandContext) -> Result<std::sync::Arc<redb::Database>> 
         let tx = redb_db.begin_write().map_err(|e| crate::error::Error::Io {
             source: std::io::Error::other(e.to_string()),
         })?;
-        let _ = tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE);
-        let _ = tx.open_table(clankers_auth::revocation::REVOKED_TOKENS_TABLE);
+        let _ = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE);
+        let _ = tx.open_table(clankers_ucan::revocation::REVOKED_TOKENS_TABLE);
         tx.commit().map_err(|e| crate::error::Error::Io {
             source: std::io::Error::other(e.to_string()),
         })?;
@@ -94,8 +94,8 @@ fn handle_create(
     from: Option<String>,
     scope: TokenScope,
 ) -> Result<()> {
-    use clankers_auth::Credential;
-    use clankers_auth::TokenBuilder;
+    use clankers_ucan::Credential;
+    use clankers_ucan::TokenBuilder;
 
     let lifetime = parse_duration(expire).ok_or_else(|| crate::error::Error::Config {
         message: format!("Invalid duration: '{}'. Examples: 1h, 24h, 7d, 30d, 365d", expire),
@@ -157,8 +157,8 @@ fn handle_create(
 }
 
 /// Build capabilities for a full-access root token.
-fn build_root_capabilities(builder: clankers_auth::TokenBuilder) -> clankers_auth::TokenBuilder {
-    use clankers_auth::Capability;
+fn build_root_capabilities(builder: clankers_ucan::TokenBuilder) -> clankers_ucan::TokenBuilder {
+    use clankers_ucan::Capability;
     builder
         .with_capability(Capability::Prompt)
         .with_capability(Capability::ToolUse {
@@ -182,10 +182,10 @@ fn build_root_capabilities(builder: clankers_auth::TokenBuilder) -> clankers_aut
 
 /// Build capabilities for a scoped (non-root) token.
 fn build_scoped_capabilities(
-    mut builder: clankers_auth::TokenBuilder,
+    mut builder: clankers_ucan::TokenBuilder,
     scope: &TokenScope,
-) -> clankers_auth::TokenBuilder {
-    use clankers_auth::Capability;
+) -> clankers_ucan::TokenBuilder {
+    use clankers_ucan::Capability;
 
     builder = builder.with_capability(Capability::Prompt);
 
@@ -229,11 +229,11 @@ fn build_scoped_capabilities(
 }
 
 /// Store a credential in redb for tracking.
-fn store_credential(redb_db: &std::sync::Arc<redb::Database>, cred: &clankers_auth::Credential) {
+fn store_credential(redb_db: &std::sync::Arc<redb::Database>, cred: &clankers_ucan::Credential) {
     let hash_hex = hex::encode(cred.token.hash().unwrap_or([0u8; 32]));
     let encoded = cred.encode().unwrap_or_default();
     if let Ok(tx) = redb_db.begin_write() {
-        if let Ok(mut table) = tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE) {
+        if let Ok(mut table) = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE) {
             let _ = table.insert(hash_hex.as_str(), encoded.as_slice());
         }
         if let Err(e) = tx.commit() {
@@ -243,7 +243,7 @@ fn store_credential(redb_db: &std::sync::Arc<redb::Database>, cred: &clankers_au
 }
 
 /// Print credential metadata to stderr.
-fn print_credential_summary(cred: &clankers_auth::Credential) {
+fn print_credential_summary(cred: &clankers_ucan::Credential) {
     let hash_hex = hex::encode(cred.token.hash().unwrap_or([0u8; 32]));
     eprintln!("Credential created:");
     eprintln!("  Issuer:  {}", cred.token.issuer.fmt_short());
@@ -272,7 +272,7 @@ fn handle_list(redb_db: &std::sync::Arc<redb::Database>) -> Result<()> {
     let read_tx = redb_db.begin_read().map_err(|e| crate::error::Error::Io {
         source: std::io::Error::other(e.to_string()),
     })?;
-    match read_tx.open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE) {
+    match read_tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE) {
         Ok(table) => {
             let mut count = 0;
             let iter = table.iter().map_err(|e| crate::error::Error::Io {
@@ -306,7 +306,7 @@ fn handle_list(redb_db: &std::sync::Arc<redb::Database>) -> Result<()> {
 
 /// Print a single credential entry for the list command.
 fn print_credential_list_entry(hash_hex: &str, encoded: &[u8]) {
-    match clankers_auth::Credential::decode(encoded) {
+    match clankers_ucan::Credential::decode(encoded) {
         Ok(cred) => {
             let now =
                 std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
@@ -337,22 +337,22 @@ fn print_credential_list_entry(hash_hex: &str, encoded: &[u8]) {
 }
 
 /// Short display name for a capability.
-fn cap_short_name(cap: &clankers_auth::Capability) -> &'static str {
+fn cap_short_name(cap: &clankers_ucan::Capability) -> &'static str {
     match cap {
-        clankers_auth::Capability::Prompt => "prompt",
-        clankers_auth::Capability::ToolUse { .. } => "tools",
-        clankers_auth::Capability::ShellExecute { .. } => "shell",
-        clankers_auth::Capability::FileAccess { .. } => "files",
-        clankers_auth::Capability::BotCommand { .. } => "bot-cmd",
-        clankers_auth::Capability::SessionManage => "session",
-        clankers_auth::Capability::ModelSwitch => "model",
-        clankers_auth::Capability::Delegate => "delegate",
+        clankers_ucan::Capability::Prompt => "prompt",
+        clankers_ucan::Capability::ToolUse { .. } => "tools",
+        clankers_ucan::Capability::ShellExecute { .. } => "shell",
+        clankers_ucan::Capability::FileAccess { .. } => "files",
+        clankers_ucan::Capability::BotCommand { .. } => "bot-cmd",
+        clankers_ucan::Capability::SessionManage => "session",
+        clankers_ucan::Capability::ModelSwitch => "model",
+        clankers_ucan::Capability::Delegate => "delegate",
     }
 }
 
 /// Revoke a token by hash or base64.
 fn handle_revoke(redb_db: &std::sync::Arc<redb::Database>, hash: &str) -> Result<()> {
-    use clankers_auth::RevocationStore;
+    use clankers_ucan::RevocationStore;
 
     let token_hash: [u8; 32] = if hash.len() == 64 {
         let bytes = hex::decode(hash).map_err(|e| crate::error::Error::Config {
@@ -362,7 +362,7 @@ fn handle_revoke(redb_db: &std::sync::Arc<redb::Database>, hash: &str) -> Result
         arr.copy_from_slice(&bytes);
         arr
     } else {
-        match clankers_auth::Credential::from_base64(hash) {
+        match clankers_ucan::Credential::from_base64(hash) {
             Ok(cred) => cred.token.hash().map_err(|e| crate::error::Error::Config {
                 message: format!("Failed to hash token: {}", e),
             })?,
@@ -377,7 +377,7 @@ fn handle_revoke(redb_db: &std::sync::Arc<redb::Database>, hash: &str) -> Result
     let hash_hex = hex::encode(token_hash);
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
 
-    let store = clankers_auth::RedbRevocationStore::new(redb_db.clone()).map_err(|e| crate::error::Error::Config {
+    let store = clankers_ucan::RedbRevocationStore::new(redb_db.clone()).map_err(|e| crate::error::Error::Config {
         message: format!("Failed to initialize revocation store: {}", e),
     })?;
     store.revoke(token_hash, now);
@@ -389,7 +389,7 @@ fn handle_revoke(redb_db: &std::sync::Arc<redb::Database>, hash: &str) -> Result
 
 /// Display detailed credential info.
 fn handle_info(token_b64: &str) -> Result<()> {
-    let cred = clankers_auth::Credential::from_base64(token_b64).map_err(|e| crate::error::Error::Config {
+    let cred = clankers_ucan::Credential::from_base64(token_b64).map_err(|e| crate::error::Error::Config {
         message: format!("Failed to decode credential: {}", e),
     })?;
 
@@ -443,27 +443,27 @@ fn format_timestamp(ts: u64, fmt: &str) -> String {
 }
 
 /// Print a single capability with detail.
-fn print_capability_detail(cap: &clankers_auth::Capability) {
+fn print_capability_detail(cap: &clankers_ucan::Capability) {
     match cap {
-        clankers_auth::Capability::Prompt => println!("    - Prompt"),
-        clankers_auth::Capability::ToolUse { tool_pattern } => {
+        clankers_ucan::Capability::Prompt => println!("    - Prompt"),
+        clankers_ucan::Capability::ToolUse { tool_pattern } => {
             println!("    - ToolUse: {}", tool_pattern);
         }
-        clankers_auth::Capability::ShellExecute {
+        clankers_ucan::Capability::ShellExecute {
             command_pattern,
             working_dir,
         } => {
             println!("    - ShellExecute: {} (wd: {})", command_pattern, working_dir.as_deref().unwrap_or("any"));
         }
-        clankers_auth::Capability::FileAccess { prefix, read_only } => {
+        clankers_ucan::Capability::FileAccess { prefix, read_only } => {
             let mode = if *read_only { "read-only" } else { "read-write" };
             println!("    - FileAccess: {} ({})", prefix, mode);
         }
-        clankers_auth::Capability::BotCommand { command_pattern } => {
+        clankers_ucan::Capability::BotCommand { command_pattern } => {
             println!("    - BotCommand: {}", command_pattern);
         }
-        clankers_auth::Capability::SessionManage => println!("    - SessionManage"),
-        clankers_auth::Capability::ModelSwitch => println!("    - ModelSwitch"),
-        clankers_auth::Capability::Delegate => println!("    - Delegate"),
+        clankers_ucan::Capability::SessionManage => println!("    - SessionManage"),
+        clankers_ucan::Capability::ModelSwitch => println!("    - ModelSwitch"),
+        clankers_ucan::Capability::Delegate => println!("    - Delegate"),
     }
 }

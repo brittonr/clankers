@@ -8,9 +8,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use clankers_auth::Capability;
-use clankers_auth::Credential;
-use clankers_auth::TokenBuilder;
+use clankers_ucan::Capability;
+use clankers_ucan::Credential;
+use clankers_ucan::TokenBuilder;
 
 /// Create an AuthLayer backed by a temp redb database.
 ///
@@ -249,7 +249,7 @@ fn stale_entry_cleaned_on_decode_failure() {
         let tx = db.begin_write().unwrap();
         {
             let mut table = tx
-                .open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE)
+                .open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE)
                 .unwrap();
             table.insert("stale-user", b"this is not a valid credential".as_slice()).unwrap();
         }
@@ -264,7 +264,7 @@ fn stale_entry_cleaned_on_decode_failure() {
         let db = &auth.db;
         let tx = db.begin_read().unwrap();
         let table = tx
-            .open_table(clankers_auth::revocation::AUTH_TOKENS_TABLE)
+            .open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE)
             .unwrap();
         assert!(table.get("stale-user").unwrap().is_none());
     }

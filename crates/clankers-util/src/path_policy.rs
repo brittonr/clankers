@@ -166,7 +166,7 @@ mod tests {
     }
 
     #[test]
-    fn blocks_clankers_auth() {
+    fn blocks_clankers_ucan() {
         let policy = PathPolicy::new();
         if let Some(home) = dirs::home_dir() {
             let p = home.join(".config/clanker-router/auth.json");
