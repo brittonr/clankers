@@ -318,10 +318,16 @@ pub async fn handle_prompt_streaming_pub(request: &Request, state: &ServerState,
     };
 
     // Create agent and set up event streaming
-    let mut agent =
+    let mut builder =
         crate::agent::builder::AgentBuilder::new(Arc::clone(&ctx.provider), ctx.settings.clone(), model, system_prompt)
-            .with_tools(ctx.tools.clone())
-            .build();
+            .with_tools(ctx.tools.clone());
+    if let Some(caps) = &ctx.settings.default_capabilities {
+        let gate = std::sync::Arc::new(
+            crate::capability_gate::UcanCapabilityGate::new(caps.clone()),
+        );
+        builder = builder.with_capability_gate(gate);
+    }
+    let mut agent = builder.build();
     let rx = agent.subscribe();
 
     // Stream events to the QUIC send stream in a background task

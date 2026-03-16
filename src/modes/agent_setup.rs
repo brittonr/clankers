@@ -83,6 +83,14 @@ pub(crate) fn build_agent_with_tools(
         .with_tools(active_tools)
         .with_paths(paths.clone());
 
+    // Apply default capability restrictions from settings
+    if let Some(caps) = &settings.default_capabilities {
+        let gate = std::sync::Arc::new(
+            crate::capability_gate::UcanCapabilityGate::new(caps.clone()),
+        );
+        agent_builder = agent_builder.with_capability_gate(gate);
+    }
+
     // Attach the global database so the agent can read memories and record usage
     if let Some(db) = db {
         agent_builder = agent_builder.with_db(db.clone());

@@ -125,6 +125,26 @@ pub struct Settings {
     /// a compact annotation listing referenced packages. Default: false.
     #[serde(default)]
     pub annotate_store_refs: bool,
+
+    /// Default capability restrictions for all sessions (including local).
+    ///
+    /// When set, every agent session gets a capability gate that enforces
+    /// these restrictions at tool execution time — the LLM cannot bypass
+    /// them. Capabilities are specified as UCAN capability objects.
+    ///
+    /// Example (settings.json):
+    /// ```json
+    /// "defaultCapabilities": [
+    ///   { "ToolUse": { "tool_pattern": "read,write,edit,bash,rg" } },
+    ///   { "ShellExecute": { "command_pattern": "*", "working_dir": "/home/user/project" } },
+    ///   { "FileAccess": { "prefix": "/home/user/project", "read_only": false } }
+    /// ]
+    /// ```
+    ///
+    /// When absent (default), local sessions have full access. Remote sessions
+    /// are still constrained by their UCAN token capabilities.
+    #[serde(default)]
+    pub default_capabilities: Option<Vec<clankers_ucan::Capability>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +272,7 @@ impl Default for Settings {
             no_cache: false,
             cache_ttl: None,
             annotate_store_refs: false,
+            default_capabilities: None,
         }
     }
 }

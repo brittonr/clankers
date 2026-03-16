@@ -1422,6 +1422,7 @@ dependencies = [
  "clankers-model-selection",
  "clankers-tui",
  "clankers-tui-types",
+ "clankers-ucan",
  "dirs 6.0.0",
  "indexmap 2.13.0",
  "serde",

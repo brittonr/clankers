@@ -26,9 +26,15 @@ pub async fn run_json_with_options(
     system_prompt: String,
     opts: JsonOptions,
 ) -> Result<()> {
-    let mut builder = AgentBuilder::new(provider, settings, model, system_prompt).with_tools(tools);
+    let mut builder = AgentBuilder::new(provider, settings.clone(), model, system_prompt).with_tools(tools);
     if let Some(thinking) = opts.thinking.clone() {
         builder = builder.with_thinking(thinking);
+    }
+    if let Some(caps) = &settings.default_capabilities {
+        let gate = std::sync::Arc::new(
+            crate::capability_gate::UcanCapabilityGate::new(caps.clone()),
+        );
+        builder = builder.with_capability_gate(gate);
     }
     let mut agent = builder.build();
     let mut rx = agent.subscribe();

@@ -11,6 +11,7 @@ clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
 clankers-model-selection = { version = "0.1.0", path = "../clankers-model-selection" }
 clankers-tui = { version = "0.1.0", path = "../clankers-tui" }
 clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
+clankers-ucan = { version = "0.1.0", path = "../clankers-ucan" }
 dirs = "6"
 indexmap = { version = "2.13.0", features = ["serde"] }
 serde = { workspace = true }
