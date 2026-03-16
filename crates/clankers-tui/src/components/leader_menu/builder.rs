@@ -1,99 +1,23 @@
 //! Menu building logic and builtin contributors.
-
-use std::collections::HashMap;
-
-use clankers_tui_types::Conflict;
+//!
+//! The generic build logic lives in `rat_leaderkey`. This module provides the
+//! clankers-specific `BuiltinKeymapContributor` and a thin `build()` wrapper
+//! that bridges the local `MenuContributor` trait to `rat_leaderkey`.
 
 use super::types::*;
 
-/// Build a leader menu from contributors.
+/// Build a leader menu from clankers contributors.
 ///
-/// Collects all [`MenuContribution`] items, deduplicates by `(key, placement)`
-/// with highest priority winning, removes hidden entries, and assembles the
-/// menu tree.
-pub fn build(contributors: &[&dyn MenuContributor], hidden: &HiddenSet) -> BuildResult {
-    let mut conflicts = Vec::new();
-
-    // 1. Collect all contributions
-    let mut all_items: Vec<MenuContribution> = contributors.iter().flat_map(|c| c.menu_items()).collect();
-
-    // 2. Sort by priority (lowest first, so highest overwrites)
-    all_items.sort_by_key(|i| i.priority);
-
-    // 3. Deduplicate by (key, placement) — last writer wins
-    let mut seen: HashMap<(char, MenuPlacement), MenuContribution> = HashMap::new();
-    for item in all_items {
-        let key = (item.key, item.placement.clone());
-        if let Some(existing) = seen.get(&key) {
-            conflicts.push(Conflict {
-                registry: "leader_menu",
-                key: format!("'{}' in {:?}", item.key, item.placement),
-                winner: item.source.clone(),
-                loser: existing.source.clone(),
-            });
-        }
-        seen.insert(key, item);
-    }
-
-    // 4. Remove hidden entries
-    for h in hidden {
-        seen.remove(h);
-    }
-
-    // 5. Group by placement
-    let mut root_items: Vec<MenuContribution> = Vec::new();
-    let mut submenu_items: HashMap<String, Vec<MenuContribution>> = HashMap::new();
-
-    for ((_, placement), item) in seen {
-        match placement {
-            MenuPlacement::Root => root_items.push(item),
-            MenuPlacement::Submenu(ref name) => {
-                submenu_items.entry(name.clone()).or_default().push(item);
-            }
-        }
-    }
-
-    // 6. Build submenu defs
-    let mut submenus: Vec<LeaderMenuDef> = Vec::new();
-    for (name, mut items) in submenu_items {
-        // Sort items by key for consistent ordering
-        items.sort_by_key(|i| i.key);
-        submenus.push(LeaderMenuDef {
-            label: name,
-            items: items
-                .into_iter()
-                .map(|c| LeaderMenuItem {
-                    key: c.key,
-                    label: c.label,
-                    action: c.action,
-                })
-                .collect(),
-        });
-    }
-
-    // 7. Build root def — sort items by key for consistent ordering
-    root_items.sort_by_key(|i| i.key);
-    let root = LeaderMenuDef {
-        label: "Leader".into(),
-        items: root_items
-            .into_iter()
-            .map(|c| LeaderMenuItem {
-                key: c.key,
-                label: c.label,
-                action: c.action,
-            })
-            .collect(),
-    };
-
-    let menu = super::LeaderMenu {
-        visible: false,
-        stack: Vec::new(),
-        breadcrumb: Vec::new(),
-        submenus,
-        root,
-    };
-
-    (menu, conflicts)
+/// Collects items from the local [`MenuContributor`] trait and delegates to
+/// [`rat_leaderkey::build_from_items`] for conflict resolution and assembly.
+pub fn build(
+    contributors: &[&dyn MenuContributor],
+    hidden: &HiddenSet,
+) -> BuildResult {
+    let items: Vec<MenuContribution> =
+        contributors.iter().flat_map(|c| c.menu_items()).collect();
+    let (inner, conflicts) = rat_leaderkey::build_from_items(items, hidden);
+    (super::LeaderMenu(inner), conflicts)
 }
 
 // ---------------------------------------------------------------------------
@@ -126,7 +50,12 @@ impl MenuContributor for BuiltinKeymapContributor {
 // ── Builtin menu data (grouped by section) ─────────────────────────────
 
 /// Helper to build a builtin MenuContribution with less boilerplate.
-fn builtin(key: char, label: &str, action: LeaderAction, placement: MenuPlacement) -> MenuContribution {
+fn builtin(
+    key: char,
+    label: &str,
+    action: LeaderAction,
+    placement: MenuPlacement,
+) -> MenuContribution {
     MenuContribution {
         key,
         label: label.into(),
@@ -159,8 +88,8 @@ fn root_actions() -> Vec<MenuContribution> {
     use clankers_tui_types::CoreAction;
     use clankers_tui_types::ExtendedAction;
     let r = MenuPlacement::Root;
-    let ext = |e: ExtendedAction| LeaderAction::KeymapAction(Action::Extended(e));
-    let cmd = |s: &str| LeaderAction::SlashCommand(s.into());
+    let ext = |e: ExtendedAction| LeaderAction::Action(Action::Extended(e));
+    let cmd = |s: &str| LeaderAction::Command(s.into());
     vec![
         // Selectors / overlays
         builtin('m', "model", ext(ExtendedAction::OpenModelSelector), r.clone()),
@@ -175,14 +104,29 @@ fn root_actions() -> Vec<MenuContribution> {
         builtin('f', "search output", ext(ExtendedAction::SearchOutput), r.clone()),
         builtin('`', "toggle panel", ext(ExtendedAction::TogglePanelFocus), r.clone()),
         builtin('o', "external editor", ext(ExtendedAction::OpenEditor), r.clone()),
-        builtin('c', "cancel/abort", LeaderAction::KeymapAction(Action::Core(CoreAction::Cancel)), r.clone()),
-        builtin('x', "clear input", LeaderAction::KeymapAction(Action::Core(CoreAction::ClearLine)), r.clone()),
+        builtin(
+            'c',
+            "cancel/abort",
+            LeaderAction::Action(Action::Core(CoreAction::Cancel)),
+            r.clone(),
+        ),
+        builtin(
+            'x',
+            "clear input",
+            LeaderAction::Action(Action::Core(CoreAction::ClearLine)),
+            r.clone(),
+        ),
         builtin('u', "undo last turn", cmd("/undo"), r.clone()),
         builtin('e', "export", cmd("/export"), r.clone()),
         builtin('R', "code review", cmd("/review"), r.clone()),
         builtin('C', "compact", cmd("/compact"), r.clone()),
         builtin('?', "help", cmd("/help"), r.clone()),
-        builtin('q', "quit", LeaderAction::KeymapAction(Action::Core(CoreAction::Quit)), r),
+        builtin(
+            'q',
+            "quit",
+            LeaderAction::Action(Action::Core(CoreAction::Quit)),
+            r,
+        ),
     ]
 }
 
@@ -190,7 +134,7 @@ fn root_actions() -> Vec<MenuContribution> {
 
 fn session_submenu_items() -> Vec<MenuContribution> {
     let p = || MenuPlacement::Submenu("session".into());
-    let cmd = |s: &str| LeaderAction::SlashCommand(s.into());
+    let cmd = |s: &str| LeaderAction::Command(s.into());
     vec![
         builtin('n', "new session", cmd("/new"), p()),
         builtin('r', "resume session", cmd("/resume"), p()),
@@ -205,7 +149,7 @@ fn session_submenu_items() -> Vec<MenuContribution> {
 
 fn branch_submenu_items() -> Vec<MenuContribution> {
     let p = || MenuPlacement::Submenu("branch".into());
-    let cmd = |s: &str| LeaderAction::SlashCommand(s.into());
+    let cmd = |s: &str| LeaderAction::Command(s.into());
     vec![
         builtin('f', "fork", cmd("/fork"), p()),
         builtin('b', "list branches", cmd("/branches"), p()),
@@ -223,7 +167,7 @@ fn branch_submenu_items() -> Vec<MenuContribution> {
 
 fn layout_submenu_items() -> Vec<MenuContribution> {
     let p = || MenuPlacement::Submenu("layout".into());
-    let cmd = |s: &str| LeaderAction::SlashCommand(s.into());
+    let cmd = |s: &str| LeaderAction::Command(s.into());
     vec![
         builtin('d', "default (3-column)", cmd("/layout default"), p()),
         builtin('w', "wide chat", cmd("/layout wide"), p()),
@@ -244,7 +188,7 @@ fn pane_submenu_items() -> Vec<MenuContribution> {
     use clankers_tui_types::Action;
     use clankers_tui_types::ExtendedAction;
     let p = || MenuPlacement::Submenu("pane".into());
-    let ext = |e: ExtendedAction| LeaderAction::KeymapAction(Action::Extended(e));
+    let ext = |e: ExtendedAction| LeaderAction::Action(Action::Extended(e));
     vec![
         builtin('z', "zoom toggle", ext(ExtendedAction::PaneZoom), p()),
         builtin('v', "split vertical", ext(ExtendedAction::PaneSplitVertical), p()),
@@ -264,7 +208,7 @@ fn pane_submenu_items() -> Vec<MenuContribution> {
 
 fn loop_submenu_items() -> Vec<MenuContribution> {
     let p = || MenuPlacement::Submenu("loop".into());
-    let cmd = |s: &str| LeaderAction::SlashCommand(s.into());
+    let cmd = |s: &str| LeaderAction::Command(s.into());
     vec![
         builtin('p', "pause/resume", cmd("/loop pause"), p()),
         builtin('s', "stop", cmd("/loop stop"), p()),
@@ -276,7 +220,7 @@ fn loop_submenu_items() -> Vec<MenuContribution> {
 
 fn swarm_submenu_items() -> Vec<MenuContribution> {
     let p = || MenuPlacement::Submenu("swarm".into());
-    let cmd = |s: &str| LeaderAction::SlashCommand(s.into());
+    let cmd = |s: &str| LeaderAction::Command(s.into());
     vec![
         builtin('w', "spawn/list workers", cmd("/worker"), p()),
         builtin('s', "subagents", cmd("/subagents"), p()),
@@ -289,7 +233,7 @@ fn swarm_submenu_items() -> Vec<MenuContribution> {
 
 fn info_submenu_items() -> Vec<MenuContribution> {
     let p = || MenuPlacement::Submenu("info".into());
-    let cmd = |s: &str| LeaderAction::SlashCommand(s.into());
+    let cmd = |s: &str| LeaderAction::Command(s.into());
     vec![
         builtin('s', "status", cmd("/status"), p()),
         builtin('u', "usage", cmd("/usage"), p()),
@@ -305,7 +249,7 @@ fn info_submenu_items() -> Vec<MenuContribution> {
 
 fn debug_submenu_items() -> Vec<MenuContribution> {
     let p = || MenuPlacement::Submenu("debug".into());
-    let cmd = |s: &str| LeaderAction::SlashCommand(s.into());
+    let cmd = |s: &str| LeaderAction::Command(s.into());
     vec![
         builtin('l', "leader menu dump", cmd("/leader"), p()),
         builtin('p', "preview markdown", cmd("/preview"), p()),
@@ -319,8 +263,8 @@ fn model_submenu_items() -> Vec<MenuContribution> {
     use clankers_tui_types::Action;
     use clankers_tui_types::ExtendedAction;
     let p = || MenuPlacement::Submenu("model".into());
-    let ext = |e: ExtendedAction| LeaderAction::KeymapAction(Action::Extended(e));
-    let cmd = |s: &str| LeaderAction::SlashCommand(s.into());
+    let ext = |e: ExtendedAction| LeaderAction::Action(Action::Extended(e));
+    let cmd = |s: &str| LeaderAction::Command(s.into());
     vec![
         builtin('m', "select model", ext(ExtendedAction::OpenModelSelector), p()),
         builtin('t', "cycle thinking", ext(ExtendedAction::ToggleThinking), p()),
@@ -338,12 +282,10 @@ fn model_submenu_items() -> Vec<MenuContribution> {
 
 fn memory_submenu_items() -> Vec<MenuContribution> {
     let p = || MenuPlacement::Submenu("memory".into());
-    let cmd = |s: &str| LeaderAction::SlashCommand(s.into());
+    let cmd = |s: &str| LeaderAction::Command(s.into());
     vec![
         builtin('s', "show system prompt", cmd("/system show"), p()),
         builtin('r', "reset system prompt", cmd("/system reset"), p()),
         builtin('m', "list memories", cmd("/memory"), p()),
     ]
 }
-
-// SlashCommandContributor removed — all command bindings are now in BuiltinKeymapContributor.

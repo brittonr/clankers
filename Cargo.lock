@@ -1653,6 +1653,7 @@ dependencies = [
  "git2",
  "image",
  "indexmap 2.13.0",
+ "rat-leaderkey",
  "ratatui",
  "ratatui-hypertile",
  "serde",
@@ -1668,6 +1669,7 @@ name = "clankers-tui-types"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "rat-leaderkey",
  "serde",
  "serde_json",
 ]
@@ -7607,6 +7609,13 @@ dependencies = [
  "ref-cast",
  "serde",
  "smallvec",
+]
+
+[[package]]
+name = "rat-leaderkey"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
 ]
 
 [[package]]

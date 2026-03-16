@@ -174,7 +174,7 @@ pub(crate) fn handle_leader_action(
     use clankers_tui_types::LeaderAction;
 
     match action {
-        LeaderAction::KeymapAction(keymap_action) => {
+        LeaderAction::Action(keymap_action) => {
             let dummy_key = crossterm::event::KeyEvent::new(KeyCode::Null, KeyModifiers::NONE);
             handle_action(
                 app,
@@ -188,7 +188,7 @@ pub(crate) fn handle_leader_action(
                 slash_registry,
             );
         }
-        LeaderAction::SlashCommand(command) => {
+        LeaderAction::Command(command) => {
             handle_input_with_plugins(
                 app,
                 &command,

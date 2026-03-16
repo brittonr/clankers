@@ -160,8 +160,8 @@ impl SlashHandler for LeaderHandler {
 fn format_leader_action(action: &crate::tui::components::leader_menu::LeaderAction) -> String {
     use clankers_tui_types::LeaderAction;
     match action {
-        LeaderAction::KeymapAction(a) => format!("→ {:?}", a),
-        LeaderAction::SlashCommand(cmd) => format!("→ {}", cmd),
+        LeaderAction::Action(a) => format!("→ {:?}", a),
+        LeaderAction::Command(cmd) => format!("→ {}", cmd),
         LeaderAction::Submenu(name) => format!("→ [{}…]", name),
     }
 }

@@ -54,7 +54,7 @@ impl crate::tui::components::leader_menu::MenuContributor for PluginMenuContribu
                     Some(MenuContribution {
                         key: entry.key,
                         label: entry.label.clone(),
-                        action: LeaderAction::SlashCommand(entry.command.clone()),
+                        action: LeaderAction::Command(entry.command.clone()),
                         placement: match &entry.submenu {
                             Some(name) => MenuPlacement::Submenu(name.clone()),
                             None => MenuPlacement::Root,

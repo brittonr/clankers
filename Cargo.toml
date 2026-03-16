@@ -48,6 +48,7 @@ clanker-loop = { git = "https://github.com/brittonr/clanker-loop" }
 clanker-router = { git = "https://github.com/brittonr/clanker-router" }
 clanker-scheduler = { git = "https://github.com/brittonr/clanker-scheduler" }
 graggle = { git = "https://github.com/brittonr/graggle" }
+rat-leaderkey = { path = "../subwayrat/crates/rat-leaderkey" }
 
 [package]
 name = "clankers"

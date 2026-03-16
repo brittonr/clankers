@@ -203,7 +203,7 @@ impl clankers_tui_types::MenuContributor for LeaderMenuConfig {
             .map(|item| MenuContribution {
                 key: item.key,
                 label: item.label.clone(),
-                action: LeaderAction::SlashCommand(item.command.clone()),
+                action: LeaderAction::Command(item.command.clone()),
                 placement: match &item.submenu {
                     Some(name) => MenuPlacement::Submenu(name.clone()),
                     None => MenuPlacement::Root,

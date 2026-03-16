@@ -1172,7 +1172,7 @@ fn handle_leader_action_attach(
     use clankers_tui_types::LeaderAction;
 
     match action {
-        LeaderAction::SlashCommand(cmd) => {
+        LeaderAction::Command(cmd) => {
             if let Some((command, args)) = slash_commands::parse_command(&cmd) {
                 if is_client_side_command(&command) {
                     handle_client_side_slash(app, &command, &args, slash_registry);
@@ -1184,7 +1184,7 @@ fn handle_leader_action_attach(
                 }
             }
         }
-        LeaderAction::KeymapAction(action) => {
+        LeaderAction::Action(action) => {
             // Handle keymap actions from leader menu as local actions
             let dummy_key = crossterm::event::KeyEvent::new(
                 crossterm::event::KeyCode::Null,
