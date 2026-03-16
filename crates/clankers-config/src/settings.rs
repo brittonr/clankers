@@ -126,6 +126,12 @@ pub struct Settings {
     #[serde(default)]
     pub annotate_store_refs: bool,
 
+    /// When true, the default interactive mode auto-starts a background daemon
+    /// and attaches the TUI to a daemon session instead of running an in-process
+    /// agent. Override with `--daemon` / `--no-daemon` CLI flags.
+    #[serde(default = "default_true")]
+    pub use_daemon: bool,
+
     /// Default capability restrictions for all sessions (including local).
     ///
     /// When set, every agent session gets a capability gate that enforces
@@ -272,6 +278,7 @@ impl Default for Settings {
             no_cache: false,
             cache_ttl: None,
             annotate_store_refs: false,
+            use_daemon: true,
             default_capabilities: None,
         }
     }
@@ -388,5 +395,27 @@ mod tests {
         let project = serde_json::json!({"autoTestCommand": "cargo nextest run"});
         let settings = Settings::merge_layers(None, Some(global), Some(project));
         assert_eq!(settings.auto_test_command, Some("cargo nextest run".to_string()));
+    }
+
+    #[test]
+    fn use_daemon_default_true() {
+        let json = r#"{}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert!(settings.use_daemon);
+    }
+
+    #[test]
+    fn use_daemon_explicit_false() {
+        let json = r#"{"useDaemon": false}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert!(!settings.use_daemon);
+    }
+
+    #[test]
+    fn use_daemon_project_overrides_global() {
+        let global = serde_json::json!({"useDaemon": true});
+        let project = serde_json::json!({"useDaemon": false});
+        let settings = Settings::merge_layers(None, Some(global), Some(project));
+        assert!(!settings.use_daemon);
     }
 }

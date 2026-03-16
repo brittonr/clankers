@@ -147,6 +147,141 @@ pub async fn run_attach(
     result
 }
 
+// ── Auto-daemon mode ────────────────────────────────────────────────────────
+
+/// Options for the auto-daemon attach flow (default interactive mode through
+/// a background daemon).
+pub struct AutoDaemonOptions {
+    pub model: String,
+    pub system_prompt: String,
+    pub settings: Settings,
+    pub resume_id: Option<String>,
+    pub continue_last: bool,
+    pub no_session: bool,
+    pub cwd: String,
+}
+
+/// Default interactive mode through a background daemon.
+///
+/// This is the Phase 3 "flip the switch" entry point: `clankers` (no
+/// subcommand) auto-starts a daemon, creates a session with the caller's
+/// CLI options, and attaches the TUI to it.
+pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
+    // 1. Ensure a daemon is running (starts one in the background if needed)
+    crate::commands::daemon::ensure_daemon_running().await?;
+
+    // 2. Create or resume a session on the daemon
+    let create_cmd = ControlCommand::CreateSession {
+        model: Some(opts.model.clone()),
+        system_prompt: Some(opts.system_prompt),
+        token: None,
+        resume_id: if opts.no_session { None } else { opts.resume_id.clone() },
+        continue_last: if opts.no_session { false } else { opts.continue_last },
+        cwd: Some(opts.cwd.clone()),
+    };
+
+    let resp = send_control(create_cmd).await?;
+    let (session_id, socket_path) = match resp {
+        ControlResponse::Created { session_id, socket_path } => (session_id, socket_path),
+        ControlResponse::Error { message } => {
+            return Err(crate::error::Error::Provider {
+                message: format!("Failed to create daemon session: {message}"),
+            });
+        }
+        other => {
+            return Err(crate::error::Error::Provider {
+                message: format!("Unexpected response from daemon: {other:?}"),
+            });
+        }
+    };
+
+    info!("auto-daemon: created session {session_id} at {socket_path}");
+
+    // 3. Connect to the session socket
+    let stream = UnixStream::connect(&socket_path).await.map_err(|e| {
+        crate::error::Error::Provider {
+            message: format!("Cannot connect to session socket {socket_path}: {e}"),
+        }
+    })?;
+
+    let mut client = ClientAdapter::connect(stream, "clankers-tui", None, Some(session_id.clone()))
+        .await
+        .map_err(|e| crate::error::Error::Provider {
+            message: format!("Handshake failed: {e}"),
+        })?;
+
+    // Read initial SessionInfo
+    let model_name = match client.recv().await {
+        Some(DaemonEvent::SessionInfo { model, .. }) => model,
+        Some(other) => {
+            warn!("expected SessionInfo, got: {other:?}");
+            opts.model.clone()
+        }
+        None => {
+            return Err(crate::error::Error::Provider {
+                message: "Session disconnected before sending SessionInfo".to_string(),
+            });
+        }
+    };
+
+    client.replay_history();
+
+    // 4. Set up the terminal and run the attach event loop
+    let mut term = super::common::init_terminal()?;
+
+    let display_model = if model_name.is_empty() {
+        opts.model.clone()
+    } else {
+        model_name
+    };
+
+    let theme = Theme::dark();
+    let keymap = opts.settings.keymap.clone().into_keymap();
+
+    let mut app = App::new(display_model.clone(), opts.cwd, theme);
+    app.session_id = session_id.clone();
+    app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
+
+    let slash_registry = build_client_slash_registry();
+    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(
+        &slash_registry,
+    )));
+
+    crate::modes::interactive::rebuild_leader_menu(&mut app, None, &opts.settings);
+
+    app.connection_mode = clankers_tui_types::ConnectionMode::Attached;
+
+    let resumed = opts.resume_id.is_some() || opts.continue_last;
+    if resumed {
+        app.push_system(
+            format!("resumed session {} via daemon (model: {})", session_id, display_model),
+            false,
+        );
+    } else {
+        app.push_system(
+            format!("clankers — {} — daemon mode", display_model),
+            false,
+        );
+    }
+
+    let max_subagent_panes = opts.settings.max_subagent_panes;
+
+    let result = run_attach_with_reconnect(
+        &mut term,
+        &mut app,
+        client,
+        keymap,
+        &slash_registry,
+        max_subagent_panes,
+        &socket_path,
+        &session_id,
+    )
+    .await;
+
+    super::common::restore_terminal(&mut term);
+    result
+}
+
 /// Run the attach event loop with automatic reconnection on disconnect.
 async fn run_attach_with_reconnect(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,

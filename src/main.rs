@@ -171,6 +171,12 @@ fn validate_cli(cli: &Cli) -> Result<()> {
         }
         .fail();
     }
+    if cli.daemon && cli.no_daemon {
+        return ConfigSnafu {
+            message: "cannot use --daemon with --no-daemon",
+        }
+        .fail();
+    }
     Ok(())
 }
 
@@ -271,6 +277,31 @@ async fn run_agent_mode(
 
     // If --agent is specified, look up the agent definition and override model/system_prompt
     let (model, system_prompt) = resolve_agent_overrides(&cli, &ctx)?;
+
+    // Decide: daemon mode vs in-process mode.
+    // Daemon mode applies only to interactive (no prompt). Headless (print/json)
+    // always runs in-process — no TUI, no daemon overhead needed.
+    let use_daemon = if cli.daemon {
+        true
+    } else if cli.no_daemon {
+        false
+    } else {
+        ctx.settings.use_daemon
+    };
+
+    if prompt.is_none() && use_daemon {
+        // Phase 3: auto-daemon + attach
+        let opts = clankers::modes::attach::AutoDaemonOptions {
+            model,
+            system_prompt,
+            settings: ctx.settings.clone(),
+            resume_id: cli.resume.clone(),
+            continue_last: cli.r#continue,
+            no_session: cli.no_session,
+            cwd: ctx.cwd.clone(),
+        };
+        return clankers::modes::attach::run_auto_daemon_attach(opts).await;
+    }
 
     // Initialize sandbox
     clankers::tools::sandbox::init_policy();

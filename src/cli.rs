@@ -104,6 +104,14 @@ pub struct Cli {
     #[arg(long)]
     pub no_session: bool,
 
+    /// Force daemon mode (auto-start daemon + attach)
+    #[arg(long)]
+    pub daemon: bool,
+
+    /// Force in-process mode (skip daemon, run agent directly)
+    #[arg(long)]
+    pub no_daemon: bool,
+
     /// Disable prompt caching
     #[arg(long)]
     pub no_cache: bool,
