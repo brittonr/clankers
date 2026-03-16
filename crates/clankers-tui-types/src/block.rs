@@ -96,3 +96,14 @@ pub enum BlockEntry {
     /// A standalone system message (not part of a prompt).
     System(DisplayMessage),
 }
+
+/// Implement TreeNode trait for ConversationBlock to enable rat-branches tree algorithms
+impl rat_branches::TreeNode for ConversationBlock {
+    fn id(&self) -> usize {
+        self.id
+    }
+
+    fn parent_id(&self) -> Option<usize> {
+        self.parent_block_id
+    }
+}

@@ -285,7 +285,10 @@ impl SlashHandler for CompareHandler {
             return;
         }
 
-        ctx.app.branching.compare.open(id_a, id_b, &ctx.app.conversation.all_blocks.clone());
+        {
+            use clankers_tui::components::branch_compare::BranchCompareViewExt;
+            ctx.app.branching.compare.open_with_blocks(id_a, id_b, &ctx.app.conversation.all_blocks.clone());
+        }
     }
 }
 

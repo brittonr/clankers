@@ -79,11 +79,12 @@ impl BranchPanel {
     /// Rebuild the branch list from the app's block tree.
     /// Call this whenever blocks change (new block, branch switch, etc.).
     pub fn refresh(&mut self, all_blocks: &[ConversationBlock], active_block_ids: &std::collections::HashSet<usize>) {
-        // Find leaf blocks (blocks with no children)
-        let has_children: std::collections::HashSet<usize> =
-            all_blocks.iter().filter_map(|b| b.parent_block_id).collect();
-
-        let leaves: Vec<&ConversationBlock> = all_blocks.iter().filter(|b| !has_children.contains(&b.id)).collect();
+        // Find leaf blocks using rat-branches generic tree algorithm
+        let leaf_ids = rat_branches::tree::find_leaves(all_blocks);
+        let leaves: Vec<&ConversationBlock> = leaf_ids
+            .iter()
+            .filter_map(|&id| all_blocks.iter().find(|b| b.id == id))
+            .collect();
 
         // Preserve selection across refresh
         let prev_leaf = self.entries.get(self.nav.selected).map(|e| e.leaf_id);
@@ -420,44 +421,22 @@ fn render_detail_view(frame: &mut Frame, panel: &BranchPanel, area: Rect, ctx: &
 // ── Helpers ─────────────────────────────────────────────────────────────────
 
 /// Walk from a block up to the root, returning the path as a list of block IDs.
+/// Uses rat-branches generic tree algorithm.
 fn walk_to_root(leaf_id: usize, all_blocks: &[ConversationBlock]) -> Vec<usize> {
-    let mut path = Vec::new();
-    let mut current = Some(leaf_id);
-    while let Some(id) = current {
-        path.push(id);
-        current = all_blocks.iter().find(|b| b.id == id).and_then(|b| b.parent_block_id);
-    }
-    path.reverse();
-    path
+    rat_branches::tree::walk_to_root(leaf_id, all_blocks)
 }
 
 /// Find the block ID where this branch diverges from a sibling branch.
 /// Returns the parent block ID that has multiple children.
+/// Uses rat-branches generic tree algorithm.
 fn find_divergence(leaf_id: usize, all_blocks: &[ConversationBlock]) -> Option<usize> {
-    let mut current = Some(leaf_id);
-    while let Some(id) = current {
-        let block = all_blocks.iter().find(|b| b.id == id)?;
-        if let Some(parent_id) = block.parent_block_id {
-            // Count siblings at this level
-            let sibling_count = all_blocks.iter().filter(|b| b.parent_block_id == Some(parent_id)).count();
-            if sibling_count > 1 {
-                return Some(parent_id);
-            }
-        }
-        current = block.parent_block_id;
-    }
-    None
+    rat_branches::tree::find_divergence(leaf_id, all_blocks)
 }
 
 /// Truncate text to the first line and a max character count.
+/// Uses rat-branches utility function.
 fn truncate_first_line(text: &str, max: usize) -> String {
-    let first_line = text.lines().next().unwrap_or(text);
-    let preview: String = first_line.chars().take(max).collect();
-    if first_line.chars().count() > max {
-        format!("{}…", preview)
-    } else {
-        preview
-    }
+    rat_branches::compare::truncate_first_line(text, max)
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -474,54 +453,7 @@ mod tests {
         b
     }
 
-    #[test]
-    fn walk_to_root_linear() {
-        let blocks = vec![
-            make_block(0, "root", None, 100),
-            make_block(1, "second", Some(0), 200),
-            make_block(2, "third", Some(1), 150),
-        ];
-        let path = walk_to_root(2, &blocks);
-        assert_eq!(path, vec![0, 1, 2]);
-    }
-
-    #[test]
-    fn walk_to_root_single() {
-        let blocks = vec![make_block(0, "only", None, 50)];
-        let path = walk_to_root(0, &blocks);
-        assert_eq!(path, vec![0]);
-    }
-
-    #[test]
-    fn find_divergence_no_branches() {
-        let blocks = vec![make_block(0, "root", None, 100), make_block(1, "child", Some(0), 200)];
-        assert_eq!(find_divergence(1, &blocks), None);
-    }
-
-    #[test]
-    fn find_divergence_with_fork() {
-        let blocks = vec![
-            make_block(0, "root", None, 100),
-            make_block(1, "branch-a", Some(0), 200),
-            make_block(2, "branch-b", Some(0), 150),
-        ];
-        // Both branches diverge at block 0
-        assert_eq!(find_divergence(1, &blocks), Some(0));
-        assert_eq!(find_divergence(2, &blocks), Some(0));
-    }
-
-    #[test]
-    fn find_divergence_deep_fork() {
-        let blocks = vec![
-            make_block(0, "root", None, 100),
-            make_block(1, "mid", Some(0), 200),
-            make_block(2, "deep-a", Some(1), 150),
-            make_block(3, "deep-b", Some(1), 120),
-        ];
-        // deep-a and deep-b diverge at block 1
-        assert_eq!(find_divergence(2, &blocks), Some(1));
-        assert_eq!(find_divergence(3, &blocks), Some(1));
-    }
+    // Tree algorithm tests are now covered by rat-branches crate
 
     #[test]
     fn refresh_discovers_branches() {
@@ -572,20 +504,7 @@ mod tests {
         assert_eq!(panel.entries[0].total_tokens, 300);
     }
 
-    #[test]
-    fn truncate_first_line_short() {
-        assert_eq!(truncate_first_line("hello", 10), "hello");
-    }
-
-    #[test]
-    fn truncate_first_line_long() {
-        assert_eq!(truncate_first_line("hello world this is a long prompt", 10), "hello worl…");
-    }
-
-    #[test]
-    fn truncate_first_line_multiline() {
-        assert_eq!(truncate_first_line("first\nsecond\nthird", 20), "first");
-    }
+    // truncate_first_line tests are now covered by rat-branches crate
 
     #[test]
     fn selected_entry_empty() {

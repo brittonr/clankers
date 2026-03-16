@@ -47,25 +47,20 @@ impl fmt::Display for KeymapPreset {
 }
 
 // ---------------------------------------------------------------------------
-// Keymap — mode-aware binding table
+// Keymap — mode-aware binding table using rat-keymap
 // ---------------------------------------------------------------------------
 
-/// Mode-aware keymap. Separate binding tables for normal and insert modes.
+/// Mode-aware keymap wrapper around rat-keymap::Keymap<Action, InputMode>.
 #[derive(Debug, Clone)]
 pub struct Keymap {
-    normal: HashMap<KeyCombo, Action>,
-    insert: HashMap<KeyCombo, Action>,
+    inner: rat_keymap::Keymap<Action, InputMode>,
     pub preset: KeymapPreset,
 }
 
 impl Keymap {
     /// Resolve a key event in the given mode. Returns `None` for unmapped keys.
     pub fn resolve(&self, mode: InputMode, event: &KeyEvent) -> Option<Action> {
-        let combo = KeyCombo::from_event(event);
-        match mode {
-            InputMode::Normal => self.normal.get(&combo).cloned(),
-            InputMode::Insert => self.insert.get(&combo).cloned(),
-        }
+        self.inner.resolve(&mode, event)
     }
 
     /// Build from a preset + optional per-mode user overrides.
@@ -74,25 +69,31 @@ impl Keymap {
         normal_overrides: &HashMap<String, String>,
         insert_overrides: &HashMap<String, String>,
     ) -> Self {
-        let (mut normal, mut insert) = match preset {
+        let (normal_map, insert_map) = match preset {
             KeymapPreset::Helix => (defaults::helix_normal(), defaults::helix_insert()),
             KeymapPreset::Vim => (defaults::vim_normal(), defaults::vim_insert()),
         };
 
-        apply_overrides(&mut normal, normal_overrides);
-        apply_overrides(&mut insert, insert_overrides);
+        // Build mode bindings for rat-keymap
+        let mode_bindings = vec![
+            (InputMode::Normal, normal_map),
+            (InputMode::Insert, insert_map),
+        ];
 
-        Self { normal, insert, preset }
+        // Build overrides for rat-keymap
+        let overrides = vec![
+            (InputMode::Normal, normal_overrides.clone()),
+            (InputMode::Insert, insert_overrides.clone()),
+        ];
+
+        let inner = rat_keymap::Keymap::build(mode_bindings, &overrides, parse_action);
+
+        Self { inner, preset }
     }
 
     /// List all bindings for a mode (for /help display).
     pub fn describe(&self, mode: InputMode) -> Vec<(String, Action)> {
-        let table = match mode {
-            InputMode::Normal => &self.normal,
-            InputMode::Insert => &self.insert,
-        };
-        let mut out: Vec<(String, Action)> =
-            table.iter().map(|(k, a)| (parser::format_key_combo(k), a.clone())).collect();
+        let mut out = self.inner.describe(&mode);
         out.sort_by(|a, b| format!("{:?}", a.1).cmp(&format!("{:?}", b.1)));
         out
     }
@@ -101,14 +102,6 @@ impl Keymap {
 impl Default for Keymap {
     fn default() -> Self {
         Self::build(KeymapPreset::default(), &HashMap::new(), &HashMap::new())
-    }
-}
-
-fn apply_overrides(map: &mut HashMap<KeyCombo, Action>, overrides: &HashMap<String, String>) {
-    for (key_str, action_str) in overrides {
-        if let (Some(combo), Some(action)) = (parser::parse_key_string(key_str), parse_action(action_str)) {
-            map.insert(combo, action);
-        }
     }
 }
 

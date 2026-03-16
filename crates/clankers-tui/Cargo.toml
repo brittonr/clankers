@@ -6,7 +6,10 @@ license.workspace = true
 
 [dependencies]
 clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
+rat-branches = { workspace = true }
+rat-keymap = { workspace = true }
 rat-leaderkey = { workspace = true }
+rat-widgets = { workspace = true }
 
 arboard = { version = "3", features = ["image-data"] }
 base64 = "0.22"

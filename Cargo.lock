@@ -1653,7 +1653,10 @@ dependencies = [
  "git2",
  "image",
  "indexmap 2.13.0",
+ "rat-branches",
+ "rat-keymap",
  "rat-leaderkey",
+ "rat-widgets",
  "ratatui",
  "ratatui-hypertile",
  "serde",
@@ -1669,6 +1672,7 @@ name = "clankers-tui-types"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "rat-branches",
  "rat-leaderkey",
  "serde",
  "serde_json",
@@ -7612,10 +7616,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "rat-branches"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+]
+
+[[package]]
+name = "rat-keymap"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+]
+
+[[package]]
 name = "rat-leaderkey"
 version = "0.1.0"
 dependencies = [
  "ratatui",
+]
+
+[[package]]
+name = "rat-widgets"
+version = "0.1.0"
+dependencies = [
+ "ratatui",
+ "serde_json",
 ]
 
 [[package]]

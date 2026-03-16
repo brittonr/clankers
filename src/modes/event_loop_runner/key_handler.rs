@@ -74,7 +74,7 @@ impl<'a> EventLoopRunner<'a> {
                 return;
             }
         }
-        if self.app.branching.switcher.visible && selectors::handle_branch_switcher_key(self.app, &key) {
+        if self.app.branching.switcher.visible() && selectors::handle_branch_switcher_key(self.app, &key) {
             return;
         }
         if self.app.branching.compare.visible && selectors::handle_branch_compare_key(self.app, &key) {
