@@ -258,7 +258,8 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
 
     crate::modes::interactive::rebuild_leader_menu(&mut app, None, &opts.settings);
 
-    app.connection_mode = clankers_tui_types::ConnectionMode::Attached;
+    // Auto-daemon mode stays Embedded (default) — no "ATTACHED" badge.
+    // The user ran `clankers` and shouldn't see implementation details.
 
     let resumed = opts.resume_id.is_some() || opts.continue_last;
     if resumed {

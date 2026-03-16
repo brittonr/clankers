@@ -190,7 +190,7 @@ fn start_background(
 }
 
 /// Ensure a daemon is running. If not, start one in background with defaults.
-/// Used by `--auto-daemon` on attach.
+/// Used by `--auto-daemon` on attach and the default interactive mode.
 pub async fn ensure_daemon_running() -> Result<()> {
     if transport::running_daemon_pid().is_some() {
         // Already running — verify socket responds
@@ -198,10 +198,9 @@ pub async fn ensure_daemon_running() -> Result<()> {
             return Ok(());
         }
         // PID alive but socket dead — stale, try starting fresh
-        eprintln!("Stale daemon detected, starting fresh...");
+        tracing::warn!("Stale daemon detected (PID file exists but socket unresponsive), starting fresh...");
     }
 
-    eprintln!("Starting daemon in background...");
     let exe = std::env::current_exe().map_err(|e| crate::error::Error::Io { source: e })?;
 
     let sock_dir = transport::socket_dir();
@@ -229,16 +228,16 @@ pub async fn ensure_daemon_running() -> Result<()> {
     let pid = child.id();
 
     // Wait for the control socket to become responsive
-    for _ in 0..20 {
+    for i in 0..20 {
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         if send_control(ControlCommand::Status).await.is_ok() {
-            eprintln!("Daemon running (PID {pid}).");
+            tracing::info!("daemon ready (PID {pid}, waited {}ms)", (i + 1) * 250);
             return Ok(());
         }
     }
 
     if is_process_alive(pid) {
-        eprintln!("Daemon started (PID {pid}) but socket not yet responsive.");
+        tracing::warn!("daemon started (PID {pid}) but socket not yet responsive");
         Ok(())
     } else {
         Err(crate::error::Error::Provider {
