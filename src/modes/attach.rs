@@ -855,6 +855,15 @@ fn handle_key_event(
         }
     }
 
+    // Account selector overlay
+    if app.overlays.account_selector.visible {
+        let (consumed, action) = crate::tui::selectors::handle_account_selector_key(app, &key);
+        if let Some(clankers_tui_types::SelectorAction::SwitchAccount(name)) = action {
+            client.send(SessionCommand::SwitchAccount { account: name });
+        }
+        if consumed { return; }
+    }
+
     // Tool toggle overlay
     if app.overlays.tool_toggle.visible {
         let (consumed, dirty) = crate::tui::selectors::handle_tool_toggle_key(app, &key);
