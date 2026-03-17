@@ -135,6 +135,10 @@ impl HostFunctions {
     }
 
     /// Execute a host call, checking permissions.
+    // r[impl plugin.host.fs-read-gated]
+    // r[impl plugin.host.fs-write-gated]
+    // r[impl plugin.host.ungated-functions]
+    // r[impl plugin.host.unknown-rejects]
     pub fn execute(&self, call: &HostCall, permissions: &[String]) -> HostCallResult {
         use crate::sandbox;
         use crate::sandbox::Permission;

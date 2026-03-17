@@ -7,6 +7,7 @@ use crate::types::ImageData;
 use crate::types::SerializedMessage;
 
 /// Commands sent from a client (TUI, CLI, etc.) to the daemon session.
+// r[impl protocol.serde.command-externally-tagged]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum SessionCommand {
     /// Send a prompt to the agent.

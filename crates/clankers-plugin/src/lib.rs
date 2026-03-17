@@ -11,6 +11,18 @@ pub mod registry;
 pub mod sandbox;
 pub mod ui;
 
+#[cfg(test)]
+#[path = "sandbox_tests.rs"]
+mod sandbox_tests;
+
+#[cfg(test)]
+#[path = "host_tests.rs"]
+mod host_tests;
+
+#[cfg(test)]
+#[path = "bridge_tests.rs"]
+mod bridge_tests;
+
 use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;

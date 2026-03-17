@@ -10,6 +10,7 @@ specs (
           crates/clankers-actor/src/**/*.rs
           crates/clankers-session/src/**/*.rs
           crates/clankers-protocol/src/**/*.rs
+          crates/clankers-plugin/src/**/*.rs
           crates/clankers-ucan/src/capability.rs
           crates/clankers-ucan/src/lib.rs
           src/capability_gate.rs
@@ -21,6 +22,8 @@ specs (
           crates/clankers-actor/src/*_tests.rs
           crates/clankers-session/src/tests/**/*.rs
           crates/clankers-protocol/src/*_tests.rs
+          crates/clankers-protocol/tests/**/*.rs
+          crates/clankers-plugin/src/*_tests.rs
           crates/clankers-ucan/src/tests.rs
         )
       }

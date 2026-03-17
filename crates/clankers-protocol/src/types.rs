@@ -100,6 +100,7 @@ impl SessionKey {
 }
 
 /// Current protocol version.
+// r[impl protocol.handshake.version-field]
 pub const PROTOCOL_VERSION: u32 = 1;
 
 /// ALPN identifier for session-level QUIC connections.
@@ -116,6 +117,7 @@ pub const ALPN_DAEMON: &[u8] = b"clankers/daemon/1";
 ///
 /// Tells the daemon whether this stream is a one-shot control command
 /// or a long-lived session attach.
+// r[impl protocol.serde.request-discriminant]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
 pub enum DaemonRequest {
@@ -130,6 +132,7 @@ pub enum DaemonRequest {
 ///
 /// Sent once after the daemon processes the attach request, before the
 /// bidirectional event stream begins.
+// r[impl protocol.serde.attach-response-discriminant]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(tag = "type")]
 pub enum AttachResponse {

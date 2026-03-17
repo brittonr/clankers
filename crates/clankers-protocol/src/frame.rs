@@ -11,6 +11,7 @@ use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 
 /// Maximum frame size (10 MB).
+// r[impl protocol.frame.max-fits-u32]
 const MAX_FRAME_SIZE: usize = 10_000_000;
 
 /// Errors from frame read/write operations.

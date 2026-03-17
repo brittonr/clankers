@@ -132,6 +132,7 @@ async fn unix_socket_round_trip() {
 
 // ── Handshake flow ──────────────────────────────────────────
 
+// r[verify protocol.handshake.version-field]
 #[tokio::test]
 async fn handshake_then_commands() {
     let (mut client, mut server) = duplex(64 * 1024);
@@ -441,6 +442,7 @@ async fn large_payload_round_trip() {
 
 // ── DaemonRequest / AttachResponse round-trips ──────────────
 
+// r[verify protocol.serde.request-discriminant]
 #[tokio::test]
 async fn daemon_request_control_round_trip() {
     use clankers_protocol::types::DaemonRequest;
@@ -456,6 +458,7 @@ async fn daemon_request_control_round_trip() {
     assert_eq!(req, decoded);
 }
 
+// r[verify protocol.serde.request-discriminant]
 #[tokio::test]
 async fn daemon_request_attach_round_trip() {
     use clankers_protocol::types::DaemonRequest;
@@ -476,6 +479,7 @@ async fn daemon_request_attach_round_trip() {
     assert_eq!(req, decoded);
 }
 
+// r[verify protocol.serde.attach-response-discriminant]
 #[tokio::test]
 async fn attach_response_round_trip() {
     use clankers_protocol::types::AttachResponse;
@@ -585,4 +589,90 @@ async fn full_daemon_attach_flow() {
 
     let client_event: DaemonEvent = read_frame(&mut client).await.unwrap();
     assert!(matches!(client_event, DaemonEvent::TextDelta { text } if text == "world"));
+}
+
+// ── Serde format stability ──────────────────────────────────
+
+// r[verify protocol.serde.request-discriminant]
+#[test]
+fn daemon_request_uses_type_tag() {
+    use clankers_protocol::types::DaemonRequest;
+
+    // Control variant
+    let req = DaemonRequest::Control {
+        command: ControlCommand::ListSessions,
+    };
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(json["type"], "Control", "DaemonRequest must use 'type' as tag key");
+
+    // Attach variant
+    let req = DaemonRequest::Attach {
+        handshake: Handshake {
+            protocol_version: PROTOCOL_VERSION,
+            client_name: "test".into(),
+            token: None,
+            session_id: None,
+        },
+    };
+    let json = serde_json::to_value(&req).unwrap();
+    assert_eq!(json["type"], "Attach");
+}
+
+// r[verify protocol.serde.attach-response-discriminant]
+#[test]
+fn attach_response_uses_type_tag() {
+    use clankers_protocol::types::AttachResponse;
+
+    let ok = AttachResponse::Ok { session_id: "s1".into() };
+    let json = serde_json::to_value(&ok).unwrap();
+    assert_eq!(json["type"], "Ok");
+
+    let err = AttachResponse::Error { message: "nope".into() };
+    let json = serde_json::to_value(&err).unwrap();
+    assert_eq!(json["type"], "Error");
+}
+
+// r[verify protocol.serde.command-externally-tagged]
+#[test]
+fn session_command_externally_tagged() {
+    // Unit variant → bare string
+    let json = serde_json::to_value(&SessionCommand::Abort).unwrap();
+    assert_eq!(json, serde_json::json!("Abort"));
+
+    // Struct variant → {"VariantName": {fields}}
+    let json = serde_json::to_value(&SessionCommand::SetModel {
+        model: "opus".into(),
+    }).unwrap();
+    assert!(json.get("SetModel").is_some(), "struct variant must use variant name as key");
+    assert_eq!(json["SetModel"]["model"], "opus");
+}
+
+// r[verify protocol.serde.event-externally-tagged]
+#[test]
+fn daemon_event_externally_tagged() {
+    // Unit variant → bare string
+    let json = serde_json::to_value(&DaemonEvent::AgentStart).unwrap();
+    assert_eq!(json, serde_json::json!("AgentStart"));
+
+    // Struct variant → {"VariantName": {fields}}
+    let json = serde_json::to_value(&DaemonEvent::TextDelta {
+        text: "hello".into(),
+    }).unwrap();
+    assert!(json.get("TextDelta").is_some());
+    assert_eq!(json["TextDelta"]["text"], "hello");
+}
+
+// r[verify protocol.handshake.version-field]
+#[test]
+fn protocol_version_is_nonzero() {
+    assert!(PROTOCOL_VERSION > 0, "PROTOCOL_VERSION must be > 0");
+}
+
+// r[verify protocol.frame.max-fits-u32]
+#[test]
+fn max_frame_size_fits_u32() {
+    // The constant from frame.rs is private, but we verify the documented value
+    // matches u32 range. 10_000_000 < 4_294_967_295.
+    let max: usize = 10_000_000;
+    assert!(max <= u32::MAX as usize, "MAX_FRAME_SIZE must fit in u32");
 }

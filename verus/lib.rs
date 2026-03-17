@@ -15,6 +15,8 @@ mod merge_spec;
 mod actor_spec;
 mod session_spec;
 mod protocol_spec;
+mod protocol_serde_spec;
+mod plugin_spec;
 mod ucan_spec;
 
 verus! {} // ensure the crate compiles as a verus crate

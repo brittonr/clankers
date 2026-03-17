@@ -6,6 +6,7 @@ use serde::Serialize;
 use crate::types::ImageData;
 
 /// Events sent from the daemon to connected clients.
+// r[impl protocol.serde.event-externally-tagged]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum DaemonEvent {
     // ── Agent lifecycle ─────────────────────────

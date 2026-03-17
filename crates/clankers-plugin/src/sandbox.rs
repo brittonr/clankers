@@ -29,6 +29,7 @@ pub enum Permission {
 
 impl Permission {
     /// String representation matching `plugin.json` format.
+    // r[impl plugin.perm.no-cross-grant]
     pub fn as_str(&self) -> &'static str {
         match self {
             Permission::FsRead => "fs:read",
@@ -41,6 +42,9 @@ impl Permission {
 }
 
 /// Check if a set of permissions includes a specific permission.
+// r[impl plugin.perm.all-grants-every]
+// r[impl plugin.perm.explicit-match]
+// r[impl plugin.perm.deny-without-grant]
 pub fn has_permission(granted: &[String], required: Permission) -> bool {
     let required_str = required.as_str();
     granted.iter().any(|p| p == required_str || p == "all")
@@ -59,6 +63,9 @@ pub fn check_tool_permission(granted: &[String], tool_name: &str) -> Result<(), 
 
 /// Validate that a plugin's event handler response is allowed.
 /// Strips UI actions from plugins without the `ui` permission.
+// r[impl plugin.filter.strips-without-ui]
+// r[impl plugin.filter.passes-with-ui]
+// r[impl plugin.filter.empty-passthrough]
 pub fn filter_ui_actions<T>(granted: &[String], actions: Vec<T>) -> Vec<T> {
     if has_permission(granted, Permission::Ui) || actions.is_empty() {
         actions

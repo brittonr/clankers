@@ -25,6 +25,9 @@ pub enum PluginEvent {
 
 impl PluginEvent {
     /// Parse from string (as used in plugin.json "events" array)
+    // r[impl plugin.event.parse-matches-agree]
+    // r[impl plugin.event.parse-complete]
+    // r[impl plugin.event.unknown-rejects]
     pub fn parse(s: &str) -> Option<Self> {
         match s {
             "plugin_init" => Some(Self::PluginInit),
@@ -49,6 +52,7 @@ impl PluginEvent {
     }
 
     /// Check if an event kind string matches this plugin event type.
+    // r[impl plugin.event.parse-matches-agree]
     pub fn matches_event_kind(&self, kind: &str) -> bool {
         matches!(
             (self, kind),

@@ -100,6 +100,10 @@ r[protocol.frame.length-encoding]
 Frames MUST use 4-byte big-endian length prefix. The length field encodes
 the payload size only, not including the 4 length bytes themselves.
 
+r[protocol.frame.max-fits-u32]
+`MAX_FRAME_SIZE` MUST be ≤ `u32::MAX`. This guarantees the `data.len() as
+u32` cast in `write_frame` cannot truncate after the size check passes.
+
 ## UCAN Authorization
 
 r[ucan.auth.no-escalation]
@@ -133,3 +137,98 @@ r[ucan.gate.file-write-check]
 For file write tools (write, edit), the capability gate MUST verify a
 matching FileAccess capability with read_only=false whose prefix covers
 the file path.
+
+## Protocol Serde Stability
+
+r[protocol.serde.request-discriminant]
+`DaemonRequest` MUST serialize as internally-tagged JSON with discriminant
+key `"type"`. The discriminant values MUST be exactly `"Control"` and
+`"Attach"`.
+
+r[protocol.serde.attach-response-discriminant]
+`AttachResponse` MUST serialize as internally-tagged JSON with discriminant
+key `"type"`. The discriminant values MUST be exactly `"Ok"` and `"Error"`.
+
+r[protocol.serde.command-externally-tagged]
+`SessionCommand` MUST use serde's default externally-tagged representation.
+Unit variants serialize as the bare string `"Abort"`. Struct variants
+serialize as `{"VariantName": {fields}}`.
+
+r[protocol.serde.event-externally-tagged]
+`DaemonEvent` MUST use serde's default externally-tagged representation.
+Unit variants serialize as bare strings; struct variants as
+`{"VariantName": {fields}}`.
+
+## Protocol Handshake
+
+r[protocol.handshake.version-field]
+`PROTOCOL_VERSION` MUST be > 0. A well-formed `Handshake` MUST have
+`protocol_version > 0`.
+
+## Plugin Permission Model
+
+r[plugin.perm.all-grants-every]
+`has_permission(perms, p)` MUST return `true` for every `Permission`
+variant `p` when `perms` contains the string `"all"`.
+
+r[plugin.perm.explicit-match]
+`has_permission(perms, p)` MUST return `true` when `perms` contains a
+string equal to `p.as_str()`.
+
+r[plugin.perm.deny-without-grant]
+`has_permission(perms, p)` MUST return `false` when `perms` contains
+neither `"all"` nor a string equal to `p.as_str()`.
+
+r[plugin.perm.no-cross-grant]
+Each `Permission` variant's `as_str()` MUST return a distinct string. No
+`as_str()` result may equal `"all"`. Granting one permission string MUST
+NOT cause `has_permission` to return `true` for any other `Permission`
+variant.
+
+## Plugin Host Function Gating
+
+r[plugin.host.fs-read-gated]
+`HostFunctions::execute` MUST check `has_permission(perms, FsRead)` before
+executing `"read_file"` or `"list_dir"`. If the check fails, it MUST
+return a failure result without performing filesystem I/O.
+
+r[plugin.host.fs-write-gated]
+`HostFunctions::execute` MUST check `has_permission(perms, FsWrite)` before
+executing `"write_file"`. If the check fails, it MUST return a failure
+result without performing filesystem I/O.
+
+r[plugin.host.ungated-functions]
+`"log"`, `"get_config"`, and `"get_env"` MUST NOT require any permission.
+They MUST dispatch regardless of the permission set.
+
+r[plugin.host.unknown-rejects]
+`HostFunctions::execute` MUST return a failure result for any function name
+not in the recognized set.
+
+## Plugin UI Filtering
+
+r[plugin.filter.strips-without-ui]
+`filter_ui_actions(perms, actions)` MUST return an empty `Vec` when
+`actions` is non-empty and `has_permission(perms, Ui)` is false.
+
+r[plugin.filter.passes-with-ui]
+`filter_ui_actions(perms, actions)` MUST return `actions` unchanged when
+`has_permission(perms, Ui)` is true.
+
+r[plugin.filter.empty-passthrough]
+`filter_ui_actions(perms, vec![])` MUST return an empty `Vec` regardless of
+permissions.
+
+## Plugin Event Dispatch
+
+r[plugin.event.parse-matches-agree]
+For any string `s`, if `PluginEvent::parse(s) == Some(e)` and `e` is not
+`PluginInit`, then `e.matches_event_kind(s)` MUST return `true`.
+
+r[plugin.event.parse-complete]
+Every `PluginEvent` variant MUST be reachable via `PluginEvent::parse` for
+some string `s`.
+
+r[plugin.event.unknown-rejects]
+`PluginEvent::parse(s)` MUST return `None` for any string `s` that is not
+one of the recognized event kind names.
