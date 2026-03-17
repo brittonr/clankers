@@ -16,7 +16,7 @@ use clankers_config::paths::ProjectPaths;
 use clankers_prompts as prompts;
 use clankers_skills as skills;
 #[cfg(feature = "openspec")]
-use clankers_specs::SpecEngine;
+use openspec::SpecEngine;
 
 /// A context file with its source path and content
 #[derive(Debug, Clone)]

@@ -17,7 +17,7 @@ clankers-prompts = { version = "0.1.0", path = "../clankers-prompts" }
 clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
 clanker-router = { workspace = true }
 clankers-skills = { version = "0.1.0", path = "../clankers-skills" }
-clankers-specs = { version = "0.1.0", path = "../clankers-specs", optional = true }
+openspec = { path = "../../../openspec", optional = true }
 clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
 clankers-util = { version = "0.1.0", path = "../clankers-util" }
 
@@ -35,7 +35,7 @@ tracing = { workspace = true }
 
 [features]
 default = ["openspec"]
-openspec = ["dep:clankers-specs"]
+openspec = ["dep:openspec"]
 
 [lints]
 workspace = true

@@ -1313,7 +1313,6 @@ dependencies = [
  "clankers-provider",
  "clankers-session",
  "clankers-skills",
- "clankers-specs",
  "clankers-tui",
  "clankers-tui-types",
  "clankers-ucan",
@@ -1340,6 +1339,7 @@ dependencies = [
  "madsim",
  "mime",
  "open",
+ "openspec",
  "parking_lot",
  "portable-pty",
  "pretty_assertions",
@@ -1387,11 +1387,11 @@ dependencies = [
  "clankers-prompts",
  "clankers-provider",
  "clankers-skills",
- "clankers-specs",
  "clankers-tui-types",
  "clankers-util",
  "dirs 6.0.0",
  "futures",
+ "openspec",
  "parking_lot",
  "regex",
  "serde",
@@ -1628,13 +1628,6 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "tempfile",
-]
-
-[[package]]
-name = "clankers-specs"
-version = "0.1.0"
-dependencies = [
- "openspec",
 ]
 
 [[package]]

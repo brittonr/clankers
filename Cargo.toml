@@ -19,7 +19,7 @@ members = [
     "crates/clankers-provider",
     "crates/clankers-session",
     "crates/clankers-skills",
-    "crates/clankers-specs",
+
     "crates/clankers-tui",
     "crates/clankers-tui-types",
     "crates/clankers-util",
@@ -91,7 +91,7 @@ clankers-skills = { version = "0.1.0", path = "crates/clankers-skills" }
 clankers-protocol = { version = "0.1.0", path = "crates/clankers-protocol" }
 clanker-actor = { workspace = true }
 clankers-controller = { version = "0.1.0", path = "crates/clankers-controller" }
-clankers-specs = { version = "0.1.0", path = "crates/clankers-specs", optional = true }
+openspec = { path = "../openspec", optional = true }
 clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }
 clankers-zellij = { version = "0.1.0", path = "crates/clankers-zellij", optional = true }
 clankers-tui-types = { version = "0.1.0", path = "crates/clankers-tui-types" }
@@ -167,7 +167,7 @@ workspace = true
 [features]
 default = ["tui-validate", "openspec", "zellij-share"]
 tui-validate = ["dep:portable-pty", "dep:vt100"]
-openspec = ["dep:clankers-specs"]
+openspec = ["dep:openspec"]
 zellij-share = ["dep:clankers-zellij"]
 simulation = ["dep:madsim"]
 property-testing = ["dep:bolero", "dep:bolero-generator", "dep:proptest"]

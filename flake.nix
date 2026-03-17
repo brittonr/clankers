@@ -241,7 +241,7 @@
             clankers-procmon
             clankers-protocol
             clankers-router
-            clankers-specs
+
             clankers-tui
             clankers-tui-types
             clankers-zellij

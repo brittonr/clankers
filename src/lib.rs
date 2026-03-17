@@ -17,7 +17,7 @@ pub use clankers_session;
 pub mod session;
 pub mod slash_commands;
 #[cfg(feature = "openspec")]
-pub use clankers_specs as specs;
+pub use openspec as specs;
 pub mod tools;
 pub use clankers_tui as tui;
 pub mod util;
