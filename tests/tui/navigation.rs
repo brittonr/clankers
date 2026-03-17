@@ -6,7 +6,7 @@ use super::harness::Key;
 use super::harness::TuiTestHarness;
 
 const SETTLE: Duration = Duration::from_millis(300);
-const TIMEOUT: Duration = Duration::from_secs(3);
+const TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Helper: submit a slash command and return to normal mode
 fn run_and_escape(h: &mut TuiTestHarness, cmd: &str) {

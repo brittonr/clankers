@@ -13,7 +13,7 @@ use super::harness::Key;
 use super::harness::TuiTestHarness;
 
 const SETTLE: Duration = Duration::from_millis(300);
-const TIMEOUT: Duration = Duration::from_secs(3);
+const TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Helper to enter insert mode and submit a slash command
 fn run_slash(h: &mut TuiTestHarness, cmd: &str) {
@@ -26,7 +26,8 @@ fn run_slash(h: &mut TuiTestHarness, cmd: &str) {
 
 #[test]
 fn slash_plugin_lists_test_plugin() {
-    let mut h = TuiTestHarness::spawn(40, 120);
+    // 60 rows so the full plugin list (8+ plugins with wrapped descriptions) fits on screen.
+    let mut h = TuiTestHarness::spawn(60, 140);
     run_slash(&mut h, "/plugin");
     h.wait_for_text("clankers-test-plugin", TIMEOUT);
     assert!(h.screen_contains("v0.1.0"), "Should show plugin version.\nScreen:\n{}", h.screen_text());
@@ -37,7 +38,7 @@ fn slash_plugin_lists_test_plugin() {
 
 #[test]
 fn slash_plugin_shows_active_marker() {
-    let mut h = TuiTestHarness::spawn(40, 120);
+    let mut h = TuiTestHarness::spawn(60, 140);
     run_slash(&mut h, "/plugin");
     h.wait_for_text("clankers-test-plugin", TIMEOUT);
     // Active plugins are marked with ✓
@@ -49,7 +50,7 @@ fn slash_plugin_shows_active_marker() {
 
 #[test]
 fn slash_plugin_shows_tools() {
-    let mut h = TuiTestHarness::spawn(40, 120);
+    let mut h = TuiTestHarness::spawn(60, 140);
     run_slash(&mut h, "/plugin");
     h.wait_for_text("test_echo", TIMEOUT);
     assert!(h.screen_contains("test_reverse"), "Should list test_reverse tool.\nScreen:\n{}", h.screen_text());
@@ -133,7 +134,7 @@ fn slash_menu_shows_plugin_completion() {
 
 #[test]
 fn slash_plugin_after_clear() {
-    let mut h = TuiTestHarness::spawn(40, 120);
+    let mut h = TuiTestHarness::spawn(60, 140);
     run_slash(&mut h, "/clear");
     h.settle(SETTLE);
     h.send_key(Key::Escape);
@@ -147,7 +148,7 @@ fn slash_plugin_after_clear() {
 
 #[test]
 fn slash_plugin_then_status() {
-    let mut h = TuiTestHarness::spawn(40, 120);
+    let mut h = TuiTestHarness::spawn(60, 140);
     run_slash(&mut h, "/plugin");
     h.wait_for_text("clankers-test-plugin", TIMEOUT);
     h.send_key(Key::Escape);

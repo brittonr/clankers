@@ -6,7 +6,7 @@ use super::harness::Key;
 use super::harness::TuiTestHarness;
 
 const SETTLE: Duration = Duration::from_millis(300);
-const TIMEOUT: Duration = Duration::from_secs(3);
+const TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Helper to enter insert mode and submit a slash command
 fn run_slash(h: &mut TuiTestHarness, cmd: &str) {

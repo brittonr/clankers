@@ -202,5 +202,34 @@ pub fn build_router(
         backends.iter().map(|(n, _)| n.as_str()).collect::<Vec<_>>().join(", ")
     );
 
-    Ok(Arc::new(RouterProvider::new(backends)))
+    // Open the response cache database.
+    // Path: ~/.clankers/agent/cache.db (alongside other global config).
+    // Skip when CLANKERS_NO_DAEMON is set — test harnesses set this env var,
+    // and opening the same redb file from 20+ parallel test processes causes
+    // file-lock contention.
+    let cache_db = if std::env::var("CLANKERS_NO_DAEMON").is_err() {
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let cache_db_path = std::path::PathBuf::from(home)
+            .join(".clankers")
+            .join("agent")
+            .join("cache.db");
+
+        match clanker_router::RouterDb::open(&cache_db_path) {
+            Ok(db) => {
+                info!("Response cache enabled at {}", cache_db_path.display());
+                Some(db)
+            }
+            Err(e) => {
+                tracing::warn!("Failed to open cache database: {e} — caching disabled");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    match cache_db {
+        Some(db) => Ok(Arc::new(RouterProvider::with_db(backends, db))),
+        None => Ok(Arc::new(RouterProvider::new(backends))),
+    }
 }

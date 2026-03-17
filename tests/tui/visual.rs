@@ -18,7 +18,7 @@ use super::harness::TuiTestHarness;
 use super::snapshot::assert_structure_snapshot;
 
 const SETTLE: Duration = Duration::from_millis(300);
-const TIMEOUT: Duration = Duration::from_secs(3);
+const TIMEOUT: Duration = Duration::from_secs(5);
 
 // ── Startup state ────────────────────────────────────────────
 

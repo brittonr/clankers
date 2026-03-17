@@ -2,13 +2,24 @@
 //!
 //! Wraps multiple `Provider` backends and routes completion requests
 //! to the right one based on model ID, aliases, and availability.
+//!
+//! When a [`RouterDb`] is attached via [`RouterProvider::with_db`],
+//! the router caches responses for deterministic requests (temperature
+//! = 0 or unset). Cache keys are SHA-256 hashes of the normalized
+//! request (model + messages + system prompt + tools + temperature +
+//! thinking). Hits replay the stored stream events without making a
+//! provider call.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use clanker_router::RouterDb;
+use clanker_router::db::cache::CacheKeyInput;
 use tokio::sync::mpsc;
+use tracing::debug;
 use tracing::info;
+use tracing::warn;
 
 use crate::CompletionRequest;
 use crate::Model;
@@ -91,6 +102,10 @@ impl Provider for RouterCompatAdapter {
 ///
 /// Routes requests to the appropriate backend based on model ID.
 /// Falls back to the default provider when a model isn't found.
+///
+/// When a [`RouterDb`] is attached, deterministic requests (temperature
+/// = 0 or unset, `no_cache` = false) are cached in redb. Identical
+/// requests replay stored stream events without calling the provider.
 pub struct RouterProvider {
     /// Named provider backends
     providers: HashMap<String, Arc<dyn Provider>>,
@@ -100,12 +115,15 @@ pub struct RouterProvider {
     default_provider: String,
     /// All models from all providers
     all_models: Vec<Model>,
+    /// Persistent database for response caching (optional)
+    db: Option<RouterDb>,
 }
 
 impl RouterProvider {
     /// Create a new router from a list of (name, provider) pairs.
     ///
     /// The first provider in the list becomes the default.
+    /// Response caching is disabled (no database attached).
     pub fn new(providers: Vec<(String, Arc<dyn Provider>)>) -> Self {
         let mut registry = ModelRegistry::new();
         let mut all_models = Vec::new();
@@ -130,7 +148,35 @@ impl RouterProvider {
             registry,
             default_provider,
             all_models,
+            db: None,
         }
+    }
+
+    /// Create a new router with a persistent database for response caching.
+    ///
+    /// Starts a background task that evicts expired cache entries every
+    /// 5 minutes.
+    pub fn with_db(providers: Vec<(String, Arc<dyn Provider>)>, db: RouterDb) -> Self {
+        let mut this = Self::new(providers);
+
+        // Start background cache eviction
+        let db_clone = db.clone();
+        if let Ok(handle) = tokio::runtime::Handle::try_current() {
+            handle.spawn(async move {
+                let mut interval = tokio::time::interval(std::time::Duration::from_secs(300));
+                loop {
+                    interval.tick().await;
+                    match db_clone.cache().evict_expired() {
+                        Ok(0) => {}
+                        Ok(n) => debug!("cache eviction: removed {n} expired entries"),
+                        Err(e) => warn!("cache eviction failed: {e}"),
+                    }
+                }
+            });
+        }
+
+        this.db = Some(db);
+        this
     }
 
     /// Resolve a model identifier to a provider.
@@ -192,7 +238,76 @@ impl Provider for RouterProvider {
             info!("Routing '{}' via {}", request.model, provider.name());
         }
 
-        provider.complete(request, tx).await
+        // ── Response cache lookup ───────────────────────────────────
+        let cache_key = self.compute_cache_key(&request);
+
+        if let Some(ref key) = cache_key
+            && let Some(ref db) = self.db
+        {
+            match db.cache().get(key) {
+                Ok(Some(cached)) => {
+                    debug!(
+                        "cache hit for {} (key={:.12}…, hits={})",
+                        request.model, key, cached.hit_count
+                    );
+                    let _ = db.cache().record_hit(key);
+                    for event in cached.events {
+                        if tx.send(StreamEvent::from(event)).await.is_err() {
+                            break;
+                        }
+                    }
+                    return Ok(());
+                }
+                Ok(None) => {} // cache miss, proceed to provider
+                Err(e) => warn!("cache read failed: {e}"),
+            }
+        }
+
+        // ── Dispatch to provider ────────────────────────────────────
+        if cache_key.is_some() {
+            // Intercept the stream to collect events for cache write-back
+            let (inner_tx, mut inner_rx) = mpsc::channel::<StreamEvent>(256);
+
+            let provider_name = provider.name().to_string();
+            let model_id = request.model.clone();
+            let result = provider.complete(request, inner_tx).await;
+
+            let mut collected = Vec::new();
+            let mut input_tokens = 0u64;
+            let mut output_tokens = 0u64;
+
+            while let Some(event) = inner_rx.recv().await {
+                if let StreamEvent::MessageDelta { usage, .. } = &event {
+                    input_tokens += usage.input_tokens as u64;
+                    output_tokens += usage.output_tokens as u64;
+                }
+                collected.push(event.clone());
+                if tx.send(event).await.is_err() {
+                    break;
+                }
+            }
+
+            // Write to cache on success
+            if result.is_ok()
+                && !collected.is_empty()
+                && let (Some(key), Some(db)) = (cache_key, &self.db)
+            {
+                let router_events: Vec<clanker_router::streaming::StreamEvent> =
+                    collected.into_iter().map(Into::into).collect();
+                let entry =
+                    db.cache()
+                        .build_entry(&key, &provider_name, &model_id, router_events, input_tokens, output_tokens);
+                match db.cache().put(&entry) {
+                    Ok(()) => debug!("cached response for {model_id} (key={key:.12}…)"),
+                    Err(e) => warn!("cache write failed: {e}"),
+                }
+            }
+
+            result
+        } else {
+            // No caching — stream directly
+            provider.complete(request, tx).await
+        }
     }
 
     fn models(&self) -> &[Model] {
@@ -207,6 +322,46 @@ impl Provider for RouterProvider {
         for provider in self.providers.values() {
             provider.reload_credentials().await;
         }
+    }
+}
+
+impl RouterProvider {
+    /// Compute a cache key for a request, if caching is appropriate.
+    ///
+    /// Returns `None` when:
+    /// - No database is attached
+    /// - `no_cache` is set on the request
+    /// - Temperature is > 0 (non-deterministic responses)
+    fn compute_cache_key(&self, request: &CompletionRequest) -> Option<String> {
+        self.db.as_ref()?;
+
+        if request.no_cache {
+            return None;
+        }
+
+        // Skip caching for non-deterministic requests
+        if let Some(temp) = request.temperature
+            && temp > 0.0
+        {
+            return None;
+        }
+
+        let messages: Vec<serde_json::Value> = request
+            .messages
+            .iter()
+            .filter_map(|m| serde_json::to_value(m).ok())
+            .collect();
+
+        let input = CacheKeyInput {
+            model: &request.model,
+            system_prompt: request.system_prompt.as_deref(),
+            messages: &messages,
+            tools: &request.tools,
+            temperature: request.temperature,
+            thinking_enabled: request.thinking.as_ref().is_some_and(|t| t.enabled),
+        };
+
+        Some(input.compute_key())
     }
 }
 
@@ -341,5 +496,279 @@ mod tests {
         let router = RouterProvider::new(vec![mock("anthropic", &["claude-sonnet-4-5-20250514"])]);
         // Should not panic
         router.reload_credentials().await;
+    }
+
+    // ── Cache tests ─────────────────────────────────────────────────
+
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
+    fn test_db() -> RouterDb {
+        let dir = tempfile::TempDir::new().unwrap();
+        // Leak the TempDir so it lives for the duration of the test.
+        // (redb holds an open fd, so the dir must outlive the db.)
+        let path = dir.path().join("test_cache.db");
+        std::mem::forget(dir);
+        RouterDb::open(&path).unwrap()
+    }
+
+    /// Mock provider that counts how many times `complete` is called.
+    struct CountingProvider {
+        name_str: String,
+        models_list: Vec<Model>,
+        call_count: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl Provider for CountingProvider {
+        async fn complete(&self, _request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
+            let _ = tx
+                .send(StreamEvent::MessageStart {
+                    message: clanker_router::streaming::MessageMetadata {
+                        id: "msg-1".into(),
+                        model: "test-model".into(),
+                        role: "assistant".into(),
+                    },
+                })
+                .await;
+            let _ = tx
+                .send(StreamEvent::ContentBlockStart {
+                    index: 0,
+                    content_block: clankers_message::message::Content::Text { text: String::new() },
+                })
+                .await;
+            let _ = tx
+                .send(StreamEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: clanker_router::streaming::ContentDelta::TextDelta {
+                        text: "Hello!".into(),
+                    },
+                })
+                .await;
+            let _ = tx.send(StreamEvent::ContentBlockStop { index: 0 }).await;
+            let _ = tx
+                .send(StreamEvent::MessageDelta {
+                    stop_reason: Some("end_turn".into()),
+                    usage: clanker_router::Usage {
+                        input_tokens: 100,
+                        output_tokens: 20,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0,
+                    },
+                })
+                .await;
+            let _ = tx.send(StreamEvent::MessageStop).await;
+            Ok(())
+        }
+        fn models(&self) -> &[Model] {
+            &self.models_list
+        }
+        fn name(&self) -> &str {
+            &self.name_str
+        }
+    }
+
+    fn counting_mock(name: &str, model_ids: &[&str]) -> (String, Arc<dyn Provider>, Arc<AtomicUsize>) {
+        let call_count = Arc::new(AtomicUsize::new(0));
+        let models: Vec<Model> = model_ids
+            .iter()
+            .map(|id| Model {
+                id: id.to_string(),
+                name: id.to_string(),
+                provider: name.to_string(),
+                max_input_tokens: 200_000,
+                max_output_tokens: 16_384,
+                supports_thinking: true,
+                supports_images: true,
+                supports_tools: true,
+                input_cost_per_mtok: None,
+                output_cost_per_mtok: None,
+            })
+            .collect();
+
+        (
+            name.to_string(),
+            Arc::new(CountingProvider {
+                name_str: name.to_string(),
+                models_list: models,
+                call_count: call_count.clone(),
+            }),
+            call_count,
+        )
+    }
+
+    fn make_user_msg(text: &str) -> clankers_message::message::AgentMessage {
+        use clankers_message::message::*;
+        AgentMessage::User(UserMessage {
+            id: MessageId::new("test-msg"),
+            content: vec![Content::Text { text: text.into() }],
+            timestamp: chrono::Utc::now(),
+        })
+    }
+
+    fn test_request(model: &str) -> CompletionRequest {
+        CompletionRequest {
+            model: model.to_string(),
+            messages: vec![make_user_msg("What is 2+2?")],
+            system_prompt: Some("You are helpful.".into()),
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cache_hit_skips_provider() {
+        let db = test_db();
+        let (name, provider, call_count) = counting_mock("test", &["test-model"]);
+        let router = RouterProvider::with_db(vec![(name, provider)], db);
+
+        let request = test_request("test-model");
+
+        // First call: cache miss, provider called
+        let (tx1, mut rx1) = mpsc::channel(64);
+        router.complete(request.clone(), tx1).await.unwrap();
+        let mut events1 = Vec::new();
+        while let Some(e) = rx1.recv().await {
+            events1.push(e);
+        }
+        assert_eq!(call_count.load(Ordering::SeqCst), 1);
+        assert!(!events1.is_empty());
+
+        // Second call: cache hit, provider NOT called
+        let (tx2, mut rx2) = mpsc::channel(64);
+        router.complete(request, tx2).await.unwrap();
+        let mut events2 = Vec::new();
+        while let Some(e) = rx2.recv().await {
+            events2.push(e);
+        }
+        assert_eq!(call_count.load(Ordering::SeqCst), 1); // still 1
+        assert_eq!(events1.len(), events2.len());
+    }
+
+    #[tokio::test]
+    async fn test_cache_skipped_with_no_cache() {
+        let db = test_db();
+        let (name, provider, call_count) = counting_mock("test", &["test-model"]);
+        let router = RouterProvider::with_db(vec![(name, provider)], db);
+
+        let mut request = test_request("test-model");
+        request.no_cache = true;
+
+        // Both calls hit the provider (caching disabled per-request)
+        let (tx1, _rx1) = mpsc::channel(64);
+        router.complete(request.clone(), tx1).await.unwrap();
+        let (tx2, _rx2) = mpsc::channel(64);
+        router.complete(request, tx2).await.unwrap();
+
+        assert_eq!(call_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn test_cache_skipped_with_nonzero_temperature() {
+        let db = test_db();
+        let (name, provider, call_count) = counting_mock("test", &["test-model"]);
+        let router = RouterProvider::with_db(vec![(name, provider)], db);
+
+        let mut request = test_request("test-model");
+        request.temperature = Some(0.7);
+
+        // Both calls hit the provider (non-deterministic)
+        let (tx1, _rx1) = mpsc::channel(64);
+        router.complete(request.clone(), tx1).await.unwrap();
+        let (tx2, _rx2) = mpsc::channel(64);
+        router.complete(request, tx2).await.unwrap();
+
+        assert_eq!(call_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn test_cache_works_with_temp_zero() {
+        let db = test_db();
+        let (name, provider, call_count) = counting_mock("test", &["test-model"]);
+        let router = RouterProvider::with_db(vec![(name, provider)], db);
+
+        let mut request = test_request("test-model");
+        request.temperature = Some(0.0);
+
+        let (tx1, _rx1) = mpsc::channel(64);
+        router.complete(request.clone(), tx1).await.unwrap();
+        let (tx2, _rx2) = mpsc::channel(64);
+        router.complete(request, tx2).await.unwrap();
+
+        assert_eq!(call_count.load(Ordering::SeqCst), 1); // second was cached
+    }
+
+    #[tokio::test]
+    async fn test_no_cache_without_db() {
+        // Router without a db — caching is implicitly disabled
+        let (name, provider, call_count) = counting_mock("test", &["test-model"]);
+        let router = RouterProvider::new(vec![(name, provider)]);
+
+        let request = test_request("test-model");
+
+        let (tx1, _rx1) = mpsc::channel(64);
+        router.complete(request.clone(), tx1).await.unwrap();
+        let (tx2, _rx2) = mpsc::channel(64);
+        router.complete(request, tx2).await.unwrap();
+
+        assert_eq!(call_count.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn test_compute_cache_key_deterministic() {
+        let db = test_db();
+        let router = RouterProvider::with_db(vec![mock("test", &["test-model"])], db);
+
+        let req = test_request("test-model");
+        let key1 = router.compute_cache_key(&req);
+        let key2 = router.compute_cache_key(&req);
+
+        assert!(key1.is_some());
+        assert_eq!(key1, key2);
+    }
+
+    #[test]
+    fn test_compute_cache_key_none_when_no_db() {
+        let router = RouterProvider::new(vec![mock("test", &["test-model"])]);
+        assert!(router.compute_cache_key(&test_request("test-model")).is_none());
+    }
+
+    #[test]
+    fn test_compute_cache_key_none_when_no_cache_set() {
+        let db = test_db();
+        let router = RouterProvider::with_db(vec![mock("test", &["test-model"])], db);
+
+        let mut req = test_request("test-model");
+        req.no_cache = true;
+        assert!(router.compute_cache_key(&req).is_none());
+    }
+
+    #[test]
+    fn test_compute_cache_key_none_for_high_temperature() {
+        let db = test_db();
+        let router = RouterProvider::with_db(vec![mock("test", &["test-model"])], db);
+
+        let mut req = test_request("test-model");
+        req.temperature = Some(0.5);
+        assert!(router.compute_cache_key(&req).is_none());
+    }
+
+    #[test]
+    fn test_different_messages_different_keys() {
+        let db = test_db();
+        let router = RouterProvider::with_db(vec![mock("test", &["test-model"])], db);
+
+        let req1 = test_request("test-model");
+        let mut req2 = test_request("test-model");
+        req2.messages = vec![make_user_msg("What is 3+3?")];
+
+        let key1 = router.compute_cache_key(&req1).unwrap();
+        let key2 = router.compute_cache_key(&req2).unwrap();
+        assert_ne!(key1, key2);
     }
 }
