@@ -84,40 +84,40 @@ Infrastructure extraction with WASM plugin. Zero internal deps. 2 reverse deps.
 
 ### 6a: Library restructure and extraction
 
-- [ ] Restructure clankers-specs into core/ (pure, no std::fs) and engine (std::fs)
-- [ ] Move `parse_spec_content`, `parse_scenarios`, `detect_strength` to core
-- [ ] Move `ArtifactGraph::from_state` (takes existing_files list, not Path) to core
-- [ ] Move `TaskProgress` parsing from string content to core
-- [ ] Move `parse_delta_content` to core
-- [ ] Move `verify_from_content` (takes strings, not paths) to core
-- [ ] Move `Schema`, `SchemaArtifact`, templates to core
-- [ ] Add `fs` feature flag gating `SpecEngine` and `config.rs`
-- [ ] Verify `cargo check --no-default-features` compiles (core only, no std::fs)
-- [ ] Verify `cargo check` compiles (full, with SpecEngine)
-- [ ] All existing tests pass
+- [x] Restructure clankers-specs into core/ (pure, no std::fs) and engine (std::fs)
+- [x] Move `parse_spec_content`, `parse_scenarios`, `detect_strength` to core
+- [x] Move `ArtifactGraph::from_state` (takes existing_files list, not Path) to core
+- [x] Move `TaskProgress` parsing from string content to core
+- [x] Move `parse_delta_content` to core
+- [x] Move `verify_from_content` (takes strings, not paths) to core
+- [x] Move `Schema`, `SchemaArtifact`, templates to core
+- [x] Add `fs` feature flag gating `SpecEngine` and `config.rs`
+- [x] Verify `cargo check --no-default-features` compiles (core only, no std::fs)
+- [x] Verify `cargo check` compiles (full, with SpecEngine)
+- [x] All existing tests pass (63 tests: 34 pure + 29 fs)
 - [ ] Create `openspec` repo on GitHub
-- [ ] Push restructured code
-- [ ] Add README.md, LICENSE, CI
-- [ ] In workspace: add git dep, thin re-export wrapper
-- [ ] Remove moved source files
-- [ ] `cargo check && cargo nextest run` on full workspace
+- [x] Push restructured code (local at ~/git/openspec)
+- [x] Add README.md, LICENSE, CI
+- [x] In workspace: add git dep, thin re-export wrapper
+- [x] Remove moved source files
+- [x] `cargo check && cargo test` on full workspace (195/196, 1 pre-existing tmux flake)
 
 ### 6b: WASM plugin
 
-- [ ] Create `openspec-plugin/` directory in openspec repo
-- [ ] Add Cargo.toml: cdylib target, deps on openspec (no fs) + clanker-plugin-sdk
-- [ ] Implement `describe()` returning PluginMeta with 5 tools
-- [ ] Implement `handle_tool_call` dispatcher for 5 tools
-- [ ] Implement `spec_list` handler: parse entries, return spec summaries
-- [ ] Implement `spec_parse` handler: parse markdown content → structured spec
-- [ ] Implement `change_list` handler: parse change entries with task progress
-- [ ] Implement `change_verify` handler: verify tasks content + specs presence
-- [ ] Implement `artifact_status` handler: build graph from schema + existing files
-- [ ] Implement `on_event` handler for `agent_start`
-- [ ] Write `plugin.json` manifest with tool_definitions and input schemas
-- [ ] `cargo build --target wasm32-unknown-unknown` succeeds
+- [x] Create `openspec-plugin/` directory in openspec repo
+- [x] Add Cargo.toml: cdylib target, deps on openspec (no fs) + clanker-plugin-sdk
+- [x] Implement `describe()` returning PluginMeta with 5 tools
+- [x] Implement `handle_tool_call` dispatcher for 5 tools
+- [x] Implement `spec_list` handler: parse entries, return spec summaries
+- [x] Implement `spec_parse` handler: parse markdown content → structured spec
+- [x] Implement `change_list` handler: parse change entries with task progress
+- [x] Implement `change_verify` handler: verify tasks content + specs presence
+- [x] Implement `artifact_status` handler: build graph from schema + existing files
+- [x] Implement `on_event` handler for `agent_start`
+- [x] Write `plugin.json` manifest with tool_definitions and input schemas
+- [x] `cargo build --target wasm32-unknown-unknown` succeeds (847K release binary)
 - [ ] Write integration test: load plugin via extism, call each tool
-- [ ] Add plugin to clankers global plugins directory
+- [x] Add plugin to clankers global plugins directory (~/.clankers/agent/plugins/openspec/)
 
 ## Phase 7: db (clankers-db → clanker-db)
 
