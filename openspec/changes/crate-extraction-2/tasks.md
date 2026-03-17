@@ -1,0 +1,219 @@
+# crate-extraction-2 — Tasks
+
+> **Legend:** `[ ]` not started · `[~]` in progress ⏱ · `[x]` done ✅ `<duration>`
+
+## Phase 1: plugin-sdk (clankers-plugin-sdk → clanker-plugin-sdk)
+
+Simplest extraction. Already has its own `[workspace]`. Repo move.
+
+- [ ] Create `clanker-plugin-sdk` repo on GitHub
+- [ ] Copy `crates/clankers-plugin-sdk/` contents to new repo
+- [ ] Rename crate in Cargo.toml (`name = "clanker-plugin-sdk"`)
+- [ ] Replace all `clankers_plugin_sdk` / `clankers-plugin-sdk` references in source and docs
+- [ ] Verify `cargo build --target wasm32-unknown-unknown` compiles
+- [ ] Add README.md with quick-start example (from existing lib.rs docs)
+- [ ] Add LICENSE
+- [ ] Add CI (cargo check, clippy, fmt, cargo build --target wasm32)
+- [ ] Update any existing plugins that depend on the path dep
+- [ ] Remove `crates/clankers-plugin-sdk/` from workspace
+
+## Phase 2: nix (clankers-nix → clanker-nix)
+
+Leaf extraction. Zero internal deps. snix git deps carry over.
+
+- [ ] Create `clanker-nix` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-nix -b extract-nix`
+- [ ] Push split branch to new repo
+- [ ] Rename crate in Cargo.toml (`name = "clanker-nix"`)
+- [ ] Replace all `clankers_nix` / `clankers-nix` references in source
+- [ ] Preserve feature flags: `eval`, `refscan`
+- [ ] Preserve snix rev pin (`8fe3bade...`)
+- [ ] Add README.md, LICENSE, CI
+- [ ] In workspace: add git dep, thin re-export wrapper
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run` on full workspace
+
+## Phase 3: matrix (clankers-matrix → clanker-matrix)
+
+Leaf extraction. Zero internal deps. Heavy external deps (matrix-sdk).
+
+- [ ] Create `clanker-matrix` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-matrix -b extract-matrix`
+- [ ] Push split branch to new repo
+- [ ] Rename crate in Cargo.toml (`name = "clanker-matrix"`)
+- [ ] Replace all `clankers_matrix` / `clankers-matrix` references in source
+- [ ] Preserve matrix-sdk features: `e2e-encryption`, `sqlite`, `rustls-tls`
+- [ ] Add README.md, LICENSE, CI
+- [ ] In workspace: add git dep, thin re-export wrapper
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run` on full workspace
+
+## Phase 4: zellij (clankers-zellij → clanker-zellij)
+
+Leaf extraction. Zero internal deps. iroh QUIC dep.
+
+- [ ] Create `clanker-zellij` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-zellij -b extract-zellij`
+- [ ] Push split branch to new repo
+- [ ] Rename crate in Cargo.toml (`name = "clanker-zellij"`)
+- [ ] Replace all `clankers_zellij` / `clankers-zellij` references in source
+- [ ] Preserve iroh version and `address-lookup-mdns` feature
+- [ ] Add README.md, LICENSE, CI
+- [ ] In workspace: add git dep, thin re-export wrapper
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run` on full workspace
+
+## Phase 5: protocol (clankers-protocol → clanker-protocol)
+
+Infrastructure extraction. Zero internal deps. 2 reverse deps.
+
+- [ ] Create `clanker-protocol` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-protocol -b extract-protocol`
+- [ ] Push split branch to new repo
+- [ ] Rename crate in Cargo.toml (`name = "clanker-protocol"`)
+- [ ] Replace all `clankers_protocol` / `clankers-protocol` references in source
+- [ ] Verify frame, command, control, event, types modules all compile
+- [ ] Add README.md, LICENSE, CI
+- [ ] In workspace: add git dep, thin re-export wrapper
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run` — verify root crate + controller compile
+
+## Phase 6: specs (clankers-specs → openspec + openspec-plugin)
+
+Infrastructure extraction with WASM plugin. Zero internal deps. 2 reverse deps.
+
+### 6a: Library restructure and extraction
+
+- [ ] Restructure clankers-specs into core/ (pure, no std::fs) and engine (std::fs)
+- [ ] Move `parse_spec_content`, `parse_scenarios`, `detect_strength` to core
+- [ ] Move `ArtifactGraph::from_state` (takes existing_files list, not Path) to core
+- [ ] Move `TaskProgress` parsing from string content to core
+- [ ] Move `parse_delta_content` to core
+- [ ] Move `verify_from_content` (takes strings, not paths) to core
+- [ ] Move `Schema`, `SchemaArtifact`, templates to core
+- [ ] Add `fs` feature flag gating `SpecEngine` and `config.rs`
+- [ ] Verify `cargo check --no-default-features` compiles (core only, no std::fs)
+- [ ] Verify `cargo check` compiles (full, with SpecEngine)
+- [ ] All existing tests pass
+- [ ] Create `openspec` repo on GitHub
+- [ ] Push restructured code
+- [ ] Add README.md, LICENSE, CI
+- [ ] In workspace: add git dep, thin re-export wrapper
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run` on full workspace
+
+### 6b: WASM plugin
+
+- [ ] Create `openspec-plugin/` directory in openspec repo
+- [ ] Add Cargo.toml: cdylib target, deps on openspec (no fs) + clanker-plugin-sdk
+- [ ] Implement `describe()` returning PluginMeta with 5 tools
+- [ ] Implement `handle_tool_call` dispatcher for 5 tools
+- [ ] Implement `spec_list` handler: parse entries, return spec summaries
+- [ ] Implement `spec_parse` handler: parse markdown content → structured spec
+- [ ] Implement `change_list` handler: parse change entries with task progress
+- [ ] Implement `change_verify` handler: verify tasks content + specs presence
+- [ ] Implement `artifact_status` handler: build graph from schema + existing files
+- [ ] Implement `on_event` handler for `agent_start`
+- [ ] Write `plugin.json` manifest with tool_definitions and input schemas
+- [ ] `cargo build --target wasm32-unknown-unknown` succeeds
+- [ ] Write integration test: load plugin via extism, call each tool
+- [ ] Add plugin to clankers global plugins directory
+
+## Phase 7: db (clankers-db → clanker-db)
+
+Infrastructure extraction. Zero internal deps. 2 reverse deps.
+
+- [ ] Create `clanker-db` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-db -b extract-db`
+- [ ] Push split branch to new repo
+- [ ] Rename crate in Cargo.toml (`name = "clanker-db"`)
+- [ ] Replace all `clankers_db` / `clankers-db` references in source
+- [ ] Verify all 8 table modules compile: audit, memory, sessions, history,
+      usage, file_cache, tool_results, registry
+- [ ] Add README.md, LICENSE, CI
+- [ ] In workspace: add git dep, thin re-export wrapper
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run` — verify root crate + agent compile
+
+## Phase 8: hooks (clankers-hooks → clanker-hooks)
+
+Infrastructure extraction. Zero internal deps. 5 reverse deps.
+
+- [ ] Create `clanker-hooks` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-hooks -b extract-hooks`
+- [ ] Push split branch to new repo
+- [ ] Rename crate in Cargo.toml (`name = "clanker-hooks"`)
+- [ ] Replace all `clankers_hooks` / `clankers-hooks` references in source
+- [ ] Add `Custom(String)` variant to `HookPoint` for extensibility
+- [ ] Verify config, dispatcher, git, payload, point, script, verdict modules compile
+- [ ] Add README.md, LICENSE, CI
+- [ ] In workspace: add git dep, thin re-export wrapper
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run` — verify all 5 reverse deps compile
+
+## Phase 9: tui-types (clankers-tui-types → clanker-tui-types)
+
+High-impact type extraction. Zero internal deps. 10 reverse deps.
+
+### 9a: Resolve subwayrat path deps
+
+- [ ] Convert `rat-branches` path dep to git dep (subwayrat repo)
+- [ ] Convert `rat-leaderkey` path dep to git dep (subwayrat repo)
+- [ ] Convert `rat-widgets` path dep to git dep (subwayrat repo) if needed elsewhere
+- [ ] Verify workspace compiles with git deps instead of path deps
+
+### 9b: Extract
+
+- [ ] Create `clanker-tui-types` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-tui-types -b extract-tui-types`
+- [ ] Push split branch to new repo
+- [ ] Rename crate in Cargo.toml (`name = "clanker-tui-types"`)
+- [ ] Replace all `clankers_tui_types` / `clankers-tui-types` references in source
+- [ ] Verify all 18 type modules compile
+- [ ] Add README.md, LICENSE, CI
+- [ ] In workspace: add git dep, thin re-export wrapper
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run` — verify all 10 reverse deps compile
+
+### 9c: Migrate callers
+
+- [ ] Migrate root crate imports to `clanker_tui_types`
+- [ ] Migrate clankers-agent imports
+- [ ] Migrate clankers-config imports
+- [ ] Migrate clankers-controller imports
+- [ ] Migrate clankers-model-selection imports
+- [ ] Migrate clankers-plugin imports
+- [ ] Migrate clankers-procmon imports
+- [ ] Migrate clankers-provider imports
+- [ ] Migrate clankers-tui imports
+- [ ] Migrate clankers-util imports
+- [ ] Remove thin wrapper crate from workspace
+
+## Phase 10: message (clankers-message → clanker-message)
+
+High-impact type extraction. 1 internal dep (clanker-router). 6 reverse deps.
+
+- [ ] Create `clanker-message` repo on GitHub
+- [ ] `git subtree split -P crates/clankers-message -b extract-message`
+- [ ] Push split branch to new repo
+- [ ] Rename crate in Cargo.toml (`name = "clanker-message"`)
+- [ ] Convert clanker-router workspace dep to git dep in new repo
+- [ ] Replace all `clankers_message` / `clankers-message` references in source
+- [ ] Add README.md, LICENSE, CI
+- [ ] In workspace: add git dep, thin re-export wrapper
+- [ ] Remove moved source files
+- [ ] `cargo check && cargo nextest run` — verify all 6 reverse deps compile
+- [ ] Migrate all 6 callers from `clankers_message` to `clanker_message`
+- [ ] Remove thin wrapper crate from workspace
+
+## Phase 11: Final cleanup
+
+- [ ] Grep workspace for any remaining `clankers_plugin_sdk`, `clankers_nix`,
+      `clankers_matrix`, `clankers_zellij`, `clankers_protocol`, `clankers_specs`,
+      `clankers_db`, `clankers_hooks`, `clankers_tui_types`, `clankers_message`
+- [ ] Remove all remaining thin wrapper crates
+- [ ] Update workspace `members` list in root Cargo.toml
+- [ ] Update `AGENTS.md` extracted crates section
+- [ ] Update xtask crate list
+- [ ] `cargo check && cargo nextest run` — full workspace green
+- [ ] Verify openspec plugin loads and all 5 tools work

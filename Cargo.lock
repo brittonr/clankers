@@ -1634,11 +1634,7 @@ dependencies = [
 name = "clankers-specs"
 version = "0.1.0"
 dependencies = [
- "chrono",
- "petgraph 0.7.1",
- "serde",
- "serde_yaml",
- "tempfile",
+ "openspec",
 ]
 
 [[package]]
@@ -6537,6 +6533,16 @@ dependencies = [
  "is-wsl",
  "libc",
  "pathdiff",
+]
+
+[[package]]
+name = "openspec"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "petgraph 0.7.1",
+ "serde",
+ "serde_yaml",
 ]
 
 [[package]]
