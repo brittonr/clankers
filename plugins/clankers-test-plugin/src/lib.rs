@@ -4,7 +4,7 @@
 //! of the plugin protocol: string I/O, JSON processing, event handling,
 //! tool registration, and error paths.
 
-use clankers_plugin_sdk::prelude::*;
+use clanker_plugin_sdk::prelude::*;
 
 // ── Simple string functions ───────────────────────────────────────────
 
@@ -104,8 +104,8 @@ pub fn fail(_input: String) -> FnResult<String> {
 /// Expects valid JSON; returns an error on malformed input.
 #[plugin_fn]
 pub fn parse_json(input: String) -> FnResult<String> {
-    let value: Value = clankers_plugin_sdk::serde_json::from_str(&input)
+    let value: Value = clanker_plugin_sdk::serde_json::from_str(&input)
         .map_err(|e| Error::msg(format!("JSON parse error: {e}")))?;
-    Ok(clankers_plugin_sdk::serde_json::to_string_pretty(&value)
+    Ok(clanker_plugin_sdk::serde_json::to_string_pretty(&value)
         .map_err(|e| Error::msg(format!("JSON serialize error: {e}")))?)
 }

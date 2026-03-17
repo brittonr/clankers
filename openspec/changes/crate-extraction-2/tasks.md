@@ -2,20 +2,20 @@
 
 > **Legend:** `[ ]` not started · `[~]` in progress ⏱ · `[x]` done ✅ `<duration>`
 
-## Phase 1: plugin-sdk (clankers-plugin-sdk → clanker-plugin-sdk)
+## Phase 1: plugin-sdk (clankers-plugin-sdk → clanker-plugin-sdk) ✅
 
-Simplest extraction. Already has its own `[workspace]`. Repo move.
+Completed. Repo: github.com/brittonr/clanker-plugin-sdk
 
-- [ ] Create `clanker-plugin-sdk` repo on GitHub
-- [ ] Copy `crates/clankers-plugin-sdk/` contents to new repo
-- [ ] Rename crate in Cargo.toml (`name = "clanker-plugin-sdk"`)
-- [ ] Replace all `clankers_plugin_sdk` / `clankers-plugin-sdk` references in source and docs
-- [ ] Verify `cargo build --target wasm32-unknown-unknown` compiles
-- [ ] Add README.md with quick-start example (from existing lib.rs docs)
-- [ ] Add LICENSE
-- [ ] Add CI (cargo check, clippy, fmt, cargo build --target wasm32)
-- [ ] Update any existing plugins that depend on the path dep
-- [ ] Remove `crates/clankers-plugin-sdk/` from workspace
+- [x] Create `clanker-plugin-sdk` repo on GitHub
+- [x] Copy `crates/clankers-plugin-sdk/` contents to new repo
+- [x] Rename crate in Cargo.toml (`name = "clanker-plugin-sdk"`)
+- [x] Replace all `clankers_plugin_sdk` / `clankers-plugin-sdk` references in source and docs
+- [x] Verify `cargo build --target wasm32-unknown-unknown` compiles
+- [x] Add README.md with quick-start example (from existing lib.rs docs)
+- [x] Add LICENSE
+- [x] Add CI (cargo check, clippy, fmt, cargo build --target wasm32)
+- [x] Update any existing plugins that depend on the path dep (7 plugins + openspec-plugin)
+- [x] Remove `crates/clankers-plugin-sdk/` from workspace
 
 ## Phase 2: nix (clankers-nix → clanker-nix)
 

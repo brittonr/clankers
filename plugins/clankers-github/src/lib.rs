@@ -12,7 +12,7 @@
 //!
 //! Requires `GITHUB_TOKEN` environment variable for authentication.
 
-use clankers_plugin_sdk::prelude::*;
+use clanker_plugin_sdk::prelude::*;
 use serde_json::json;
 
 // ═══════════════════════════════════════════════════════════════════════

@@ -26,8 +26,8 @@ mod cache;
 mod caldav;
 mod icalendar;
 
-use clankers_plugin_sdk::prelude::*;
-use clankers_plugin_sdk::serde_json;
+use clanker_plugin_sdk::prelude::*;
+use clanker_plugin_sdk::serde_json;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Extism guest entrypoints

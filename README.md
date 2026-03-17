@@ -251,7 +251,7 @@ Plugins add additional tools at runtime.
 | `clankers-message` | Message types and serialization |
 | `clankers-model-selection` | Complexity routing and cost tracking |
 | `clankers-plugin` | WASM plugin host (Extism) |
-| `clankers-plugin-sdk` | Plugin development SDK |
+| [`clanker-plugin-sdk`](https://github.com/brittonr/clanker-plugin-sdk) | Plugin development SDK |
 | `clankers-procmon` | Process monitor |
 | `clankers-prompts` | Prompt template system |
 | `clankers-protocol` | Daemon-client wire protocol (frames, events, commands) |

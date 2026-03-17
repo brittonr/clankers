@@ -772,7 +772,7 @@ struct ToolManifest
 
 ---
 
-## clankers-plugin-sdk
+## clanker-plugin-sdk
 
 **530** lines of Rust · **0** tests
 
@@ -805,7 +805,7 @@ trait Args
 
 </details>
 
-[Source](https://github.com/brittonr/clankers/tree/main/crates/clankers-plugin-sdk/src/)
+[Source](https://github.com/brittonr/clanker-plugin-sdk)
 
 ---
 

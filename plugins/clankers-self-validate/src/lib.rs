@@ -12,7 +12,7 @@
 //! 1. Plugin builds a structured validation request (this WASM)
 //! 2. Host-side tool adapter executes the validation subprocess
 
-use clankers_plugin_sdk::prelude::*;
+use clanker_plugin_sdk::prelude::*;
 
 // ── Extended tool result with validator metadata ────────────────────
 
@@ -70,7 +70,7 @@ impl ValidateResult {
 
 #[plugin_fn]
 pub fn handle_tool_call(input: String) -> FnResult<String> {
-    let call: ToolCall = clankers_plugin_sdk::serde_json::from_str(&input)
+    let call: ToolCall = clanker_plugin_sdk::serde_json::from_str(&input)
         .map_err(|e| Error::msg(format!("Invalid JSON input: {e}")))?;
 
     let result = match call.tool.as_str() {
@@ -88,7 +88,7 @@ pub fn handle_tool_call(input: String) -> FnResult<String> {
         },
     };
 
-    Ok(clankers_plugin_sdk::serde_json::to_string(&result)?)
+    Ok(clanker_plugin_sdk::serde_json::to_string(&result)?)
 }
 
 #[plugin_fn]

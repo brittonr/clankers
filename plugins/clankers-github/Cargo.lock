@@ -33,19 +33,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1e748733b7cbc798e1434b6ac524f0c1ff2ab456fe201501e6497c8417a4fc33"
 
 [[package]]
-name = "clankers-github"
+name = "clanker-plugin-sdk"
 version = "0.1.0"
+source = "git+https://github.com/brittonr/clanker-plugin-sdk#742cd4ee1806a73a61be706bad5a6547fab87e55"
 dependencies = [
- "clankers-plugin-sdk",
  "extism-pdk",
  "serde",
  "serde_json",
 ]
 
 [[package]]
-name = "clankers-plugin-sdk"
+name = "clankers-github"
 version = "0.1.0"
 dependencies = [
+ "clanker-plugin-sdk",
  "extism-pdk",
  "serde",
  "serde_json",

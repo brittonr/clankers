@@ -5,7 +5,7 @@
 //! - **`text_stats`** — Compute word/char/line/sentence counts and readability.
 //! - **`char_freq`** — Character frequency distribution analysis.
 
-use clankers_plugin_sdk::prelude::*;
+use clanker_plugin_sdk::prelude::*;
 use std::collections::BTreeMap;
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -108,7 +108,7 @@ fn handle_text_stats(args: &Value) -> Result<String, String> {
         flesch_reading_ease: round2(flesch_reading_ease),
     };
 
-    clankers_plugin_sdk::serde_json::to_string_pretty(&stats)
+    clanker_plugin_sdk::serde_json::to_string_pretty(&stats)
         .map_err(|e| format!("serialization error: {e}"))
 }
 
@@ -164,7 +164,7 @@ fn handle_char_freq(args: &Value) -> Result<String, String> {
         })
         .collect();
 
-    clankers_plugin_sdk::serde_json::to_string_pretty(&result)
+    clanker_plugin_sdk::serde_json::to_string_pretty(&result)
         .map_err(|e| format!("serialization error: {e}"))
 }
 

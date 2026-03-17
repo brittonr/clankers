@@ -44,7 +44,7 @@
 | `clankers-agent-defs` | 872 | 29 |
 | `clankers-message` | 866 | 25 |
 | `clankers-config` | 797 | 17 |
-| `clankers-plugin-sdk` | 530 | 0 |
+| `clanker-plugin-sdk` | 530 | 0 |
 | `clankers-procmon` | 467 | 5 |
 | `clankers-skills` | 168 | 5 |
 | `clankers-prompts` | 163 | 5 |

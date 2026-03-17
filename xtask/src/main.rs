@@ -507,7 +507,7 @@ fn gen_architecture(_root: &Path, crates: &[CrateInfo]) -> String {
             "Extensions",
             &[
                 "clankers-plugin",
-                "clankers-plugin-sdk",
+                "clanker-plugin-sdk (external)",
                 "clankers-skills",
                 "clankers-hooks",
 

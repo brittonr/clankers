@@ -22,9 +22,9 @@
 
 use std::collections::BTreeMap;
 
-use clankers_plugin_sdk::http;
-use clankers_plugin_sdk::prelude::*;
-use clankers_plugin_sdk::serde_json;
+use clanker_plugin_sdk::http;
+use clanker_plugin_sdk::prelude::*;
+use clanker_plugin_sdk::serde_json;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Extism guest entrypoints

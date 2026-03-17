@@ -8,7 +8,7 @@
 //! All algorithms are implemented in pure Rust with zero external crypto
 //! dependencies, so the module compiles cleanly to `wasm32-unknown-unknown`.
 
-use clankers_plugin_sdk::prelude::*;
+use clanker_plugin_sdk::prelude::*;
 
 // ═══════════════════════════════════════════════════════════════════════
 //  Extism guest functions

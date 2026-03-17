@@ -1,11 +1,11 @@
 //! CalDAV HTTP client.
 //!
 //! Speaks CalDAV (HTTP + WebDAV + iCalendar) to any standards-compliant
-//! calendar server. Uses `clankers_plugin_sdk::http` for HTTPS requests.
+//! calendar server. Uses `clanker_plugin_sdk::http` for HTTPS requests.
 
 use std::collections::BTreeMap;
 
-use clankers_plugin_sdk::http;
+use clanker_plugin_sdk::http;
 use serde::Serialize;
 
 use crate::icalendar;

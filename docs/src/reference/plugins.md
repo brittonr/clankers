@@ -40,7 +40,7 @@ Each plugin needs a `plugin.json`:
 
 ## Writing a plugin in Rust
 
-Use the `clankers-plugin-sdk` crate. The Rust side is a single Extism guest function:
+Use the `clanker-plugin-sdk` crate. The Rust side is a single Extism guest function:
 
 ```rust
 use extism_pdk::*;
