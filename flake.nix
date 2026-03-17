@@ -3,7 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
-    unit2nix.url = "github:brittonr/unit2nix";
+    unit2nix = {
+      url = "github:brittonr/unit2nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -47,28 +50,6 @@
           };
         };
 
-        # ── clankers-router standalone build ───────────────────────────────
-        #
-        # The router binary requires the `cli` feature which isn't in the
-        # workspace graph (the workspace uses `rpc` only).
-        wsRouter = unit2nix.lib.${system}.buildFromUnitGraphAuto {
-          inherit pkgs rustToolchain;
-          src = ./.;
-          package = "clankers-router";
-          features = "cli";
-          includeDev = true;
-
-          buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
-            rustc = rustToolchain;
-          };
-
-          extraCrateOverrides = {
-            aws-lc-rs = attrs: {
-              nativeBuildInputs = [ pkgs.cmake pkgs.go ];
-            };
-          };
-        };
-
         # ── WASM plugin builds ─────────────────────────────────────────────
         #
         # Plugins are standalone crates with their own Cargo.lock, built to
@@ -76,6 +57,9 @@
         # WASM targets, so we keep these as a plain stdenv derivation.
 
         pluginSpecs = [
+          { dir = "plugins/clankers-calendar"; name = "clankers_calendar"; }
+          { dir = "plugins/clankers-email"; name = "clankers_email"; }
+          { dir = "plugins/clankers-github"; name = "clankers_github"; }
           { dir = "plugins/clankers-hash"; name = "clankers_hash"; }
           { dir = "plugins/clankers-self-validate"; name = "clankers_self_validate"; }
           { dir = "plugins/clankers-test-plugin"; name = "clankers_test_plugin"; }
@@ -99,7 +83,7 @@
             ++ [ "${rustToolchain}/lib/rustlib/src/rust/library/Cargo.lock" ];
         };
 
-        # ── Verus verifier (prebuilt binary) ────────────────────────────
+        # ── Verus verifier (prebuilt binary, x86_64-linux only) ─────────
         #
         # Verus requires a specific Rust toolchain + Z3. The prebuilt
         # release bundles everything: verus binary, rust_verify, z3,
@@ -147,6 +131,8 @@
           '';
         };
 
+        isX86Linux = system == "x86_64-linux";
+
         # ── Documentation site ──────────────────────────────────────────
         #
         # Runs docs/generate.sh to extract crate metadata from source,
@@ -181,7 +167,9 @@
           nativeBuildInputs = [ rustToolchain pkgs.clang pkgs.mold ];
 
           configurePhase = ''
+            runHook preConfigure
             cat ${pluginVendor.cargoConfig} >> .cargo/config.toml
+            runHook postConfigure
           '';
 
           buildPhase = ''
@@ -215,13 +203,11 @@
         packages = {
           default = ws.workspaceMembers."clankers".build;
           clankers = ws.workspaceMembers."clankers".build;
-          # clankers-router — disabled: clanker-router is an external git dep,
-          # cargo rejects --features for non-workspace packages in --unit-graph.
-          # Build with: cargo build -p clanker-router --features cli
-          # clankers-router = wsRouter.workspaceMembers."clankers-router".build;
           all = ws.allWorkspaceMembers;
           docs = clankers-docs;
-          inherit clankers-plugins verus;
+          inherit clankers-plugins;
+        } // pkgs.lib.optionalAttrs isX86Linux {
+          inherit verus;
         };
 
         checks = {
@@ -292,7 +278,9 @@
             touch $out
           '';
 
-          # Verus — machine-checked proofs for core invariants
+        }
+        // pkgs.lib.optionalAttrs isX86Linux {
+          # Verus — machine-checked proofs for core invariants (x86_64-linux only)
           verus-proofs = pkgs.runCommand "verus-proofs" {
             nativeBuildInputs = [ verus ];
             src = ./.;
@@ -487,18 +475,12 @@
             # Docs
             pkgs.mdbook
 
-            # Formal verification
-            verus
-
-            # Router daemon — built via `cargo build -p clanker-router --features cli`
-            # (wsRouter nix build disabled: clanker-router is an external git dep
-            # and cargo rejects --features for non-workspace packages in --unit-graph)
-            # wsRouter.workspaceMembers."clankers-router".build
-
             # Allwinner / SDWire tooling
             pkgs.sunxi-tools
             pkgs.sd-mux-ctrl
             pkgs.usbutils
+          ] ++ pkgs.lib.optionals isX86Linux [
+            verus
           ];
 
           shellHook = ''
