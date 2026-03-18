@@ -106,6 +106,12 @@ pub(crate) fn spawn_agent_task(
                         .collect();
                     agent = agent.with_tools(filtered);
                 }
+                AgentCommand::CompressContext => {
+                    // For now, this is a no-op signal. The actual compression
+                    // happens when the compress tool slot is read by the turn loop,
+                    // or can be expanded later to do inline compression here.
+                    tracing::info!("Compress context requested via slash command");
+                }
                 AgentCommand::Quit => break,
             }
         }

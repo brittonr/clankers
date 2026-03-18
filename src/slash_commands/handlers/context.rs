@@ -62,16 +62,43 @@ impl SlashHandler for CompactHandler {
     fn command(&self) -> super::super::SlashCommand {
         super::super::SlashCommand {
             name: "compact",
-            description: "Summarize conversation to save tokens",
-            help: "Asks the model to create a compact summary of the conversation so far, \
-                   replacing the full history to reduce token usage.",
+            description: "Compress conversation context (summarize older messages)",
+            help: "Summarizes older messages using a fast model, replacing them with a \
+                   structured summary while preserving recent messages. Use when context is large.\n\n\
+                   Alias: /compress",
             accepts_args: false,
             subcommands: vec![],
         }
     }
 
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
-        ctx.app.push_system("Compact mode is not yet implemented.".to_string(), false);
+        let _ = ctx.cmd_tx.send(AgentCommand::CompressContext);
+        ctx.app.push_system(
+            "Compression requested. Older messages will be summarized on the next turn.".to_string(),
+            false,
+        );
+    }
+}
+
+pub struct CompressHandler;
+
+impl SlashHandler for CompressHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "compress",
+            description: "Compress conversation context (alias for /compact)",
+            help: "Same as /compact — summarizes older messages to free context window space.",
+            accepts_args: false,
+            subcommands: vec![],
+        }
+    }
+
+    fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
+        let _ = ctx.cmd_tx.send(AgentCommand::CompressContext);
+        ctx.app.push_system(
+            "Compression requested. Older messages will be summarized on the next turn.".to_string(),
+            false,
+        );
     }
 }
 

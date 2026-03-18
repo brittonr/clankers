@@ -80,6 +80,14 @@ pub struct Settings {
     #[serde(default)]
     pub leader_menu: LeaderMenuConfig,
 
+    /// Memory capacity limits (cross-session learning loop)
+    #[serde(default)]
+    pub memory: MemoryLimits,
+
+    /// Context compression settings (LLM-based summarization)
+    #[serde(default)]
+    pub compression: CompressionSettings,
+
     /// Routing policy configuration (auto model selection by complexity)
     #[serde(default)]
     pub routing: Option<clankers_model_selection::config::RoutingPolicyConfig>,
@@ -231,6 +239,78 @@ impl LeaderMenuConfig {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Memory limits
+// ---------------------------------------------------------------------------
+
+/// Capacity limits for cross-session memory.
+///
+/// The agent's memory tool checks these before saving new entries.
+/// Character counts refer to the sum of `entry.text.len()` within each scope.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MemoryLimits {
+    /// Max chars for global-scope memories (default: 2200 ≈ 800 tokens).
+    #[serde(default = "default_global_char_limit")]
+    pub global_char_limit: usize,
+    /// Max chars for per-project memories (default: 1375 ≈ 500 tokens).
+    #[serde(default = "default_project_char_limit")]
+    pub project_char_limit: usize,
+}
+
+fn default_global_char_limit() -> usize {
+    2200
+}
+fn default_project_char_limit() -> usize {
+    1375
+}
+
+impl Default for MemoryLimits {
+    fn default() -> Self {
+        Self {
+            global_char_limit: default_global_char_limit(),
+            project_char_limit: default_project_char_limit(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Compression settings
+// ---------------------------------------------------------------------------
+
+/// Configuration for LLM-based context compression.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompressionSettings {
+    /// Model to use for summarization. When absent, uses the cheapest
+    /// available model from the active provider.
+    #[serde(default)]
+    pub model: Option<String>,
+    /// Number of recent messages to keep intact during compression.
+    #[serde(default = "default_keep_recent")]
+    pub keep_recent: usize,
+    /// Minimum message count before compression is allowed.
+    #[serde(default = "default_min_messages")]
+    pub min_messages: usize,
+}
+
+fn default_keep_recent() -> usize {
+    4
+}
+fn default_min_messages() -> usize {
+    5
+}
+
+impl Default for CompressionSettings {
+    fn default() -> Self {
+        Self {
+            model: None,
+            keep_recent: default_keep_recent(),
+            min_messages: default_min_messages(),
+        }
+    }
+}
+
 fn default_model() -> String {
     "claude-sonnet-4-5".to_string()
 }
@@ -269,6 +349,8 @@ impl Default for Settings {
             model_roles: ModelRoles::default(),
             plan_mode: false,
             leader_menu: LeaderMenuConfig::default(),
+            memory: MemoryLimits::default(),
+            compression: CompressionSettings::default(),
             routing: None,
             cost_tracking: None,
             max_subagent_panes: default_max_subagent_panes(),

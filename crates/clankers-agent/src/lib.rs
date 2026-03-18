@@ -442,7 +442,13 @@ impl Agent {
         let cwd = std::env::current_dir().ok();
         let cwd_str = cwd.as_ref().and_then(|p| p.to_str());
 
-        match db.memory().context_for(cwd_str) {
+        let global_limit = Some(self.settings.memory.global_char_limit);
+        let project_limit = Some(self.settings.memory.project_char_limit);
+
+        match db
+            .memory()
+            .context_for_with_limits(cwd_str, global_limit, project_limit)
+        {
             Ok(memory_context) if !memory_context.is_empty() => {
                 format!("{}\n\n{}", self.system_prompt, memory_context)
             }

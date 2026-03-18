@@ -24,6 +24,7 @@ pub use error::db_err;
 pub mod memory;
 pub mod schema;
 pub mod session_index;
+pub mod skill_usage;
 pub mod tool_results;
 pub mod usage;
 
@@ -153,6 +154,10 @@ impl Db {
     /// Tool result content store accessor.
     pub fn tool_results(&self) -> tool_results::ToolResultStore<'_> {
         tool_results::ToolResultStore::new(self)
+    }
+
+    pub fn skill_usage(&self) -> skill_usage::SkillUsageStore<'_> {
+        skill_usage::SkillUsageStore::new(self)
     }
 
     /// File read cache accessor.

@@ -37,6 +37,8 @@ pub(crate) enum AgentCommand {
     SwitchAccount(String),
     /// Update the set of disabled tools (rebuilds the agent's tool set)
     SetDisabledTools(std::collections::HashSet<String>),
+    /// Request context compression (summarize older messages)
+    CompressContext,
 }
 
 /// Results sent back from the background agent task to the event loop.

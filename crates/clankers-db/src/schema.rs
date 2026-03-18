@@ -29,7 +29,7 @@ const META_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("_meta");
 const VERSION_KEY: &str = "schema_version";
 
 /// Current schema version. Bump this when adding a migration.
-pub const CURRENT_VERSION: u32 = 4;
+pub const CURRENT_VERSION: u32 = 5;
 
 /// Each migration function advances the schema by one version.
 /// Index 0 = migration from v0→v1, index 1 = v1→v2, etc.
@@ -38,7 +38,7 @@ pub const CURRENT_VERSION: u32 = 4;
 /// table open. They must NOT commit — the caller commits once after
 /// all pending migrations succeed.
 const MIGRATIONS: &[fn(&WriteTransaction) -> Result<()>] =
-    &[migrate_0_to_1, migrate_1_to_2, migrate_2_to_3, migrate_3_to_4];
+    &[migrate_0_to_1, migrate_1_to_2, migrate_2_to_3, migrate_3_to_4, migrate_4_to_5];
 
 /// Run all pending migrations. Called from [`Db::open`] on every startup.
 ///
@@ -160,6 +160,13 @@ fn migrate_2_to_3(tx: &WriteTransaction) -> Result<()> {
 fn migrate_3_to_4(tx: &WriteTransaction) -> Result<()> {
     use crate::registry;
     tx.open_table(registry::TABLE).map_err(db_err)?;
+    Ok(())
+}
+
+/// v4 → v5: Add skill usage tracking.
+fn migrate_4_to_5(tx: &WriteTransaction) -> Result<()> {
+    use crate::skill_usage;
+    tx.open_table(skill_usage::TABLE).map_err(db_err)?;
     Ok(())
 }
 

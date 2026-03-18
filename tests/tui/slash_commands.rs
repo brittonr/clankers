@@ -153,7 +153,7 @@ fn slash_undo_with_nothing_says_nothing() {
 fn slash_compact_shows_not_implemented() {
     let mut h = TuiTestHarness::spawn(24, 100);
     run_slash(&mut h, "/compact");
-    h.wait_for_text("not yet implemented", TIMEOUT);
+    h.wait_for_text("Compression requested", TIMEOUT);
     h.quit();
 }
 

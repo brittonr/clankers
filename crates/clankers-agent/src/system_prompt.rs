@@ -37,6 +37,8 @@ pub struct PromptResources {
     pub system_prompt_override: Option<String>,
     /// Append to system prompt from APPEND_SYSTEM.md
     pub append_system_prompt: Option<String>,
+    /// Whether to include memory/skill learning loop guidance
+    pub include_learning_guidance: bool,
 }
 
 /// Discover all prompt resources from global and project paths
@@ -57,6 +59,7 @@ pub fn discover_resources(global: &ClankersPaths, project: &ProjectPaths) -> Pro
         spec_context,
         system_prompt_override,
         append_system_prompt,
+        include_learning_guidance: true,
     }
 }
 
@@ -128,6 +131,11 @@ pub fn assemble_system_prompt(
     let skills_ctx = skills::format_skills_for_context(&resources.skills);
     if !skills_ctx.is_empty() {
         parts.push(skills_ctx);
+    }
+
+    // Learning loop guidance (memory + skill management)
+    if resources.include_learning_guidance {
+        parts.push(LEARNING_LOOP_GUIDANCE.to_string());
     }
 
     // Settings suffix
@@ -405,6 +413,52 @@ pub fn detect_nix() -> bool {
         .unwrap_or(false)
 }
 
+// ---------------------------------------------------------------------------
+// Learning loop guidance
+// ---------------------------------------------------------------------------
+
+/// System prompt section guiding the agent on memory and skill management.
+const LEARNING_LOOP_GUIDANCE: &str = "\
+## Cross-Session Memory
+
+You have a `memory` tool for saving facts that persist across sessions.
+
+**Save when:**
+- The user corrects your approach or states a preference
+- You discover an environment fact (OS, tools, project structure, conventions)
+- You complete significant work worth remembering
+- The user explicitly asks you to remember something
+
+**Skip:**
+- Trivial or obvious information
+- Easily re-discovered facts (standard library behavior, etc.)
+- Raw data dumps, large code blocks, log files
+- Session-specific ephemera (temp paths, one-off debugging context)
+- Information already in AGENTS.md or context files
+
+**Capacity:** Memory has a char limit. When near capacity, consolidate related \
+entries into shorter combined entries rather than deleting useful information.
+
+## Skill Creation
+
+You have a `skill_manage` tool for creating reusable skills from experience.
+
+**Create a skill when:**
+- You complete a complex task (5+ tool calls) with a non-obvious workflow
+- You recover from errors and find the working path
+- The user corrects your approach and the correction is generalizable
+- You discover a multi-step procedure that future sessions would benefit from
+
+**A good skill has:** a clear trigger condition, step-by-step procedure, \
+known pitfalls, and verification steps. Keep skills focused and actionable.
+
+## Skill Self-Review
+
+Use `skill_manage` with action `log_outcome` after using a skill to record whether \
+it helped (success), led you astray (correction), or failed. Use `stats` to check \
+which skills have high correction rates. If a skill's correction rate exceeds 30%, \
+revise it with `patch` or `edit` based on what went wrong.";
+
 #[cfg(test)]
 mod tests {
     use tempfile::TempDir;
@@ -420,6 +474,7 @@ mod tests {
             spec_context: String::new(),
             system_prompt_override: None,
             append_system_prompt: None,
+            include_learning_guidance: false,
         }
     }
 

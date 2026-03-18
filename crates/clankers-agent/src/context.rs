@@ -216,11 +216,23 @@ pub fn build_context(messages: &[AgentMessage], system_prompt: &str, max_input_t
     };
     let truncated = truncate_messages(&effective_messages, max_input_tokens, system_tokens);
     let msg_tokens: usize = truncated.iter().map(estimate_message_tokens).sum();
+    let total_tokens = system_tokens + msg_tokens;
+
+    // Auto-nudge when context exceeds 80% capacity
+    let final_prompt = if max_input_tokens > 0 && total_tokens * 100 / max_input_tokens >= 80 {
+        let pct = total_tokens * 100 / max_input_tokens;
+        format!(
+            "{}\n\n[Context is at {}% capacity. Consider using the compress tool to summarize older messages.]",
+            system_prompt, pct
+        )
+    } else {
+        system_prompt.to_string()
+    };
 
     AgentContext {
-        system_prompt: system_prompt.to_string(),
+        system_prompt: final_prompt,
         messages: truncated,
-        estimated_tokens: system_tokens + msg_tokens,
+        estimated_tokens: total_tokens,
     }
 }
 
@@ -468,5 +480,21 @@ mod tests {
         } else {
             panic!("Expected ToolResult");
         }
+    }
+
+    #[test]
+    fn test_nudge_at_high_capacity() {
+        // Create a context that uses >80% of a small budget
+        let msgs = vec![make_user_msg("hello world this is a test message")];
+        let ctx = build_context(&msgs, "system prompt", 50, false);
+        // With such a tiny budget, the nudge should trigger
+        assert!(ctx.system_prompt.contains("capacity"));
+    }
+
+    #[test]
+    fn test_no_nudge_at_low_capacity() {
+        let msgs = vec![make_user_msg("hi")];
+        let ctx = build_context(&msgs, "system", 1_000_000, false);
+        assert!(!ctx.system_prompt.contains("capacity"));
     }
 }

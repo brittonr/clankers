@@ -267,6 +267,21 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         (ToolTier::Specialty, Arc::new(crate::tools::review::ReviewTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::ask::AskTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::image_gen::ImageGenTool::new())),
+        (ToolTier::Specialty, Arc::new(crate::tools::memory::MemoryTool::new(
+            clankers_config::settings::MemoryLimits::default(),
+        ))),
+        (ToolTier::Specialty, Arc::new(crate::tools::skill_manage::SkillManageTool::new(
+            crate::config::ClankersPaths::get().global_skills_dir.clone(),
+        ))),
+        (ToolTier::Specialty, Arc::new(crate::tools::session_search::SessionSearchTool::new(
+            crate::config::ClankersPaths::get().global_sessions_dir.clone(),
+            100,
+        ))),
+        (ToolTier::Specialty, Arc::new(crate::tools::compress::CompressTool::new(
+            crate::tools::compress::compression_slot(),
+            4,
+            5,
+        ))),
         // ── Matrix (daemon only) ────────────────────────────────────
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixSendTool::new())),
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixReadTool::new())),

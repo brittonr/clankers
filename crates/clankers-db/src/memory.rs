@@ -239,6 +239,19 @@ impl<'db> MemoryStore<'db> {
     /// Load all memories relevant to a context (global + matching project).
     /// Returns them formatted as text for injection into the system prompt.
     pub fn context_for(&self, project_path: Option<&str>) -> Result<String> {
+        self.context_for_with_limits(project_path, None, None)
+    }
+
+    /// Like [`context_for`] but includes capacity headers when limits are provided.
+    ///
+    /// The header shows usage percentage and char counts so the agent knows
+    /// how much room is left before it needs to consolidate.
+    pub fn context_for_with_limits(
+        &self,
+        project_path: Option<&str>,
+        global_limit: Option<usize>,
+        project_limit: Option<usize>,
+    ) -> Result<String> {
         let entries = self.list(None)?;
         if entries.is_empty() {
             return Ok(String::new());
@@ -264,23 +277,51 @@ impl<'db> MemoryStore<'db> {
             return Ok(String::new());
         }
 
-        let mut out = String::from("# Memory\n\nFacts and preferences from previous sessions:\n");
+        let mut out = String::new();
 
         if !global.is_empty() {
-            out.push_str("\n## General\n");
+            let chars: usize = global.iter().map(|e| e.text.len()).sum();
+            let header = match global_limit {
+                Some(limit) if limit > 0 => {
+                    let pct = (chars * 100) / limit;
+                    format!("MEMORY (general) [{pct}% — {chars}/{limit} chars]")
+                }
+                _ => "MEMORY (general)".to_string(),
+            };
+            out.push_str(&format!("# {header}\n"));
             for e in &global {
                 out.push_str(&format!("- {}\n", e.text));
             }
         }
 
         if !project.is_empty() {
-            out.push_str("\n## This Project\n");
+            let chars: usize = project.iter().map(|e| e.text.len()).sum();
+            let header = match project_limit {
+                Some(limit) if limit > 0 => {
+                    let pct = (chars * 100) / limit;
+                    format!("MEMORY (this project) [{pct}% — {chars}/{limit} chars]")
+                }
+                _ => "MEMORY (this project)".to_string(),
+            };
+            if !out.is_empty() {
+                out.push('\n');
+            }
+            out.push_str(&format!("# {header}\n"));
             for e in &project {
                 out.push_str(&format!("- {}\n", e.text));
             }
         }
 
         Ok(out)
+    }
+
+    /// Total characters across all memory entries matching the optional scope filter.
+    ///
+    /// Used for capacity enforcement — the memory tool checks this against
+    /// the configured char limit before saving new entries.
+    pub fn total_chars(&self, scope: Option<&MemoryScope>) -> Result<usize> {
+        let entries = self.list(scope)?;
+        Ok(entries.iter().map(|e| e.text.len()).sum())
     }
 
     /// Count total memories.
@@ -537,6 +578,28 @@ mod tests {
         let id3 = generate_id();
         assert!(id1 < id2);
         assert!(id2 < id3);
+    }
+
+    #[test]
+    fn test_total_chars_empty() -> Result<()> {
+        let db = test_db()?;
+        assert_eq!(db.memory().total_chars(None)?, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_total_chars_global() -> Result<()> {
+        let db = test_db()?;
+        let mem = db.memory();
+        mem.save(&MemoryEntry::new("hello", MemoryScope::Global))?; // 5 chars
+        mem.save(&MemoryEntry::new("world!", MemoryScope::Global))?; // 6 chars
+        mem.save(&MemoryEntry::new("proj", MemoryScope::Project {
+            path: "/p".into(),
+        }))?; // 4 chars, different scope
+
+        assert_eq!(mem.total_chars(None)?, 15); // all scopes
+        assert_eq!(mem.total_chars(Some(&MemoryScope::Global))?, 11); // global only
+        Ok(())
     }
 
     #[test]

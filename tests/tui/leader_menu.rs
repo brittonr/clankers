@@ -189,7 +189,7 @@ fn submenu_action_executes_and_closes() {
     h.settle(SETTLE);
 
     // Menu should be dismissed, compact should have executed
-    h.wait_for_text("Compact", TIMEOUT);
+    h.wait_for_text("Compression requested", TIMEOUT);
 
     h.quit();
 }

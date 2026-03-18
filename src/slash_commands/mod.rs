@@ -184,6 +184,7 @@ fn builtin_handlers() -> Vec<Box<dyn handlers::SlashHandler>> {
         Box::new(handlers::context::ClearHandler),
         Box::new(handlers::context::ResetHandler),
         Box::new(handlers::context::CompactHandler),
+        Box::new(handlers::context::CompressHandler),
         Box::new(handlers::context::UndoHandler),
         Box::new(handlers::model::ModelHandler),
         Box::new(handlers::model::ThinkHandler),
