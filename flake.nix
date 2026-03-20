@@ -12,9 +12,28 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     flake-utils.url = "github:numtide/flake-utils";
+
+    # Standalone source for clanker-router binary build.
+    # The workspace uses it as a library dep; this builds the CLI binary.
+    clanker-router-src = {
+      url = "github:brittonr/clanker-router";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, ... }:
+  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, clanker-router-src, ... }:
+    {
+      # ── NixOS modules (system-independent) ───────────────────────────────
+      nixosModules = {
+        clankers-daemon = import ./nix/modules/clankers-daemon.nix;
+        clanker-router = import ./nix/modules/clanker-router.nix;
+        default = { imports = [
+          self.nixosModules.clankers-daemon
+          self.nixosModules.clanker-router
+        ]; };
+      };
+    }
+    //
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
@@ -44,6 +63,25 @@
 
           extraCrateOverrides = {
             # aws-lc-rs wraps aws-lc-sys; its build script needs cmake + go
+            aws-lc-rs = attrs: {
+              nativeBuildInputs = [ pkgs.cmake pkgs.go ];
+            };
+          };
+        };
+
+        # ── clanker-router standalone binary ────────────────────────────────
+        #
+        # The workspace uses clanker-router as a library (features = ["rpc"]).
+        # The standalone CLI binary needs features = ["cli"] which pulls in
+        # clap, ratatui, the HTTP proxy server, and iroh RPC.
+        routerBuild = unit2nix.lib.${system}.buildFromUnitGraphAuto {
+          inherit pkgs rustToolchain;
+          src = clanker-router-src;
+          features = "cli";
+          buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
+            rustc = rustToolchain;
+          };
+          extraCrateOverrides = {
             aws-lc-rs = attrs: {
               nativeBuildInputs = [ pkgs.cmake pkgs.go ];
             };
@@ -203,6 +241,7 @@
         packages = {
           default = ws.workspaceMembers."clankers".build;
           clankers = ws.workspaceMembers."clankers".build;
+          clanker-router = routerBuild.rootCrate.build;
           all = ws.allWorkspaceMembers;
           docs = clankers-docs;
           inherit clankers-plugins;
