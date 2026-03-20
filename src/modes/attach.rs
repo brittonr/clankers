@@ -140,6 +140,8 @@ pub async fn run_attach(
         max_subagent_panes,
         &socket_path,
         &resolved_session_id,
+        clankers_tui_types::ConnectionMode::Attached,
+        RecoveryMode::ExplicitAttach,
     )
     .await;
 
@@ -199,6 +201,9 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
 
     info!("auto-daemon: created session {session_id} at {socket_path}");
 
+    // Guard ensures session is killed even on panic/signal exit.
+    let _guard = SessionGuard::new(session_id.clone());
+
     // 3. Connect to the session socket
     let stream = UnixStream::connect(&socket_path).await.map_err(|e| {
         crate::error::Error::Provider {
@@ -244,6 +249,7 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
         model_name
     };
 
+    let recovery_cwd = opts.cwd.clone();
     let theme = Theme::dark();
     let keymap = opts.settings.keymap.clone().into_keymap();
 
@@ -282,6 +288,12 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
 
     let max_subagent_panes = opts.settings.max_subagent_panes;
 
+    let recovery = RecoveryMode::AutoDaemon {
+        session_id: session_id.clone(),
+        model: opts.model.clone(),
+        cwd: recovery_cwd,
+    };
+
     let result = run_attach_with_reconnect(
         &mut term,
         &mut app,
@@ -291,21 +303,15 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
         max_subagent_panes,
         &socket_path,
         &session_id,
+        clankers_tui_types::ConnectionMode::Embedded,
+        recovery,
     )
     .await;
 
     super::common::restore_terminal(&mut term);
 
-    // Auto-daemon owns the session — kill it on quit so the daemon
-    // doesn't accumulate orphans. If the user wants the session to
-    // persist, they can use `clankers attach` explicitly.
-    if let Err(e) = send_control(ControlCommand::KillSession {
-        session_id: session_id.clone(),
-    })
-    .await
-    {
-        debug!("auto-daemon: failed to kill session on exit: {e}");
-    }
+    // SessionGuard::drop fires here (or on panic/signal unwind) to kill the
+    // session. No manual cleanup needed.
 
     result
 }
@@ -320,6 +326,8 @@ async fn run_attach_with_reconnect(
     max_subagent_panes: usize,
     socket_path: &str,
     session_id: &str,
+    restore_mode: clankers_tui_types::ConnectionMode,
+    recovery_mode: RecoveryMode,
 ) -> Result<()> {
     let mut replaying_history = true;
 
@@ -348,20 +356,64 @@ async fn run_attach_with_reconnect(
                 true,
             );
 
+            // First, try reconnecting to the existing socket (transient glitch).
             match try_reconnect(socket_path, session_id).await {
                 Some(new_client) => {
                     client = new_client;
                     client.replay_history();
                     replaying_history = true;
-                    app.connection_mode = clankers_tui_types::ConnectionMode::Attached;
+                    app.connection_mode = restore_mode.clone();
                     app.push_system("Reconnected to daemon session.".to_string(), false);
                 }
                 None => {
-                    app.push_system(
-                        "Failed to reconnect after multiple attempts. Use /quit to exit."
-                            .to_string(),
-                        true,
-                    );
+                    // Socket reconnect failed. For auto-daemon, try restarting
+                    // the daemon and resuming the session.
+                    match &recovery_mode {
+                        RecoveryMode::AutoDaemon { session_id: sid, model, cwd } => {
+                            app.push_system(
+                                "Restarting daemon...".to_string(),
+                                true,
+                            );
+                            match try_recover_daemon(sid, model, cwd).await {
+                                Ok((new_client, new_socket_path, resumed)) => {
+                                    client = new_client;
+                                    client.replay_history();
+                                    replaying_history = true;
+                                    app.connection_mode = restore_mode.clone();
+                                    if resumed {
+                                        app.push_system(
+                                            "Session resumed after daemon restart.".to_string(),
+                                            false,
+                                        );
+                                    } else {
+                                        app.push_system(
+                                            "Session history lost — started fresh after daemon restart.".to_string(),
+                                            true,
+                                        );
+                                    }
+                                    info!(
+                                        "auto-daemon: recovered to new socket {new_socket_path}"
+                                    );
+                                }
+                                Err(e) => {
+                                    warn!("auto-daemon: daemon recovery failed: {e}");
+                                    app.push_system(
+                                        format!(
+                                            "Daemon recovery failed: {e}. Use /quit to exit."
+                                        ),
+                                        true,
+                                    );
+                                }
+                            }
+                        }
+                        RecoveryMode::ExplicitAttach => {
+                            app.push_system(
+                                "Failed to reconnect after multiple attempts. Use /quit to exit."
+                                    .to_string(),
+                                true,
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -603,6 +655,88 @@ fn pick_session(sessions: &[clankers_protocol::SessionSummary]) -> Result<&clank
     }
 }
 
+// ── Recovery mode ───────────────────────────────────────────────────────────
+
+/// Controls what happens when daemon connection is lost and socket reconnection
+/// fails. Auto-daemon mode restarts the daemon and resumes; explicit attach
+/// gives up.
+#[derive(Clone)]
+enum RecoveryMode {
+    /// Auto-daemon: restart daemon, create session with `resume_id`, reconnect.
+    AutoDaemon {
+        session_id: String,
+        model: String,
+        cwd: String,
+    },
+    /// Explicit `clankers attach`: just retry the socket, give up if it fails.
+    ExplicitAttach,
+}
+
+// ── Session cleanup guard ────────────────────────────────────────────────────
+
+/// RAII guard that kills an auto-daemon session on drop.
+///
+/// Fires on normal return, early `?` return, panic unwind, and signal-driven
+/// exit (Ctrl+C / SIGTERM cause stack unwind through crossterm's raw mode
+/// restoration). Uses a synchronous blocking socket write so it works from
+/// `Drop` (which can't be async).
+struct SessionGuard {
+    session_id: String,
+    /// Set to `false` to suppress cleanup (e.g. if the session was already
+    /// killed or transferred to explicit attach).
+    active: bool,
+}
+
+impl SessionGuard {
+    fn new(session_id: String) -> Self {
+        Self {
+            session_id,
+            active: true,
+        }
+    }
+}
+
+impl Drop for SessionGuard {
+    fn drop(&mut self) {
+        if !self.active {
+            return;
+        }
+        if let Err(e) = send_kill_session_sync(&self.session_id) {
+            // Best effort — we're tearing down anyway.
+            eprintln!("auto-daemon: failed to kill session on exit: {e}");
+        }
+    }
+}
+
+/// Synchronous (blocking) `KillSession` send over the control socket.
+///
+/// Used from `SessionGuard::drop` where async isn't available.
+/// Connects, writes a single frame, and disconnects. 500ms timeout on
+/// the connect to avoid blocking process exit if the daemon is hung.
+fn send_kill_session_sync(session_id: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    use std::os::unix::net::UnixStream as StdUnixStream;
+
+    let path = clankers_controller::transport::control_socket_path();
+    let stream = StdUnixStream::connect(&path)?;
+    stream.set_write_timeout(Some(Duration::from_millis(500)))?;
+
+    let cmd = ControlCommand::KillSession {
+        session_id: session_id.to_string(),
+    };
+    let payload = serde_json::to_vec(&cmd)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let len = (payload.len() as u32).to_be_bytes();
+
+    let mut buf = Vec::with_capacity(4 + payload.len());
+    buf.extend_from_slice(&len);
+    buf.extend_from_slice(&payload);
+
+    (&stream).write_all(&buf)?;
+    // Don't wait for response — fire and forget during teardown.
+    Ok(())
+}
+
 // ── Attach event loop ───────────────────────────────────────────────────────
 
 /// Reconnection backoff parameters.
@@ -651,6 +785,101 @@ async fn try_reconnect(
     }
 
     None
+}
+
+/// Restart the daemon and resume (or recreate) the session.
+///
+/// Called from auto-daemon mode when socket reconnection fails (daemon is dead).
+/// Returns `(ClientAdapter, new_socket_path, resumed)` where `resumed` is true
+/// if the session was recovered from automerge checkpoint, false if a fresh
+/// session was created.
+async fn try_recover_daemon(
+    session_id: &str,
+    model: &str,
+    cwd: &str,
+) -> std::result::Result<(ClientAdapter, String, bool), String> {
+    // 1. Restart the daemon
+    crate::commands::daemon::ensure_daemon_running()
+        .await
+        .map_err(|e| format!("failed to restart daemon: {e}"))?;
+
+    // 2. Try to resume the session from automerge checkpoint
+    let (new_session_id, socket_path, resumed) = {
+        let create_cmd = ControlCommand::CreateSession {
+            model: Some(model.to_string()),
+            system_prompt: None,
+            token: None,
+            resume_id: Some(session_id.to_string()),
+            continue_last: false,
+            cwd: Some(cwd.to_string()),
+        };
+
+        match send_control(create_cmd).await {
+            Ok(ControlResponse::Created {
+                session_id: sid,
+                socket_path: sp,
+            }) => (sid, sp, true),
+            Ok(ControlResponse::Error { message }) => {
+                // Resume failed — try a fresh session
+                info!("auto-daemon: resume failed ({message}), creating fresh session");
+                let fresh_cmd = ControlCommand::CreateSession {
+                    model: Some(model.to_string()),
+                    system_prompt: None,
+                    token: None,
+                    resume_id: None,
+                    continue_last: false,
+                    cwd: Some(cwd.to_string()),
+                };
+                match send_control(fresh_cmd).await {
+                    Ok(ControlResponse::Created {
+                        session_id: sid,
+                        socket_path: sp,
+                    }) => (sid, sp, false),
+                    Ok(other) => {
+                        return Err(format!("unexpected response creating fresh session: {other:?}"));
+                    }
+                    Err(e) => {
+                        return Err(format!("failed to create fresh session: {e}"));
+                    }
+                }
+            }
+            Ok(other) => {
+                return Err(format!("unexpected response resuming session: {other:?}"));
+            }
+            Err(e) => {
+                return Err(format!("failed to send resume command: {e}"));
+            }
+        }
+    };
+
+    info!("auto-daemon: recovered session {new_session_id} at {socket_path} (resumed={resumed})");
+
+    // 3. Connect to the new session socket
+    let stream = UnixStream::connect(&socket_path)
+        .await
+        .map_err(|e| format!("cannot connect to recovered session socket {socket_path}: {e}"))?;
+
+    let mut adapter = ClientAdapter::connect(
+        stream,
+        "clankers-tui",
+        None,
+        Some(new_session_id),
+    )
+    .await
+    .map_err(|e| format!("handshake failed on recovered session: {e}"))?;
+
+    // Consume SessionInfo
+    match adapter.recv().await {
+        Some(DaemonEvent::SessionInfo { .. }) => {}
+        Some(other) => {
+            warn!("expected SessionInfo on recovery, got: {other:?}");
+        }
+        None => {
+            return Err("recovered session disconnected before SessionInfo".to_string());
+        }
+    }
+
+    Ok((adapter, socket_path, resumed))
 }
 
 /// Drain available DaemonEvents from the client and apply them to App state.
@@ -2192,5 +2421,69 @@ mod tests {
         assert!(!is_client_side_command("compact"));
         assert!(!is_client_side_command("autotest"));
         assert!(!is_client_side_command("loop"));
+    }
+
+    #[test]
+    fn session_guard_sends_kill_on_drop() {
+        // Set up a mock control socket that accepts one connection.
+        // control_socket_path() = $XDG_RUNTIME_DIR/clankers/control.sock
+        let dir = tempfile::tempdir().unwrap();
+        let clankers_dir = dir.path().join("clankers");
+        std::fs::create_dir_all(&clankers_dir).unwrap();
+        let sock_path = clankers_dir.join("control.sock");
+
+        let listener = std::os::unix::net::UnixListener::bind(&sock_path).unwrap();
+
+        // Point the guard at our mock socket.
+        // SAFETY: nextest runs each test in its own process.
+        unsafe {
+            std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+        }
+
+        let guard = super::SessionGuard::new("test-session-42".to_string());
+
+        // Drop the guard — should send KillSession synchronously.
+        drop(guard);
+
+        // Accept the connection and read the frame the guard sent.
+        // Use a short timeout rather than non-blocking to avoid races.
+        listener
+            .set_nonblocking(false)
+            .unwrap();
+        let (mut conn, _) = listener.accept().expect("guard should have connected");
+
+        use std::io::Read;
+        let mut len_buf = [0u8; 4];
+        conn.read_exact(&mut len_buf).unwrap();
+        let len = u32::from_be_bytes(len_buf) as usize;
+
+        let mut payload = vec![0u8; len];
+        conn.read_exact(&mut payload).unwrap();
+
+        let cmd: clankers_protocol::control::ControlCommand =
+            serde_json::from_slice(&payload).unwrap();
+        match cmd {
+            clankers_protocol::control::ControlCommand::KillSession { session_id } => {
+                assert_eq!(session_id, "test-session-42");
+            }
+            other => panic!("expected KillSession, got: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn session_guard_inactive_skips_cleanup() {
+        let dir = tempfile::tempdir().unwrap();
+        // No socket — if the guard tries to connect, it will fail.
+        // SAFETY: nextest runs each test in its own process.
+        unsafe {
+            std::env::set_var("XDG_RUNTIME_DIR", dir.path());
+        }
+
+        let mut guard = super::SessionGuard::new("test-session-skip".to_string());
+        guard.active = false;
+
+        // Should not attempt to connect (no socket exists, so connect would fail
+        // and print to stderr if it tried).
+        drop(guard);
     }
 }

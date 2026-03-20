@@ -202,49 +202,79 @@ pub async fn ensure_daemon_running() -> Result<()> {
         tracing::warn!("Stale daemon detected (PID file exists but socket unresponsive), starting fresh...");
     }
 
-    let exe = std::env::current_exe().map_err(|e| crate::error::Error::Io { source: e })?;
-
     let sock_dir = transport::socket_dir();
     std::fs::create_dir_all(&sock_dir).map_err(|e| crate::error::Error::Io { source: e })?;
-    let log_path = transport::daemon_log_path();
 
-    let log_file = std::fs::OpenOptions::new()
+    // Acquire exclusive lockfile to coordinate concurrent starts.
+    // If another process is already starting the daemon, skip spawn and
+    // fall through to the socket polling loop.
+    let lock_path = transport::daemon_lock_path();
+    let lock_file = std::fs::OpenOptions::new()
         .create(true)
-        .append(true)
-        .open(&log_path)
-        .map_err(|e| crate::error::Error::Io { source: e })?;
-    let log_err = log_file
-        .try_clone()
+        .write(true)
+        .truncate(false)
+        .open(&lock_path)
         .map_err(|e| crate::error::Error::Io { source: e })?;
 
-    let mut cmd = std::process::Command::new(exe);
-    cmd.arg("--log-file").arg(&log_path);
-    cmd.arg("--log-level").arg("info");
-    cmd.args(["daemon", "start"]);
-    cmd.stdin(std::process::Stdio::null());
-    cmd.stdout(log_file);
-    cmd.stderr(log_err);
+    let got_lock = try_flock_exclusive(&lock_file);
 
-    let child = cmd.spawn().map_err(|e| crate::error::Error::Io { source: e })?;
-    let pid = child.id();
+    if got_lock {
+        // We own the lock — spawn the daemon.
+        let exe = std::env::current_exe().map_err(|e| crate::error::Error::Io { source: e })?;
+        let log_path = transport::daemon_log_path();
 
-    // Wait for the control socket to become responsive
+        let log_file = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&log_path)
+            .map_err(|e| crate::error::Error::Io { source: e })?;
+        let log_err = log_file
+            .try_clone()
+            .map_err(|e| crate::error::Error::Io { source: e })?;
+
+        let mut cmd = std::process::Command::new(exe);
+        cmd.arg("--log-file").arg(&log_path);
+        cmd.arg("--log-level").arg("info");
+        cmd.args(["daemon", "start"]);
+        cmd.stdin(std::process::Stdio::null());
+        cmd.stdout(log_file);
+        cmd.stderr(log_err);
+
+        let child = cmd.spawn().map_err(|e| crate::error::Error::Io { source: e })?;
+        tracing::info!("spawned daemon process (PID {})", child.id());
+    } else {
+        tracing::info!("another process is starting the daemon, waiting for socket...");
+    }
+
+    // Wait for the control socket to become responsive (whether we spawned
+    // or another process did).
+    let log_path = transport::daemon_log_path();
     for i in 0..20 {
         tokio::time::sleep(std::time::Duration::from_millis(250)).await;
         if send_control(ControlCommand::Status).await.is_ok() {
-            tracing::info!("daemon ready (PID {pid}, waited {}ms)", (i + 1) * 250);
+            tracing::info!("daemon ready (waited {}ms)", (i + 1) * 250);
+            // Lock released on drop of lock_file.
             return Ok(());
         }
     }
 
-    if is_process_alive(pid) {
-        tracing::warn!("daemon started (PID {pid}) but socket not yet responsive");
-        Ok(())
-    } else {
-        Err(crate::error::Error::Provider {
-            message: format!("Daemon failed to start. Check logs: {}", log_path.display()),
-        })
-    }
+    // Lock released on drop of lock_file.
+    Err(crate::error::Error::Provider {
+        message: format!(
+            "Daemon control socket not responsive after 5s. Check logs: {}",
+            log_path.display()
+        ),
+    })
+}
+
+/// Try to acquire an exclusive `flock` on the file. Returns `true` if acquired,
+/// `false` if another process holds it (EWOULDBLOCK).
+fn try_flock_exclusive(file: &std::fs::File) -> bool {
+    use std::os::unix::io::AsRawFd;
+    let fd = file.as_raw_fd();
+    // LOCK_EX | LOCK_NB = exclusive, non-blocking
+    let ret = unsafe { libc::flock(fd, libc::LOCK_EX | libc::LOCK_NB) };
+    ret == 0
 }
 
 // ── Stop ────────────────────────────────────────────────────────────────────
@@ -594,5 +624,36 @@ fn is_process_alive(pid: u32) -> bool {
     {
         let _ = pid;
         false
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn try_flock_exclusive_basic() {
+        let dir = tempfile::tempdir().unwrap();
+        let lock_path = dir.path().join("test.lock");
+
+        let f1 = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .open(&lock_path)
+            .unwrap();
+
+        // First lock succeeds.
+        assert!(try_flock_exclusive(&f1));
+
+        // Second lock on same file (different fd) fails — held by f1.
+        let f2 = std::fs::OpenOptions::new()
+            .write(true)
+            .open(&lock_path)
+            .unwrap();
+        assert!(!try_flock_exclusive(&f2));
+
+        // Drop f1 releases the lock.
+        drop(f1);
+        assert!(try_flock_exclusive(&f2));
     }
 }

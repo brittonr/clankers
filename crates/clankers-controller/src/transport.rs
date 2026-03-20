@@ -66,6 +66,14 @@ pub fn daemon_log_path() -> PathBuf {
     socket_dir().join("daemon.log")
 }
 
+/// Path to the daemon startup lockfile.
+///
+/// Used with `flock(2)` to coordinate concurrent `ensure_daemon_running` calls
+/// so only one process spawns the daemon.
+pub fn daemon_lock_path() -> PathBuf {
+    socket_dir().join("daemon.lock")
+}
+
 /// Read the PID from the PID file, if it exists and the process is alive.
 /// Returns `None` if no daemon is running.
 pub fn running_daemon_pid() -> Option<u32> {
