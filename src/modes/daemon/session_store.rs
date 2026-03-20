@@ -347,69 +347,69 @@ impl SessionCatalog {
     }
 }
 
-/// Create the session catalog, or None if the database can't be opened.
-pub fn create_session_catalog(db_path: &std::path::Path) -> Option<Arc<SessionCatalog>> {
+/// Open the shared redb database for auth + catalog. Returns None if the file
+/// can't be created or opened.
+pub fn open_daemon_db(db_path: &std::path::Path) -> Option<Arc<redb::Database>> {
     std::fs::create_dir_all(db_path.parent()?).ok();
     match redb::Database::create(db_path) {
         Ok(db) => {
-            let catalog = Arc::new(SessionCatalog::new(Arc::new(db)));
-            info!("Session catalog initialized at {}", db_path.display());
-            Some(catalog)
+            info!("Daemon database opened at {}", db_path.display());
+            Some(Arc::new(db))
         }
         Err(e) => {
-            warn!("Failed to open catalog database: {e} — session recovery disabled");
+            warn!("Failed to open daemon database: {e}");
             None
         }
     }
+}
+
+/// Create the session catalog from a shared database handle.
+pub fn create_session_catalog(db: &Arc<redb::Database>) -> Arc<SessionCatalog> {
+    Arc::new(SessionCatalog::new(Arc::clone(db)))
 }
 
 // ── Auth layer ──────────────────────────────────────────────────────────────
 
-/// Create the auth layer if possible, or None if auth database setup fails.
+/// Create the auth layer from a shared database handle.
 pub fn create_auth_layer(
-    db_path: &std::path::Path,
+    db: &Arc<redb::Database>,
     identity: &crate::modes::rpc::iroh::Identity,
 ) -> Option<Arc<AuthLayer>> {
-    std::fs::create_dir_all(db_path.parent()?).ok();
-    match redb::Database::create(db_path) {
-        Ok(db) => {
-            let db = Arc::new(db);
-            // Ensure auth tables exist
-            if let Ok(tx) = db.begin_write() {
-                let _ = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE);
-                let _ = tx.open_table(clankers_ucan::revocation::REVOKED_TOKENS_TABLE);
-                let _ = tx.commit();
-            }
-
-            let revocation_store = match RedbRevocationStore::new(Arc::clone(&db)) {
-                Ok(s) => s,
-                Err(e) => {
-                    warn!("Failed to init revocation store: {e}");
-                    RedbRevocationStore::new(Arc::clone(&db)).expect("retry")
-                }
-            };
-
-            let revoked = revocation_store.load_all();
-            let verifier = TokenVerifier::new().with_trusted_root(identity.public_key());
-            if !revoked.is_empty() {
-                if let Err(e) = verifier.load_revoked(&revoked) {
-                    warn!("Failed to load revoked tokens: {e}");
-                }
-                info!("Loaded {} revoked token(s)", revoked.len());
-            }
-
-            let layer = Arc::new(AuthLayer {
-                verifier,
-                _revocation_store: revocation_store,
-                db,
-                owner_key: identity.secret_key.clone(),
-            });
-            info!("Auth layer initialized (trusted root: {})", identity.public_key().fmt_short());
-            Some(layer)
-        }
-        Err(e) => {
-            warn!("Failed to open auth database: {e} — running without token auth");
-            None
-        }
+    let db = Arc::clone(db);
+    // Ensure auth tables exist
+    if let Ok(tx) = db.begin_write() {
+        let _ = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE);
+        let _ = tx.open_table(clankers_ucan::revocation::REVOKED_TOKENS_TABLE);
+        let _ = tx.commit();
     }
+
+    let revocation_store = match RedbRevocationStore::new(Arc::clone(&db)) {
+        Ok(s) => s,
+        Err(e) => {
+            warn!("Failed to init revocation store: {e}");
+            return None;
+        }
+    };
+
+    let revoked = revocation_store.load_all();
+    let verifier = TokenVerifier::new().with_trusted_root(identity.public_key());
+    if !revoked.is_empty() {
+        if let Err(e) = verifier.load_revoked(&revoked) {
+            warn!("Failed to load revoked tokens: {e}");
+        }
+        info!("Loaded {} revoked token(s)", revoked.len());
+    }
+
+    let layer = Arc::new(AuthLayer {
+        verifier,
+        _revocation_store: revocation_store,
+        db,
+        owner_key: identity.secret_key.clone(),
+    });
+    info!("Auth layer initialized (trusted root: {})", identity.public_key().fmt_short());
+    Some(layer)
 }
+
+#[cfg(test)]
+#[path = "session_store_tests.rs"]
+mod session_store_tests;

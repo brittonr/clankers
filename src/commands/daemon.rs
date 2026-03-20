@@ -31,6 +31,7 @@ pub async fn dispatch(ctx: &CommandContext, action: DaemonAction) -> Result<()> 
             }
         }
         DaemonAction::Stop => stop().await?,
+        DaemonAction::Restart => restart().await?,
         DaemonAction::Status => status().await?,
         DaemonAction::Sessions { all } => dispatch_sessions(all).await?,
         DaemonAction::Create { model, system_prompt } => create(model, system_prompt).await?,
@@ -271,6 +272,44 @@ async fn stop() -> Result<()> {
     Ok(())
 }
 
+/// Exit code that signals "restart requested" — the CLI wrapper
+/// relaunches the daemon when it sees this.
+pub const RESTART_EXIT_CODE: i32 = 75;
+
+async fn restart() -> Result<()> {
+    let pid = transport::running_daemon_pid();
+    if pid.is_none() {
+        println!("No daemon running.");
+        return Ok(());
+    }
+
+    let resp = send_control(ControlCommand::RestartDaemon).await?;
+    match resp {
+        ControlResponse::Restarting => {
+            println!("Daemon restarting (PID {})...", pid.unwrap());
+            // Wait briefly for the old daemon to exit
+            tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            // Re-launch: invoke ourselves with `daemon start -d`
+            let exe = std::env::current_exe().unwrap_or_else(|_| "clankers".into());
+            let status = std::process::Command::new(exe)
+                .args(["daemon", "start", "-d"])
+                .status();
+            match status {
+                Ok(s) if s.success() => println!("Daemon restarted."),
+                Ok(s) => eprintln!("Daemon restart failed (exit {})", s.code().unwrap_or(-1)),
+                Err(e) => eprintln!("Failed to re-launch daemon: {e}"),
+            }
+        }
+        ControlResponse::Error { message } => {
+            eprintln!("Error: {message}");
+        }
+        other => {
+            eprintln!("Unexpected response: {other:?}");
+        }
+    }
+    Ok(())
+}
+
 // ── Status ──────────────────────────────────────────────────────────────────
 
 async fn status() -> Result<()> {
@@ -289,6 +328,15 @@ async fn status() -> Result<()> {
                     println!("  Clients:  {}", s.total_clients);
                     println!("  Socket:   {}", transport::control_socket_path().display());
                     println!("  Logs:     {}", transport::daemon_log_path().display());
+
+                    // Fetch session list for state breakdown
+                    if let Ok(ControlResponse::Sessions(sessions)) = send_control(ControlCommand::ListSessions).await {
+                        let active = sessions.iter().filter(|s| s.state == "active").count();
+                        let suspended = sessions.iter().filter(|s| s.state == "suspended").count();
+                        if suspended > 0 {
+                            println!("  Active:   {active}  Suspended: {suspended}");
+                        }
+                    }
                 }
                 Ok(ControlResponse::Error { message }) => {
                     eprintln!("Daemon running (PID {pid}) but returned error: {message}");
@@ -331,13 +379,13 @@ pub async fn dispatch_sessions(show_all: bool) -> Result<()> {
             }
             if show_all {
                 println!(
-                    "{:<10} {:<28} {:>5} {:>7} {:<20} SOCKET",
-                    "SESSION", "MODEL", "TURNS", "CLIENTS", "LAST ACTIVE"
+                    "{:<10} {:<10} {:<28} {:>5} {:>7} {:<20} SOCKET",
+                    "SESSION", "STATE", "MODEL", "TURNS", "CLIENTS", "LAST ACTIVE"
                 );
             } else {
                 println!(
-                    "{:<10} {:<28} {:>5} {:>7} LAST ACTIVE",
-                    "SESSION", "MODEL", "TURNS", "CLIENTS"
+                    "{:<10} {:<10} {:<28} {:>5} {:>7} LAST ACTIVE",
+                    "SESSION", "STATE", "MODEL", "TURNS", "CLIENTS"
                 );
             }
             for s in &sessions {
@@ -353,17 +401,23 @@ pub async fn dispatch_sessions(show_all: bool) -> Result<()> {
                 };
                 if show_all {
                     println!(
-                        "{:<10} {:<28} {:>5} {:>7} {:<20} {}",
-                        sid, model, s.turn_count, s.client_count, s.last_active, s.socket_path
+                        "{:<10} {:<10} {:<28} {:>5} {:>7} {:<20} {}",
+                        sid, s.state, model, s.turn_count, s.client_count, s.last_active, s.socket_path
                     );
                 } else {
                     println!(
-                        "{:<10} {:<28} {:>5} {:>7} {}",
-                        sid, model, s.turn_count, s.client_count, s.last_active
+                        "{:<10} {:<10} {:<28} {:>5} {:>7} {}",
+                        sid, s.state, model, s.turn_count, s.client_count, s.last_active
                     );
                 }
             }
-            println!("{} session(s)", sessions.len());
+            let active = sessions.iter().filter(|s| s.state == "active").count();
+            let suspended = sessions.iter().filter(|s| s.state == "suspended").count();
+            if suspended > 0 {
+                println!("{} session(s) ({active} active, {suspended} suspended)", sessions.len());
+            } else {
+                println!("{} session(s)", sessions.len());
+            }
         }
         ControlResponse::Error { message } => {
             eprintln!("Error: {message}");

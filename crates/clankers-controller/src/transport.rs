@@ -345,6 +345,7 @@ async fn handle_control_connection(mut stream: UnixStream, state: Arc<Mutex<Daem
                 }
             }
             ControlCommand::Shutdown => ControlResponse::ShuttingDown,
+            ControlCommand::RestartDaemon => ControlResponse::Restarting,
         }
     };
 

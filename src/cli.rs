@@ -860,6 +860,8 @@ pub enum DaemonAction {
         /// Session ID
         session_id: String,
     },
+    /// Restart the daemon (checkpoint sessions, restart process)
+    Restart,
     /// Tail daemon logs
     Logs {
         /// Follow log output (like tail -f)

@@ -47,6 +47,9 @@ use session_store::create_auth_layer;
 ///
 /// Setup is split into focused phases: identity/auth, session store, iroh
 /// endpoint, background tasks. Each phase is a helper under 70 lines.
+/// Flag indicating restart was requested (exit code 75).
+static RESTART_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub async fn run_daemon(
     provider: Arc<dyn Provider>,
     tools: Vec<Arc<dyn Tool>>,
@@ -59,8 +62,9 @@ pub async fn run_daemon(
     let identity_path = iroh::identity_path(paths);
     let identity = iroh::Identity::load_or_generate(&identity_path);
     let db_path = paths.global_config_dir.join("clankers.db");
-    let auth_layer = create_auth_layer(&db_path, &identity);
-    let session_catalog = session_store::create_session_catalog(&db_path);
+    let daemon_db = session_store::open_daemon_db(&db_path);
+    let auth_layer = daemon_db.as_ref().and_then(|db| create_auth_layer(db, &identity));
+    let session_catalog = daemon_db.as_ref().map(|db| session_store::create_session_catalog(db));
 
     // Crash recovery: any `active` entries from a previous daemon that died
     // without a clean shutdown should be treated as `suspended`.
@@ -186,8 +190,13 @@ pub async fn run_daemon(
     println!("Status:  clankers daemon status");
     println!("Attach:  clankers attach");
 
-    // Phase 6: Wait for shutdown
-    tokio::signal::ctrl_c().await.ok();
+    // Phase 6: Wait for shutdown (SIGINT or SIGTERM)
+    let mut sigterm = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+        .expect("failed to install SIGTERM handler");
+    tokio::select! {
+        _ = tokio::signal::ctrl_c() => {},
+        _ = sigterm.recv() => {},
+    }
     println!("\nShutting down...");
 
     // Send Shutdown to all actor processes, then wait briefly for graceful exit.
@@ -218,6 +227,12 @@ pub async fn run_daemon(
 
     clankers_controller::transport::cleanup_socket_dir();
     let session_count = daemon_state.lock().await.sessions.len();
+
+    if RESTART_REQUESTED.load(std::sync::atomic::Ordering::SeqCst) {
+        println!("Daemon restarting ({session_count} sessions checkpointed).");
+        std::process::exit(crate::commands::daemon::RESTART_EXIT_CODE);
+    }
+
     println!("Daemon stopped ({session_count} sessions served).");
     Ok(())
 }

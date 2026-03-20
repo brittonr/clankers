@@ -88,7 +88,7 @@ async fn handle_daemon_stream(
             handle_control_stream(command, &mut send, &state, &factory, &registry, &shutdown, skip_token_check, auth.as_deref()).await?;
         }
         DaemonRequest::Attach { handshake } => {
-            handle_attach_stream(handshake, send, recv, &state, skip_token_check).await?;
+            handle_attach_stream(handshake, send, recv, &state, &factory, &registry, &shutdown, skip_token_check).await?;
         }
     }
 
@@ -196,6 +196,7 @@ fn dispatch_readonly_control(
             }
         }
         ControlCommand::Shutdown => ControlResponse::ShuttingDown,
+        ControlCommand::RestartDaemon => ControlResponse::Restarting,
         ControlCommand::CreateSession { .. } => ControlResponse::Error {
             message: "internal: CreateSession routed to readonly dispatch".to_string(),
         },
@@ -300,6 +301,9 @@ async fn handle_attach_stream(
     mut send: iroh::endpoint::SendStream,
     mut recv: iroh::endpoint::RecvStream,
     state: &Arc<Mutex<DaemonState>>,
+    factory: &Arc<SessionFactory>,
+    registry: &clanker_actor::ProcessRegistry,
+    shutdown: &tokio::sync::watch::Receiver<bool>,
     skip_token_check: bool,
 ) -> Result<(), clankers_protocol::FrameError> {
     // Validate protocol version
@@ -347,34 +351,55 @@ async fn handle_attach_stream(
     };
 
     let (cmd_tx, mut event_rx) = {
-        let st = state.lock().await;
-        match st.sessions.get(&session_id) {
-            Some(handle) => {
-                let Some(ref cmd_tx) = handle.cmd_tx else {
+        let mut st = state.lock().await;
+
+        // Check if session needs lazy recovery
+        let needs_recovery = st.sessions.get(&session_id)
+            .is_some_and(|h| h.cmd_tx.is_none());
+
+        if needs_recovery {
+            match super::agent_process::recover_session(
+                &session_id, registry, factory, &mut st, shutdown,
+            ) {
+                Ok((cmd_tx, event_tx)) => (cmd_tx, event_tx.subscribe()),
+                Err(e) => {
                     let resp = AttachResponse::Error {
-                        message: format!("session '{session_id}' is suspended — recovery not yet implemented over QUIC"),
+                        message: format!("session recovery failed: {e}"),
                     };
                     write_quic_frame(&mut send, &resp).await?;
                     send.finish().ok();
                     return Ok(());
-                };
-                let Some(ref event_tx) = handle.event_tx else {
-                    let resp = AttachResponse::Error {
-                        message: format!("session '{session_id}' has no event channel"),
-                    };
-                    write_quic_frame(&mut send, &resp).await?;
-                    send.finish().ok();
-                    return Ok(());
-                };
-                (cmd_tx.clone(), event_tx.subscribe())
+                }
             }
-            None => {
-                let resp = AttachResponse::Error {
-                    message: format!("session '{session_id}' not found"),
-                };
-                write_quic_frame(&mut send, &resp).await?;
-                send.finish().ok();
-                return Ok(());
+        } else {
+            match st.sessions.get(&session_id) {
+                Some(handle) => {
+                    let Some(ref cmd_tx) = handle.cmd_tx else {
+                        let resp = AttachResponse::Error {
+                            message: format!("session '{session_id}' has no command channel"),
+                        };
+                        write_quic_frame(&mut send, &resp).await?;
+                        send.finish().ok();
+                        return Ok(());
+                    };
+                    let Some(ref event_tx) = handle.event_tx else {
+                        let resp = AttachResponse::Error {
+                            message: format!("session '{session_id}' has no event channel"),
+                        };
+                        write_quic_frame(&mut send, &resp).await?;
+                        send.finish().ok();
+                        return Ok(());
+                    };
+                    (cmd_tx.clone(), event_tx.subscribe())
+                }
+                None => {
+                    let resp = AttachResponse::Error {
+                        message: format!("session '{session_id}' not found"),
+                    };
+                    write_quic_frame(&mut send, &resp).await?;
+                    send.finish().ok();
+                    return Ok(());
+                }
             }
         }
     };

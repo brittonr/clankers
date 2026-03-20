@@ -35,6 +35,8 @@ pub enum ControlCommand {
     Shutdown,
     /// Daemon status (uptime, session count, resource usage).
     Status,
+    /// Restart the daemon (checkpoint + exit with code 75).
+    RestartDaemon,
 }
 
 /// Responses from the control socket.
@@ -54,6 +56,8 @@ pub enum ControlResponse {
     ShuttingDown,
     /// Daemon status.
     Status(DaemonStatus),
+    /// Daemon is restarting (exit code 75).
+    Restarting,
     /// Error response.
     Error { message: String },
 }

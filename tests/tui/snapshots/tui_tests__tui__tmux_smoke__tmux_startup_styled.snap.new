@@ -1,5 +1,6 @@
 ---
 source: tests/tui/tmux_smoke.rs
+assertion_line: 149
 expression: styled
 ---
 {#505050/-}│{Blk/-}touched yet.{-/-}  {#505050/-}│{cyn/-}│{#505050/-}│{-/-}                                    {#505050/-}│{cyn/-}│{#505050/-}│{Blk/-}add <id> <name>{-/-}       {#505050/-}│
@@ -24,4 +25,4 @@ expression: styled
                                                                                 
 {#505050/-}└──────────────────────────────────────────────────────────────────────────────┘
                                                                                 
-{*blk/cyn} NORMAL {*blk/blu} 👤{-/-} {*blk/blu} default {*grn/-} ░░░░░░░░0/200.0k {*mag/-}  main {#dcdcdc/#1e1e1e} idle | claude-opus-4-6 | /CWD
+{*blk/cyn} NORMAL {*blk/blu} 👤{-/-} {*blk/blu} default {*grn/-} ░░░░░░░░0/200.0k {*mag/-}  main {#dcdcdc/#1e1e1e} idle | claude-opus-4-6 |

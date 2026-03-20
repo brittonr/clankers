@@ -28,7 +28,9 @@ fn test_auth_layer(
         secret_key: owner_key.clone(),
         path: key_path,
     };
-    let auth = clankers::modes::daemon::session_store::create_auth_layer(&db_path, &identity)
+    let db = clankers::modes::daemon::session_store::open_daemon_db(&db_path)
+        .expect("db should open");
+    let auth = clankers::modes::daemon::session_store::create_auth_layer(&db, &identity)
         .expect("auth layer should initialize");
     (auth, tmp)
 }

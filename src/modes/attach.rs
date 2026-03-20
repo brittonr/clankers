@@ -1877,6 +1877,8 @@ pub async fn run_remote_attach(
         &mut app,
         client,
         conn,
+        &endpoint,
+        remote_pk,
         keymap,
         &slash_registry,
         max_subagent_panes,
@@ -1899,6 +1901,8 @@ async fn run_remote_attach_loop(
     app: &mut App,
     mut client: ClientAdapter,
     conn: ::iroh::endpoint::Connection,
+    endpoint: &::iroh::Endpoint,
+    remote_pk: ::iroh::PublicKey,
     keymap: Keymap,
     slash_registry: &slash_commands::SlashRegistry,
     max_subagent_panes: usize,
@@ -1931,8 +1935,14 @@ async fn run_remote_attach_loop(
                 true,
             );
 
-            match try_quic_reconnect(&conn, session_id).await {
-                Some(new_client) => {
+            match try_quic_reconnect(&conn, endpoint, remote_pk, session_id).await {
+                Some((new_client, _new_conn)) => {
+                    // Note: if _new_conn is Some, the old conn is dead. We can't
+                    // replace `conn` because it's borrowed immutably. But the new
+                    // client has its own stream — future reconnects would need the
+                    // new connection. For now, the client works and a second
+                    // disconnect would fail reconnect on the old conn then succeed
+                    // by re-establishing again.
                     client = new_client;
                     client.replay_history();
                     replaying_history = true;
@@ -1941,7 +1951,7 @@ async fn run_remote_attach_loop(
                 }
                 None => {
                     app.push_system(
-                        "Failed to reconnect. Use /quit to exit.".to_string(),
+                        "Failed to reconnect after 5 attempts. Use /quit to exit.".to_string(),
                         true,
                     );
                 }
@@ -1960,63 +1970,85 @@ async fn run_remote_attach_loop(
     Ok(())
 }
 
+/// Maximum reconnect attempts before giving up.
+const QUIC_RECONNECT_MAX_ATTEMPTS: usize = 5;
+
 /// Reconnect to a session by opening a new bi-stream on the existing
-/// QUIC connection. This is fast — no new handshake, no NAT traversal.
+/// QUIC connection. If the connection itself is dead (daemon restarted),
+/// attempts to re-establish via the endpoint.
 async fn try_quic_reconnect(
     conn: &::iroh::endpoint::Connection,
+    endpoint: &::iroh::Endpoint,
+    remote_pk: ::iroh::PublicKey,
     session_id: &str,
-) -> Option<ClientAdapter> {
-    for attempt in 0..3 {
+) -> Option<(ClientAdapter, Option<::iroh::endpoint::Connection>)> {
+    // Delays: 1s, 2s, 4s, 8s, 16s
+    let delays_ms = [1000, 2000, 4000, 8000, 16000];
+
+    for attempt in 0..QUIC_RECONNECT_MAX_ATTEMPTS {
         if attempt > 0 {
-            tokio::time::sleep(Duration::from_millis(500 * (1 << attempt))).await;
+            let delay = delays_ms.get(attempt).copied().unwrap_or(16000);
+            info!("QUIC reconnect attempt {}/{QUIC_RECONNECT_MAX_ATTEMPTS} (delay {delay}ms)", attempt + 1);
+            tokio::time::sleep(Duration::from_millis(delay as u64)).await;
         }
 
-        let (mut send, mut recv) = match conn.open_bi().await {
-            Ok(s) => s,
+        // Try the existing connection first
+        if let Some(client) = try_quic_attach_stream(conn, session_id).await {
+            info!("QUIC reconnect succeeded on existing connection (attempt {})", attempt + 1);
+            return Some((client, None));
+        }
+
+        // Existing connection dead — try re-establishing
+        match endpoint.connect(remote_pk, clankers_protocol::types::ALPN_DAEMON).await {
+            Ok(new_conn) => {
+                if let Some(client) = try_quic_attach_stream(&new_conn, session_id).await {
+                    info!("QUIC reconnect succeeded on new connection (attempt {})", attempt + 1);
+                    return Some((client, Some(new_conn)));
+                }
+            }
             Err(e) => {
-                warn!("QUIC reconnect attempt {}: open_bi failed: {e}", attempt + 1);
-                continue;
-            }
-        };
-
-        // Send attach request
-        let request = clankers_protocol::DaemonRequest::Attach {
-            handshake: clankers_protocol::Handshake {
-                protocol_version: clankers_protocol::types::PROTOCOL_VERSION,
-                client_name: format!("clankers-tui/{}", env!("CARGO_PKG_VERSION")),
-                token: None,
-                session_id: Some(session_id.to_string()),
-            },
-        };
-        if quic_write_frame(&mut send, &request).await.is_err() {
-            continue;
-        }
-
-        // Read attach response
-        let response: clankers_protocol::AttachResponse = match quic_read_frame(&mut recv).await {
-            Ok(r) => r,
-            Err(_) => continue,
-        };
-        match response {
-            clankers_protocol::AttachResponse::Ok { .. } => {}
-            clankers_protocol::AttachResponse::Error { message } => {
-                warn!("QUIC reconnect: attach rejected: {message}");
-                continue;
+                warn!("QUIC reconnect attempt {}: connect failed: {e}", attempt + 1);
             }
         }
-
-        // Read SessionInfo
-        match quic_read_frame::<DaemonEvent>(&mut recv).await {
-            Ok(DaemonEvent::SessionInfo { .. }) => {}
-            _ => continue,
-        }
-
-        info!("QUIC reconnect succeeded on attempt {}", attempt + 1);
-        let bi = QuicBiStream { send, recv };
-        return Some(build_quic_client_adapter(bi));
     }
 
     None
+}
+
+/// Open a new bi-stream on a connection and perform the attach handshake.
+async fn try_quic_attach_stream(
+    conn: &::iroh::endpoint::Connection,
+    session_id: &str,
+) -> Option<ClientAdapter> {
+    let (mut send, mut recv) = conn.open_bi().await.ok()?;
+
+    let request = clankers_protocol::DaemonRequest::Attach {
+        handshake: clankers_protocol::Handshake {
+            protocol_version: clankers_protocol::types::PROTOCOL_VERSION,
+            client_name: format!("clankers-tui/{}", env!("CARGO_PKG_VERSION")),
+            token: None,
+            session_id: Some(session_id.to_string()),
+        },
+    };
+    quic_write_frame(&mut send, &request).await.ok()?;
+
+    let response: clankers_protocol::AttachResponse = quic_read_frame(&mut recv).await.ok()?;
+    match response {
+        clankers_protocol::AttachResponse::Ok { .. } => {}
+        clankers_protocol::AttachResponse::Error { message } => {
+            warn!("QUIC attach rejected: {message}");
+            return None;
+        }
+    }
+
+    // Read SessionInfo
+    match quic_read_frame::<DaemonEvent>(&mut recv).await {
+        Ok(DaemonEvent::SessionInfo { .. }) => {}
+        _ => return None,
+    }
+
+    let bi = QuicBiStream { send, recv };
+    Some(build_quic_client_adapter(bi))
 }
 
 /// Build a ClientAdapter from a QUIC stream, skipping the handshake.

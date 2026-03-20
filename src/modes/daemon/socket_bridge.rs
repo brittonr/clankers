@@ -313,7 +313,19 @@ async fn dispatch_control_command(
                 message: "internal error: CreateSession routed to dispatch".to_string(),
             }
         }
-        ControlCommand::Shutdown => ControlResponse::ShuttingDown,
+        ControlCommand::Shutdown => {
+            // Trigger daemon shutdown — runs checkpoint sequence.
+            // Use kill(getpid()) not raise() — raise sends to the calling
+            // *thread* in multi-threaded programs, but tokio's signal handler
+            // is process-level.
+            unsafe { libc::kill(libc::getpid(), libc::SIGTERM); }
+            ControlResponse::ShuttingDown
+        }
+        ControlCommand::RestartDaemon => {
+            super::RESTART_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
+            unsafe { libc::kill(libc::getpid(), libc::SIGTERM); }
+            ControlResponse::Restarting
+        }
     }
 }
 

@@ -40,6 +40,8 @@ pub struct DaemonConfig {
     /// `{session_dir}/trigger.pipe` lets external processes inject
     /// prompts into the agent session.
     pub trigger_pipe_enabled: bool,
+    /// Drain timeout in seconds for graceful shutdown/restart (default: 10).
+    pub drain_timeout_secs: u64,
 }
 
 impl Default for DaemonConfig {
@@ -67,6 +69,7 @@ impl Default for DaemonConfig {
                 If nothing needs attention, respond with HEARTBEAT_OK."
                 .to_string(),
             trigger_pipe_enabled: true,
+            drain_timeout_secs: 10,
         }
     }
 }

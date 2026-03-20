@@ -655,7 +655,7 @@ pub fn recover_session(
     }
 
     // Start session socket
-    let socket_path = clankers_controller::transport::session_socket_path(session_id);
+    let _socket_path = clankers_controller::transport::session_socket_path(session_id);
     let sock_shutdown = shutdown.clone();
     let sock_cmd_tx = cmd_tx.clone();
     let sock_event_tx = event_tx.clone();
