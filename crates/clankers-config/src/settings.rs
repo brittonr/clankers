@@ -382,6 +382,45 @@ impl Settings {
         Self::merge_layers(pi, global, project)
     }
 
+    /// Load settings with Nickel support. Checks `.ncl` paths first, falls
+    /// back to `.json` at each layer.
+    ///
+    /// Priority (highest wins): project > global > pi fallback.
+    /// At each layer: `.ncl` preferred over `.json` when both exist.
+    pub fn load_with_nickel(
+        pi_settings_path: Option<&Path>,
+        global_json: &Path,
+        global_ncl: &Path,
+        project_json: &Path,
+        project_ncl: &Path,
+    ) -> Self {
+        let pi = pi_settings_path.and_then(Self::load_file).map(Self::normalize_pi_settings);
+        let global = Self::load_layer(Some(global_ncl), global_json);
+        let project = Self::load_layer(Some(project_ncl), project_json);
+        Self::merge_layers(pi, global, project)
+    }
+
+    /// Load a single config layer. Checks `.ncl` first (if the nickel feature
+    /// is enabled), then falls back to `.json`.
+    fn load_layer(ncl_path: Option<&Path>, json_path: &Path) -> Option<serde_json::Value> {
+        #[cfg(feature = "nickel")]
+        if let Some(ncl) = ncl_path {
+            if ncl.exists() {
+                match crate::nickel::eval_ncl_file(ncl) {
+                    Ok(value) => return Some(value),
+                    Err(e) => {
+                        eprintln!("warning: failed to evaluate {}: {e}", ncl.display());
+                        // Fall through to JSON
+                    }
+                }
+            }
+        }
+        #[cfg(not(feature = "nickel"))]
+        let _ = ncl_path;
+
+        Self::load_file(json_path)
+    }
+
     /// Map pi-specific setting names to clankers equivalents.
     /// e.g. pi uses "defaultModel" while clankers uses "model".
     fn normalize_pi_settings(mut value: serde_json::Value) -> serde_json::Value {
@@ -420,11 +459,25 @@ impl Settings {
         serde_json::from_value(base).unwrap_or_default()
     }
 
-    /// Merge source object fields into target object
+    /// Recursively merge source object fields into target object.
+    ///
+    /// When both target and source have an object at the same key, the merge
+    /// recurses into the nested object so that individual fields are preserved.
+    /// Non-object values (strings, numbers, arrays, bools, nulls) are replaced
+    /// wholesale — arrays are NOT concatenated.
     fn merge_into(target: &mut serde_json::Value, source: &serde_json::Value) {
         if let (Some(target_obj), Some(source_obj)) = (target.as_object_mut(), source.as_object()) {
             for (key, value) in source_obj {
-                target_obj.insert(key.clone(), value.clone());
+                match (target_obj.get_mut(key), value) {
+                    // Both sides are objects → recurse
+                    (Some(existing), new_val) if existing.is_object() && new_val.is_object() => {
+                        Self::merge_into(existing, new_val);
+                    }
+                    // Otherwise replace (or insert new key)
+                    _ => {
+                        target_obj.insert(key.clone(), value.clone());
+                    }
+                }
             }
         }
     }
@@ -499,5 +552,72 @@ mod tests {
         let project = serde_json::json!({"useDaemon": false});
         let settings = Settings::merge_layers(None, Some(global), Some(project));
         assert!(!settings.use_daemon);
+    }
+
+    // ── Deep merge tests ───────────────────────────────────────────
+
+    #[test]
+    fn deep_merge_nested_object_partial_override() {
+        let global = serde_json::json!({
+            "hooks": {
+                "enabled": true,
+                "scriptTimeoutSecs": 10
+            }
+        });
+        let project = serde_json::json!({
+            "hooks": {
+                "disabledHooks": ["pre-tool"]
+            }
+        });
+        let settings = Settings::merge_layers(None, Some(global), Some(project));
+        assert!(settings.hooks.enabled);
+        assert_eq!(settings.hooks.script_timeout_secs, 10);
+        assert_eq!(settings.hooks.disabled_hooks, vec!["pre-tool".to_string()]);
+    }
+
+    #[test]
+    fn deep_merge_scalar_override_within_nested_object() {
+        let global = serde_json::json!({
+            "memory": {"globalCharLimit": 2200}
+        });
+        let project = serde_json::json!({
+            "memory": {"globalCharLimit": 4400}
+        });
+        let settings = Settings::merge_layers(None, Some(global), Some(project));
+        assert_eq!(settings.memory.global_char_limit, 4400);
+    }
+
+    #[test]
+    fn deep_merge_array_fields_replaced_not_merged() {
+        let global = serde_json::json!({"disabledTools": ["bash"]});
+        let project = serde_json::json!({"disabledTools": ["commit"]});
+        let settings = Settings::merge_layers(None, Some(global), Some(project));
+        assert_eq!(settings.disabled_tools, vec!["commit".to_string()]);
+    }
+
+    #[test]
+    fn deep_merge_three_layers() {
+        let pi = serde_json::json!({
+            "hooks": {"enabled": false, "scriptTimeoutSecs": 5},
+            "memory": {"globalCharLimit": 1000}
+        });
+        let global = serde_json::json!({
+            "hooks": {"enabled": true}
+        });
+        let project = serde_json::json!({
+            "hooks": {"disabledHooks": ["pre-tool"]},
+            "memory": {"projectCharLimit": 999}
+        });
+        let settings = Settings::merge_layers(Some(pi), Some(global), Some(project));
+        // hooks.enabled: pi=false, global=true → true
+        assert!(settings.hooks.enabled);
+        // hooks.scriptTimeoutSecs: pi=5, not overridden → 5
+        assert_eq!(settings.hooks.script_timeout_secs, 5);
+        // hooks.disabledHooks: project sets it
+        assert_eq!(settings.hooks.disabled_hooks, vec!["pre-tool".to_string()]);
+        // memory.globalCharLimit: pi=1000, not overridden → 1000
+        assert_eq!(settings.memory.global_char_limit, 1000);
+        // memory.projectCharLimit: project=999
+        assert_eq!(settings.memory.project_char_limit, 999);
     }
 }

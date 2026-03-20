@@ -162,6 +162,14 @@
 - JSONL backward compat: `open()` auto-migrates .jsonl → .automerge alongside (original untouched)
 - External callers (`interactive.rs`, `session_setup.rs`) must use `record_resume()` not `store::append_entry()` — file is binary automerge now
 
+### Nickel config
+- `nickel_lang::Error` does NOT impl `Display` — use `Debug` formatting (`{:?}`)
+- `nickel_lang::Context` is `!Send + !Sync` — eval on main thread only, before async runtime
+- Nickel error formatting overflows default thread stack (~2MB) — needs `RUST_MIN_STACK=33554432` or `#[ignore]` for contract violation tests
+- Contract file has `#` comments — can't wrap in `(CONTRACT)` parens because `#` comments extend to EOL and eat the closing paren. Use `let` or inline substitution instead.
+- `AgentScope::default()` is `User` not `All` — contract defaults must match Rust struct defaults exactly
+- Nickel `| optional` for `Option<T>` fields — omitted fields don't appear in JSON output, serde `#[serde(default)]` fills in `None`
+
 ## Domain Notes
 - JMAP (RFC 8620/8621): pure HTTP+JSON email, Fastmail is reference impl
 - Matrix SDK 0.9: `Room::typing_notice(bool)`, `send_attachment()` for files, `ClankersEvent::Text` has `room_id`

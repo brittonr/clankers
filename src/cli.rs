@@ -580,6 +580,20 @@ pub enum ConfigAction {
         /// Force overwrite existing config
         #[arg(long)]
         force: bool,
+        /// Initialize as Nickel (.ncl) instead of JSON
+        #[arg(long)]
+        nickel: bool,
+        /// Initialize global config instead of project
+        #[arg(long)]
+        global: bool,
+    },
+    /// Validate config files without starting a session
+    Check,
+    /// Export merged config as JSON
+    Export {
+        /// Export only global config (skip project merge)
+        #[arg(long)]
+        global: bool,
     },
 }
 

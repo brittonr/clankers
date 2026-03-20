@@ -84,10 +84,12 @@ async fn main() -> Result<()> {
 
     let paths = clankers::config::ClankersPaths::resolve();
     let project_paths = clankers::config::ProjectPaths::resolve(std::path::Path::new(&cwd));
-    let settings = clankers::config::Settings::load_with_pi_fallback(
+    let settings = clankers::config::Settings::load_with_nickel(
         paths.pi_settings.as_deref(),
         &paths.global_settings,
+        &paths.global_settings_ncl,
         &project_paths.settings,
+        &project_paths.settings_ncl,
     );
 
     let model = cli.model.clone().unwrap_or(settings.model.clone());

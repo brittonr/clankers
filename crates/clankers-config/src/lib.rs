@@ -2,6 +2,8 @@
 
 pub mod keybindings;
 pub mod model_roles;
+#[cfg(feature = "nickel")]
+pub mod nickel;
 pub mod paths;
 pub mod settings;
 

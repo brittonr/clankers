@@ -14,6 +14,8 @@ pub struct ClankersPaths {
     pub global_config_dir: PathBuf,
     /// Global settings file: ~/.clankers/agent/settings.json
     pub global_settings: PathBuf,
+    /// Global Nickel settings file: ~/.clankers/agent/settings.ncl
+    pub global_settings_ncl: PathBuf,
     /// Global auth file: ~/.config/clanker-router/auth.json (shared with clanker-router)
     pub global_auth: PathBuf,
     /// Global agents directory: ~/.clankers/agent/agents/
@@ -47,6 +49,8 @@ pub struct ProjectPaths {
     pub config_dir: PathBuf,
     /// Project settings: .clankers/settings.json
     pub settings: PathBuf,
+    /// Project Nickel settings: .clankers/settings.ncl
+    pub settings_ncl: PathBuf,
     /// Project agents: .clankers/agents/
     pub agents_dir: PathBuf,
     /// Project skills: .clankers/skills/
@@ -103,6 +107,7 @@ impl ClankersPaths {
 
         Self {
             global_settings: base.join("settings.json"),
+            global_settings_ncl: base.join("settings.ncl"),
             global_auth: auth_path,
             global_agents_dir: base.join("agents"),
             global_skills_dir: base.join("skills"),
@@ -126,6 +131,7 @@ impl ProjectPaths {
         let config_dir = root.join(".clankers");
         Self {
             settings: config_dir.join("settings.json"),
+            settings_ncl: config_dir.join("settings.ncl"),
             agents_dir: config_dir.join("agents"),
             skills_dir: config_dir.join("skills"),
             plugins_dir: config_dir.join("plugins"),
