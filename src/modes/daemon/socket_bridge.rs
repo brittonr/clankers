@@ -38,6 +38,7 @@ pub struct SessionFactory {
     pub default_model: String,
     pub default_system_prompt: String,
     pub registry: Option<ProcessRegistry>,
+    pub catalog: Option<Arc<super::session_store::SessionCatalog>>,
 }
 
 impl SessionFactory {
@@ -61,6 +62,7 @@ impl SessionFactory {
                     default_system_prompt: self.default_system_prompt.clone(),
                     // Don't recurse — child agents use subprocess fallback
                     registry: None,
+                    catalog: None,
                 }),
             }
         });
@@ -161,7 +163,7 @@ async fn handle_control(
             let resolved_model = model.clone().unwrap_or_else(|| factory.default_model.clone());
 
             // Spawn as an actor process in the registry
-            let (_pid, cmd_tx, event_tx) = super::agent_process::spawn_agent_process(
+            let spawned = super::agent_process::spawn_agent_process(
                 &registry,
                 &factory,
                 session_id.clone(),
@@ -170,6 +172,8 @@ async fn handle_control(
                 None,
                 None, // local sessions get full access
             );
+            let cmd_tx = spawned.cmd_tx;
+            let event_tx = spawned.event_tx;
 
             let socket_path = session_socket_path(&session_id);
 
@@ -182,9 +186,24 @@ async fn handle_control(
                     turn_count: 0,
                     last_active: chrono::Utc::now().to_rfc3339(),
                     client_count: 0,
-                    cmd_tx: cmd_tx.clone(),
-                    event_tx: event_tx.clone(),
+                    cmd_tx: Some(cmd_tx.clone()),
+                    event_tx: Some(event_tx.clone()),
                     socket_path: socket_path.clone(),
+                    state: "active".to_string(),
+                });
+            }
+
+            // Write catalog entry for recovery
+            if let Some(ref catalog) = factory.catalog {
+                let now = chrono::Utc::now().to_rfc3339();
+                catalog.insert_session(&super::session_store::SessionCatalogEntry {
+                    session_id: session_id.clone(),
+                    automerge_path: spawned.automerge_path.clone().unwrap_or_default(),
+                    model: resolved_model.clone(),
+                    created_at: now.clone(),
+                    last_active: now,
+                    turn_count: 0,
+                    state: super::session_store::SessionLifecycle::Active,
                 });
             }
 
@@ -220,8 +239,36 @@ async fn handle_control(
             }
         }
 
+        ControlCommand::AttachSession { session_id } => {
+            let mut st = state.lock().await;
+            let needs_recovery = st.sessions.get(&session_id)
+                .is_some_and(|h| h.cmd_tx.is_none());
+
+            if needs_recovery {
+                match super::agent_process::recover_session(
+                    &session_id, &registry, &factory, &mut st, &shutdown,
+                ) {
+                    Ok(_) => {
+                        let socket_path = st.sessions.get(&session_id)
+                            .map(|h| h.socket_path.to_string_lossy().into_owned())
+                            .unwrap_or_default();
+                        ControlResponse::Attached { socket_path }
+                    }
+                    Err(e) => ControlResponse::Error { message: format!("recovery failed: {e}") },
+                }
+            } else if let Some(handle) = st.sessions.get(&session_id) {
+                ControlResponse::Attached {
+                    socket_path: handle.socket_path.to_string_lossy().into_owned(),
+                }
+            } else {
+                ControlResponse::Error {
+                    message: format!("session '{session_id}' not found"),
+                }
+            }
+        }
+
         // Delegate non-creation commands to the standard handler
-        other => dispatch_control_command(other, &state).await,
+        other => dispatch_control_command(other, &state, &factory).await,
     };
 
     frame::write_frame(&mut writer, &response).await?;
@@ -232,6 +279,7 @@ async fn handle_control(
 async fn dispatch_control_command(
     cmd: ControlCommand,
     state: &Arc<Mutex<DaemonState>>,
+    factory: &SessionFactory,
 ) -> ControlResponse {
     let st = state.lock().await;
     match cmd {
@@ -240,7 +288,12 @@ async fn dispatch_control_command(
         ControlCommand::ProcessTree => ControlResponse::Tree(vec![]),
         ControlCommand::KillSession { session_id } => {
             if let Some(handle) = st.sessions.get(&session_id) {
-                let _ = handle.cmd_tx.send(SessionCommand::Disconnect);
+                if let Some(ref tx) = handle.cmd_tx {
+                    let _ = tx.send(SessionCommand::Disconnect);
+                }
+                if let Some(ref catalog) = factory.catalog {
+                    catalog.set_state(&session_id, super::session_store::SessionLifecycle::Tombstoned);
+                }
                 ControlResponse::Killed
             } else {
                 ControlResponse::Error {
@@ -248,15 +301,10 @@ async fn dispatch_control_command(
                 }
             }
         }
-        ControlCommand::AttachSession { session_id } => {
-            if let Some(handle) = st.sessions.get(&session_id) {
-                ControlResponse::Attached {
-                    socket_path: handle.socket_path.to_string_lossy().into_owned(),
-                }
-            } else {
-                ControlResponse::Error {
-                    message: format!("session '{session_id}' not found"),
-                }
+        ControlCommand::AttachSession { .. } => {
+            // Handled in caller (needs mutable state for recovery)
+            ControlResponse::Error {
+                message: "internal error: AttachSession routed to dispatch".to_string(),
             }
         }
         ControlCommand::CreateSession { .. } => {

@@ -156,7 +156,12 @@ pub struct DaemonState {
     pub started_at: Instant,
 }
 
-/// Handle to a running session (for control socket queries).
+/// Handle to a running or suspended session.
+///
+/// For active sessions, `cmd_tx` and `event_tx` are `Some` and connected
+/// to the actor. For suspended sessions (awaiting lazy recovery), both
+/// are `None` — the session is registered in `DaemonState` so it appears
+/// in listings but has no actor backing it.
 pub struct SessionHandle {
     /// Session ID
     pub session_id: String,
@@ -168,12 +173,14 @@ pub struct SessionHandle {
     pub last_active: String,
     /// Number of connected clients
     pub client_count: usize,
-    /// Command sender for the session controller
-    pub cmd_tx: mpsc::UnboundedSender<SessionCommand>,
-    /// Event broadcast for clients
-    pub event_tx: broadcast::Sender<DaemonEvent>,
+    /// Command sender for the session controller (None if suspended)
+    pub cmd_tx: Option<mpsc::UnboundedSender<SessionCommand>>,
+    /// Event broadcast for clients (None if suspended)
+    pub event_tx: Option<broadcast::Sender<DaemonEvent>>,
     /// Socket path
     pub socket_path: PathBuf,
+    /// Lifecycle state
+    pub state: String,
 }
 
 impl DaemonState {
@@ -228,6 +235,7 @@ impl DaemonState {
                 last_active: h.last_active.clone(),
                 client_count: h.client_count,
                 socket_path: h.socket_path.to_string_lossy().into_owned(),
+                state: h.state.clone(),
             })
             .collect()
     }
@@ -308,7 +316,9 @@ async fn handle_control_connection(mut stream: UnixStream, state: Arc<Mutex<Daem
             }
             ControlCommand::KillSession { session_id } => {
                 if let Some(handle) = state.sessions.get(&session_id) {
-                    let _ = handle.cmd_tx.send(SessionCommand::Disconnect);
+                    if let Some(ref tx) = handle.cmd_tx {
+                        let _ = tx.send(SessionCommand::Disconnect);
+                    }
                     ControlResponse::Killed
                 } else {
                     ControlResponse::Error {

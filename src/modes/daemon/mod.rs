@@ -60,6 +60,19 @@ pub async fn run_daemon(
     let identity = iroh::Identity::load_or_generate(&identity_path);
     let db_path = paths.global_config_dir.join("clankers.db");
     let auth_layer = create_auth_layer(&db_path, &identity);
+    let session_catalog = session_store::create_session_catalog(&db_path);
+
+    // Crash recovery: any `active` entries from a previous daemon that died
+    // without a clean shutdown should be treated as `suspended`.
+    if let Some(ref catalog) = session_catalog {
+        let recovered = catalog.transition_all(
+            session_store::SessionLifecycle::Active,
+            session_store::SessionLifecycle::Suspended,
+        );
+        if recovered > 0 {
+            info!("Recovered {recovered} stale active session(s) → suspended");
+        }
+    }
 
     // Phase 2: iroh endpoint + ACL (non-fatal — daemon works without iroh)
     let iroh_result = build_endpoint(&identity, &config, paths).await;
@@ -90,7 +103,38 @@ pub async fn run_daemon(
         default_model: config.model.clone(),
         default_system_prompt: config.system_prompt.clone(),
         registry: Some(process_registry.clone()),
+        catalog: session_catalog.clone(),
     });
+
+    // Phase 3b: Populate DaemonState with suspended sessions from catalog
+    if let Some(ref catalog) = session_catalog {
+        let suspended = catalog.list_by_state(session_store::SessionLifecycle::Suspended);
+        let key_mappings = catalog.list_keys();
+        if !suspended.is_empty() {
+            let mut st = daemon_state.blocking_lock();
+            for entry in &suspended {
+                let socket_path = clankers_controller::transport::session_socket_path(&entry.session_id);
+                st.sessions.insert(entry.session_id.clone(), clankers_controller::transport::SessionHandle {
+                    session_id: entry.session_id.clone(),
+                    model: entry.model.clone(),
+                    turn_count: entry.turn_count,
+                    last_active: entry.last_active.clone(),
+                    client_count: 0,
+                    cmd_tx: None,
+                    event_tx: None,
+                    socket_path,
+                    state: "suspended".to_string(),
+                });
+            }
+            // Restore key index
+            for (key, session_id) in &key_mappings {
+                if st.sessions.contains_key(session_id) {
+                    st.register_key(key.clone(), session_id.clone());
+                }
+            }
+            info!("Loaded {} suspended session(s) from catalog ({} key mappings)", suspended.len(), key_mappings.len());
+        }
+    }
 
     let socket_handle = spawn_socket_control_plane_shared(
         Arc::clone(&daemon_state),
@@ -128,7 +172,9 @@ pub async fn run_daemon(
     );
     spawn_heartbeat(&config, &identity, paths, cancel.clone()).await;
     spawn_status_logger(Arc::clone(&daemon_state), cancel.clone());
-    spawn_idle_reaper(&config, Arc::clone(&daemon_state), process_registry.clone(), cancel.clone());
+    spawn_idle_reaper(&config, Arc::clone(&daemon_state), process_registry.clone(), session_catalog.clone(), cancel.clone());
+    spawn_catalog_updater(session_catalog.clone(), Arc::clone(&daemon_state), cancel.clone());
+    spawn_catalog_gc(session_catalog.clone(), cancel.clone());
 
     let ctrl_sock = clankers_controller::transport::control_socket_path();
     let log_path = clankers_controller::transport::daemon_log_path();
@@ -144,8 +190,20 @@ pub async fn run_daemon(
     tokio::signal::ctrl_c().await.ok();
     println!("\nShutting down...");
 
-    // Send Shutdown to all actor processes, then wait briefly for graceful exit
+    // Send Shutdown to all actor processes, then wait briefly for graceful exit.
+    // Controllers flush unsaved messages to automerge during shutdown.
     process_registry.shutdown_all(std::time::Duration::from_secs(5)).await;
+
+    // Transition all active catalog entries to suspended
+    if let Some(ref catalog) = session_catalog {
+        let suspended = catalog.transition_all(
+            session_store::SessionLifecycle::Active,
+            session_store::SessionLifecycle::Suspended,
+        );
+        if suspended > 0 {
+            info!("Suspended {suspended} session(s) in catalog for recovery");
+        }
+    }
 
     cancel.cancel();
     let _ = shutdown_tx.send(true);
@@ -483,6 +541,7 @@ fn spawn_idle_reaper(
     config: &DaemonConfig,
     state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
     _registry: clanker_actor::ProcessRegistry,
+    catalog: Option<Arc<session_store::SessionCatalog>>,
     cancel: CancellationToken,
 ) {
     if config.idle_timeout_secs == 0 {
@@ -515,12 +574,75 @@ fn spawn_idle_reaper(
                     if !stale.is_empty() {
                         let mut st = state.lock().await;
                         for session_id in &stale {
-                            if let Some(handle) = st.sessions.get(session_id) {
-                                let _ = handle.cmd_tx.send(clankers_protocol::SessionCommand::Disconnect);
+                            if let Some(handle) = st.sessions.get(session_id)
+                                && let Some(ref tx) = handle.cmd_tx
+                            {
+                                let _ = tx.send(clankers_protocol::SessionCommand::Disconnect);
                             }
                             st.remove_session(session_id);
+                            if let Some(ref catalog) = catalog {
+                                catalog.set_state(session_id, session_store::SessionLifecycle::Tombstoned);
+                            }
                         }
                         info!("Reaped {} idle session(s)", stale.len());
+                    }
+                }
+                () = cancel.cancelled() => break,
+            }
+        }
+    });
+}
+
+/// Periodically GC tombstoned catalog entries older than 7 days.
+fn spawn_catalog_gc(
+    catalog: Option<Arc<session_store::SessionCatalog>>,
+    cancel: CancellationToken,
+) {
+    let Some(catalog) = catalog else { return };
+
+    tokio::spawn(async move {
+        // Run GC every hour
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
+        let retention = std::time::Duration::from_secs(7 * 24 * 3600); // 7 days
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    let removed = catalog.gc_tombstoned(retention);
+                    if removed > 0 {
+                        info!("Catalog GC: removed {removed} tombstoned entries");
+                    }
+                }
+                () = cancel.cancelled() => break,
+            }
+        }
+    });
+}
+
+/// Periodically sync DaemonState metadata to the session catalog (every 5s).
+/// Updates `last_active` and `turn_count` for all active sessions.
+fn spawn_catalog_updater(
+    catalog: Option<Arc<session_store::SessionCatalog>>,
+    state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
+    cancel: CancellationToken,
+) {
+    let Some(catalog) = catalog else { return };
+
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+        loop {
+            tokio::select! {
+                _ = interval.tick() => {
+                    let st = state.lock().await;
+                    for handle in st.sessions.values() {
+                        if let Some(mut entry) = catalog.get_session(&handle.session_id) {
+                            let changed = entry.last_active != handle.last_active
+                                || entry.turn_count != handle.turn_count;
+                            if changed {
+                                entry.last_active = handle.last_active.clone();
+                                entry.turn_count = handle.turn_count;
+                                catalog.update_session(&entry);
+                            }
+                        }
                     }
                 }
                 () = cancel.cancelled() => break,

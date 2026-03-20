@@ -33,6 +33,7 @@ use clankers_session::SessionManager;
 use tokio::sync::broadcast;
 use tracing::debug;
 use tracing::info;
+use tracing::warn;
 
 use self::audit::AuditTracker;
 use self::config::ControllerConfig;
@@ -210,6 +211,27 @@ impl SessionController {
             && let Some(ref mut agent) = self.agent
         {
             agent.abort();
+        }
+        // Flush any unsaved messages to the session file before shutting down.
+        // This catches in-progress turns that haven't hit AgentEnd yet.
+        if let Some(ref mut agent) = self.agent
+            && let Some(ref mut sm) = self.session_manager
+        {
+            let messages = agent.messages().to_vec();
+            let mut flushed = 0;
+            for msg in &messages {
+                if !sm.is_persisted(msg.id()) {
+                    let parent = sm.active_leaf_id().cloned();
+                    if let Err(e) = sm.append_message(msg.clone(), parent) {
+                        warn!("shutdown flush failed: {e}");
+                    } else {
+                        flushed += 1;
+                    }
+                }
+            }
+            if flushed > 0 {
+                info!("session {}: flushed {flushed} unsaved messages on shutdown", self.session_id);
+            }
         }
         if let Some(ref pipeline) = self.hook_pipeline {
             debug!("firing SessionEnd hook");

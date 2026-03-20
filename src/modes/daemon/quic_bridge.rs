@@ -174,7 +174,9 @@ fn dispatch_readonly_control(
         ControlCommand::ProcessTree => ControlResponse::Tree(vec![]),
         ControlCommand::KillSession { session_id } => {
             if let Some(handle) = state.sessions.get(&session_id) {
-                let _ = handle.cmd_tx.send(SessionCommand::Disconnect);
+                if let Some(ref tx) = handle.cmd_tx {
+                    let _ = tx.send(SessionCommand::Disconnect);
+                }
                 ControlResponse::Killed
             } else {
                 ControlResponse::Error {
@@ -222,7 +224,7 @@ async fn create_session_over_quic(
     let resolved_model = model.clone().unwrap_or_else(|| factory.default_model.clone());
 
     // Spawn as an actor process in the registry (with UCAN capability enforcement)
-    let (_pid, cmd_tx, event_tx) = super::agent_process::spawn_agent_process(
+    let spawned = super::agent_process::spawn_agent_process(
         registry,
         factory,
         session_id.clone(),
@@ -231,6 +233,8 @@ async fn create_session_over_quic(
         None,
         capabilities,
     );
+    let cmd_tx = spawned.cmd_tx;
+    let event_tx = spawned.event_tx;
 
     let socket_path = session_socket_path(&session_id);
 
@@ -243,9 +247,24 @@ async fn create_session_over_quic(
             turn_count: 0,
             last_active: chrono::Utc::now().to_rfc3339(),
             client_count: 0,
-            cmd_tx: cmd_tx.clone(),
-            event_tx: event_tx.clone(),
+            cmd_tx: Some(cmd_tx.clone()),
+            event_tx: Some(event_tx.clone()),
             socket_path: socket_path.clone(),
+            state: "active".to_string(),
+        });
+    }
+
+    // Write catalog entry for recovery
+    if let Some(ref catalog) = factory.catalog {
+        let now = chrono::Utc::now().to_rfc3339();
+        catalog.insert_session(&super::session_store::SessionCatalogEntry {
+            session_id: session_id.clone(),
+            automerge_path: spawned.automerge_path.clone().unwrap_or_default(),
+            model: resolved_model.clone(),
+            created_at: now.clone(),
+            last_active: now,
+            turn_count: 0,
+            state: super::session_store::SessionLifecycle::Active,
         });
     }
 
@@ -330,7 +349,25 @@ async fn handle_attach_stream(
     let (cmd_tx, mut event_rx) = {
         let st = state.lock().await;
         match st.sessions.get(&session_id) {
-            Some(handle) => (handle.cmd_tx.clone(), handle.event_tx.subscribe()),
+            Some(handle) => {
+                let Some(ref cmd_tx) = handle.cmd_tx else {
+                    let resp = AttachResponse::Error {
+                        message: format!("session '{session_id}' is suspended — recovery not yet implemented over QUIC"),
+                    };
+                    write_quic_frame(&mut send, &resp).await?;
+                    send.finish().ok();
+                    return Ok(());
+                };
+                let Some(ref event_tx) = handle.event_tx else {
+                    let resp = AttachResponse::Error {
+                        message: format!("session '{session_id}' has no event channel"),
+                    };
+                    write_quic_frame(&mut send, &resp).await?;
+                    send.finish().ok();
+                    return Ok(());
+                };
+                (cmd_tx.clone(), event_tx.subscribe())
+            }
             None => {
                 let resp = AttachResponse::Error {
                     message: format!("session '{session_id}' not found"),

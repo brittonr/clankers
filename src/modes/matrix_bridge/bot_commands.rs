@@ -61,7 +61,9 @@ pub(crate) async fn handle_bot_command(
             let mut st = state.lock().await;
             if let Some(session_id) = st.key_index.get(key).cloned() {
                 if let Some(handle) = st.sessions.get(&session_id) {
-                    let _ = handle.cmd_tx.send(SessionCommand::Disconnect);
+                    if let Some(ref tx) = handle.cmd_tx {
+                        let _ = tx.send(SessionCommand::Disconnect);
+                    }
                 }
                 st.remove_session(&session_id);
             }
@@ -92,9 +94,11 @@ pub(crate) async fn handle_bot_command(
                 let st = state.lock().await;
                 if let Some(handle) = st.session_by_key(key) {
                     let old_model = handle.model.clone();
-                    let _ = handle.cmd_tx.send(SessionCommand::SetModel {
-                        model: args.to_string(),
-                    });
+                    if let Some(ref tx) = handle.cmd_tx {
+                        let _ = tx.send(SessionCommand::SetModel {
+                            model: args.to_string(),
+                        });
+                    }
                     format!("Model switched: `{}` → `{}`", old_model, args)
                 } else {
                     "No active session. Send a message first, then switch model.".to_string()
@@ -162,7 +166,9 @@ async fn handle_token_command(
                 let mut st = state.lock().await;
                 if let Some(session_id) = st.key_index.get(key).cloned() {
                     if let Some(handle) = st.sessions.get(&session_id) {
-                        let _ = handle.cmd_tx.send(SessionCommand::Disconnect);
+                        if let Some(ref tx) = handle.cmd_tx {
+                            let _ = tx.send(SessionCommand::Disconnect);
+                        }
                     }
                     st.remove_session(&session_id);
                 }

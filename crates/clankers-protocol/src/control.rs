@@ -67,6 +67,13 @@ pub struct SessionSummary {
     pub last_active: String,
     pub client_count: usize,
     pub socket_path: String,
+    /// Lifecycle state: "active", "suspended", or "recovering".
+    #[serde(default = "default_session_state")]
+    pub state: String,
+}
+
+fn default_session_state() -> String {
+    "active".to_string()
 }
 
 /// Daemon runtime status.

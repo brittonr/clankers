@@ -41,6 +41,15 @@ const MAX_COLLECTED_BYTES: usize = 512 * 1024;
 ///
 /// `capabilities` — if set, tool calls are checked against these UCAN
 /// capabilities. `None` means full access (local sessions, root tokens).
+/// Info returned from `spawn_agent_process` for wiring up channels and catalog.
+pub struct SpawnedSession {
+    pub pid: ProcessId,
+    pub cmd_tx: mpsc::UnboundedSender<SessionCommand>,
+    pub event_tx: broadcast::Sender<DaemonEvent>,
+    /// Path to the automerge session file (if persistence succeeded).
+    pub automerge_path: Option<std::path::PathBuf>,
+}
+
 pub fn spawn_agent_process(
     registry: &ProcessRegistry,
     factory: &SessionFactory,
@@ -49,7 +58,7 @@ pub fn spawn_agent_process(
     system_prompt: Option<String>,
     parent: Option<ProcessId>,
     capabilities: Option<Vec<clankers_ucan::Capability>>,
-) -> (ProcessId, mpsc::UnboundedSender<SessionCommand>, broadcast::Sender<DaemonEvent>) {
+) -> SpawnedSession {
     let model = model.unwrap_or_else(|| factory.default_model.clone());
     let system_prompt = system_prompt.unwrap_or_else(|| factory.default_system_prompt.clone());
 
@@ -96,7 +105,7 @@ pub fn spawn_agent_process(
     // Create a SessionManager so daemon sessions get JSONL persistence
     // (same as standalone mode). Without this, conversation history is
     // lost when the daemon stops.
-    let session_manager = {
+    let (session_manager, automerge_path) = {
         let paths = crate::config::ClankersPaths::get();
         let cwd = std::env::current_dir()
             .unwrap_or_default()
@@ -111,12 +120,13 @@ pub fn spawn_agent_process(
             None,
         ) {
             Ok(mgr) => {
-                info!("session {session_id}: persistence enabled at {:?}", mgr.file_path());
-                Some(mgr)
+                let path = mgr.file_path().to_path_buf();
+                info!("session {session_id}: persistence enabled at {path:?}");
+                (Some(mgr), Some(path))
             }
             Err(e) => {
                 warn!("session {session_id}: failed to create session file: {e}");
-                None
+                (None, None)
             }
         }
     };
@@ -147,6 +157,7 @@ pub fn spawn_agent_process(
             default_model: factory.default_model.clone(),
             default_system_prompt: factory.default_system_prompt.clone(),
             registry: None, // child tools use subprocess fallback
+            catalog: None,
         }),
     };
     controller.set_tool_rebuilder(Arc::new(rebuilder));
@@ -175,7 +186,7 @@ pub fn spawn_agent_process(
         },
     );
 
-    (pid, cmd_tx, event_tx)
+    SpawnedSession { pid, cmd_tx, event_tx, automerge_path }
 }
 
 /// The actor loop: multiplexes session commands, actor signals,
@@ -324,7 +335,7 @@ pub async fn run_ephemeral_agent(
     // Resolve agent definition to model + system prompt overrides
     let (model, system_prompt) = resolve_agent_def(agent_def, factory);
 
-    let (pid, cmd_tx, event_tx) = spawn_agent_process(
+    let spawned = spawn_agent_process(
         registry,
         factory,
         session_id.clone(),
@@ -333,6 +344,9 @@ pub async fn run_ephemeral_agent(
         parent_pid,
         None, // ephemeral agents inherit parent's capabilities via actor links
     );
+    let pid = spawned.pid;
+    let cmd_tx = spawned.cmd_tx;
+    let event_tx = spawned.event_tx;
 
     let mut event_rx = event_tx.subscribe();
 
@@ -485,18 +499,21 @@ pub async fn get_or_create_keyed_session(
     // Fast path: session already exists
     {
         let st = state.lock().await;
-        if let Some(handle) = st.session_by_key(key) {
+        if let Some(handle) = st.session_by_key(key)
+            && let Some(ref cmd_tx) = handle.cmd_tx
+            && let Some(ref event_tx) = handle.event_tx
+        {
             return (
                 handle.session_id.clone(),
-                handle.cmd_tx.clone(),
-                handle.event_tx.clone(),
+                cmd_tx.clone(),
+                event_tx.clone(),
             );
         }
     }
 
     // Slow path: create a new session
     let session_id = clankers_message::generate_id();
-    let (_pid, cmd_tx, event_tx) = spawn_agent_process(
+    let spawned = spawn_agent_process(
         registry,
         factory,
         session_id.clone(),
@@ -505,6 +522,8 @@ pub async fn get_or_create_keyed_session(
         None,
         capabilities,
     );
+    let cmd_tx = spawned.cmd_tx;
+    let event_tx = spawned.event_tx;
 
     let socket_path =
         clankers_controller::transport::session_socket_path(&session_id);
@@ -519,16 +538,149 @@ pub async fn get_or_create_keyed_session(
                 turn_count: 0,
                 last_active: chrono::Utc::now().to_rfc3339(),
                 client_count: 0,
-                cmd_tx: cmd_tx.clone(),
-                event_tx: event_tx.clone(),
+                cmd_tx: Some(cmd_tx.clone()),
+                event_tx: Some(event_tx.clone()),
                 socket_path,
+                state: "active".to_string(),
             },
         );
         st.register_key(key.clone(), session_id.clone());
     }
 
+    // Write catalog entry + key mapping
+    if let Some(ref catalog) = factory.catalog {
+        let now = chrono::Utc::now().to_rfc3339();
+        catalog.insert_session(&super::session_store::SessionCatalogEntry {
+            session_id: session_id.clone(),
+            automerge_path: spawned.automerge_path.clone().unwrap_or_default(),
+            model: factory.default_model.clone(),
+            created_at: now.clone(),
+            last_active: now,
+            turn_count: 0,
+            state: super::session_store::SessionLifecycle::Active,
+        });
+        catalog.insert_key(key, &session_id);
+    }
+
     info!("created keyed session {} for {}", session_id, key);
     (session_id, cmd_tx, event_tx)
+}
+
+/// Lazily recover a suspended session: open the automerge file, spawn
+/// an actor, seed its messages, and upgrade the placeholder handle.
+///
+/// Returns `(cmd_tx, event_tx)` on success, or an error message.
+pub fn recover_session(
+    session_id: &str,
+    registry: &ProcessRegistry,
+    factory: &super::socket_bridge::SessionFactory,
+    state: &mut clankers_controller::transport::DaemonState,
+    shutdown: &tokio::sync::watch::Receiver<bool>,
+) -> Result<
+    (mpsc::UnboundedSender<SessionCommand>, broadcast::Sender<DaemonEvent>),
+    String,
+> {
+    // Look up catalog entry
+    let catalog = factory.catalog.as_ref().ok_or("no session catalog")?;
+    let entry = catalog.get_session(session_id)
+        .ok_or_else(|| format!("session '{session_id}' not in catalog"))?;
+
+    // Load seed messages from automerge
+    let seed_messages = if entry.automerge_path.exists() {
+        match clankers_session::SessionManager::open(entry.automerge_path.clone()) {
+            Ok(mgr) => {
+                match mgr.build_context() {
+                    Ok(msgs) => {
+                        let serialized: Vec<_> = msgs.iter().filter_map(|m| {
+                            let (role, content, model) = match m {
+                                clankers_message::AgentMessage::User(u) => {
+                                    let text = u.content.iter().filter_map(|c| match c {
+                                        clankers_message::Content::Text { text } => Some(text.as_str()),
+                                        _ => None,
+                                    }).collect::<Vec<_>>().join("\n");
+                                    ("user", text, None)
+                                }
+                                clankers_message::AgentMessage::Assistant(a) => {
+                                    let text = a.content.iter().filter_map(|c| match c {
+                                        clankers_message::Content::Text { text } => Some(text.as_str()),
+                                        _ => None,
+                                    }).collect::<Vec<_>>().join("\n");
+                                    ("assistant", text, Some(a.model.clone()))
+                                }
+                                _ => return None,
+                            };
+                            if content.is_empty() { return None; }
+                            Some(clankers_protocol::SerializedMessage {
+                                role: role.to_string(),
+                                content,
+                                model,
+                                timestamp: None,
+                            })
+                        }).collect();
+                        info!("recover_session {session_id}: loaded {} messages from {:?}", serialized.len(), entry.automerge_path);
+                        serialized
+                    }
+                    Err(e) => {
+                        warn!("recover_session {session_id}: failed to build context: {e} — starting fresh");
+                        Vec::new()
+                    }
+                }
+            }
+            Err(e) => {
+                warn!("recover_session {session_id}: failed to open automerge: {e} — starting fresh");
+                Vec::new()
+            }
+        }
+    } else {
+        warn!("recover_session {session_id}: automerge file missing at {:?} — starting fresh", entry.automerge_path);
+        Vec::new()
+    };
+
+    // Spawn the actor
+    let spawned = spawn_agent_process(
+        registry,
+        factory,
+        session_id.to_string(),
+        Some(entry.model.clone()),
+        None,
+        None,
+        None,
+    );
+    let cmd_tx = spawned.cmd_tx;
+    let event_tx = spawned.event_tx;
+
+    // Seed messages
+    if !seed_messages.is_empty() {
+        let _ = cmd_tx.send(SessionCommand::SeedMessages { messages: seed_messages });
+    }
+
+    // Start session socket
+    let socket_path = clankers_controller::transport::session_socket_path(session_id);
+    let sock_shutdown = shutdown.clone();
+    let sock_cmd_tx = cmd_tx.clone();
+    let sock_event_tx = event_tx.clone();
+    let sock_session_id = session_id.to_string();
+    tokio::spawn(async move {
+        clankers_controller::transport::run_session_socket(
+            sock_session_id,
+            sock_cmd_tx,
+            sock_event_tx,
+            sock_shutdown,
+        ).await;
+    });
+
+    // Upgrade placeholder handle
+    if let Some(handle) = state.sessions.get_mut(session_id) {
+        handle.cmd_tx = Some(cmd_tx.clone());
+        handle.event_tx = Some(event_tx.clone());
+        handle.state = "active".to_string();
+    }
+
+    // Update catalog
+    catalog.set_state(session_id, super::session_store::SessionLifecycle::Active);
+
+    info!("Recovered session {session_id}");
+    Ok((cmd_tx, event_tx))
 }
 
 /// Resolve agent definition name to (model, system_prompt) overrides.
