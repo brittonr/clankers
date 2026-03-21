@@ -214,13 +214,12 @@ impl RouterProvider {
             return (provider.as_ref(), None);
         }
 
-        // 4. Default provider
-        if let Some(provider) = self.providers.get(&self.default_provider) {
-            return (provider.as_ref(), None);
-        }
-
-        // Should never happen if we have at least one provider
-        unreachable!("RouterProvider has no providers")
+        // 4. Default provider (always exists if RouterProvider was constructed with ≥1 provider)
+        let provider = self
+            .providers
+            .get(&self.default_provider)
+            .expect("RouterProvider invariant: default_provider must exist in providers map");
+        (provider.as_ref(), None)
     }
 
     /// Get the model registry
@@ -1035,5 +1034,409 @@ mod tests {
         let chain = router.fallbacks.chain_for("model-a");
         assert!(chain.is_some());
         assert_eq!(chain.unwrap(), &["model-b", "model-c"]);
+    }
+
+    // ── All fallbacks exhausted ─────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_all_fallbacks_exhausted() {
+        let mut fallback_config = FallbackConfig::with_defaults();
+        fallback_config.set_chain(
+            "primary-model",
+            vec!["fallback-a".to_string(), "fallback-b".to_string()],
+        );
+
+        let (name1, provider1) =
+            failing_mock_with_status("p1", &["primary-model"], "rate limited", Some(429));
+        let (name2, provider2) =
+            failing_mock_with_status("p2", &["fallback-a"], "overloaded", Some(529));
+        let (name3, provider3) =
+            failing_mock_with_status("p3", &["fallback-b"], "overloaded", Some(529));
+
+        let router = RouterProvider::new(vec![(name1, provider1), (name2, provider2), (name3, provider3)])
+            .with_fallbacks(fallback_config);
+
+        let request = CompletionRequest {
+            model: "primary-model".to_string(),
+            messages: vec![make_user_msg("test")],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+        };
+
+        let (tx, _rx) = mpsc::channel(10);
+        let err = router.complete(request, tx).await.unwrap_err();
+
+        // Should be the last error from the chain
+        assert!(
+            err.message.contains("529") || err.message.contains("overloaded"),
+            "expected last fallback error, got: {}",
+            err.message
+        );
+    }
+
+    // ── All models in cooldown (primary + fallbacks) ────────────────
+
+    #[tokio::test]
+    async fn test_all_models_in_cooldown() {
+        let db = test_db();
+
+        // Put primary and all fallbacks in cooldown
+        let _ = db.rate_limits().record_error("p1", "primary-model", 429, None);
+        let _ = db.rate_limits().record_error("p2", "fallback-model", 429, None);
+
+        let mut fallback_config = FallbackConfig::with_defaults();
+        fallback_config.set_chain("primary-model", vec!["fallback-model".to_string()]);
+
+        let (name1, provider1, primary_count) = counting_mock("p1", &["primary-model"]);
+        let (name2, provider2, fallback_count) = counting_mock("p2", &["fallback-model"]);
+
+        let router = RouterProvider::with_db(vec![(name1, provider1), (name2, provider2)], db)
+            .with_fallbacks(fallback_config);
+
+        let request = CompletionRequest {
+            model: "primary-model".to_string(),
+            messages: vec![make_user_msg("test")],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+        };
+
+        let (tx, _rx) = mpsc::channel(10);
+        let err = router.complete(request, tx).await.unwrap_err();
+
+        // Neither provider was called — both skipped due to cooldown
+        assert_eq!(primary_count.load(Ordering::SeqCst), 0);
+        assert_eq!(fallback_count.load(Ordering::SeqCst), 0);
+        assert!(
+            err.message.contains("All providers exhausted"),
+            "got: {}",
+            err.message
+        );
+    }
+
+    // ── Empty router panics on resolve (defensive) ──────────────────
+
+    #[test]
+    fn test_empty_router_provider_count() {
+        // Empty providers list: technically usable for listing models (returns 0),
+        // but resolve() will panic. This is a known invariant — callers must
+        // supply at least one provider.
+        let router = RouterProvider::new(vec![]);
+        assert_eq!(router.provider_count(), 0);
+        assert!(router.models().is_empty());
+    }
+
+    // ── RouterCompatAdapter ─────────────────────────────────────────
+
+    /// Minimal mock of `clanker_router::Provider` (the external trait)
+    struct MockRouterProvider {
+        name_str: String,
+        models_list: Vec<Model>,
+    }
+
+    #[async_trait]
+    impl clanker_router::Provider for MockRouterProvider {
+        async fn complete(
+            &self,
+            _request: clanker_router::CompletionRequest,
+            tx: mpsc::Sender<clanker_router::streaming::StreamEvent>,
+        ) -> std::result::Result<(), clanker_router::Error> {
+            let _ = tx
+                .send(clanker_router::streaming::StreamEvent::MessageStart {
+                    message: clanker_router::streaming::MessageMetadata {
+                        id: "msg-1".into(),
+                        model: "test-model".into(),
+                        role: "assistant".into(),
+                    },
+                })
+                .await;
+            let _ = tx
+                .send(clanker_router::streaming::StreamEvent::ContentBlockStart {
+                    index: 0,
+                    content_block: clanker_router::streaming::ContentBlock::Text {
+                        text: String::new(),
+                    },
+                })
+                .await;
+            let _ = tx
+                .send(clanker_router::streaming::StreamEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: clanker_router::streaming::ContentDelta::TextDelta {
+                        text: "Hello from router provider".into(),
+                    },
+                })
+                .await;
+            let _ = tx
+                .send(clanker_router::streaming::StreamEvent::ContentBlockStop { index: 0 })
+                .await;
+            let _ = tx
+                .send(clanker_router::streaming::StreamEvent::MessageDelta {
+                    stop_reason: Some("end_turn".into()),
+                    usage: clanker_router::Usage {
+                        input_tokens: 10,
+                        output_tokens: 5,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0,
+                    },
+                })
+                .await;
+            let _ = tx
+                .send(clanker_router::streaming::StreamEvent::MessageStop)
+                .await;
+            Ok(())
+        }
+
+        fn models(&self) -> &[Model] {
+            &self.models_list
+        }
+
+        fn name(&self) -> &str {
+            &self.name_str
+        }
+    }
+
+    fn mock_router_provider(name: &str, model_ids: &[&str]) -> std::sync::Arc<dyn clanker_router::Provider> {
+        let models: Vec<Model> = model_ids
+            .iter()
+            .map(|id| Model {
+                id: id.to_string(),
+                name: id.to_string(),
+                provider: name.to_string(),
+                max_input_tokens: 200_000,
+                max_output_tokens: 16_384,
+                supports_thinking: true,
+                supports_images: true,
+                supports_tools: true,
+                input_cost_per_mtok: None,
+                output_cost_per_mtok: None,
+            })
+            .collect();
+
+        std::sync::Arc::new(MockRouterProvider {
+            name_str: name.to_string(),
+            models_list: models,
+        })
+    }
+
+    #[test]
+    fn test_compat_adapter_name() {
+        let inner = mock_router_provider("my-backend", &["model-a"]);
+        let adapter = RouterCompatAdapter::new(inner);
+        assert_eq!(adapter.name(), "my-backend");
+    }
+
+    #[test]
+    fn test_compat_adapter_models() {
+        let inner = mock_router_provider("backend", &["model-a", "model-b"]);
+        let adapter = RouterCompatAdapter::new(inner);
+        assert_eq!(adapter.models().len(), 2);
+        assert_eq!(adapter.models()[0].id, "model-a");
+    }
+
+    #[tokio::test]
+    async fn test_compat_adapter_complete() {
+        let inner = mock_router_provider("backend", &["test-model"]);
+        let adapter = RouterCompatAdapter::new(inner);
+
+        let (tx, mut rx) = mpsc::channel(64);
+        let request = CompletionRequest {
+            model: "test-model".to_string(),
+            messages: vec![make_user_msg("Hello")],
+            system_prompt: Some("Be helpful".into()),
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+        };
+
+        adapter.complete(request, tx).await.unwrap();
+
+        let mut events = Vec::new();
+        while let Some(e) = rx.recv().await {
+            events.push(e);
+        }
+
+        // Should have translated all events from router format to clankers format
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStart { .. })));
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::ContentBlockDelta { .. })));
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStop)));
+    }
+
+    #[tokio::test]
+    async fn test_compat_adapter_reload() {
+        let inner = mock_router_provider("backend", &["test-model"]);
+        let adapter = RouterCompatAdapter::new(inner);
+        // Should not panic
+        adapter.reload_credentials().await;
+    }
+
+    // ── Failing RouterCompatAdapter ─────────────────────────────────
+
+    struct FailingRouterProvider;
+
+    #[async_trait]
+    impl clanker_router::Provider for FailingRouterProvider {
+        async fn complete(
+            &self,
+            _request: clanker_router::CompletionRequest,
+            _tx: mpsc::Sender<clanker_router::streaming::StreamEvent>,
+        ) -> std::result::Result<(), clanker_router::Error> {
+            Err(clanker_router::Error::Provider {
+                message: "backend exploded".into(),
+                status: Some(500),
+            })
+        }
+
+        fn models(&self) -> &[Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "failing"
+        }
+    }
+
+    #[tokio::test]
+    async fn test_compat_adapter_error_propagation() {
+        let adapter = RouterCompatAdapter::new(std::sync::Arc::new(FailingRouterProvider));
+
+        let (tx, _rx) = mpsc::channel(64);
+        let request = CompletionRequest {
+            model: "test-model".to_string(),
+            messages: vec![],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+        };
+
+        let err = adapter.complete(request, tx).await.unwrap_err();
+        assert!(err.message.contains("backend exploded"), "got: {}", err.message);
+    }
+
+    // ── Router with_retry / with_fallbacks builder ──────────────────
+
+    #[test]
+    fn test_with_retry_configurable() {
+        let router = RouterProvider::new(vec![mock("test", &["model-a"])])
+            .with_retry(RetryConfig::default());
+        assert_eq!(router.provider_count(), 1);
+    }
+
+    // ── Resolve edge cases ──────────────────────────────────────────
+
+    #[test]
+    fn test_resolve_unknown_prefix_falls_to_default() {
+        let router = RouterProvider::new(vec![
+            mock("anthropic", &["claude-sonnet"]),
+            mock("openai", &["gpt-4o"]),
+        ]);
+
+        // "google/gemini" — prefix "google" doesn't match any provider
+        let (provider, _) = router.resolve("google/gemini");
+        assert_eq!(provider.name(), "anthropic"); // falls back to default
+    }
+
+    #[test]
+    fn test_resolve_prefix_exact_model() {
+        let router = RouterProvider::new(vec![
+            mock("anthropic", &["claude-sonnet"]),
+            mock("openai", &["gpt-4o"]),
+        ]);
+
+        // "openai/gpt-4o" matches prefix → openai provider
+        let (provider, _) = router.resolve("openai/gpt-4o");
+        assert_eq!(provider.name(), "openai");
+    }
+
+    // ── Cache key edge cases ────────────────────────────────────────
+
+    #[test]
+    fn test_cache_key_same_model_different_system_prompts() {
+        let db = test_db();
+        let router = RouterProvider::with_db(vec![mock("test", &["model-a"])], db);
+
+        let mut req1 = test_request("model-a");
+        req1.system_prompt = Some("You are a pirate.".into());
+
+        let mut req2 = test_request("model-a");
+        req2.system_prompt = Some("You are a robot.".into());
+
+        let key1 = router.compute_cache_key(&req1).unwrap();
+        let key2 = router.compute_cache_key(&req2).unwrap();
+        assert_ne!(key1, key2);
+    }
+
+    #[test]
+    fn test_cache_key_with_tools_differs() {
+        let db = test_db();
+        let router = RouterProvider::with_db(vec![mock("test", &["model-a"])], db);
+
+        let req1 = test_request("model-a");
+
+        let mut req2 = test_request("model-a");
+        req2.tools = vec![clanker_router::provider::ToolDefinition {
+            name: "bash".into(),
+            description: "Run bash".into(),
+            input_schema: serde_json::json!({"type": "object"}),
+        }];
+
+        let key1 = router.compute_cache_key(&req1).unwrap();
+        let key2 = router.compute_cache_key(&req2).unwrap();
+        assert_ne!(key1, key2);
+    }
+
+    // ── Duplicate fallback models deduplicated ──────────────────────
+
+    #[tokio::test]
+    async fn test_fallback_chain_deduplicates() {
+        // If fallback chain contains the primary model, it shouldn't be tried twice
+        let mut fallback_config = FallbackConfig::with_defaults();
+        fallback_config.set_chain(
+            "model-a",
+            vec!["model-a".to_string(), "model-b".to_string()],
+        );
+
+        let (name2, provider2, count_b) = counting_mock("test-b", &["model-b"]);
+
+        // Provider that fails for model-a with retryable error
+        let (name1_fail, provider1_fail) =
+            failing_mock_with_status("test-a", &["model-a"], "fail", Some(429));
+
+        let router = RouterProvider::new(vec![(name1_fail, provider1_fail), (name2, provider2)])
+            .with_fallbacks(fallback_config);
+
+        let request = CompletionRequest {
+            model: "model-a".to_string(),
+            messages: vec![make_user_msg("test")],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+        };
+
+        let (tx, _rx) = mpsc::channel(10);
+        let result = router.complete(request, tx).await;
+
+        assert!(result.is_ok());
+        // model-b should have been called once (fallback succeeded)
+        assert_eq!(count_b.load(Ordering::SeqCst), 1);
     }
 }
