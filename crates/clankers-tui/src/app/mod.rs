@@ -19,6 +19,17 @@ use clankers_tui_types::PluginUIState;
 pub use clankers_tui_types::RouterStatus;
 use ratatui::layout::Rect;
 
+/// Detailed information about the active router / provider setup.
+#[derive(Debug, Clone, Default)]
+pub struct RouterInfo {
+    /// Provider type name (e.g. "rpc-router", "router", "anthropic").
+    pub provider_type: String,
+    /// Backend provider names discovered (e.g. ["anthropic", "openai", "ollama"]).
+    pub backend_names: Vec<String>,
+    /// Total number of available models across all backends.
+    pub model_count: usize,
+}
+
 use crate::components::account_selector::AccountSelector;
 use crate::components::block::BlockEntry;
 use crate::components::block::ConversationBlock;
@@ -174,6 +185,7 @@ pub struct App {
     pub active_account: String,
     pub available_models: Vec<String>,
     pub router_status: RouterStatus,
+    pub router_info: RouterInfo,
     pub connection_mode: ConnectionMode,
     pub prompt_improve: bool,
     pub queued_prompt: Option<String>,
@@ -257,6 +269,7 @@ impl App {
             active_account: String::new(),
             available_models: Vec::new(),
             router_status: RouterStatus::Disconnected,
+            router_info: RouterInfo::default(),
             connection_mode: ConnectionMode::Embedded,
             prompt_improve: false,
             queued_prompt: None,

@@ -100,12 +100,29 @@ pub async fn run_interactive(
     // Populate available models from provider
     app.available_models = provider.models().iter().map(|m| m.id.clone()).collect();
 
-    // Set router connection status based on provider type
+    // Set router connection status and info based on provider type
     app.router_status = if provider.name() == "rpc-router" {
         crate::tui::app::RouterStatus::Connected
     } else {
         crate::tui::app::RouterStatus::Local
     };
+
+    // Populate detailed router info from the provider's model list
+    {
+        let models = provider.models();
+        let mut backend_names: Vec<String> = models
+            .iter()
+            .map(|m| m.provider.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+            .into_iter()
+            .collect();
+        backend_names.sort();
+        app.router_info = crate::tui::app::RouterInfo {
+            provider_type: provider.name().to_string(),
+            backend_names,
+            model_count: models.len(),
+        };
+    }
 
     // Populate active account name
     {

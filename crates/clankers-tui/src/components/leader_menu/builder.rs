@@ -242,6 +242,7 @@ fn info_submenu_items() -> Vec<MenuContribution> {
         builtin('t', "tools", cmd("/tools"), p()),
         builtin('l', "login", cmd("/login"), p()),
         builtin('r', "role", cmd("/role"), p()),
+        builtin('R', "router", cmd("/router"), p()),
     ]
 }
 

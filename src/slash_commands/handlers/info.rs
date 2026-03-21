@@ -166,6 +166,52 @@ fn format_leader_action(action: &crate::tui::components::leader_menu::LeaderActi
     }
 }
 
+pub struct RouterHandler;
+
+impl SlashHandler for RouterHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "router",
+            description: "Show router and provider info",
+            help: "Displays which router mode is active (RPC daemon or in-process)\n\
+                   and which backend providers are available.",
+            accepts_args: false,
+            subcommands: vec![],
+        }
+    }
+
+    fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
+        use std::fmt::Write;
+
+        let info = &ctx.app.router_info;
+        let status = &ctx.app.router_status;
+        let mut out = String::new();
+
+        // Connection mode
+        let mode = match status {
+            crate::tui::app::RouterStatus::Connected => "RPC daemon (clanker-router)",
+            crate::tui::app::RouterStatus::Local => "in-process",
+            crate::tui::app::RouterStatus::Disconnected => "disconnected",
+        };
+        writeln!(out, "Router: {} ({})", info.provider_type, mode).unwrap();
+
+        // Backends
+        if info.backend_names.is_empty() {
+            writeln!(out, "Providers: none").unwrap();
+        } else {
+            writeln!(out, "Providers: {}", info.backend_names.join(", ")).unwrap();
+        }
+
+        // Model count
+        writeln!(out, "Models: {} available", info.model_count).unwrap();
+
+        // Current model
+        writeln!(out, "Active model: {}", ctx.app.model).unwrap();
+
+        ctx.app.push_system(out.trim_end().to_string(), false);
+    }
+}
+
 pub struct ExportHandler;
 
 impl SlashHandler for ExportHandler {
