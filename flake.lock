@@ -77,6 +77,7 @@
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
         "rust-overlay": "rust-overlay",
+        "subwayrat-src": "subwayrat-src",
         "unit2nix": "unit2nix"
       }
     },
@@ -97,6 +98,22 @@
       "original": {
         "owner": "oxalica",
         "repo": "rust-overlay",
+        "type": "github"
+      }
+    },
+    "subwayrat-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1773956239,
+        "narHash": "sha256-OqX9V0CgoGkZCgfMXt3blJ9J9IJBQI5M6djReFQMLWE=",
+        "owner": "brittonr",
+        "repo": "subwayrat",
+        "rev": "d4f7db8d0b6d251f6860b9c216bdb1bc806fefde",
+        "type": "github"
+      },
+      "original": {
+        "owner": "brittonr",
+        "repo": "subwayrat",
         "type": "github"
       }
     },
@@ -123,11 +140,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1774003653,
-        "narHash": "sha256-aSEU+AX0rQsxNceG1iZyIyf4bz2YFQg0VzNwgb35GxQ=",
+        "lastModified": 1774052302,
+        "narHash": "sha256-6XXv5UdWVCHfvumf2Hq5/L/FtA4em6v61F51cX7M3no=",
         "owner": "brittonr",
         "repo": "unit2nix",
-        "rev": "69e697c446715698f1937e237450c4a28823babf",
+        "rev": "0117093fc377c0e8b4a04bc564557db123fd1683",
         "type": "github"
       },
       "original": {
