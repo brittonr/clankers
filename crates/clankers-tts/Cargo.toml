@@ -1,0 +1,39 @@
+[package]
+name = "clankers-tts"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+description = "Multi-provider TTS router for clankers"
+
+[features]
+default = ["kitten"]
+kitten = ["dep:kittentts"]
+kitten-espeak = ["kitten"]
+openai = []
+
+[dependencies]
+# Core
+async-trait = "0.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+# Audio output
+hound = "3"
+
+# KittenTTS backend (local ONNX)
+# espeak feature requires libespeak-ng.a (static) which NixOS doesn't ship.
+# We use kittentts without espeak and handle phonemization via subprocess.
+kittentts = { version = "0.2.7", optional = true }
+
+# OpenAI TTS backend
+reqwest = { workspace = true, optional = false }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+tempfile = "3"
+
+[lints]
+workspace = true

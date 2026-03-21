@@ -24,6 +24,7 @@ members = [
     "crates/clankers-tui-types",
     "crates/clankers-util",
     "crates/clankers-zellij",
+    "crates/clankers-tts",
     "xtask",
 ]
 resolver = "3"
