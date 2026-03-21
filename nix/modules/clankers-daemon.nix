@@ -80,6 +80,8 @@ in
         RUST_LOG = "info";
         # iroh needs a writable data dir
         IROH_DATA_DIR = "${cfg.stateDir}/.iroh";
+        # Model selection — daemon reads from env when no CLI flag
+        CLANKERS_MODEL = cfg.model;
       };
 
       serviceConfig = {
@@ -87,7 +89,6 @@ in
         ExecStart = lib.concatStringsSep " " ([
           "${cfg.package}/bin/clankers"
           "daemon" "start"
-          "--model" cfg.model
           "--heartbeat" (toString cfg.heartbeat)
         ]
         ++ lib.optional cfg.allowAll "--allow-all"

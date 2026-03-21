@@ -80,6 +80,12 @@
             aws-lc-rs = attrs: {
               nativeBuildInputs = [ pkgs.cmake pkgs.go ];
             };
+            ort-sys = attrs: {
+              nativeBuildInputs = [ pkgs.pkg-config ];
+              buildInputs = [ pkgs.onnxruntime pkgs.onnxruntime.dev ];
+              ORT_STRATEGY = "system";
+              ORT_LIB_LOCATION = "${pkgs.onnxruntime}";
+            };
           };
         };
 
@@ -106,6 +112,7 @@
           inherit pkgs rustToolchain unit2nix system;
           src = ./.;
         };
+        routerPkg = routerBuild.rootCrate.build;
       in
       {
         packages = {
@@ -191,6 +198,19 @@
           vm-smoke = import ./nix/vm-tests/smoke.nix { inherit pkgs clankersPkg; };
           vm-remote-daemon = import ./nix/vm-tests/remote-daemon.nix { inherit pkgs clankersPkg; };
           vm-session-recovery = import ./nix/vm-tests/session-recovery.nix { inherit pkgs clankersPkg; };
+          vm-module-daemon = import ./nix/vm-tests/module-daemon.nix {
+            inherit pkgs clankersPkg;
+            clankersDaemonModule = self.nixosModules.clankers-daemon;
+          };
+          vm-module-router = import ./nix/vm-tests/module-router.nix {
+            inherit pkgs routerPkg;
+            clankerRouterModule = self.nixosModules.clanker-router;
+          };
+          vm-module-integration = import ./nix/vm-tests/module-integration.nix {
+            inherit pkgs clankersPkg routerPkg;
+            clankersDaemonModule = self.nixosModules.clankers-daemon;
+            clankerRouterModule = self.nixosModules.clanker-router;
+          };
         };
 
         devShells.default = pkgs.mkShell {
