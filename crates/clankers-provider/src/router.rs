@@ -16,6 +16,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use clanker_router::RouterDb;
 use clanker_router::db::cache::CacheKeyInput;
+use clanker_router::router::FallbackConfig;
+use clanker_router::retry::RetryConfig;
 use tokio::sync::mpsc;
 use tracing::debug;
 use tracing::info;
@@ -117,6 +119,10 @@ pub struct RouterProvider {
     all_models: Vec<Model>,
     /// Persistent database for response caching (optional)
     db: Option<RouterDb>,
+    /// Per-model fallback chains
+    fallbacks: FallbackConfig,
+    /// Exponential backoff retry configuration
+    retry_config: RetryConfig,
 }
 
 impl RouterProvider {
@@ -149,6 +155,8 @@ impl RouterProvider {
             default_provider,
             all_models,
             db: None,
+            fallbacks: FallbackConfig::with_defaults(),
+            retry_config: RetryConfig::default(),
         }
     }
 
@@ -224,18 +232,81 @@ impl RouterProvider {
     pub fn provider_count(&self) -> usize {
         self.providers.len()
     }
+
+    /// Configure per-model fallback chains
+    pub fn with_fallbacks(mut self, fallbacks: FallbackConfig) -> Self {
+        self.fallbacks = fallbacks;
+        self
+    }
+
+    /// Configure exponential backoff retry
+    pub fn with_retry(mut self, config: RetryConfig) -> Self {
+        self.retry_config = config;
+        self
+    }
+
+    /// Try a provider with cache write-back on success.
+    async fn try_provider(
+        &self,
+        provider: &dyn Provider,
+        request: &CompletionRequest,
+        tx: &mpsc::Sender<StreamEvent>,
+        cache_key: Option<&str>,
+    ) -> Result<()> {
+        if cache_key.is_some() {
+            // Intercept the stream to collect events for cache write-back
+            let (inner_tx, mut inner_rx) = mpsc::channel::<StreamEvent>(256);
+
+            let provider_name = provider.name().to_string();
+            let model_id = request.model.clone();
+            let result = provider.complete(request.clone(), inner_tx).await;
+
+            let mut collected = Vec::new();
+            let mut input_tokens = 0u64;
+            let mut output_tokens = 0u64;
+
+            while let Some(event) = inner_rx.recv().await {
+                if let StreamEvent::MessageDelta { usage, .. } = &event {
+                    input_tokens += usage.input_tokens as u64;
+                    output_tokens += usage.output_tokens as u64;
+                }
+                collected.push(event.clone());
+                if tx.send(event).await.is_err() {
+                    break;
+                }
+            }
+
+            // Write to cache on success
+            if result.is_ok()
+                && !collected.is_empty()
+                && let (Some(key), Some(db)) = (cache_key, &self.db)
+            {
+                let router_events: Vec<clanker_router::streaming::StreamEvent> =
+                    collected.into_iter().map(Into::into).collect();
+                let entry =
+                    db.cache()
+                        .build_entry(key, &provider_name, &model_id, router_events, input_tokens, output_tokens);
+                match db.cache().put(&entry) {
+                    Ok(()) => debug!("cached response for {model_id} (key={key:.12}…)"),
+                    Err(e) => warn!("cache write failed: {e}"),
+                }
+            }
+
+            result
+        } else {
+            // No caching — stream directly
+            provider.complete(request.clone(), tx.clone()).await
+        }
+    }
 }
 
 #[async_trait]
 impl Provider for RouterProvider {
     async fn complete(&self, mut request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
-        let (provider, resolved_id) = self.resolve(&request.model);
-
-        if let Some(id) = resolved_id {
-            info!("Routing '{}' → '{}' via {}", request.model, id, provider.name());
-            request.model = id;
-        } else {
-            info!("Routing '{}' via {}", request.model, provider.name());
+        let (_, resolved_id) = self.resolve(&request.model);
+        let original_model = request.model.clone();
+        if let Some(ref id) = resolved_id {
+            request.model = id.clone();
         }
 
         // ── Response cache lookup ───────────────────────────────────
@@ -263,51 +334,71 @@ impl Provider for RouterProvider {
             }
         }
 
-        // ── Dispatch to provider ────────────────────────────────────
-        if cache_key.is_some() {
-            // Intercept the stream to collect events for cache write-back
-            let (inner_tx, mut inner_rx) = mpsc::channel::<StreamEvent>(256);
-
-            let provider_name = provider.name().to_string();
-            let model_id = request.model.clone();
-            let result = provider.complete(request, inner_tx).await;
-
-            let mut collected = Vec::new();
-            let mut input_tokens = 0u64;
-            let mut output_tokens = 0u64;
-
-            while let Some(event) = inner_rx.recv().await {
-                if let StreamEvent::MessageDelta { usage, .. } = &event {
-                    input_tokens += usage.input_tokens as u64;
-                    output_tokens += usage.output_tokens as u64;
-                }
-                collected.push(event.clone());
-                if tx.send(event).await.is_err() {
-                    break;
+        // ── Build models to try: [primary, ...fallbacks] ────────────
+        let mut models_to_try = vec![request.model.clone()];
+        if let Some(chain) = self.fallbacks.chain_for(&request.model) {
+            for fb in chain {
+                if !models_to_try.contains(fb) {
+                    models_to_try.push(fb.clone());
                 }
             }
-
-            // Write to cache on success
-            if result.is_ok()
-                && !collected.is_empty()
-                && let (Some(key), Some(db)) = (cache_key, &self.db)
-            {
-                let router_events: Vec<clanker_router::streaming::StreamEvent> =
-                    collected.into_iter().map(Into::into).collect();
-                let entry =
-                    db.cache()
-                        .build_entry(&key, &provider_name, &model_id, router_events, input_tokens, output_tokens);
-                match db.cache().put(&entry) {
-                    Ok(()) => debug!("cached response for {model_id} (key={key:.12}…)"),
-                    Err(e) => warn!("cache write failed: {e}"),
-                }
-            }
-
-            result
-        } else {
-            // No caching — stream directly
-            provider.complete(request, tx).await
         }
+
+        let mut last_error = None;
+        for (idx, model_id) in models_to_try.iter().enumerate() {
+            let is_fallback = idx > 0;
+            let (provider, _) = self.resolve(model_id);
+            
+            // Check rate-limit health
+            if let Some(ref db) = self.db
+                && let Ok(false) = db.rate_limits().is_healthy(provider.name(), model_id)
+            {
+                if is_fallback {
+                    debug!("fallback {}:{} in cooldown, skipping", provider.name(), model_id);
+                } else {
+                    info!("{}:{} in cooldown, trying fallbacks", provider.name(), model_id);
+                }
+                continue;
+            }
+
+            if is_fallback {
+                info!("falling back to {}:{}", provider.name(), model_id);
+            } else if let Some(ref resolved_id) = resolved_id {
+                info!("Routing '{}' → '{}' via {}", original_model, resolved_id, provider.name());
+            } else {
+                info!("Routing '{}' via {}", original_model, provider.name());
+            }
+
+            let mut attempt_request = request.clone();
+            attempt_request.model = model_id.clone();
+
+            // Try with cache write-back (reuse existing pattern)
+            match self.try_provider(provider, &attempt_request, &tx, cache_key.as_deref()).await {
+                Ok(()) => {
+                    // Record success
+                    if let Some(ref db) = self.db {
+                        let _ = db.rate_limits().record_success(provider.name(), model_id, 0);
+                    }
+                    return Ok(());
+                }
+                Err(e) => {
+                    let retryable = e.is_retryable();
+                    warn!("{}:{} failed: {}{}", provider.name(), model_id, e, if retryable { " (retryable)" } else { "" });
+
+                    if let Some(ref db) = self.db {
+                        let status = e.status_code().unwrap_or(500);
+                        let _ = db.rate_limits().record_error(provider.name(), model_id, status, None);
+                    }
+
+                    if !retryable {
+                        return Err(e);
+                    }
+                    last_error = Some(e);
+                }
+            }
+        }
+
+        Err(last_error.unwrap_or_else(|| crate::error::provider_err("All providers exhausted")))
     }
 
     fn models(&self) -> &[Model] {
@@ -770,5 +861,179 @@ mod tests {
         let key1 = router.compute_cache_key(&req1).unwrap();
         let key2 = router.compute_cache_key(&req2).unwrap();
         assert_ne!(key1, key2);
+    }
+
+    // ── Fallback and retry tests ────────────────────────────────────
+
+    /// Mock provider that always fails with a configurable error
+    struct FailingProvider {
+        name_str: String,
+        models_list: Vec<Model>,
+        error_message: String,
+        /// HTTP status code — if set, creates a status-bearing error
+        status: Option<u16>,
+    }
+
+    #[async_trait]
+    impl Provider for FailingProvider {
+        async fn complete(&self, _request: CompletionRequest, _tx: mpsc::Sender<StreamEvent>) -> Result<()> {
+            match self.status {
+                Some(status) => Err(crate::error::provider_err_with_status(status, &self.error_message)),
+                None => Err(crate::error::provider_err(&self.error_message)),
+            }
+        }
+        fn models(&self) -> &[Model] {
+            &self.models_list
+        }
+        fn name(&self) -> &str {
+            &self.name_str
+        }
+    }
+
+    fn failing_mock(name: &str, model_ids: &[&str], error_msg: &str) -> (String, Arc<dyn Provider>) {
+        failing_mock_with_status(name, model_ids, error_msg, None)
+    }
+
+    fn failing_mock_with_status(name: &str, model_ids: &[&str], error_msg: &str, status: Option<u16>) -> (String, Arc<dyn Provider>) {
+        let models: Vec<Model> = model_ids
+            .iter()
+            .map(|id| Model {
+                id: id.to_string(),
+                name: id.to_string(),
+                provider: name.to_string(),
+                max_input_tokens: 200_000,
+                max_output_tokens: 16_384,
+                supports_thinking: true,
+                supports_images: true,
+                supports_tools: true,
+                input_cost_per_mtok: None,
+                output_cost_per_mtok: None,
+            })
+            .collect();
+
+        (
+            name.to_string(),
+            Arc::new(FailingProvider {
+                name_str: name.to_string(),
+                models_list: models,
+                error_message: error_msg.to_string(),
+                status,
+            }),
+        )
+    }
+
+    #[tokio::test]
+    async fn test_fallback_on_retryable_error() {
+        let mut fallback_config = FallbackConfig::with_defaults();
+        fallback_config.set_chain("primary-model", vec!["fallback-model".to_string()]);
+
+        let (name1, provider1) = failing_mock_with_status("primary", &["primary-model"], "rate limited", Some(429));
+        let (name2, provider2, call_count) = counting_mock("fallback", &["fallback-model"]);
+
+        let router = RouterProvider::new(vec![(name1, provider1), (name2, provider2)])
+            .with_fallbacks(fallback_config);
+
+        let request = CompletionRequest {
+            model: "primary-model".to_string(),
+            messages: vec![make_user_msg("test")],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+        };
+
+        let (tx, _rx) = mpsc::channel(10);
+        let result = router.complete(request, tx).await;
+        
+        // Should succeed via fallback
+        assert!(result.is_ok());
+        assert_eq!(call_count.load(Ordering::SeqCst), 1); // fallback was called
+    }
+
+    #[tokio::test]
+    async fn test_no_fallback_on_non_retryable_error() {
+        let mut fallback_config = FallbackConfig::with_defaults();
+        fallback_config.set_chain("primary-model", vec!["fallback-model".to_string()]);
+
+        let (name1, provider1) = failing_mock("primary", &["primary-model"], "Invalid API key");
+        let (name2, provider2, call_count) = counting_mock("fallback", &["fallback-model"]);
+
+        let router = RouterProvider::new(vec![(name1, provider1), (name2, provider2)])
+            .with_fallbacks(fallback_config);
+
+        let request = CompletionRequest {
+            model: "primary-model".to_string(),
+            messages: vec![make_user_msg("test")],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+        };
+
+        let (tx, _rx) = mpsc::channel(10);
+        let result = router.complete(request, tx).await;
+        
+        // Should fail immediately
+        assert!(result.is_err());
+        assert_eq!(call_count.load(Ordering::SeqCst), 0); // fallback was NOT called
+    }
+
+    #[tokio::test]
+    async fn test_rate_limit_health_skip() {
+        let db = test_db();
+        
+        // Record a failure to put the provider in cooldown
+        let _ = db.rate_limits().record_error("primary", "primary-model", 429, None);
+
+        let mut fallback_config = FallbackConfig::with_defaults();
+        fallback_config.set_chain("primary-model", vec!["fallback-model".to_string()]);
+
+        let (name1, provider1, primary_count) = counting_mock("primary", &["primary-model"]);
+        let (name2, provider2, fallback_count) = counting_mock("fallback", &["fallback-model"]);
+
+        let router = RouterProvider::with_db(
+            vec![(name1, provider1), (name2, provider2)], 
+            db
+        ).with_fallbacks(fallback_config);
+
+        let request = CompletionRequest {
+            model: "primary-model".to_string(),
+            messages: vec![make_user_msg("test")],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+        };
+
+        let (tx, _rx) = mpsc::channel(10);
+        let result = router.complete(request, tx).await;
+        
+        // Should skip primary (in cooldown) and use fallback
+        assert!(result.is_ok());
+        assert_eq!(primary_count.load(Ordering::SeqCst), 0); // primary skipped
+        assert_eq!(fallback_count.load(Ordering::SeqCst), 1); // fallback used
+    }
+
+    #[test]
+    fn test_fallback_config_wired() {
+        let mut fallback_config = FallbackConfig::with_defaults();
+        fallback_config.set_chain("model-a", vec!["model-b".to_string(), "model-c".to_string()]);
+
+        let router = RouterProvider::new(vec![mock("test", &["model-a", "model-b", "model-c"])])
+            .with_fallbacks(fallback_config);
+
+        // Check that the chain is properly configured
+        let chain = router.fallbacks.chain_for("model-a");
+        assert!(chain.is_some());
+        assert_eq!(chain.unwrap(), &["model-b", "model-c"]);
     }
 }

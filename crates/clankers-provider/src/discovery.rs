@@ -88,6 +88,10 @@ pub fn build_router(
         ("OPENROUTER_API_KEY", OpenAICompatConfig::openrouter),
         ("GROQ_API_KEY", OpenAICompatConfig::groq),
         ("DEEPSEEK_API_KEY", OpenAICompatConfig::deepseek),
+        ("MISTRAL_API_KEY", OpenAICompatConfig::mistral),
+        ("TOGETHER_API_KEY", OpenAICompatConfig::together),
+        ("FIREWORKS_API_KEY", OpenAICompatConfig::fireworks),
+        ("XAI_API_KEY", OpenAICompatConfig::xai),
     ];
 
     for (env_var, config_fn) in compat_providers {
@@ -228,8 +232,11 @@ pub fn build_router(
         None
     };
 
+    // Wire up default fallback chains (Anthropic ↔ OpenAI ↔ DeepSeek)
+    let fallbacks = clanker_router::router::FallbackConfig::with_defaults();
+
     match cache_db {
-        Some(db) => Ok(Arc::new(RouterProvider::with_db(backends, db))),
-        None => Ok(Arc::new(RouterProvider::new(backends))),
+        Some(db) => Ok(Arc::new(RouterProvider::with_db(backends, db).with_fallbacks(fallbacks))),
+        None => Ok(Arc::new(RouterProvider::new(backends).with_fallbacks(fallbacks))),
     }
 }
