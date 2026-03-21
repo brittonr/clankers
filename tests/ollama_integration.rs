@@ -20,6 +20,7 @@ use clanker_router::Router;
 use clanker_router::RouterDb;
 use clanker_router::backends::openai_compat::OpenAICompatConfig;
 use clanker_router::backends::openai_compat::OpenAICompatProvider;
+use clanker_router::model_switch::ModelSwitchReason;
 use clanker_router::provider::CompletionRequest;
 use clanker_router::provider::ToolDefinition;
 use clanker_router::router::FallbackConfig;
@@ -32,6 +33,7 @@ use tokio::sync::mpsc;
 
 const OLLAMA_BASE: &str = "http://localhost:11434/v1";
 const MODEL_ID: &str = "qwen2.5:0.5b";
+const MODEL_ALT: &str = "qwen3:0.6b";
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -141,6 +143,37 @@ fn ollama_available() -> bool {
         eprintln!("SKIP: model {} not found in Ollama — run `ollama pull {}`", MODEL_ID, MODEL_ID);
     }
     ok
+}
+
+/// Check that a specific model is available in Ollama.
+fn model_available(model_id: &str) -> bool {
+    let id = model_id.to_string();
+    std::thread::spawn(move || {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .ok()?;
+        let resp = client.get(&format!("{}/models", OLLAMA_BASE)).send().ok()?;
+        let body: serde_json::Value = resp.json().ok()?;
+        let models = body.get("data")?.as_array()?;
+        Some(models.iter().any(|m| {
+            m.get("id")
+                .and_then(|v| v.as_str())
+                .map_or(false, |mid| mid == id)
+        }))
+    })
+    .join()
+    .ok()
+    .flatten()
+    .unwrap_or(false)
+}
+
+/// Build a router with two local models registered.
+fn two_model_router() -> Router {
+    let models = vec![ollama_model(MODEL_ID), ollama_model(MODEL_ALT)];
+    let mut router = Router::new(MODEL_ID);
+    router.register_provider(ollama_provider(models));
+    router
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────
@@ -640,6 +673,210 @@ async fn ollama_provider_is_available() {
     assert!(provider.is_available().await, "local provider should be available");
     assert_eq!(provider.name(), "local");
     assert!(!provider.models().is_empty());
+}
+
+// ── Model switching tests ───────────────────────────────────────────────
+
+/// Switch from qwen2.5:0.5b → qwen3:0.6b and verify both produce output.
+#[tokio::test]
+async fn ollama_switch_model_and_complete() {
+    if !ollama_available() || !model_available(MODEL_ALT) {
+        eprintln!("SKIP: need both {} and {}", MODEL_ID, MODEL_ALT);
+        return;
+    }
+
+    let mut router = two_model_router();
+
+    // Complete on the initial model
+    let events1 = collect_events(&router, simple_request(MODEL_ID, "Say hello."))
+        .await
+        .expect("initial model completion failed");
+    let text1 = extract_text(&events1);
+    assert!(!text1.is_empty(), "initial model should produce output");
+
+    // Switch to the alt model
+    let old = router.switch_model(MODEL_ALT, ModelSwitchReason::UserRequest);
+    assert_eq!(old, Some(MODEL_ID.to_string()), "switch should return previous model");
+    assert_eq!(router.active_model(), MODEL_ALT);
+
+    // Complete on the new model
+    let events2 = collect_events(&router, simple_request(MODEL_ALT, "Say hello."))
+        .await
+        .expect("switched model completion failed");
+    let text2 = extract_text(&events2);
+    assert!(!text2.is_empty(), "switched model should produce output");
+}
+
+/// Switch and switch back: verify the tracker returns to the original.
+#[tokio::test]
+async fn ollama_switch_back() {
+    if !ollama_available() || !model_available(MODEL_ALT) {
+        eprintln!("SKIP: need both {} and {}", MODEL_ID, MODEL_ALT);
+        return;
+    }
+
+    let mut router = two_model_router();
+    assert_eq!(router.active_model(), MODEL_ID);
+
+    // Switch to alt
+    router.switch_model(MODEL_ALT, ModelSwitchReason::UserRequest);
+    assert_eq!(router.active_model(), MODEL_ALT);
+
+    // Switch back
+    let old = router.switch_back();
+    assert_eq!(old, Some(MODEL_ALT.to_string()));
+    assert_eq!(router.active_model(), MODEL_ID);
+
+    // Verify the original model still works after switching back
+    let events = collect_events(&router, simple_request(MODEL_ID, "Hi"))
+        .await
+        .expect("completion after switch_back failed");
+    assert!(!extract_text(&events).is_empty());
+}
+
+/// Model switch history records each transition with reasons.
+#[tokio::test]
+async fn ollama_switch_history() {
+    if !ollama_available() || !model_available(MODEL_ALT) {
+        eprintln!("SKIP: need both {} and {}", MODEL_ID, MODEL_ALT);
+        return;
+    }
+
+    let mut router = two_model_router();
+
+    // Do several switches
+    router.switch_model(MODEL_ALT, ModelSwitchReason::UserRequest);
+    router.switch_model(MODEL_ID, ModelSwitchReason::RoleSwitch { role: "smol".into() });
+    router.switch_model(MODEL_ALT, ModelSwitchReason::ConfigChange);
+
+    let tracker = router.switch_tracker();
+    assert_eq!(tracker.total_switches(), 3);
+
+    let history = tracker.history();
+    // history[0] = Initial (MODEL_ID)
+    // history[1] = UserRequest (→ MODEL_ALT)
+    // history[2] = RoleSwitch (→ MODEL_ID)
+    // history[3] = ConfigChange (→ MODEL_ALT)
+    assert_eq!(history.len(), 4);
+    assert_eq!(history[0].reason, ModelSwitchReason::Initial);
+    assert_eq!(history[1].reason, ModelSwitchReason::UserRequest);
+    assert_eq!(history[1].from, MODEL_ID);
+    assert_eq!(history[1].to, MODEL_ALT);
+    assert_eq!(
+        history[2].reason,
+        ModelSwitchReason::RoleSwitch { role: "smol".into() }
+    );
+    assert_eq!(history[3].reason, ModelSwitchReason::ConfigChange);
+}
+
+/// Switching to the same model is a no-op.
+#[tokio::test]
+async fn ollama_switch_same_model_noop() {
+    if !ollama_available() {
+        return;
+    }
+
+    let mut router = ollama_router();
+    let result = router.switch_model(MODEL_ID, ModelSwitchReason::UserRequest);
+    assert!(result.is_none(), "switching to the same model should return None");
+    assert_eq!(router.switch_tracker().total_switches(), 0);
+}
+
+/// After switching, the default_model updates and completions route correctly.
+#[tokio::test]
+async fn ollama_switch_changes_default_model() {
+    if !ollama_available() || !model_available(MODEL_ALT) {
+        eprintln!("SKIP: need both {} and {}", MODEL_ID, MODEL_ALT);
+        return;
+    }
+
+    let mut router = two_model_router();
+    assert_eq!(router.default_model(), MODEL_ID);
+
+    router.switch_model(MODEL_ALT, ModelSwitchReason::UserRequest);
+    assert_eq!(router.default_model(), MODEL_ALT);
+
+    // Complete using the default (should go to MODEL_ALT now)
+    let events = collect_events(&router, simple_request(MODEL_ALT, "Say yes."))
+        .await
+        .expect("completion on new default failed");
+    assert!(!extract_text(&events).is_empty());
+}
+
+/// Both models produce different MessageStart metadata (model field differs).
+#[tokio::test]
+async fn ollama_switch_models_have_distinct_metadata() {
+    if !ollama_available() || !model_available(MODEL_ALT) {
+        eprintln!("SKIP: need both {} and {}", MODEL_ID, MODEL_ALT);
+        return;
+    }
+
+    let router = two_model_router();
+
+    let events1 = collect_events(&router, simple_request(MODEL_ID, "Hi"))
+        .await
+        .expect("model 1 failed");
+    let events2 = collect_events(&router, simple_request(MODEL_ALT, "Hi"))
+        .await
+        .expect("model 2 failed");
+
+    let model1 = match events1.first() {
+        Some(StreamEvent::MessageStart { message }) => message.model.clone(),
+        _ => panic!("expected MessageStart for model 1"),
+    };
+    let model2 = match events2.first() {
+        Some(StreamEvent::MessageStart { message }) => message.model.clone(),
+        _ => panic!("expected MessageStart for model 2"),
+    };
+
+    assert_ne!(
+        model1, model2,
+        "different models should report different model names in metadata"
+    );
+}
+
+/// Model switch with DB: usage is tracked per-model across switches.
+#[tokio::test]
+async fn ollama_switch_usage_per_model() {
+    if !ollama_available() || !model_available(MODEL_ALT) {
+        eprintln!("SKIP: need both {} and {}", MODEL_ID, MODEL_ALT);
+        return;
+    }
+
+    let tmp = tempfile::tempdir().expect("tmp dir");
+    let db = RouterDb::open(&tmp.path().join("switch_usage.db")).expect("open db");
+
+    let mut router = Router::with_db(MODEL_ID, db);
+    router.register_provider(ollama_provider(vec![
+        ollama_model(MODEL_ID),
+        ollama_model(MODEL_ALT),
+    ]));
+
+    // Complete on model 1
+    let _ = collect_events(&router, simple_request(MODEL_ID, "Hi"))
+        .await
+        .expect("model 1 failed");
+
+    // Switch and complete on model 2
+    router.switch_model(MODEL_ALT, ModelSwitchReason::UserRequest);
+    let _ = collect_events(&router, simple_request(MODEL_ALT, "Hi"))
+        .await
+        .expect("model 2 failed");
+
+    // Both models should appear in the request log
+    let log = router.db().unwrap().request_log();
+    let entries = log.recent(10).expect("log query");
+    assert!(entries.len() >= 2, "expected at least 2 log entries, got {}", entries.len());
+
+    let models_logged: Vec<&str> = entries.iter().map(|e| e.model.as_str()).collect();
+    assert!(
+        models_logged.contains(&MODEL_ID),
+        "log should contain {MODEL_ID}, got {models_logged:?}"
+    );
+    assert!(
+        models_logged.contains(&MODEL_ALT),
+        "log should contain {MODEL_ALT}, got {models_logged:?}"
+    );
 }
 
 /// Concurrent requests don't interfere with each other.
