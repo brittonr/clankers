@@ -18,6 +18,19 @@
 //! from the API, `force_refresh()` ignores the in-memory expiry and goes
 //! straight to refresh.
 //!
+//! ## Concurrency
+//!
+//! A `refresh_guard` mutex coalesces concurrent refresh attempts. If two
+//! tasks both see an expired token, the second one waits for the first to
+//! finish, then re-checks the credential — avoiding redundant HTTP calls.
+//!
+//! ## Fallback on failure
+//!
+//! When refresh fails (revoked token, network error), the manager tries
+//! other configured accounts from `auth.json` before giving up. This
+//! handles the case where one account's refresh token is invalidated but
+//! another account still has valid credentials.
+//!
 //! ## File locking
 //!
 //! Disk writes use exclusive `fs4` file locks so multiple clankers instances
@@ -44,11 +57,13 @@ use crate::error::Result;
 
 /// Manages credentials with automatic refresh for OAuth tokens.
 ///
-/// Thread-safe — uses an internal `Mutex` so it can be shared across
+/// Thread-safe — uses internal `Mutex`es so it can be shared across
 /// the provider and any background tasks.
 pub struct CredentialManager {
     /// Current credential (behind a lock for interior mutability)
     credential: Mutex<Credential>,
+    /// Serializes refresh attempts so concurrent callers coalesce
+    refresh_guard: Mutex<()>,
     /// Path to auth.json for reading/writing refreshed tokens
     auth_path: PathBuf,
     /// Optional fallback auth path (e.g. ~/.pi/agent/auth.json)
@@ -65,6 +80,7 @@ impl CredentialManager {
         let is_oauth = credential.is_oauth();
         let mgr = Arc::new(Self {
             credential: Mutex::new(credential),
+            refresh_guard: Mutex::new(()),
             auth_path,
             fallback_auth_path,
         });
@@ -85,7 +101,6 @@ impl CredentialManager {
         if !cred.is_expired() {
             return Ok(cred.clone());
         }
-        // Drop the lock before doing I/O
         let refresh_token = match cred.refresh_token() {
             Some(rt) => rt.to_string(),
             None => return Ok(cred.clone()), // API keys don't expire
@@ -113,17 +128,31 @@ impl CredentialManager {
         self.do_refresh(&refresh_token).await
     }
 
-    /// Perform the actual refresh.
+    /// Perform the actual refresh, coalescing concurrent attempts.
     ///
-    /// 1. Check disk (lockless) — another instance may have already refreshed
-    /// 2. HTTP refresh (async, no file lock held)
-    /// 3. Save to disk (spawn_blocking, brief exclusive file lock)
-    /// 4. Update in-memory credential
+    /// 1. Acquire refresh guard (serializes concurrent callers)
+    /// 2. Re-check credential (another caller may have already refreshed)
+    /// 3. Check disk (lockless) — another process may have refreshed
+    /// 4. HTTP refresh (async, no file lock held)
+    /// 5. Save to disk (spawn_blocking, brief exclusive file lock)
+    /// 6. Update in-memory credential
+    /// 7. On failure, try other configured accounts
     async fn do_refresh(&self, refresh_token: &str) -> Result<Credential> {
-        // 1. Quick disk check — skip HTTP if another instance already refreshed
-        let auth_path = self.auth_path.clone();
+        // 1. Coalesce concurrent refresh attempts
+        let _guard = self.refresh_guard.lock().await;
+
+        // 2. Re-check — another concurrent caller may have finished while we waited
+        {
+            let cred = self.credential.lock().await;
+            if !cred.is_expired() {
+                debug!("credential already refreshed by concurrent caller");
+                return Ok(cred.clone());
+            }
+        }
+
+        // 3. Quick disk check — skip HTTP if another process already refreshed
         let store = {
-            let path = auth_path.clone();
+            let path = self.auth_path.clone();
             tokio::task::spawn_blocking(move || AuthStore::load(&path))
                 .await
                 .map_err(|e| crate::error::auth_err(format!("Disk read panicked: {e}")))?
@@ -137,23 +166,55 @@ impl CredentialManager {
             return Ok(fresh);
         }
 
-        // 2. HTTP refresh (no lock held — this can take hundreds of ms)
-        let new_creds = oauth::refresh_token(refresh_token).await?;
+        // 4. HTTP refresh (no lock held — this can take hundreds of ms)
+        match oauth::refresh_token(refresh_token).await {
+            Ok(new_creds) => {
+                // 5. Save to disk with file locking
+                let creds_clone = new_creds.clone();
+                let path = self.auth_path.clone();
+                tokio::task::spawn_blocking(move || save_with_file_lock(&path, &creds_clone))
+                    .await
+                    .map_err(|e| crate::error::auth_err(format!("Save task panicked: {e}")))??;
 
-        // 3. Save to disk with file locking
-        let creds_clone = new_creds.clone();
-        let path = self.auth_path.clone();
-        tokio::task::spawn_blocking(move || save_with_file_lock(&path, &creds_clone))
-            .await
-            .map_err(|e| crate::error::auth_err(format!("Save task panicked: {e}")))??;
+                info!("OAuth token refreshed, new expiry: {}", new_creds.expires);
 
-        info!("OAuth token refreshed, new expiry: {}", new_creds.expires);
+                // 6. Update in-memory
+                let new_credential = new_creds.to_stored();
+                *self.credential.lock().await = new_credential.clone();
 
-        // 4. Update in-memory
-        let new_credential = new_creds.to_stored();
-        *self.credential.lock().await = new_credential.clone();
+                Ok(new_credential)
+            }
+            Err(refresh_err) => {
+                // 7. Refresh failed — try falling back to another account
+                warn!("OAuth refresh failed: {refresh_err}");
+                self.try_fallback_account(&store)
+                    .await
+                    .ok_or_else(|| crate::error::auth_err(format!("OAuth refresh failed and no fallback accounts available: {refresh_err}")))
+            }
+        }
+    }
 
-        Ok(new_credential)
+    /// Try to find another configured account with a valid (non-expired) credential.
+    ///
+    /// When the active account's refresh token is revoked or the refresh
+    /// endpoint is down, this lets us fall back to a different account that
+    /// still has a valid token.
+    async fn try_fallback_account(&self, store: &AuthStore) -> Option<Credential> {
+        let active = store
+            .providers
+            .get("anthropic")
+            .and_then(|p| p.active_account.as_deref())
+            .unwrap_or("default");
+
+        for (name, cred) in store.all_credentials("anthropic") {
+            if name != active && !cred.is_expired() {
+                info!("falling back to account '{name}' after refresh failure");
+                *self.credential.lock().await = cred.clone();
+                return Some(cred);
+            }
+        }
+
+        None
     }
 
     /// Whether the current credential is OAuth.
