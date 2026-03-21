@@ -221,7 +221,10 @@ impl AnthropicClient {
 
                     // Non-retryable status or max retries exceeded
                     let body = response.text().await.unwrap_or_default();
-                    return Err(crate::error::provider_err(format!("HTTP error {}: {}", status, body)));
+                    return Err(crate::error::provider_err_with_status(
+                        status,
+                        format!("HTTP error {}: {}", status, body),
+                    ));
                 }
                 Err(e) => {
                     // Check if the error message suggests a retryable condition

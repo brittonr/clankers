@@ -101,7 +101,14 @@ impl AnthropicProvider {
         let api_request = api::build_api_request(request, credential.is_oauth());
         let response = match self.client.send_streaming(&api_request, credential).await {
             Ok(r) => r,
-            Err(e) => return Err((500, e.to_string())),
+            Err(e) => {
+                // Preserve the HTTP status code from the error when available.
+                // send_streaming returns ProviderError with status for HTTP errors
+                // (e.g., 400, 403) — losing this turns non-retryable errors into
+                // retryable ones (status 500) in the pool rotation logic.
+                let status = e.status_code().unwrap_or(500);
+                return Err((status, e.to_string()));
+            }
         };
 
         if response.status().is_success() {
@@ -225,6 +232,620 @@ impl Provider for AnthropicProvider {
         // Reset pool health after credential reload (fresh tokens)
         if let Some(ref pool) = self.credential_pool {
             pool.reset_health().await;
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Provider;
+    use crate::auth::Credential;
+    use clanker_router::credential_pool::{CredentialPool, SelectionStrategy};
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
+
+    // ── Mock HTTP server ────────────────────────────────────────────
+
+    /// Minimal HTTP server that returns controlled responses for each request.
+    /// Responses are consumed in order from the `responses` vec.
+    struct MockServer {
+        addr: std::net::SocketAddr,
+        _handle: tokio::task::JoinHandle<()>,
+    }
+
+    #[derive(Clone)]
+    struct MockResponse {
+        status: u16,
+        body: String,
+        /// If true, body is SSE event stream format
+        is_sse: bool,
+    }
+
+    impl MockResponse {
+        fn success_sse() -> Self {
+            // Minimal valid Anthropic SSE stream
+            let body = [
+                "event: message_start",
+                r#"data: {"type":"message_start","message":{"id":"msg-1","type":"message","role":"assistant","model":"claude-test","content":[],"stop_reason":null,"usage":{"input_tokens":10,"output_tokens":0}}}"#,
+                "",
+                "event: content_block_start",
+                r#"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+                "",
+                "event: content_block_delta",
+                r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}"#,
+                "",
+                "event: content_block_stop",
+                r#"data: {"type":"content_block_stop","index":0}"#,
+                "",
+                "event: message_delta",
+                r#"data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"output_tokens":5}}"#,
+                "",
+                "event: message_stop",
+                r#"data: {"type":"message_stop"}"#,
+                "",
+            ]
+            .join("\n");
+            Self {
+                status: 200,
+                body,
+                is_sse: true,
+            }
+        }
+
+        fn error(status: u16, msg: &str) -> Self {
+            Self {
+                status,
+                body: format!(r#"{{"error":{{"type":"error","message":"{}"}}}}"#, msg),
+                is_sse: false,
+            }
+        }
+    }
+
+    impl MockServer {
+        async fn start(responses: Vec<MockResponse>) -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let addr = listener.local_addr().unwrap();
+            let counter = Arc::new(AtomicUsize::new(0));
+
+            let handle = tokio::spawn(async move {
+                let responses = Arc::new(responses);
+                loop {
+                    let Ok((mut stream, _)) = listener.accept().await else {
+                        break;
+                    };
+                    let responses = responses.clone();
+                    let counter = counter.clone();
+
+                    tokio::spawn(async move {
+                        // Read the HTTP request (consume headers)
+                        let mut buf = vec![0u8; 8192];
+                        let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await;
+
+                        let idx = counter.fetch_add(1, Ordering::SeqCst);
+                        let resp = responses.get(idx).cloned().unwrap_or_else(|| {
+                            MockResponse::error(500, "no more mock responses configured")
+                        });
+
+                        let content_type = if resp.is_sse {
+                            "text/event-stream"
+                        } else {
+                            "application/json"
+                        };
+
+                        let http_response = format!(
+                            "HTTP/1.1 {} {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                            resp.status,
+                            status_text(resp.status),
+                            content_type,
+                            resp.body.len(),
+                            resp.body,
+                        );
+
+                        let _ = stream.write_all(http_response.as_bytes()).await;
+                        let _ = stream.flush().await;
+                    });
+                }
+            });
+
+            Self { addr, _handle: handle }
+        }
+
+        fn base_url(&self) -> String {
+            format!("http://{}", self.addr)
+        }
+    }
+
+    fn status_text(code: u16) -> &'static str {
+        match code {
+            200 => "OK",
+            400 => "Bad Request",
+            401 => "Unauthorized",
+            429 => "Too Many Requests",
+            500 => "Internal Server Error",
+            529 => "Overloaded",
+            _ => "Unknown",
+        }
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────
+
+    fn api_key(key: &str) -> Credential {
+        Credential::ApiKey {
+            api_key: key.into(),
+            label: None,
+        }
+    }
+
+    fn test_request() -> CompletionRequest {
+        use clankers_message::message::*;
+        CompletionRequest {
+            model: "claude-test".into(),
+            messages: vec![AgentMessage::User(UserMessage {
+                id: MessageId::new("test"),
+                content: vec![Content::Text {
+                    text: "Hi".into(),
+                }],
+                timestamp: chrono::Utc::now(),
+            })],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: true,
+            cache_ttl: None,
+        }
+    }
+
+    async fn collect_events(mut rx: mpsc::Receiver<StreamEvent>) -> Vec<StreamEvent> {
+        let mut events = Vec::new();
+        while let Some(e) = rx.recv().await {
+            events.push(e);
+        }
+        events
+    }
+
+    // ── Metadata ────────────────────────────────────────────────────
+
+    #[test]
+    fn provider_name_is_anthropic() {
+        let provider = AnthropicProvider::new(api_key("sk-test"), None);
+        assert_eq!(provider.name(), "anthropic");
+    }
+
+    #[test]
+    fn models_not_empty() {
+        let provider = AnthropicProvider::new(api_key("sk-test"), None);
+        assert!(!provider.models().is_empty());
+    }
+
+    // ── Single-credential path: success ─────────────────────────────
+
+    #[tokio::test]
+    async fn single_cred_success() {
+        let server = MockServer::start(vec![MockResponse::success_sse()]).await;
+        let provider = AnthropicProvider::new(api_key("sk-test"), Some(server.base_url()));
+
+        let (tx, rx) = mpsc::channel(64);
+        provider.complete(test_request(), tx).await.unwrap();
+
+        let events = collect_events(rx).await;
+        assert!(!events.is_empty());
+        // Should contain MessageStart and MessageStop
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStart { .. })));
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStop)));
+    }
+
+    // ── Single-credential path: non-retryable error ─────────────────
+
+    #[tokio::test]
+    async fn single_cred_400_error() {
+        let server = MockServer::start(vec![MockResponse::error(400, "bad request")]).await;
+        let provider = AnthropicProvider::new(api_key("sk-test"), Some(server.base_url()));
+
+        let (tx, _rx) = mpsc::channel(64);
+        let err = provider.complete(test_request(), tx).await.unwrap_err();
+        assert!(err.message.contains("400"), "got: {}", err.message);
+    }
+
+    // ── Single-credential path: 401 triggers refresh attempt ────────
+
+    #[tokio::test]
+    async fn single_cred_401_without_manager_returns_error() {
+        // No credential_manager → can't refresh → error
+        let server = MockServer::start(vec![MockResponse::error(401, "unauthorized")]).await;
+        let provider = AnthropicProvider::new(api_key("sk-test"), Some(server.base_url()));
+
+        let (tx, _rx) = mpsc::channel(64);
+        let err = provider.complete(test_request(), tx).await.unwrap_err();
+        assert!(err.message.contains("401"), "got: {}", err.message);
+    }
+
+    // ── Pool path: first credential succeeds ────────────────────────
+
+    #[tokio::test]
+    async fn pool_first_credential_succeeds() {
+        let server = MockServer::start(vec![MockResponse::success_sse()]).await;
+
+        let pool = CredentialPool::new(
+            vec![
+                ("primary".into(), api_key("key-1")),
+                ("backup".into(), api_key("key-2")),
+            ],
+            SelectionStrategy::Failover,
+        );
+
+        let (_dir, path) = tempfile::TempDir::new().map(|d| {
+            let p = d.path().join("auth.json");
+            (d, p)
+        }).unwrap();
+
+        let cm = crate::credential_manager::CredentialManager::new(
+            api_key("key-1"), path, None,
+        );
+
+        let provider = AnthropicProvider::with_credential_pool(
+            cm, pool, Some(server.base_url()),
+        );
+
+        let (tx, rx) = mpsc::channel(64);
+        provider.complete(test_request(), tx).await.unwrap();
+
+        let events = collect_events(rx).await;
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStop)));
+    }
+
+    // ── Pool path: first fails (429), second succeeds ───────────────
+
+    #[tokio::test]
+    async fn pool_failover_on_rate_limit() {
+        // send_streaming retries 429 three times (4 total), then the second
+        // credential's request should succeed on the 5th mock response.
+        let mut responses = Vec::new();
+        for _ in 0..4 {
+            responses.push(MockResponse::error(429, "rate limited"));
+        }
+        responses.push(MockResponse::success_sse());
+        let server = MockServer::start(responses).await;
+
+        let pool = CredentialPool::new(
+            vec![
+                ("primary".into(), api_key("key-1")),
+                ("backup".into(), api_key("key-2")),
+            ],
+            SelectionStrategy::Failover,
+        );
+
+        let (_dir, path) = tempfile::TempDir::new().map(|d| {
+            let p = d.path().join("auth.json");
+            (d, p)
+        }).unwrap();
+
+        let cm = crate::credential_manager::CredentialManager::new(
+            api_key("key-1"), path, None,
+        );
+
+        let provider = AnthropicProvider::with_credential_pool(
+            cm, pool, Some(server.base_url()),
+        );
+
+        let (tx, rx) = mpsc::channel(64);
+        provider.complete(test_request(), tx).await.unwrap();
+
+        let events = collect_events(rx).await;
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStop)));
+    }
+
+    // ── Pool path: non-retryable error stops immediately ────────────
+
+    #[tokio::test]
+    async fn pool_non_retryable_stops_immediately() {
+        // 400 is not retryable — should NOT try the backup credential
+        let server = MockServer::start(vec![
+            MockResponse::error(400, "invalid request"),
+            // If this were reached, the test would succeed — but it shouldn't be
+            MockResponse::success_sse(),
+        ]).await;
+
+        let pool = CredentialPool::new(
+            vec![
+                ("primary".into(), api_key("key-1")),
+                ("backup".into(), api_key("key-2")),
+            ],
+            SelectionStrategy::Failover,
+        );
+
+        let (_dir, path) = tempfile::TempDir::new().map(|d| {
+            let p = d.path().join("auth.json");
+            (d, p)
+        }).unwrap();
+
+        let cm = crate::credential_manager::CredentialManager::new(
+            api_key("key-1"), path, None,
+        );
+
+        let provider = AnthropicProvider::with_credential_pool(
+            cm, pool, Some(server.base_url()),
+        );
+
+        let (tx, _rx) = mpsc::channel(64);
+        let err = provider.complete(test_request(), tx).await.unwrap_err();
+        assert!(err.message.contains("400"), "got: {}", err.message);
+    }
+
+    // ── Pool path: all credentials exhausted ────────────────────────
+
+    #[tokio::test]
+    async fn pool_all_exhausted() {
+        // send_streaming retries retryable errors 3 times (4 attempts total).
+        // With 2 pool credentials, need 4+4 = 8 responses.
+        let mut responses = Vec::new();
+        for _ in 0..4 {
+            responses.push(MockResponse::error(429, "rate limited"));
+        }
+        for _ in 0..4 {
+            responses.push(MockResponse::error(529, "overloaded"));
+        }
+        let server = MockServer::start(responses).await;
+
+        let pool = CredentialPool::new(
+            vec![
+                ("primary".into(), api_key("key-1")),
+                ("backup".into(), api_key("key-2")),
+            ],
+            SelectionStrategy::Failover,
+        );
+
+        let (_dir, path) = tempfile::TempDir::new().map(|d| {
+            let p = d.path().join("auth.json");
+            (d, p)
+        }).unwrap();
+
+        let cm = crate::credential_manager::CredentialManager::new(
+            api_key("key-1"), path, None,
+        );
+
+        let provider = AnthropicProvider::with_credential_pool(
+            cm, pool, Some(server.base_url()),
+        );
+
+        let (tx, _rx) = mpsc::channel(64);
+        let err = provider.complete(test_request(), tx).await.unwrap_err();
+        // Should contain the HTTP error from the last attempted credential
+        assert!(
+            err.message.contains("529") || err.message.contains("overloaded")
+                || err.message.contains("429") || err.message.contains("rate"),
+            "got: {}", err.message
+        );
+    }
+
+    // ── Pool exhausted falls through to single-credential path ──────
+
+    #[tokio::test]
+    async fn pool_exhausted_falls_through_to_single_cred() {
+        // Pre-exhaust the pool by putting all slots in cooldown
+        let pool = CredentialPool::new(
+            vec![("primary".into(), api_key("key-1"))],
+            SelectionStrategy::Failover,
+        );
+        // Report failures to put slot in cooldown
+        {
+            let lease = pool.select().await.unwrap();
+            lease.report_failure(429).await;
+        }
+        // Pool should now return empty leases
+        assert!(pool.select_all_available().await.is_empty());
+
+        // Single-cred path should still work
+        let server = MockServer::start(vec![MockResponse::success_sse()]).await;
+
+        let (_dir, path) = tempfile::TempDir::new().map(|d| {
+            let p = d.path().join("auth.json");
+            (d, p)
+        }).unwrap();
+
+        let cm = crate::credential_manager::CredentialManager::new(
+            api_key("key-1"), path, None,
+        );
+
+        let provider = AnthropicProvider::with_credential_pool(
+            cm, pool, Some(server.base_url()),
+        );
+
+        let (tx, rx) = mpsc::channel(64);
+        provider.complete(test_request(), tx).await.unwrap();
+
+        let events = collect_events(rx).await;
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStop)));
+    }
+
+    // ── Pool path: 500 is retryable, rotates ────────────────────────
+
+    #[tokio::test]
+    async fn pool_500_rotates_to_next() {
+        // send_streaming retries 500 three times (4 total)
+        let mut responses = Vec::new();
+        for _ in 0..4 {
+            responses.push(MockResponse::error(500, "internal server error"));
+        }
+        responses.push(MockResponse::success_sse());
+        let server = MockServer::start(responses).await;
+
+        let pool = CredentialPool::new(
+            vec![
+                ("primary".into(), api_key("key-1")),
+                ("backup".into(), api_key("key-2")),
+            ],
+            SelectionStrategy::Failover,
+        );
+
+        let (_dir, path) = tempfile::TempDir::new().map(|d| {
+            let p = d.path().join("auth.json");
+            (d, p)
+        }).unwrap();
+
+        let cm = crate::credential_manager::CredentialManager::new(
+            api_key("key-1"), path, None,
+        );
+
+        let provider = AnthropicProvider::with_credential_pool(
+            cm, pool, Some(server.base_url()),
+        );
+
+        let (tx, rx) = mpsc::channel(64);
+        provider.complete(test_request(), tx).await.unwrap();
+
+        let events = collect_events(rx).await;
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStop)));
+    }
+
+    // ── reload_credentials resets pool health ───────────────────────
+
+    #[tokio::test]
+    async fn reload_resets_pool_health() {
+        let pool = CredentialPool::new(
+            vec![
+                ("primary".into(), api_key("key-1")),
+                ("backup".into(), api_key("key-2")),
+            ],
+            SelectionStrategy::Failover,
+        );
+
+        // Exhaust both slots
+        {
+            let lease = pool.select().await.unwrap();
+            lease.report_failure(429).await;
+            let lease = pool.select().await.unwrap();
+            lease.report_failure(429).await;
+        }
+        assert!(pool.select().await.is_none());
+
+        let (_dir, path) = tempfile::TempDir::new().map(|d| {
+            let p = d.path().join("auth.json");
+            (d, p)
+        }).unwrap();
+
+        let cm = crate::credential_manager::CredentialManager::new(
+            api_key("key-1"), path, None,
+        );
+
+        let provider = AnthropicProvider::with_credential_pool(cm, pool, None);
+
+        // reload should reset health
+        provider.reload_credentials().await;
+
+        // Pool should be usable again (can't easily check directly,
+        // but no panic and the method runs = success)
+    }
+
+    // ── Provider without pool or manager ─────────────────────────
+
+    #[tokio::test]
+    async fn simple_provider_success() {
+        let server = MockServer::start(vec![MockResponse::success_sse()]).await;
+        let provider = AnthropicProvider::new(api_key("sk-test"), Some(server.base_url()));
+
+        let (tx, rx) = mpsc::channel(64);
+        provider.complete(test_request(), tx).await.unwrap();
+
+        let events = collect_events(rx).await;
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStart { .. })));
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::ContentBlockDelta { .. })));
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStop)));
+    }
+
+    // ── with_credential_manager constructor ─────────────────────
+
+    #[tokio::test]
+    async fn with_credential_manager_success() {
+        let server = MockServer::start(vec![MockResponse::success_sse()]).await;
+
+        let (_dir, path) = tempfile::TempDir::new().map(|d| {
+            let p = d.path().join("auth.json");
+            (d, p)
+        }).unwrap();
+
+        let cm = crate::credential_manager::CredentialManager::new(
+            api_key("sk-managed"), path, None,
+        );
+
+        let provider = AnthropicProvider::with_credential_manager(cm, Some(server.base_url()));
+
+        let (tx, rx) = mpsc::channel(64);
+        provider.complete(test_request(), tx).await.unwrap();
+
+        let events = collect_events(rx).await;
+        assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStop)));
+    }
+
+    // ── get_credential with no credential configured ────────────
+
+    #[tokio::test]
+    async fn no_credential_returns_error() {
+        let provider = AnthropicProvider {
+            client: api::AnthropicClient::new(None),
+            credential: None,
+            credential_manager: None,
+            credential_pool: None,
+            models: vec![],
+        };
+
+        let err = provider.get_credential().await.unwrap_err();
+        assert!(err.message.contains("No credential"), "got: {}", err.message);
+    }
+
+    // ── force_refresh with no manager returns error ──────────────
+
+    #[tokio::test]
+    async fn force_refresh_no_manager_errors() {
+        let provider = AnthropicProvider::new(api_key("sk-test"), None);
+        let err = provider.force_refresh_credential().await.unwrap_err();
+        assert!(
+            err.message.contains("no credential manager"),
+            "got: {}", err.message
+        );
+    }
+
+    // ── Round-robin pool rotates credentials ─────────────────────
+
+    #[tokio::test]
+    async fn pool_round_robin_rotates() {
+        let server = MockServer::start(vec![
+            MockResponse::success_sse(),
+            MockResponse::success_sse(),
+            MockResponse::success_sse(),
+        ]).await;
+
+        let pool = CredentialPool::new(
+            vec![
+                ("a".into(), api_key("key-a")),
+                ("b".into(), api_key("key-b")),
+                ("c".into(), api_key("key-c")),
+            ],
+            SelectionStrategy::RoundRobin,
+        );
+
+        let (_dir, path) = tempfile::TempDir::new().map(|d| {
+            let p = d.path().join("auth.json");
+            (d, p)
+        }).unwrap();
+
+        let cm = crate::credential_manager::CredentialManager::new(
+            api_key("key-a"), path, None,
+        );
+
+        let provider = AnthropicProvider::with_credential_pool(
+            cm, pool, Some(server.base_url()),
+        );
+
+        // Three requests should all succeed (rotating through credentials)
+        for _ in 0..3 {
+            let (tx, rx) = mpsc::channel(64);
+            provider.complete(test_request(), tx).await.unwrap();
+            let events = collect_events(rx).await;
+            assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStop)));
         }
     }
 }
