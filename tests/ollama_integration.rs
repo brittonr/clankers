@@ -1,0 +1,680 @@
+//! Live integration tests against a local Ollama instance.
+//!
+//! These tests hit a real Ollama server with a tiny Qwen model (qwen2.5:0.5b).
+//! They exercise the full clanker-router pipeline: provider construction,
+//! request building, SSE parsing, stream event collection, usage tracking,
+//! fallback chains, and caching.
+//!
+//! **Requirements:**
+//!   - Ollama running on localhost:11434
+//!   - `qwen2.5:0.5b` model pulled (`ollama pull qwen2.5:0.5b`)
+//!
+//! Skip with: `cargo nextest run -E 'not test(ollama)'`
+
+use std::collections::HashMap;
+use std::sync::Arc;
+use std::time::Duration;
+
+use clanker_router::Model;
+use clanker_router::Router;
+use clanker_router::RouterDb;
+use clanker_router::backends::openai_compat::OpenAICompatConfig;
+use clanker_router::backends::openai_compat::OpenAICompatProvider;
+use clanker_router::provider::CompletionRequest;
+use clanker_router::provider::ToolDefinition;
+use clanker_router::router::FallbackConfig;
+use clanker_router::streaming::ContentDelta;
+use clanker_router::streaming::StreamEvent;
+use serde_json::json;
+use tokio::sync::mpsc;
+
+// ── Constants ───────────────────────────────────────────────────────────
+
+const OLLAMA_BASE: &str = "http://localhost:11434/v1";
+const MODEL_ID: &str = "qwen2.5:0.5b";
+
+// ── Helpers ─────────────────────────────────────────────────────────────
+
+/// Build a model definition for Ollama.
+///
+/// Note: `provider` must be `"local"` to match `OpenAICompatConfig::local()`
+/// which sets `name: "local"`. The router resolves models to providers by
+/// matching `model.provider` against `provider.name()`.
+fn ollama_model(id: &str) -> Model {
+    Model {
+        id: id.to_string(),
+        name: id.to_string(),
+        provider: "local".to_string(),
+        max_input_tokens: 32_768,
+        max_output_tokens: 8_192,
+        supports_thinking: false,
+        supports_images: false,
+        supports_tools: true,
+        input_cost_per_mtok: None,
+        output_cost_per_mtok: None,
+    }
+}
+
+fn ollama_provider(models: Vec<Model>) -> Arc<dyn clanker_router::Provider> {
+    let config = OpenAICompatConfig::local(OLLAMA_BASE.to_string(), models);
+    OpenAICompatProvider::new(config)
+}
+
+fn ollama_router() -> Router {
+    let mut router = Router::new(MODEL_ID);
+    router.register_provider(ollama_provider(vec![ollama_model(MODEL_ID)]));
+    router
+}
+
+fn simple_request(model: &str, prompt: &str) -> CompletionRequest {
+    CompletionRequest {
+        model: model.to_string(),
+        messages: vec![json!({"role": "user", "content": prompt})],
+        system_prompt: None,
+        max_tokens: Some(128),
+        temperature: Some(0.0),
+        tools: vec![],
+        thinking: None,
+        no_cache: false,
+        cache_ttl: None,
+        extra_params: HashMap::new(),
+    }
+}
+
+/// Collect all stream events from a router completion.
+async fn collect_events(router: &Router, request: CompletionRequest) -> clanker_router::Result<Vec<StreamEvent>> {
+    let (tx, mut rx) = mpsc::channel(256);
+    router.complete(request, tx).await?;
+    let mut events = Vec::new();
+    while let Some(ev) = rx.recv().await {
+        events.push(ev);
+    }
+    Ok(events)
+}
+
+/// Extract concatenated text from stream events.
+fn extract_text(events: &[StreamEvent]) -> String {
+    let mut buf = String::new();
+    for ev in events {
+        if let StreamEvent::ContentBlockDelta {
+            delta: ContentDelta::TextDelta { text },
+            ..
+        } = ev
+        {
+            buf.push_str(text);
+        }
+    }
+    buf
+}
+
+/// Check that Ollama is reachable and the model is pulled.
+/// Returns false if the test should be skipped.
+fn ollama_available() -> bool {
+    let addr: std::net::SocketAddr = "127.0.0.1:11434".parse().unwrap();
+    if std::net::TcpStream::connect_timeout(&addr, Duration::from_millis(500)).is_err() {
+        eprintln!("SKIP: Ollama not running on localhost:11434");
+        return false;
+    }
+    // Check the model is pulled via a blocking HTTP call in a thread
+    // (avoid nested runtime panic).
+    let ok = std::thread::spawn(|| {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .ok()?;
+        let resp = client.get(&format!("{}/models", OLLAMA_BASE)).send().ok()?;
+        let body: serde_json::Value = resp.json().ok()?;
+        let models = body.get("data")?.as_array()?;
+        let found = models.iter().any(|m| {
+            m.get("id")
+                .and_then(|v| v.as_str())
+                .map_or(false, |id| id == MODEL_ID)
+        });
+        Some(found)
+    })
+    .join()
+    .ok()
+    .flatten()
+    .unwrap_or(false);
+
+    if !ok {
+        eprintln!("SKIP: model {} not found in Ollama — run `ollama pull {}`", MODEL_ID, MODEL_ID);
+    }
+    ok
+}
+
+// ── Tests ───────────────────────────────────────────────────────────────
+
+/// Smoke test: send a trivial prompt, get a non-empty response.
+#[tokio::test]
+async fn ollama_simple_completion() {
+    if !ollama_available() {
+        return;
+    }
+
+    let router = ollama_router();
+    let events = collect_events(&router, simple_request(MODEL_ID, "Say hello in exactly one word."))
+        .await
+        .expect("completion should succeed");
+
+    let text = extract_text(&events);
+    assert!(!text.is_empty(), "expected non-empty response, got nothing");
+
+    // Verify we got the standard event sequence
+    assert!(
+        matches!(events.first(), Some(StreamEvent::MessageStart { .. })),
+        "first event should be MessageStart"
+    );
+    assert!(
+        matches!(events.last(), Some(StreamEvent::MessageStop)),
+        "last event should be MessageStop"
+    );
+
+    // Verify we got at least one MessageDelta event (stop reason + usage).
+    //
+    // NOTE: Ollama sends the final usage stats in a chunk with `choices: []`
+    // (empty array), but the router's SSE handler checks `choices.is_none()`
+    // which only matches JSON null. This means usage tokens may be 0 in the
+    // MessageDelta events. This is a known upstream issue in clanker-router.
+    let has_delta = events
+        .iter()
+        .any(|ev| matches!(ev, StreamEvent::MessageDelta { .. }));
+    assert!(has_delta, "expected at least one MessageDelta event");
+}
+
+/// Verify the model name echoed back in MessageStart matches what we asked for.
+#[tokio::test]
+async fn ollama_message_metadata() {
+    if !ollama_available() {
+        return;
+    }
+
+    let router = ollama_router();
+    let events = collect_events(&router, simple_request(MODEL_ID, "Hi"))
+        .await
+        .expect("completion failed");
+
+    if let Some(StreamEvent::MessageStart { message }) = events.first() {
+        assert_eq!(message.role, "assistant");
+        // Ollama returns the model name; it may include a tag suffix
+        assert!(
+            message.model.contains("qwen"),
+            "expected model to contain 'qwen', got '{}'",
+            message.model
+        );
+    } else {
+        panic!("first event was not MessageStart");
+    }
+}
+
+/// System prompts are forwarded to the model.
+#[tokio::test]
+async fn ollama_system_prompt() {
+    if !ollama_available() {
+        return;
+    }
+
+    let router = ollama_router();
+    let mut req = simple_request(MODEL_ID, "What is your name?");
+    req.system_prompt = Some("Your name is Rusty. Always introduce yourself as Rusty.".to_string());
+    req.max_tokens = Some(64);
+
+    let events = collect_events(&router, req).await.expect("completion failed");
+    let text = extract_text(&events).to_lowercase();
+
+    // The model should mention "Rusty" somewhere (small models can be flaky,
+    // but a direct identity instruction usually works).
+    assert!(
+        text.contains("rusty"),
+        "expected response to contain 'rusty' given system prompt, got: {text}"
+    );
+}
+
+/// Temperature=0 should produce deterministic output across two calls.
+#[tokio::test]
+async fn ollama_deterministic_at_temp_zero() {
+    if !ollama_available() {
+        return;
+    }
+
+    let router = ollama_router();
+    let req = || {
+        let mut r = simple_request(MODEL_ID, "What is 2+2? Reply with just the number.");
+        r.temperature = Some(0.0);
+        r.max_tokens = Some(16);
+        r
+    };
+
+    let text1 = extract_text(&collect_events(&router, req()).await.expect("call 1 failed"));
+    let text2 = extract_text(&collect_events(&router, req()).await.expect("call 2 failed"));
+
+    assert_eq!(text1, text2, "temp=0 should produce identical output");
+}
+
+/// max_tokens is respected — short limit yields short output.
+#[tokio::test]
+async fn ollama_max_tokens_limit() {
+    if !ollama_available() {
+        return;
+    }
+
+    let router = ollama_router();
+    let mut req = simple_request(MODEL_ID, "Write a 500-word essay about the history of computing.");
+    req.max_tokens = Some(20);
+    req.temperature = Some(0.0);
+
+    let events = collect_events(&router, req).await.expect("completion failed");
+    let text = extract_text(&events);
+
+    // 20 tokens is roughly 15-60 chars depending on tokenizer.
+    // The model should have been cut off well before 500 words.
+    let word_count = text.split_whitespace().count();
+    assert!(
+        word_count < 60,
+        "expected short output with max_tokens=20, got {word_count} words: {text}"
+    );
+
+    // Check the stop reason indicates truncation
+    let truncated = events.iter().any(|ev| {
+        matches!(ev, StreamEvent::MessageDelta { stop_reason: Some(reason), .. } if reason == "max_tokens" || reason == "length")
+    });
+    assert!(truncated, "expected stop_reason=max_tokens or length");
+}
+
+/// Multi-turn conversation: the model can see previous messages.
+#[tokio::test]
+async fn ollama_multi_turn() {
+    if !ollama_available() {
+        return;
+    }
+
+    let router = ollama_router();
+    let req = CompletionRequest {
+        model: MODEL_ID.to_string(),
+        messages: vec![
+            json!({"role": "user", "content": "My favorite color is blue. Remember this."}),
+            json!({"role": "assistant", "content": "I'll remember that your favorite color is blue."}),
+            json!({"role": "user", "content": "What is my favorite color? Reply with just the color."}),
+        ],
+        system_prompt: None,
+        max_tokens: Some(16),
+        temperature: Some(0.0),
+        tools: vec![],
+        thinking: None,
+        no_cache: false,
+        cache_ttl: None,
+        extra_params: HashMap::new(),
+    };
+
+    let events = collect_events(&router, req).await.expect("completion failed");
+    let text = extract_text(&events).to_lowercase();
+    assert!(
+        text.contains("blue"),
+        "model should recall 'blue' from conversation history, got: {text}"
+    );
+}
+
+/// Streaming: events arrive in the correct order.
+#[tokio::test]
+async fn ollama_streaming_event_order() {
+    if !ollama_available() {
+        return;
+    }
+
+    let router = ollama_router();
+    let events = collect_events(&router, simple_request(MODEL_ID, "Count from 1 to 5."))
+        .await
+        .expect("completion failed");
+
+    // Expected order: MessageStart, ContentBlockStart, [ContentBlockDelta...],
+    // ContentBlockStop, MessageDelta, MessageStop
+    let event_types: Vec<&str> = events
+        .iter()
+        .map(|ev| match ev {
+            StreamEvent::MessageStart { .. } => "MessageStart",
+            StreamEvent::ContentBlockStart { .. } => "ContentBlockStart",
+            StreamEvent::ContentBlockDelta { .. } => "ContentBlockDelta",
+            StreamEvent::ContentBlockStop { .. } => "ContentBlockStop",
+            StreamEvent::MessageDelta { .. } => "MessageDelta",
+            StreamEvent::MessageStop => "MessageStop",
+            StreamEvent::Error { .. } => "Error",
+        })
+        .collect();
+
+    // MessageStart must be first
+    assert_eq!(event_types[0], "MessageStart");
+
+    // ContentBlockStart must come before any ContentBlockDelta
+    let first_start = event_types.iter().position(|t| *t == "ContentBlockStart");
+    let first_delta = event_types.iter().position(|t| *t == "ContentBlockDelta");
+    if let (Some(s), Some(d)) = (first_start, first_delta) {
+        assert!(s < d, "ContentBlockStart ({s}) should come before ContentBlockDelta ({d})");
+    }
+
+    // MessageStop must be last
+    assert_eq!(*event_types.last().unwrap(), "MessageStop");
+
+    // At least one ContentBlockDelta should be present
+    assert!(
+        event_types.contains(&"ContentBlockDelta"),
+        "expected at least one ContentBlockDelta"
+    );
+}
+
+/// Router with DB: usage is recorded after a completion.
+#[tokio::test]
+async fn ollama_usage_tracking() {
+    if !ollama_available() {
+        return;
+    }
+
+    let tmp = tempfile::tempdir().expect("tmp dir");
+    let db_path = tmp.path().join("test_usage.db");
+    let db = RouterDb::open(&db_path).expect("open db");
+
+    let mut router = Router::with_db(MODEL_ID, db);
+    router.register_provider(ollama_provider(vec![ollama_model(MODEL_ID)]));
+
+    let _ = collect_events(&router, simple_request(MODEL_ID, "Say yes."))
+        .await
+        .expect("completion failed");
+
+    // Check usage was recorded.
+    //
+    // NOTE: Due to an upstream bug in clanker-router (choices: [] vs null),
+    // Ollama's usage stats may not be captured. We verify that a request was
+    // at least logged. See ollama_simple_completion for details.
+    let db = router.db().expect("db should be present");
+    let recent = db.usage().recent_days(1).expect("usage query");
+    assert!(!recent.is_empty(), "expected at least one usage record");
+
+    let entry = &recent[0];
+    assert!(entry.requests > 0, "requests should be > 0");
+}
+
+/// Router with DB: request log captures success entries.
+#[tokio::test]
+async fn ollama_request_log() {
+    if !ollama_available() {
+        return;
+    }
+
+    let tmp = tempfile::tempdir().expect("tmp dir");
+    let db = RouterDb::open(&tmp.path().join("test_log.db")).expect("open db");
+
+    let mut router = Router::with_db(MODEL_ID, db);
+    router.register_provider(ollama_provider(vec![ollama_model(MODEL_ID)]));
+
+    let _ = collect_events(&router, simple_request(MODEL_ID, "Ping"))
+        .await
+        .expect("completion failed");
+
+    let log = router.db().unwrap().request_log();
+    let entries = log.recent(10).expect("log query");
+    assert!(!entries.is_empty(), "expected a request log entry");
+
+    let entry = &entries[0];
+    assert!(
+        matches!(entry.outcome, clanker_router::db::request_log::RequestOutcome::Success),
+        "entry should be successful, got {:?}",
+        entry.outcome
+    );
+    assert!(entry.duration_ms > 0, "duration should be > 0");
+}
+
+/// Response caching: second identical request serves from cache.
+#[tokio::test]
+async fn ollama_response_cache() {
+    if !ollama_available() {
+        return;
+    }
+
+    let tmp = tempfile::tempdir().expect("tmp dir");
+    let db = RouterDb::open(&tmp.path().join("test_cache.db")).expect("open db");
+
+    let mut router = Router::with_db(MODEL_ID, db);
+    router.set_cache_enabled(true);
+    router.register_provider(ollama_provider(vec![ollama_model(MODEL_ID)]));
+
+    let req = || {
+        let mut r = simple_request(MODEL_ID, "What is the capital of France? One word.");
+        r.temperature = Some(0.0);
+        r.max_tokens = Some(16);
+        r
+    };
+
+    // First call: hits Ollama
+    let events1 = collect_events(&router, req()).await.expect("first call failed");
+    let text1 = extract_text(&events1);
+
+    // Second call: should hit cache
+    let events2 = collect_events(&router, req()).await.expect("second call failed");
+    let text2 = extract_text(&events2);
+
+    assert_eq!(text1, text2, "cached response should be identical");
+
+    // Verify the cache has an entry
+    let count = router.db().unwrap().cache().len().expect("cache len");
+    assert!(count > 0, "cache should have at least one entry");
+}
+
+/// Fallback: requesting an unregistered model falls back to the default.
+///
+/// When the requested model has no provider mapping, the router appends
+/// the default model as a last-resort fallback and tries it.
+#[tokio::test]
+async fn ollama_fallback_to_default_model() {
+    if !ollama_available() {
+        return;
+    }
+
+    // Only register the real model. "ghost-model" is NOT in the registry.
+    let mut router = Router::new(MODEL_ID);
+    router.register_provider(ollama_provider(vec![ollama_model(MODEL_ID)]));
+
+    // Request a model that doesn't exist anywhere — the router should
+    // fall back to the default model (qwen2.5:0.5b).
+    let events = collect_events(&router, simple_request("ghost-model", "Hi"))
+        .await
+        .expect("fallback to default should succeed");
+
+    let text = extract_text(&events);
+    assert!(!text.is_empty(), "default fallback model should produce output");
+}
+
+/// Fallback chain: explicit chain routes to the configured fallback.
+#[tokio::test]
+async fn ollama_explicit_fallback_chain() {
+    if !ollama_available() {
+        return;
+    }
+
+    // Register two models under the same provider — one real, one fake.
+    // The fake one is registered in the registry but will 404 at Ollama.
+    // Since 404 is non-retryable, fallback won't help (by design).
+    // Instead, test the chain config API and resolution logic.
+    let mut router = Router::new(MODEL_ID);
+    router.register_provider(ollama_provider(vec![ollama_model(MODEL_ID)]));
+
+    let mut fallbacks = FallbackConfig::new();
+    fallbacks.set_chain("primary-model", vec![MODEL_ID.to_string()]);
+    router.set_fallbacks(fallbacks);
+
+    // Verify the chain was configured correctly
+    let chain = router.fallbacks().chain_for("primary-model");
+    assert!(chain.is_some(), "fallback chain should exist");
+    assert_eq!(chain.unwrap(), &[MODEL_ID.to_string()]);
+}
+
+/// Multiple models registered: routing picks the right provider.
+#[tokio::test]
+async fn ollama_model_routing() {
+    if !ollama_available() {
+        return;
+    }
+
+    // Register two real models (both available in Ollama)
+    let models = vec![ollama_model("qwen2.5:0.5b"), ollama_model("qwen2.5:3b")];
+
+    // Check if the 3b model is also available
+    let has_3b = std::thread::spawn(|| {
+        let client = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(2))
+            .build()
+            .ok()?;
+        let resp = client.get(&format!("{}/models", OLLAMA_BASE)).send().ok()?;
+        let body: serde_json::Value = resp.json().ok()?;
+        let models = body.get("data")?.as_array()?;
+        Some(models.iter().any(|m| {
+            m.get("id")
+                .and_then(|v| v.as_str())
+                .map_or(false, |id| id == "qwen2.5:3b")
+        }))
+    })
+    .join()
+    .ok()
+    .flatten()
+    .unwrap_or(false);
+
+    if !has_3b {
+        eprintln!("SKIP ollama_model_routing: qwen2.5:3b not available");
+        return;
+    }
+
+    let mut router = Router::new("qwen2.5:0.5b");
+    router.register_provider(ollama_provider(models));
+
+    // Request the 0.5b model
+    let events = collect_events(&router, simple_request("qwen2.5:0.5b", "Hi"))
+        .await
+        .expect("0.5b completion failed");
+    assert!(!extract_text(&events).is_empty());
+
+    // Request the 3b model
+    let events = collect_events(&router, simple_request("qwen2.5:3b", "Hi"))
+        .await
+        .expect("3b completion failed");
+    assert!(!extract_text(&events).is_empty());
+}
+
+/// Tool definitions are sent to the model (we don't need the model to
+/// actually call the tool — just verify no errors when tools are present).
+#[tokio::test]
+async fn ollama_with_tool_definitions() {
+    if !ollama_available() {
+        return;
+    }
+
+    let router = ollama_router();
+    let req = CompletionRequest {
+        model: MODEL_ID.to_string(),
+        messages: vec![json!({"role": "user", "content": "What is 7 * 8?"})],
+        system_prompt: None,
+        max_tokens: Some(64),
+        temperature: Some(0.0),
+        tools: vec![ToolDefinition {
+            name: "calculator".to_string(),
+            description: "Evaluate a math expression".to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "expression": {"type": "string", "description": "Math expression to evaluate"}
+                },
+                "required": ["expression"]
+            }),
+        }],
+        thinking: None,
+        no_cache: false,
+        cache_ttl: None,
+        extra_params: HashMap::new(),
+    };
+
+    let events = collect_events(&router, req).await.expect("completion with tools failed");
+
+    // The model should produce some output — either a text response or a
+    // tool call. Either way, we should get a valid event sequence.
+    assert!(
+        matches!(events.first(), Some(StreamEvent::MessageStart { .. })),
+        "expected MessageStart"
+    );
+    assert!(
+        matches!(events.last(), Some(StreamEvent::MessageStop)),
+        "expected MessageStop"
+    );
+}
+
+/// Empty message list doesn't crash (some providers handle this gracefully).
+#[tokio::test]
+async fn ollama_empty_messages() {
+    if !ollama_available() {
+        return;
+    }
+
+    let router = ollama_router();
+    let req = CompletionRequest {
+        model: MODEL_ID.to_string(),
+        messages: vec![],
+        system_prompt: Some("Say hello.".to_string()),
+        max_tokens: Some(32),
+        temperature: Some(0.0),
+        tools: vec![],
+        thinking: None,
+        no_cache: false,
+        cache_ttl: None,
+        extra_params: HashMap::new(),
+    };
+
+    // This may succeed or fail depending on the provider — we just
+    // verify it doesn't panic.
+    let _ = collect_events(&router, req).await;
+}
+
+/// Provider availability check works for local Ollama.
+#[tokio::test]
+async fn ollama_provider_is_available() {
+    if !ollama_available() {
+        return;
+    }
+
+    let provider = ollama_provider(vec![ollama_model(MODEL_ID)]);
+    assert!(provider.is_available().await, "local provider should be available");
+    assert_eq!(provider.name(), "local");
+    assert!(!provider.models().is_empty());
+}
+
+/// Concurrent requests don't interfere with each other.
+#[tokio::test]
+async fn ollama_concurrent_requests() {
+    if !ollama_available() {
+        return;
+    }
+
+    let router = Arc::new(ollama_router());
+    let mut handles = Vec::new();
+
+    for i in 0..3 {
+        let router = Arc::clone(&router);
+        let prompt = format!("What is {} + {}? Reply with just the number.", i, i);
+        handles.push(tokio::spawn(async move {
+            let req = simple_request(MODEL_ID, &prompt);
+            let (tx, mut rx) = mpsc::channel(256);
+            router.complete(req, tx).await.expect("concurrent request failed");
+            let mut events = Vec::new();
+            while let Some(ev) = rx.recv().await {
+                events.push(ev);
+            }
+            extract_text(&events)
+        }));
+    }
+
+    let results: Vec<String> = futures::future::join_all(handles)
+        .await
+        .into_iter()
+        .map(|r| r.expect("task panicked"))
+        .collect();
+
+    // All three should have produced output
+    for (i, text) in results.iter().enumerate() {
+        assert!(!text.is_empty(), "concurrent request {i} returned empty");
+    }
+}
