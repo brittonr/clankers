@@ -6,8 +6,10 @@ pub mod streaming;
 use std::sync::Arc;
 
 use async_trait::async_trait;
+use clanker_router::credential_pool::CredentialPool;
 use tokio::sync::mpsc;
 use tracing::info;
+use tracing::warn;
 
 use crate::CompletionRequest;
 use crate::Model;
@@ -23,6 +25,8 @@ pub struct AnthropicProvider {
     credential: Option<Credential>,
     /// Credential manager with auto-refresh (preferred for OAuth)
     credential_manager: Option<Arc<CredentialManager>>,
+    /// Multi-account credential pool with failover/round-robin
+    credential_pool: Option<CredentialPool>,
     models: Vec<Model>,
 }
 
@@ -33,6 +37,7 @@ impl AnthropicProvider {
             client: api::AnthropicClient::new(base_url),
             credential: Some(credential),
             credential_manager: None,
+            credential_pool: None,
             models: clanker_router::backends::anthropic::default_models(),
         }
     }
@@ -43,6 +48,25 @@ impl AnthropicProvider {
             client: api::AnthropicClient::new(base_url),
             credential: None,
             credential_manager: Some(credential_manager),
+            credential_pool: None,
+            models: clanker_router::backends::anthropic::default_models(),
+        }
+    }
+
+    /// Create a provider with a credential pool for multi-account failover.
+    ///
+    /// The credential manager handles OAuth refresh for the primary account.
+    /// The pool provides failover to other accounts when one gets rate-limited.
+    pub fn with_credential_pool(
+        credential_manager: Arc<CredentialManager>,
+        pool: CredentialPool,
+        base_url: Option<String>,
+    ) -> Self {
+        Self {
+            client: api::AnthropicClient::new(base_url),
+            credential: None,
+            credential_manager: Some(credential_manager),
+            credential_pool: Some(pool),
             models: clanker_router::backends::anthropic::default_models(),
         }
     }
@@ -66,17 +90,94 @@ impl AnthropicProvider {
             Err(crate::error::auth_err("Cannot refresh: no credential manager configured"))
         }
     }
+
+    /// Try a request with a specific credential.
+    async fn try_with_credential(
+        &self,
+        request: &CompletionRequest,
+        credential: &Credential,
+        tx: &mpsc::Sender<StreamEvent>,
+    ) -> std::result::Result<(), (u16, String)> {
+        let api_request = api::build_api_request(request, credential.is_oauth());
+        let response = match self.client.send_streaming(&api_request, credential).await {
+            Ok(r) => r,
+            Err(e) => return Err((500, e.to_string())),
+        };
+
+        if response.status().is_success() {
+            streaming::parse_sse_stream(response, tx.clone())
+                .await
+                .map_err(|e| (500, e.to_string()))
+        } else {
+            let status = response.status().as_u16();
+            let body = response.text().await.unwrap_or_default();
+            Err((status, format!("Anthropic API error {}: {}", status, body)))
+        }
+    }
 }
 
 #[async_trait]
 impl Provider for AnthropicProvider {
     async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
-        // Get credential (proactively refreshing if expired)
+        // ── Multi-account path: try each credential from the pool ────
+        if let Some(ref pool) = self.credential_pool {
+            let leases = pool.select_all_available().await;
+            if leases.is_empty() {
+                // Pool exhausted — fall through to single-credential path
+                // which may refresh the primary OAuth token
+                warn!("All credential pool slots unavailable, trying primary credential");
+            } else {
+                let mut last_status = 0u16;
+                let mut last_error = String::new();
+
+                for lease in &leases {
+                    let cred = lease.credential().clone();
+                    match self.try_with_credential(&request, &cred, &tx).await {
+                        Ok(()) => {
+                            lease.report_success().await;
+                            return Ok(());
+                        }
+                        Err((status, msg)) => {
+                            lease.report_failure(status).await;
+                            last_status = status;
+                            last_error = msg;
+
+                            // 401 on OAuth → try refreshing before moving to next credential
+                            if status == 401 && cred.is_oauth() && self.credential_manager.is_some() {
+                                info!("Got 401 on '{}', attempting token refresh", lease.account());
+                                if let Ok(refreshed) = self.force_refresh_credential().await {
+                                    match self.try_with_credential(&request, &refreshed, &tx).await {
+                                        Ok(()) => {
+                                            lease.report_success().await;
+                                            return Ok(());
+                                        }
+                                        Err((s, m)) => {
+                                            last_status = s;
+                                            last_error = m;
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Non-retryable errors stop immediately
+                            if !clanker_router::retry::is_retryable_status(status) && status != 401 {
+                                return Err(crate::error::provider_err_with_status(last_status, last_error));
+                            }
+
+                            info!("Credential '{}' failed (HTTP {}), trying next", lease.account(), status);
+                        }
+                    }
+                }
+
+                return Err(crate::error::provider_err_with_status(last_status, last_error));
+            }
+        }
+
+        // ── Single-credential path ───────────────────────────────────
         let credential = self.get_credential().await?;
         let api_request = api::build_api_request(&request, credential.is_oauth());
         let response = self.client.send_streaming(&api_request, &credential).await?;
 
-        // Check for HTTP errors before parsing SSE
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
@@ -120,6 +221,10 @@ impl Provider for AnthropicProvider {
     async fn reload_credentials(&self) {
         if let Some(ref cm) = self.credential_manager {
             cm.reload_from_disk().await;
+        }
+        // Reset pool health after credential reload (fresh tokens)
+        if let Some(ref pool) = self.credential_pool {
+            pool.reset_health().await;
         }
     }
 }

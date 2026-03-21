@@ -64,17 +64,40 @@ pub fn build_router(
     let mut backends: Vec<(String, Arc<dyn Provider>)> = Vec::new();
 
     // 1. Anthropic (OAuth + API key + env var)
+    //
+    // Collect all available credentials. When multiple accounts exist,
+    // build a CredentialPool with failover — if one account gets
+    // rate-limited, the provider automatically tries the next.
     let anthropic_cred =
         auth::resolve_credential_with_fallback(api_key_override, auth_store_path, fallback_auth_path, account);
 
     if let Some(credential) = anthropic_cred {
+        // Check for additional accounts in the auth store
+        let store = clanker_router::auth::AuthStore::load(auth_store_path);
+        let all_creds = store.all_credentials("anthropic");
+
         let provider: Arc<dyn Provider> = if credential.is_oauth() {
             let cm = CredentialManager::new(
                 credential,
                 auth_store_path.to_path_buf(),
                 fallback_auth_path.map(|p| p.to_path_buf()),
             );
-            Arc::new(AnthropicProvider::with_credential_manager(cm, base_url))
+
+            if all_creds.len() > 1 {
+                // Multi-account: build a credential pool for failover
+                let pool_creds: Vec<(String, clanker_router::auth::StoredCredential)> = all_creds;
+                info!(
+                    "Anthropic: {} account(s) available, enabling credential pool failover",
+                    pool_creds.len()
+                );
+                let pool = clanker_router::credential_pool::CredentialPool::new(
+                    pool_creds,
+                    clanker_router::credential_pool::SelectionStrategy::Failover,
+                );
+                Arc::new(AnthropicProvider::with_credential_pool(cm, pool, base_url))
+            } else {
+                Arc::new(AnthropicProvider::with_credential_manager(cm, base_url))
+            }
         } else {
             Arc::new(AnthropicProvider::new(credential, base_url))
         };
