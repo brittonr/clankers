@@ -138,6 +138,10 @@ impl TtsProvider for OpenAiTtsProvider {
     }
 }
 
+#[cfg(test)]
+#[path = "openai_tests.rs"]
+mod tests;
+
 impl std::fmt::Debug for OpenAiTtsProvider {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("OpenAiTtsProvider")

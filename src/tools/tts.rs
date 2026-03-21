@@ -217,4 +217,72 @@ mod tests {
         let result = tool.execute(&ctx, json!({"text": ""})).await;
         assert!(result.is_error);
     }
+
+    #[tokio::test]
+    async fn execute_null_text_returns_error() {
+        let tool = TtsTool::new();
+        let ctx = make_ctx();
+        let result = tool.execute(&ctx, json!({"text": null})).await;
+        assert!(result.is_error);
+    }
+
+    #[tokio::test]
+    async fn execute_number_text_returns_error() {
+        let tool = TtsTool::new();
+        let ctx = make_ctx();
+        let result = tool.execute(&ctx, json!({"text": 42})).await;
+        assert!(result.is_error);
+    }
+
+    #[test]
+    fn schema_voice_default_is_bella() {
+        let tool = TtsTool::new();
+        let schema = &tool.definition().input_schema;
+        let voice_default = schema["properties"]["voice"]["default"].as_str();
+        assert_eq!(voice_default, Some("Bella"));
+    }
+
+    #[test]
+    fn schema_speed_default_is_one() {
+        let tool = TtsTool::new();
+        let schema = &tool.definition().input_schema;
+        let speed_default = schema["properties"]["speed"]["default"].as_f64();
+        assert_eq!(speed_default, Some(1.0));
+    }
+
+    #[test]
+    fn schema_text_is_string_type() {
+        let tool = TtsTool::new();
+        let schema = &tool.definition().input_schema;
+        assert_eq!(schema["properties"]["text"]["type"], "string");
+    }
+
+    #[test]
+    fn schema_speed_is_number_type() {
+        let tool = TtsTool::new();
+        let schema = &tool.definition().input_schema;
+        assert_eq!(schema["properties"]["speed"]["type"], "number");
+    }
+
+    #[test]
+    fn schema_output_is_string_type() {
+        let tool = TtsTool::new();
+        let schema = &tool.definition().input_schema;
+        assert_eq!(schema["properties"]["output"]["type"], "string");
+    }
+
+    #[test]
+    fn schema_output_not_required() {
+        let tool = TtsTool::new();
+        let schema = &tool.definition().input_schema;
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        assert!(!required.contains(&"output"));
+        assert!(!required.contains(&"voice"));
+        assert!(!required.contains(&"speed"));
+    }
 }
