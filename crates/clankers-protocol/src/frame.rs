@@ -471,4 +471,443 @@ mod tests {
             assert_eq!(event, &decoded, "round-trip failed for {event:?}");
         }
     }
+
+    // ── Missing SessionCommand variants ─────────────────────────────
+
+    #[tokio::test]
+    async fn test_round_trip_remaining_session_commands() {
+        let commands = vec![
+            SessionCommand::RewriteAndPrompt {
+                text: "rewritten prompt".to_string(),
+            },
+            SessionCommand::CompactHistory,
+            SessionCommand::StartLoop {
+                iterations: 5,
+                prompt: "fix all tests".to_string(),
+                break_condition: Some("all tests pass".to_string()),
+            },
+            SessionCommand::StartLoop {
+                iterations: 10,
+                prompt: "keep going".to_string(),
+                break_condition: None,
+            },
+            SessionCommand::StopLoop,
+            SessionCommand::SetAutoTest {
+                enabled: true,
+                command: Some("cargo nextest run".to_string()),
+            },
+            SessionCommand::SetAutoTest {
+                enabled: false,
+                command: None,
+            },
+            SessionCommand::GetToolList,
+            SessionCommand::SetCapabilities {
+                capabilities: Some(vec!["read".to_string(), "bash".to_string()]),
+            },
+            SessionCommand::SetCapabilities {
+                capabilities: None,
+            },
+        ];
+
+        for cmd in &commands {
+            let mut buf = Vec::new();
+            write_frame(&mut buf, cmd).await.unwrap();
+            let mut cursor = std::io::Cursor::new(buf);
+            let decoded: SessionCommand = read_frame(&mut cursor).await.unwrap();
+            assert_eq!(cmd, &decoded, "round-trip failed for {cmd:?}");
+        }
+    }
+
+    // ── Missing DaemonEvent variants ────────────────────────────────
+
+    #[tokio::test]
+    async fn test_round_trip_remaining_daemon_events() {
+        use crate::event::ToolInfo;
+
+        let events = vec![
+            DaemonEvent::ToolList {
+                tools: vec![
+                    ToolInfo {
+                        name: "bash".to_string(),
+                        description: "Run shell commands".to_string(),
+                    },
+                    ToolInfo {
+                        name: "read".to_string(),
+                        description: "Read files".to_string(),
+                    },
+                ],
+            },
+            DaemonEvent::ToolList { tools: vec![] },
+            DaemonEvent::DisabledToolsChanged {
+                tools: vec!["bash".to_string(), "write".to_string()],
+            },
+            DaemonEvent::ThinkingLevelChanged {
+                from: "off".to_string(),
+                to: "high".to_string(),
+            },
+            DaemonEvent::LoopStatus {
+                active: true,
+                iteration: Some(3),
+                max_iterations: Some(10),
+                break_condition: Some("tests pass".to_string()),
+            },
+            DaemonEvent::LoopStatus {
+                active: false,
+                iteration: None,
+                max_iterations: None,
+                break_condition: None,
+            },
+            DaemonEvent::AutoTestChanged {
+                enabled: true,
+                command: Some("cargo test".to_string()),
+            },
+            DaemonEvent::AutoTestChanged {
+                enabled: false,
+                command: None,
+            },
+            DaemonEvent::CostUpdate {
+                total_cost_usd: 1.234,
+                total_input_tokens: 50000,
+                total_output_tokens: 10000,
+            },
+        ];
+
+        for event in &events {
+            let mut buf = Vec::new();
+            write_frame(&mut buf, event).await.unwrap();
+            let mut cursor = std::io::Cursor::new(buf);
+            let decoded: DaemonEvent = read_frame(&mut cursor).await.unwrap();
+            assert_eq!(event, &decoded, "round-trip failed for {event:?}");
+        }
+    }
+
+    // ── All ControlCommand variants ─────────────────────────────────
+
+    #[tokio::test]
+    async fn test_round_trip_all_control_commands() {
+        let commands = vec![
+            ControlCommand::ListSessions,
+            ControlCommand::CreateSession {
+                model: Some("sonnet".to_string()),
+                system_prompt: Some("be helpful".to_string()),
+                token: None,
+                resume_id: Some("sess-123".to_string()),
+                continue_last: false,
+                cwd: Some("/home/user/project".to_string()),
+            },
+            ControlCommand::CreateSession {
+                model: None,
+                system_prompt: None,
+                token: None,
+                resume_id: None,
+                continue_last: true,
+                cwd: None,
+            },
+            ControlCommand::AttachSession {
+                session_id: "sess-456".to_string(),
+            },
+            ControlCommand::ProcessTree,
+            ControlCommand::KillSession {
+                session_id: "sess-789".to_string(),
+            },
+            ControlCommand::Shutdown,
+            ControlCommand::Status,
+            ControlCommand::RestartDaemon,
+        ];
+
+        for cmd in &commands {
+            let mut buf = Vec::new();
+            write_frame(&mut buf, cmd).await.unwrap();
+            let mut cursor = std::io::Cursor::new(buf);
+            let decoded: ControlCommand = read_frame(&mut cursor).await.unwrap();
+            assert_eq!(cmd, &decoded, "round-trip failed for {cmd:?}");
+        }
+    }
+
+    // ── All ControlResponse variants ────────────────────────────────
+
+    #[tokio::test]
+    async fn test_round_trip_all_control_responses() {
+        use crate::control::DaemonStatus;
+        use crate::control::SessionSummary;
+
+        let responses = vec![
+            ControlResponse::Sessions(vec![
+                SessionSummary {
+                    session_id: "s1".to_string(),
+                    model: "sonnet".to_string(),
+                    turn_count: 5,
+                    last_active: "2026-03-21T12:00:00Z".to_string(),
+                    client_count: 1,
+                    socket_path: "/tmp/s1.sock".to_string(),
+                    state: "active".to_string(),
+                },
+            ]),
+            ControlResponse::Sessions(vec![]),
+            ControlResponse::Created {
+                session_id: "s2".to_string(),
+                socket_path: "/tmp/s2.sock".to_string(),
+            },
+            ControlResponse::Attached {
+                socket_path: "/tmp/s1.sock".to_string(),
+            },
+            ControlResponse::Tree(vec![]),
+            ControlResponse::Killed,
+            ControlResponse::ShuttingDown,
+            ControlResponse::Status(DaemonStatus {
+                uptime_secs: 3600.5,
+                session_count: 3,
+                total_clients: 7,
+                pid: 12345,
+            }),
+            ControlResponse::Restarting,
+            ControlResponse::Error {
+                message: "session not found".to_string(),
+            },
+        ];
+
+        for resp in &responses {
+            let mut buf = Vec::new();
+            write_frame(&mut buf, resp).await.unwrap();
+            let mut cursor = std::io::Cursor::new(buf);
+            let decoded: ControlResponse = read_frame(&mut cursor).await.unwrap();
+            assert_eq!(resp, &decoded, "round-trip failed for {resp:?}");
+        }
+    }
+
+    // ── DaemonRequest / AttachResponse ──────────────────────────────
+
+    #[tokio::test]
+    async fn test_round_trip_daemon_request() {
+        use crate::types::AttachResponse;
+        use crate::types::DaemonRequest;
+
+        let requests = vec![
+            DaemonRequest::Control {
+                command: ControlCommand::ListSessions,
+            },
+            DaemonRequest::Control {
+                command: ControlCommand::Status,
+            },
+            DaemonRequest::Attach {
+                handshake: Handshake {
+                    protocol_version: 1,
+                    client_name: "test-client".to_string(),
+                    token: Some("ucan-token".to_string()),
+                    session_id: Some("sess-123".to_string()),
+                },
+            },
+            DaemonRequest::Attach {
+                handshake: Handshake {
+                    protocol_version: 1,
+                    client_name: "anon".to_string(),
+                    token: None,
+                    session_id: None,
+                },
+            },
+        ];
+
+        for req in &requests {
+            let mut buf = Vec::new();
+            write_frame(&mut buf, req).await.unwrap();
+            let mut cursor = std::io::Cursor::new(buf);
+            let decoded: DaemonRequest = read_frame(&mut cursor).await.unwrap();
+            assert_eq!(req, &decoded, "round-trip failed for {req:?}");
+        }
+
+        // AttachResponse
+        let responses = vec![
+            AttachResponse::Ok {
+                session_id: "sess-789".to_string(),
+            },
+            AttachResponse::Error {
+                message: "no such session".to_string(),
+            },
+        ];
+
+        for resp in &responses {
+            let mut buf = Vec::new();
+            write_frame(&mut buf, resp).await.unwrap();
+            let mut cursor = std::io::Cursor::new(buf);
+            let decoded: AttachResponse = read_frame(&mut cursor).await.unwrap();
+            assert_eq!(resp, &decoded, "round-trip failed for {resp:?}");
+        }
+    }
+
+    // ── Frame edge cases ────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_read_oversized_length_prefix() {
+        // Craft a frame with a length prefix exceeding MAX_FRAME_SIZE
+        let len = (MAX_FRAME_SIZE as u32 + 1).to_be_bytes();
+        let buf = len.to_vec();
+        let mut cursor = std::io::Cursor::new(buf);
+        let result: Result<Vec<u8>, _> = read_raw_frame(&mut cursor).await;
+
+        assert!(matches!(result, Err(FrameError::TooLarge { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_read_truncated_payload() {
+        // Length says 100 bytes but only 10 are present
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&100u32.to_be_bytes());
+        buf.extend_from_slice(&[0u8; 10]);
+        let mut cursor = std::io::Cursor::new(buf);
+        let result: Result<Vec<u8>, _> = read_raw_frame(&mut cursor).await;
+
+        assert!(matches!(result, Err(FrameError::Eof)));
+    }
+
+    #[tokio::test]
+    async fn test_read_truncated_length_prefix() {
+        // Only 2 bytes of the 4-byte length prefix
+        let buf = vec![0u8, 5];
+        let mut cursor = std::io::Cursor::new(buf);
+        let result: Result<Vec<u8>, _> = read_raw_frame(&mut cursor).await;
+
+        assert!(matches!(result, Err(FrameError::Eof)));
+    }
+
+    #[tokio::test]
+    async fn test_zero_length_frame() {
+        let mut buf = Vec::new();
+        write_raw_frame(&mut buf, &[]).await.unwrap();
+
+        let mut cursor = std::io::Cursor::new(buf);
+        let decoded = read_raw_frame(&mut cursor).await.unwrap();
+        assert!(decoded.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_invalid_json_frame() {
+        // Valid length prefix but garbage JSON
+        let garbage = b"not valid json {{{";
+        let mut buf = Vec::new();
+        buf.extend_from_slice(&(garbage.len() as u32).to_be_bytes());
+        buf.extend_from_slice(garbage);
+        let mut cursor = std::io::Cursor::new(buf);
+        let result: Result<SessionCommand, _> = read_frame(&mut cursor).await;
+
+        assert!(matches!(result, Err(FrameError::Json(_))));
+    }
+
+    #[tokio::test]
+    async fn test_wrong_type_json_frame() {
+        // Valid JSON but wrong type — a DaemonEvent where SessionCommand expected
+        let event = DaemonEvent::AgentStart;
+        let mut buf = Vec::new();
+        write_frame(&mut buf, &event).await.unwrap();
+
+        let mut cursor = std::io::Cursor::new(buf);
+        let result: Result<SessionCommand, _> = read_frame(&mut cursor).await;
+
+        // serde should reject this since the discriminant won't match
+        assert!(matches!(result, Err(FrameError::Json(_))));
+    }
+
+    // ── FrameError Display ──────────────────────────────────────────
+
+    #[test]
+    fn test_frame_error_display() {
+        let io_err = FrameError::Io(std::io::Error::new(
+            std::io::ErrorKind::BrokenPipe,
+            "pipe broken",
+        ));
+        assert!(io_err.to_string().contains("frame IO error"));
+
+        let too_large = FrameError::TooLarge { size: 999 };
+        let msg = too_large.to_string();
+        assert!(msg.contains("999"), "got: {msg}");
+        assert!(msg.contains("too large"), "got: {msg}");
+
+        let eof = FrameError::Eof;
+        assert!(eof.to_string().contains("closed"));
+
+        let json_err = FrameError::Json(serde_json::from_str::<String>("{{").unwrap_err());
+        assert!(json_err.to_string().contains("JSON"));
+    }
+
+    #[test]
+    fn test_frame_error_source() {
+        let io_err = FrameError::Io(std::io::Error::new(
+            std::io::ErrorKind::Other,
+            "test",
+        ));
+        assert!(std::error::Error::source(&io_err).is_some());
+
+        let json_err = FrameError::Json(serde_json::from_str::<String>("{{").unwrap_err());
+        assert!(std::error::Error::source(&json_err).is_some());
+
+        assert!(std::error::Error::source(&FrameError::Eof).is_none());
+        assert!(std::error::Error::source(&FrameError::TooLarge { size: 1 }).is_none());
+    }
+
+    #[test]
+    fn test_unexpected_eof_becomes_frame_eof() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::UnexpectedEof, "eof");
+        let frame_err: FrameError = io_err.into();
+        assert!(matches!(frame_err, FrameError::Eof));
+    }
+
+    #[test]
+    fn test_other_io_error_stays_io() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::BrokenPipe, "broken");
+        let frame_err: FrameError = io_err.into();
+        assert!(matches!(frame_err, FrameError::Io(_)));
+    }
+
+    // ── Backward compatibility: missing optional fields ─────────────
+
+    #[test]
+    fn test_session_info_missing_optional_fields() {
+        // Old daemon sends SessionInfo without newer optional fields
+        let json = r#"{"SessionInfo":{"session_id":"s1","model":"sonnet","system_prompt_hash":"abc"}}"#;
+        let event: DaemonEvent = serde_json::from_str(json).unwrap();
+        match event {
+            DaemonEvent::SessionInfo {
+                session_id,
+                available_models,
+                active_account,
+                disabled_tools,
+                auto_test_command,
+                ..
+            } => {
+                assert_eq!(session_id, "s1");
+                assert!(available_models.is_empty());
+                assert!(active_account.is_empty());
+                assert!(disabled_tools.is_empty());
+                assert!(auto_test_command.is_none());
+            }
+            _ => panic!("expected SessionInfo"),
+        }
+    }
+
+    #[test]
+    fn test_session_summary_missing_state_field() {
+        // Old daemon sends SessionSummary without "state" field
+        let json = r#"{"session_id":"s1","model":"sonnet","turn_count":3,"last_active":"now","client_count":1,"socket_path":"/tmp/s.sock"}"#;
+        let summary: crate::control::SessionSummary = serde_json::from_str(json).unwrap();
+        assert_eq!(summary.state, "active"); // default
+    }
+
+    #[test]
+    fn test_create_session_missing_optional_fields() {
+        // Minimal CreateSession without optional fields
+        let json = r#"{"CreateSession":{"model":null,"system_prompt":null,"token":null}}"#;
+        let cmd: ControlCommand = serde_json::from_str(json).unwrap();
+        match cmd {
+            ControlCommand::CreateSession {
+                resume_id,
+                continue_last,
+                cwd,
+                ..
+            } => {
+                assert!(resume_id.is_none());
+                assert!(!continue_last);
+                assert!(cwd.is_none());
+            }
+            _ => panic!("expected CreateSession"),
+        }
+    }
 }

@@ -223,6 +223,7 @@ async fn control_list_sessions() {
             last_active: "2026-03-12T09:00:00Z".into(),
             client_count: 1,
             socket_path: "/tmp/clankers/session-s1.sock".into(),
+            state: "active".into(),
         },
         SessionSummary {
             session_id: "s2".into(),
@@ -231,6 +232,7 @@ async fn control_list_sessions() {
             last_active: "2026-03-12T08:00:00Z".into(),
             client_count: 0,
             socket_path: "/tmp/clankers/session-s2.sock".into(),
+            state: "active".into(),
         },
     ]);
     write_frame(&mut server, &response).await.unwrap();
