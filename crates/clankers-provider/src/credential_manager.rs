@@ -332,11 +332,21 @@ fn save_with_file_lock(auth_path: &std::path::Path, creds: &OAuthCredentials) ->
 
     if let Some(parent) = auth_path.parent() {
         fs::create_dir_all(parent).ok();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(parent, fs::Permissions::from_mode(0o700));
+        }
     }
     if !auth_path.exists() {
         let mut f =
             fs::File::create(auth_path).map_err(|e| crate::error::auth_err(format!("Create auth file: {e}")))?;
         f.write_all(b"{}").ok();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(auth_path, fs::Permissions::from_mode(0o600));
+        }
     }
 
     let lock_file =
@@ -1100,5 +1110,55 @@ mod tests {
         // OpenAI was preserved
         let openai = store.credential_for("openai", "default").unwrap();
         assert_eq!(openai.token(), "sk-openai");
+    }
+
+    // ── File permission hardening ───────────────────────────────────
+
+    #[cfg(unix)]
+    #[test]
+    fn save_with_file_lock_sets_restrictive_permissions() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let subdir = dir.path().join("secure");
+        let path = subdir.join("auth.json");
+
+        let creds = OAuthCredentials {
+            access: "tok".into(),
+            refresh: "ref".into(),
+            expires: i64::MAX,
+        };
+
+        save_with_file_lock(&path, &creds).unwrap();
+
+        let file_mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(file_mode, 0o600, "auth file should be 0600, got {:#o}", file_mode);
+
+        let dir_mode = std::fs::metadata(&subdir).unwrap().permissions().mode() & 0o777;
+        assert_eq!(dir_mode, 0o700, "auth dir should be 0700, got {:#o}", dir_mode);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn save_with_file_lock_tightens_existing_file() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = tempfile::TempDir::new().unwrap();
+        let path = dir.path().join("auth.json");
+
+        // Create with world-readable permissions
+        std::fs::write(&path, "{}").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let creds = OAuthCredentials {
+            access: "tok".into(),
+            refresh: "ref".into(),
+            expires: i64::MAX,
+        };
+
+        save_with_file_lock(&path, &creds).unwrap();
+
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "should tighten loose permissions, got {:#o}", mode);
     }
 }

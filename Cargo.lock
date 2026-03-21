@@ -1274,7 +1274,7 @@ dependencies = [
 [[package]]
 name = "clanker-router"
 version = "0.1.0"
-source = "git+https://github.com/brittonr/clanker-router#25cae09e050bdf8d5591bd6efbfa1ef7368c2acc"
+source = "git+https://github.com/brittonr/clanker-router#e3a6169ba9661c179987cda212e383e88ca5579b"
 dependencies = [
  "async-trait",
  "base64",
