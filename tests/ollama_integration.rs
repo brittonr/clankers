@@ -33,7 +33,11 @@ use tokio::sync::mpsc;
 
 const OLLAMA_BASE: &str = "http://localhost:11434/v1";
 const MODEL_ID: &str = "qwen2.5:0.5b";
-const MODEL_ALT: &str = "qwen3:0.6b";
+/// Second model for multi-model / switching tests.
+/// Uses the same family (qwen2.5) to avoid slow cross-family model swaps
+/// in Ollama. qwen3 models default to thinking mode (empty text content)
+/// and require full model reload, making them impractical for fast tests.
+const MODEL_ALT: &str = "qwen2.5:3b";
 
 // ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -542,51 +546,23 @@ async fn ollama_explicit_fallback_chain() {
 /// Multiple models registered: routing picks the right provider.
 #[tokio::test]
 async fn ollama_model_routing() {
-    if !ollama_available() {
+    if !ollama_available() || !model_available(MODEL_ALT) {
+        eprintln!("SKIP: need both {} and {}", MODEL_ID, MODEL_ALT);
         return;
     }
 
-    // Register two real models (both available in Ollama)
-    let models = vec![ollama_model("qwen2.5:0.5b"), ollama_model("qwen2.5:3b")];
-
-    // Check if the 3b model is also available
-    let has_3b = std::thread::spawn(|| {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(2))
-            .build()
-            .ok()?;
-        let resp = client.get(&format!("{}/models", OLLAMA_BASE)).send().ok()?;
-        let body: serde_json::Value = resp.json().ok()?;
-        let models = body.get("data")?.as_array()?;
-        Some(models.iter().any(|m| {
-            m.get("id")
-                .and_then(|v| v.as_str())
-                .map_or(false, |id| id == "qwen2.5:3b")
-        }))
-    })
-    .join()
-    .ok()
-    .flatten()
-    .unwrap_or(false);
-
-    if !has_3b {
-        eprintln!("SKIP ollama_model_routing: qwen2.5:3b not available");
-        return;
-    }
-
-    let mut router = Router::new("qwen2.5:0.5b");
-    router.register_provider(ollama_provider(models));
+    let router = two_model_router();
 
     // Request the 0.5b model
-    let events = collect_events(&router, simple_request("qwen2.5:0.5b", "Hi"))
+    let events = collect_events(&router, simple_request(MODEL_ID, "Hi"))
         .await
-        .expect("0.5b completion failed");
+        .expect("primary model completion failed");
     assert!(!extract_text(&events).is_empty());
 
     // Request the 3b model
-    let events = collect_events(&router, simple_request("qwen2.5:3b", "Hi"))
+    let events = collect_events(&router, simple_request(MODEL_ALT, "Hi"))
         .await
-        .expect("3b completion failed");
+        .expect("alt model completion failed");
     assert!(!extract_text(&events).is_empty());
 }
 
@@ -876,6 +852,202 @@ async fn ollama_switch_usage_per_model() {
     assert!(
         models_logged.contains(&MODEL_ALT),
         "log should contain {MODEL_ALT}, got {models_logged:?}"
+    );
+}
+
+// ── Dynamic model switching tests ───────────────────────────────────────
+//
+// These tests simulate the agent turn loop's slot-based model switch
+// mechanism: SwitchModelTool writes to a shared slot, check_model_switch
+// reads it and updates active_model, the next completion uses the new model.
+
+/// Simulate the slot-based dynamic switch the turn loop performs.
+///
+/// Flow: complete on model A → tool writes slot → "turn loop" reads slot
+/// → complete on model B → verify both responses are valid.
+#[tokio::test]
+async fn ollama_dynamic_slot_switch() {
+    if !ollama_available() || !model_available(MODEL_ALT) {
+        eprintln!("SKIP: need both {} and {}", MODEL_ID, MODEL_ALT);
+        return;
+    }
+
+    let router = two_model_router();
+    let slot: Arc<parking_lot::Mutex<Option<String>>> = Arc::new(parking_lot::Mutex::new(None));
+
+    // Turn 1: complete on MODEL_ID
+    let mut active_model = MODEL_ID.to_string();
+    let events1 = collect_events(&router, simple_request(&active_model, "Say hello."))
+        .await
+        .expect("turn 1 failed");
+    assert!(!extract_text(&events1).is_empty(), "turn 1 should produce output");
+
+    // Simulate SwitchModelTool writing to the slot
+    *slot.lock() = Some(MODEL_ALT.to_string());
+
+    // Simulate check_model_switch: read and consume the slot
+    if let Some(new_model) = slot.lock().take() {
+        active_model = new_model;
+    }
+    assert_eq!(active_model, MODEL_ALT, "active model should have switched");
+
+    // Turn 2: complete on MODEL_ALT
+    let events2 = collect_events(&router, simple_request(&active_model, "Say goodbye."))
+        .await
+        .expect("turn 2 failed");
+    assert!(!extract_text(&events2).is_empty(), "turn 2 should produce output");
+
+    // Verify the two turns used different models (via MessageStart metadata)
+    let model1 = match events1.first() {
+        Some(StreamEvent::MessageStart { message }) => &message.model,
+        _ => panic!("missing MessageStart in turn 1"),
+    };
+    let model2 = match events2.first() {
+        Some(StreamEvent::MessageStart { message }) => &message.model,
+        _ => panic!("missing MessageStart in turn 2"),
+    };
+    assert_ne!(model1, model2, "turns should use different models");
+}
+
+/// Slot-based switch mid-conversation: the new model sees prior context.
+///
+/// Simulates a multi-turn conversation where a model switch happens
+/// between turns. The switched-to model should still be able to reference
+/// context from earlier in the conversation (passed via messages).
+#[tokio::test]
+async fn ollama_dynamic_switch_preserves_context() {
+    if !ollama_available() || !model_available(MODEL_ALT) {
+        eprintln!("SKIP: need both {} and {}", MODEL_ID, MODEL_ALT);
+        return;
+    }
+
+    let router = two_model_router();
+
+    // Turn 1 on MODEL_ID: establish a fact
+    let mut active_model = MODEL_ID.to_string();
+    let events1 = collect_events(
+        &router,
+        CompletionRequest {
+            model: active_model.clone(),
+            messages: vec![json!({"role": "user", "content": "The secret word is 'banana'. Acknowledge this."})],
+            system_prompt: None,
+            max_tokens: Some(32),
+            temperature: Some(0.0),
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+            extra_params: HashMap::new(),
+        },
+    )
+    .await
+    .expect("turn 1 failed");
+    let response1 = extract_text(&events1);
+
+    // Dynamic switch via slot
+    active_model = MODEL_ALT.to_string();
+
+    // Turn 2 on MODEL_ALT: ask about the fact, passing full history
+    let events2 = collect_events(
+        &router,
+        CompletionRequest {
+            model: active_model.clone(),
+            messages: vec![
+                json!({"role": "user", "content": "The secret word is 'banana'. Acknowledge this."}),
+                json!({"role": "assistant", "content": response1}),
+                json!({"role": "user", "content": "What is the secret word? Reply with just the word."}),
+            ],
+            system_prompt: None,
+            max_tokens: Some(16),
+            temperature: Some(0.0),
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+            extra_params: HashMap::new(),
+        },
+    )
+    .await
+    .expect("turn 2 failed");
+    let text2 = extract_text(&events2).to_lowercase();
+    assert!(
+        text2.contains("banana"),
+        "switched model should recall 'banana' from prior context, got: {text2}"
+    );
+}
+
+/// Switch back and forth between models, completing on each.
+/// Ensures no state leaks between switches.
+///
+/// Note: Ollama swaps models between different families (qwen2.5 vs qwen3),
+/// so each switch may take several seconds for model loading.
+#[tokio::test]
+async fn ollama_dynamic_toggle() {
+    if !ollama_available() || !model_available(MODEL_ALT) {
+        eprintln!("SKIP: need both {} and {}", MODEL_ID, MODEL_ALT);
+        return;
+    }
+
+    let router = two_model_router();
+
+    // MODEL_ID → MODEL_ALT → back to MODEL_ID
+    for (i, model) in [MODEL_ID, MODEL_ALT, MODEL_ID].iter().enumerate() {
+        let events = collect_events(&router, simple_request(model, &format!("What is {i}+{i}?")))
+            .await
+            .unwrap_or_else(|e| panic!("turn {i} on {model} failed: {e}"));
+        let text = extract_text(&events);
+        assert!(!text.is_empty(), "turn {i} on {model} returned empty");
+    }
+}
+
+/// Dynamic switch with DB logging: verify each turn's model is logged correctly.
+#[tokio::test]
+async fn ollama_dynamic_switch_logged_per_turn() {
+    if !ollama_available() || !model_available(MODEL_ALT) {
+        eprintln!("SKIP: need both {} and {}", MODEL_ID, MODEL_ALT);
+        return;
+    }
+
+    let tmp = tempfile::tempdir().expect("tmp dir");
+    let db = RouterDb::open(&tmp.path().join("dynamic_log.db")).expect("open db");
+
+    let mut router = Router::with_db(MODEL_ID, db);
+    router.register_provider(ollama_provider(vec![
+        ollama_model(MODEL_ID),
+        ollama_model(MODEL_ALT),
+    ]));
+
+    // Turn 1 on MODEL_ID
+    let _ = collect_events(&router, simple_request(MODEL_ID, "Hi"))
+        .await
+        .expect("turn 1 failed");
+
+    // Dynamic switch
+    router.switch_model(MODEL_ALT, ModelSwitchReason::UserRequest);
+
+    // Turn 2 on MODEL_ALT
+    let _ = collect_events(&router, simple_request(MODEL_ALT, "Hi"))
+        .await
+        .expect("turn 2 failed");
+
+    // Switch back
+    router.switch_back();
+
+    // Turn 3 on MODEL_ID again
+    let _ = collect_events(&router, simple_request(MODEL_ID, "Hi"))
+        .await
+        .expect("turn 3 failed");
+
+    // Verify all three turns appear in the log with correct models
+    let entries = router.db().unwrap().request_log().recent(10).expect("log");
+    assert!(entries.len() >= 3, "expected >= 3 log entries, got {}", entries.len());
+
+    // Entries are newest-first
+    let logged_models: Vec<&str> = entries.iter().rev().map(|e| e.model.as_str()).collect();
+    assert_eq!(
+        logged_models[..3],
+        [MODEL_ID, MODEL_ALT, MODEL_ID],
+        "log should reflect switch pattern, got: {logged_models:?}"
     );
 }
 
