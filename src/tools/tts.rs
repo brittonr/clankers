@@ -11,6 +11,8 @@ use serde_json::{Value, json};
 use tokio::sync::OnceCell;
 
 use super::{Tool, ToolContext, ToolDefinition, ToolResult};
+#[cfg(test)]
+use super::ToolResultContent;
 
 /// Lazily initialized TTS router (shared across all tool invocations).
 static TTS_ROUTER: OnceCell<Arc<clankers_tts::TtsRouter>> = OnceCell::const_new();
@@ -144,13 +146,75 @@ impl Tool for TtsTool {
 
 #[cfg(test)]
 mod tests {
+    use tokio_util::sync::CancellationToken;
+
     use super::*;
 
+    fn make_ctx() -> ToolContext {
+        ToolContext::new("test".to_string(), CancellationToken::new(), None)
+    }
+
+    fn result_text(result: &ToolResult) -> String {
+        result
+            .content
+            .iter()
+            .filter_map(|c| match c {
+                ToolResultContent::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
     #[test]
-    fn test_tts_tool_definition() {
+    fn definition_name_and_description() {
         let tool = TtsTool::new();
         let def = tool.definition();
         assert_eq!(def.name, "tts");
         assert!(def.description.contains("speech"));
+        assert!(def.description.contains("KittenTTS"));
+        assert!(def.description.contains("OpenAI"));
+    }
+
+    #[test]
+    fn definition_schema_has_required_text() {
+        let tool = TtsTool::new();
+        let schema = &tool.definition().input_schema;
+        let required = schema["required"].as_array().unwrap();
+        assert_eq!(required.len(), 1);
+        assert_eq!(required[0], "text");
+    }
+
+    #[test]
+    fn definition_schema_properties() {
+        let tool = TtsTool::new();
+        let props = &tool.definition().input_schema["properties"];
+        assert!(props["text"].is_object());
+        assert!(props["voice"].is_object());
+        assert!(props["speed"].is_object());
+        assert!(props["output"].is_object());
+    }
+
+    #[test]
+    fn default_impl() {
+        let tool = TtsTool::default();
+        assert_eq!(tool.definition().name, "tts");
+    }
+
+    #[tokio::test]
+    async fn execute_missing_text_returns_error() {
+        let tool = TtsTool::new();
+        let ctx = make_ctx();
+        let result = tool.execute(&ctx, json!({})).await;
+        assert!(result.is_error);
+        assert!(result_text(&result).contains("text"));
+    }
+
+    #[tokio::test]
+    async fn execute_empty_text_returns_error() {
+        let tool = TtsTool::new();
+        let ctx = make_ctx();
+        let result = tool.execute(&ctx, json!({"text": ""})).await;
+        assert!(result.is_error);
     }
 }

@@ -38,6 +38,7 @@ pub enum AudioFormat {
 }
 
 /// Response from a TTS provider.
+#[derive(Debug)]
 pub struct TtsResponse {
     /// Raw float32 PCM audio samples.
     pub samples: Vec<f32>,

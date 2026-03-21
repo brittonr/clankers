@@ -83,11 +83,11 @@ impl BranchSwitcher {
 
     // Provide access to properties for compatibility
     pub fn visible(&self) -> bool {
-        self.inner.visible
+        self.inner.model.visible
     }
 
     pub fn filter(&self) -> &str {
-        &self.inner.filter
+        &self.inner.model.filter
     }
 }
 

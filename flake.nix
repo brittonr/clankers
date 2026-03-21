@@ -224,6 +224,7 @@
             pkgs.sunxi-tools
             pkgs.sd-mux-ctrl
             pkgs.usbutils
+            pkgs.espeak-ng
           ] ++ pkgs.lib.optionals isX86Linux [
             verus
           ];

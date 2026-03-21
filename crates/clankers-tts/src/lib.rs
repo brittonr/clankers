@@ -179,6 +179,10 @@ impl Default for TtsRouter {
     }
 }
 
+#[cfg(test)]
+#[path = "lib_tests.rs"]
+mod tests;
+
 impl std::fmt::Debug for TtsRouter {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TtsRouter")
