@@ -50,6 +50,7 @@ pub mod skill_manage;
 pub mod subagent;
 pub mod switch_model;
 pub mod todo;
+pub mod tts;
 pub mod validator_tool;
 pub mod watchdog;
 pub mod web;

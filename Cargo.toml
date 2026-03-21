@@ -93,6 +93,7 @@ clankers-protocol = { version = "0.1.0", path = "crates/clankers-protocol" }
 clanker-actor = { workspace = true }
 clankers-controller = { version = "0.1.0", path = "crates/clankers-controller" }
 openspec = { path = "../openspec", optional = true }
+clankers-tts = { version = "0.1.0", path = "crates/clankers-tts" }
 clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }
 clankers-zellij = { version = "0.1.0", path = "crates/clankers-zellij", optional = true }
 clankers-tui-types = { version = "0.1.0", path = "crates/clankers-tui-types" }
