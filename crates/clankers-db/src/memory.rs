@@ -24,6 +24,7 @@ use redb::ReadableTableMetadata;
 use redb::TableDefinition;
 use serde::Deserialize;
 use serde::Serialize;
+use std::fmt::Write;
 
 use super::Db;
 use crate::error::Result;
@@ -288,9 +289,9 @@ impl<'db> MemoryStore<'db> {
                 }
                 _ => "MEMORY (general)".to_string(),
             };
-            out.push_str(&format!("# {header}\n"));
+            let _ = writeln!(out, "# {header}");
             for e in &global {
-                out.push_str(&format!("- {}\n", e.text));
+                let _ = writeln!(out, "- {}", e.text);
             }
         }
 
@@ -306,9 +307,9 @@ impl<'db> MemoryStore<'db> {
             if !out.is_empty() {
                 out.push('\n');
             }
-            out.push_str(&format!("# {header}\n"));
+            let _ = writeln!(out, "# {header}");
             for e in &project {
-                out.push_str(&format!("- {}\n", e.text));
+                let _ = writeln!(out, "- {}", e.text);
             }
         }
 

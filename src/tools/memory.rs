@@ -4,6 +4,7 @@
 //! Capacity-bounded with usage reporting.
 
 use async_trait::async_trait;
+use std::fmt::Write;
 use clankers_config::settings::MemoryLimits;
 use clankers_db::memory::{MemoryEntry, MemoryScope, MemorySource};
 use serde_json::{Value, json};
@@ -106,7 +107,7 @@ impl MemoryTool {
             let entries = db.memory().list(Some(&scope)).unwrap_or_default();
             let mut listing = String::new();
             for e in &entries {
-                listing.push_str(&format!("- [{}] {} ({}ch)\n", e.id, e.text, e.text.len()));
+                let _ = writeln!(listing, "- [{}] {} ({}ch)", e.id, e.text, e.text.len());
             }
             return ToolResult::error(format!(
                 "Memory at {current}/{limit} chars. Adding this entry ({} chars) would exceed the limit.\n\
@@ -160,7 +161,7 @@ impl MemoryTool {
         if matches.len() > 1 {
             let mut listing = String::from("Multiple entries match. Be more specific:\n");
             for e in &matches {
-                listing.push_str(&format!("- [{}] {}\n", e.id, e.text));
+                let _ = writeln!(listing, "- [{}] {}", e.id, e.text);
             }
             return ToolResult::error(listing);
         }
@@ -209,7 +210,7 @@ impl MemoryTool {
         if matches.len() > 1 {
             let mut listing = String::from("Multiple entries match. Be more specific:\n");
             for e in &matches {
-                listing.push_str(&format!("- [{}] {}\n", e.id, e.text));
+                let _ = writeln!(listing, "- [{}] {}", e.id, e.text);
             }
             return ToolResult::error(listing);
         }
@@ -243,7 +244,7 @@ impl MemoryTool {
             } else {
                 format!(" [{}]", e.tags.join(", "))
             };
-            out.push_str(&format!("- [{}] ({}) {}{}\n", e.id, e.scope, e.text, tags));
+            let _ = writeln!(out, "- [{}] ({}) {}{}", e.id, e.scope, e.text, tags);
         }
         ToolResult::text(out)
     }

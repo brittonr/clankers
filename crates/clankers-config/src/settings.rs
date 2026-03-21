@@ -404,14 +404,14 @@ impl Settings {
     /// is enabled), then falls back to `.json`.
     fn load_layer(ncl_path: Option<&Path>, json_path: &Path) -> Option<serde_json::Value> {
         #[cfg(feature = "nickel")]
-        if let Some(ncl) = ncl_path {
-            if ncl.exists() {
-                match crate::nickel::eval_ncl_file(ncl) {
-                    Ok(value) => return Some(value),
-                    Err(e) => {
-                        eprintln!("warning: failed to evaluate {}: {e}", ncl.display());
-                        // Fall through to JSON
-                    }
+        if let Some(ncl) = ncl_path
+            && ncl.exists()
+        {
+            match crate::nickel::eval_ncl_file(ncl) {
+                Ok(value) => return Some(value),
+                Err(e) => {
+                    eprintln!("warning: failed to evaluate {}: {e}", ncl.display());
+                    // Fall through to JSON
                 }
             }
         }

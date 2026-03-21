@@ -50,3 +50,4 @@ tests/tui/captures/
 # Embedded repos (worktree artifacts)
 diff/
 /session/
+*.wav

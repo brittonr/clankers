@@ -336,12 +336,11 @@ impl SessionCatalog {
         let tombstoned = self.list_by_state(SessionLifecycle::Tombstoned);
         let mut removed = 0;
         for entry in tombstoned {
-            if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(&entry.last_active) {
-                if ts < cutoff {
+            if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(&entry.last_active)
+                && ts < cutoff {
                     self.remove_session(&entry.session_id);
                     removed += 1;
                 }
-            }
         }
         removed
     }

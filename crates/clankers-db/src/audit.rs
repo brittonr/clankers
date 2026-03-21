@@ -20,6 +20,7 @@ use redb::TableDefinition;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
+use std::fmt::Write;
 
 use super::Db;
 use crate::error::Result;
@@ -151,32 +152,32 @@ impl<'db> AuditLog<'db> {
                 "✅ OK"
             };
 
-            out.push_str(&format!("{}. **{}** {} ({}ms)\n", e.seq + 1, e.tool, status, e.duration_ms,));
+            let _ = writeln!(out, "{}. **{}** {} ({}ms)", e.seq + 1, e.tool, status, e.duration_ms);
 
             // Show key parameters
             match e.tool.as_str() {
                 "bash" => {
                     if let Some(cmd) = e.input.get("command").and_then(|v| v.as_str()) {
                         let preview: String = cmd.chars().take(120).collect();
-                        out.push_str(&format!("   `{preview}`\n"));
+                        let _ = writeln!(out, "   `{preview}`");
                     }
                 }
                 "read" | "write" | "edit" => {
                     if let Some(path) = e.input.get("path").and_then(|v| v.as_str()) {
-                        out.push_str(&format!("   `{path}`\n"));
+                        let _ = writeln!(out, "   `{path}`");
                     }
                 }
                 "grep" => {
                     if let Some(pattern) = e.input.get("pattern").and_then(|v| v.as_str()) {
                         let path = e.input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-                        out.push_str(&format!("   `{pattern}` in `{path}`\n"));
+                        let _ = writeln!(out, "   `{pattern}` in `{path}`");
                     }
                 }
                 _ => {}
             }
 
             if let Some(ref reason) = e.sandbox_blocked {
-                out.push_str(&format!("   Blocked: {reason}\n"));
+                let _ = writeln!(out, "   Blocked: {reason}");
             }
 
             out.push('\n');
@@ -188,7 +189,8 @@ impl<'db> AuditLog<'db> {
         let blocked = entries.iter().filter(|e| e.sandbox_blocked.is_some()).count();
         let total_ms: u64 = entries.iter().map(|e| e.duration_ms).sum();
 
-        out.push_str(&format!("---\n{total} calls, {errors} errors, {blocked} blocked, {total_ms}ms total\n"));
+        out.push_str("---\n");
+        let _ = writeln!(out, "{total} calls, {errors} errors, {blocked} blocked, {total_ms}ms total");
 
         Ok(out)
     }

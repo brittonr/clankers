@@ -3,6 +3,7 @@
 //! Skills are written to ~/.clankers/agent/skills/<name>/SKILL.md.
 //! Actions: create, patch, edit, delete, write_file, list.
 
+use std::fmt::Write;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
@@ -270,11 +271,10 @@ impl SkillManageTool {
         }
 
         let target = dir.join(file_path);
-        if let Some(parent) = target.parent() {
-            if let Err(e) = std::fs::create_dir_all(parent) {
+        if let Some(parent) = target.parent()
+            && let Err(e) = std::fs::create_dir_all(parent) {
                 return ToolResult::error(format!("Failed to create directory: {e}"));
             }
-        }
         if let Err(e) = std::fs::write(&target, file_content) {
             return ToolResult::error(format!("Failed to write {}: {e}", target.display()));
         }
@@ -290,7 +290,7 @@ impl SkillManageTool {
 
         let mut out = format!("{} skill(s):\n", skills.len());
         for s in &skills {
-            out.push_str(&format!("- **{}**: {}\n", s.name, s.description));
+            let _ = writeln!(out, "- **{}**: {}", s.name, s.description);
         }
         ToolResult::text(out)
     }
@@ -319,14 +319,12 @@ impl SkillManageTool {
             out.push_str("Skill                    | Loads | Success | Corrections | Rate\n");
             out.push_str("-------------------------|-------|---------|-------------|------\n");
             for s in &all {
-                out.push_str(&format!(
-                    "{:<24} | {:>5} | {:>7} | {:>11} | {:>4.0}%\n",
+                let _ = writeln!(out, "{:<24} | {:>5} | {:>7} | {:>11} | {:>4.0}%",
                     s.skill_name,
                     s.total_loads,
                     s.successes,
                     s.corrections,
-                    s.success_rate(),
-                ));
+                    s.success_rate());
             }
             ToolResult::text(out)
         }
@@ -388,14 +386,14 @@ fn format_single_stats(stats: &clankers_db::skill_usage::SkillStats) -> ToolResu
         .unwrap_or_else(|| "never".into());
 
     let mut out = format!("**{}** usage stats:\n", stats.skill_name);
-    out.push_str(&format!("  Total loads: {}\n", stats.total_loads));
-    out.push_str(&format!("  Successes: {}\n", stats.successes));
-    out.push_str(&format!("  Corrections: {}\n", stats.corrections));
-    out.push_str(&format!("  Failures: {}\n", stats.failures));
-    out.push_str(&format!("  Pending: {}\n", stats.pending));
-    out.push_str(&format!("  Success rate: {:.0}%\n", stats.success_rate()));
-    out.push_str(&format!("  Correction rate: {:.0}%\n", stats.correction_rate()));
-    out.push_str(&format!("  Last used: {}\n", last));
+    let _ = writeln!(out, "  Total loads: {}", stats.total_loads);
+    let _ = writeln!(out, "  Successes: {}", stats.successes);
+    let _ = writeln!(out, "  Corrections: {}", stats.corrections);
+    let _ = writeln!(out, "  Failures: {}", stats.failures);
+    let _ = writeln!(out, "  Pending: {}", stats.pending);
+    let _ = writeln!(out, "  Success rate: {:.0}%", stats.success_rate());
+    let _ = writeln!(out, "  Correction rate: {:.0}%", stats.correction_rate());
+    let _ = writeln!(out, "  Last used: {}", last);
 
     if stats.correction_rate() > 30.0 {
         out.push_str("\n⚠ High correction rate — consider revising this skill.");

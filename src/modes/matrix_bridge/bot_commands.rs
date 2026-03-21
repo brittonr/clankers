@@ -60,11 +60,10 @@ pub(crate) async fn handle_bot_command(
             // Kill the existing session and remove from state
             let mut st = state.lock().await;
             if let Some(session_id) = st.key_index.get(key).cloned() {
-                if let Some(handle) = st.sessions.get(&session_id) {
-                    if let Some(ref tx) = handle.cmd_tx {
+                if let Some(handle) = st.sessions.get(&session_id)
+                    && let Some(ref tx) = handle.cmd_tx {
                         let _ = tx.send(SessionCommand::Disconnect);
                     }
-                }
                 st.remove_session(&session_id);
             }
             "Session cleared. Next message starts a fresh conversation.".to_string()
@@ -165,11 +164,10 @@ async fn handle_token_command(
             {
                 let mut st = state.lock().await;
                 if let Some(session_id) = st.key_index.get(key).cloned() {
-                    if let Some(handle) = st.sessions.get(&session_id) {
-                        if let Some(ref tx) = handle.cmd_tx {
+                    if let Some(handle) = st.sessions.get(&session_id)
+                        && let Some(ref tx) = handle.cmd_tx {
                             let _ = tx.send(SessionCommand::Disconnect);
                         }
-                    }
                     st.remove_session(&session_id);
                 }
             }

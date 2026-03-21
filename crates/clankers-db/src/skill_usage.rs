@@ -206,10 +206,10 @@ impl<'db> SkillUsageStore<'db> {
         let mut entries = Vec::new();
         for item in table.iter().map_err(db_err)? {
             let (_key, value) = item.map_err(db_err)?;
-            if let Ok(entry) = serde_json::from_slice::<SkillUsageEntry>(value.value()) {
-                if entry.skill_name == skill_name {
-                    entries.push(entry);
-                }
+            if let Ok(entry) = serde_json::from_slice::<SkillUsageEntry>(value.value())
+                && entry.skill_name == skill_name
+            {
+                entries.push(entry);
             }
         }
 

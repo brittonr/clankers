@@ -85,6 +85,7 @@ fn run_init(ctx: &CommandContext, force: bool, nickel: bool, global: bool) -> Re
                 message: format!("failed to write {}: {e}", path.display()),
             })?;
             println!("Created {}", path.display());
+            return Ok(());
         }
         #[cfg(not(feature = "nickel"))]
         {
@@ -93,27 +94,26 @@ fn run_init(ctx: &CommandContext, force: bool, nickel: bool, global: bool) -> Re
                 message: "nickel feature not enabled".to_string(),
             });
         }
-    } else {
-        let path = if global {
-            ctx.paths.global_settings.clone()
-        } else {
-            ctx.project_paths.settings.clone()
-        };
-        if path.exists() && !force {
-            eprintln!("error: {} already exists (use --force to overwrite)", path.display());
-            return Err(crate::error::Error::Config {
-                message: format!("{} already exists", path.display()),
-            });
-        }
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent).ok();
-        }
-        let content = serde_json::to_string_pretty(&clankers_config::Settings::default()).unwrap_or_default();
-        std::fs::write(&path, content).map_err(|e| crate::error::Error::Config {
-            message: format!("failed to write {}: {e}", path.display()),
-        })?;
-        println!("Created {}", path.display());
     }
+    let path = if global {
+        ctx.paths.global_settings.clone()
+    } else {
+        ctx.project_paths.settings.clone()
+    };
+    if path.exists() && !force {
+        eprintln!("error: {} already exists (use --force to overwrite)", path.display());
+        return Err(crate::error::Error::Config {
+            message: format!("{} already exists", path.display()),
+        });
+    }
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent).ok();
+    }
+    let content = serde_json::to_string_pretty(&clankers_config::Settings::default()).unwrap_or_default();
+    std::fs::write(&path, content).map_err(|e| crate::error::Error::Config {
+        message: format!("failed to write {}: {e}", path.display()),
+    })?;
+    println!("Created {}", path.display());
     Ok(())
 }
 

@@ -5,6 +5,7 @@
 
 use std::cmp::Reverse;
 use std::collections::HashMap;
+use std::fmt::Write;
 
 use chrono::DateTime;
 use chrono::Utc;
@@ -225,7 +226,7 @@ impl<'db> UsageTracker<'db> {
             out.push_str("\n## Last 7 days\n");
             let week_total: u64 = week.iter().map(|d| d.total_tokens()).sum();
             let week_reqs: u32 = week.iter().map(|d| d.requests).sum();
-            out.push_str(&format!("  {week_total} tokens across {week_reqs} requests ({} days active)\n", week.len()));
+            let _ = writeln!(out, "  {week_total} tokens across {week_reqs} requests ({} days active)", week.len());
         }
 
         // All time
@@ -238,12 +239,10 @@ impl<'db> UsageTracker<'db> {
                 let mut models: Vec<_> = all.by_model.iter().collect();
                 models.sort_by_key(|e| Reverse(e.1.input_tokens));
                 for (model, mu) in models {
-                    out.push_str(&format!(
-                        "    {model}: {} in + {} out ({} reqs)\n",
+                    let _ = writeln!(out, "    {model}: {} in + {} out ({} reqs)",
                         format_tokens(mu.input_tokens),
                         format_tokens(mu.output_tokens),
-                        mu.requests,
-                    ));
+                        mu.requests);
                 }
             }
         }

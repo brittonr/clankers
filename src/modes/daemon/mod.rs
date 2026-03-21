@@ -64,7 +64,7 @@ pub async fn run_daemon(
     let db_path = paths.global_config_dir.join("clankers.db");
     let daemon_db = session_store::open_daemon_db(&db_path);
     let auth_layer = daemon_db.as_ref().and_then(|db| create_auth_layer(db, &identity));
-    let session_catalog = daemon_db.as_ref().map(|db| session_store::create_session_catalog(db));
+    let session_catalog = daemon_db.as_ref().map(session_store::create_session_catalog);
 
     // Crash recovery: any `active` entries from a previous daemon that died
     // without a clean shutdown should be treated as `suspended`.
@@ -653,7 +653,7 @@ fn spawn_catalog_updater(
                             let changed = entry.last_active != handle.last_active
                                 || entry.turn_count != handle.turn_count;
                             if changed {
-                                entry.last_active = handle.last_active.clone();
+                                entry.last_active.clone_from(&handle.last_active);
                                 entry.turn_count = handle.turn_count;
                                 catalog.update_session(&entry);
                             }

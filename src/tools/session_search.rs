@@ -2,6 +2,7 @@
 //!
 //! Two-tier search: index metadata (fast) → JSONL content scan (fallback).
 
+use std::fmt::Write;
 use std::io::BufRead;
 use std::path::PathBuf;
 
@@ -105,12 +106,10 @@ impl SessionSearchTool {
             mb.cmp(&ma)
         });
 
-        let mut scanned = 0;
-        for file in files {
+        for (scanned, file) in files.into_iter().enumerate() {
             if scanned >= self.max_scan_files || results.len() >= limit {
                 break;
             }
-            scanned += 1;
 
             // Extract session ID from filename
             let session_id = file
@@ -160,11 +159,10 @@ impl SessionSearchTool {
                     .and_then(|v| v.get("cwd").and_then(|c| c.as_str()).map(String::from))
             });
 
-            if let Some(filter_cwd) = cwd {
-                if file_cwd.as_deref() != Some(filter_cwd) {
+            if let Some(filter_cwd) = cwd
+                && file_cwd.as_deref() != Some(filter_cwd) {
                     continue;
                 }
-            }
 
             results.push(SessionResult {
                 session_id,
@@ -172,9 +170,9 @@ impl SessionSearchTool {
                     .metadata()
                     .and_then(|m| m.modified())
                     .ok()
-                    .and_then(|t| {
+                    .map(|t| {
                         let d: chrono::DateTime<chrono::Utc> = t.into();
-                        Some(d.format("%Y-%m-%d %H:%M").to_string())
+                        d.format("%Y-%m-%d %H:%M").to_string()
                     })
                     .unwrap_or_else(|| "unknown".into()),
                 model: String::new(),
@@ -235,15 +233,15 @@ impl Tool for SessionSearchTool {
 
         let mut out = format!("Found {} session(s):\n\n", results.len());
         for r in &results {
-            out.push_str(&format!("**{}** ({})\n", r.session_id, r.date));
+            let _ = writeln!(out, "**{}** ({})", r.session_id, r.date);
             if !r.model.is_empty() {
-                out.push_str(&format!("  Model: {}\n", r.model));
+                let _ = writeln!(out, "  Model: {}", r.model);
             }
             if !r.cwd.is_empty() {
-                out.push_str(&format!("  Dir: {}\n", r.cwd));
+                let _ = writeln!(out, "  Dir: {}", r.cwd);
             }
-            out.push_str(&format!("  {}\n", r.preview));
-            out.push_str(&format!("  (source: {})\n\n", r.source));
+            let _ = writeln!(out, "  {}", r.preview);
+            let _ = writeln!(out, "  (source: {})\n", r.source);
         }
         ToolResult::text(out)
     }

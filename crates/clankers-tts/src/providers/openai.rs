@@ -110,7 +110,7 @@ impl TtsProvider for OpenAiTtsProvider {
             .chunks_exact(2)
             .map(|chunk| {
                 let sample = i16::from_le_bytes([chunk[0], chunk[1]]);
-                sample as f32 / 32768.0
+                f32::from(sample) / 32768.0
             })
             .collect();
 
