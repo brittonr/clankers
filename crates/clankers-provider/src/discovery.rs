@@ -12,7 +12,10 @@ use super::Provider;
 use super::anthropic::AnthropicProvider;
 use super::auth;
 use super::credential_manager::CredentialManager;
+use crate::CompletionRequest;
+use crate::Model;
 use crate::error::Result;
+use crate::streaming::StreamEvent;
 
 /// Build a multi-provider router that auto-discovers available providers.
 ///
@@ -218,9 +221,9 @@ pub fn build_router(
     }
 
     if backends.is_empty() {
-        return Err(crate::error::auth_err(
-            "No API credentials found. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or run 'clankers auth login'. Ollama also supported at localhost:11434.",
-        ));
+        info!("No API credentials found — starting with unconfigured provider");
+        let provider: Arc<dyn Provider> = Arc::new(UnconfiguredProvider);
+        backends.push(("unconfigured".to_string(), provider));
     }
 
     info!(
@@ -261,5 +264,35 @@ pub fn build_router(
     match cache_db {
         Some(db) => Ok(Arc::new(RouterProvider::with_db(backends, db).with_fallbacks(fallbacks))),
         None => Ok(Arc::new(RouterProvider::new(backends).with_fallbacks(fallbacks))),
+    }
+}
+
+// ── Unconfigured provider (no API keys) ─────────────────────────────────
+
+/// Placeholder provider returned when no API credentials are found.
+///
+/// Allows the daemon (and other startup paths) to proceed without
+/// credentials. Any attempt to actually make an LLM call returns a
+/// clear error directing the user to configure authentication.
+struct UnconfiguredProvider;
+
+#[async_trait::async_trait]
+impl Provider for UnconfiguredProvider {
+    async fn complete(
+        &self,
+        _request: CompletionRequest,
+        _tx: tokio::sync::mpsc::Sender<StreamEvent>,
+    ) -> Result<()> {
+        Err(crate::error::auth_err(
+            "No API credentials configured. Run 'clankers auth login', set ANTHROPIC_API_KEY, or start Ollama at localhost:11434.",
+        ))
+    }
+
+    fn models(&self) -> &[Model] {
+        &[]
+    }
+
+    fn name(&self) -> &str {
+        "unconfigured"
     }
 }
