@@ -113,6 +113,24 @@
           src = ./.;
         };
         routerPkg = routerBuild.rootCrate.build;
+
+        # Shim for cargo-dylint in nix environments (no real rustup).
+        # Dylint calls `rustup show active-toolchain` and `rustup which rustc`
+        # to detect the compiler; this shim answers from the nix toolchain.
+        rustup-shim = pkgs.writeShellScriptBin "rustup" ''
+          case "$1 $2" in
+            "show active-toolchain")
+              echo "nightly-x86_64-unknown-linux-gnu (from nix)"
+              ;;
+            "which rustc")
+              echo "$(rustc --print sysroot)/bin/rustc"
+              ;;
+            *)
+              echo "rustup shim: unsupported command: $*" >&2
+              exit 1
+              ;;
+          esac
+        '';
       in
       {
         packages = {
@@ -245,6 +263,7 @@
             pkgs.sd-mux-ctrl
             pkgs.usbutils
             pkgs.espeak-ng
+            rustup-shim
           ] ++ pkgs.lib.optionals isX86Linux [
             verus
           ];

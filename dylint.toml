@@ -1,0 +1,4 @@
+[tigerstyle]
+function_length_max = 100
+nesting_max_depth = 4
+acronym_allowlist = ["IO", "ID", "TUI", "LLM", "RPC", "SSH", "TLS", "URL"]

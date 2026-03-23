@@ -228,6 +228,11 @@ match_wildcard_for_single_variants = { level = "allow", priority = 1 }
 case_sensitive_file_extension_comparisons = { level = "allow", priority = 1 }
 type_complexity = { level = "allow", priority = 1 }
 
+[workspace.metadata.dylint]
+libraries = [
+    { path = "../tigerstyle" },
+]
+
 [profile.release]
 lto = "thin"
 codegen-units = 16
