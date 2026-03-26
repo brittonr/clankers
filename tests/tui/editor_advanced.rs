@@ -167,13 +167,11 @@ fn history_navigates_multiple_entries() {
 
     // Up once → /usage (most recent)
     h.send_key(Key::Up);
-    h.settle(SETTLE);
-    assert!(h.screen_contains("/usage"), "First Up should show /usage");
+    h.wait_for_text("/usage", TIMEOUT);
 
     // Up again → /version
     h.send_key(Key::Up);
-    h.settle(SETTLE);
-    assert!(h.screen_contains("/version"), "Second Up should show /version");
+    h.wait_for_text("/version", TIMEOUT);
 
     h.quit();
 }
