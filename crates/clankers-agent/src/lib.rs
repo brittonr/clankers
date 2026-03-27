@@ -419,8 +419,8 @@ impl Agent {
         // Skip tool result compaction when prompt caching is active (default).
         // Compaction changes the token prefix, invalidating cache hits.
         // Caching saves ~90% on reads vs compaction's ~23% context reduction.
-        let compact = self.settings.no_cache;
-        context::build_context(&self.messages, &system_prompt_with_memory, max_input, compact)
+        let is_compact = self.settings.no_cache;
+        context::build_context(&self.messages, &system_prompt_with_memory, max_input, is_compact)
     }
 
     /// Sync model switch from tool-requested slot
@@ -596,8 +596,8 @@ impl Agent {
 
             // Build phase system prompt
             let phase_system = format!("{}{}", base_system_prompt, phase.system_suffix);
-            let compact = self.settings.no_cache;
-            let ctx = context::build_context(&self.messages, &phase_system, max_input, compact);
+            let is_compact = self.settings.no_cache;
+            let ctx = context::build_context(&self.messages, &phase_system, max_input, is_compact);
 
             self.event_tx.send(AgentEvent::BeforeAgentStart {
                 prompt: if phase_idx == 0 {

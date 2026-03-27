@@ -17,6 +17,7 @@ use syntect::util::LinesWithEndings;
 
 /// Shared, lazily-initialized syntax set and theme.
 static SYNTAX_SET: LazyLock<SyntaxSet> = LazyLock::new(SyntaxSet::load_defaults_newlines);
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "syntect ships with at least one theme"))]
 static THEME: LazyLock<Theme> = LazyLock::new(|| {
     let ts = ThemeSet::load_defaults();
     // "base16-eighties.dark" is a good terminal-friendly dark theme
@@ -256,9 +257,9 @@ fn find_syntax(language: &str) -> Option<&'static syntect::parsing::SyntaxRefere
 
 fn syn_style_to_token_kind(style: SynStyle) -> TokenKind {
     let SynColor { r, g, b, .. } = style.foreground;
-    let bold = style.font_style.contains(FontStyle::BOLD);
-    let italic = style.font_style.contains(FontStyle::ITALIC);
-    TokenKind::Syntect { r, g, b, bold, italic }
+    let is_bold = style.font_style.contains(FontStyle::BOLD);
+    let is_italic = style.font_style.contains(FontStyle::ITALIC);
+    TokenKind::Syntect { r, g, b, bold: is_bold, italic: is_italic }
 }
 
 /// Highlight a code string, returning spans with token classifications.

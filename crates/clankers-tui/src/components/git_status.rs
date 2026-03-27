@@ -45,7 +45,7 @@ impl GitStatus {
             staged_count: 0,
             untracked_count: 0,
             is_repo: false,
-            last_refresh: Instant::now().checked_sub(Duration::from_secs(60)).unwrap(), // force initial refresh
+            last_refresh: Instant::now().checked_sub(Duration::from_secs(60)).unwrap_or_else(Instant::now), // force initial refresh
             refresh_interval: Duration::from_secs(5),
             cwd: cwd.to_string(),
         };
@@ -56,7 +56,7 @@ impl GitStatus {
     /// Update cwd (e.g. after /cd)
     pub fn set_cwd(&mut self, cwd: &str) {
         self.cwd = cwd.to_string();
-        self.last_refresh = Instant::now().checked_sub(Duration::from_secs(60)).unwrap();
+        self.last_refresh = Instant::now().checked_sub(Duration::from_secs(60)).unwrap_or_else(Instant::now);
     }
 
     /// Check if a refresh is needed and do it

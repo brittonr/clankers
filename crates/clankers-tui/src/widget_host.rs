@@ -1,7 +1,7 @@
 //! Render plugin Widget trees via ratatui
 
 use clankers_tui_types::PluginNotification;
-use clankers_tui_types::PluginUIState;
+use clankers_tui_types::PluginUiState;
 use clankers_tui_types::Widget;
 use ratatui::Frame;
 use ratatui::layout::Constraint;
@@ -131,7 +131,8 @@ pub fn render_widget(frame: &mut Frame, widget: &Widget, area: Rect) {
 
 /// Render all plugin widget panels stacked vertically in the given area.
 /// Returns the number of rows consumed.
-pub fn render_plugin_panels(frame: &mut Frame, plugin_ui: &PluginUIState, theme: &Theme, area: Rect) -> u16 {
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
+pub fn render_plugin_panels(frame: &mut Frame, plugin_ui: &PluginUiState, theme: &Theme, area: Rect) -> u16 {
     if plugin_ui.widgets.is_empty() {
         return 0;
     }
@@ -205,7 +206,7 @@ pub fn render_plugin_notifications(frame: &mut Frame, notifications: &[PluginNot
 }
 
 /// Render plugin status segments into a line of spans
-pub fn plugin_status_spans(plugin_ui: &PluginUIState) -> Vec<Span<'static>> {
+pub fn plugin_status_spans(plugin_ui: &PluginUiState) -> Vec<Span<'static>> {
     if plugin_ui.status_segments.is_empty() {
         return Vec::new();
     }

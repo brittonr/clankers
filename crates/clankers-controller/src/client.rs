@@ -49,6 +49,7 @@ impl ClientAdapter {
     /// Connect to a daemon session over the given stream.
     ///
     /// Performs the handshake, then spawns background tasks for reading/writing.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
     pub async fn connect<S>(
         stream: S,
         client_name: &str,

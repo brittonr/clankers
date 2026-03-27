@@ -293,6 +293,7 @@ pub(crate) fn tool_result_content_to_message_content(tool_content: &[crate::tool
 }
 
 #[cfg(test)]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_panic, no_unwrap, reason = "test code — panics are assertions"))]
 mod tests {
     use std::sync::Arc;
 

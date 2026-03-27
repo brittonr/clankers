@@ -199,7 +199,7 @@ fn search_file_into(
     let out = Arc::clone(output);
     let file_path_str = path.display().to_string();
 
-    let _ = searcher.search_path(
+    searcher.search_path(
         matcher,
         path,
         UTF8(|line_num, line| {
@@ -214,7 +214,7 @@ fn search_file_into(
             }
             Ok(true)
         }),
-    );
+    ).ok();
 }
 
 /// Perform the actual in-process search.

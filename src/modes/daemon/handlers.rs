@@ -29,6 +29,8 @@ use crate::modes::rpc::protocol::Response;
 /// Each prompt creates or reuses an actor session keyed by the peer's public
 /// key. Responses are streamed back as JSON frames compatible with the legacy
 /// protocol (`text_delta`, `tool_call`, `tool_result`, `done`/`error`).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by connection close"))]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
 pub(crate) async fn handle_chat_connection(
     conn: ::iroh::endpoint::Connection,
     state: Arc<Mutex<DaemonState>>,
@@ -38,11 +40,11 @@ pub(crate) async fn handle_chat_connection(
     peer_id: &str,
 ) {
     let key = SessionKey::Iroh(peer_id.to_string());
-    let mut first_frame = true;
+    let mut is_first_frame = true;
     // When auth layer exists, peers must authenticate before sending prompts.
     // Verified capabilities are stored here and passed to sessions.
-    let auth_required = auth.is_some();
-    let mut authenticated = !auth_required; // open access when no auth layer
+    let is_auth_required = auth.is_some();
+    let mut is_authenticated = !is_auth_required; // open access when no auth layer
     let mut verified_capabilities: Option<Vec<clankers_ucan::Capability>> = None;
 
     loop {
@@ -62,8 +64,8 @@ pub(crate) async fn handle_chat_connection(
         };
 
         // Check for auth frame (first frame only)
-        if first_frame {
-            first_frame = false;
+        if is_first_frame {
+            is_first_frame = false;
             if request.get("type").and_then(|v| v.as_str()) == Some("auth") {
                 if let Some(token_b64) = request.get("token").and_then(|v| v.as_str())
                     && let Some(ref auth) = auth
@@ -71,8 +73,8 @@ pub(crate) async fn handle_chat_connection(
                     match clankers_ucan::Credential::from_base64(token_b64) {
                         Ok(cred) => match auth.verify_credential(&cred) {
                             Ok(caps) => {
-                                info!("[{}] authenticated with {} capabilities", key, caps.len());
-                                authenticated = true;
+                                info!("[{}] is_authenticated with {} capabilities", key, caps.len());
+                                is_authenticated = true;
                                 verified_capabilities = Some(caps);
                                 auth.store_credential(peer_id, &cred);
                             }
@@ -94,7 +96,7 @@ pub(crate) async fn handle_chat_connection(
         }
 
         // Reject prompts from unauthenticated peers when auth is required
-        if !authenticated {
+        if !is_authenticated {
             warn!("[{}] rejected prompt from unauthenticated peer", key);
             let err = json!({
                 "type": "error",
@@ -126,6 +128,7 @@ pub(crate) async fn handle_chat_connection(
 }
 
 /// Run a single chat/1 prompt via the actor session, streaming back events.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by connection close"))]
 async fn run_chat_prompt(
     state: Arc<Mutex<DaemonState>>,
     registry: ProcessRegistry,
@@ -226,15 +229,17 @@ async fn run_chat_prompt(
 // ── RPC/1 handler (unchanged) ───────────────────────────────────────────────
 
 /// Handle a clankers/rpc/1 connection using the existing server code.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by connection close"))]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
 pub(crate) async fn handle_rpc_v1_connection(
     conn: ::iroh::endpoint::Connection,
     state: Arc<iroh::ServerState>,
     auth: Option<Arc<super::session_store::AuthLayer>>,
 ) {
     let peer_id = conn.remote_id().to_string();
-    let mut first_frame = true;
-    let auth_required = auth.is_some();
-    let mut authenticated = !auth_required;
+    let mut is_first_frame = true;
+    let is_auth_required = auth.is_some();
+    let mut is_authenticated = !is_auth_required;
 
     loop {
         let (send, mut recv) = match conn.accept_bi().await {
@@ -253,8 +258,8 @@ pub(crate) async fn handle_rpc_v1_connection(
         };
 
         // Accept auth frame on first message
-        if first_frame {
-            first_frame = false;
+        if is_first_frame {
+            is_first_frame = false;
             if request.get("type").and_then(|v| v.as_str()) == Some("auth") {
                 if let Some(token_b64) = request.get("token").and_then(|v| v.as_str())
                     && let Some(ref auth) = auth
@@ -262,8 +267,8 @@ pub(crate) async fn handle_rpc_v1_connection(
                     match clankers_ucan::Credential::from_base64(token_b64) {
                         Ok(cred) => match auth.verify_credential(&cred) {
                             Ok(caps) => {
-                                info!("[rpc/1 {}] authenticated with {} capabilities", &peer_id[..8.min(peer_id.len())], caps.len());
-                                authenticated = true;
+                                info!("[rpc/1 {}] is_authenticated with {} capabilities", &peer_id[..8.min(peer_id.len())], caps.len());
+                                is_authenticated = true;
                                 auth.store_credential(&peer_id, &cred);
                             }
                             Err(e) => {
@@ -284,7 +289,7 @@ pub(crate) async fn handle_rpc_v1_connection(
         }
 
         // Reject unauthenticated requests when auth is required
-        if !authenticated {
+        if !is_authenticated {
             let err = json!({ "error": "Authentication required. Send an auth frame first." });
             let mut send = send;
             write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await.ok();

@@ -134,6 +134,7 @@ impl PeersPanel {
         }
     }
 
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
     pub fn select_next(&mut self) {
         if !self.entries.is_empty() {
             self.selected = (self.selected + 1) % self.entries.len();
@@ -193,6 +194,7 @@ impl Panel for PeersPanel {
         "No peers known. /peers add <id> <name>"
     }
 
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<PanelAction> {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {

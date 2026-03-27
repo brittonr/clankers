@@ -412,6 +412,7 @@ pub(crate) fn handle_insert_char(app: &mut App, key: &crossterm::event::KeyEvent
 // Input routing
 // ---------------------------------------------------------------------------
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
 pub(crate) fn handle_input_with_plugins(
     app: &mut App,
     text: &str,

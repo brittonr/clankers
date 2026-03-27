@@ -197,7 +197,7 @@ impl CommitTool {
         message: Option<&str>,
         commit_type: Option<&str>,
         scope: Option<&str>,
-        breaking: bool,
+        is_breaking: bool,
     ) -> ToolResult {
         // Check for staged changes
         ctx.emit_progress("checking staged changes...");
@@ -211,7 +211,7 @@ impl CommitTool {
             // Apply conventional commit formatting if type specified
             if let Some(ct) = commit_type {
                 let scope_part = scope.map(|s| format!("({})", s)).unwrap_or_default();
-                let bang = if breaking { "!" } else { "" };
+                let bang = if is_breaking { "!" } else { "" };
                 format!("{}{}{}: {}", ct, scope_part, bang, m)
             } else {
                 m.to_string()
@@ -392,8 +392,8 @@ impl Tool for CommitTool {
                 let message = params["message"].as_str();
                 let commit_type = params["commit_type"].as_str();
                 let scope = params["scope"].as_str();
-                let breaking = params["breaking"].as_bool().unwrap_or(false);
-                self.commit(ctx, message, commit_type, scope, breaking).await
+                let is_breaking = params["breaking"].as_bool().unwrap_or(false);
+                self.commit(ctx, message, commit_type, scope, is_breaking).await
             }
             "split" => self.split_analysis(ctx).await,
             "changelog" => {
@@ -483,12 +483,14 @@ fn suggest_commit_message(_status: &str, categories: &[(String, Vec<String>)]) -
     format!("chore: update {} files across {}", total_files, types.join(", "))
 }
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "compile-time constant regex pattern"))]
 static CONVENTIONAL_PARSE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?(!)?: (.*)$")
         .expect("static regex")
 });
 
 static CONVENTIONAL_VALIDATE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "compile-time constant regex pattern"))]
     regex::Regex::new(r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?(!)?: .+$")
         .expect("static regex")
 });

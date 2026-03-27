@@ -134,6 +134,7 @@ pub async fn run_control_socket_with_factory(
     }
 }
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential dispatch logic"))]
 async fn handle_control(
     mut stream: tokio::net::UnixStream,
     state: Arc<Mutex<DaemonState>>,

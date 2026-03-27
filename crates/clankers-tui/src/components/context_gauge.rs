@@ -12,6 +12,7 @@ use ratatui::text::Span;
 
 /// Look up the context window size for a model name.
 /// Returns (context_window_tokens, max_output_tokens).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
 pub fn model_context_window(model: &str) -> (usize, usize) {
     // Normalize: lowercase, strip leading provider prefixes
     let m = model.to_lowercase();

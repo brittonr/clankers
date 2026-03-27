@@ -62,6 +62,7 @@ pub(super) struct PtyHarness {
 }
 
 impl PtyHarness {
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by PTY close"))]
     pub(super) fn spawn(rows: u16, cols: u16, extra_args: &[String]) -> Result<Self, String> {
         let pty_system = NativePtySystem::default();
         let pair = pty_system
@@ -165,6 +166,7 @@ impl PtyHarness {
         self.screen_text().contains(needle)
     }
 
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by PTY close"))]
     pub(super) fn wait_for(&self, needle: &str, timeout: Duration) -> Result<(), String> {
         let start = Instant::now();
         loop {
@@ -183,6 +185,7 @@ impl PtyHarness {
         }
     }
 
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by PTY close"))]
     pub(super) fn wait_for_absent(&self, needle: &str, timeout: Duration) -> Result<(), String> {
         let start = Instant::now();
         loop {

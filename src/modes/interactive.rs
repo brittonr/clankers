@@ -31,6 +31,7 @@ pub struct ResumeOptions {
 }
 
 /// Run the interactive TUI mode.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
 pub async fn run_interactive(
     provider: Arc<dyn crate::provider::Provider>,
     settings: crate::config::settings::Settings,
@@ -488,6 +489,7 @@ fn build_hook_pipeline(
 }
 
 /// Find the nearest .git directory walking up from a path.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; exits on quit signal"))]
 fn find_git_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut current = start;
     loop {

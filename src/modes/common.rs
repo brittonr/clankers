@@ -192,6 +192,7 @@ pub struct ToolEnv {
 /// Per-tool streaming is handled uniformly via `ToolContext` — the event
 /// channel is passed to every tool at execution time by the turn loop,
 /// so no per-tool wiring is needed here.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic — splitting would fragment readability"))]
 pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
     let panel_tx = env.panel_tx.clone();
     let todo_tx = env.todo_tx.clone();
@@ -502,7 +503,7 @@ pub fn resolve_tool_tiers(tools_flag: Option<&str>) -> Option<Vec<ToolTier>> {
 
 /// Fire `plugin_init` event to all active plugins that subscribe to it.
 /// Returns the collected UI actions so the caller can apply them to the TUI.
-pub fn fire_plugin_init(plugin_manager: &Arc<Mutex<PluginManager>>) -> Vec<crate::plugin::ui::PluginUIAction> {
+pub fn fire_plugin_init(plugin_manager: &Arc<Mutex<PluginManager>>) -> Vec<crate::plugin::ui::PluginUiAction> {
     use crate::plugin::PluginState;
     use crate::plugin::bridge::PluginEvent;
     use crate::plugin::bridge::parse_ui_actions;
@@ -523,9 +524,9 @@ pub fn fire_plugin_init(plugin_manager: &Arc<Mutex<PluginManager>>) -> Vec<crate
         }
 
         // Check if this plugin has on_event and subscribes to plugin_init
-        let subscribed =
+        let is_subscribed =
             plugin_info.manifest.events.iter().any(|e| PluginEvent::parse(e) == Some(PluginEvent::PluginInit));
-        if !subscribed {
+        if !is_subscribed {
             continue;
         }
         if !mgr.has_function(&plugin_info.name, "on_event") {

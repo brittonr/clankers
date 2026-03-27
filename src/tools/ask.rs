@@ -195,14 +195,14 @@ impl Tool for AskTool {
             .unwrap_or_default();
 
         let default = params["default"].as_str().map(String::from);
-        let optional = params["optional"].as_bool().unwrap_or(false);
+        let is_optional = params["optional"].as_bool().unwrap_or(false);
 
         let question = AskQuestion {
             text: question_text.clone(),
             question_type: question_type.clone(),
             options: options.clone(),
             default: default.clone(),
-            optional,
+            optional: is_optional,
         };
 
         // If we have a channel to the TUI, send the question and wait for response

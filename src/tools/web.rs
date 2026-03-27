@@ -350,6 +350,7 @@ fn handle_tag_open(
 }
 
 /// Decode a single HTML entity if present. Returns (decoded char, bytes to skip) or None.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
 fn decode_html_entity(text_lower: &str) -> Option<(char, usize)> {
     if text_lower.starts_with("&amp;") {
         Some(('&', 5))

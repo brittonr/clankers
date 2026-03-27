@@ -78,7 +78,7 @@ impl PluginEvent {
 
 /// Parse UI actions from a plugin's event handler response.
 /// The response JSON may contain a `"ui"` key with one or more UI actions.
-pub fn parse_ui_actions(plugin_name: &str, response: &serde_json::Value) -> Vec<super::ui::PluginUIAction> {
+pub fn parse_ui_actions(plugin_name: &str, response: &serde_json::Value) -> Vec<super::ui::PluginUiAction> {
     let mut actions = Vec::new();
 
     // Check for "ui" key — can be a single action object or an array
@@ -96,7 +96,7 @@ pub fn parse_ui_actions(plugin_name: &str, response: &serde_json::Value) -> Vec<
             {
                 obj.insert("plugin".to_string(), serde_json::Value::String(plugin_name.to_string()));
             }
-            if let Ok(action) = serde_json::from_value::<super::ui::PluginUIAction>(item) {
+            if let Ok(action) = serde_json::from_value::<super::ui::PluginUiAction>(item) {
                 actions.push(action);
             }
         }

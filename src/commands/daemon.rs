@@ -19,15 +19,15 @@ pub async fn dispatch(ctx: &CommandContext, action: DaemonAction) -> Result<()> 
         DaemonAction::Start {
             background,
             tags,
-            allow_all,
-            matrix,
+            allow_all: is_allow_all,
+            matrix: has_matrix,
             heartbeat,
             max_sessions,
         } => {
             if background {
-                start_background(ctx, tags, allow_all, matrix, heartbeat, max_sessions)?;
+                start_background(ctx, tags, is_allow_all, has_matrix, heartbeat, max_sessions)?;
             } else {
-                start_foreground(ctx, tags, allow_all, matrix, heartbeat, max_sessions).await?;
+                start_foreground(ctx, tags, is_allow_all, has_matrix, heartbeat, max_sessions).await?;
             }
         }
         DaemonAction::Stop => stop().await?,
@@ -47,8 +47,8 @@ pub async fn dispatch(ctx: &CommandContext, action: DaemonAction) -> Result<()> 
 async fn start_foreground(
     ctx: &CommandContext,
     tags: Vec<String>,
-    allow_all: bool,
-    matrix: bool,
+    is_allow_all: bool,
+    has_matrix: bool,
     heartbeat: u64,
     max_sessions: usize,
 ) -> Result<()> {
@@ -93,8 +93,8 @@ async fn start_foreground(
         system_prompt: ctx.system_prompt.clone(),
         settings: ctx.settings.clone(),
         tags,
-        allow_all,
-        enable_matrix: matrix,
+        allow_all: is_allow_all,
+        enable_matrix: has_matrix,
         heartbeat_secs: heartbeat,
         max_sessions,
         ..Default::default()
@@ -108,8 +108,8 @@ async fn start_foreground(
 fn start_background(
     ctx: &CommandContext,
     tags: Vec<String>,
-    allow_all: bool,
-    matrix: bool,
+    is_allow_all: bool,
+    has_matrix: bool,
     heartbeat: u64,
     max_sessions: usize,
 ) -> Result<()> {
@@ -142,10 +142,10 @@ fn start_background(
     cmd.arg("daemon").arg("start");
 
     // Forward daemon start flags
-    if allow_all {
+    if is_allow_all {
         cmd.arg("--allow-all");
     }
-    if matrix {
+    if has_matrix {
         cmd.arg("--matrix");
     }
     if heartbeat != 60 {
@@ -216,9 +216,9 @@ pub async fn ensure_daemon_running() -> Result<()> {
         .open(&lock_path)
         .map_err(|e| crate::error::Error::Io { source: e })?;
 
-    let got_lock = try_flock_exclusive(&lock_file);
+    let has_lock = try_flock_exclusive(&lock_file);
 
-    if got_lock {
+    if has_lock {
         // We own the lock — spawn the daemon.
         let exe = std::env::current_exe().map_err(|e| crate::error::Error::Io { source: e })?;
         let log_path = transport::daemon_log_path();
@@ -290,7 +290,7 @@ async fn stop() -> Result<()> {
     let resp = send_control(ControlCommand::Shutdown).await?;
     match resp {
         ControlResponse::ShuttingDown => {
-            println!("Daemon shutting down (PID {}).", pid.unwrap());
+            println!("Daemon shutting down (PID {}).", pid.unwrap_or(0));
         }
         ControlResponse::Error { message } => {
             eprintln!("Error: {message}");
@@ -316,7 +316,7 @@ async fn restart() -> Result<()> {
     let resp = send_control(ControlCommand::RestartDaemon).await?;
     match resp {
         ControlResponse::Restarting => {
-            println!("Daemon restarting (PID {})...", pid.unwrap());
+            println!("Daemon restarting (PID {})...", pid.unwrap_or(0));
             // Wait briefly for the old daemon to exit
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             // Re-launch: invoke ourselves with `daemon start -d`
@@ -399,7 +399,7 @@ fn format_duration(secs: f64) -> String {
 // ── Sessions ────────────────────────────────────────────────────────────────
 
 /// `clankers ps` / `clankers daemon sessions` — compact session listing.
-pub async fn dispatch_sessions(show_all: bool) -> Result<()> {
+pub async fn dispatch_sessions(should_show_all: bool) -> Result<()> {
     let resp = send_control(ControlCommand::ListSessions).await?;
     match resp {
         ControlResponse::Sessions(sessions) => {
@@ -407,7 +407,7 @@ pub async fn dispatch_sessions(show_all: bool) -> Result<()> {
                 println!("No active sessions.");
                 return Ok(());
             }
-            if show_all {
+            if should_show_all {
                 println!(
                     "{:<10} {:<10} {:<28} {:>5} {:>7} {:<20} SOCKET",
                     "SESSION", "STATE", "MODEL", "TURNS", "CLIENTS", "LAST ACTIVE"
@@ -429,7 +429,7 @@ pub async fn dispatch_sessions(show_all: bool) -> Result<()> {
                 } else {
                     s.model.clone()
                 };
-                if show_all {
+                if should_show_all {
                     println!(
                         "{:<10} {:<10} {:<28} {:>5} {:>7} {:<20} {}",
                         sid, s.state, model, s.turn_count, s.client_count, s.last_active, s.socket_path
@@ -536,6 +536,7 @@ fn print_tail_lines(file: &std::fs::File, n: usize) -> Result<()> {
 }
 
 /// Follow a file, printing new lines as they appear (like `tail -f`).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
 fn follow_file(mut file: std::fs::File) -> Result<()> {
     // Seek to end
     file.seek(std::io::SeekFrom::End(0))
@@ -563,7 +564,7 @@ fn follow_file(mut file: std::fs::File) -> Result<()> {
 // ── Merge daemon ────────────────────────────────────────────────────────────
 
 /// Run the merge daemon (watches for completed workers and auto-merges).
-pub async fn run_merge_daemon(ctx: &CommandContext, interval: u64, once: bool) -> Result<()> {
+pub async fn run_merge_daemon(ctx: &CommandContext, interval: u64, is_once: bool) -> Result<()> {
     let repo_root = std::path::PathBuf::from(&ctx.cwd);
 
     let provider = crate::provider::discovery::build_router(
@@ -579,7 +580,7 @@ pub async fn run_merge_daemon(ctx: &CommandContext, interval: u64, once: bool) -
     let db = crate::db::Db::open(&db_path).map_err(|e| crate::error::Error::Io {
         source: std::io::Error::other(format!("failed to open database: {}", e)),
     })?;
-    crate::worktree::merge_daemon::run_polling(db, repo_root, interval, once, provider, ctx.model.clone()).await;
+    crate::worktree::merge_daemon::run_polling(db, repo_root, interval, is_once, provider, ctx.model.clone()).await;
     Ok(())
 }
 

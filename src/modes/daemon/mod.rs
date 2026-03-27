@@ -50,6 +50,8 @@ use session_store::create_auth_layer;
 /// Flag indicating restart was requested (exit code 75).
 static RESTART_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "signal handler and process setup failures are fatal"))]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
 pub async fn run_daemon(
     provider: Arc<dyn Provider>,
     tools: Vec<Arc<dyn Tool>>,
@@ -265,7 +267,7 @@ async fn build_endpoint(
     config: &DaemonConfig,
     paths: &ClankersPaths,
 ) -> Result<(::iroh::Endpoint, iroh::AccessControl)> {
-    let no_mdns = std::env::var("CLANKERS_NO_MDNS").unwrap_or_default() == "1";
+    let is_mdns_disabled = std::env::var("CLANKERS_NO_MDNS").unwrap_or_default() == "1";
 
     // Start from the default builder which includes DNS pkarr discovery.
     // Only add mDNS on top if not disabled.
@@ -277,7 +279,7 @@ async fn build_endpoint(
             quic_bridge::ALPN_DAEMON.to_vec(),
         ]);
 
-    if no_mdns {
+    if is_mdns_disabled {
         info!("mDNS disabled (CLANKERS_NO_MDNS=1), DNS/pkarr discovery still active");
     } else {
         let mdns_service = ::iroh::address_lookup::MdnsAddressLookup::builder().service_name("_clankers._udp.local.");
@@ -394,7 +396,7 @@ fn spawn_iroh_accept_loop(
                             return;
                         }
 
-                        let skip_token = acl.allow_all;
+                        let should_skip_token = acl.allow_all;
                         let alpn = conn.alpn().to_vec();
                         match alpn.as_slice() {
                             x if x == quic_bridge::ALPN_DAEMON => {
@@ -404,7 +406,7 @@ fn spawn_iroh_accept_loop(
                                     session_factory,
                                     registry,
                                     shutdown_rx,
-                                    skip_token,
+                                    should_skip_token,
                                     auth,
                                 ).await;
                             }
@@ -650,9 +652,9 @@ fn spawn_catalog_updater(
                     let st = state.lock().await;
                     for handle in st.sessions.values() {
                         if let Some(mut entry) = catalog.get_session(&handle.session_id) {
-                            let changed = entry.last_active != handle.last_active
+                            let has_changed = entry.last_active != handle.last_active
                                 || entry.turn_count != handle.turn_count;
-                            if changed {
+                            if has_changed {
                                 entry.last_active.clone_from(&handle.last_active);
                                 entry.turn_count = handle.turn_count;
                                 catalog.update_session(&entry);

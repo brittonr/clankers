@@ -5,7 +5,6 @@
 //! conversions in this crate operate on display coordinates that fit
 //! in any integer type on any supported platform.
 #![cfg_attr(dylint_lib = "tigerstyle", allow(platform_dependent_cast, reason = "terminal coordinates always fit in usize/u16"))]
-
 pub mod app;
 pub mod clipboard;
 pub mod components;

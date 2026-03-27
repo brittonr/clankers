@@ -109,6 +109,7 @@ pub fn agent_event_to_daemon_event(event: &AgentEvent) -> Option<DaemonEvent> {
 ///
 /// This is the inverse of `agent_event_to_daemon_event` — the TUI client
 /// calls this to produce TuiEvents from the socket stream.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic — splitting would fragment readability"))]
 pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_types::TuiEvent> {
     match event {
         DaemonEvent::AgentStart => Some(clankers_tui_types::TuiEvent::AgentStart),

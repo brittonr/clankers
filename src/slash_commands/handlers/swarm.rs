@@ -11,6 +11,7 @@ use crate::tui::components::subagent_panel::SubagentPanel;
 
 /// Get a mutable reference to the peers panel, panicking if not found.
 /// Centralizes the expect call to make it easier to audit and replace.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 fn peers_panel_mut<'a>(ctx: &'a mut SlashContext<'_>) -> &'a mut PeersPanel {
     ctx.app
         .panels
@@ -20,6 +21,7 @@ fn peers_panel_mut<'a>(ctx: &'a mut SlashContext<'_>) -> &'a mut PeersPanel {
 
 /// Get a mutable reference to the subagent panel, panicking if not found.
 /// Centralizes the expect call to make it easier to audit and replace.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 fn subagent_panel_mut<'a>(ctx: &'a mut SlashContext<'_>) -> &'a mut SubagentPanel {
     ctx.app
         .panels
@@ -177,10 +179,9 @@ impl SlashHandler for SubagentsHandler {
                             .find(|e| e.id == target || e.name == target || e.id.contains(&target))
                             .map(|e| e.id.clone());
                         if let Some(id) = matched {
-                            let _ =
-                                ctx.panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest {
+                            ctx.panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest {
                                     id: id.clone(),
-                                });
+                                }).ok();
                             ctx.app.push_system(format!("Kill requested for subagent '{}'.", id), false);
                         } else {
                             ctx.app.push_system(format!("No subagent matching '{}'.", subcmd_args), true);
@@ -266,7 +267,7 @@ fn handle_peers_remove(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
         let registry_path = crate::modes::rpc::peers::registry_path(paths);
         let mut registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
         // Try as node_id first, then by name
-        let removed = if registry.remove(subcmd_args) {
+        let was_removed = if registry.remove(subcmd_args) {
             true
         } else {
             let found = registry.peers.values().find(|p| p.name == subcmd_args).map(|p| p.node_id.clone());
@@ -276,7 +277,7 @@ fn handle_peers_remove(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
                 false
             }
         };
-        if removed {
+        if was_removed {
             registry.save(&registry_path).ok();
             ctx.app.push_system(format!("Removed peer '{}'.", subcmd_args), false);
             let entries = crate::tui::components::peers_panel::entries_from_registry(

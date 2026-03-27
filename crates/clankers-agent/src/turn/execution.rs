@@ -215,10 +215,10 @@ async fn execute_single_tool(
 
     // Check user tool filter (user-adjustable — within ceiling)
     if let Some(ref filter) = user_tool_filter {
-        let allowed = filter.iter().any(|pattern| {
+        let is_allowed = filter.iter().any(|pattern| {
             pattern == "*" || pattern.split(',').any(|p| p.trim() == tool_name)
         });
-        if !allowed {
+        if !is_allowed {
             return create_error_result(
                 call_id,
                 tool_name,
@@ -304,6 +304,7 @@ async fn execute_single_tool(
 }
 
 /// Execute tool with result accumulator for streaming output
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "iteration loop; bounded by tool result collection"))]
 async fn execute_tool_with_accumulator(
     tool: Arc<dyn Tool>,
     call_id: &str,

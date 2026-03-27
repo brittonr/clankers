@@ -434,6 +434,7 @@ const MAX_PROMPT_COLLECT_BYTES: usize = 512 * 1024;
 /// If `update_last_active` is false (proactive prompts like heartbeats),
 /// the session handle's timestamp is not updated, so idle reaping still
 /// works correctly.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
 pub async fn prompt_and_collect(
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<SessionCommand>,
     event_tx: &tokio::sync::broadcast::Sender<DaemonEvent>,
@@ -570,6 +571,7 @@ pub async fn get_or_create_keyed_session(
 /// an actor, seed its messages, and upgrade the placeholder handle.
 ///
 /// Returns `(cmd_tx, event_tx)` on success, or an error message.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
 pub fn recover_session(
     session_id: &str,
     registry: &ProcessRegistry,
@@ -734,6 +736,7 @@ impl clankers_controller::ToolRebuilder for DaemonToolRebuilder {
 ///
 /// Mirrors the standalone `interactive.rs::build_hook_pipeline` but
 /// without plugin hooks (plugins are client-side in daemon mode).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
 fn build_session_hook_pipeline(
     settings: &crate::config::settings::Settings,
 ) -> Option<std::sync::Arc<clankers_hooks::HookPipeline>> {

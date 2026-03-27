@@ -37,6 +37,7 @@ impl Editor {
 
     /// Compute the visual (x, y) cursor position accounting for wrapping.
     /// Returns (col, row) relative to the inner area of the editor widget.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
     pub fn visual_cursor_position(&self, width: usize, indicator_len: usize) -> (u16, u16) {
         if width == 0 {
             return (0, 0);

@@ -44,6 +44,7 @@ pub fn confirm_channel() -> (ConfirmTx, ConfirmRx) {
 /// compilation failure would be caught immediately during testing and indicates
 /// a programmer error, not a runtime condition. LazyLock initialization happens
 /// once at static init time, not in hot paths.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "compile-time constant regex patterns"))]
 static DANGEROUS_PATTERNS: std::sync::LazyLock<Vec<(Regex, &'static str)>> = std::sync::LazyLock::new(|| {
     vec![
         (

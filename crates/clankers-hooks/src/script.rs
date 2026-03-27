@@ -194,6 +194,7 @@ fn is_executable(path: &Path) -> bool {
 }
 
 #[cfg(test)]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_panic, no_unwrap, reason = "test code — panics are assertions"))]
 mod tests {
     use std::fs;
 

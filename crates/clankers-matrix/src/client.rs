@@ -276,10 +276,10 @@ impl MatrixClient {
     /// When `typing` is `true`, the server shows this user as typing for
     /// ~30 seconds (automatically expires). Call with `false` to stop
     /// the indicator immediately.
-    pub async fn set_typing(&self, room_id: &RoomId, typing: bool) -> Result<(), MatrixError> {
+    pub async fn set_typing(&self, room_id: &RoomId, is_typing: bool) -> Result<(), MatrixError> {
         let client = self.client.as_ref().ok_or(MatrixError::NotLoggedIn)?;
         let room = client.get_room(room_id).ok_or_else(|| MatrixError::RoomNotFound(room_id.to_string()))?;
-        room.typing_notice(typing).await.map_err(MatrixError::from)?;
+        room.typing_notice(is_typing).await.map_err(MatrixError::from)?;
         Ok(())
     }
 
@@ -462,11 +462,12 @@ impl MatrixClient {
     ///
     /// Returns up to `limit` messages in reverse chronological order
     /// (newest first). Messages are decrypted if possible.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "UInt::new(20) is a constant that always succeeds"))]
     pub async fn message_history(&self, room_id: &RoomId, limit: usize) -> Result<Vec<HistoryMessage>, MatrixError> {
         let client = self.client.as_ref().ok_or(MatrixError::NotLoggedIn)?;
         let room = client.get_room(room_id).ok_or_else(|| MatrixError::RoomNotFound(room_id.to_string()))?;
 
-        let limit_uint = UInt::new(limit as u64).unwrap_or(UInt::new(20).unwrap());
+        let limit_uint = UInt::new(limit as u64).unwrap_or_else(|| UInt::new(20).expect("20 fits in UInt"));
         let mut options = MessagesOptions::backward();
         options.limit = limit_uint;
 

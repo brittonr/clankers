@@ -10,6 +10,7 @@ use crate::config::keybindings::InputMode;
 use crate::tui::app::App;
 
 /// Handle a resolved `ExtendedAction`.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "action dispatch — one arm per action"))]
 pub(crate) fn handle_extended_action(
     app: &mut App,
     action: ExtendedAction,

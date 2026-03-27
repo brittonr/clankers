@@ -66,7 +66,7 @@ fn default_one() -> u16 {
 
 /// State for all plugin-contributed UI elements.
 #[derive(Debug, Default, Clone)]
-pub struct PluginUIState {
+pub struct PluginUiState {
     /// Widget panels keyed by plugin name.
     pub widgets: HashMap<String, Widget>,
     /// Status bar segments keyed by plugin name.
@@ -75,7 +75,7 @@ pub struct PluginUIState {
     pub notifications: Vec<PluginNotification>,
 }
 
-impl PluginUIState {
+impl PluginUiState {
     pub fn new() -> Self {
         Self::default()
     }

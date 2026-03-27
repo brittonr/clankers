@@ -148,6 +148,7 @@ impl SessionManager {
     /// Cherry-pick a message (and optionally its children) into a target branch.
     ///
     /// Each message is copied with a fresh ID via `append_message`.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "message ID verified to exist before lookup"))]
     pub fn cherry_pick(
         &mut self,
         message_id: MessageId,

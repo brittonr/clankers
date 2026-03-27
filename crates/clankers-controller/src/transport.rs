@@ -423,6 +423,8 @@ pub async fn run_session_socket(
 }
 
 /// Handle a single client connected to a session socket.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by connection close"))]
 async fn handle_session_client<S>(
     stream: S,
     session_id: String,

@@ -91,6 +91,8 @@ impl SessionTree {
     /// # Tiger Style
     ///
     /// Bounded by `MAX_TRAVERSAL_DEPTH` to prevent infinite loops.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "children.last() guarded by is_empty check"))]
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "traversal loop; bounded by MAX_TRAVERSAL_DEPTH"))]
     pub fn find_latest_leaf(&self, start_id: Option<&MessageId>) -> Option<&MessageEntry> {
         let mut current_id = start_id.cloned();
         let mut last_message = start_id.and_then(|id| self.find_message(id));

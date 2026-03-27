@@ -27,6 +27,7 @@ impl SlashHandler for LayoutHandler {
         }
     }
 
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         use crate::tui::panes;
 
@@ -488,13 +489,13 @@ impl SlashHandler for ImproveHandler {
     }
 
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
-        let new_state = match args.trim().to_lowercase().as_str() {
+        let is_enabled = match args.trim().to_lowercase().as_str() {
             "on" | "true" | "1" => true,
             "off" | "false" | "0" => false,
             _ => !ctx.app.prompt_improve,
         };
-        ctx.app.prompt_improve = new_state;
-        let state = if new_state { "on" } else { "off" };
+        ctx.app.prompt_improve = is_enabled;
+        let state = if is_enabled { "on" } else { "off" };
         ctx.app.push_system(format!("Prompt improve: {}.", state), false);
     }
 }
@@ -502,6 +503,7 @@ impl SlashHandler for ImproveHandler {
 // ── Panel accessor helpers ──────────────────────────────────────────
 
 /// Helper to access the TodoPanel immutably. Panics if panel not registered (should never happen).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 fn todo_panel_ref(app: &crate::tui::app::App) -> &crate::tui::components::todo_panel::TodoPanel {
     app.panels
         .downcast_ref::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)
@@ -509,6 +511,7 @@ fn todo_panel_ref(app: &crate::tui::app::App) -> &crate::tui::components::todo_p
 }
 
 /// Helper to access the TodoPanel mutably. Panics if panel not registered (should never happen).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 fn todo_panel_mut(app: &mut crate::tui::app::App) -> &mut crate::tui::components::todo_panel::TodoPanel {
     app.panels
         .downcast_mut::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)

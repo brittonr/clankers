@@ -26,12 +26,12 @@ pub async fn run(ctx: &CommandContext, identity_path: Option<String>, action: Rp
     match action {
         RpcAction::Id => handle_id(&identity),
         RpcAction::Start {
-            with_agent,
+            with_agent: has_agent,
             tags,
-            allow_all,
-            heartbeat,
+            allow_all: is_allow_all,
+            heartbeat: has_heartbeat,
             heartbeat_interval,
-        } => handle_start(ctx, &identity, with_agent, tags, allow_all, heartbeat, heartbeat_interval).await,
+        } => handle_start(ctx, &identity, has_agent, tags, is_allow_all, has_heartbeat, heartbeat_interval).await,
         RpcAction::Ping { node_id } => handle_simple_rpc(&identity, &node_id, "ping", true).await,
         RpcAction::Version { node_id } => handle_simple_rpc(&identity, &node_id, "version", false).await,
         RpcAction::Status { node_id } => handle_simple_rpc(&identity, &node_id, "status", false).await,
@@ -40,7 +40,7 @@ pub async fn run(ctx: &CommandContext, identity_path: Option<String>, action: Rp
         RpcAction::Allow { node_id } => handle_allow(ctx, &node_id),
         RpcAction::Deny { node_id } => handle_deny(ctx, &node_id),
         RpcAction::Allowed => handle_allowed(ctx),
-        RpcAction::Discover { mdns, scan_secs } => handle_discover(ctx, &identity, mdns, scan_secs).await,
+        RpcAction::Discover { mdns: has_mdns, scan_secs } => handle_discover(ctx, &identity, has_mdns, scan_secs).await,
         RpcAction::SendFile { node_id, file } => handle_send_file(&identity, &node_id, &file).await,
         RpcAction::RecvFile {
             node_id,
@@ -64,10 +64,10 @@ fn handle_id(identity: &crate::modes::rpc::iroh::Identity) -> Result<()> {
 async fn handle_start(
     ctx: &CommandContext,
     identity: &crate::modes::rpc::iroh::Identity,
-    with_agent: bool,
+    has_agent: bool,
     tags: Vec<String>,
-    allow_all: bool,
-    heartbeat: bool,
+    is_allow_all: bool,
+    has_heartbeat: bool,
     heartbeat_interval: u64,
 ) -> Result<()> {
     let endpoint = crate::modes::rpc::iroh::start_endpoint(identity).await?;
@@ -76,7 +76,7 @@ async fn handle_start(
     println!("Node ID: {}", endpoint.id());
     println!("Addr:    {:?}", addr);
 
-    let acl = build_acl(ctx, allow_all);
+    let acl = build_acl(ctx, is_allow_all);
     println!(
         "Auth: {}",
         if acl.allow_all {
@@ -87,7 +87,7 @@ async fn handle_start(
     );
 
     let agent_names = discover_agent_names(ctx);
-    let agent_ctx = if with_agent {
+    let agent_ctx = if has_agent {
         Some(build_agent_context(ctx)?)
     } else {
         None
@@ -110,7 +110,7 @@ async fn handle_start(
     }
 
     let cancel = tokio_util::sync::CancellationToken::new();
-    if heartbeat {
+    if has_heartbeat {
         let registry_path = crate::modes::rpc::peers::registry_path(&ctx.paths);
         let interval = std::time::Duration::from_secs(heartbeat_interval);
         let ep = std::sync::Arc::new(crate::modes::rpc::iroh::start_endpoint(identity).await?);
@@ -135,13 +135,13 @@ async fn handle_simple_rpc(
     identity: &crate::modes::rpc::iroh::Identity,
     node_id: &str,
     method: &str,
-    measure_latency: bool,
+    should_measure_latency: bool,
 ) -> Result<()> {
     let remote = parse_node_id(node_id)?;
     let endpoint = crate::modes::rpc::iroh::start_endpoint(identity).await?;
     let request = crate::modes::rpc::protocol::Request::new(method, serde_json::json!({}));
 
-    if measure_latency {
+    if should_measure_latency {
         println!("Pinging {}...", remote.fmt_short());
     }
 
@@ -150,7 +150,7 @@ async fn handle_simple_rpc(
     let elapsed = start.elapsed();
 
     if let Some(result) = response.ok {
-        if measure_latency {
+        if should_measure_latency {
             println!("Response: {} ({}ms)", result, elapsed.as_millis());
         } else {
             println!("{}", serde_json::to_string_pretty(&result).unwrap_or_default());
@@ -287,7 +287,7 @@ fn remove_peer(
     registry_path: &std::path::Path,
     peer: &str,
 ) -> Result<()> {
-    let removed = if registry.remove(peer) {
+    let was_removed = if registry.remove(peer) {
         true
     } else {
         // Search by name
@@ -298,7 +298,7 @@ fn remove_peer(
             false
         }
     };
-    if removed {
+    if was_removed {
         registry.save(registry_path).map_err(|e| crate::error::Error::Io { source: e })?;
         println!("Removed peer '{}'", peer);
         Ok(())
@@ -413,14 +413,14 @@ fn handle_allowed(ctx: &CommandContext) -> Result<()> {
 async fn handle_discover(
     ctx: &CommandContext,
     identity: &crate::modes::rpc::iroh::Identity,
-    mdns: bool,
+    has_mdns: bool,
     scan_secs: u64,
 ) -> Result<()> {
     let registry_path = crate::modes::rpc::peers::registry_path(&ctx.paths);
     let mut registry = crate::modes::rpc::peers::PeerRegistry::load(&registry_path);
     let endpoint = crate::modes::rpc::iroh::start_endpoint(identity).await?;
 
-    if mdns {
+    if has_mdns {
         discover_mdns_peers(&endpoint, &mut registry, &registry_path, scan_secs).await?;
     }
 

@@ -194,6 +194,7 @@ pub fn read_header(doc: &AutoCommit) -> Result<HeaderEntry> {
 /// Read all messages from the Automerge document.
 ///
 /// Returns messages in insertion order (Automerge map iteration order).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
 pub fn read_messages(doc: &AutoCommit) -> Result<Vec<MessageEntry>> {
     let messages_obj = doc
         .get(automerge::ROOT, KEY_MESSAGES)

@@ -35,6 +35,7 @@ pub enum PrintFormat {
 }
 
 /// Run print mode with full control over output behaviour
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
 pub async fn run_print_with_options(
     prompt: &str,
     provider: Arc<dyn crate::provider::Provider>,
@@ -57,8 +58,8 @@ pub async fn run_print_with_options(
     let mut agent = builder.build();
     let mut rx = agent.subscribe();
 
-    let show_tools = opts.show_tools;
-    let show_stats = opts.show_stats;
+    let should_show_tools = opts.show_tools;
+    let should_show_stats = opts.show_stats;
     let format = opts.format.clone();
     let output_file = opts.output_file.clone();
 
@@ -77,7 +78,7 @@ pub async fn run_print_with_options(
             Box::new(std::io::stdout())
         };
 
-        let mut in_thinking = false;
+        let mut is_in_thinking = false;
 
         while let Ok(event) = rx.recv().await {
             match event {
@@ -86,9 +87,9 @@ pub async fn run_print_with_options(
                     ..
                 } => {
                     if matches!(format, PrintFormat::Markdown) {
-                        if !in_thinking {
+                        if !is_in_thinking {
                             writeln!(writer, "<details><summary>Thinking…</summary>\n").ok();
-                            in_thinking = true;
+                            is_in_thinking = true;
                         }
                         write!(writer, "{}", thinking).ok();
                     }
@@ -98,17 +99,17 @@ pub async fn run_print_with_options(
                     delta: ContentDelta::TextDelta { text },
                     ..
                 } => {
-                    if in_thinking {
+                    if is_in_thinking {
                         writeln!(writer, "\n</details>\n").ok();
-                        in_thinking = false;
+                        is_in_thinking = false;
                     }
                     write!(writer, "{}", text).ok();
                     writer.flush().ok();
                 }
-                AgentEvent::ToolCall { tool_name, .. } if show_tools => {
-                    if in_thinking {
+                AgentEvent::ToolCall { tool_name, .. } if should_show_tools => {
+                    if is_in_thinking {
                         writeln!(writer, "\n</details>\n").ok();
-                        in_thinking = false;
+                        is_in_thinking = false;
                     }
                     match format {
                         PrintFormat::Markdown => {
@@ -120,7 +121,7 @@ pub async fn run_print_with_options(
                     }
                     writer.flush().ok();
                 }
-                AgentEvent::ToolExecutionEnd { result, .. } if show_tools => {
+                AgentEvent::ToolExecutionEnd { result, .. } if should_show_tools => {
                     let text: String = result
                         .content
                         .iter()
@@ -148,7 +149,7 @@ pub async fn run_print_with_options(
                 AgentEvent::UsageUpdate {
                     turn_usage,
                     cumulative_usage,
-                } if show_stats => {
+                } if should_show_stats => {
                     let mut line = format!(
                         "[usage] turn: {}in/{}out  total: {}in/{}out",
                         turn_usage.input_tokens,
@@ -174,7 +175,7 @@ pub async fn run_print_with_options(
         }
 
         // Close thinking block if still open
-        if in_thinking {
+        if is_in_thinking {
             writeln!(writer, "\n</details>\n").ok();
         }
 
@@ -183,6 +184,6 @@ pub async fn run_print_with_options(
     });
 
     agent.prompt(prompt).await?;
-    let _ = print_handle.await;
+    print_handle.await.ok();
     Ok(())
 }

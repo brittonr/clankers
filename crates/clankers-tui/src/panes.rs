@@ -178,6 +178,7 @@ pub mod pane_ids {
 /// └──────┴────────────────────┴───────────┘
 ///   20%          50%              30%
 /// ```
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "default BSP tree construction is infallible"))]
 pub fn default_tiling() -> Hypertile {
     let tree = Node::Split {
         direction: Direction::Horizontal,
@@ -233,6 +234,7 @@ pub fn focused_tiling() -> (Hypertile, PaneRegistry) {
 }
 
 /// Wide chat layout: thin left sidebar only.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "tiling construction is infallible"))]
 pub fn wide_chat_tiling() -> (Hypertile, PaneRegistry) {
     let tree = Node::Split {
         direction: Direction::Horizontal,
@@ -266,6 +268,7 @@ pub fn wide_chat_tiling() -> (Hypertile, PaneRegistry) {
     (tiling, reg)
 }
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "tiling construction is infallible"))]
 /// Right-heavy layout: everything on the right.
 pub fn right_heavy_tiling() -> (Hypertile, PaneRegistry) {
     let tree = Node::Split {

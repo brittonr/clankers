@@ -131,6 +131,7 @@ impl LoopTool {
         })
     }
 
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by max iterations"))]
     async fn run_loop_iterations(&self, ctx: &ToolContext, loop_id: &LoopId, params: &RunParams) -> ToolResult {
         let name = &params.name;
         let mut iteration = 0u32;
@@ -359,6 +360,7 @@ async fn run_shell_command(command: &str) -> Result<CommandOutput, String> {
 }
 
 #[cfg(test)]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_panic, no_unwrap, reason = "test code — panics are assertions"))]
 mod tests {
     use super::*;
     use tokio_util::sync::CancellationToken;

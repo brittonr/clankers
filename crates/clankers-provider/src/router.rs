@@ -164,6 +164,7 @@ impl RouterProvider {
     ///
     /// Starts a background task that evicts expired cache entries every
     /// 5 minutes.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "retry loop; bounded by provider count"))]
     pub fn with_db(providers: Vec<(String, Arc<dyn Provider>)>, db: RouterDb) -> Self {
         let mut this = Self::new(providers);
 
@@ -194,6 +195,7 @@ impl RouterProvider {
     /// 2. Alias resolution (e.g. "sonnet", "gpt-4o")
     /// 3. Provider prefix (e.g. "openai/gpt-4o")
     /// 4. Default provider
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "invariant: default_provider always exists in providers map"))]
     fn resolve(&self, model: &str) -> (&dyn Provider, Option<String>) {
         // 1-2. Registry lookup (handles exact + alias + substring)
         if let Some(registered) = self.registry.resolve(model)

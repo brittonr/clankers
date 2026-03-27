@@ -139,6 +139,7 @@ pub struct AnthropicClient {
 }
 
 impl AnthropicClient {
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "reqwest Client::builder().build() only fails with incompatible TLS config"))]
     pub fn new(base_url: Option<String>) -> Self {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(300))

@@ -11,6 +11,7 @@ use clankers_tui_types::InputMode;
 use crate::app::App;
 use crate::event::Button;
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic — splitting would fragment readability"))]
 pub fn handle_mouse_down(app: &mut App, button: Button, col: u16, row: u16) {
     let region = app.hit_test(col, row);
 

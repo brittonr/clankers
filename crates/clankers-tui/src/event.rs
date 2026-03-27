@@ -50,6 +50,7 @@ pub enum AppEvent {
 }
 
 /// Poll for terminal events with timeout
+#[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
 pub fn poll_event(timeout: Duration) -> Option<AppEvent> {
     if event::poll(timeout).ok()? {
         match event::read().ok()? {

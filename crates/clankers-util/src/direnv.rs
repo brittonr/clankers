@@ -114,6 +114,7 @@ pub fn load_direnv_if_needed(cwd: &Path) {
 }
 
 /// Walk up from `start` looking for a `.envrc` file.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by process exit"))]
 fn has_envrc(start: &Path) -> bool {
     let mut dir = start;
     loop {

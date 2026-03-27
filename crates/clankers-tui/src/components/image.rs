@@ -36,7 +36,7 @@ pub enum ImageProtocol {
     /// Kitty graphics protocol — uses APC sequences.
     Kitty,
     /// iTerm2 inline image protocol — uses OSC 1337.
-    ITerm2,
+    Iterm2,
     /// Sixel protocol — not yet implemented, detected only.
     Sixel,
     /// No image protocol detected.
@@ -53,7 +53,7 @@ pub fn detect_protocol() -> ImageProtocol {
     // Check TERM_PROGRAM for known terminals
     if let Ok(term) = std::env::var("TERM_PROGRAM") {
         match term.as_str() {
-            "iTerm.app" => return ImageProtocol::ITerm2,
+            "iTerm.app" => return ImageProtocol::Iterm2,
             "WezTerm" | "kitty" | "Ghostty" => return ImageProtocol::Kitty,
             // foot terminal supports Sixel natively
             "foot" => return ImageProtocol::Sixel,
@@ -98,7 +98,7 @@ pub fn render_image_to_terminal(
 
     let result = match protocol {
         ImageProtocol::Kitty => render_kitty(data, max_width, max_height),
-        ImageProtocol::ITerm2 => render_iterm2(data, max_width, max_height),
+        ImageProtocol::Iterm2 => render_iterm2(data, max_width, max_height),
         ImageProtocol::Sixel => render_sixel(data, max_width, max_height).or_else(|_| render_placeholder(data)),
         ImageProtocol::None => render_placeholder(data),
     };
@@ -160,6 +160,7 @@ fn render_kitty(data: &[u8], max_width: u16, max_height: u16) -> io::Result<usiz
 ///   `\x1b]1337;File=key=value;key=value:base64data\x07`
 ///
 /// Reference: <https://iterm2.com/documentation-images.html>
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "base64 output is always valid UTF-8"))]
 fn render_iterm2(data: &[u8], max_width: u16, _max_height: u16) -> io::Result<usize> {
     let encoded = BASE64.encode(data);
     let mut tty = open_tty()?;
@@ -492,7 +493,7 @@ mod tests {
     #[test]
     fn test_protocol_eq() {
         assert_eq!(ImageProtocol::Kitty, ImageProtocol::Kitty);
-        assert_ne!(ImageProtocol::Kitty, ImageProtocol::ITerm2);
+        assert_ne!(ImageProtocol::Kitty, ImageProtocol::Iterm2);
         assert_ne!(ImageProtocol::None, ImageProtocol::Sixel);
     }
 }

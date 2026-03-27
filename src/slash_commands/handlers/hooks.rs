@@ -162,6 +162,7 @@ fn load_hooks_config() -> clankers_hooks::HooksConfig {
     settings.hooks
 }
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by process exit"))]
 fn find_git_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut current = start;
     loop {

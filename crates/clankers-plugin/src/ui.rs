@@ -3,7 +3,7 @@
 // Widget types re-exported from clankers-tui-types (canonical definitions).
 pub use clankers_tui_types::Direction;
 pub use clankers_tui_types::PluginNotification;
-pub use clankers_tui_types::PluginUIState;
+pub use clankers_tui_types::PluginUiState;
 pub use clankers_tui_types::StatusSegment;
 pub use clankers_tui_types::Widget;
 use serde::Deserialize;
@@ -13,7 +13,7 @@ use serde::Serialize;
 /// Parsed from the JSON response of `on_event` / `on_ui_event`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "action")]
-pub enum PluginUIAction {
+pub enum PluginUiAction {
     /// Set or replace the plugin's persistent widget panel
     #[serde(rename = "set_widget")]
     SetWidget { plugin: String, widget: Widget },
@@ -46,21 +46,21 @@ fn default_info() -> String {
 }
 
 /// Apply a UI action from a plugin to the shared state.
-pub fn apply_ui_action(state: &mut PluginUIState, action: PluginUIAction) {
+pub fn apply_ui_action(state: &mut PluginUiState, action: PluginUiAction) {
     match action {
-        PluginUIAction::SetWidget { plugin, widget } => {
+        PluginUiAction::SetWidget { plugin, widget } => {
             state.widgets.insert(plugin, widget);
         }
-        PluginUIAction::ClearWidget { plugin } => {
+        PluginUiAction::ClearWidget { plugin } => {
             state.widgets.remove(&plugin);
         }
-        PluginUIAction::SetStatus { plugin, text, color } => {
+        PluginUiAction::SetStatus { plugin, text, color } => {
             state.status_segments.insert(plugin, StatusSegment { text, color });
         }
-        PluginUIAction::ClearStatus { plugin } => {
+        PluginUiAction::ClearStatus { plugin } => {
             state.status_segments.remove(&plugin);
         }
-        PluginUIAction::Notify { plugin, message, level } => {
+        PluginUiAction::Notify { plugin, message, level } => {
             state.notifications.push(PluginNotification {
                 plugin,
                 message,

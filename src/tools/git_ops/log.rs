@@ -62,6 +62,7 @@ const SECS_PER_MONTH: u64 = 2_592_000;
 const SECS_PER_YEAR: u64 = 31_536_000;
 
 /// Format a unix timestamp as a relative time string (e.g. "2 hours ago").
+#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
 pub fn format_relative_time(epoch_secs: i64) -> String {
     let now = chrono::Utc::now().timestamp();
     let delta = now - epoch_secs;

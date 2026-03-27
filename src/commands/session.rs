@@ -144,6 +144,7 @@ fn handle_import(ctx: &CommandContext, file: &str) -> Result<()> {
     Ok(())
 }
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "session_id is Some when not all mode, checked above"))]
 fn handle_migrate(ctx: &CommandContext, session_id: Option<&str>, all: bool) -> Result<()> {
     if !all && session_id.is_none() {
         return Err(crate::error::Error::Session {

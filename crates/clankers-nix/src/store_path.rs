@@ -15,6 +15,7 @@ use crate::error::*;
 ///
 /// The nix store hash is always exactly 32 nixbase32 characters ([0-9a-df-np-sv-z]).
 /// The name is one or more characters from the valid set.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "compile-time constant regex pattern"))]
 static STORE_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"/nix/store/([0-9a-df-np-sv-z]{32})-([a-zA-Z0-9+\-._?=][a-zA-Z0-9+\-._?=]*)").expect("static regex")
 });
@@ -74,6 +75,7 @@ pub fn parse_store_path(path: &str) -> Result<NixPath, NixError> {
 /// Scans for `/nix/store/<hash>-<name>` patterns using regex and parses each
 /// through nix-compat. Invalid matches (hash decoding failure, etc.) are
 /// silently skipped. Results are deduplicated by path.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "regex capture group 0 always exists when captures_iter yields"))]
 pub fn extract_store_paths(text: &str) -> Vec<NixPath> {
     let mut seen = std::collections::HashSet::new();
     let mut results = Vec::new();

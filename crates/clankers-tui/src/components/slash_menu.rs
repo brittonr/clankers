@@ -89,6 +89,7 @@ impl SlashMenu {
     }
 
     /// Move selection down
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
     pub fn select_next(&mut self) {
         if !self.items.is_empty() {
             self.selected = (self.selected + 1) % self.items.len();
@@ -99,9 +100,9 @@ impl SlashMenu {
     pub fn accept(&mut self) -> Option<(String, bool)> {
         if self.visible && self.selected < self.items.len() {
             let insert_text = self.items[self.selected].insert_text.clone();
-            let trailing_space = self.items[self.selected].trailing_space;
+            let has_trailing_space = self.items[self.selected].trailing_space;
             self.hide();
-            Some((insert_text, trailing_space))
+            Some((insert_text, has_trailing_space))
         } else {
             None
         }

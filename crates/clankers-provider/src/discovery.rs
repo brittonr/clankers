@@ -51,6 +51,7 @@ pub async fn build_router_with_rpc(
 }
 
 /// Build in-process (no RPC). Used as fallback when daemon is unavailable.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
 pub fn build_router(
     api_key_override: Option<&str>,
     base_url: Option<String>,

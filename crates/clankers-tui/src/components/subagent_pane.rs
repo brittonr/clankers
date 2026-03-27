@@ -145,6 +145,7 @@ impl SubagentPaneManager {
     }
 
     /// Handle a key event for a focused subagent pane.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
     pub fn handle_key_event(&mut self, id: &str, key: KeyEvent) -> Option<PanelAction> {
         let state = self.panes.get_mut(id)?;
         match key.code {

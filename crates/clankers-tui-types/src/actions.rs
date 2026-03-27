@@ -197,6 +197,7 @@ impl ExtendedAction {
     }
 
     /// Canonical string name (for serialization and display).
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "all ExtendedAction variants are in EXTENDED_ACTION_NAMES"))]
     pub fn name(self) -> &'static str {
         EXTENDED_ACTION_NAMES
             .iter()

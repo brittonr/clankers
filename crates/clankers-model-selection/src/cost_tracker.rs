@@ -182,6 +182,7 @@ impl CostTracker {
     ///
     /// - Asserts costs are non-negative (negative pricing is a configuration error)
     /// - Uses `expect` on lock since poison here is unrecoverable (usage data is lost)
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "mutex poisoning is unrecoverable"))]
     pub fn record_usage(&self, model_id: &str, input_tokens: u64, output_tokens: u64) -> (f64, Vec<BudgetEvent>) {
         let (input_cost, output_cost) = if let Some(pricing) = self.pricing.get(model_id) {
             (
@@ -226,17 +227,19 @@ impl CostTracker {
     }
 
     /// Get total cost across all models.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "mutex poisoning is unrecoverable"))]
     pub fn total_cost(&self) -> f64 {
         let usage = self.usage.read().expect("usage lock not poisoned");
         usage.values().map(|u| u.cost_usd).sum()
     }
 
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "mutex poisoning is unrecoverable"))]
     /// Get current budget status.
     pub fn budget_status(&self) -> BudgetStatus {
         self.compute_budget_status(self.total_cost())
     }
-
     /// Generate a full cost summary.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "mutex poisoning is unrecoverable"))]
     pub fn summary(&self) -> CostSummary {
         let usage = self.usage.read().expect("usage lock not poisoned");
         let total_cost: f64 = usage.values().map(|u| u.cost_usd).sum();
@@ -276,6 +279,7 @@ impl CostTracker {
     }
 
     /// Format a one-line cost string for the status bar.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "mutex poisoning is unrecoverable"))]
     pub fn status_line(&self, current_model: &str) -> String {
         let usage = self.usage.read().expect("usage lock not poisoned");
         let total_cost: f64 = usage.values().map(|u| u.cost_usd).sum();
@@ -304,6 +308,7 @@ impl CostTracker {
 
     /// Tiger Style: decomposed compound conditions into sequential checks.
     /// Each threshold check tests one condition at a time.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "mutex poisoning is unrecoverable"))]
     fn check_thresholds(&self, total: f64) -> Vec<BudgetEvent> {
         let mut events = Vec::new();
         let prev = {

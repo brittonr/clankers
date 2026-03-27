@@ -6,7 +6,7 @@ use crate::error::Result;
 ///
 /// Creates an iroh endpoint and hosts the session, providing credentials
 /// that remote users can use to join with `clankers join`.
-pub async fn run_share(_ctx: &crate::commands::CommandContext, read_only: bool) -> Result<()> {
+pub async fn run_share(_ctx: &crate::commands::CommandContext, is_read_only: bool) -> Result<()> {
     let session_name = crate::zellij::session_name().ok_or_else(|| crate::error::Error::Config {
         message: "Not inside a Zellij session. Start clankers inside Zellij first, or use: clankers --zellij"
             .to_string(),
@@ -16,7 +16,7 @@ pub async fn run_share(_ctx: &crate::commands::CommandContext, read_only: bool) 
     let secret_key = iroh::SecretKey::generate(&mut rand::rng());
     let node_id = secret_key.public();
 
-    let (_endpoint, psk) = crate::zellij::streaming::host::host_session(&session_name, secret_key, read_only).await?;
+    let (_endpoint, psk) = crate::zellij::streaming::host::host_session(&session_name, secret_key, is_read_only).await?;
     let psk_hex = crate::zellij::streaming::handshake::psk_to_hex(&psk);
     println!("\nSession shared! Give the remote user these credentials:\n");
     println!("  clankers join {} {}\n", node_id, psk_hex);

@@ -9,3 +9,6 @@ rat-branches = { workspace = true }
 rat-leaderkey = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(dylint_lib, values("tigerstyle"))'] }

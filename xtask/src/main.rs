@@ -1,3 +1,4 @@
+#![cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, no_panic, reason = "xtask is a build tool — panics are acceptable for fatal errors"))]
 use std::cmp::Reverse;
 use std::env;
 use std::fmt::Write as _;
@@ -299,6 +300,7 @@ fn count_tests(crate_path: &Path) -> usize {
 }
 
 /// Extract `pub fn`, `pub struct`, `pub enum`, `pub trait` from src/ files.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
 fn extract_public_api(crate_path: &Path) -> Vec<String> {
     let src = crate_path.join("src");
     let mut items = Vec::new();

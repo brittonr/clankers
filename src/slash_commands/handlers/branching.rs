@@ -274,13 +274,13 @@ impl SlashHandler for CompareHandler {
         }
 
         // Verify both blocks exist
-        let a_exists = ctx.app.conversation.all_blocks.iter().any(|b| b.id == id_a);
-        let b_exists = ctx.app.conversation.all_blocks.iter().any(|b| b.id == id_b);
-        if !a_exists {
+        let has_a = ctx.app.conversation.all_blocks.iter().any(|b| b.id == id_a);
+        let has_b = ctx.app.conversation.all_blocks.iter().any(|b| b.id == id_b);
+        if !has_a {
             ctx.app.push_system(format!("Block #{} not found.", id_a), true);
             return;
         }
-        if !b_exists {
+        if !has_b {
             ctx.app.push_system(format!("Block #{} not found.", id_b), true);
             return;
         }
@@ -509,7 +509,7 @@ impl SlashHandler for CherryPickHandler {
             return;
         };
 
-        let with_children = parts.contains(&"--with-children");
+        let has_children = parts.contains(&"--with-children");
         let msg_id = MessageId::new(parts[0]);
 
         // Resolve target branch
@@ -534,13 +534,13 @@ impl SlashHandler for CherryPickHandler {
             return;
         };
 
-        match sm.cherry_pick(msg_id, target, with_children) {
+        match sm.cherry_pick(msg_id, target, has_children) {
             Ok((count, _new_leaf)) => {
                 if let Ok(context) = sm.build_context() {
                     let msg_count = context.len();
                     ctx.cmd_tx.send(AgentCommand::ClearHistory).ok();
                     ctx.cmd_tx.send(AgentCommand::SeedMessages(context)).ok();
-                    let suffix = if with_children { " (with children)" } else { "" };
+                    let suffix = if has_children { " (with children)" } else { "" };
                     ctx.app.push_system(
                         format!(
                             "Cherry-picked {} message(s){} into \"{}\" ({} messages in context)",

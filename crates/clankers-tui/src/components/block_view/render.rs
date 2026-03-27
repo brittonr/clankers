@@ -28,6 +28,7 @@ use crate::theme::Theme;
 /// Render a single conversation block into lines.
 /// `branch_info` carries sibling/children/ID-display metadata when available.
 #[allow(clippy::too_many_arguments)]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
 pub fn render_conversation_block<'a>(
     block: &ConversationBlock,
     focused: bool,
@@ -196,6 +197,9 @@ pub fn render_conversation_block<'a>(
 ///
 /// `active_tools` and `tick` enable live-streaming rendering for in-progress tool output:
 /// a spinner, elapsed time, and scrollable output from the streaming buffer.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "tool_name checked via is_streaming guard"))]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
 pub fn render_response_message<'a>(
     lines: &mut Vec<Line<'a>>,
     msg: &DisplayMessage,

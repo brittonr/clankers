@@ -55,7 +55,7 @@ pub fn find_session_socket(session_name: &str) -> Option<PathBuf> {
 pub async fn host_session(
     session_name: &str,
     secret_key: SecretKey,
-    read_only: bool,
+    is_read_only: bool,
 ) -> Result<(Endpoint, [u8; 32]), crate::ZellijError> {
     let psk = handshake::generate_psk();
 
@@ -72,7 +72,7 @@ pub async fn host_session(
     let session_info = SessionInfo {
         session_name: session_name.to_string(),
         zellij_version: detect_zellij_version(),
-        read_only,
+        read_only: is_read_only,
     };
 
     let ep = endpoint.clone();
@@ -84,6 +84,7 @@ pub async fn host_session(
     Ok((endpoint, psk))
 }
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by endpoint close"))]
 async fn accept_guests(endpoint: Endpoint, socket_path: &Path, psk: &[u8; 32], session_info: &SessionInfo) {
     loop {
         let incoming = match endpoint.accept().await {

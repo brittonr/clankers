@@ -15,7 +15,7 @@ use clankers_tui_types::InputMode;
 pub use clankers_tui_types::MessageRole;
 pub use clankers_tui_types::ConnectionMode;
 pub use clankers_tui_types::PendingImage;
-use clankers_tui_types::PluginUIState;
+use clankers_tui_types::PluginUiState;
 pub use clankers_tui_types::RouterStatus;
 use ratatui::layout::Rect;
 
@@ -208,7 +208,7 @@ pub struct App {
     // Components (keep flat — they're already self-contained)
     pub slash_menu: SlashMenu,
     pub completion_source: Box<dyn clankers_tui_types::CompletionSource>,
-    pub plugin_ui: PluginUIState,
+    pub plugin_ui: PluginUiState,
     pub panels: super::panel::PanelManager,
     pub context_gauge: super::components::context_gauge::ContextGauge,
     pub git_status: super::components::git_status::GitStatus,
@@ -330,7 +330,7 @@ impl App {
             // Components
             slash_menu: SlashMenu::new(),
             completion_source: Box::new(EmptyCompletionSource),
-            plugin_ui: PluginUIState::new(),
+            plugin_ui: PluginUiState::new(),
             panels: register_default_panels(),
             context_gauge,
             git_status,
@@ -605,6 +605,7 @@ impl App {
     }
 
     /// Get the current spinner character for animated indicators
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
     pub fn spinner_char(&self) -> char {
         const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
         // Divide tick by 3 to slow down (~150ms per frame at 50ms poll rate)

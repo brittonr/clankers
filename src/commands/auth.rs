@@ -55,6 +55,7 @@ fn parse_oauth_callback_input(input: &str) -> Result<(String, String)> {
 }
 
 /// Run the auth subcommand
+#[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
 pub async fn run(ctx: &CommandContext, action: AuthAction) -> Result<()> {
     match action {
         AuthAction::Login {
@@ -72,6 +73,7 @@ pub async fn run(ctx: &CommandContext, action: AuthAction) -> Result<()> {
     }
 }
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "stdin read failure is unrecoverable in interactive login"))]
 async fn handle_login(ctx: &CommandContext, account: Option<String>, code: Option<String>) -> Result<()> {
     let account_name = account.as_deref().unwrap_or("default");
 
@@ -122,6 +124,7 @@ async fn handle_login(ctx: &CommandContext, account: Option<String>, code: Optio
     Ok(())
 }
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
 fn handle_status(ctx: &CommandContext) -> Result<()> {
     let store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
     let accounts = store.list_anthropic_accounts();

@@ -208,6 +208,7 @@ fn canonicalize_path(path: &Path) -> PathBuf {
 }
 
 /// Walk up from a directory to root, collecting AGENTS.md / CLAUDE.md files
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by child process exit"))]
 fn collect_ancestor_context_files(start_dir: &Path) -> Vec<ContextFile> {
     let mut files = Vec::new();
     let mut current = start_dir.to_path_buf();

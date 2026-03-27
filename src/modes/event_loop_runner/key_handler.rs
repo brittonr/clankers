@@ -407,6 +407,7 @@ impl<'a> EventLoopRunner<'a> {
         }
     }
 
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
     pub(super) fn handle_panel_side_effects(&mut self, key: crossterm::event::KeyEvent) -> bool {
         let Some(focused_id) = self.app.layout.focused_panel else {
             return false;
@@ -422,8 +423,7 @@ impl<'a> EventLoopRunner<'a> {
                     .expect("subagent panel registered at startup")
                     .selected_id()
                 {
-                    let _ =
-                        self.panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest { id });
+                    self.panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest { id }).ok();
                 }
                 true
             }

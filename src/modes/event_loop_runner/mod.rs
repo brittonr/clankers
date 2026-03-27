@@ -110,6 +110,7 @@ impl<'a> EventLoopRunner<'a> {
     }
 
     /// Main event loop. Returns when `app.should_quit` is set.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; exits on quit signal"))]
     pub fn run(&mut self) -> Result<()> {
         loop {
             self.terminal.draw(|frame| render::render(frame, self.app)).map_err(|e| crate::error::Error::Tui {
@@ -140,6 +141,7 @@ impl<'a> EventLoopRunner<'a> {
 
     // ── Agent events + TUI rendering + controller feed ──────────────
 
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; exits on quit signal"))]
     fn drain_agent_events(&mut self) {
         loop {
             match self.event_rx.try_recv() {
@@ -594,18 +596,21 @@ fn process_todo_action(
 
 // ── Panel accessor helpers ──────────────────────────────────────────
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 pub(super) fn subagent_panel(app: &mut App) -> &mut crate::tui::components::subagent_panel::SubagentPanel {
     app.panels
         .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(crate::tui::panel::PanelId::Subagents)
         .expect("subagent panel registered at startup")
 }
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 pub(super) fn todo_panel(app: &mut App) -> &mut crate::tui::components::todo_panel::TodoPanel {
     app.panels
         .downcast_mut::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)
         .expect("todo panel registered at startup")
 }
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 pub(super) fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_panel::PeersPanel {
     app.panels
         .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(crate::tui::panel::PanelId::Peers)

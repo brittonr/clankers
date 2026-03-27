@@ -36,12 +36,12 @@ impl CapabilityGate for UcanCapabilityGate {
     // r[impl ucan.gate.file-write-check]
     fn check_tool_call(&self, tool_name: &str, input: &Value) -> Result<(), String> {
         // 1. Check ToolUse capability
-        let tool_allowed = self.capabilities.iter().any(|c| {
+        let is_tool_allowed = self.capabilities.iter().any(|c| {
             c.authorizes(&Operation::ToolUse {
                 tool_name: tool_name.to_string(),
             })
         });
-        if !tool_allowed {
+        if !is_tool_allowed {
             return Err(format!("Tool '{}' not authorized by capability token", tool_name));
         }
 
@@ -50,13 +50,13 @@ impl CapabilityGate for UcanCapabilityGate {
             && let Some(cmd) = input.get("command").and_then(|v| v.as_str())
         {
             let wd = input.get("cwd").and_then(|v| v.as_str()).map(String::from);
-            let shell_allowed = self.capabilities.iter().any(|c| {
+            let is_shell_allowed = self.capabilities.iter().any(|c| {
                 c.authorizes(&Operation::ShellExecute {
                     command: cmd.to_string(),
                     working_dir: wd.clone(),
                 })
             });
-            if !shell_allowed {
+            if !is_shell_allowed {
                 let preview = &cmd[..80.min(cmd.len())];
                 return Err(format!("Shell command not authorized: {preview}"));
             }
@@ -65,22 +65,22 @@ impl CapabilityGate for UcanCapabilityGate {
         // 3. For file tools, check FileAccess capability
         if let Some(path) = input.get("path").and_then(|v| v.as_str()) {
             if FILE_READ_TOOLS.contains(&tool_name) {
-                let read_allowed = self.capabilities.iter().any(|c| {
+                let is_read_allowed = self.capabilities.iter().any(|c| {
                     c.authorizes(&Operation::FileRead {
                         path: path.to_string(),
                     })
                 });
-                if !read_allowed {
+                if !is_read_allowed {
                     return Err(format!("File read not authorized: {path}"));
                 }
             }
             if FILE_WRITE_TOOLS.contains(&tool_name) {
-                let write_allowed = self.capabilities.iter().any(|c| {
+                let is_write_allowed = self.capabilities.iter().any(|c| {
                     c.authorizes(&Operation::FileWrite {
                         path: path.to_string(),
                     })
                 });
-                if !write_allowed {
+                if !is_write_allowed {
                     return Err(format!("File write not authorized: {path}"));
                 }
             }

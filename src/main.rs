@@ -16,6 +16,7 @@ use tracing::info;
 
 #[snafu::report]
 #[tokio::main]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, no_panic, reason = "main function — startup failures are fatal"))]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
@@ -95,7 +96,7 @@ async fn main() -> Result<()> {
     let model = cli.model.clone().unwrap_or(settings.model.clone());
 
     // Detect system capabilities for conditional prompt sections
-    let nix_available = clankers::agent::system_prompt::detect_nix();
+    let is_nix_available = clankers::agent::system_prompt::detect_nix();
     let has_multi_model = settings.model_roles.is_configured();
 
     // Build system prompt from multiple sources
@@ -110,7 +111,7 @@ async fn main() -> Result<()> {
             // happens later), so we include interactive-appropriate sections.
             // Daemon mode builds its own system prompt via DaemonConfig.
             default_system_prompt(&PromptFeatures {
-                nix_available,
+                nix_available: is_nix_available,
                 multi_model: has_multi_model,
                 daemon_mode: false,
                 process_monitor: true,
@@ -283,7 +284,7 @@ async fn run_agent_mode(
     // Decide: daemon mode vs in-process mode.
     // Daemon mode applies only to interactive (no prompt). Headless (print/json)
     // always runs in-process — no TUI, no daemon overhead needed.
-    let use_daemon = if cli.daemon {
+    let should_use_daemon = if cli.daemon {
         true
     } else if cli.no_daemon {
         false
@@ -291,7 +292,7 @@ async fn run_agent_mode(
         ctx.settings.use_daemon
     };
 
-    if prompt.is_none() && use_daemon {
+    if prompt.is_none() && should_use_daemon {
         // Phase 3: auto-daemon + attach
         let opts = clankers::modes::attach::AutoDaemonOptions {
             model,
@@ -324,6 +325,7 @@ async fn run_agent_mode(
 }
 
 /// Resolve agent definition overrides for model and system prompt.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
 fn resolve_agent_overrides(cli: &Cli, ctx: &CommandContext) -> Result<(String, String)> {
     if let Some(ref agent_name) = cli.agent {
         let agent_scope = cli
@@ -359,6 +361,7 @@ fn resolve_agent_overrides(cli: &Cli, ctx: &CommandContext) -> Result<(String, S
 }
 
 /// Run in headless mode (print/json/markdown).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential agent setup logic"))]
 async fn run_headless(
     cli: &Cli,
     ctx: &CommandContext,

@@ -395,7 +395,7 @@ fn handle_info(token_b64: &str) -> Result<()> {
 
     let hash = hex::encode(cred.token.hash().unwrap_or([0u8; 32]));
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-    let expired = cred.token.expires_at < now;
+    let is_expired = cred.token.expires_at < now;
 
     println!("Credential Info:");
     println!("  Version:    {}", cred.token.version);
@@ -406,7 +406,7 @@ fn handle_info(token_b64: &str) -> Result<()> {
     println!(
         "  Expires:    {} {}",
         format_timestamp(cred.token.expires_at, "%Y-%m-%d %H:%M:%S UTC"),
-        if expired { "(EXPIRED)" } else { "" }
+        if is_expired { "(EXPIRED)" } else { "" }
     );
     println!("  Depth:      {}", cred.token.delegation_depth);
     if let Some(proof) = cred.token.proof {

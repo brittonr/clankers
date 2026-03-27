@@ -175,8 +175,8 @@ fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
         match app.layout.pane_registry.kind(pane.id) {
             Some(PaneKind::Panel(panel_id)) => {
                 let panel_id = *panel_id;
-                let focused = app.is_panel_focused(panel_id);
-                let ctx = DrawContext { theme: &theme, focused };
+                let is_focused = app.is_panel_focused(panel_id);
+                let ctx = DrawContext { theme: &theme, focused: is_focused };
                 if let Some(panel) = app.panel_mut(panel_id) {
                     crate::panel::draw_panel_scrolled(frame, panel, pane.rect, &ctx);
                 } else {
@@ -190,8 +190,8 @@ fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
             }
             Some(PaneKind::Subagent(id)) => {
                 let id = id.clone();
-                let focused = app.layout.focused_subagent.as_deref() == Some(&id);
-                let ctx = DrawContext { theme: &theme, focused };
+                let is_focused = app.layout.focused_subagent.as_deref() == Some(&id);
+                let ctx = DrawContext { theme: &theme, focused: is_focused };
                 app.layout.subagent_panes.draw(&id, frame, pane.rect, &ctx);
             }
             Some(PaneKind::Chat) => {

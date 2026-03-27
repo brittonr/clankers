@@ -9,7 +9,7 @@ pub(crate) struct PluginDispatchResult {
     /// Messages to surface to the user
     pub messages: Vec<(String, String)>,
     /// UI actions to apply
-    pub ui_actions: Vec<crate::plugin::ui::PluginUIAction>,
+    pub ui_actions: Vec<crate::plugin::ui::PluginUiAction>,
 }
 
 /// Dispatch an agent event to all subscribed plugins.
@@ -39,12 +39,12 @@ pub(crate) fn dispatch_event_to_plugins(
         }
         // Check if this plugin subscribes to this event type
         let event_kind = event.event_kind();
-        let subscribed = info
+        let is_subscribed = info
             .manifest
             .events
             .iter()
             .any(|e| PluginEvent::parse(e).is_some_and(|pe| pe.matches_event_kind(event_kind)));
-        if !subscribed {
+        if !is_subscribed {
             continue;
         }
 
@@ -78,8 +78,8 @@ pub(crate) fn dispatch_event_to_plugins(
             Ok(output) => {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&output) {
                     // Surface messages the plugin explicitly wants shown
-                    let wants_display = parsed.get("display").and_then(|d| d.as_bool()).unwrap_or(false);
-                    if wants_display
+                    let should_display = parsed.get("display").and_then(|d| d.as_bool()).unwrap_or(false);
+                    if should_display
                         && let Some(msg) = parsed.get("message").and_then(|m| m.as_str())
                         && !msg.is_empty()
                     {

@@ -23,22 +23,22 @@ pub(crate) fn setup_session(
 ) {
     let paths = crate::config::ClankersPaths::get();
     let sessions_dir = &paths.global_sessions_dir;
-    let use_worktrees = settings.use_worktrees;
+    let should_use_worktrees = settings.use_worktrees;
 
     if resume_opts.no_session {
         return (None, Vec::new(), None);
     }
 
     if resume_opts.continue_last {
-        return resume_latest(app, cwd, model, db, sessions_dir, use_worktrees);
+        return resume_latest(app, cwd, model, db, sessions_dir, should_use_worktrees);
     }
 
     if let Some(ref session_id) = resume_opts.session_id {
-        return resume_by_id(app, cwd, model, db, sessions_dir, use_worktrees, session_id);
+        return resume_by_id(app, cwd, model, db, sessions_dir, should_use_worktrees, session_id);
     }
 
     // Default: create a new session
-    create_new_session(app, cwd, model, db, sessions_dir, use_worktrees)
+    create_new_session(app, cwd, model, db, sessions_dir, should_use_worktrees)
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────
@@ -50,7 +50,7 @@ fn create_new_session(
     model: &str,
     db: &Option<crate::db::Db>,
     sessions_dir: &std::path::Path,
-    use_worktrees: bool,
+    should_use_worktrees: bool,
 ) -> (
     Option<crate::session::SessionManager>,
     Vec<crate::provider::message::AgentMessage>,
@@ -58,7 +58,7 @@ fn create_new_session(
 ) {
     // Try to set up a worktree first so we can record it in the session header
     let wt_setup = match db {
-        Some(db) => crate::worktree::session_bridge::setup_worktree_for_session(db, cwd, use_worktrees),
+        Some(db) => crate::worktree::session_bridge::setup_worktree_for_session(db, cwd, should_use_worktrees),
         None => None,
     };
     let (wt_path, wt_branch) = match &wt_setup {
@@ -121,7 +121,7 @@ fn resume_latest(
     model: &str,
     db: &Option<crate::db::Db>,
     sessions_dir: &std::path::Path,
-    use_worktrees: bool,
+    should_use_worktrees: bool,
 ) -> (
     Option<crate::session::SessionManager>,
     Vec<crate::provider::message::AgentMessage>,
@@ -133,12 +133,12 @@ fn resume_latest(
             Ok(mgr) => resume_session(app, mgr, "continue"),
             Err(e) => {
                 app.push_system(format!("Failed to resume last session: {}", e), true);
-                create_new_session(app, cwd, model, db, sessions_dir, use_worktrees)
+                create_new_session(app, cwd, model, db, sessions_dir, should_use_worktrees)
             }
         }
     } else {
         app.push_system("No previous session found. Starting new session.".to_string(), false);
-        create_new_session(app, cwd, model, db, sessions_dir, use_worktrees)
+        create_new_session(app, cwd, model, db, sessions_dir, should_use_worktrees)
     }
 }
 
@@ -149,7 +149,7 @@ fn resume_by_id(
     model: &str,
     db: &Option<crate::db::Db>,
     sessions_dir: &std::path::Path,
-    use_worktrees: bool,
+    should_use_worktrees: bool,
     session_id: &str,
 ) -> (
     Option<crate::session::SessionManager>,
@@ -166,11 +166,11 @@ fn resume_by_id(
             Ok(mgr) => resume_session(app, mgr, "resume"),
             Err(e) => {
                 app.push_system(format!("Failed to resume session '{}': {}", session_id, e), true);
-                create_new_session(app, cwd, model, db, sessions_dir, use_worktrees)
+                create_new_session(app, cwd, model, db, sessions_dir, should_use_worktrees)
             }
         }
     } else {
         app.push_system(format!("Session '{}' not found.", session_id), true);
-        create_new_session(app, cwd, model, db, sessions_dir, use_worktrees)
+        create_new_session(app, cwd, model, db, sessions_dir, should_use_worktrees)
     }
 }

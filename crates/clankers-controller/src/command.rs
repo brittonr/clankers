@@ -267,6 +267,7 @@ impl SessionController {
     }
 
     /// Handle a prompt command (daemon mode only).
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "agent is always Some when handle_prompt is called"))]
     async fn handle_prompt(&mut self, text: String, images: Vec<ImageData>) {
         if self.agent.is_none() {
             warn!("handle_prompt called in embedded mode");

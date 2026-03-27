@@ -37,7 +37,7 @@ fn bridge_parse_ui_actions_single() {
     let actions = bridge::parse_ui_actions("my-plugin", &response);
     assert_eq!(actions.len(), 1);
     match &actions[0] {
-        ui::PluginUIAction::SetStatus { plugin, text, color } => {
+        ui::PluginUiAction::SetStatus { plugin, text, color } => {
             assert_eq!(plugin, "my-plugin");
             assert_eq!(text, "running");
             assert_eq!(color.as_deref(), Some("green"));
@@ -88,7 +88,7 @@ fn bridge_parse_ui_actions_injects_plugin_name() {
     });
     let actions = bridge::parse_ui_actions("injected-name", &response);
     match &actions[0] {
-        ui::PluginUIAction::SetStatus { plugin, .. } => {
+        ui::PluginUiAction::SetStatus { plugin, .. } => {
             assert_eq!(plugin, "injected-name");
         }
         _ => panic!("Expected SetStatus"),
@@ -102,7 +102,7 @@ fn bridge_parse_ui_actions_preserves_explicit_plugin_name() {
     });
     let actions = bridge::parse_ui_actions("fallback", &response);
     match &actions[0] {
-        ui::PluginUIAction::SetStatus { plugin, .. } => {
+        ui::PluginUiAction::SetStatus { plugin, .. } => {
             assert_eq!(plugin, "explicit");
         }
         _ => panic!("Expected SetStatus"),

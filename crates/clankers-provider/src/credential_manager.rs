@@ -265,6 +265,7 @@ impl CredentialManager {
 ///
 /// Uses a `Weak` reference so the loop exits when the `CredentialManager`
 /// is dropped (no Arc cycle).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
 async fn proactive_refresh_loop(weak: Weak<CredentialManager>) {
     loop {
         let mgr = match weak.upgrade() {
@@ -352,11 +353,11 @@ fn save_with_file_lock(auth_path: &std::path::Path, creds: &OAuthCredentials) ->
     let lock_file =
         fs::File::open(auth_path).map_err(|e| crate::error::auth_err(format!("Open auth file for locking: {e}")))?;
 
-    let mut locked = false;
+    let mut is_locked = false;
     for attempt in 0..30 {
         match fs4::fs_std::FileExt::try_lock_exclusive(&lock_file) {
             Ok(true) => {
-                locked = true;
+                is_locked = true;
                 break;
             }
             Ok(false) | Err(_) => {
@@ -367,12 +368,12 @@ fn save_with_file_lock(auth_path: &std::path::Path, creds: &OAuthCredentials) ->
         }
     }
 
-    if !locked {
+    if !is_locked {
         warn!("Could not acquire auth file lock after 30s, proceeding without lock");
     }
 
     let _guard = UnlockGuard {
-        locked,
+        locked: is_locked,
         file: &lock_file,
     };
 

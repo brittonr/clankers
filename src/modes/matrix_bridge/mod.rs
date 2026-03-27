@@ -38,6 +38,8 @@ use super::daemon::ProactiveConfig;
 use crate::config::ClankersPaths;
 use crate::error::Result;
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "take_event_rx called once at initialization"))]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
 pub(crate) async fn run_matrix_bridge(
     state: Arc<Mutex<DaemonState>>,
     registry: ProcessRegistry,

@@ -109,6 +109,7 @@ impl OutputSearch {
     }
 
     /// Navigate to next match
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
     pub fn next_match(&mut self) {
         if !self.matches.is_empty() {
             self.current = (self.current + 1) % self.matches.len();
@@ -276,6 +277,7 @@ impl OutputSearch {
 
 /// Find the byte range of a fuzzy (subsequence) match.
 /// Returns (start_byte, end_byte) covering from the first to last matched character.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "first_byte is set on first match before incrementing ni"))]
 fn fuzzy_match_range(haystack: &str, needle_chars: &[char]) -> Option<(usize, usize)> {
     if needle_chars.is_empty() {
         return None;

@@ -116,6 +116,7 @@ impl SubagentPanel {
         }
     }
 
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
     pub fn next_tab(&mut self) {
         if !self.entries.is_empty() {
             self.selected = (self.selected + 1) % self.entries.len();
@@ -261,6 +262,7 @@ impl Panel for SubagentPanel {
         "No subagents running"
     }
 
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<PanelAction> {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {
@@ -326,6 +328,7 @@ pub fn render_subagent_panel(frame: &mut Frame, panel: &mut SubagentPanel, theme
 
 // ── List view ───────────────────────────────────────────────────────────────
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
 fn render_list_view(frame: &mut Frame, panel: &mut SubagentPanel, theme: &Theme, area: Rect, focused: bool) {
     use ratatui::layout::Constraint;
     use ratatui::layout::Direction;
@@ -485,6 +488,7 @@ fn render_detail_view(frame: &mut Frame, panel: &mut SubagentPanel, theme: &Them
 // ── Immutable render functions (for Panel::draw) ────────────────────────────
 
 /// List view — immutable (no &mut needed)
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
 fn render_list_view_immut(frame: &mut Frame, panel: &SubagentPanel, theme: &Theme, area: Rect, focused: bool) {
     use ratatui::layout::Constraint;
     use ratatui::layout::Direction;

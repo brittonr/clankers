@@ -295,9 +295,9 @@ pub fn handle_session_selector_key(app: &mut App, key: &crossterm::event::KeyEve
 pub fn handle_tool_toggle_key(app: &mut App, key: &crossterm::event::KeyEvent) -> (bool, bool) {
     match key.code {
         KeyCode::Esc => {
-            let dirty = app.overlays.tool_toggle.dirty;
+            let is_dirty = app.overlays.tool_toggle.dirty;
             app.overlays.tool_toggle.close();
-            (true, dirty)
+            (true, is_dirty)
         }
         KeyCode::Enter | KeyCode::Char(' ') => {
             app.overlays.tool_toggle.toggle_selected();
@@ -321,9 +321,9 @@ pub fn handle_tool_toggle_key(app: &mut App, key: &crossterm::event::KeyEvent) -
         }
         KeyCode::Char(c) => {
             if key.modifiers.contains(KeyModifiers::CONTROL) && c == 'c' {
-                let dirty = app.overlays.tool_toggle.dirty;
+                let is_dirty = app.overlays.tool_toggle.dirty;
                 app.overlays.tool_toggle.close();
-                return (true, dirty);
+                return (true, is_dirty);
             }
             if key.modifiers.contains(KeyModifiers::CONTROL) {
                 match c {

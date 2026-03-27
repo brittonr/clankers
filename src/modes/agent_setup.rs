@@ -112,6 +112,7 @@ pub(crate) fn build_agent_with_tools(
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /// Create and start the process monitor, bridging ProcessEvent → AgentEvent.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "traversal loop; bounded by config chain length"))]
 fn create_process_monitor(agent_tx: tokio::sync::broadcast::Sender<AgentEvent>) -> Arc<crate::procmon::ProcessMonitor> {
     let config = crate::procmon::ProcessMonitorConfig::default();
     let (proc_tx, mut proc_rx) = tokio::sync::broadcast::channel::<crate::procmon::ProcessEvent>(256);
@@ -169,6 +170,7 @@ fn populate_tool_info(app: &mut App, tools: &[Arc<dyn crate::tools::Tool>]) {
 }
 
 /// Helper to access the ProcessPanel.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 fn process_panel(app: &mut App) -> &mut crate::tui::components::process_panel::ProcessPanel {
     app.panels
         .downcast_mut::<crate::tui::components::process_panel::ProcessPanel>(crate::tui::panel::PanelId::Processes)

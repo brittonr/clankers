@@ -116,15 +116,15 @@ impl SlashHandler for UndoHandler {
     }
 
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
-        let mut removed = false;
+        let mut was_removed = false;
         for i in (0..ctx.app.conversation.blocks.len()).rev() {
             if matches!(ctx.app.conversation.blocks[i], BlockEntry::Conversation(_)) {
                 ctx.app.conversation.blocks.remove(i);
-                removed = true;
+                was_removed = true;
                 break;
             }
         }
-        if removed {
+        if was_removed {
             ctx.app.push_system("Last conversation block removed.".to_string(), false);
         } else {
             ctx.app.push_system("Nothing to undo.".to_string(), false);

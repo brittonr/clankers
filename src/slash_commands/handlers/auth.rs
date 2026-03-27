@@ -50,9 +50,9 @@ fn handle_login_start(ctx: &mut SlashContext<'_>, account_name: &str) {
     std::fs::write(&verifier_path, &verifier).ok();
 
     // Try to auto-open the browser (detached so it doesn't block the TUI)
-    let browser_opened = open::that_detached(&url).is_ok();
+    let was_browser_opened = open::that_detached(&url).is_ok();
 
-    let browser_msg = if browser_opened {
+    let browser_msg = if was_browser_opened {
         "Opening browser automatically..."
     } else {
         "Could not open browser automatically."

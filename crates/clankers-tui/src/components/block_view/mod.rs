@@ -61,6 +61,7 @@ const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧
 /// Returns the plain-text lines that were rendered (for selection extraction).
 /// `branch_info` maps block_id → `BlockBranchInfo` with sibling, children, and ID display metadata.
 #[allow(clippy::too_many_arguments)]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
 pub fn render_blocks(
     frame: &mut Frame,
     blocks: &[BlockEntry],

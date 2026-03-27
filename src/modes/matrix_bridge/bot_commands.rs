@@ -15,6 +15,7 @@ use crate::modes::daemon::session_store::AuthLayer;
 use crate::modes::daemon::socket_bridge::SessionFactory;
 
 /// Handle a `!command` from a Matrix user. Returns the response text.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "command dispatch logic"))]
 pub(crate) async fn handle_bot_command(
     body: &str,
     key: &SessionKey,
@@ -205,6 +206,7 @@ async fn handle_token_command(
     }
 }
 
+#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
 fn handle_delegate_command(
     args: &str,
     key: &SessionKey,
@@ -250,9 +252,9 @@ fn handle_delegate_command(
     let parts: Vec<&str> = args.split_whitespace().collect();
     let mut tools_pattern: Option<String> = None;
     let mut expire_str: Option<&str> = None;
-    let mut include_shell = false;
-    let mut allow_delegate = true;
-    let mut read_only = false;
+    let mut should_include_shell = false;
+    let mut should_allow_delegate = true;
+    let mut is_read_only = false;
     let mut i = 0;
 
     while i < parts.len() {
@@ -274,15 +276,15 @@ fn handle_delegate_command(
                 }
             }
             "--shell" => {
-                include_shell = true;
+                should_include_shell = true;
                 i += 1;
             }
             "--no-delegate" => {
-                allow_delegate = false;
+                should_allow_delegate = false;
                 i += 1;
             }
             "--read-only" => {
-                read_only = true;
+                is_read_only = true;
                 i += 1;
             }
             other => {
@@ -291,7 +293,7 @@ fn handle_delegate_command(
         }
     }
 
-    if read_only {
+    if is_read_only {
         tools_pattern = Some("read,grep,find,ls".to_string());
     }
 
@@ -311,13 +313,13 @@ fn handle_delegate_command(
     if let Some(pattern) = tools_pattern {
         child_caps.push(Capability::ToolUse { tool_pattern: pattern });
     }
-    if include_shell {
+    if should_include_shell {
         child_caps.push(Capability::ShellExecute {
             command_pattern: "*".into(),
             working_dir: None,
         });
     }
-    if allow_delegate {
+    if should_allow_delegate {
         child_caps.push(Capability::Delegate);
     }
 

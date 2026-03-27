@@ -110,11 +110,11 @@ fn ui_widget_table_roundtrip() {
     }
 }
 
-// ── PluginUIAction parsing ───────────────────────────────────────
+// ── PluginUiAction parsing ───────────────────────────────────────
 
 #[test]
 fn ui_action_set_widget_roundtrip() {
-    let action = ui::PluginUIAction::SetWidget {
+    let action = ui::PluginUiAction::SetWidget {
         plugin: "test".to_string(),
         widget: ui::Widget::Text {
             content: "hello".to_string(),
@@ -123,9 +123,9 @@ fn ui_action_set_widget_roundtrip() {
         },
     };
     let json = serde_json::to_string(&action).unwrap();
-    let parsed: ui::PluginUIAction = serde_json::from_str(&json).unwrap();
+    let parsed: ui::PluginUiAction = serde_json::from_str(&json).unwrap();
     match parsed {
-        ui::PluginUIAction::SetWidget { plugin, widget } => {
+        ui::PluginUiAction::SetWidget { plugin, widget } => {
             assert_eq!(plugin, "test");
             match widget {
                 ui::Widget::Text { content, bold, .. } => {
@@ -141,15 +141,15 @@ fn ui_action_set_widget_roundtrip() {
 
 #[test]
 fn ui_action_set_status_roundtrip() {
-    let action = ui::PluginUIAction::SetStatus {
+    let action = ui::PluginUiAction::SetStatus {
         plugin: "test".to_string(),
         text: "running".to_string(),
         color: Some("green".to_string()),
     };
     let json = serde_json::to_string(&action).unwrap();
-    let parsed: ui::PluginUIAction = serde_json::from_str(&json).unwrap();
+    let parsed: ui::PluginUiAction = serde_json::from_str(&json).unwrap();
     match parsed {
-        ui::PluginUIAction::SetStatus { plugin, text, color } => {
+        ui::PluginUiAction::SetStatus { plugin, text, color } => {
             assert_eq!(plugin, "test");
             assert_eq!(text, "running");
             assert_eq!(color, Some("green".to_string()));
@@ -160,15 +160,15 @@ fn ui_action_set_status_roundtrip() {
 
 #[test]
 fn ui_action_notify_roundtrip() {
-    let action = ui::PluginUIAction::Notify {
+    let action = ui::PluginUiAction::Notify {
         plugin: "test".to_string(),
         message: "Build done!".to_string(),
         level: "info".to_string(),
     };
     let json = serde_json::to_string(&action).unwrap();
-    let parsed: ui::PluginUIAction = serde_json::from_str(&json).unwrap();
+    let parsed: ui::PluginUiAction = serde_json::from_str(&json).unwrap();
     match parsed {
-        ui::PluginUIAction::Notify { plugin, message, level } => {
+        ui::PluginUiAction::Notify { plugin, message, level } => {
             assert_eq!(plugin, "test");
             assert_eq!(message, "Build done!");
             assert_eq!(level, "info");
@@ -180,9 +180,9 @@ fn ui_action_notify_roundtrip() {
 #[test]
 fn ui_action_clear_widget() {
     let json = r#"{"action":"clear_widget","plugin":"test"}"#;
-    let parsed: ui::PluginUIAction = serde_json::from_str(json).unwrap();
+    let parsed: ui::PluginUiAction = serde_json::from_str(json).unwrap();
     match parsed {
-        ui::PluginUIAction::ClearWidget { plugin } => assert_eq!(plugin, "test"),
+        ui::PluginUiAction::ClearWidget { plugin } => assert_eq!(plugin, "test"),
         _ => panic!("Expected ClearWidget"),
     }
 }
@@ -190,21 +190,21 @@ fn ui_action_clear_widget() {
 #[test]
 fn ui_action_clear_status() {
     let json = r#"{"action":"clear_status","plugin":"test"}"#;
-    let parsed: ui::PluginUIAction = serde_json::from_str(json).unwrap();
+    let parsed: ui::PluginUiAction = serde_json::from_str(json).unwrap();
     match parsed {
-        ui::PluginUIAction::ClearStatus { plugin } => assert_eq!(plugin, "test"),
+        ui::PluginUiAction::ClearStatus { plugin } => assert_eq!(plugin, "test"),
         _ => panic!("Expected ClearStatus"),
     }
 }
 
-// ── PluginUIState tests ──────────────────────────────────────────
+// ── PluginUiState tests ──────────────────────────────────────────
 
 #[test]
 fn plugin_ui_state_set_and_clear_widget() {
-    let mut state = ui::PluginUIState::new();
+    let mut state = ui::PluginUiState::new();
     assert!(!state.has_content());
 
-    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetWidget {
+    ui::apply_ui_action(&mut state, ui::PluginUiAction::SetWidget {
         plugin: "test".to_string(),
         widget: ui::Widget::Text {
             content: "hello".to_string(),
@@ -215,7 +215,7 @@ fn plugin_ui_state_set_and_clear_widget() {
     assert!(state.has_content());
     assert!(state.widgets.contains_key("test"));
 
-    ui::apply_ui_action(&mut state, ui::PluginUIAction::ClearWidget {
+    ui::apply_ui_action(&mut state, ui::PluginUiAction::ClearWidget {
         plugin: "test".to_string(),
     });
     assert!(!state.widgets.contains_key("test"));
@@ -223,9 +223,9 @@ fn plugin_ui_state_set_and_clear_widget() {
 
 #[test]
 fn plugin_ui_state_set_and_clear_status() {
-    let mut state = ui::PluginUIState::new();
+    let mut state = ui::PluginUiState::new();
 
-    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetStatus {
+    ui::apply_ui_action(&mut state, ui::PluginUiAction::SetStatus {
         plugin: "test".to_string(),
         text: "building".to_string(),
         color: Some("yellow".to_string()),
@@ -235,7 +235,7 @@ fn plugin_ui_state_set_and_clear_status() {
     assert_eq!(seg.text, "building");
     assert_eq!(seg.color, Some("yellow".to_string()));
 
-    ui::apply_ui_action(&mut state, ui::PluginUIAction::ClearStatus {
+    ui::apply_ui_action(&mut state, ui::PluginUiAction::ClearStatus {
         plugin: "test".to_string(),
     });
     assert!(!state.status_segments.contains_key("test"));
@@ -243,9 +243,9 @@ fn plugin_ui_state_set_and_clear_status() {
 
 #[test]
 fn plugin_ui_state_notify_and_gc() {
-    let mut state = ui::PluginUIState::new();
+    let mut state = ui::PluginUiState::new();
 
-    ui::apply_ui_action(&mut state, ui::PluginUIAction::Notify {
+    ui::apply_ui_action(&mut state, ui::PluginUiAction::Notify {
         plugin: "test".to_string(),
         message: "hello".to_string(),
         level: "info".to_string(),
@@ -260,9 +260,9 @@ fn plugin_ui_state_notify_and_gc() {
 
 #[test]
 fn plugin_ui_state_multiple_plugins() {
-    let mut state = ui::PluginUIState::new();
+    let mut state = ui::PluginUiState::new();
 
-    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetWidget {
+    ui::apply_ui_action(&mut state, ui::PluginUiAction::SetWidget {
         plugin: "plugin-a".to_string(),
         widget: ui::Widget::Text {
             content: "A".to_string(),
@@ -270,7 +270,7 @@ fn plugin_ui_state_multiple_plugins() {
             color: None,
         },
     });
-    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetWidget {
+    ui::apply_ui_action(&mut state, ui::PluginUiAction::SetWidget {
         plugin: "plugin-b".to_string(),
         widget: ui::Widget::Text {
             content: "B".to_string(),
@@ -278,7 +278,7 @@ fn plugin_ui_state_multiple_plugins() {
             color: None,
         },
     });
-    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetStatus {
+    ui::apply_ui_action(&mut state, ui::PluginUiAction::SetStatus {
         plugin: "plugin-a".to_string(),
         text: "ok".to_string(),
         color: None,
@@ -290,9 +290,9 @@ fn plugin_ui_state_multiple_plugins() {
 
 #[test]
 fn plugin_ui_state_widget_replacement() {
-    let mut state = ui::PluginUIState::new();
+    let mut state = ui::PluginUiState::new();
 
-    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetWidget {
+    ui::apply_ui_action(&mut state, ui::PluginUiAction::SetWidget {
         plugin: "test".to_string(),
         widget: ui::Widget::Text {
             content: "v1".to_string(),
@@ -300,7 +300,7 @@ fn plugin_ui_state_widget_replacement() {
             color: None,
         },
     });
-    ui::apply_ui_action(&mut state, ui::PluginUIAction::SetWidget {
+    ui::apply_ui_action(&mut state, ui::PluginUiAction::SetWidget {
         plugin: "test".to_string(),
         widget: ui::Widget::Text {
             content: "v2".to_string(),

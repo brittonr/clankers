@@ -198,6 +198,7 @@ impl Panel for BranchPanel {
         "No branches. Use /fork or edit a block to branch."
     }
 
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<PanelAction> {
         if self.detail_view {
             return match key.code {

@@ -147,6 +147,7 @@ impl ProjectPaths {
 }
 
 /// Walk up from cwd looking for a .clankers/ directory
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "traversal loop; bounded by filesystem depth"))]
 fn find_project_root(start: &Path) -> Option<PathBuf> {
     let mut current = start.to_path_buf();
     loop {

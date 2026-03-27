@@ -269,6 +269,7 @@ fn sparkline(values: &[f32], max_val: f32, width: usize) -> String {
 }
 
 #[cfg(test)]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_panic, no_unwrap, reason = "test code — panics are assertions"))]
 mod tests {
     use std::sync::Arc;
     use std::time::Instant;

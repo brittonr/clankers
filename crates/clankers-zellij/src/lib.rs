@@ -35,7 +35,7 @@ pub fn is_inside_zellij() -> bool {
         return cached == 1;
     }
 
-    let result = if std::env::var("ZELLIJ").is_ok() {
+    let is_available = if std::env::var("ZELLIJ").is_ok() {
         true
     } else if std::env::var("ZELLIJ_SESSION_NAME").is_ok() {
         // ZELLIJ_SESSION_NAME is set but ZELLIJ isn't — probe to see
@@ -50,8 +50,8 @@ pub fn is_inside_zellij() -> bool {
         false
     };
 
-    CACHED.store(if result { 1 } else { 2 }, Ordering::Relaxed);
-    result
+    CACHED.store(if is_available { 1 } else { 2 }, Ordering::Relaxed);
+    is_available
 }
 
 /// Get the current zellij session name

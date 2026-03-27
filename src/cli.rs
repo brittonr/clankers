@@ -14,6 +14,7 @@ use clap::ValueEnum;
     version,
     long_about = None,
 )]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "clap default_value_t uses unwrap in macro expansion"))]
 pub struct Cli {
     /// Enable verbose logging
     #[arg(short, long)]
@@ -245,6 +246,7 @@ pub enum AgentScopeArg {
 }
 
 #[derive(Subcommand, Debug)]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "clap default_value_t uses unwrap in macro expansion"))]
 pub enum Commands {
     /// Manage sessions
     Session {

@@ -4,6 +4,7 @@ use snafu::prelude::*;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
+#[cfg_attr(dylint_lib = "tigerstyle", allow(acronym_style, reason = "NotAStorePath uses English article 'A', not an acronym"))]
 pub enum NixError {
     /// The input string is not a valid nix store path.
     #[snafu(display("not a store path: {path}"))]

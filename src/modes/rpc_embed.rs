@@ -158,6 +158,7 @@ pub(super) async fn maybe_start_rpc(app: &mut App, paths: &crate::config::Clanke
 }
 
 /// Helper to access the PeersPanel.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "panel registered at startup"))]
 fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_panel::PeersPanel {
     app.panels
         .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(crate::tui::panel::PanelId::Peers)

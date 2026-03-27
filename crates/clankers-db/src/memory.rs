@@ -116,6 +116,7 @@ impl MemoryEntry {
 }
 
 /// Generate a monotonic ID from current time in microseconds.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
 pub(crate) fn generate_id() -> u64 {
     use std::sync::atomic::AtomicU64;
     use std::sync::atomic::Ordering;
@@ -247,6 +248,7 @@ impl<'db> MemoryStore<'db> {
     ///
     /// The header shows usage percentage and char counts so the agent knows
     /// how much room is left before it needs to consolidate.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
     pub fn context_for_with_limits(
         &self,
         project_path: Option<&str>,

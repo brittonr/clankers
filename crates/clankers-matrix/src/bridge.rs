@@ -135,6 +135,7 @@ impl MatrixBridge {
     ///
     /// This spawns a background task that reads from the client's event
     /// stream and updates the peer registry / dispatches events.
+    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
     pub fn start(&self, mut event_rx: broadcast::Receiver<ClankersEvent>, our_user_id: &str) {
         let peers = self.peers.clone();
         let pending = self.pending.clone();

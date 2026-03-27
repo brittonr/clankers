@@ -64,6 +64,7 @@ pub async fn status_porcelain() -> Result<String> {
 }
 
 /// Map git2 status flags to the two-char porcelain codes.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
 fn status_chars(s: git2::Status) -> (char, char) {
     let index = if s.is_index_new() {
         'A'

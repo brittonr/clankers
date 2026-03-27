@@ -98,13 +98,13 @@ fn toggle_pause(ctx: &mut SlashContext<'_>) {
     };
 
     ls.active = !ls.active;
-    let now_active = ls.active;
+    let is_now_active = ls.active;
     let name = ls.name.clone();
     let iteration = ls.iteration;
     let max = ls.max_iterations;
     let prompt = ls.prompt.clone();
 
-    if now_active {
+    if is_now_active {
         // Resuming — kick off the next iteration
         ctx.app.push_system(format!("Loop '{name}' resumed ({iteration}/{max})."), false);
         if let Some(prompt) = prompt {

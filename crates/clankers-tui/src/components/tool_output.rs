@@ -17,12 +17,12 @@ pub struct ToolOutputBlock {
 impl ToolOutputBlock {
     pub fn new(tool_name: String, output: String, is_error: bool) -> Self {
         // Auto-collapse if output is long
-        let collapsed = output.lines().count() > 10;
+        let is_collapsed = output.lines().count() > 10;
         Self {
             tool_name,
             output,
             is_error,
-            collapsed,
+            collapsed: is_collapsed,
         }
     }
 
