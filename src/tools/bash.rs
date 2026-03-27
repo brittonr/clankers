@@ -238,12 +238,12 @@ impl BashTool {
 
         loop {
             if deadline.is_some_and(|dl| tokio::time::Instant::now() >= dl) {
-                let _ = child.start_kill();
+                child.start_kill().ok();
                 return Err(ToolResult::error(format!("Command timeout after {}s", timeout_secs)));
             }
             tokio::select! {
                 () = ctx.signal.cancelled() => {
-                    let _ = child.start_kill();
+                    child.start_kill().ok();
                     return Err(ToolResult::error("Command cancelled"));
                 }
                 line = out.next_line() => match line {

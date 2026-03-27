@@ -125,15 +125,15 @@ fn handle_submit(
         // Abort the current stream and queue the new prompt
         if let Some(text) = app.submit_input() {
             app.queued_prompt = Some(text);
-            let _ = cmd_tx.send(super::interactive::AgentCommand::Abort);
+            cmd_tx.send(super::interactive::AgentCommand::Abort).ok();
         }
         return;
     }
     if let Some(text) = app.submit_input() {
         if let Some((checkpoint, prompt)) = app.take_pending_branch(&text) {
-            let _ = cmd_tx.send(super::interactive::AgentCommand::ResetCancel);
-            let _ = cmd_tx.send(super::interactive::AgentCommand::TruncateMessages(checkpoint));
-            let _ = cmd_tx.send(super::interactive::AgentCommand::Prompt(prompt));
+            cmd_tx.send(super::interactive::AgentCommand::ResetCancel).ok();
+            cmd_tx.send(super::interactive::AgentCommand::TruncateMessages(checkpoint)).ok();
+            cmd_tx.send(super::interactive::AgentCommand::Prompt(prompt)).ok();
         } else {
             super::event_handlers::handle_input_with_plugins(
                 app,
@@ -151,7 +151,7 @@ fn handle_submit(
 
 fn handle_cancel(app: &mut App, cmd_tx: &tokio::sync::mpsc::UnboundedSender<super::interactive::AgentCommand>) {
     if app.state == AppState::Streaming {
-        let _ = cmd_tx.send(super::interactive::AgentCommand::Abort);
+        cmd_tx.send(super::interactive::AgentCommand::Abort).ok();
     } else if !app.editor.is_empty() {
         app.editor.clear();
         app.slash_menu.hide();

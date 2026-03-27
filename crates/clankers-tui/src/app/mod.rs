@@ -420,7 +420,7 @@ impl App {
     /// the `focused_panel` tracker.
     pub fn focus_panel(&mut self, panel_id: PanelId) {
         if let Some(pane) = self.layout.pane_registry.find_panel(panel_id) {
-            let _ = self.layout.tiling.focus_pane(pane);
+            self.layout.tiling.focus_pane(pane).ok();
             self.layout.focused_panel = Some(panel_id);
             self.layout.focused_subagent = None;
             self.streaming.focused_tool = None;
@@ -431,7 +431,7 @@ impl App {
     /// Focus a specific subagent pane by its string ID.
     pub fn focus_subagent(&mut self, subagent_id: &str) {
         if let Some(pane_id) = self.layout.subagent_panes.pane_id_for(subagent_id) {
-            let _ = self.layout.tiling.focus_pane(pane_id);
+            self.layout.tiling.focus_pane(pane_id).ok();
             self.layout.focused_subagent = Some(subagent_id.to_string());
             self.layout.focused_panel = None;
             self.streaming.focused_tool = None;
@@ -442,7 +442,7 @@ impl App {
     /// Return focus to the chat pane (unfocus any panel, subagent, or tool output).
     pub fn unfocus_panel(&mut self) {
         let chat = self.layout.pane_registry.chat_pane();
-        let _ = self.layout.tiling.focus_pane(chat);
+        self.layout.tiling.focus_pane(chat).ok();
         self.layout.focused_panel = None;
         self.layout.focused_subagent = None;
         self.streaming.focused_tool = None;
@@ -562,7 +562,7 @@ impl App {
         // and chat_pane is still ROOT (PaneRegistry enforces this). That's fine —
         // the renderer will see ROOT → Panel and skip the chat render path.
 
-        let _ = zoomed.focus_pane(ratatui_hypertile::PaneId::ROOT);
+        zoomed.focus_pane(ratatui_hypertile::PaneId::ROOT).ok();
         self.layout.tiling = zoomed;
         self.layout.pane_registry = reg;
 

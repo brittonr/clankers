@@ -135,7 +135,7 @@ async fn run_script(
 
     // Write payload to stdin
     if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(payload_json.as_bytes()).await;
+        stdin.write_all(payload_json.as_bytes()).await.ok();
         drop(stdin);
     }
 

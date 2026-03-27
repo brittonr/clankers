@@ -123,7 +123,7 @@ pub fn spawn_watchdog(
     kill_signal: CancellationToken,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut stall_notified = false;
+        let mut has_stall_notified = false;
 
         loop {
             tokio::select! {
@@ -150,33 +150,33 @@ pub fn spawn_watchdog(
                 );
                 *tracker.state.lock() = HealthState::Unresponsive;
                 if let Some(ref tx) = panel_tx {
-                    let _ = tx.send(SubagentEvent::Error {
+                    tx.send(SubagentEvent::Error {
                         id: tracker.id().to_string(),
                         message: format!("Watchdog: no output for {:.0}s, killing subagent", idle.as_secs_f64()),
-                    });
-                    let _ = tx.send(SubagentEvent::KillRequest {
+                    }).ok();
+                    tx.send(SubagentEvent::KillRequest {
                         id: tracker.id().to_string(),
-                    });
+                    }).ok();
                 }
                 break;
             }
 
             // Check stall timeout
-            if idle >= config.stall_timeout && !stall_notified {
+            if idle >= config.stall_timeout && !has_stall_notified {
                 warn!("subagent {} stalled: no output for {:.0}s", tracker.id(), idle.as_secs_f64());
                 *tracker.state.lock() = HealthState::Stalled;
-                stall_notified = true;
+                has_stall_notified = true;
                 if let Some(ref tx) = panel_tx {
-                    let _ = tx.send(SubagentEvent::Output {
+                    tx.send(SubagentEvent::Output {
                         id: tracker.id().to_string(),
                         line: format!("⚠️  WATCHDOG: no output for {:.0}s — subagent may be stuck", idle.as_secs_f64()),
-                    });
+                    }).ok();
                 }
             }
 
             // Reset stall notification if output resumed
-            if idle < config.stall_timeout && stall_notified {
-                stall_notified = false;
+            if idle < config.stall_timeout && has_stall_notified {
+                has_stall_notified = false;
             }
         }
     })
@@ -303,7 +303,7 @@ mod tests {
         }
 
         cancel.cancel();
-        let _ = handle.await;
+        handle.await.ok();
     }
 
     #[tokio::test]
@@ -337,6 +337,6 @@ mod tests {
         assert_eq!(tracker.state(), HealthState::Unresponsive);
 
         cancel.cancel();
-        let _ = handle.await;
+        handle.await.ok();
     }
 }

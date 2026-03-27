@@ -176,6 +176,10 @@ simulation = ["dep:madsim"]
 property-testing = ["dep:bolero", "dep:bolero-generator", "dep:proptest"]
 nickel = ["clankers-config/nickel"]
 
+[workspace.lints.rust]
+# dylint sets `dylint_lib` cfg when running lint libraries
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(dylint_lib, values("tigerstyle"))'] }
+
 [workspace.lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 # Allow noisy cosmetic lints — tighten these over time.

@@ -321,7 +321,7 @@ mod tests {
                     tokio::spawn(async move {
                         // Read the HTTP request (consume headers)
                         let mut buf = vec![0u8; 8192];
-                        let _ = tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await;
+                        tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await.ok();
 
                         let idx = counter.fetch_add(1, Ordering::SeqCst);
                         let resp = responses.get(idx).cloned().unwrap_or_else(|| {
@@ -343,8 +343,8 @@ mod tests {
                             resp.body,
                         );
 
-                        let _ = stream.write_all(http_response.as_bytes()).await;
-                        let _ = stream.flush().await;
+                        stream.write_all(http_response.as_bytes()).await.ok();
+                        stream.flush().await.ok();
                     });
                 }
             });

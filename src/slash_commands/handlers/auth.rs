@@ -77,12 +77,12 @@ fn handle_login_complete(ctx: &mut SlashContext<'_>, input: &str, verifier: Stri
     match parsed {
         Some((code, state)) => {
             ctx.app.push_system(format!("Exchanging code for account '{}'...", account), false);
-            let _ = ctx.cmd_tx.send(AgentCommand::Login {
+            ctx.cmd_tx.send(AgentCommand::Login {
                 code,
                 state,
                 verifier,
                 account: account.to_string(),
-            });
+            }).ok();
         }
         None => {
             ctx.app.login_verifier = Some((verifier, account.to_string()));
@@ -105,12 +105,12 @@ fn handle_login_complete_from_disk(ctx: &mut SlashContext<'_>, input: &str, acco
         if let Some((code, state)) = crate::modes::interactive::parse_oauth_input(input) {
             ctx.app.push_system(format!("Exchanging code for account '{}'...", account_name), false);
             std::fs::remove_file(&verifier_path).ok();
-            let _ = ctx.cmd_tx.send(AgentCommand::Login {
+            ctx.cmd_tx.send(AgentCommand::Login {
                 code,
                 state,
                 verifier,
                 account: account_name.to_string(),
-            });
+            }).ok();
         } else {
             ctx.app.push_system(
                 "Invalid code format. Expected:\n  /login code#state\n  /login https://...?code=CODE&state=STATE"
@@ -203,9 +203,9 @@ fn handle_account_list(ctx: &mut SlashContext<'_>, store: &crate::provider::auth
             let marker = if info.is_active { "▸" } else { " " };
             let status = if info.is_expired { "✗ expired" } else { "✓ valid" };
             let label = info.label.as_ref().map(|l| format!(" ({})", l)).unwrap_or_default();
-            let _ = writeln!(out, "  {} {}{} — {}", marker, info.name, label, status);
+            writeln!(out, "  {} {}{} — {}", marker, info.name, label, status).ok();
         }
-        let _ = write!(out, "\n  {} account(s). Use /account switch <name> to change.", accounts.len());
+        write!(out, "\n  {} account(s). Use /account switch <name> to change.", accounts.len()).ok();
         ctx.app.push_system(out, false);
     }
 }
@@ -217,7 +217,7 @@ fn handle_account_switch(ctx: &mut SlashContext<'_>, store: &crate::provider::au
         ctx.app
             .push_system(format!("Usage: /account switch <name>\n\nAvailable: {}", names.join(", ")), true);
     } else {
-        let _ = ctx.cmd_tx.send(AgentCommand::SwitchAccount(args.to_string()));
+        ctx.cmd_tx.send(AgentCommand::SwitchAccount(args.to_string())).ok();
     }
 }
 

@@ -168,7 +168,7 @@ impl Tool for MatrixReadTool {
             None => return ToolResult::error("Missing required parameter: room_id"),
         };
 
-        let limit = params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20).min(100) as usize;
+        let limit = usize::try_from(params.get("limit").and_then(|v| v.as_u64()).unwrap_or(20).min(100)).unwrap_or(20);
 
         let room_id_parsed = match clankers_matrix::ruma::RoomId::parse(room_id) {
             Ok(id) => id.clone(),
@@ -355,13 +355,13 @@ impl Tool for MatrixPeersTool {
                     if p.accepts_prompts { "yes" } else { "no" },
                 );
                 if !p.tags.is_empty() {
-                    let _ = write!(info, "\n  Tags: {}", p.tags.join(", "));
+                    write!(info, "\n  Tags: {}", p.tags.join(", ")).ok();
                 }
                 if !p.agents.is_empty() {
-                    let _ = write!(info, "\n  Agents: {}", p.agents.join(", "));
+                    write!(info, "\n  Agents: {}", p.agents.join(", ")).ok();
                 }
                 if let Some(ref model) = p.model {
-                    let _ = write!(info, "\n  Model: {}", model);
+                    write!(info, "\n  Model: {}", model).ok();
                 }
                 info
             })

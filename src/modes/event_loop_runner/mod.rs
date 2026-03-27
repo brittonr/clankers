@@ -117,7 +117,7 @@ impl<'a> EventLoopRunner<'a> {
             })?;
 
             if self.app.should_quit {
-                let _ = self.cmd_tx.send(AgentCommand::Quit);
+                self.cmd_tx.send(AgentCommand::Quit).ok();
                 break;
             }
 
@@ -327,7 +327,7 @@ impl<'a> EventLoopRunner<'a> {
             }
             #[cfg(not(unix))]
             {
-                let _ = std::process::Command::new("taskkill").args(&["/PID", &pid.to_string(), "/F"]).spawn();
+                std::process::Command::new("taskkill").args(&["/PID", &pid.to_string(), "/F"]).spawn().ok();
             }
             subagent_panel(self.app).mark_error(id);
             subagent_panel(self.app).append_output(id, "⚡ Killed by user");
@@ -344,7 +344,7 @@ impl<'a> EventLoopRunner<'a> {
     fn drain_todo_requests(&mut self) {
         while let Ok((action, resp_tx)) = self.todo_rx.try_recv() {
             let response = process_todo_action(todo_panel(self.app), action);
-            let _ = resp_tx.send(response);
+            resp_tx.send(response).ok();
         }
     }
 
@@ -357,7 +357,7 @@ impl<'a> EventLoopRunner<'a> {
                 true,
             );
             self.app.push_system("Type 'y' to approve or 'n' to block. Approving...".to_string(), false);
-            let _ = req.resp_tx.send(true);
+            req.resp_tx.send(true).ok();
         }
     }
 
@@ -439,8 +439,8 @@ impl<'a> EventLoopRunner<'a> {
                                 }
                                 // Paused check — only continue if TUI says active
                                 if self.app.loop_status.as_ref().is_some_and(|ls| ls.active) {
-                                    let _ = self.cmd_tx.send(AgentCommand::ResetCancel);
-                                    let _ = self.cmd_tx.send(AgentCommand::Prompt(prompt));
+                                    self.cmd_tx.send(AgentCommand::ResetCancel).ok();
+                                    self.cmd_tx.send(AgentCommand::Prompt(prompt)).ok();
                                 }
                             }
                             clankers_controller::PostPromptAction::RunAutoTest(prompt) => {
@@ -448,8 +448,8 @@ impl<'a> EventLoopRunner<'a> {
                                     format!("🧪 Running auto-test: {}", self.app.auto_test_command.as_deref().unwrap_or("?")),
                                     false,
                                 );
-                                let _ = self.cmd_tx.send(AgentCommand::ResetCancel);
-                                let _ = self.cmd_tx.send(AgentCommand::Prompt(prompt));
+                                self.cmd_tx.send(AgentCommand::ResetCancel).ok();
+                                self.cmd_tx.send(AgentCommand::Prompt(prompt)).ok();
                             }
                             clankers_controller::PostPromptAction::None => {}
                         }

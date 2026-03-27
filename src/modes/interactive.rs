@@ -213,7 +213,7 @@ pub async fn run_interactive(
     if let Some(ref wt) = worktree_setup
         && let Some(ref db) = db
     {
-        let _ = std::env::set_current_dir(&original_cwd);
+        std::env::set_current_dir(&original_cwd).ok();
         match crate::worktree::session_bridge::complete_and_merge(db, wt, Some(provider_for_merge), model_for_merge) {
             Ok(handle) => {
                 eprintln!("Merging worktree branches...");
@@ -269,7 +269,7 @@ async fn run_event_loop(
     // and rebuild display blocks so the user sees the conversation
     if !seed_messages.is_empty() {
         super::session_restore::restore_display_blocks(app, &seed_messages);
-        let _ = cmd_tx.send(AgentCommand::SeedMessages(seed_messages));
+        cmd_tx.send(AgentCommand::SeedMessages(seed_messages)).ok();
     }
 
     // Clone tool_env and plugin_manager for tool rebuilds inside the agent task.
@@ -323,14 +323,14 @@ pub(crate) fn resume_session_from_file(
             let msgs = mgr.build_context().unwrap_or_default();
             let msg_count = msgs.len();
             app.session_id = mgr.session_id().to_string();
-            let _ = mgr.record_resume(crate::provider::message::MessageId::new("slash-resume"));
+            mgr.record_resume(crate::provider::message::MessageId::new("slash-resume")).ok();
 
             app.conversation.blocks.clear();
             app.conversation.all_blocks.clear();
             app.conversation.active_block = None;
             super::session_restore::restore_display_blocks(app, &msgs);
 
-            let _ = cmd_tx.send(AgentCommand::SeedMessages(msgs));
+            cmd_tx.send(AgentCommand::SeedMessages(msgs)).ok();
 
             app.push_system(format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count), false);
             app.conversation.scroll.scroll_to_bottom();

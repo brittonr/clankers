@@ -211,7 +211,7 @@ impl Tool for WebTool {
             Some(q) => q,
             None => return ToolResult::error("Missing required parameter: query"),
         };
-        let max_results = params["max_results"].as_u64().unwrap_or(5) as usize;
+        let max_results = usize::try_from(params["max_results"].as_u64().unwrap_or(5)).unwrap_or(5);
         let max_results = max_results.min(20);
 
         match action {
@@ -244,10 +244,10 @@ fn format_search_results_streaming(json: &Value, max: usize, ctx: &ToolContext) 
             // Stream each result as it's formatted
             ctx.emit_progress(&format!("{}. {}", count + 1, title));
 
-            let _ = writeln!(output, "{}. **{}**", count + 1, title);
-            let _ = writeln!(output, "   {}", url);
+            writeln!(output, "{}. **{}**", count + 1, title).ok();
+            writeln!(output, "   {}", url).ok();
             if !snippet.is_empty() {
-                let _ = writeln!(output, "   {}", snippet);
+                writeln!(output, "   {}", snippet).ok();
             }
             output.push('\n');
             count += 1;
@@ -264,10 +264,10 @@ fn format_search_results_streaming(json: &Value, max: usize, ctx: &ToolContext) 
 /// Very basic HTML text extraction (strip tags, decode common entities)
 fn extract_text_from_html(html: &str) -> String {
     let mut result = String::with_capacity(html.len());
-    let mut in_tag = false;
-    let mut in_script = false;
-    let mut in_style = false;
-    let mut last_was_space = false;
+    let mut is_in_tag = false;
+    let mut is_in_script = false;
+    let mut is_in_style = false;
+    let mut was_last_space = false;
 
     let lower = html.to_lowercase();
     let chars: Vec<char> = html.chars().collect();
@@ -276,21 +276,21 @@ fn extract_text_from_html(html: &str) -> String {
 
     while i < len {
         // Handle tag opening
-        if !in_tag && chars[i] == '<' {
-            let skip = handle_tag_open(&lower[i..], &mut in_tag, &mut in_script, &mut in_style, &mut result);
+        if !is_in_tag && chars[i] == '<' {
+            let skip = handle_tag_open(&lower[i..], &mut is_in_tag, &mut is_in_script, &mut is_in_style, &mut result);
             i += skip;
             continue;
         }
 
         // Handle tag closing
-        if in_tag && chars[i] == '>' {
-            in_tag = false;
+        if is_in_tag && chars[i] == '>' {
+            is_in_tag = false;
             i += 1;
             continue;
         }
 
         // Skip content inside tags or script/style blocks
-        if in_tag || in_script || in_style {
+        if is_in_tag || is_in_script || is_in_style {
             i += 1;
             continue;
         }
@@ -301,12 +301,12 @@ fn extract_text_from_html(html: &str) -> String {
         {
             result.push(ch);
             i += skip;
-            last_was_space = ch == ' ';
+            was_last_space = ch == ' ';
             continue;
         }
 
         // Collapse whitespace
-        handle_text_char(chars[i], &mut result, &mut last_was_space);
+        handle_text_char(chars[i], &mut result, &mut was_last_space);
         i += 1;
     }
 
@@ -316,22 +316,22 @@ fn extract_text_from_html(html: &str) -> String {
 /// Handle opening tag: detect script/style blocks and insert newlines for block elements
 fn handle_tag_open(
     remaining_lower: &str,
-    in_tag: &mut bool,
-    in_script: &mut bool,
-    in_style: &mut bool,
+    is_in_tag: &mut bool,
+    is_in_script: &mut bool,
+    is_in_style: &mut bool,
     result: &mut String,
 ) -> usize {
-    *in_tag = true;
+    *is_in_tag = true;
 
     // Track script/style blocks
     if remaining_lower.starts_with("<script") {
-        *in_script = true;
+        *is_in_script = true;
     } else if remaining_lower.starts_with("<style") {
-        *in_style = true;
+        *is_in_style = true;
     } else if remaining_lower.starts_with("</script") {
-        *in_script = false;
+        *is_in_script = false;
     } else if remaining_lower.starts_with("</style") {
-        *in_style = false;
+        *is_in_style = false;
     }
 
     // Block elements get newlines
@@ -378,15 +378,15 @@ fn decode_html_entity(text_lower: &str) -> Option<(char, usize)> {
 }
 
 /// Handle a single text character: collapse whitespace and push to result
-fn handle_text_char(ch: char, result: &mut String, last_was_space: &mut bool) {
+fn handle_text_char(ch: char, result: &mut String, was_last_space: &mut bool) {
     if ch.is_whitespace() {
-        if !*last_was_space {
+        if !*was_last_space {
             result.push(' ');
-            *last_was_space = true;
+            *was_last_space = true;
         }
     } else {
         result.push(ch);
-        *last_was_space = false;
+        *was_last_space = false;
     }
 }
 

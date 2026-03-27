@@ -243,10 +243,10 @@ pub fn copy_to_clipboard(text: &str) {
             .spawn()
     {
         if let Some(ref mut stdin) = child.stdin {
-            let _ = stdin.write_all(text.as_bytes());
+            stdin.write_all(text.as_bytes()).ok();
         }
         // Don't wait — wl-copy detaches and keeps the content available
-        let _ = child.wait();
+        child.wait().ok();
         return;
     }
     // wl-copy not found or not Wayland, fall through to OSC 52
@@ -254,8 +254,8 @@ pub fn copy_to_clipboard(text: &str) {
     let encoded = base64_encode(text);
     // OSC 52: Set clipboard. 'c' = system clipboard.
     let osc = format!("\x1b]52;c;{}\x07", encoded);
-    let _ = std::io::stdout().write_all(osc.as_bytes());
-    let _ = std::io::stdout().flush();
+    std::io::stdout().write_all(osc.as_bytes()).ok();
+    std::io::stdout().flush().ok();
 }
 
 /// Simple base64 encoder (no external dep needed, we already have base64 crate)

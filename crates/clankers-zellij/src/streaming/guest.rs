@@ -73,10 +73,10 @@ fn create_fake_socket(info: &SessionInfo) -> Result<PathBuf, crate::ZellijError>
         .unwrap_or(1000); // fallback UID
 
     let dir = PathBuf::from(format!("/tmp/zellij-{}", uid_suffix));
-    let _ = std::fs::create_dir_all(&dir);
+    std::fs::create_dir_all(&dir).ok();
     let socket_path = dir.join(format!("{}-remote", info.session_name));
     // Remove old socket if it exists
-    let _ = std::fs::remove_file(&socket_path);
+    std::fs::remove_file(&socket_path).ok();
     Ok(socket_path)
 }
 
@@ -105,12 +105,12 @@ async fn proxy_socket(
     let (mut unix_read, mut unix_write) = unix_stream.into_split();
 
     let a = tokio::spawn(async move {
-        let _ = tokio::io::copy(&mut quic_recv, &mut unix_write).await;
+        tokio::io::copy(&mut quic_recv, &mut unix_write).await.ok();
     });
     let b = tokio::spawn(async move {
-        let _ = tokio::io::copy(&mut unix_read, &mut quic_send).await;
+        tokio::io::copy(&mut unix_read, &mut quic_send).await.ok();
     });
 
-    let _ = tokio::try_join!(a, b);
-    let _ = std::fs::remove_file(&socket_path);
+    tokio::try_join!(a, b).ok();
+    std::fs::remove_file(&socket_path).ok();
 }

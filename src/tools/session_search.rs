@@ -207,10 +207,9 @@ impl Tool for SessionSearchTool {
             _ => return ToolResult::error("Missing required 'query' parameter."),
         };
         let cwd = params.get("cwd").and_then(|v| v.as_str());
-        let limit = params
-            .get("limit")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(10) as usize;
+        let limit = usize::try_from(
+            params.get("limit").and_then(|v| v.as_u64()).unwrap_or(10)
+        ).unwrap_or(10);
 
         // Tier 1: index search
         let mut results = if let Some(db) = ctx.db() {
@@ -233,15 +232,15 @@ impl Tool for SessionSearchTool {
 
         let mut out = format!("Found {} session(s):\n\n", results.len());
         for r in &results {
-            let _ = writeln!(out, "**{}** ({})", r.session_id, r.date);
+            writeln!(out, "**{}** ({})", r.session_id, r.date).ok();
             if !r.model.is_empty() {
-                let _ = writeln!(out, "  Model: {}", r.model);
+                writeln!(out, "  Model: {}", r.model).ok();
             }
             if !r.cwd.is_empty() {
-                let _ = writeln!(out, "  Dir: {}", r.cwd);
+                writeln!(out, "  Dir: {}", r.cwd).ok();
             }
-            let _ = writeln!(out, "  {}", r.preview);
-            let _ = writeln!(out, "  (source: {})\n", r.source);
+            writeln!(out, "  {}", r.preview).ok();
+            writeln!(out, "  (source: {})\n", r.source).ok();
         }
         ToolResult::text(out)
     }

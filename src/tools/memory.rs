@@ -107,7 +107,7 @@ impl MemoryTool {
             let entries = db.memory().list(Some(&scope)).unwrap_or_default();
             let mut listing = String::new();
             for e in &entries {
-                let _ = writeln!(listing, "- [{}] {} ({}ch)", e.id, e.text, e.text.len());
+                writeln!(listing, "- [{}] {} ({}ch)", e.id, e.text, e.text.len()).ok();
             }
             return ToolResult::error(format!(
                 "Memory at {current}/{limit} chars. Adding this entry ({} chars) would exceed the limit.\n\
@@ -161,7 +161,7 @@ impl MemoryTool {
         if matches.len() > 1 {
             let mut listing = String::from("Multiple entries match. Be more specific:\n");
             for e in &matches {
-                let _ = writeln!(listing, "- [{}] {}", e.id, e.text);
+                writeln!(listing, "- [{}] {}", e.id, e.text).ok();
             }
             return ToolResult::error(listing);
         }
@@ -210,7 +210,7 @@ impl MemoryTool {
         if matches.len() > 1 {
             let mut listing = String::from("Multiple entries match. Be more specific:\n");
             for e in &matches {
-                let _ = writeln!(listing, "- [{}] {}", e.id, e.text);
+                writeln!(listing, "- [{}] {}", e.id, e.text).ok();
             }
             return ToolResult::error(listing);
         }
@@ -244,7 +244,7 @@ impl MemoryTool {
             } else {
                 format!(" [{}]", e.tags.join(", "))
             };
-            let _ = writeln!(out, "- [{}] ({}) {}{}", e.id, e.scope, e.text, tags);
+            writeln!(out, "- [{}] ({}) {}{}", e.id, e.scope, e.text, tags).ok();
         }
         ToolResult::text(out)
     }

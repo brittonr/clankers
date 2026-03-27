@@ -81,7 +81,7 @@ where
     if data.len() > MAX_FRAME_SIZE {
         return Err(FrameError::TooLarge { size: data.len() });
     }
-    let len = (data.len() as u32).to_be_bytes();
+    let len = u32::try_from(data.len()).map_err(|_| FrameError::TooLarge { size: data.len() })?.to_be_bytes();
     writer.write_all(&len).await?;
     writer.write_all(&data).await?;
     writer.flush().await?;
@@ -101,7 +101,7 @@ where
 {
     let mut len_buf = [0u8; 4];
     reader.read_exact(&mut len_buf).await?;
-    let len = u32::from_be_bytes(len_buf) as usize;
+    let len = usize::try_from(u32::from_be_bytes(len_buf)).expect("u32 fits in usize");
     if len > MAX_FRAME_SIZE {
         return Err(FrameError::TooLarge { size: len });
     }
@@ -117,7 +117,7 @@ where W: AsyncWrite + Unpin {
     if data.len() > MAX_FRAME_SIZE {
         return Err(FrameError::TooLarge { size: data.len() });
     }
-    let len = (data.len() as u32).to_be_bytes();
+    let len = u32::try_from(data.len()).map_err(|_| FrameError::TooLarge { size: data.len() })?.to_be_bytes();
     writer.write_all(&len).await?;
     writer.write_all(data).await?;
     writer.flush().await?;
@@ -129,7 +129,7 @@ pub async fn read_raw_frame<R>(reader: &mut R) -> Result<Vec<u8>, FrameError>
 where R: AsyncRead + Unpin {
     let mut len_buf = [0u8; 4];
     reader.read_exact(&mut len_buf).await?;
-    let len = u32::from_be_bytes(len_buf) as usize;
+    let len = usize::try_from(u32::from_be_bytes(len_buf)).expect("u32 fits in usize");
     if len > MAX_FRAME_SIZE {
         return Err(FrameError::TooLarge { size: len });
     }

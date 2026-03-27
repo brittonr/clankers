@@ -215,7 +215,7 @@ pub async fn run_daemon(
     }
 
     cancel.cancel();
-    let _ = shutdown_tx.send(true);
+    shutdown_tx.send(true).ok();
 
     if let Some(h) = iroh_handle {
         h.await.ok();
@@ -592,7 +592,7 @@ fn spawn_idle_reaper(
                             if let Some(handle) = st.sessions.get(session_id)
                                 && let Some(ref tx) = handle.cmd_tx
                             {
-                                let _ = tx.send(clankers_protocol::SessionCommand::Disconnect);
+                                tx.send(clankers_protocol::SessionCommand::Disconnect).ok();
                             }
                             st.remove_session(session_id);
                             if let Some(ref catalog) = catalog {

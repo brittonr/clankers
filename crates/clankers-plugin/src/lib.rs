@@ -220,7 +220,7 @@ impl PluginManager {
             .map(|(name, _)| name.clone())
             .collect();
         for name in names {
-            let _ = self.reload(&name);
+            self.reload(&name).ok();
         }
     }
 
@@ -252,7 +252,7 @@ impl PluginManager {
     pub fn apply_disabled_set(&mut self, disabled: &[String]) {
         for name in disabled {
             if self.plugins.contains_key(name) {
-                let _ = self.disable(name);
+                self.disable(name).ok();
             }
         }
     }

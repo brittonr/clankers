@@ -112,7 +112,8 @@ impl AgentStats {
         if self.total_tasks == 0 {
             return Duration::ZERO;
         }
-        Duration::from_millis(self.total_duration_ms / self.total_tasks)
+        // total_tasks checked non-zero above
+        Duration::from_millis(self.total_duration_ms.checked_div(self.total_tasks).unwrap_or(0))
     }
 
     fn record(&mut self, outcome: &WorkOutcome, duration_ms: u64) {
@@ -154,7 +155,7 @@ impl AgentIdentity {
     /// Record a completed work item.
     pub fn record_work(&mut self, task: &str, outcome: WorkOutcome, duration: Duration, session_id: Option<&str>) {
         let now = Utc::now();
-        let duration_ms = duration.as_millis() as u64;
+        let duration_ms = u64::try_from(duration.as_millis()).unwrap_or(u64::MAX);
 
         // Truncate task to 200 chars for storage
         let task_truncated: String = task.chars().take(200).collect();

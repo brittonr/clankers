@@ -119,7 +119,7 @@ pub fn purge_sessions(sessions_dir: &Path, cwd: &str) -> std::io::Result<usize> 
         std::fs::remove_file(f)?;
         // Clean up migration backup if present
         let bak = f.with_extension("jsonl.bak");
-        let _ = std::fs::remove_file(bak);
+        std::fs::remove_file(bak).ok();
     }
     Ok(count)
 }
@@ -133,7 +133,7 @@ pub fn purge_all_sessions(sessions_dir: &Path) -> std::io::Result<usize> {
     for f in &files {
         std::fs::remove_file(f)?;
         let bak = f.with_extension("jsonl.bak");
-        let _ = std::fs::remove_file(bak);
+        std::fs::remove_file(bak).ok();
     }
     Ok(count)
 }

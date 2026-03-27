@@ -80,8 +80,8 @@ pub(crate) async fn handle_chat_connection(
                                 warn!("[{}] credential verification failed: {e}", key);
                                 let err = json!({ "type": "error", "message": format!("Token rejected: {e}") });
                                 let mut send = send;
-                                let _ = write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await;
-                                let _ = send.finish();
+                                write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await.ok();
+                                send.finish().ok();
                             }
                         },
                         Err(e) => {
@@ -101,8 +101,8 @@ pub(crate) async fn handle_chat_connection(
                 "message": "Authentication required. Send an auth frame with a valid token first."
             });
             let mut send = send;
-            let _ = write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await;
-            let _ = send.finish();
+            write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await.ok();
+            send.finish().ok();
             continue;
         }
 
@@ -149,8 +149,8 @@ async fn run_chat_prompt(
         .is_err()
     {
         let err = json!({ "type": "error", "message": "session disconnected" });
-        let _ = write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await;
-        let _ = send.finish();
+        write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await.ok();
+        send.finish().ok();
         return;
     }
 
@@ -178,7 +178,7 @@ async fn run_chat_prompt(
                     "input": input,
                 });
                 let bytes = serde_json::to_vec(&frame).unwrap_or_default();
-                let _ = write_frame(&mut send, &bytes).await;
+                write_frame(&mut send, &bytes).await.ok();
             }
             Ok(DaemonEvent::ToolDone {
                 ref call_id,
@@ -193,7 +193,7 @@ async fn run_chat_prompt(
                     "content": text,
                 });
                 let bytes = serde_json::to_vec(&frame).unwrap_or_default();
-                let _ = write_frame(&mut send, &bytes).await;
+                write_frame(&mut send, &bytes).await.ok();
             }
             Ok(DaemonEvent::AgentEnd | DaemonEvent::PromptDone { .. }) => break,
             Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
@@ -206,8 +206,8 @@ async fn run_chat_prompt(
 
     // Send final frame
     let final_frame = json!({ "type": "done", "text": collected });
-    let _ = write_frame(&mut send, &serde_json::to_vec(&final_frame).unwrap_or_default()).await;
-    let _ = send.finish();
+    write_frame(&mut send, &serde_json::to_vec(&final_frame).unwrap_or_default()).await.ok();
+    send.finish().ok();
 
     // Update last_active
     {
@@ -270,8 +270,8 @@ pub(crate) async fn handle_rpc_v1_connection(
                                 warn!("[rpc/1 {}] credential verification failed: {e}", &peer_id[..8.min(peer_id.len())]);
                                 let err = json!({ "error": format!("Token rejected: {e}") });
                                 let mut send = send;
-                                let _ = write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await;
-                                let _ = send.finish();
+                                write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await.ok();
+                                send.finish().ok();
                             }
                         },
                         Err(e) => {
@@ -287,8 +287,8 @@ pub(crate) async fn handle_rpc_v1_connection(
         if !authenticated {
             let err = json!({ "error": "Authentication required. Send an auth frame first." });
             let mut send = send;
-            let _ = write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await;
-            let _ = send.finish();
+            write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await.ok();
+            send.finish().ok();
             continue;
         }
 
@@ -308,8 +308,8 @@ pub(crate) async fn handle_rpc_v1_connection(
             _ => {
                 let response = dispatch_rpc(&request, &state);
                 let mut send = send;
-                let _ = write_frame(&mut send, &serde_json::to_vec(&response).unwrap_or_default()).await;
-                let _ = send.finish();
+                write_frame(&mut send, &serde_json::to_vec(&response).unwrap_or_default()).await.ok();
+                send.finish().ok();
             }
         }
     }

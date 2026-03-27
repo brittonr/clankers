@@ -113,14 +113,14 @@ pub fn init_socket_dir() -> std::io::Result<()> {
 /// Clean up socket files and PID file.
 pub fn cleanup_socket_dir() {
     let dir = socket_dir();
-    let _ = std::fs::remove_file(pid_file_path());
-    let _ = std::fs::remove_file(control_socket_path());
+    std::fs::remove_file(pid_file_path()).ok();
+    std::fs::remove_file(control_socket_path()).ok();
     // Remove session sockets
     if let Ok(entries) = std::fs::read_dir(&dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "sock") {
-                let _ = std::fs::remove_file(path);
+                std::fs::remove_file(path).ok();
             }
         }
     }
@@ -132,12 +132,12 @@ fn cleanup_stale_sockets(dir: &Path) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.extension().is_some_and(|ext| ext == "sock") {
-                let _ = std::fs::remove_file(&path);
+                std::fs::remove_file(&path).ok();
                 info!("cleaned up stale socket: {}", path.display());
             }
         }
     }
-    let _ = std::fs::remove_file(dir.join("daemon.pid"));
+    std::fs::remove_file(dir.join("daemon.pid")).ok();
 }
 
 /// Check if a process with the given PID is still running.
@@ -149,7 +149,7 @@ fn is_process_alive(pid: u32) -> bool {
     }
     #[cfg(not(unix))]
     {
-        let _ = pid;
+        pid.ok();
         false
     }
 }
@@ -270,7 +270,7 @@ impl Default for DaemonState {
 /// and writes `ControlResponse`.
 pub async fn run_control_socket(state: Arc<Mutex<DaemonState>>, shutdown: tokio::sync::watch::Receiver<bool>) {
     let path = control_socket_path();
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
 
     let listener = match UnixListener::bind(&path) {
         Ok(l) => l,
@@ -325,7 +325,7 @@ async fn handle_control_connection(mut stream: UnixStream, state: Arc<Mutex<Daem
             ControlCommand::KillSession { session_id } => {
                 if let Some(handle) = state.sessions.get(&session_id) {
                     if let Some(ref tx) = handle.cmd_tx {
-                        let _ = tx.send(SessionCommand::Disconnect);
+                        tx.send(SessionCommand::Disconnect).ok();
                     }
                     ControlResponse::Killed
                 } else {
@@ -382,7 +382,7 @@ pub async fn run_session_socket(
     shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
     let path = session_socket_path(&session_id);
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
 
     let listener = match UnixListener::bind(&path) {
         Ok(l) => l,
@@ -419,7 +419,7 @@ pub async fn run_session_socket(
         }
     }
 
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
 }
 
 /// Handle a single client connected to a session socket.

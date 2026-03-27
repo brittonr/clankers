@@ -66,7 +66,7 @@ pub(crate) async fn probe_peer_background(
         }
     }
 
-    let _ = registry.save(&registry_path);
+    registry.save(&registry_path).ok();
 }
 
 /// Discover peers via mDNS in the background. Adds discovered peers to the
@@ -105,7 +105,7 @@ pub(crate) async fn discover_peers_background(
         }
     }
 
-    let _ = registry.save(&registry_path);
+    registry.save(&registry_path).ok();
 
     // Probe each discovered peer for capabilities
     for (eid, _info) in discovered {

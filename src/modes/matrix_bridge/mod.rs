@@ -164,7 +164,7 @@ pub(crate) async fn run_matrix_bridge(
                         // Typing indicator
                         {
                             let c = client.read().await;
-                            let _ = c.set_typing(&room_id_parsed, true).await;
+                            c.set_typing(&room_id_parsed, true).await.ok();
                         }
                         let typing_cancel = spawn_typing_refresh(Arc::clone(&client), room_id_parsed.clone());
 
@@ -201,7 +201,7 @@ pub(crate) async fn run_matrix_bridge(
                         typing_cancel.cancel();
                         {
                             let c = client.read().await;
-                            let _ = c.set_typing(&room_id_parsed, false).await;
+                            c.set_typing(&room_id_parsed, false).await.ok();
                         }
 
                         // Sendfile extraction + upload
@@ -262,7 +262,7 @@ pub(crate) async fn run_matrix_bridge(
 
                         {
                             let c = client.read().await;
-                            let _ = c.set_typing(&room_id_parsed, true).await;
+                            c.set_typing(&room_id_parsed, true).await.ok();
                         }
                         let typing_cancel = spawn_typing_refresh(Arc::clone(&client), room_id_parsed.clone());
 
@@ -273,10 +273,10 @@ pub(crate) async fn run_matrix_bridge(
                                 error!("Failed to download media {}: {e}", filename);
                                 typing_cancel.cancel();
                                 let c = client.read().await;
-                                let _ = c.set_typing(&room_id_parsed, false).await;
-                                let _ = c.send_markdown(&room_id_parsed, &format!(
+                                c.set_typing(&room_id_parsed, false).await.ok();
+                                c.send_markdown(&room_id_parsed, &format!(
                                     "Failed to download attachment: {e}"
-                                )).await;
+                                )).await.ok();
                                 continue;
                             }
                         };
@@ -285,7 +285,7 @@ pub(crate) async fn run_matrix_bridge(
                         let attachments_dir = sessions_dir
                             .join(key.dir_name())
                             .join("attachments");
-                        let _ = std::fs::create_dir_all(&attachments_dir);
+                        std::fs::create_dir_all(&attachments_dir).ok();
                         let save_path = attachments_dir.join(&filename);
                         if let Err(e) = std::fs::write(&save_path, &file_bytes) {
                             error!("Failed to save attachment {}: {e}", save_path.display());
@@ -380,7 +380,7 @@ pub(crate) async fn run_matrix_bridge(
                         typing_cancel.cancel();
                         {
                             let c = client.read().await;
-                            let _ = c.set_typing(&room_id_parsed, false).await;
+                            c.set_typing(&room_id_parsed, false).await.ok();
                         }
 
                         let c = client.read().await;
@@ -443,7 +443,7 @@ async fn check_sender_auth(
                          Request a new one from the daemon owner, \
                          or register with `!token <base64>`."
                     );
-                    let _ = c.send_markdown(&rid, &msg).await;
+                    c.send_markdown(&rid, &msg).await.ok();
                 }
                 SendCheckResult::Denied
             }
@@ -478,7 +478,7 @@ fn spawn_typing_refresh(
             tokio::select! {
                 _ = interval.tick() => {
                     let c = client.read().await;
-                    let _ = c.set_typing(&room_id, true).await;
+                    c.set_typing(&room_id, true).await.ok();
                 }
                 () = token.cancelled() => break,
             }

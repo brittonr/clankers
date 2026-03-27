@@ -163,14 +163,14 @@ impl Identity {
                 SecretKey::from_bytes(&key_bytes)
             } else {
                 let key = SecretKey::generate(&mut rand::rng());
-                let _ = std::fs::create_dir_all(path.parent().unwrap_or(Path::new(".")));
-                let _ = std::fs::write(path, key.to_bytes());
+                std::fs::create_dir_all(path.parent().unwrap_or(Path::new("."))).ok();
+                std::fs::write(path, key.to_bytes()).ok();
                 key
             }
         } else {
             let key = SecretKey::generate(&mut rand::rng());
-            let _ = std::fs::create_dir_all(path.parent().unwrap_or(Path::new(".")));
-            let _ = std::fs::write(path, key.to_bytes());
+            std::fs::create_dir_all(path.parent().unwrap_or(Path::new("."))).ok();
+            std::fs::write(path, key.to_bytes()).ok();
             key
         };
         Self {

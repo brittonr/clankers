@@ -108,8 +108,8 @@ fn toggle_pause(ctx: &mut SlashContext<'_>) {
         // Resuming — kick off the next iteration
         ctx.app.push_system(format!("Loop '{name}' resumed ({iteration}/{max})."), false);
         if let Some(prompt) = prompt {
-            let _ = ctx.cmd_tx.send(AgentCommand::ResetCancel);
-            let _ = ctx.cmd_tx.send(AgentCommand::Prompt(prompt));
+            ctx.cmd_tx.send(AgentCommand::ResetCancel).ok();
+            ctx.cmd_tx.send(AgentCommand::Prompt(prompt)).ok();
         }
     } else {
         ctx.app.push_system(format!("Loop '{name}' paused ({iteration}/{max})."), false);
@@ -179,8 +179,8 @@ fn start_loop(args: &str, ctx: &mut SlashContext<'_>) {
     );
 
     // Send the first iteration
-    let _ = ctx.cmd_tx.send(AgentCommand::ResetCancel);
-    let _ = ctx.cmd_tx.send(AgentCommand::Prompt(prompt));
+    ctx.cmd_tx.send(AgentCommand::ResetCancel).ok();
+    ctx.cmd_tx.send(AgentCommand::Prompt(prompt)).ok();
 }
 
 /// Parse "until" args: either `"quoted text" rest` or `word rest`.

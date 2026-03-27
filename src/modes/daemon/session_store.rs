@@ -48,9 +48,9 @@ impl AuthLayer {
                 drop(read_txn);
                 if let Ok(tx) = self.db.begin_write() {
                     if let Ok(mut table) = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE) {
-                        let _ = table.remove(user_id);
+                        table.remove(user_id).ok();
                     }
-                    let _ = tx.commit();
+                    tx.commit().ok();
                 }
                 None
             }
@@ -69,7 +69,7 @@ impl AuthLayer {
         if let Ok(tx) = self.db.begin_write() {
             {
                 if let Ok(mut table) = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE) {
-                    let _ = table.insert(user_id, encoded.as_slice());
+                    table.insert(user_id, encoded.as_slice()).ok();
                 }
             }
             if let Err(e) = tx.commit() {
@@ -149,9 +149,9 @@ impl SessionCatalog {
     pub fn new(db: Arc<redb::Database>) -> Self {
         // Ensure tables exist
         if let Ok(tx) = db.begin_write() {
-            let _ = tx.open_table(SESSION_CATALOG_TABLE);
-            let _ = tx.open_table(SESSION_KEYS_TABLE);
-            let _ = tx.commit();
+            tx.open_table(SESSION_CATALOG_TABLE).ok();
+            tx.open_table(SESSION_KEYS_TABLE).ok();
+            tx.commit().ok();
         }
         Self { db }
     }
@@ -169,10 +169,10 @@ impl SessionCatalog {
         if let Ok(tx) = self.db.begin_write() {
             {
                 if let Ok(mut table) = tx.open_table(SESSION_CATALOG_TABLE) {
-                    let _ = table.insert(entry.session_id.as_str(), encoded.as_slice());
+                    table.insert(entry.session_id.as_str(), encoded.as_slice()).ok();
                 }
             }
-            let _ = tx.commit();
+            tx.commit().ok();
         }
     }
 
@@ -221,10 +221,10 @@ impl SessionCatalog {
         if let Ok(tx) = self.db.begin_write() {
             {
                 if let Ok(mut table) = tx.open_table(SESSION_CATALOG_TABLE) {
-                    let _ = table.remove(session_id);
+                    table.remove(session_id).ok();
                 }
             }
-            let _ = tx.commit();
+            tx.commit().ok();
         }
         // Also remove any key index entries pointing to this session
         self.remove_keys_for_session(session_id);
@@ -264,10 +264,10 @@ impl SessionCatalog {
         if let Ok(tx) = self.db.begin_write() {
             {
                 if let Ok(mut table) = tx.open_table(SESSION_KEYS_TABLE) {
-                    let _ = table.insert(key_json.as_str(), session_id);
+                    table.insert(key_json.as_str(), session_id).ok();
                 }
             }
-            let _ = tx.commit();
+            tx.commit().ok();
         }
     }
 
@@ -303,11 +303,11 @@ impl SessionCatalog {
             {
                 if let Ok(mut table) = tx.open_table(SESSION_KEYS_TABLE) {
                     for key in &keys_to_remove {
-                        let _ = table.remove(key.as_str());
+                        table.remove(key.as_str()).ok();
                     }
                 }
             }
-            let _ = tx.commit();
+            tx.commit().ok();
         }
     }
 
@@ -377,9 +377,9 @@ pub fn create_auth_layer(
     let db = Arc::clone(db);
     // Ensure auth tables exist
     if let Ok(tx) = db.begin_write() {
-        let _ = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE);
-        let _ = tx.open_table(clankers_ucan::revocation::REVOKED_TOKENS_TABLE);
-        let _ = tx.commit();
+        tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE).ok();
+        tx.open_table(clankers_ucan::revocation::REVOKED_TOKENS_TABLE).ok();
+        tx.commit().ok();
     }
 
     let revocation_store = match RedbRevocationStore::new(Arc::clone(&db)) {

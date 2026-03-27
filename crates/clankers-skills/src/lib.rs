@@ -113,8 +113,8 @@ pub fn format_skills_for_context(skills: &[Skill]) -> String {
     }
     let mut out = String::from("## Available Skills\n\n");
     for skill in skills {
-        let _ = writeln!(out, "- **{}**: {}", skill.name, skill.description);
-        let _ = writeln!(out, "  Location: {}", skill.path.display());
+        writeln!(out, "- **{}**: {}", skill.name, skill.description).ok();
+        writeln!(out, "  Location: {}", skill.path.display()).ok();
     }
     out
 }

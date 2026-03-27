@@ -34,7 +34,7 @@ pub fn supports_structured_logging(subcommand: &str) -> bool {
 pub fn spawn_nix_command(
     subcommand: &str,
     args: &[String],
-    use_structured: bool,
+    is_structured: bool,
 ) -> Result<tokio::process::Child, String> {
     let clean_env = crate::tools::sandbox::sanitized_env();
 
@@ -42,7 +42,7 @@ pub fn spawn_nix_command(
     cmd.arg(subcommand);
 
     // Inject --log-format internal-json for structured output
-    if use_structured {
+    if is_structured {
         cmd.arg("--log-format").arg("internal-json");
         // Also print build logs so we get BuildLogLine events
         cmd.arg("-L");
@@ -82,7 +82,7 @@ pub fn spawn_nix_command(
 pub async fn stream_nix_output(
     ctx: &ToolContext,
     child: &mut tokio::process::Child,
-    use_structured: bool,
+    is_structured: bool,
     timeout_secs: u64,
     subcommand: &str,
 ) -> Result<(i32, Vec<String>, Vec<String>, Vec<String>, Vec<String>), ToolResult> {
@@ -107,13 +107,13 @@ pub async fn stream_nix_output(
         if let Some(dl) = deadline
             && tokio::time::Instant::now() >= dl
         {
-            let _ = child.start_kill();
+            child.start_kill().ok();
             return Err(ToolResult::error(format!("nix {} timed out after {}s", subcommand, timeout_secs)));
         }
 
         tokio::select! {
             () = ctx.signal.cancelled() => {
-                let _ = child.start_kill();
+                child.start_kill().ok();
                 return Err(ToolResult::error("nix command cancelled"));
             }
             line = stdout_reader.next_line() => {
@@ -129,7 +129,7 @@ pub async fn stream_nix_output(
                         // stdout closed — drain stderr
                         while let Ok(Some(raw)) = stderr_reader.next_line().await {
                             let line = strip_ansi(&raw);
-                            if use_structured {
+                            if is_structured {
                                 process_nix_line(&line, ctx, &mut nix_state);
                             } else if !line.is_empty() {
                                 ctx.emit_progress(&line);
@@ -145,7 +145,7 @@ pub async fn stream_nix_output(
                 match line {
                     Ok(Some(raw)) => {
                         let line = strip_ansi(&raw);
-                        if use_structured {
+                        if is_structured {
                             process_nix_line(&line, ctx, &mut nix_state);
                         } else if !line.is_empty() {
                             ctx.emit_progress(&line);

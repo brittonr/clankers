@@ -284,14 +284,14 @@ impl<'db> MemoryStore<'db> {
             let chars: usize = global.iter().map(|e| e.text.len()).sum();
             let header = match global_limit {
                 Some(limit) if limit > 0 => {
-                    let pct = (chars * 100) / limit;
+                    let pct = chars.saturating_mul(100) / limit;
                     format!("MEMORY (general) [{pct}% — {chars}/{limit} chars]")
                 }
                 _ => "MEMORY (general)".to_string(),
             };
-            let _ = writeln!(out, "# {header}");
+            writeln!(out, "# {header}").ok();
             for e in &global {
-                let _ = writeln!(out, "- {}", e.text);
+                writeln!(out, "- {}", e.text).ok();
             }
         }
 
@@ -299,7 +299,7 @@ impl<'db> MemoryStore<'db> {
             let chars: usize = project.iter().map(|e| e.text.len()).sum();
             let header = match project_limit {
                 Some(limit) if limit > 0 => {
-                    let pct = (chars * 100) / limit;
+                    let pct = chars.saturating_mul(100) / limit;
                     format!("MEMORY (this project) [{pct}% — {chars}/{limit} chars]")
                 }
                 _ => "MEMORY (this project)".to_string(),
@@ -307,9 +307,9 @@ impl<'db> MemoryStore<'db> {
             if !out.is_empty() {
                 out.push('\n');
             }
-            let _ = writeln!(out, "# {header}");
+            writeln!(out, "# {header}").ok();
             for e in &project {
-                let _ = writeln!(out, "- {}", e.text);
+                writeln!(out, "- {}", e.text).ok();
             }
         }
 

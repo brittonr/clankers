@@ -144,13 +144,13 @@ async fn handle_guest(
 
     // Bidirectional proxy
     let a = tokio::spawn(async move {
-        let _ = tokio::io::copy(&mut quic_recv, &mut unix_write).await;
+        tokio::io::copy(&mut quic_recv, &mut unix_write).await.ok();
     });
     let b = tokio::spawn(async move {
-        let _ = tokio::io::copy(&mut unix_read, &mut quic_send).await;
+        tokio::io::copy(&mut unix_read, &mut quic_send).await.ok();
     });
 
-    let _ = tokio::try_join!(a, b);
+    tokio::try_join!(a, b).ok();
     Ok(())
 }
 

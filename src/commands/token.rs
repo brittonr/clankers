@@ -76,8 +76,8 @@ fn open_auth_db(ctx: &CommandContext) -> Result<std::sync::Arc<redb::Database>> 
         let tx = redb_db.begin_write().map_err(|e| crate::error::Error::Io {
             source: std::io::Error::other(e.to_string()),
         })?;
-        let _ = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE);
-        let _ = tx.open_table(clankers_ucan::revocation::REVOKED_TOKENS_TABLE);
+        tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE).ok();
+        tx.open_table(clankers_ucan::revocation::REVOKED_TOKENS_TABLE).ok();
         tx.commit().map_err(|e| crate::error::Error::Io {
             source: std::io::Error::other(e.to_string()),
         })?;
@@ -234,7 +234,7 @@ fn store_credential(redb_db: &std::sync::Arc<redb::Database>, cred: &clankers_uc
     let encoded = cred.encode().unwrap_or_default();
     if let Ok(tx) = redb_db.begin_write() {
         if let Ok(mut table) = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE) {
-            let _ = table.insert(hash_hex.as_str(), encoded.as_slice());
+            table.insert(hash_hex.as_str(), encoded.as_slice()).ok();
         }
         if let Err(e) = tx.commit() {
             eprintln!("Warning: failed to store credential in database: {}", e);

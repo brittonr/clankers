@@ -30,7 +30,7 @@ pub async fn write_message<W: AsyncWriteExt + Unpin, T: Serialize>(writer: &mut 
 pub async fn read_message<R: AsyncReadExt + Unpin, T: for<'de> Deserialize<'de>>(reader: &mut R) -> std::io::Result<T> {
     let mut len_buf = [0u8; 4];
     reader.read_exact(&mut len_buf).await?;
-    let len = u32::from_be_bytes(len_buf) as usize;
+    let len = usize::try_from(u32::from_be_bytes(len_buf)).expect("u32 fits in usize");
     if len > 10_000_000 {
         return Err(std::io::Error::other("message too large"));
     }
@@ -88,7 +88,7 @@ mod tests {
 
         // Buffer should have 4-byte length prefix + JSON
         assert!(buf.len() > 4);
-        let expected_len = u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]]) as usize;
+        let expected_len = usize::try_from(u32::from_be_bytes([buf[0], buf[1], buf[2], buf[3]])).expect("u32 fits in usize");
         assert_eq!(expected_len, buf.len() - 4);
 
         let mut cursor = std::io::Cursor::new(buf);

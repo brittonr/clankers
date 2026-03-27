@@ -180,10 +180,10 @@ fn generate_docs(open: bool) -> ExitCode {
             println!("docs built → docs/book/");
             if open {
                 let index = root.join("docs/book/index.html");
-                let _ = Command::new("xdg-open")
+                Command::new("xdg-open")
                     .arg(&index)
                     .status()
-                    .or_else(|_| Command::new("open").arg(&index).status());
+                    .or_else(|_| Command::new("open").arg(&index).status()).ok();
             }
             ExitCode::SUCCESS
         }
@@ -378,17 +378,20 @@ fn extract_workspace_deps(crate_path: &Path) -> Vec<String> {
 }
 
 fn walk_rs_files(dir: &Path, f: &mut dyn FnMut(&Path)) {
-    let Ok(entries) = fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            if path.file_name().is_some_and(|n| n != "target") {
-                walk_rs_files(&path, f);
+    let mut stack = vec![dir.to_path_buf()];
+    while let Some(current) = stack.pop() {
+        let Ok(entries) = fs::read_dir(&current) else {
+            continue;
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                if path.file_name().is_some_and(|n| n != "target") {
+                    stack.push(path);
+                }
+            } else if path.extension().is_some_and(|e| e == "rs") {
+                f(&path);
             }
-        } else if path.extension().is_some_and(|e| e == "rs") {
-            f(&path);
         }
     }
 }
@@ -408,13 +411,13 @@ fn gen_crate_reference(root: &Path, crates: &[CrateInfo]) -> String {
     out.push_str("Each crate in the `crates/` workspace directory.\n\n");
 
     for c in crates {
-        let _ = write!(out, "## {}\n\n", c.name);
+        write!(out, "## {}\n\n", c.name).ok();
 
         if !c.description.is_empty() {
-            let _ = write!(out, "{}\n\n", c.description);
+            write!(out, "{}\n\n", c.description).ok();
         }
 
-        let _ = write!(out, "**{}** lines of Rust · **{}** tests\n\n", c.loc, c.test_count);
+        write!(out, "**{}** lines of Rust · **{}** tests\n\n", c.loc, c.test_count).ok();
 
         if !c.deps.is_empty() {
             out.push_str("**Workspace deps:** ");
@@ -432,7 +435,7 @@ fn gen_crate_reference(root: &Path, crates: &[CrateInfo]) -> String {
             out.push_str("<details><summary>Public API</summary>\n\n");
             out.push_str("```\n");
             for item in &c.public_items {
-                let _ = writeln!(out, "{item}");
+                writeln!(out, "{item}").ok();
             }
             out.push_str("```\n\n");
             out.push_str("</details>\n\n");
@@ -441,10 +444,10 @@ fn gen_crate_reference(root: &Path, crates: &[CrateInfo]) -> String {
         // Link to source.
         let src_path = format!("crates/{}/src/", c.name);
         if root.join(&src_path).exists() {
-            let _ = write!(
+            write!(
                 out,
                 "[Source](https://github.com/brittonr/clankers/tree/main/{src_path})\n\n",
-            );
+            ).ok();
         }
 
         out.push_str("---\n\n");
@@ -465,7 +468,7 @@ fn gen_architecture(_root: &Path, crates: &[CrateInfo]) -> String {
         let short = c.name.strip_prefix("clankers-").unwrap_or(&c.name);
         for dep in &c.deps {
             let dep_short = dep.strip_prefix("clankers-").unwrap_or(dep);
-            let _ = writeln!(out, "    {short} --> {dep_short}");
+            writeln!(out, "    {short} --> {dep_short}").ok();
         }
     }
     out.push_str("```\n\n");
@@ -529,13 +532,13 @@ fn gen_architecture(_root: &Path, crates: &[CrateInfo]) -> String {
     ];
 
     for (layer, members) in layers {
-        let _ = write!(out, "### {layer}\n\n");
+        write!(out, "### {layer}\n\n").ok();
         out.push_str("| Crate | Lines | Tests | Description |\n");
         out.push_str("|-------|------:|------:|-------------|\n");
         for &member in *members {
             if let Some(c) = crates.iter().find(|c| c.name == member) {
                 let short = c.name.strip_prefix("clankers-").unwrap_or(&c.name);
-                let _ = writeln!(out, "| `{short}` | {} | {} | {} |", c.loc, c.test_count, c.description);
+                writeln!(out, "| `{short}` | {} | {} | {} |", c.loc, c.test_count, c.description).ok();
             }
         }
         out.push('\n');
@@ -559,14 +562,14 @@ fn gen_stats(root: &Path, crates: &[CrateInfo]) -> String {
     out.push_str("## Overview\n\n");
     out.push_str("| Metric | Count |\n");
     out.push_str("|--------|------:|\n");
-    let _ = writeln!(out, "| Workspace crates | {} |", crates.len());
-    let _ = writeln!(out, "| Lines of Rust (crates/) | {} |", fmt_num(total_loc));
-    let _ = writeln!(out, "| Lines of Rust (src/) | {} |", fmt_num(main_loc));
-    let _ = writeln!(out, "| **Total lines of Rust** | **{}** |", fmt_num(total_loc + main_loc));
-    let _ = writeln!(out, "| Tests (crates/) | {} |", fmt_num(total_tests));
-    let _ = writeln!(out, "| Tests (src/) | {} |", fmt_num(main_tests));
-    let _ = writeln!(out, "| **Total tests** | **{}** |", fmt_num(total_tests + main_tests));
-    let _ = writeln!(out, "| Public API items | {} |", fmt_num(total_public));
+    writeln!(out, "| Workspace crates | {} |", crates.len()).ok();
+    writeln!(out, "| Lines of Rust (crates/) | {} |", fmt_num(total_loc)).ok();
+    writeln!(out, "| Lines of Rust (src/) | {} |", fmt_num(main_loc)).ok();
+    writeln!(out, "| **Total lines of Rust** | **{}** |", fmt_num(total_loc + main_loc)).ok();
+    writeln!(out, "| Tests (crates/) | {} |", fmt_num(total_tests)).ok();
+    writeln!(out, "| Tests (src/) | {} |", fmt_num(main_tests)).ok();
+    writeln!(out, "| **Total tests** | **{}** |", fmt_num(total_tests + main_tests)).ok();
+    writeln!(out, "| Public API items | {} |", fmt_num(total_public)).ok();
 
     out.push_str("\n## Crates by size\n\n");
     out.push_str("| Crate | Lines | Tests |\n");
@@ -581,7 +584,7 @@ fn gen_stats(root: &Path, crates: &[CrateInfo]) -> String {
     sorted.sort_by_key(|&(_, loc, _)| Reverse(loc));
 
     for (name, loc, tests) in &sorted {
-        let _ = writeln!(out, "| `{name}` | {} | {} |", fmt_num(*loc), tests);
+        writeln!(out, "| `{name}` | {} | {} |", fmt_num(*loc), tests).ok();
     }
     out.push('\n');
 

@@ -101,7 +101,7 @@ impl MergeDaemon {
             if let Err(e) = manager.remove_worktree(branch) {
                 warn!(branch, error = %e, "failed to clean up empty branch");
             }
-            let _ = reg.remove(branch);
+            reg.remove(branch).ok();
             count += 1;
         }
 
@@ -130,7 +130,7 @@ impl MergeDaemon {
                     if let Err(e) = manager.remove_worktree(branch) {
                         warn!(branch, error = %e, "failed to clean up after merge");
                     }
-                    let _ = reg.remove(branch);
+                    reg.remove(branch).ok();
                     count += 1;
                 }
                 Ok(merge_strategy::MergeResult::NeedsHuman { .. }) => {
@@ -285,7 +285,7 @@ impl MergeDaemon {
             if let Err(e) = manager.remove_worktree(branch) {
                 warn!(branch, error = %e, "failed to clean up after merge");
             }
-            let _ = reg.remove(branch);
+            reg.remove(branch).ok();
         }
         Ok(())
     }
@@ -294,7 +294,7 @@ impl MergeDaemon {
     fn mark_needs_review(&self, db: &Db, branches: &[String]) -> Result<()> {
         let reg = db.worktrees();
         for branch in branches {
-            let _ = reg.set_status(branch, WorktreeStatus::Stale);
+            reg.set_status(branch, WorktreeStatus::Stale).ok();
         }
         Ok(())
     }
@@ -307,7 +307,7 @@ pub async fn run_polling(
     db: Db,
     repo_root: PathBuf,
     interval_secs: u64,
-    once: bool,
+    is_once: bool,
     provider: Option<Arc<dyn Provider>>,
     model: String,
 ) {
@@ -316,7 +316,7 @@ pub async fn run_polling(
         None => MergeDaemon::new(repo_root),
     };
 
-    if once {
+    if is_once {
         match daemon.run_cycle(&db).await {
             Ok(n) => println!("Merge cycle complete: {} branches merged.", n),
             Err(e) => {

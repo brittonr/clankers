@@ -95,7 +95,7 @@ pub async fn run_control_socket_with_factory(
     shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
     let path = clankers_controller::transport::control_socket_path();
-    let _ = std::fs::remove_file(&path);
+    std::fs::remove_file(&path).ok();
 
     let listener = match UnixListener::bind(&path) {
         Ok(l) => l,
@@ -225,9 +225,9 @@ async fn handle_control(
             // Seed resumed messages if any
             if !seed_messages.is_empty() {
                 let count = seed_messages.len();
-                let _ = cmd_tx.send(SessionCommand::SeedMessages {
+                cmd_tx.send(SessionCommand::SeedMessages {
                     messages: seed_messages,
-                });
+                }).ok();
                 info!("created session {session_id} (model: {resolved_model}, resumed {count} messages)");
             } else {
                 info!("created session {session_id} (model: {resolved_model})");
@@ -289,7 +289,7 @@ async fn dispatch_control_command(
         ControlCommand::KillSession { session_id } => {
             if let Some(handle) = st.sessions.get(&session_id) {
                 if let Some(ref tx) = handle.cmd_tx {
-                    let _ = tx.send(SessionCommand::Disconnect);
+                    tx.send(SessionCommand::Disconnect).ok();
                 }
                 if let Some(ref catalog) = factory.catalog {
                     catalog.set_state(&session_id, super::session_store::SessionLifecycle::Tombstoned);
@@ -338,7 +338,7 @@ pub fn drain_and_broadcast(
     // Drain controller events
     let events = controller.drain_events();
     for event in events {
-        let _ = event_tx.send(event);
+        event_tx.send(event).ok();
     }
 
     // Drain subagent panel events → DaemonEvent
@@ -353,7 +353,7 @@ pub fn drain_and_broadcast(
             // KillRequest and InputRequest are TUI→tool direction, not relevant here
             SubagentEvent::KillRequest { .. } | SubagentEvent::InputRequest { .. } => continue,
         };
-        let _ = event_tx.send(daemon_event);
+        event_tx.send(daemon_event).ok();
     }
 }
 

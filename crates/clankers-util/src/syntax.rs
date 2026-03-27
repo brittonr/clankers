@@ -320,7 +320,7 @@ pub fn highlight_ansi(code: &str, language: &str) -> String {
                 if italic {
                     out.push_str("\x1b[3m");
                 }
-                let _ = write!(out, "\x1b[38;2;{};{};{}m", r, g, b);
+                write!(out, "\x1b[38;2;{};{};{}m", r, g, b).ok();
             }
             TokenKind::Plain => {
                 out.push_str("\x1b[0m");

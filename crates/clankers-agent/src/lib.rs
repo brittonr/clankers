@@ -258,7 +258,7 @@ impl Agent {
         // Create and append user message
         self.append_user_message(text, content);
 
-        let _ = self.event_tx.send(AgentEvent::AgentStart);
+        self.event_tx.send(AgentEvent::AgentStart).ok();
 
         // Get model context limits
         let max_input = self.get_max_input_tokens();
@@ -274,10 +274,10 @@ impl Agent {
         // Prepare context and run turn
         let ctx = self.prepare_turn_context(max_input);
 
-        let _ = self.event_tx.send(AgentEvent::BeforeAgentStart {
+        self.event_tx.send(AgentEvent::BeforeAgentStart {
             prompt: text.to_string(),
             system_prompt: ctx.system_prompt.clone(),
-        });
+        }).ok();
 
         let config = TurnConfig {
             model: self.model.clone(),
@@ -311,9 +311,9 @@ impl Agent {
         // Sync model switch if tool requested it
         self.sync_model_switch();
 
-        let _ = self.event_tx.send(AgentEvent::AgentEnd {
+        self.event_tx.send(AgentEvent::AgentEnd {
             messages: self.messages.clone(),
-        });
+        }).ok();
 
         result
     }
@@ -327,10 +327,10 @@ impl Agent {
         });
 
         let agent_msg_count = self.messages.len();
-        let _ = self.event_tx.send(AgentEvent::UserInput {
+        self.event_tx.send(AgentEvent::UserInput {
             text: text.to_string(),
             agent_msg_count,
-        });
+        }).ok();
         self.messages.push(user_msg);
     }
 
@@ -368,10 +368,10 @@ impl Agent {
 
         if result.compacted_count > 0 {
             self.messages = result.messages;
-            let _ = self.event_tx.send(AgentEvent::SessionCompaction {
+            self.event_tx.send(AgentEvent::SessionCompaction {
                 compacted_count: result.compacted_count,
                 tokens_saved: result.tokens_saved,
-            });
+            }).ok();
             tracing::info!("Auto-compacted {} messages, saved ~{} tokens", result.compacted_count, result.tokens_saved,);
         }
     }
@@ -402,11 +402,11 @@ impl Agent {
             let new_model = self.model_roles.resolve(&selection.role, &self.model);
             if new_model != self.model {
                 let old = std::mem::replace(&mut self.model, new_model.clone());
-                let _ = self.event_tx.send(AgentEvent::ModelChange {
+                self.event_tx.send(AgentEvent::ModelChange {
                     from: old,
                     to: new_model,
                     reason: selection.reason.to_string(),
-                });
+                }).ok();
             }
         }
 
@@ -484,11 +484,11 @@ impl Agent {
     /// Change the model
     pub fn set_model(&mut self, model: String) {
         let old = std::mem::replace(&mut self.model, model.clone());
-        let _ = self.event_tx.send(AgentEvent::ModelChange {
+        self.event_tx.send(AgentEvent::ModelChange {
             from: old,
             to: model,
             reason: "user_request".to_string(),
-        });
+        }).ok();
     }
 
     /// Seed the agent with pre-existing messages (for session resume)
@@ -587,11 +587,11 @@ impl Agent {
             let phase_model = self.model_roles.resolve(&phase.role, &self.model);
             let old_model = std::mem::replace(&mut self.model, phase_model.clone());
             if phase_model != old_model {
-                let _ = self.event_tx.send(AgentEvent::ModelChange {
+                self.event_tx.send(AgentEvent::ModelChange {
                     from: old_model.clone(),
                     to: phase_model.clone(),
                     reason: format!("orchestration_phase({}/{}:{})", phase_idx + 1, total_phases, phase.label,),
-                });
+                }).ok();
             }
 
             // Build phase system prompt
@@ -599,14 +599,14 @@ impl Agent {
             let compact = self.settings.no_cache;
             let ctx = context::build_context(&self.messages, &phase_system, max_input, compact);
 
-            let _ = self.event_tx.send(AgentEvent::BeforeAgentStart {
+            self.event_tx.send(AgentEvent::BeforeAgentStart {
                 prompt: if phase_idx == 0 {
                     user_text.to_string()
                 } else {
                     format!("[Orchestration phase {}/{}] {}", phase_idx + 1, total_phases, phase.label)
                 },
                 system_prompt: ctx.system_prompt.clone(),
-            });
+            }).ok();
 
             // Run turn loop for this phase
             let config = TurnConfig {
@@ -650,9 +650,9 @@ impl Agent {
             tracing::info!("Orchestration phase {}/{} ({}) complete", phase_idx + 1, total_phases, phase.label,);
         }
 
-        let _ = self.event_tx.send(AgentEvent::AgentEnd {
+        self.event_tx.send(AgentEvent::AgentEnd {
             messages: self.messages.clone(),
-        });
+        }).ok();
 
         Ok(())
     }

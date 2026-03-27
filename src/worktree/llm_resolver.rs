@@ -41,7 +41,7 @@ pub async fn resolve_conflict(
     let mut branch_versions = String::new();
     for branch in branches {
         let content = git_show(repo_root, branch, file_path).unwrap_or_default();
-        let _ = write!(branch_versions, "\n--- Branch: {} ---\n{}\n", branch, content);
+        write!(branch_versions, "\n--- Branch: {} ---\n{}\n", branch, content).ok();
     }
 
     let prompt = format!(

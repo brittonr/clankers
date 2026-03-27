@@ -81,11 +81,14 @@ pub fn compute_merge_plan(changesets: &[BranchChangeset]) -> MergePlan {
     let n = active_changesets.len();
     let mut parent: Vec<usize> = (0..n).collect();
 
-    fn find(parent: &mut [usize], i: usize) -> usize {
-        if parent[i] != i {
-            parent[i] = find(parent, parent[i]);
+    fn find(parent: &mut [usize], mut i: usize) -> usize {
+        // Walk to root
+        while parent[i] != i {
+            // Path compression: point to grandparent
+            parent[i] = parent[parent[i]];
+            i = parent[i];
         }
-        parent[i]
+        i
     }
     fn union(parent: &mut [usize], a: usize, b: usize) {
         let ra = find(parent, a);

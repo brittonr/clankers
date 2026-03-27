@@ -132,7 +132,8 @@ impl TtsProvider for KittenTtsProvider {
             })?;
 
         let sample_rate = kittentts::SAMPLE_RATE;
-        let duration_ms = (samples.len() as u64 * 1000) / u64::from(sample_rate);
+        let sample_count = samples.len() as u64;
+        let duration_ms = sample_count.saturating_mul(1000).checked_div(u64::from(sample_rate)).unwrap_or(0);
 
         Ok(TtsResponse {
             samples,

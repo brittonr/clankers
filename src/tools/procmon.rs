@@ -72,7 +72,7 @@ impl Tool for ProcmonTool {
             None => return ToolResult::error("Missing required parameter: action"),
         };
 
-        let pid_param = params.get("pid").and_then(|v| v.as_u64()).map(|v| v as u32);
+        let pid_param = params.get("pid").and_then(|v| v.as_u64()).and_then(|v| u32::try_from(v).ok());
 
         match action {
             "list" => Self::format_process_list(monitor),

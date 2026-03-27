@@ -63,7 +63,7 @@ impl AuditTracker {
         if self.completed == 0 {
             0
         } else {
-            (self.total_duration_ms / self.completed as u128).min(u64::MAX as u128) as u64
+            u64::try_from((self.total_duration_ms / self.completed as u128).min(u128::from(u64::MAX))).unwrap_or(u64::MAX)
         }
     }
 }

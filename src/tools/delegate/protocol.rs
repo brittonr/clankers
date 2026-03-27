@@ -70,10 +70,10 @@ pub async fn run_remote_worker(
         Err(e) => {
             let msg = format!("Failed to start iroh endpoint: {}", e);
             if let Some(tx) = panel_tx {
-                let _ = tx.send(SubagentEvent::Error {
+                tx.send(SubagentEvent::Error {
                     id: sub_id,
                     message: msg.clone(),
-                });
+                }).ok();
             }
             return ToolResult::error(msg);
         }
@@ -93,12 +93,12 @@ fn emit_started_event(
     task_preview: &str,
 ) {
     if let Some(tx) = panel_tx {
-        let _ = tx.send(SubagentEvent::Started {
+        tx.send(SubagentEvent::Started {
             id: sub_id.to_string(),
             name: format!("{} → {}", worker_name, short_node),
             task: task_preview.to_string(),
             pid: None,
-        });
+        }).ok();
     }
 }
 
@@ -114,10 +114,10 @@ fn parse_peer_node_id(
         Err(e) => {
             let msg = format!("Invalid peer node ID '{}': {}", short_node, e);
             if let Some(tx) = panel_tx {
-                let _ = tx.send(SubagentEvent::Error {
+                tx.send(SubagentEvent::Error {
                     id: sub_id.to_string(),
                     message: msg.clone(),
-                });
+                }).ok();
             }
             Err(ToolResult::error(msg))
         }
@@ -149,16 +149,16 @@ async fn retry_remote_call(
         match try_remote_call(endpoint, remote, request, sub_id, panel_tx, &signal).await {
             Ok(text) => {
                 if let Some(tx) = panel_tx {
-                    let _ = tx.send(SubagentEvent::Done { id: sub_id.to_string() });
+                    tx.send(SubagentEvent::Done { id: sub_id.to_string() }).ok();
                 }
                 return ToolResult::text(format!("[remote:{}] {}", short_node, text));
             }
             Err(RemoteCallError::ApplicationError(msg)) => {
                 if let Some(tx) = panel_tx {
-                    let _ = tx.send(SubagentEvent::Error {
+                    tx.send(SubagentEvent::Error {
                         id: sub_id.to_string(),
                         message: msg.clone(),
-                    });
+                    }).ok();
                 }
                 return ToolResult::error(msg);
             }
@@ -181,10 +181,10 @@ async fn retry_remote_call(
     // All retries exhausted
     let msg = format!("Failed to reach peer '{}' after {} attempts: {}", short_node, MAX_RETRIES + 1, last_err);
     if let Some(tx) = panel_tx {
-        let _ = tx.send(SubagentEvent::Error {
+        tx.send(SubagentEvent::Error {
             id: sub_id.to_string(),
             message: msg.clone(),
-        });
+        }).ok();
     }
     ToolResult::error(msg)
 }
@@ -209,10 +209,10 @@ async fn try_remote_call(
         }) => res.map(|(_, response)| response),
         () = signal.cancelled() => {
             if let Some(tx) = panel_tx {
-                let _ = tx.send(SubagentEvent::Error {
+                tx.send(SubagentEvent::Error {
                     id: sub_id.to_string(),
                     message: "Cancelled".into()
-                });
+                }).ok();
             }
             return Err(RemoteCallError::Cancelled);
         }
@@ -244,10 +244,10 @@ fn handle_streaming_notification(notification: &Value, sub_id: &str, panel_tx: O
             {
                 for line in text.split('\n') {
                     if !line.is_empty() {
-                        let _ = tx.send(SubagentEvent::Output {
+                        tx.send(SubagentEvent::Output {
                             id: sub_id.to_string(),
                             line: line.to_string(),
-                        });
+                        }).ok();
                     }
                 }
             }
@@ -256,10 +256,10 @@ fn handle_streaming_notification(notification: &Value, sub_id: &str, panel_tx: O
             if let Some(tx) = panel_tx {
                 let tool =
                     notification.get("params").and_then(|p| p.get("tool_name")).and_then(|v| v.as_str()).unwrap_or("?");
-                let _ = tx.send(SubagentEvent::Output {
+                tx.send(SubagentEvent::Output {
                     id: sub_id.to_string(),
                     line: format!("[tool: {}]", tool),
-                });
+                }).ok();
             }
         }
         Some("agent.tool_result") => {
@@ -270,10 +270,10 @@ fn handle_streaming_notification(notification: &Value, sub_id: &str, panel_tx: O
                     .and_then(|v| v.as_bool())
                     .unwrap_or(false);
                 if is_error {
-                    let _ = tx.send(SubagentEvent::Output {
+                    tx.send(SubagentEvent::Output {
                         id: sub_id.to_string(),
                         line: "[tool error]".to_string(),
-                    });
+                    }).ok();
                 }
             }
         }
@@ -290,19 +290,19 @@ async fn wait_for_retry(
 ) -> Result<(), ToolResult> {
     let backoff = std::time::Duration::from_millis(RETRY_BACKOFF_MS * 2u64.pow(attempt - 1));
     if let Some(tx) = panel_tx {
-        let _ = tx.send(SubagentEvent::Output {
+        tx.send(SubagentEvent::Output {
             id: sub_id.to_string(),
             line: format!("Retry {}/{} after {:?}...", attempt, MAX_RETRIES, backoff),
-        });
+        }).ok();
     }
     tokio::select! {
         () = tokio::time::sleep(backoff) => Ok(()),
         () = signal.cancelled() => {
             if let Some(tx) = panel_tx {
-                let _ = tx.send(SubagentEvent::Error {
+                tx.send(SubagentEvent::Error {
                     id: sub_id.to_string(),
                     message: "Cancelled".into()
-                });
+                }).ok();
             }
             Err(ToolResult::error("Cancelled during retry backoff".to_string()))
         }

@@ -80,7 +80,7 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
         }
         return Err(format!("landlock_create_ruleset: {}", err));
     }
-    let fd = fd as i32;
+    let fd = i32::try_from(fd).map_err(|_| "landlock fd out of i32 range".to_string())?;
 
     // Helper: add a path rule
     let add_rule = |path: &Path, access: u64| -> Result<(), String> {
@@ -105,7 +105,7 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/homeless"));
     let rw_paths = [project_root.to_path_buf(), std::env::temp_dir(), PathBuf::from("/tmp")];
     for p in &rw_paths {
-        let _ = add_rule(p, ALL_ACCESS);
+        add_rule(p, ALL_ACCESS).ok();
     }
 
     // Write access for nix daemon socket (nix build talks to the daemon via Unix socket)
@@ -115,7 +115,7 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
         home.join(".local/state/nix"),
     ];
     for p in &nix_rw_paths {
-        let _ = add_rule(p, ALL_ACCESS);
+        add_rule(p, ALL_ACCESS).ok();
     }
 
     // Read-only paths (system, toolchains)
@@ -139,7 +139,7 @@ pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
         home.join(".nix-profile"),
     ];
     for p in &ro_paths {
-        let _ = add_rule(p, ALL_READ);
+        add_rule(p, ALL_READ).ok();
     }
 
     // Restrict

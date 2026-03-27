@@ -310,6 +310,7 @@ pub fn right_heavy_tiling() -> (Hypertile, PaneRegistry) {
 
 /// Remove a pane from the BSP tree, returning the pruned tree.
 /// Returns `None` if the pane is the only node (root leaf).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "BSP tree depth bounded by MAX_SPLIT_DEPTH"))]
 pub fn remove_pane_from_tree(node: Node, target: PaneId) -> Option<Node> {
     match node {
         Node::Pane(id) => {
@@ -344,6 +345,7 @@ pub fn remove_pane_from_tree(node: Node, target: PaneId) -> Option<Node> {
 
 /// Insert a new pane beside an existing pane in the BSP tree.
 /// Splits the target pane, keeping the target in the `first` slot.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "BSP tree depth bounded by MAX_SPLIT_DEPTH"))]
 pub fn insert_pane_beside(
     node: Node,
     target: PaneId,
@@ -394,6 +396,7 @@ pub fn insert_pane_beside(
 }
 
 /// Quick structural equality check for BSP nodes.
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "BSP tree depth bounded by MAX_SPLIT_DEPTH"))]
 fn nodes_equal(a: &Node, b: &Node) -> bool {
     match (a, b) {
         (Node::Pane(a_id), Node::Pane(b_id)) => a_id == b_id,
@@ -434,6 +437,6 @@ pub fn auto_split_for_subagent(tiling: &mut Hypertile, registry: &PaneRegistry, 
 
     let new_root = insert_pane_beside(tiling.root().clone(), target_pane, new_pane_id, direction, ratio);
     if let Some(root) = new_root {
-        let _ = tiling.set_root(root);
+        tiling.set_root(root).ok();
     }
 }

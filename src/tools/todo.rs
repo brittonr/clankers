@@ -145,7 +145,7 @@ impl TodoTool {
     }
 
     async fn handle_done(&self, params: &Value) -> ToolResult {
-        let id = params.get("id").and_then(|v| v.as_u64()).map(|v| v as usize);
+        let id = params.get("id").and_then(|v| v.as_u64()).and_then(|v| usize::try_from(v).ok());
         let text = params.get("text").and_then(|v| v.as_str());
 
         let action = if let Some(id) = id {
@@ -175,7 +175,7 @@ impl TodoTool {
             Some(s) => s.to_string(),
             None => return ToolResult::error("Missing 'status' parameter"),
         };
-        let id = params.get("id").and_then(|v| v.as_u64()).map(|v| v as usize);
+        let id = params.get("id").and_then(|v| v.as_u64()).and_then(|v| usize::try_from(v).ok());
         let text = params.get("text").and_then(|v| v.as_str());
 
         let action = if let Some(id) = id {
@@ -199,7 +199,7 @@ impl TodoTool {
 
     async fn handle_note(&self, params: &Value) -> ToolResult {
         let id = match params.get("id").and_then(|v| v.as_u64()) {
-            Some(id) => id as usize,
+            Some(id) => usize::try_from(id).unwrap_or(0),
             None => return ToolResult::error("Missing 'id' for note action"),
         };
         let note = match params.get("note").and_then(|v| v.as_str()) {
@@ -216,7 +216,7 @@ impl TodoTool {
 
     async fn handle_remove(&self, params: &Value) -> ToolResult {
         let id = match params.get("id").and_then(|v| v.as_u64()) {
-            Some(id) => id as usize,
+            Some(id) => usize::try_from(id).unwrap_or(0),
             None => return ToolResult::error("Missing 'id' for remove action"),
         };
         match self.send(TodoAction::Remove { id }).await {

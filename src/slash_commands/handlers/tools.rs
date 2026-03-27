@@ -36,7 +36,7 @@ impl SlashHandler for ToolsHandler {
             }
             if ctx.app.disabled_tools.remove(name) {
                 let disabled = ctx.app.disabled_tools.clone();
-                let _ = ctx.cmd_tx.send(crate::modes::interactive::AgentCommand::SetDisabledTools(disabled));
+                ctx.cmd_tx.send(crate::modes::interactive::AgentCommand::SetDisabledTools(disabled)).ok();
                 ctx.app.push_system(format!("Tool '{}' enabled.", name), false);
             } else {
                 ctx.app.push_system(format!("Tool '{}' is already enabled.", name), false);
@@ -56,7 +56,7 @@ impl SlashHandler for ToolsHandler {
             }
             ctx.app.disabled_tools.insert(name.to_string());
             let disabled = ctx.app.disabled_tools.clone();
-            let _ = ctx.cmd_tx.send(crate::modes::interactive::AgentCommand::SetDisabledTools(disabled));
+            ctx.cmd_tx.send(crate::modes::interactive::AgentCommand::SetDisabledTools(disabled)).ok();
             ctx.app.push_system(format!("Tool '{}' disabled.", name), false);
             return;
         }

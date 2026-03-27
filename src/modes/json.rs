@@ -56,8 +56,8 @@ pub async fn run_json_with_options(
 
         while let Ok(event) = rx.recv().await {
             let json = format_event_json(&event);
-            let _ = writeln!(writer, "{}", json);
-            let _ = writer.flush();
+            writeln!(writer, "{}", json).ok();
+            writer.flush().ok();
             if matches!(event, AgentEvent::AgentEnd { .. }) {
                 break;
             }
@@ -65,7 +65,7 @@ pub async fn run_json_with_options(
     });
 
     agent.prompt(prompt).await?;
-    let _ = json_handle.await;
+    json_handle.await.ok();
     Ok(())
 }
 

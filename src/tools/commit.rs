@@ -397,7 +397,7 @@ impl Tool for CommitTool {
             }
             "split" => self.split_analysis(ctx).await,
             "changelog" => {
-                let count = params["count"].as_u64().unwrap_or(20) as usize;
+                let count = usize::try_from(params["count"].as_u64().unwrap_or(20)).unwrap_or(20);
                 self.changelog(ctx, count).await
             }
             _ => {

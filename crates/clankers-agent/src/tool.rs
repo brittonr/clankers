@@ -123,7 +123,7 @@ impl ToolContext {
     /// Emit an arbitrary agent event on the event bus.
     pub fn emit_event(&self, event: AgentEvent) {
         if let Some(ref tx) = self.event_tx {
-            let _ = tx.send(event);
+            tx.send(event).ok();
         }
     }
 
@@ -132,10 +132,10 @@ impl ToolContext {
     /// No-op if there is no event channel (e.g. headless / test mode).
     pub fn emit_progress(&self, text: &str) {
         if let Some(ref tx) = self.event_tx {
-            let _ = tx.send(AgentEvent::ToolExecutionUpdate {
+            tx.send(AgentEvent::ToolExecutionUpdate {
                 call_id: self.call_id.clone(),
                 partial: ToolResult::text(text),
-            });
+            }).ok();
         }
     }
 
@@ -160,10 +160,10 @@ impl ToolContext {
 
         // Emit event
         if let Some(ref tx) = self.event_tx {
-            let _ = tx.send(AgentEvent::ToolProgressUpdate {
+            tx.send(AgentEvent::ToolProgressUpdate {
                 call_id: self.call_id.clone(),
                 progress,
-            });
+            }).ok();
         }
     }
 
@@ -173,10 +173,10 @@ impl ToolContext {
     /// Back-pressure is handled by the event bus ring buffer (drop-oldest).
     pub fn emit_result_chunk(&self, chunk: progress::ResultChunk) {
         if let Some(ref tx) = self.event_tx {
-            let _ = tx.send(AgentEvent::ToolResultChunk {
+            tx.send(AgentEvent::ToolResultChunk {
                 call_id: self.call_id.clone(),
                 chunk,
-            });
+            }).ok();
         }
     }
 

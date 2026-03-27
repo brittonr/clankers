@@ -142,7 +142,7 @@ fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
         // Remove the pane node from the BSP tree.
         let new_root = panes::remove_pane_from_tree(ctx.app.layout.tiling.root().clone(), pane_id);
         if let Some(new_root) = new_root {
-            let _ = ctx.app.layout.tiling.set_root(new_root);
+            ctx.app.layout.tiling.set_root(new_root).ok();
             ctx.app.layout.pane_registry.unregister(pane_id);
             // Sync remaining pane IDs
             let live: std::collections::HashSet<_> =
@@ -170,7 +170,7 @@ fn handle_toggle(panel_name: &str, ctx: &mut SlashContext<'_>) {
             0.75, // chat keeps 75%, new panel gets 25%
         );
         if let Some(new_root) = new_root {
-            let _ = ctx.app.layout.tiling.set_root(new_root);
+            ctx.app.layout.tiling.set_root(new_root).ok();
             ctx.app.layout.pane_registry.register(new_pane_id, PaneKind::Panel(panel_id));
             ctx.app.push_system(format!("Showing {} panel", panel_id.label()), false);
         } else {

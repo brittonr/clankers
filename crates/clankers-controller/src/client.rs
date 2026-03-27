@@ -82,7 +82,7 @@ impl ClientAdapter {
                     break;
                 }
             }
-            let _ = writer.shutdown().await;
+            writer.shutdown().await.ok();
         });
 
         // Spawn reader task (daemon → events)

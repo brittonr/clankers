@@ -212,7 +212,9 @@ fn filter_env(env: &std::collections::BTreeMap<String, bstr::BString>) -> Vec<(S
     result
 }
 
-/// Recursively build a tree representation of derivation dependencies.
+/// Build a tree representation of derivation dependencies.
+/// Recursion is bounded by max_depth parameter (typically 10).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "depth bounded by max_depth parameter"))]
 fn build_dep_tree(
     info: &DerivationInfo,
     lines: &mut Vec<String>,

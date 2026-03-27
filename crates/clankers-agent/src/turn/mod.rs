@@ -150,7 +150,7 @@ pub async fn run_turn_loop(
             return Err(AgentError::Cancelled);
         }
 
-        let _ = event_tx.send(AgentEvent::TurnStart { index: turn_index });
+        event_tx.send(AgentEvent::TurnStart { index: turn_index }).ok();
 
         // Execute turn and get response
         let collected = execute_turn(provider, messages, config, &active_model, &tool_defs, event_tx, &cancel).await?;
@@ -167,11 +167,11 @@ pub async fn run_turn_loop(
 
         // If no tool calls, we're done
         if tool_calls.is_empty() || collected.stop_reason != StopReason::ToolUse {
-            let _ = event_tx.send(AgentEvent::TurnEnd {
+            event_tx.send(AgentEvent::TurnEnd {
                 index: turn_index,
                 message: assistant_msg,
                 tool_results: vec![],
-            });
+            }).ok();
             break;
         }
 
@@ -193,11 +193,11 @@ pub async fn run_turn_loop(
             messages.push(AgentMessage::ToolResult(msg.clone()));
         }
 
-        let _ = event_tx.send(AgentEvent::TurnEnd {
+        event_tx.send(AgentEvent::TurnEnd {
             index: turn_index,
             message: assistant_msg,
             tool_results: tool_result_messages,
-        });
+        }).ok();
     }
 
     Ok(())

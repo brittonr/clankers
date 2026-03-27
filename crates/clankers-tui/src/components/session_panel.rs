@@ -102,6 +102,9 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
 /// Render a single tree node and its descendants recursively.
 /// `prefix` is the indentation string for the current depth.
 /// `is_last` indicates whether this is the last child of its parent.
+/// Render a session tree node. Recursion follows the conversation tree
+/// (bounded by conversation depth, typically ≤10 for branching sessions).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "conversation tree depth bounded by session branching limits"))]
 fn render_tree_node(
     lines: &mut Vec<Line<'static>>,
     app: &App,

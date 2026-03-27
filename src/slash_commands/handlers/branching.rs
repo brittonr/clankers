@@ -42,8 +42,8 @@ impl SlashHandler for ForkHandler {
                             );
                             // Rebuild agent context from the new branch head
                             if let Ok(context) = sm.build_context() {
-                                let _ = ctx.cmd_tx.send(AgentCommand::ClearHistory);
-                                let _ = ctx.cmd_tx.send(AgentCommand::SeedMessages(context));
+                                ctx.cmd_tx.send(AgentCommand::ClearHistory).ok();
+                                ctx.cmd_tx.send(AgentCommand::SeedMessages(context)).ok();
                             }
                         }
                         Err(e) => {
@@ -87,8 +87,8 @@ impl SlashHandler for RewindHandler {
                     Ok(()) => {
                         if let Ok(context) = sm.build_context() {
                             let msg_count = context.len();
-                            let _ = ctx.cmd_tx.send(AgentCommand::ClearHistory);
-                            let _ = ctx.cmd_tx.send(AgentCommand::SeedMessages(context));
+                            ctx.cmd_tx.send(AgentCommand::ClearHistory).ok();
+                            ctx.cmd_tx.send(AgentCommand::SeedMessages(context)).ok();
                             ctx.app.push_system(
                                 format!("Rewound to message {} ({} messages in context)", target_id, msg_count),
                                 false,
@@ -134,11 +134,11 @@ impl SlashHandler for BranchesHandler {
                             let marker = if branch.is_active { " *" } else { "  " };
                             let active_label = if branch.is_active { " (current)" } else { "" };
                             let ago = crate::modes::interactive::format_time_ago(branch.last_activity);
-                            let _ = write!(
+                            write!(
                                 output,
                                 "{} {}{}\n    {} messages    {}\n",
                                 marker, branch.name, active_label, branch.message_count, ago,
-                            );
+                            ).ok();
                         }
                         output.push_str("\n  Use /switch <name> to change branches");
                         ctx.app.push_system(output, false);
@@ -192,8 +192,8 @@ impl SlashHandler for SwitchHandler {
                             Ok(()) => {
                                 if let Ok(context) = sm.build_context() {
                                     let msg_count = context.len();
-                                    let _ = ctx.cmd_tx.send(AgentCommand::ClearHistory);
-                                    let _ = ctx.cmd_tx.send(AgentCommand::SeedMessages(context));
+                                    ctx.cmd_tx.send(AgentCommand::ClearHistory).ok();
+                                    ctx.cmd_tx.send(AgentCommand::SeedMessages(context)).ok();
                                     let branch_name = sm
                                         .find_branches()
                                         .ok()
@@ -359,8 +359,8 @@ impl SlashHandler for MergeHandler {
                 // Rebuild agent context from the merged branch
                 if let Ok(context) = sm.build_context() {
                     let msg_count = context.len();
-                    let _ = ctx.cmd_tx.send(AgentCommand::ClearHistory);
-                    let _ = ctx.cmd_tx.send(AgentCommand::SeedMessages(context));
+                    ctx.cmd_tx.send(AgentCommand::ClearHistory).ok();
+                    ctx.cmd_tx.send(AgentCommand::SeedMessages(context)).ok();
                     ctx.app.push_system(
                         format!(
                             "Merged {} messages from \"{}\" into \"{}\" ({} messages in context)",
@@ -538,8 +538,8 @@ impl SlashHandler for CherryPickHandler {
             Ok((count, _new_leaf)) => {
                 if let Ok(context) = sm.build_context() {
                     let msg_count = context.len();
-                    let _ = ctx.cmd_tx.send(AgentCommand::ClearHistory);
-                    let _ = ctx.cmd_tx.send(AgentCommand::SeedMessages(context));
+                    ctx.cmd_tx.send(AgentCommand::ClearHistory).ok();
+                    ctx.cmd_tx.send(AgentCommand::SeedMessages(context)).ok();
                     let suffix = if with_children { " (with children)" } else { "" };
                     ctx.app.push_system(
                         format!(

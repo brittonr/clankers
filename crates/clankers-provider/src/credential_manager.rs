@@ -335,7 +335,7 @@ fn save_with_file_lock(auth_path: &std::path::Path, creds: &OAuthCredentials) ->
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(parent, fs::Permissions::from_mode(0o700));
+            fs::set_permissions(parent, fs::Permissions::from_mode(0o700)).ok();
         }
     }
     if !auth_path.exists() {
@@ -345,7 +345,7 @@ fn save_with_file_lock(auth_path: &std::path::Path, creds: &OAuthCredentials) ->
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(auth_path, fs::Permissions::from_mode(0o600));
+            fs::set_permissions(auth_path, fs::Permissions::from_mode(0o600)).ok();
         }
     }
 
@@ -396,7 +396,7 @@ struct UnlockGuard<'a> {
 impl Drop for UnlockGuard<'_> {
     fn drop(&mut self) {
         if self.locked {
-            let _ = fs4::fs_std::FileExt::unlock(self.file);
+            fs4::fs_std::FileExt::unlock(self.file).ok();
         }
     }
 }

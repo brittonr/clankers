@@ -152,32 +152,32 @@ impl<'db> AuditLog<'db> {
                 "✅ OK"
             };
 
-            let _ = writeln!(out, "{}. **{}** {} ({}ms)", e.seq + 1, e.tool, status, e.duration_ms);
+            writeln!(out, "{}. **{}** {} ({}ms)", e.seq + 1, e.tool, status, e.duration_ms).ok();
 
             // Show key parameters
             match e.tool.as_str() {
                 "bash" => {
                     if let Some(cmd) = e.input.get("command").and_then(|v| v.as_str()) {
                         let preview: String = cmd.chars().take(120).collect();
-                        let _ = writeln!(out, "   `{preview}`");
+                        writeln!(out, "   `{preview}`").ok();
                     }
                 }
                 "read" | "write" | "edit" => {
                     if let Some(path) = e.input.get("path").and_then(|v| v.as_str()) {
-                        let _ = writeln!(out, "   `{path}`");
+                        writeln!(out, "   `{path}`").ok();
                     }
                 }
                 "grep" => {
                     if let Some(pattern) = e.input.get("pattern").and_then(|v| v.as_str()) {
                         let path = e.input.get("path").and_then(|v| v.as_str()).unwrap_or(".");
-                        let _ = writeln!(out, "   `{pattern}` in `{path}`");
+                        writeln!(out, "   `{pattern}` in `{path}`").ok();
                     }
                 }
                 _ => {}
             }
 
             if let Some(ref reason) = e.sandbox_blocked {
-                let _ = writeln!(out, "   Blocked: {reason}");
+                writeln!(out, "   Blocked: {reason}").ok();
             }
 
             out.push('\n');
@@ -190,7 +190,7 @@ impl<'db> AuditLog<'db> {
         let total_ms: u64 = entries.iter().map(|e| e.duration_ms).sum();
 
         out.push_str("---\n");
-        let _ = writeln!(out, "{total} calls, {errors} errors, {blocked} blocked, {total_ms}ms total");
+        writeln!(out, "{total} calls, {errors} errors, {blocked} blocked, {total_ms}ms total").ok();
 
         Ok(out)
     }

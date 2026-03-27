@@ -62,7 +62,7 @@ pub(crate) async fn handle_bot_command(
             if let Some(session_id) = st.key_index.get(key).cloned() {
                 if let Some(handle) = st.sessions.get(&session_id)
                     && let Some(ref tx) = handle.cmd_tx {
-                        let _ = tx.send(SessionCommand::Disconnect);
+                        tx.send(SessionCommand::Disconnect).ok();
                     }
                 st.remove_session(&session_id);
             }
@@ -94,9 +94,9 @@ pub(crate) async fn handle_bot_command(
                 if let Some(handle) = st.session_by_key(key) {
                     let old_model = handle.model.clone();
                     if let Some(ref tx) = handle.cmd_tx {
-                        let _ = tx.send(SessionCommand::SetModel {
+                        tx.send(SessionCommand::SetModel {
                             model: args.to_string(),
-                        });
+                        }).ok();
                     }
                     format!("Model switched: `{}` → `{}`", old_model, args)
                 } else {
@@ -166,7 +166,7 @@ async fn handle_token_command(
                 if let Some(session_id) = st.key_index.get(key).cloned() {
                     if let Some(handle) = st.sessions.get(&session_id)
                         && let Some(ref tx) = handle.cmd_tx {
-                            let _ = tx.send(SessionCommand::Disconnect);
+                            tx.send(SessionCommand::Disconnect).ok();
                         }
                     st.remove_session(&session_id);
                 }

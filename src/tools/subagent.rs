@@ -405,12 +405,12 @@ fn register_subprocess(
     }
 
     if let Some(tx) = panel_tx {
-        let _ = tx.send(SubagentEvent::Started {
+        tx.send(SubagentEvent::Started {
             id: sub_id.to_string(),
             name: short_name.to_string(),
             task: task_preview.to_string(),
             pid: child_pid,
-        });
+        }).ok();
     }
 }
 
@@ -436,10 +436,10 @@ async fn stream_subprocess_output(
                 match line {
                     Ok(Some(line)) => {
                         if let Some(tx) = panel_tx {
-                            let _ = tx.send(SubagentEvent::Output {
+                            tx.send(SubagentEvent::Output {
                                 id: sub_id.to_string(),
                                 line: line.clone(),
-                            });
+                            }).ok();
                         }
                         // Tiger Style: bounded collection
                         if collected.len() < MAX_COLLECTED_BYTES {
@@ -454,12 +454,12 @@ async fn stream_subprocess_output(
                 }
             }
             () = signal.cancelled() => {
-                let _ = child.kill().await;
+                child.kill().await.ok();
                 if let Some(tx) = panel_tx {
-                    let _ = tx.send(SubagentEvent::Error {
+                    tx.send(SubagentEvent::Error {
                         id: sub_id.to_string(),
                         message: "Cancelled".into(),
-                    });
+                    }).ok();
                 }
                 return Err("Cancelled".to_string());
             }
@@ -494,17 +494,17 @@ async fn spawn_subprocess(
 
     if status.success() {
         if let Some(tx) = panel_tx {
-            let _ = tx.send(SubagentEvent::Done { id: sub_id });
+            tx.send(SubagentEvent::Done { id: sub_id }).ok();
         }
         Ok(collected)
     } else {
         let stderr_text = read_stderr(stderr_handle).await;
         let err_msg = format!("Exit code: {}\nstdout: {}\nstderr: {}", status, collected, stderr_text);
         if let Some(tx) = panel_tx {
-            let _ = tx.send(SubagentEvent::Error {
+            tx.send(SubagentEvent::Error {
                 id: sub_id,
                 message: err_msg.clone(),
-            });
+            }).ok();
         }
         Err(err_msg)
     }
@@ -519,6 +519,6 @@ async fn read_stderr(stderr_handle: Option<tokio::process::ChildStderr>) -> Stri
     };
     let mut buf = String::new();
     let mut reader = BufReader::new(stderr);
-    let _ = tokio::io::AsyncReadExt::read_to_string(&mut reader, &mut buf).await;
+    tokio::io::AsyncReadExt::read_to_string(&mut reader, &mut buf).await.ok();
     buf
 }

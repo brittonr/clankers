@@ -202,9 +202,9 @@ impl PtyHarness {
     }
 
     pub(super) fn quit(&mut self) {
-        let _ = self.send(b"\x1b"); // Esc
+        self.send(b"\x1b").ok(); // Esc
         std::thread::sleep(Duration::from_millis(100));
-        let _ = self.type_str("q");
+        self.type_str("q").ok();
         std::thread::sleep(Duration::from_millis(300));
     }
 }

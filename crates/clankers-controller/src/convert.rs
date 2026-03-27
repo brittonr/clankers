@@ -207,11 +207,11 @@ pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_typ
             cache_read,
             ..
         } => Some(clankers_tui_types::TuiEvent::UsageUpdate {
-            total_tokens: (*input_tokens + *output_tokens) as usize,
-            input_tokens: *input_tokens as usize,
-            output_tokens: *output_tokens as usize,
+            total_tokens: usize::try_from(*input_tokens + *output_tokens).unwrap_or(usize::MAX),
+            input_tokens: usize::try_from(*input_tokens).unwrap_or(usize::MAX),
+            output_tokens: usize::try_from(*output_tokens).unwrap_or(usize::MAX),
             cache_creation_input_tokens: 0,
-            cache_read_input_tokens: *cache_read as usize,
+            cache_read_input_tokens: usize::try_from(*cache_read).unwrap_or(usize::MAX),
             turn_tokens: 0,
         }),
 

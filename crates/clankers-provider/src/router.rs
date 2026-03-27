@@ -82,7 +82,7 @@ impl Provider for RouterCompatAdapter {
         let result = self.inner.complete(router_request, router_tx).await;
 
         // Wait for translation to finish
-        let _ = translate_handle.await;
+        translate_handle.await.ok();
 
         result.map_err(|e| crate::error::provider_err(e.to_string()))
     }
@@ -320,7 +320,7 @@ impl Provider for RouterProvider {
                         "cache hit for {} (key={:.12}…, hits={})",
                         request.model, key, cached.hit_count
                     );
-                    let _ = db.cache().record_hit(key);
+                    db.cache().record_hit(key).ok();
                     for event in cached.events {
                         if tx.send(StreamEvent::from(event)).await.is_err() {
                             break;
@@ -376,7 +376,7 @@ impl Provider for RouterProvider {
                 Ok(()) => {
                     // Record success
                     if let Some(ref db) = self.db {
-                        let _ = db.rate_limits().record_success(provider.name(), model_id, 0);
+                        db.rate_limits().record_success(provider.name(), model_id, 0).ok();
                     }
                     return Ok(());
                 }
@@ -386,7 +386,7 @@ impl Provider for RouterProvider {
 
                     if let Some(ref db) = self.db {
                         let status = e.status_code().unwrap_or(500);
-                        let _ = db.rate_limits().record_error(provider.name(), model_id, status, None);
+                        db.rate_limits().record_error(provider.name(), model_id, status, None).ok();
                     }
 
                     if !retryable {
@@ -469,7 +469,7 @@ mod tests {
     #[async_trait]
     impl Provider for MockProvider {
         async fn complete(&self, _request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
-            let _ = tx.send(StreamEvent::MessageStop).await;
+            tx.send(StreamEvent::MessageStop).await.ok();
             Ok(())
         }
         fn models(&self) -> &[Model] {
@@ -613,7 +613,7 @@ mod tests {
     impl Provider for CountingProvider {
         async fn complete(&self, _request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
             self.call_count.fetch_add(1, Ordering::SeqCst);
-            let _ = tx
+            tx
                 .send(StreamEvent::MessageStart {
                     message: clanker_router::streaming::MessageMetadata {
                         id: "msg-1".into(),
@@ -621,23 +621,23 @@ mod tests {
                         role: "assistant".into(),
                     },
                 })
-                .await;
-            let _ = tx
+                .await.ok();
+            tx
                 .send(StreamEvent::ContentBlockStart {
                     index: 0,
                     content_block: clankers_message::message::Content::Text { text: String::new() },
                 })
-                .await;
-            let _ = tx
+                .await.ok();
+            tx
                 .send(StreamEvent::ContentBlockDelta {
                     index: 0,
                     delta: clanker_router::streaming::ContentDelta::TextDelta {
                         text: "Hello!".into(),
                     },
                 })
-                .await;
-            let _ = tx.send(StreamEvent::ContentBlockStop { index: 0 }).await;
-            let _ = tx
+                .await.ok();
+            tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx
                 .send(StreamEvent::MessageDelta {
                     stop_reason: Some("end_turn".into()),
                     usage: clanker_router::Usage {
@@ -647,8 +647,8 @@ mod tests {
                         cache_read_input_tokens: 0,
                     },
                 })
-                .await;
-            let _ = tx.send(StreamEvent::MessageStop).await;
+                .await.ok();
+            tx.send(StreamEvent::MessageStop).await.ok();
             Ok(())
         }
         fn models(&self) -> &[Model] {
@@ -988,7 +988,7 @@ mod tests {
         let db = test_db();
         
         // Record a failure to put the provider in cooldown
-        let _ = db.rate_limits().record_error("primary", "primary-model", 429, None);
+        db.rate_limits().record_error("primary", "primary-model", 429, None).ok();
 
         let mut fallback_config = FallbackConfig::with_defaults();
         fallback_config.set_chain("primary-model", vec!["fallback-model".to_string()]);
@@ -1086,8 +1086,8 @@ mod tests {
         let db = test_db();
 
         // Put primary and all fallbacks in cooldown
-        let _ = db.rate_limits().record_error("p1", "primary-model", 429, None);
-        let _ = db.rate_limits().record_error("p2", "fallback-model", 429, None);
+        db.rate_limits().record_error("p1", "primary-model", 429, None).ok();
+        db.rate_limits().record_error("p2", "fallback-model", 429, None).ok();
 
         let mut fallback_config = FallbackConfig::with_defaults();
         fallback_config.set_chain("primary-model", vec!["fallback-model".to_string()]);
@@ -1150,7 +1150,7 @@ mod tests {
             _request: clanker_router::CompletionRequest,
             tx: mpsc::Sender<clanker_router::streaming::StreamEvent>,
         ) -> std::result::Result<(), clanker_router::Error> {
-            let _ = tx
+            tx
                 .send(clanker_router::streaming::StreamEvent::MessageStart {
                     message: clanker_router::streaming::MessageMetadata {
                         id: "msg-1".into(),
@@ -1158,27 +1158,27 @@ mod tests {
                         role: "assistant".into(),
                     },
                 })
-                .await;
-            let _ = tx
+                .await.ok();
+            tx
                 .send(clanker_router::streaming::StreamEvent::ContentBlockStart {
                     index: 0,
                     content_block: clanker_router::streaming::ContentBlock::Text {
                         text: String::new(),
                     },
                 })
-                .await;
-            let _ = tx
+                .await.ok();
+            tx
                 .send(clanker_router::streaming::StreamEvent::ContentBlockDelta {
                     index: 0,
                     delta: clanker_router::streaming::ContentDelta::TextDelta {
                         text: "Hello from router provider".into(),
                     },
                 })
-                .await;
-            let _ = tx
+                .await.ok();
+            tx
                 .send(clanker_router::streaming::StreamEvent::ContentBlockStop { index: 0 })
-                .await;
-            let _ = tx
+                .await.ok();
+            tx
                 .send(clanker_router::streaming::StreamEvent::MessageDelta {
                     stop_reason: Some("end_turn".into()),
                     usage: clanker_router::Usage {
@@ -1188,10 +1188,10 @@ mod tests {
                         cache_read_input_tokens: 0,
                     },
                 })
-                .await;
-            let _ = tx
+                .await.ok();
+            tx
                 .send(clanker_router::streaming::StreamEvent::MessageStop)
-                .await;
+                .await.ok();
             Ok(())
         }
 

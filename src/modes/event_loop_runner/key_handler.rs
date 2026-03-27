@@ -165,7 +165,7 @@ impl<'a> EventLoopRunner<'a> {
                 let branch_msgs = crate::session::context::build_messages_for_branch(&tree, active_leaf.as_ref());
                 if checkpoint > 0 && checkpoint <= branch_msgs.len() {
                     let fork_msg_id = branch_msgs[checkpoint - 1].id().clone();
-                    let _ = sm.record_branch(fork_msg_id, "User edited prompt");
+                    sm.record_branch(fork_msg_id, "User edited prompt").ok();
                 }
             }
         } else if self.app.input_mode == InputMode::Insert {
@@ -371,9 +371,9 @@ impl<'a> EventLoopRunner<'a> {
         };
         match (key.code, key.modifiers) {
             (KeyCode::Char('x'), m) if m.is_empty() => {
-                let _ = self.panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest {
+                self.panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest {
                     id: subagent_id.clone(),
-                });
+                }).ok();
                 true
             }
             (KeyCode::Char('q'), m) if m.is_empty() => {
@@ -381,7 +381,7 @@ impl<'a> EventLoopRunner<'a> {
                     if let Some(new_root) =
                         crate::tui::panes::remove_pane_from_tree(self.app.layout.tiling.root().clone(), pane_id)
                     {
-                        let _ = self.app.layout.tiling.set_root(new_root);
+                        self.app.layout.tiling.set_root(new_root).ok();
                     }
                     self.app.layout.pane_registry.unregister(pane_id);
                     let live: std::collections::HashSet<_> =
@@ -451,10 +451,10 @@ impl<'a> EventLoopRunner<'a> {
         use clankers_tui_types::SelectorAction;
         match action {
             SelectorAction::SetModel(model) => {
-                let _ = self.cmd_tx.send(AgentCommand::SetModel(model));
+                self.cmd_tx.send(AgentCommand::SetModel(model)).ok();
             }
             SelectorAction::SwitchAccount(name) => {
-                let _ = self.cmd_tx.send(AgentCommand::SwitchAccount(name));
+                self.cmd_tx.send(AgentCommand::SwitchAccount(name)).ok();
             }
             SelectorAction::ResumeSession { file_path, session_id } => {
                 super::super::interactive::resume_session_from_file(self.app, file_path, &session_id, &self.cmd_tx);
@@ -489,7 +489,7 @@ impl<'a> EventLoopRunner<'a> {
         }
 
         // Rebuild the agent's tool set via command
-        let _ = self.cmd_tx.send(AgentCommand::SetDisabledTools(disabled.clone()));
+        self.cmd_tx.send(AgentCommand::SetDisabledTools(disabled.clone())).ok();
 
         let enabled_count = self.app.overlays.tool_toggle.entries.iter().filter(|e| e.enabled).count();
         let total = self.app.overlays.tool_toggle.entries.len();
@@ -530,10 +530,10 @@ impl<'a> EventLoopRunner<'a> {
 
         // Ensure parent dir exists and write
         if let Some(parent) = path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            std::fs::create_dir_all(parent).ok();
         }
         if let Ok(content) = serde_json::to_string_pretty(&value) {
-            let _ = std::fs::write(path, content);
+            std::fs::write(path, content).ok();
         }
     }
 
@@ -553,8 +553,8 @@ impl<'a> EventLoopRunner<'a> {
                 Ok((count, _new_leaf)) => {
                     if let Ok(context) = sm.build_context() {
                         let msg_count = context.len();
-                        let _ = self.cmd_tx.send(AgentCommand::ClearHistory);
-                        let _ = self.cmd_tx.send(AgentCommand::SeedMessages(context));
+                        self.cmd_tx.send(AgentCommand::ClearHistory).ok();
+                        self.cmd_tx.send(AgentCommand::SeedMessages(context)).ok();
                         self.app.push_system(
                             format!("Merged {} messages (selective, {} in context)", count, msg_count),
                             false,

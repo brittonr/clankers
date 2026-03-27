@@ -160,8 +160,8 @@ impl Tool for ValidateTuiTool {
 
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
         let description = params.get("description").and_then(|v| v.as_str()).unwrap_or("TUI validation").to_string();
-        let rows = params.get("rows").and_then(|v| v.as_u64()).unwrap_or(24) as u16;
-        let cols = params.get("cols").and_then(|v| v.as_u64()).unwrap_or(120) as u16;
+        let rows = u16::try_from(params.get("rows").and_then(|v| v.as_u64()).unwrap_or(24)).unwrap_or(24);
+        let cols = u16::try_from(params.get("cols").and_then(|v| v.as_u64()).unwrap_or(120)).unwrap_or(120);
 
         let steps: Vec<TuiStep> = match params.get("steps").and_then(|v| v.as_array()) {
             Some(arr) => {

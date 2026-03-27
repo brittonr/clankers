@@ -208,9 +208,9 @@ fn search_file_into(
                 return Ok(false);
             }
             let mut buf = out.lock().unwrap_or_else(|e| e.into_inner());
-            let _ = write!(buf, "{}:{}:{}", file_path_str, line_num, line);
+            write!(buf, "{}:{}:{}", file_path_str, line_num, line).ok();
             if !line.ends_with('\n') {
-                let _ = writeln!(buf);
+                writeln!(buf).ok();
             }
             Ok(true)
         }),
@@ -264,7 +264,7 @@ fn search_files(
 
         if match_count.load(std::sync::atomic::Ordering::Relaxed) >= MAX_MATCHES {
             let mut buf = output.lock().unwrap_or_else(|e| e.into_inner());
-            let _ = writeln!(buf, "\n[Truncated: more than {} matches]", MAX_MATCHES);
+            writeln!(buf, "\n[Truncated: more than {} matches]", MAX_MATCHES).ok();
             break;
         }
     }

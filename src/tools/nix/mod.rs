@@ -166,17 +166,17 @@ impl Tool for NixTool {
         }
 
         // Decide whether to use structured logging
-        let use_structured = supports_structured_logging(&subcommand);
+        let is_structured = supports_structured_logging(&subcommand);
 
         // Spawn the nix command
-        let mut child = match spawn_nix_command(&subcommand, &args, use_structured) {
+        let mut child = match spawn_nix_command(&subcommand, &args, is_structured) {
             Ok(c) => c,
             Err(e) => return ToolResult::error(e),
         };
 
         // Stream output and collect results
         let (exit_code, stdout_lines, build_log_lines, messages, errors) =
-            match stream_nix_output(ctx, &mut child, use_structured, timeout_secs, &subcommand).await {
+            match stream_nix_output(ctx, &mut child, is_structured, timeout_secs, &subcommand).await {
                 Ok(result) => result,
                 Err(e) => return e,
             };

@@ -72,7 +72,7 @@ pub fn worktree_add(repo_root: &Path, branch_name: &str, worktree_path: &Path, s
     repo.worktree(wt_name, worktree_path, Some(&opts)).map_err(|e| {
         // Clean up the branch if worktree creation fails
         if let Ok(mut br) = repo.find_branch(branch_name, BranchType::Local) {
-            let _ = br.delete();
+            br.delete().ok();
         }
         GitError(format!("Failed to create worktree: {}", e))
     })?;
@@ -124,7 +124,7 @@ pub fn worktree_remove(repo_root: &Path, worktree_path: &Path) -> bool {
 /// Remove directory and prune stale worktree refs.
 fn remove_dir_and_prune(repo_root: &Path, worktree_path: &Path) -> bool {
     if worktree_path.exists() {
-        let _ = std::fs::remove_dir_all(worktree_path);
+        std::fs::remove_dir_all(worktree_path).ok();
     }
     worktree_prune(repo_root);
     true
@@ -152,7 +152,7 @@ pub fn worktree_prune(repo_root: &Path) {
         {
             let mut opts = WorktreePruneOptions::new();
             opts.working_tree(true);
-            let _ = wt.prune(Some(&mut opts));
+            wt.prune(Some(&mut opts)).ok();
         }
     }
 }
@@ -191,9 +191,9 @@ pub fn worktree_list(repo_root: &Path, branch_prefix: &str) -> Vec<WorktreeEntry
                 .ok()
                 .and_then(|wt_repo| wt_repo.head().ok().and_then(|h| h.shorthand().map(|s| s.to_string())));
 
-            let matches = branch_prefix.is_empty() || branch.as_ref().is_some_and(|b| b.starts_with(branch_prefix));
+            let is_match = branch_prefix.is_empty() || branch.as_ref().is_some_and(|b| b.starts_with(branch_prefix));
 
-            if matches {
+            if is_match {
                 entries.push(WorktreeEntry {
                     name: name.to_string(),
                     path: wt.path().to_path_buf(),
@@ -341,11 +341,12 @@ pub fn diff_name_only(repo_root: &Path, from_ref: &str, to_ref: &str) -> Option<
 ///
 /// Replaces `du -sb` shell-out. Returns 0 on any error.
 pub fn dir_size_approx(path: &Path) -> u64 {
-    fn walk(path: &Path) -> u64 {
-        let mut total = 0u64;
-        let entries = match std::fs::read_dir(path) {
+    let mut total = 0u64;
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        let entries = match std::fs::read_dir(&dir) {
             Ok(e) => e,
-            Err(_) => return 0,
+            Err(_) => continue,
         };
         for entry in entries.flatten() {
             let meta = match entry.metadata() {
@@ -353,14 +354,13 @@ pub fn dir_size_approx(path: &Path) -> u64 {
                 Err(_) => continue,
             };
             if meta.is_dir() {
-                total += walk(&entry.path());
+                stack.push(entry.path());
             } else {
                 total += meta.len();
             }
         }
-        total
     }
-    walk(path)
+    total
 }
 
 #[path = "sync_ops_tests.rs"]

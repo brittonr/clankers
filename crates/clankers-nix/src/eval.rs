@@ -160,6 +160,8 @@ pub fn introspect_flake(flake_dir: &Path) -> Result<FlakeOutputs, NixError> {
 }
 
 /// Convert a snix-eval Value to serde_json::Value.
+/// Recursion follows the Nix value tree structure (bounded by eval depth).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "follows nix value tree; depth bounded by eval limits"))]
 fn value_to_json(value: &snix_eval::Value) -> Result<JsonValue, NixError> {
     match value {
         snix_eval::Value::Null => Ok(JsonValue::Null),

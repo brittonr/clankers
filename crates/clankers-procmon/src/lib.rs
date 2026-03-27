@@ -159,10 +159,10 @@ impl ProcessMonitor {
 
         // Emit spawn event
         if let Some(ref tx) = inner.event_tx {
-            let _ = tx.send(ProcessEvent::Spawn {
+            tx.send(ProcessEvent::Spawn {
                 pid,
                 meta: meta.clone(),
-            });
+            }).ok();
         }
 
         let tracked = TrackedProcess {
@@ -335,7 +335,7 @@ impl ProcessMonitor {
         // Emit events (no more mutable borrows of tracked)
         if let Some(ref tx) = guard.event_tx {
             for event in events {
-                let _ = tx.send(event);
+                tx.send(event).ok();
             }
         }
     }

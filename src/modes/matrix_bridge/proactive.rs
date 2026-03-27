@@ -117,7 +117,7 @@ pub(crate) async fn run_session_heartbeat(
             };
             {
                 let c = matrix_client.read().await;
-                let _ = c.set_typing(&room_id_parsed, true).await;
+                c.set_typing(&room_id_parsed, true).await.ok();
             }
 
             let response = run_proactive_prompt(
@@ -130,7 +130,7 @@ pub(crate) async fn run_session_heartbeat(
 
             {
                 let c = matrix_client.read().await;
-                let _ = c.set_typing(&room_id_parsed, false).await;
+                c.set_typing(&room_id_parsed, false).await.ok();
             }
 
             if is_heartbeat_ok(&response) {
@@ -233,7 +233,7 @@ pub(crate) fn spawn_trigger_reader(
 
                         {
                             let c = matrix_client.read().await;
-                            let _ = c.set_typing(&room_id_parsed, true).await;
+                            c.set_typing(&room_id_parsed, true).await.ok();
                         }
 
                         let response = run_proactive_prompt(
@@ -246,7 +246,7 @@ pub(crate) fn spawn_trigger_reader(
 
                         {
                             let c = matrix_client.read().await;
-                            let _ = c.set_typing(&room_id_parsed, false).await;
+                            c.set_typing(&room_id_parsed, false).await.ok();
                         }
 
                         if is_heartbeat_ok(&response) || response.trim().is_empty() {

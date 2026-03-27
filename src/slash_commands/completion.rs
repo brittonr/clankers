@@ -189,7 +189,7 @@ pub fn help_text() -> String {
     let mut out = String::from("Available slash commands:\n\n");
     let max_name_len = commands.iter().map(|c| c.name.len()).max().unwrap_or(0);
     for cmd in &commands {
-        let _ = writeln!(out, "  /{:<width$}  {}", cmd.name, cmd.description, width = max_name_len);
+        writeln!(out, "  /{:<width$}  {}", cmd.name, cmd.description, width = max_name_len).ok();
     }
     out
 }

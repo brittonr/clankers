@@ -62,12 +62,12 @@ impl<'db> WorktreeRegistry<'db> {
     /// Remove a worktree by branch name. Returns true if it existed.
     pub fn remove(&self, branch: &str) -> Result<bool> {
         let tx = self.db.begin_write()?;
-        let removed = {
+        let was_removed = {
             let mut table = tx.open_table(TABLE).map_err(db_err)?;
             table.remove(branch).map_err(db_err)?.is_some()
         };
         tx.commit().map_err(db_err)?;
-        Ok(removed)
+        Ok(was_removed)
     }
 
     /// Update the status of a worktree. Returns false if not found.
@@ -290,9 +290,9 @@ mod tests {
         reg.upsert(&make_worktree("b", "s2", WorktreeStatus::Active)).expect("test: failed to upsert b");
         reg.upsert(&make_worktree("c", "s3", WorktreeStatus::Active)).expect("test: failed to upsert c");
 
-        let removed =
+        let was_removed =
             reg.remove_batch(&["a".into(), "c".into(), "ghost".into()]).expect("test: failed to remove batch");
-        assert_eq!(removed, 2);
+        assert_eq!(was_removed, 2);
         assert_eq!(reg.count().expect("test: failed to get count"), 1);
         assert!(reg.get("b").expect("test: failed to get b").is_some());
     }

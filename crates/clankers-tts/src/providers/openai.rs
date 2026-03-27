@@ -114,7 +114,8 @@ impl TtsProvider for OpenAiTtsProvider {
             })
             .collect();
 
-        let duration_ms = (samples.len() as u64 * 1000) / u64::from(SAMPLE_RATE);
+        let sample_count = samples.len() as u64;
+        let duration_ms = sample_count.saturating_mul(1000).checked_div(u64::from(SAMPLE_RATE)).unwrap_or(0);
 
         Ok(TtsResponse {
             samples,

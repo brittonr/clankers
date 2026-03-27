@@ -67,7 +67,7 @@ impl AuthStoreExt for AuthStore {
             let marker = if info.is_active { "▸" } else { " " };
             let status = if info.is_expired { " (expired)" } else { "" };
             let label = info.label.as_ref().map(|l| format!(" — {}", l)).unwrap_or_default();
-            let _ = writeln!(out, "{} {}{}{}", marker, info.name, label, status);
+            writeln!(out, "{} {}{}{}", marker, info.name, label, status).ok();
         }
         out
     }

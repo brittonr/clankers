@@ -33,12 +33,12 @@ pub async fn run_worker_subprocess(
     register_with_process_monitor(process_monitor, child_pid, worker_name, task);
 
     if let Some(tx) = panel_tx {
-        let _ = tx.send(SubagentEvent::Started {
+        tx.send(SubagentEvent::Started {
             id: sub_id.clone(),
             name: worker_name.to_string(),
             task: task_preview,
             pid: child_pid,
-        });
+        }).ok();
     }
 
     let stdout = match child.stdout.take() {
@@ -50,7 +50,7 @@ pub async fn run_worker_subprocess(
     let collected = match stream_worker_output(stdout, &sub_id, panel_tx, signal.clone()).await {
         Ok(output) => output,
         Err(e) => {
-            let _ = child.kill().await;
+            child.kill().await.ok();
             return e;
         }
     };
@@ -132,10 +132,10 @@ async fn stream_worker_output(
                 match line {
                     Ok(Some(line)) => {
                         if let Some(tx) = panel_tx {
-                            let _ = tx.send(SubagentEvent::Output {
+                            tx.send(SubagentEvent::Output {
                                 id: sub_id.to_string(),
                                 line: line.clone(),
-                            });
+                            }).ok();
                         }
                         if !collected.is_empty() {
                             collected.push('\n');
@@ -150,10 +150,10 @@ async fn stream_worker_output(
             }
             () = signal.cancelled() => {
                 if let Some(tx) = panel_tx {
-                    let _ = tx.send(SubagentEvent::Error {
+                    tx.send(SubagentEvent::Error {
                         id: sub_id.to_string(),
                         message: "Cancelled".into()
-                    });
+                    }).ok();
                 }
                 return Err(ToolResult::error("Worker cancelled".to_string()));
             }
@@ -181,14 +181,14 @@ async fn handle_worker_exit(
 
     if status.success() {
         if let Some(tx) = panel_tx {
-            let _ = tx.send(SubagentEvent::Done { id: sub_id.to_string() });
+            tx.send(SubagentEvent::Done { id: sub_id.to_string() }).ok();
         }
         ToolResult::text(collected)
     } else {
         let stderr_text = if let Some(stderr) = stderr_handle {
             let mut buf = String::new();
             let mut reader = BufReader::new(stderr);
-            let _ = tokio::io::AsyncReadExt::read_to_string(&mut reader, &mut buf).await;
+            tokio::io::AsyncReadExt::read_to_string(&mut reader, &mut buf).await.ok();
             buf
         } else {
             String::new()
@@ -198,10 +198,10 @@ async fn handle_worker_exit(
             worker_name, status, collected, stderr_text
         );
         if let Some(tx) = panel_tx {
-            let _ = tx.send(SubagentEvent::Error {
+            tx.send(SubagentEvent::Error {
                 id: sub_id.to_string(),
                 message: err_msg.clone(),
-            });
+            }).ok();
         }
         ToolResult::error(err_msg)
     }

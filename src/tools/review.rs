@@ -328,7 +328,7 @@ impl ReviewTool {
                             category: serde_json::from_value(f["category"].clone())
                                 .unwrap_or(FindingCategory::Suggestion),
                             file: f["file"].as_str()?.to_string(),
-                            line: f["line"].as_u64().map(|n| n as u32),
+                            line: f["line"].as_u64().and_then(|n| u32::try_from(n).ok()),
                             title: f["title"].as_str()?.to_string(),
                             description: f["description"].as_str()?.to_string(),
                             suggestion: f["suggestion"].as_str().map(|s| s.to_string()),

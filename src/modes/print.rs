@@ -87,10 +87,10 @@ pub async fn run_print_with_options(
                 } => {
                     if matches!(format, PrintFormat::Markdown) {
                         if !in_thinking {
-                            let _ = writeln!(writer, "<details><summary>Thinking…</summary>\n");
+                            writeln!(writer, "<details><summary>Thinking…</summary>\n").ok();
                             in_thinking = true;
                         }
-                        let _ = write!(writer, "{}", thinking);
+                        write!(writer, "{}", thinking).ok();
                     }
                     // In plain text mode, thinking is suppressed by default
                 }
@@ -99,26 +99,26 @@ pub async fn run_print_with_options(
                     ..
                 } => {
                     if in_thinking {
-                        let _ = writeln!(writer, "\n</details>\n");
+                        writeln!(writer, "\n</details>\n").ok();
                         in_thinking = false;
                     }
-                    let _ = write!(writer, "{}", text);
-                    let _ = writer.flush();
+                    write!(writer, "{}", text).ok();
+                    writer.flush().ok();
                 }
                 AgentEvent::ToolCall { tool_name, .. } if show_tools => {
                     if in_thinking {
-                        let _ = writeln!(writer, "\n</details>\n");
+                        writeln!(writer, "\n</details>\n").ok();
                         in_thinking = false;
                     }
                     match format {
                         PrintFormat::Markdown => {
-                            let _ = writeln!(writer, "\n**🔧 {}**", tool_name);
+                            writeln!(writer, "\n**🔧 {}**", tool_name).ok();
                         }
                         PrintFormat::Text => {
-                            let _ = writeln!(writer, "\n🔧 {}", tool_name);
+                            writeln!(writer, "\n🔧 {}", tool_name).ok();
                         }
                     }
-                    let _ = writer.flush();
+                    writer.flush().ok();
                 }
                 AgentEvent::ToolExecutionEnd { result, .. } if show_tools => {
                     let text: String = result
@@ -135,15 +135,15 @@ pub async fn run_print_with_options(
                         .join("\n");
                     match format {
                         PrintFormat::Markdown => {
-                            let _ = writeln!(writer, "```\n{}\n```", text);
+                            writeln!(writer, "```\n{}\n```", text).ok();
                         }
                         PrintFormat::Text => {
                             for line in text.lines().take(20) {
-                                let _ = writeln!(writer, "→ {}", line);
+                                writeln!(writer, "→ {}", line).ok();
                             }
                         }
                     }
-                    let _ = writer.flush();
+                    writer.flush().ok();
                 }
                 AgentEvent::UsageUpdate {
                     turn_usage,
@@ -159,12 +159,12 @@ pub async fn run_print_with_options(
                     if cumulative_usage.cache_read_input_tokens > 0
                         || cumulative_usage.cache_creation_input_tokens > 0
                     {
-                        let _ = write!(
+                        write!(
                             line,
                             "  cache: {}read/{}write",
                             cumulative_usage.cache_read_input_tokens,
                             cumulative_usage.cache_creation_input_tokens,
-                        );
+                        ).ok();
                     }
                     eprintln!("{}", line);
                 }
@@ -175,11 +175,11 @@ pub async fn run_print_with_options(
 
         // Close thinking block if still open
         if in_thinking {
-            let _ = writeln!(writer, "\n</details>\n");
+            writeln!(writer, "\n</details>\n").ok();
         }
 
-        let _ = writeln!(writer); // final newline
-        let _ = writer.flush();
+        writeln!(writer).ok(); // final newline
+        writer.flush().ok();
     });
 
     agent.prompt(prompt).await?;

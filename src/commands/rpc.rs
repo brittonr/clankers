@@ -196,7 +196,7 @@ fn handle_prompt_notification(notification: &serde_json::Value) {
             if let Some(text) = notification.get("params").and_then(|p| p.get("text")).and_then(|v| v.as_str()) {
                 print!("{}", text);
                 use std::io::Write;
-                let _ = std::io::stdout().flush();
+                std::io::stdout().flush().ok();
             }
         }
         "agent.tool_call" => {

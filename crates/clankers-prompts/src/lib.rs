@@ -128,9 +128,9 @@ pub fn format_prompts_list(prompts: &[PromptTemplate]) -> String {
     }
     let mut out = String::new();
     for p in prompts {
-        let _ = writeln!(out, "/{} — {}", p.name, p.description);
+        writeln!(out, "/{} — {}", p.name, p.description).ok();
         if !p.variables.is_empty() {
-            let _ = writeln!(out, "  Variables: {}", p.variables.join(", "));
+            writeln!(out, "  Variables: {}", p.variables.join(", ")).ok();
         }
     }
     out

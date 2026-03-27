@@ -43,7 +43,7 @@ pub fn paste_from_clipboard(app: &mut App) {
             paste_arboard().unwrap_or_else(|e| e)
         };
 
-        let _ = tx.send(result);
+        tx.send(result).ok();
     });
 
     app.clipboard_rx = Some(rx);
@@ -286,5 +286,5 @@ pub fn open_external_editor(terminal: &mut Terminal<CrosstermBackend<io::Stdout>
     }
 
     // Clean up temp file
-    let _ = std::fs::remove_file(&tmp_path);
+    std::fs::remove_file(&tmp_path).ok();
 }

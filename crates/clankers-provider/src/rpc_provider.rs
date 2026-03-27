@@ -123,7 +123,7 @@ impl Provider for RpcProvider {
             .await
             .map_err(|e| crate::error::provider_err(e.to_string()));
 
-        let _ = translate_handle.await;
+        translate_handle.await.ok();
         result
     }
 

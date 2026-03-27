@@ -67,8 +67,8 @@ pub fn discover_resources(global: &ClankersPaths, project: &ProjectPaths) -> Pro
 fn format_agents_section(agents_files: &[ContextFile]) -> String {
     let mut section = String::from("# Project Context\n\nProject-specific instructions and guidelines:\n");
     for ctx_file in agents_files {
-        let _ = writeln!(&mut section, "\n## {}\n", ctx_file.path.display());
-        let _ = writeln!(&mut section, "{}", ctx_file.content);
+        writeln!(&mut section, "\n## {}\n", ctx_file.path.display()).ok();
+        writeln!(&mut section, "{}", ctx_file.content).ok();
     }
     section
 }

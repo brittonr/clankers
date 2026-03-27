@@ -72,7 +72,7 @@ impl SlashHandler for WorkerHandler {
             let ptx = ctx.panel_tx.clone();
             tokio::spawn(async move {
                 let signal = CancellationToken::new();
-                let _ = crate::tools::delegate::run_worker_subprocess(
+                crate::tools::delegate::run_worker_subprocess(
                     &worker_name,
                     &task,
                     None,
@@ -158,11 +158,11 @@ impl SlashHandler for SubagentsHandler {
                             ctx.app.push_system("No running subagents to kill.".to_string(), false);
                         } else {
                             for id in &running {
-                                let _ = ctx.panel_tx.send(
+                                ctx.panel_tx.send(
                                     crate::tui::components::subagent_event::SubagentEvent::KillRequest {
                                         id: id.clone(),
                                     },
-                                );
+                                ).ok();
                             }
                             ctx.app.push_system(format!("Kill requested for {} subagent(s).", running.len()), false);
                         }
@@ -277,7 +277,7 @@ fn handle_peers_remove(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
             }
         };
         if removed {
-            let _ = registry.save(&registry_path);
+            registry.save(&registry_path).ok();
             ctx.app.push_system(format!("Removed peer '{}'.", subcmd_args), false);
             let entries = crate::tui::components::peers_panel::entries_from_registry(
                 &crate::modes::rpc::peers::peer_info_views(&registry),
@@ -372,7 +372,7 @@ fn handle_peers_deny(subcmd_args: &str, ctx: &mut SlashContext<'_>) {
         let acl_path = crate::modes::rpc::iroh::allowlist_path(paths);
         let mut allowed = crate::modes::rpc::iroh::load_allowlist(&acl_path);
         if allowed.remove(subcmd_args) {
-            let _ = crate::modes::rpc::iroh::save_allowlist(&acl_path, &allowed);
+            crate::modes::rpc::iroh::save_allowlist(&acl_path, &allowed).ok();
             ctx.app.push_system(format!("Denied peer {}…", &subcmd_args[..12.min(subcmd_args.len())]), false);
         } else {
             ctx.app.push_system("Peer not in allowlist.".to_string(), true);

@@ -74,17 +74,17 @@ pub(crate) fn spawn_agent_task(
                 AgentCommand::SeedMessages(msgs) => agent.seed_messages(msgs),
                 AgentCommand::SetThinkingLevel(level) => {
                     let level = agent.set_thinking_level(level);
-                    let _ = done_tx.send(TaskResult::ThinkingToggled(thinking_msg(&level), level));
+                    done_tx.send(TaskResult::ThinkingToggled(thinking_msg(&level), level)).ok();
                 }
                 AgentCommand::CycleThinkingLevel => {
                     let level = agent.cycle_thinking_level();
-                    let _ = done_tx.send(TaskResult::ThinkingToggled(thinking_msg(&level), level));
+                    done_tx.send(TaskResult::ThinkingToggled(thinking_msg(&level), level)).ok();
                 }
                 AgentCommand::SetSystemPrompt(prompt) => {
                     agent.set_system_prompt(prompt);
                 }
                 AgentCommand::GetSystemPrompt(tx) => {
-                    let _ = tx.send(agent.system_prompt().to_string());
+                    tx.send(agent.system_prompt().to_string()).ok();
                 }
                 AgentCommand::SwitchAccount(account_name) => {
                     handle_switch_account(&mut agent, &done_tx, &account_name).await;
@@ -147,7 +147,7 @@ async fn handle_prompt(
         Err(clankers_agent::AgentError::Cancelled) => None,
         Err(e) => Some(crate::error::Error::from(e)),
     };
-    let _ = done_tx.send(TaskResult::PromptDone(err));
+    done_tx.send(TaskResult::PromptDone(err)).ok();
 }
 
 /// Run a prompt future, listening for Abort commands during streaming.
@@ -195,18 +195,18 @@ async fn handle_login(
             match store.save(&paths.global_auth) {
                 Ok(()) => {
                     agent.provider().reload_credentials().await;
-                    let _ = done_tx.send(TaskResult::LoginDone(Ok(format!(
+                    done_tx.send(TaskResult::LoginDone(Ok(format!(
                         "Authentication successful! Saved as account '{}'.",
                         account
-                    ))));
+                    )))).ok();
                 }
                 Err(e) => {
-                    let _ = done_tx.send(TaskResult::LoginDone(Err(format!("Failed to save credentials: {}", e))));
+                    done_tx.send(TaskResult::LoginDone(Err(format!("Failed to save credentials: {}", e)))).ok();
                 }
             }
         }
         Err(e) => {
-            let _ = done_tx.send(TaskResult::LoginDone(Err(format!("Login failed: {}", e))));
+            done_tx.send(TaskResult::LoginDone(Err(format!("Login failed: {}", e)))).ok();
         }
     }
 }
@@ -222,13 +222,13 @@ async fn handle_switch_account(
     let mut store = crate::provider::auth::AuthStore::load(&paths.global_auth);
     if store.switch_anthropic_account(account_name) {
         if let Err(e) = store.save(&paths.global_auth) {
-            let _ = done_tx.send(TaskResult::AccountSwitched(Err(format!("Failed to save: {}", e))));
+            done_tx.send(TaskResult::AccountSwitched(Err(format!("Failed to save: {}", e)))).ok();
         } else {
             agent.provider().reload_credentials().await;
-            let _ = done_tx.send(TaskResult::AccountSwitched(Ok(account_name.to_string())));
+            done_tx.send(TaskResult::AccountSwitched(Ok(account_name.to_string()))).ok();
         }
     } else {
-        let _ = done_tx.send(TaskResult::AccountSwitched(Err(format!("No account '{}'", account_name))));
+        done_tx.send(TaskResult::AccountSwitched(Err(format!("No account '{}'", account_name)))).ok();
     }
 }
 
@@ -348,15 +348,15 @@ mod tests {
             _request: CompletionRequest,
             tx: mpsc::Sender<StreamEvent>,
         ) -> crate::provider::error::Result<()> {
-            let _ = tx
+            tx
                 .send(StreamEvent::ContentBlockDelta {
                     index: 0,
                     delta: ContentDelta::TextDelta {
                         text: self.response.clone(),
                     },
                 })
-                .await;
-            let _ = tx.send(StreamEvent::MessageStop).await;
+                .await.ok();
+            tx.send(StreamEvent::MessageStop).await.ok();
             Ok(())
         }
 
@@ -401,7 +401,7 @@ mod tests {
             _request: CompletionRequest,
             tx: mpsc::Sender<StreamEvent>,
         ) -> crate::provider::error::Result<()> {
-            let _ = tx.send(StreamEvent::MessageStop).await;
+            tx.send(StreamEvent::MessageStop).await.ok();
             Ok(())
         }
 
@@ -463,15 +463,15 @@ mod tests {
                 tx: mpsc::Sender<StreamEvent>,
             ) -> crate::provider::error::Result<()> {
                 *self.captured.lock().unwrap() = Some(request);
-                let _ = tx
+                tx
                     .send(StreamEvent::ContentBlockDelta {
                         index: 0,
                         delta: ContentDelta::TextDelta {
                             text: "rewritten".into(),
                         },
                     })
-                    .await;
-                let _ = tx.send(StreamEvent::MessageStop).await;
+                    .await.ok();
+                tx.send(StreamEvent::MessageStop).await.ok();
                 Ok(())
             }
 

@@ -55,7 +55,7 @@ pub async fn status_porcelain() -> Result<String> {
         for entry in statuses.iter() {
             let path = entry.path().unwrap_or("(non-utf8)");
             let (x, y) = status_chars(entry.status());
-            let _ = writeln!(out, "{}{} {}", x, y, path);
+            writeln!(out, "{}{} {}", x, y, path).ok();
         }
         Ok(out)
     })

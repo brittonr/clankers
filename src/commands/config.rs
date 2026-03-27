@@ -37,7 +37,7 @@ pub fn run(ctx: &CommandContext, action: ConfigAction) -> Result<()> {
                 &ctx.paths.global_settings
             };
             let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
-            let _ = std::process::Command::new(&editor).arg(path).status();
+            std::process::Command::new(&editor).arg(path).status().ok();
         }
         ConfigAction::Init {
             force,

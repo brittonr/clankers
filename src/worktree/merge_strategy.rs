@@ -149,7 +149,7 @@ fn execute_normal_merge(
     merge_opts.file_favor(git2::FileFavor::Normal);
 
     repo.merge(&[annotated], Some(&mut merge_opts), None).map_err(|e| {
-        let _ = repo.cleanup_state();
+        repo.cleanup_state().ok();
         crate::error::Error::Worktree {
             message: format!("Merge failed: {}", e),
         }
@@ -230,7 +230,7 @@ pub fn apply_graggle_merge(
     target: &str,
 ) -> Result<MergeResult> {
     let parent = target;
-    let mut all_clean = true;
+    let mut is_all_clean = true;
     let mut conflict_files = Vec::new();
 
     for file in conflicting_files {
@@ -240,19 +240,19 @@ pub fn apply_graggle_merge(
                 // Write merged content to working tree
                 let full_path = repo_root.join(file);
                 if let Some(dir) = full_path.parent() {
-                    let _ = std::fs::create_dir_all(dir);
+                    std::fs::create_dir_all(dir).ok();
                 }
                 std::fs::write(&full_path, &content).map_err(|e| crate::error::Error::Worktree {
                     message: format!("Failed to write merged file {}: {}", file.display(), e),
                 })?;
             }
             FileMergeResult::Conflict { content, .. } => {
-                all_clean = false;
+                is_all_clean = false;
                 conflict_files.push(file.clone());
                 // Write content with conflict markers
                 let full_path = repo_root.join(file);
                 if let Some(dir) = full_path.parent() {
-                    let _ = std::fs::create_dir_all(dir);
+                    std::fs::create_dir_all(dir).ok();
                 }
                 std::fs::write(&full_path, &content).map_err(|e| crate::error::Error::Worktree {
                     message: format!("Failed to write conflict file {}: {}", file.display(), e),
@@ -261,7 +261,7 @@ pub fn apply_graggle_merge(
         }
     }
 
-    if all_clean {
+    if is_all_clean {
         Ok(MergeResult::Clean)
     } else {
         Ok(MergeResult::NeedsHuman {

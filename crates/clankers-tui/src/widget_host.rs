@@ -25,6 +25,9 @@ use ratatui::widgets::Wrap;
 use crate::theme::Theme;
 
 /// Render a plugin widget tree into the given area
+/// Render a plugin widget tree. Recursion follows the widget tree structure
+/// (bounded by plugin API constraints — typically ≤5 levels deep).
+#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "widget tree depth bounded by plugin API"))]
 pub fn render_widget(frame: &mut Frame, widget: &Widget, area: Rect) {
     match widget {
         Widget::Text { content, bold, color } => {
@@ -137,6 +140,9 @@ pub fn render_plugin_panels(frame: &mut Frame, plugin_ui: &PluginUIState, theme:
     sorted_plugins.sort();
 
     let panel_count = sorted_plugins.len();
+    if panel_count == 0 {
+        return 0;
+    }
     let per_panel = area.height / panel_count as u16;
     if per_panel < 3 {
         return 0; // Not enough room

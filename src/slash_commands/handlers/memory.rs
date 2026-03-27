@@ -10,7 +10,7 @@ impl SystemPromptHandler {
     /// Get the current system prompt from the agent.
     fn get_current_prompt(ctx: &SlashContext<'_>) -> String {
         let (tx, mut rx) = tokio::sync::oneshot::channel();
-        let _ = ctx.cmd_tx.send(AgentCommand::GetSystemPrompt(tx));
+        ctx.cmd_tx.send(AgentCommand::GetSystemPrompt(tx)).ok();
         rx.try_recv().unwrap_or_else(|_| ctx.app.original_system_prompt.clone())
     }
 
@@ -35,7 +35,7 @@ impl SystemPromptHandler {
         } else {
             let new_prompt = text.to_string();
             let len = new_prompt.len();
-            let _ = ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(new_prompt));
+            ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(new_prompt)).ok();
             ctx.app
                 .push_system(format!("System prompt replaced ({} chars). Takes effect on next message.", len), false);
         }
@@ -47,7 +47,7 @@ impl SystemPromptHandler {
         } else {
             let current = Self::get_current_prompt(ctx);
             let new_prompt = format!("{}\n\n{}", current, text);
-            let _ = ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(new_prompt));
+            ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(new_prompt)).ok();
             ctx.app.push_system(
                 format!("Appended {} chars to system prompt. Takes effect on next message.", text.len()),
                 false,
@@ -61,7 +61,7 @@ impl SystemPromptHandler {
         } else {
             let current = Self::get_current_prompt(ctx);
             let new_prompt = format!("{}\n\n{}", text, current);
-            let _ = ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(new_prompt));
+            ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(new_prompt)).ok();
             ctx.app.push_system(
                 format!("Prepended {} chars to system prompt. Takes effect on next message.", text.len()),
                 false,
@@ -72,7 +72,7 @@ impl SystemPromptHandler {
     fn handle_reset(ctx: &mut SlashContext<'_>) {
         let original = ctx.app.original_system_prompt.clone();
         let len = original.len();
-        let _ = ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(original));
+        ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(original)).ok();
         ctx.app.push_system(
             format!("System prompt reset to original ({} chars). Takes effect on next message.", len),
             false,
@@ -91,7 +91,7 @@ impl SystemPromptHandler {
             match std::fs::read_to_string(&path) {
                 Ok(content) => {
                     let len = content.len();
-                    let _ = ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(content));
+                    ctx.cmd_tx.send(AgentCommand::SetSystemPrompt(content)).ok();
                     ctx.app.push_system(
                         format!(
                             "System prompt loaded from {} ({} chars). Takes effect on next message.",

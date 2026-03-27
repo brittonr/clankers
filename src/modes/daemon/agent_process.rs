@@ -270,11 +270,11 @@ async fn run_agent_actor(
                     .into_owned();
                 let (request_id, confirm_result_rx) =
                     controller.register_bash_confirm();
-                let _ = event_tx.send(DaemonEvent::ConfirmRequest {
+                event_tx.send(DaemonEvent::ConfirmRequest {
                     request_id,
                     command: req.command,
                     working_dir: cwd,
-                });
+                }).ok();
                 // Bridge ConfirmStore's oneshot → bash tool's oneshot.
                 // Times out after 60s with no client response → command blocked.
                 tokio::spawn(async move {
@@ -285,11 +285,11 @@ async fn run_agent_actor(
                     .await
                     {
                         Ok(Ok(approved)) => {
-                            let _ = req.resp_tx.send(approved);
+                            req.resp_tx.send(approved).ok();
                         }
                         _ => {
                             // Timeout or channel dropped — block the command
-                            let _ = req.resp_tx.send(false);
+                            req.resp_tx.send(false).ok();
                         }
                     }
                 });
@@ -351,10 +351,10 @@ pub async fn run_ephemeral_agent(
     let mut event_rx = event_tx.subscribe();
 
     // Send the prompt
-    let _ = cmd_tx.send(SessionCommand::Prompt {
+    cmd_tx.send(SessionCommand::Prompt {
         text: task.to_string(),
         images: vec![],
-    });
+    }).ok();
 
     // Collect text from DaemonEvent stream
     let mut collected = String::new();
@@ -365,10 +365,10 @@ pub async fn run_ephemeral_agent(
                 match event {
                     Ok(DaemonEvent::TextDelta { text, .. }) => {
                         if let Some(tx) = panel_tx {
-                            let _ = tx.send(SubagentEvent::Output {
+                            tx.send(SubagentEvent::Output {
                                 id: sub_id.to_string(),
                                 line: text.clone(),
-                            });
+                            }).ok();
                         }
                         if collected.len() < MAX_COLLECTED_BYTES {
                             collected.push_str(&text);
@@ -376,20 +376,20 @@ pub async fn run_ephemeral_agent(
                     }
                     Ok(DaemonEvent::AgentEnd) => {
                         if let Some(tx) = panel_tx {
-                            let _ = tx.send(SubagentEvent::Done {
+                            tx.send(SubagentEvent::Done {
                                 id: sub_id.to_string(),
-                            });
+                            }).ok();
                         }
                         break;
                     }
                     Ok(DaemonEvent::PromptDone { error: Some(msg) }) => {
                         if let Some(tx) = panel_tx {
-                            let _ = tx.send(SubagentEvent::Error {
+                            tx.send(SubagentEvent::Error {
                                 id: sub_id.to_string(),
                                 message: msg.clone(),
-                            });
+                            }).ok();
                         }
-                        let _ = cmd_tx.send(SessionCommand::Disconnect);
+                        cmd_tx.send(SessionCommand::Disconnect).ok();
                         return Err(msg);
                     }
                     Err(broadcast::error::RecvError::Closed) => break,
@@ -403,10 +403,10 @@ pub async fn run_ephemeral_agent(
                 // Parent cancelled — kill the agent actor
                 registry.send(pid, Signal::Kill);
                 if let Some(tx) = panel_tx {
-                    let _ = tx.send(SubagentEvent::Error {
+                    tx.send(SubagentEvent::Error {
                         id: sub_id.to_string(),
                         message: "Cancelled".into(),
-                    });
+                    }).ok();
                 }
                 return Err("Cancelled".to_string());
             }
@@ -414,7 +414,7 @@ pub async fn run_ephemeral_agent(
     }
 
     // Disconnect cleanly
-    let _ = cmd_tx.send(SessionCommand::Disconnect);
+    cmd_tx.send(SessionCommand::Disconnect).ok();
 
     Ok(collected)
 }
@@ -651,7 +651,7 @@ pub fn recover_session(
 
     // Seed messages
     if !seed_messages.is_empty() {
-        let _ = cmd_tx.send(SessionCommand::SeedMessages { messages: seed_messages });
+        cmd_tx.send(SessionCommand::SeedMessages { messages: seed_messages }).ok();
     }
 
     // Start session socket

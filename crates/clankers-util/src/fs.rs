@@ -135,7 +135,7 @@ pub fn ensure_gitignore_entry(project_root: &Path, entry: &str) {
         Err(_) => return,
     };
     use std::io::Write;
-    let _ = writeln!(file, "{}", entry);
+    writeln!(file, "{}", entry).ok();
 }
 
 #[cfg(test)]

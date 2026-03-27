@@ -21,7 +21,7 @@ impl SlashHandler for ClearHandler {
 
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.app.conversation.blocks.clear();
-        let _ = ctx.cmd_tx.send(AgentCommand::ClearHistory);
+        ctx.cmd_tx.send(AgentCommand::ClearHistory).ok();
         ctx.app.push_system("Conversation cleared.".to_string(), false);
         ctx.app.conversation.scroll.scroll_to_top();
     }
@@ -49,8 +49,8 @@ impl SlashHandler for ResetHandler {
         ctx.app.total_tokens = 0;
         ctx.app.total_cost = 0.0;
         ctx.app.conversation.focused_block = None;
-        let _ = ctx.cmd_tx.send(AgentCommand::ClearHistory);
-        let _ = ctx.cmd_tx.send(AgentCommand::ResetCancel);
+        ctx.cmd_tx.send(AgentCommand::ClearHistory).ok();
+        ctx.cmd_tx.send(AgentCommand::ResetCancel).ok();
         ctx.app.push_system("Session reset. Context and history cleared.".to_string(), false);
         ctx.app.conversation.scroll.scroll_to_top();
     }
@@ -72,7 +72,7 @@ impl SlashHandler for CompactHandler {
     }
 
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
-        let _ = ctx.cmd_tx.send(AgentCommand::CompressContext);
+        ctx.cmd_tx.send(AgentCommand::CompressContext).ok();
         ctx.app.push_system(
             "Compression requested. Older messages will be summarized on the next turn.".to_string(),
             false,
@@ -94,7 +94,7 @@ impl SlashHandler for CompressHandler {
     }
 
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
-        let _ = ctx.cmd_tx.send(AgentCommand::CompressContext);
+        ctx.cmd_tx.send(AgentCommand::CompressContext).ok();
         ctx.app.push_system(
             "Compression requested. Older messages will be summarized on the next turn.".to_string(),
             false,

@@ -99,8 +99,8 @@ impl Tool for ReadTool {
             None => return ToolResult::error("Missing required parameter: path"),
         };
 
-        let offset = params.get("offset").and_then(|v| v.as_u64()).map(|v| v as usize);
-        let limit = params.get("limit").and_then(|v| v.as_u64()).map(|v| v as usize);
+        let offset = params.get("offset").and_then(|v| v.as_u64()).and_then(|v| usize::try_from(v).ok());
+        let limit = params.get("limit").and_then(|v| v.as_u64()).and_then(|v| usize::try_from(v).ok());
 
         let path = Path::new(path_str);
 
@@ -128,7 +128,7 @@ impl Tool for ReadTool {
                     cached.line_count,
                     cached.hit_count + 1
                 ));
-                let _ = db.file_cache().record_hit(ctx.session_id(), path_str);
+                db.file_cache().record_hit(ctx.session_id(), path_str).ok();
             }
         }
 
@@ -318,7 +318,7 @@ impl ReadTool {
 
         for (idx, line) in lines[start..end].iter().enumerate() {
             let line_no = start + idx + 1;
-            let _ = writeln!(output, "{} | {}", line_no, line);
+            writeln!(output, "{} | {}", line_no, line).ok();
 
             if (idx + 1) % stream_interval == 0 {
                 ctx.emit_progress(&format!("{} | ...", line_no));

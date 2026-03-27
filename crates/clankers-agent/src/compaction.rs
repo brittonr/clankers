@@ -116,7 +116,7 @@ pub async fn compact_with_llm(
     let mut convo_text = String::new();
     for msg in dropped {
         let (role, text) = extract_role_and_text(msg);
-        let _ = writeln!(convo_text, "[{}]: {}", role, text);
+        writeln!(convo_text, "[{}]: {}", role, text).ok();
     }
 
     // Request a summary from the LLM

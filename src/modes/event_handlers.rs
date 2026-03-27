@@ -433,7 +433,7 @@ pub(crate) fn handle_input_with_plugins(
         };
         slash_registry.dispatch(&command, &args, &mut ctx);
     } else {
-        let _ = cmd_tx.send(super::interactive::AgentCommand::ResetCancel);
+        cmd_tx.send(super::interactive::AgentCommand::ResetCancel).ok();
         let mut pending_images = app.take_pending_images();
 
         let expanded = crate::util::at_file::expand_at_refs_with_images(text, &app.cwd);
@@ -458,20 +458,20 @@ pub(crate) fn handle_input_with_plugins(
 
         if app.prompt_improve {
             if pending_images.is_empty() {
-                let _ = cmd_tx.send(super::interactive::AgentCommand::RewriteAndPrompt(prompt_text));
+                cmd_tx.send(super::interactive::AgentCommand::RewriteAndPrompt(prompt_text)).ok();
             } else {
-                let _ = cmd_tx.send(super::interactive::AgentCommand::RewriteAndPromptWithImages {
+                cmd_tx.send(super::interactive::AgentCommand::RewriteAndPromptWithImages {
                     text: prompt_text,
                     images: pending_images,
-                });
+                }).ok();
             }
         } else if pending_images.is_empty() {
-            let _ = cmd_tx.send(super::interactive::AgentCommand::Prompt(prompt_text));
+            cmd_tx.send(super::interactive::AgentCommand::Prompt(prompt_text)).ok();
         } else {
-            let _ = cmd_tx.send(super::interactive::AgentCommand::PromptWithImages {
+            cmd_tx.send(super::interactive::AgentCommand::PromptWithImages {
                 text: prompt_text,
                 images: pending_images,
-            });
+            }).ok();
         }
     }
 }

@@ -98,8 +98,8 @@ async fn handle_connection(
                 let response = handle_rpc_request(&request, &state);
                 let response_bytes = serde_json::to_vec(&response).unwrap_or_default();
                 let mut send = send;
-                let _ = write_frame(&mut send, &response_bytes).await;
-                let _ = send.finish();
+                write_frame(&mut send, &response_bytes).await.ok();
+                send.finish().ok();
             }
         }
     }
@@ -156,13 +156,13 @@ async fn handle_file_send(
                 "path": path.display().to_string(),
                 "size": size,
             }));
-            let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
-            let _ = send.finish();
+            write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await.ok();
+            send.finish().ok();
         }
         Err(e) => {
             let resp = Response::error(e);
-            let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
-            let _ = send.finish();
+            write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await.ok();
+            send.finish().ok();
         }
     }
 }
@@ -224,8 +224,8 @@ async fn handle_file_recv(request: &Request, _recv: iroh::endpoint::RecvStream, 
     let file_path = match extract_file_path(request) {
         Ok(path) => path,
         Err(resp) => {
-            let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
-            let _ = send.finish();
+            write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await.ok();
+            send.finish().ok();
             return;
         }
     };
@@ -233,8 +233,8 @@ async fn handle_file_recv(request: &Request, _recv: iroh::endpoint::RecvStream, 
     let (file_name, file_size) = match get_file_metadata(&file_path) {
         Ok(info) => info,
         Err(resp) => {
-            let _ = write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
-            let _ = send.finish();
+            write_frame(&mut send, &serde_json::to_vec(&resp).unwrap_or_default()).await.ok();
+            send.finish().ok();
             return;
         }
     };
@@ -252,7 +252,7 @@ async fn handle_file_recv(request: &Request, _recv: iroh::endpoint::RecvStream, 
     if stream_file_to_send(&file_path, &mut send).await.is_ok() {
         info!("Sent file '{}' ({} bytes)", file_path.display(), file_size);
     }
-    let _ = send.finish();
+    send.finish().ok();
 }
 
 /// Extract file path from request parameters.
@@ -349,8 +349,8 @@ async fn validate_agent_context<'a>(
         Some(c) => Some(c),
         None => {
             let resp = Response::error("This server was not started with agent capabilities");
-            let _ = write_frame(send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
-            let _ = send.finish();
+            write_frame(send, &serde_json::to_vec(&resp).unwrap_or_default()).await.ok();
+            send.finish().ok();
             None
         }
     }
@@ -366,8 +366,8 @@ async fn extract_prompt_params(
         Some(t) => t.to_string(),
         None => {
             let resp = Response::error("Missing required param: \"text\"");
-            let _ = write_frame(send, &serde_json::to_vec(&resp).unwrap_or_default()).await;
-            let _ = send.finish();
+            write_frame(send, &serde_json::to_vec(&resp).unwrap_or_default()).await.ok();
+            send.finish().ok();
             return None;
         }
     };
@@ -426,7 +426,7 @@ fn spawn_event_streamer(
                         "input": input,
                     });
                     let bytes = serde_json::to_vec(&notification).unwrap_or_default();
-                    let _ = write_frame(&mut send, &bytes).await;
+                    write_frame(&mut send, &bytes).await.ok();
                 }
                 AgentEvent::ToolExecutionEnd {
                     ref call_id,
@@ -440,7 +440,7 @@ fn spawn_event_streamer(
                         "is_error": is_error,
                     });
                     let bytes = serde_json::to_vec(&notification).unwrap_or_default();
-                    let _ = write_frame(&mut send, &bytes).await;
+                    write_frame(&mut send, &bytes).await.ok();
                 }
                 AgentEvent::AgentEnd { .. } => break,
                 _ => {}
@@ -468,6 +468,6 @@ async fn send_final_response(
         })),
         Err(e) => Response::error(format!("Agent error: {}", e)),
     };
-    let _ = write_frame(&mut send, &serde_json::to_vec(&response).unwrap_or_default()).await;
-    let _ = send.finish();
+    write_frame(&mut send, &serde_json::to_vec(&response).unwrap_or_default()).await.ok();
+    send.finish().ok();
 }

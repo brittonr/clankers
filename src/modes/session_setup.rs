@@ -101,7 +101,7 @@ fn resume_session(
     let msgs = mgr.build_context().unwrap_or_default();
     app.session_id = mgr.session_id().to_string();
 
-    let _ = mgr.record_resume(crate::provider::message::MessageId::new(from_label));
+    mgr.record_resume(crate::provider::message::MessageId::new(from_label)).ok();
 
     let msg_count = msgs.len();
     app.push_system(format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count), false);

@@ -121,7 +121,7 @@ static POLICY: OnceLock<PathPolicy> = OnceLock::new();
 
 /// Initialize the global path policy. Call once at startup.
 pub fn init_policy() {
-    let _ = POLICY.set(PathPolicy::new());
+    POLICY.set(PathPolicy::new()).ok();
     info!(
         "sandbox: path policy initialized ({} denied paths)",
         POLICY.get().expect("Policy was just set").denied.len()

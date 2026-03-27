@@ -122,7 +122,7 @@ fn create_process_monitor(agent_tx: tokio::sync::broadcast::Sender<AgentEvent>) 
         loop {
             match proc_rx.recv().await {
                 Ok(pe) => {
-                    let _ = agent_tx.send(crate::agent::events::process_event_to_agent(pe));
+                    agent_tx.send(crate::agent::events::process_event_to_agent(pe)).ok();
                 }
                 Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => {}

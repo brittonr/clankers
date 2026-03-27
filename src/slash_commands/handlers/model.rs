@@ -23,7 +23,7 @@ impl SlashHandler for ModelHandler {
                 .push_system(format!("Current model: {}\n\nUsage: /model <model-name>", ctx.app.model), false);
         } else {
             let old_model = std::mem::replace(&mut ctx.app.model, args.to_string());
-            let _ = ctx.cmd_tx.send(AgentCommand::SetModel(args.to_string()));
+            ctx.cmd_tx.send(AgentCommand::SetModel(args.to_string())).ok();
             ctx.app.context_gauge.set_model(&ctx.app.model);
             ctx.app.push_system(format!("Model switched: {} → {}", old_model, ctx.app.model), false);
         }
@@ -60,12 +60,12 @@ impl SlashHandler for ThinkHandler {
 
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         if args.is_empty() {
-            let _ = ctx.cmd_tx.send(AgentCommand::CycleThinkingLevel);
+            ctx.cmd_tx.send(AgentCommand::CycleThinkingLevel).ok();
         } else if let Some(level) = crate::provider::ThinkingLevel::from_str_or_budget(args) {
-            let _ = ctx.cmd_tx.send(AgentCommand::SetThinkingLevel(level));
+            ctx.cmd_tx.send(AgentCommand::SetThinkingLevel(level)).ok();
         } else if let Ok(budget) = args.trim().parse::<usize>() {
             let level = crate::provider::ThinkingLevel::from_budget(budget);
-            let _ = ctx.cmd_tx.send(AgentCommand::SetThinkingLevel(level));
+            ctx.cmd_tx.send(AgentCommand::SetThinkingLevel(level)).ok();
         } else {
             ctx.app.push_system("Usage: /think [off|low|medium|high|max] or /think <budget>".to_string(), true);
         }
@@ -120,7 +120,7 @@ impl SlashHandler for RoleHandler {
                 // Set role to specific model and switch
                 let model_name = parts[1].to_string();
                 let old_model = std::mem::replace(&mut ctx.app.model, model_name.clone());
-                let _ = ctx.cmd_tx.send(AgentCommand::SetModel(model_name.clone()));
+                ctx.cmd_tx.send(AgentCommand::SetModel(model_name.clone())).ok();
                 ctx.app.context_gauge.set_model(&ctx.app.model);
                 ctx.app.push_system(
                     format!("Role '{}' → {} (switched: {} → {})", role.name, model_name, old_model, ctx.app.model),
@@ -133,7 +133,7 @@ impl SlashHandler for RoleHandler {
                     ctx.app.push_system(format!("Already using '{}' model: {}", role.name, target_model), false);
                 } else {
                     let old_model = std::mem::replace(&mut ctx.app.model, target_model.clone());
-                    let _ = ctx.cmd_tx.send(AgentCommand::SetModel(target_model.clone()));
+                    ctx.cmd_tx.send(AgentCommand::SetModel(target_model.clone())).ok();
                     ctx.app.context_gauge.set_model(&ctx.app.model);
                     ctx.app.push_system(format!("Role '{}': {} → {}", role.name, old_model, target_model), false);
                 }

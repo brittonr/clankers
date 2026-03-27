@@ -86,7 +86,7 @@ fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
         if let Some(summary) = crate::session::store::read_session_summary(path) {
             let date = summary.created_at.format("%Y-%m-%d %H:%M");
             let preview = summary.first_user_message.as_deref().unwrap_or("(empty)");
-            let _ = write!(
+            write!(
                 out,
                 "  {}. [{}] {} ({} msgs, {}){}\n     {}\n\n",
                 i + 1,
@@ -96,15 +96,15 @@ fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
                 summary.model,
                 marker,
                 preview,
-            );
+            ).ok();
         } else {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
-            let _ = writeln!(out, "  {}. {}{}", i + 1, name, marker);
+            writeln!(out, "  {}. {}{}", i + 1, name, marker).ok();
         }
     }
 
     if files.len() > limit {
-        let _ = writeln!(out, "  ({} more sessions)", files.len() - limit);
+        writeln!(out, "  ({} more sessions)", files.len() - limit).ok();
     }
     out.push_str("\nUse /session resume to pick a session, or /session resume <id>.");
     ctx.app.push_system(out, false);

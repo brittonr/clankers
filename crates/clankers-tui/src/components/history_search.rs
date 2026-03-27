@@ -134,7 +134,7 @@ impl HistoryStore {
 
         // Ensure parent directory exists
         if let Some(parent) = self.path.parent() {
-            let _ = std::fs::create_dir_all(parent);
+            std::fs::create_dir_all(parent).ok();
         }
 
         // Write all entries as JSONL

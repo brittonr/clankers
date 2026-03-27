@@ -45,8 +45,8 @@ pub(crate) fn handle_extended_action(
         ExtendedAction::CopyBlock => app.copy_focused_block(),
         ExtendedAction::RerunBlock => {
             if let Some(prompt) = app.get_focused_block_prompt() {
-                let _ = cmd_tx.send(super::interactive::AgentCommand::ResetCancel);
-                let _ = cmd_tx.send(super::interactive::AgentCommand::Prompt(prompt));
+                cmd_tx.send(super::interactive::AgentCommand::ResetCancel).ok();
+                cmd_tx.send(super::interactive::AgentCommand::Prompt(prompt)).ok();
             }
         }
         ExtendedAction::EditBlock => {
@@ -64,7 +64,7 @@ pub(crate) fn handle_extended_action(
 
         // ── Toggles ─────────────────────────────────
         ExtendedAction::ToggleThinking => {
-            let _ = cmd_tx.send(super::interactive::AgentCommand::CycleThinkingLevel);
+            cmd_tx.send(super::interactive::AgentCommand::CycleThinkingLevel).ok();
         }
         ExtendedAction::ToggleShowThinking => {
             app.show_thinking = !app.show_thinking;
@@ -266,7 +266,7 @@ fn handle_panel_kill(
     if let Some(sp) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
         && let Some(id) = sp.selected_id()
     {
-        let _ = panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest { id });
+        panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest { id }).ok();
     }
 }
 

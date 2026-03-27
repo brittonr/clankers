@@ -14,7 +14,7 @@ pub async fn write_frame(send: &mut iroh::endpoint::SendStream, data: &[u8]) -> 
 pub async fn read_frame(recv: &mut iroh::endpoint::RecvStream) -> Result<Vec<u8>, crate::error::Error> {
     let mut len_buf = [0u8; 4];
     recv.read_exact(&mut len_buf).await.map_err(io_err)?;
-    let len = u32::from_be_bytes(len_buf) as usize;
+    let len = usize::try_from(u32::from_be_bytes(len_buf)).expect("u32 fits in usize");
     if len > 10_000_000 {
         return Err(crate::error::Error::Provider {
             message: "Frame too large".to_string(),

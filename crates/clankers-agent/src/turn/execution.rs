@@ -87,14 +87,14 @@ pub(super) async fn collect_stream_events(
                 content_builders[index] = ContentBlockBuilder::new(content_block.clone());
 
                 // Forward to TUI/consumers
-                let _ = event_tx.send(AgentEvent::ContentBlockStart { index, content_block });
+                event_tx.send(AgentEvent::ContentBlockStart { index, content_block }).ok();
             }
             StreamEvent::ContentBlockDelta { index, delta } => {
                 // Forward delta event with index
-                let _ = event_tx.send(AgentEvent::MessageUpdate {
+                event_tx.send(AgentEvent::MessageUpdate {
                     index,
                     delta: delta.clone(),
-                });
+                }).ok();
 
                 // Apply delta to content block builder
                 if let Some(builder) = content_builders.get_mut(index) {
@@ -103,7 +103,7 @@ pub(super) async fn collect_stream_events(
             }
             StreamEvent::ContentBlockStop { index } => {
                 // Forward to TUI/consumers
-                let _ = event_tx.send(AgentEvent::ContentBlockStop { index });
+                event_tx.send(AgentEvent::ContentBlockStop { index }).ok();
             }
             StreamEvent::MessageDelta {
                 stop_reason: sr,
@@ -200,11 +200,11 @@ async fn execute_single_tool(
     user_tool_filter: Option<Vec<String>>,
 ) -> ToolResultMessage {
     // Emit ToolCall event
-    let _ = event_tx.send(AgentEvent::ToolCall {
+    event_tx.send(AgentEvent::ToolCall {
         tool_name: tool_name.clone(),
         call_id: call_id.clone(),
         input: input.clone(),
-    });
+    }).ok();
 
     // Check capability gate (UCAN token authorization — immutable ceiling)
     if let Some(ref gate) = capability_gate
@@ -254,10 +254,10 @@ async fn execute_single_tool(
         input
     };
 
-    let _ = event_tx.send(AgentEvent::ToolExecutionStart {
+    event_tx.send(AgentEvent::ToolExecutionStart {
         call_id: call_id.clone(),
         tool_name: tool_name.clone(),
-    });
+    }).ok();
 
     // Execute with accumulator
     let result = execute_tool_with_accumulator(
@@ -286,11 +286,11 @@ async fn execute_single_tool(
         pipeline.fire_async(clankers_hooks::HookPoint::PostTool, payload);
     }
 
-    let _ = event_tx.send(AgentEvent::ToolExecutionEnd {
+    event_tx.send(AgentEvent::ToolExecutionEnd {
         call_id: call_id.clone(),
         result: result.clone(),
         is_error: result.is_error,
-    });
+    }).ok();
 
     ToolResultMessage {
         id: MessageId::generate(),
@@ -346,7 +346,7 @@ async fn execute_tool_with_accumulator(
 
     // Stop collector and decide which result to use
     collector.abort();
-    let _ = collector.await;
+    collector.await.ok();
 
     let acc = std::mem::take(&mut *accumulator.lock());
     if acc.total_bytes() > 0 {
@@ -370,11 +370,11 @@ pub(super) fn create_error_result(
 ) -> ToolResultMessage {
     let result = ToolExecResult::error(error_msg);
 
-    let _ = event_tx.send(AgentEvent::ToolExecutionEnd {
+    event_tx.send(AgentEvent::ToolExecutionEnd {
         call_id: call_id.clone(),
         result: result.clone(),
         is_error: true,
-    });
+    }).ok();
 
     ToolResultMessage {
         id: MessageId::generate(),
