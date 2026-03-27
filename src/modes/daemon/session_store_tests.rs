@@ -20,12 +20,13 @@ mod tests {
     }
 
     fn make_entry(id: &str, state: SessionLifecycle) -> SessionCatalogEntry {
+        let now = chrono::Utc::now().to_rfc3339();
         SessionCatalogEntry {
             session_id: id.to_string(),
             automerge_path: PathBuf::from(format!("/tmp/sessions/{id}.automerge")),
             model: "claude-sonnet-4-20250514".to_string(),
-            created_at: "2026-03-20T10:00:00Z".to_string(),
-            last_active: "2026-03-20T10:00:00Z".to_string(),
+            created_at: now.clone(),
+            last_active: now,
             turn_count: 0,
             state,
         }
