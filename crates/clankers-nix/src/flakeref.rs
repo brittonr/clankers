@@ -300,8 +300,8 @@ mod tests {
     #[test]
     fn detect_flake_present() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("flake.nix"), "{}").unwrap();
-        std::fs::write(dir.path().join("flake.lock"), "{}").unwrap();
+        std::fs::write(dir.path().join("flake.nix"), "{}").ok();
+        std::fs::write(dir.path().join("flake.lock"), "{}").ok();
 
         let info = detect_flake(dir.path()).unwrap();
         assert_eq!(info.flake_path, dir.path());
@@ -311,7 +311,7 @@ mod tests {
     #[test]
     fn detect_flake_no_lock() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join("flake.nix"), "{}").unwrap();
+        std::fs::write(dir.path().join("flake.nix"), "{}").ok();
 
         let info = detect_flake(dir.path()).unwrap();
         assert!(!info.has_lock);

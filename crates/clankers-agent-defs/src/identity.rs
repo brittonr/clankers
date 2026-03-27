@@ -285,12 +285,12 @@ impl IdentityStore {
     /// Delete an identity.
     pub fn delete(&self, id: &str) -> Result<bool, String> {
         let txn = self.db.begin_write().map_err(|e| format!("begin_write: {e}"))?;
-        let removed = {
+        let was_removed = {
             let mut table = txn.open_table(IDENTITY_TABLE).map_err(|e| format!("open_table: {e}"))?;
             table.remove(id).map_err(|e| format!("remove: {e}"))?.is_some()
         };
         txn.commit().map_err(|e| format!("commit: {e}"))?;
-        Ok(removed)
+        Ok(was_removed)
     }
 }
 

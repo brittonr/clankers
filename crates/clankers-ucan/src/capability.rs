@@ -246,7 +246,7 @@ impl Capability {
                 },
             ) => {
                 // Child pattern must be subset of parent
-                let pattern_ok = if p1 == "*" {
+                let is_pattern_ok = if p1 == "*" {
                     true // Parent allows everything
                 } else if p2 == "*" {
                     false // Child wants everything but parent doesn't allow it
@@ -262,7 +262,7 @@ impl Capability {
                 };
 
                 // Tiger Style: decomposed — check pattern first, then wd
-                if !pattern_ok {
+                if !is_pattern_ok {
                     return false;
                 }
                 match (wd1, wd2) {

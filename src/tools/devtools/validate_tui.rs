@@ -231,10 +231,10 @@ fn check_assertions(
         let timeout = Duration::from_millis(step.timeout_ms);
         match harness.wait_for(wait_text, timeout) {
             Ok(()) => {
-                writeln!(report, "    \u{2713} wait_for {:?} \u{2014} found", wait_text).unwrap();
+                writeln!(report, "    \u{2713} wait_for {:?} \u{2014} found", wait_text).ok();
             }
             Err(e) => {
-                writeln!(report, "    \u{2717} FAIL \u{2014} {}", e).unwrap();
+                writeln!(report, "    \u{2717} FAIL \u{2014} {}", e).ok();
                 if step.capture {
                     captures.push((step_idx, harness.screen_text()));
                 }
@@ -245,9 +245,9 @@ fn check_assertions(
 
     if let Some(ref visible) = step.assert_visible {
         if harness.screen_contains(visible) {
-            writeln!(report, "    \u{2713} assert_visible {:?} \u{2014} found", visible).unwrap();
+            writeln!(report, "    \u{2713} assert_visible {:?} \u{2014} found", visible).ok();
         } else {
-            writeln!(report, "    \u{2717} FAIL \u{2014} assert_visible {:?} not found on screen", visible).unwrap();
+            writeln!(report, "    \u{2717} FAIL \u{2014} assert_visible {:?} not found on screen", visible).ok();
             if step.capture {
                 captures.push((step_idx, harness.screen_text()));
             }
@@ -259,10 +259,10 @@ fn check_assertions(
         let timeout = Duration::from_millis(step.timeout_ms.min(1000));
         match harness.wait_for_absent(absent, timeout) {
             Ok(()) => {
-                writeln!(report, "    \u{2713} assert_absent {:?} \u{2014} confirmed absent", absent).unwrap();
+                writeln!(report, "    \u{2713} assert_absent {:?} \u{2014} confirmed absent", absent).ok();
             }
             Err(_) => {
-                writeln!(report, "    \u{2717} FAIL \u{2014} assert_absent {:?} is still on screen", absent).unwrap();
+                writeln!(report, "    \u{2717} FAIL \u{2014} assert_absent {:?} is still on screen", absent).ok();
                 if step.capture {
                     captures.push((step_idx, harness.screen_text()));
                 }
@@ -286,9 +286,9 @@ fn run_tui_test(
     use std::fmt::Write;
 
     let mut report = String::new();
-    write!(report, "## TUI Validation: {}\n\n", description).unwrap();
-    writeln!(report, "PTY size: {}x{}", cols, rows).unwrap();
-    write!(report, "Steps: {}\n\n", steps.len()).unwrap();
+    write!(report, "## TUI Validation: {}\n\n", description).ok();
+    writeln!(report, "PTY size: {}x{}", cols, rows).ok();
+    write!(report, "Steps: {}\n\n", steps.len()).ok();
 
     let mut harness = PtyHarness::spawn(rows, cols, &[])?;
     let mut passed = 0usize;
@@ -297,7 +297,7 @@ fn run_tui_test(
 
     for (i, step) in steps.iter().enumerate() {
         if signal.is_cancelled() {
-            write!(report, "\n\u{26a0} Cancelled at step {}\n", i + 1).unwrap();
+            write!(report, "\n\u{26a0} Cancelled at step {}\n", i + 1).ok();
             break;
         }
 
@@ -305,15 +305,15 @@ fn run_tui_test(
 
         // Log action
         match &step.action {
-            StepAction::Type { text } => writeln!(report, "  {} type: {:?}", step_label, text).unwrap(),
-            StepAction::Key { name } => writeln!(report, "  {} key: {}", step_label, name).unwrap(),
-            StepAction::Wait { ms } => writeln!(report, "  {} wait: {}ms", step_label, ms).unwrap(),
-            StepAction::SlashCommand { command } => writeln!(report, "  {} slash: {}", step_label, command).unwrap(),
+            StepAction::Type { text } => { writeln!(report, "  {} type: {:?}", step_label, text).ok(); }
+            StepAction::Key { name } => { writeln!(report, "  {} key: {}", step_label, name).ok(); }
+            StepAction::Wait { ms } => { writeln!(report, "  {} wait: {}ms", step_label, ms).ok(); }
+            StepAction::SlashCommand { command } => { writeln!(report, "  {} slash: {}", step_label, command).ok(); }
         }
 
         // Execute action
         if let Err(e) = execute_action(&mut harness, &step.action) {
-            writeln!(report, "    \u{2717} FAIL \u{2014} action error: {}", e).unwrap();
+            writeln!(report, "    \u{2717} FAIL \u{2014} action error: {}", e).ok();
             failed += 1;
             continue;
         }
@@ -337,7 +337,7 @@ fn run_tui_test(
     harness.quit();
 
     // Summary
-    write!(report, "\n## Results: {} passed, {} failed out of {} steps\n", passed, failed, steps.len()).unwrap();
+    write!(report, "\n## Results: {} passed, {} failed out of {} steps\n", passed, failed, steps.len()).ok();
 
     if failed == 0 {
         report.push_str("## Status: \u{2713} PASS\n");
@@ -348,7 +348,7 @@ fn run_tui_test(
     if !captures.is_empty() {
         report.push_str("\n## Screen Captures\n");
         for (step_num, screen) in &captures {
-            write!(report, "\n### Step {} screen:\n```\n{}\n```\n", step_num, screen).unwrap();
+            write!(report, "\n### Step {} screen:\n```\n{}\n```\n", step_num, screen).ok();
         }
     }
 

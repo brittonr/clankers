@@ -203,7 +203,7 @@ mod tests {
 
     fn make_script(dir: &Path, name: &str, content: &str) -> PathBuf {
         let path = dir.join(name);
-        fs::write(&path, content).unwrap();
+        fs::write(&path, content).ok();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

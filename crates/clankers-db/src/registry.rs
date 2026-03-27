@@ -297,12 +297,12 @@ impl<'db> Registry<'db> {
     pub fn remove(&self, kind: &str, name: &str) -> Result<bool> {
         let key = make_key(kind, name);
         let tx = self.db.begin_write()?;
-        let removed = {
+        let was_removed = {
             let mut table = tx.open_table(TABLE).map_err(db_err)?;
             table.remove(key.as_str()).map_err(db_err)?.is_some()
         };
         tx.commit().map_err(db_err)?;
-        Ok(removed)
+        Ok(was_removed)
     }
 
     /// Remove all entries of a given kind.
@@ -344,7 +344,7 @@ impl<'db> Registry<'db> {
     /// removes entries whose files no longer exist.
     pub fn sync_from_disk(&self, kind: ResourceKind, resources: &[(&str, &str)]) -> Result<SyncReport> {
         let mut registered = 0u64;
-        let mut removed = 0u64;
+        let mut was_removed = 0u64;
 
         // Upsert all discovered resources
         for &(name, path) in resources {
@@ -361,14 +361,14 @@ impl<'db> Registry<'db> {
         for entry in &existing {
             if !disk_names.contains(entry.name.as_str()) {
                 self.remove(kind.as_str(), &entry.name)?;
-                removed += 1;
+                was_removed += 1;
             }
         }
 
         Ok(SyncReport {
             kind,
             registered,
-            removed,
+            removed: was_removed,
             total: resources.len() as u64,
         })
     }

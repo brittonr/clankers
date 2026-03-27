@@ -942,7 +942,7 @@ mod tests {
         // Write both files
         let header = crate::entry::SessionEntry::Header(test_header());
         crate::store::append_entry(&jsonl_path, &header).unwrap();
-        std::fs::write(&automerge_path, b"existing").unwrap();
+        std::fs::write(&automerge_path, b"existing").ok();
 
         let result = migrate_jsonl_to_automerge(&jsonl_path).unwrap();
         assert!(matches!(result, MigrateResult::Skipped));

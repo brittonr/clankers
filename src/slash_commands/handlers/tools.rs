@@ -75,7 +75,7 @@ impl SlashHandler for ToolsHandler {
                     if !current_source.is_empty() {
                         out.push('\n');
                     }
-                    writeln!(out, "  ── {} ──", source).unwrap();
+                    writeln!(out, "  ── {} ──", source).ok();
                     current_source.clone_from(source);
                 }
                 let status = if ctx.app.disabled_tools.contains(name) {
@@ -88,11 +88,11 @@ impl SlashHandler for ToolsHandler {
                 } else {
                     description.clone()
                 };
-                writeln!(out, "  {} {:<width$}  {}", status, name, desc, width = max_name).unwrap();
+                writeln!(out, "  {} {:<width$}  {}", status, name, desc, width = max_name).ok();
             }
             let enabled = ctx.app.tool_info.iter().filter(|(n, _, _)| !ctx.app.disabled_tools.contains(n)).count();
-            write!(out, "\n  {}/{} tool(s) enabled", enabled, ctx.app.tool_info.len()).unwrap();
-            write!(out, "\n  Tiers: core + specialty + orchestration (use --tools to change)").unwrap();
+            write!(out, "\n  {}/{} tool(s) enabled", enabled, ctx.app.tool_info.len()).ok();
+            write!(out, "\n  Tiers: core + specialty + orchestration (use --tools to change)").ok();
             ctx.app.push_system(out, false);
         }
     }
@@ -191,7 +191,7 @@ fn plugin_list(pm: &PluginMutex, ctx: &mut SlashContext<'_>) {
             crate::plugin::PluginState::Active => "✓",
             crate::plugin::PluginState::Loaded => "○",
             crate::plugin::PluginState::Error(e) => {
-                writeln!(out, "  ✗ {} v{} — Error: {}", p.name, p.version, e).unwrap();
+                writeln!(out, "  ✗ {} v{} — Error: {}", p.name, p.version, e).ok();
                 continue;
             }
             crate::plugin::PluginState::Disabled => "−",
@@ -201,9 +201,9 @@ fn plugin_list(pm: &PluginMutex, ctx: &mut SlashContext<'_>) {
         } else {
             p.manifest.tools.join(", ")
         };
-        writeln!(out, "  {} {} v{} — {} (tools: {})", icon, p.name, p.version, p.manifest.description, tools).unwrap();
+        writeln!(out, "  {} {} v{} — {} (tools: {})", icon, p.name, p.version, p.manifest.description, tools).ok();
     }
-    write!(out, "\n  ✓ active  ○ loaded  − disabled  ✗ error\n  Use /plugin enable|disable|reload <name>").unwrap();
+    write!(out, "\n  ✓ active  ○ loaded  − disabled  ✗ error\n  Use /plugin enable|disable|reload <name>").ok();
     ctx.app.push_system(out, false);
 }
 
@@ -219,14 +219,14 @@ fn plugin_show(pm: &PluginMutex, name: &str, ctx: &mut SlashContext<'_>) {
     let join_or_none = |v: &[String]| -> String { if v.is_empty() { "none".into() } else { v.join(", ") } };
 
     let mut out = String::new();
-    writeln!(out, "Plugin: {} v{}", p.name, p.version).unwrap();
-    writeln!(out, "State: {:?}", p.state).unwrap();
-    writeln!(out, "Description: {}", p.manifest.description).unwrap();
-    writeln!(out, "Path: {}", p.path.display()).unwrap();
-    writeln!(out, "Tools: {}", join_or_none(&p.manifest.tools)).unwrap();
-    writeln!(out, "Commands: {}", join_or_none(&p.manifest.commands)).unwrap();
-    writeln!(out, "Events: {}", join_or_none(&p.manifest.events)).unwrap();
-    write!(out, "Permissions: {}", join_or_none(&p.manifest.permissions)).unwrap();
+    writeln!(out, "Plugin: {} v{}", p.name, p.version).ok();
+    writeln!(out, "State: {:?}", p.state).ok();
+    writeln!(out, "Description: {}", p.manifest.description).ok();
+    writeln!(out, "Path: {}", p.path.display()).ok();
+    writeln!(out, "Tools: {}", join_or_none(&p.manifest.tools)).ok();
+    writeln!(out, "Commands: {}", join_or_none(&p.manifest.commands)).ok();
+    writeln!(out, "Events: {}", join_or_none(&p.manifest.events)).ok();
+    write!(out, "Permissions: {}", join_or_none(&p.manifest.permissions)).ok();
     ctx.app.push_system(out, false);
 }
 

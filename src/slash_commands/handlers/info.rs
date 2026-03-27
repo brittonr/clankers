@@ -139,19 +139,19 @@ impl SlashHandler for LeaderHandler {
         out.push_str("\n  ── Root ──\n");
         for item in &root.items {
             let action_str = format_leader_action(&item.action);
-            writeln!(out, "  {:>3}  {:<24} {}", item.key, item.label, action_str).unwrap();
+            writeln!(out, "  {:>3}  {:<24} {}", item.key, item.label, action_str).ok();
         }
 
         // Submenus
         for sub in submenus {
-            write!(out, "\n  ── {} ──\n", sub.label).unwrap();
+            write!(out, "\n  ── {} ──\n", sub.label).ok();
             for item in &sub.items {
                 let action_str = format_leader_action(&item.action);
-                writeln!(out, "  {:>3}  {:<24} {}", item.key, item.label, action_str).unwrap();
+                writeln!(out, "  {:>3}  {:<24} {}", item.key, item.label, action_str).ok();
             }
         }
 
-        write!(out, "\n  {} root items, {} submenus", root.items.len(), submenus.len(),).unwrap();
+        write!(out, "\n  {} root items, {} submenus", root.items.len(), submenus.len(),).ok();
 
         ctx.app.push_system(out, false);
     }
@@ -193,20 +193,20 @@ impl SlashHandler for RouterHandler {
             crate::tui::app::RouterStatus::Local => "in-process",
             crate::tui::app::RouterStatus::Disconnected => "disconnected",
         };
-        writeln!(out, "Router: {} ({})", info.provider_type, mode).unwrap();
+        writeln!(out, "Router: {} ({})", info.provider_type, mode).ok();
 
         // Backends
         if info.backend_names.is_empty() {
-            writeln!(out, "Providers: none").unwrap();
+            writeln!(out, "Providers: none").ok();
         } else {
-            writeln!(out, "Providers: {}", info.backend_names.join(", ")).unwrap();
+            writeln!(out, "Providers: {}", info.backend_names.join(", ")).ok();
         }
 
         // Model count
-        writeln!(out, "Models: {} available", info.model_count).unwrap();
+        writeln!(out, "Models: {} available", info.model_count).ok();
 
         // Current model
-        writeln!(out, "Active model: {}", ctx.app.model).unwrap();
+        writeln!(out, "Active model: {}", ctx.app.model).ok();
 
         ctx.app.push_system(out.trim_end().to_string(), false);
     }

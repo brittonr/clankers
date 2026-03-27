@@ -62,15 +62,15 @@ impl Editor {
 
         // Find start of word
         let mut new_pos = self.cursor_col;
-        let mut found_word = false;
+        let mut has_found_word = false;
         for (i, c) in before_cursor.char_indices().rev() {
             if c.is_whitespace() {
-                if found_word {
+                if has_found_word {
                     new_pos = i + 1;
                     break;
                 }
             } else {
-                found_word = true;
+                has_found_word = true;
             }
             new_pos = i;
         }

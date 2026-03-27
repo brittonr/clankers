@@ -243,22 +243,22 @@ impl Tool for AskTool {
                     } else {
                         "Select one"
                     };
-                    writeln!(out, "*{}:*", tag).unwrap();
+                    writeln!(out, "*{}:*", tag).ok();
                     for (i, opt) in options.iter().enumerate() {
-                        write!(out, "  {}. {}", i + 1, opt.label).unwrap();
+                        write!(out, "  {}. {}", i + 1, opt.label).ok();
                         if let Some(ref desc) = opt.description {
-                            write!(out, " — {}", desc).unwrap();
+                            write!(out, " — {}", desc).ok();
                         }
                         out.push('\n');
                     }
                 }
                 QuestionType::Confirm => {
                     let def = default.as_deref().unwrap_or("y");
-                    writeln!(out, "*Confirm (y/n, default: {})*", def).unwrap();
+                    writeln!(out, "*Confirm (y/n, default: {})*", def).ok();
                 }
                 QuestionType::Text => {
                     if let Some(ref def) = default {
-                        writeln!(out, "*Default: {}*", def).unwrap();
+                        writeln!(out, "*Default: {}*", def).ok();
                     }
                 }
             }

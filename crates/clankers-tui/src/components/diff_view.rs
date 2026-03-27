@@ -375,7 +375,7 @@ mod tests {
         // Write a temp file, compute diff from original
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.txt");
-        std::fs::write(&path, "modified\n").unwrap();
+        std::fs::write(&path, "modified\n").ok();
         let view = DiffView::compute(path.to_str().unwrap(), Some("original\n"));
         assert_eq!(view.additions, 1);
         assert_eq!(view.deletions, 1);
@@ -387,7 +387,7 @@ mod tests {
         // No original, file exists on disk — treated as new file
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("new.txt");
-        std::fs::write(&path, "brand new\ncontent\n").unwrap();
+        std::fs::write(&path, "brand new\ncontent\n").ok();
         let view = DiffView::compute(path.to_str().unwrap(), None);
         assert_eq!(view.additions, 2);
         assert!(!view.empty);

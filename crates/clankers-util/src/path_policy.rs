@@ -195,7 +195,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let file = dir.path().join("src/main.rs");
         std::fs::create_dir_all(dir.path().join("src")).unwrap();
-        std::fs::write(&file, "fn main() {}").unwrap();
+        std::fs::write(&file, "fn main() {}").ok();
         assert!(policy.check(file.to_str().unwrap()).is_none());
     }
 

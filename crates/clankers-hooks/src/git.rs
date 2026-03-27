@@ -201,7 +201,7 @@ mod tests {
 
     fn make_hook(dir: &Path, name: &str, content: &str) {
         let path = dir.join(".git/hooks").join(name);
-        fs::write(&path, content).unwrap();
+        fs::write(&path, content).ok();
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;

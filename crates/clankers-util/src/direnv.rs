@@ -36,14 +36,14 @@ pub fn load_direnv_if_needed(cwd: &Path) {
     }
 
     // Check that direnv is available
-    let direnv_ok = std::process::Command::new("direnv")
+    let is_direnv_ok = std::process::Command::new("direnv")
         .arg("--version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .is_ok_and(|s| s.success());
 
-    if !direnv_ok {
+    if !is_direnv_ok {
         debug!("direnv: binary not found in PATH, skipping");
         return;
     }
@@ -140,7 +140,7 @@ mod tests {
     #[test]
     fn has_envrc_finds_file_in_current_dir() {
         let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join(".envrc"), "use flake").unwrap();
+        std::fs::write(tmp.path().join(".envrc"), "use flake").ok();
         assert!(has_envrc(tmp.path()));
     }
 
@@ -149,7 +149,7 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let child = tmp.path().join("subdir");
         std::fs::create_dir(&child).unwrap();
-        std::fs::write(tmp.path().join(".envrc"), "use flake").unwrap();
+        std::fs::write(tmp.path().join(".envrc"), "use flake").ok();
         assert!(has_envrc(&child));
     }
 

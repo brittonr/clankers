@@ -161,12 +161,12 @@ impl<'db> MemoryStore<'db> {
     /// Remove a memory entry by ID.
     pub fn remove(&self, id: u64) -> Result<bool> {
         let tx = self.db.begin_write()?;
-        let removed = {
+        let was_removed = {
             let mut table = tx.open_table(TABLE).map_err(db_err)?;
             table.remove(id).map_err(db_err)?.is_some()
         };
         tx.commit().map_err(db_err)?;
-        Ok(removed)
+        Ok(was_removed)
     }
 
     /// List memories, optionally filtered by scope.

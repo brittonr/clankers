@@ -170,6 +170,16 @@
 - `AgentScope::default()` is `User` not `All` — contract defaults must match Rust struct defaults exactly
 - Nickel `| optional` for `Option<T>` fields — omitted fields don't appear in JSON output, serde `#[serde(default)]` fills in `None`
 
+### Tigerstyle lints
+- dylint driver needs manual build in Nix: `RUSTUP_TOOLCHAIN=nightly cargo build` in temp dir, copy to `~/.dylint_drivers/`
+- `cargo clean` wipes the lint library — must rebuild from `~/git/tigerstyle`
+- `cfg_attr(dylint_lib = "tigerstyle", allow(...))` needs `check-cfg` in workspace Cargo.toml
+- `let _ = expr` → `expr.ok()` ONLY works when expr returns `Result`; non-Result types need `let _ = expr`
+- `write!(String, ...).ok()` is the correct fix for infallible String writes (not `.unwrap()`)
+- Bool renames on local vars that feed struct field shorthand (`Struct { field }`) must not be renamed
+- Bulk sed/perl for `let _ =` → `.ok()` is dangerous — must verify each call returns Result, not Option/unit/custom type
+- Remaining 272 warnings are structural: bool struct fields, mutex expects, event loops, TUI guarded divisions
+
 ## Domain Notes
 - JMAP (RFC 8620/8621): pure HTTP+JSON email, Fastmail is reference impl
 - Matrix SDK 0.9: `Room::typing_notice(bool)`, `send_attachment()` for files, `ClankersEvent::Text` has `room_id`

@@ -84,18 +84,18 @@ impl MarkdownStyle {
 // ── Block-level rendering helpers ────────────────────────────────────────────
 
 /// Try to render a code fence line (opening or closing ```).
-/// Returns Some(Line) if this is a fence, updating the in_code_block state.
+/// Returns Some(Line) if this is a fence, updating the is_in_code_block state.
 fn try_render_code_fence(
     line: &str,
-    in_code_block: &mut bool,
+    is_in_code_block: &mut bool,
     code_lang: &mut String,
     style: &MarkdownStyle,
 ) -> Option<Line<'static>> {
     let rest = line.strip_prefix("```")?;
 
-    if !*in_code_block {
+    if !*is_in_code_block {
         // Opening fence
-        *in_code_block = true;
+        *is_in_code_block = true;
         *code_lang = rest.trim().to_string();
         let label = if code_lang.is_empty() {
             "───".to_string()
@@ -105,7 +105,7 @@ fn try_render_code_fence(
         Some(Line::from(Span::styled(label, style.code_fence)))
     } else {
         // Closing fence
-        *in_code_block = false;
+        *is_in_code_block = false;
         code_lang.clear();
         Some(Line::from(Span::styled("───", style.code_fence)))
     }
@@ -223,17 +223,17 @@ pub fn render_markdown(
     highlighter: &dyn clankers_tui_types::SyntaxHighlighter,
 ) -> Vec<Line<'static>> {
     let mut lines: Vec<Line<'static>> = Vec::new();
-    let mut in_code_block = false;
+    let mut is_in_code_block = false;
     let mut code_lang = String::new();
 
     for raw_line in text.lines() {
         // ── Code fences ──────────────────────────────
-        if let Some(fence_line) = try_render_code_fence(raw_line, &mut in_code_block, &mut code_lang, style) {
+        if let Some(fence_line) = try_render_code_fence(raw_line, &mut is_in_code_block, &mut code_lang, style) {
             lines.push(fence_line);
             continue;
         }
 
-        if in_code_block {
+        if is_in_code_block {
             lines.push(render_code_block_line(raw_line, &code_lang, style, highlighter));
             continue;
         }
@@ -484,9 +484,9 @@ fn try_render_emphasis(
     {
         // Only treat as italic if the underscore is at a word boundary
         // (not in the middle of a_word_like_this)
-        let at_start = i == 0 || !chars[i - 1].is_alphanumeric();
-        let at_end = close + 1 >= len || !chars[close + 1].is_alphanumeric();
-        if at_start && at_end {
+        let is_at_start = i == 0 || !chars[i - 1].is_alphanumeric();
+        let is_at_end = close + 1 >= len || !chars[close + 1].is_alphanumeric();
+        if is_at_start && is_at_end {
             flush_buf(buf, spans, style.base);
             let inner: String = chars[i + 1..close].iter().collect();
             spans.push(Span::styled(inner, style.italic));

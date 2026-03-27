@@ -105,7 +105,7 @@ fn manifest_tool_definitions_parsed() {
 fn manifest_tool_definitions_default_empty() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("plugin.json");
-    std::fs::write(&path, r#"{"name":"minimal","version":"0.1.0"}"#).unwrap();
+    std::fs::write(&path, r#"{"name":"minimal","version":"0.1.0"}"#).ok();
     let m = manifest::PluginManifest::load(&path).unwrap();
     assert!(m.tool_definitions.is_empty());
 }
@@ -120,6 +120,6 @@ fn manifest_load_nonexistent_returns_none() {
 fn manifest_load_invalid_json_returns_none() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("plugin.json");
-    std::fs::write(&path, "not valid json{{{").unwrap();
+    std::fs::write(&path, "not valid json{{{").ok();
     assert!(manifest::PluginManifest::load(&path).is_none());
 }

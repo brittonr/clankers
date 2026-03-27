@@ -2384,7 +2384,7 @@ async fn quic_read_frame<T: serde::de::DeserializeOwned>(
     recv.read_exact(&mut len_buf).await.map_err(|e| crate::error::Error::Provider {
         message: format!("QUIC read error: {e}"),
     })?;
-    let len = usize::try_from(u32::from_be_bytes(len_buf)).expect("u32 fits in usize");
+    let len = usize::try_from(u32::from_be_bytes(len_buf)).unwrap_or(0);
     if len > 10_000_000 {
         return Err(crate::error::Error::Provider {
             message: format!("Frame too large: {len}"),
@@ -2455,7 +2455,7 @@ mod tests {
         use std::io::Read;
         let mut len_buf = [0u8; 4];
         conn.read_exact(&mut len_buf).unwrap();
-        let len = usize::try_from(u32::from_be_bytes(len_buf)).expect("u32 fits in usize");
+        let len = usize::try_from(u32::from_be_bytes(len_buf)).unwrap_or(0);
 
         let mut payload = vec![0u8; len];
         conn.read_exact(&mut payload).unwrap();

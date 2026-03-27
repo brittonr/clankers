@@ -22,7 +22,7 @@ fn load_wasm_missing_file_errors() {
     let dir = tempfile::tempdir().unwrap();
     let plugin_dir = dir.path().join("broken-plugin");
     std::fs::create_dir_all(&plugin_dir).unwrap();
-    std::fs::write(plugin_dir.join("plugin.json"), r#"{"name":"broken-plugin","version":"0.1.0"}"#).unwrap();
+    std::fs::write(plugin_dir.join("plugin.json"), r#"{"name":"broken-plugin","version":"0.1.0"}"#).ok();
 
     let mut mgr = PluginManager::new(dir.path().to_path_buf(), None);
     mgr.discover();

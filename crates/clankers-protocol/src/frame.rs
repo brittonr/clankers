@@ -3,6 +3,9 @@
 //! All frames are: `[4-byte big-endian length][JSON payload]`.
 //! Generic over `AsyncRead`/`AsyncWrite` — no transport dependency.
 
+// u32 always fits in usize on 32-bit+ platforms (our minimum).
+const _: () = assert!(u32::MAX as u128 <= usize::MAX as u128);
+
 use std::fmt;
 
 use tokio::io::AsyncRead;
@@ -101,7 +104,7 @@ where
 {
     let mut len_buf = [0u8; 4];
     reader.read_exact(&mut len_buf).await?;
-    let len = usize::try_from(u32::from_be_bytes(len_buf)).expect("u32 fits in usize");
+    let len = usize::try_from(u32::from_be_bytes(len_buf)).unwrap_or(0);
     if len > MAX_FRAME_SIZE {
         return Err(FrameError::TooLarge { size: len });
     }
@@ -129,7 +132,7 @@ pub async fn read_raw_frame<R>(reader: &mut R) -> Result<Vec<u8>, FrameError>
 where R: AsyncRead + Unpin {
     let mut len_buf = [0u8; 4];
     reader.read_exact(&mut len_buf).await?;
-    let len = usize::try_from(u32::from_be_bytes(len_buf)).expect("u32 fits in usize");
+    let len = usize::try_from(u32::from_be_bytes(len_buf)).unwrap_or(0);
     if len > MAX_FRAME_SIZE {
         return Err(FrameError::TooLarge { size: len });
     }

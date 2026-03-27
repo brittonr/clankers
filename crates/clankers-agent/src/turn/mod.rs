@@ -247,14 +247,14 @@ fn apply_output_truncation(
         .map(|mut msg| {
             // Extract text content blocks, truncate, and rebuild
             let mut truncated_content = Vec::new();
-            let mut any_truncated = false;
+            let mut was_any_truncated = false;
 
             for block in &msg.content {
                 match block {
                     Content::Text { text } => {
                         let result = clanker_loop::truncate_tool_output(text, config);
                         if result.truncated {
-                            any_truncated = true;
+                            was_any_truncated = true;
                             tracing::info!(
                                 tool = msg.tool_name,
                                 original_lines = result.original_lines,
@@ -268,7 +268,7 @@ fn apply_output_truncation(
                 }
             }
 
-            if any_truncated {
+            if was_any_truncated {
                 msg.content = truncated_content;
             }
             msg

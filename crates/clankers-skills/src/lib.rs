@@ -83,14 +83,14 @@ fn load_skill(path: &Path) -> Option<Skill> {
 /// Extract description from skill content.
 /// First non-empty line after any frontmatter, or first line.
 fn extract_description(content: &str) -> String {
-    let mut in_frontmatter = false;
+    let mut is_in_frontmatter = false;
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed == "---" {
-            in_frontmatter = !in_frontmatter;
+            is_in_frontmatter = !is_in_frontmatter;
             continue;
         }
-        if in_frontmatter {
+        if is_in_frontmatter {
             continue;
         }
         if trimmed.is_empty() {

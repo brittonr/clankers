@@ -279,8 +279,8 @@ mod tests {
     async fn test_jsonl_scan_finds_content() {
         let tmp = TempDir::new().unwrap();
         let mut f = std::fs::File::create(tmp.path().join("sess-001.jsonl")).unwrap();
-        writeln!(f, r#"{{"role":"user","content":"fix the database migration"}}"#).unwrap();
-        writeln!(f, r#"{{"role":"assistant","content":"I'll help with the migration"}}"#).unwrap();
+        writeln!(f, r#"{{"role":"user","content":"fix the database migration"}}"#).ok();
+        writeln!(f, r#"{{"role":"assistant","content":"I'll help with the migration"}}"#).ok();
 
         let tool = SessionSearchTool::new(tmp.path().to_path_buf(), 100);
         let ctx = make_ctx();
@@ -312,7 +312,7 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         for i in 0..5 {
             let mut f = std::fs::File::create(tmp.path().join(format!("sess-{i:03}.jsonl"))).unwrap();
-            writeln!(f, r#"{{"content":"keyword match here"}}"#).unwrap();
+            writeln!(f, r#"{{"content":"keyword match here"}}"#).ok();
         }
 
         let tool = SessionSearchTool::new(tmp.path().to_path_buf(), 100);

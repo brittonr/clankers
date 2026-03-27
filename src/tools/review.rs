@@ -138,8 +138,8 @@ impl ReviewReport {
         let mut out = String::new();
 
         // Header
-        write!(out, "# Code Review — {} {}\n\n", self.verdict.emoji(), self.verdict.label()).unwrap();
-        write!(out, "{}\n\n", self.summary).unwrap();
+        write!(out, "# Code Review — {} {}\n\n", self.verdict.emoji(), self.verdict.label()).ok();
+        write!(out, "{}\n\n", self.summary).ok();
 
         if self.findings.is_empty() {
             out.push_str("No findings.\n");
@@ -151,8 +151,7 @@ impl ReviewReport {
         let p1 = self.findings.iter().filter(|f| f.priority == Priority::P1).count();
         let p2 = self.findings.iter().filter(|f| f.priority == Priority::P2).count();
         let p3 = self.findings.iter().filter(|f| f.priority == Priority::P3).count();
-        write!(out, "**Findings:** {} total — {} P0 {} P1 {} P2 {} P3\n\n", self.findings.len(), p0, p1, p2, p3)
-            .unwrap();
+        write!(out, "**Findings:** {} total — {} P0 {} P1 {} P2 {} P3\n\n", self.findings.len(), p0, p1, p2, p3).ok();
 
         // Group by priority
         let mut sorted = self.findings.clone();
@@ -162,7 +161,7 @@ impl ReviewReport {
         for finding in &sorted {
             if current_priority != Some(finding.priority) {
                 current_priority = Some(finding.priority);
-                write!(out, "## {} {} Priority\n\n", finding.priority.emoji(), finding.priority.label()).unwrap();
+                write!(out, "## {} {} Priority\n\n", finding.priority.emoji(), finding.priority.label()).ok();
             }
 
             let location = if let Some(line) = finding.line {
@@ -171,11 +170,11 @@ impl ReviewReport {
                 finding.file.clone()
             };
 
-            writeln!(out, "### {} {} — {}", finding.category.emoji(), finding.title, location).unwrap();
-            writeln!(out, "{}", finding.description).unwrap();
+            writeln!(out, "### {} {} — {}", finding.category.emoji(), finding.title, location).ok();
+            writeln!(out, "{}", finding.description).ok();
 
             if let Some(ref suggestion) = finding.suggestion {
-                write!(out, "\n> 💡 **Suggestion:** {}\n", suggestion).unwrap();
+                write!(out, "\n> 💡 **Suggestion:** {}\n", suggestion).ok();
             }
             out.push('\n');
         }

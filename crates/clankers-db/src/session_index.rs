@@ -87,12 +87,12 @@ impl<'db> SessionIndex<'db> {
     /// Remove a session from the index.
     pub fn remove(&self, session_id: &str) -> Result<bool> {
         let tx = self.db.begin_write()?;
-        let removed = {
+        let was_removed = {
             let mut table = tx.open_table(TABLE).map_err(db_err)?;
             table.remove(session_id).map_err(db_err)?.is_some()
         };
         tx.commit().map_err(db_err)?;
-        Ok(removed)
+        Ok(was_removed)
     }
 
     /// List sessions for a given cwd, newest first.

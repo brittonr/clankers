@@ -601,7 +601,7 @@ mod tests {
         let (_dir2, fallback_path) = temp_auth_path();
 
         // Primary path: no credentials (or expired)
-        std::fs::write(&primary_path, "{}").unwrap();
+        std::fs::write(&primary_path, "{}").ok();
 
         // Fallback path: fresh credentials
         let mut store = AuthStore::default();
@@ -695,7 +695,7 @@ mod tests {
         // Multiple threads saving different credentials — file should never be corrupt
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("auth.json");
-        std::fs::write(&path, "{}").unwrap();
+        std::fs::write(&path, "{}").ok();
 
         let num_threads = 4;
         let writes_per_thread = 5;
@@ -1007,7 +1007,7 @@ mod tests {
     async fn force_refresh_on_expired_cred_tries_http() {
         // Expired in-memory + no disk creds + no real OAuth server = error
         let (_dir, path) = temp_auth_path();
-        std::fs::write(&path, "{}").unwrap();
+        std::fs::write(&path, "{}").ok();
         let mgr = make_manager(expired_oauth_credential(), path, None);
 
         let result = mgr.force_refresh().await;
@@ -1020,7 +1020,7 @@ mod tests {
     fn save_to_existing_empty_file() {
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("auth.json");
-        std::fs::write(&path, "{}").unwrap();
+        std::fs::write(&path, "{}").ok();
 
         let creds = OAuthCredentials {
             access: "tok".into(),
@@ -1147,7 +1147,7 @@ mod tests {
         let path = dir.path().join("auth.json");
 
         // Create with world-readable permissions
-        std::fs::write(&path, "{}").unwrap();
+        std::fs::write(&path, "{}").ok();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
         let creds = OAuthCredentials {

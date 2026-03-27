@@ -381,15 +381,15 @@ impl Provider for RouterProvider {
                     return Ok(());
                 }
                 Err(e) => {
-                    let retryable = e.is_retryable();
-                    warn!("{}:{} failed: {}{}", provider.name(), model_id, e, if retryable { " (retryable)" } else { "" });
+                    let is_retryable = e.is_retryable();
+                    warn!("{}:{} failed: {}{}", provider.name(), model_id, e, if is_retryable { " (is_retryable)" } else { "" });
 
                     if let Some(ref db) = self.db {
                         let status = e.status_code().unwrap_or(500);
                         db.rate_limits().record_error(provider.name(), model_id, status, None).ok();
                     }
 
-                    if !retryable {
+                    if !is_retryable {
                         return Err(e);
                     }
                     last_error = Some(e);
@@ -1413,7 +1413,7 @@ mod tests {
 
         let (name2, provider2, count_b) = counting_mock("test-b", &["model-b"]);
 
-        // Provider that fails for model-a with retryable error
+        // Provider that fails for model-a with is_retryable error
         let (name1_fail, provider1_fail) =
             failing_mock_with_status("test-a", &["model-a"], "fail", Some(429));
 

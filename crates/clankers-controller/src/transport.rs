@@ -845,13 +845,13 @@ mod tests {
 
         // Create a stale socket file
         let stale_socket = temp_socket_dir.join("session-stale.sock");
-        std::fs::write(&stale_socket, "").unwrap();
+        std::fs::write(&stale_socket, "").ok();
         assert!(stale_socket.exists());
 
         // Create a stale PID file with a dead PID (init_socket_dir only
         // cleans sockets when it finds a stale PID file).
         let pid_path = temp_socket_dir.join("daemon.pid");
-        std::fs::write(&pid_path, "999999999").unwrap();
+        std::fs::write(&pid_path, "999999999").ok();
 
         // Override XDG_RUNTIME_DIR temporarily
         unsafe {

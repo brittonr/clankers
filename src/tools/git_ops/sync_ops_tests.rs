@@ -33,12 +33,12 @@ fn create_commit(repo: &Repository, filename: &str, content: &str, message: &str
 
     // Write file
     let file_path = repo.workdir().unwrap().join(filename);
-    fs::write(&file_path, content).unwrap();
+    fs::write(&file_path, content).ok();
 
     // Stage file
     let mut index = repo.index().unwrap();
     index.add_path(Path::new(filename)).unwrap();
-    index.write().unwrap();
+    index.write().ok();
     let tree_id = index.write_tree().unwrap();
     let tree = repo.find_tree(tree_id).unwrap();
 

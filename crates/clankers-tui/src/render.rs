@@ -105,11 +105,11 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     // ── Render panels and get chat area ─────────────────────────────
 
-    let (chat_area, chat_focused) = render_side_panels(frame, app);
+    let (chat_area, is_chat_focused) = render_side_panels(frame, app);
 
     // ── Render main chat area ───────────────────────────────────────
 
-    let border_color = if chat_focused { Color::Cyan } else { Color::DarkGray };
+    let border_color = if is_chat_focused { Color::Cyan } else { Color::DarkGray };
     let block = Block::default().borders(Borders::ALL).border_style(Style::default().fg(border_color));
     let chat_inner = block.inner(chat_area);
     frame.render_widget(block, chat_area);
@@ -118,7 +118,7 @@ pub fn render(frame: &mut Frame, app: &mut App) {
 
     // ── Panel navigation hint ───────────────────────────────────────
 
-    if chat_focused {
+    if is_chat_focused {
         let hint = Span::styled(" h/l:panels j/k:panes ", Style::default().fg(Color::DarkGray));
         let hint_len = hint.width() as u16;
         let hint_area = Rect {
@@ -169,7 +169,7 @@ fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
     let pane_snapshots: Vec<_> = app.layout.tiling.panes();
     let theme = app.theme.clone();
     let mut chat_area = Rect::default();
-    let mut chat_focused = false;
+    let mut is_chat_focused = false;
 
     for pane in &pane_snapshots {
         match app.layout.pane_registry.kind(pane.id) {
@@ -196,7 +196,7 @@ fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
             }
             Some(PaneKind::Chat) => {
                 chat_area = pane.rect;
-                chat_focused = !app.has_panel_focus();
+                is_chat_focused = !app.has_panel_focus();
             }
             Some(PaneKind::Empty) | None => {
                 // Render placeholder for empty/unknown panes
@@ -209,7 +209,7 @@ fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
         }
     }
 
-    (chat_area, chat_focused)
+    (chat_area, is_chat_focused)
 }
 
 /// Render chrome: overlays, status bar, session popup, etc.

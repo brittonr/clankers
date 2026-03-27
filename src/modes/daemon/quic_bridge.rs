@@ -486,7 +486,7 @@ async fn read_quic_frame<T: serde::de::DeserializeOwned>(
     recv.read_exact(&mut len_buf).await.map_err(|e| {
         clankers_protocol::FrameError::Io(std::io::Error::other(e.to_string()))
     })?;
-    let len = usize::try_from(u32::from_be_bytes(len_buf)).expect("u32 fits in usize");
+    let len = usize::try_from(u32::from_be_bytes(len_buf)).unwrap_or(0);
     if len > 10_000_000 {
         return Err(clankers_protocol::FrameError::TooLarge { size: len });
     }

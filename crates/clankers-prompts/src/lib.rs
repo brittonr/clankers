@@ -79,14 +79,14 @@ fn load_prompt(path: &Path) -> Option<PromptTemplate> {
 
 /// Extract description: first non-empty line after frontmatter
 fn extract_description(content: &str) -> String {
-    let mut in_frontmatter = false;
+    let mut is_in_frontmatter = false;
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed == "---" {
-            in_frontmatter = !in_frontmatter;
+            is_in_frontmatter = !is_in_frontmatter;
             continue;
         }
-        if in_frontmatter || trimmed.is_empty() {
+        if is_in_frontmatter || trimmed.is_empty() {
             continue;
         }
         return trimmed.trim_start_matches('#').trim().to_string();

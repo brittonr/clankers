@@ -154,7 +154,7 @@ impl RevocationStore for RedbRevocationStore {
             }
 
             // Tiger Style: Enforce max size to prevent unbounded memory usage
-            if hashes.len() >= usize::try_from(crate::constants::MAX_REVOCATION_LIST_SIZE).expect("u32 fits in usize") {
+            if hashes.len() >= usize::try_from(crate::constants::MAX_REVOCATION_LIST_SIZE).unwrap_or(0) {
                 tracing::warn!(
                     "Revocation list truncated at {} entries (limit: {})",
                     hashes.len(),

@@ -79,8 +79,7 @@ impl Tool for CostTool {
                             out,
                             "{:<25} | {:>9} | {:>10} | ${:>6.4} | {:>4.1}%",
                             m.display_name, m.input_tokens, m.output_tokens, m.cost_usd, m.percentage,
-                        )
-                        .unwrap();
+                        ).ok();
                     }
                 }
                 out.push('\n');
@@ -125,27 +124,27 @@ fn format_budget_detail(status: &BudgetStatus, total: f64) -> String {
             );
         }
         BudgetStatus::Ok { remaining } => {
-            write!(out, "Status: ✓ OK\nRemaining: ${:.2}\n", remaining).unwrap();
+            write!(out, "Status: ✓ OK\nRemaining: ${:.2}\n", remaining).ok();
             // Rough projection: if total > 0, estimate turns left
             if total > 0.01 {
                 // remaining / (total / turns) but we don't know turns here
                 // Just show the ratio
                 let ratio = remaining / total;
-                write!(out, "At current rate, ~{:.0}x more work before limit.", ratio,).unwrap();
+                write!(out, "At current rate, ~{:.0}x more work before limit.", ratio,).ok();
             }
         }
         BudgetStatus::Warning {
             over_soft_by,
             hard_limit_remaining,
         } => {
-            write!(out, "Status: ⚠ Warning\nOver soft limit by: ${:.2}\n", over_soft_by).unwrap();
+            write!(out, "Status: ⚠ Warning\nOver soft limit by: ${:.2}\n", over_soft_by).ok();
             if hard_limit_remaining.is_finite() {
-                writeln!(out, "Hard limit remaining: ${:.2}", hard_limit_remaining).unwrap();
+                writeln!(out, "Hard limit remaining: ${:.2}", hard_limit_remaining).ok();
                 out.push_str("Routing policy is biasing toward cheaper models.");
             }
         }
         BudgetStatus::Exceeded { over_hard_by } => {
-            write!(out, "Status: ✖ Exceeded\nOver hard limit by: ${:.2}\n", over_hard_by).unwrap();
+            write!(out, "Status: ✖ Exceeded\nOver hard limit by: ${:.2}\n", over_hard_by).ok();
             out.push_str("Routing policy is forcing cheapest model (smol/haiku).");
         }
     }

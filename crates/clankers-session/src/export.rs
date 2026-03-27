@@ -28,10 +28,10 @@ pub fn export_markdown(path: &Path) -> Result<String> {
     for entry in &entries {
         match entry {
             SessionEntry::Header(h) => {
-                write!(out, "# Session: {}\n\n", h.session_id).unwrap();
-                writeln!(out, "- **Date**: {}", h.created_at.format("%Y-%m-%d %H:%M:%S UTC")).unwrap();
-                writeln!(out, "- **Model**: {}", h.model).unwrap();
-                write!(out, "- **CWD**: {}\n\n---\n\n", h.cwd).unwrap();
+                write!(out, "# Session: {}\n\n", h.session_id).ok();
+                writeln!(out, "- **Date**: {}", h.created_at.format("%Y-%m-%d %H:%M:%S UTC")).ok();
+                writeln!(out, "- **Model**: {}", h.model).ok();
+                write!(out, "- **CWD**: {}\n\n---\n\n", h.cwd).ok();
             }
             SessionEntry::Message(m) => match &m.message {
                 AgentMessage::User(u) => {
@@ -57,16 +57,14 @@ pub fn export_markdown(path: &Path) -> Result<String> {
                                     "**Tool call**: `{}`\n```json\n{}\n```\n\n",
                                     name,
                                     serde_json::to_string_pretty(input).unwrap_or_default()
-                                )
-                                .unwrap();
+                                ).ok();
                             }
                             Content::Thinking { thinking, .. } => {
                                 write!(
                                     out,
                                     "<details>\n<summary>💭 Thinking</summary>\n\n{}\n\n</details>\n\n",
                                     thinking
-                                )
-                                .unwrap();
+                                ).ok();
                             }
                             _ => {}
                         }
@@ -78,10 +76,10 @@ pub fn export_markdown(path: &Path) -> Result<String> {
                     } else {
                         "📋 Tool Result"
                     };
-                    write!(out, "### {} ({})\n\n", label, tr.tool_name).unwrap();
+                    write!(out, "### {} ({})\n\n", label, tr.tool_name).ok();
                     for c in &tr.content {
                         if let Content::Text { text } = c {
-                            write!(out, "```\n{}\n```\n\n", text).unwrap();
+                            write!(out, "```\n{}\n```\n\n", text).ok();
                         }
                     }
                 }
@@ -107,9 +105,8 @@ pub fn export_text(path: &Path) -> Result<String> {
                     h.session_id,
                     h.model,
                     h.created_at.format("%Y-%m-%d %H:%M")
-                )
-                .unwrap();
-                writeln!(out, "CWD: {}", h.cwd).unwrap();
+                ).ok();
+                writeln!(out, "CWD: {}", h.cwd).ok();
                 out.push_str(&"─".repeat(60));
                 out.push('\n');
             }
@@ -134,7 +131,7 @@ pub fn export_text(path: &Path) -> Result<String> {
                 }
                 AgentMessage::ToolResult(tr) => {
                     let label = if tr.is_error { "Tool Error" } else { "Tool Result" };
-                    write!(out, "\n[{} - {}]\n", label, tr.tool_name).unwrap();
+                    write!(out, "\n[{} - {}]\n", label, tr.tool_name).ok();
                     for c in &tr.content {
                         if let Content::Text { text } = c {
                             out.push_str(text);

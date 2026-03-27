@@ -38,22 +38,22 @@ pub fn unified_diff(path: &str, old: &str, new: &str) -> String {
     let mut out = String::new();
 
     // Header
-    write!(out, "\x1b[1m--- {}\n+++ {}\x1b[0m\n", path, path).unwrap();
+    write!(out, "\x1b[1m--- {}\n+++ {}\x1b[0m\n", path, path).ok();
 
     for hunk in diff.unified_diff().context_radius(CONTEXT_LINES).iter_hunks() {
         // Hunk header
-        writeln!(out, "\x1b[36m{}\x1b[0m", hunk.header()).unwrap();
+        writeln!(out, "\x1b[36m{}\x1b[0m", hunk.header()).ok();
 
         for change in hunk.iter_changes() {
             match change.tag() {
                 ChangeTag::Delete => {
-                    write!(out, "\x1b[31m-{}\x1b[0m", change).unwrap();
+                    write!(out, "\x1b[31m-{}\x1b[0m", change).ok();
                 }
                 ChangeTag::Insert => {
-                    write!(out, "\x1b[32m+{}\x1b[0m", change).unwrap();
+                    write!(out, "\x1b[32m+{}\x1b[0m", change).ok();
                 }
                 ChangeTag::Equal => {
-                    write!(out, "\x1b[2m {}\x1b[0m", change).unwrap();
+                    write!(out, "\x1b[2m {}\x1b[0m", change).ok();
                 }
             }
             // `similar` change values include trailing newlines for most lines,

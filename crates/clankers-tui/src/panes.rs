@@ -374,8 +374,8 @@ pub fn insert_pane_beside(
         } => {
             let first_result = insert_pane_beside(*first.clone(), target, new_pane, direction, ratio);
             if let Some(new_first) = first_result {
-                let first_changed = !nodes_equal(&new_first, &first);
-                if first_changed {
+                let has_first_changed = !nodes_equal(&new_first, &first);
+                if has_first_changed {
                     return Some(Node::Split {
                         direction: d,
                         ratio: r,

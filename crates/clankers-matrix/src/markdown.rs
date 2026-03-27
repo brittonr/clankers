@@ -106,7 +106,7 @@ pub fn chunk_response(text: &str, max_bytes: usize) -> Vec<String> {
 fn split_into_blocks(text: &str) -> Vec<String> {
     let mut blocks = Vec::new();
     let mut current = String::new();
-    let mut in_code_block = false;
+    let mut is_in_code_block = false;
     let mut lines = text.lines().peekable();
 
     while let Some(line) = lines.next() {
@@ -114,14 +114,14 @@ fn split_into_blocks(text: &str) -> Vec<String> {
 
         // Detect code fence
         if trimmed.starts_with("```") {
-            in_code_block = !in_code_block;
+            is_in_code_block = !is_in_code_block;
             if !current.is_empty() {
                 current.push('\n');
             }
             current.push_str(line);
 
             // If we just closed a code block, finalize it as its own block
-            if !in_code_block {
+            if !is_in_code_block {
                 // Consume a trailing blank line after closing the code block, if any.
                 if let Some(next_line) = lines.peek()
                     && next_line.trim().is_empty()
@@ -134,7 +134,7 @@ fn split_into_blocks(text: &str) -> Vec<String> {
             continue;
         }
 
-        if in_code_block {
+        if is_in_code_block {
             // Inside code block, keep all lines together
             if !current.is_empty() {
                 current.push('\n');

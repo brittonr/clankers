@@ -16,7 +16,7 @@ use crate::error::*;
 /// The nix store hash is always exactly 32 nixbase32 characters ([0-9a-df-np-sv-z]).
 /// The name is one or more characters from the valid set.
 static STORE_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"/nix/store/([0-9a-df-np-sv-z]{32})-([a-zA-Z0-9+\-._?=][a-zA-Z0-9+\-._?=]*)").unwrap()
+    Regex::new(r"/nix/store/([0-9a-df-np-sv-z]{32})-([a-zA-Z0-9+\-._?=][a-zA-Z0-9+\-._?=]*)").expect("static regex")
 });
 
 /// Agent-friendly representation of a nix store path.

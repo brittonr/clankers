@@ -315,8 +315,8 @@ impl CostTracker {
 
         // Hard limit — decomposed: check existence, then crossing
         if let Some(hard) = self.config.hard_limit {
-            let just_crossed = total >= hard && prev < hard;
-            if just_crossed {
+            let has_just_crossed = total >= hard && prev < hard;
+            if has_just_crossed {
                 events.push(BudgetEvent::Exceeded {
                     limit: hard,
                     current: total,
@@ -326,8 +326,8 @@ impl CostTracker {
 
         // Soft limit — decomposed: check existence, then crossing
         if let Some(soft) = self.config.soft_limit {
-            let just_crossed = total >= soft && prev < soft;
-            if just_crossed {
+            let has_just_crossed = total >= soft && prev < soft;
+            if has_just_crossed {
                 events.push(BudgetEvent::Warning {
                     threshold: soft,
                     current: total,

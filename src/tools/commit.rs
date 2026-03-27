@@ -113,20 +113,20 @@ impl CommitTool {
         let mut output = String::new();
         output.push_str("# Git Analysis\n\n");
         output.push_str("## Status\n");
-        write!(output, "```\n{}\n```\n\n", status).unwrap();
+        write!(output, "```\n{}\n```\n\n", status).ok();
 
         if !staged_stat.is_empty() {
             output.push_str("## Staged Changes\n");
-            write!(output, "```\n{}\n```\n\n", staged_stat).unwrap();
+            write!(output, "```\n{}\n```\n\n", staged_stat).ok();
         }
         if !unstaged_stat.is_empty() {
             output.push_str("## Unstaged Changes\n");
-            write!(output, "```\n{}\n```\n\n", unstaged_stat).unwrap();
+            write!(output, "```\n{}\n```\n\n", unstaged_stat).ok();
         }
 
         output.push_str("## Change Categories\n");
         for (category, files_in_cat) in &analysis {
-            writeln!(output, "- **{}**: {}", category, files_in_cat.join(", ")).unwrap();
+            writeln!(output, "- **{}**: {}", category, files_in_cat.join(", ")).ok();
         }
 
         if !detailed_staged.is_empty() {
@@ -137,7 +137,7 @@ impl CommitTool {
             } else {
                 detailed_staged
             };
-            write!(output, "\n## Detailed Staged Diff\n```diff\n{}\n```\n", diff_display).unwrap();
+            write!(output, "\n## Detailed Staged Diff\n```diff\n{}\n```\n", diff_display).ok();
         }
 
         if !detailed_unstaged.is_empty() {
@@ -147,12 +147,12 @@ impl CommitTool {
             } else {
                 detailed_unstaged
             };
-            write!(output, "\n## Detailed Unstaged Diff\n```diff\n{}\n```\n", diff_display).unwrap();
+            write!(output, "\n## Detailed Unstaged Diff\n```diff\n{}\n```\n", diff_display).ok();
         }
 
         // Suggest a commit message
         let suggestion = suggest_commit_message(&status, &analysis);
-        write!(output, "\n## Suggested Commit\n```\n{}\n```\n", suggestion).unwrap();
+        write!(output, "\n## Suggested Commit\n```\n{}\n```\n", suggestion).ok();
 
         ToolResult::text(output)
     }
@@ -172,15 +172,15 @@ impl CommitTool {
 
         let mut output = String::new();
         if !staged.is_empty() {
-            writeln!(output, "Staged {} file(s):", staged.len()).unwrap();
+            writeln!(output, "Staged {} file(s):", staged.len()).ok();
             for f in &staged {
-                writeln!(output, "  ✓ {}", f).unwrap();
+                writeln!(output, "  ✓ {}", f).ok();
             }
         }
         if !errors.is_empty() {
-            write!(output, "\nFailed to stage {} file(s):\n", errors.len()).unwrap();
+            write!(output, "\nFailed to stage {} file(s):\n", errors.len()).ok();
             for e in &errors {
-                writeln!(output, "  ✗ {}", e).unwrap();
+                writeln!(output, "  ✗ {}", e).ok();
             }
         }
 
@@ -296,9 +296,9 @@ impl CommitTool {
                 "style" | "formatting" => "style",
                 _ => "chore",
             };
-            writeln!(output, "## Commit {} — `{}({}): ...`", i + 1, commit_type, category).unwrap();
+            writeln!(output, "## Commit {} — `{}({}): ...`", i + 1, commit_type, category).ok();
             for f in files {
-                writeln!(output, "  - {}", f).unwrap();
+                writeln!(output, "  - {}", f).ok();
             }
             output.push('\n');
         }
@@ -355,9 +355,9 @@ impl CommitTool {
 
                 for (key, label) in &group_labels {
                     if let Some(entries) = groups.get(*key) {
-                        write!(changelog, "## {}\n\n", label).unwrap();
+                        write!(changelog, "## {}\n\n", label).ok();
                         for entry in entries {
-                            writeln!(changelog, "- {} ({}, {})", entry.description, entry.hash, entry.date).unwrap();
+                            writeln!(changelog, "- {} ({}, {})", entry.description, entry.hash, entry.date).ok();
                         }
                         changelog.push('\n');
                     }

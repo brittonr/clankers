@@ -176,15 +176,15 @@ impl OutputSearch {
 
     fn find_substring_matches(&mut self, plain_lines: &[String]) {
         // Smart-case: case-insensitive unless query contains uppercase
-        let case_sensitive = self.query.chars().any(|c| c.is_uppercase());
-        let query = if case_sensitive {
+        let is_case_sensitive = self.query.chars().any(|c| c.is_uppercase());
+        let query = if is_case_sensitive {
             self.query.clone()
         } else {
             self.query.to_lowercase()
         };
 
         for (row, line) in plain_lines.iter().enumerate() {
-            let haystack = if case_sensitive {
+            let haystack = if is_case_sensitive {
                 line.clone()
             } else {
                 line.to_lowercase()

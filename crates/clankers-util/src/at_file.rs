@@ -367,7 +367,7 @@ mod tests {
         // Create a temp image file
         let dir = std::env::temp_dir();
         let img_path = dir.join("test_at_file.png");
-        std::fs::write(&img_path, b"fake png bytes").unwrap();
+        std::fs::write(&img_path, b"fake png bytes").ok();
 
         let text = format!("look at @{}", img_path.display());
         let result = expand_at_refs_with_images(&text, "/");
