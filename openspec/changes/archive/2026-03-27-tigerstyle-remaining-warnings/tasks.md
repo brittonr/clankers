@@ -46,4 +46,4 @@
 - [x] 7.1 Run full `cargo dylint --all --no-build -- --workspace` — target zero warnings
 - [x] 7.2 Run `cargo clippy -- -D warnings` — verify no regressions
 - [x] 7.3 Run `cargo nextest run --workspace` — verify all tests pass (excluding known flaky: `gc_removes_old_tombstoned`, `test_open_resumes_latest_branch`)
-- [ ] 7.4 Commit with detailed message listing warning counts per category
+- [x] 7.4 Commit with detailed message listing warning counts per category
