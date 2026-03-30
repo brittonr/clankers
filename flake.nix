@@ -44,7 +44,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs {
-          inherit system;
+          localSystem = system;
           overlays = [ (import rust-overlay) ];
         };
 
