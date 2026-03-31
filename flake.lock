@@ -3,11 +3,11 @@
     "clanker-router-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1774933497,
-        "narHash": "sha256-DbpCg4M/BVZ6BPuONFhBFG3+V0zSA+6HpueB2q8y0q8=",
+        "lastModified": 1774978015,
+        "narHash": "sha256-hIhh+xfokMzEpg7EfoQMYe7jYnAjuzjI3FsvgtcgfzU=",
         "owner": "brittonr",
         "repo": "clanker-router",
-        "rev": "af55906d79a219da771e0fda7be6ca3f4364acf7",
+        "rev": "9456ac415fde592c7e72e10afebd2b4303f5cda6",
         "type": "github"
       },
       "original": {
