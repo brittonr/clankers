@@ -70,6 +70,10 @@ clankers daemon stop           # stop daemon
 - Config paths: `~/.clankers/agent/` (global), `.clankers/` (project).
 - Pi fallback: reads `~/.pi/agent/` for auth/settings when clankers versions missing.
 
+### Reference Repos
+
+- `/home/brittonr/git/claude-code/` — Extracted TypeScript source of Anthropic's Claude Code CLI (v2.1.88). Use as reference for tool design, agent loop patterns, TUI architecture, provider abstractions, and CLI UX. Key dirs: `src/tools/`, `src/commands/`, `src/screens/`, `src/services/`, `src/state/`.
+
 ### Key Files
 
 - `crates/clankers-agent/src/system_prompt.rs` — prompt assembly

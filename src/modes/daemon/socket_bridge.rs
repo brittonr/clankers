@@ -39,6 +39,8 @@ pub struct SessionFactory {
     pub default_system_prompt: String,
     pub registry: Option<ProcessRegistry>,
     pub catalog: Option<Arc<super::session_store::SessionCatalog>>,
+    /// Shared schedule engine — persists across sessions.
+    pub schedule_engine: Option<std::sync::Arc<clanker_scheduler::ScheduleEngine>>,
 }
 
 impl SessionFactory {
@@ -63,6 +65,7 @@ impl SessionFactory {
                     // Don't recurse — child agents use subprocess fallback
                     registry: None,
                     catalog: None,
+                    schedule_engine: self.schedule_engine.clone(),
                 }),
             }
         });
@@ -70,6 +73,7 @@ impl SessionFactory {
             panel_tx: Some(panel_tx),
             bash_confirm_tx,
             actor_ctx,
+            schedule_engine: self.schedule_engine.clone(),
             ..Default::default()
         };
         let tiered = crate::modes::common::build_tiered_tools(&env);

@@ -158,6 +158,7 @@ pub fn spawn_agent_process(
             default_system_prompt: factory.default_system_prompt.clone(),
             registry: None, // child tools use subprocess fallback
             catalog: None,
+            schedule_engine: factory.schedule_engine.clone(),
         }),
     };
     controller.set_tool_rebuilder(Arc::new(rebuilder));

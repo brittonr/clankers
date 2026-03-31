@@ -57,6 +57,7 @@ pub async fn run_daemon(
     tools: Vec<Arc<dyn Tool>>,
     config: DaemonConfig,
     paths: &ClankersPaths,
+    schedule_engine: Option<Arc<clanker_scheduler::ScheduleEngine>>,
 ) -> Result<()> {
     let cancel = CancellationToken::new();
 
@@ -110,6 +111,7 @@ pub async fn run_daemon(
         default_system_prompt: config.system_prompt.clone(),
         registry: Some(process_registry.clone()),
         catalog: session_catalog.clone(),
+        schedule_engine,
     });
 
     // Phase 3b: Populate DaemonState with suspended sessions from catalog

@@ -185,6 +185,12 @@ pub struct ToolEnv {
     pub process_monitor: Option<crate::procmon::ProcessMonitorHandle>,
     /// Actor context for in-process subagent/delegate spawning (daemon mode).
     pub actor_ctx: Option<crate::tools::subagent::ActorContext>,
+    /// Shared schedule engine for the schedule tool.
+    ///
+    /// In daemon mode this is created once and shared across sessions so
+    /// schedules survive session restarts. In standalone mode a per-process
+    /// engine is created.
+    pub schedule_engine: Option<Arc<clanker_scheduler::ScheduleEngine>>,
 }
 
 /// Build all tools with tier assignments, wiring up channels from a [`ToolEnv`].
@@ -292,6 +298,13 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixJoinTool::new())),
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixRpcTool::new())),
     ];
+
+    // Register schedule tool when a ScheduleEngine is available
+    if let Some(ref engine) = env.schedule_engine {
+        tools.push((ToolTier::Specialty, Arc::new(
+            crate::tools::schedule::ScheduleTool::new(Arc::clone(engine)),
+        )));
+    }
 
     // Register nix_eval only when nix is on PATH
     if std::process::Command::new("nix")

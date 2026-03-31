@@ -14,7 +14,7 @@ use crate::tui::app::App;
 /// Creates the process monitor, wires it into the TUI panel, constructs
 /// all tools (filtering disabled ones), and builds the final agent with
 /// optional DB, routing, and cost tracking.
-#[allow(clippy::type_complexity)]
+#[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(crate) fn build_agent_with_tools(
     provider: Arc<dyn crate::provider::Provider>,
     settings: &crate::config::settings::Settings,
@@ -29,6 +29,7 @@ pub(crate) fn build_agent_with_tools(
     plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     paths: &crate::config::ClankersPaths,
     db: &Option<crate::db::Db>,
+    schedule_engine: Option<Arc<clanker_scheduler::ScheduleEngine>>,
 ) -> (Agent, tokio::sync::broadcast::Receiver<AgentEvent>, crate::tools::bash::ConfirmRx) {
     // Create a temporary agent with empty tools to get event_tx for tool construction
     let temp_agent =
@@ -50,6 +51,7 @@ pub(crate) fn build_agent_with_tools(
         bash_confirm_tx: Some(bash_confirm_tx),
         process_monitor: Some(process_monitor),
         actor_ctx: None,
+        schedule_engine,
     };
     let tiered_tools = crate::modes::common::build_all_tiered_tools(&tool_env, plugin_manager);
 

@@ -144,6 +144,9 @@ pub async fn run_interactive(
     // ── Hook pipeline setup ────────────────────────────────────────────
     let hook_pipeline = build_hook_pipeline(&settings, &cwd, plugin_manager.as_ref());
 
+    // Per-process schedule engine (standalone mode). Shared across tool rebuilds.
+    let schedule_engine = std::sync::Arc::new(clanker_scheduler::ScheduleEngine::new());
+
     let (mut agent, event_rx, mut bash_confirm_rx) = super::agent_setup::build_agent_with_tools(
         provider.clone(),
         &settings,
@@ -155,6 +158,7 @@ pub async fn run_interactive(
         plugin_manager.as_ref(),
         paths,
         &db,
+        Some(schedule_engine.clone()),
     );
 
     // Attach hook pipeline to the agent
@@ -200,6 +204,7 @@ pub async fn run_interactive(
         &settings,
         slash_registry,
         controller,
+        schedule_engine,
     )
     .await;
 
@@ -262,6 +267,7 @@ async fn run_event_loop(
     settings: &crate::config::settings::Settings,
     slash_registry: crate::slash_commands::SlashRegistry,
     controller: clankers_controller::SessionController,
+    schedule_engine: Arc<clanker_scheduler::ScheduleEngine>,
 ) -> Result<()> {
     let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel::<AgentCommand>();
     let (done_tx, done_rx) = tokio::sync::mpsc::unbounded_channel::<TaskResult>();
@@ -276,11 +282,8 @@ async fn run_event_loop(
     // Clone tool_env and plugin_manager for tool rebuilds inside the agent task.
     let tool_env_for_rebuild = crate::modes::common::ToolEnv {
         event_tx: Some(agent.event_sender()),
-        panel_tx: None,
-        todo_tx: None,
-        bash_confirm_tx: None,
-        process_monitor: None,
-        actor_ctx: None,
+        schedule_engine: Some(schedule_engine),
+        ..Default::default()
     };
 
     super::agent_task::spawn_agent_task(agent, cmd_rx, done_tx, tool_env_for_rebuild, plugin_manager.clone());

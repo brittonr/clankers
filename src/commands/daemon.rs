@@ -75,8 +75,13 @@ async fn start_foreground(
         monitor.clone().start();
         monitor
     };
+    // Create the schedule engine once for the daemon process. It persists
+    // across sessions so schedules survive session restarts.
+    let schedule_engine = std::sync::Arc::new(clanker_scheduler::ScheduleEngine::new());
+
     let env = crate::modes::common::ToolEnv {
         process_monitor: Some(process_monitor),
+        schedule_engine: Some(schedule_engine.clone()),
         ..Default::default()
     };
     let tiered = crate::modes::common::build_tiered_tools(&env);
@@ -100,7 +105,7 @@ async fn start_foreground(
         ..Default::default()
     };
 
-    crate::modes::daemon::run_daemon(provider, tools, config, &ctx.paths).await?;
+    crate::modes::daemon::run_daemon(provider, tools, config, &ctx.paths, Some(schedule_engine)).await?;
     Ok(())
 }
 
