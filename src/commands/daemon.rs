@@ -619,11 +619,16 @@ async fn send_control(cmd: ControlCommand) -> Result<ControlResponse> {
 fn is_process_alive(pid: u32) -> bool {
     #[cfg(unix)]
     {
-        unsafe { libc::kill(pid as i32, 0) == 0 }
+        let ret = unsafe { libc::kill(pid as i32, 0) };
+        if ret == 0 {
+            return true;
+        }
+        // EPERM = process exists but owned by a different user
+        std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
     }
     #[cfg(not(unix))]
     {
-        pid.ok();
+        let _ = pid;
         false
     }
 }

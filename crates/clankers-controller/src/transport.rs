@@ -38,9 +38,18 @@ use tracing::warn;
 /// Resolve the socket directory path.
 ///
 /// Falls back to `/tmp/clankers-<uid>` when `XDG_RUNTIME_DIR` is unset.
+///
+/// When `XDG_RUNTIME_DIR` already ends with `clankers` (e.g. systemd service
+/// with `RuntimeDirectory=clankers` → `/run/clankers`), we use it directly
+/// instead of appending a redundant `clankers/` component.
 pub fn socket_dir() -> PathBuf {
     if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
-        PathBuf::from(dir).join("clankers")
+        let path = PathBuf::from(dir);
+        if path.file_name().is_some_and(|name| name == "clankers") {
+            path
+        } else {
+            path.join("clankers")
+        }
     } else {
         PathBuf::from(format!("/tmp/clankers-{}", unsafe { libc::getuid() }))
     }
@@ -141,15 +150,23 @@ fn cleanup_stale_sockets(dir: &Path) {
 }
 
 /// Check if a process with the given PID is still running.
+///
+/// Returns `true` when kill(pid, 0) succeeds (same user) **or** when it
+/// returns EPERM (process exists but is owned by a different user — common
+/// when the CLI runs as one uid and the daemon runs as another).
 fn is_process_alive(pid: u32) -> bool {
     #[cfg(unix)]
     {
-        // kill(pid, 0) checks existence without sending a signal
-        unsafe { libc::kill(pid as i32, 0) == 0 }
+        let ret = unsafe { libc::kill(pid as i32, 0) };
+        if ret == 0 {
+            return true;
+        }
+        // EPERM means the process exists but we lack permission to signal it
+        std::io::Error::last_os_error().raw_os_error() == Some(libc::EPERM)
     }
     #[cfg(not(unix))]
     {
-        pid.ok();
+        let _ = pid;
         false
     }
 }
@@ -557,6 +574,46 @@ mod tests {
 
         let pid = pid_file_path();
         assert!(pid.ends_with("daemon.pid"));
+    }
+
+    #[test]
+    fn socket_dir_no_double_clankers() {
+        // When XDG_RUNTIME_DIR already ends with "clankers" (e.g.
+        // systemd RuntimeDirectory=clankers → /run/clankers), socket_dir()
+        // should not append another clankers/ component.
+        unsafe { std::env::set_var("XDG_RUNTIME_DIR", "/run/clankers"); }
+        let dir = socket_dir();
+        assert_eq!(dir, PathBuf::from("/run/clankers"));
+
+        // Normal case: still appends clankers
+        unsafe { std::env::set_var("XDG_RUNTIME_DIR", "/run/user/1000"); }
+        let dir = socket_dir();
+        assert_eq!(dir, PathBuf::from("/run/user/1000/clankers"));
+
+        unsafe { std::env::remove_var("XDG_RUNTIME_DIR"); }
+    }
+
+    #[test]
+    fn is_process_alive_own_pid() {
+        // Our own PID should be alive.
+        let pid = std::process::id();
+        assert!(is_process_alive(pid));
+    }
+
+    #[test]
+    fn is_process_alive_bogus_pid() {
+        // PID that (almost certainly) doesn't exist.
+        assert!(!is_process_alive(4_000_000_000));
+    }
+
+    #[test]
+    fn is_process_alive_init() {
+        // PID 1 (init/systemd) exists but we can't signal it as non-root.
+        // This exercises the EPERM branch — kill(1, 0) returns EPERM for
+        // unprivileged users.
+        if unsafe { libc::getuid() } != 0 {
+            assert!(is_process_alive(1));
+        }
     }
 
     #[test]
