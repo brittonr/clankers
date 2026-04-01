@@ -327,7 +327,7 @@ pub struct PromptFeatures {
     pub nix_available: bool,
     /// Multiple models/roles are configured (model switching makes sense).
     pub multi_model: bool,
-    /// Running in daemon or RPC mode (HEARTBEAT.md is relevant).
+    /// Running in daemon or RPC mode (schedule tool is relevant).
     pub daemon_mode: bool,
     /// Process monitor is active (procmon tool is registered).
     pub process_monitor: bool,
@@ -365,12 +365,28 @@ You have a `switch_model` tool. Use it when the task is simpler than expected \
 for maximum capability), or when transitioning between hard and easy sub-tasks. \
 Don't switch unnecessarily. The switch takes effect on your next response.";
 
-const HEARTBEAT_SECTION: &str = "
+const SCHEDULE_SECTION: &str = "
 
-## HEARTBEAT.md (daemon mode)
+## Schedule Tool (daemon mode)
 
-You have a HEARTBEAT.md in your session directory. A background scheduler reads \
-it periodically. Use it for reminders and recurring tasks.";
+You have a `schedule` tool for creating timed tasks. Schedules fire in the \
+background and inject prompts into your session.
+
+Actions: create, list, pause, resume, delete, info.
+
+Schedule kinds:
+- `once` — fire at a specific time. Params: `at` (ISO datetime or relative like '+30m', '+2h').
+- `interval` — fire repeatedly. Params: `interval` ('30s', '5m', '1h', '1d').
+- `cron` — fire on a pattern. Params: `cron` ('minute hour day_of_week', e.g. '0 9 1-5' for weekdays at 9am).
+
+The `payload` object must contain a `prompt` field — that prompt runs when the schedule fires.
+
+Example: create an interval schedule that checks build status every 10 minutes:
+```json
+{\"action\": \"create\", \"name\": \"build-check\", \"kind\": \"interval\", \"interval\": \"10m\", \"payload\": {\"prompt\": \"check if the build finished\"}}
+```
+
+Use `max_fires` to auto-expire after N firings. Schedules persist across restarts.";
 
 const PROCMON_SECTION: &str = "
 
@@ -392,7 +408,7 @@ pub fn default_system_prompt(features: &PromptFeatures) -> String {
         parts.push(MODEL_SWITCHING_SECTION.to_string());
     }
     if features.daemon_mode {
-        parts.push(HEARTBEAT_SECTION.to_string());
+        parts.push(SCHEDULE_SECTION.to_string());
     }
     if features.process_monitor {
         parts.push(PROCMON_SECTION.to_string());
@@ -813,7 +829,7 @@ mod tests {
         assert!(prompt.contains("coding agent"));
         assert!(!prompt.contains("nix-shell"));
         assert!(!prompt.contains("switch_model"));
-        assert!(!prompt.contains("HEARTBEAT"));
+        assert!(!prompt.contains("Schedule Tool"));
         assert!(!prompt.contains("procmon"));
     }
 
@@ -828,7 +844,7 @@ mod tests {
         let prompt = default_system_prompt(&features);
         assert!(prompt.contains("nix-shell"));
         assert!(!prompt.contains("switch_model"));
-        assert!(!prompt.contains("HEARTBEAT"));
+        assert!(!prompt.contains("Schedule Tool"));
     }
 
     #[test]
@@ -842,7 +858,7 @@ mod tests {
         let prompt = default_system_prompt(&features);
         assert!(prompt.contains("nix-shell"));
         assert!(prompt.contains("switch_model"));
-        assert!(!prompt.contains("HEARTBEAT"));
+        assert!(!prompt.contains("Schedule Tool"));
     }
 
     #[test]
@@ -856,7 +872,9 @@ mod tests {
         let prompt = default_system_prompt(&features);
         assert!(prompt.contains("nix-shell"));
         assert!(prompt.contains("switch_model"));
-        assert!(prompt.contains("HEARTBEAT"));
+        assert!(prompt.contains("Schedule Tool"));
+        assert!(prompt.contains("schedule"));
+        assert!(!prompt.contains("HEARTBEAT"));
         assert!(prompt.contains("procmon"));
     }
 
@@ -898,7 +916,8 @@ mod tests {
         assert!(prompt.contains("clankers"));
         assert!(prompt.contains("nix-shell"));
         assert!(prompt.contains("switch_model"));
-        assert!(prompt.contains("HEARTBEAT"));
+        assert!(prompt.contains("Schedule Tool"));
+        assert!(!prompt.contains("HEARTBEAT"));
         assert!(prompt.contains("procmon"));
     }
 }

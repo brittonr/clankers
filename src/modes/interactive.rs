@@ -145,7 +145,17 @@ pub async fn run_interactive(
     let hook_pipeline = build_hook_pipeline(&settings, &cwd, plugin_manager.as_ref());
 
     // Per-process schedule engine (standalone mode). Shared across tool rebuilds.
-    let schedule_engine = std::sync::Arc::new(clanker_scheduler::ScheduleEngine::new());
+    let schedules_path = paths.global_config_dir.join("schedules.json");
+    let schedule_engine = std::sync::Arc::new(
+        clanker_scheduler::ScheduleEngine::new().with_persistence(schedules_path.clone()),
+    );
+
+    // Load persisted schedules from previous sessions.
+    let persisted = clanker_scheduler::ScheduleEngine::load_from(&schedules_path);
+    if !persisted.is_empty() {
+        tracing::info!("loaded {} persisted schedule(s)", persisted.len());
+        schedule_engine.add_all(persisted);
+    }
 
     // Start the engine's background tick loop so schedules actually fire.
     let _schedule_handle = schedule_engine.start();

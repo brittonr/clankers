@@ -77,7 +77,17 @@ async fn start_foreground(
     };
     // Create the schedule engine once for the daemon process. It persists
     // across sessions so schedules survive session restarts.
-    let schedule_engine = std::sync::Arc::new(clanker_scheduler::ScheduleEngine::new());
+    let schedules_path = ctx.paths.global_config_dir.join("schedules.json");
+    let schedule_engine = std::sync::Arc::new(
+        clanker_scheduler::ScheduleEngine::new().with_persistence(schedules_path.clone()),
+    );
+
+    // Load persisted schedules from previous daemon runs.
+    let persisted = clanker_scheduler::ScheduleEngine::load_from(&schedules_path);
+    if !persisted.is_empty() {
+        tracing::info!("loaded {} persisted schedule(s)", persisted.len());
+        schedule_engine.add_all(persisted);
+    }
 
     let env = crate::modes::common::ToolEnv {
         process_monitor: Some(process_monitor),
