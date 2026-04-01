@@ -91,10 +91,19 @@ impl ScheduleTool {
         }
     }
 
-    fn handle_create(&self, params: &Value) -> ToolResult {
+    fn handle_create(&self, params: &Value, session_id: &str) -> ToolResult {
         let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
         let kind = params.get("kind").and_then(|v| v.as_str()).unwrap_or("interval");
         let payload = params.get("payload").cloned().unwrap_or_else(|| json!({}));
+
+        // Inject session_id into payload so the schedule event consumer
+        // can route the fired event to the correct session (daemon mode).
+        let mut payload = payload;
+        if let Some(obj) = payload.as_object_mut()
+            && !session_id.is_empty()
+        {
+            obj.insert("_session_id".to_string(), json!(session_id));
+        }
 
         let mut schedule = match kind {
             "once" => {
@@ -214,14 +223,14 @@ impl Tool for ScheduleTool {
         &self.definition
     }
 
-    async fn execute(&self, _ctx: &ToolContext, params: Value) -> ToolResult {
+    async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
         let action = match params.get("action").and_then(|v| v.as_str()) {
             Some(a) => a.to_string(),
             None => return ToolResult::error("Missing 'action' parameter"),
         };
 
         match action.as_str() {
-            "create" => self.handle_create(&params),
+            "create" => self.handle_create(&params, ctx.session_id()),
             "list" => self.handle_list(),
             "pause" | "resume" | "delete" | "info" => self.handle_action_by_id(&params, &action),
             other => ToolResult::error(format!("Unknown action: {other}")),

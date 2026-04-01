@@ -103,6 +103,19 @@ pub async fn run_daemon(
 
     let process_registry = clanker_actor::ProcessRegistry::new();
 
+    // Start the schedule engine tick loop so schedules actually fire.
+    // The consumer task routes fired events to the correct session.
+    let schedule_handle = if let Some(ref engine) = schedule_engine {
+        let handle = engine.start();
+        let rx = engine.subscribe();
+        let state_for_sched = Arc::clone(&daemon_state);
+        let cancel_for_sched = cancel.clone();
+        tokio::spawn(run_schedule_consumer(rx, state_for_sched, cancel_for_sched));
+        Some(handle)
+    } else {
+        None
+    };
+
     let session_factory = Arc::new(socket_bridge::SessionFactory {
         provider: Arc::clone(&provider),
         tools: tools.clone(),
@@ -111,7 +124,7 @@ pub async fn run_daemon(
         default_system_prompt: config.system_prompt.clone(),
         registry: Some(process_registry.clone()),
         catalog: session_catalog.clone(),
-        schedule_engine,
+        schedule_engine: schedule_engine.clone(),
     });
 
     // Phase 3b: Populate DaemonState with suspended sessions from catalog
@@ -218,6 +231,14 @@ pub async fn run_daemon(
         }
     }
 
+    // Stop the schedule engine tick loop.
+    if let Some(ref engine) = schedule_engine {
+        engine.cancel_token().cancel();
+    }
+    if let Some(h) = schedule_handle {
+        h.abort();
+    }
+
     cancel.cancel();
     shutdown_tx.send(true).ok();
 
@@ -239,6 +260,90 @@ pub async fn run_daemon(
 
     println!("Daemon stopped ({session_count} sessions served).");
     Ok(())
+}
+
+/// Consume schedule events and route them to the correct daemon session.
+///
+/// Extracts `_session_id` from the event payload to find the target
+/// session, then injects the `prompt` field as a `SessionCommand::Prompt`.
+/// If no session_id is present or the session isn't active, the event
+/// is logged and dropped.
+async fn run_schedule_consumer(
+    mut rx: tokio::sync::broadcast::Receiver<clanker_scheduler::ScheduleEvent>,
+    state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
+    cancel: CancellationToken,
+) {
+    info!("schedule event consumer started");
+    loop {
+        tokio::select! {
+            event = rx.recv() => {
+                match event {
+                    Ok(sched_event) => {
+                        let prompt = sched_event
+                            .payload
+                            .get("prompt")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string();
+
+                        if prompt.is_empty() {
+                            tracing::debug!(
+                                "schedule '{}' fired but payload has no 'prompt' field",
+                                sched_event.schedule_name,
+                            );
+                            continue;
+                        }
+
+                        let session_id = sched_event
+                            .payload
+                            .get("_session_id")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or_default()
+                            .to_string();
+
+                        if session_id.is_empty() {
+                            warn!(
+                                "schedule '{}' fired but has no _session_id — cannot route",
+                                sched_event.schedule_name,
+                            );
+                            continue;
+                        }
+
+                        // Look up the session and send the prompt.
+                        let st = state.lock().await;
+                        if let Some(handle) = st.sessions.get(&session_id)
+                            && let Some(ref cmd_tx) = handle.cmd_tx
+                        {
+                            info!(
+                                "schedule '{}' fired (#{}) → session {}",
+                                sched_event.schedule_name,
+                                sched_event.fire_count,
+                                session_id,
+                            );
+                            cmd_tx
+                                .send(clankers_protocol::SessionCommand::Prompt {
+                                    text: prompt,
+                                    images: vec![],
+                                })
+                                .ok();
+                        } else {
+                            warn!(
+                                "schedule '{}' fired for session {} but session not active",
+                                sched_event.schedule_name,
+                                session_id,
+                            );
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        warn!("schedule consumer lagged, skipped {n} events");
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+            () = cancel.cancelled() => break,
+        }
+    }
+    info!("schedule event consumer stopped");
 }
 
 fn spawn_socket_control_plane_shared(

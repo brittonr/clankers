@@ -66,6 +66,8 @@ pub(crate) struct EventLoopRunner<'a> {
     // Also owns the SessionManager for session persistence and branch/merge
     // operations. Slash commands access it via controller.session_manager.
     controller: SessionController,
+    // Schedule event receiver — fired when cron/interval/once schedules trigger.
+    schedule_rx: tokio::sync::broadcast::Receiver<clanker_scheduler::ScheduleEvent>,
 }
 
 impl<'a> EventLoopRunner<'a> {
@@ -89,6 +91,7 @@ impl<'a> EventLoopRunner<'a> {
         done_rx: tokio::sync::mpsc::UnboundedReceiver<TaskResult>,
         slash_registry: crate::slash_commands::SlashRegistry,
         controller: SessionController,
+        schedule_rx: tokio::sync::broadcast::Receiver<clanker_scheduler::ScheduleEvent>,
     ) -> Self {
         Self {
             terminal,
@@ -106,6 +109,7 @@ impl<'a> EventLoopRunner<'a> {
             settings,
             slash_registry,
             controller,
+            schedule_rx,
         }
     }
 
@@ -123,6 +127,7 @@ impl<'a> EventLoopRunner<'a> {
             }
 
             self.drain_agent_events();
+            self.drain_schedule_events();
             self.drain_panel_events();
             self.drain_todo_requests();
             self.drain_bash_confirms();
@@ -256,6 +261,49 @@ impl<'a> EventLoopRunner<'a> {
         }
         for action in result.ui_actions {
             crate::plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
+        }
+    }
+
+    // ── Schedule events ────────────────────────────────────────────
+
+    /// Drain fired schedule events and inject them as agent prompts.
+    ///
+    /// When a schedule fires, extracts the `prompt` field from the
+    /// payload and sends it to the agent task. Shows a system message
+    /// in the TUI so the user knows a schedule triggered.
+    fn drain_schedule_events(&mut self) {
+        loop {
+            match self.schedule_rx.try_recv() {
+                Ok(event) => {
+                    let prompt = event
+                        .payload
+                        .get("prompt")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+
+                    if prompt.is_empty() {
+                        tracing::debug!(
+                            "schedule '{}' fired but payload has no 'prompt' field",
+                            event.schedule_name,
+                        );
+                        continue;
+                    }
+
+                    self.app.push_system(
+                        format!(
+                            "⏰ Schedule '{}' fired (#{}) — running prompt",
+                            event.schedule_name, event.fire_count,
+                        ),
+                        false,
+                    );
+                    self.cmd_tx.send(AgentCommand::Prompt(prompt)).ok();
+                }
+                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(n)) => {
+                    tracing::warn!("Schedule event receiver lagged, skipped {n} events");
+                }
+                Err(_) => break,
+            }
         }
     }
 

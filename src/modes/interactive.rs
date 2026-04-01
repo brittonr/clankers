@@ -147,6 +147,10 @@ pub async fn run_interactive(
     // Per-process schedule engine (standalone mode). Shared across tool rebuilds.
     let schedule_engine = std::sync::Arc::new(clanker_scheduler::ScheduleEngine::new());
 
+    // Start the engine's background tick loop so schedules actually fire.
+    let _schedule_handle = schedule_engine.start();
+    let schedule_rx = schedule_engine.subscribe();
+
     let (mut agent, event_rx, mut bash_confirm_rx) = super::agent_setup::build_agent_with_tools(
         provider.clone(),
         &settings,
@@ -204,11 +208,13 @@ pub async fn run_interactive(
         &settings,
         slash_registry,
         controller,
-        schedule_engine,
+        schedule_engine.clone(),
+        schedule_rx,
     )
     .await;
 
-    // ── Shut down embedded RPC server ─────────────────────────────────
+    // ── Shut down schedule engine + embedded RPC server ───────────────
+    schedule_engine.cancel_token().cancel();
     if let Some(cancel) = _rpc_cancel {
         cancel.cancel();
     }
@@ -268,6 +274,7 @@ async fn run_event_loop(
     slash_registry: crate::slash_commands::SlashRegistry,
     controller: clankers_controller::SessionController,
     schedule_engine: Arc<clanker_scheduler::ScheduleEngine>,
+    schedule_rx: tokio::sync::broadcast::Receiver<clanker_scheduler::ScheduleEvent>,
 ) -> Result<()> {
     let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel::<AgentCommand>();
     let (done_tx, done_rx) = tokio::sync::mpsc::unbounded_channel::<TaskResult>();
@@ -308,6 +315,7 @@ async fn run_event_loop(
         done_rx,
         slash_registry,
         controller,
+        schedule_rx,
     );
     runner.run()
 }

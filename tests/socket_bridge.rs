@@ -65,6 +65,7 @@ async fn test_control_socket_list_empty() {
         default_system_prompt: "You are a test.".to_string(),
         registry: None,
         catalog: None,
+        schedule_engine: None,
     });
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
@@ -125,6 +126,7 @@ async fn test_control_socket_create_session() {
         default_system_prompt: "You are a test.".to_string(),
         registry: None,
         catalog: None,
+        schedule_engine: None,
     });
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
