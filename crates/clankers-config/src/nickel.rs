@@ -11,8 +11,14 @@ use nickel_lang::Context;
 /// The embedded settings contract, compiled into the binary.
 pub const SETTINGS_CONTRACT: &str = include_str!("settings-contract.ncl");
 
-/// Nickel pseudo-URL prefix for the embedded contract.
+/// The embedded theme contract, compiled into the binary.
+pub const THEME_CONTRACT: &str = include_str!("theme-contract.ncl");
+
+/// Nickel pseudo-URL prefix for the settings contract.
 const CONTRACT_PREFIX: &str = "clankers://settings";
+
+/// Nickel pseudo-URL prefix for the theme contract.
+const THEME_CONTRACT_PREFIX: &str = "clankers://theme";
 
 /// Evaluate a `.ncl` file and return the result as a JSON value.
 ///
@@ -75,15 +81,20 @@ pub fn eval_ncl_with_contract(path: &Path) -> Result<serde_json::Value, NickelEr
 /// Replace `import "clankers://settings"` with an inline let-binding
 /// of the contract source.
 fn resolve_contract_import(src: &str) -> String {
-    if src.contains(CONTRACT_PREFIX) {
-        // Replace `import "clankers://settings"` with the contract expression
-        src.replace(
+    let mut result = src.to_string();
+    if result.contains(CONTRACT_PREFIX) {
+        result = result.replace(
             &format!("import \"{CONTRACT_PREFIX}\""),
             &format!("({SETTINGS_CONTRACT})"),
-        )
-    } else {
-        src.to_string()
+        );
     }
+    if result.contains(THEME_CONTRACT_PREFIX) {
+        result = result.replace(
+            &format!("import \"{THEME_CONTRACT_PREFIX}\""),
+            &format!("({THEME_CONTRACT})"),
+        );
+    }
+    result
 }
 
 /// Format a Nickel error preserving the diagnostic message.

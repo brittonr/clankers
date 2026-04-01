@@ -47,6 +47,10 @@ pub enum AppEvent {
     MouseUp(Button, u16, u16),
     /// Other mouse event
     Mouse,
+    /// Terminal gained focus
+    FocusGained,
+    /// Terminal lost focus
+    FocusLost,
 }
 
 /// Poll for terminal events with timeout
@@ -56,6 +60,8 @@ pub fn poll_event(timeout: Duration) -> Option<AppEvent> {
         match event::read().ok()? {
             Event::Key(key) => Some(AppEvent::Key(key)),
             Event::Paste(text) => Some(AppEvent::Paste(text)),
+            Event::FocusGained => Some(AppEvent::FocusGained),
+            Event::FocusLost => Some(AppEvent::FocusLost),
             Event::Resize(w, h) => Some(AppEvent::Resize(w, h)),
             Event::Mouse(mouse) => match mouse.kind {
                 MouseEventKind::ScrollUp => Some(AppEvent::ScrollUp(mouse.column, mouse.row, 3)),
@@ -65,6 +71,7 @@ pub fn poll_event(timeout: Duration) -> Option<AppEvent> {
                 MouseEventKind::Up(btn) => Some(AppEvent::MouseUp(btn.into(), mouse.column, mouse.row)),
                 _ => Some(AppEvent::Mouse),
             },
+            #[allow(unreachable_patterns)]
             _ => None,
         }
     } else {

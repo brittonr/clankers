@@ -574,6 +574,11 @@ impl<'a> EventLoopRunner<'a> {
                     crate::tui::mouse::handle_mouse_scroll(self.app, col, row, false, n);
                 }
                 AppEvent::Resize(_, _) => {}
+                AppEvent::FocusGained => {
+                    if self.app.auto_theme {
+                        self.app.theme = crate::config::theme::detect_theme();
+                    }
+                }
                 _ => {}
             }
         }

@@ -197,6 +197,8 @@ pub struct App {
     pub auto_test_command: Option<String>,
     /// Auto-test: whether the feature is currently enabled.
     pub auto_test_enabled: bool,
+    /// When true, re-detect light/dark mode on terminal focus-gained events.
+    pub auto_theme: bool,
 
     // Grouped sub-states
     pub streaming: StreamingState,
@@ -280,6 +282,7 @@ impl App {
             loop_status: None,
             auto_test_command: None,
             auto_test_enabled: false,
+            auto_theme: false,
 
             // Grouped sub-states
             streaming: StreamingState {

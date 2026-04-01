@@ -32,7 +32,7 @@ use crate::tui::app::App;
 use crate::tui::event as tui_event;
 use crate::tui::event::AppEvent;
 use crate::tui::render;
-use crate::tui::theme::Theme;
+use crate::config::theme::load_theme;
 
 // ── Entry point ─────────────────────────────────────────────────────────────
 
@@ -95,10 +95,12 @@ pub async fn run_attach(
         .unwrap_or_default()
         .to_string_lossy()
         .into_owned();
-    let theme = Theme::dark();
+    let paths = crate::config::ClankersPaths::get();
+    let theme = load_theme(settings.theme.as_deref(), &paths.global_themes_dir);
     let keymap = settings.keymap.clone().into_keymap();
 
     let mut app = App::new(display_model.clone(), cwd, theme);
+    app.auto_theme = crate::config::theme::is_auto_theme(settings.theme.as_deref());
     app.session_id = resolved_session_id.clone();
     app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
 
@@ -984,6 +986,11 @@ pub(crate) fn handle_terminal_events(
                 crate::tui::mouse::handle_mouse_scroll(app, col, row, false, n);
             }
             AppEvent::Resize(_, _) => {}
+            AppEvent::FocusGained => {
+                if app.auto_theme {
+                    app.theme = crate::config::theme::detect_theme();
+                }
+            }
             _ => {}
         }
     }

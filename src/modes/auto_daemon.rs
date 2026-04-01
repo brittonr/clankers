@@ -17,7 +17,7 @@ use tracing::warn;
 use crate::config::settings::Settings;
 use crate::error::Result;
 use crate::tui::app::App;
-use crate::tui::theme::Theme;
+use crate::config::theme::load_theme;
 
 use super::attach::{
     RecoveryMode, build_client_slash_registry, run_attach_with_reconnect, send_control,
@@ -127,10 +127,12 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     };
 
     let recovery_cwd = opts.cwd.clone();
-    let theme = Theme::dark();
+    let paths = crate::config::ClankersPaths::get();
+    let theme = load_theme(opts.settings.theme.as_deref(), &paths.global_themes_dir);
     let keymap = opts.settings.keymap.clone().into_keymap();
 
     let mut app = App::new(display_model.clone(), opts.cwd, theme);
+    app.auto_theme = crate::config::theme::is_auto_theme(opts.settings.theme.as_deref());
     app.session_id = session_id.clone();
     app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
 

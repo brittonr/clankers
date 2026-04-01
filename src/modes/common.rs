@@ -8,8 +8,10 @@ use std::sync::Arc;
 use std::sync::Mutex;
 
 use crossterm::event::DisableBracketedPaste;
+use crossterm::event::DisableFocusChange;
 use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableBracketedPaste;
+use crossterm::event::EnableFocusChange;
 use crossterm::event::EnableMouseCapture;
 use crossterm::execute;
 use crossterm::terminal::EnterAlternateScreen;
@@ -38,7 +40,7 @@ pub fn init_terminal() -> Result<Terminal<CrosstermBackend<io::Stdout>>> {
         message: format!("Failed to enable raw mode: {e}"),
     })?;
     let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste).map_err(
+    execute!(stdout, EnterAlternateScreen, EnableMouseCapture, EnableBracketedPaste, EnableFocusChange).map_err(
         |e| crate::error::Error::Tui {
             message: format!("Failed to enter alternate screen: {e}"),
         },
@@ -56,6 +58,7 @@ pub fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) {
         terminal.backend_mut(),
         DisableBracketedPaste,
         DisableMouseCapture,
+        DisableFocusChange,
         LeaveAlternateScreen,
     )
     .ok();

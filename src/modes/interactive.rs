@@ -17,7 +17,7 @@ use crate::config::keybindings::Keymap;
 use crate::error::Result;
 use crate::provider::auth::AuthStoreExt;
 use crate::tui::app::App;
-use crate::tui::theme::Theme;
+use crate::config::theme::load_theme;
 
 /// Options for resuming a session.
 #[derive(Default)]
@@ -43,10 +43,12 @@ pub async fn run_interactive(
 ) -> Result<()> {
     let mut terminal = super::common::init_terminal()?;
 
-    let theme = Theme::dark();
+    let paths = crate::config::ClankersPaths::get();
+    let theme = load_theme(settings.theme.as_deref(), &paths.global_themes_dir);
     let keymap = settings.keymap.clone().into_keymap();
 
     let mut app = App::new(model.clone(), cwd.clone(), theme);
+    app.auto_theme = crate::config::theme::is_auto_theme(settings.theme.as_deref());
     app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
 
     // Build slash command registry and set completion source on app
