@@ -568,10 +568,12 @@ mod tests {
                     ToolInfo {
                         name: "bash".to_string(),
                         description: "Run shell commands".to_string(),
+                        source: "built-in".to_string(),
                     },
                     ToolInfo {
                         name: "read".to_string(),
                         description: "Read files".to_string(),
+                        source: "built-in".to_string(),
                     },
                 ],
             },

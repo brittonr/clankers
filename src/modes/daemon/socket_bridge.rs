@@ -380,27 +380,7 @@ pub fn drain_and_broadcast(
 
             // Convert plugin UI actions to protocol events
             for action in result.ui_actions {
-                let daemon_event = match action {
-                    crate::plugin::ui::PluginUiAction::SetWidget { plugin, widget } => {
-                        DaemonEvent::PluginWidget {
-                            plugin,
-                            widget: Some(serde_json::to_value(widget).unwrap_or_default()),
-                        }
-                    }
-                    crate::plugin::ui::PluginUiAction::ClearWidget { plugin } => {
-                        DaemonEvent::PluginWidget { plugin, widget: None }
-                    }
-                    crate::plugin::ui::PluginUiAction::SetStatus { plugin, text, color } => {
-                        DaemonEvent::PluginStatus { plugin, text: Some(text), color }
-                    }
-                    crate::plugin::ui::PluginUiAction::ClearStatus { plugin } => {
-                        DaemonEvent::PluginStatus { plugin, text: None, color: None }
-                    }
-                    crate::plugin::ui::PluginUiAction::Notify { plugin, message, level } => {
-                        DaemonEvent::PluginNotify { plugin, message, level }
-                    }
-                };
-                event_tx.send(daemon_event).ok();
+                event_tx.send(crate::modes::plugin_dispatch::ui_action_to_daemon_event(action)).ok();
             }
         }
     }

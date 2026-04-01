@@ -207,6 +207,13 @@ async fn run_agent_actor(
 ) -> DeathReason {
     info!("agent process started: {session_id}");
 
+    // Fire plugin_init so plugins can set up initial UI state
+    if let Some(ref pm) = plugin_manager {
+        for action in crate::modes::common::fire_plugin_init(pm) {
+            event_tx.send(crate::modes::plugin_dispatch::ui_action_to_daemon_event(action)).ok();
+        }
+    }
+
     loop {
         tokio::select! {
             // Actor signals (Kill, Shutdown, LinkDied, etc.)

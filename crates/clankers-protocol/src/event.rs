@@ -211,6 +211,9 @@ pub enum DaemonEvent {
 pub struct ToolInfo {
     pub name: String,
     pub description: String,
+    /// Source of the tool: "built-in" or plugin name.
+    #[serde(default)]
+    pub source: String,
 }
 
 /// Summary of a loaded plugin.

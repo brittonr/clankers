@@ -41,6 +41,10 @@ impl Tool for PluginTool {
         &self.definition
     }
 
+    fn source(&self) -> &str {
+        &self.plugin_name
+    }
+
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
         // Wrap params in the tool call envelope that plugins expect:
         //   { "tool": "<tool_name>", "args": { ... } }

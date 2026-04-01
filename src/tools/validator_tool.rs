@@ -57,6 +57,10 @@ impl Tool for ValidatorTool {
         &self.definition
     }
 
+    fn source(&self) -> &str {
+        &self.plugin_name
+    }
+
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
         // Phase 1: Call the WASM plugin to build the validation prompt
         let envelope = serde_json::json!({

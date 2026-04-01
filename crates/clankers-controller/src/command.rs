@@ -205,6 +205,7 @@ impl SessionController {
                         clankers_protocol::ToolInfo {
                             name: def.name.clone(),
                             description: def.description.clone(),
+                            source: t.source().to_string(),
                         }
                     }).collect())
                     .unwrap_or_default();
@@ -341,6 +342,7 @@ impl SessionController {
                 clankers_protocol::ToolInfo {
                     name: def.name.clone(),
                     description: def.description.clone(),
+                    source: t.source().to_string(),
                 }
             }).collect();
             self.outgoing.push(DaemonEvent::ToolList { tools });
@@ -461,6 +463,7 @@ impl SessionController {
                         clankers_protocol::ToolInfo {
                             name: def.name.clone(),
                             description: def.description.clone(),
+                            source: t.source().to_string(),
                         }
                     }).collect())
                     .unwrap_or_default();

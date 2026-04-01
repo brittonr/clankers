@@ -208,6 +208,11 @@ pub trait Tool: Send + Sync {
 
     /// Execute the tool with the given parameters
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult;
+
+    /// Source label: "built-in" for core tools, plugin name for plugin tools.
+    fn source(&self) -> &str {
+        "built-in"
+    }
 }
 
 #[cfg(test)]

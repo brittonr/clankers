@@ -152,7 +152,7 @@ async fn handle_control_stream(
         }
         other => {
             let st = state.lock().await;
-            dispatch_readonly_control(other, &st)
+            dispatch_readonly_control(other, &st, factory)
         }
     };
 
@@ -165,6 +165,7 @@ async fn handle_control_stream(
 fn dispatch_readonly_control(
     cmd: clankers_protocol::ControlCommand,
     state: &DaemonState,
+    factory: &Arc<SessionFactory>,
 ) -> clankers_protocol::ControlResponse {
     use clankers_protocol::ControlCommand;
     use clankers_protocol::ControlResponse;
@@ -201,7 +202,24 @@ fn dispatch_readonly_control(
         ControlCommand::CreateSession { .. } => ControlResponse::Error {
             message: "internal: CreateSession routed to readonly dispatch".to_string(),
         },
-        ControlCommand::ListPlugins => ControlResponse::Plugins(vec![]),
+        ControlCommand::ListPlugins => {
+            let summaries = if let Some(ref pm) = factory.plugin_manager {
+                let mgr = pm.lock().unwrap_or_else(|p| p.into_inner());
+                mgr.list()
+                    .iter()
+                    .map(|info| clankers_protocol::PluginSummary {
+                        name: info.name.clone(),
+                        version: info.version.clone(),
+                        state: format!("{:?}", info.state),
+                        tools: info.manifest.tools.clone(),
+                        permissions: info.manifest.permissions.clone(),
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            ControlResponse::Plugins(summaries)
+        }
     }
 }
 

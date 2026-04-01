@@ -5,6 +5,28 @@ use std::sync::Arc;
 use crate::agent::events::AgentEvent;
 use clankers_protocol::DaemonEvent;
 
+/// Convert a `PluginUiAction` into its corresponding `DaemonEvent`.
+pub(crate) fn ui_action_to_daemon_event(action: crate::plugin::ui::PluginUiAction) -> DaemonEvent {
+    match action {
+        crate::plugin::ui::PluginUiAction::SetWidget { plugin, widget } => DaemonEvent::PluginWidget {
+            plugin,
+            widget: Some(serde_json::to_value(widget).unwrap_or_default()),
+        },
+        crate::plugin::ui::PluginUiAction::ClearWidget { plugin } => {
+            DaemonEvent::PluginWidget { plugin, widget: None }
+        }
+        crate::plugin::ui::PluginUiAction::SetStatus { plugin, text, color } => {
+            DaemonEvent::PluginStatus { plugin, text: Some(text), color }
+        }
+        crate::plugin::ui::PluginUiAction::ClearStatus { plugin } => {
+            DaemonEvent::PluginStatus { plugin, text: None, color: None }
+        }
+        crate::plugin::ui::PluginUiAction::Notify { plugin, message, level } => {
+            DaemonEvent::PluginNotify { plugin, message, level }
+        }
+    }
+}
+
 /// Result of dispatching events to plugins.
 pub(crate) struct PluginDispatchResult {
     /// Messages to surface to the user
