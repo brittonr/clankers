@@ -66,6 +66,7 @@ async fn test_control_socket_list_empty() {
         registry: None,
         catalog: None,
         schedule_engine: None,
+        plugin_manager: None,
     });
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
@@ -127,6 +128,7 @@ async fn test_control_socket_create_session() {
         registry: None,
         catalog: None,
         schedule_engine: None,
+        plugin_manager: None,
     });
 
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);

@@ -53,8 +53,8 @@
 
 ## 9. Tests
 
-- [ ] 9.1 Unit test: `SessionFactory` with `plugin_manager: Some(...)` returns plugin tools from `build_tools_with_panel_tx`
-- [ ] 9.2 Unit test: `SessionFactory` with `plugin_manager: None` returns only built-in tools
-- [ ] 9.3 Unit test: `DaemonToolRebuilder` with plugins filters plugin tools when disabled
+- [x] 9.1 Unit test: `SessionFactory` with `plugin_manager: Some(...)` returns plugin tools from `build_tools_with_panel_tx`
+- [x] 9.2 Unit test: `SessionFactory` with `plugin_manager: None` returns only built-in tools
+- [x] 9.3 Unit test: `DaemonToolRebuilder` with plugins filters plugin tools when disabled
 - [x] 9.4 Protocol round-trip test: new `DaemonEvent` plugin variants serialize/deserialize correctly
 - [x] 9.5 Protocol round-trip test: `ControlCommand::ListPlugins` / `ControlResponse::Plugins` serialize/deserialize correctly

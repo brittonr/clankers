@@ -851,6 +851,94 @@ fn merge_capabilities(
 }
 
 #[cfg(test)]
+mod factory_plugin_tests {
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+
+    use super::SessionFactory;
+
+    struct StubProvider;
+
+    #[async_trait::async_trait]
+    impl crate::provider::Provider for StubProvider {
+        async fn complete(
+            &self,
+            _req: crate::provider::CompletionRequest,
+            _tx: tokio::sync::mpsc::Sender<crate::provider::streaming::StreamEvent>,
+        ) -> std::result::Result<(), crate::provider::error::ProviderError> {
+            Ok(())
+        }
+        fn models(&self) -> &[crate::provider::Model] {
+            &[]
+        }
+        fn name(&self) -> &str {
+            "stub"
+        }
+    }
+
+    fn make_factory(
+        plugin_manager: Option<Arc<Mutex<crate::plugin::PluginManager>>>,
+    ) -> SessionFactory {
+        SessionFactory {
+            provider: Arc::new(StubProvider),
+            tools: vec![],
+            settings: crate::config::settings::Settings::default(),
+            default_model: "test".to_string(),
+            default_system_prompt: String::new(),
+            registry: None,
+            catalog: None,
+            schedule_engine: None,
+            plugin_manager,
+        }
+    }
+
+    #[test]
+    fn factory_with_plugins_returns_plugin_tools() {
+        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        let pm = crate::modes::common::init_plugin_manager(&plugins_dir, None, &[]);
+        let factory = make_factory(Some(pm));
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let tools = factory.build_tools_with_panel_tx(tx, None);
+        let names: Vec<String> = tools.iter().map(|t| t.definition().name.clone()).collect();
+        assert!(names.contains(&"test_echo".to_string()), "Should have test_echo, got: {names:?}");
+        assert!(names.contains(&"test_reverse".to_string()), "Should have test_reverse, got: {names:?}");
+    }
+
+    #[test]
+    fn factory_without_plugins_returns_only_builtins() {
+        let factory = make_factory(None);
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let tools = factory.build_tools_with_panel_tx(tx, None);
+        let names: Vec<String> = tools.iter().map(|t| t.definition().name.clone()).collect();
+        assert!(!names.contains(&"test_echo".to_string()), "Should not have test_echo: {names:?}");
+        assert!(!names.contains(&"hash_text".to_string()), "Should not have hash_text: {names:?}");
+        // Should still have built-in tools
+        assert!(names.contains(&"read".to_string()), "Should have read tool: {names:?}");
+    }
+
+    #[test]
+    fn daemon_tool_rebuilder_filters_plugin_tools() {
+        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        let pm = crate::modes::common::init_plugin_manager(&plugins_dir, None, &[]);
+        let factory = Arc::new(make_factory(Some(pm)));
+        let rebuilder = super::DaemonToolRebuilder { factory };
+        use clankers_controller::ToolRebuilder;
+
+        // All tools present when nothing disabled
+        let all = rebuilder.rebuild_filtered(&[]);
+        let all_names: Vec<String> = all.iter().map(|t| t.definition().name.clone()).collect();
+        assert!(all_names.contains(&"test_echo".to_string()));
+
+        // Disable test_echo — should be filtered out
+        let filtered = rebuilder.rebuild_filtered(&["test_echo".to_string()]);
+        let filtered_names: Vec<String> = filtered.iter().map(|t| t.definition().name.clone()).collect();
+        assert!(!filtered_names.contains(&"test_echo".to_string()), "test_echo should be filtered out");
+        assert!(filtered_names.contains(&"test_reverse".to_string()), "test_reverse should remain");
+    }
+}
+
+#[cfg(test)]
 mod merge_tests {
     use super::*;
     use clankers_ucan::Capability;
