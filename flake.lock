@@ -104,11 +104,11 @@
     "subwayrat-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1774566647,
-        "narHash": "sha256-S5hAFgaZwajOpm+NyfktrICVmxVYAdmEFKznPcif6gQ=",
+        "lastModified": 1775081462,
+        "narHash": "sha256-ehuJpqhapP3pSusb2MPtP7r8dOo0+IZDgy9s7oItpE4=",
         "owner": "brittonr",
         "repo": "subwayrat",
-        "rev": "d80472d39f6683697f1bfb6b45388a6bd2e11dda",
+        "rev": "e5fed38173f9a0d7b7b693dfc34d3464dec37f4d",
         "type": "github"
       },
       "original": {
