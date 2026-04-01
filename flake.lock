@@ -57,11 +57,11 @@
     },
     "nixpkgs": {
       "locked": {
-        "lastModified": 1773628058,
-        "narHash": "sha256-hpXH0z3K9xv0fHaje136KY872VT2T5uwxtezlAskQgY=",
+        "lastModified": 1775034801,
+        "narHash": "sha256-tsecHNsWwr4wSaM2oW9GwafMwE24J+xD8bKDoto3exY=",
         "owner": "NixOS",
         "repo": "nixpkgs",
-        "rev": "f8573b9c935cfaa162dd62cc9e75ae2db86f85df",
+        "rev": "8d029aa64915e54b7846873d9583af4c9fd21ea4",
         "type": "github"
       },
       "original": {
@@ -88,11 +88,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1773803479,
-        "narHash": "sha256-GD6i1F2vrSxbsmbS92+8+x3DbHOJ+yrS78Pm4xigW4M=",
+        "lastModified": 1775013181,
+        "narHash": "sha256-zPrt6oNM1r/RO5bWYaZ3hthfG9vzkr6kQdoqDd5x4Qw=",
         "owner": "oxalica",
         "repo": "rust-overlay",
-        "rev": "f17186f52e82ec5cf40920b58eac63b78692ac7c",
+        "rev": "e8046c1d9ccadd497c2344d8fa49dab62f22f7be",
         "type": "github"
       },
       "original": {
@@ -104,11 +104,11 @@
     "subwayrat-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1774106012,
-        "narHash": "sha256-LrZ4u1I8xcU9CbfB7gvZMPmQUNwzVMdqwSj60cB2WHM=",
+        "lastModified": 1774566647,
+        "narHash": "sha256-S5hAFgaZwajOpm+NyfktrICVmxVYAdmEFKznPcif6gQ=",
         "owner": "brittonr",
         "repo": "subwayrat",
-        "rev": "b824c860b60d800a7511a4fcbe9af98f1e50af79",
+        "rev": "d80472d39f6683697f1bfb6b45388a6bd2e11dda",
         "type": "github"
       },
       "original": {
