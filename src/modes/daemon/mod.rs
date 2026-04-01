@@ -296,26 +296,42 @@ async fn run_schedule_consumer(
                             continue;
                         }
 
-                        let session_id = sched_event
+                        let explicit_id = sched_event
                             .payload
                             .get("_session_id")
                             .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string();
+                            .filter(|s| !s.is_empty())
+                            .map(|s| s.to_string());
 
-                        if session_id.is_empty() {
-                            warn!(
-                                "schedule '{}' fired but has no _session_id — cannot route",
-                                sched_event.schedule_name,
-                            );
-                            continue;
-                        }
-
-                        // Look up the session and send the prompt.
+                        // Look up the target session: use explicit _session_id if
+                        // provided, otherwise fall back to any active session.
                         let st = state.lock().await;
-                        if let Some(handle) = st.sessions.get(&session_id)
-                            && let Some(ref cmd_tx) = handle.cmd_tx
-                        {
+                        let (session_id, handle) = if let Some(ref id) = explicit_id {
+                            match st.sessions.get(id) {
+                                Some(h) => (id.clone(), h),
+                                None => {
+                                    warn!(
+                                        "schedule '{}' fired for session {} but session not active",
+                                        sched_event.schedule_name, id,
+                                    );
+                                    continue;
+                                }
+                            }
+                        } else {
+                            // No explicit session — pick any active session.
+                            match st.sessions.iter().next() {
+                                Some((id, h)) => (id.clone(), h),
+                                None => {
+                                    warn!(
+                                        "schedule '{}' fired but no sessions active — cannot route",
+                                        sched_event.schedule_name,
+                                    );
+                                    continue;
+                                }
+                            }
+                        };
+
+                        if let Some(ref cmd_tx) = handle.cmd_tx {
                             info!(
                                 "schedule '{}' fired (#{}) → session {}",
                                 sched_event.schedule_name,
@@ -330,7 +346,7 @@ async fn run_schedule_consumer(
                                 .ok();
                         } else {
                             warn!(
-                                "schedule '{}' fired for session {} but session not active",
+                                "schedule '{}' fired → session {} has no command channel",
                                 sched_event.schedule_name,
                                 session_id,
                             );
