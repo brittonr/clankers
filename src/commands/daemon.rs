@@ -666,6 +666,7 @@ mod tests {
 
         let f1 = std::fs::OpenOptions::new()
             .create(true)
+            .truncate(true)
             .write(true)
             .open(&lock_path)
             .unwrap();

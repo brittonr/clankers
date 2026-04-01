@@ -50,6 +50,7 @@ impl clankers::provider::Provider for MockProvider {
 }
 
 #[tokio::test]
+#[allow(clippy::await_holding_lock)] // ENV_LOCK serialises env access across tests — intentional
 async fn test_control_socket_list_empty() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().unwrap();
@@ -112,6 +113,7 @@ async fn test_control_socket_list_empty() {
 }
 
 #[tokio::test]
+#[allow(clippy::await_holding_lock)] // ENV_LOCK serialises env access across tests — intentional
 async fn test_control_socket_create_session() {
     let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
     let tmp = tempfile::tempdir().unwrap();

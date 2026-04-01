@@ -27,8 +27,7 @@ fn result_text(result: &clankers::agent::tool::ToolResult) -> String {
             clankers::agent::tool::ToolResultContent::Text { text } => Some(text.clone()),
             _ => None,
         })
-        .collect::<Vec<_>>()
-        .join("")
+        .collect::<String>()
 }
 
 // ── 4.1 Tool CRUD ──────────────────────────────────────────────────

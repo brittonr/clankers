@@ -128,13 +128,13 @@ fn ollama_available() -> bool {
             .timeout(Duration::from_secs(2))
             .build()
             .ok()?;
-        let resp = client.get(&format!("{}/models", OLLAMA_BASE)).send().ok()?;
+        let resp = client.get(format!("{}/models", OLLAMA_BASE)).send().ok()?;
         let body: serde_json::Value = resp.json().ok()?;
         let models = body.get("data")?.as_array()?;
         let found = models.iter().any(|m| {
             m.get("id")
                 .and_then(|v| v.as_str())
-                .map_or(false, |id| id == MODEL_ID)
+                == Some(MODEL_ID)
         });
         Some(found)
     })
@@ -157,13 +157,13 @@ fn model_available(model_id: &str) -> bool {
             .timeout(Duration::from_secs(2))
             .build()
             .ok()?;
-        let resp = client.get(&format!("{}/models", OLLAMA_BASE)).send().ok()?;
+        let resp = client.get(format!("{}/models", OLLAMA_BASE)).send().ok()?;
         let body: serde_json::Value = resp.json().ok()?;
         let models = body.get("data")?.as_array()?;
         Some(models.iter().any(|m| {
             m.get("id")
                 .and_then(|v| v.as_str())
-                .map_or(false, |mid| mid == id)
+                .is_some_and(|mid| mid == id)
         }))
     })
     .join()

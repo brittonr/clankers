@@ -105,11 +105,10 @@ fn annotation_round_trip_through_tool_result() {
 
     if let Some(ToolResultContent::Text { text }) = result.content.first()
         && let Some(annotation) = clankers_nix::annotate_store_refs(text)
+        && let Some(ToolResultContent::Text { text }) = result.content.first_mut()
     {
-        if let Some(ToolResultContent::Text { text }) = result.content.first_mut() {
-            text.push_str("\n\n");
-            text.push_str(&annotation);
-        }
+        text.push_str("\n\n");
+        text.push_str(&annotation);
     }
 
     let text = result_text(&result);
@@ -128,11 +127,10 @@ fn no_annotation_when_output_has_no_store_paths() {
 
     if let Some(ToolResultContent::Text { text }) = result.content.first()
         && let Some(annotation) = clankers_nix::annotate_store_refs(text)
+        && let Some(ToolResultContent::Text { text }) = result.content.first_mut()
     {
-        if let Some(ToolResultContent::Text { text }) = result.content.first_mut() {
-            text.push_str("\n\n");
-            text.push_str(&annotation);
-        }
+        text.push_str("\n\n");
+        text.push_str(&annotation);
     }
 
     let text = result_text(&result);
