@@ -18,8 +18,16 @@ impl SessionController {
         // Collect into a Vec to avoid borrowing event_rx and self simultaneously.
         let events: Vec<AgentEvent> = if let Some(ref mut rx) = self.event_rx {
             let mut buf = Vec::new();
-            while let Ok(event) = rx.try_recv() {
-                buf.push(event);
+            loop {
+                match rx.try_recv() {
+                    Ok(event) => buf.push(event),
+                    Err(tokio::sync::broadcast::error::TryRecvError::Lagged(n)) => {
+                        tracing::warn!("agent event drain lagged, skipped {n} events");
+                        // Receiver auto-resets to oldest available — keep draining
+                        continue;
+                    }
+                    Err(_) => break, // Empty or Closed
+                }
             }
             buf
         } else {

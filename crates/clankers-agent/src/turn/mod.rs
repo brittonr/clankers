@@ -100,15 +100,49 @@ impl ContentBlockBuilder {
 
     pub(crate) fn finalize(mut self) -> Content {
         // Parse accumulated JSON for ToolUse
-        if let Content::ToolUse { ref mut input, .. } = self.content {
-            if let Some(json_str) = self.raw_json
-                && !json_str.is_empty()
-                && let Ok(parsed) = serde_json::from_str::<Value>(&json_str)
-                && parsed.is_object()
-            {
-                *input = parsed;
-            } else if !input.is_object() {
-                // Anthropic requires input to be a dict — ensure it's always an object
+        if let Content::ToolUse { ref mut input, ref name, .. } = self.content {
+            match self.raw_json {
+                Some(ref json_str) if !json_str.is_empty() => {
+                    match serde_json::from_str::<Value>(json_str) {
+                        Ok(parsed) if parsed.is_object() => {
+                            *input = parsed;
+                        }
+                        Ok(parsed) => {
+                            // Valid JSON but not an object — wrap it so the tool
+                            // still sees something rather than empty {}.
+                            tracing::warn!(
+                                tool = name,
+                                json_type = parsed.as_str().map(|_| "string")
+                                    .or(parsed.as_array().map(|_| "array"))
+                                    .unwrap_or("other"),
+                                "tool input JSON is not an object, wrapping in {{\"_raw\": ...}}",
+                            );
+                            let mut map = serde_json::Map::new();
+                            map.insert("_raw".to_string(), parsed);
+                            *input = Value::Object(map);
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                tool = name,
+                                json_len = json_str.len(),
+                                error = %e,
+                                "failed to parse accumulated tool input JSON",
+                            );
+                            // Keep the initial empty {} — tool will see missing params
+                        }
+                    }
+                }
+                Some(_) => {
+                    // raw_json was set but empty (initial empty arguments chunk)
+                    tracing::debug!(tool = name, "tool input JSON is empty string");
+                }
+                None => {
+                    // No InputJsonDelta events received at all
+                    tracing::debug!(tool = name, "no InputJsonDelta events for tool_use block");
+                }
+            }
+            // Ensure input is always an object
+            if !input.is_object() {
                 *input = Value::Object(serde_json::Map::new());
             }
         }
@@ -165,8 +199,36 @@ pub async fn run_turn_loop(
         // Extract tool calls
         let tool_calls = extract_tool_calls(&collected.content);
 
+        tracing::debug!(
+            turn = turn_index,
+            stop_reason = ?collected.stop_reason,
+            tool_calls = tool_calls.len(),
+            content_blocks = collected.content.len(),
+            "turn collected",
+        );
+        for (call_id, name, input) in &tool_calls {
+            let input_keys: Vec<&str> = input.as_object()
+                .map(|m| m.keys().map(|k| k.as_str()).collect())
+                .unwrap_or_default();
+            tracing::debug!(
+                call_id,
+                tool = name,
+                input_keys = ?input_keys,
+                input_empty = input.as_object().map_or(true, |m| m.is_empty()),
+                "extracted tool call",
+            );
+        }
+
         // If no tool calls, we're done
         if tool_calls.is_empty() || collected.stop_reason != StopReason::ToolUse {
+            if !tool_calls.is_empty() && collected.stop_reason != StopReason::ToolUse {
+                tracing::warn!(
+                    turn = turn_index,
+                    stop_reason = ?collected.stop_reason,
+                    tool_calls = tool_calls.len(),
+                    "tool calls present but stop_reason is not ToolUse — tools will NOT execute",
+                );
+            }
             event_tx.send(AgentEvent::TurnEnd {
                 index: turn_index,
                 message: assistant_msg,

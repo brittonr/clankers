@@ -60,6 +60,14 @@
 - Clippy `collapsible_if`: `if !flag { if let Some(x) = ... }` → `if !flag && let Some(x) = ...`
 - Clippy `format_push_string`: use `write!(string, ...)` not `string.push_str(&format!(...))`
 
+### Event draining
+- `broadcast::Receiver::try_recv()` returns `Err(Lagged(n))` when buffer overflows — NOT a terminal error
+- After `Lagged`, receiver auto-resets to oldest available event — must `continue`, not `break`
+- `while let Ok(event) = rx.try_recv()` is WRONG for broadcast receivers — breaks on Lagged, drops all remaining events
+- Use explicit `loop { match try_recv() { Ok => push, Lagged => warn+continue, _ => break } }` instead
+- Agent broadcast channel is 1024 capacity. A 4-turn tool loop can produce 1500+ events (text deltas + tool events)
+- `drain_events` only runs AFTER `handle_command` returns — entire turn loop's events queue up
+
 ### Daemon-client architecture
 - Protocol: serde_json + length-prefixed frames over Unix sockets (local) / iroh QUIC (remote)
 - rkyv rejected: wrong tool for small text messages, loses debuggability
