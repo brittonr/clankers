@@ -134,7 +134,7 @@ pub async fn run_daemon(
         let suspended = catalog.list_by_state(session_store::SessionLifecycle::Suspended);
         let key_mappings = catalog.list_keys();
         if !suspended.is_empty() {
-            let mut st = daemon_state.blocking_lock();
+            let mut st = daemon_state.lock().await;
             for entry in &suspended {
                 let socket_path = clankers_controller::transport::session_socket_path(&entry.session_id);
                 st.sessions.insert(entry.session_id.clone(), clankers_controller::transport::SessionHandle {
