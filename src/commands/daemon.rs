@@ -89,12 +89,19 @@ async fn start_foreground(
         schedule_engine.add_all(persisted);
     }
 
+    // Initialize plugin manager — discover and load WASM plugins
+    let plugin_manager = crate::modes::common::init_plugin_manager(
+        &ctx.paths.global_plugins_dir,
+        Some(&ctx.project_paths.plugins_dir),
+        &[&ctx.project_paths.plugins_root_dir],
+    );
+
     let env = crate::modes::common::ToolEnv {
         process_monitor: Some(process_monitor),
         schedule_engine: Some(schedule_engine.clone()),
         ..Default::default()
     };
-    let tiered = crate::modes::common::build_tiered_tools(&env);
+    let tiered = crate::modes::common::build_all_tiered_tools(&env, Some(&plugin_manager));
     let tool_set = crate::modes::common::ToolSet::new(tiered, [
         crate::modes::common::ToolTier::Core,
         crate::modes::common::ToolTier::Orchestration,
@@ -115,7 +122,7 @@ async fn start_foreground(
         ..Default::default()
     };
 
-    crate::modes::daemon::run_daemon(provider, tools, config, &ctx.paths, Some(schedule_engine)).await?;
+    crate::modes::daemon::run_daemon(provider, tools, config, &ctx.paths, Some(schedule_engine), Some(plugin_manager)).await?;
     Ok(())
 }
 

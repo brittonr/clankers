@@ -176,6 +176,29 @@ pub enum DaemonEvent {
     /// Prompt processing finished.
     PromptDone { error: Option<String> },
 
+    // ── Plugin events ───────────────────────────
+    /// Plugin widget set or cleared.
+    PluginWidget {
+        plugin: String,
+        widget: Option<serde_json::Value>,
+    },
+    /// Plugin status bar segment set or cleared.
+    PluginStatus {
+        plugin: String,
+        text: Option<String>,
+        color: Option<String>,
+    },
+    /// Plugin toast notification.
+    PluginNotify {
+        plugin: String,
+        message: String,
+        level: String,
+    },
+    /// Plugin list (response to GetPlugins).
+    PluginList {
+        plugins: Vec<PluginSummary>,
+    },
+
     // ── History replay ──────────────────────────
     /// One block of conversation history.
     HistoryBlock { block: serde_json::Value },
@@ -188,4 +211,14 @@ pub enum DaemonEvent {
 pub struct ToolInfo {
     pub name: String,
     pub description: String,
+}
+
+/// Summary of a loaded plugin.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PluginSummary {
+    pub name: String,
+    pub version: String,
+    pub state: String,
+    pub tools: Vec<String>,
+    pub permissions: Vec<String>,
 }

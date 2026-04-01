@@ -227,6 +227,7 @@ mod tests {
             SessionCommand::GetSystemPrompt,
             SessionCommand::ReplayHistory,
             SessionCommand::GetCapabilities,
+            SessionCommand::GetPlugins,
             SessionCommand::Disconnect,
         ];
 
@@ -332,6 +333,7 @@ mod tests {
             },
             SessionCommand::ReplayHistory,
             SessionCommand::GetCapabilities,
+            SessionCommand::GetPlugins,
             SessionCommand::Disconnect,
         ];
 
@@ -464,6 +466,39 @@ mod tests {
                 block: serde_json::json!({"role": "user", "content": "hi"}),
             },
             DaemonEvent::HistoryEnd,
+            // Plugin events
+            DaemonEvent::PluginWidget {
+                plugin: "calendar".to_string(),
+                widget: Some(serde_json::json!({"type": "Text", "content": "hello", "bold": true})),
+            },
+            DaemonEvent::PluginWidget {
+                plugin: "calendar".to_string(),
+                widget: None,
+            },
+            DaemonEvent::PluginStatus {
+                plugin: "github".to_string(),
+                text: Some("3 PRs open".to_string()),
+                color: Some("green".to_string()),
+            },
+            DaemonEvent::PluginStatus {
+                plugin: "github".to_string(),
+                text: None,
+                color: None,
+            },
+            DaemonEvent::PluginNotify {
+                plugin: "hash".to_string(),
+                message: "Done!".to_string(),
+                level: "info".to_string(),
+            },
+            DaemonEvent::PluginList {
+                plugins: vec![crate::event::PluginSummary {
+                    name: "test-plugin".to_string(),
+                    version: "0.1.0".to_string(),
+                    state: "Active".to_string(),
+                    tools: vec!["test_echo".to_string()],
+                    permissions: vec!["fs:read".to_string()],
+                }],
+            },
         ];
 
         for event in &events {
@@ -616,6 +651,7 @@ mod tests {
             ControlCommand::Shutdown,
             ControlCommand::Status,
             ControlCommand::RestartDaemon,
+            ControlCommand::ListPlugins,
         ];
 
         for cmd in &commands {
@@ -664,6 +700,14 @@ mod tests {
                 pid: 12345,
             }),
             ControlResponse::Restarting,
+            ControlResponse::Plugins(vec![crate::event::PluginSummary {
+                name: "test-plugin".to_string(),
+                version: "0.1.0".to_string(),
+                state: "Active".to_string(),
+                tools: vec!["echo".to_string()],
+                permissions: vec!["net".to_string()],
+            }]),
+            ControlResponse::Plugins(vec![]),
             ControlResponse::Error {
                 message: "session not found".to_string(),
             },

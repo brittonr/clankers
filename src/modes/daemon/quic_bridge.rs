@@ -201,6 +201,7 @@ fn dispatch_readonly_control(
         ControlCommand::CreateSession { .. } => ControlResponse::Error {
             message: "internal: CreateSession routed to readonly dispatch".to_string(),
         },
+        ControlCommand::ListPlugins => ControlResponse::Plugins(vec![]),
     }
 }
 

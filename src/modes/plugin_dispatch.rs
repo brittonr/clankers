@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use crate::agent::events::AgentEvent;
+use clankers_protocol::DaemonEvent;
 
 /// Result of dispatching events to plugins.
 pub(crate) struct PluginDispatchResult {
@@ -94,6 +95,102 @@ pub(crate) fn dispatch_event_to_plugins(
             }
             Err(e) => {
                 tracing::debug!("Plugin '{}' event handler error: {}", info.name, e);
+            }
+        }
+    }
+
+    PluginDispatchResult { messages, ui_actions }
+}
+
+/// Map a `DaemonEvent` to the plugin event kind string and JSON payload.
+/// Returns `None` for events that plugins don't subscribe to.
+fn daemon_event_to_plugin_payload(event: &DaemonEvent) -> Option<serde_json::Value> {
+    match event {
+        DaemonEvent::AgentStart => Some(serde_json::json!({"event": "agent_start", "data": {}})),
+        DaemonEvent::AgentEnd => Some(serde_json::json!({"event": "agent_end", "data": {}})),
+        DaemonEvent::ToolCall { tool_name, call_id, .. } => {
+            Some(serde_json::json!({"event": "tool_call", "data": {"tool": tool_name, "call_id": call_id}}))
+        }
+        DaemonEvent::ToolDone { call_id, .. } => {
+            Some(serde_json::json!({"event": "tool_result", "data": {"call_id": call_id}}))
+        }
+        DaemonEvent::UserInput { text, .. } => {
+            Some(serde_json::json!({"event": "user_input", "data": {"text": text}}))
+        }
+        DaemonEvent::ModelChanged { from, to, .. } => {
+            Some(serde_json::json!({"event": "model_change", "data": {"from": from, "to": to}}))
+        }
+        DaemonEvent::UsageUpdate { input_tokens, output_tokens, .. } => {
+            Some(serde_json::json!({"event": "usage_update", "data": {"input_tokens": input_tokens, "output_tokens": output_tokens}}))
+        }
+        DaemonEvent::SessionCompaction { .. } => {
+            Some(serde_json::json!({"event": "session_compaction", "data": {}}))
+        }
+        _ => None,
+    }
+}
+
+/// Dispatch daemon events to subscribed plugins.
+///
+/// Used by the daemon's event loop where we have `DaemonEvent`s instead
+/// of `AgentEvent`s. Maps events to the same plugin protocol.
+pub(crate) fn dispatch_daemon_events_to_plugins(
+    plugin_manager: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    events: &[DaemonEvent],
+) -> PluginDispatchResult {
+    use crate::plugin::PluginState;
+    use crate::plugin::bridge::PluginEvent;
+    use crate::plugin::sandbox;
+
+    let mgr = match plugin_manager.lock() {
+        Ok(m) => m,
+        Err(poisoned) => {
+            tracing::warn!("Plugin manager mutex was poisoned, recovering");
+            poisoned.into_inner()
+        }
+    };
+
+    let mut messages = Vec::new();
+    let mut ui_actions = Vec::new();
+
+    for event in events {
+        let Some(payload) = daemon_event_to_plugin_payload(event) else {
+            continue;
+        };
+        let event_kind = payload.get("event").and_then(|v| v.as_str()).unwrap_or("");
+        let input = serde_json::to_string(&payload).unwrap_or_default();
+
+        for info in mgr.list() {
+            if info.state != PluginState::Active {
+                continue;
+            }
+            let is_subscribed = info
+                .manifest
+                .events
+                .iter()
+                .any(|e| PluginEvent::parse(e).is_some_and(|pe| pe.matches_event_kind(event_kind)));
+            if !is_subscribed {
+                continue;
+            }
+
+            match mgr.call_plugin(&info.name, "on_event", &input) {
+                Ok(output) => {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&output) {
+                        let should_display = parsed.get("display").and_then(|d| d.as_bool()).unwrap_or(false);
+                        if should_display
+                            && let Some(msg) = parsed.get("message").and_then(|m| m.as_str())
+                            && !msg.is_empty()
+                        {
+                            messages.push((info.name.clone(), msg.to_string()));
+                        }
+                        let actions = crate::plugin::bridge::parse_ui_actions(&info.name, &parsed);
+                        let actions = sandbox::filter_ui_actions(&info.manifest.permissions, actions);
+                        ui_actions.extend(actions);
+                    }
+                }
+                Err(e) => {
+                    tracing::debug!("Plugin '{}' event handler error: {}", info.name, e);
+                }
             }
         }
     }

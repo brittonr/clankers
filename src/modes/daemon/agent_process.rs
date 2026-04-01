@@ -132,7 +132,7 @@ pub fn spawn_agent_process(
     };
 
     // ── Hook pipeline ────────────────────────────────────────────────
-    let hook_pipeline = build_session_hook_pipeline(&factory.settings);
+    let hook_pipeline = build_session_hook_pipeline(&factory.settings, factory.plugin_manager.as_ref());
 
     let config = ControllerConfig {
         session_id: session_id.clone(),
@@ -159,6 +159,7 @@ pub fn spawn_agent_process(
             registry: None, // child tools use subprocess fallback
             catalog: None,
             schedule_engine: factory.schedule_engine.clone(),
+            plugin_manager: factory.plugin_manager.clone(),
         }),
     };
     controller.set_tool_rebuilder(Arc::new(rebuilder));
@@ -168,6 +169,7 @@ pub fn spawn_agent_process(
     let (event_tx, _) = broadcast::channel::<DaemonEvent>(256);
 
     let driver_event_tx = event_tx.clone();
+    let driver_plugin_manager = factory.plugin_manager.clone();
     let process_name = format!("session:{session_id}");
 
     let pid = registry.spawn(
@@ -182,6 +184,7 @@ pub fn spawn_agent_process(
                 panel_rx,
                 bash_confirm_rx,
                 &mut signal_rx,
+                driver_plugin_manager,
             ))
             .await
         },
@@ -200,6 +203,7 @@ async fn run_agent_actor(
     mut panel_rx: mpsc::UnboundedReceiver<SubagentEvent>,
     mut bash_confirm_rx: crate::tools::bash::ConfirmRx,
     signal_rx: &mut mpsc::UnboundedReceiver<Signal>,
+    plugin_manager: Option<std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
 ) -> DeathReason {
     info!("agent process started: {session_id}");
 
@@ -236,9 +240,18 @@ async fn run_agent_actor(
                 let Some(cmd) = cmd else { break };
                 let is_disconnect = matches!(cmd, SessionCommand::Disconnect);
 
+                // Handle plugin queries locally (controller doesn't know about plugins)
+                if matches!(cmd, SessionCommand::GetPlugins) {
+                    let summaries = build_plugin_summaries(plugin_manager.as_ref());
+                    event_tx.send(DaemonEvent::PluginList { plugins: summaries }).ok();
+                    if is_disconnect { break; }
+                    continue;
+                }
+
                 controller.handle_command(cmd).await;
                 super::socket_bridge::drain_and_broadcast(
                     &mut controller, &event_tx, &mut panel_rx,
+                    plugin_manager.as_ref(),
                 );
 
                 // Post-prompt actions (auto-test, loop continuation)
@@ -252,6 +265,7 @@ async fn run_agent_actor(
                             .await;
                         super::socket_bridge::drain_and_broadcast(
                             &mut controller, &event_tx, &mut panel_rx,
+                            plugin_manager.as_ref(),
                         );
                     }
                     controller.clear_auto_test();
@@ -300,6 +314,7 @@ async fn run_agent_actor(
             () = tokio::time::sleep(tokio::time::Duration::from_millis(50)) => {
                 super::socket_bridge::drain_and_broadcast(
                     &mut controller, &event_tx, &mut panel_rx,
+                    plugin_manager.as_ref(),
                 );
             }
         }
@@ -733,13 +748,33 @@ impl clankers_controller::ToolRebuilder for DaemonToolRebuilder {
     }
 }
 
+/// Build plugin summaries from the shared plugin manager for protocol responses.
+fn build_plugin_summaries(
+    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+) -> Vec<clankers_protocol::PluginSummary> {
+    let Some(pm) = plugin_manager else {
+        return Vec::new();
+    };
+    let mgr = pm.lock().unwrap_or_else(|p| p.into_inner());
+    mgr.list()
+        .iter()
+        .map(|info| clankers_protocol::PluginSummary {
+            name: info.name.clone(),
+            version: info.version.clone(),
+            state: format!("{:?}", info.state),
+            tools: info.manifest.tools.clone(),
+            permissions: info.manifest.permissions.clone(),
+        })
+        .collect()
+}
+
 /// Build a hook pipeline for a daemon session from settings.
 ///
-/// Mirrors the standalone `interactive.rs::build_hook_pipeline` but
-/// without plugin hooks (plugins are client-side in daemon mode).
+/// Includes plugin hooks when a plugin manager is provided.
 #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
 fn build_session_hook_pipeline(
     settings: &crate::config::settings::Settings,
+    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
 ) -> Option<std::sync::Arc<clankers_hooks::HookPipeline>> {
     if !settings.hooks.enabled {
         return None;
@@ -771,6 +806,13 @@ fn build_session_hook_pipeline(
                 None => break,
             }
         }
+    }
+
+    // Plugin hooks
+    if let Some(pm) = plugin_manager {
+        pipeline.register(std::sync::Arc::new(
+            crate::plugin::hooks::PluginHookHandler::new(std::sync::Arc::clone(pm)),
+        ));
     }
 
     Some(std::sync::Arc::new(pipeline))

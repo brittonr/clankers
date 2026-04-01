@@ -1692,6 +1692,7 @@ dependencies = [
  "arboard",
  "base64",
  "chrono",
+ "clankers-protocol",
  "clankers-tui-types",
  "crossterm",
  "git2",

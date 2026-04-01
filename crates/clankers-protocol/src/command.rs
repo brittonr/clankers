@@ -68,6 +68,8 @@ pub enum SessionCommand {
     ReplayHistory,
     /// Query the session's active capabilities.
     GetCapabilities,
+    /// Request the list of loaded plugins.
+    GetPlugins,
     /// Update the session's active tool capabilities.
     ///
     /// `None` = remove user restrictions (restore to ceiling).

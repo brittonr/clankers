@@ -41,6 +41,8 @@ pub struct SessionFactory {
     pub catalog: Option<Arc<super::session_store::SessionCatalog>>,
     /// Shared schedule engine — persists across sessions.
     pub schedule_engine: Option<std::sync::Arc<clanker_scheduler::ScheduleEngine>>,
+    /// Shared plugin manager — plugins loaded once at daemon startup.
+    pub plugin_manager: Option<std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
 }
 
 impl SessionFactory {
@@ -66,6 +68,7 @@ impl SessionFactory {
                     registry: None,
                     catalog: None,
                     schedule_engine: self.schedule_engine.clone(),
+                    plugin_manager: None, // child factories skip plugins
                 }),
             }
         });
@@ -76,7 +79,7 @@ impl SessionFactory {
             schedule_engine: self.schedule_engine.clone(),
             ..Default::default()
         };
-        let tiered = crate::modes::common::build_tiered_tools(&env);
+        let tiered = crate::modes::common::build_all_tiered_tools(&env, self.plugin_manager.as_ref());
         let tool_set = crate::modes::common::ToolSet::new(tiered, [
             crate::modes::common::ToolTier::Core,
             crate::modes::common::ToolTier::Orchestration,
@@ -331,6 +334,24 @@ async fn dispatch_control_command(
             unsafe { libc::kill(libc::getpid(), libc::SIGTERM); }
             ControlResponse::Restarting
         }
+        ControlCommand::ListPlugins => {
+            let summaries = if let Some(ref pm) = factory.plugin_manager {
+                let mgr = pm.lock().unwrap_or_else(|p| p.into_inner());
+                mgr.list()
+                    .iter()
+                    .map(|info| clankers_protocol::event::PluginSummary {
+                        name: info.name.clone(),
+                        version: info.version.clone(),
+                        state: format!("{:?}", info.state),
+                        tools: info.manifest.tools.clone(),
+                        permissions: info.manifest.permissions.clone(),
+                    })
+                    .collect()
+            } else {
+                Vec::new()
+            };
+            ControlResponse::Plugins(summaries)
+        }
     }
 }
 
@@ -339,9 +360,51 @@ pub fn drain_and_broadcast(
     controller: &mut SessionController,
     event_tx: &broadcast::Sender<DaemonEvent>,
     panel_rx: &mut mpsc::UnboundedReceiver<SubagentEvent>,
+    plugin_manager: Option<&std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
 ) {
     // Drain controller events
     let events = controller.drain_events();
+
+    // Dispatch to plugins before broadcasting (plugins may produce UI actions)
+    if let Some(pm) = plugin_manager {
+        if !events.is_empty() {
+            let result = crate::modes::plugin_dispatch::dispatch_daemon_events_to_plugins(pm, &events);
+
+            // Convert plugin display messages to SystemMessage events
+            for (plugin_name, message) in result.messages {
+                event_tx.send(DaemonEvent::SystemMessage {
+                    text: format!("\u{1f50c} {}: {}", plugin_name, message),
+                    is_error: false,
+                }).ok();
+            }
+
+            // Convert plugin UI actions to protocol events
+            for action in result.ui_actions {
+                let daemon_event = match action {
+                    crate::plugin::ui::PluginUiAction::SetWidget { plugin, widget } => {
+                        DaemonEvent::PluginWidget {
+                            plugin,
+                            widget: Some(serde_json::to_value(widget).unwrap_or_default()),
+                        }
+                    }
+                    crate::plugin::ui::PluginUiAction::ClearWidget { plugin } => {
+                        DaemonEvent::PluginWidget { plugin, widget: None }
+                    }
+                    crate::plugin::ui::PluginUiAction::SetStatus { plugin, text, color } => {
+                        DaemonEvent::PluginStatus { plugin, text: Some(text), color }
+                    }
+                    crate::plugin::ui::PluginUiAction::ClearStatus { plugin } => {
+                        DaemonEvent::PluginStatus { plugin, text: None, color: None }
+                    }
+                    crate::plugin::ui::PluginUiAction::Notify { plugin, message, level } => {
+                        DaemonEvent::PluginNotify { plugin, message, level }
+                    }
+                };
+                event_tx.send(daemon_event).ok();
+            }
+        }
+    }
+
     for event in events {
         event_tx.send(event).ok();
     }

@@ -19,6 +19,7 @@ pub use control::ControlResponse;
 pub use control::DaemonStatus;
 pub use control::SessionSummary;
 pub use event::DaemonEvent;
+pub use event::PluginSummary;
 pub use event::ToolInfo;
 
 pub use frame::FrameError;

@@ -263,6 +263,11 @@ impl SessionController {
             SessionCommand::Disconnect => {
                 tracing::debug!("client disconnected");
             }
+            SessionCommand::GetPlugins => {
+                // Handled by the daemon's agent process actor, not the controller.
+                // If we get here in embedded mode, emit an empty list.
+                self.emit(DaemonEvent::PluginList { plugins: vec![] });
+            }
         }
     }
 

@@ -37,6 +37,8 @@ pub enum ControlCommand {
     Status,
     /// Restart the daemon (checkpoint + exit with code 75).
     RestartDaemon,
+    /// List loaded plugins.
+    ListPlugins,
 }
 
 /// Responses from the control socket.
@@ -58,6 +60,8 @@ pub enum ControlResponse {
     Status(DaemonStatus),
     /// Daemon is restarting (exit code 75).
     Restarting,
+    /// Loaded plugin list.
+    Plugins(Vec<crate::event::PluginSummary>),
     /// Error response.
     Error { message: String },
 }

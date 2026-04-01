@@ -58,6 +58,7 @@ pub async fn run_daemon(
     config: DaemonConfig,
     paths: &ClankersPaths,
     schedule_engine: Option<Arc<clanker_scheduler::ScheduleEngine>>,
+    plugin_manager: Option<std::sync::Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
 ) -> Result<()> {
     let cancel = CancellationToken::new();
 
@@ -125,6 +126,7 @@ pub async fn run_daemon(
         registry: Some(process_registry.clone()),
         catalog: session_catalog.clone(),
         schedule_engine: schedule_engine.clone(),
+        plugin_manager: plugin_manager.clone(),
     });
 
     // Phase 3b: Populate DaemonState with suspended sessions from catalog

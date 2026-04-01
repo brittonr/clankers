@@ -1117,6 +1117,54 @@ fn process_daemon_event(
         }
 
         // ── Ignored events ──────────────────────────
+        // ── Plugin events ───────────────────────
+        DaemonEvent::PluginWidget { plugin, widget } => {
+            if let Some(widget_json) = widget {
+                if let Ok(w) = serde_json::from_value::<clankers_tui_types::Widget>(widget_json.clone()) {
+                    app.plugin_ui.widgets.insert(plugin.clone(), w);
+                }
+            } else {
+                app.plugin_ui.widgets.remove(plugin);
+            }
+        }
+        DaemonEvent::PluginStatus { plugin, text, color } => {
+            if let Some(text) = text {
+                app.plugin_ui.status_segments.insert(
+                    plugin.clone(),
+                    clankers_tui_types::StatusSegment { text: text.clone(), color: color.clone() },
+                );
+            } else {
+                app.plugin_ui.status_segments.remove(plugin);
+            }
+        }
+        DaemonEvent::PluginNotify { plugin, message, level } => {
+            app.plugin_ui.notifications.push(clankers_tui_types::PluginNotification {
+                plugin: plugin.clone(),
+                message: message.clone(),
+                level: level.clone(),
+                created: std::time::Instant::now(),
+            });
+        }
+        DaemonEvent::PluginList { plugins } => {
+            app.daemon_plugins = Some(plugins.clone());
+            // Display plugin list when it arrives (in response to /plugin)
+            if plugins.is_empty() {
+                app.push_system("No plugins loaded.".to_string(), false);
+            } else {
+                let mut lines = vec![format!("Loaded plugins ({}):", plugins.len())];
+                for p in plugins {
+                    let tools_str = if p.tools.is_empty() {
+                        String::new()
+                    } else {
+                        format!("  tools: {}", p.tools.join(", "))
+                    };
+                    let marker = if p.state == "Active" { "\u{2713}" } else { "\u{2717}" };
+                    lines.push(format!("  {} {} v{} [{}]{}", marker, p.name, p.version, p.state, tools_str));
+                }
+                app.push_system(lines.join("\n"), false);
+            }
+        }
+
         DaemonEvent::SystemPromptResponse { .. } => {
             // We didn't request this — ignore
         }
@@ -1346,6 +1394,9 @@ fn submit_input_attach(
         if is_client_side_command(&command) {
             // Handle locally — these are TUI-only commands
             handle_client_side_slash(app, &command, &args, slash_registry);
+        } else if command == "plugin" {
+            // Request plugin list from daemon — response arrives as PluginList event
+            client.send(SessionCommand::GetPlugins);
         } else {
             // Forward to daemon
             client.send(SessionCommand::SlashCommand {

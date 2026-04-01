@@ -5,6 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+clankers-protocol = { version = "0.1.0", path = "../clankers-protocol" }
 clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
 rat-branches = { workspace = true }
 rat-keymap = { workspace = true }

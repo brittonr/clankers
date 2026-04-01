@@ -209,6 +209,8 @@ pub struct App {
     pub slash_menu: SlashMenu,
     pub completion_source: Box<dyn clankers_tui_types::CompletionSource>,
     pub plugin_ui: PluginUiState,
+    /// Plugin summaries from the daemon (populated via DaemonEvent::PluginList).
+    pub daemon_plugins: Option<Vec<clankers_protocol::PluginSummary>>,
     pub panels: super::panel::PanelManager,
     pub context_gauge: super::components::context_gauge::ContextGauge,
     pub git_status: super::components::git_status::GitStatus,
@@ -331,6 +333,7 @@ impl App {
             slash_menu: SlashMenu::new(),
             completion_source: Box::new(EmptyCompletionSource),
             plugin_ui: PluginUiState::new(),
+            daemon_plugins: None,
             panels: register_default_panels(),
             context_gauge,
             git_status,
