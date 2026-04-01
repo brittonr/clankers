@@ -219,3 +219,210 @@ pub(crate) fn dispatch_daemon_events_to_plugins(
 
     PluginDispatchResult { messages, ui_actions }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clankers_protocol::DaemonEvent;
+    use serde_json::json;
+
+    // ── daemon_event_to_plugin_payload mapping ──────────────────
+
+    #[test]
+    fn agent_start_maps_correctly() {
+        let payload = daemon_event_to_plugin_payload(&DaemonEvent::AgentStart).unwrap();
+        assert_eq!(payload["event"], "agent_start");
+    }
+
+    #[test]
+    fn agent_end_maps_correctly() {
+        let payload = daemon_event_to_plugin_payload(&DaemonEvent::AgentEnd).unwrap();
+        assert_eq!(payload["event"], "agent_end");
+    }
+
+    #[test]
+    fn tool_call_maps_fields() {
+        let event = DaemonEvent::ToolCall {
+            tool_name: "bash".into(),
+            call_id: "call-42".into(),
+            input: json!({"command": "ls"}),
+        };
+        let payload = daemon_event_to_plugin_payload(&event).unwrap();
+        assert_eq!(payload["event"], "tool_call");
+        assert_eq!(payload["data"]["tool"], "bash");
+        assert_eq!(payload["data"]["call_id"], "call-42");
+    }
+
+    #[test]
+    fn tool_done_maps_call_id() {
+        let event = DaemonEvent::ToolDone {
+            call_id: "call-99".into(),
+            text: String::new(),
+            images: vec![],
+            is_error: false,
+        };
+        let payload = daemon_event_to_plugin_payload(&event).unwrap();
+        assert_eq!(payload["event"], "tool_result");
+        assert_eq!(payload["data"]["call_id"], "call-99");
+    }
+
+    #[test]
+    fn user_input_maps_text() {
+        let event = DaemonEvent::UserInput {
+            text: "hello".into(),
+            agent_msg_count: 5,
+        };
+        let payload = daemon_event_to_plugin_payload(&event).unwrap();
+        assert_eq!(payload["event"], "user_input");
+        assert_eq!(payload["data"]["text"], "hello");
+    }
+
+    #[test]
+    fn model_changed_maps_from_to() {
+        let event = DaemonEvent::ModelChanged {
+            from: "gpt-4".into(),
+            to: "claude-3".into(),
+            reason: "user".into(),
+        };
+        let payload = daemon_event_to_plugin_payload(&event).unwrap();
+        assert_eq!(payload["event"], "model_change");
+        assert_eq!(payload["data"]["from"], "gpt-4");
+        assert_eq!(payload["data"]["to"], "claude-3");
+    }
+
+    #[test]
+    fn usage_update_maps_tokens() {
+        let event = DaemonEvent::UsageUpdate {
+            input_tokens: 100,
+            output_tokens: 200,
+            cache_read: 0,
+            model: "test".into(),
+        };
+        let payload = daemon_event_to_plugin_payload(&event).unwrap();
+        assert_eq!(payload["event"], "usage_update");
+        assert_eq!(payload["data"]["input_tokens"], 100);
+        assert_eq!(payload["data"]["output_tokens"], 200);
+    }
+
+    #[test]
+    fn session_compaction_maps() {
+        let event = DaemonEvent::SessionCompaction {
+            compacted_count: 10,
+            tokens_saved: 500,
+        };
+        let payload = daemon_event_to_plugin_payload(&event).unwrap();
+        assert_eq!(payload["event"], "session_compaction");
+    }
+
+    // ── Events that should NOT map to plugin payloads ──────────
+
+    #[test]
+    fn text_delta_not_dispatched() {
+        let event = DaemonEvent::TextDelta { text: "hi".into() };
+        assert!(daemon_event_to_plugin_payload(&event).is_none());
+    }
+
+    #[test]
+    fn content_block_start_not_dispatched() {
+        let event = DaemonEvent::ContentBlockStart { is_thinking: false };
+        assert!(daemon_event_to_plugin_payload(&event).is_none());
+    }
+
+    #[test]
+    fn system_message_not_dispatched() {
+        let event = DaemonEvent::SystemMessage {
+            text: "info".into(),
+            is_error: false,
+        };
+        assert!(daemon_event_to_plugin_payload(&event).is_none());
+    }
+
+    #[test]
+    fn prompt_done_not_dispatched() {
+        let event = DaemonEvent::PromptDone { error: None };
+        assert!(daemon_event_to_plugin_payload(&event).is_none());
+    }
+
+    // ── ui_action_to_daemon_event mapping ──────────────────────
+
+    #[test]
+    fn set_widget_maps_to_plugin_widget() {
+        use crate::plugin::ui::PluginUiAction;
+        use clankers_tui_types::Widget;
+        let action = PluginUiAction::SetWidget {
+            plugin: "test".into(),
+            widget: Widget::Text { content: "hello".into(), bold: false, color: None },
+        };
+        let event = ui_action_to_daemon_event(action);
+        match event {
+            DaemonEvent::PluginWidget { plugin, widget } => {
+                assert_eq!(plugin, "test");
+                assert!(widget.is_some());
+            }
+            other => panic!("expected PluginWidget, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn clear_widget_maps_to_none() {
+        use crate::plugin::ui::PluginUiAction;
+        let action = PluginUiAction::ClearWidget { plugin: "test".into() };
+        let event = ui_action_to_daemon_event(action);
+        match event {
+            DaemonEvent::PluginWidget { widget, .. } => assert!(widget.is_none()),
+            other => panic!("expected PluginWidget, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn set_status_maps_to_plugin_status() {
+        use crate::plugin::ui::PluginUiAction;
+        let action = PluginUiAction::SetStatus {
+            plugin: "test".into(),
+            text: "busy".into(),
+            color: Some("yellow".into()),
+        };
+        let event = ui_action_to_daemon_event(action);
+        match event {
+            DaemonEvent::PluginStatus { plugin, text, color } => {
+                assert_eq!(plugin, "test");
+                assert_eq!(text.unwrap(), "busy");
+                assert_eq!(color.unwrap(), "yellow");
+            }
+            other => panic!("expected PluginStatus, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn clear_status_maps_to_none_text() {
+        use crate::plugin::ui::PluginUiAction;
+        let action = PluginUiAction::ClearStatus { plugin: "test".into() };
+        let event = ui_action_to_daemon_event(action);
+        match event {
+            DaemonEvent::PluginStatus { text, color, .. } => {
+                assert!(text.is_none());
+                assert!(color.is_none());
+            }
+            other => panic!("expected PluginStatus, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn notify_maps_to_plugin_notify() {
+        use crate::plugin::ui::PluginUiAction;
+        let action = PluginUiAction::Notify {
+            plugin: "test".into(),
+            message: "done!".into(),
+            level: "info".into(),
+        };
+        let event = ui_action_to_daemon_event(action);
+        match event {
+            DaemonEvent::PluginNotify { plugin, message, level } => {
+                assert_eq!(plugin, "test");
+                assert_eq!(message, "done!");
+                assert_eq!(level, "info");
+            }
+            other => panic!("expected PluginNotify, got {other:?}"),
+        }
+    }
+}

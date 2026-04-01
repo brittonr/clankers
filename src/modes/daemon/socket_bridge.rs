@@ -366,22 +366,20 @@ pub fn drain_and_broadcast(
     let events = controller.drain_events();
 
     // Dispatch to plugins before broadcasting (plugins may produce UI actions)
-    if let Some(pm) = plugin_manager {
-        if !events.is_empty() {
-            let result = crate::modes::plugin_dispatch::dispatch_daemon_events_to_plugins(pm, &events);
+    if let Some(pm) = plugin_manager.filter(|_| !events.is_empty()) {
+        let result = crate::modes::plugin_dispatch::dispatch_daemon_events_to_plugins(pm, &events);
 
-            // Convert plugin display messages to SystemMessage events
-            for (plugin_name, message) in result.messages {
-                event_tx.send(DaemonEvent::SystemMessage {
-                    text: format!("\u{1f50c} {}: {}", plugin_name, message),
-                    is_error: false,
-                }).ok();
-            }
+        // Convert plugin display messages to SystemMessage events
+        for (plugin_name, message) in result.messages {
+            event_tx.send(DaemonEvent::SystemMessage {
+                text: format!("\u{1f50c} {}: {}", plugin_name, message),
+                is_error: false,
+            }).ok();
+        }
 
-            // Convert plugin UI actions to protocol events
-            for action in result.ui_actions {
-                event_tx.send(crate::modes::plugin_dispatch::ui_action_to_daemon_event(action)).ok();
-            }
+        // Convert plugin UI actions to protocol events
+        for action in result.ui_actions {
+            event_tx.send(crate::modes::plugin_dispatch::ui_action_to_daemon_event(action)).ok();
         }
     }
 
