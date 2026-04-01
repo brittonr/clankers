@@ -63,6 +63,8 @@ fn build_plugin_tools_includes_email_tools() {
 
     let names: Vec<String> = tools.iter().map(|t| t.definition().name.clone()).collect();
     assert!(names.contains(&"send_email".to_string()), "Should have send_email tool, got: {:?}", names);
+    assert!(names.contains(&"search_email".to_string()), "Should have search_email tool, got: {:?}", names);
+    assert!(names.contains(&"read_email".to_string()), "Should have read_email tool, got: {:?}", names);
     assert!(names.contains(&"list_mailboxes".to_string()), "Should have list_mailboxes tool, got: {:?}", names);
 }
 

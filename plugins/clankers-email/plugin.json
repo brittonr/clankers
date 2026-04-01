@@ -1,6 +1,6 @@
 {
   "name": "clankers-email",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Send and read emails via Fastmail JMAP — no third-party services needed",
   "wasm": "clankers_email.wasm",
   "kind": "extism",
@@ -11,7 +11,7 @@
     "default_from": "CLANKERS_EMAIL_FROM",
     "allowed_recipients": "CLANKERS_EMAIL_ALLOWED_RECIPIENTS"
   },
-  "tools": ["send_email", "list_mailboxes"],
+  "tools": ["send_email", "search_email", "read_email", "list_mailboxes"],
   "commands": [],
   "events": ["agent_start"],
   "tool_definitions": [
@@ -48,6 +48,67 @@
           }
         },
         "required": ["to", "subject", "body"]
+      }
+    },
+    {
+      "name": "search_email",
+      "description": "Search emails via Fastmail JMAP. All filter parameters are optional and AND-combined. Returns a paginated list of messages with id, from, to, subject, date, and preview snippet. Use read_email with a message ID to get the full content.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "type": "string",
+            "description": "Filter by sender address (substring match)"
+          },
+          "to": {
+            "type": "string",
+            "description": "Filter by recipient address (substring match)"
+          },
+          "subject": {
+            "type": "string",
+            "description": "Filter by subject (substring match)"
+          },
+          "query": {
+            "type": "string",
+            "description": "Full-text search across all fields"
+          },
+          "mailbox": {
+            "type": "string",
+            "description": "Filter by mailbox/folder name (e.g. \"Inbox\", \"Sent\")"
+          },
+          "after": {
+            "type": "string",
+            "description": "Messages received after this date (YYYY-MM-DD or ISO 8601)"
+          },
+          "before": {
+            "type": "string",
+            "description": "Messages received before this date (YYYY-MM-DD or ISO 8601)"
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Max results to return (default: 20, max: 100)"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Starting position for pagination (default: 0)"
+          }
+        }
+      }
+    },
+    {
+      "name": "read_email",
+      "description": "Read a single email by ID. Returns full headers (from, to, cc, subject, date), body text (plain text preferred, HTML stripped as fallback), and attachment metadata. Get message IDs from search_email results.",
+      "handler": "handle_tool_call",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Message ID (from search_email results)"
+          }
+        },
+        "required": ["id"]
       }
     },
     {

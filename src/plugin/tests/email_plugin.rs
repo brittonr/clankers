@@ -61,11 +61,14 @@ fn email_plugin_describe() {
     let result = mgr.call_plugin("clankers-email", "describe", "null").unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
     assert_eq!(parsed["name"], "clankers-email");
-    assert_eq!(parsed["version"], "0.1.0");
+    assert_eq!(parsed["version"], "0.2.0");
     let tools = parsed["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 2);
-    assert_eq!(tools[0]["name"], "send_email");
-    assert_eq!(tools[1]["name"], "list_mailboxes");
+    assert_eq!(tools.len(), 4);
+    let tool_names: Vec<&str> = tools.iter().filter_map(|t| t["name"].as_str()).collect();
+    assert!(tool_names.contains(&"send_email"), "missing send_email: {:?}", tool_names);
+    assert!(tool_names.contains(&"search_email"), "missing search_email: {:?}", tool_names);
+    assert!(tool_names.contains(&"read_email"), "missing read_email: {:?}", tool_names);
+    assert!(tool_names.contains(&"list_mailboxes"), "missing list_mailboxes: {:?}", tool_names);
 }
 
 #[test]
@@ -114,6 +117,39 @@ fn email_send_without_from_rejects() {
 fn email_list_mailboxes_without_token_returns_config_error() {
     let mgr = load_email_plugin_no_config();
     let input = r#"{"tool":"list_mailboxes","args":{}}"#;
+    let result = mgr.call_plugin("clankers-email", "handle_tool_call", input).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_ne!(parsed["status"], "ok");
+}
+
+#[test]
+fn email_search_without_token_returns_config_error() {
+    let mgr = load_email_plugin_no_config();
+    let input = r#"{"tool":"search_email","args":{}}"#;
+    let result = mgr.call_plugin("clankers-email", "handle_tool_call", input).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_ne!(parsed["status"], "ok");
+    let result_text = parsed["result"].as_str().unwrap_or("");
+    assert!(result_text.contains("jmap_token") || result_text.contains("Missing config"),
+        "Error should mention missing config: {}", result_text);
+}
+
+#[test]
+fn email_read_without_token_returns_config_error() {
+    let mgr = load_email_plugin_no_config();
+    let input = r#"{"tool":"read_email","args":{"id":"test-123"}}"#;
+    let result = mgr.call_plugin("clankers-email", "handle_tool_call", input).unwrap();
+    let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_ne!(parsed["status"], "ok");
+    let result_text = parsed["result"].as_str().unwrap_or("");
+    assert!(result_text.contains("jmap_token") || result_text.contains("Missing config"),
+        "Error should mention missing config: {}", result_text);
+}
+
+#[test]
+fn email_read_without_id_returns_error() {
+    let mgr = load_email_plugin_no_config();
+    let input = r#"{"tool":"read_email","args":{}}"#;
     let result = mgr.call_plugin("clankers-email", "handle_tool_call", input).unwrap();
     let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
     assert_ne!(parsed["status"], "ok");

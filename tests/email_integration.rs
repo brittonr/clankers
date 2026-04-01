@@ -240,3 +240,95 @@ fn send_email_disallowed_cc_blocked() {
     let result = resp["result"].as_str().unwrap_or("");
     assert!(result.contains("sneaky@evil.com"), "error should name the rejected CC, got: {result}");
 }
+
+// ── search_email ────────────────────────────────────────────────────
+
+#[test]
+fn search_email_no_filters() {
+    let mgr = match load_email_plugin() {
+        Some(m) => m,
+        None => {
+            eprintln!("SKIP: email env vars not set");
+            return;
+        }
+    };
+
+    let input = r#"{"tool":"search_email","args":{"limit":5}}"#;
+    let resp = call(&mgr, input);
+
+    assert_eq!(resp["status"], "ok", "search_email failed: {:?}", resp);
+    let result = resp["result"].as_str().expect("result should be a string");
+    // Should have found at least one message (we just sent test emails above)
+    assert!(
+        result.contains("Found") || result.contains("No messages"),
+        "unexpected search result: {result}"
+    );
+}
+
+#[test]
+fn search_email_with_from_filter() {
+    let mgr = match load_email_plugin() {
+        Some(m) => m,
+        None => {
+            eprintln!("SKIP: email env vars not set");
+            return;
+        }
+    };
+
+    let from = std::env::var("CLANKERS_EMAIL_FROM").expect("CLANKERS_EMAIL_FROM must be set");
+
+    let input = serde_json::json!({
+        "tool": "search_email",
+        "args": {
+            "from": from,
+            "limit": 3
+        }
+    });
+
+    let resp = call(&mgr, &input.to_string());
+
+    assert_eq!(resp["status"], "ok", "search_email with from failed: {:?}", resp);
+}
+
+// ── read_email ──────────────────────────────────────────────────────
+
+#[test]
+fn read_email_from_search_result() {
+    let mgr = match load_email_plugin() {
+        Some(m) => m,
+        None => {
+            eprintln!("SKIP: email env vars not set");
+            return;
+        }
+    };
+
+    // Search for a recent message to get an ID
+    let search_input = r#"{"tool":"search_email","args":{"limit":1}}"#;
+    let search_resp = call(&mgr, search_input);
+    assert_eq!(search_resp["status"], "ok", "search failed: {:?}", search_resp);
+
+    let result = search_resp["result"].as_str().unwrap_or("");
+    if result.contains("No messages") {
+        eprintln!("SKIP: no messages in mailbox to read");
+        return;
+    }
+
+    // Extract the first message ID from "ID: <value>" line
+    let id = result
+        .lines()
+        .find(|l| l.starts_with("ID: "))
+        .map(|l| l.trim_start_matches("ID: "))
+        .expect("search result should contain an ID line");
+
+    let read_input = serde_json::json!({
+        "tool": "read_email",
+        "args": { "id": id }
+    });
+
+    let read_resp = call(&mgr, &read_input.to_string());
+    assert_eq!(read_resp["status"], "ok", "read_email failed: {:?}", read_resp);
+
+    let body = read_resp["result"].as_str().expect("result should be a string");
+    assert!(body.contains("From:"), "read result should have From header, got: {body}");
+    assert!(body.contains("Subject:"), "read result should have Subject header, got: {body}");
+}

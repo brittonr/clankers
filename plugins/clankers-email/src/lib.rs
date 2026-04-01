@@ -1,7 +1,7 @@
-//! clankers-email — Send emails via Fastmail JMAP.
+//! clankers-email — Send and read emails via Fastmail JMAP.
 //!
-//! Uses the JMAP protocol (RFC 8620/8621) over HTTP to send email directly
-//! through a Fastmail account. No third-party email services required.
+//! Uses the JMAP protocol (RFC 8620/8621) over HTTP to interact with
+//! a Fastmail account. No third-party email services required.
 //!
 //! ## Setup
 //!
@@ -18,6 +18,8 @@
 //! ## Tools
 //!
 //! - **`send_email`** — Compose and send an email via JMAP `Email/set` + `EmailSubmission/set`.
+//! - **`search_email`** — Search the inbox via JMAP `Email/query` + `Email/get`.
+//! - **`read_email`** — Fetch a single message by ID via JMAP `Email/get`.
 //! - **`list_mailboxes`** — List mailboxes (folders) in the account.
 
 use std::collections::BTreeMap;
@@ -34,6 +36,8 @@ use clanker_plugin_sdk::serde_json;
 pub fn handle_tool_call(input: String) -> FnResult<String> {
     dispatch_tools(&input, &[
         ("send_email", handle_send_email),
+        ("search_email", handle_search_email),
+        ("read_email", handle_read_email),
         ("list_mailboxes", handle_list_mailboxes),
     ])
 }
@@ -49,9 +53,11 @@ pub fn on_event(input: String) -> FnResult<String> {
 pub fn describe(Json(_): Json<()>) -> FnResult<Json<PluginMeta>> {
     Ok(Json(PluginMeta::new(
         "clankers-email",
-        "0.1.0",
+        "0.2.0",
         &[
             ("send_email", "Send an email via Fastmail JMAP"),
+            ("search_email", "Search emails via Fastmail JMAP"),
+            ("read_email", "Read a single email by ID"),
             ("list_mailboxes", "List Fastmail mailboxes"),
         ],
         &[],
@@ -386,6 +392,163 @@ fn handle_list_mailboxes(args: &Value) -> Result<String, String> {
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  search_email
+// ═══════════════════════════════════════════════════════════════════════
+
+fn handle_search_email(args: &Value) -> Result<String, String> {
+    let token = require_config("jmap_token")?;
+    let session = get_session(&token)?;
+
+    // Pagination
+    let limit = args
+        .get("limit")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(20)
+        .min(100) as u32;
+    let offset = args
+        .get("offset")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+
+    // Resolve mailbox name → ID if provided
+    let mailbox_id = match args.get("mailbox").and_then(|v| v.as_str()) {
+        Some(name) => Some(find_mailbox_id(&token, &session, name)?),
+        None => None,
+    };
+
+    let filter = build_search_filter(args, mailbox_id.as_deref());
+
+    // Chain Email/query + Email/get in a single round-trip using back-references
+    let method_calls = serde_json::json!([
+        [
+            "Email/query",
+            {
+                "accountId": session.account_id,
+                "filter": filter,
+                "sort": [{"property": "receivedAt", "isAscending": false}],
+                "position": offset,
+                "limit": limit,
+                "calculateTotal": true
+            },
+            "R1"
+        ],
+        [
+            "Email/get",
+            {
+                "accountId": session.account_id,
+                "#ids": {
+                    "resultOf": "R1",
+                    "name": "Email/query",
+                    "path": "/ids"
+                },
+                "properties": ["id", "from", "to", "subject", "receivedAt", "preview"]
+            },
+            "R2"
+        ]
+    ]);
+
+    let response = jmap_call(
+        &token,
+        &session.api_url,
+        &["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"],
+        method_calls,
+    )?;
+
+    let method_responses = response
+        .get("methodResponses")
+        .and_then(|v| v.as_array())
+        .ok_or("JMAP response missing 'methodResponses'")?;
+
+    check_jmap_errors(method_responses)?;
+
+    // Total from query result
+    let total = method_responses
+        .first()
+        .and_then(|mr| mr.as_array())
+        .and_then(|arr| arr.get(1))
+        .and_then(|r| r.get("total"))
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+
+    // Email list from get result
+    let emails = method_responses
+        .get(1)
+        .and_then(|mr| mr.as_array())
+        .and_then(|arr| arr.get(1))
+        .and_then(|r| r.get("list"))
+        .and_then(|v| v.as_array())
+        .ok_or("Failed to extract email list from response")?;
+
+    if emails.is_empty() {
+        return Ok("No messages found.".to_string());
+    }
+
+    Ok(format_search_results(emails, total, offset, limit))
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  read_email
+// ═══════════════════════════════════════════════════════════════════════
+
+fn handle_read_email(args: &Value) -> Result<String, String> {
+    let id = args.require_str("id")?;
+    let token = require_config("jmap_token")?;
+    let session = get_session(&token)?;
+
+    let method_calls = serde_json::json!([
+        [
+            "Email/get",
+            {
+                "accountId": session.account_id,
+                "ids": [id],
+                "properties": [
+                    "id", "from", "to", "cc", "subject", "receivedAt",
+                    "textBody", "htmlBody", "attachments", "bodyValues"
+                ],
+                "fetchTextBodyValues": true,
+                "fetchHTMLBodyValues": true
+            },
+            "0"
+        ]
+    ]);
+
+    let response = jmap_call(
+        &token,
+        &session.api_url,
+        &["urn:ietf:params:jmap:core", "urn:ietf:params:jmap:mail"],
+        method_calls,
+    )?;
+
+    let method_responses = response
+        .get("methodResponses")
+        .and_then(|v| v.as_array())
+        .ok_or("JMAP response missing 'methodResponses'")?;
+
+    check_jmap_errors(method_responses)?;
+
+    let result = method_responses
+        .first()
+        .and_then(|mr| mr.as_array())
+        .and_then(|arr| arr.get(1))
+        .ok_or("Missing Email/get result")?;
+
+    // Check notFound array
+    if let Some(not_found) = result.get("notFound").and_then(|v| v.as_array()) {
+        if not_found.iter().any(|nf| nf.as_str() == Some(id)) {
+            return Err(format!("Message not found: {id}"));
+        }
+    }
+
+    let email = result
+        .get("list")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .ok_or_else(|| format!("Message not found: {id}"))?;
+
+    Ok(format_read_result(email))
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  JMAP helpers
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -397,6 +560,15 @@ fn parse_address_list(input: &str) -> Vec<Value> {
         .filter(|s| !s.is_empty())
         .map(|addr| serde_json::json!({"email": addr}))
         .collect()
+}
+
+/// Format JMAP address objects `[{"email":"..."}]` into a comma-separated string.
+fn format_jmap_addresses(addrs: &[Value]) -> String {
+    addrs
+        .iter()
+        .filter_map(|a| a.get("email").and_then(|v| v.as_str()))
+        .collect::<Vec<_>>()
+        .join(", ")
 }
 
 /// Check JMAP methodResponses for errors. Returns Ok(()) on success.
@@ -440,6 +612,8 @@ fn check_jmap_errors(method_responses: &[Value]) -> Result<(), String> {
 }
 
 /// Find a mailbox by name (e.g. "Drafts") and return its ID.
+///
+/// Also used as `resolve_mailbox_name` for search — same lookup logic.
 fn find_mailbox_id(token: &str, session: &Session, name: &str) -> Result<String, String> {
     let method_calls = serde_json::json!([
         [
@@ -571,6 +745,384 @@ fn find_identity_id(token: &str, session: &Session, from: &str) -> Result<String
 }
 
 // ═══════════════════════════════════════════════════════════════════════
+//  Search helpers
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Build a JMAP `FilterCondition` object from tool arguments.
+///
+/// All filter fields are optional and AND-combined by JMAP.
+fn build_search_filter(args: &Value, mailbox_id: Option<&str>) -> Value {
+    let mut filter = serde_json::Map::new();
+
+    if let Some(v) = args.get("from").and_then(|v| v.as_str()) {
+        filter.insert("from".into(), Value::String(v.to_string()));
+    }
+    if let Some(v) = args.get("to").and_then(|v| v.as_str()) {
+        filter.insert("to".into(), Value::String(v.to_string()));
+    }
+    if let Some(v) = args.get("subject").and_then(|v| v.as_str()) {
+        filter.insert("subject".into(), Value::String(v.to_string()));
+    }
+    if let Some(v) = args.get("query").and_then(|v| v.as_str()) {
+        filter.insert("text".into(), Value::String(v.to_string()));
+    }
+    if let Some(v) = args.get("after").and_then(|v| v.as_str()) {
+        filter.insert("after".into(), Value::String(ensure_utc_date(v)));
+    }
+    if let Some(v) = args.get("before").and_then(|v| v.as_str()) {
+        filter.insert("before".into(), Value::String(ensure_utc_date(v)));
+    }
+    if let Some(id) = mailbox_id {
+        filter.insert("inMailbox".into(), Value::String(id.to_string()));
+    }
+
+    Value::Object(filter)
+}
+
+/// Ensure a date string is in JMAP UTCDate format (YYYY-MM-DDTHH:MM:SSZ).
+fn ensure_utc_date(date: &str) -> String {
+    if date.contains('T') {
+        date.to_string()
+    } else {
+        format!("{date}T00:00:00Z")
+    }
+}
+
+/// Format search results into a readable text block.
+fn format_search_results(emails: &[Value], total: u64, offset: u32, limit: u32) -> String {
+    let end = offset as usize + emails.len();
+    let mut lines = vec![format!(
+        "Found {total} messages (showing {}-{}):",
+        offset + 1,
+        end,
+    )];
+    lines.push(String::new());
+
+    for email in emails {
+        let id = email.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+        let subject = email
+            .get("subject")
+            .and_then(|v| v.as_str())
+            .unwrap_or("(no subject)");
+        let date = email
+            .get("receivedAt")
+            .and_then(|v| v.as_str())
+            .unwrap_or("?");
+        let preview = email.get("preview").and_then(|v| v.as_str()).unwrap_or("");
+
+        let from = email
+            .get("from")
+            .and_then(|v| v.as_array())
+            .map(|a| format_jmap_addresses(a))
+            .unwrap_or_default();
+        let to = email
+            .get("to")
+            .and_then(|v| v.as_array())
+            .map(|a| format_jmap_addresses(a))
+            .unwrap_or_default();
+
+        lines.push(format!("ID: {id}"));
+        lines.push(format!("From: {from}"));
+        if !to.is_empty() {
+            lines.push(format!("To: {to}"));
+        }
+        lines.push(format!("Subject: {subject}"));
+        lines.push(format!("Date: {date}"));
+        if !preview.is_empty() {
+            lines.push(format!("Preview: {preview}"));
+        }
+        lines.push(String::new());
+    }
+
+    if total > (offset as u64 + limit as u64) {
+        lines.push(format!("Use offset={} to see more.", offset + limit));
+    }
+
+    lines.join("\n")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Read helpers
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Extract the body text from a JMAP email object.
+///
+/// Prefers text/plain body. Falls back to stripping HTML if only HTML exists.
+/// Returns `(body_text, was_html_stripped)`.
+fn extract_body(email: &Value, body_values: &Value) -> (String, bool) {
+    // Try textBody first
+    if let Some(text) = body_part_value(email, "textBody", body_values) {
+        if !text.is_empty() {
+            return (text, false);
+        }
+    }
+
+    // Fallback: htmlBody → strip tags
+    if let Some(html) = body_part_value(email, "htmlBody", body_values) {
+        if !html.is_empty() {
+            return (html_to_text(&html), true);
+        }
+    }
+
+    ("(no body)".to_string(), false)
+}
+
+/// Get the text value of the first body part in `key` (textBody or htmlBody).
+fn body_part_value(email: &Value, key: &str, body_values: &Value) -> Option<String> {
+    let part_id = email
+        .get(key)
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|p| p.get("partId"))
+        .and_then(|v| v.as_str())?;
+
+    body_values
+        .get(part_id)
+        .and_then(|bv| bv.get("value"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+}
+
+/// Extract attachment metadata from a JMAP email object.
+///
+/// Returns `(filename, content_type, size)` tuples.
+fn extract_attachments(email: &Value) -> Vec<(String, String, u64)> {
+    let mut result = Vec::new();
+    if let Some(attachments) = email.get("attachments").and_then(|v| v.as_array()) {
+        for att in attachments {
+            let name = att
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("unnamed")
+                .to_string();
+            let content_type = att
+                .get("type")
+                .and_then(|v| v.as_str())
+                .unwrap_or("application/octet-stream")
+                .to_string();
+            let size = att.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+            result.push((name, content_type, size));
+        }
+    }
+    result
+}
+
+/// Format a full email message for read_email output.
+fn format_read_result(email: &Value) -> String {
+    let id = email.get("id").and_then(|v| v.as_str()).unwrap_or("?");
+    let subject = email
+        .get("subject")
+        .and_then(|v| v.as_str())
+        .unwrap_or("(no subject)");
+    let date = email
+        .get("receivedAt")
+        .and_then(|v| v.as_str())
+        .unwrap_or("?");
+
+    let from = email
+        .get("from")
+        .and_then(|v| v.as_array())
+        .map(|a| format_jmap_addresses(a))
+        .unwrap_or_default();
+    let to = email
+        .get("to")
+        .and_then(|v| v.as_array())
+        .map(|a| format_jmap_addresses(a))
+        .unwrap_or_default();
+    let cc = email
+        .get("cc")
+        .and_then(|v| v.as_array())
+        .map(|a| format_jmap_addresses(a))
+        .unwrap_or_default();
+
+    let body_values = email.get("bodyValues").unwrap_or(&Value::Null);
+    let (body, html_stripped) = extract_body(email, body_values);
+    let attachments = extract_attachments(email);
+
+    let mut lines = Vec::new();
+    lines.push(format!("ID: {id}"));
+    lines.push(format!("From: {from}"));
+    if !to.is_empty() {
+        lines.push(format!("To: {to}"));
+    }
+    if !cc.is_empty() {
+        lines.push(format!("CC: {cc}"));
+    }
+    lines.push(format!("Subject: {subject}"));
+    lines.push(format!("Date: {date}"));
+    if html_stripped {
+        lines.push("(html_stripped: true)".to_string());
+    }
+    lines.push(String::new());
+    lines.push(body);
+
+    if !attachments.is_empty() {
+        lines.push(String::new());
+        lines.push("Attachments:".to_string());
+        for (name, content_type, size) in &attachments {
+            lines.push(format!("  - {name} ({content_type}, {size} bytes)"));
+        }
+    }
+
+    lines.join("\n")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  HTML → text
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Strip HTML tags, decode common entities, collapse whitespace.
+///
+/// Not a full HTML parser — good enough for extracting readable text
+/// from email bodies without pulling in heavy dependencies.
+fn html_to_text(html: &str) -> String {
+    let mut out = String::with_capacity(html.len());
+    let mut in_tag = false;
+    let mut tag_buf = String::new();
+
+    let chars: Vec<char> = html.chars().collect();
+    let mut i = 0;
+
+    while i < chars.len() {
+        let ch = chars[i];
+
+        if ch == '<' {
+            in_tag = true;
+            tag_buf.clear();
+            i += 1;
+            continue;
+        }
+
+        if in_tag {
+            if ch == '>' {
+                in_tag = false;
+                let tag_lower = tag_buf.trim().to_lowercase();
+                // Block-level elements → newline
+                if tag_lower.starts_with("br")
+                    || tag_lower.starts_with("p")
+                    || tag_lower.starts_with("/p")
+                    || tag_lower.starts_with("div")
+                    || tag_lower.starts_with("/div")
+                    || tag_lower.starts_with("tr")
+                    || tag_lower.starts_with("/tr")
+                    || tag_lower.starts_with("li")
+                    || tag_lower.starts_with("h1")
+                    || tag_lower.starts_with("h2")
+                    || tag_lower.starts_with("h3")
+                    || tag_lower.starts_with("/h1")
+                    || tag_lower.starts_with("/h2")
+                    || tag_lower.starts_with("/h3")
+                {
+                    out.push('\n');
+                }
+                if tag_lower.starts_with("li") {
+                    out.push_str("- ");
+                }
+            } else {
+                tag_buf.push(ch);
+            }
+            i += 1;
+            continue;
+        }
+
+        // Entity decoding
+        if ch == '&' {
+            if let Some(decoded) = decode_entity(&chars, i) {
+                out.push_str(&decoded.0);
+                i = decoded.1;
+                continue;
+            }
+        }
+
+        out.push(ch);
+        i += 1;
+    }
+
+    collapse_whitespace(&out)
+}
+
+/// Try to decode an HTML entity starting at position `start` (the `&`).
+/// Returns `(decoded_string, next_index)` or `None` if not a valid entity.
+fn decode_entity(chars: &[char], start: usize) -> Option<(String, usize)> {
+    // Find the semicolon (max 10 chars to avoid scanning forever)
+    let max = (start + 12).min(chars.len());
+    let semi_pos = (start + 1..max).find(|&j| chars[j] == ';')?;
+
+    let entity: String = chars[start + 1..semi_pos].iter().collect();
+    let replacement = match entity.as_str() {
+        "amp" => "&",
+        "lt" => "<",
+        "gt" => ">",
+        "quot" => "\"",
+        "apos" => "'",
+        "nbsp" => " ",
+        _ if entity.starts_with('#') => {
+            let num_str = &entity[1..];
+            let code_point = if let Some(hex) = num_str.strip_prefix('x').or(num_str.strip_prefix('X')) {
+                u32::from_str_radix(hex, 16).ok()
+            } else {
+                num_str.parse::<u32>().ok()
+            };
+            if let Some(cp) = code_point {
+                if let Some(c) = char::from_u32(cp) {
+                    // Return directly to avoid lifetime issues with temp string
+                    return Some((c.to_string(), semi_pos + 1));
+                }
+            }
+            return None;
+        }
+        _ => return None,
+    };
+
+    Some((replacement.to_string(), semi_pos + 1))
+}
+
+/// Collapse runs of whitespace into single spaces, trim lines.
+fn collapse_whitespace(text: &str) -> String {
+    let mut lines: Vec<String> = Vec::new();
+
+    for line in text.split('\n') {
+        // Collapse horizontal whitespace within the line
+        let mut collapsed = String::new();
+        let mut prev_space = true; // trim leading
+        for ch in line.chars() {
+            if ch.is_whitespace() {
+                if !prev_space {
+                    collapsed.push(' ');
+                    prev_space = true;
+                }
+            } else {
+                collapsed.push(ch);
+                prev_space = false;
+            }
+        }
+        lines.push(collapsed.trim_end().to_string());
+    }
+
+    // Remove leading/trailing blank lines, collapse runs of blank lines to one
+    let mut result = Vec::new();
+    let mut prev_blank = true;
+    for line in &lines {
+        if line.is_empty() {
+            if !prev_blank && !result.is_empty() {
+                result.push(String::new());
+                prev_blank = true;
+            }
+        } else {
+            result.push(line.clone());
+            prev_blank = false;
+        }
+    }
+
+    // Trim trailing blank lines
+    while result.last().map_or(false, |l| l.is_empty()) {
+        result.pop();
+    }
+
+    result.join("\n")
+}
+
+// ═══════════════════════════════════════════════════════════════════════
 //  Tests — pure logic only, no WASM runtime needed
 // ═══════════════════════════════════════════════════════════════════════
 
@@ -614,6 +1166,29 @@ mod tests {
     fn parse_empty_string() {
         let list = parse_address_list("");
         assert!(list.is_empty());
+    }
+
+    // ── Address formatting ──────────────────────────────────────────
+
+    #[test]
+    fn format_addresses_single() {
+        let addrs = vec![serde_json::json!({"email": "a@b.com"})];
+        assert_eq!(format_jmap_addresses(&addrs), "a@b.com");
+    }
+
+    #[test]
+    fn format_addresses_multiple() {
+        let addrs = vec![
+            serde_json::json!({"email": "a@b.com"}),
+            serde_json::json!({"email": "c@d.com"}),
+        ];
+        assert_eq!(format_jmap_addresses(&addrs), "a@b.com, c@d.com");
+    }
+
+    #[test]
+    fn format_addresses_empty() {
+        let addrs: Vec<Value> = vec![];
+        assert_eq!(format_jmap_addresses(&addrs), "");
     }
 
     // ── JMAP error checking ─────────────────────────────────────────
@@ -794,5 +1369,312 @@ mod tests {
         assert_eq!(match_identity(&ids, "bob@other.com"), Some("300"));
         // unknown@other.com has no exact or wildcard, falls back to first
         assert_eq!(match_identity(&ids, "unknown@other.com"), Some("100"));
+    }
+
+    // ── html_to_text ────────────────────────────────────────────────
+
+    #[test]
+    fn html_to_text_strips_basic_tags() {
+        assert_eq!(html_to_text("<b>bold</b> and <i>italic</i>"), "bold and italic");
+    }
+
+    #[test]
+    fn html_to_text_handles_nested_tags() {
+        assert_eq!(
+            html_to_text("<div><p><b>nested</b> content</p></div>"),
+            "nested content"
+        );
+    }
+
+    #[test]
+    fn html_to_text_converts_br_to_newline() {
+        assert_eq!(html_to_text("line one<br>line two"), "line one\nline two");
+    }
+
+    #[test]
+    fn html_to_text_converts_p_to_newline() {
+        assert_eq!(
+            html_to_text("<p>para one</p><p>para two</p>"),
+            "para one\n\npara two"
+        );
+    }
+
+    #[test]
+    fn html_to_text_converts_li_to_dash() {
+        let result = html_to_text("<ul><li>first</li><li>second</li></ul>");
+        assert!(result.contains("- first"), "got: {result}");
+        assert!(result.contains("- second"), "got: {result}");
+    }
+
+    #[test]
+    fn html_to_text_decodes_named_entities() {
+        assert_eq!(html_to_text("&amp; &lt; &gt; &quot;"), "& < > \"");
+    }
+
+    #[test]
+    fn html_to_text_decodes_numeric_entities() {
+        // &#65; = 'A', &#x41; = 'A'
+        assert_eq!(html_to_text("&#65; &#x41;"), "A A");
+    }
+
+    #[test]
+    fn html_to_text_decodes_nbsp() {
+        assert_eq!(html_to_text("hello&nbsp;world"), "hello world");
+    }
+
+    #[test]
+    fn html_to_text_empty_input() {
+        assert_eq!(html_to_text(""), "");
+    }
+
+    #[test]
+    fn html_to_text_collapses_whitespace() {
+        assert_eq!(html_to_text("  lots   of    spaces  "), "lots of spaces");
+    }
+
+    #[test]
+    fn html_to_text_preserves_plain_text() {
+        assert_eq!(html_to_text("no tags here"), "no tags here");
+    }
+
+    // ── ensure_utc_date ─────────────────────────────────────────────
+
+    #[test]
+    fn utc_date_appends_time() {
+        assert_eq!(ensure_utc_date("2025-01-15"), "2025-01-15T00:00:00Z");
+    }
+
+    #[test]
+    fn utc_date_passthrough_full() {
+        assert_eq!(
+            ensure_utc_date("2025-01-15T10:30:00Z"),
+            "2025-01-15T10:30:00Z"
+        );
+    }
+
+    // ── build_search_filter ─────────────────────────────────────────
+
+    #[test]
+    fn filter_empty_args() {
+        let args = serde_json::json!({});
+        let filter = build_search_filter(&args, None);
+        assert_eq!(filter, serde_json::json!({}));
+    }
+
+    #[test]
+    fn filter_from_only() {
+        let args = serde_json::json!({"from": "alice@example.com"});
+        let filter = build_search_filter(&args, None);
+        assert_eq!(filter["from"], "alice@example.com");
+    }
+
+    #[test]
+    fn filter_multiple_fields() {
+        let args = serde_json::json!({
+            "from": "alice@example.com",
+            "subject": "report",
+            "after": "2025-01-01"
+        });
+        let filter = build_search_filter(&args, None);
+        assert_eq!(filter["from"], "alice@example.com");
+        assert_eq!(filter["subject"], "report");
+        assert_eq!(filter["after"], "2025-01-01T00:00:00Z");
+    }
+
+    #[test]
+    fn filter_query_maps_to_text() {
+        let args = serde_json::json!({"query": "quarterly"});
+        let filter = build_search_filter(&args, None);
+        assert_eq!(filter["text"], "quarterly");
+    }
+
+    #[test]
+    fn filter_with_mailbox_id() {
+        let args = serde_json::json!({});
+        let filter = build_search_filter(&args, Some("mbox-123"));
+        assert_eq!(filter["inMailbox"], "mbox-123");
+    }
+
+    // ── format_search_results ───────────────────────────────────────
+
+    fn make_search_email(id: &str, from: &str, subject: &str) -> Value {
+        serde_json::json!({
+            "id": id,
+            "from": [{"email": from}],
+            "to": [{"email": "me@example.com"}],
+            "subject": subject,
+            "receivedAt": "2025-03-15T10:00:00Z",
+            "preview": "Preview text here..."
+        })
+    }
+
+    #[test]
+    fn format_search_results_basic() {
+        let emails = vec![make_search_email("abc", "alice@co.com", "Hello")];
+        let result = format_search_results(&emails, 1, 0, 20);
+        assert!(result.contains("Found 1 messages"), "got: {result}");
+        assert!(result.contains("ID: abc"), "got: {result}");
+        assert!(result.contains("From: alice@co.com"), "got: {result}");
+        assert!(result.contains("Subject: Hello"), "got: {result}");
+    }
+
+    #[test]
+    fn format_search_results_pagination_hint() {
+        let emails = vec![make_search_email("a", "x@x.com", "S")];
+        let result = format_search_results(&emails, 50, 0, 20);
+        assert!(result.contains("Use offset=20 to see more"), "got: {result}");
+    }
+
+    #[test]
+    fn format_search_results_no_pagination_hint_at_end() {
+        let emails = vec![make_search_email("a", "x@x.com", "S")];
+        let result = format_search_results(&emails, 1, 0, 20);
+        assert!(!result.contains("offset="), "got: {result}");
+    }
+
+    // ── extract_body ────────────────────────────────────────────────
+
+    #[test]
+    fn extract_body_plain_text() {
+        let email = serde_json::json!({
+            "textBody": [{"partId": "1"}],
+            "htmlBody": [{"partId": "2"}]
+        });
+        let body_values = serde_json::json!({
+            "1": {"value": "Plain text content"},
+            "2": {"value": "<p>HTML content</p>"}
+        });
+        let (body, stripped) = extract_body(&email, &body_values);
+        assert_eq!(body, "Plain text content");
+        assert!(!stripped);
+    }
+
+    #[test]
+    fn extract_body_html_fallback() {
+        let email = serde_json::json!({
+            "textBody": [{"partId": "1"}],
+            "htmlBody": [{"partId": "2"}]
+        });
+        let body_values = serde_json::json!({
+            "1": {"value": ""},
+            "2": {"value": "<p>HTML <b>content</b></p>"}
+        });
+        let (body, stripped) = extract_body(&email, &body_values);
+        assert!(body.contains("HTML content"), "got: {body}");
+        assert!(stripped);
+    }
+
+    #[test]
+    fn extract_body_no_body() {
+        let email = serde_json::json!({});
+        let body_values = serde_json::json!({});
+        let (body, stripped) = extract_body(&email, &body_values);
+        assert_eq!(body, "(no body)");
+        assert!(!stripped);
+    }
+
+    #[test]
+    fn extract_body_html_only_no_text_part() {
+        let email = serde_json::json!({
+            "htmlBody": [{"partId": "h1"}]
+        });
+        let body_values = serde_json::json!({
+            "h1": {"value": "<div>Hello world</div>"}
+        });
+        let (body, stripped) = extract_body(&email, &body_values);
+        assert!(body.contains("Hello world"), "got: {body}");
+        assert!(stripped);
+    }
+
+    // ── extract_attachments ─────────────────────────────────────────
+
+    #[test]
+    fn extract_attachments_present() {
+        let email = serde_json::json!({
+            "attachments": [
+                {"name": "doc.pdf", "type": "application/pdf", "size": 1024},
+                {"name": "pic.png", "type": "image/png", "size": 2048}
+            ]
+        });
+        let atts = extract_attachments(&email);
+        assert_eq!(atts.len(), 2);
+        assert_eq!(atts[0], ("doc.pdf".into(), "application/pdf".into(), 1024));
+        assert_eq!(atts[1], ("pic.png".into(), "image/png".into(), 2048));
+    }
+
+    #[test]
+    fn extract_attachments_empty() {
+        let email = serde_json::json!({"attachments": []});
+        assert!(extract_attachments(&email).is_empty());
+    }
+
+    #[test]
+    fn extract_attachments_missing_field() {
+        let email = serde_json::json!({});
+        assert!(extract_attachments(&email).is_empty());
+    }
+
+    // ── format_read_result ──────────────────────────────────────────
+
+    #[test]
+    fn format_read_result_full() {
+        let email = serde_json::json!({
+            "id": "msg-1",
+            "from": [{"email": "sender@co.com"}],
+            "to": [{"email": "me@co.com"}],
+            "cc": [{"email": "other@co.com"}],
+            "subject": "Test Subject",
+            "receivedAt": "2025-03-15T10:00:00Z",
+            "textBody": [{"partId": "t1"}],
+            "bodyValues": {
+                "t1": {"value": "Hello, this is the body."}
+            },
+            "attachments": [
+                {"name": "file.txt", "type": "text/plain", "size": 42}
+            ]
+        });
+        let result = format_read_result(&email);
+        assert!(result.contains("ID: msg-1"), "got: {result}");
+        assert!(result.contains("From: sender@co.com"), "got: {result}");
+        assert!(result.contains("To: me@co.com"), "got: {result}");
+        assert!(result.contains("CC: other@co.com"), "got: {result}");
+        assert!(result.contains("Subject: Test Subject"), "got: {result}");
+        assert!(result.contains("Hello, this is the body."), "got: {result}");
+        assert!(result.contains("file.txt (text/plain, 42 bytes)"), "got: {result}");
+    }
+
+    #[test]
+    fn format_read_result_html_stripped_flag() {
+        let email = serde_json::json!({
+            "id": "msg-2",
+            "from": [{"email": "x@x.com"}],
+            "subject": "HTML only",
+            "receivedAt": "2025-03-15T10:00:00Z",
+            "textBody": [{"partId": "t1"}],
+            "htmlBody": [{"partId": "h1"}],
+            "bodyValues": {
+                "t1": {"value": ""},
+                "h1": {"value": "<p>HTML body</p>"}
+            }
+        });
+        let result = format_read_result(&email);
+        assert!(result.contains("(html_stripped: true)"), "got: {result}");
+        assert!(result.contains("HTML body"), "got: {result}");
+    }
+
+    #[test]
+    fn format_read_result_no_attachments() {
+        let email = serde_json::json!({
+            "id": "msg-3",
+            "from": [{"email": "x@x.com"}],
+            "subject": "No attachments",
+            "receivedAt": "2025-03-15T10:00:00Z",
+            "textBody": [{"partId": "t1"}],
+            "bodyValues": {
+                "t1": {"value": "Just text."}
+            }
+        });
+        let result = format_read_result(&email);
+        assert!(!result.contains("Attachments:"), "got: {result}");
     }
 }
