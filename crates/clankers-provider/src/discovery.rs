@@ -80,7 +80,9 @@ pub fn build_router(
         let store = clanker_router::auth::AuthStore::load(auth_store_path);
         let all_creds = store.all_credentials("anthropic");
 
-        let provider: Arc<dyn Provider> = if credential.is_oauth() {
+        let provider: Arc<dyn Provider> = if credential.is_oauth()
+            || clanker_router::auth::is_oauth_token(credential.token())
+        {
             let cm = CredentialManager::new(
                 credential,
                 auth_store_path.to_path_buf(),
