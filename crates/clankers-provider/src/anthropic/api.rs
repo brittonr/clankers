@@ -207,12 +207,12 @@ impl AnthropicClient {
                             retry_config.backoff_for(attempt)
                         };
 
-                        eprintln!(
-                            "Retryable HTTP error {} (attempt {}/{}), backing off for {:?}",
+                        tracing::warn!(
                             status,
-                            attempt + 1,
-                            retry_config.max_retries,
-                            backoff
+                            attempt = attempt + 1,
+                            max_retries = retry_config.max_retries,
+                            ?backoff,
+                            "Retryable HTTP error, backing off",
                         );
 
                         tokio::time::sleep(backoff).await;
@@ -234,12 +234,12 @@ impl AnthropicClient {
 
                     if is_retryable && attempt < retry_config.max_retries {
                         let backoff = retry_config.backoff_for(attempt);
-                        eprintln!(
-                            "Retryable network error (attempt {}/{}): {}, backing off for {:?}",
-                            attempt + 1,
-                            retry_config.max_retries,
-                            error_msg,
-                            backoff
+                        tracing::warn!(
+                            attempt = attempt + 1,
+                            max_retries = retry_config.max_retries,
+                            error = %error_msg,
+                            ?backoff,
+                            "Retryable network error, backing off",
                         );
 
                         tokio::time::sleep(backoff).await;

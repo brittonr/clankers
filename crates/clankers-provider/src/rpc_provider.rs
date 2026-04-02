@@ -121,7 +121,7 @@ impl Provider for RpcProvider {
             .client
             .complete(router_request, router_tx)
             .await
-            .map_err(|e| crate::error::provider_err(e.to_string()));
+            .map_err(crate::error::ProviderError::from);
 
         translate_handle.await.ok();
         result

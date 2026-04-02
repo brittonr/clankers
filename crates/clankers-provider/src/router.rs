@@ -30,6 +30,17 @@ use crate::error::Result;
 use crate::registry::ModelRegistry;
 use crate::streaming::StreamEvent;
 
+/// Record of a single provider attempt during fallback routing.
+#[derive(Debug, Clone)]
+pub struct ProviderAttempt {
+    pub provider_name: String,
+    pub model_id: String,
+    pub status: Option<u16>,
+    pub message: String,
+    /// Whether this provider was skipped (e.g. cooldown) rather than called.
+    pub skipped: bool,
+}
+
 // ── Adapter for clanker_router providers ───────────────────────────────────
 
 /// Wraps a `clanker_router::Provider` to implement `clankers::provider::Provider`.
@@ -84,7 +95,7 @@ impl Provider for RouterCompatAdapter {
         // Wait for translation to finish
         translate_handle.await.ok();
 
-        result.map_err(|e| crate::error::provider_err(e.to_string()))
+        result.map_err(crate::error::ProviderError::from)
     }
 
     fn models(&self) -> &[Model] {
@@ -346,6 +357,8 @@ impl Provider for RouterProvider {
         }
 
         let mut last_error = None;
+        let mut attempts: Vec<ProviderAttempt> = Vec::new();
+
         for (idx, model_id) in models_to_try.iter().enumerate() {
             let is_fallback = idx > 0;
             let (provider, _) = self.resolve(model_id);
@@ -354,6 +367,13 @@ impl Provider for RouterProvider {
             if let Some(ref db) = self.db
                 && let Ok(false) = db.rate_limits().is_healthy(provider.name(), model_id)
             {
+                attempts.push(ProviderAttempt {
+                    provider_name: provider.name().to_string(),
+                    model_id: model_id.clone(),
+                    status: None,
+                    message: "in cooldown".to_string(),
+                    skipped: true,
+                });
                 if is_fallback {
                     debug!("fallback {}:{} in cooldown, skipping", provider.name(), model_id);
                 } else {
@@ -384,11 +404,20 @@ impl Provider for RouterProvider {
                 }
                 Err(e) => {
                     let is_retryable = e.is_retryable();
+                    let status = e.status_code();
                     warn!("{}:{} failed: {}{}", provider.name(), model_id, e, if is_retryable { " (is_retryable)" } else { "" });
 
+                    attempts.push(ProviderAttempt {
+                        provider_name: provider.name().to_string(),
+                        model_id: model_id.clone(),
+                        status,
+                        message: e.message.clone(),
+                        skipped: false,
+                    });
+
                     if let Some(ref db) = self.db {
-                        let status = e.status_code().unwrap_or(500);
-                        db.rate_limits().record_error(provider.name(), model_id, status, None).ok();
+                        let record_status = status.unwrap_or(500);
+                        db.rate_limits().record_error(provider.name(), model_id, record_status, None).ok();
                     }
 
                     if !is_retryable {
@@ -399,7 +428,8 @@ impl Provider for RouterProvider {
             }
         }
 
-        Err(last_error.unwrap_or_else(|| crate::error::provider_err("All providers exhausted")))
+        // All providers exhausted — build a summary of what was tried
+        Err(build_exhaustion_error(&attempts, last_error))
     }
 
     fn models(&self) -> &[Model] {
@@ -414,6 +444,47 @@ impl Provider for RouterProvider {
         for provider in self.providers.values() {
             provider.reload_credentials().await;
         }
+    }
+}
+
+/// Build a `ProviderError` summarizing all failed provider attempts.
+///
+/// The summary includes per-provider details (name, model, status, reason)
+/// and preserves the last HTTP status code for retryability classification.
+fn build_exhaustion_error(
+    attempts: &[ProviderAttempt],
+    last_error: Option<crate::error::ProviderError>,
+) -> crate::error::ProviderError {
+    if attempts.is_empty() {
+        return last_error.unwrap_or_else(|| crate::error::provider_err("All providers exhausted"));
+    }
+
+    let mut lines = Vec::with_capacity(attempts.len() + 1);
+    lines.push("All providers exhausted:".to_string());
+    for attempt in attempts {
+        let status_str = match (attempt.skipped, attempt.status) {
+            (true, _) => "skipped".to_string(),
+            (false, Some(code)) => code.to_string(),
+            (false, None) => "err".to_string(),
+        };
+        lines.push(format!(
+            "  {}:{} \u{2192} {} {}",
+            attempt.provider_name, attempt.model_id, status_str, attempt.message,
+        ));
+    }
+    let summary = lines.join("\n");
+
+    // Preserve the last attempted provider's status code
+    let last_status = attempts
+        .iter()
+        .rev()
+        .find(|a| !a.skipped)
+        .and_then(|a| a.status)
+        .or_else(|| last_error.as_ref().and_then(|e| e.status));
+
+    match last_status {
+        Some(status) => crate::error::provider_err_with_status(status, summary),
+        None => crate::error::provider_err(summary),
     }
 }
 
@@ -1440,5 +1511,114 @@ mod tests {
         assert!(result.is_ok());
         // model-b should have been called once (fallback succeeded)
         assert_eq!(count_b.load(Ordering::SeqCst), 1);
+    }
+
+    // ── Provider failure summary tests ──────────────────────────────
+
+    #[tokio::test]
+    async fn test_exhaustion_summary_two_providers() {
+        let mut fallback_config = FallbackConfig::with_defaults();
+        fallback_config.set_chain(
+            "primary-model",
+            vec!["fallback-model".to_string()],
+        );
+
+        let (name1, provider1) =
+            failing_mock_with_status("anthropic", &["primary-model"], "rate limited", Some(429));
+        let (name2, provider2) =
+            failing_mock_with_status("openai", &["fallback-model"], "overloaded", Some(529));
+
+        let router = RouterProvider::new(vec![(name1, provider1), (name2, provider2)])
+            .with_fallbacks(fallback_config);
+
+        let request = CompletionRequest {
+            model: "primary-model".to_string(),
+            messages: vec![make_user_msg("test")],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+        };
+
+        let (tx, _rx) = mpsc::channel(10);
+        let err = router.complete(request, tx).await.unwrap_err();
+
+        // Summary should list both providers
+        assert!(err.message.contains("anthropic:primary-model"), "missing primary in summary: {}", err.message);
+        assert!(err.message.contains("openai:fallback-model"), "missing fallback in summary: {}", err.message);
+        assert!(err.message.contains("429"), "missing 429 status: {}", err.message);
+        assert!(err.message.contains("529"), "missing 529 status: {}", err.message);
+        // Last status should be from last attempted provider
+        assert_eq!(err.status, Some(529));
+    }
+
+    #[tokio::test]
+    async fn test_exhaustion_summary_single_provider() {
+        let (name1, provider1) =
+            failing_mock_with_status("anthropic", &["the-model"], "internal error", Some(500));
+
+        let router = RouterProvider::new(vec![(name1, provider1)]);
+
+        let request = CompletionRequest {
+            model: "the-model".to_string(),
+            messages: vec![make_user_msg("test")],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+        };
+
+        let (tx, _rx) = mpsc::channel(10);
+        let err = router.complete(request, tx).await.unwrap_err();
+
+        assert!(err.message.contains("anthropic:the-model"), "missing provider in summary: {}", err.message);
+        assert!(err.message.contains("500"), "missing status: {}", err.message);
+        assert_eq!(err.status, Some(500));
+    }
+
+    #[tokio::test]
+    async fn test_exhaustion_summary_cooldown_skipped() {
+        let db = test_db();
+
+        // Put primary in cooldown
+        db.rate_limits().record_error("p1", "primary-model", 429, None).ok();
+
+        let mut fallback_config = FallbackConfig::with_defaults();
+        fallback_config.set_chain("primary-model", vec!["fallback-model".to_string()]);
+
+        let (name1, provider1, _) = counting_mock("p1", &["primary-model"]);
+        let (name2, provider2) =
+            failing_mock_with_status("p2", &["fallback-model"], "overloaded", Some(529));
+
+        let router = RouterProvider::with_db(
+            vec![(name1, provider1), (name2, provider2)],
+            db,
+        ).with_fallbacks(fallback_config);
+
+        let request = CompletionRequest {
+            model: "primary-model".to_string(),
+            messages: vec![make_user_msg("test")],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+        };
+
+        let (tx, _rx) = mpsc::channel(10);
+        let err = router.complete(request, tx).await.unwrap_err();
+
+        // Summary should include the cooldown-skipped provider
+        assert!(err.message.contains("in cooldown"), "missing cooldown indicator: {}", err.message);
+        assert!(err.message.contains("p1:primary-model"), "missing skipped provider: {}", err.message);
+        assert!(err.message.contains("p2:fallback-model"), "missing fallback: {}", err.message);
     }
 }

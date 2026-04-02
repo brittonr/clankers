@@ -284,25 +284,27 @@ impl InlineState {
         }
 
         // Usage stats footer
-        if self.show_stats {
-            if let Some(ref usage) = self.usage {
-                let mut line = format!(
-                    "tokens: {}in / {}out",
-                    usage.input_tokens, usage.output_tokens,
-                );
-                if usage.cache_read > 0 || usage.cache_write > 0 {
-                    line.push_str(&format!(
-                        "  cache: {}read / {}write",
-                        usage.cache_read, usage.cache_write,
-                    ));
-                }
-                view = view.keyed(
-                    "usage",
-                    InlineText::new(line).style(
-                        Style::default().add_modifier(Modifier::DIM),
-                    ),
+        if self.show_stats
+            && let Some(ref usage) = self.usage
+        {
+            let mut line = format!(
+                "tokens: {}in / {}out",
+                usage.input_tokens, usage.output_tokens,
+            );
+            if usage.cache_read > 0 || usage.cache_write > 0 {
+                use std::fmt::Write;
+                let _ = write!(
+                    line,
+                    "  cache: {}read / {}write",
+                    usage.cache_read, usage.cache_write,
                 );
             }
+            view = view.keyed(
+                "usage",
+                InlineText::new(line).style(
+                    Style::default().add_modifier(Modifier::DIM),
+                ),
+            );
         }
 
         view

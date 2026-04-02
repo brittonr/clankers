@@ -186,8 +186,41 @@ pub async fn run_turn_loop(
 
         event_tx.send(AgentEvent::TurnStart { index: turn_index }).ok();
 
-        // Execute turn and get response
-        let collected = execute_turn(provider, messages, config, &active_model, &tool_defs, event_tx, &cancel).await?;
+        // Execute turn with retry on transient failures.
+        // Up to 2 retries with exponential backoff (1s, 4s).
+        let collected = {
+            const MAX_TURN_RETRIES: u32 = 2;
+            let mut last_err = None;
+            let mut collected_ok = None;
+            for attempt in 0..=MAX_TURN_RETRIES {
+                match execute_turn(provider, messages, config, &active_model, &tool_defs, event_tx, &cancel).await {
+                    Ok(c) => {
+                        collected_ok = Some(c);
+                        break;
+                    }
+                    Err(e) if e.is_retryable() && attempt < MAX_TURN_RETRIES => {
+                        let backoff = std::time::Duration::from_secs(1 << (attempt * 2));
+                        tracing::warn!(
+                            attempt = attempt + 1,
+                            max_retries = MAX_TURN_RETRIES,
+                            error = %e,
+                            ?backoff,
+                            "Retryable turn error, backing off before retry",
+                        );
+                        tokio::select! {
+                            () = cancel.cancelled() => return Err(AgentError::Cancelled),
+                            () = tokio::time::sleep(backoff) => {}
+                        }
+                        last_err = Some(e);
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            match collected_ok {
+                Some(c) => c,
+                None => return Err(last_err.expect("retry loop must set last_err")),
+            }
+        };
 
         // Update usage tracking
         update_usage_tracking(&mut cumulative_usage, &collected.usage, &active_model, cost_tracker, event_tx);
@@ -214,7 +247,7 @@ pub async fn run_turn_loop(
                 call_id,
                 tool = name,
                 input_keys = ?input_keys,
-                input_empty = input.as_object().map_or(true, |m| m.is_empty()),
+                input_empty = input.as_object().is_none_or(|m| m.is_empty()),
                 "extracted tool call",
             );
         }
@@ -795,5 +828,159 @@ mod tests {
 
         assert_eq!(results.len(), 1);
         assert!(!results[0].is_error);
+    }
+
+    // -----------------------------------------------------------------------
+    // Turn-level retry tests
+    // -----------------------------------------------------------------------
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use tokio::sync::mpsc;
+
+    /// Provider that fails N times with a retryable error, then succeeds.
+    struct RetryableFailProvider {
+        failures_remaining: AtomicUsize,
+        status: u16,
+    }
+
+    impl RetryableFailProvider {
+        fn new(fail_count: usize, status: u16) -> Self {
+            Self {
+                failures_remaining: AtomicUsize::new(fail_count),
+                status,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl clankers_provider::Provider for RetryableFailProvider {
+        async fn complete(
+            &self,
+            _request: clankers_provider::CompletionRequest,
+            tx: mpsc::Sender<StreamEvent>,
+        ) -> clankers_provider::error::Result<()> {
+            let remaining = self.failures_remaining.fetch_sub(1, Ordering::SeqCst);
+            if remaining > 0 {
+                return Err(clankers_provider::error::provider_err_with_status(
+                    self.status,
+                    format!("HTTP error {}", self.status),
+                ));
+            }
+            // Succeed: send minimal valid response
+            tx.send(StreamEvent::MessageStart {
+                message: MessageMetadata {
+                    id: "msg-1".into(),
+                    model: "test-model".into(),
+                    role: "assistant".into(),
+                },
+            }).await.ok();
+            tx.send(StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: Content::Text { text: String::new() },
+            }).await.ok();
+            tx.send(StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: ContentDelta::TextDelta { text: "OK".into() },
+            }).await.ok();
+            tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(StreamEvent::MessageDelta {
+                stop_reason: Some("end_turn".into()),
+                usage: Usage { input_tokens: 10, output_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+            }).await.ok();
+            tx.send(StreamEvent::MessageStop).await.ok();
+            Ok(())
+        }
+        fn models(&self) -> &[clankers_provider::Model] { &[] }
+        fn name(&self) -> &str { "test" }
+    }
+
+    fn make_turn_config() -> TurnConfig {
+        TurnConfig {
+            model: "test-model".into(),
+            system_prompt: "You are a test assistant.".into(),
+            max_tokens: Some(100),
+            temperature: None,
+            thinking: None,
+            max_turns: 1,
+            output_truncation: clanker_loop::OutputTruncationConfig::default(),
+            no_cache: true,
+            cache_ttl: None,
+        }
+    }
+
+    fn make_user_message() -> AgentMessage {
+        AgentMessage::User(UserMessage {
+            id: MessageId::new("test-msg"),
+            content: vec![Content::Text { text: "hello".into() }],
+            timestamp: Utc::now(),
+        })
+    }
+
+    #[tokio::test]
+    async fn turn_retry_recovers_on_second_attempt() {
+        // Fails once with 502, then succeeds
+        let provider = RetryableFailProvider::new(1, 502);
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let mut messages = vec![make_user_message()];
+        let config = make_turn_config();
+        let (event_tx, _rx) = broadcast::channel(256);
+        let cancel = CancellationToken::new();
+
+        let result = run_turn_loop(
+            &provider, &tools, &mut messages, &config, &event_tx, cancel,
+            None, None, None, "test-session", None, None, None,
+        ).await;
+
+        assert!(result.is_ok(), "expected success after retry, got: {:?}", result);
+        // Should have appended an assistant message
+        assert_eq!(messages.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn turn_retry_non_retryable_error_skips_retry() {
+        // Fails with 400 (non-retryable) — should fail immediately
+        let provider = RetryableFailProvider::new(1, 400);
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let mut messages = vec![make_user_message()];
+        let config = make_turn_config();
+        let (event_tx, _rx) = broadcast::channel(256);
+        let cancel = CancellationToken::new();
+
+        let result = run_turn_loop(
+            &provider, &tools, &mut messages, &config, &event_tx, cancel,
+            None, None, None, "test-session", None, None, None,
+        ).await;
+
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(!err.is_retryable(), "400 should not be retryable");
+        // Messages unchanged — failed turn didn't append
+        assert_eq!(messages.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn turn_retry_cancellation_during_backoff() {
+        // Fails with 502 (retryable), cancel during backoff
+        let provider = RetryableFailProvider::new(3, 502); // always fails
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let mut messages = vec![make_user_message()];
+        let config = make_turn_config();
+        let (event_tx, _rx) = broadcast::channel(256);
+        let cancel = CancellationToken::new();
+
+        // Cancel shortly after first failure's backoff starts
+        let cancel_clone = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            cancel_clone.cancel();
+        });
+
+        let result = run_turn_loop(
+            &provider, &tools, &mut messages, &config, &event_tx, cancel,
+            None, None, None, "test-session", None, None, None,
+        ).await;
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), AgentError::Cancelled));
     }
 }

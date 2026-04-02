@@ -130,7 +130,11 @@ pub(super) async fn collect_stream_events(
                 break;
             }
             StreamEvent::Error { error } => {
-                return Err(AgentError::ProviderStreaming { message: error });
+                return Err(AgentError::ProviderStreaming {
+                    message: error,
+                    status: None,
+                    retryable: false,
+                });
             }
         }
     }

@@ -96,7 +96,7 @@ impl From<clankers_agent::AgentError> for Error {
     fn from(e: clankers_agent::AgentError) -> Self {
         match e {
             clankers_agent::AgentError::Cancelled => Error::Cancelled,
-            clankers_agent::AgentError::ProviderStreaming { message } => Error::ProviderStreaming { message },
+            clankers_agent::AgentError::ProviderStreaming { message, .. } => Error::ProviderStreaming { message },
             clankers_agent::AgentError::Agent { message } => Error::Agent { message },
         }
     }

@@ -106,6 +106,8 @@ pub async fn parse_sse_stream(response: reqwest::Response, tx: mpsc::Sender<Stre
     let mut stream = response.bytes_stream();
     let mut buffer = String::new();
     let mut event_type = String::new();
+    let mut consecutive_parse_failures: usize = 0;
+    const MAX_CONSECUTIVE_FAILURES: usize = 5;
 
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| crate::error::streaming_err(e.to_string()))?;
@@ -124,11 +126,33 @@ pub async fn parse_sse_stream(response: reqwest::Response, tx: mpsc::Sender<Stre
 
             if let Some(event_name) = line.strip_prefix("event: ") {
                 event_type = event_name.to_string();
-            } else if let Some(data) = line.strip_prefix("data: ")
-                && let Some(event) = parse_sse_event(&event_type, data)
-                && tx.send(event).await.is_err()
-            {
-                return Ok(()); // receiver dropped
+            } else if let Some(data) = line.strip_prefix("data: ") {
+                match parse_sse_event(&event_type, data) {
+                    Some(event) => {
+                        consecutive_parse_failures = 0;
+                        if tx.send(event).await.is_err() {
+                            return Ok(()); // receiver dropped
+                        }
+                    }
+                    None if !event_type.is_empty() && event_type != "ping" => {
+                        consecutive_parse_failures += 1;
+                        tracing::warn!(
+                            event_type = %event_type,
+                            consecutive_failures = consecutive_parse_failures,
+                            "Failed to parse SSE event",
+                        );
+                        if consecutive_parse_failures >= MAX_CONSECUTIVE_FAILURES {
+                            let _ = tx.send(StreamEvent::Error {
+                                error: format!(
+                                    "Persistent SSE parse failures: {} consecutive events failed to parse",
+                                    consecutive_parse_failures,
+                                ),
+                            }).await;
+                            return Ok(());
+                        }
+                    }
+                    None => {} // ping or empty event type — expected
+                }
             }
         }
     }
