@@ -80,6 +80,8 @@ Reusable prompt snippets in `~/.clankers/agent/skills/<name>/SKILL.md` or `.clan
 | `--resume <id>` | Resume specific session |
 | `-p <prompt>` | One-shot prompt (no TUI) |
 | `--mode json` | JSON lines output |
+| `--mode inline` | Styled markdown in scrollback |
+| `--inline` | Shorthand for `--mode inline` |
 | `-o <file>` | Write output to file |
 | `--stdin` | Read prompt from stdin |
 | `--zellij` | Run inside Zellij |

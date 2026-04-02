@@ -57,6 +57,7 @@ No TUI required. Pipe prompts in, get results out.
 
 ```
 clankers -p "explain this codebase"                     # stream text to stdout
+clankers -p "explain this codebase" --inline            # styled markdown in scrollback
 clankers -p "list all TODOs" --mode json                # JSON lines event stream
 clankers -p "refactor auth" -o result.md                # write to file
 echo "what is this?" | clankers --stdin                 # pipe input

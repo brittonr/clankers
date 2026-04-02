@@ -13,6 +13,7 @@ Type a prompt in insert mode (`i`), press Enter to send. The agent reads files, 
 ```bash
 clankers -p "fix the tests"
 clankers -p "explain this codebase"
+clankers -p "explain this codebase" --inline   # styled markdown in scrollback
 clankers -p "list all TODOs" --mode json
 echo "what is this?" | clankers --stdin
 ```
