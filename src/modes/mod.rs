@@ -12,6 +12,7 @@ pub mod daemon;
 pub(crate) mod event_handlers;
 pub(crate) mod event_loop_runner;
 pub(crate) mod extended_actions;
+pub mod inline;
 pub mod interactive;
 pub mod json;
 pub(crate) mod matrix_bridge;

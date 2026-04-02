@@ -52,6 +52,7 @@ graggle = { git = "https://github.com/brittonr/graggle" }
 rat-branches = { path = "../subwayrat/crates/rat-branches" }
 rat-keymap = { path = "../subwayrat/crates/rat-keymap" }
 rat-leaderkey = { path = "../subwayrat/crates/rat-leaderkey" }
+rat-inline = { path = "../subwayrat/crates/rat-inline" }
 rat-widgets = { path = "../subwayrat/crates/rat-widgets" }
 
 [package]
@@ -126,6 +127,7 @@ sha2 = "0.10"
 tokio-stream = "0.1"
 regex = "1"
 serde_yaml = "0.9"
+rat-inline = { workspace = true }
 ratatui = "0.30"
 ratatui-hypertile = { version = "0.1", features = ["serde"] }
 unicode-width = "0.2"

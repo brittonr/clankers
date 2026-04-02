@@ -205,6 +205,10 @@ pub struct Cli {
     #[arg(long)]
     pub no_stream: bool,
 
+    /// Inline output mode (shorthand for --mode inline)
+    #[arg(long)]
+    pub inline: bool,
+
     /// Show token usage stats
     #[arg(long)]
     pub stats: bool,
@@ -233,6 +237,8 @@ pub enum OutputMode {
     Markdown,
     /// Plain text output
     Plain,
+    /// Inline styled scrollback output (via rat-inline)
+    Inline,
 }
 
 #[derive(ValueEnum, Clone, Debug)]

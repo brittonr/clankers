@@ -1101,7 +1101,7 @@ fn handle_key_event(
     }
 
     // Leader menu
-    if app.overlays.leader_menu.visible {
+    if app.overlays.leader_menu.visible() {
         if let Some(leader_action) = app.overlays.leader_menu.handle_key(&key) {
             handle_leader_action_attach(app, client, leader_action, slash_registry);
         }

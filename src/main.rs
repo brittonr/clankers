@@ -18,7 +18,12 @@ use tracing::info;
 #[tokio::main]
 #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, no_panic, reason = "main function — startup failures are fatal"))]
 async fn main() -> Result<()> {
-    let cli = Cli::parse();
+    let mut cli = Cli::parse();
+
+    // --inline flag overrides mode to Inline (only affects headless/print mode)
+    if cli.inline {
+        cli.mode = OutputMode::Inline;
+    }
 
     // ── Logging ────────────────────────────────────────────────────
     let is_tui = matches!(cli.mode, OutputMode::Interactive) && cli.print.is_none() && !cli.stdin;
@@ -450,6 +455,24 @@ async fn run_headless(
     };
 
     match cli.mode {
+        OutputMode::Inline => {
+            let inline_opts = clankers::modes::inline::InlineOptions {
+                output_file: cli.output.clone(),
+                show_stats: cli.stats,
+                show_tools: cli.verbose,
+                thinking: thinking_config,
+            };
+            clankers::modes::inline::run_inline_with_options(
+                &full_prompt,
+                provider,
+                tools,
+                settings,
+                model,
+                system_prompt,
+                inline_opts,
+            )
+            .await?;
+        }
         OutputMode::Json => {
             let json_opts = clankers::modes::json::JsonOptions {
                 output_file: cli.output.clone(),

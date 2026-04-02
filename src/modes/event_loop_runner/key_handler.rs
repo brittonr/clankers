@@ -90,7 +90,7 @@ impl<'a> EventLoopRunner<'a> {
         }
 
         // Leader menu
-        if self.app.overlays.leader_menu.visible {
+        if self.app.overlays.leader_menu.visible() {
             if let Some(leader_action) = self.app.overlays.leader_menu.handle_key(&key) {
                 event_handlers::handle_leader_action(
                     self.app,
