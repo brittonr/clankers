@@ -53,6 +53,7 @@ rat-branches = { path = "../subwayrat/crates/rat-branches" }
 rat-keymap = { path = "../subwayrat/crates/rat-keymap" }
 rat-leaderkey = { path = "../subwayrat/crates/rat-leaderkey" }
 rat-inline = { path = "../subwayrat/crates/rat-inline" }
+rat-markdown = { path = "../subwayrat/crates/rat-markdown" }
 rat-widgets = { path = "../subwayrat/crates/rat-widgets" }
 
 [package]

@@ -9,7 +9,7 @@ use ratatui::text::Line;
 use ratatui::text::Span;
 
 use super::super::block::ConversationBlock;
-use super::super::markdown::MarkdownStyle;
+use super::super::markdown::markdown_style_from_theme;
 use super::super::markdown::render_markdown;
 use super::super::progress_renderer::ProgressRenderer;
 use super::super::streaming_output::StreamingOutputManager;
@@ -213,7 +213,7 @@ pub fn render_response_message<'a>(
 ) {
     match msg.role {
         MessageRole::Assistant => {
-            let md_style = MarkdownStyle::from_theme(theme, Style::default().fg(theme.assistant_msg));
+            let md_style = markdown_style_from_theme(theme, Style::default().fg(theme.assistant_msg));
             let md_lines = render_markdown(&msg.content, &md_style, highlighter);
             for md_line in md_lines {
                 let mut spans = vec![Span::styled("│ ", border_style), Span::raw("  ")];
@@ -431,7 +431,7 @@ pub fn render_active_block<'a>(
 
     // ── Streaming text (with live markdown rendering) ─
     if !streaming_text.is_empty() {
-        let md_style = MarkdownStyle::from_theme(theme, Style::default().fg(theme.assistant_msg));
+        let md_style = markdown_style_from_theme(theme, Style::default().fg(theme.assistant_msg));
         let md_lines = render_markdown(streaming_text, &md_style, highlighter);
         for md_line in md_lines {
             let mut spans = vec![Span::styled("│ ", border_style), Span::raw("  ")];

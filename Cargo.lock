@@ -1705,6 +1705,7 @@ dependencies = [
  "rat-branches",
  "rat-keymap",
  "rat-leaderkey",
+ "rat-markdown",
  "rat-widgets",
  "ratatui",
  "ratatui-hypertile",
@@ -1723,6 +1724,7 @@ dependencies = [
  "chrono",
  "rat-branches",
  "rat-leaderkey",
+ "rat-markdown",
  "serde",
  "serde_json",
 ]
