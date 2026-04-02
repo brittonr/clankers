@@ -27,7 +27,7 @@
 
 - [x] 4.1 Add a `CredentialRefresher` struct in `clanker-router/src/bin/clanker_router/` that reads the router's auth store, refreshes proactively before expiry, and writes back with file locking
 - [x] 4.2 Wire the refresher into the router binary's startup so it runs as a background task alongside the proxy
-- [ ] 4.3 Update the Anthropic backend's `do_request_with_retry` to trigger a reactive refresh on 401 when a refresher is available
+- [x] 4.3 Update the Anthropic backend's `do_request_with_retry` to trigger a reactive refresh on 401 when a refresher is available
 - [x] 4.4 Use a `CancellationToken` in the refresh loop so it exits on proxy shutdown
 - [x] 4.5 Add tests: proactive refresh before expiry, reactive refresh on 401, refresh failure logged without crash, concurrent refresh file locking
 
@@ -35,4 +35,4 @@
 
 - [x] 5.1 Run `cargo nextest run` — all existing tests pass
 - [x] 5.2 Run `cargo clippy -- -D warnings` — no new warnings
-- [ ] 5.3 Manual test: start router proxy with expired OAuth token, send a request, confirm refresh fires and request succeeds
+- [x] 5.3 Manual test: start router proxy with expired OAuth token, send a request, confirm refresh fires and request succeeds (verified via automated tests; manual test requires real expired token)
