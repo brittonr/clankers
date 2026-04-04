@@ -27,9 +27,15 @@
       url = "github:brittonr/subwayrat";
       flake = false;
     };
+
+    # Plugin SDK used by all WASM plugins.
+    clanker-plugin-sdk-src = {
+      url = "github:brittonr/clanker-plugin-sdk";
+      flake = false;
+    };
   };
 
-  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, clanker-router-src, subwayrat-src, ... }:
+  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, clanker-router-src, subwayrat-src, clanker-plugin-sdk-src, ... }:
     {
       nixosModules = {
         clankers-daemon = import ./nix/modules/clankers-daemon.nix;
@@ -109,7 +115,7 @@
         verus = import ./nix/verus.nix { inherit pkgs; };
         clankers-docs = import ./nix/docs.nix { inherit pkgs; src = ./.; };
         clankers-plugins = import ./nix/plugins.nix {
-          inherit pkgs rustToolchain unit2nix system;
+          inherit pkgs rustToolchain unit2nix system clanker-plugin-sdk-src;
           src = ./.;
         };
         routerPkg = routerBuild.rootCrate.build;
@@ -177,6 +183,28 @@
           '';
 
           docs = clankers-docs;
+
+          plugin-wasm-fresh = pkgs.runCommand "plugin-wasm-fresh" {
+            nativeBuildInputs = [ pkgs.diffutils ];
+          } ''
+            # Verify committed .wasm files match what nix builds from source.
+            # Fails if someone edits plugin Rust code without rebuilding WASM.
+            for plugin_dir in ${clankers-plugins}/lib/clankers/plugins/*/; do
+              name=$(basename "$plugin_dir")
+              nix_wasm="$plugin_dir/$name.wasm"
+              repo_wasm="${./.}/plugins/$name/$name.wasm"
+              if [ ! -f "$repo_wasm" ]; then
+                continue  # plugin only exists in nix build, not committed
+              fi
+              if ! cmp -s "$nix_wasm" "$repo_wasm"; then
+                echo "STALE: plugins/$name/$name.wasm differs from nix build"
+                echo "  Run: nix build .#clankers-plugins && cp result/lib/clankers/plugins/$name/$name.wasm plugins/$name/"
+                exit 1
+              fi
+            done
+            echo "All committed plugin WASM files match nix build."
+            touch $out
+          '';
 
           tracey-coverage = pkgs.runCommand "tracey-coverage" {
             nativeBuildInputs = [ pkgs.tracey ];

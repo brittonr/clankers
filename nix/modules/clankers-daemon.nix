@@ -35,6 +35,12 @@ in
       description = "Extra arguments passed to `clankers daemon start`.";
     };
 
+    pluginsPackage = lib.mkOption {
+      type = lib.types.nullOr lib.types.package;
+      default = null;
+      description = "Nix-built WASM plugins package (from clankers-plugins). When set, plugins are symlinked into the daemon's state directory so they're always in sync with the source.";
+    };
+
     environmentFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -68,6 +74,19 @@ in
       createHome = true;
     };
     users.groups.${cfg.group} = {};
+
+    # Symlink nix-built plugins into the daemon's plugin discovery path.
+    # The daemon scans ~/.clankers/agent/plugins/ at startup.
+    systemd.tmpfiles.rules = lib.mkIf (cfg.pluginsPackage != null) (
+      let
+        pluginsSrc = "${cfg.pluginsPackage}/lib/clankers/plugins";
+        pluginsDest = "${cfg.stateDir}/.clankers/agent/plugins";
+      in [
+        "d ${cfg.stateDir}/.clankers 0755 ${cfg.user} ${cfg.group} -"
+        "d ${cfg.stateDir}/.clankers/agent 0755 ${cfg.user} ${cfg.group} -"
+        "L+ ${pluginsDest} - - - - ${pluginsSrc}"
+      ]
+    );
 
     systemd.services.clankers-daemon = {
       description = "Clankers Agent Daemon";
