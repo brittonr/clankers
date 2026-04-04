@@ -45,16 +45,21 @@ fn sops_decrypt(secret_path: &str) -> Option<String> {
 struct Secrets {
     api_token: String,
     email_from: String,
+    allowed_recipients: String,
 }
 
 fn load_secrets() -> Option<Secrets> {
     Some(Secrets {
         api_token: sops_decrypt("fastmail-api-token")?,
         email_from: sops_decrypt("email-from")?,
+        allowed_recipients: sops_decrypt("email-allowed-recipients")?,
     })
 }
 
-const TEST_RECIPIENT: &str = "clanker@robitzs.ch";
+/// Test recipient — send to yourself. Derived from the sops email_from secret.
+fn test_recipient(secrets: &Secrets) -> &str {
+    &secrets.email_from
+}
 
 fn test_subject() -> String {
     let ts = Utc::now().format("%Y%m%d-%H%M%S");
@@ -147,7 +152,7 @@ fn load_email_plugin(secrets: &Secrets) -> Arc<Mutex<clankers_plugin::PluginMana
     unsafe {
         std::env::set_var("FASTMAIL_API_TOKEN", &secrets.api_token);
         std::env::set_var("CLANKERS_EMAIL_FROM", &secrets.email_from);
-        std::env::set_var("CLANKERS_EMAIL_ALLOWED_RECIPIENTS", "@robitzs.ch");
+        std::env::set_var("CLANKERS_EMAIL_ALLOWED_RECIPIENTS", &secrets.allowed_recipients);
     }
 
     let plugin_dir = std::path::PathBuf::from("plugins");
@@ -237,7 +242,7 @@ async fn one_shot_schedule_sends_email_via_plugin() {
     let fire_at = Utc::now() - chrono::Duration::seconds(1);
     let schedule_payload = json!({
         "action": "send_email",
-        "to": TEST_RECIPIENT,
+        "to": test_recipient(&secrets),
         "subject": subject,
         "body": format!("One-shot scheduled email test.\nFired at: {}", Utc::now()),
         "from": secrets.email_from,
@@ -292,7 +297,7 @@ async fn interval_schedule_sends_multiple_emails() {
 
     let schedule_payload = json!({
         "action": "send_email",
-        "to": TEST_RECIPIENT,
+        "to": test_recipient(&secrets),
         "subject": subject,
         "body": "Interval schedule test — fires twice.",
         "from": secrets.email_from,
@@ -383,7 +388,7 @@ async fn allowlist_denies_unauthorized_recipient() {
         schedule_name: "denied-email".into(),
         payload: json!({
             "action": "send_email",
-            "to": "brittonrobitzsch@gmail.com",
+            "to": "denied-test@example.invalid",
             "subject": "[test] this should be denied",
             "body": "If you see this, the allowlist is broken.",
             "from": secrets.email_from,
@@ -394,7 +399,7 @@ async fn allowlist_denies_unauthorized_recipient() {
     let messages = dispatch_schedule_fire(&mgr, &daemon_event);
     eprintln!("  plugin response: {:?}", messages);
     assert!(
-        messages.iter().any(|m| m.contains("not in allowlist") || m.contains("failed") || m.contains("Allowed")),
+        messages.iter().any(|m| m.contains("not in allowlist") || m.contains("failed") || m.contains("Allowed") || m.contains("allowlist")),
         "should be denied by allowlist, got: {:?}", messages,
     );
     assert!(
@@ -422,7 +427,7 @@ async fn daemon_schedule_consumer_dispatches_to_plugin() {
 
     let schedule_payload = json!({
         "action": "send_email",
-        "to": TEST_RECIPIENT,
+        "to": test_recipient(&secrets),
         "subject": subject,
         "body": "Daemon integration test — run_schedule_consumer dispatched this.",
         "from": secrets.email_from,
@@ -499,7 +504,7 @@ async fn cron_schedule_sends_email() {
 
     let schedule_payload = json!({
         "action": "send_email",
-        "to": TEST_RECIPIENT,
+        "to": test_recipient(&secrets),
         "subject": subject,
         "body": format!("Cron schedule test.\nPattern: {pattern_str}\nFired at: {now}"),
         "from": secrets.email_from,
@@ -625,7 +630,7 @@ async fn malformed_email_payload_handled() {
     let daemon_event = DaemonEvent::ScheduleFire {
         schedule_id: "test-id".into(),
         schedule_name: "bad-email".into(),
-        payload: json!({"action": "send_email", "to": TEST_RECIPIENT}),
+        payload: json!({"action": "send_email", "to": "test@example.com"}),
         // missing subject and body
         fire_count: 1,
     };
