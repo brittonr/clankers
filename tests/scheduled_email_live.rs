@@ -471,6 +471,147 @@ async fn daemon_schedule_consumer_dispatches_to_plugin() {
     assert!(found, "daemon consumer should dispatch email via plugin within 30s");
 }
 
+/// Cron schedule matching the current minute fires and sends email.
+#[tokio::test]
+async fn cron_schedule_sends_email() {
+    let Some(secrets) = load_secrets() else {
+        eprintln!("SKIP: sops secrets unavailable");
+        return;
+    };
+
+    let verifier = JmapVerifier::new(secrets.api_token.clone());
+    let mgr = load_email_plugin(&secrets);
+    let subject = test_subject();
+
+    // Build a cron pattern that matches right now.
+    let now = Utc::now();
+    let pattern_str = format!(
+        "{} {} {}",
+        now.format("%M"),  // current minute
+        now.format("%H"),  // current hour
+        "*",               // any day of week
+    );
+    eprintln!("  cron pattern: {pattern_str} (now: {})", now.format("%H:%M %a"));
+
+    let pattern = clanker_scheduler::cron::CronPattern::parse(&pattern_str)
+        .expect("pattern should parse");
+    assert!(pattern.matches(now), "pattern should match current time");
+
+    let schedule_payload = json!({
+        "action": "send_email",
+        "to": TEST_RECIPIENT,
+        "subject": subject,
+        "body": format!("Cron schedule test.\nPattern: {pattern_str}\nFired at: {now}"),
+        "from": secrets.email_from,
+    });
+
+    let mut sched = Schedule::cron("test-cron-email", pattern, schedule_payload);
+    sched.max_fires = Some(1);
+
+    let engine = ScheduleEngine::new();
+    let mut rx = engine.subscribe();
+    engine.add(sched);
+
+    // Tick — cron should fire since pattern matches current minute
+    engine.tick();
+    let event = rx.try_recv().expect("cron schedule should fire");
+    assert_eq!(event.schedule_name, "test-cron-email");
+    assert_eq!(event.fire_count, 1);
+    eprintln!("  cron fired: {} (count={})", event.schedule_name, event.fire_count);
+
+    // Dispatch to plugin
+    let daemon_event = DaemonEvent::ScheduleFire {
+        schedule_id: event.schedule_id.0,
+        schedule_name: event.schedule_name,
+        payload: event.payload,
+        fire_count: event.fire_count,
+    };
+    let messages = dispatch_schedule_fire(&mgr, &daemon_event);
+    assert!(
+        messages.iter().any(|m| m.contains("sent email")),
+        "cron dispatch should send email, got: {:?}", messages,
+    );
+
+    // Verify delivery
+    assert!(
+        verifier.wait_for_email(&subject, 10).await,
+        "cron-scheduled email should appear in JMAP search",
+    );
+
+    // Should not fire again in the same minute (cron dedup)
+    engine.tick();
+    assert!(
+        rx.try_recv().is_err(),
+        "cron should not fire twice in the same minute",
+    );
+
+    // max_fires=1, so it should be expired
+    assert!(engine.list().is_empty(), "cron should expire after max_fires");
+}
+
+/// Cron pattern that doesn't match the current time should not fire.
+#[tokio::test]
+async fn cron_schedule_wrong_time_does_not_fire() {
+    let engine = ScheduleEngine::new();
+    let mut rx = engine.subscribe();
+
+    // Pattern for a minute that is definitely not now.
+    let now = Utc::now();
+    let wrong_minute = (now.format("%M").to_string().parse::<u32>().unwrap() + 30) % 60;
+    let pattern_str = format!("{wrong_minute} {} *", now.format("%H"));
+    eprintln!("  wrong-time pattern: {pattern_str} (now: {})", now.format("%H:%M"));
+
+    let pattern = clanker_scheduler::cron::CronPattern::parse(&pattern_str)
+        .expect("pattern should parse");
+
+    let sched = Schedule::cron(
+        "wrong-time",
+        pattern,
+        json!({"action": "send_email", "to": "nobody", "subject": "x", "body": "y"}),
+    );
+    engine.add(sched);
+
+    engine.tick();
+    assert!(
+        rx.try_recv().is_err(),
+        "cron with wrong minute should not fire",
+    );
+    assert_eq!(engine.list().len(), 1, "schedule should still be active");
+}
+
+/// Cron with day-of-week restriction only fires on matching days.
+#[tokio::test]
+async fn cron_day_of_week_filtering() {
+    let engine = ScheduleEngine::new();
+    let mut rx = engine.subscribe();
+
+    let now = Utc::now();
+    // Build a pattern matching the current minute+hour but wrong day.
+    // Cron convention: Sun=0, Mon=1 .. Sat=6
+    let today_dow = now.format("%w").to_string().parse::<u32>().unwrap();
+    let wrong_dow = (today_dow + 1) % 7;
+    let pattern_str = format!("{} {} {wrong_dow}", now.format("%M"), now.format("%H"));
+    eprintln!(
+        "  dow pattern: {pattern_str} (today: dow={today_dow}, targeting: {wrong_dow})"
+    );
+
+    let pattern = clanker_scheduler::cron::CronPattern::parse(&pattern_str)
+        .expect("pattern should parse");
+
+    let sched = Schedule::cron(
+        "wrong-day",
+        pattern,
+        json!({"action": "send_email", "to": "nobody", "subject": "x", "body": "y"}),
+    );
+    engine.add(sched);
+
+    engine.tick();
+    assert!(
+        rx.try_recv().is_err(),
+        "cron with wrong day-of-week should not fire",
+    );
+}
+
 /// Schedule fire with missing fields is handled gracefully.
 #[tokio::test]
 async fn malformed_email_payload_handled() {
