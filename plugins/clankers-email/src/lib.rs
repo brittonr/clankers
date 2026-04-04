@@ -46,6 +46,7 @@ pub fn handle_tool_call(input: String) -> FnResult<String> {
 pub fn on_event(input: String) -> FnResult<String> {
     dispatch_events(&input, "clankers-email", &[
         ("agent_start", |_| "clankers-email: Fastmail JMAP plugin ready".to_string()),
+        ("schedule_fire", handle_schedule_fire_event),
     ])
 }
 
@@ -62,6 +63,40 @@ pub fn describe(Json(_): Json<()>) -> FnResult<Json<PluginMeta>> {
         ],
         &[],
     )))
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+//  Schedule fire handler
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Handle a `schedule_fire` event. The event data contains:
+/// - `schedule_id`, `schedule_name`, `fire_count`
+/// - `payload` — the schedule's arbitrary JSON, which we check for
+///   `"action": "send_email"` and forward to `handle_send_email`.
+fn handle_schedule_fire_event(data: &Value) -> String {
+    let payload = match data.get("payload") {
+        Some(p) => p,
+        None => return "schedule_fire: no payload".to_string(),
+    };
+
+    let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
+    if action != "send_email" {
+        return format!("schedule_fire: ignoring action '{action}'");
+    }
+
+    let schedule_name = data
+        .get("schedule_name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+
+    match handle_send_email(payload) {
+        Ok(result) => {
+            format!("schedule '{schedule_name}' sent email: {result}")
+        }
+        Err(e) => {
+            format!("schedule '{schedule_name}' email failed: {e}")
+        }
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════════════

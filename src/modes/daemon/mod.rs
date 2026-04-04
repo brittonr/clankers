@@ -111,7 +111,8 @@ pub async fn run_daemon(
         let rx = engine.subscribe();
         let state_for_sched = Arc::clone(&daemon_state);
         let cancel_for_sched = cancel.clone();
-        tokio::spawn(run_schedule_consumer(rx, state_for_sched, cancel_for_sched));
+        let pm_for_sched = plugin_manager.clone();
+        tokio::spawn(run_schedule_consumer(rx, state_for_sched, pm_for_sched, cancel_for_sched));
         Some(handle)
     } else {
         None
@@ -270,9 +271,30 @@ pub async fn run_daemon(
 /// session, then injects the `prompt` field as a `SessionCommand::Prompt`.
 /// If no session_id is present or the session isn't active, the event
 /// is logged and dropped.
-async fn run_schedule_consumer(
+/// Convert a `ScheduleEvent` into a `DaemonEvent::ScheduleFire`.
+fn schedule_event_to_daemon_event(
+    event: &clanker_scheduler::ScheduleEvent,
+) -> clankers_protocol::DaemonEvent {
+    clankers_protocol::DaemonEvent::ScheduleFire {
+        schedule_id: event.schedule_id.0.clone(),
+        schedule_name: event.schedule_name.clone(),
+        payload: event.payload.clone(),
+        fire_count: event.fire_count,
+    }
+}
+
+/// Consume schedule events: dispatch to plugins, then route prompts to sessions.
+///
+/// Two dispatch paths for each fired event:
+/// 1. **Plugin dispatch** — converts to `DaemonEvent::ScheduleFire` and sends to
+///    all subscribed plugins (e.g. clankers-email handles `action: send_email`).
+/// 2. **Session routing** — if the payload has a `prompt` field, injects it as a
+///    `SessionCommand::Prompt` into the target session (explicit `_session_id` or
+///    any active session as fallback).
+pub async fn run_schedule_consumer(
     mut rx: tokio::sync::broadcast::Receiver<clanker_scheduler::ScheduleEvent>,
     state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
+    plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     cancel: CancellationToken,
 ) {
     info!("schedule event consumer started");
@@ -281,6 +303,22 @@ async fn run_schedule_consumer(
             event = rx.recv() => {
                 match event {
                     Ok(sched_event) => {
+                        // Path 1: Dispatch to plugins
+                        if let Some(ref pm) = plugin_manager {
+                            let daemon_event = schedule_event_to_daemon_event(&sched_event);
+                            let result = crate::modes::plugin_dispatch::dispatch_daemon_events_to_plugins(
+                                pm,
+                                &[daemon_event],
+                            );
+                            for (plugin_name, message) in &result.messages {
+                                info!(
+                                    "schedule '{}' → plugin '{}': {}",
+                                    sched_event.schedule_name, plugin_name, message,
+                                );
+                            }
+                        }
+
+                        // Path 2: Route prompt to session (if present)
                         let prompt = sched_event
                             .payload
                             .get("prompt")
@@ -289,10 +327,6 @@ async fn run_schedule_consumer(
                             .to_string();
 
                         if prompt.is_empty() {
-                            tracing::debug!(
-                                "schedule '{}' fired but payload has no 'prompt' field",
-                                sched_event.schedule_name,
-                            );
                             continue;
                         }
 
@@ -303,32 +337,19 @@ async fn run_schedule_consumer(
                             .filter(|s| !s.is_empty())
                             .map(|s| s.to_string());
 
-                        // Look up the target session: use explicit _session_id if
-                        // provided, otherwise fall back to any active session.
                         let st = state.lock().await;
-                        let (session_id, handle) = if let Some(ref id) = explicit_id {
-                            match st.sessions.get(id) {
-                                Some(h) => (id.clone(), h),
-                                None => {
-                                    warn!(
-                                        "schedule '{}' fired for session {} but session not active",
-                                        sched_event.schedule_name, id,
-                                    );
-                                    continue;
-                                }
-                            }
+                        let target = if let Some(ref id) = explicit_id {
+                            st.sessions.get(id).map(|h| (id.clone(), h))
                         } else {
-                            // No explicit session — pick any active session.
-                            match st.sessions.iter().next() {
-                                Some((id, h)) => (id.clone(), h),
-                                None => {
-                                    warn!(
-                                        "schedule '{}' fired but no sessions active — cannot route",
-                                        sched_event.schedule_name,
-                                    );
-                                    continue;
-                                }
-                            }
+                            st.sessions.iter().next().map(|(id, h)| (id.clone(), h))
+                        };
+
+                        let Some((session_id, handle)) = target else {
+                            warn!(
+                                "schedule '{}' fired but no target session — prompt dropped",
+                                sched_event.schedule_name,
+                            );
+                            continue;
                         };
 
                         if let Some(ref cmd_tx) = handle.cmd_tx {

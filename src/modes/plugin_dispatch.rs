@@ -148,6 +148,17 @@ fn daemon_event_to_plugin_payload(event: &DaemonEvent) -> Option<serde_json::Val
         DaemonEvent::SessionCompaction { .. } => {
             Some(serde_json::json!({"event": "session_compaction", "data": {}}))
         }
+        DaemonEvent::ScheduleFire { schedule_id, schedule_name, payload, fire_count } => {
+            Some(serde_json::json!({
+                "event": "schedule_fire",
+                "data": {
+                    "schedule_id": schedule_id,
+                    "schedule_name": schedule_name,
+                    "payload": payload,
+                    "fire_count": fire_count,
+                }
+            }))
+        }
         _ => None,
     }
 }

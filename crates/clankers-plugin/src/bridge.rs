@@ -21,6 +21,8 @@ pub enum PluginEvent {
     UsageUpdate,
     SessionBranch,
     SessionCompaction,
+    /// A schedule fired — payload contains the schedule's action data.
+    ScheduleFire,
 }
 
 impl PluginEvent {
@@ -47,6 +49,7 @@ impl PluginEvent {
             "usage_update" => Some(Self::UsageUpdate),
             "session_branch" => Some(Self::SessionBranch),
             "session_compaction" => Some(Self::SessionCompaction),
+            "schedule_fire" => Some(Self::ScheduleFire),
             _ => None,
         }
     }
@@ -72,6 +75,7 @@ impl PluginEvent {
                 | (Self::UsageUpdate, "usage_update")
                 | (Self::SessionBranch, "session_branch")
                 | (Self::SessionCompaction, "session_compaction")
+                | (Self::ScheduleFire, "schedule_fire")
         )
     }
 }

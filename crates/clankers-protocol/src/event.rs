@@ -199,6 +199,15 @@ pub enum DaemonEvent {
         plugins: Vec<PluginSummary>,
     },
 
+    // ── Schedule events ─────────────────────────
+    /// A schedule fired — carries the schedule's payload for plugins.
+    ScheduleFire {
+        schedule_id: String,
+        schedule_name: String,
+        payload: serde_json::Value,
+        fire_count: u64,
+    },
+
     // ── History replay ──────────────────────────
     /// One block of conversation history.
     HistoryBlock { block: serde_json::Value },
