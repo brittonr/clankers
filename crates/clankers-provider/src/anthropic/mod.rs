@@ -2,6 +2,7 @@
 
 pub mod api;
 pub mod streaming;
+pub(crate) mod subscription_compat;
 
 use std::sync::Arc;
 
@@ -112,7 +113,7 @@ impl AnthropicProvider {
         };
 
         if response.status().is_success() {
-            streaming::parse_sse_stream(response, tx.clone())
+            streaming::parse_sse_stream(response, tx.clone(), subscription_compat::should_apply(credential.is_oauth()))
                 .await
                 .map_err(|e| (500, e.to_string()))
         } else {
@@ -205,7 +206,12 @@ impl Provider for AnthropicProvider {
                     ));
                 }
 
-                return streaming::parse_sse_stream(retry_response, tx).await;
+                return streaming::parse_sse_stream(
+                    retry_response,
+                    tx,
+                    subscription_compat::should_apply(refreshed.is_oauth()),
+                )
+                .await;
             }
 
             return Err(crate::error::provider_err_with_status(
@@ -214,7 +220,7 @@ impl Provider for AnthropicProvider {
             ));
         }
 
-        streaming::parse_sse_stream(response, tx).await
+        streaming::parse_sse_stream(response, tx, subscription_compat::should_apply(credential.is_oauth())).await
     }
 
     fn models(&self) -> &[Model] {
@@ -238,13 +244,17 @@ impl Provider for AnthropicProvider {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
+    use clanker_router::credential_pool::CredentialPool;
+    use clanker_router::credential_pool::SelectionStrategy;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
+
     use super::*;
     use crate::Provider;
     use crate::auth::Credential;
-    use clanker_router::credential_pool::{CredentialPool, SelectionStrategy};
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    use tokio::io::AsyncWriteExt;
-    use tokio::net::TcpListener;
 
     // ── Mock HTTP server ────────────────────────────────────────────
 
@@ -324,9 +334,10 @@ mod tests {
                         tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await.ok();
 
                         let idx = counter.fetch_add(1, Ordering::SeqCst);
-                        let resp = responses.get(idx).cloned().unwrap_or_else(|| {
-                            MockResponse::error(500, "no more mock responses configured")
-                        });
+                        let resp = responses
+                            .get(idx)
+                            .cloned()
+                            .unwrap_or_else(|| MockResponse::error(500, "no more mock responses configured"));
 
                         let content_type = if resp.is_sse {
                             "text/event-stream"
@@ -384,9 +395,7 @@ mod tests {
             model: "claude-test".into(),
             messages: vec![AgentMessage::User(UserMessage {
                 id: MessageId::new("test"),
-                content: vec![Content::Text {
-                    text: "Hi".into(),
-                }],
+                content: vec![Content::Text { text: "Hi".into() }],
                 timestamp: chrono::Utc::now(),
             })],
             system_prompt: None,
@@ -477,18 +486,16 @@ mod tests {
             SelectionStrategy::Failover,
         );
 
-        let (_dir, path) = tempfile::TempDir::new().map(|d| {
-            let p = d.path().join("auth.json");
-            (d, p)
-        }).unwrap();
+        let (_dir, path) = tempfile::TempDir::new()
+            .map(|d| {
+                let p = d.path().join("auth.json");
+                (d, p)
+            })
+            .unwrap();
 
-        let cm = crate::credential_manager::CredentialManager::new(
-            api_key("key-1"), path, None,
-        );
+        let cm = crate::credential_manager::CredentialManager::new(api_key("key-1"), path, None);
 
-        let provider = AnthropicProvider::with_credential_pool(
-            cm, pool, Some(server.base_url()),
-        );
+        let provider = AnthropicProvider::with_credential_pool(cm, pool, Some(server.base_url()));
 
         let (tx, rx) = mpsc::channel(64);
         provider.complete(test_request(), tx).await.unwrap();
@@ -518,18 +525,16 @@ mod tests {
             SelectionStrategy::Failover,
         );
 
-        let (_dir, path) = tempfile::TempDir::new().map(|d| {
-            let p = d.path().join("auth.json");
-            (d, p)
-        }).unwrap();
+        let (_dir, path) = tempfile::TempDir::new()
+            .map(|d| {
+                let p = d.path().join("auth.json");
+                (d, p)
+            })
+            .unwrap();
 
-        let cm = crate::credential_manager::CredentialManager::new(
-            api_key("key-1"), path, None,
-        );
+        let cm = crate::credential_manager::CredentialManager::new(api_key("key-1"), path, None);
 
-        let provider = AnthropicProvider::with_credential_pool(
-            cm, pool, Some(server.base_url()),
-        );
+        let provider = AnthropicProvider::with_credential_pool(cm, pool, Some(server.base_url()));
 
         let (tx, rx) = mpsc::channel(64);
         provider.complete(test_request(), tx).await.unwrap();
@@ -547,7 +552,8 @@ mod tests {
             MockResponse::error(400, "invalid request"),
             // If this were reached, the test would succeed — but it shouldn't be
             MockResponse::success_sse(),
-        ]).await;
+        ])
+        .await;
 
         let pool = CredentialPool::new(
             vec![
@@ -557,18 +563,16 @@ mod tests {
             SelectionStrategy::Failover,
         );
 
-        let (_dir, path) = tempfile::TempDir::new().map(|d| {
-            let p = d.path().join("auth.json");
-            (d, p)
-        }).unwrap();
+        let (_dir, path) = tempfile::TempDir::new()
+            .map(|d| {
+                let p = d.path().join("auth.json");
+                (d, p)
+            })
+            .unwrap();
 
-        let cm = crate::credential_manager::CredentialManager::new(
-            api_key("key-1"), path, None,
-        );
+        let cm = crate::credential_manager::CredentialManager::new(api_key("key-1"), path, None);
 
-        let provider = AnthropicProvider::with_credential_pool(
-            cm, pool, Some(server.base_url()),
-        );
+        let provider = AnthropicProvider::with_credential_pool(cm, pool, Some(server.base_url()));
 
         let (tx, _rx) = mpsc::channel(64);
         let err = provider.complete(test_request(), tx).await.unwrap_err();
@@ -598,26 +602,27 @@ mod tests {
             SelectionStrategy::Failover,
         );
 
-        let (_dir, path) = tempfile::TempDir::new().map(|d| {
-            let p = d.path().join("auth.json");
-            (d, p)
-        }).unwrap();
+        let (_dir, path) = tempfile::TempDir::new()
+            .map(|d| {
+                let p = d.path().join("auth.json");
+                (d, p)
+            })
+            .unwrap();
 
-        let cm = crate::credential_manager::CredentialManager::new(
-            api_key("key-1"), path, None,
-        );
+        let cm = crate::credential_manager::CredentialManager::new(api_key("key-1"), path, None);
 
-        let provider = AnthropicProvider::with_credential_pool(
-            cm, pool, Some(server.base_url()),
-        );
+        let provider = AnthropicProvider::with_credential_pool(cm, pool, Some(server.base_url()));
 
         let (tx, _rx) = mpsc::channel(64);
         let err = provider.complete(test_request(), tx).await.unwrap_err();
         // Should contain the HTTP error from the last attempted credential
         assert!(
-            err.message.contains("529") || err.message.contains("overloaded")
-                || err.message.contains("429") || err.message.contains("rate"),
-            "got: {}", err.message
+            err.message.contains("529")
+                || err.message.contains("overloaded")
+                || err.message.contains("429")
+                || err.message.contains("rate"),
+            "got: {}",
+            err.message
         );
     }
 
@@ -626,10 +631,7 @@ mod tests {
     #[tokio::test]
     async fn pool_exhausted_falls_through_to_single_cred() {
         // Pre-exhaust the pool by putting all slots in cooldown
-        let pool = CredentialPool::new(
-            vec![("primary".into(), api_key("key-1"))],
-            SelectionStrategy::Failover,
-        );
+        let pool = CredentialPool::new(vec![("primary".into(), api_key("key-1"))], SelectionStrategy::Failover);
         // Report failures to put slot in cooldown
         {
             let lease = pool.select().await.unwrap();
@@ -641,18 +643,16 @@ mod tests {
         // Single-cred path should still work
         let server = MockServer::start(vec![MockResponse::success_sse()]).await;
 
-        let (_dir, path) = tempfile::TempDir::new().map(|d| {
-            let p = d.path().join("auth.json");
-            (d, p)
-        }).unwrap();
+        let (_dir, path) = tempfile::TempDir::new()
+            .map(|d| {
+                let p = d.path().join("auth.json");
+                (d, p)
+            })
+            .unwrap();
 
-        let cm = crate::credential_manager::CredentialManager::new(
-            api_key("key-1"), path, None,
-        );
+        let cm = crate::credential_manager::CredentialManager::new(api_key("key-1"), path, None);
 
-        let provider = AnthropicProvider::with_credential_pool(
-            cm, pool, Some(server.base_url()),
-        );
+        let provider = AnthropicProvider::with_credential_pool(cm, pool, Some(server.base_url()));
 
         let (tx, rx) = mpsc::channel(64);
         provider.complete(test_request(), tx).await.unwrap();
@@ -681,18 +681,16 @@ mod tests {
             SelectionStrategy::Failover,
         );
 
-        let (_dir, path) = tempfile::TempDir::new().map(|d| {
-            let p = d.path().join("auth.json");
-            (d, p)
-        }).unwrap();
+        let (_dir, path) = tempfile::TempDir::new()
+            .map(|d| {
+                let p = d.path().join("auth.json");
+                (d, p)
+            })
+            .unwrap();
 
-        let cm = crate::credential_manager::CredentialManager::new(
-            api_key("key-1"), path, None,
-        );
+        let cm = crate::credential_manager::CredentialManager::new(api_key("key-1"), path, None);
 
-        let provider = AnthropicProvider::with_credential_pool(
-            cm, pool, Some(server.base_url()),
-        );
+        let provider = AnthropicProvider::with_credential_pool(cm, pool, Some(server.base_url()));
 
         let (tx, rx) = mpsc::channel(64);
         provider.complete(test_request(), tx).await.unwrap();
@@ -722,14 +720,14 @@ mod tests {
         }
         assert!(pool.select().await.is_none());
 
-        let (_dir, path) = tempfile::TempDir::new().map(|d| {
-            let p = d.path().join("auth.json");
-            (d, p)
-        }).unwrap();
+        let (_dir, path) = tempfile::TempDir::new()
+            .map(|d| {
+                let p = d.path().join("auth.json");
+                (d, p)
+            })
+            .unwrap();
 
-        let cm = crate::credential_manager::CredentialManager::new(
-            api_key("key-1"), path, None,
-        );
+        let cm = crate::credential_manager::CredentialManager::new(api_key("key-1"), path, None);
 
         let provider = AnthropicProvider::with_credential_pool(cm, pool, None);
 
@@ -762,14 +760,14 @@ mod tests {
     async fn with_credential_manager_success() {
         let server = MockServer::start(vec![MockResponse::success_sse()]).await;
 
-        let (_dir, path) = tempfile::TempDir::new().map(|d| {
-            let p = d.path().join("auth.json");
-            (d, p)
-        }).unwrap();
+        let (_dir, path) = tempfile::TempDir::new()
+            .map(|d| {
+                let p = d.path().join("auth.json");
+                (d, p)
+            })
+            .unwrap();
 
-        let cm = crate::credential_manager::CredentialManager::new(
-            api_key("sk-managed"), path, None,
-        );
+        let cm = crate::credential_manager::CredentialManager::new(api_key("sk-managed"), path, None);
 
         let provider = AnthropicProvider::with_credential_manager(cm, Some(server.base_url()));
 
@@ -802,10 +800,7 @@ mod tests {
     async fn force_refresh_no_manager_errors() {
         let provider = AnthropicProvider::new(api_key("sk-test"), None);
         let err = provider.force_refresh_credential().await.unwrap_err();
-        assert!(
-            err.message.contains("no credential manager"),
-            "got: {}", err.message
-        );
+        assert!(err.message.contains("no credential manager"), "got: {}", err.message);
     }
 
     // ── Round-robin pool rotates credentials ─────────────────────
@@ -816,7 +811,8 @@ mod tests {
             MockResponse::success_sse(),
             MockResponse::success_sse(),
             MockResponse::success_sse(),
-        ]).await;
+        ])
+        .await;
 
         let pool = CredentialPool::new(
             vec![
@@ -827,18 +823,16 @@ mod tests {
             SelectionStrategy::RoundRobin,
         );
 
-        let (_dir, path) = tempfile::TempDir::new().map(|d| {
-            let p = d.path().join("auth.json");
-            (d, p)
-        }).unwrap();
+        let (_dir, path) = tempfile::TempDir::new()
+            .map(|d| {
+                let p = d.path().join("auth.json");
+                (d, p)
+            })
+            .unwrap();
 
-        let cm = crate::credential_manager::CredentialManager::new(
-            api_key("key-a"), path, None,
-        );
+        let cm = crate::credential_manager::CredentialManager::new(api_key("key-a"), path, None);
 
-        let provider = AnthropicProvider::with_credential_pool(
-            cm, pool, Some(server.base_url()),
-        );
+        let provider = AnthropicProvider::with_credential_pool(cm, pool, Some(server.base_url()));
 
         // Three requests should all succeed (rotating through credentials)
         for _ in 0..3 {

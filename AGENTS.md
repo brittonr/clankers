@@ -69,6 +69,7 @@ clankers daemon stop           # stop daemon
 - Tests live next to code (`_tests.rs` suffix or `#[cfg(test)]` modules).
 - Config paths: `~/.clankers/agent/` (global), `.clankers/` (project).
 - Pi fallback: reads `~/.pi/agent/` for auth/settings when clankers versions missing.
+- Anthropic OAuth request shaping lives in `crates/clankers-provider/src/anthropic/{api.rs,subscription_compat.rs}`. The provider prepends a Claude Code billing-header system block and rewrites clankers markers by default; disable with `CLANKERS_DISABLE_CLAUDE_SUBSCRIPTION_COMPAT=1` or override the block contents with `CLANKERS_ANTHROPIC_BILLING_HEADER`.
 
 ### Reference Repos
 

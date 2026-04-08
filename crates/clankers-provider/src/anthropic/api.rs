@@ -4,6 +4,7 @@ use reqwest::Client;
 use serde::Serialize;
 use serde_json::Value;
 
+use super::subscription_compat;
 use crate::CompletionRequest;
 use crate::auth::Credential;
 use crate::error::Result;
@@ -139,7 +140,13 @@ pub struct AnthropicClient {
 }
 
 impl AnthropicClient {
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "reqwest Client::builder().build() only fails with incompatible TLS config"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(
+            no_unwrap,
+            reason = "reqwest Client::builder().build() only fails with incompatible TLS config"
+        )
+    )]
     pub fn new(base_url: Option<String>) -> Self {
         let client = Client::builder()
             .timeout(std::time::Duration::from_secs(300))
@@ -317,7 +324,7 @@ pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> 
         }
     });
 
-    ApiRequest {
+    let api_request = ApiRequest {
         model: request.model.clone(),
         messages,
         max_tokens: request.max_tokens.unwrap_or(16384),
@@ -330,6 +337,12 @@ pub(crate) fn build_api_request(request: &CompletionRequest, is_oauth: bool) -> 
         tools,
         temperature: request.temperature,
         thinking,
+    };
+
+    if subscription_compat::should_apply(is_oauth) {
+        subscription_compat::apply_outbound(api_request)
+    } else {
+        api_request
     }
 }
 

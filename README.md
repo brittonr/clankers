@@ -30,6 +30,13 @@ clankers auth status             # check credentials
 
 Supports multiple accounts (`--account work`, `clankers auth switch personal`).
 
+When using Anthropic OAuth, clankers now prepends a Claude Code
+billing-header system block and rewrites clankers-specific markers in outbound
+request text so Claude subscription billing still works. Disable that
+compatibility layer with `CLANKERS_DISABLE_CLAUDE_SUBSCRIPTION_COMPAT=1`. If
+Anthropic changes the expected block contents, override it with
+`CLANKERS_ANTHROPIC_BILLING_HEADER`.
+
 ## Use
 
 ```

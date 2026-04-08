@@ -4,6 +4,7 @@ use serde::Deserialize;
 use serde_json::Value;
 use tokio::sync::mpsc;
 
+use super::subscription_compat;
 use crate::error::Result;
 use crate::message::Content;
 use crate::streaming::*;
@@ -99,7 +100,11 @@ struct SseErrorInner {
 /// Parse a raw SSE response stream and send StreamEvents through the channel.
 ///
 /// Uses reqwest's byte stream to read SSE lines.
-pub async fn parse_sse_stream(response: reqwest::Response, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
+pub async fn parse_sse_stream(
+    response: reqwest::Response,
+    tx: mpsc::Sender<StreamEvent>,
+    reverse_map: bool,
+) -> Result<()> {
     use futures::StreamExt;
 
     // Read the response as a stream of bytes, parse SSE manually
@@ -107,6 +112,7 @@ pub async fn parse_sse_stream(response: reqwest::Response, tx: mpsc::Sender<Stre
     let mut buffer = String::new();
     let mut event_type = String::new();
     let mut consecutive_parse_failures: usize = 0;
+    let mut rewriter = subscription_compat::InboundEventRewriter::default();
     const MAX_CONSECUTIVE_FAILURES: usize = 5;
 
     while let Some(chunk) = stream.next().await {
@@ -130,8 +136,15 @@ pub async fn parse_sse_stream(response: reqwest::Response, tx: mpsc::Sender<Stre
                 match parse_sse_event(&event_type, data) {
                     Some(event) => {
                         consecutive_parse_failures = 0;
-                        if tx.send(event).await.is_err() {
-                            return Ok(()); // receiver dropped
+                        let events = if reverse_map {
+                            rewriter.rewrite(event)
+                        } else {
+                            vec![event]
+                        };
+                        for event in events {
+                            if tx.send(event).await.is_err() {
+                                return Ok(()); // receiver dropped
+                            }
                         }
                     }
                     None if !event_type.is_empty() && event_type != "ping" => {
@@ -142,12 +155,14 @@ pub async fn parse_sse_stream(response: reqwest::Response, tx: mpsc::Sender<Stre
                             "Failed to parse SSE event",
                         );
                         if consecutive_parse_failures >= MAX_CONSECUTIVE_FAILURES {
-                            let _ = tx.send(StreamEvent::Error {
-                                error: format!(
-                                    "Persistent SSE parse failures: {} consecutive events failed to parse",
-                                    consecutive_parse_failures,
-                                ),
-                            }).await;
+                            let _ = tx
+                                .send(StreamEvent::Error {
+                                    error: format!(
+                                        "Persistent SSE parse failures: {} consecutive events failed to parse",
+                                        consecutive_parse_failures,
+                                    ),
+                                })
+                                .await;
                             return Ok(());
                         }
                     }
@@ -230,5 +245,149 @@ fn parse_sse_event(event_type: &str, data: &str) -> Option<StreamEvent> {
         }
         "ping" => None,
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
+
+    use super::*;
+
+    async fn fetch_sse_response(body: String) -> reqwest::Response {
+        let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind test listener");
+        let addr = listener.local_addr().expect("listener addr");
+
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.expect("accept test request");
+            let mut request = vec![0u8; 4096];
+            let _ = stream.read(&mut request).await;
+
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body,
+            );
+            stream.write_all(response.as_bytes()).await.expect("write test response");
+            stream.flush().await.expect("flush test response");
+        });
+
+        let response = reqwest::Client::new()
+            .get(format!("http://{addr}/stream"))
+            .send()
+            .await
+            .expect("fetch SSE response");
+        server.await.expect("test server task");
+        response
+    }
+
+    async fn collect_events(mut rx: mpsc::Receiver<StreamEvent>) -> Vec<StreamEvent> {
+        let mut events = Vec::new();
+        while let Some(event) = rx.recv().await {
+            events.push(event);
+        }
+        events
+    }
+
+    fn collect_text_deltas(events: &[StreamEvent], index: usize) -> String {
+        let mut out = String::new();
+        for event in events {
+            if let StreamEvent::ContentBlockDelta {
+                index: event_index,
+                delta: ContentDelta::TextDelta { text },
+            } = event
+                && *event_index == index
+            {
+                out.push_str(text);
+            }
+        }
+        out
+    }
+
+    fn collect_json_deltas(events: &[StreamEvent], index: usize) -> String {
+        let mut out = String::new();
+        for event in events {
+            if let StreamEvent::ContentBlockDelta {
+                index: event_index,
+                delta: ContentDelta::InputJsonDelta { partial_json },
+            } = event
+                && *event_index == index
+            {
+                out.push_str(partial_json);
+            }
+        }
+        out
+    }
+
+    fn split_rewrite_fixture_body() -> String {
+        [
+            "event: message_start",
+            r#"data: {"type":"message_start","message":{"id":"msg-1","model":"claude-test"}}"#,
+            "",
+            "event: content_block_start",
+            r#"data: {"type":"content_block_start","index":0,"content_block":{"type":"text","text":""}}"#,
+            "",
+            "event: content_block_delta",
+            r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":".ccage"}}"#,
+            "",
+            "event: content_block_delta",
+            r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"nt running o"}}"#,
+            "",
+            "event: content_block_delta",
+            r#"data: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"n"}}"#,
+            "",
+            "event: content_block_stop",
+            r#"data: {"type":"content_block_stop","index":0}"#,
+            "",
+            "event: content_block_start",
+            r#"data: {"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"call_1","name":"read"}}"#,
+            "",
+            "event: content_block_delta",
+            r#"data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"path\":\".ccage"}}"#,
+            "",
+            "event: content_block_delta",
+            r#"data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"nt/config.json\",\"mode\":\"running o"}}"#,
+            "",
+            "event: content_block_delta",
+            r#"data: {"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"n\"}"}}"#,
+            "",
+            "event: content_block_stop",
+            r#"data: {"type":"content_block_stop","index":1}"#,
+            "",
+            "event: message_stop",
+            r#"data: {"type":"message_stop"}"#,
+            "",
+        ]
+        .join("\n")
+    }
+
+    #[tokio::test]
+    async fn parse_sse_stream_reverse_maps_text_and_tool_json() {
+        let response = fetch_sse_response(split_rewrite_fixture_body()).await;
+
+        let (tx, rx) = mpsc::channel(32);
+        parse_sse_stream(response, tx, true).await.expect("parse reverse-mapped stream");
+        let events = collect_events(rx).await;
+
+        assert!(events.iter().any(|event| matches!(event, StreamEvent::MessageStart { .. })));
+        assert!(events.iter().any(|event| matches!(event, StreamEvent::MessageStop)));
+        assert_eq!(collect_text_deltas(&events, 0), ".clankers running inside");
+        assert_eq!(collect_json_deltas(&events, 1), r#"{"path":".clankers/config.json","mode":"running inside"}"#);
+    }
+
+    #[tokio::test]
+    async fn parse_sse_stream_preserves_text_and_tool_json_when_reverse_map_is_disabled() {
+        let response = fetch_sse_response(split_rewrite_fixture_body()).await;
+
+        let (tx, rx) = mpsc::channel(32);
+        parse_sse_stream(response, tx, false).await.expect("parse passthrough stream");
+        let events = collect_events(rx).await;
+
+        assert!(events.iter().any(|event| matches!(event, StreamEvent::MessageStart { .. })));
+        assert!(events.iter().any(|event| matches!(event, StreamEvent::MessageStop)));
+        assert_eq!(collect_text_deltas(&events, 0), ".ccagent running on");
+        assert_eq!(collect_json_deltas(&events, 1), r#"{"path":".ccagent/config.json","mode":"running on"}"#);
     }
 }

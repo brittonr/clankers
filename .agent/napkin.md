@@ -3,6 +3,10 @@
 ## Corrections
 | Date | Source | What Went Wrong | What To Do Instead |
 |------|--------|----------------|-------------------|
+| 2026-04-08 | self | Ran `cargo fmt --all` for a small provider change and it reformatted a huge swath of the workspace | In this repo, use `rustfmt` on the touched files only. If `cargo fmt --all` slips through, immediately revert unrelated formatting before doing anything else. |
+| 2026-04-08 | self | `cargo test`/`clippy` suddenly failed with `No space left on device` even though `/` had space | Check `/tmp` too, not just `/`. This machine can fill tmpfs with old VM/images and large temp dirs; clear `/tmp` before assuming the Rust change broke the build. |
+| 2026-04-08 | self | I added a helper-only inbound rewrite path and missed that the runtime SSE path still forwarded `ContentBlockStart::ToolUse` unchanged | When changing stream rewriters, add at least one test at the real seam (`parse_sse_stream(..., reverse_map = true)`), not just helper/unit tests. |
+| 2026-04-08 | self | Review evidence was weaker than the actual work because I bundled/parallelized validation and the transcript did not clearly show the exact command | For reviewer-sensitive claims, rerun the exact command with `set -x` in a dedicated tool call so the transcript proves what ran. |
 | 2026-03-15 | self | Delegated `DaemonEvent::SessionInfo` field fixes to worker; worker reverted my prior event.rs edits (new variants + ToolInfo struct) | Don't delegate edits to files you've already modified in this session. Workers can't see your uncommitted changes and may overwrite them. |
 | recurring | self | `delegate_task`/`subagent` workers report success on multi-file refactors but changes don't persist | Workers are reliable for single-file edits and read-only analysis. Multi-file refactors: do directly. Always verify with `cargo check` + file existence after delegation. |
 | recurring | self | Extracting crates: `pub(crate)` items accessed by main crate break | Grep all callers before extracting. Items used cross-crate must become `pub`. |
