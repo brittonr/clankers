@@ -87,12 +87,29 @@
         "type": "github"
       }
     },
+    "ratcore-src": {
+      "flake": false,
+      "locked": {
+        "lastModified": 1775153432,
+        "narHash": "sha256-Y/sqqwvobII43d3WqdtHAuj0g42YMvCqH1nHpOeNqYM=",
+        "owner": "brittonr",
+        "repo": "ratcore",
+        "rev": "16333a505696b324637f021b657c474600a9b838",
+        "type": "github"
+      },
+      "original": {
+        "owner": "brittonr",
+        "repo": "ratcore",
+        "type": "github"
+      }
+    },
     "root": {
       "inputs": {
         "clanker-plugin-sdk-src": "clanker-plugin-sdk-src",
         "clanker-router-src": "clanker-router-src",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
+        "ratcore-src": "ratcore-src",
         "rust-overlay": "rust-overlay",
         "subwayrat-src": "subwayrat-src",
         "unit2nix": "unit2nix"
@@ -121,11 +138,11 @@
     "subwayrat-src": {
       "flake": false,
       "locked": {
-        "lastModified": 1775081462,
-        "narHash": "sha256-ehuJpqhapP3pSusb2MPtP7r8dOo0+IZDgy9s7oItpE4=",
+        "lastModified": 1775929862,
+        "narHash": "sha256-7iHjPkxr9+qS5q4ct+XcMJCmUo/JkIsrFmj4XvDdR/8=",
         "owner": "brittonr",
         "repo": "subwayrat",
-        "rev": "e5fed38173f9a0d7b7b693dfc34d3464dec37f4d",
+        "rev": "0d209cf4c832436ee90f11e7b2bbbbcb636f84c6",
         "type": "github"
       },
       "original": {

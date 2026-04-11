@@ -8234,9 +8234,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rat-spinner"
+version = "0.1.0"
+
+[[package]]
 name = "rat-widgets"
 version = "0.1.0"
 dependencies = [
+ "rat-spinner",
  "ratatui",
  "serde_json",
 ]

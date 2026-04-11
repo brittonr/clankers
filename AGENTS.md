@@ -69,6 +69,7 @@ clankers daemon stop           # stop daemon
 - Tests live next to code (`_tests.rs` suffix or `#[cfg(test)]` modules).
 - Config paths: `~/.clankers/agent/` (global), `.clankers/` (project).
 - Pi fallback: reads `~/.pi/agent/` for auth/settings when clankers versions missing.
+- Subwayrat crates are Cargo path deps (`../subwayrat/...`) but also a separately pinned Nix flake input (`subwayrat-src`); when subwayrat adds crates or new transitive deps, update both `Cargo.lock` and `flake.lock` so sandboxed Nix builds see the same source. If subwayrat starts depending on new sibling path deps (for example `../ratcore` via `rat-inline`), mirror those in `flake.nix` `externalSources` too.
 - Anthropic OAuth request shaping lives in `crates/clankers-provider/src/anthropic/{api.rs,subscription_compat.rs}`. The provider prepends a Claude Code billing-header system block and rewrites clankers markers by default; disable with `CLANKERS_DISABLE_CLAUDE_SUBSCRIPTION_COMPAT=1` or override the block contents with `CLANKERS_ANTHROPIC_BILLING_HEADER`.
 
 ### Reference Repos
@@ -85,3 +86,4 @@ clankers daemon stop           # stop daemon
 - `src/modes/daemon/socket_bridge.rs` — control socket, SessionFactory, drain_and_broadcast
 - `clanker-actor` (external) — ProcessRegistry (spawn, link, shutdown)
 - `crates/clankers-controller/src/lib.rs` — SessionController (handle_command, feed_event)
+- `crate-hashes.json` — unit2nix git source hashes for first-party extracted crates; stale entries fail `nix build .#clankers` with fixed-output hash mismatch before workspace code even builds

@@ -105,13 +105,13 @@ mod tests {
     #[test]
     fn opens_and_closes() {
         let mut menu = LeaderMenu::new();
-        assert!(!menu.visible);
+        assert!(!menu.visible());
 
         menu.open();
-        assert!(menu.visible);
+        assert!(menu.visible());
 
         menu.close();
-        assert!(!menu.visible);
+        assert!(!menu.visible());
     }
 
     #[test]
@@ -121,7 +121,7 @@ mod tests {
 
         let result = menu.handle_key(&esc());
         assert!(result.is_none());
-        assert!(!menu.visible);
+        assert!(!menu.visible());
     }
 
     #[test]
@@ -132,7 +132,7 @@ mod tests {
         // 'z' is not bound to anything
         let result = menu.handle_key(&key('z'));
         assert!(result.is_none());
-        assert!(!menu.visible);
+        assert!(!menu.visible());
     }
 
     #[test]
@@ -143,7 +143,7 @@ mod tests {
         // 'm' → model selector
         let result = menu.handle_key(&key('m'));
         assert!(result.is_some());
-        assert!(!menu.visible);
+        assert!(!menu.visible());
 
         match result.unwrap() {
             LeaderAction::Action(a) => {
@@ -166,12 +166,12 @@ mod tests {
         // 's' → session submenu (should not return an action)
         let result = menu.handle_key(&key('s'));
         assert!(result.is_none());
-        assert!(menu.visible);
+        assert!(menu.visible());
 
         // 'n' → new session (slash command)
         let result = menu.handle_key(&key('n'));
         assert!(result.is_some());
-        assert!(!menu.visible);
+        assert!(!menu.visible());
 
         match result.unwrap() {
             LeaderAction::Command(cmd) => assert_eq!(cmd, "/new"),
@@ -190,11 +190,11 @@ mod tests {
         // Esc → back to root (not closed)
         let result = menu.handle_key(&esc());
         assert!(result.is_none());
-        assert!(menu.visible);
+        assert!(menu.visible());
 
         // Esc again → close
         menu.handle_key(&esc());
-        assert!(!menu.visible);
+        assert!(!menu.visible());
     }
 
     #[test]

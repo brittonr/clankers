@@ -28,6 +28,12 @@
       flake = false;
     };
 
+    # subwayrat itself depends on ratcore via ../ratcore.
+    ratcore-src = {
+      url = "github:brittonr/ratcore";
+      flake = false;
+    };
+
     # Plugin SDK used by all WASM plugins.
     clanker-plugin-sdk-src = {
       url = "github:brittonr/clanker-plugin-sdk";
@@ -35,7 +41,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, clanker-router-src, subwayrat-src, clanker-plugin-sdk-src, ... }:
+  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, clanker-router-src, subwayrat-src, ratcore-src, clanker-plugin-sdk-src, ... }:
     {
       nixosModules = {
         clankers-daemon = import ./nix/modules/clankers-daemon.nix;
@@ -77,8 +83,12 @@
           workspace = true;
           noLocked = true;
           clippyArgs = [ "-D" "warnings" ];
-          # rat-* TUI crates live in a sibling repo
-          externalSources = { "../subwayrat" = subwayrat-src; };
+          # rat-* TUI crates live in a sibling repo, and subwayrat depends on
+          # ratcore as another sibling path dependency.
+          externalSources = {
+            "../subwayrat" = subwayrat-src;
+            "../ratcore" = ratcore-src;
+          };
           buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
             rustc = rustToolchain;
           };
@@ -86,6 +96,10 @@
             aws-lc-rs = attrs: {
               nativeBuildInputs = [ pkgs.cmake pkgs.go ];
             };
+            # libmimalloc-sys vendors mimalloc and builds it via cc/build.rs.
+            # No extra native inputs needed; keep explicit override so
+            # unit2nix knows this links crate was reviewed.
+            libmimalloc-sys = attrs: {};
             ort-sys = attrs: {
               nativeBuildInputs = [ pkgs.pkg-config ];
               buildInputs = [ pkgs.onnxruntime pkgs.onnxruntime.dev ];
@@ -107,6 +121,7 @@
             aws-lc-rs = attrs: {
               nativeBuildInputs = [ pkgs.cmake pkgs.go ];
             };
+            libmimalloc-sys = attrs: {};
           };
         };
 
