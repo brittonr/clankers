@@ -35,6 +35,15 @@ in
       description = "Extra arguments passed to `clanker-router serve`.";
     };
 
+    authFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = ''
+        Path to a clanker-router auth.json file.
+        Supports Anthropic OAuth plus API-key provider entries in one store.
+      '';
+    };
+
     environmentFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -93,6 +102,9 @@ in
         Type = "simple";
         ExecStart = lib.concatStringsSep " " ([
           "${cfg.package}/bin/clanker-router"
+        ]
+        ++ lib.optional (cfg.authFile != null) "--auth-file ${cfg.authFile}"
+        ++ [
           "serve"
           "--proxy-addr" cfg.proxyAddr
         ]

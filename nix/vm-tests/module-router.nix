@@ -22,8 +22,21 @@ pkgs.testers.runNixOSTest {
       virtualisation.memorySize = 1024;
       networking.firewall.enable = true;
 
-      environment.etc."router-env".text = ''
-        ANTHROPIC_API_KEY=sk-ant-test-dummy-key-for-vm-test
+      environment.etc."router-auth.json".text = ''
+        {
+          "version": 2,
+          "providers": {
+            "openai": {
+              "active_account": "default",
+              "accounts": {
+                "default": {
+                  "credential_type": "api_key",
+                  "api_key": "sk-test-dummy-key-for-vm-test"
+                }
+              }
+            }
+          }
+        }
       '';
 
       services.clanker-router = {
@@ -32,7 +45,7 @@ pkgs.testers.runNixOSTest {
         proxyAddr = "0.0.0.0:4000";
         proxyKeys = [ "test-proxy-key-12345" ];
         openFirewall = true;
-        environmentFile = "/etc/router-env";
+        authFile = "/etc/router-auth.json";
       };
     };
 
@@ -64,6 +77,8 @@ pkgs.testers.runNixOSTest {
     # ── Phase 3: Service starts ──────────────────────────────────────
     router.wait_for_unit("clanker-router.service", timeout=60)
     router.succeed("systemctl is-active clanker-router.service")
+    exec_start = router.succeed("systemctl show -p ExecStart clanker-router.service")
+    assert "--auth-file /etc/router-auth.json" in exec_start, exec_start
 
     ps_user = router.succeed(
         "ps -o user= -C clanker-router | head -1"
