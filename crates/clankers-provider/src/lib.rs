@@ -116,3 +116,162 @@ pub fn thinking_level_to_config(level: ThinkingLevel) -> Option<ThinkingConfig> 
 // Re-export Usage and Cost from clanker-router (canonical definitions)
 pub use clanker_router::Usage;
 pub use clanker_router::provider::Cost;
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+    use std::path::PathBuf;
+
+    use serde_json::Value;
+    use serde_json::json;
+
+    use super::CompletionRequest;
+    use super::ThinkingConfig;
+    use crate::message::AgentMessage;
+    use crate::message::Content;
+    use crate::message::MessageId;
+    use crate::message::UserMessage;
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
+    }
+
+    fn assert_completion_request_inventory(path: &str, expected_count: usize) {
+        let source = std::fs::read_to_string(workspace_root().join(path))
+            .unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
+        let occurrences: Vec<usize> = source.match_indices("CompletionRequest {").map(|(idx, _)| idx).collect();
+        assert_eq!(
+            occurrences.len(),
+            expected_count,
+            "unexpected CompletionRequest constructor count in {path}"
+        );
+
+        for start in occurrences {
+            let snippet = source[start..].lines().take(40).collect::<Vec<_>>().join("\n");
+            assert!(
+                snippet.contains("extra_params"),
+                "CompletionRequest constructor missing extra_params in {path}:\n{snippet}"
+            );
+        }
+    }
+
+    fn provider_request(extra_params: HashMap<String, Value>) -> CompletionRequest {
+        CompletionRequest {
+            model: "test-model".to_string(),
+            messages: vec![AgentMessage::User(UserMessage {
+                id: MessageId::new("test-user"),
+                content: vec![Content::Text {
+                    text: "hello".to_string(),
+                }],
+                timestamp: chrono::Utc::now(),
+            })],
+            system_prompt: Some("Be helpful".to_string()),
+            max_tokens: Some(256),
+            temperature: Some(0.1),
+            tools: vec![clanker_router::provider::ToolDefinition {
+                name: "read".to_string(),
+                description: "Read a file".to_string(),
+                input_schema: json!({"type": "object"}),
+            }],
+            thinking: Some(ThinkingConfig {
+                enabled: true,
+                budget_tokens: Some(1024),
+            }),
+            no_cache: true,
+            cache_ttl: Some("1h".to_string()),
+            extra_params,
+        }
+    }
+
+    fn router_request(extra_params: HashMap<String, Value>) -> clanker_router::CompletionRequest {
+        clanker_router::CompletionRequest {
+            model: "test-model".to_string(),
+            messages: vec![json!({
+                "role": "user",
+                "content": [{"type": "text", "text": "hello"}],
+            })],
+            system_prompt: Some("Be helpful".to_string()),
+            max_tokens: Some(256),
+            temperature: Some(0.1),
+            tools: vec![clanker_router::provider::ToolDefinition {
+                name: "read".to_string(),
+                description: "Read a file".to_string(),
+                input_schema: json!({"type": "object"}),
+            }],
+            thinking: Some(ThinkingConfig {
+                enabled: true,
+                budget_tokens: Some(1024),
+            }),
+            no_cache: true,
+            cache_ttl: Some("1h".to_string()),
+            extra_params,
+        }
+    }
+
+    fn shared_field_projection(value: &Value) -> Value {
+        fn field(value: &Value, name: &str) -> Value {
+            value.get(name).cloned().unwrap_or(Value::Null)
+        }
+
+        json!({
+            "model": field(value, "model"),
+            "system_prompt": field(value, "system_prompt"),
+            "max_tokens": field(value, "max_tokens"),
+            "temperature": field(value, "temperature"),
+            "tools": field(value, "tools"),
+            "thinking": field(value, "thinking"),
+            "no_cache": field(value, "no_cache"),
+            "cache_ttl": field(value, "cache_ttl"),
+            "extra_params": field(value, "extra_params"),
+        })
+    }
+
+    #[test]
+    fn completion_request_constructor_inventory_requires_extra_params() {
+        let inventory = [
+            ("crates/clankers-agent/src/turn/execution.rs", 1usize),
+            ("src/modes/agent_task.rs", 1usize),
+            ("src/worktree/llm_resolver.rs", 1usize),
+            ("crates/clankers-provider/src/router.rs", 16usize),
+            ("crates/clankers-provider/src/rpc_provider.rs", 4usize),
+        ];
+
+        for (path, count) in inventory {
+            assert_completion_request_inventory(path, count);
+        }
+    }
+
+    #[test]
+    fn provider_and_router_request_shared_schema_fields_stay_in_parity() {
+        let extra_params = HashMap::from([
+            ("_session_id".to_string(), json!("session-parity-1")),
+            ("verbosity".to_string(), json!("medium")),
+        ]);
+        let provider_json = serde_json::to_value(provider_request(extra_params.clone()))
+            .expect("provider request should serialize");
+        let router_json = serde_json::to_value(router_request(extra_params))
+            .expect("router request should serialize");
+
+        assert_eq!(
+            shared_field_projection(&provider_json),
+            shared_field_projection(&router_json),
+            "provider/router CompletionRequest shared fields drifted"
+        );
+    }
+
+    #[test]
+    fn provider_and_router_request_omit_empty_extra_params_consistently() {
+        let provider_json = serde_json::to_value(provider_request(HashMap::new()))
+            .expect("provider request should serialize");
+        let router_json = serde_json::to_value(router_request(HashMap::new()))
+            .expect("router request should serialize");
+
+        assert!(provider_json.get("extra_params").is_none());
+        assert!(router_json.get("extra_params").is_none());
+        assert_eq!(
+            shared_field_projection(&provider_json),
+            shared_field_projection(&router_json),
+            "provider/router empty extra_params serialization drifted"
+        );
+    }
+}

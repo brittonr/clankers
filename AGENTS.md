@@ -76,6 +76,7 @@ clankers daemon stop           # stop daemon
 - `crates/clankers-provider::CompletionRequest` now carries `extra_params` to match `clanker-router::CompletionRequest`; when adding request builders, run `cargo check --tests` so helper/test constructors in `crates/clankers-provider/src/router.rs` and `crates/clankers-provider/src/anthropic/mod.rs` don’t silently miss the new field.
 - Session-scoped provider metadata depends on `Agent.session_id`, not just `SessionController.session_id` or `App.session_id`. In daemon/controller-owned paths, call `agent.set_session_id(...)` when constructing or updating the controller or `_session_id` will be missing from routed requests. Slash/session-resume paths in the TUI also need to sync `SessionController::set_session_id(app.session_id.clone())` after the app swaps sessions.
 - Review-sensitive `_session_id` work needs one runtime resume-path test, not just direct `run_turn_loop(...)` calls. `src/modes/event_loop_runner/key_handler.rs` now has a good pattern: resume persisted session via real helper, prompt through `RouterCompatAdapter`, assert captured router request keeps `_session_id`.
+- For cross-crate request-shape drift, `crates/clankers-provider/src/lib.rs` now has good deterministic rails: (1) exact constructor-count inventory over router-bound `CompletionRequest {` sites, requiring `extra_params` in each snippet, and (2) provider-vs-router shared-field serde projection parity tests. Update those counts when adding real constructors.
 
 ### Reference Repos
 
