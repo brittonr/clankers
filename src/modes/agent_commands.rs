@@ -22,19 +22,28 @@ pub(crate) enum AgentCommand {
     SetThinkingLevel(crate::provider::ThinkingLevel),
     CycleThinkingLevel,
     SeedMessages(Vec<crate::provider::message::AgentMessage>),
+    SetSessionId(String),
     Quit,
     Login {
         code: String,
         state: String,
         verifier: String,
+        provider: String,
         account: String,
     },
     /// Replace the agent's system prompt
     SetSystemPrompt(String),
     /// Get the current system prompt
     GetSystemPrompt(tokio::sync::oneshot::Sender<String>),
-    /// Switch the active account (hot-swap credentials)
+    /// Switch the active Anthropic account (hot-swap credentials)
     SwitchAccount(String),
+    /// Switch the active account for an explicit provider.
+    SwitchProviderAccount {
+        provider: String,
+        account: String,
+    },
+    /// Reload provider credentials from disk after auth-store changes.
+    ReloadCredentials,
     /// Update the set of disabled tools (rebuilds the agent's tool set)
     SetDisabledTools(std::collections::HashSet<String>),
     /// Request context compression (summarize older messages)

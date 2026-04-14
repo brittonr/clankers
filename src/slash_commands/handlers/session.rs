@@ -157,7 +157,13 @@ fn handle_resume(ctx: &mut SlashContext<'_>, args: &str) {
             files.into_iter().find(|f| f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(args)));
         if let Some(file) = found {
             let session_id = file.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
-            crate::modes::interactive::resume_session_from_file(ctx.app, file, &session_id, ctx.cmd_tx);
+            crate::modes::interactive::resume_session_from_file(
+                ctx.app,
+                file,
+                &session_id,
+                ctx.cmd_tx,
+                ctx.session_manager,
+            );
         } else {
             ctx.app.push_system(format!("No session matching '{}'. Use /session resume to browse.", args), true);
         }

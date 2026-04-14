@@ -70,7 +70,17 @@ pub(crate) struct EventLoopRunner<'a> {
     schedule_rx: tokio::sync::broadcast::Receiver<clanker_scheduler::ScheduleEvent>,
 }
 
+pub(super) fn sync_controller_session_id(app: &App, controller: &mut SessionController) {
+    if controller.session_id() != app.session_id {
+        controller.set_session_id(app.session_id.clone());
+    }
+}
+
 impl<'a> EventLoopRunner<'a> {
+    fn sync_controller_session_id_from_app(&mut self) {
+        sync_controller_session_id(self.app, &mut self.controller);
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         terminal: &'a mut Terminal<CrosstermBackend<io::Stdout>>,
@@ -453,9 +463,10 @@ impl<'a> EventLoopRunner<'a> {
                             self.plugin_manager.as_ref(),
                             &self.panel_tx,
                             &self.db,
-                            &mut None, // session persistence handled by controller
+                            &mut self.controller.session_manager,
                             &self.slash_registry,
                         );
+                        self.sync_controller_session_id_from_app();
                     }
                     // Drain any controller events (e.g. loop finish message)
                     self.drain_controller_messages();
@@ -472,9 +483,10 @@ impl<'a> EventLoopRunner<'a> {
                             self.plugin_manager.as_ref(),
                             &self.panel_tx,
                             &self.db,
-                            &mut None, // session persistence handled by controller
+                            &mut self.controller.session_manager,
                             &self.slash_registry,
                         );
+                        self.sync_controller_session_id_from_app();
                     } else {
                         // Sync TUI loop state to controller, then check what to do
                         self.controller.sync_loop_from_tui(self.app.loop_status.as_ref());
@@ -668,4 +680,30 @@ pub(super) fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_p
     app.panels
         .downcast_mut::<crate::tui::components::peers_panel::PeersPanel>(crate::tui::panel::PanelId::Peers)
         .expect("peers panel registered at startup")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sync_controller_session_id;
+
+    #[test]
+    fn sync_controller_session_id_updates_stale_controller_state() {
+        let mut app = crate::tui::app::App::new(
+            "test-model".to_string(),
+            "/tmp".to_string(),
+            crate::tui::theme::Theme::dark(),
+        );
+        app.session_id = "session-from-app".to_string();
+
+        let mut controller = clankers_controller::SessionController::new_embedded(
+            clankers_controller::config::ControllerConfig {
+                session_id: "stale-controller-session".to_string(),
+                model: "test-model".to_string(),
+                ..Default::default()
+            },
+        );
+
+        sync_controller_session_id(&app, &mut controller);
+        assert_eq!(controller.session_id(), "session-from-app");
+    }
 }

@@ -341,22 +341,26 @@ pub(crate) fn resume_session_from_file(
     file_path: std::path::PathBuf,
     _session_id: &str,
     cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
+    session_manager: &mut Option<crate::session::SessionManager>,
 ) {
     match crate::session::SessionManager::open(file_path) {
         Ok(mut mgr) => {
             let msgs = mgr.build_context().unwrap_or_default();
             let msg_count = msgs.len();
-            app.session_id = mgr.session_id().to_string();
+            let resumed_session_id = mgr.session_id().to_string();
+            app.session_id = resumed_session_id.clone();
             mgr.record_resume(crate::provider::message::MessageId::new("slash-resume")).ok();
+            *session_manager = Some(mgr);
 
             app.conversation.blocks.clear();
             app.conversation.all_blocks.clear();
             app.conversation.active_block = None;
             super::session_restore::restore_display_blocks(app, &msgs);
 
+            cmd_tx.send(AgentCommand::SetSessionId(resumed_session_id)).ok();
             cmd_tx.send(AgentCommand::SeedMessages(msgs)).ok();
 
-            app.push_system(format!("Resumed session {} ({} messages)", mgr.session_id(), msg_count), false);
+            app.push_system(format!("Resumed session {} ({} messages)", app.session_id, msg_count), false);
             app.conversation.scroll.scroll_to_bottom();
         }
         Err(e) => {

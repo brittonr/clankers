@@ -93,6 +93,7 @@ pub async fn compact_with_llm(
     keep_recent: usize,
     provider: &dyn Provider,
     model: &str,
+    session_id: &str,
 ) -> CompactionResult {
     use std::fmt::Write;
     let keep_first = 1.min(messages.len());
@@ -127,6 +128,15 @@ pub async fn compact_with_llm(
         convo_text
     );
 
+    let extra_params = if session_id.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        std::collections::HashMap::from([(
+            "_session_id".to_string(),
+            serde_json::Value::String(session_id.to_string()),
+        )])
+    };
+
     let summary_request = clankers_provider::CompletionRequest {
         model: model.to_string(),
         messages: vec![AgentMessage::User(clankers_provider::message::UserMessage {
@@ -145,6 +155,7 @@ pub async fn compact_with_llm(
         thinking: None,
         no_cache: false,
         cache_ttl: None,
+        extra_params,
     };
 
     let (tx, mut rx) = mpsc::channel(64);

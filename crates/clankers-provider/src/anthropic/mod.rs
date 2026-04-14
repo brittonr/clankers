@@ -244,6 +244,7 @@ impl Provider for AnthropicProvider {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
     use std::sync::atomic::AtomicUsize;
     use std::sync::atomic::Ordering;
 
@@ -405,6 +406,7 @@ mod tests {
             thinking: None,
             no_cache: true,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         }
     }
 

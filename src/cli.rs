@@ -609,7 +609,8 @@ pub enum ConfigAction {
 pub enum AuthAction {
     /// Authenticate with a provider (OAuth)
     Login {
-        /// Provider name (anthropic, openai, etc.)
+        /// Provider name (`anthropic`, `openai-codex`)
+        #[arg(long)]
         provider: Option<String>,
         /// Account name (e.g. "work", "personal"). Defaults to "default".
         #[arg(long, value_name = "NAME")]
@@ -620,13 +621,17 @@ pub enum AuthAction {
     },
     /// Show current auth status
     Status {
+        /// Provider name (`anthropic`, `openai`, `openai-codex`, etc.)
+        #[arg(long)]
+        provider: Option<String>,
         /// Show for all providers
         #[arg(long)]
         all: bool,
     },
     /// Remove stored credentials
     Logout {
-        /// Provider name (anthropic, openai, etc.)
+        /// Provider name (`anthropic`, `openai`, `openai-codex`, etc.)
+        #[arg(long)]
         provider: Option<String>,
         /// Account name to remove
         #[arg(long, value_name = "NAME")]
@@ -637,6 +642,9 @@ pub enum AuthAction {
     },
     /// Switch the active account
     Switch {
+        /// Provider name (`anthropic`, `openai-codex`, etc.)
+        #[arg(long)]
+        provider: Option<String>,
         /// Account name to switch to
         account: String,
     },

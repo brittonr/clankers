@@ -4,7 +4,6 @@
 //! requests over QUIC. Falls back to in-process routing if the daemon
 //! is unavailable.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use async_trait::async_trait;
@@ -86,24 +85,28 @@ impl RpcProvider {
     }
 }
 
+fn build_router_request(request: CompletionRequest) -> clanker_router::CompletionRequest {
+    clanker_router::CompletionRequest {
+        model: request.model,
+        messages: convert_messages_to_api(&request.messages),
+        system_prompt: request.system_prompt,
+        max_tokens: request.max_tokens,
+        temperature: request.temperature,
+        tools: request.tools,
+        thinking: request.thinking,
+        no_cache: request.no_cache,
+        cache_ttl: request.cache_ttl,
+        extra_params: request.extra_params,
+    }
+}
+
 #[async_trait]
 impl Provider for RpcProvider {
     async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
         // Convert clankers CompletionRequest → router CompletionRequest
         // Messages must be in Anthropic API format (role + content), not clankers
         // internal AgentMessage enum format.
-        let router_request = clanker_router::CompletionRequest {
-            model: request.model,
-            messages: convert_messages_to_api(&request.messages),
-            system_prompt: request.system_prompt,
-            max_tokens: request.max_tokens,
-            temperature: request.temperature,
-            tools: request.tools,
-            thinking: request.thinking,
-            no_cache: request.no_cache,
-            cache_ttl: request.cache_ttl,
-            extra_params: HashMap::new(),
-        };
+        let router_request = build_router_request(request);
 
         // Send to daemon and translate streaming events
         let (router_tx, mut router_rx) = mpsc::channel(64);
@@ -213,5 +216,58 @@ fn content_to_json(content: &crate::message::Content) -> serde_json::Value {
             }
             v
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::HashMap;
+
+    use serde_json::json;
+
+    use super::build_router_request;
+    use crate::CompletionRequest;
+    use crate::message::AgentMessage;
+    use crate::message::Content;
+    use crate::message::MessageId;
+    use crate::message::UserMessage;
+
+    fn make_request() -> CompletionRequest {
+        CompletionRequest {
+            model: "test-model".to_string(),
+            messages: vec![AgentMessage::User(UserMessage {
+                id: MessageId::new("test-user"),
+                content: vec![Content::Text {
+                    text: "hello".to_string(),
+                }],
+                timestamp: chrono::Utc::now(),
+            })],
+            system_prompt: Some("Be helpful".to_string()),
+            max_tokens: Some(128),
+            temperature: Some(0.2),
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: Some("1h".to_string()),
+            extra_params: HashMap::from([("_session_id".to_string(), json!("session-rpc-1"))]),
+        }
+    }
+
+    #[test]
+    fn rpc_request_conversion_preserves_session_id_extra_param() {
+        let router_request = build_router_request(make_request());
+        assert_eq!(
+            router_request.extra_params.get("_session_id"),
+            Some(&json!("session-rpc-1"))
+        );
+    }
+
+    #[test]
+    fn rpc_request_serialization_preserves_session_id_extra_param() {
+        let router_request = build_router_request(make_request());
+        let encoded = serde_json::to_string(&router_request).expect("router request should serialize");
+        let decoded: clanker_router::CompletionRequest =
+            serde_json::from_str(&encoded).expect("router request should deserialize");
+        assert_eq!(decoded.extra_params.get("_session_id"), Some(&json!("session-rpc-1")));
     }
 }

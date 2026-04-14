@@ -189,7 +189,8 @@ pub struct App {
     pub connection_mode: ConnectionMode,
     pub prompt_improve: bool,
     pub queued_prompt: Option<String>,
-    pub login_verifier: Option<(String, String)>,
+    /// Pending OAuth verifiers in memory, keyed by (provider, account).
+    pub login_verifiers: HashMap<(String, String), String>,
     pub tick: u64,
     /// Loop mode state (None when not in a loop).
     pub loop_status: Option<clankers_tui_types::LoopDisplayState>,
@@ -277,7 +278,7 @@ impl App {
             connection_mode: ConnectionMode::Embedded,
             prompt_improve: false,
             queued_prompt: None,
-            login_verifier: None,
+            login_verifiers: HashMap::new(),
             tick: 0,
             loop_status: None,
             auto_test_command: None,

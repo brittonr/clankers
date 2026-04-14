@@ -15,6 +15,23 @@ use crate::modes::peers_background;
 use crate::tui::clipboard;
 use crate::tui::selectors;
 
+fn resume_selected_session(
+    app: &mut crate::tui::app::App,
+    cmd_tx: &tokio::sync::mpsc::UnboundedSender<AgentCommand>,
+    controller: &mut clankers_controller::SessionController,
+    file_path: std::path::PathBuf,
+    session_id: &str,
+) {
+    super::super::interactive::resume_session_from_file(
+        app,
+        file_path,
+        session_id,
+        cmd_tx,
+        &mut controller.session_manager,
+    );
+    super::sync_controller_session_id(app, controller);
+}
+
 impl<'a> EventLoopRunner<'a> {
     // ── Key event dispatch ──────────────────────────────────────────
 
@@ -102,6 +119,7 @@ impl<'a> EventLoopRunner<'a> {
                     &mut self.controller.session_manager,
                     &self.slash_registry,
                 );
+                self.sync_controller_session_id_from_app();
             }
             return;
         }
@@ -127,6 +145,7 @@ impl<'a> EventLoopRunner<'a> {
                 &self.slash_registry,
             )
         {
+            self.sync_controller_session_id_from_app();
             return;
         }
 
@@ -155,6 +174,7 @@ impl<'a> EventLoopRunner<'a> {
                 &mut self.controller.session_manager,
                 &self.slash_registry,
             );
+            self.sync_controller_session_id_from_app();
 
             // Record branch in session if one was initiated
             if let Some(checkpoint) = self.app.branching.last_branch_checkpoint.take()
@@ -457,7 +477,13 @@ impl<'a> EventLoopRunner<'a> {
                 self.cmd_tx.send(AgentCommand::SwitchAccount(name)).ok();
             }
             SelectorAction::ResumeSession { file_path, session_id } => {
-                super::super::interactive::resume_session_from_file(self.app, file_path, &session_id, &self.cmd_tx);
+                resume_selected_session(
+                    self.app,
+                    &self.cmd_tx,
+                    &mut self.controller,
+                    file_path,
+                    &session_id,
+                );
             }
         }
     }
@@ -564,5 +590,178 @@ impl<'a> EventLoopRunner<'a> {
                 Err(e) => self.app.push_system(format!("Merge failed: {}", e), true),
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    use async_trait::async_trait;
+    use serde_json::json;
+    use tokio::time::timeout;
+
+    use super::resume_selected_session;
+    use crate::agent::Agent;
+    use crate::modes::agent_task::spawn_agent_task;
+    use crate::modes::common::ToolEnv;
+    use crate::modes::interactive::AgentCommand;
+    use crate::modes::interactive::TaskResult;
+    use crate::provider::message::AgentMessage;
+    use crate::provider::message::Content;
+    use crate::provider::message::MessageId;
+    use crate::provider::message::UserMessage;
+    use crate::provider::router::RouterCompatAdapter;
+    use crate::provider::Model;
+    use crate::provider::Provider;
+
+    struct CapturingRouterProvider {
+        captured: Mutex<Option<clanker_router::CompletionRequest>>,
+        models: Vec<Model>,
+    }
+
+    #[async_trait]
+    impl clanker_router::Provider for CapturingRouterProvider {
+        async fn complete(
+            &self,
+            request: clanker_router::CompletionRequest,
+            tx: tokio::sync::mpsc::Sender<clanker_router::streaming::StreamEvent>,
+        ) -> std::result::Result<(), clanker_router::Error> {
+            *self.captured.lock().expect("capture lock poisoned") = Some(request);
+            tx.send(clanker_router::streaming::StreamEvent::MessageStop).await.ok();
+            Ok(())
+        }
+
+        fn models(&self) -> &[Model] {
+            &self.models
+        }
+
+        fn name(&self) -> &str {
+            "capturing-router"
+        }
+    }
+
+    fn test_model() -> Model {
+        Model {
+            id: "test-model".to_string(),
+            name: "test-model".to_string(),
+            provider: "capturing-router".to_string(),
+            max_input_tokens: 200_000,
+            max_output_tokens: 16_384,
+            supports_thinking: true,
+            supports_images: true,
+            supports_tools: true,
+            input_cost_per_mtok: None,
+            output_cost_per_mtok: None,
+        }
+    }
+
+    fn persisted_session_file(tmp: &tempfile::TempDir) -> (std::path::PathBuf, String, String) {
+        let cwd = tmp.path().to_string_lossy().to_string();
+        let mut mgr = crate::session::SessionManager::create(tmp.path(), &cwd, "test-model", None, None, None)
+            .expect("session create should succeed");
+        let session_id = mgr.session_id().to_string();
+        mgr.append_message(
+            AgentMessage::User(UserMessage {
+                id: MessageId::new("persisted-user"),
+                content: vec![Content::Text {
+                    text: "persisted context".to_string(),
+                }],
+                timestamp: chrono::Utc::now(),
+            }),
+            None,
+        )
+        .expect("persisted message should save");
+        (mgr.file_path().to_path_buf(), session_id, cwd)
+    }
+
+    #[tokio::test]
+    async fn resume_selected_session_preserves_session_id_in_local_router_request() {
+        let tmp = tempfile::TempDir::new().expect("tempdir should exist");
+        let (file_path, session_id, cwd) = persisted_session_file(&tmp);
+
+        let inner = Arc::new(CapturingRouterProvider {
+            captured: Mutex::new(None),
+            models: vec![test_model()],
+        });
+        let provider: Arc<dyn Provider> = Arc::new(RouterCompatAdapter::new(inner.clone()));
+        let agent = Agent::new(
+            provider,
+            vec![],
+            crate::config::settings::Settings::default(),
+            "test-model".to_string(),
+            "You are a test assistant.".to_string(),
+        );
+
+        let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (done_tx, mut done_rx) = tokio::sync::mpsc::unbounded_channel();
+        spawn_agent_task(
+            agent,
+            cmd_rx,
+            done_tx,
+            ToolEnv {
+                event_tx: None,
+                panel_tx: None,
+                todo_tx: None,
+                bash_confirm_tx: None,
+                process_monitor: None,
+                actor_ctx: None,
+                schedule_engine: None,
+            },
+            None,
+        );
+
+        let mut app = crate::tui::app::App::new(
+            "test-model".to_string(),
+            cwd,
+            crate::tui::theme::Theme::dark(),
+        );
+        app.session_id = "stale-app-session".to_string();
+
+        let mut controller = clankers_controller::SessionController::new_embedded(
+            clankers_controller::config::ControllerConfig {
+                session_id: "stale-controller-session".to_string(),
+                model: "test-model".to_string(),
+                ..Default::default()
+            },
+        );
+
+        resume_selected_session(&mut app, &cmd_tx, &mut controller, file_path, &session_id);
+        assert_eq!(app.session_id, session_id);
+        assert_eq!(controller.session_id(), session_id);
+        assert_eq!(
+            controller
+                .session_manager
+                .as_ref()
+                .expect("session manager should be resumed")
+                .session_id(),
+            session_id
+        );
+
+        cmd_tx
+            .send(AgentCommand::Prompt("prompt after resume".to_string()))
+            .expect("prompt should enqueue");
+
+        timeout(Duration::from_secs(5), async {
+            loop {
+                match done_rx.recv().await {
+                    Some(TaskResult::PromptDone(_)) => break,
+                    Some(_) => continue,
+                    None => panic!("agent task ended before prompt completed"),
+                }
+            }
+        })
+        .await
+        .expect("prompt should finish");
+
+        let captured = inner
+            .captured
+            .lock()
+            .expect("capture lock poisoned")
+            .take()
+            .expect("router request should be captured");
+        assert_eq!(captured.extra_params.get("_session_id"), Some(&json!(session_id)));
     }
 }

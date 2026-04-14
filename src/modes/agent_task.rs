@@ -42,11 +42,11 @@ pub(crate) fn spawn_agent_task(
                     handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &text, Some(img_contents)).await;
                 }
                 AgentCommand::RewriteAndPrompt(text) => {
-                    let improved = rewrite_prompt(agent.provider(), agent.model(), &text).await;
+                    let improved = rewrite_prompt(agent.provider(), agent.model(), agent.session_id(), &text).await;
                     handle_prompt(&mut agent, &mut cmd_rx, &done_tx, &improved, None).await;
                 }
                 AgentCommand::RewriteAndPromptWithImages { text, images } => {
-                    let improved = rewrite_prompt(agent.provider(), agent.model(), &text).await;
+                    let improved = rewrite_prompt(agent.provider(), agent.model(), agent.session_id(), &text).await;
                     let img_contents: Vec<crate::provider::message::Content> = images
                         .into_iter()
                         .map(|img| crate::provider::message::Content::Image {
@@ -62,9 +62,10 @@ pub(crate) fn spawn_agent_task(
                     code,
                     state,
                     verifier,
+                    provider,
                     account,
                 } => {
-                    handle_login(&mut agent, &done_tx, &code, &state, &verifier, &account).await;
+                    handle_login(&mut agent, &done_tx, &code, &state, &verifier, &provider, &account).await;
                 }
                 AgentCommand::Abort => agent.abort(),
                 AgentCommand::ResetCancel => agent.reset_cancel(),
@@ -72,6 +73,7 @@ pub(crate) fn spawn_agent_task(
                 AgentCommand::ClearHistory => agent.clear_messages(),
                 AgentCommand::TruncateMessages(n) => agent.truncate_messages(n),
                 AgentCommand::SeedMessages(msgs) => agent.seed_messages(msgs),
+                AgentCommand::SetSessionId(session_id) => agent.set_session_id(session_id),
                 AgentCommand::SetThinkingLevel(level) => {
                     let level = agent.set_thinking_level(level);
                     done_tx.send(TaskResult::ThinkingToggled(thinking_msg(&level), level)).ok();
@@ -87,7 +89,19 @@ pub(crate) fn spawn_agent_task(
                     tx.send(agent.system_prompt().to_string()).ok();
                 }
                 AgentCommand::SwitchAccount(account_name) => {
-                    handle_switch_account(&mut agent, &done_tx, &account_name).await;
+                    handle_switch_account(
+                        &mut agent,
+                        &done_tx,
+                        crate::provider::auth::DEFAULT_OAUTH_PROVIDER,
+                        &account_name,
+                    )
+                    .await;
+                }
+                AgentCommand::SwitchProviderAccount { provider, account } => {
+                    handle_switch_account(&mut agent, &done_tx, &provider, &account).await;
+                }
+                AgentCommand::ReloadCredentials => {
+                    agent.provider().reload_credentials().await;
                 }
                 AgentCommand::SetDisabledTools(disabled) => {
                     use crate::modes::common::ToolTier;
@@ -182,22 +196,32 @@ async fn handle_login(
     code: &str,
     state: &str,
     verifier: &str,
+    provider: &str,
     account: &str,
 ) {
     use crate::provider::auth::AuthStoreExt;
-    let result = clanker_router::oauth::exchange_code(code, state, verifier).await;
+
+    let oauth_flow = match crate::provider::auth::OAuthFlow::from_provider(Some(provider)) {
+        Ok(flow) => flow,
+        Err(e) => {
+            done_tx.send(TaskResult::LoginDone(Err(format!("Login failed: {}", e)))).ok();
+            return;
+        }
+    };
+
+    let result = oauth_flow.exchange_code(code, state, verifier).await;
     match result {
         Ok(creds) => {
             let paths = crate::config::ClankersPaths::get();
             let mut store = crate::provider::auth::AuthStore::load(&paths.global_auth);
-            store.set_credentials(account, creds);
-            store.switch_anthropic_account(account);
+            store.set_provider_credentials(provider, account, creds);
+            store.switch_provider_account(provider, account);
             match store.save(&paths.global_auth) {
                 Ok(()) => {
                     agent.provider().reload_credentials().await;
                     done_tx.send(TaskResult::LoginDone(Ok(format!(
-                        "Authentication successful! Saved as account '{}'.",
-                        account
+                        "Authentication successful! Saved '{}' for provider '{}'.",
+                        account, provider
                     )))).ok();
                 }
                 Err(e) => {
@@ -215,20 +239,33 @@ async fn handle_login(
 async fn handle_switch_account(
     agent: &mut Agent,
     done_tx: &tokio::sync::mpsc::UnboundedSender<TaskResult>,
+    provider: &str,
     account_name: &str,
 ) {
     use crate::provider::auth::AuthStoreExt;
     let paths = crate::config::ClankersPaths::get();
     let mut store = crate::provider::auth::AuthStore::load(&paths.global_auth);
-    if store.switch_anthropic_account(account_name) {
+    if store.switch_provider_account(provider, account_name) {
         if let Err(e) = store.save(&paths.global_auth) {
             done_tx.send(TaskResult::AccountSwitched(Err(format!("Failed to save: {}", e)))).ok();
         } else {
             agent.provider().reload_credentials().await;
-            done_tx.send(TaskResult::AccountSwitched(Ok(account_name.to_string()))).ok();
+            let label = if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
+                account_name.to_string()
+            } else {
+                format!("{}:{}", provider, account_name)
+            };
+            done_tx.send(TaskResult::AccountSwitched(Ok(label))).ok();
         }
-    } else {
+    } else if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
         done_tx.send(TaskResult::AccountSwitched(Err(format!("No account '{}'", account_name)))).ok();
+    } else {
+        done_tx
+            .send(TaskResult::AccountSwitched(Err(format!(
+                "No account '{}' for provider '{}'",
+                account_name, provider
+            ))))
+            .ok();
     }
 }
 
@@ -240,6 +277,7 @@ async fn handle_switch_account(
 pub(crate) async fn rewrite_prompt(
     provider: &std::sync::Arc<dyn crate::provider::Provider>,
     model: &str,
+    session_id: &str,
     original: &str,
 ) -> String {
     use crate::provider::CompletionRequest;
@@ -262,6 +300,15 @@ pub(crate) async fn rewrite_prompt(
         timestamp: chrono::Utc::now(),
     });
 
+    let extra_params = if session_id.is_empty() {
+        std::collections::HashMap::new()
+    } else {
+        std::collections::HashMap::from([(
+            "_session_id".to_string(),
+            serde_json::Value::String(session_id.to_string()),
+        )])
+    };
+
     let request = CompletionRequest {
         model: model.to_string(),
         messages: vec![user_msg],
@@ -272,6 +319,7 @@ pub(crate) async fn rewrite_prompt(
         thinking: None,
         no_cache: false,
         cache_ttl: None,
+        extra_params,
     };
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<StreamEvent>(64);
@@ -419,21 +467,21 @@ mod tests {
         let provider: Arc<dyn Provider> = Arc::new(MockRewriteProvider {
             response: "Improved version of the prompt".to_string(),
         });
-        let result = super::rewrite_prompt(&provider, "test-model", "fix the bug").await;
+        let result = super::rewrite_prompt(&provider, "test-model", "", "fix the bug").await;
         assert_eq!(result, "Improved version of the prompt");
     }
 
     #[tokio::test]
     async fn rewrite_prompt_falls_back_on_error() {
         let provider: Arc<dyn Provider> = Arc::new(FailingProvider);
-        let result = super::rewrite_prompt(&provider, "test-model", "fix the bug").await;
+        let result = super::rewrite_prompt(&provider, "test-model", "", "fix the bug").await;
         assert_eq!(result, "fix the bug");
     }
 
     #[tokio::test]
     async fn rewrite_prompt_falls_back_on_empty_response() {
         let provider: Arc<dyn Provider> = Arc::new(EmptyProvider);
-        let result = super::rewrite_prompt(&provider, "test-model", "fix the bug").await;
+        let result = super::rewrite_prompt(&provider, "test-model", "", "fix the bug").await;
         assert_eq!(result, "fix the bug");
     }
 
@@ -442,7 +490,7 @@ mod tests {
         let provider: Arc<dyn Provider> = Arc::new(MockRewriteProvider {
             response: "  improved prompt  \n".to_string(),
         });
-        let result = super::rewrite_prompt(&provider, "test-model", "original").await;
+        let result = super::rewrite_prompt(&provider, "test-model", "", "original").await;
         assert_eq!(result, "improved prompt");
     }
 
@@ -489,7 +537,7 @@ mod tests {
         });
         let provider_dyn: Arc<dyn Provider> = provider.clone();
 
-        let _ = super::rewrite_prompt(&provider_dyn, "my-model", "do the thing").await;
+        let _ = super::rewrite_prompt(&provider_dyn, "my-model", "session-42", "do the thing").await;
 
         let req = provider.captured.lock().unwrap().take().unwrap();
         assert_eq!(req.model, "my-model");
@@ -498,5 +546,6 @@ mod tests {
         assert!(req.tools.is_empty(), "rewrite call should have no tools");
         assert_eq!(req.messages.len(), 1);
         assert!(req.thinking.is_none());
+        assert_eq!(req.extra_params.get("_session_id"), Some(&serde_json::Value::String("session-42".into())));
     }
 }

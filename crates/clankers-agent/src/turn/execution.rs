@@ -35,7 +35,17 @@ pub(super) async fn execute_turn(
     tool_defs: &[ToolDefinition],
     event_tx: &broadcast::Sender<AgentEvent>,
     cancel: &CancellationToken,
+    session_id: &str,
 ) -> Result<CollectedResponse> {
+    let extra_params = if session_id.is_empty() {
+        HashMap::new()
+    } else {
+        HashMap::from([(
+            "_session_id".to_string(),
+            Value::String(session_id.to_string()),
+        )])
+    };
+
     let request = CompletionRequest {
         model: active_model.to_string(),
         messages: messages.to_vec(),
@@ -46,6 +56,7 @@ pub(super) async fn execute_turn(
         thinking: config.thinking.clone(),
         no_cache: config.no_cache,
         cache_ttl: config.cache_ttl.clone(),
+        extra_params,
     };
 
     let (stream_tx, mut stream_rx) = mpsc::channel(256);

@@ -86,6 +86,7 @@ pub async fn resolve_conflict(
         thinking: None,
         no_cache: false,
         cache_ttl: None,
+        extra_params: std::collections::HashMap::new(),
     };
 
     let (tx, mut rx) = mpsc::channel(64);

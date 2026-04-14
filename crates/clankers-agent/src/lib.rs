@@ -363,6 +363,7 @@ impl Agent {
             auto_compact_config.keep_recent,
             self.provider.as_ref(),
             &self.model,
+            &self.session_id,
         )
         .await;
 
@@ -479,6 +480,11 @@ impl Agent {
     /// Get the current model ID
     pub fn model(&self) -> &str {
         &self.model
+    }
+
+    /// Get the current session ID.
+    pub fn session_id(&self) -> &str {
+        &self.session_id
     }
 
     /// Change the model

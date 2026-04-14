@@ -44,7 +44,6 @@ use std::sync::Weak;
 use std::time::Duration;
 
 use clanker_router::auth::AuthStore;
-use clanker_router::oauth;
 use clanker_router::oauth::OAuthCredentials;
 use tokio::sync::Mutex;
 use tracing::debug;
@@ -53,6 +52,7 @@ use tracing::warn;
 
 use super::auth::AuthStoreExt;
 use super::auth::Credential;
+use super::auth::OAuthFlow;
 use crate::error::Result;
 
 /// Manages credentials with automatic refresh for OAuth tokens.
@@ -60,6 +60,8 @@ use crate::error::Result;
 /// Thread-safe — uses internal `Mutex`es so it can be shared across
 /// the provider and any background tasks.
 pub struct CredentialManager {
+    /// Provider name (e.g. "anthropic", "openai-codex")
+    provider: String,
     /// Current credential (behind a lock for interior mutability)
     credential: Mutex<Credential>,
     /// Serializes refresh attempts so concurrent callers coalesce
@@ -71,14 +73,27 @@ pub struct CredentialManager {
 }
 
 impl CredentialManager {
-    /// Create a new credential manager.
+    /// Create a new Anthropic credential manager.
+    ///
+    /// Kept for backwards compatibility with existing Anthropic call sites.
+    pub fn new(credential: Credential, auth_path: PathBuf, fallback_auth_path: Option<PathBuf>) -> Arc<Self> {
+        Self::new_for_provider("anthropic", credential, auth_path, fallback_auth_path)
+    }
+
+    /// Create a credential manager for a specific OAuth-capable provider.
     ///
     /// For OAuth credentials, automatically starts a background task that
     /// proactively refreshes the token before it expires. The task uses a
     /// `Weak` reference, so dropping all strong `Arc` refs stops it.
-    pub fn new(credential: Credential, auth_path: PathBuf, fallback_auth_path: Option<PathBuf>) -> Arc<Self> {
+    pub fn new_for_provider(
+        provider: impl Into<String>,
+        credential: Credential,
+        auth_path: PathBuf,
+        fallback_auth_path: Option<PathBuf>,
+    ) -> Arc<Self> {
         let is_oauth = credential.is_oauth();
         let mgr = Arc::new(Self {
+            provider: provider.into(),
             credential: Mutex::new(credential),
             refresh_guard: Mutex::new(()),
             auth_path,
@@ -157,26 +172,29 @@ impl CredentialManager {
                 .await
                 .map_err(|e| crate::error::auth_err(format!("Disk read panicked: {e}")))?
         };
-        if let Some(cred) = store.active_credential("anthropic")
+        if let Some(cred) = store.active_credential(&self.provider)
             && !cred.is_expired()
         {
-            info!("Token already refreshed by another instance");
+            info!("{} token already refreshed by another instance", self.provider);
             let fresh = cred.clone();
             *self.credential.lock().await = fresh.clone();
             return Ok(fresh);
         }
 
+        let oauth_flow = OAuthFlow::from_provider(Some(&self.provider))?;
+
         // 4. HTTP refresh (no lock held — this can take hundreds of ms)
-        match oauth::refresh_token(refresh_token).await {
+        match oauth_flow.refresh_token(refresh_token).await {
             Ok(new_creds) => {
                 // 5. Save to disk with file locking
                 let creds_clone = new_creds.clone();
                 let path = self.auth_path.clone();
-                tokio::task::spawn_blocking(move || save_with_file_lock(&path, &creds_clone))
+                let provider = self.provider.clone();
+                tokio::task::spawn_blocking(move || save_with_file_lock_for_provider(&path, &provider, &creds_clone))
                     .await
                     .map_err(|e| crate::error::auth_err(format!("Save task panicked: {e}")))??;
 
-                info!("OAuth token refreshed, new expiry: {}", new_creds.expires);
+                info!("{} OAuth token refreshed, new expiry: {}", self.provider, new_creds.expires);
 
                 // 6. Update in-memory
                 let new_credential = new_creds.to_stored();
@@ -200,13 +218,9 @@ impl CredentialManager {
     /// endpoint is down, this lets us fall back to a different account that
     /// still has a valid token.
     async fn try_fallback_account(&self, store: &AuthStore) -> Option<Credential> {
-        let active = store
-            .providers
-            .get("anthropic")
-            .and_then(|p| p.active_account.as_deref())
-            .unwrap_or("default");
+        let active = store.active_account_name_for(&self.provider).to_string();
 
-        for (name, cred) in store.all_credentials("anthropic") {
+        for (name, cred) in store.all_credentials(&self.provider) {
             if name != active && !cred.is_expired() {
                 info!("falling back to account '{name}' after refresh failure");
                 *self.credential.lock().await = cred.clone();
@@ -228,10 +242,10 @@ impl CredentialManager {
     /// without going through the OAuth refresh endpoint.
     pub async fn reload_from_disk(&self) {
         let store = AuthStore::load(&self.auth_path);
-        if let Some(creds) = store.active_credentials()
+        if let Some(creds) = store.active_oauth_credentials_for(&self.provider)
             && !creds.is_expired()
         {
-            info!("Reloaded credentials from disk after login");
+            info!("Reloaded {} credentials from disk after login", self.provider);
             *self.credential.lock().await = creds.to_stored();
             return;
         }
@@ -239,10 +253,10 @@ impl CredentialManager {
         // Try fallback path (e.g. ~/.pi/agent/auth.json)
         if let Some(ref fallback) = self.fallback_auth_path {
             let store = AuthStore::load(fallback);
-            if let Some(creds) = store.active_credentials()
+            if let Some(creds) = store.active_oauth_credentials_for(&self.provider)
                 && !creds.is_expired()
             {
-                info!("Reloaded credentials from fallback auth path");
+                info!("Reloaded {} credentials from fallback auth path", self.provider);
                 *self.credential.lock().await = creds.to_stored();
             }
         }
@@ -322,12 +336,20 @@ async fn proactive_refresh_loop(weak: Weak<CredentialManager>) {
 
 // ── File-locked disk save ───────────────────────────────────────────────
 
+/// Save refreshed Anthropic credentials to disk under an exclusive file lock.
+///
+/// Backwards-compatible wrapper for tests that still exercise the Anthropic path.
+#[cfg(test)]
+fn save_with_file_lock(auth_path: &std::path::Path, creds: &OAuthCredentials) -> Result<()> {
+    save_with_file_lock_for_provider(auth_path, "anthropic", creds)
+}
+
 /// Save refreshed credentials to disk under an exclusive file lock.
 ///
 /// Runs in `spawn_blocking` because `fs4` lock operations are blocking.
 /// The lock is held only for the read-modify-write cycle (~ms), not during
 /// any network calls.
-fn save_with_file_lock(auth_path: &std::path::Path, creds: &OAuthCredentials) -> Result<()> {
+fn save_with_file_lock_for_provider(auth_path: &std::path::Path, provider: &str, creds: &OAuthCredentials) -> Result<()> {
     use std::fs;
     use std::io::Write;
 
@@ -379,8 +401,8 @@ fn save_with_file_lock(auth_path: &std::path::Path, creds: &OAuthCredentials) ->
 
     // Read-modify-write under lock
     let mut store = AuthStore::load(auth_path);
-    let account_name = store.active_account_name().to_string();
-    store.set_credentials(&account_name, creds.clone());
+    let account_name = store.active_account_name_for(provider).to_string();
+    store.set_provider_credentials(provider, &account_name, creds.clone());
     store
         .save(auth_path)
         .map_err(|e| crate::error::auth_err(format!("Save refreshed credentials: {e}")))?;
@@ -445,6 +467,7 @@ mod tests {
     /// (Avoids background tasks that call real oauth::refresh_token.)
     fn make_manager(credential: Credential, auth_path: PathBuf, fallback: Option<PathBuf>) -> Arc<CredentialManager> {
         Arc::new(CredentialManager {
+            provider: "anthropic".to_string(),
             credential: Mutex::new(credential),
             refresh_guard: Mutex::new(()),
             auth_path,

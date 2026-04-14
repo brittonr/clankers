@@ -71,6 +71,11 @@ clankers daemon stop           # stop daemon
 - Pi fallback: reads `~/.pi/agent/` for auth/settings when clankers versions missing.
 - Subwayrat crates are Cargo path deps (`../subwayrat/...`) but also a separately pinned Nix flake input (`subwayrat-src`); when subwayrat adds crates or new transitive deps, update both `Cargo.lock` and `flake.lock` so sandboxed Nix builds see the same source. If subwayrat starts depending on new sibling path deps (for example `../ratcore` via `rat-inline`), mirror those in `flake.nix` `externalSources` too.
 - Anthropic OAuth request shaping lives in `crates/clankers-provider/src/anthropic/{api.rs,subscription_compat.rs}`. The provider prepends a Claude Code billing-header system block and rewrites clankers markers by default; disable with `CLANKERS_DISABLE_CLAUDE_SUBSCRIPTION_COMPAT=1` or override the block contents with `CLANKERS_ANTHROPIC_BILLING_HEADER`.
+- `crates/clankers-provider/src/{auth.rs,credential_manager.rs}` was originally Anthropic-only. For any new OAuth provider, thread the provider name through `CredentialManager` and use provider-scoped `AuthStore` helpers for reload/save/refresh fallback so refreshed tokens do not overwrite Anthropic slots.
+- Pending OAuth login state now lives under `~/.clankers/agent/.login_verifiers/<provider>/<account>.json` with legacy fallback to `.login_verifier`; new auth flows should key verifier/state by provider+account, not one global file.
+- `crates/clankers-provider::CompletionRequest` now carries `extra_params` to match `clanker-router::CompletionRequest`; when adding request builders, run `cargo check --tests` so helper/test constructors in `crates/clankers-provider/src/router.rs` and `crates/clankers-provider/src/anthropic/mod.rs` don’t silently miss the new field.
+- Session-scoped provider metadata depends on `Agent.session_id`, not just `SessionController.session_id` or `App.session_id`. In daemon/controller-owned paths, call `agent.set_session_id(...)` when constructing or updating the controller or `_session_id` will be missing from routed requests. Slash/session-resume paths in the TUI also need to sync `SessionController::set_session_id(app.session_id.clone())` after the app swaps sessions.
+- Review-sensitive `_session_id` work needs one runtime resume-path test, not just direct `run_turn_loop(...)` calls. `src/modes/event_loop_runner/key_handler.rs` now has a good pattern: resume persisted session via real helper, prompt through `RouterCompatAdapter`, assert captured router request keeps `_session_id`.
 
 ### Reference Repos
 
@@ -87,3 +92,9 @@ clankers daemon stop           # stop daemon
 - `clanker-actor` (external) — ProcessRegistry (spawn, link, shutdown)
 - `crates/clankers-controller/src/lib.rs` — SessionController (handle_command, feed_event)
 - `crate-hashes.json` — unit2nix git source hashes for first-party extracted crates; stale entries fail `nix build .#clankers` with fixed-output hash mismatch before workspace code even builds
+
+### Orchestration Notes
+
+- Daemon mode gives top-level `subagent`/`delegate_task` calls in-process actor spawning, but child factories intentionally set `registry: None` and `plugin_manager: None` in `src/modes/daemon/socket_bridge.rs`, so recursive children fall back to subprocesses and do not load plugins.
+- `delegate_task` is not process-persistent today: `DelegateTool` stores `WorkerState` metadata, but each call still spawns a fresh local subprocess, ephemeral actor, or remote `prompt` RPC.
+- Orchestration docs drift: `README.md` and `ToolTier` comments mention `loop` and `switch_model`, but `src/modes/common.rs` does not register either tool. Actual loop control is `/loop` plus controller state; only `signal_loop_success` is wired as an agent tool.

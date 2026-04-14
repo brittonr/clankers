@@ -4,6 +4,8 @@
 //! language model APIs. It supports streaming responses, multiple content types,
 //! tool use, and extended thinking modes.
 
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use serde::Deserialize;
 use serde::Serialize;
@@ -88,6 +90,10 @@ pub struct CompletionRequest {
     /// Cache TTL override (e.g. "1h" for 1-hour cache). None = default 5m ephemeral.
     #[serde(default)]
     pub cache_ttl: Option<String>,
+
+    /// Extra provider-specific parameters passed through verbatim.
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub extra_params: HashMap<String, serde_json::Value>,
 }
 
 // Re-export ThinkingConfig from clanker-router (canonical definition)

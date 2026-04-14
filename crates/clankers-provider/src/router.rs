@@ -75,7 +75,7 @@ impl Provider for RouterCompatAdapter {
             thinking: request.thinking,
             no_cache: request.no_cache,
             cache_ttl: request.cache_ttl,
-            extra_params: HashMap::new(),
+            extra_params: request.extra_params,
         };
 
         // Create a channel for router StreamEvents and convert via From impl
@@ -530,6 +530,10 @@ impl RouterProvider {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
+    use serde_json::json;
+
     use super::*;
     use crate::streaming::StreamEvent;
 
@@ -647,6 +651,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         };
 
         router.complete(request, tx).await.expect("router should complete successfully");
@@ -781,6 +786,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         }
     }
 
@@ -1015,6 +1021,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         };
 
         let (tx, _rx) = mpsc::channel(10);
@@ -1046,6 +1053,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         };
 
         let (tx, _rx) = mpsc::channel(10);
@@ -1084,6 +1092,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         };
 
         let (tx, _rx) = mpsc::channel(10);
@@ -1139,6 +1148,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         };
 
         let (tx, _rx) = mpsc::channel(10);
@@ -1181,6 +1191,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         };
 
         let (tx, _rx) = mpsc::channel(10);
@@ -1331,6 +1342,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         };
 
         adapter.complete(request, tx).await.unwrap();
@@ -1344,6 +1356,76 @@ mod tests {
         assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStart { .. })));
         assert!(events.iter().any(|e| matches!(e, StreamEvent::ContentBlockDelta { .. })));
         assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStop)));
+    }
+
+    struct CapturingRouterProvider {
+        captured: Mutex<Option<clanker_router::CompletionRequest>>,
+        models_list: Vec<Model>,
+    }
+
+    #[async_trait]
+    impl clanker_router::Provider for CapturingRouterProvider {
+        async fn complete(
+            &self,
+            request: clanker_router::CompletionRequest,
+            tx: mpsc::Sender<clanker_router::streaming::StreamEvent>,
+        ) -> std::result::Result<(), clanker_router::Error> {
+            *self.captured.lock().expect("capture lock poisoned") = Some(request);
+            tx.send(clanker_router::streaming::StreamEvent::MessageStop).await.ok();
+            Ok(())
+        }
+
+        fn models(&self) -> &[Model] {
+            &self.models_list
+        }
+
+        fn name(&self) -> &str {
+            "capturing"
+        }
+    }
+
+    #[tokio::test]
+    async fn test_compat_adapter_preserves_session_id_extra_param() {
+        let inner = Arc::new(CapturingRouterProvider {
+            captured: Mutex::new(None),
+            models_list: vec![Model {
+                id: "test-model".to_string(),
+                name: "test-model".to_string(),
+                provider: "capturing".to_string(),
+                max_input_tokens: 200_000,
+                max_output_tokens: 16_384,
+                supports_thinking: true,
+                supports_images: true,
+                supports_tools: true,
+                input_cost_per_mtok: None,
+                output_cost_per_mtok: None,
+            }],
+        });
+        let adapter = RouterCompatAdapter::new(inner.clone());
+
+        let (tx, _rx) = mpsc::channel(4);
+        let request = CompletionRequest {
+            model: "test-model".to_string(),
+            messages: vec![make_user_msg("Hello")],
+            system_prompt: Some("Be helpful".into()),
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+            extra_params: HashMap::from([("_session_id".to_string(), json!("session-local-1"))]),
+        };
+
+        adapter.complete(request, tx).await.unwrap();
+
+        let captured = inner
+            .captured
+            .lock()
+            .expect("capture lock poisoned")
+            .take()
+            .expect("router request should be captured");
+        assert_eq!(captured.extra_params.get("_session_id"), Some(&json!("session-local-1")));
     }
 
     #[tokio::test]
@@ -1395,6 +1477,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         };
 
         let err = adapter.complete(request, tx).await.unwrap_err();
@@ -1503,6 +1586,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         };
 
         let (tx, _rx) = mpsc::channel(10);
@@ -1541,6 +1625,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         };
 
         let (tx, _rx) = mpsc::channel(10);
@@ -1572,6 +1657,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         };
 
         let (tx, _rx) = mpsc::channel(10);
@@ -1611,6 +1697,7 @@ mod tests {
             thinking: None,
             no_cache: false,
             cache_ttl: None,
+            extra_params: HashMap::new(),
         };
 
         let (tx, _rx) = mpsc::channel(10);

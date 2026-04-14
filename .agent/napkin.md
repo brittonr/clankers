@@ -9,6 +9,9 @@
 | 2026-04-08 | self | Review evidence was weaker than the actual work because I bundled/parallelized validation and the transcript did not clearly show the exact command | For reviewer-sensitive claims, rerun the exact command with `set -x` in a dedicated tool call so the transcript proves what ran. |
 | 2026-04-11 | self | Updated subwayrat pin and stopped after Cargo/test fixes; Nix still failed because unit2nix also needed fresh `crate-hashes.json` entries and `flake.nix` externalSources for subwayrat's new `../ratcore` sibling dep | After path-dep repo bumps, validate both `cargo ...` and `nix build .#clankers`. If Nix fails before build, check `crate-hashes.json` fixed-output hashes and sibling path deps mirrored in `externalSources`. |
 | 2026-04-14 | self | Used `openspec status --change <new-name>` right after `openspec new change` and CLI claimed the new change did not exist | For fresh changes, use `openspec list`, `openspec instructions ... --change <name>`, or `openspec validate <name>` to confirm scaffolding before assuming creation failed. |
+| 2026-04-14 | self | Took orchestration docs/comments at face value and assumed `loop`/`switch_model` were agent tools | Verify `src/modes/common.rs` actual tool registration before describing orchestration surface; README/comments currently overstate it. |
+| 2026-04-14 | self | Tried to solve router auth-store plumbing in a downstream wrapper even though the reusable NixOS module was missing the real seam | Put generic `clanker-router` service flags in `nix/modules/clanker-router.nix`. `--auth-file` is a global flag, so it needs a first-class module option; `extraArgs` append after `serve` and cannot express it. |
+| 2026-04-14 | self | Parallelized `openspec new change` with `openspec instructions ... --change <name>` and the dependent calls raced the scaffold | Treat OpenSpec scaffolding as sequential: create change first, then run status/instructions/validate in later tool calls. |
 | 2026-03-15 | self | Delegated `DaemonEvent::SessionInfo` field fixes to worker; worker reverted my prior event.rs edits (new variants + ToolInfo struct) | Don't delegate edits to files you've already modified in this session. Workers can't see your uncommitted changes and may overwrite them. |
 | recurring | self | `delegate_task`/`subagent` workers report success on multi-file refactors but changes don't persist | Workers are reliable for single-file edits and read-only analysis. Multi-file refactors: do directly. Always verify with `cargo check` + file existence after delegation. |
 | recurring | self | Extracting crates: `pub(crate)` items accessed by main crate break | Grep all callers before extracting. Items used cross-crate must become `pub`. |
@@ -49,6 +52,14 @@
 - Big match statement files (event_handlers.rs) have limited decomposition value beyond helper extraction
 - system_prompt.rs at 727 lines: 350 impl + 377 tests, well-decomposed already. Not every big file needs splitting.
 
+### OpenSpec review hardening
+- If a spec adds behavior or regression claims, tasks need at least one explicit checkbox that verifies them. Grouping is fine; uncovered scenarios are not.
+- If a design depends on a private/external reference implementation for wire behavior, freeze the contract in the artifact itself: endpoint, required headers, body fields, claim path, and retry/status semantics. Pair it with fixture or integration coverage.
+- If proposal/design says docs/help or unchanged UX paths matter, tasks must include explicit acceptance/regression verification. "Update docs" alone is too weak.
+- If a spec says a value is stable, derived, or reused, define concrete source field, transform, scope, and lifetime. Do not leave identifier semantics implicit.
+- OpenSpec design gate evidence can truncate long artifacts before late verification bullets. Put a compact verification summary early in `design.md` so constructor/parity/request-fixture/docs/smoke checks stay visible.
+- Do not claim stage passes or file edits unless this turn's transcript shows the gate output or git status proving them. Re-run before summarizing if needed.
+
 ### Tiger Style
 - Session tree traversals: bounded by MAX_TRAVERSAL_DEPTH with cycle detection via visited set
 - Convert recursive DFS to iterative DFS with explicit stack where unbounded depth possible
@@ -65,6 +76,13 @@
 - `CacheControl::with_ttl(None)` = ephemeral (5m), `with_ttl(Some("1h"))` = 1-hour. TTL serialized only when `Some`.
 - Clippy `collapsible_if`: `if !flag { if let Some(x) = ... }` → `if !flag && let Some(x) = ...`
 - Clippy `format_push_string`: use `write!(string, ...)` not `string.push_str(&format!(...))`
+
+### Provider auth plumbing
+- `crates/clankers-provider/src/credential_manager.rs` used to assume provider=`anthropic` in disk reload, refresh save-back, and fallback selection. When adding a new OAuth provider, thread provider name into `CredentialManager` and use provider-scoped `AuthStoreExt` helpers (`active_account_name_for`, `set_provider_credentials`, `active_oauth_credentials_for`) or refresh will touch the wrong provider slot.
+- Pending OAuth verifier/state needs provider+account isolation in both memory and disk. New auth flows should use `.login_verifiers/<provider>/<account>.json` and keep legacy `.login_verifier` fallback only for migration/compat reads.
+- When `clankers-provider::CompletionRequest` gains a field, `cargo check` may miss constructor gaps in test/helper code. Run `cargo check --tests` to catch provider-side helper constructors too (`router.rs`, `anthropic/mod.rs`).
+- `SessionController.session_id` and `App.session_id` are not enough for routed provider requests. `_session_id` comes from `Agent.session_id`, so controller-owned agents must be synced on construction/update or daemon/resume paths silently lose session metadata. Slash-driven session resume also needs post-dispatch `controller.set_session_id(app.session_id.clone())` in the event loop, not just key-handler/session-selector paths.
+- For `_session_id`/resume claims, direct `run_turn_loop(..., "same-id")` tests are too weak. Add one test that resumes a persisted session through `resume_session_from_file`, then captures a router/RPC request and checks `_session_id` there.
 
 ### Event draining
 - `broadcast::Receiver::try_recv()` returns `Err(Lagged(n))` when buffer overflows — NOT a terminal error

@@ -193,7 +193,7 @@ pub async fn run_turn_loop(
             let mut last_err = None;
             let mut collected_ok = None;
             for attempt in 0..=MAX_TURN_RETRIES {
-                match execute_turn(provider, messages, config, &active_model, &tool_defs, event_tx, &cancel).await {
+                match execute_turn(provider, messages, config, &active_model, &tool_defs, event_tx, &cancel, session_id).await {
                     Ok(c) => {
                         collected_ok = Some(c);
                         break;
@@ -914,6 +914,322 @@ mod tests {
             content: vec![Content::Text { text: "hello".into() }],
             timestamp: Utc::now(),
         })
+    }
+
+    #[tokio::test]
+    async fn turn_request_includes_session_id_extra_param() {
+        use std::sync::Mutex;
+
+        struct CapturingProvider {
+            captured: Mutex<Option<clankers_provider::CompletionRequest>>,
+        }
+
+        #[async_trait]
+        impl clankers_provider::Provider for CapturingProvider {
+            async fn complete(
+                &self,
+                request: clankers_provider::CompletionRequest,
+                tx: mpsc::Sender<StreamEvent>,
+            ) -> clankers_provider::error::Result<()> {
+                *self.captured.lock().expect("capture lock poisoned") = Some(request);
+                tx.send(StreamEvent::MessageStart {
+                    message: MessageMetadata {
+                        id: "msg-1".into(),
+                        model: "test-model".into(),
+                        role: "assistant".into(),
+                    },
+                }).await.ok();
+                tx.send(StreamEvent::ContentBlockStart {
+                    index: 0,
+                    content_block: Content::Text { text: String::new() },
+                }).await.ok();
+                tx.send(StreamEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: ContentDelta::TextDelta { text: "OK".into() },
+                }).await.ok();
+                tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                tx.send(StreamEvent::MessageDelta {
+                    stop_reason: Some("end_turn".into()),
+                    usage: Usage {
+                        input_tokens: 10,
+                        output_tokens: 2,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0,
+                    },
+                }).await.ok();
+                tx.send(StreamEvent::MessageStop).await.ok();
+                Ok(())
+            }
+
+            fn models(&self) -> &[clankers_provider::Model] {
+                &[]
+            }
+
+            fn name(&self) -> &str {
+                "capturing"
+            }
+        }
+
+        let provider = CapturingProvider {
+            captured: Mutex::new(None),
+        };
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let mut messages = vec![make_user_message()];
+        let config = make_turn_config();
+        let (event_tx, _rx) = broadcast::channel(256);
+        let cancel = CancellationToken::new();
+
+        run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            cancel,
+            None,
+            None,
+            None,
+            "session-123",
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("turn should succeed");
+
+        let captured = provider
+            .captured
+            .lock()
+            .expect("capture lock poisoned")
+            .take()
+            .expect("request should be captured");
+        assert_eq!(captured.extra_params.get("_session_id"), Some(&json!("session-123")));
+    }
+
+    #[tokio::test]
+    async fn turn_request_reuses_session_id_across_later_turns() {
+        use std::sync::Mutex;
+
+        struct SequenceCapturingProvider {
+            captured: Mutex<Vec<clankers_provider::CompletionRequest>>,
+        }
+
+        #[async_trait]
+        impl clankers_provider::Provider for SequenceCapturingProvider {
+            async fn complete(
+                &self,
+                request: clankers_provider::CompletionRequest,
+                tx: mpsc::Sender<StreamEvent>,
+            ) -> clankers_provider::error::Result<()> {
+                self.captured
+                    .lock()
+                    .expect("capture lock poisoned")
+                    .push(request);
+                tx.send(StreamEvent::MessageStart {
+                    message: MessageMetadata {
+                        id: "msg-1".into(),
+                        model: "test-model".into(),
+                        role: "assistant".into(),
+                    },
+                }).await.ok();
+                tx.send(StreamEvent::ContentBlockStart {
+                    index: 0,
+                    content_block: Content::Text { text: String::new() },
+                }).await.ok();
+                tx.send(StreamEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: ContentDelta::TextDelta { text: "OK".into() },
+                }).await.ok();
+                tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                tx.send(StreamEvent::MessageDelta {
+                    stop_reason: Some("end_turn".into()),
+                    usage: Usage {
+                        input_tokens: 10,
+                        output_tokens: 2,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0,
+                    },
+                }).await.ok();
+                tx.send(StreamEvent::MessageStop).await.ok();
+                Ok(())
+            }
+
+            fn models(&self) -> &[clankers_provider::Model] {
+                &[]
+            }
+
+            fn name(&self) -> &str {
+                "sequence-capturing"
+            }
+        }
+
+        let provider = SequenceCapturingProvider {
+            captured: Mutex::new(Vec::new()),
+        };
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let mut messages = vec![make_user_message()];
+        let config = make_turn_config();
+        let (event_tx, _rx) = broadcast::channel(256);
+
+        run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "session-stable",
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("first turn should succeed");
+
+        messages.push(AgentMessage::User(UserMessage {
+            id: MessageId::new("test-msg-2"),
+            content: vec![Content::Text { text: "hello again".into() }],
+            timestamp: Utc::now(),
+        }));
+
+        run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "session-stable",
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("second turn should succeed");
+
+        let captured = provider.captured.lock().expect("capture lock poisoned");
+        assert_eq!(captured.len(), 2);
+        assert_eq!(captured[0].extra_params.get("_session_id"), Some(&json!("session-stable")));
+        assert_eq!(captured[1].extra_params.get("_session_id"), Some(&json!("session-stable")));
+    }
+
+    #[tokio::test]
+    async fn turn_request_reuses_session_id_after_resume() {
+        use std::sync::Mutex;
+
+        struct ResumeCapturingProvider {
+            captured: Mutex<Vec<clankers_provider::CompletionRequest>>,
+        }
+
+        #[async_trait]
+        impl clankers_provider::Provider for ResumeCapturingProvider {
+            async fn complete(
+                &self,
+                request: clankers_provider::CompletionRequest,
+                tx: mpsc::Sender<StreamEvent>,
+            ) -> clankers_provider::error::Result<()> {
+                self.captured
+                    .lock()
+                    .expect("capture lock poisoned")
+                    .push(request);
+                tx.send(StreamEvent::MessageStart {
+                    message: MessageMetadata {
+                        id: "msg-1".into(),
+                        model: "test-model".into(),
+                        role: "assistant".into(),
+                    },
+                }).await.ok();
+                tx.send(StreamEvent::ContentBlockStart {
+                    index: 0,
+                    content_block: Content::Text { text: String::new() },
+                }).await.ok();
+                tx.send(StreamEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: ContentDelta::TextDelta { text: "OK".into() },
+                }).await.ok();
+                tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                tx.send(StreamEvent::MessageDelta {
+                    stop_reason: Some("end_turn".into()),
+                    usage: Usage {
+                        input_tokens: 10,
+                        output_tokens: 2,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0,
+                    },
+                }).await.ok();
+                tx.send(StreamEvent::MessageStop).await.ok();
+                Ok(())
+            }
+
+            fn models(&self) -> &[clankers_provider::Model] {
+                &[]
+            }
+
+            fn name(&self) -> &str {
+                "resume-capturing"
+            }
+        }
+
+        let provider = ResumeCapturingProvider {
+            captured: Mutex::new(Vec::new()),
+        };
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let config = make_turn_config();
+        let (event_tx, _rx) = broadcast::channel(256);
+        let mut before_resume_messages = vec![make_user_message()];
+
+        run_turn_loop(
+            &provider,
+            &tools,
+            &mut before_resume_messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "session-resumed",
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("turn before resume should succeed");
+
+        let mut resumed_messages = vec![AgentMessage::User(UserMessage {
+            id: MessageId::new("test-msg-3"),
+            content: vec![Content::Text { text: "after resume".into() }],
+            timestamp: Utc::now(),
+        })];
+
+        run_turn_loop(
+            &provider,
+            &tools,
+            &mut resumed_messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "session-resumed",
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("turn after resume should succeed");
+
+        let captured = provider.captured.lock().expect("capture lock poisoned");
+        assert_eq!(captured.len(), 2);
+        assert_eq!(captured[0].extra_params.get("_session_id"), Some(&json!("session-resumed")));
+        assert_eq!(captured[1].extra_params.get("_session_id"), Some(&json!("session-resumed")));
     }
 
     #[tokio::test]

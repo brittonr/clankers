@@ -116,7 +116,8 @@ pub trait ToolRebuilder: Send + Sync {
 
 impl SessionController {
     /// Create a new controller that owns the Agent (daemon mode).
-    pub fn new(agent: Agent, config: ControllerConfig) -> Self {
+    pub fn new(mut agent: Agent, config: ControllerConfig) -> Self {
+        agent.set_session_id(config.session_id.clone());
         let event_rx = agent.subscribe();
         let model = config.model.clone();
 
@@ -243,7 +244,10 @@ impl SessionController {
 
     /// Update the session ID (e.g., after session resume).
     pub fn set_session_id(&mut self, id: String) {
-        self.session_id = id;
+        self.session_id = id.clone();
+        if let Some(ref mut agent) = self.agent {
+            agent.set_session_id(id);
+        }
     }
 
     /// Update the model name (e.g., after model switch from TUI).
@@ -345,5 +349,19 @@ mod tests {
         assert_eq!(ctrl.session_id(), "test-session");
     }
 
+    #[test]
+    fn test_controller_sets_agent_session_id() {
+        let ctrl = make_test_controller();
+        let agent = ctrl.agent.as_ref().expect("controller should own an agent");
+        assert_eq!(agent.session_id(), "test-session");
+    }
 
+    #[test]
+    fn test_controller_updates_agent_session_id() {
+        let mut ctrl = make_test_controller();
+        ctrl.set_session_id("resumed-session".to_string());
+        let agent = ctrl.agent.as_ref().expect("controller should own an agent");
+        assert_eq!(ctrl.session_id(), "resumed-session");
+        assert_eq!(agent.session_id(), "resumed-session");
+    }
 }
