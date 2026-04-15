@@ -39,6 +39,16 @@ pkgs.testers.runNixOSTest {
         }
       '';
 
+      environment.etc."router-local-providers.json".text = ''
+        [
+          {
+            "name": "lemond",
+            "api_base": "http://127.0.0.1:9999/v1",
+            "models": ["user.test-model"]
+          }
+        ]
+      '';
+
       services.clanker-router = {
         enable = true;
         package = routerPkg;
@@ -46,6 +56,7 @@ pkgs.testers.runNixOSTest {
         proxyKeys = [ "test-proxy-key-12345" ];
         openFirewall = true;
         authFile = "/etc/router-auth.json";
+        localProviderConfig = "/etc/router-local-providers.json";
       };
     };
 
@@ -79,6 +90,7 @@ pkgs.testers.runNixOSTest {
     router.succeed("systemctl is-active clanker-router.service")
     exec_start = router.succeed("systemctl show -p ExecStart clanker-router.service")
     assert "--auth-file /etc/router-auth.json" in exec_start, exec_start
+    assert "--local-provider-config /etc/router-local-providers.json" in exec_start, exec_start
 
     ps_user = router.succeed(
         "ps -o user= -C clanker-router | head -1"

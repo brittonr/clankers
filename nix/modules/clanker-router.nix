@@ -35,6 +35,12 @@ in
       description = "Extra arguments passed to `clanker-router serve`.";
     };
 
+    localProviderConfig = lib.mkOption {
+      type = lib.types.nullOr lib.types.path;
+      default = null;
+      description = "JSON file describing extra OpenAI-compatible providers to register.";
+    };
+
     authFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -118,6 +124,7 @@ in
         ++ lib.optional (cfg.authFile != null) "--auth-file ${cfg.authFile}"
         ++ lib.optional (cfg.authSeedFile != null) "--auth-seed-file ${cfg.authSeedFile}"
         ++ lib.optional (cfg.authRuntimeFile != null) "--auth-runtime-file ${cfg.authRuntimeFile}"
+        ++ lib.optional (cfg.localProviderConfig != null) "--local-provider-config ${cfg.localProviderConfig}"
         ++ [
           "serve"
           "--proxy-addr" cfg.proxyAddr
