@@ -19,14 +19,14 @@ const OPENAI_CODEX_RESPONSES_URL: &str = "https://chatgpt.com/backend-api/codex/
 const OPENAI_CODEX_BETA_HEADER: &str = "responses=experimental";
 const OPENAI_CODEX_NOT_ENTITLED_CODE: &str = "usage_not_included";
 
-pub const OPENAI_CODEX_MODEL_IDS: [&str; 6] = [
-    "gpt-5.1-codex",
-    "gpt-5.1-codex-max",
-    "gpt-5.1-codex-mini",
-    "gpt-5.2-codex",
+pub const OPENAI_CODEX_MODEL_IDS: [&str; 5] = [
+    "gpt-5.4",
+    "gpt-5.4-mini",
     "gpt-5.3-codex",
     "gpt-5.3-codex-spark",
+    "gpt-5.2",
 ];
+const OPENAI_CODEX_PROBE_MODEL: &str = "gpt-5.4";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EntitlementState {
@@ -171,9 +171,9 @@ fn run_live_probe(credential: &StoredCredential) -> ProbeOutcome {
             .header("originator", "pi")
             .header("content-type", "application/json")
             .json(&json!({
-                "model": "gpt-5.1-codex-mini",
+                "model": OPENAI_CODEX_PROBE_MODEL,
                 "store": false,
-                "stream": false,
+                "stream": true,
                 "instructions": "codex entitlement probe",
                 "input": [{
                     "role": "user",
@@ -438,15 +438,14 @@ mod tests {
     fn codex_catalog_is_exact_fixed_set() {
         let ids: Vec<&str> = OPENAI_CODEX_MODEL_IDS.to_vec();
         let unique: HashSet<&str> = ids.iter().copied().collect();
-        assert_eq!(ids.len(), 6);
-        assert_eq!(unique.len(), 6);
+        assert_eq!(ids.len(), 5);
+        assert_eq!(unique.len(), 5);
         assert_eq!(ids, vec![
-            "gpt-5.1-codex",
-            "gpt-5.1-codex-max",
-            "gpt-5.1-codex-mini",
-            "gpt-5.2-codex",
+            "gpt-5.4",
+            "gpt-5.4-mini",
             "gpt-5.3-codex",
             "gpt-5.3-codex-spark",
+            "gpt-5.2",
         ]);
     }
 
