@@ -44,6 +44,18 @@ in
       '';
     };
 
+    authSeedFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Read-only seed auth store path for managed service deployments.";
+    };
+
+    authRuntimeFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Writable runtime auth store path for managed service deployments.";
+    };
+
     environmentFile = lib.mkOption {
       type = lib.types.nullOr lib.types.path;
       default = null;
@@ -104,6 +116,8 @@ in
           "${cfg.package}/bin/clanker-router"
         ]
         ++ lib.optional (cfg.authFile != null) "--auth-file ${cfg.authFile}"
+        ++ lib.optional (cfg.authSeedFile != null) "--auth-seed-file ${cfg.authSeedFile}"
+        ++ lib.optional (cfg.authRuntimeFile != null) "--auth-runtime-file ${cfg.authRuntimeFile}"
         ++ [
           "serve"
           "--proxy-addr" cfg.proxyAddr

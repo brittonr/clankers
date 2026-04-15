@@ -42,20 +42,10 @@ pub async fn build_router_with_rpc(
 ) -> Result<Arc<dyn Provider>> {
     use super::rpc_provider::RpcProvider;
 
-    let has_local_codex_auth = auth::resolve_provider_credential_with_fallback(
-        openai_codex::OPENAI_CODEX_PROVIDER,
-        None,
-        auth_store_path,
-        fallback_auth_path,
-        account,
-    )
-    .is_some();
-
-    // Skip RPC if CLANKERS_NO_DAEMON is set (useful for testing/debugging)
-    // or when openai-codex auth is present: codex discovery/entitlement logic
-    // lives locally until the extracted router grows the same backend.
+    // Skip RPC if CLANKERS_NO_DAEMON is set (useful for testing/debugging).
+    // The extracted clanker-router now owns the Codex backend too, so
+    // service and local daemon paths can share the same routed provider set.
     if std::env::var("CLANKERS_NO_DAEMON").is_err()
-        && !has_local_codex_auth
         && let Some(provider) = RpcProvider::auto_start_and_connect().await
     {
         return Ok(provider);

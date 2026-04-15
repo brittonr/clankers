@@ -650,6 +650,20 @@ pub enum AuthAction {
     },
     /// List all accounts
     Accounts,
+    /// Export one provider/account record as JSON
+    Export {
+        /// Provider name (`anthropic`, `openai-codex`, etc.)
+        provider: String,
+        /// Account name to export
+        #[arg(long, value_name = "NAME")]
+        account: Option<String>,
+    },
+    /// Import one provider/account record from JSON
+    Import {
+        /// Path to JSON record (`-` for stdin)
+        #[arg(long, default_value = "-")]
+        input: String,
+    },
     /// Set API key directly
     SetKey {
         /// Provider name

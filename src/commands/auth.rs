@@ -2,6 +2,7 @@
 
 use std::collections::BTreeSet;
 use std::fmt::Write;
+use std::io::Read;
 
 use crate::cli::AuthAction;
 use crate::commands::CommandContext;
@@ -262,6 +263,8 @@ pub async fn run(ctx: &CommandContext, action: AuthAction) -> Result<()> {
         AuthAction::Logout { provider, account, all } => handle_logout(ctx, provider, account, all),
         AuthAction::Switch { provider, account } => handle_switch(ctx, provider, &account),
         AuthAction::Accounts => handle_accounts(ctx),
+        AuthAction::Export { provider, account } => handle_export(ctx, &provider, account.as_deref()),
+        AuthAction::Import { input } => handle_import(ctx, &input),
         _ => Err(crate::error::Error::ProviderAuth {
             message: "This auth command is not yet implemented.".to_string(),
         }),
@@ -433,6 +436,77 @@ fn handle_accounts(ctx: &CommandContext) -> Result<()> {
         .as_ref()
         .map(|path| crate::provider::auth::AuthStore::load(path));
     println!("{}", render_grouped_status_with_fallback(&store, pi_store.as_ref()));
+    Ok(())
+}
+
+fn handle_export(ctx: &CommandContext, provider: &str, account: Option<&str>) -> Result<()> {
+    let account_name = account.unwrap_or("default");
+    let store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
+    let pi_store = ctx
+        .paths
+        .pi_auth
+        .as_ref()
+        .map(|path| crate::provider::auth::AuthStore::load(path));
+
+    let record = store
+        .credential_for(provider, account_name)
+        .cloned()
+        .map(|credential| clanker_router::auth::ProviderAccountExport {
+            version: 1,
+            provider: provider.to_string(),
+            account: account_name.to_string(),
+            active: store.active_account_name_for(provider) == account_name,
+            credential,
+        })
+        .or_else(|| {
+            pi_store.as_ref().and_then(|fallback| {
+                fallback.credential_for(provider, account_name).cloned().map(|credential| {
+                    clanker_router::auth::ProviderAccountExport {
+                        version: 1,
+                        provider: provider.to_string(),
+                        account: account_name.to_string(),
+                        active: fallback.active_account_name_for(provider) == account_name,
+                        credential,
+                    }
+                })
+            })
+        })
+        .ok_or(crate::error::Error::ProviderAuth {
+            message: format!("No account '{}' found for provider '{}'.", account_name, provider),
+        })?;
+
+    println!("{}", serde_json::to_string_pretty(&record).expect("auth export should serialize"));
+    Ok(())
+}
+
+fn handle_import(ctx: &CommandContext, input: &str) -> Result<()> {
+    let raw = if input == "-" {
+        let mut buf = String::new();
+        std::io::stdin().read_to_string(&mut buf).map_err(|e| crate::error::Error::ProviderAuth {
+            message: format!("Failed to read import record from stdin: {e}"),
+        })?;
+        buf
+    } else {
+        std::fs::read_to_string(input).map_err(|e| crate::error::Error::ProviderAuth {
+            message: format!("Failed to read import record '{}': {e}", input),
+        })?
+    };
+
+    let record: clanker_router::auth::ProviderAccountExport = serde_json::from_str(&raw).map_err(|e| {
+        crate::error::Error::ProviderAuth {
+            message: format!("Failed to parse auth import record: {e}"),
+        }
+    })?;
+
+    let mut store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
+    let had_active = store.active_credential(&record.provider).is_some();
+    store.set_credential(&record.provider, &record.account, record.credential.clone());
+    if record.active || !had_active {
+        store.switch_provider_account(&record.provider, &record.account);
+    }
+    store.save(&ctx.paths.global_auth)?;
+
+    println!("Imported provider '{}' account '{}' into {}.", record.provider, record.account, ctx.paths.global_auth.display());
     Ok(())
 }
 

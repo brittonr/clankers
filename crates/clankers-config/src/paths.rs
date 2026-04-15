@@ -101,9 +101,29 @@ impl ClankersPaths {
             (None, None, None)
         };
 
-        // Auth is shared with clanker-router at the XDG config location
-        let auth_path =
-            dirs::config_dir().unwrap_or_else(|| home.join(".config")).join("clanker-router").join("auth.json");
+        // Auth is shared with clanker-router at the XDG config location.
+        // Service deployments can override this with either a direct auth file
+        // or a seed/runtime pair. For the seed/runtime pair, materialize the
+        // merged effective auth store into the runtime path at process start so
+        // existing callers can keep using a single path.
+        let auth_path = if let Ok(path) = std::env::var("CLANKERS_AUTH_FILE") {
+            PathBuf::from(path)
+        } else {
+            let seed = std::env::var("CLANKERS_AUTH_SEED_FILE").ok().filter(|value| !value.is_empty());
+            let runtime = std::env::var("CLANKERS_AUTH_RUNTIME_FILE").ok().filter(|value| !value.is_empty());
+            if let (Some(seed), Some(runtime)) = (seed, runtime) {
+                let runtime_path = PathBuf::from(runtime);
+                let auth_paths = clanker_router::auth::AuthStorePaths::layered(PathBuf::from(seed), runtime_path.clone());
+                if let Some(parent) = runtime_path.parent() {
+                    std::fs::create_dir_all(parent).ok();
+                }
+                let effective = auth_paths.load_effective().into_store();
+                effective.save(&runtime_path).ok();
+                runtime_path
+            } else {
+                dirs::config_dir().unwrap_or_else(|| home.join(".config")).join("clanker-router").join("auth.json")
+            }
+        };
 
         Self {
             global_settings: base.join("settings.json"),

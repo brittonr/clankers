@@ -47,6 +47,24 @@ in
       description = "Environment file with API keys (ANTHROPIC_API_KEY=..., etc).";
     };
 
+    authFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Single auth store path override for service deployments.";
+    };
+
+    authSeedFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Read-only seed auth store path for managed service deployments.";
+    };
+
+    authRuntimeFile = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Writable runtime auth store path for managed service deployments.";
+    };
+
     user = lib.mkOption {
       type = lib.types.str;
       default = "clankers";
@@ -101,6 +119,15 @@ in
         IROH_DATA_DIR = "${cfg.stateDir}/.iroh";
         # Model selection — daemon reads from env when no CLI flag
         CLANKERS_MODEL = cfg.model;
+      }
+      // lib.optionalAttrs (cfg.authFile != null) {
+        CLANKERS_AUTH_FILE = toString cfg.authFile;
+      }
+      // lib.optionalAttrs (cfg.authSeedFile != null) {
+        CLANKERS_AUTH_SEED_FILE = toString cfg.authSeedFile;
+      }
+      // lib.optionalAttrs (cfg.authRuntimeFile != null) {
+        CLANKERS_AUTH_RUNTIME_FILE = toString cfg.authRuntimeFile;
       };
 
       serviceConfig = {
