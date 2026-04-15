@@ -195,6 +195,7 @@ impl CredentialManager {
                     .map_err(|e| crate::error::auth_err(format!("Save task panicked: {e}")))??;
 
                 info!("{} OAuth token refreshed, new expiry: {}", self.provider, new_creds.expires);
+                crate::openai_codex::reset_entitlement(&self.provider, None);
 
                 // 6. Update in-memory
                 let new_credential = new_creds.to_stored();
@@ -246,6 +247,7 @@ impl CredentialManager {
             && !creds.is_expired()
         {
             info!("Reloaded {} credentials from disk after login", self.provider);
+            crate::openai_codex::reset_entitlement(&self.provider, None);
             *self.credential.lock().await = creds.to_stored();
             return;
         }
@@ -257,6 +259,7 @@ impl CredentialManager {
                 && !creds.is_expired()
             {
                 info!("Reloaded {} credentials from fallback auth path", self.provider);
+                crate::openai_codex::reset_entitlement(&self.provider, None);
                 *self.credential.lock().await = creds.to_stored();
             }
         }
@@ -264,6 +267,7 @@ impl CredentialManager {
 
     /// Directly update the in-memory credential (e.g. after a fresh login).
     pub async fn set_credential(&self, credential: Credential) {
+        crate::openai_codex::reset_entitlement(&self.provider, None);
         *self.credential.lock().await = credential;
     }
 

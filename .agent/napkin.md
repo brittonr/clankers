@@ -84,6 +84,8 @@
 - `SessionController.session_id` and `App.session_id` are not enough for routed provider requests. `_session_id` comes from `Agent.session_id`, so controller-owned agents must be synced on construction/update or daemon/resume paths silently lose session metadata. Slash-driven session resume also needs post-dispatch `controller.set_session_id(app.session_id.clone())` in the event loop, not just key-handler/session-selector paths.
 - For `_session_id`/resume claims, direct `run_turn_loop(..., "same-id")` tests are too weak. Add one test that resumes a persisted session through `resume_session_from_file`, then captures a router/RPC request and checks `_session_id` there.
 - For request-shape regressions, add deterministic rails in source tests instead of relying on review memory: exact constructor-count inventory for `CompletionRequest {` sites plus shared-field serde projection parity between local/provider and router structs.
+- Pre-backend `openai-codex` discovery needs two stopgaps: (1) skip RPC daemon path when local Codex auth exists, because extracted router does not know Codex yet, and (2) keep a fail-closed `openai-codex/...` sentinel in `RouterProvider` so explicit Codex prefixes never silently fall back to Anthropic.
+- When provider credentials can come from `~/.pi` fallback, discovery/status code must not assume primary auth store owns the active account. Resolve credential source and status source together or fallback-only providers disappear from catalog/status.
 
 ### Event draining
 - `broadcast::Receiver::try_recv()` returns `Err(Lagged(n))` when buffer overflows — NOT a terminal error

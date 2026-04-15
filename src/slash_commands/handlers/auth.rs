@@ -268,15 +268,33 @@ impl SlashHandler for AccountHandler {
     }
 }
 
-fn account_status_detail(cred: &crate::provider::auth::StoredCredential) -> String {
-    crate::commands::auth::describe_credential(cred)
+fn account_status_detail(
+    store: &crate::provider::auth::AuthStore,
+    provider: &str,
+    account: &str,
+    cred: &crate::provider::auth::StoredCredential,
+) -> String {
+    let base = crate::commands::auth::describe_credential(cred);
+    if provider == crate::provider::openai_codex::OPENAI_CODEX_PROVIDER {
+        if let Some(suffix) = crate::provider::openai_codex::codex_status_suffix(store, account) {
+            return format!("{}; {}", base, suffix);
+        }
+    }
+    base
 }
 
 fn handle_account_list(ctx: &mut SlashContext<'_>, store: &crate::provider::auth::AuthStore, all: bool) {
     use std::fmt::Write;
 
     if all {
-        ctx.app.push_system(crate::commands::auth::render_grouped_status(store), false);
+        let pi_store = crate::config::ClankersPaths::get()
+            .pi_auth
+            .as_ref()
+            .map(|path| crate::provider::auth::AuthStore::load(path));
+        ctx.app.push_system(
+            crate::commands::auth::render_grouped_status_with_fallback(store, pi_store.as_ref()),
+            false,
+        );
         return;
     }
 
@@ -356,6 +374,7 @@ fn handle_account_logout(
         if let Err(e) = store.save(&paths.global_auth) {
             ctx.app.push_system(format!("Failed to save: {}", e), true);
         } else {
+            crate::provider::openai_codex::reset_entitlement(&provider, None);
             ctx.cmd_tx.send(AgentCommand::ReloadCredentials).ok();
             let new_active = store.active_account_name_for(&provider).to_string();
             if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
@@ -395,6 +414,7 @@ fn handle_account_remove(
         if let Err(e) = store.save(&paths.global_auth) {
             ctx.app.push_system(format!("Failed to save: {}", e), true);
         } else {
+            crate::provider::openai_codex::reset_entitlement(&provider, None);
             ctx.cmd_tx.send(AgentCommand::ReloadCredentials).ok();
             if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
                 ctx.app.push_system(format!("Removed account '{}'.", name), false);
@@ -412,7 +432,14 @@ fn handle_account_remove(
 fn handle_account_status(ctx: &mut SlashContext<'_>, store: &crate::provider::auth::AuthStore, args: &str) {
     let trimmed = args.trim();
     if trimmed == "--all" || trimmed == "all" {
-        ctx.app.push_system(crate::commands::auth::render_grouped_status(store), false);
+        let pi_store = crate::config::ClankersPaths::get()
+            .pi_auth
+            .as_ref()
+            .map(|path| crate::provider::auth::AuthStore::load(path));
+        ctx.app.push_system(
+            crate::commands::auth::render_grouped_status_with_fallback(store, pi_store.as_ref()),
+            false,
+        );
         return;
     }
 
@@ -425,10 +452,34 @@ fn handle_account_status(ctx: &mut SlashContext<'_>, store: &crate::provider::au
 
     if let Some(cred) = store.credential_for(&provider, &name) {
         ctx.app.push_system(
-            format!("{} / {}: {}", provider, name, account_status_detail(cred)),
+            format!(
+                "{} / {}: {}",
+                provider,
+                name,
+                account_status_detail(store, &provider, &name, cred)
+            ),
             false,
         );
-    } else if let Some(summary) = crate::commands::auth::render_provider_accounts(store, &provider) {
+        return;
+    }
+
+    let pi_store = crate::config::ClankersPaths::get()
+        .pi_auth
+        .as_ref()
+        .map(|path| crate::provider::auth::AuthStore::load(path));
+    if let Some(pi_store) = pi_store.as_ref()
+        && let Some(cred) = pi_store.credential_for(&provider, &name)
+    {
+        ctx.app.push_system(
+            format!(
+                "Using credentials from ~/.pi:\n{} / {}: {}",
+                provider,
+                name,
+                account_status_detail(pi_store, &provider, &name, cred)
+            ),
+            false,
+        );
+    } else if let Some(summary) = crate::commands::auth::provider_status_summary(store, &provider, pi_store.as_ref()) {
         ctx.app.push_system(summary, false);
     } else if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
         ctx.app.push_system(format!("No account '{}'.", name), true);

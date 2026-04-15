@@ -218,6 +218,7 @@ async fn handle_login(
             store.switch_provider_account(provider, account);
             match store.save(&paths.global_auth) {
                 Ok(()) => {
+                    crate::provider::openai_codex::reset_entitlement(provider, None);
                     agent.provider().reload_credentials().await;
                     done_tx.send(TaskResult::LoginDone(Ok(format!(
                         "Authentication successful! Saved '{}' for provider '{}'.",
@@ -243,12 +244,14 @@ async fn handle_switch_account(
     account_name: &str,
 ) {
     use crate::provider::auth::AuthStoreExt;
+
     let paths = crate::config::ClankersPaths::get();
     let mut store = crate::provider::auth::AuthStore::load(&paths.global_auth);
     if store.switch_provider_account(provider, account_name) {
         if let Err(e) = store.save(&paths.global_auth) {
             done_tx.send(TaskResult::AccountSwitched(Err(format!("Failed to save: {}", e)))).ok();
         } else {
+            crate::provider::openai_codex::reset_entitlement(provider, None);
             agent.provider().reload_credentials().await;
             let label = if provider == crate::provider::auth::DEFAULT_OAUTH_PROVIDER {
                 account_name.to_string()

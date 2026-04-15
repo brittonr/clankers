@@ -41,6 +41,29 @@ pub struct ProviderAttempt {
     pub skipped: bool,
 }
 
+struct MissingExplicitProvider {
+    provider_name: String,
+    models: Vec<Model>,
+}
+
+#[async_trait]
+impl Provider for MissingExplicitProvider {
+    async fn complete(&self, _request: CompletionRequest, _tx: mpsc::Sender<StreamEvent>) -> Result<()> {
+        Err(crate::error::auth_err(format!(
+            "Provider '{}' is not configured or not available for the active account.",
+            self.provider_name
+        )))
+    }
+
+    fn models(&self) -> &[Model] {
+        &self.models
+    }
+
+    fn name(&self) -> &str {
+        &self.provider_name
+    }
+}
+
 // ── Adapter for clanker_router providers ───────────────────────────────────
 
 /// Wraps a `clanker_router::Provider` to implement `clankers::provider::Provider`.
@@ -128,6 +151,8 @@ pub struct RouterProvider {
     default_provider: String,
     /// All models from all providers
     all_models: Vec<Model>,
+    /// Fail-closed sentinels for recognized explicit provider prefixes.
+    fail_closed_prefixes: HashMap<String, Arc<dyn Provider>>,
     /// Persistent database for response caching (optional)
     db: Option<RouterDb>,
     /// Per-model fallback chains
@@ -160,11 +185,21 @@ impl RouterProvider {
             provider_map.insert(name, provider);
         }
 
+        let mut fail_closed_prefixes: HashMap<String, Arc<dyn Provider>> = HashMap::new();
+        fail_closed_prefixes.insert(
+            crate::openai_codex::OPENAI_CODEX_PROVIDER.to_string(),
+            Arc::new(MissingExplicitProvider {
+                provider_name: crate::openai_codex::OPENAI_CODEX_PROVIDER.to_string(),
+                models: Vec::new(),
+            }),
+        );
+
         Self {
             providers: provider_map,
             registry,
             default_provider,
             all_models,
+            fail_closed_prefixes,
             db: None,
             fallbacks: FallbackConfig::with_defaults(),
             retry_config: RetryConfig::default(),
@@ -221,10 +256,13 @@ impl RouterProvider {
         }
 
         // 3. Provider prefix: "openai/gpt-4o" → provider="openai", model="gpt-4o"
-        if let Some((provider_name, _)) = model.split_once('/')
-            && let Some(provider) = self.providers.get(provider_name)
-        {
-            return (provider.as_ref(), None);
+        if let Some((provider_name, _)) = model.split_once('/') {
+            if let Some(provider) = self.providers.get(provider_name) {
+                return (provider.as_ref(), None);
+            }
+            if let Some(provider) = self.fail_closed_prefixes.get(provider_name) {
+                return (provider.as_ref(), None);
+            }
         }
 
         // 4. Default provider (always exists if RouterProvider was constructed with ≥1 provider)
@@ -1505,6 +1543,26 @@ mod tests {
         // "google/gemini" — prefix "google" doesn't match any provider
         let (provider, _) = router.resolve("google/gemini");
         assert_eq!(provider.name(), "anthropic"); // falls back to default
+    }
+
+    #[tokio::test]
+    async fn test_missing_openai_codex_prefix_fails_closed() {
+        let router = RouterProvider::new(vec![mock("anthropic", &["claude-sonnet"])]);
+        let request = CompletionRequest {
+            model: "openai-codex/gpt-5.1-codex".to_string(),
+            messages: vec![],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+            extra_params: HashMap::new(),
+        };
+        let (tx, _rx) = mpsc::channel(8);
+        let err = router.complete(request, tx).await.expect_err("missing openai-codex prefix should fail closed");
+        assert!(err.message.contains("not configured") || err.message.contains("not available"));
     }
 
     #[test]

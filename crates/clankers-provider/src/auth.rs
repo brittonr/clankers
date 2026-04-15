@@ -394,17 +394,33 @@ pub fn resolve_credential_with_fallback(
     fallback_auth_path: Option<&Path>,
     account: Option<&str>,
 ) -> Option<Credential> {
+    resolve_provider_credential_with_fallback(
+        "anthropic",
+        runtime_override,
+        auth_store_path,
+        fallback_auth_path,
+        account,
+    )
+}
+
+/// Resolve provider credentials with fallback and account selection.
+pub fn resolve_provider_credential_with_fallback(
+    provider: &str,
+    runtime_override: Option<&str>,
+    auth_store_path: &Path,
+    fallback_auth_path: Option<&Path>,
+    account: Option<&str>,
+) -> Option<Credential> {
     let store = AuthStore::load(auth_store_path);
     let fallback = fallback_auth_path.map(AuthStore::load);
 
-    // If a specific account was requested, try that first
     if let Some(acct) = account
-        && let Some(cred) = store.credential_for("anthropic", acct)
+        && let Some(cred) = store.credential_for(provider, acct)
     {
         return Some(cred.clone());
     }
 
-    clanker_router::auth::resolve_credential("anthropic", runtime_override, &store, fallback.as_ref())
+    clanker_router::auth::resolve_credential(provider, runtime_override, &store, fallback.as_ref())
 }
 
 #[cfg(test)]

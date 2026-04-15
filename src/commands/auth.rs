@@ -106,6 +106,21 @@ pub(crate) fn describe_credential(cred: &crate::provider::auth::StoredCredential
     }
 }
 
+fn describe_provider_account_detail(
+    store: &crate::provider::auth::AuthStore,
+    provider: &str,
+    account: &str,
+    cred: &crate::provider::auth::StoredCredential,
+) -> String {
+    let base = describe_credential(cred);
+    if provider == crate::provider::openai_codex::OPENAI_CODEX_PROVIDER {
+        if let Some(suffix) = crate::provider::openai_codex::codex_status_suffix(store, account) {
+            return format!("{}; {}", base, suffix);
+        }
+    }
+    base
+}
+
 pub(crate) fn render_provider_accounts(
     store: &crate::provider::auth::AuthStore,
     provider: &str,
@@ -124,15 +139,45 @@ pub(crate) fn render_provider_accounts(
         let label = info.label.as_ref().map(|l| format!(" ({})", l)).unwrap_or_default();
         let detail = store
             .credential_for(provider, &info.name)
-            .map(describe_credential)
+            .map(|cred| describe_provider_account_detail(store, provider, &info.name, cred))
             .unwrap_or_else(|| "unknown".to_string());
         writeln!(out, "  {} {}{} — {}", marker, info.name, label, detail).ok();
     }
     Some(out.trim_end().to_string())
 }
 
-pub(crate) fn render_grouped_status(store: &crate::provider::auth::AuthStore) -> String {
+pub(crate) fn provider_status_summary(
+    store: &crate::provider::auth::AuthStore,
+    provider: &str,
+    pi_store: Option<&crate::provider::auth::AuthStore>,
+) -> Option<String> {
+    if let Some(summary) = render_provider_accounts(store, provider) {
+        return Some(summary);
+    }
+
+    if let Some(env_var) = crate::provider::auth::env_var_for_provider(provider)
+        && std::env::var(env_var).is_ok()
+    {
+        return Some(format!("{}:\n  ▸ env — api key via {}", provider, env_var));
+    }
+
+    if let Some(pi_store) = pi_store
+        && let Some(summary) = render_provider_accounts(pi_store, provider)
+    {
+        return Some(format!("Using credentials from ~/.pi:\n{}", summary));
+    }
+
+    None
+}
+
+pub(crate) fn render_grouped_status_with_fallback(
+    store: &crate::provider::auth::AuthStore,
+    pi_store: Option<&crate::provider::auth::AuthStore>,
+) -> String {
     let mut providers: BTreeSet<String> = store.configured_providers().into_iter().map(ToString::to_string).collect();
+    if let Some(pi_store) = pi_store {
+        providers.extend(pi_store.configured_providers().into_iter().map(ToString::to_string));
+    }
     for provider in [
         "anthropic",
         "openai",
@@ -157,12 +202,8 @@ pub(crate) fn render_grouped_status(store: &crate::provider::auth::AuthStore) ->
 
     let mut sections = Vec::new();
     for provider in providers {
-        if let Some(summary) = render_provider_accounts(store, &provider) {
+        if let Some(summary) = provider_status_summary(store, &provider, pi_store) {
             sections.push(summary);
-        } else if let Some(env_var) = crate::provider::auth::env_var_for_provider(&provider)
-            && std::env::var(env_var).is_ok()
-        {
-            sections.push(format!("{}:\n  ▸ env — api key via {}", provider, env_var));
         }
     }
     sections.join("\n\n")
@@ -199,27 +240,13 @@ fn handle_default_anthropic_status(ctx: &CommandContext) {
 
 fn handle_provider_status(ctx: &CommandContext, provider: &str) {
     let store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
-    if let Some(summary) = render_provider_accounts(&store, provider) {
+    let pi_store = ctx
+        .paths
+        .pi_auth
+        .as_ref()
+        .map(|path| crate::provider::auth::AuthStore::load(path));
+    if let Some(summary) = provider_status_summary(&store, provider, pi_store.as_ref()) {
         println!("{}", summary);
-        return;
-    }
-
-    if provider == "anthropic" {
-        if std::env::var("ANTHROPIC_API_KEY").is_ok() {
-            println!("anthropic:\n  ▸ env — api key via ANTHROPIC_API_KEY");
-            return;
-        }
-        if let Some(ref pi_auth) = ctx.paths.pi_auth {
-            let pi_store = crate::provider::auth::AuthStore::load(pi_auth);
-            if let Some(summary) = render_provider_accounts(&pi_store, provider) {
-                println!("Using credentials from ~/.pi:\n{}", summary);
-                return;
-            }
-        }
-    } else if let Some(env_var) = crate::provider::auth::env_var_for_provider(provider)
-        && std::env::var(env_var).is_ok()
-    {
-        println!("{}:\n  ▸ env — api key via {}", provider, env_var);
         return;
     }
 
@@ -304,6 +331,7 @@ async fn handle_login(
     store.set_provider_credentials(&pending.provider, &pending.account, creds);
     store.switch_provider_account(&pending.provider, &pending.account);
     store.save(&ctx.paths.global_auth)?;
+    crate::provider::openai_codex::reset_entitlement(&pending.provider, None);
     println!(
         "Authentication successful! Credentials saved as '{}' for provider '{}'.",
         pending.account, pending.provider
@@ -315,7 +343,12 @@ async fn handle_login(
 fn handle_status(ctx: &CommandContext, provider: Option<String>, all: bool) -> Result<()> {
     if all {
         let store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
-        println!("{}", render_grouped_status(&store));
+        let pi_store = ctx
+            .paths
+            .pi_auth
+            .as_ref()
+            .map(|path| crate::provider::auth::AuthStore::load(path));
+        println!("{}", render_grouped_status_with_fallback(&store, pi_store.as_ref()));
         return Ok(());
     }
 
@@ -337,6 +370,7 @@ fn handle_logout(ctx: &CommandContext, provider: Option<String>, account: Option
             prov.active_account = None;
         }
         store.save(&ctx.paths.global_auth)?;
+        crate::provider::openai_codex::reset_entitlement(&provider, None);
         if provider_was_explicit {
             println!("Removed all accounts for provider '{}'.", provider);
         } else {
@@ -346,6 +380,7 @@ fn handle_logout(ctx: &CommandContext, provider: Option<String>, account: Option
         let name = account.unwrap_or_else(|| store.active_account_name_for(&provider).to_string());
         if store.remove_provider_account(&provider, &name) {
             store.save(&ctx.paths.global_auth)?;
+            crate::provider::openai_codex::reset_entitlement(&provider, None);
             if provider_was_explicit {
                 println!("Removed account '{}' from provider '{}'.", name, provider);
             } else {
@@ -370,6 +405,7 @@ fn handle_switch(ctx: &CommandContext, provider: Option<String>, account: &str) 
     let mut store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
     if store.switch_provider_account(&provider, account) {
         store.save(&ctx.paths.global_auth)?;
+        crate::provider::openai_codex::reset_entitlement(&provider, None);
         if provider_was_explicit {
             println!("Switched provider '{}' to account '{}'.", provider, account);
         } else {
@@ -391,7 +427,12 @@ fn handle_switch(ctx: &CommandContext, provider: Option<String>, account: &str) 
 
 fn handle_accounts(ctx: &CommandContext) -> Result<()> {
     let store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
-    println!("{}", render_grouped_status(&store));
+    let pi_store = ctx
+        .paths
+        .pi_auth
+        .as_ref()
+        .map(|path| crate::provider::auth::AuthStore::load(path));
+    println!("{}", render_grouped_status_with_fallback(&store, pi_store.as_ref()));
     Ok(())
 }
 
@@ -432,6 +473,44 @@ mod tests {
     }
 
     #[test]
+    fn provider_status_summary_uses_pi_fallback_for_openai_codex() {
+        let store = crate::provider::auth::AuthStore::default();
+        let mut pi_store = crate::provider::auth::AuthStore::default();
+        pi_store.set_provider_credentials(
+            "openai-codex",
+            "work",
+            crate::provider::auth::OAuthCredentials {
+                access: "not-a-valid-jwt".into(),
+                refresh: "refresh".into(),
+                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+            },
+        );
+
+        let rendered = provider_status_summary(&store, "openai-codex", Some(&pi_store)).expect("provider summary");
+        assert!(rendered.contains("Using credentials from ~/.pi:"));
+        assert!(rendered.contains("openai-codex:"));
+    }
+
+    #[test]
+    fn render_grouped_status_with_fallback_includes_pi_only_codex() {
+        let store = crate::provider::auth::AuthStore::default();
+        let mut pi_store = crate::provider::auth::AuthStore::default();
+        pi_store.set_provider_credentials(
+            "openai-codex",
+            "work",
+            crate::provider::auth::OAuthCredentials {
+                access: "not-a-valid-jwt".into(),
+                refresh: "refresh".into(),
+                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+            },
+        );
+
+        let rendered = render_grouped_status_with_fallback(&store, Some(&pi_store));
+        assert!(rendered.contains("Using credentials from ~/.pi:"));
+        assert!(rendered.contains("openai-codex:"));
+    }
+
+    #[test]
     fn render_grouped_status_includes_provider_scoped_details() {
         let mut store = crate::provider::auth::AuthStore::default();
         store.set_provider_credentials(
@@ -461,7 +540,7 @@ mod tests {
             },
         );
 
-        let rendered = render_grouped_status(&store);
+        let rendered = render_grouped_status_with_fallback(&store, None);
         assert!(rendered.contains("anthropic:"));
         assert!(rendered.contains("openai-codex:"));
         assert!(rendered.contains("oauth valid (expires in"));
@@ -486,6 +565,23 @@ mod tests {
         let rendered = render_provider_accounts(&store, "openai-codex").expect("provider summary");
         assert!(rendered.contains("openai-codex:"));
         assert!(rendered.contains("oauth expired"));
+    }
+
+    #[test]
+    fn render_provider_accounts_surfaces_codex_probe_failures() {
+        let mut store = crate::provider::auth::AuthStore::default();
+        store.set_provider_credentials(
+            "openai-codex",
+            "work",
+            crate::provider::auth::OAuthCredentials {
+                access: "not-a-valid-jwt".into(),
+                refresh: "refresh".into(),
+                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+            },
+        );
+
+        let rendered = render_provider_accounts(&store, "openai-codex").expect("provider summary");
+        assert!(rendered.contains("authenticated, entitlement check failed"));
     }
 
     #[test]

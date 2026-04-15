@@ -20,6 +20,7 @@ pub mod auth;
 pub mod credential_manager;
 pub mod discovery;
 pub mod message;
+pub mod openai_codex;
 /// Model registry — re-exported from `clanker-router`.
 pub use clanker_router::registry;
 /// Retry logic — re-exported from `clanker-router`.
