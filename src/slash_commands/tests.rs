@@ -218,10 +218,19 @@ fn test_account_subcommands_shown() {
 }
 
 #[test]
+fn test_account_subcommands_dedup_same_keyword() {
+    let results = completions("/account ");
+    assert_eq!(results.iter().filter(|c| c.insert_text == "account switch ").count(), 1);
+    assert_eq!(results.iter().filter(|c| c.insert_text == "account login ").count(), 1);
+    assert_eq!(results.iter().filter(|c| c.insert_text == "account logout ").count(), 1);
+}
+
+#[test]
 fn test_account_subcommand_filter() {
     let results = completions("/account sw");
     assert_eq!(results.len(), 1);
     assert!(results[0].display.starts_with("switch"));
+    assert_eq!(results[0].insert_text, "account switch ");
 }
 
 #[test]

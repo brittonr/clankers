@@ -3,6 +3,8 @@
 //! Provides autocomplete for `/` commands including subcommands
 //! and prompt templates.
 
+use std::collections::HashSet;
+
 use super::PROMPT_TEMPLATE_CACHE;
 use super::SlashRegistry;
 use super::builtin_commands;
@@ -18,6 +20,39 @@ pub struct CompletionItem {
     pub insert_text: String,
     /// Whether accepting this should add a trailing space
     pub trailing_space: bool,
+}
+
+fn build_subcommand_completions<'a, D, I, F>(
+    cmd_name: &str,
+    subcommands: I,
+    sub_word: &str,
+    mut description: F,
+) -> Vec<CompletionItem>
+where
+    I: IntoIterator<Item = (&'a str, D)>,
+    F: FnMut(D) -> &'static str,
+{
+    let mut seen_first_words = HashSet::new();
+
+    subcommands
+        .into_iter()
+        .filter_map(|(name, desc)| {
+            let first_word = name.split_whitespace().next().unwrap_or(name);
+            if !sub_word.is_empty() && !first_word.starts_with(sub_word) {
+                return None;
+            }
+            if !seen_first_words.insert(first_word.to_string()) {
+                return None;
+            }
+
+            Some(CompletionItem {
+                display: name.to_string(),
+                description: description(desc),
+                insert_text: format!("{} {} ", cmd_name, first_word),
+                trailing_space: false,
+            })
+        })
+        .collect()
 }
 
 /// Get completions for a partial slash command input from a registry.
@@ -46,24 +81,12 @@ pub fn completions_from_registry(registry: &SlashRegistry, input: &str) -> Vec<C
                 return Vec::new();
             }
 
-            return cmd
-                .subcommands
-                .iter()
-                .filter(|(name, _)| {
-                    // Match against the first word of the subcommand name
-                    let first_word = name.split_whitespace().next().unwrap_or(name);
-                    sub_word.is_empty() || first_word.starts_with(sub_word)
-                })
-                .map(|(name, desc)| {
-                    let first_word = name.split_whitespace().next().unwrap_or(name);
-                    CompletionItem {
-                        display: name.clone(),
-                        description: Box::leak(desc.clone().into_boxed_str()),
-                        insert_text: format!("{} {} ", cmd_name, first_word),
-                        trailing_space: false, // already included
-                    }
-                })
-                .collect();
+            return build_subcommand_completions(
+                cmd_name,
+                cmd.subcommands.iter().map(|(name, desc)| (name.as_str(), desc.as_str())),
+                sub_word,
+                |desc| Box::leak(desc.to_string().into_boxed_str()),
+            );
         }
         return Vec::new();
     }
@@ -129,24 +152,12 @@ pub fn completions(input: &str) -> Vec<CompletionItem> {
                 return Vec::new();
             }
 
-            return cmd
-                .subcommands
-                .iter()
-                .filter(|(name, _)| {
-                    // Match against the first word of the subcommand name
-                    let first_word = name.split_whitespace().next().unwrap_or(name);
-                    sub_word.is_empty() || first_word.starts_with(sub_word)
-                })
-                .map(|(name, desc)| {
-                    let first_word = name.split_whitespace().next().unwrap_or(name);
-                    CompletionItem {
-                        display: name.to_string(),
-                        description: desc,
-                        insert_text: format!("{} {} ", cmd_name, first_word),
-                        trailing_space: false, // already included
-                    }
-                })
-                .collect();
+            return build_subcommand_completions(
+                cmd_name,
+                cmd.subcommands.iter().map(|(name, desc)| (*name, *desc)),
+                sub_word,
+                |desc| desc,
+            );
         }
         return Vec::new();
     }
@@ -258,11 +269,14 @@ mod tests {
 
         assert!(!results.is_empty(), "Should return subcommands for 'account'");
 
-        // Should include known account subcommands
+        // Should include known account subcommands exactly once per keyword
         let displays: Vec<&str> = results.iter().map(|i| i.display.as_str()).collect();
         assert!(displays.iter().any(|d| d.contains("switch")), "Should include 'switch' subcommand");
         assert!(displays.iter().any(|d| d.contains("login")), "Should include 'login' subcommand");
         assert!(displays.iter().any(|d| d.contains("logout")), "Should include 'logout' subcommand");
+        assert_eq!(results.iter().filter(|item| item.insert_text == "account switch ").count(), 1);
+        assert_eq!(results.iter().filter(|item| item.insert_text == "account login ").count(), 1);
+        assert_eq!(results.iter().filter(|item| item.insert_text == "account logout ").count(), 1);
 
         // Verify insert_text format includes command name
         for item in &results {
@@ -279,11 +293,12 @@ mod tests {
         // Test that "/account sw" filters to subcommands starting with 'sw'
         let results = completions("/account sw");
 
-        assert!(!results.is_empty(), "Should find subcommands starting with 'sw'");
+        assert_eq!(results.len(), 1, "Should collapse duplicate 'switch' variants to one completion");
 
         // Should only include 'switch' subcommand
         let displays: Vec<&str> = results.iter().map(|i| i.display.as_str()).collect();
         assert!(displays.iter().any(|d| d.contains("switch")), "Should include 'switch' subcommand");
+        assert_eq!(results[0].insert_text, "account switch ");
 
         // Should NOT include other subcommands like login, logout, etc.
         assert!(!displays.iter().any(|d| d.contains("login")), "Should NOT include 'login' when filtering by 'sw'");
@@ -368,10 +383,14 @@ mod tests {
         // Test subcommands
         let subcommands = completions_from_registry(&registry, "/account ");
         assert!(!subcommands.is_empty(), "Should return account subcommands");
+        assert_eq!(subcommands.iter().filter(|item| item.insert_text == "account switch ").count(), 1);
+        assert_eq!(subcommands.iter().filter(|item| item.insert_text == "account login ").count(), 1);
+        assert_eq!(subcommands.iter().filter(|item| item.insert_text == "account logout ").count(), 1);
 
         // Test subcommand filtering
         let filtered = completions_from_registry(&registry, "/account sw");
-        assert!(!filtered.is_empty(), "Should find 'sw' subcommands");
+        assert_eq!(filtered.len(), 1, "Should collapse duplicate 'switch' variants in registry completions");
+        assert_eq!(filtered[0].insert_text, "account switch ");
 
         // Test past subcommand
         let past_sub = completions_from_registry(&registry, "/account switch foo");
