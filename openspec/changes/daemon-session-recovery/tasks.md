@@ -51,5 +51,5 @@
 
 - [x] 6.1 Update `clankers ps` output to show session state column (active/suspended/recovering)
 - [x] 6.2 Update `clankers daemon status` to include recovery stats (sessions recovered, pending, failed)
-- [ ] 6.3 Verify Matrix bridge works with recovered sessions (message arrives → lazy recovery → response)
-- [ ] 6.4 End-to-end manual test: create sessions, stop daemon, restart, attach, verify history
+- [x] 6.3 Verify Matrix bridge works with recovered sessions (message arrives → lazy recovery → response)
+- [x] 6.4 End-to-end manual test: create sessions, stop daemon, restart, attach, verify history

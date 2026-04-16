@@ -499,6 +499,86 @@ pub async fn prompt_and_collect(
     collected
 }
 
+fn load_recovery_seed_messages(
+    entry: &super::session_store::SessionCatalogEntry,
+) -> Vec<clankers_protocol::SerializedMessage> {
+    if entry.automerge_path.exists() {
+        match clankers_session::SessionManager::open(entry.automerge_path.clone()) {
+            Ok(mgr) => match mgr.build_context() {
+                Ok(msgs) => {
+                    let serialized: Vec<_> = msgs
+                        .iter()
+                        .filter_map(|m| {
+                            let (role, content, model) = match m {
+                                clankers_message::AgentMessage::User(u) => {
+                                    let text = u
+                                        .content
+                                        .iter()
+                                        .filter_map(|c| match c {
+                                            clankers_message::Content::Text { text } => Some(text.as_str()),
+                                            _ => None,
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n");
+                                    ("user", text, None)
+                                }
+                                clankers_message::AgentMessage::Assistant(a) => {
+                                    let text = a
+                                        .content
+                                        .iter()
+                                        .filter_map(|c| match c {
+                                            clankers_message::Content::Text { text } => Some(text.as_str()),
+                                            _ => None,
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join("\n");
+                                    ("assistant", text, Some(a.model.clone()))
+                                }
+                                _ => return None,
+                            };
+                            if content.is_empty() {
+                                return None;
+                            }
+                            Some(clankers_protocol::SerializedMessage {
+                                role: role.to_string(),
+                                content,
+                                model,
+                                timestamp: None,
+                            })
+                        })
+                        .collect();
+                    info!(
+                        "loaded {} recovery messages from {:?}",
+                        serialized.len(),
+                        entry.automerge_path
+                    );
+                    serialized
+                }
+                Err(e) => {
+                    warn!(
+                        "failed to build recovery context from {:?}: {e} — starting fresh",
+                        entry.automerge_path
+                    );
+                    Vec::new()
+                }
+            },
+            Err(e) => {
+                warn!(
+                    "failed to open recovery automerge at {:?}: {e} — starting fresh",
+                    entry.automerge_path
+                );
+                Vec::new()
+            }
+        }
+    } else {
+        warn!(
+            "recovery automerge file missing at {:?} — starting fresh",
+            entry.automerge_path
+        );
+        Vec::new()
+    }
+}
+
 /// Get or create an actor session for a transport key.
 ///
 /// Looks up the session in `DaemonState` by key. If not found, spawns a
@@ -520,19 +600,65 @@ pub async fn get_or_create_keyed_session(
     tokio::sync::mpsc::UnboundedSender<SessionCommand>,
     tokio::sync::broadcast::Sender<DaemonEvent>,
 ) {
-    // Fast path: session already exists
+    let mut suspended_session_id = None;
+
+    // Fast path: session already exists. If the key points at a suspended
+    // placeholder, remember it so we can revive the existing session instead
+    // of silently forking a fresh one.
     {
         let st = state.lock().await;
-        if let Some(handle) = st.session_by_key(key)
-            && let Some(ref cmd_tx) = handle.cmd_tx
-            && let Some(ref event_tx) = handle.event_tx
-        {
-            return (
-                handle.session_id.clone(),
-                cmd_tx.clone(),
-                event_tx.clone(),
-            );
+        if let Some(handle) = st.session_by_key(key) {
+            if let Some(ref cmd_tx) = handle.cmd_tx
+                && let Some(ref event_tx) = handle.event_tx
+            {
+                return (
+                    handle.session_id.clone(),
+                    cmd_tx.clone(),
+                    event_tx.clone(),
+                );
+            }
+            suspended_session_id = Some(handle.session_id.clone());
         }
+    }
+
+    if let Some(session_id) = suspended_session_id
+        && let Some(catalog) = factory.catalog.as_ref()
+        && let Some(entry) = catalog.get_session(&session_id)
+    {
+        let seed_messages = load_recovery_seed_messages(&entry);
+        let spawned = spawn_agent_process(
+            registry,
+            factory,
+            session_id.clone(),
+            Some(entry.model.clone()),
+            None,
+            None,
+            None,
+        );
+        let cmd_tx = spawned.cmd_tx;
+        let event_tx = spawned.event_tx;
+
+        if !seed_messages.is_empty() {
+            cmd_tx
+                .send(SessionCommand::SeedMessages {
+                    messages: seed_messages,
+                })
+                .ok();
+        }
+
+        {
+            let mut st = state.lock().await;
+            if let Some(handle) = st.sessions.get_mut(&session_id) {
+                handle.model = entry.model.clone();
+                handle.cmd_tx = Some(cmd_tx.clone());
+                handle.event_tx = Some(event_tx.clone());
+                handle.state = "active".to_string();
+            }
+        }
+
+        catalog.set_state(&session_id, super::session_store::SessionLifecycle::Active);
+        info!("recovered keyed session {} for {}", session_id, key);
+        return (session_id, cmd_tx, event_tx);
     }
 
     // Slow path: create a new session
@@ -611,55 +737,7 @@ pub fn recover_session(
         .ok_or_else(|| format!("session '{session_id}' not in catalog"))?;
 
     // Load seed messages from automerge
-    let seed_messages = if entry.automerge_path.exists() {
-        match clankers_session::SessionManager::open(entry.automerge_path.clone()) {
-            Ok(mgr) => {
-                match mgr.build_context() {
-                    Ok(msgs) => {
-                        let serialized: Vec<_> = msgs.iter().filter_map(|m| {
-                            let (role, content, model) = match m {
-                                clankers_message::AgentMessage::User(u) => {
-                                    let text = u.content.iter().filter_map(|c| match c {
-                                        clankers_message::Content::Text { text } => Some(text.as_str()),
-                                        _ => None,
-                                    }).collect::<Vec<_>>().join("\n");
-                                    ("user", text, None)
-                                }
-                                clankers_message::AgentMessage::Assistant(a) => {
-                                    let text = a.content.iter().filter_map(|c| match c {
-                                        clankers_message::Content::Text { text } => Some(text.as_str()),
-                                        _ => None,
-                                    }).collect::<Vec<_>>().join("\n");
-                                    ("assistant", text, Some(a.model.clone()))
-                                }
-                                _ => return None,
-                            };
-                            if content.is_empty() { return None; }
-                            Some(clankers_protocol::SerializedMessage {
-                                role: role.to_string(),
-                                content,
-                                model,
-                                timestamp: None,
-                            })
-                        }).collect();
-                        info!("recover_session {session_id}: loaded {} messages from {:?}", serialized.len(), entry.automerge_path);
-                        serialized
-                    }
-                    Err(e) => {
-                        warn!("recover_session {session_id}: failed to build context: {e} — starting fresh");
-                        Vec::new()
-                    }
-                }
-            }
-            Err(e) => {
-                warn!("recover_session {session_id}: failed to open automerge: {e} — starting fresh");
-                Vec::new()
-            }
-        }
-    } else {
-        warn!("recover_session {session_id}: automerge file missing at {:?} — starting fresh", entry.automerge_path);
-        Vec::new()
-    };
+    let seed_messages = load_recovery_seed_messages(&entry);
 
     // Spawn the actor
     let spawned = spawn_agent_process(

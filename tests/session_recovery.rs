@@ -6,9 +6,18 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use clankers::message::{
+    AgentMessage, AssistantMessage, Content, MessageId, StopReason, Usage, UserMessage,
+};
+use clankers::modes::daemon::agent_process::{
+    get_or_create_keyed_session, prompt_and_collect,
+};
 use clankers::modes::daemon::session_store::{
     SessionCatalog, SessionCatalogEntry, SessionLifecycle,
 };
+use clankers::modes::daemon::socket_bridge::SessionFactory;
+use clankers::provider::streaming::{ContentDelta, MessageMetadata, StreamEvent};
+use clankers::provider::{CompletionRequest, Model, Provider};
 use clankers_controller::transport::{DaemonState, SessionHandle};
 use clankers_protocol::SessionKey;
 
@@ -269,4 +278,222 @@ fn restart_daemon_command_serialization() {
 fn daemon_config_drain_timeout_default() {
     let config = clankers::modes::daemon::DaemonConfig::default();
     assert_eq!(config.drain_timeout_secs, 10);
+}
+
+static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+struct RecoveryEchoProvider {
+    observed_requests: Arc<std::sync::Mutex<Vec<String>>>,
+}
+
+#[async_trait::async_trait]
+impl Provider for RecoveryEchoProvider {
+    async fn complete(
+        &self,
+        request: CompletionRequest,
+        tx: tokio::sync::mpsc::Sender<StreamEvent>,
+    ) -> clankers::provider::error::Result<()> {
+        let saw_old_user = request.messages.iter().any(|msg| match msg {
+            AgentMessage::User(user) => user.content.iter().any(|content| {
+                matches!(content, Content::Text { text } if text == "hello from before")
+            }),
+            _ => false,
+        });
+        let saw_old_assistant = request.messages.iter().any(|msg| match msg {
+            AgentMessage::Assistant(asst) => asst.content.iter().any(|content| {
+                matches!(content, Content::Text { text } if text == "old reply")
+            }),
+            _ => false,
+        });
+        let current = request
+            .messages
+            .iter()
+            .rev()
+            .find_map(|msg| match msg {
+                AgentMessage::User(user) => user.content.iter().find_map(|content| match content {
+                    Content::Text { text } => Some(text.clone()),
+                    _ => None,
+                }),
+                _ => None,
+            })
+            .unwrap_or_default();
+        let reply = format!(
+            "recovered={} current={}",
+            saw_old_user && saw_old_assistant,
+            current
+        );
+        self.observed_requests
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(reply.clone());
+
+        tx.send(StreamEvent::MessageStart {
+            message: MessageMetadata {
+                id: "mock-1".to_string(),
+                model: "mock".to_string(),
+                role: "assistant".to_string(),
+            },
+        })
+        .await
+        .ok();
+        tx.send(StreamEvent::ContentBlockStart {
+            index: 0,
+            content_block: Content::Text { text: String::new() },
+        })
+        .await
+        .ok();
+        tx.send(StreamEvent::ContentBlockDelta {
+            index: 0,
+            delta: ContentDelta::TextDelta { text: reply },
+        })
+        .await
+        .ok();
+        tx.send(StreamEvent::ContentBlockStop { index: 0 })
+            .await
+            .ok();
+        tx.send(StreamEvent::MessageDelta {
+            stop_reason: Some("end_turn".to_string()),
+            usage: Usage {
+                input_tokens: 10,
+                output_tokens: 5,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: 0,
+            },
+        })
+        .await
+        .ok();
+        tx.send(StreamEvent::MessageStop).await.ok();
+        Ok(())
+    }
+
+    fn models(&self) -> &[Model] {
+        &[]
+    }
+
+    fn name(&self) -> &str {
+        "recovery-echo"
+    }
+}
+
+#[tokio::test]
+#[allow(clippy::await_holding_lock)]
+async fn keyed_matrix_prompt_recovers_suspended_session_before_replying() {
+    let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+    let tmp = tempfile::tempdir().unwrap();
+    let home = tmp.path().join("home");
+    let runtime = tmp.path().join("run");
+    std::fs::create_dir_all(&home).unwrap();
+    std::fs::create_dir_all(&runtime).unwrap();
+
+    // SAFETY: nextest runs this test in its own process, and we serialize env writes.
+    unsafe {
+        std::env::set_var("HOME", &home);
+        std::env::set_var("XDG_RUNTIME_DIR", &runtime);
+    }
+
+    let sessions_dir = home.join(".clankers").join("agent").join("sessions");
+    std::fs::create_dir_all(&sessions_dir).unwrap();
+
+    let mut mgr = clankers::clankers_session::SessionManager::create(
+        &sessions_dir,
+        "/tmp/matrix-recovery",
+        "test-model",
+        None,
+        None,
+        None,
+    )
+    .unwrap();
+    let session_id = mgr.session_id().to_string();
+    let user_id = MessageId::new("user-1");
+    mgr.append_message(
+        AgentMessage::User(UserMessage {
+            id: user_id.clone(),
+            content: vec![Content::Text {
+                text: "hello from before".to_string(),
+            }],
+            timestamp: chrono::Utc::now(),
+        }),
+        None,
+    )
+    .unwrap();
+    mgr.append_message(
+        AgentMessage::Assistant(AssistantMessage {
+            id: MessageId::new("assistant-1"),
+            content: vec![Content::Text {
+                text: "old reply".to_string(),
+            }],
+            model: "test-model".to_string(),
+            usage: Usage::default(),
+            stop_reason: StopReason::Stop,
+            timestamp: chrono::Utc::now(),
+        }),
+        Some(user_id),
+    )
+    .unwrap();
+    let automerge_path = mgr.file_path().to_path_buf();
+
+    let db_path = tmp.path().join("catalog.db");
+    let db = Arc::new(redb::Database::create(&db_path).unwrap());
+    let catalog = Arc::new(SessionCatalog::new(db));
+    catalog.insert_session(&SessionCatalogEntry {
+        session_id: session_id.clone(),
+        automerge_path,
+        model: "test-model".to_string(),
+        created_at: "2026-03-20T10:00:00Z".to_string(),
+        last_active: "2026-03-20T10:05:00Z".to_string(),
+        turn_count: 1,
+        state: SessionLifecycle::Suspended,
+    });
+    let key = SessionKey::Matrix {
+        user_id: "@alice:example.com".to_string(),
+        room_id: "!room:example.com".to_string(),
+    };
+    catalog.insert_key(&key, &session_id);
+
+    let mut daemon_state = DaemonState::new();
+    daemon_state.sessions.insert(
+        session_id.clone(),
+        make_handle(&session_id, false),
+    );
+    daemon_state.register_key(key.clone(), session_id.clone());
+
+    let state = tokio::sync::Mutex::new(daemon_state);
+    let registry = clanker_actor::ProcessRegistry::new();
+    let observed_requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let factory = SessionFactory {
+        provider: Arc::new(RecoveryEchoProvider {
+            observed_requests: Arc::clone(&observed_requests),
+        }),
+        tools: vec![],
+        settings: clankers::config::settings::Settings::default(),
+        default_model: "test-model".to_string(),
+        default_system_prompt: "You are a test.".to_string(),
+        registry: None,
+        catalog: Some(Arc::clone(&catalog)),
+        schedule_engine: None,
+        plugin_manager: None,
+    };
+
+    let (reused_session_id, cmd_tx, event_tx) =
+        get_or_create_keyed_session(&state, &registry, &factory, &key, None).await;
+    assert_eq!(reused_session_id, session_id);
+
+    let _response = prompt_and_collect(&cmd_tx, &event_tx, "followup".to_string(), vec![]).await;
+    let observed = observed_requests
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone();
+    assert_eq!(observed, vec!["recovered=true current=followup".to_string()]);
+
+    let st = state.lock().await;
+    let handle = st.sessions.get(&session_id).unwrap();
+    assert!(handle.cmd_tx.is_some());
+    assert!(handle.event_tx.is_some());
+    assert_eq!(handle.state, "active");
+    drop(st);
+
+    assert_eq!(
+        catalog.get_session(&session_id).unwrap().state,
+        SessionLifecycle::Active
+    );
 }
