@@ -204,17 +204,7 @@ fn dispatch_readonly_control(
         },
         ControlCommand::ListPlugins => {
             let summaries = if let Some(ref pm) = factory.plugin_manager {
-                let mgr = pm.lock().unwrap_or_else(|p| p.into_inner());
-                mgr.list()
-                    .iter()
-                    .map(|info| clankers_protocol::PluginSummary {
-                        name: info.name.clone(),
-                        version: info.version.clone(),
-                        state: format!("{:?}", info.state),
-                        tools: info.manifest.tools.clone(),
-                        permissions: info.manifest.permissions.clone(),
-                    })
-                    .collect()
+                crate::plugin::build_protocol_plugin_summaries(pm)
             } else {
                 Vec::new()
             };

@@ -31,6 +31,11 @@ fn slash_plugin_lists_test_plugin() {
     run_slash(&mut h, "/plugin");
     h.wait_for_text("clankers-test-plugin", TIMEOUT);
     assert!(h.screen_contains("v0.1.0"), "Should show plugin version.\nScreen:\n{}", h.screen_text());
+    assert!(
+        h.screen_contains("kind: extism"),
+        "Should show plugin kind in list output.\nScreen:\n{}",
+        h.screen_text()
+    );
     h.quit();
 }
 
@@ -64,6 +69,8 @@ fn slash_plugin_show_specific_plugin() {
     let mut h = TuiTestHarness::spawn(40, 120);
     run_slash(&mut h, "/plugin clankers-test-plugin");
     h.wait_for_text("Plugin: clankers-test-plugin", TIMEOUT);
+    assert!(h.screen_contains("Kind:"), "Should show Kind field.\nScreen:\n{}", h.screen_text());
+    assert!(h.screen_contains("extism"), "Should show plugin kind.\nScreen:\n{}", h.screen_text());
     assert!(h.screen_contains("State:"), "Should show State field.\nScreen:\n{}", h.screen_text());
     assert!(h.screen_contains("Permissions:"), "Should show Permissions field.\nScreen:\n{}", h.screen_text());
     h.quit();

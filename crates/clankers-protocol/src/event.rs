@@ -233,4 +233,8 @@ pub struct PluginSummary {
     pub state: String,
     pub tools: Vec<String>,
     pub permissions: Vec<String>,
+    #[serde(default)]
+    pub kind: Option<String>,
+    #[serde(default)]
+    pub last_error: Option<String>,
 }

@@ -10,17 +10,20 @@ use clankers_hooks::payload::HookPayload;
 use clankers_hooks::point::HookPoint;
 use clankers_hooks::verdict::HookVerdict;
 
+use crate::PluginHostFacade;
 use crate::PluginManager;
 
 /// Wraps `PluginManager` as a `HookHandler` so plugins participate in
 /// the hook pipeline alongside script hooks and git hooks.
 pub struct PluginHookHandler {
-    plugin_manager: Arc<Mutex<PluginManager>>,
+    plugin_host: PluginHostFacade,
 }
 
 impl PluginHookHandler {
     pub fn new(plugin_manager: Arc<Mutex<PluginManager>>) -> Self {
-        Self { plugin_manager }
+        Self {
+            plugin_host: PluginHostFacade::new(plugin_manager),
+        }
     }
 
     /// Map a HookPoint to the plugin event name string.
@@ -56,13 +59,7 @@ impl HookHandler for PluginHookHandler {
             return false;
         }
 
-        let pm = self.plugin_manager.lock().unwrap_or_else(|p| p.into_inner());
-        pm.active_plugin_infos().any(|info| {
-            info.manifest
-                .events
-                .iter()
-                .any(|e| crate::bridge::PluginEvent::parse(e).is_some_and(|pe| pe.matches_event_kind(kind)))
-        })
+        self.plugin_host.has_event_subscriber(kind)
     }
 
     async fn handle(&self, point: HookPoint, payload: &HookPayload) -> HookVerdict {
@@ -80,25 +77,14 @@ impl HookHandler for PluginHookHandler {
 
         // Dispatch to all subscribed plugins (blocking — Extism is sync)
         let result = tokio::task::spawn_blocking({
-            let pm = self.plugin_manager.clone();
+            let plugin_host = self.plugin_host.clone();
             let kind = kind.to_string();
             let input = input.clone();
             move || {
-                let pm = pm.lock().unwrap_or_else(|p| p.into_inner());
                 let mut deny_reason = None;
 
-                let active_names: Vec<String> = pm
-                    .active_plugin_infos()
-                    .filter(|info| {
-                        info.manifest.events.iter().any(|e| {
-                            crate::bridge::PluginEvent::parse(e).is_some_and(|pe| pe.matches_event_kind(&kind))
-                        })
-                    })
-                    .map(|info| info.name.clone())
-                    .collect();
-
-                for name in active_names {
-                    match pm.call_plugin(&name, "on_event", &input) {
+                for info in plugin_host.event_subscribers(&kind) {
+                    match plugin_host.call_plugin(&info.name, "on_event", &input) {
                         Ok(response) => {
                             if let Ok(val) = serde_json::from_str::<serde_json::Value>(&response)
                                 && val.get("deny").and_then(|v| v.as_bool()).unwrap_or(false)
@@ -113,7 +99,7 @@ impl HookHandler for PluginHookHandler {
                             }
                         }
                         Err(e) => {
-                            tracing::warn!(plugin = %name, error = %e, "plugin hook dispatch failed");
+                            tracing::warn!(plugin = %info.name, error = %e, "plugin hook dispatch failed");
                         }
                     }
                 }

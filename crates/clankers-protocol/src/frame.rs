@@ -497,6 +497,8 @@ mod tests {
                     state: "Active".to_string(),
                     tools: vec!["test_echo".to_string()],
                     permissions: vec!["fs:read".to_string()],
+                    kind: Some("extism".to_string()),
+                    last_error: None,
                 }],
             },
         ];
@@ -708,6 +710,8 @@ mod tests {
                 state: "Active".to_string(),
                 tools: vec!["echo".to_string()],
                 permissions: vec!["net".to_string()],
+                kind: Some("extism".to_string()),
+                last_error: None,
             }]),
             ControlResponse::Plugins(vec![]),
             ControlResponse::Error {

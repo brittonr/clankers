@@ -17,6 +17,8 @@ pub struct PluginManifest {
     #[serde(default)]
     pub kind: PluginKind,
     #[serde(default)]
+    pub stdio: Option<StdioManifest>,
+    #[serde(default)]
     pub permissions: Vec<String>,
     #[serde(default)]
     pub tools: Vec<String>,
@@ -41,6 +43,47 @@ pub struct PluginManifest {
     /// Optional leader menu entries contributed by this plugin.
     #[serde(default)]
     pub leader_menu: Vec<PluginLeaderEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StdioManifest {
+    /// Executable to launch for the stdio plugin runtime.
+    #[serde(default)]
+    pub command: Option<String>,
+    /// Arguments passed to the executable.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// Optional working directory policy.
+    #[serde(default)]
+    pub working_dir: Option<PluginWorkingDirectory>,
+    /// Environment variables forwarded to the child process.
+    /// In v1, every allowlisted variable is required.
+    #[serde(default)]
+    pub env_allowlist: Vec<String>,
+    /// Explicit sandbox mode.
+    #[serde(default)]
+    pub sandbox: Option<PluginSandboxMode>,
+    /// Additional writable roots granted in restricted mode.
+    #[serde(default)]
+    pub writable_roots: Vec<String>,
+    /// Whether restricted mode may allow outbound network access when the
+    /// manifest permissions also allow it.
+    #[serde(default)]
+    pub allow_network: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum PluginWorkingDirectory {
+    PluginDir,
+    ProjectRoot,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum PluginSandboxMode {
+    Inherit,
+    Restricted,
 }
 
 /// A leader menu entry declared in a plugin's `plugin.json`.
@@ -85,17 +128,86 @@ fn default_input_schema() -> serde_json::Value {
     })
 }
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "lowercase")]
 pub enum PluginKind {
     #[default]
     Extism,
     Zellij,
+    Stdio,
 }
+
+impl PluginKind {
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::Extism => "extism",
+            Self::Zellij => "zellij",
+            Self::Stdio => "stdio",
+        }
+    }
+
+    pub const fn uses_wasm_runtime(&self) -> bool {
+        matches!(self, Self::Extism)
+    }
+}
+
+impl std::fmt::Display for PluginKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ManifestValidationError {
+    MissingStdioLaunchPolicy,
+    MissingStdioCommand,
+    EmptyStdioCommand,
+    MissingStdioSandbox,
+    UnexpectedStdioLaunchPolicy,
+}
+
+impl std::fmt::Display for ManifestValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingStdioLaunchPolicy => f.write_str("stdio plugins must declare a `stdio` launch policy"),
+            Self::MissingStdioCommand => f.write_str("stdio plugins must declare `stdio.command`"),
+            Self::EmptyStdioCommand => f.write_str("stdio plugin `stdio.command` cannot be blank"),
+            Self::MissingStdioSandbox => f.write_str("stdio plugins must declare `stdio.sandbox`"),
+            Self::UnexpectedStdioLaunchPolicy => {
+                f.write_str("non-stdio plugins cannot declare a `stdio` launch policy")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ManifestValidationError {}
 
 impl PluginManifest {
     pub fn load(path: &Path) -> Option<Self> {
         let content = std::fs::read_to_string(path).ok()?;
         serde_json::from_str(&content).ok()
+    }
+
+    pub fn validate(&self) -> Result<(), ManifestValidationError> {
+        match self.kind {
+            PluginKind::Stdio => {
+                let stdio = self.stdio.as_ref().ok_or(ManifestValidationError::MissingStdioLaunchPolicy)?;
+                match stdio.command.as_deref() {
+                    Some(command) if !command.trim().is_empty() => {}
+                    Some(_) => return Err(ManifestValidationError::EmptyStdioCommand),
+                    None => return Err(ManifestValidationError::MissingStdioCommand),
+                }
+                if stdio.sandbox.is_none() {
+                    return Err(ManifestValidationError::MissingStdioSandbox);
+                }
+            }
+            PluginKind::Extism | PluginKind::Zellij => {
+                if self.stdio.is_some() {
+                    return Err(ManifestValidationError::UnexpectedStdioLaunchPolicy);
+                }
+            }
+        }
+
+        Ok(())
     }
 }

@@ -1,6 +1,12 @@
 use super::*;
 use crate::plugin::manifest;
 
+fn write_plugin_manifest(dir: &std::path::Path, name: &str, manifest: serde_json::Value) {
+    let plugin_dir = dir.join(name);
+    std::fs::create_dir_all(&plugin_dir).unwrap();
+    std::fs::write(plugin_dir.join("plugin.json"), serde_json::to_string_pretty(&manifest).unwrap()).unwrap();
+}
+
 // ── Discovery tests ──────────────────────────────────────────────
 
 #[test]
@@ -108,6 +114,280 @@ fn manifest_tool_definitions_default_empty() {
     std::fs::write(&path, r#"{"name":"minimal","version":"0.1.0"}"#).ok();
     let m = manifest::PluginManifest::load(&path).unwrap();
     assert!(m.tool_definitions.is_empty());
+}
+
+#[test]
+fn manifest_stdio_launch_policy_parsed_and_validated() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plugin.json");
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "name": "stdio-test-plugin",
+            "version": "0.1.0",
+            "kind": "stdio",
+            "permissions": ["net"],
+            "stdio": {
+                "command": "python3",
+                "args": ["plugin.py", "--stdio"],
+                "working_dir": "project-root",
+                "env_allowlist": ["GITHUB_TOKEN", "FASTMAIL_TOKEN"],
+                "sandbox": "restricted",
+                "writable_roots": [".git", "build/output"],
+                "allow_network": true
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let manifest = manifest::PluginManifest::load(&path).unwrap();
+    manifest.validate().unwrap();
+
+    assert_eq!(manifest.kind, manifest::PluginKind::Stdio);
+    let stdio = manifest.stdio.as_ref().expect("stdio config");
+    assert_eq!(stdio.command.as_deref(), Some("python3"));
+    assert_eq!(stdio.args, vec!["plugin.py", "--stdio"]);
+    assert_eq!(stdio.working_dir, Some(manifest::PluginWorkingDirectory::ProjectRoot));
+    assert_eq!(stdio.env_allowlist, vec!["GITHUB_TOKEN", "FASTMAIL_TOKEN"]);
+    assert_eq!(stdio.sandbox, Some(manifest::PluginSandboxMode::Restricted));
+    assert_eq!(stdio.writable_roots, vec![".git", "build/output"]);
+    assert!(stdio.allow_network);
+}
+
+#[test]
+fn manifest_stdio_requires_launch_policy() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plugin.json");
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "name": "stdio-no-policy",
+            "version": "0.1.0",
+            "kind": "stdio"
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let manifest = manifest::PluginManifest::load(&path).unwrap();
+    assert_eq!(manifest.validate(), Err(manifest::ManifestValidationError::MissingStdioLaunchPolicy));
+}
+
+#[test]
+fn manifest_stdio_rejects_blank_command() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plugin.json");
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "name": "stdio-blank-command",
+            "version": "0.1.0",
+            "kind": "stdio",
+            "stdio": {
+                "command": "   ",
+                "sandbox": "inherit"
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let manifest = manifest::PluginManifest::load(&path).unwrap();
+    assert_eq!(manifest.validate(), Err(manifest::ManifestValidationError::EmptyStdioCommand));
+}
+
+#[test]
+fn manifest_stdio_requires_sandbox_mode() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plugin.json");
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "name": "stdio-no-sandbox",
+            "version": "0.1.0",
+            "kind": "stdio",
+            "stdio": {
+                "command": "python3"
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let manifest = manifest::PluginManifest::load(&path).unwrap();
+    assert_eq!(manifest.validate(), Err(manifest::ManifestValidationError::MissingStdioSandbox));
+}
+
+#[test]
+fn manifest_non_stdio_rejects_stdio_block() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plugin.json");
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "name": "extism-with-stdio-block",
+            "version": "0.1.0",
+            "kind": "extism",
+            "wasm": "plugin.wasm",
+            "stdio": {
+                "command": "python3",
+                "sandbox": "inherit"
+            }
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let manifest = manifest::PluginManifest::load(&path).unwrap();
+    assert_eq!(manifest.validate(), Err(manifest::ManifestValidationError::UnexpectedStdioLaunchPolicy));
+}
+
+#[test]
+fn discover_mixed_extism_and_stdio_plugins() {
+    let dir = tempfile::tempdir().unwrap();
+    write_plugin_manifest(
+        dir.path(),
+        "extism-plugin",
+        serde_json::json!({
+            "name": "extism-plugin",
+            "version": "0.1.0",
+            "kind": "extism",
+            "wasm": "plugin.wasm"
+        }),
+    );
+    write_plugin_manifest(
+        dir.path(),
+        "stdio-plugin",
+        serde_json::json!({
+            "name": "stdio-plugin",
+            "version": "0.1.0",
+            "kind": "stdio",
+            "stdio": {
+                "command": "python3",
+                "args": ["plugin.py"],
+                "sandbox": "inherit"
+            }
+        }),
+    );
+
+    let mut mgr = PluginManager::new(dir.path().to_path_buf(), None);
+    mgr.discover();
+
+    let extism = mgr.get("extism-plugin").expect("extism discovered");
+    assert_eq!(extism.state, PluginState::Loaded);
+    assert_eq!(extism.manifest.kind, manifest::PluginKind::Extism);
+
+    let stdio = mgr.get("stdio-plugin").expect("stdio discovered");
+    assert_eq!(stdio.state, PluginState::Loaded);
+    assert_eq!(stdio.manifest.kind, manifest::PluginKind::Stdio);
+    assert_eq!(stdio.manifest.stdio.as_ref().and_then(|cfg| cfg.command.as_deref()), Some("python3"));
+}
+
+#[test]
+fn discover_invalid_stdio_manifest_marks_plugin_error() {
+    let dir = tempfile::tempdir().unwrap();
+    write_plugin_manifest(
+        dir.path(),
+        "valid-extism-plugin",
+        serde_json::json!({
+            "name": "valid-extism-plugin",
+            "version": "0.1.0",
+            "kind": "extism",
+            "wasm": "plugin.wasm"
+        }),
+    );
+    write_plugin_manifest(
+        dir.path(),
+        "invalid-stdio-plugin",
+        serde_json::json!({
+            "name": "invalid-stdio-plugin",
+            "version": "0.1.0",
+            "kind": "stdio",
+            "stdio": {
+                "args": ["plugin.py"],
+                "sandbox": "inherit"
+            }
+        }),
+    );
+
+    let mut mgr = PluginManager::new(dir.path().to_path_buf(), None);
+    mgr.discover();
+
+    let valid = mgr.get("valid-extism-plugin").expect("valid plugin preserved");
+    assert_eq!(valid.state, PluginState::Loaded);
+
+    let invalid = mgr.get("invalid-stdio-plugin").expect("invalid plugin still listed");
+    match &invalid.state {
+        PluginState::Error(message) => assert!(message.contains("stdio.command"), "unexpected error: {message}"),
+        other => panic!("expected error state, got {other:?}"),
+    }
+}
+
+#[test]
+fn init_plugin_manager_skips_wasm_load_for_stdio_manifests() {
+    let dir = tempfile::tempdir().unwrap();
+    write_plugin_manifest(
+        dir.path(),
+        "stdio-init-test-plugin",
+        serde_json::json!({
+            "name": "stdio-init-test-plugin",
+            "version": "0.1.0",
+            "kind": "stdio",
+            "stdio": {
+                "command": "python3",
+                "args": ["plugin.py"],
+                "sandbox": "inherit"
+            }
+        }),
+    );
+
+    let manager = crate::modes::common::init_plugin_manager(dir.path(), None, &[]);
+    let mgr = manager.lock().unwrap_or_else(|e| e.into_inner());
+    let info = mgr.get("stdio-init-test-plugin").expect("stdio plugin discovered");
+    assert_eq!(info.state, PluginState::Loaded);
+    assert_eq!(info.manifest.kind, manifest::PluginKind::Stdio);
+}
+
+#[test]
+fn protocol_plugin_summaries_include_facade_runtime_metadata() {
+    let dir = tempfile::tempdir().unwrap();
+    write_plugin_manifest(
+        dir.path(),
+        "valid-extism-plugin",
+        serde_json::json!({
+            "name": "valid-extism-plugin",
+            "version": "0.1.0",
+            "kind": "extism",
+            "wasm": "plugin.wasm"
+        }),
+    );
+    write_plugin_manifest(
+        dir.path(),
+        "invalid-stdio-plugin",
+        serde_json::json!({
+            "name": "invalid-stdio-plugin",
+            "version": "0.1.0",
+            "kind": "stdio",
+            "stdio": {
+                "args": ["plugin.py"],
+                "sandbox": "inherit"
+            }
+        }),
+    );
+
+    let manager = crate::modes::common::init_plugin_manager(dir.path(), None, &[]);
+    let summaries = crate::plugin::build_protocol_plugin_summaries(&manager);
+
+    let extism = summaries.iter().find(|summary| summary.name == "valid-extism-plugin").unwrap();
+    assert_eq!(extism.kind.as_deref(), Some("extism"));
+    assert_eq!(extism.state, "Error");
+    assert!(extism.last_error.as_deref().is_some_and(|error| error.contains("WASM file not found")));
+
+    let stdio = summaries.iter().find(|summary| summary.name == "invalid-stdio-plugin").unwrap();
+    assert_eq!(stdio.kind.as_deref(), Some("stdio"));
+    assert_eq!(stdio.state, "Error");
+    assert!(stdio.last_error.as_deref().is_some_and(|error| error.contains("stdio.command")));
 }
 
 #[test]

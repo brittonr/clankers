@@ -351,13 +351,31 @@ pub fn init_plugin_manager(
         info!("Restoring {} disabled plugin(s): {}", disabled.len(), disabled.join(", "));
     }
 
-    // Load all discovered plugins' WASM modules (skip disabled ones)
+    // Load all discovered Extism plugins' WASM modules (skip disabled or invalid entries)
     let names: Vec<String> = manager.list().iter().map(|p| p.name.clone()).collect();
     for name in &names {
         if disabled.contains(name) {
             manager.disable(name).ok();
             continue;
         }
+
+        let Some((kind, has_manifest_error)) = manager
+            .get(name)
+            .map(|info| (info.manifest.kind.clone(), matches!(info.state, PluginState::Error(_))))
+        else {
+            continue;
+        };
+
+        if has_manifest_error {
+            warn!("Skipping plugin '{}' due to manifest validation error", name);
+            continue;
+        }
+
+        if !kind.uses_wasm_runtime() {
+            info!("Discovered {} plugin '{}'; skipping WASM load", kind, name);
+            continue;
+        }
+
         match manager.load_wasm(name) {
             Ok(()) => info!("Loaded plugin: {}", name),
             Err(e) => warn!("Failed to load plugin '{}': {}", name, e),
@@ -376,29 +394,18 @@ pub fn build_plugin_tools(
     manager: &Arc<Mutex<PluginManager>>,
     panel_tx: Option<&tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>>,
 ) -> Vec<Arc<dyn Tool>> {
-    let mgr = match manager.lock() {
-        Ok(m) => m,
-        Err(e) => {
-            warn!("Failed to lock plugin manager: {}", e);
-            return Vec::new();
-        }
-    };
-
+    let host = crate::plugin::PluginHostFacade::new(Arc::clone(manager));
     let mut tools: Vec<Arc<dyn Tool>> = Vec::new();
 
     // Derive built-in tool names from the actual tool list — skip plugin tools that collide
     let builtin_names: std::collections::HashSet<String> =
         builtin_tools.iter().map(|t| t.definition().name.clone()).collect();
 
-    for plugin_info in mgr.list() {
-        if plugin_info.state != PluginState::Active {
-            continue;
-        }
-
+    for plugin_info in host.active_plugins() {
         if !plugin_info.manifest.tool_definitions.is_empty() {
-            build_detailed_tools(plugin_info, manager, &builtin_names, panel_tx, &mut tools);
+            build_detailed_tools(&plugin_info, manager, &builtin_names, panel_tx, &mut tools);
         } else {
-            build_bare_tools(plugin_info, manager, &mut tools);
+            build_bare_tools(&plugin_info, manager, &mut tools);
         }
     }
 
@@ -520,38 +527,19 @@ pub fn resolve_tool_tiers(tools_flag: Option<&str>) -> Option<Vec<ToolTier>> {
 /// Fire `plugin_init` event to all active plugins that subscribe to it.
 /// Returns the collected UI actions so the caller can apply them to the TUI.
 pub fn fire_plugin_init(plugin_manager: &Arc<Mutex<PluginManager>>) -> Vec<crate::plugin::ui::PluginUiAction> {
-    use crate::plugin::PluginState;
-    use crate::plugin::bridge::PluginEvent;
     use crate::plugin::bridge::parse_ui_actions;
 
-    let mgr = match plugin_manager.lock() {
-        Ok(m) => m,
-        Err(poisoned) => {
-            tracing::warn!("Plugin manager mutex was poisoned during init, recovering");
-            poisoned.into_inner()
-        }
-    };
-
+    let host = crate::plugin::PluginHostFacade::new(Arc::clone(plugin_manager));
     let mut actions = Vec::new();
 
-    for plugin_info in mgr.list() {
-        if plugin_info.state != PluginState::Active {
-            continue;
-        }
-
-        // Check if this plugin has on_event and subscribes to plugin_init
-        let is_subscribed =
-            plugin_info.manifest.events.iter().any(|e| PluginEvent::parse(e) == Some(PluginEvent::PluginInit));
-        if !is_subscribed {
-            continue;
-        }
-        if !mgr.has_function(&plugin_info.name, "on_event") {
+    for plugin_info in host.event_subscribers("plugin_init") {
+        if !host.has_function(&plugin_info.name, "on_event") {
             continue;
         }
 
         let payload = serde_json::json!({"event": "plugin_init", "data": {}});
         let input = serde_json::to_string(&payload).unwrap_or_default();
-        match mgr.call_plugin(&plugin_info.name, "on_event", &input) {
+        match host.call_plugin(&plugin_info.name, "on_event", &input) {
             Ok(output) => {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&output) {
                     let plugin_actions = parse_ui_actions(&plugin_info.name, &parsed);

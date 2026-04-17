@@ -927,13 +927,19 @@ fn process_daemon_event(
             } else {
                 let mut lines = vec![format!("Loaded plugins ({}):", plugins.len())];
                 for p in plugins {
-                    let tools_str = if p.tools.is_empty() {
-                        String::new()
-                    } else {
-                        format!("  tools: {}", p.tools.join(", "))
+                    let marker = match p.state.as_str() {
+                        "Active" => "\u{2713}",
+                        "Loaded" => "\u{25cb}",
+                        "Disabled" => "−",
+                        _ => "\u{2717}",
                     };
-                    let marker = if p.state == "Active" { "\u{2713}" } else { "\u{2717}" };
-                    lines.push(format!("  {} {} v{} [{}]{}", marker, p.name, p.version, p.state, tools_str));
+                    let kind = p.kind.as_deref().unwrap_or("unknown");
+                    lines.push(format!("  {} {} v{} [{} / {}]", marker, p.name, p.version, kind, p.state));
+                    let tools = if p.tools.is_empty() { "none".to_string() } else { p.tools.join(", ") };
+                    lines.push(format!("      tools: {}", tools));
+                    if let Some(error) = &p.last_error {
+                        lines.push(format!("      last error: {}", error));
+                    }
                 }
                 app.push_system(lines.join("\n"), false);
             }

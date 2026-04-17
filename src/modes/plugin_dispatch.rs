@@ -2,8 +2,9 @@
 
 use std::sync::Arc;
 
-use crate::agent::events::AgentEvent;
 use clankers_protocol::DaemonEvent;
+
+use crate::agent::events::AgentEvent;
 
 /// Convert a `PluginUiAction` into its corresponding `DaemonEvent`.
 pub(crate) fn ui_action_to_daemon_event(action: crate::plugin::ui::PluginUiAction) -> DaemonEvent {
@@ -12,15 +13,17 @@ pub(crate) fn ui_action_to_daemon_event(action: crate::plugin::ui::PluginUiActio
             plugin,
             widget: Some(serde_json::to_value(widget).unwrap_or_default()),
         },
-        crate::plugin::ui::PluginUiAction::ClearWidget { plugin } => {
-            DaemonEvent::PluginWidget { plugin, widget: None }
-        }
-        crate::plugin::ui::PluginUiAction::SetStatus { plugin, text, color } => {
-            DaemonEvent::PluginStatus { plugin, text: Some(text), color }
-        }
-        crate::plugin::ui::PluginUiAction::ClearStatus { plugin } => {
-            DaemonEvent::PluginStatus { plugin, text: None, color: None }
-        }
+        crate::plugin::ui::PluginUiAction::ClearWidget { plugin } => DaemonEvent::PluginWidget { plugin, widget: None },
+        crate::plugin::ui::PluginUiAction::SetStatus { plugin, text, color } => DaemonEvent::PluginStatus {
+            plugin,
+            text: Some(text),
+            color,
+        },
+        crate::plugin::ui::PluginUiAction::ClearStatus { plugin } => DaemonEvent::PluginStatus {
+            plugin,
+            text: None,
+            color: None,
+        },
         crate::plugin::ui::PluginUiAction::Notify { plugin, message, level } => {
             DaemonEvent::PluginNotify { plugin, message, level }
         }
@@ -41,63 +44,41 @@ pub(crate) fn dispatch_event_to_plugins(
     plugin_manager: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
     event: &AgentEvent,
 ) -> PluginDispatchResult {
-    use crate::plugin::PluginState;
-    use crate::plugin::bridge::PluginEvent;
     use crate::plugin::sandbox;
 
-    let mgr = match plugin_manager.lock() {
-        Ok(m) => m,
-        Err(poisoned) => {
-            tracing::warn!("Plugin manager mutex was poisoned, recovering");
-            poisoned.into_inner()
-        }
-    };
-
+    let host = crate::plugin::PluginHostFacade::new(Arc::clone(plugin_manager));
     let mut messages = Vec::new();
     let mut ui_actions = Vec::new();
+    let event_kind = event.event_kind();
 
-    for info in mgr.list() {
-        if info.state != PluginState::Active {
-            continue;
+    // Build event payload
+    let payload = match event {
+        AgentEvent::AgentStart => serde_json::json!({"event": "agent_start", "data": {}}),
+        AgentEvent::AgentEnd { .. } => serde_json::json!({"event": "agent_end", "data": {}}),
+        AgentEvent::ToolCall { tool_name, call_id, .. } => {
+            serde_json::json!({"event": "tool_call", "data": {"tool": tool_name, "call_id": call_id}})
         }
-        // Check if this plugin subscribes to this event type
-        let event_kind = event.event_kind();
-        let is_subscribed = info
-            .manifest
-            .events
-            .iter()
-            .any(|e| PluginEvent::parse(e).is_some_and(|pe| pe.matches_event_kind(event_kind)));
-        if !is_subscribed {
-            continue;
+        AgentEvent::ToolExecutionEnd { call_id, .. } => {
+            serde_json::json!({"event": "tool_result", "data": {"call_id": call_id}})
         }
+        AgentEvent::TurnStart { index, .. } => {
+            serde_json::json!({"event": "turn_start", "data": {"turn": index}})
+        }
+        AgentEvent::TurnEnd { index, .. } => {
+            serde_json::json!({"event": "turn_end", "data": {"turn": index}})
+        }
+        AgentEvent::UserInput { text, .. } => {
+            serde_json::json!({"event": "user_input", "data": {"text": text}})
+        }
+        AgentEvent::MessageUpdate { index, .. } => {
+            serde_json::json!({"event": "message_update", "data": {"index": index}})
+        }
+        _ => return PluginDispatchResult { messages, ui_actions },
+    };
 
-        // Build event payload
-        let payload = match event {
-            AgentEvent::AgentStart => serde_json::json!({"event": "agent_start", "data": {}}),
-            AgentEvent::AgentEnd { .. } => serde_json::json!({"event": "agent_end", "data": {}}),
-            AgentEvent::ToolCall { tool_name, call_id, .. } => {
-                serde_json::json!({"event": "tool_call", "data": {"tool": tool_name, "call_id": call_id}})
-            }
-            AgentEvent::ToolExecutionEnd { call_id, .. } => {
-                serde_json::json!({"event": "tool_result", "data": {"call_id": call_id}})
-            }
-            AgentEvent::TurnStart { index, .. } => {
-                serde_json::json!({"event": "turn_start", "data": {"turn": index}})
-            }
-            AgentEvent::TurnEnd { index, .. } => {
-                serde_json::json!({"event": "turn_end", "data": {"turn": index}})
-            }
-            AgentEvent::UserInput { text, .. } => {
-                serde_json::json!({"event": "user_input", "data": {"text": text}})
-            }
-            AgentEvent::MessageUpdate { index, .. } => {
-                serde_json::json!({"event": "message_update", "data": {"index": index}})
-            }
-            _ => continue,
-        };
-
-        let input = serde_json::to_string(&payload).unwrap_or_default();
-        match mgr.call_plugin(&info.name, "on_event", &input) {
+    let input = serde_json::to_string(&payload).unwrap_or_default();
+    for info in host.event_subscribers(event_kind) {
+        match host.call_plugin(&info.name, "on_event", &input) {
             Ok(output) => {
                 if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&output) {
                     // Surface messages the plugin explicitly wants shown
@@ -136,29 +117,32 @@ fn daemon_event_to_plugin_payload(event: &DaemonEvent) -> Option<serde_json::Val
         DaemonEvent::ToolDone { call_id, .. } => {
             Some(serde_json::json!({"event": "tool_result", "data": {"call_id": call_id}}))
         }
-        DaemonEvent::UserInput { text, .. } => {
-            Some(serde_json::json!({"event": "user_input", "data": {"text": text}}))
-        }
+        DaemonEvent::UserInput { text, .. } => Some(serde_json::json!({"event": "user_input", "data": {"text": text}})),
         DaemonEvent::ModelChanged { from, to, .. } => {
             Some(serde_json::json!({"event": "model_change", "data": {"from": from, "to": to}}))
         }
-        DaemonEvent::UsageUpdate { input_tokens, output_tokens, .. } => {
-            Some(serde_json::json!({"event": "usage_update", "data": {"input_tokens": input_tokens, "output_tokens": output_tokens}}))
-        }
-        DaemonEvent::SessionCompaction { .. } => {
-            Some(serde_json::json!({"event": "session_compaction", "data": {}}))
-        }
-        DaemonEvent::ScheduleFire { schedule_id, schedule_name, payload, fire_count } => {
-            Some(serde_json::json!({
-                "event": "schedule_fire",
-                "data": {
-                    "schedule_id": schedule_id,
-                    "schedule_name": schedule_name,
-                    "payload": payload,
-                    "fire_count": fire_count,
-                }
-            }))
-        }
+        DaemonEvent::UsageUpdate {
+            input_tokens,
+            output_tokens,
+            ..
+        } => Some(
+            serde_json::json!({"event": "usage_update", "data": {"input_tokens": input_tokens, "output_tokens": output_tokens}}),
+        ),
+        DaemonEvent::SessionCompaction { .. } => Some(serde_json::json!({"event": "session_compaction", "data": {}})),
+        DaemonEvent::ScheduleFire {
+            schedule_id,
+            schedule_name,
+            payload,
+            fire_count,
+        } => Some(serde_json::json!({
+            "event": "schedule_fire",
+            "data": {
+                "schedule_id": schedule_id,
+                "schedule_name": schedule_name,
+                "payload": payload,
+                "fire_count": fire_count,
+            }
+        })),
         _ => None,
     }
 }
@@ -171,18 +155,9 @@ pub(crate) fn dispatch_daemon_events_to_plugins(
     plugin_manager: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
     events: &[DaemonEvent],
 ) -> PluginDispatchResult {
-    use crate::plugin::PluginState;
-    use crate::plugin::bridge::PluginEvent;
     use crate::plugin::sandbox;
 
-    let mgr = match plugin_manager.lock() {
-        Ok(m) => m,
-        Err(poisoned) => {
-            tracing::warn!("Plugin manager mutex was poisoned, recovering");
-            poisoned.into_inner()
-        }
-    };
-
+    let host = crate::plugin::PluginHostFacade::new(Arc::clone(plugin_manager));
     let mut messages = Vec::new();
     let mut ui_actions = Vec::new();
 
@@ -193,20 +168,8 @@ pub(crate) fn dispatch_daemon_events_to_plugins(
         let event_kind = payload.get("event").and_then(|v| v.as_str()).unwrap_or("");
         let input = serde_json::to_string(&payload).unwrap_or_default();
 
-        for info in mgr.list() {
-            if info.state != PluginState::Active {
-                continue;
-            }
-            let is_subscribed = info
-                .manifest
-                .events
-                .iter()
-                .any(|e| PluginEvent::parse(e).is_some_and(|pe| pe.matches_event_kind(event_kind)));
-            if !is_subscribed {
-                continue;
-            }
-
-            match mgr.call_plugin(&info.name, "on_event", &input) {
+        for info in host.event_subscribers(event_kind) {
+            match host.call_plugin(&info.name, "on_event", &input) {
                 Ok(output) => {
                     if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&output) {
                         let should_display = parsed.get("display").and_then(|d| d.as_bool()).unwrap_or(false);
@@ -233,9 +196,10 @@ pub(crate) fn dispatch_daemon_events_to_plugins(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clankers_protocol::DaemonEvent;
     use serde_json::json;
+
+    use super::*;
 
     // ── daemon_event_to_plugin_payload mapping ──────────────────
 
@@ -358,11 +322,16 @@ mod tests {
 
     #[test]
     fn set_widget_maps_to_plugin_widget() {
-        use crate::plugin::ui::PluginUiAction;
         use clankers_tui_types::Widget;
+
+        use crate::plugin::ui::PluginUiAction;
         let action = PluginUiAction::SetWidget {
             plugin: "test".into(),
-            widget: Widget::Text { content: "hello".into(), bold: false, color: None },
+            widget: Widget::Text {
+                content: "hello".into(),
+                bold: false,
+                color: None,
+            },
         };
         let event = ui_action_to_daemon_event(action);
         match event {

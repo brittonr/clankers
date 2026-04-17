@@ -178,8 +178,8 @@ fn plugin_reload(pm: &PluginMutex, name: &str, ctx: &mut SlashContext<'_>) {
 fn plugin_list(pm: &PluginMutex, ctx: &mut SlashContext<'_>) {
     use std::fmt::Write;
 
-    let mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
-    let plugins = mgr.list();
+    let host = crate::plugin::PluginHostFacade::new(std::sync::Arc::clone(pm));
+    let plugins = host.plugin_infos();
     if plugins.is_empty() {
         ctx.app.push_system("No plugins discovered.".to_string(), false);
         return;
@@ -190,18 +190,21 @@ fn plugin_list(pm: &PluginMutex, ctx: &mut SlashContext<'_>) {
         let icon = match &p.state {
             crate::plugin::PluginState::Active => "✓",
             crate::plugin::PluginState::Loaded => "○",
-            crate::plugin::PluginState::Error(e) => {
-                writeln!(out, "  ✗ {} v{} — Error: {}", p.name, p.version, e).ok();
-                continue;
-            }
+            crate::plugin::PluginState::Error(_) => "✗",
             crate::plugin::PluginState::Disabled => "−",
         };
-        let tools = if p.manifest.tools.is_empty() {
+        let tools = p.declared_tool_inventory();
+        let tools = if tools.is_empty() {
             "none".to_string()
         } else {
-            p.manifest.tools.join(", ")
+            tools.join(", ")
         };
-        writeln!(out, "  {} {} v{} — {} (tools: {})", icon, p.name, p.version, p.manifest.description, tools).ok();
+        writeln!(out, "  {} {} v{} — {}", icon, p.name, p.version, p.manifest.description).ok();
+        writeln!(out, "      kind: {}  state: {}", p.manifest.kind, p.state.summary_label()).ok();
+        writeln!(out, "      tools: {}", tools).ok();
+        if let Some(error) = p.state.last_error() {
+            writeln!(out, "      last error: {}", error).ok();
+        }
     }
     write!(out, "\n  ✓ active  ○ loaded  − disabled  ✗ error\n  Use /plugin enable|disable|reload <name>").ok();
     ctx.app.push_system(out, false);
@@ -217,13 +220,18 @@ fn plugin_show(pm: &PluginMutex, name: &str, ctx: &mut SlashContext<'_>) {
     };
 
     let join_or_none = |v: &[String]| -> String { if v.is_empty() { "none".into() } else { v.join(", ") } };
+    let tools = p.declared_tool_inventory();
 
     let mut out = String::new();
     writeln!(out, "Plugin: {} v{}", p.name, p.version).ok();
-    writeln!(out, "State: {:?}", p.state).ok();
+    writeln!(out, "Kind: {}", p.manifest.kind).ok();
+    writeln!(out, "State: {}", p.state.summary_label()).ok();
+    if let Some(error) = p.state.last_error() {
+        writeln!(out, "Last error: {}", error).ok();
+    }
     writeln!(out, "Description: {}", p.manifest.description).ok();
     writeln!(out, "Path: {}", p.path.display()).ok();
-    writeln!(out, "Tools: {}", join_or_none(&p.manifest.tools)).ok();
+    writeln!(out, "Tools: {}", join_or_none(&tools)).ok();
     writeln!(out, "Commands: {}", join_or_none(&p.manifest.commands)).ok();
     writeln!(out, "Events: {}", join_or_none(&p.manifest.events)).ok();
     write!(out, "Permissions: {}", join_or_none(&p.manifest.permissions)).ok();

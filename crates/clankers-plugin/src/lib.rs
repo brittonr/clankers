@@ -6,9 +6,11 @@
 pub mod bridge;
 pub mod hooks;
 pub mod host;
+pub mod host_facade;
 pub mod manifest;
 pub mod registry;
 pub mod sandbox;
+pub mod stdio_protocol;
 pub mod ui;
 
 #[cfg(test)]
@@ -27,6 +29,9 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
+pub use host_facade::PluginHostFacade;
+pub use host_facade::PluginRuntimeSummary;
+
 /// Plugin state
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PluginState {
@@ -36,14 +41,44 @@ pub enum PluginState {
     Disabled,
 }
 
+impl PluginState {
+    pub const fn summary_label(&self) -> &'static str {
+        match self {
+            Self::Loaded => "Loaded",
+            Self::Active => "Active",
+            Self::Error(_) => "Error",
+            Self::Disabled => "Disabled",
+        }
+    }
+
+    pub fn last_error(&self) -> Option<&str> {
+        match self {
+            Self::Error(error) => Some(error.as_str()),
+            _ => None,
+        }
+    }
+}
+
 /// A loaded plugin (metadata)
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PluginInfo {
     pub name: String,
     pub version: String,
     pub state: PluginState,
     pub manifest: manifest::PluginManifest,
     pub path: PathBuf,
+}
+
+impl PluginInfo {
+    pub fn declared_tool_inventory(&self) -> Vec<String> {
+        let mut tools: Vec<String> = self.manifest.tool_definitions.iter().map(|tool| tool.name.clone()).collect();
+        for tool in &self.manifest.tools {
+            if !tools.contains(tool) {
+                tools.push(tool.clone());
+            }
+        }
+        tools
+    }
 }
 
 /// Plugin manager with WASM execution
@@ -87,6 +122,10 @@ impl PluginManager {
     /// Load a discovered plugin's WASM module
     pub fn load_wasm(&mut self, name: &str) -> Result<(), String> {
         let info = self.plugins.get_mut(name).ok_or_else(|| format!("Plugin '{}' not found", name))?;
+
+        if !info.manifest.kind.uses_wasm_runtime() {
+            return Err(format!("Plugin '{}' uses '{}' runtime, not WASM", name, info.manifest.kind));
+        }
 
         let wasm_filename = info.manifest.wasm.as_deref().unwrap_or("plugin.wasm");
         let wasm_path = info.path.join(wasm_filename);
@@ -278,10 +317,14 @@ pub fn load_plugins_from_dir(dir: &std::path::Path, plugins: &mut HashMap<String
         }
         if let Some(manifest) = manifest::PluginManifest::load(&manifest_path) {
             let name = manifest.name.clone();
+            let state = match manifest.validate() {
+                Ok(()) => PluginState::Loaded,
+                Err(error) => PluginState::Error(error.to_string()),
+            };
             plugins.insert(name.clone(), PluginInfo {
                 name,
                 version: manifest.version.clone(),
-                state: PluginState::Loaded,
+                state,
                 manifest,
                 path,
             });

@@ -82,6 +82,8 @@ clankers daemon stop           # stop daemon
 - Codex discovery must use the same auth store that supplied the credential. If `resolve_provider_credential_with_fallback()` found `openai-codex` only in `~/.pi`, loading just the primary auth store will suppress the catalog by probing the wrong account or no account at all.
 - Service auth path overrides: `CLANKERS_AUTH_FILE` points at a single auth.json, while `CLANKERS_AUTH_SEED_FILE` + `CLANKERS_AUTH_RUNTIME_FILE` cause `crates/clankers-config/src/paths.rs` to materialize the merged effective auth store into the runtime file at process start. Existing call sites still read `paths.global_auth`, so daemon modules should point that env pair at the managed router seed/runtime locations.
 - `RouterProvider` now keeps a fail-closed sentinel for explicit `openai-codex/...` prefixes when the backend is absent. Unknown random prefixes still fall back to default; known-but-unavailable Codex prefixes must error instead of silently routing to Anthropic.
+- Mixed plugin kinds: `PluginManifest` now validates `kind: stdio` launch policy at discovery time, but only `PluginKind::Extism` should flow through `load_wasm()` / `init_plugin_manager()`'s eager WASM load loop. If non-Extism kinds hit that path, they degrade into bogus missing-WASM errors instead of staying ready for their own runtime.
+- Plugin runtime queries should go through `clankers_plugin::PluginHostFacade` when possible. It is the seam for active-plugin filtering, event subscriptions, runtime summaries, and future stdio/runtime mixing; `PluginManager` remains the low-level Extism store.
 
 ### Reference Repos
 

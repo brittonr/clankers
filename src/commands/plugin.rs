@@ -111,6 +111,9 @@ fn handle_install(ctx: &CommandContext, source: &str, project: bool) -> Result<(
         crate::plugin::manifest::PluginManifest::load(&manifest_path).ok_or_else(|| crate::error::Error::Config {
             message: format!("Failed to parse plugin.json at: {}", manifest_path.display()),
         })?;
+    manifest.validate().map_err(|error| crate::error::Error::Config {
+        message: format!("Invalid plugin.json at {}: {}", manifest_path.display(), error),
+    })?;
     let dest_dir = if project {
         ctx.project_paths.plugins_dir.join(&manifest.name)
     } else {

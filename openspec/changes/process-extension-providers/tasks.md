@@ -1,13 +1,13 @@
 ## 1. Manifest and shared plugin host model
 
-- [ ] 1.1 Extend plugin manifest parsing and validation with `kind: stdio`, launch command/args, working-directory mode, environment allowlist, sandbox mode, declared writable roots, and any new plugin summary fields needed for runtime status
-- [ ] 1.2 Introduce the unified plugin host facade interface and route existing Extism behavior through it without changing current Extism discovery, tool inventory, or event/UI behavior
-- [ ] 1.3 Add an explicit Extism regression checkpoint for the new facade: existing Extism plugin tests and mixed built-in/Extism tool flows still pass before stdio backend work lands
-- [ ] 1.4 Extend plugin summary/control-protocol payloads so `/plugin`, `ListPlugins`, and `SessionCommand::GetPlugins` can show plugin kind, runtime state, live tool inventory, and last error text
+- [x] 1.1 Extend plugin manifest parsing and validation with `kind: stdio`, launch command/args, working-directory mode, environment allowlist, sandbox mode, declared writable roots, and any new plugin summary fields needed for runtime status
+- [x] 1.2 Introduce the unified plugin host facade interface and route existing Extism behavior through it without changing current Extism discovery, tool inventory, or event/UI behavior
+- [x] 1.3 Add an explicit Extism regression checkpoint for the new facade: existing Extism plugin tests and mixed built-in/Extism tool flows still pass before stdio backend work lands
+- [x] 1.4 Extend plugin summary/control-protocol payloads so `/plugin`, `ListPlugins`, and `SessionCommand::GetPlugins` can show plugin kind, runtime state, live tool inventory, and last error text
 
 ## 2. Stdio runtime and supervision
 
-- [ ] 2.1 Implement the exact framed stdio protocol contract: `u32` big-endian length prefix plus JSON envelopes with `type` and `plugin_protocol`, including `hello`, `ready`, `register_tools`, `unregister_tools`, `subscribe_events`, `tool_invoke`, `tool_cancel`, `shutdown`, `tool_progress`, `tool_result`, `tool_error`, `tool_cancelled`, `ui`, and `display`
+- [x] 2.1 Implement the exact framed stdio protocol contract: `u32` big-endian length prefix plus JSON envelopes with `type` and `plugin_protocol`, including `hello`, `ready`, `register_tools`, `unregister_tools`, `subscribe_events`, `tool_invoke`, `tool_cancel`, `shutdown`, `tool_progress`, `tool_result`, `tool_error`, `tool_cancelled`, `ui`, and `display`
 - [ ] 2.2 Implement stdio plugin launcher tasks for standalone and daemon startup paths so enabled stdio plugins start during plugin initialization in both modes
 - [ ] 2.3 Implement runtime state tracking (`starting`, `active`, `backoff`, `error`, `disabled`) and the fixed restart policy (`1s`, `2s`, `4s`, `8s`, `16s`, then `error` after 5 failed starts without `ready`)
 - [ ] 2.4 Ensure disconnect, crash, manual disable, and host shutdown clean up child processes, send `shutdown` on normal teardown, capture plugin stderr for diagnostics, and remove connection-scoped registrations deterministically
