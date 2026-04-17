@@ -4,8 +4,12 @@
 pub use clankers_plugin::PluginHostFacade;
 pub use clankers_plugin::PluginInfo;
 pub use clankers_plugin::PluginManager;
+pub use clankers_plugin::PluginRuntimeMode;
 pub use clankers_plugin::PluginRuntimeSummary;
 pub use clankers_plugin::PluginState;
+pub use clankers_plugin::configure_stdio_runtime;
+pub use clankers_plugin::shutdown_plugin_runtime;
+pub use clankers_plugin::start_stdio_plugins;
 // Re-export sub-modules
 pub use clankers_plugin::bridge;
 pub use clankers_plugin::hooks;

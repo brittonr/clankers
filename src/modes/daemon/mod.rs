@@ -223,6 +223,10 @@ pub async fn run_daemon(
     // Controllers flush unsaved messages to automerge during shutdown.
     process_registry.shutdown_all(std::time::Duration::from_secs(5)).await;
 
+    if let Some(ref pm) = plugin_manager {
+        crate::plugin::shutdown_plugin_runtime(pm, "daemon shutdown").await;
+    }
+
     // Transition all active catalog entries to suspended
     if let Some(ref catalog) = session_catalog {
         let suspended = catalog.transition_all(

@@ -338,6 +338,23 @@ pub fn init_plugin_manager(
     project_plugins_dir: Option<&Path>,
     extra_dirs: &[&Path],
 ) -> Arc<Mutex<PluginManager>> {
+    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
+    init_plugin_manager_for_mode(
+        global_plugins_dir,
+        project_plugins_dir,
+        extra_dirs,
+        crate::plugin::PluginRuntimeMode::Standalone,
+        &cwd,
+    )
+}
+
+pub fn init_plugin_manager_for_mode(
+    global_plugins_dir: &Path,
+    project_plugins_dir: Option<&Path>,
+    extra_dirs: &[&Path],
+    runtime_mode: crate::plugin::PluginRuntimeMode,
+    cwd: &Path,
+) -> Arc<Mutex<PluginManager>> {
     let mut manager =
         PluginManager::new(global_plugins_dir.to_path_buf(), project_plugins_dir.map(|p| p.to_path_buf()));
     for dir in extra_dirs {
@@ -382,7 +399,10 @@ pub fn init_plugin_manager(
         }
     }
 
-    Arc::new(Mutex::new(manager))
+    let manager = Arc::new(Mutex::new(manager));
+    crate::plugin::configure_stdio_runtime(&manager, cwd.to_path_buf(), runtime_mode);
+    crate::plugin::start_stdio_plugins(&manager);
+    manager
 }
 
 /// Build tools provided by loaded plugins. Each tool declared in a plugin's
@@ -402,6 +422,10 @@ pub fn build_plugin_tools(
         builtin_tools.iter().map(|t| t.definition().name.clone()).collect();
 
     for plugin_info in host.active_plugins() {
+        if !plugin_info.manifest.kind.uses_wasm_runtime() {
+            continue;
+        }
+
         if !plugin_info.manifest.tool_definitions.is_empty() {
             build_detailed_tools(&plugin_info, manager, &builtin_names, panel_tx, &mut tools);
         } else {

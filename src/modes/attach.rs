@@ -929,7 +929,8 @@ fn process_daemon_event(
                 for p in plugins {
                     let marker = match p.state.as_str() {
                         "Active" => "\u{2713}",
-                        "Loaded" => "\u{25cb}",
+                        "Loaded" | "Starting" => "\u{25cb}",
+                        "Backoff" => "↺",
                         "Disabled" => "−",
                         _ => "\u{2717}",
                     };

@@ -316,17 +316,22 @@ async fn run_agent_mode(
     clankers::tools::sandbox::init_policy();
 
     // Initialize plugin manager
-    let plugin_manager = clankers::modes::common::init_plugin_manager(
+    let plugin_manager = clankers::modes::common::init_plugin_manager_for_mode(
         &ctx.paths.global_plugins_dir,
         Some(&ctx.project_paths.plugins_dir),
         &[&ctx.project_paths.plugins_root_dir],
+        clankers::plugin::PluginRuntimeMode::Standalone,
+        std::path::Path::new(&ctx.cwd),
     );
 
-    if let Some(prompt) = prompt {
+    let result = if let Some(prompt) = prompt {
         run_headless(&cli, &ctx, model, system_prompt, &prompt, &plugin_manager).await
     } else {
         Box::pin(run_interactive(&cli, &ctx, model, system_prompt, resources, &plugin_manager)).await
-    }
+    };
+
+    clankers::plugin::shutdown_plugin_runtime(&plugin_manager, "host shutdown").await;
+    result
 }
 
 /// Resolve agent definition overrides for model and system prompt.

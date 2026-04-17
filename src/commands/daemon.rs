@@ -90,10 +90,12 @@ async fn start_foreground(
     }
 
     // Initialize plugin manager — discover and load WASM plugins
-    let plugin_manager = crate::modes::common::init_plugin_manager(
+    let plugin_manager = crate::modes::common::init_plugin_manager_for_mode(
         &ctx.paths.global_plugins_dir,
         Some(&ctx.project_paths.plugins_dir),
         &[&ctx.project_paths.plugins_root_dir],
+        crate::plugin::PluginRuntimeMode::Daemon,
+        std::path::Path::new(&ctx.cwd),
     );
 
     let env = crate::modes::common::ToolEnv {

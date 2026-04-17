@@ -61,6 +61,7 @@ impl PluginHostFacade {
     pub fn event_subscribers(&self, event_kind: &str) -> Vec<PluginInfo> {
         self.active_plugins()
             .into_iter()
+            .filter(|info| info.manifest.kind.uses_wasm_runtime())
             .filter(|info| {
                 info.manifest
                     .events
@@ -91,7 +92,27 @@ impl PluginHostFacade {
     }
 
     pub fn summaries(&self) -> Vec<PluginRuntimeSummary> {
-        self.plugin_infos().iter().map(PluginRuntimeSummary::from).collect()
+        let manager = self.manager.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("Plugin manager mutex was poisoned, recovering");
+            poisoned.into_inner()
+        });
+        manager
+            .list()
+            .into_iter()
+            .map(|info| PluginRuntimeSummary {
+                name: info.name.clone(),
+                version: info.version.clone(),
+                state: info.state.summary_label().to_string(),
+                kind: info.manifest.kind.as_str().to_string(),
+                tools: if info.manifest.kind.uses_wasm_runtime() {
+                    info.declared_tool_inventory()
+                } else {
+                    manager.live_tool_inventory(&info.name)
+                },
+                permissions: info.manifest.permissions.clone(),
+                last_error: info.state.last_error().map(|error| error.to_string()),
+            })
+            .collect()
     }
 }
 

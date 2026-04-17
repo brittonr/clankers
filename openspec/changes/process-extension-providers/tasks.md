@@ -8,10 +8,10 @@
 ## 2. Stdio runtime and supervision
 
 - [x] 2.1 Implement the exact framed stdio protocol contract: `u32` big-endian length prefix plus JSON envelopes with `type` and `plugin_protocol`, including `hello`, `ready`, `register_tools`, `unregister_tools`, `subscribe_events`, `tool_invoke`, `tool_cancel`, `shutdown`, `tool_progress`, `tool_result`, `tool_error`, `tool_cancelled`, `ui`, and `display`
-- [ ] 2.2 Implement stdio plugin launcher tasks for standalone and daemon startup paths so enabled stdio plugins start during plugin initialization in both modes
-- [ ] 2.3 Implement runtime state tracking (`starting`, `active`, `backoff`, `error`, `disabled`) and the fixed restart policy (`1s`, `2s`, `4s`, `8s`, `16s`, then `error` after 5 failed starts without `ready`)
-- [ ] 2.4 Ensure disconnect, crash, manual disable, and host shutdown clean up child processes, send `shutdown` on normal teardown, capture plugin stderr for diagnostics, and remove connection-scoped registrations deterministically
-- [ ] 2.5 Add real runtime seam tests that exercise the actual stdio framing path for successful handshake, invalid handshake, standalone startup, crash/restart, orderly shutdown, unregister-on-disconnect behavior, and stderr-backed launch diagnostics
+- [x] 2.2 Implement stdio plugin launcher tasks for standalone and daemon startup paths so enabled stdio plugins start during plugin initialization in both modes
+- [x] 2.3 Implement runtime state tracking (`starting`, `active`, `backoff`, `error`, `disabled`) and the fixed restart policy (`1s`, `2s`, `4s`, `8s`, `16s`, then `error` after 5 failed starts without `ready`)
+- [x] 2.4 Ensure disconnect, crash, manual disable, and host shutdown clean up child processes, send `shutdown` on normal teardown, capture plugin stderr for diagnostics, and remove connection-scoped registrations deterministically
+- [x] 2.5 Add real runtime seam tests that exercise the actual stdio framing path for successful handshake, invalid handshake, standalone startup, crash/restart, orderly shutdown, unregister-on-disconnect behavior, and stderr-backed launch diagnostics
 
 ## 3. Live tool registration and invocation
 

@@ -54,7 +54,8 @@ fn handle_list(
             } else {
                 let state = match &p.state {
                     crate::plugin::PluginState::Active => "✓",
-                    crate::plugin::PluginState::Loaded => "○",
+                    crate::plugin::PluginState::Loaded | crate::plugin::PluginState::Starting => "○",
+                    crate::plugin::PluginState::Backoff(_) => "↺",
                     crate::plugin::PluginState::Error(_) => "✗",
                     crate::plugin::PluginState::Disabled => "−",
                 };

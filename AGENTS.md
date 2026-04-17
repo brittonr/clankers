@@ -84,6 +84,8 @@ clankers daemon stop           # stop daemon
 - `RouterProvider` now keeps a fail-closed sentinel for explicit `openai-codex/...` prefixes when the backend is absent. Unknown random prefixes still fall back to default; known-but-unavailable Codex prefixes must error instead of silently routing to Anthropic.
 - Mixed plugin kinds: `PluginManifest` now validates `kind: stdio` launch policy at discovery time, but only `PluginKind::Extism` should flow through `load_wasm()` / `init_plugin_manager()`'s eager WASM load loop. If non-Extism kinds hit that path, they degrade into bogus missing-WASM errors instead of staying ready for their own runtime.
 - Plugin runtime queries should go through `clankers_plugin::PluginHostFacade` when possible. It is the seam for active-plugin filtering, event subscriptions, runtime summaries, and future stdio/runtime mixing; `PluginManager` remains the low-level Extism store.
+- `init_plugin_manager_for_mode(...)` configures stdio startup mode (`standalone` vs `daemon`) and launches stdio plugins only when a Tokio runtime is present. Sync tests/commands that call plain `init_plugin_manager(...)` still discover stdio manifests but intentionally leave them `Loaded` instead of forcing a runtime-start error.
+- For stdio supervisor loops, do not `tokio::select! { biased; event = rx.recv() => ... child.wait() => ... }` with a bare `rx.recv()`. Once the sender side closes, `recv()` returns `None` immediately forever and starves `child.wait()`. Use `Some(event) = rx.recv()` or otherwise disable the branch after closure.
 
 ### Reference Repos
 

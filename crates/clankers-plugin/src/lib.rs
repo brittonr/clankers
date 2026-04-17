@@ -11,6 +11,7 @@ pub mod manifest;
 pub mod registry;
 pub mod sandbox;
 pub mod stdio_protocol;
+pub mod stdio_runtime;
 pub mod ui;
 
 #[cfg(test)]
@@ -31,12 +32,18 @@ use std::sync::Mutex;
 
 pub use host_facade::PluginHostFacade;
 pub use host_facade::PluginRuntimeSummary;
+pub use stdio_protocol::PluginRuntimeMode;
+pub use stdio_runtime::configure_stdio_runtime;
+pub use stdio_runtime::shutdown_plugin_runtime;
+pub use stdio_runtime::start_stdio_plugins;
 
 /// Plugin state
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PluginState {
     Loaded,
+    Starting,
     Active,
+    Backoff(String),
     Error(String),
     Disabled,
 }
@@ -45,7 +52,9 @@ impl PluginState {
     pub const fn summary_label(&self) -> &'static str {
         match self {
             Self::Loaded => "Loaded",
+            Self::Starting => "Starting",
             Self::Active => "Active",
+            Self::Backoff(_) => "Backoff",
             Self::Error(_) => "Error",
             Self::Disabled => "Disabled",
         }
@@ -53,7 +62,7 @@ impl PluginState {
 
     pub fn last_error(&self) -> Option<&str> {
         match self {
-            Self::Error(error) => Some(error.as_str()),
+            Self::Backoff(error) | Self::Error(error) => Some(error.as_str()),
             _ => None,
         }
     }
@@ -90,6 +99,9 @@ pub struct PluginManager {
     project_dir: Option<PathBuf>,
     /// Additional directories to scan for plugins
     extra_dirs: Vec<PathBuf>,
+    stdio_bootstrap: Option<stdio_runtime::StdioBootstrapConfig>,
+    stdio_supervisors: HashMap<String, stdio_runtime::StdioSupervisorHandle>,
+    stdio_live_state: HashMap<String, stdio_runtime::StdioLiveState>,
 }
 
 impl PluginManager {
@@ -100,6 +112,9 @@ impl PluginManager {
             global_dir,
             project_dir,
             extra_dirs: Vec::new(),
+            stdio_bootstrap: None,
+            stdio_supervisors: HashMap::new(),
+            stdio_live_state: HashMap::new(),
         }
     }
 
@@ -227,27 +242,56 @@ impl PluginManager {
         self.plugins.is_empty()
     }
 
-    /// Disable a plugin (unload WASM, set state to Disabled).
+    /// Disable a plugin (unload runtime, set state to Disabled).
     pub fn disable(&mut self, name: &str) -> Result<(), String> {
-        let info = self.plugins.get_mut(name).ok_or_else(|| format!("Plugin '{}' not found", name))?;
+        let kind = self
+            .plugins
+            .get(name)
+            .ok_or_else(|| format!("Plugin '{}' not found", name))?
+            .manifest
+            .kind
+            .clone();
         self.instances.remove(name);
-        info.state = PluginState::Disabled;
+        if kind == manifest::PluginKind::Stdio {
+            stdio_runtime::stop_stdio_plugin(self, name, "plugin disabled", PluginState::Disabled);
+        } else if let Some(info) = self.plugins.get_mut(name) {
+            info.state = PluginState::Disabled;
+        }
         Ok(())
     }
 
-    /// Enable a previously disabled plugin (reload its WASM).
+    /// Enable a previously disabled plugin (reload its runtime).
     pub fn enable(&mut self, name: &str) -> Result<(), String> {
         let info = self.plugins.get(name).ok_or_else(|| format!("Plugin '{}' not found", name))?;
         if info.state != PluginState::Disabled {
             return Err(format!("Plugin '{}' is not disabled (state: {:?})", name, info.state));
         }
-        self.load_wasm(name)
+        if info.manifest.kind == manifest::PluginKind::Stdio {
+            if let Some(info) = self.plugins.get_mut(name) {
+                info.state = PluginState::Loaded;
+            }
+            stdio_runtime::start_stdio_plugin_from_manager(self, name)
+        } else {
+            self.load_wasm(name)
+        }
     }
 
-    /// Reload a plugin (unload + re-load WASM).
+    /// Reload a plugin (unload + re-load runtime).
     pub fn reload(&mut self, name: &str) -> Result<(), String> {
+        let kind = self
+            .plugins
+            .get(name)
+            .ok_or_else(|| format!("Plugin '{}' not found", name))?
+            .manifest
+            .kind
+            .clone();
         self.instances.remove(name);
-        self.load_wasm(name)
+        if kind == manifest::PluginKind::Stdio {
+            stdio_runtime::stop_stdio_plugin(self, name, "plugin reload", PluginState::Loaded);
+            stdio_runtime::start_stdio_plugin_from_manager(self, name)
+        } else {
+            self.load_wasm(name)
+        }
     }
 
     /// Reload all non-disabled plugins.
@@ -285,6 +329,14 @@ impl PluginManager {
     /// Get mutable access to a plugin's info (for testing state overrides).
     pub fn get_mut(&mut self, name: &str) -> Option<&mut PluginInfo> {
         self.plugins.get_mut(name)
+    }
+
+    pub fn live_tool_inventory(&self, name: &str) -> Vec<String> {
+        stdio_runtime::live_tools(self, name)
+    }
+
+    pub fn live_event_subscriptions(&self, name: &str) -> Vec<String> {
+        stdio_runtime::live_event_subscriptions(self, name)
     }
 
     /// Disable plugins by name (used to restore persisted disabled state).
