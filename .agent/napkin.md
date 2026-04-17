@@ -139,6 +139,7 @@
 - Render loop: clone theme to avoid borrow conflict between `&app.theme` and `app.panel_mut()`
 - Hypertile BSP: `PaneId::ROOT` is chat (always exists), `PaneKind::Subagent(String)` for per-subagent panes
 - `allocate_pane_id()` for unique IDs — no collision with well-known IDs 0–6
+- Conversation blocks currently stamp `ConversationBlock.timestamp` at TUI construction time (`ConversationBlock::new` uses `Local::now()`), so restore/attach replay will mint fresh block times unless metadata is plumbed from persisted message timestamps
 
 ### Plugin system
 - Extism 1.13 host / extism-pdk 1.4.1 guest, WASM targets `wasm32-unknown-unknown`
