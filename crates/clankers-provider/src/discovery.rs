@@ -13,10 +13,10 @@ use super::anthropic::AnthropicProvider;
 use super::auth;
 use super::credential_manager::CredentialManager;
 use super::openai_codex;
-use crate::auth::AuthStoreExt;
 use crate::CompletionRequest;
 use crate::Model;
 use crate::auth::AuthStore;
+use crate::auth::AuthStoreExt;
 use crate::error::Result;
 use crate::streaming::StreamEvent;
 
@@ -119,6 +119,7 @@ pub fn build_router(
     fallback_auth_path: Option<&std::path::Path>,
     account: Option<&str>,
 ) -> Result<Arc<dyn Provider>> {
+    use clanker_router::backends::openai_codex::OpenAICodexProvider;
     use clanker_router::backends::openai_compat::OpenAICompatConfig;
     use clanker_router::backends::openai_compat::OpenAICompatProvider;
 
@@ -183,13 +184,16 @@ pub fn build_router(
         let (catalog_store, account_name) =
             select_codex_store_and_account(&primary_store, fallback_store.as_ref(), account);
         let models = openai_codex::catalog_for_active_account(catalog_store, &account_name);
-        let cm = CredentialManager::new_for_provider(
-            openai_codex::OPENAI_CODEX_PROVIDER,
+        let auth_paths = clanker_router::auth::AuthStorePaths::single(auth_store_path.to_path_buf());
+        let manager = clanker_router::credential::CredentialManager::with_refresh_fn(
+            openai_codex::OPENAI_CODEX_PROVIDER.to_string(),
             credential,
-            auth_store_path.to_path_buf(),
+            auth_paths,
             fallback_auth_path.map(|p| p.to_path_buf()),
+            clanker_router::backends::openai_codex::refresh_fn_for_codex(),
         );
-        let provider: Arc<dyn Provider> = Arc::new(openai_codex::CodexStubProvider::new(cm, models, account_name));
+        let provider: Arc<dyn Provider> =
+            Arc::new(RouterCompatAdapter::new(OpenAICodexProvider::new(manager, models, account_name)));
         backends.push((openai_codex::OPENAI_CODEX_PROVIDER.to_string(), provider));
     }
 
@@ -385,23 +389,87 @@ impl Provider for UnconfiguredProvider {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::{Mutex, OnceLock};
+
+    use tokio::sync::mpsc;
+
     use super::*;
+    use crate::CompletionRequest;
     use crate::auth::AuthStoreExt;
     use crate::auth::OAuthCredentials;
 
-    fn codex_store(path: &std::path::Path) {
+    fn codex_store_with_access_token(path: &std::path::Path, access: &str) {
         let mut store = crate::auth::AuthStore::default();
         store.set_provider_credentials(
             crate::openai_codex::OPENAI_CODEX_PROVIDER,
             "work",
             OAuthCredentials {
-                access: "header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiacctMTIzIn19.signature".to_string(),
+                access: access.to_string(),
                 refresh: "refresh".to_string(),
                 expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
             },
         );
         store.switch_provider_account(crate::openai_codex::OPENAI_CODEX_PROVIDER, "work");
         store.save(path).expect("auth store should save");
+    }
+
+    fn codex_store(path: &std::path::Path) {
+        codex_store_with_access_token(
+            path,
+            "header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiacctMTIzIn19.signature",
+        );
+    }
+
+    fn explicit_codex_request() -> CompletionRequest {
+        CompletionRequest {
+            model: "openai-codex/gpt-5.1-codex".to_string(),
+            messages: Vec::new(),
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: Vec::new(),
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+            extra_params: std::collections::HashMap::new(),
+        }
+    }
+
+    fn invalid_codex_jwt_error() -> &'static str {
+        "All providers exhausted:\n  openai-codex:openai-codex/gpt-5.1-codex → 503 provider error: openai-codex entitlement check failed: failed to send entitlement probe: auth error: OpenAI Codex access token missing JWT payload"
+    }
+
+    fn env_lock() -> &'static Mutex<()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    struct EnvVarGuard {
+        _guard: std::sync::MutexGuard<'static, ()>,
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvVarGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let guard = env_lock().lock().unwrap_or_else(|poison| poison.into_inner());
+            let previous = std::env::var(key).ok();
+            unsafe { std::env::set_var(key, value) };
+            Self {
+                _guard: guard,
+                key,
+                previous,
+            }
+        }
+    }
+
+    impl Drop for EnvVarGuard {
+        fn drop(&mut self) {
+            match &self.previous {
+                Some(previous) => unsafe { std::env::set_var(self.key, previous) },
+                None => unsafe { std::env::remove_var(self.key) },
+            }
+        }
     }
 
     #[test]
@@ -419,6 +487,65 @@ mod tests {
                 .models()
                 .iter()
                 .all(|model| model.provider != crate::openai_codex::OPENAI_CODEX_PROVIDER)
+        );
+    }
+
+    #[test]
+    fn explicit_codex_request_uses_router_backend_instead_of_stub() {
+        crate::openai_codex::with_test_probe_hook(
+            |_| crate::openai_codex::ProbeOutcome::Entitled,
+            || {
+                let _env = EnvVarGuard::set("CLANKERS_NO_DAEMON", "1");
+                let dir = tempfile::TempDir::new().expect("tempdir should exist");
+                let auth_path = dir.path().join("auth.json");
+                codex_store_with_access_token(&auth_path, "not-a-jwt");
+
+                let runtime = tokio::runtime::Runtime::new().expect("runtime should build");
+                runtime.block_on(async {
+                    let provider = build_router(None, None, &auth_path, None, None)
+                        .expect("router should build");
+                    let (tx, _rx) = mpsc::channel(1);
+                    let err = provider
+                        .complete(explicit_codex_request(), tx)
+                        .await
+                        .expect_err("invalid jwt should fail before any live Codex request succeeds");
+                    assert_eq!(err.message, invalid_codex_jwt_error());
+                });
+            },
+        );
+    }
+
+    #[test]
+    fn explicit_codex_request_still_routes_when_catalog_is_hidden() {
+        crate::openai_codex::with_test_probe_hook(
+            |_| crate::openai_codex::ProbeOutcome::NotEntitled(
+                "authenticated but not entitled for Codex use".to_string(),
+            ),
+            || {
+                let _env = EnvVarGuard::set("CLANKERS_NO_DAEMON", "1");
+                let dir = tempfile::TempDir::new().expect("tempdir should exist");
+                let auth_path = dir.path().join("auth.json");
+                codex_store_with_access_token(&auth_path, "not-a-jwt");
+
+                let runtime = tokio::runtime::Runtime::new().expect("runtime should build");
+                runtime.block_on(async {
+                    let provider = build_router(None, None, &auth_path, None, None)
+                        .expect("router should build");
+                    assert!(
+                        provider
+                            .models()
+                            .iter()
+                            .all(|model| model.provider != crate::openai_codex::OPENAI_CODEX_PROVIDER)
+                    );
+
+                    let (tx, _rx) = mpsc::channel(1);
+                    let err = provider
+                        .complete(explicit_codex_request(), tx)
+                        .await
+                        .expect_err("invalid jwt should still fail through the Codex backend");
+                    assert_eq!(err.message, invalid_codex_jwt_error());
+                });
+            },
         );
     }
 
