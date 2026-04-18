@@ -1500,6 +1500,88 @@ mod tests {
         }
     }
 
+    fn codex_router_models() -> Vec<Model> {
+        vec![Model {
+            id: "gpt-5.1-codex".to_string(),
+            name: "gpt-5.1-codex".to_string(),
+            provider: "openai-codex".to_string(),
+            max_input_tokens: 200_000,
+            max_output_tokens: 16_384,
+            supports_thinking: true,
+            supports_images: true,
+            supports_tools: true,
+            input_cost_per_mtok: None,
+            output_cost_per_mtok: None,
+        }]
+    }
+
+    fn explicit_codex_request() -> CompletionRequest {
+        CompletionRequest {
+            model: "openai-codex/gpt-5.1-codex".to_string(),
+            messages: vec![],
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+            extra_params: HashMap::new(),
+        }
+    }
+
+    struct NotEntitledCodexRouterProvider {
+        models: Vec<Model>,
+    }
+
+    #[async_trait]
+    impl clanker_router::Provider for NotEntitledCodexRouterProvider {
+        async fn complete(
+            &self,
+            _request: clanker_router::CompletionRequest,
+            _tx: mpsc::Sender<clanker_router::streaming::StreamEvent>,
+        ) -> std::result::Result<(), clanker_router::Error> {
+            Err(clanker_router::Error::Auth {
+                message: "authenticated but not entitled for Codex use. ChatGPT Plus or Pro is required for openai-codex"
+                    .into(),
+            })
+        }
+
+        fn models(&self) -> &[Model] {
+            &self.models
+        }
+
+        fn name(&self) -> &str {
+            "openai-codex"
+        }
+    }
+
+    struct ProbeFailureCodexRouterProvider {
+        models: Vec<Model>,
+    }
+
+    #[async_trait]
+    impl clanker_router::Provider for ProbeFailureCodexRouterProvider {
+        async fn complete(
+            &self,
+            _request: clanker_router::CompletionRequest,
+            _tx: mpsc::Sender<clanker_router::streaming::StreamEvent>,
+        ) -> std::result::Result<(), clanker_router::Error> {
+            Err(clanker_router::Error::Provider {
+                message: "openai-codex entitlement check failed: boom".into(),
+                status: Some(503),
+            })
+        }
+
+        fn models(&self) -> &[Model] {
+            &self.models
+        }
+
+        fn name(&self) -> &str {
+            "openai-codex"
+        }
+    }
+
     #[tokio::test]
     async fn test_compat_adapter_error_propagation() {
         let adapter = RouterCompatAdapter::new(std::sync::Arc::new(FailingRouterProvider));
@@ -1520,6 +1602,48 @@ mod tests {
 
         let err = adapter.complete(request, tx).await.unwrap_err();
         assert!(err.message.contains("backend exploded"), "got: {}", err.message);
+    }
+
+    #[tokio::test]
+    async fn test_routed_codex_not_entitled_error_survives_current_repo_router() {
+        let router = RouterProvider::new(vec![(
+            "openai-codex".to_string(),
+            Arc::new(RouterCompatAdapter::new(Arc::new(NotEntitledCodexRouterProvider {
+                models: codex_router_models(),
+            }))),
+        )]);
+
+        let (tx, _rx) = mpsc::channel(8);
+        let err = router
+            .complete(explicit_codex_request(), tx)
+            .await
+            .expect_err("unsupported account should fail closed");
+        assert_eq!(
+            err.message,
+            "auth error: authenticated but not entitled for Codex use. ChatGPT Plus or Pro is required for openai-codex"
+        );
+        assert_eq!(err.status_code(), None);
+    }
+
+    #[tokio::test]
+    async fn test_routed_codex_probe_failure_error_survives_current_repo_router() {
+        let router = RouterProvider::new(vec![(
+            "openai-codex".to_string(),
+            Arc::new(RouterCompatAdapter::new(Arc::new(ProbeFailureCodexRouterProvider {
+                models: codex_router_models(),
+            }))),
+        )]);
+
+        let (tx, _rx) = mpsc::channel(8);
+        let err = router
+            .complete(explicit_codex_request(), tx)
+            .await
+            .expect_err("probe failure should surface as retriable provider error");
+        assert_eq!(
+            err.message,
+            "All providers exhausted:\n  openai-codex:openai-codex/gpt-5.1-codex → 503 provider error: openai-codex entitlement check failed: boom"
+        );
+        assert_eq!(err.status_code(), Some(503));
     }
 
     // ── Router with_retry / with_fallbacks builder ──────────────────
