@@ -3,12 +3,12 @@
 - [x] 1.1 Add a provider-aware OAuth driver abstraction in the shared auth layer so Anthropic and `openai-codex` login flows share the same command and slash-command plumbing
 - [x] 1.2 Implement OpenAI Codex authorize, code-exchange, load/reload, refresh, account-ID derivation, and malformed/missing-claim rejection helpers, keep `chatgpt_account_id` derived from the active token instead of adding a persisted auth-store field, then store credentials under provider `openai-codex` and mark the requested `openai-codex` account active
 - [x] 1.3 Isolate pending OAuth verifier and state storage by provider plus requested clankers account name from the existing `--account <name>` / slash-account syntax so Anthropic and `openai-codex` in-flight logins, or two `openai-codex` logins for different accounts, cannot overwrite each other
-- [ ] 1.4 Wire `openai-codex` into the proactive/background refresh path so refreshed credentials update the persisted auth store before expiry and reset in-memory entitlement state for re-evaluation without adding a persisted entitlement field
+- [x] 1.4 Wire `openai-codex` into the proactive/background refresh path so refreshed credentials update the persisted auth store before expiry and reset in-memory entitlement state for re-evaluation without adding a persisted entitlement field
 - [x] 1.5 Update `clankers auth` and `/login` / `/account` handlers to accept explicit provider names, implement provider-scoped switch/logout behavior, show grouped and provider-scoped status including provider-specific OAuth validity/expiry, preserve omitted-provider Anthropic defaults, reload the affected provider after a successful login, and invalidate/recompute entitlement state on provider reload or account switch
 - [x] 1.6a Add tests for provider-aware auth parsing, pending-state isolation, and omitted-provider Anthropic defaults across CLI and slash-command login, status, switch, and logout flows
 - [x] 1.6b Add tests for grouped and provider-scoped status output, separate OAuth validity/expiry reporting, provider-scoped switch/logout, and persistence while preserving existing `anthropic` / API-key `openai` credentials after `openai-codex` login
-- [ ] 1.6c Add tests for proactive/background refresh plus provider reload/account switch entitlement recomputation
-- [ ] 1.6d Add tests for token refresh, malformed/missing-claim rejection, request blocking without a valid account ID, account-ID derivation from loaded and refreshed credentials, and activation of the requested `openai-codex` account after login
+- [x] 1.6c Add tests for proactive/background refresh plus provider reload/account switch entitlement recomputation
+- [x] 1.6d Add tests for token refresh, malformed/missing-claim rejection, request blocking without a valid account ID, account-ID derivation from loaded and refreshed credentials, and activation of the requested `openai-codex` account after login
 - [x] 1.7 Add a deterministic auth-fixture check for the OpenAI OAuth contract: authorize URL base + required query parameters, token endpoint URL, and required exchange/refresh form fields
 
 ## 2. Request metadata plumbing

@@ -166,18 +166,8 @@ impl CredentialManager {
         }
 
         // 3. Quick disk check — skip HTTP if another process already refreshed
-        let store = {
-            let path = self.auth_path.clone();
-            tokio::task::spawn_blocking(move || AuthStore::load(&path))
-                .await
-                .map_err(|e| crate::error::auth_err(format!("Disk read panicked: {e}")))?
-        };
-        if let Some(cred) = store.active_credential(&self.provider)
-            && !cred.is_expired()
-        {
-            info!("{} token already refreshed by another instance", self.provider);
-            let fresh = cred.clone();
-            *self.credential.lock().await = fresh.clone();
+        let (store, refreshed) = self.try_disk_refreshed_credential().await?;
+        if let Some(fresh) = refreshed {
             return Ok(fresh);
         }
 
@@ -206,9 +196,11 @@ impl CredentialManager {
             Err(refresh_err) => {
                 // 7. Refresh failed — try falling back to another account
                 warn!("OAuth refresh failed: {refresh_err}");
-                self.try_fallback_account(&store)
-                    .await
-                    .ok_or_else(|| crate::error::auth_err(format!("OAuth refresh failed and no fallback accounts available: {refresh_err}")))
+                self.try_fallback_account(&store).await.ok_or_else(|| {
+                    crate::error::auth_err(format!(
+                        "OAuth refresh failed and no fallback accounts available: {refresh_err}"
+                    ))
+                })
             }
         }
     }
@@ -275,6 +267,43 @@ impl CredentialManager {
     pub async fn token(&self) -> String {
         self.credential.lock().await.token().to_string()
     }
+
+    async fn try_disk_refreshed_credential(&self) -> Result<(AuthStore, Option<Credential>)> {
+        let store = {
+            let path = self.auth_path.clone();
+            tokio::task::spawn_blocking(move || AuthStore::load(&path))
+                .await
+                .map_err(|e| crate::error::auth_err(format!("Primary disk read panicked: {e}")))?
+        };
+        if let Some(fresh) = self.use_fresh_credential_if_available(&store, "primary auth store").await {
+            return Ok((store, Some(fresh)));
+        }
+
+        if let Some(path) = self.fallback_auth_path.clone() {
+            let fallback_store = tokio::task::spawn_blocking(move || AuthStore::load(&path))
+                .await
+                .map_err(|e| crate::error::auth_err(format!("Fallback disk read panicked: {e}")))?;
+            if let Some(fresh) = self.use_fresh_credential_if_available(&fallback_store, "fallback auth store").await {
+                return Ok((store, Some(fresh)));
+            }
+        }
+
+        Ok((store, None))
+    }
+
+    async fn use_fresh_credential_if_available(&self, store: &AuthStore, source: &str) -> Option<Credential> {
+        if let Some(cred) = store.active_credential(&self.provider)
+            && !cred.is_expired()
+        {
+            info!("{} token already refreshed by another instance ({source})", self.provider);
+            crate::openai_codex::reset_entitlement(&self.provider, None);
+            let fresh = cred.clone();
+            *self.credential.lock().await = fresh.clone();
+            return Some(fresh);
+        }
+
+        None
+    }
 }
 
 // ── Proactive refresh ───────────────────────────────────────────────────
@@ -283,7 +312,10 @@ impl CredentialManager {
 ///
 /// Uses a `Weak` reference so the loop exits when the `CredentialManager`
 /// is dropped (no Arc cycle).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by channel close")
+)]
 async fn proactive_refresh_loop(weak: Weak<CredentialManager>) {
     loop {
         let mgr = match weak.upgrade() {
@@ -353,7 +385,11 @@ fn save_with_file_lock(auth_path: &std::path::Path, creds: &OAuthCredentials) ->
 /// Runs in `spawn_blocking` because `fs4` lock operations are blocking.
 /// The lock is held only for the read-modify-write cycle (~ms), not during
 /// any network calls.
-fn save_with_file_lock_for_provider(auth_path: &std::path::Path, provider: &str, creds: &OAuthCredentials) -> Result<()> {
+fn save_with_file_lock_for_provider(
+    auth_path: &std::path::Path,
+    provider: &str,
+    creds: &OAuthCredentials,
+) -> Result<()> {
     use std::fs;
     use std::io::Write;
 
@@ -430,9 +466,14 @@ impl Drop for UnlockGuard<'_> {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
+    use base64::Engine;
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+
     use super::*;
     use crate::auth::AuthStoreExt;
-    use std::sync::atomic::{AtomicUsize, Ordering};
 
     // ── Helpers ─────────────────────────────────────────────────────
 
@@ -461,6 +502,37 @@ mod tests {
         }
     }
 
+    fn fake_openai_codex_jwt(account_id: &str) -> String {
+        let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"JWT"}"#);
+        let payload = URL_SAFE_NO_PAD.encode(
+            serde_json::json!({
+                "https://api.openai.com/auth": {
+                    "chatgpt_account_id": account_id,
+                }
+            })
+            .to_string()
+            .as_bytes(),
+        );
+        format!("{header}.{payload}.sig")
+    }
+
+    fn expired_openai_codex_credential(account_id: &str) -> Credential {
+        Credential::OAuth {
+            access_token: fake_openai_codex_jwt(account_id),
+            refresh_token: "codex-refresh".into(),
+            expires_at_ms: 0,
+            label: None,
+        }
+    }
+
+    fn fresh_openai_codex_credentials(account_id: &str) -> OAuthCredentials {
+        OAuthCredentials {
+            access: fake_openai_codex_jwt(account_id),
+            refresh: "codex-refresh".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        }
+    }
+
     fn temp_auth_path() -> (tempfile::TempDir, PathBuf) {
         let dir = tempfile::TempDir::new().unwrap();
         let path = dir.path().join("auth.json");
@@ -469,14 +541,23 @@ mod tests {
 
     /// Create a CredentialManager without spawning the proactive refresh loop.
     /// (Avoids background tasks that call real oauth::refresh_token.)
-    fn make_manager(credential: Credential, auth_path: PathBuf, fallback: Option<PathBuf>) -> Arc<CredentialManager> {
+    fn make_manager_for_provider(
+        provider: &str,
+        credential: Credential,
+        auth_path: PathBuf,
+        fallback: Option<PathBuf>,
+    ) -> Arc<CredentialManager> {
         Arc::new(CredentialManager {
-            provider: "anthropic".to_string(),
+            provider: provider.to_string(),
             credential: Mutex::new(credential),
             refresh_guard: Mutex::new(()),
             auth_path,
             fallback_auth_path: fallback,
         })
+    }
+
+    fn make_manager(credential: Credential, auth_path: PathBuf, fallback: Option<PathBuf>) -> Arc<CredentialManager> {
+        make_manager_for_provider("anthropic", credential, auth_path, fallback)
     }
 
     // ── API key (no refresh needed) ─────────────────────────────────
@@ -686,22 +767,14 @@ mod tests {
 
         // Pre-populate with two accounts
         let mut store = AuthStore::default();
-        store.set_credential(
-            "anthropic",
-            "primary",
-            Credential::ApiKey {
-                api_key: "sk-primary".into(),
-                label: None,
-            },
-        );
-        store.set_credential(
-            "anthropic",
-            "backup",
-            Credential::ApiKey {
-                api_key: "sk-backup".into(),
-                label: None,
-            },
-        );
+        store.set_credential("anthropic", "primary", Credential::ApiKey {
+            api_key: "sk-primary".into(),
+            label: None,
+        });
+        store.set_credential("anthropic", "backup", Credential::ApiKey {
+            api_key: "sk-backup".into(),
+            label: None,
+        });
         store.save(&path).unwrap();
 
         // save_with_file_lock updates the active account only
@@ -785,6 +858,94 @@ mod tests {
         assert_eq!(mgr.token().await, "refreshed-by-other-instance");
     }
 
+    #[test]
+    fn codex_disk_refresh_shortcut_resets_entitlement_state() {
+        crate::openai_codex::with_test_entitlement_state(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            runtime.block_on(async {
+                let (_dir, path) = temp_auth_path();
+
+                let mut store = AuthStore::default();
+                store.set_provider_credentials(
+                    "openai-codex",
+                    "work",
+                    fresh_openai_codex_credentials("acct-refreshed"),
+                );
+                assert!(store.switch_provider_account("openai-codex", "work"));
+                store.save(&path).unwrap();
+
+                crate::openai_codex::set_entitlement_record_for_test("work", crate::openai_codex::EntitlementRecord {
+                    state: crate::openai_codex::EntitlementState::NotEntitled {
+                        reason: "authenticated but not entitled for Codex use".to_string(),
+                        checked_at_ms: 1,
+                    },
+                    last_error: None,
+                });
+
+                let mgr = make_manager_for_provider(
+                    "openai-codex",
+                    expired_openai_codex_credential("acct-expired"),
+                    path,
+                    None,
+                );
+
+                let (_store, fresh) = mgr.try_disk_refreshed_credential().await.unwrap();
+                let fresh = fresh.expect("disk shortcut should return refreshed credential");
+                assert_eq!(fresh.token(), fake_openai_codex_jwt("acct-refreshed"));
+                assert_eq!(mgr.token().await, fake_openai_codex_jwt("acct-refreshed"));
+                assert!(matches!(
+                    crate::openai_codex::entitlement_record("work").state,
+                    crate::openai_codex::EntitlementState::Unknown
+                ));
+            });
+        });
+    }
+
+    #[test]
+    fn codex_fallback_disk_refresh_shortcut_resets_entitlement_state() {
+        crate::openai_codex::with_test_entitlement_state(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            runtime.block_on(async {
+                let (_primary_dir, primary_path) = temp_auth_path();
+                let (_fallback_dir, fallback_path) = temp_auth_path();
+                std::fs::write(&primary_path, "{}").unwrap();
+
+                let mut fallback_store = AuthStore::default();
+                fallback_store.set_provider_credentials(
+                    "openai-codex",
+                    "work",
+                    fresh_openai_codex_credentials("acct-fallback"),
+                );
+                assert!(fallback_store.switch_provider_account("openai-codex", "work"));
+                fallback_store.save(&fallback_path).unwrap();
+
+                crate::openai_codex::set_entitlement_record_for_test("work", crate::openai_codex::EntitlementRecord {
+                    state: crate::openai_codex::EntitlementState::NotEntitled {
+                        reason: "authenticated but not entitled for Codex use".to_string(),
+                        checked_at_ms: 1,
+                    },
+                    last_error: None,
+                });
+
+                let mgr = make_manager_for_provider(
+                    "openai-codex",
+                    expired_openai_codex_credential("acct-expired"),
+                    primary_path,
+                    Some(fallback_path),
+                );
+
+                let (_store, fresh) = mgr.try_disk_refreshed_credential().await.unwrap();
+                let fresh = fresh.expect("fallback disk shortcut should return refreshed credential");
+                assert_eq!(fresh.token(), fake_openai_codex_jwt("acct-fallback"));
+                assert_eq!(mgr.token().await, fake_openai_codex_jwt("acct-fallback"));
+                assert!(matches!(
+                    crate::openai_codex::entitlement_record("work").state,
+                    crate::openai_codex::EntitlementState::Unknown
+                ));
+            });
+        });
+    }
+
     // ── Fallback account selection ──────────────────────────────────
 
     #[tokio::test]
@@ -793,26 +954,18 @@ mod tests {
 
         // Set up a store with two accounts: "default" (expired) and "backup" (fresh)
         let mut store = AuthStore::default();
-        store.set_credential(
-            "anthropic",
-            "default",
-            Credential::OAuth {
-                access_token: "expired".into(),
-                refresh_token: "r".into(),
-                expires_at_ms: 0,
-                label: None,
-            },
-        );
-        store.set_credential(
-            "anthropic",
-            "backup",
-            Credential::OAuth {
-                access_token: "backup-token".into(),
-                refresh_token: "r2".into(),
-                expires_at_ms: chrono::Utc::now().timestamp_millis() + 3_600_000,
-                label: None,
-            },
-        );
+        store.set_credential("anthropic", "default", Credential::OAuth {
+            access_token: "expired".into(),
+            refresh_token: "r".into(),
+            expires_at_ms: 0,
+            label: None,
+        });
+        store.set_credential("anthropic", "backup", Credential::OAuth {
+            access_token: "backup-token".into(),
+            refresh_token: "r2".into(),
+            expires_at_ms: chrono::Utc::now().timestamp_millis() + 3_600_000,
+            label: None,
+        });
         // "default" is active
         store.switch_account("anthropic", "default");
         store.save(&path).unwrap();
@@ -833,26 +986,18 @@ mod tests {
 
         // All accounts expired
         let mut store = AuthStore::default();
-        store.set_credential(
-            "anthropic",
-            "default",
-            Credential::OAuth {
-                access_token: "expired1".into(),
-                refresh_token: "r".into(),
-                expires_at_ms: 0,
-                label: None,
-            },
-        );
-        store.set_credential(
-            "anthropic",
-            "other",
-            Credential::OAuth {
-                access_token: "expired2".into(),
-                refresh_token: "r".into(),
-                expires_at_ms: 0,
-                label: None,
-            },
-        );
+        store.set_credential("anthropic", "default", Credential::OAuth {
+            access_token: "expired1".into(),
+            refresh_token: "r".into(),
+            expires_at_ms: 0,
+            label: None,
+        });
+        store.set_credential("anthropic", "other", Credential::OAuth {
+            access_token: "expired2".into(),
+            refresh_token: "r".into(),
+            expires_at_ms: 0,
+            label: None,
+        });
         store.switch_account("anthropic", "default");
 
         let mgr = make_manager(expired_oauth_credential(), path, None);
@@ -867,16 +1012,12 @@ mod tests {
 
         // Only the active account is fresh — should return None (can't fall back to self)
         let mut store = AuthStore::default();
-        store.set_credential(
-            "anthropic",
-            "default",
-            Credential::OAuth {
-                access_token: "active-fresh".into(),
-                refresh_token: "r".into(),
-                expires_at_ms: chrono::Utc::now().timestamp_millis() + 3_600_000,
-                label: None,
-            },
-        );
+        store.set_credential("anthropic", "default", Credential::OAuth {
+            access_token: "active-fresh".into(),
+            refresh_token: "r".into(),
+            expires_at_ms: chrono::Utc::now().timestamp_millis() + 3_600_000,
+            label: None,
+        });
         store.switch_account("anthropic", "default");
 
         let mgr = make_manager(expired_oauth_credential(), path, None);
@@ -984,6 +1125,53 @@ mod tests {
         // No panic = success. The loop checked Weak::upgrade() and exited.
     }
 
+    #[test]
+    fn proactive_codex_refresh_resets_entitlement_state() {
+        crate::openai_codex::with_test_entitlement_state(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            runtime.block_on(async {
+                let (_dir, path) = temp_auth_path();
+
+                let mut store = AuthStore::default();
+                store.set_provider_credentials(
+                    "openai-codex",
+                    "work",
+                    fresh_openai_codex_credentials("acct-refreshed"),
+                );
+                assert!(store.switch_provider_account("openai-codex", "work"));
+                store.save(&path).unwrap();
+
+                crate::openai_codex::set_entitlement_record_for_test("work", crate::openai_codex::EntitlementRecord {
+                    state: crate::openai_codex::EntitlementState::NotEntitled {
+                        reason: "authenticated but not entitled for Codex use".to_string(),
+                        checked_at_ms: 1,
+                    },
+                    last_error: None,
+                });
+
+                let mgr = CredentialManager::new_for_provider(
+                    "openai-codex",
+                    expired_openai_codex_credential("acct-expired"),
+                    path,
+                    None,
+                );
+
+                for _ in 0..20 {
+                    if mgr.token().await == fake_openai_codex_jwt("acct-refreshed") {
+                        break;
+                    }
+                    tokio::time::sleep(Duration::from_millis(20)).await;
+                }
+
+                assert_eq!(mgr.token().await, fake_openai_codex_jwt("acct-refreshed"));
+                assert!(matches!(
+                    crate::openai_codex::entitlement_record("work").state,
+                    crate::openai_codex::EntitlementState::Unknown
+                ));
+            });
+        });
+    }
+
     // ── Proactive refresh loop: Weak ref cleanup ────────────────────
 
     #[tokio::test]
@@ -1070,22 +1258,14 @@ mod tests {
 
         // Set up store with "work" as active
         let mut store = AuthStore::default();
-        store.set_credential(
-            "anthropic",
-            "work",
-            Credential::ApiKey {
-                api_key: "old-work-key".into(),
-                label: None,
-            },
-        );
-        store.set_credential(
-            "anthropic",
-            "personal",
-            Credential::ApiKey {
-                api_key: "personal-key".into(),
-                label: None,
-            },
-        );
+        store.set_credential("anthropic", "work", Credential::ApiKey {
+            api_key: "old-work-key".into(),
+            label: None,
+        });
+        store.set_credential("anthropic", "personal", Credential::ApiKey {
+            api_key: "personal-key".into(),
+            label: None,
+        });
         store.switch_account("anthropic", "work");
         store.save(&path).unwrap();
 
@@ -1114,14 +1294,10 @@ mod tests {
 
         // Pre-populate with a non-anthropic provider
         let mut store = AuthStore::default();
-        store.set_credential(
-            "openai",
-            "default",
-            Credential::ApiKey {
-                api_key: "sk-openai".into(),
-                label: None,
-            },
-        );
+        store.set_credential("openai", "default", Credential::ApiKey {
+            api_key: "sk-openai".into(),
+            label: None,
+        });
         store.save(&path).unwrap();
 
         // save_with_file_lock should preserve the openai credential

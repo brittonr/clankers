@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::OnceLock;
 
 use async_trait::async_trait;
 use serde_json::json;
@@ -123,9 +125,13 @@ fn classify_probe_response(status: u16, body: &str) -> ProbeOutcome {
         return ProbeOutcome::Entitled;
     }
 
-    let error_code = serde_json::from_str::<serde_json::Value>(body)
-        .ok()
-        .and_then(|value| value.get("error").and_then(|error| error.get("code")).and_then(|code| code.as_str()).map(str::to_string));
+    let error_code = serde_json::from_str::<serde_json::Value>(body).ok().and_then(|value| {
+        value
+            .get("error")
+            .and_then(|error| error.get("code"))
+            .and_then(|code| code.as_str())
+            .map(str::to_string)
+    });
 
     if status == 403 || error_code.as_deref() == Some(OPENAI_CODEX_NOT_ENTITLED_CODE) {
         return ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string());
@@ -155,10 +161,7 @@ fn run_live_probe(credential: &StoredCredential) -> ProbeOutcome {
     };
 
     std::thread::spawn(move || {
-        let client = match reqwest::blocking::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
-        {
+        let client = match reqwest::blocking::Client::builder().timeout(std::time::Duration::from_secs(10)).build() {
             Ok(client) => client,
             Err(e) => return ProbeOutcome::Error(format!("failed to build entitlement probe client: {e}")),
         };
@@ -204,10 +207,7 @@ fn run_probe(credential: &StoredCredential) -> ProbeOutcome {
     run_live_probe(credential)
 }
 
-pub fn ensure_entitlement(
-    store: &crate::auth::AuthStore,
-    account: &str,
-) -> EntitlementRecord {
+pub fn ensure_entitlement(store: &crate::auth::AuthStore, account: &str) -> EntitlementRecord {
     let cached = entitlement_record(account);
     match &cached.state {
         EntitlementState::Entitled { .. } | EntitlementState::NotEntitled { .. } => return cached,
@@ -224,34 +224,22 @@ pub fn ensure_entitlement(
 
     let checked_at_ms = now_ms();
     match run_probe(credential) {
-        ProbeOutcome::Entitled => set_entitlement_record(
-            account,
-            EntitlementRecord {
-                state: EntitlementState::Entitled { checked_at_ms },
-                last_error: None,
-            },
-        ),
-        ProbeOutcome::NotEntitled(reason) => set_entitlement_record(
-            account,
-            EntitlementRecord {
-                state: EntitlementState::NotEntitled { reason, checked_at_ms },
-                last_error: None,
-            },
-        ),
-        ProbeOutcome::Error(error) => set_entitlement_record(
-            account,
-            EntitlementRecord {
-                state: EntitlementState::Unknown,
-                last_error: Some(error),
-            },
-        ),
+        ProbeOutcome::Entitled => set_entitlement_record(account, EntitlementRecord {
+            state: EntitlementState::Entitled { checked_at_ms },
+            last_error: None,
+        }),
+        ProbeOutcome::NotEntitled(reason) => set_entitlement_record(account, EntitlementRecord {
+            state: EntitlementState::NotEntitled { reason, checked_at_ms },
+            last_error: None,
+        }),
+        ProbeOutcome::Error(error) => set_entitlement_record(account, EntitlementRecord {
+            state: EntitlementState::Unknown,
+            last_error: Some(error),
+        }),
     }
 }
 
-pub fn codex_status_suffix(
-    store: &crate::auth::AuthStore,
-    account: &str,
-) -> Option<String> {
+pub fn codex_status_suffix(store: &crate::auth::AuthStore, account: &str) -> Option<String> {
     let credential = store.credential_for(OPENAI_CODEX_PROVIDER, account)?;
     if credential.is_expired() {
         return None;
@@ -271,10 +259,7 @@ pub fn codex_status_suffix(
     })
 }
 
-pub fn catalog_for_active_account(
-    store: &crate::auth::AuthStore,
-    account: &str,
-) -> Vec<Model> {
+pub fn catalog_for_active_account(store: &crate::auth::AuthStore, account: &str) -> Vec<Model> {
     match ensure_entitlement(store, account).state {
         EntitlementState::Entitled { .. } => codex_models(),
         EntitlementState::Unknown | EntitlementState::NotEntitled { .. } => Vec::new(),
@@ -336,40 +321,29 @@ impl Provider for CodexStubProvider {
         let checked_at_ms = now_ms();
         match run_probe(&credential) {
             ProbeOutcome::Entitled => {
-                set_entitlement_record(
-                    &self.account,
-                    EntitlementRecord {
-                        state: EntitlementState::Entitled { checked_at_ms },
-                        last_error: None,
-                    },
-                );
+                set_entitlement_record(&self.account, EntitlementRecord {
+                    state: EntitlementState::Entitled { checked_at_ms },
+                    last_error: None,
+                });
                 Err(crate::error::provider_err(
                     "openai-codex is authenticated and entitled, but the Codex Responses backend is not implemented yet",
                 ))
             }
             ProbeOutcome::NotEntitled(reason) => {
-                set_entitlement_record(
-                    &self.account,
-                    EntitlementRecord {
-                        state: EntitlementState::NotEntitled {
-                            reason: reason.clone(),
-                            checked_at_ms,
-                        },
-                        last_error: None,
+                set_entitlement_record(&self.account, EntitlementRecord {
+                    state: EntitlementState::NotEntitled {
+                        reason: reason.clone(),
+                        checked_at_ms,
                     },
-                );
-                Err(crate::error::auth_err(format!(
-                    "{reason}. ChatGPT Plus or Pro is required for openai-codex"
-                )))
+                    last_error: None,
+                });
+                Err(crate::error::auth_err(format!("{reason}. ChatGPT Plus or Pro is required for openai-codex")))
             }
             ProbeOutcome::Error(error) => {
-                set_entitlement_record(
-                    &self.account,
-                    EntitlementRecord {
-                        state: EntitlementState::Unknown,
-                        last_error: Some(error.clone()),
-                    },
-                );
+                set_entitlement_record(&self.account, EntitlementRecord {
+                    state: EntitlementState::Unknown,
+                    last_error: Some(error.clone()),
+                });
                 Err(crate::error::provider_err_with_status(
                     503,
                     format!("openai-codex entitlement check failed: {error}"),
@@ -393,45 +367,87 @@ impl Provider for CodexStubProvider {
 }
 
 #[cfg(test)]
-pub(crate) fn with_test_probe_hook<F, R>(hook: F, f: impl FnOnce() -> R) -> R
-where
-    F: Fn(&StoredCredential) -> ProbeOutcome + Send + Sync + 'static,
-{
+fn entitlement_test_lock() -> &'static Mutex<()> {
     static TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
-    let _guard = TEST_LOCK
-        .get_or_init(|| Mutex::new(()))
-        .lock()
-        .expect("test lock poisoned");
+    TEST_LOCK.get_or_init(|| Mutex::new(()))
+}
 
+#[cfg(test)]
+pub(crate) fn with_test_entitlement_state<R>(f: impl FnOnce() -> R) -> R {
+    let _guard = entitlement_test_lock().lock().unwrap_or_else(|poison| poison.into_inner());
     reset_entitlement(OPENAI_CODEX_PROVIDER, None);
-    *probe_hook().lock().expect("probe hook lock poisoned") = Some(Arc::new(hook));
     let result = f();
-    *probe_hook().lock().expect("probe hook lock poisoned") = None;
     reset_entitlement(OPENAI_CODEX_PROVIDER, None);
     result
+}
+
+#[cfg(test)]
+pub(crate) fn set_entitlement_record_for_test(account: &str, record: EntitlementRecord) {
+    let _ = set_entitlement_record(account, record);
+}
+
+#[cfg(test)]
+pub(crate) fn with_test_probe_hook<F, R>(hook: F, f: impl FnOnce() -> R) -> R
+where F: Fn(&StoredCredential) -> ProbeOutcome + Send + Sync + 'static {
+    with_test_entitlement_state(|| {
+        *probe_hook().lock().expect("probe hook lock poisoned") = Some(Arc::new(hook));
+        let result = f();
+        *probe_hook().lock().expect("probe hook lock poisoned") = None;
+        result
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
 
+    use base64::Engine;
+
     use super::*;
+    use crate::CompletionRequest;
     use crate::auth::AuthStoreExt;
     use crate::auth::OAuthCredentials;
+    use crate::credential_manager::CredentialManager;
+
+    fn codex_creds(account_id: &str) -> OAuthCredentials {
+        OAuthCredentials {
+            access: format!(
+                "header.{}.signature",
+                base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
+                    serde_json::json!({
+                        "https://api.openai.com/auth": {
+                            "chatgpt_account_id": account_id,
+                        }
+                    })
+                    .to_string()
+                    .as_bytes(),
+                )
+            ),
+            refresh: "refresh".to_string(),
+            expires: now_ms() + 3_600_000,
+        }
+    }
 
     fn codex_store() -> crate::auth::AuthStore {
         let mut store = crate::auth::AuthStore::default();
-        store.set_provider_credentials(
-            OPENAI_CODEX_PROVIDER,
-            "work",
-            OAuthCredentials {
-                access: "header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiacctMTIzIn19.signature".to_string(),
-                refresh: "refresh".to_string(),
-                expires: now_ms() + 3_600_000,
-            },
-        );
+        store.set_provider_credentials(OPENAI_CODEX_PROVIDER, "work", codex_creds("acct-123"));
         store.switch_provider_account(OPENAI_CODEX_PROVIDER, "work");
         store
+    }
+
+    fn minimal_request() -> CompletionRequest {
+        CompletionRequest {
+            model: OPENAI_CODEX_MODEL_IDS[0].to_string(),
+            messages: Vec::new(),
+            system_prompt: None,
+            max_tokens: None,
+            temperature: None,
+            tools: Vec::new(),
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+            extra_params: std::collections::HashMap::new(),
+        }
     }
 
     #[test]
@@ -497,18 +513,112 @@ mod tests {
     #[test]
     fn classify_probe_response_treats_usage_not_included_as_not_entitled() {
         let outcome = classify_probe_response(400, r#"{"error":{"code":"usage_not_included"}}"#);
-        assert_eq!(
-            outcome,
-            ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string())
-        );
+        assert_eq!(outcome, ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string()));
     }
 
     #[test]
     fn classify_probe_response_treats_http_403_as_not_entitled() {
         let outcome = classify_probe_response(403, "forbidden");
-        assert_eq!(
-            outcome,
-            ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string())
+        assert_eq!(outcome, ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string()));
+    }
+
+    #[test]
+    fn codex_reload_resets_entitlement_and_reprobes() {
+        with_test_probe_hook(
+            |_| ProbeOutcome::Entitled,
+            || {
+                let dir = tempfile::TempDir::new().unwrap();
+                let auth_path = dir.path().join("auth.json");
+                let mut store = crate::auth::AuthStore::default();
+                store.set_provider_credentials(OPENAI_CODEX_PROVIDER, "work", codex_creds("acct-reloaded"));
+                assert!(store.switch_provider_account(OPENAI_CODEX_PROVIDER, "work"));
+                store.save(&auth_path).unwrap();
+
+                set_entitlement_record_for_test("work", EntitlementRecord {
+                    state: EntitlementState::NotEntitled {
+                        reason: "authenticated but not entitled for Codex use".to_string(),
+                        checked_at_ms: 1,
+                    },
+                    last_error: None,
+                });
+
+                let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+                runtime.block_on(async {
+                    let manager = CredentialManager::new_for_provider(
+                        OPENAI_CODEX_PROVIDER,
+                        codex_creds("acct-stale").to_stored(),
+                        auth_path.clone(),
+                        None,
+                    );
+                    let provider = CodexStubProvider::new(manager, Vec::new(), "work".to_string());
+                    provider.reload_credentials().await;
+                });
+
+                assert!(matches!(entitlement_record("work").state, EntitlementState::Unknown));
+                let reloaded_store = crate::auth::AuthStore::load(&auth_path);
+                assert_eq!(codex_status_suffix(&reloaded_store, "work"), Some("codex entitled".to_string()));
+            },
         );
+    }
+
+    #[test]
+    fn codex_account_switch_resets_entitlement_and_reprobes_new_account() {
+        with_test_probe_hook(
+            |credential| {
+                let account_id = crate::auth::openai_codex_account_id_from_credential(credential).unwrap();
+                if account_id == "acct-work" {
+                    ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string())
+                } else {
+                    ProbeOutcome::Entitled
+                }
+            },
+            || {
+                let mut store = crate::auth::AuthStore::default();
+                store.set_provider_credentials(OPENAI_CODEX_PROVIDER, "work", codex_creds("acct-work"));
+                store.set_provider_credentials(OPENAI_CODEX_PROVIDER, "backup", codex_creds("acct-backup"));
+                assert!(store.switch_provider_account(OPENAI_CODEX_PROVIDER, "work"));
+
+                assert_eq!(
+                    codex_status_suffix(&store, "work"),
+                    Some("authenticated but not entitled for Codex use".to_string())
+                );
+                assert!(matches!(entitlement_record("work").state, EntitlementState::NotEntitled { .. }));
+
+                assert!(store.switch_provider_account(OPENAI_CODEX_PROVIDER, "backup"));
+                reset_entitlement(OPENAI_CODEX_PROVIDER, None);
+
+                assert_eq!(codex_status_suffix(&store, "backup"), Some("codex entitled".to_string()));
+                assert!(matches!(entitlement_record("backup").state, EntitlementState::Entitled { .. }));
+            },
+        );
+    }
+
+    #[test]
+    fn codex_complete_blocks_request_without_valid_account_id() {
+        with_test_entitlement_state(|| {
+            let runtime = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+            runtime.block_on(async {
+                let dir = tempfile::TempDir::new().unwrap();
+                let auth_path = dir.path().join("auth.json");
+                let manager = CredentialManager::new_for_provider(
+                    OPENAI_CODEX_PROVIDER,
+                    crate::auth::StoredCredential::OAuth {
+                        access_token: "not-a-jwt".to_string(),
+                        refresh_token: "refresh".to_string(),
+                        expires_at_ms: now_ms() + 3_600_000,
+                        label: None,
+                    },
+                    auth_path,
+                    None,
+                );
+                let provider = CodexStubProvider::new(manager, codex_models(), "work".to_string());
+                let (tx, _rx) = tokio::sync::mpsc::channel(1);
+                let err = provider.complete(minimal_request(), tx).await.unwrap_err();
+                assert!(err.message.contains("entitlement check failed"));
+                assert!(
+                    err.message.contains("OpenAI Codex access token") || err.message.contains("chatgpt_account_id")
+                );
+            });
+        });
     }
 }

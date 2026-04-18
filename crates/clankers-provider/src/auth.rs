@@ -7,17 +7,16 @@ use std::path::Path;
 
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
-use rand::RngCore;
-use serde::Deserialize;
-use serde::Serialize;
-use sha2::Digest;
-use sha2::Sha256;
-
 // Re-export the canonical types from clanker-router
 pub use clanker_router::auth::{
     AccountInfo, AuthStore, ProviderAuth, StoredCredential, env_var_for_provider, is_oauth_token,
 };
 pub use clanker_router::oauth::OAuthCredentials;
+use rand::RngCore;
+use serde::Deserialize;
+use serde::Serialize;
+use sha2::Digest;
+use sha2::Sha256;
 
 /// Default OAuth provider when the user omits `--provider` or `/login <provider>`.
 pub const DEFAULT_OAUTH_PROVIDER: &str = "anthropic";
@@ -65,8 +64,12 @@ struct OpenAiCodexTokenResponse {
 pub fn openai_codex_account_id_from_access_token(access_token: &str) -> crate::error::Result<String> {
     let mut parts = access_token.split('.');
     let _header = parts.next();
-    let payload = parts.next().ok_or_else(|| crate::error::auth_err("OpenAI Codex access token missing JWT payload"))?;
-    let _signature = parts.next().ok_or_else(|| crate::error::auth_err("OpenAI Codex access token missing JWT signature"))?;
+    let payload = parts
+        .next()
+        .ok_or_else(|| crate::error::auth_err("OpenAI Codex access token missing JWT payload"))?;
+    let _signature = parts
+        .next()
+        .ok_or_else(|| crate::error::auth_err("OpenAI Codex access token missing JWT signature"))?;
     if parts.next().is_some() {
         return Err(crate::error::auth_err("OpenAI Codex access token has too many JWT segments"));
     }
@@ -83,7 +86,9 @@ pub fn openai_codex_account_id_from_access_token(access_token: &str) -> crate::e
         .and_then(|value| value.as_str())
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
-        .ok_or_else(|| crate::error::auth_err("OpenAI Codex access token missing https://api.openai.com/auth.chatgpt_account_id"))
+        .ok_or_else(|| {
+            crate::error::auth_err("OpenAI Codex access token missing https://api.openai.com/auth.chatgpt_account_id")
+        })
 }
 
 pub fn openai_codex_account_id_from_credential(credential: &StoredCredential) -> crate::error::Result<String> {
@@ -142,9 +147,7 @@ async fn exchange_openai_codex_code(code: &str, verifier: &str) -> crate::error:
     if !response.status().is_success() {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_else(|_| "unknown error".to_string());
-        return Err(crate::error::auth_err(format!(
-            "OpenAI Codex token exchange failed ({status}): {error_text}"
-        )));
+        return Err(crate::error::auth_err(format!("OpenAI Codex token exchange failed ({status}): {error_text}")));
     }
 
     let tokens: OpenAiCodexTokenResponse = response
@@ -171,9 +174,7 @@ async fn refresh_openai_codex_token(refresh_token: &str) -> crate::error::Result
     if !response.status().is_success() {
         let status = response.status();
         let error_text = response.text().await.unwrap_or_else(|_| "unknown error".to_string());
-        return Err(crate::error::auth_err(format!(
-            "OpenAI Codex token refresh failed ({status}): {error_text}"
-        )));
+        return Err(crate::error::auth_err(format!("OpenAI Codex token refresh failed ({status}): {error_text}")));
     }
 
     let tokens: OpenAiCodexTokenResponse = response
@@ -221,7 +222,12 @@ impl OAuthFlow {
         }
     }
 
-    pub async fn exchange_code(self, code: &str, state: &str, verifier: &str) -> crate::error::Result<OAuthCredentials> {
+    pub async fn exchange_code(
+        self,
+        code: &str,
+        state: &str,
+        verifier: &str,
+    ) -> crate::error::Result<OAuthCredentials> {
         match self {
             Self::Anthropic => clanker_router::oauth::exchange_code(code, state, verifier).await.map_err(Into::into),
             Self::OpenAiCodex => {
@@ -270,8 +276,7 @@ impl PendingOAuthLogin {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let json = serde_json::to_string(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let json = serde_json::to_string(self).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         std::fs::write(path, json)
     }
 
@@ -529,26 +534,20 @@ mod tests {
     fn test_openai_codex_token_contract_helpers() {
         let exchange = openai_codex_code_exchange_form("code-123", "verifier-456");
         assert_eq!(OPENAI_CODEX_TOKEN_URL, "https://auth.openai.com/oauth/token");
-        assert_eq!(
-            exchange,
-            vec![
-                ("grant_type", "authorization_code".to_string()),
-                ("client_id", OPENAI_CODEX_CLIENT_ID.to_string()),
-                ("code", "code-123".to_string()),
-                ("code_verifier", "verifier-456".to_string()),
-                ("redirect_uri", OPENAI_CODEX_REDIRECT_URI.to_string()),
-            ]
-        );
+        assert_eq!(exchange, vec![
+            ("grant_type", "authorization_code".to_string()),
+            ("client_id", OPENAI_CODEX_CLIENT_ID.to_string()),
+            ("code", "code-123".to_string()),
+            ("code_verifier", "verifier-456".to_string()),
+            ("redirect_uri", OPENAI_CODEX_REDIRECT_URI.to_string()),
+        ]);
 
         let refresh = openai_codex_refresh_form("refresh-789");
-        assert_eq!(
-            refresh,
-            vec![
-                ("grant_type", "refresh_token".to_string()),
-                ("client_id", OPENAI_CODEX_CLIENT_ID.to_string()),
-                ("refresh_token", "refresh-789".to_string()),
-            ]
-        );
+        assert_eq!(refresh, vec![
+            ("grant_type", "refresh_token".to_string()),
+            ("client_id", OPENAI_CODEX_CLIENT_ID.to_string()),
+            ("refresh_token", "refresh-789".to_string()),
+        ]);
     }
 
     #[test]
@@ -558,11 +557,34 @@ mod tests {
     }
 
     #[test]
+    fn test_openai_codex_account_id_derives_from_loaded_and_refreshed_credentials() {
+        let loaded = OAuthCredentials {
+            access: fake_openai_codex_jwt("acct_loaded"),
+            refresh: "refresh-loaded".into(),
+            expires: i64::MAX,
+        };
+        let refreshed = OAuthCredentials {
+            access: fake_openai_codex_jwt("acct_refreshed"),
+            refresh: "refresh-refreshed".into(),
+            expires: i64::MAX,
+        };
+
+        assert_eq!(openai_codex_account_id_from_credential(&loaded.to_stored()).unwrap(), "acct_loaded");
+        assert_eq!(openai_codex_account_id_from_credential(&refreshed.to_stored()).unwrap(), "acct_refreshed");
+    }
+
+    #[test]
     fn test_openai_codex_account_id_rejects_missing_claim() {
         let header = URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"JWT"}"#);
         let payload = URL_SAFE_NO_PAD.encode(r#"{"sub":"user_123"}"#);
         let token = format!("{header}.{payload}.sig");
         assert!(openai_codex_account_id_from_access_token(&token).is_err());
+    }
+
+    #[test]
+    fn test_openai_codex_account_id_rejects_malformed_jwt() {
+        let token = "not-a-jwt-token";
+        assert!(openai_codex_account_id_from_access_token(token).is_err());
     }
 
     #[test]
@@ -599,36 +621,24 @@ mod tests {
         let auth_path = dir.path().join("auth.json");
 
         let mut store = AuthStore::default();
-        store.set_provider_credentials(
-            "anthropic",
-            "default",
-            OAuthCredentials {
-                access: "anthropic-access".into(),
-                refresh: "anthropic-refresh".into(),
-                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
-            },
-        );
-        store.set_credential(
-            "openai",
-            "default",
-            StoredCredential::ApiKey {
-                api_key: "sk-openai".into(),
-                label: None,
-            },
-        );
+        store.set_provider_credentials("anthropic", "default", OAuthCredentials {
+            access: "anthropic-access".into(),
+            refresh: "anthropic-refresh".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
+        store.set_credential("openai", "default", StoredCredential::ApiKey {
+            api_key: "sk-openai".into(),
+            label: None,
+        });
         store.save(&auth_path).unwrap();
 
         let mut reloaded = AuthStore::load(&auth_path);
         let codex_access = fake_openai_codex_jwt("acct_codex");
-        reloaded.set_provider_credentials(
-            "openai-codex",
-            "work",
-            OAuthCredentials {
-                access: codex_access.clone(),
-                refresh: "codex-refresh".into(),
-                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
-            },
-        );
+        reloaded.set_provider_credentials("openai-codex", "work", OAuthCredentials {
+            access: codex_access.clone(),
+            refresh: "codex-refresh".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
         assert!(reloaded.switch_provider_account("openai-codex", "work"));
         reloaded.save(&auth_path).unwrap();
 
@@ -637,6 +647,37 @@ mod tests {
         assert_eq!(final_store.credential_for("openai", "default").unwrap().token(), "sk-openai");
         assert_eq!(final_store.credential_for("openai-codex", "work").unwrap().token(), codex_access);
         assert_eq!(final_store.active_account_name_for("openai-codex"), "work");
+    }
+
+    #[test]
+    fn test_openai_codex_login_marks_requested_account_active() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let auth_path = dir.path().join("auth.json");
+
+        let mut store = AuthStore::default();
+        store.set_provider_credentials("openai-codex", "default", OAuthCredentials {
+            access: fake_openai_codex_jwt("acct_default"),
+            refresh: "refresh-default".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
+        assert_eq!(store.active_account_name_for("openai-codex"), "default");
+        store.save(&auth_path).unwrap();
+
+        let mut reloaded = AuthStore::load(&auth_path);
+        reloaded.set_provider_credentials("openai-codex", "work", OAuthCredentials {
+            access: fake_openai_codex_jwt("acct_work"),
+            refresh: "refresh-work".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
+        assert!(reloaded.switch_provider_account("openai-codex", "work"));
+        reloaded.save(&auth_path).unwrap();
+
+        let final_store = AuthStore::load(&auth_path);
+        assert_eq!(final_store.active_account_name_for("openai-codex"), "work");
+        assert_eq!(
+            final_store.credential_for("openai-codex", "work").unwrap().token(),
+            fake_openai_codex_jwt("acct_work")
+        );
     }
 
     #[test]
