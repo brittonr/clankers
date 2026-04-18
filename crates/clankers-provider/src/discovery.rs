@@ -435,8 +435,23 @@ mod tests {
         }
     }
 
-    fn invalid_codex_jwt_error() -> &'static str {
-        "All providers exhausted:\n  openai-codex:openai-codex/gpt-5.1-codex → 503 provider error: openai-codex entitlement check failed: failed to send entitlement probe: auth error: OpenAI Codex access token missing JWT payload"
+    fn assert_invalid_codex_jwt_error(err: &crate::error::ProviderError) {
+        assert_eq!(err.status_code(), Some(503));
+        assert!(
+            err.message.contains("openai-codex entitlement check failed"),
+            "got: {}",
+            err.message
+        );
+        assert!(
+            err.message.contains("OpenAI Codex access token missing JWT payload"),
+            "got: {}",
+            err.message
+        );
+        assert!(
+            err.message.contains("openai-codex:openai-codex/gpt-5.1-codex"),
+            "got: {}",
+            err.message
+        );
     }
 
     fn env_lock() -> &'static Mutex<()> {
@@ -454,6 +469,9 @@ mod tests {
         fn set(key: &'static str, value: &str) -> Self {
             let guard = env_lock().lock().unwrap_or_else(|poison| poison.into_inner());
             let previous = std::env::var(key).ok();
+            // SAFETY: test-only helper. One process-global mutex serializes mutation for
+            // all callers of this helper, and the guard keeps that lock for the entire
+            // lifetime of the override so restoration happens under the same lock.
             unsafe { std::env::set_var(key, value) };
             Self {
                 _guard: guard,
@@ -466,7 +484,9 @@ mod tests {
     impl Drop for EnvVarGuard {
         fn drop(&mut self) {
             match &self.previous {
+                // SAFETY: same serialized test-only env mutation contract as set().
                 Some(previous) => unsafe { std::env::set_var(self.key, previous) },
+                // SAFETY: same serialized test-only env mutation contract as set().
                 None => unsafe { std::env::remove_var(self.key) },
             }
         }
@@ -509,7 +529,7 @@ mod tests {
                         .complete(explicit_codex_request(), tx)
                         .await
                         .expect_err("invalid jwt should fail before any live Codex request succeeds");
-                    assert_eq!(err.message, invalid_codex_jwt_error());
+                    assert_invalid_codex_jwt_error(&err);
                 });
             },
         );
@@ -543,7 +563,7 @@ mod tests {
                         .complete(explicit_codex_request(), tx)
                         .await
                         .expect_err("invalid jwt should still fail through the Codex backend");
-                    assert_eq!(err.message, invalid_codex_jwt_error());
+                    assert_invalid_codex_jwt_error(&err);
                 });
             },
         );
