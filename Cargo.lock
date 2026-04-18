@@ -1595,6 +1595,7 @@ dependencies = [
  "clankers-hooks",
  "clankers-tui-types",
  "extism",
+ "libc",
  "serde",
  "serde_json",
  "tokio",

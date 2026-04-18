@@ -151,11 +151,16 @@ fn plugin_toggle(pm: &PluginMutex, name: &str, enable: bool, ctx: &mut SlashCont
         ctx.app.push_system(format!("Usage: /plugin {} <name>", verb), true);
         return;
     }
-    let mut mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
-    let result = if enable { mgr.enable(name) } else { mgr.disable(name) };
+    let result = if enable {
+        crate::plugin::enable_plugin(pm, name)
+    } else {
+        let mut mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
+        mgr.disable(name)
+    };
     match result {
         Ok(()) => {
             ctx.app.push_system(format!("Plugin '{}' {}d.", name, verb), false);
+            let mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
             save_disabled_plugins(&mgr);
         }
         Err(e) => ctx.app.push_system(format!("Failed to {} '{}': {}", verb, name, e), true),
@@ -163,12 +168,11 @@ fn plugin_toggle(pm: &PluginMutex, name: &str, enable: bool, ctx: &mut SlashCont
 }
 
 fn plugin_reload(pm: &PluginMutex, name: &str, ctx: &mut SlashContext<'_>) {
-    let mut mgr = pm.lock().unwrap_or_else(|e| e.into_inner());
     if name.is_empty() {
-        mgr.reload_all();
+        crate::plugin::reload_all_plugins(pm);
         ctx.app.push_system("All plugins reloaded.".to_string(), false);
     } else {
-        match mgr.reload(name) {
+        match crate::plugin::reload_plugin(pm, name) {
             Ok(()) => ctx.app.push_system(format!("Plugin '{}' reloaded.", name), false),
             Err(e) => ctx.app.push_system(format!("Failed to reload '{}': {}", name, e), true),
         }
@@ -194,15 +198,29 @@ fn plugin_list(pm: &PluginMutex, ctx: &mut SlashContext<'_>) {
             "Disabled" => "−",
             _ => "✗",
         };
-        let tools = if p.tools.is_empty() { "none".to_string() } else { p.tools.join(", ") };
+        let tools = if p.tools.is_empty() {
+            "none".to_string()
+        } else {
+            p.tools.join(", ")
+        };
+        let permissions = if p.permissions.is_empty() {
+            "none".to_string()
+        } else {
+            p.permissions.join(", ")
+        };
         writeln!(out, "  {} {} v{}", icon, p.name, p.version).ok();
         writeln!(out, "      kind: {}  state: {}", p.kind, p.state).ok();
         writeln!(out, "      tools: {}", tools).ok();
+        writeln!(out, "      permissions: {}", permissions).ok();
         if let Some(error) = p.last_error {
             writeln!(out, "      last error: {}", error).ok();
         }
     }
-    write!(out, "\n  ✓ active  ○ loaded/starting  ↺ backoff  − disabled  ✗ error\n  Use /plugin enable|disable|reload <name>").ok();
+    write!(
+        out,
+        "\n  ✓ active  ○ loaded/starting  ↺ backoff  − disabled  ✗ error\n  Use /plugin enable|disable|reload <name>"
+    )
+    .ok();
     ctx.app.push_system(out, false);
 }
 

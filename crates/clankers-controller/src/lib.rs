@@ -23,11 +23,11 @@ pub mod transport;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use clanker_loop::LoopEngine;
+use clanker_loop::LoopId;
 use clankers_agent::Agent;
 use clankers_agent::events::AgentEvent;
 use clankers_hooks::HookPipeline;
-use clanker_loop::LoopEngine;
-use clanker_loop::LoopId;
 use clankers_protocol::DaemonEvent;
 use clankers_session::SessionManager;
 use tokio::sync::broadcast;
@@ -57,8 +57,8 @@ pub enum PostPromptAction {
 ///
 /// Two modes:
 /// - **Daemon mode** (`new`): owns the Agent, drives prompts directly.
-/// - **Embedded mode** (`new_embedded`): no agent ownership. Events fed
-///   via `feed_event()`, agent managed externally by `agent_task`.
+/// - **Embedded mode** (`new_embedded`): no agent ownership. Events fed via `feed_event()`, agent
+///   managed externally by `agent_task`.
 #[allow(dead_code)] // Fields used incrementally as phases are implemented
 pub struct SessionController {
     /// The agent instance (None in embedded mode).
@@ -187,9 +187,60 @@ impl SessionController {
         self.tool_rebuilder = Some(rebuilder);
     }
 
+    /// Snapshot the current tool list as protocol metadata.
+    pub fn current_tool_infos(&self) -> Vec<clankers_protocol::ToolInfo> {
+        self.agent
+            .as_ref()
+            .map(|agent| {
+                agent
+                    .tools()
+                    .iter()
+                    .map(|tool| {
+                        let def = tool.definition();
+                        clankers_protocol::ToolInfo {
+                            name: def.name.clone(),
+                            description: def.description.clone(),
+                            source: tool.source().to_string(),
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
 
+    /// Rebuild the filtered tool list from the current rebuilder and disabled set.
+    ///
+    /// Returns true when the tool inventory changed.
+    pub fn refresh_tools(&mut self) -> bool {
+        let Some(rebuilder) = self.tool_rebuilder.as_ref() else {
+            return false;
+        };
+        if self.agent.is_none() {
+            return false;
+        }
 
+        let before = self.current_tool_infos();
+        let rebuilt = rebuilder.rebuild_filtered(&self.disabled_tools);
+        let after: Vec<clankers_protocol::ToolInfo> = rebuilt
+            .iter()
+            .map(|tool| {
+                let def = tool.definition();
+                clankers_protocol::ToolInfo {
+                    name: def.name.clone(),
+                    description: def.description.clone(),
+                    source: tool.source().to_string(),
+                }
+            })
+            .collect();
+        if before == after {
+            return false;
+        }
 
+        if let Some(agent) = self.agent.as_mut() {
+            agent.set_tools(rebuilt);
+        }
+        true
+    }
 
     /// Check if the agent is currently processing a prompt.
     pub fn is_busy(&self) -> bool {
@@ -289,6 +340,7 @@ impl SessionController {
 #[cfg(test)]
 pub(crate) mod test_helpers {
     use std::sync::Arc;
+
     use super::*;
 
     /// Minimal mock provider for controller tests (no actual LLM calls).
@@ -333,9 +385,76 @@ pub(crate) mod test_helpers {
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Arc;
+    use std::sync::Mutex;
+
+    use crate::ToolRebuilder;
     use crate::test_helpers::make_test_controller;
 
+    struct StubTool {
+        definition: clankers_agent::ToolDefinition,
+        source: &'static str,
+    }
 
+    #[async_trait::async_trait]
+    impl clankers_agent::Tool for StubTool {
+        fn definition(&self) -> &clankers_agent::ToolDefinition {
+            &self.definition
+        }
+
+        async fn execute(
+            &self,
+            _ctx: &clankers_agent::ToolContext,
+            _params: serde_json::Value,
+        ) -> clankers_agent::ToolResult {
+            clankers_agent::ToolResult::text("ok")
+        }
+
+        fn source(&self) -> &str {
+            self.source
+        }
+    }
+
+    struct StubRebuilder {
+        tools: Vec<Arc<dyn clankers_agent::Tool>>,
+    }
+
+    impl ToolRebuilder for StubRebuilder {
+        fn rebuild_filtered(&self, disabled: &[String]) -> Vec<Arc<dyn clankers_agent::Tool>> {
+            self.tools
+                .iter()
+                .filter(|tool| !disabled.iter().any(|name| name == &tool.definition().name))
+                .cloned()
+                .collect()
+        }
+    }
+
+    struct DynamicRebuilder {
+        tools: Arc<Mutex<Vec<Arc<dyn clankers_agent::Tool>>>>,
+    }
+
+    impl ToolRebuilder for DynamicRebuilder {
+        fn rebuild_filtered(&self, disabled: &[String]) -> Vec<Arc<dyn clankers_agent::Tool>> {
+            self.tools
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner())
+                .iter()
+                .filter(|tool| !disabled.iter().any(|name| name == &tool.definition().name))
+                .cloned()
+                .collect()
+        }
+    }
+
+    fn stub_tool(name: &str, source: &'static str) -> Arc<dyn clankers_agent::Tool> {
+        Arc::new(StubTool {
+            definition: clankers_agent::ToolDefinition {
+                name: name.to_string(),
+                description: format!("stub {name}"),
+                input_schema: serde_json::json!({"type": "object"}),
+            },
+            source,
+        })
+    }
 
     #[test]
     fn test_not_busy_initially() {
@@ -363,5 +482,59 @@ mod tests {
         let agent = ctrl.agent.as_ref().expect("controller should own an agent");
         assert_eq!(ctrl.session_id(), "resumed-session");
         assert_eq!(agent.session_id(), "resumed-session");
+    }
+
+    #[test]
+    fn refresh_tools_updates_inventory_and_sources() {
+        let mut ctrl = make_test_controller();
+        ctrl.set_tool_rebuilder(Arc::new(StubRebuilder {
+            tools: vec![stub_tool("stdio_echo", "stdio-plugin")],
+        }));
+
+        assert!(ctrl.refresh_tools());
+        assert_eq!(ctrl.current_tool_infos(), vec![clankers_protocol::ToolInfo {
+            name: "stdio_echo".to_string(),
+            description: "stub stdio_echo".to_string(),
+            source: "stdio-plugin".to_string(),
+        }]);
+        assert!(!ctrl.refresh_tools());
+    }
+
+    #[test]
+    fn refresh_tools_respects_disabled_tools() {
+        let mut ctrl = make_test_controller();
+        ctrl.set_tool_rebuilder(Arc::new(StubRebuilder {
+            tools: vec![stub_tool("stdio_echo", "stdio-plugin")],
+        }));
+
+        assert!(ctrl.refresh_tools());
+        ctrl.disabled_tools = vec!["stdio_echo".to_string()];
+        assert!(ctrl.refresh_tools());
+        assert!(ctrl.current_tool_infos().is_empty());
+    }
+
+    #[test]
+    fn refresh_tools_keeps_disabled_stdio_tool_hidden_when_rebuilder_reintroduces_it() {
+        let mut ctrl = make_test_controller();
+        let tools = Arc::new(Mutex::new(vec![stub_tool("stdio_echo", "stdio-plugin")]));
+        ctrl.set_tool_rebuilder(Arc::new(DynamicRebuilder {
+            tools: Arc::clone(&tools),
+        }));
+
+        assert!(ctrl.refresh_tools());
+        ctrl.disabled_tools = vec!["stdio_echo".to_string()];
+        assert!(ctrl.refresh_tools());
+        assert!(ctrl.current_tool_infos().is_empty());
+
+        tools.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clear();
+        assert!(!ctrl.refresh_tools());
+        assert!(ctrl.current_tool_infos().is_empty());
+
+        tools
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(stub_tool("stdio_echo", "stdio-plugin"));
+        assert!(!ctrl.refresh_tools());
+        assert!(ctrl.current_tool_infos().is_empty());
     }
 }

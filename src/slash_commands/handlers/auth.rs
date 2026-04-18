@@ -84,11 +84,8 @@ fn handle_login_start(ctx: &mut SlashContext<'_>, provider_name: &str, account_n
         .insert((pending.provider.clone(), pending.account.clone()), pending.verifier.clone());
 
     let paths = crate::config::ClankersPaths::get();
-    let verifier_path = crate::provider::auth::pending_oauth_login_path(
-        &paths.global_config_dir,
-        &pending.provider,
-        &pending.account,
-    );
+    let verifier_path =
+        crate::provider::auth::pending_oauth_login_path(&paths.global_config_dir, &pending.provider, &pending.account);
     if let Err(e) = pending.save(&verifier_path) {
         ctx.app.push_system(format!("Failed to persist login verifier: {e}"), true);
         return;
@@ -116,32 +113,24 @@ fn handle_login_start(ctx: &mut SlashContext<'_>, provider_name: &str, account_n
     );
 }
 
-fn handle_login_complete(
-    ctx: &mut SlashContext<'_>,
-    input: &str,
-    verifier: String,
-    provider: &str,
-    account: &str,
-) {
+fn handle_login_complete(ctx: &mut SlashContext<'_>, input: &str, verifier: String, provider: &str, account: &str) {
     let parsed = crate::modes::interactive::parse_oauth_input(input);
     match parsed {
         Some((code, state)) => {
-            ctx.app.push_system(
-                format!("Exchanging code for provider '{}' account '{}'...", provider, account),
-                false,
-            );
-            ctx.cmd_tx.send(AgentCommand::Login {
-                code,
-                state,
-                verifier,
-                provider: provider.to_string(),
-                account: account.to_string(),
-            }).ok();
+            ctx.app
+                .push_system(format!("Exchanging code for provider '{}' account '{}'...", provider, account), false);
+            ctx.cmd_tx
+                .send(AgentCommand::Login {
+                    code,
+                    state,
+                    verifier,
+                    provider: provider.to_string(),
+                    account: account.to_string(),
+                })
+                .ok();
         }
         None => {
-            ctx.app
-                .login_verifiers
-                .insert((provider.to_string(), account.to_string()), verifier);
+            ctx.app.login_verifiers.insert((provider.to_string(), account.to_string()), verifier);
             ctx.app.push_system(
                 "Invalid code format. Expected:\n  /login code#state\n  /login https://...?code=CODE&state=STATE"
                     .to_string(),
@@ -163,21 +152,20 @@ fn handle_login_complete_from_disk(ctx: &mut SlashContext<'_>, input: &str, prov
     {
         if let Some((code, state)) = crate::modes::interactive::parse_oauth_input(input) {
             ctx.app.push_system(
-                format!(
-                    "Exchanging code for provider '{}' account '{}'...",
-                    pending.provider, pending.account
-                ),
+                format!("Exchanging code for provider '{}' account '{}'...", pending.provider, pending.account),
                 false,
             );
             std::fs::remove_file(&verifier_path).ok();
             std::fs::remove_file(&legacy_path).ok();
-            ctx.cmd_tx.send(AgentCommand::Login {
-                code,
-                state,
-                verifier: pending.verifier,
-                provider: pending.provider,
-                account: pending.account,
-            }).ok();
+            ctx.cmd_tx
+                .send(AgentCommand::Login {
+                    code,
+                    state,
+                    verifier: pending.verifier,
+                    provider: pending.provider,
+                    account: pending.account,
+                })
+                .ok();
         } else {
             ctx.app.push_system(
                 "Invalid code format. Expected:\n  /login code#state\n  /login https://...?code=CODE&state=STATE"
@@ -275,10 +263,10 @@ fn account_status_detail(
     cred: &crate::provider::auth::StoredCredential,
 ) -> String {
     let base = crate::commands::auth::describe_credential(cred);
-    if provider == crate::provider::openai_codex::OPENAI_CODEX_PROVIDER {
-        if let Some(suffix) = crate::provider::openai_codex::codex_status_suffix(store, account) {
-            return format!("{}; {}", base, suffix);
-        }
+    if provider == crate::provider::openai_codex::OPENAI_CODEX_PROVIDER
+        && let Some(suffix) = crate::provider::openai_codex::codex_status_suffix(store, account)
+    {
+        return format!("{}; {}", base, suffix);
     }
     base
 }
@@ -291,10 +279,8 @@ fn handle_account_list(ctx: &mut SlashContext<'_>, store: &crate::provider::auth
             .pi_auth
             .as_ref()
             .map(|path| crate::provider::auth::AuthStore::load(path));
-        ctx.app.push_system(
-            crate::commands::auth::render_grouped_status_with_fallback(store, pi_store.as_ref()),
-            false,
-        );
+        ctx.app
+            .push_system(crate::commands::auth::render_grouped_status_with_fallback(store, pi_store.as_ref()), false);
         return;
     }
 
@@ -436,10 +422,8 @@ fn handle_account_status(ctx: &mut SlashContext<'_>, store: &crate::provider::au
             .pi_auth
             .as_ref()
             .map(|path| crate::provider::auth::AuthStore::load(path));
-        ctx.app.push_system(
-            crate::commands::auth::render_grouped_status_with_fallback(store, pi_store.as_ref()),
-            false,
-        );
+        ctx.app
+            .push_system(crate::commands::auth::render_grouped_status_with_fallback(store, pi_store.as_ref()), false);
         return;
     }
 
@@ -452,12 +436,7 @@ fn handle_account_status(ctx: &mut SlashContext<'_>, store: &crate::provider::au
 
     if let Some(cred) = store.credential_for(&provider, &name) {
         ctx.app.push_system(
-            format!(
-                "{} / {}: {}",
-                provider,
-                name,
-                account_status_detail(store, &provider, &name, cred)
-            ),
+            format!("{} / {}: {}", provider, name, account_status_detail(store, &provider, &name, cred)),
             false,
         );
         return;
@@ -494,10 +473,7 @@ mod tests {
 
     #[test]
     fn parse_login_args_defaults_to_anthropic() {
-        assert_eq!(
-            parse_login_args("--account work"),
-            ("anthropic".to_string(), "work".to_string(), String::new())
-        );
+        assert_eq!(parse_login_args("--account work"), ("anthropic".to_string(), "work".to_string(), String::new()));
     }
 
     #[test]
@@ -522,9 +498,6 @@ mod tests {
 
     #[test]
     fn parse_login_args_preserves_omitted_provider_default_for_status_switch_logout_paths() {
-        assert_eq!(
-            crate::commands::auth::split_provider_prefix("work"),
-            ("anthropic".to_string(), "work".to_string())
-        );
+        assert_eq!(crate::commands::auth::split_provider_prefix("work"), ("anthropic".to_string(), "work".to_string()));
     }
 }

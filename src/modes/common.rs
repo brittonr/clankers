@@ -201,7 +201,13 @@ pub struct ToolEnv {
 /// Per-tool streaming is handled uniformly via `ToolContext` — the event
 /// channel is passed to every tool at execution time by the turn loop,
 /// so no per-tool wiring is needed here.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic — splitting would fragment readability"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        function_length,
+        reason = "sequential setup/dispatch logic — splitting would fragment readability"
+    )
+)]
 pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
     let panel_tx = env.panel_tx.clone();
     let todo_tx = env.todo_tx.clone();
@@ -278,21 +284,27 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         (ToolTier::Specialty, Arc::new(crate::tools::ask::AskTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::image_gen::ImageGenTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::tts::TtsTool::new())),
-        (ToolTier::Specialty, Arc::new(crate::tools::memory::MemoryTool::new(
-            clankers_config::settings::MemoryLimits::default(),
-        ))),
-        (ToolTier::Specialty, Arc::new(crate::tools::skill_manage::SkillManageTool::new(
-            crate::config::ClankersPaths::get().global_skills_dir.clone(),
-        ))),
-        (ToolTier::Specialty, Arc::new(crate::tools::session_search::SessionSearchTool::new(
-            crate::config::ClankersPaths::get().global_sessions_dir.clone(),
-            100,
-        ))),
-        (ToolTier::Specialty, Arc::new(crate::tools::compress::CompressTool::new(
-            crate::tools::compress::compression_slot(),
-            4,
-            5,
-        ))),
+        (
+            ToolTier::Specialty,
+            Arc::new(crate::tools::memory::MemoryTool::new(clankers_config::settings::MemoryLimits::default())),
+        ),
+        (
+            ToolTier::Specialty,
+            Arc::new(crate::tools::skill_manage::SkillManageTool::new(
+                crate::config::ClankersPaths::get().global_skills_dir.clone(),
+            )),
+        ),
+        (
+            ToolTier::Specialty,
+            Arc::new(crate::tools::session_search::SessionSearchTool::new(
+                crate::config::ClankersPaths::get().global_sessions_dir.clone(),
+                100,
+            )),
+        ),
+        (
+            ToolTier::Specialty,
+            Arc::new(crate::tools::compress::CompressTool::new(crate::tools::compress::compression_slot(), 4, 5)),
+        ),
         // ── Matrix (daemon only) ────────────────────────────────────
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixSendTool::new())),
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixReadTool::new())),
@@ -304,9 +316,7 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
 
     // Register schedule tool when a ScheduleEngine is available
     if let Some(ref engine) = env.schedule_engine {
-        tools.push((ToolTier::Specialty, Arc::new(
-            crate::tools::schedule::ScheduleTool::new(Arc::clone(engine)),
-        )));
+        tools.push((ToolTier::Specialty, Arc::new(crate::tools::schedule::ScheduleTool::new(Arc::clone(engine)))));
     }
 
     // Register nix_eval only when nix is on PATH
@@ -399,6 +409,12 @@ pub fn init_plugin_manager_for_mode(
         }
     }
 
+    let builtin_tool_names = build_tiered_tools(&ToolEnv::default())
+        .into_iter()
+        .map(|(_, tool)| tool.definition().name.clone())
+        .collect::<std::collections::HashSet<_>>();
+    manager.set_stdio_reserved_tool_names(builtin_tool_names);
+
     let manager = Arc::new(Mutex::new(manager));
     crate::plugin::configure_stdio_runtime(&manager, cwd.to_path_buf(), runtime_mode);
     crate::plugin::start_stdio_plugins(&manager);
@@ -417,19 +433,26 @@ pub fn build_plugin_tools(
     let host = crate::plugin::PluginHostFacade::new(Arc::clone(manager));
     let mut tools: Vec<Arc<dyn Tool>> = Vec::new();
 
-    // Derive built-in tool names from the actual tool list — skip plugin tools that collide
-    let builtin_names: std::collections::HashSet<String> =
+    // Derive built-in tool names from the actual tool list — skip plugin tools that collide.
+    let mut seen_names: std::collections::HashSet<String> =
         builtin_tools.iter().map(|t| t.definition().name.clone()).collect();
 
-    for plugin_info in host.active_plugins() {
-        if !plugin_info.manifest.kind.uses_wasm_runtime() {
-            continue;
-        }
+    let mut active_plugins = host.active_plugins();
+    active_plugins.sort_by(|left, right| {
+        let left_rank = i32::from(!left.manifest.kind.uses_wasm_runtime());
+        let right_rank = i32::from(!right.manifest.kind.uses_wasm_runtime());
+        left_rank.cmp(&right_rank).then(left.name.cmp(&right.name))
+    });
 
-        if !plugin_info.manifest.tool_definitions.is_empty() {
-            build_detailed_tools(&plugin_info, manager, &builtin_names, panel_tx, &mut tools);
+    for plugin_info in active_plugins {
+        if plugin_info.manifest.kind.uses_wasm_runtime() {
+            if !plugin_info.manifest.tool_definitions.is_empty() {
+                build_detailed_tools(&plugin_info, manager, &mut seen_names, panel_tx, &mut tools);
+            } else {
+                build_bare_tools(&plugin_info, manager, &mut seen_names, &mut tools);
+            }
         } else {
-            build_bare_tools(&plugin_info, manager, &mut tools);
+            build_stdio_tools(&plugin_info, manager, &mut seen_names, &mut tools);
         }
     }
 
@@ -444,14 +467,14 @@ pub fn build_plugin_tools(
 fn build_detailed_tools(
     plugin_info: &crate::plugin::PluginInfo,
     manager: &Arc<Mutex<PluginManager>>,
-    builtin_names: &std::collections::HashSet<String>,
+    seen_names: &mut std::collections::HashSet<String>,
     panel_tx: Option<&tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>>,
     tools: &mut Vec<Arc<dyn Tool>>,
 ) {
     let is_validator = plugin_info.manifest.permissions.iter().any(|p| p == "exec" || p == "all");
 
     for tool_def in &plugin_info.manifest.tool_definitions {
-        if builtin_names.contains(&tool_def.name) {
+        if !seen_names.insert(tool_def.name.clone()) {
             continue;
         }
 
@@ -483,9 +506,14 @@ fn build_detailed_tools(
 fn build_bare_tools(
     plugin_info: &crate::plugin::PluginInfo,
     manager: &Arc<Mutex<PluginManager>>,
+    seen_names: &mut std::collections::HashSet<String>,
     tools: &mut Vec<Arc<dyn Tool>>,
 ) {
     for tool_name in &plugin_info.manifest.tools {
+        if !seen_names.insert(tool_name.clone()) {
+            continue;
+        }
+
         let definition = ToolDefinition {
             name: tool_name.clone(),
             description: format!("Tool '{}' provided by plugin '{}'", tool_name, plugin_info.name),
@@ -503,6 +531,33 @@ fn build_bare_tools(
             definition,
             plugin_info.name.clone(),
             "handle_tool_call".to_string(),
+            Arc::clone(manager),
+        )));
+    }
+}
+
+fn build_stdio_tools(
+    plugin_info: &crate::plugin::PluginInfo,
+    manager: &Arc<Mutex<PluginManager>>,
+    seen_names: &mut std::collections::HashSet<String>,
+    tools: &mut Vec<Arc<dyn Tool>>,
+) {
+    let registered = {
+        let manager = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        manager.live_registered_tools(&plugin_info.name)
+    };
+
+    for tool in registered {
+        if !seen_names.insert(tool.name.clone()) {
+            continue;
+        }
+        tools.push(Arc::new(PluginTool::new_stdio(
+            ToolDefinition {
+                name: tool.name,
+                description: tool.description,
+                input_schema: tool.input_schema,
+            },
+            plugin_info.name.clone(),
             Arc::clone(manager),
         )));
     }

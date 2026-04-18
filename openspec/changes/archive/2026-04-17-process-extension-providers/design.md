@@ -169,6 +169,7 @@ Rules:
 - `restricted` means filtered environment plus host-enforced filesystem/network limits
 - allowlisted environment variables are required launch inputs in this first change; if any allowlisted variable is absent, the plugin does not start and enters `error`
 - optional environment forwarding is intentionally out of scope for v1; plugin authors that want optional variables must not declare them in the allowlist yet
+- the host-required runtime environment-variable exception set is empty in v1: clankers resolves `stdio.command` to an absolute path before spawn, so child `PATH` inheritance is not needed
 - if a plugin requests `restricted` and the host cannot apply those restrictions, the plugin must not start
 - restricted plugins get a dedicated writable state directory under the clankers config tree in addition to any explicitly declared project root access
 - logical plugin permissions (`ui`, `exec`, `net`, etc.) remain separate from OS sandboxing; both must allow the action

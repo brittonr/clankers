@@ -139,6 +139,7 @@ impl<'a> EventLoopRunner<'a> {
             self.drain_agent_events();
             self.drain_schedule_events();
             self.drain_panel_events();
+            self.drain_plugin_runtime_events();
             self.drain_todo_requests();
             self.drain_bash_confirms();
             self.refresh_peers();
@@ -260,12 +261,25 @@ impl<'a> EventLoopRunner<'a> {
         }
     }
 
-    /// Forward events to WASM plugins and apply any UI actions they return.
+    /// Forward events to plugins and apply any UI actions they return.
     fn dispatch_to_plugins(&mut self, event: &AgentEvent) {
         let Some(ref pm) = self.plugin_manager else {
             return;
         };
         let result = super::plugin_dispatch::dispatch_event_to_plugins(pm, event);
+        for (plugin_name, message) in result.messages {
+            self.app.push_system(format!("🔌 {}: {}", plugin_name, message), false);
+        }
+        for action in result.ui_actions {
+            crate::plugin::ui::apply_ui_action(&mut self.app.plugin_ui, action);
+        }
+    }
+
+    fn drain_plugin_runtime_events(&mut self) {
+        let Some(ref pm) = self.plugin_manager else {
+            return;
+        };
+        let result = super::plugin_dispatch::drain_stdio_runtime_outputs(pm);
         for (plugin_name, message) in result.messages {
             self.app.push_system(format!("🔌 {}: {}", plugin_name, message), false);
         }

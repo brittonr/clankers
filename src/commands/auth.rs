@@ -114,18 +114,15 @@ fn describe_provider_account_detail(
     cred: &crate::provider::auth::StoredCredential,
 ) -> String {
     let base = describe_credential(cred);
-    if provider == crate::provider::openai_codex::OPENAI_CODEX_PROVIDER {
-        if let Some(suffix) = crate::provider::openai_codex::codex_status_suffix(store, account) {
-            return format!("{}; {}", base, suffix);
-        }
+    if provider == crate::provider::openai_codex::OPENAI_CODEX_PROVIDER
+        && let Some(suffix) = crate::provider::openai_codex::codex_status_suffix(store, account)
+    {
+        return format!("{}; {}", base, suffix);
     }
     base
 }
 
-pub(crate) fn render_provider_accounts(
-    store: &crate::provider::auth::AuthStore,
-    provider: &str,
-) -> Option<String> {
+pub(crate) fn render_provider_accounts(store: &crate::provider::auth::AuthStore, provider: &str) -> Option<String> {
     let mut accounts = store.list_provider_accounts(provider);
     if accounts.is_empty() {
         return None;
@@ -241,11 +238,7 @@ fn handle_default_anthropic_status(ctx: &CommandContext) {
 
 fn handle_provider_status(ctx: &CommandContext, provider: &str) {
     let store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
-    let pi_store = ctx
-        .paths
-        .pi_auth
-        .as_ref()
-        .map(|path| crate::provider::auth::AuthStore::load(path));
+    let pi_store = ctx.paths.pi_auth.as_ref().map(|path| crate::provider::auth::AuthStore::load(path));
     if let Some(summary) = provider_status_summary(&store, provider, pi_store.as_ref()) {
         println!("{}", summary);
         return;
@@ -255,10 +248,17 @@ fn handle_provider_status(ctx: &CommandContext, provider: &str) {
 }
 
 /// Run the auth subcommand
-#[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
+)]
 pub async fn run(ctx: &CommandContext, action: AuthAction) -> Result<()> {
     match action {
-        AuthAction::Login { provider, account, code } => handle_login(ctx, provider, account, code).await,
+        AuthAction::Login {
+            provider,
+            account,
+            code,
+        } => handle_login(ctx, provider, account, code).await,
         AuthAction::Status { provider, all } => handle_status(ctx, provider, all),
         AuthAction::Logout { provider, account, all } => handle_logout(ctx, provider, account, all),
         AuthAction::Switch { provider, account } => handle_switch(ctx, provider, &account),
@@ -271,7 +271,10 @@ pub async fn run(ctx: &CommandContext, action: AuthAction) -> Result<()> {
     }
 }
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "stdin read failure is unrecoverable in interactive login"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "stdin read failure is unrecoverable in interactive login")
+)]
 async fn handle_login(
     ctx: &CommandContext,
     provider: Option<String>,
@@ -281,11 +284,8 @@ async fn handle_login(
     let oauth_flow = crate::provider::auth::OAuthFlow::from_provider(provider.as_deref())?;
     let provider_name = oauth_flow.provider_name();
     let account_name = account.unwrap_or_else(|| "default".to_string());
-    let pending_path = crate::provider::auth::pending_oauth_login_path(
-        &ctx.paths.global_config_dir,
-        provider_name,
-        &account_name,
-    );
+    let pending_path =
+        crate::provider::auth::pending_oauth_login_path(&ctx.paths.global_config_dir, provider_name, &account_name);
     let legacy_pending_path = crate::provider::auth::legacy_pending_oauth_login_path(&ctx.paths.global_config_dir);
 
     let input = if let Some(code_input) = code {
@@ -342,15 +342,17 @@ async fn handle_login(
     Ok(())
 }
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        nested_conditionals,
+        reason = "complex control flow — extracting helpers would obscure logic"
+    )
+)]
 fn handle_status(ctx: &CommandContext, provider: Option<String>, all: bool) -> Result<()> {
     if all {
         let store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
-        let pi_store = ctx
-            .paths
-            .pi_auth
-            .as_ref()
-            .map(|path| crate::provider::auth::AuthStore::load(path));
+        let pi_store = ctx.paths.pi_auth.as_ref().map(|path| crate::provider::auth::AuthStore::load(path));
         println!("{}", render_grouped_status_with_fallback(&store, pi_store.as_ref()));
         return Ok(());
     }
@@ -430,11 +432,7 @@ fn handle_switch(ctx: &CommandContext, provider: Option<String>, account: &str) 
 
 fn handle_accounts(ctx: &CommandContext) -> Result<()> {
     let store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
-    let pi_store = ctx
-        .paths
-        .pi_auth
-        .as_ref()
-        .map(|path| crate::provider::auth::AuthStore::load(path));
+    let pi_store = ctx.paths.pi_auth.as_ref().map(|path| crate::provider::auth::AuthStore::load(path));
     println!("{}", render_grouped_status_with_fallback(&store, pi_store.as_ref()));
     Ok(())
 }
@@ -442,11 +440,7 @@ fn handle_accounts(ctx: &CommandContext) -> Result<()> {
 fn handle_export(ctx: &CommandContext, provider: &str, account: Option<&str>) -> Result<()> {
     let account_name = account.unwrap_or("default");
     let store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
-    let pi_store = ctx
-        .paths
-        .pi_auth
-        .as_ref()
-        .map(|path| crate::provider::auth::AuthStore::load(path));
+    let pi_store = ctx.paths.pi_auth.as_ref().map(|path| crate::provider::auth::AuthStore::load(path));
 
     let record = store
         .credential_for(provider, account_name)
@@ -492,11 +486,10 @@ fn handle_import(ctx: &CommandContext, input: &str) -> Result<()> {
         })?
     };
 
-    let record: clanker_router::auth::ProviderAccountExport = serde_json::from_str(&raw).map_err(|e| {
-        crate::error::Error::ProviderAuth {
+    let record: clanker_router::auth::ProviderAccountExport =
+        serde_json::from_str(&raw).map_err(|e| crate::error::Error::ProviderAuth {
             message: format!("Failed to parse auth import record: {e}"),
-        }
-    })?;
+        })?;
 
     let mut store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
     let had_active = store.active_credential(&record.provider).is_some();
@@ -506,7 +499,12 @@ fn handle_import(ctx: &CommandContext, input: &str) -> Result<()> {
     }
     store.save(&ctx.paths.global_auth)?;
 
-    println!("Imported provider '{}' account '{}' into {}.", record.provider, record.account, ctx.paths.global_auth.display());
+    println!(
+        "Imported provider '{}' account '{}' into {}.",
+        record.provider,
+        record.account,
+        ctx.paths.global_auth.display()
+    );
     Ok(())
 }
 
@@ -524,10 +522,7 @@ mod tests {
 
     #[test]
     fn split_provider_prefix_extracts_explicit_provider() {
-        assert_eq!(
-            split_provider_prefix("openai-codex work"),
-            ("openai-codex".to_string(), "work".to_string())
-        );
+        assert_eq!(split_provider_prefix("openai-codex work"), ("openai-codex".to_string(), "work".to_string()));
     }
 
     #[test]
@@ -550,15 +545,11 @@ mod tests {
     fn provider_status_summary_uses_pi_fallback_for_openai_codex() {
         let store = crate::provider::auth::AuthStore::default();
         let mut pi_store = crate::provider::auth::AuthStore::default();
-        pi_store.set_provider_credentials(
-            "openai-codex",
-            "work",
-            crate::provider::auth::OAuthCredentials {
-                access: "not-a-valid-jwt".into(),
-                refresh: "refresh".into(),
-                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
-            },
-        );
+        pi_store.set_provider_credentials("openai-codex", "work", crate::provider::auth::OAuthCredentials {
+            access: "not-a-valid-jwt".into(),
+            refresh: "refresh".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
 
         let rendered = provider_status_summary(&store, "openai-codex", Some(&pi_store)).expect("provider summary");
         assert!(rendered.contains("Using credentials from ~/.pi:"));
@@ -569,15 +560,11 @@ mod tests {
     fn render_grouped_status_with_fallback_includes_pi_only_codex() {
         let store = crate::provider::auth::AuthStore::default();
         let mut pi_store = crate::provider::auth::AuthStore::default();
-        pi_store.set_provider_credentials(
-            "openai-codex",
-            "work",
-            crate::provider::auth::OAuthCredentials {
-                access: "not-a-valid-jwt".into(),
-                refresh: "refresh".into(),
-                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
-            },
-        );
+        pi_store.set_provider_credentials("openai-codex", "work", crate::provider::auth::OAuthCredentials {
+            access: "not-a-valid-jwt".into(),
+            refresh: "refresh".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
 
         let rendered = render_grouped_status_with_fallback(&store, Some(&pi_store));
         assert!(rendered.contains("Using credentials from ~/.pi:"));
@@ -587,32 +574,20 @@ mod tests {
     #[test]
     fn render_grouped_status_includes_provider_scoped_details() {
         let mut store = crate::provider::auth::AuthStore::default();
-        store.set_provider_credentials(
-            "anthropic",
-            "work",
-            crate::provider::auth::OAuthCredentials {
-                access: "tok".into(),
-                refresh: "ref".into(),
-                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
-            },
-        );
-        store.set_provider_credentials(
-            "openai-codex",
-            "codex",
-            crate::provider::auth::OAuthCredentials {
-                access: "codex-token".into(),
-                refresh: "codex-refresh".into(),
-                expires: chrono::Utc::now().timestamp_millis() + 7_200_000,
-            },
-        );
-        store.set_credential(
-            "openai",
-            "default",
-            crate::provider::auth::StoredCredential::ApiKey {
-                api_key: "sk-test".into(),
-                label: None,
-            },
-        );
+        store.set_provider_credentials("anthropic", "work", crate::provider::auth::OAuthCredentials {
+            access: "tok".into(),
+            refresh: "ref".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
+        store.set_provider_credentials("openai-codex", "codex", crate::provider::auth::OAuthCredentials {
+            access: "codex-token".into(),
+            refresh: "codex-refresh".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 7_200_000,
+        });
+        store.set_credential("openai", "default", crate::provider::auth::StoredCredential::ApiKey {
+            api_key: "sk-test".into(),
+            label: None,
+        });
 
         let rendered = render_grouped_status_with_fallback(&store, None);
         assert!(rendered.contains("anthropic:"));
@@ -625,16 +600,12 @@ mod tests {
     #[test]
     fn render_provider_accounts_reports_expired_oauth_separately() {
         let mut store = crate::provider::auth::AuthStore::default();
-        store.set_credential(
-            "openai-codex",
-            "expired",
-            crate::provider::auth::StoredCredential::OAuth {
-                access_token: "expired-token".into(),
-                refresh_token: "refresh".into(),
-                expires_at_ms: 0,
-                label: None,
-            },
-        );
+        store.set_credential("openai-codex", "expired", crate::provider::auth::StoredCredential::OAuth {
+            access_token: "expired-token".into(),
+            refresh_token: "refresh".into(),
+            expires_at_ms: 0,
+            label: None,
+        });
 
         let rendered = render_provider_accounts(&store, "openai-codex").expect("provider summary");
         assert!(rendered.contains("openai-codex:"));
@@ -644,15 +615,11 @@ mod tests {
     #[test]
     fn render_provider_accounts_surfaces_codex_probe_failures() {
         let mut store = crate::provider::auth::AuthStore::default();
-        store.set_provider_credentials(
-            "openai-codex",
-            "work",
-            crate::provider::auth::OAuthCredentials {
-                access: "not-a-valid-jwt".into(),
-                refresh: "refresh".into(),
-                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
-            },
-        );
+        store.set_provider_credentials("openai-codex", "work", crate::provider::auth::OAuthCredentials {
+            access: "not-a-valid-jwt".into(),
+            refresh: "refresh".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
 
         let rendered = render_provider_accounts(&store, "openai-codex").expect("provider summary");
         assert!(rendered.contains("authenticated, entitlement check failed"));
@@ -661,33 +628,21 @@ mod tests {
     #[test]
     fn provider_scoped_switch_and_logout_leave_other_providers_unchanged() {
         let mut store = crate::provider::auth::AuthStore::default();
-        store.set_provider_credentials(
-            "anthropic",
-            "personal",
-            crate::provider::auth::OAuthCredentials {
-                access: "anthropic-token".into(),
-                refresh: "anthropic-refresh".into(),
-                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
-            },
-        );
-        store.set_provider_credentials(
-            "openai-codex",
-            "work",
-            crate::provider::auth::OAuthCredentials {
-                access: "codex-token".into(),
-                refresh: "codex-refresh".into(),
-                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
-            },
-        );
-        store.set_provider_credentials(
-            "openai-codex",
-            "backup",
-            crate::provider::auth::OAuthCredentials {
-                access: "codex-backup".into(),
-                refresh: "codex-refresh-2".into(),
-                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
-            },
-        );
+        store.set_provider_credentials("anthropic", "personal", crate::provider::auth::OAuthCredentials {
+            access: "anthropic-token".into(),
+            refresh: "anthropic-refresh".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
+        store.set_provider_credentials("openai-codex", "work", crate::provider::auth::OAuthCredentials {
+            access: "codex-token".into(),
+            refresh: "codex-refresh".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
+        store.set_provider_credentials("openai-codex", "backup", crate::provider::auth::OAuthCredentials {
+            access: "codex-backup".into(),
+            refresh: "codex-refresh-2".into(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
 
         assert!(store.switch_provider_account("openai-codex", "backup"));
         assert_eq!(store.active_account_name_for("openai-codex"), "backup");

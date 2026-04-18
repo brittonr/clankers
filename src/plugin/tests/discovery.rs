@@ -325,6 +325,46 @@ fn discover_invalid_stdio_manifest_marks_plugin_error() {
 }
 
 #[test]
+fn manifest_zellij_kind_parses_and_validates() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("plugin.json");
+    std::fs::write(
+        &path,
+        serde_json::to_string_pretty(&serde_json::json!({
+            "name": "zellij-plugin",
+            "version": "0.1.0",
+            "kind": "zellij"
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    let manifest = manifest::PluginManifest::load(&path).unwrap();
+    manifest.validate().unwrap();
+    assert_eq!(manifest.kind, manifest::PluginKind::Zellij);
+}
+
+#[test]
+fn init_plugin_manager_keeps_zellij_plugins_loaded_without_wasm_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    write_plugin_manifest(
+        dir.path(),
+        "zellij-plugin",
+        serde_json::json!({
+            "name": "zellij-plugin",
+            "version": "0.1.0",
+            "kind": "zellij"
+        }),
+    );
+
+    let manager = crate::modes::common::init_plugin_manager(dir.path(), None, &[]);
+    let mgr = manager.lock().unwrap_or_else(|e| e.into_inner());
+    let info = mgr.get("zellij-plugin").expect("zellij plugin discovered");
+    assert_eq!(info.state, PluginState::Loaded);
+    assert_eq!(info.manifest.kind, manifest::PluginKind::Zellij);
+}
+
+#[test]
 fn init_plugin_manager_skips_wasm_load_for_stdio_manifests() {
     let dir = tempfile::tempdir().unwrap();
     write_plugin_manifest(
@@ -347,6 +387,72 @@ fn init_plugin_manager_skips_wasm_load_for_stdio_manifests() {
     let info = mgr.get("stdio-init-test-plugin").expect("stdio plugin discovered");
     assert_eq!(info.state, PluginState::Loaded);
     assert_eq!(info.manifest.kind, manifest::PluginKind::Stdio);
+}
+
+#[tokio::test]
+async fn daemon_mode_plugin_init_handles_empty_dirs_without_plugins() {
+    let dir = tempfile::tempdir().unwrap();
+    let manager = crate::plugin::tests::stdio_runtime::init_manager_with_restart_delays(
+        dir.path(),
+        crate::plugin::PluginRuntimeMode::Daemon,
+        "5,10,15,20,25",
+    );
+    let mgr = manager.lock().unwrap_or_else(|e| e.into_inner());
+    assert!(mgr.is_empty());
+    drop(mgr);
+    assert!(crate::plugin::build_protocol_plugin_summaries(&manager).is_empty());
+}
+
+#[tokio::test]
+async fn daemon_mode_plugin_init_continues_when_some_plugins_fail() {
+    let dir = tempfile::tempdir().unwrap();
+    write_plugin_manifest(
+        dir.path(),
+        "broken-extism-plugin",
+        serde_json::json!({
+            "name": "broken-extism-plugin",
+            "version": "0.1.0",
+            "kind": "extism",
+            "wasm": "missing.wasm"
+        }),
+    );
+    crate::plugin::tests::stdio_runtime::write_stdio_plugin_manifest(
+        dir.path(),
+        "healthy-stdio-plugin",
+        "ready_register",
+        "daemon",
+        None,
+        None,
+    );
+
+    let manager = crate::plugin::tests::stdio_runtime::init_manager_with_restart_delays(
+        dir.path(),
+        crate::plugin::PluginRuntimeMode::Daemon,
+        "5,10,15,20,25",
+    );
+    crate::plugin::tests::stdio_runtime::wait_for_plugin_state(
+        &manager,
+        "healthy-stdio-plugin",
+        std::time::Duration::from_secs(2),
+        |state| matches!(state, PluginState::Active),
+    )
+    .await;
+    crate::plugin::tests::stdio_runtime::wait_for_live_tool(
+        &manager,
+        "healthy-stdio-plugin",
+        "healthy_stdio_plugin_tool",
+        std::time::Duration::from_secs(2),
+    )
+    .await;
+
+    let mgr = manager.lock().unwrap_or_else(|e| e.into_inner());
+    let broken = mgr.get("broken-extism-plugin").expect("broken extism plugin discovered");
+    assert_eq!(broken.state.summary_label(), "Error");
+    let healthy = mgr.get("healthy-stdio-plugin").expect("healthy stdio plugin discovered");
+    assert_eq!(healthy.state, PluginState::Active);
+    drop(mgr);
+
+    crate::plugin::shutdown_plugin_runtime(&manager, "test shutdown").await;
 }
 
 #[test]

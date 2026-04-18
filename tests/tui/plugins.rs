@@ -62,6 +62,15 @@ fn slash_plugin_shows_tools() {
     h.quit();
 }
 
+#[test]
+fn slash_plugin_shows_permissions_in_list() {
+    let mut h = TuiTestHarness::spawn(60, 140);
+    run_slash(&mut h, "/plugin");
+    h.wait_for_text("permissions:", TIMEOUT);
+    assert!(h.screen_contains("fs:read"), "Should list plugin permissions.\nScreen:\n{}", h.screen_text());
+    h.quit();
+}
+
 // ── /plugin <name> shows details ────────────────────────────
 
 #[test]
@@ -242,7 +251,7 @@ fn slash_menu_shows_tools_completion() {
 
 #[test]
 fn slash_plugin_lists_github_plugin() {
-    let mut h = TuiTestHarness::spawn(50, 140);
+    let mut h = TuiTestHarness::spawn(60, 140);
     run_slash(&mut h, "/plugin");
     h.wait_for_text("clankers-github", TIMEOUT);
     h.quit();

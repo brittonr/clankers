@@ -1,21 +1,31 @@
-//! Tool backed by a WASM plugin function
+//! Tool backed by a plugin runtime.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::plugin::PluginManager;
+use crate::plugin::StdioToolCallEvent;
 use crate::tools::Tool;
 use crate::tools::ToolContext;
 use crate::tools::ToolDefinition;
 use crate::tools::ToolResult;
 
-/// A tool that delegates execution to a WASM plugin
+const DEFAULT_STDIO_TOOL_TIMEOUT_SECS: u64 = 300;
+const DEFAULT_STDIO_CANCEL_GRACE_SECS: u64 = 5;
+
+enum PluginToolBackend {
+    Wasm { function_name: String },
+    Stdio,
+}
+
+/// A tool that delegates execution to a plugin runtime.
 pub struct PluginTool {
     definition: ToolDefinition,
     plugin_name: String,
-    function_name: String,
+    backend: PluginToolBackend,
     manager: Arc<std::sync::Mutex<PluginManager>>,
 }
 
@@ -29,23 +39,25 @@ impl PluginTool {
         Self {
             definition,
             plugin_name,
-            function_name,
+            backend: PluginToolBackend::Wasm { function_name },
             manager,
         }
     }
-}
 
-#[async_trait]
-impl Tool for PluginTool {
-    fn definition(&self) -> &ToolDefinition {
-        &self.definition
+    pub fn new_stdio(
+        definition: ToolDefinition,
+        plugin_name: String,
+        manager: Arc<std::sync::Mutex<PluginManager>>,
+    ) -> Self {
+        Self {
+            definition,
+            plugin_name,
+            backend: PluginToolBackend::Stdio,
+            manager,
+        }
     }
 
-    fn source(&self) -> &str {
-        &self.plugin_name
-    }
-
-    async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
+    fn execute_wasm(&self, ctx: &ToolContext, function_name: &str, params: Value) -> ToolResult {
         // Wrap params in the tool call envelope that plugins expect:
         //   { "tool": "<tool_name>", "args": { ... } }
         let envelope = serde_json::json!({
@@ -54,7 +66,7 @@ impl Tool for PluginTool {
         });
         let input = serde_json::to_string(&envelope).unwrap_or_default();
 
-        ctx.emit_progress(&format!("plugin: {}::{}", self.plugin_name, self.function_name));
+        ctx.emit_progress(&format!("plugin: {}::{}", self.plugin_name, function_name));
 
         let manager = match self.manager.lock() {
             Ok(m) => m,
@@ -64,7 +76,7 @@ impl Tool for PluginTool {
             }
         };
 
-        match manager.call_plugin(&self.plugin_name, &self.function_name, &input) {
+        match manager.call_plugin(&self.plugin_name, function_name, &input) {
             Ok(output) => {
                 ctx.emit_progress(&format!("plugin returned: {} bytes", output.len()));
                 // Try to parse as JSON ToolResult first
@@ -96,6 +108,129 @@ impl Tool for PluginTool {
                 ToolResult::text(output)
             }
             Err(e) => ToolResult::error(format!("Plugin error: {}", e)),
+        }
+    }
+
+    async fn execute_stdio(&self, ctx: &ToolContext, params: Value) -> ToolResult {
+        ctx.emit_progress(&format!("plugin: {}::{}", self.plugin_name, self.definition.name));
+
+        let mut events = match crate::plugin::start_stdio_tool_call(
+            &self.manager,
+            &self.plugin_name,
+            &ctx.call_id,
+            &self.definition.name,
+            params,
+        ) {
+            Ok(events) => events,
+            Err(error) => return ToolResult::error(format!("Plugin error: {}", error)),
+        };
+
+        let tool_timeout = stdio_duration_override(
+            "CLANKERS_STDIO_TOOL_TIMEOUT_MS",
+            Duration::from_secs(DEFAULT_STDIO_TOOL_TIMEOUT_SECS),
+        );
+        let cancel_grace = stdio_duration_override(
+            "CLANKERS_STDIO_TOOL_CANCEL_TIMEOUT_MS",
+            Duration::from_secs(DEFAULT_STDIO_CANCEL_GRACE_SECS),
+        );
+        let timed_out = tokio::time::sleep(tool_timeout);
+        tokio::pin!(timed_out);
+
+        loop {
+            tokio::select! {
+                () = ctx.signal.cancelled() => {
+                    crate::plugin::cancel_stdio_tool_call(&self.manager, &self.plugin_name, &ctx.call_id, "turn cancelled").ok();
+                    return self.finish_cancelled_stdio_call(&ctx.call_id, &mut events, cancel_grace).await;
+                }
+                () = &mut timed_out => {
+                    crate::plugin::cancel_stdio_tool_call(&self.manager, &self.plugin_name, &ctx.call_id, "tool call timed out").ok();
+                    crate::plugin::abandon_stdio_tool_call(&self.manager, &self.plugin_name, &ctx.call_id).ok();
+                    return ToolResult::error(format!(
+                        "Plugin tool '{}' timed out waiting for stdio result",
+                        self.definition.name,
+                    ));
+                }
+                event = events.recv() => {
+                    match event {
+                        Some(StdioToolCallEvent::Progress(message)) => ctx.emit_progress(&message),
+                        Some(StdioToolCallEvent::Result(content)) => return decode_stdio_result(content),
+                        Some(StdioToolCallEvent::Error(message)) => return ToolResult::error(message),
+                        Some(StdioToolCallEvent::Cancelled) => return ToolResult::error("Tool call cancelled"),
+                        Some(StdioToolCallEvent::Disconnected(reason)) => return ToolResult::error(reason),
+                        None => {
+                            return ToolResult::error(format!(
+                                "Plugin '{}' disconnected during tool call",
+                                self.plugin_name,
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    async fn finish_cancelled_stdio_call(
+        &self,
+        call_id: &str,
+        events: &mut tokio::sync::mpsc::UnboundedReceiver<StdioToolCallEvent>,
+        cancel_grace: Duration,
+    ) -> ToolResult {
+        let cancelled = tokio::time::sleep(cancel_grace);
+        tokio::pin!(cancelled);
+
+        loop {
+            tokio::select! {
+                () = &mut cancelled => {
+                    crate::plugin::abandon_stdio_tool_call(&self.manager, &self.plugin_name, call_id).ok();
+                    return ToolResult::error("Tool call cancelled");
+                }
+                event = events.recv() => {
+                    match event {
+                        Some(StdioToolCallEvent::Progress(_)) => {}
+                        Some(_) | None => {
+                            crate::plugin::abandon_stdio_tool_call(&self.manager, &self.plugin_name, call_id).ok();
+                            return ToolResult::error("Tool call cancelled");
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn decode_stdio_result(content: Value) -> ToolResult {
+    if let Ok(result) = serde_json::from_value::<ToolResult>(content.clone()) {
+        return result;
+    }
+
+    match content {
+        Value::String(text) => ToolResult::text(text),
+        other => ToolResult::text(serde_json::to_string_pretty(&other).unwrap_or_else(|_| other.to_string())),
+    }
+}
+
+fn stdio_duration_override(key: &str, default: Duration) -> Duration {
+    std::env::var(key)
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(default)
+}
+
+#[async_trait]
+impl Tool for PluginTool {
+    fn definition(&self) -> &ToolDefinition {
+        &self.definition
+    }
+
+    fn source(&self) -> &str {
+        &self.plugin_name
+    }
+
+    async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
+        match &self.backend {
+            PluginToolBackend::Wasm { function_name } => self.execute_wasm(ctx, function_name, params),
+            PluginToolBackend::Stdio => self.execute_stdio(ctx, params).await,
         }
     }
 }

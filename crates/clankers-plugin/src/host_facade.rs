@@ -71,6 +71,21 @@ impl PluginHostFacade {
             .collect()
     }
 
+    pub fn stdio_event_subscribers(&self, event_kind: &str) -> Vec<PluginInfo> {
+        let manager = self.manager.lock().unwrap_or_else(|poisoned| {
+            tracing::warn!("Plugin manager mutex was poisoned, recovering");
+            poisoned.into_inner()
+        });
+        manager
+            .list()
+            .into_iter()
+            .filter(|info| info.manifest.kind == crate::manifest::PluginKind::Stdio)
+            .filter(|info| info.state == PluginState::Active)
+            .filter(|info| manager.live_event_subscriptions(&info.name).iter().any(|event| event == event_kind))
+            .cloned()
+            .collect()
+    }
+
     pub fn has_event_subscriber(&self, event_kind: &str) -> bool {
         !self.event_subscribers(event_kind).is_empty()
     }

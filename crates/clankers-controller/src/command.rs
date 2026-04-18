@@ -3,12 +3,19 @@
 //! Contains the main command dispatch and prompt processing logic.
 
 use clankers_agent::AgentError;
-use clankers_message::{
-    AgentMessage, AssistantMessage, Content, MessageId, StopReason, UserMessage,
-};
-use clankers_protocol::{DaemonEvent, ImageData, SerializedMessage, SessionCommand};
+use clankers_message::AgentMessage;
+use clankers_message::AssistantMessage;
+use clankers_message::Content;
+use clankers_message::MessageId;
+use clankers_message::StopReason;
+use clankers_message::UserMessage;
+use clankers_protocol::DaemonEvent;
+use clankers_protocol::ImageData;
+use clankers_protocol::SerializedMessage;
+use clankers_protocol::SessionCommand;
 use clankers_provider::message::Content as ProviderContent;
-use tracing::{info, warn};
+use tracing::info;
+use tracing::warn;
 
 use crate::SessionController;
 
@@ -118,11 +125,7 @@ impl SessionController {
                 });
             }
             SessionCommand::GetSystemPrompt => {
-                let prompt = self
-                    .agent
-                    .as_ref()
-                    .map(|a| a.system_prompt().to_string())
-                    .unwrap_or_default();
+                let prompt = self.agent.as_ref().map(|a| a.system_prompt().to_string()).unwrap_or_default();
                 self.emit(DaemonEvent::SystemPromptResponse { prompt });
             }
             SessionCommand::SwitchAccount { account } => {
@@ -140,9 +143,7 @@ impl SessionController {
                         agent.set_tools(filtered);
                     }
                 }
-                self.emit(DaemonEvent::DisabledToolsChanged {
-                    tools: tools.clone(),
-                });
+                self.emit(DaemonEvent::DisabledToolsChanged { tools: tools.clone() });
                 self.emit(DaemonEvent::SystemMessage {
                     text: format!("Disabled tools updated: {}", tools.join(", ")),
                     is_error: false,
@@ -176,7 +177,11 @@ impl SessionController {
                     });
                 }
             }
-            SessionCommand::StartLoop { iterations, prompt, break_condition } => {
+            SessionCommand::StartLoop {
+                iterations,
+                prompt,
+                break_condition,
+            } => {
                 let config = crate::loop_mode::LoopConfig {
                     name: format!("loop-{}", self.session_id),
                     prompt: Some(prompt),
@@ -199,17 +204,9 @@ impl SessionController {
                 });
             }
             SessionCommand::GetToolList => {
-                let tools = self.agent.as_ref()
-                    .map(|a| a.tools().iter().map(|t| {
-                        let def = t.definition();
-                        clankers_protocol::ToolInfo {
-                            name: def.name.clone(),
-                            description: def.description.clone(),
-                            source: t.source().to_string(),
-                        }
-                    }).collect())
-                    .unwrap_or_default();
-                self.emit(DaemonEvent::ToolList { tools });
+                self.emit(DaemonEvent::ToolList {
+                    tools: self.current_tool_infos(),
+                });
             }
             SessionCommand::SlashCommand { command, args } => {
                 info!("slash command: /{command} {args}");
@@ -225,22 +222,13 @@ impl SessionController {
             }
             SessionCommand::SetCapabilities { capabilities } => {
                 // Validate against ceiling: clamped result must match request
-                let effective = crate::capability::clamp_capabilities(
-                    &self.capability_ceiling,
-                    &capabilities,
-                );
+                let effective = crate::capability::clamp_capabilities(&self.capability_ceiling, &capabilities);
                 if effective != capabilities {
                     // User tried to escalate beyond their ceiling
-                    let ceiling_desc = self
-                        .capability_ceiling
-                        .as_ref()
-                        .map(|c| c.join(", "))
-                        .unwrap_or_else(|| "none".to_string());
+                    let ceiling_desc =
+                        self.capability_ceiling.as_ref().map(|c| c.join(", ")).unwrap_or_else(|| "none".to_string());
                     self.emit(DaemonEvent::SystemMessage {
-                        text: format!(
-                            "Cannot set capabilities: request exceeds session ceiling [{}]",
-                            ceiling_desc,
-                        ),
+                        text: format!("Cannot set capabilities: request exceeds session ceiling [{}]", ceiling_desc,),
                         is_error: true,
                     });
                 } else {
@@ -248,10 +236,7 @@ impl SessionController {
                     if let Some(ref mut agent) = self.agent {
                         agent.set_user_tool_filter(capabilities.clone());
                     }
-                    let desc = capabilities
-                        .as_ref()
-                        .map(|c| c.join(", "))
-                        .unwrap_or_else(|| "full access".to_string());
+                    let desc = capabilities.as_ref().map(|c| c.join(", ")).unwrap_or_else(|| "full access".to_string());
                     self.emit(DaemonEvent::SystemMessage {
                         text: format!("Capabilities updated: {desc}"),
                         is_error: false,
@@ -273,7 +258,10 @@ impl SessionController {
     }
 
     /// Handle a prompt command (daemon mode only).
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "agent is always Some when handle_prompt is called"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(no_unwrap, reason = "agent is always Some when handle_prompt is called")
+    )]
     async fn handle_prompt(&mut self, text: String, images: Vec<ImageData>) {
         if self.agent.is_none() {
             warn!("handle_prompt called in embedded mode");
@@ -336,15 +324,8 @@ impl SessionController {
     /// so the client can sync its UI.
     fn replay_history(&mut self) {
         // Emit tool list so client knows what's available
-        if let Some(ref agent) = self.agent {
-            let tools = agent.tools().iter().map(|t| {
-                let def = t.definition();
-                clankers_protocol::ToolInfo {
-                    name: def.name.clone(),
-                    description: def.description.clone(),
-                    source: t.source().to_string(),
-                }
-            }).collect();
+        let tools = self.current_tool_infos();
+        if !tools.is_empty() {
             self.outgoing.push(DaemonEvent::ToolList { tools });
         }
 
@@ -457,22 +438,12 @@ impl SessionController {
                 });
             }
             "tools" => {
-                let tools = self.agent.as_ref()
-                    .map(|a| a.tools().iter().map(|t| {
-                        let def = t.definition();
-                        clankers_protocol::ToolInfo {
-                            name: def.name.clone(),
-                            description: def.description.clone(),
-                            source: t.source().to_string(),
-                        }
-                    }).collect())
-                    .unwrap_or_default();
-                self.emit(DaemonEvent::ToolList { tools });
+                self.emit(DaemonEvent::ToolList {
+                    tools: self.current_tool_infos(),
+                });
             }
             "prompt" => {
-                let prompt = self.agent.as_ref()
-                    .map(|a| a.system_prompt().to_string())
-                    .unwrap_or_default();
+                let prompt = self.agent.as_ref().map(|a| a.system_prompt().to_string()).unwrap_or_default();
                 self.emit(DaemonEvent::SystemPromptResponse { prompt });
             }
             _ => {
@@ -485,10 +456,7 @@ impl SessionController {
     }
 
     /// Convert serialized messages to agent messages for seeding.
-    fn convert_seed_messages(
-        &self,
-        messages: &[SerializedMessage],
-    ) -> Vec<AgentMessage> {
+    fn convert_seed_messages(&self, messages: &[SerializedMessage]) -> Vec<AgentMessage> {
         messages
             .iter()
             .filter_map(|msg| {
@@ -524,9 +492,10 @@ impl SessionController {
 
 #[cfg(test)]
 mod tests {
+    use clankers_protocol::SessionCommand;
+
     use super::*;
     use crate::test_helpers::make_test_controller;
-    use clankers_protocol::SessionCommand;
 
     #[tokio::test]
     async fn test_handle_abort() {
@@ -655,9 +624,11 @@ mod tests {
         .await;
 
         let events = ctrl.drain_events();
-        assert!(events.iter().any(
-            |e| matches!(e, DaemonEvent::SystemMessage { text, is_error: false } if text.contains("high"))
-        ));
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, DaemonEvent::SystemMessage { text, is_error: false } if text.contains("high")))
+        );
     }
 
     #[tokio::test]
@@ -669,9 +640,7 @@ mod tests {
         .await;
 
         let events = ctrl.drain_events();
-        assert!(events
-            .iter()
-            .any(|e| matches!(e, DaemonEvent::SystemMessage { is_error: true, .. })));
+        assert!(events.iter().any(|e| matches!(e, DaemonEvent::SystemMessage { is_error: true, .. })));
     }
 
     #[tokio::test]
@@ -696,9 +665,7 @@ mod tests {
         .await;
 
         let events = ctrl.drain_events();
-        assert!(events.iter().any(
-            |e| matches!(e, DaemonEvent::SystemMessage { text, .. } if text.contains("2"))
-        ));
+        assert!(events.iter().any(|e| matches!(e, DaemonEvent::SystemMessage { text, .. } if text.contains("2"))));
         // Agent should have 2 messages now
         assert_eq!(ctrl.agent.as_ref().unwrap().messages().len(), 2);
     }
@@ -721,10 +688,7 @@ mod tests {
             e,
             DaemonEvent::SystemMessage { text, is_error: false } if text.contains("updated")
         )));
-        assert_eq!(
-            ctrl.capabilities,
-            Some(vec!["read,grep".to_string()])
-        );
+        assert_eq!(ctrl.capabilities, Some(vec!["read,grep".to_string()]));
     }
 
     #[tokio::test]
@@ -744,10 +708,7 @@ mod tests {
             e,
             DaemonEvent::SystemMessage { text, is_error: false } if text.contains("updated")
         )));
-        assert_eq!(
-            ctrl.capabilities,
-            Some(vec!["read,grep".to_string()])
-        );
+        assert_eq!(ctrl.capabilities, Some(vec!["read,grep".to_string()]));
     }
 
     #[tokio::test]
@@ -763,15 +724,9 @@ mod tests {
         .await;
 
         let events = ctrl.drain_events();
-        assert!(events.iter().any(|e| matches!(
-            e,
-            DaemonEvent::SystemMessage { is_error: true, .. }
-        )));
+        assert!(events.iter().any(|e| matches!(e, DaemonEvent::SystemMessage { is_error: true, .. })));
         // Capabilities unchanged
-        assert_eq!(
-            ctrl.capabilities,
-            Some(vec!["read,grep".to_string()])
-        );
+        assert_eq!(ctrl.capabilities, Some(vec!["read,grep".to_string()]));
     }
 
     #[tokio::test]
@@ -781,16 +736,10 @@ mod tests {
         ctrl.capabilities = Some(vec!["read".to_string()]);
 
         // Try to remove all restrictions — exceeds ceiling
-        ctrl.handle_command(SessionCommand::SetCapabilities {
-            capabilities: None,
-        })
-        .await;
+        ctrl.handle_command(SessionCommand::SetCapabilities { capabilities: None }).await;
 
         let events = ctrl.drain_events();
-        assert!(events.iter().any(|e| matches!(
-            e,
-            DaemonEvent::SystemMessage { is_error: true, .. }
-        )));
+        assert!(events.iter().any(|e| matches!(e, DaemonEvent::SystemMessage { is_error: true, .. })));
         // Capabilities unchanged
         assert_eq!(ctrl.capabilities, Some(vec!["read".to_string()]));
     }
@@ -802,10 +751,7 @@ mod tests {
         ctrl.capabilities = Some(vec!["read".to_string()]);
 
         // Remove restrictions — allowed since no ceiling
-        ctrl.handle_command(SessionCommand::SetCapabilities {
-            capabilities: None,
-        })
-        .await;
+        ctrl.handle_command(SessionCommand::SetCapabilities { capabilities: None }).await;
 
         let events = ctrl.drain_events();
         assert!(events.iter().any(|e| matches!(
@@ -832,9 +778,6 @@ mod tests {
             e,
             DaemonEvent::SystemMessage { text, is_error: false } if text.contains("updated")
         )));
-        assert_eq!(
-            ctrl.capabilities,
-            Some(vec!["read,grep,bash".to_string()])
-        );
+        assert_eq!(ctrl.capabilities, Some(vec!["read,grep,bash".to_string()]));
     }
 }

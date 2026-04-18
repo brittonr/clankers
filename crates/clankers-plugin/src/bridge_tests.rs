@@ -27,8 +27,7 @@ fn parse_and_matches_agree_for_all_dispatchable() {
     ];
 
     for kind in dispatchable {
-        let event = PluginEvent::parse(kind)
-            .unwrap_or_else(|| panic!("parse({kind}) should succeed"));
+        let event = PluginEvent::parse(kind).unwrap_or_else(|| panic!("parse({kind}) should succeed"));
         assert!(
             event.matches_event_kind(kind),
             "parse({kind}) returned {event:?} but matches_event_kind({kind}) is false"
@@ -70,12 +69,8 @@ fn every_variant_is_reachable_via_parse() {
     ];
 
     for (kind_str, expected_variant) in all_kinds {
-        let parsed = PluginEvent::parse(kind_str)
-            .unwrap_or_else(|| panic!("parse({kind_str}) returned None"));
-        assert_eq!(
-            parsed, expected_variant,
-            "parse({kind_str}) returned {parsed:?}, expected {expected_variant:?}"
-        );
+        let parsed = PluginEvent::parse(kind_str).unwrap_or_else(|| panic!("parse({kind_str}) returned None"));
+        assert_eq!(parsed, expected_variant, "parse({kind_str}) returned {parsed:?}, expected {expected_variant:?}");
     }
 }
 

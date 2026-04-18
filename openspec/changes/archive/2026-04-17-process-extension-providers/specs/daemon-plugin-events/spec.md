@@ -18,18 +18,18 @@ The daemon SHALL forward plugin events to both active Extism plugins and active 
 ---
 
 ### Requirement: Plugin UI actions forwarded to attached clients
-When an Extism or stdio plugin returns UI actions (`set_widget`, `set_status`, `notify`), the daemon SHALL convert them to `DaemonEvent` variants and broadcast them to attached clients.
+When an Extism plugin returns JSON UI actions or a stdio plugin emits a `ui { type: "ui", plugin_protocol, actions: [...] }` frame, the daemon SHALL convert those actions to `DaemonEvent` variants and broadcast them to attached clients.
 
 #### Scenario: Stdio plugin sets a widget
-- **WHEN** a stdio plugin response includes `{"ui": [{"action": "set_widget", "widget": {...}}]}`
+- **WHEN** a stdio plugin emits `ui { type: "ui", plugin_protocol: 1, actions: [{"action": "set_widget", "widget": {...}}] }`
 - **THEN** the daemon broadcasts a `DaemonEvent::PluginWidget` with the plugin name and serialized widget
 
 #### Scenario: Stdio plugin sets status segment
-- **WHEN** a stdio plugin response includes `{"ui": [{"action": "set_status", "text": "running", "color": "green"}]}`
+- **WHEN** a stdio plugin emits `ui { type: "ui", plugin_protocol: 1, actions: [{"action": "set_status", "text": "running", "color": "green"}] }`
 - **THEN** the daemon broadcasts `DaemonEvent::PluginStatus` with the text and color
 
 #### Scenario: Stdio plugin sends notification
-- **WHEN** a stdio plugin response includes `{"ui": [{"action": "notify", "message": "Done!", "level": "info"}]}`
+- **WHEN** a stdio plugin emits `ui { type: "ui", plugin_protocol: 1, actions: [{"action": "notify", "message": "Done!", "level": "info"}] }`
 - **THEN** the daemon broadcasts `DaemonEvent::PluginNotify` with the message and level
 
 #### Scenario: Plugin without ui permission has actions stripped
@@ -39,10 +39,10 @@ When an Extism or stdio plugin returns UI actions (`set_widget`, `set_status`, `
 ---
 
 ### Requirement: Plugin messages surfaced in daemon sessions
-When an Extism or stdio plugin returns `{"display": true, "message": "..."}`, the message SHALL be forwarded to attached clients as a `DaemonEvent::SystemMessage`.
+When an Extism plugin returns `{"display": true, "message": "..."}` or a stdio plugin emits `display { type: "display", plugin_protocol: 1, message: "..." }`, the message SHALL be forwarded to attached clients as a `DaemonEvent::SystemMessage`.
 
 #### Scenario: Stdio plugin display message sent to client
-- **WHEN** a stdio plugin returns a display message during event handling
+- **WHEN** a stdio plugin emits `display { type: "display", plugin_protocol: 1, message: "..." }` during event handling
 - **THEN** attached clients receive `DaemonEvent::SystemMessage` with the plugin-prefixed text
 
 ---

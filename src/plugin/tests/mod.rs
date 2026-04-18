@@ -89,7 +89,7 @@ mod host_functions;
 mod lifecycle;
 mod registry;
 mod sandbox;
-mod stdio_runtime;
+pub(crate) mod stdio_runtime;
 mod test_plugin;
 mod tool_integration;
 mod ui;

@@ -28,9 +28,7 @@ fn log_needs_no_permission() {
 // r[verify plugin.host.ungated-functions]
 #[test]
 fn get_config_needs_no_permission() {
-    let host = HostFunctions::with_config(
-        [("api_key".into(), "secret".into())].into(),
-    );
+    let host = HostFunctions::with_config([("api_key".into(), "secret".into())].into());
     let result = host.execute(
         &HostCall {
             function: "get_config".into(),

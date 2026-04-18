@@ -13,6 +13,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
+libc = "0.2"
 clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
 clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
 

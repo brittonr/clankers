@@ -15,7 +15,7 @@
 //!   cargo test --test scheduled_email_live -- --nocapture
 
 use std::process::Command;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::Duration;
 
 use chrono::Utc;
@@ -28,6 +28,10 @@ use serde_json::json;
 // ═══════════════════════════════════════════════════════════════════════
 
 const SOPS_BASE: &str = "/home/brittonr/git/onix-core/vars/shared/clankers-daemon-clankers";
+const MAIL_INDEX_MAX_ATTEMPTS: u32 = 15;
+
+static LIVE_EMAIL_TEST_LOCK: LazyLock<tokio::sync::Mutex<()>> =
+    LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 fn sops_decrypt(secret_path: &str) -> Option<String> {
     let full_path = format!("{SOPS_BASE}/{secret_path}/secret");
@@ -64,6 +68,10 @@ fn test_recipient(secrets: &Secrets) -> &str {
 fn test_subject() -> String {
     let ts = Utc::now().format("%Y%m%d-%H%M%S");
     format!("[scheduled-email-test] {ts}")
+}
+
+async fn lock_live_email_test() -> tokio::sync::MutexGuard<'static, ()> {
+    LIVE_EMAIL_TEST_LOCK.lock().await
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -229,6 +237,8 @@ fn dispatch_schedule_fire(
 /// One-shot schedule fires → plugin sends email → verify delivery via JMAP.
 #[tokio::test]
 async fn one_shot_schedule_sends_email_via_plugin() {
+    let _live_test_guard = lock_live_email_test().await;
+
     let Some(secrets) = load_secrets() else {
         eprintln!("SKIP: sops secrets unavailable");
         return;
@@ -275,7 +285,7 @@ async fn one_shot_schedule_sends_email_via_plugin() {
 
     // Verify delivery
     assert!(
-        verifier.wait_for_email(&subject, 10).await,
+        verifier.wait_for_email(&subject, MAIL_INDEX_MAX_ATTEMPTS).await,
         "email should appear in JMAP search within 20s",
     );
 
@@ -286,6 +296,8 @@ async fn one_shot_schedule_sends_email_via_plugin() {
 /// Interval schedule fires twice → plugin sends two emails.
 #[tokio::test]
 async fn interval_schedule_sends_multiple_emails() {
+    let _live_test_guard = lock_live_email_test().await;
+
     let Some(secrets) = load_secrets() else {
         eprintln!("SKIP: sops secrets unavailable");
         return;
@@ -343,7 +355,7 @@ async fn interval_schedule_sends_multiple_emails() {
 
     // Verify at least one email arrived
     assert!(
-        verifier.wait_for_email(&subject, 10).await,
+        verifier.wait_for_email(&subject, MAIL_INDEX_MAX_ATTEMPTS).await,
         "interval emails should arrive",
     );
 }
@@ -351,6 +363,8 @@ async fn interval_schedule_sends_multiple_emails() {
 /// Non-email payloads are ignored by the email plugin.
 #[tokio::test]
 async fn non_email_payload_ignored_by_plugin() {
+    let _live_test_guard = lock_live_email_test().await;
+
     let Some(secrets) = load_secrets() else {
         eprintln!("SKIP: sops secrets unavailable");
         return;
@@ -376,6 +390,8 @@ async fn non_email_payload_ignored_by_plugin() {
 /// Recipient outside the allowlist gets rejected.
 #[tokio::test]
 async fn allowlist_denies_unauthorized_recipient() {
+    let _live_test_guard = lock_live_email_test().await;
+
     let Some(secrets) = load_secrets() else {
         eprintln!("SKIP: sops secrets unavailable");
         return;
@@ -412,6 +428,8 @@ async fn allowlist_denies_unauthorized_recipient() {
 /// Exercises the real daemon code path without starting the full daemon.
 #[tokio::test]
 async fn daemon_schedule_consumer_dispatches_to_plugin() {
+    let _live_test_guard = lock_live_email_test().await;
+
     let Some(secrets) = load_secrets() else {
         eprintln!("SKIP: sops secrets unavailable");
         return;
@@ -465,7 +483,7 @@ async fn daemon_schedule_consumer_dispatches_to_plugin() {
     let tick_handle = engine.start();
 
     // Wait for the email to be sent + indexed
-    let found = verifier.wait_for_email(&subject, 15).await;
+    let found = verifier.wait_for_email(&subject, MAIL_INDEX_MAX_ATTEMPTS).await;
 
     // Shut down
     engine.cancel_token().cancel();
@@ -479,6 +497,8 @@ async fn daemon_schedule_consumer_dispatches_to_plugin() {
 /// Cron schedule matching the current minute fires and sends email.
 #[tokio::test]
 async fn cron_schedule_sends_email() {
+    let _live_test_guard = lock_live_email_test().await;
+
     let Some(secrets) = load_secrets() else {
         eprintln!("SKIP: sops secrets unavailable");
         return;
@@ -539,7 +559,7 @@ async fn cron_schedule_sends_email() {
 
     // Verify delivery
     assert!(
-        verifier.wait_for_email(&subject, 10).await,
+        verifier.wait_for_email(&subject, MAIL_INDEX_MAX_ATTEMPTS).await,
         "cron-scheduled email should appear in JMAP search",
     );
 
@@ -620,6 +640,8 @@ async fn cron_day_of_week_filtering() {
 /// Schedule fire with missing fields is handled gracefully.
 #[tokio::test]
 async fn malformed_email_payload_handled() {
+    let _live_test_guard = lock_live_email_test().await;
+
     let Some(secrets) = load_secrets() else {
         eprintln!("SKIP: sops secrets unavailable");
         return;

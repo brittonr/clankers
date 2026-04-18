@@ -1717,7 +1717,18 @@ pub use super::attach_remote::*;
 
 #[cfg(test)]
 mod tests {
+    use clankers_controller::client::ClientAdapter;
     use clankers_controller::client::is_client_side_command;
+    use clankers_protocol::DaemonEvent;
+    use clankers_protocol::PluginSummary;
+    use clankers_tui::app::App;
+    use clankers_tui_types::BlockEntry;
+
+    fn dummy_client() -> ClientAdapter {
+        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+        ClientAdapter::from_channels(cmd_tx, event_rx)
+    }
 
     #[test]
     fn test_client_side_commands_classified_correctly() {
@@ -1737,5 +1748,105 @@ mod tests {
         assert!(!is_client_side_command("compact"));
         assert!(!is_client_side_command("autotest"));
         assert!(!is_client_side_command("loop"));
+    }
+
+    #[test]
+    fn plugin_list_event_renders_stdio_metadata_in_attach_mode() {
+        let mut app = App::new("test-model".to_string(), ".".to_string(), crate::config::theme::detect_theme());
+        let client = dummy_client();
+        let mut is_replaying_history = false;
+        let event = DaemonEvent::PluginList {
+            plugins: vec![PluginSummary {
+                name: "stdio-demo".to_string(),
+                version: "0.1.0".to_string(),
+                state: "Backoff".to_string(),
+                tools: vec!["stdio_demo_tool".to_string()],
+                permissions: vec!["ui".to_string()],
+                kind: Some("stdio".to_string()),
+                last_error: Some("launch failed".to_string()),
+            }],
+        };
+
+        super::process_daemon_event(&mut app, &client, &event, &mut is_replaying_history, 0);
+
+        let plugins = app.daemon_plugins.expect("daemon plugins stored");
+        assert_eq!(plugins[0].kind.as_deref(), Some("stdio"));
+        assert_eq!(plugins[0].state, "Backoff");
+        assert_eq!(plugins[0].tools, vec!["stdio_demo_tool".to_string()]);
+
+        match app.conversation.blocks.last().expect("plugin list message appended") {
+            BlockEntry::System(message) => {
+                assert!(message.content.contains("stdio-demo"));
+                assert!(message.content.contains("stdio"));
+                assert!(message.content.contains("Backoff"));
+                assert!(message.content.contains("stdio_demo_tool"));
+                assert!(message.content.contains("launch failed"));
+            }
+            other => panic!("expected system message, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn plugin_runtime_events_update_attach_plugin_ui_state() {
+        let mut app = App::new("test-model".to_string(), ".".to_string(), crate::config::theme::detect_theme());
+        let client = dummy_client();
+        let mut is_replaying_history = false;
+
+        super::process_daemon_event(
+            &mut app,
+            &client,
+            &DaemonEvent::PluginStatus {
+                plugin: "stdio-demo".to_string(),
+                text: Some("ready".to_string()),
+                color: Some("green".to_string()),
+            },
+            &mut is_replaying_history,
+            0,
+        );
+        super::process_daemon_event(
+            &mut app,
+            &client,
+            &DaemonEvent::PluginNotify {
+                plugin: "stdio-demo".to_string(),
+                message: "hello".to_string(),
+                level: "info".to_string(),
+            },
+            &mut is_replaying_history,
+            0,
+        );
+        super::process_daemon_event(
+            &mut app,
+            &client,
+            &DaemonEvent::PluginWidget {
+                plugin: "stdio-demo".to_string(),
+                widget: Some(serde_json::json!({
+                    "type": "Text",
+                    "content": "widget body",
+                    "bold": false,
+                    "color": null
+                })),
+            },
+            &mut is_replaying_history,
+            0,
+        );
+        super::process_daemon_event(
+            &mut app,
+            &client,
+            &DaemonEvent::SystemMessage {
+                text: "🔌 stdio-demo: saw tool_call".to_string(),
+                is_error: false,
+            },
+            &mut is_replaying_history,
+            0,
+        );
+
+        assert_eq!(app.plugin_ui.status_segments["stdio-demo"].text, "ready");
+        assert_eq!(app.plugin_ui.status_segments["stdio-demo"].color.as_deref(), Some("green"));
+        assert_eq!(app.plugin_ui.notifications.len(), 1);
+        assert!(app.plugin_ui.widgets.contains_key("stdio-demo"));
+        match app.conversation.blocks.last().expect("system message appended") {
+            BlockEntry::System(message) => assert!(message.content.contains("stdio-demo")),
+            other => panic!("expected system message, got {other:?}"),
+        }
     }
 }

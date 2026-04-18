@@ -121,9 +121,14 @@ Each session can run in its own git worktree, so parallel agents can't step on e
 
 ## Plugins
 
-Plugins are WebAssembly modules loaded via [Extism](https://extism.org). Drop a `plugin.json` + `.wasm` file into `plugins/` or install with `clankers plugin install <path>`.
+clankers supports multiple plugin runtimes:
 
-A plugin declares tools the agent can call:
+- `kind: "extism"` — WebAssembly plugins loaded via [Extism](https://extism.org)
+- `kind: "stdio"` — supervised process plugins that register tools live over a framed stdio protocol
+
+Install a plugin by dropping a plugin directory into `plugins/` or by running `clankers plugin install <path>`.
+
+Extism example:
 
 ```json
 {
@@ -149,19 +154,26 @@ A plugin declares tools the agent can call:
 }
 ```
 
-The Rust side is a single Extism guest function:
+Stdio example:
 
-```rust
-use extism_pdk::*;
-
-#[plugin_fn]
-pub fn handle_tool_call(input: String) -> FnResult<String> {
-    let call: ToolCallInput = serde_json::from_str(&input)?;
-    // do work, return JSON result
+```json
+{
+  "name": "clankers-stdio-echo",
+  "version": "0.1.0",
+  "kind": "stdio",
+  "stdio": {
+    "command": "./plugin.py",
+    "working_dir": "plugin-dir",
+    "sandbox": "inherit"
+  }
 }
 ```
 
-Build with `cargo build --target wasm32-unknown-unknown --release`. See `examples/plugins/` for a walkthrough.
+Reference stdio fixture/example: `examples/plugins/clankers-stdio-echo/`.
+
+Build Extism plugins with `cargo build --target wasm32-unknown-unknown --release`. For stdio plugins, implement the clankers length-prefixed JSON protocol and register tools after `ready`.
+
+See `docs/src/reference/plugins.md` for launch-policy fields, sandbox modes, and migration guidance from Extism manifests to stdio plugins.
 
 Shipped plugins: calendar, email, github, hash, self-validate, text-stats.
 

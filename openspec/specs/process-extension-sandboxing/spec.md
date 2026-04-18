@@ -1,11 +1,11 @@
 ## ADDED Requirements
 
 ### Requirement: Explicit launch policy for stdio plugins
-A stdio plugin manifest SHALL declare its launch policy: command, arguments, sandbox mode, optional working-directory mode, and environment allowlist. In this first change, every allowlisted environment variable is a required launch input. The host SHALL use that policy when starting the plugin process.
+A stdio plugin manifest SHALL declare its launch policy: command, arguments, sandbox mode, optional working-directory mode, and environment allowlist. In this first change, every allowlisted environment variable is a required launch input. The host SHALL use that policy when starting the plugin process. In v1, the host-required runtime environment-variable exception set SHALL be empty: the host resolves `stdio.command` before spawn instead of relying on child `PATH` lookup, so no implicit environment variables are forwarded beyond the manifest allowlist.
 
 #### Scenario: Allowlisted environment forwarded
 - **WHEN** a stdio plugin manifest allowlists `GITHUB_TOKEN` and `FASTMAIL_TOKEN`
-- **THEN** the launched plugin process receives only those declared variables plus the minimal runtime variables required by the host
+- **THEN** the launched plugin process receives only those declared variables
 - **THEN** unrelated host environment variables are not inherited implicitly
 
 #### Scenario: Missing allowlisted environment variable blocks startup

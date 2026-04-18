@@ -46,6 +46,23 @@ pub struct SessionFactory {
 }
 
 impl SessionFactory {
+    fn child_actor_factory(&self) -> Option<Arc<Self>> {
+        self.registry.as_ref().map(|_| {
+            Arc::new(Self {
+                provider: Arc::clone(&self.provider),
+                tools: self.tools.clone(),
+                settings: self.settings.clone(),
+                default_model: self.default_model.clone(),
+                default_system_prompt: self.default_system_prompt.clone(),
+                // Don't recurse — child agents use subprocess fallback
+                registry: None,
+                catalog: None,
+                schedule_engine: self.schedule_engine.clone(),
+                plugin_manager: None, // child factories skip plugins
+            })
+        })
+    }
+
     /// Rebuild tools with a panel_tx for subagent event routing.
     ///
     /// Clones all tools, injecting the panel sender into SubagentTool,
@@ -55,22 +72,10 @@ impl SessionFactory {
         panel_tx: mpsc::UnboundedSender<SubagentEvent>,
         bash_confirm_tx: Option<crate::tools::bash::ConfirmTx>,
     ) -> Vec<Arc<dyn Tool>> {
-        let actor_ctx = self.registry.as_ref().map(|reg| {
-            crate::tools::subagent::ActorContext {
-                registry: reg.clone(),
-                factory: std::sync::Arc::new(Self {
-                    provider: Arc::clone(&self.provider),
-                    tools: self.tools.clone(),
-                    settings: self.settings.clone(),
-                    default_model: self.default_model.clone(),
-                    default_system_prompt: self.default_system_prompt.clone(),
-                    // Don't recurse — child agents use subprocess fallback
-                    registry: None,
-                    catalog: None,
-                    schedule_engine: self.schedule_engine.clone(),
-                    plugin_manager: None, // child factories skip plugins
-                }),
-            }
+        let child_factory = self.child_actor_factory();
+        let actor_ctx = self.registry.as_ref().zip(child_factory).map(|(reg, factory)| crate::tools::subagent::ActorContext {
+            registry: reg.clone(),
+            factory,
         });
         let env = crate::modes::common::ToolEnv {
             panel_tx: Some(panel_tx),
@@ -472,5 +477,175 @@ async fn shutdown_signal(shutdown: &tokio::sync::watch::Receiver<bool>) {
         if rx.changed().await.is_err() {
             break;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+    use std::path::PathBuf;
+    use std::sync::Arc;
+    use std::sync::Mutex;
+    use std::time::Duration;
+
+    use clanker_actor::ProcessRegistry;
+    use clankers_protocol::control::ControlResponse;
+    use tempfile::tempdir;
+
+    use super::*;
+
+    struct StubProvider;
+
+    #[async_trait::async_trait]
+    impl crate::provider::Provider for StubProvider {
+        async fn complete(
+            &self,
+            _req: crate::provider::CompletionRequest,
+            _tx: tokio::sync::mpsc::Sender<crate::provider::streaming::StreamEvent>,
+        ) -> std::result::Result<(), crate::provider::error::ProviderError> {
+            Ok(())
+        }
+
+        fn models(&self) -> &[crate::provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "stub"
+        }
+    }
+
+    fn make_factory(
+        plugin_manager: Option<Arc<Mutex<crate::plugin::PluginManager>>>,
+        registry: Option<ProcessRegistry>,
+    ) -> SessionFactory {
+        SessionFactory {
+            provider: Arc::new(StubProvider),
+            tools: vec![],
+            settings: crate::config::settings::Settings::default(),
+            default_model: "test".to_string(),
+            default_system_prompt: String::new(),
+            registry,
+            catalog: None,
+            schedule_engine: None,
+            plugin_manager,
+        }
+    }
+
+    fn write_plugin_manifest(dir: &Path, name: &str, manifest: serde_json::Value) {
+        let plugin_dir = dir.join(name);
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+        std::fs::write(plugin_dir.join("plugin.json"), serde_json::to_string_pretty(&manifest).unwrap()).unwrap();
+    }
+
+    #[test]
+    fn child_factory_for_actor_ctx_skips_plugin_host_and_registry() {
+        let plugins_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("plugins");
+        let plugin_manager = crate::modes::common::init_plugin_manager(&plugins_dir, None, &[]);
+        let parent = make_factory(Some(plugin_manager), Some(ProcessRegistry::new()));
+
+        let child = parent.child_actor_factory().expect("child factory available when registry exists");
+        assert!(child.registry.is_none());
+        assert!(child.plugin_manager.is_none());
+
+        let (parent_panel_tx, _parent_panel_rx) = mpsc::unbounded_channel();
+        let parent_tools = parent.build_tools_with_panel_tx(parent_panel_tx, None);
+        let parent_tool_names: Vec<String> = parent_tools.iter().map(|tool| tool.definition().name.clone()).collect();
+        assert!(parent_tool_names.contains(&"test_echo".to_string()));
+
+        let (child_panel_tx, _child_panel_rx) = mpsc::unbounded_channel();
+        let child_tools = child.build_tools_with_panel_tx(child_panel_tx, None);
+        let child_tool_names: Vec<String> = child_tools.iter().map(|tool| tool.definition().name.clone()).collect();
+        assert!(!child_tool_names.contains(&"test_echo".to_string()));
+        assert!(!child_tool_names.contains(&"test_reverse".to_string()));
+        assert!(child_tool_names.contains(&"read".to_string()));
+    }
+
+    #[tokio::test]
+    async fn list_plugins_control_command_returns_empty_for_empty_host() {
+        let dir = tempdir().unwrap();
+        let plugin_manager = crate::modes::common::init_plugin_manager_for_mode(
+            dir.path(),
+            None,
+            &[],
+            crate::plugin::PluginRuntimeMode::Daemon,
+            dir.path(),
+        );
+        let state = Arc::new(tokio::sync::Mutex::new(DaemonState::new()));
+        let factory = make_factory(Some(plugin_manager), None);
+
+        let response = dispatch_control_command(ControlCommand::ListPlugins, &state, &factory).await;
+        match response {
+            ControlResponse::Plugins(plugins) => assert!(plugins.is_empty()),
+            other => panic!("expected plugins response, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn list_plugins_control_command_reports_live_and_error_stdio_plugins() {
+        let dir = tempdir().unwrap();
+        crate::plugin::tests::stdio_runtime::write_stdio_plugin_manifest(
+            dir.path(),
+            "stdio-list-active",
+            "ready_register",
+            "daemon",
+            None,
+            None,
+        );
+        write_plugin_manifest(
+            dir.path(),
+            "stdio-list-invalid",
+            serde_json::json!({
+                "name": "stdio-list-invalid",
+                "version": "0.1.0",
+                "kind": "stdio",
+                "stdio": {
+                    "args": ["plugin.py"],
+                    "sandbox": "inherit"
+                }
+            }),
+        );
+
+        let plugin_manager = crate::plugin::tests::stdio_runtime::init_manager_with_restart_delays(
+            dir.path(),
+            crate::plugin::PluginRuntimeMode::Daemon,
+            "5,10,15,20,25",
+        );
+        crate::plugin::tests::stdio_runtime::wait_for_plugin_state(
+            &plugin_manager,
+            "stdio-list-active",
+            Duration::from_secs(2),
+            |state| matches!(state, crate::plugin::PluginState::Active),
+        )
+        .await;
+        crate::plugin::tests::stdio_runtime::wait_for_live_tool(
+            &plugin_manager,
+            "stdio-list-active",
+            "stdio_list_active_tool",
+            Duration::from_secs(2),
+        )
+        .await;
+
+        let state = Arc::new(tokio::sync::Mutex::new(DaemonState::new()));
+        let factory = make_factory(Some(Arc::clone(&plugin_manager)), None);
+        let response = dispatch_control_command(ControlCommand::ListPlugins, &state, &factory).await;
+
+        match response {
+            ControlResponse::Plugins(plugins) => {
+                let active = plugins.iter().find(|plugin| plugin.name == "stdio-list-active").unwrap();
+                assert_eq!(active.kind.as_deref(), Some("stdio"));
+                assert_eq!(active.state, "Active");
+                assert_eq!(active.permissions, vec!["ui".to_string()]);
+                assert!(active.tools.iter().any(|tool| tool == "stdio_list_active_tool"));
+
+                let invalid = plugins.iter().find(|plugin| plugin.name == "stdio-list-invalid").unwrap();
+                assert_eq!(invalid.kind.as_deref(), Some("stdio"));
+                assert_eq!(invalid.state, "Error");
+                assert!(invalid.last_error.as_deref().is_some_and(|error| error.contains("stdio.command")));
+            }
+            other => panic!("expected plugins response, got {other:?}"),
+        }
+
+        crate::plugin::shutdown_plugin_runtime(&plugin_manager, "test shutdown").await;
     }
 }

@@ -38,6 +38,35 @@ pub(crate) struct PluginDispatchResult {
     pub ui_actions: Vec<crate::plugin::ui::PluginUiAction>,
 }
 
+pub(crate) fn drain_stdio_runtime_outputs(
+    plugin_manager: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+) -> PluginDispatchResult {
+    let mut messages = Vec::new();
+    let mut ui_actions = Vec::new();
+
+    for event in crate::plugin::drain_stdio_host_events(plugin_manager) {
+        match event {
+            crate::plugin::StdioHostEvent::Ui(action) => ui_actions.push(action),
+            crate::plugin::StdioHostEvent::Display { plugin, message } => messages.push((plugin, message)),
+        }
+    }
+
+    PluginDispatchResult { messages, ui_actions }
+}
+
+fn forward_stdio_event_subscribers(
+    host: &crate::plugin::PluginHostFacade,
+    plugin_manager: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    event_kind: &str,
+    data: &serde_json::Value,
+) {
+    for info in host.stdio_event_subscribers(event_kind) {
+        if let Err(error) = crate::plugin::send_stdio_event(plugin_manager, &info.name, event_kind, data.clone()) {
+            tracing::debug!("Plugin '{}' stdio event dispatch error: {}", info.name, error);
+        }
+    }
+}
+
 /// Dispatch an agent event to all subscribed plugins.
 /// Returns messages to surface and UI actions to apply.
 pub(crate) fn dispatch_event_to_plugins(
@@ -101,6 +130,11 @@ pub(crate) fn dispatch_event_to_plugins(
             }
         }
     }
+
+    forward_stdio_event_subscribers(&host, plugin_manager, event_kind, &payload["data"]);
+    let runtime = drain_stdio_runtime_outputs(plugin_manager);
+    messages.extend(runtime.messages);
+    ui_actions.extend(runtime.ui_actions);
 
     PluginDispatchResult { messages, ui_actions }
 }
@@ -189,6 +223,11 @@ pub(crate) fn dispatch_daemon_events_to_plugins(
                 }
             }
         }
+
+        forward_stdio_event_subscribers(&host, plugin_manager, event_kind, &payload["data"]);
+        let runtime = drain_stdio_runtime_outputs(plugin_manager);
+        messages.extend(runtime.messages);
+        ui_actions.extend(runtime.ui_actions);
     }
 
     PluginDispatchResult { messages, ui_actions }

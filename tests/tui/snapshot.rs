@@ -462,6 +462,11 @@ pub fn normalize_styled_text(text: &str) -> String {
     let re_cwd = regex::Regex::new(r"(\| /)\S*").unwrap();
     s = re_cwd.replace_all(&s, "${1}CWD").to_string();
 
+    // On narrower terminals the cwd can be truncated away completely, leaving
+    // a trailing status-bar pipe without the path payload.
+    let re_bare_pipe = regex::Regex::new(r"\s*\|\s*$").unwrap();
+    s = re_bare_pipe.replace_all(&s, "").to_string();
+
     s
 }
 

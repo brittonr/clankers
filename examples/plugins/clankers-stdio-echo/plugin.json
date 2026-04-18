@@ -1,0 +1,12 @@
+{
+  "name": "clankers-stdio-echo",
+  "version": "0.1.0",
+  "description": "Reference stdio plugin fixture for handshake, tool registration, invocation, cancellation, and shutdown.",
+  "kind": "stdio",
+  "stdio": {
+    "command": "./plugin.py",
+    "args": [],
+    "working_dir": "plugin-dir",
+    "sandbox": "inherit"
+  }
+}

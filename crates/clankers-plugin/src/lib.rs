@@ -14,6 +14,8 @@ pub mod stdio_protocol;
 pub mod stdio_runtime;
 pub mod ui;
 
+mod restricted_sandbox;
+
 #[cfg(test)]
 #[path = "sandbox_tests.rs"]
 mod sandbox_tests;
@@ -27,15 +29,24 @@ mod host_tests;
 mod bridge_tests;
 
 use std::collections::HashMap;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
 pub use host_facade::PluginHostFacade;
 pub use host_facade::PluginRuntimeSummary;
 pub use stdio_protocol::PluginRuntimeMode;
+pub use stdio_protocol::RegisteredTool;
+pub use stdio_runtime::StdioHostEvent;
+pub use stdio_runtime::StdioToolCallEvent;
+pub use stdio_runtime::abandon_stdio_tool_call;
+pub use stdio_runtime::cancel_stdio_tool_call;
 pub use stdio_runtime::configure_stdio_runtime;
+pub use stdio_runtime::drain_stdio_host_events;
+pub use stdio_runtime::send_stdio_event;
 pub use stdio_runtime::shutdown_plugin_runtime;
 pub use stdio_runtime::start_stdio_plugins;
+pub use stdio_runtime::start_stdio_tool_call;
 
 /// Plugin state
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -99,9 +110,12 @@ pub struct PluginManager {
     project_dir: Option<PathBuf>,
     /// Additional directories to scan for plugins
     extra_dirs: Vec<PathBuf>,
+    stdio_reserved_tool_names: HashSet<String>,
+    next_stdio_run_id: u64,
     stdio_bootstrap: Option<stdio_runtime::StdioBootstrapConfig>,
     stdio_supervisors: HashMap<String, stdio_runtime::StdioSupervisorHandle>,
     stdio_live_state: HashMap<String, stdio_runtime::StdioLiveState>,
+    stdio_host_events: Vec<stdio_runtime::StdioHostEvent>,
 }
 
 impl PluginManager {
@@ -112,15 +126,22 @@ impl PluginManager {
             global_dir,
             project_dir,
             extra_dirs: Vec::new(),
+            stdio_reserved_tool_names: HashSet::new(),
+            next_stdio_run_id: 1,
             stdio_bootstrap: None,
             stdio_supervisors: HashMap::new(),
             stdio_live_state: HashMap::new(),
+            stdio_host_events: Vec::new(),
         }
     }
 
     /// Add an extra directory to scan for plugins
     pub fn add_plugin_dir(&mut self, dir: PathBuf) {
         self.extra_dirs.push(dir);
+    }
+
+    pub fn set_stdio_reserved_tool_names(&mut self, names: impl IntoIterator<Item = String>) {
+        self.stdio_reserved_tool_names = names.into_iter().collect();
     }
 
     /// Discover plugins from directories
@@ -244,13 +265,7 @@ impl PluginManager {
 
     /// Disable a plugin (unload runtime, set state to Disabled).
     pub fn disable(&mut self, name: &str) -> Result<(), String> {
-        let kind = self
-            .plugins
-            .get(name)
-            .ok_or_else(|| format!("Plugin '{}' not found", name))?
-            .manifest
-            .kind
-            .clone();
+        let kind = self.plugins.get(name).ok_or_else(|| format!("Plugin '{}' not found", name))?.manifest.kind.clone();
         self.instances.remove(name);
         if kind == manifest::PluginKind::Stdio {
             stdio_runtime::stop_stdio_plugin(self, name, "plugin disabled", PluginState::Disabled);
@@ -270,7 +285,7 @@ impl PluginManager {
             if let Some(info) = self.plugins.get_mut(name) {
                 info.state = PluginState::Loaded;
             }
-            stdio_runtime::start_stdio_plugin_from_manager(self, name)
+            Ok(())
         } else {
             self.load_wasm(name)
         }
@@ -278,17 +293,14 @@ impl PluginManager {
 
     /// Reload a plugin (unload + re-load runtime).
     pub fn reload(&mut self, name: &str) -> Result<(), String> {
-        let kind = self
-            .plugins
-            .get(name)
-            .ok_or_else(|| format!("Plugin '{}' not found", name))?
-            .manifest
-            .kind
-            .clone();
+        let kind = self.plugins.get(name).ok_or_else(|| format!("Plugin '{}' not found", name))?.manifest.kind.clone();
         self.instances.remove(name);
         if kind == manifest::PluginKind::Stdio {
             stdio_runtime::stop_stdio_plugin(self, name, "plugin reload", PluginState::Loaded);
-            stdio_runtime::start_stdio_plugin_from_manager(self, name)
+            if let Some(info) = self.plugins.get_mut(name) {
+                info.state = PluginState::Loaded;
+            }
+            Ok(())
         } else {
             self.load_wasm(name)
         }
@@ -335,6 +347,10 @@ impl PluginManager {
         stdio_runtime::live_tools(self, name)
     }
 
+    pub fn live_registered_tools(&self, name: &str) -> Vec<RegisteredTool> {
+        stdio_runtime::live_registered_tools(self, name)
+    }
+
     pub fn live_event_subscriptions(&self, name: &str) -> Vec<String> {
         stdio_runtime::live_event_subscriptions(self, name)
     }
@@ -346,6 +362,49 @@ impl PluginManager {
                 self.disable(name).ok();
             }
         }
+    }
+}
+
+pub fn enable_plugin(manager: &std::sync::Arc<Mutex<PluginManager>>, name: &str) -> Result<(), String> {
+    let kind = {
+        let mut guard = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let kind = guard.get(name).ok_or_else(|| format!("Plugin '{}' not found", name))?.manifest.kind.clone();
+        guard.enable(name)?;
+        kind
+    };
+
+    if kind == manifest::PluginKind::Stdio {
+        stdio_runtime::start_stdio_plugin(manager, name)?;
+    }
+    Ok(())
+}
+
+pub fn reload_plugin(manager: &std::sync::Arc<Mutex<PluginManager>>, name: &str) -> Result<(), String> {
+    let kind = {
+        let mut guard = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let kind = guard.get(name).ok_or_else(|| format!("Plugin '{}' not found", name))?.manifest.kind.clone();
+        guard.reload(name)?;
+        kind
+    };
+
+    if kind == manifest::PluginKind::Stdio {
+        stdio_runtime::start_stdio_plugin(manager, name)?;
+    }
+    Ok(())
+}
+
+pub fn reload_all_plugins(manager: &std::sync::Arc<Mutex<PluginManager>>) {
+    let names = {
+        let guard = manager.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard
+            .plugins
+            .iter()
+            .filter(|(_, info)| info.state != PluginState::Disabled)
+            .map(|(name, _)| name.clone())
+            .collect::<Vec<_>>()
+    };
+    for name in names {
+        reload_plugin(manager, &name).ok();
     }
 }
 

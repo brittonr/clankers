@@ -7,17 +7,27 @@ pub use clankers_plugin::PluginManager;
 pub use clankers_plugin::PluginRuntimeMode;
 pub use clankers_plugin::PluginRuntimeSummary;
 pub use clankers_plugin::PluginState;
-pub use clankers_plugin::configure_stdio_runtime;
-pub use clankers_plugin::shutdown_plugin_runtime;
-pub use clankers_plugin::start_stdio_plugins;
+pub use clankers_plugin::StdioHostEvent;
+pub use clankers_plugin::StdioToolCallEvent;
+pub use clankers_plugin::abandon_stdio_tool_call;
 // Re-export sub-modules
 pub use clankers_plugin::bridge;
+pub use clankers_plugin::cancel_stdio_tool_call;
+pub use clankers_plugin::configure_stdio_runtime;
+pub use clankers_plugin::drain_stdio_host_events;
+pub use clankers_plugin::enable_plugin;
 pub use clankers_plugin::hooks;
 pub use clankers_plugin::host;
 pub use clankers_plugin::load_plugins_from_dir;
 pub use clankers_plugin::manifest;
 pub use clankers_plugin::registry;
+pub use clankers_plugin::reload_all_plugins;
+pub use clankers_plugin::reload_plugin;
 pub use clankers_plugin::sandbox;
+pub use clankers_plugin::send_stdio_event;
+pub use clankers_plugin::shutdown_plugin_runtime;
+pub use clankers_plugin::start_stdio_plugins;
+pub use clankers_plugin::start_stdio_tool_call;
 pub use clankers_plugin::ui;
 
 // Contributions stay in the main crate (they impl main-crate traits on PluginManager)
@@ -42,4 +52,4 @@ pub fn build_protocol_plugin_summaries(
 }
 
 #[cfg(test)]
-mod tests;
+pub(crate) mod tests;

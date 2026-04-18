@@ -14,10 +14,10 @@ use ratatui::backend::CrosstermBackend;
 
 use crate::agent::Agent;
 use crate::config::keybindings::Keymap;
+use crate::config::theme::load_theme;
 use crate::error::Result;
 use crate::provider::auth::AuthStoreExt;
 use crate::tui::app::App;
-use crate::config::theme::load_theme;
 
 /// Options for resuming a session.
 #[derive(Default)]
@@ -31,7 +31,10 @@ pub struct ResumeOptions {
 }
 
 /// Run the interactive TUI mode.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential setup/dispatch logic")
+)]
 pub async fn run_interactive(
     provider: Arc<dyn crate::provider::Provider>,
     settings: crate::config::settings::Settings,
@@ -148,9 +151,8 @@ pub async fn run_interactive(
 
     // Per-process schedule engine (standalone mode). Shared across tool rebuilds.
     let schedules_path = paths.global_config_dir.join("schedules.json");
-    let schedule_engine = std::sync::Arc::new(
-        clanker_scheduler::ScheduleEngine::new().with_persistence(schedules_path.clone()),
-    );
+    let schedule_engine =
+        std::sync::Arc::new(clanker_scheduler::ScheduleEngine::new().with_persistence(schedules_path.clone()));
 
     // Load persisted schedules from previous sessions.
     let persisted = clanker_scheduler::ScheduleEngine::load_from(&schedules_path);
@@ -348,7 +350,7 @@ pub(crate) fn resume_session_from_file(
             let msgs = mgr.build_context().unwrap_or_default();
             let msg_count = msgs.len();
             let resumed_session_id = mgr.session_id().to_string();
-            app.session_id = resumed_session_id.clone();
+            app.session_id.clone_from(&resumed_session_id);
             mgr.record_resume(crate::provider::message::MessageId::new("slash-resume")).ok();
             *session_manager = Some(mgr);
 
@@ -516,7 +518,10 @@ fn build_hook_pipeline(
 }
 
 /// Find the nearest .git directory walking up from a path.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; exits on quit signal"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; exits on quit signal")
+)]
 fn find_git_root(start: &std::path::Path) -> Option<std::path::PathBuf> {
     let mut current = start;
     loop {
