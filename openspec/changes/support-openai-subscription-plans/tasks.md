@@ -45,3 +45,13 @@
 - [ ] 4.4 Run `cargo nextest run`, `cargo clippy -- -D warnings`, and `nix build .#clankers` after the workspace and extracted-crate updates are in place
 - [ ] 4.5 After fixture and automated verification pass, run one manual live-credential smoke path for login, status/account switching, interactive credential reload, model resolution, and one Codex turn against a real ChatGPT Plus/Pro subscription
 - [ ] 4.6 Record the manual live-credential smoke result in the implementation PR or change notes before the change is marked ready
+
+## Verification evidence
+
+- Router-side work for tasks `3.2`, `3.8`, and `3.10` landed in sibling repo `../clanker-router` commit `88aad21` (`openai-codex: align request contracts`).
+- Workspace pin/update for task `3.12` landed in this repo commit `0217a91e` (`deps: bump clanker-router codex backend`).
+- Validation commands run for this slice:
+  - `cd ../clanker-router && cargo test backends::openai_codex::tests -- --nocapture`
+  - `cargo test -p clankers-provider build_router_ -- --nocapture`
+  - `cargo check --tests`
+  - `nix build .#clankers -L`
