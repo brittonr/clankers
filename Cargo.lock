@@ -1274,7 +1274,7 @@ dependencies = [
 [[package]]
 name = "clanker-router"
 version = "0.1.0"
-source = "git+https://github.com/brittonr/clanker-router#d738deec38970768c08b986761b7e1f8042bd1c4"
+source = "git+https://github.com/brittonr/clanker-router#88aad21e9dd671ff9990cf65812321539766c9c8"
 dependencies = [
  "async-trait",
  "base64",
@@ -4339,7 +4339,7 @@ dependencies = [
  "js-sys",
  "log",
  "wasm-bindgen",
- "windows-core 0.57.0",
+ "windows-core 0.62.2",
 ]
 
 [[package]]
@@ -6791,7 +6791,7 @@ version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "680998035259dcfcafe653688bf2aa6d3e2dc05e98be6ab46afb089dc84f1df8"
 dependencies = [
- "proc-macro-crate 2.0.0",
+ "proc-macro-crate 3.5.0",
  "proc-macro2",
  "quote",
  "syn 2.0.117",
