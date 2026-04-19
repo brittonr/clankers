@@ -24,15 +24,18 @@ pub struct Skill {
 /// Scan a skills directory for SKILL.md files
 /// Each skill lives in a subdirectory: skills/<name>/SKILL.md
 pub fn scan_skills_dir(dir: &Path) -> Vec<Skill> {
-    let mut skills = Vec::new();
     if !dir.is_dir() {
-        return skills;
+        return Vec::new();
     }
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return skills,
+
+    assert!(dir.is_dir());
+    assert!(dir.exists());
+    let entries: Vec<_> = match std::fs::read_dir(dir) {
+        Ok(entries) => entries.flatten().collect(),
+        Err(_) => return Vec::new(),
     };
-    for entry in entries.flatten() {
+    let mut skills = Vec::with_capacity(entries.len());
+    for entry in entries {
         let path = entry.path();
         if !path.is_dir() {
             continue;
@@ -46,6 +49,8 @@ pub fn scan_skills_dir(dir: &Path) -> Vec<Skill> {
         }
     }
     skills.sort_by(|a, b| a.name.cmp(&b.name));
+    assert!(skills.windows(2).all(|pair| pair[0].name <= pair[1].name));
+    assert!(skills.iter().all(|skill| !skill.name.is_empty()));
     skills
 }
 
@@ -84,6 +89,9 @@ fn load_skill(path: &Path) -> Option<Skill> {
 /// First non-empty line after any frontmatter, or first line.
 fn extract_description(content: &str) -> String {
     let mut is_in_frontmatter = false;
+    assert!(!content.contains('\0'));
+    assert!(content.is_empty() || !content.starts_with("\n"));
+
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed == "---" {
@@ -99,9 +107,14 @@ fn extract_description(content: &str) -> String {
         // Strip leading # for markdown headers
         let desc = trimmed.trim_start_matches('#').trim();
         if !desc.is_empty() {
+            assert!(!desc.is_empty());
+            assert!(!desc.starts_with('#'));
             return desc.to_string();
         }
     }
+
+    assert!(!is_in_frontmatter);
+    assert!(content.lines().all(|line| !line.contains('\0')));
     String::new()
 }
 
