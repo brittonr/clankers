@@ -16,8 +16,8 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use clanker_router::RouterDb;
 use clanker_router::db::cache::CacheKeyInput;
-use clanker_router::router::FallbackConfig;
 use clanker_router::retry::RetryConfig;
+use clanker_router::router::FallbackConfig;
 use tokio::sync::mpsc;
 use tracing::debug;
 use tracing::info;
@@ -82,15 +82,83 @@ impl RouterCompatAdapter {
     }
 }
 
+fn content_to_router_json(content: &crate::message::Content) -> serde_json::Value {
+    use serde_json::json;
+
+    use crate::message::Content;
+    use crate::message::ImageSource;
+
+    match content {
+        Content::Text { text } => json!({"type": "text", "text": text}),
+        Content::Image { source } => match source {
+            ImageSource::Base64 { media_type, data } => json!({
+                "type": "image",
+                "source": {"type": "base64", "media_type": media_type, "data": data}
+            }),
+            ImageSource::Url { url } => json!({"type": "text", "text": format!("[Image URL: {}]", url)}),
+        },
+        Content::Thinking { thinking, signature } => {
+            json!({"type": "thinking", "thinking": thinking, "signature": signature})
+        }
+        Content::ToolUse { id, name, input } => {
+            json!({"type": "tool_use", "id": id, "name": name, "input": input})
+        }
+        Content::ToolResult {
+            tool_use_id,
+            content,
+            is_error,
+        } => {
+            let blocks: Vec<serde_json::Value> = content.iter().map(content_to_router_json).collect();
+            let mut value = json!({"type": "tool_result", "tool_use_id": tool_use_id, "content": blocks});
+            if let Some(true) = is_error {
+                value["is_error"] = json!(true);
+            }
+            value
+        }
+    }
+}
+
+fn messages_to_router_json(messages: &[crate::message::AgentMessage]) -> Vec<serde_json::Value> {
+    use serde_json::json;
+
+    use crate::message::AgentMessage;
+
+    let mut out = Vec::new();
+    for message in messages {
+        match message {
+            AgentMessage::User(user) => {
+                let content: Vec<serde_json::Value> = user.content.iter().map(content_to_router_json).collect();
+                out.push(json!({"role": "user", "content": content}));
+            }
+            AgentMessage::Assistant(assistant) => {
+                let content: Vec<serde_json::Value> = assistant.content.iter().map(content_to_router_json).collect();
+                out.push(json!({"role": "assistant", "content": content}));
+            }
+            AgentMessage::ToolResult(result) => {
+                let content_blocks: Vec<serde_json::Value> =
+                    result.content.iter().map(content_to_router_json).collect();
+                let mut block = json!({
+                    "type": "tool_result",
+                    "tool_use_id": result.call_id,
+                    "content": content_blocks,
+                });
+                if result.is_error {
+                    block["is_error"] = json!(true);
+                }
+                out.push(json!({"role": "user", "content": [block]}));
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 #[async_trait]
 impl Provider for RouterCompatAdapter {
     async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
-        // Convert clankers CompletionRequest → router CompletionRequest.
-        // The only real conversion is AgentMessage → serde_json::Value for messages.
-        // ToolDefinition is the same type (re-exported from clanker-router).
         let router_request = clanker_router::CompletionRequest {
             model: request.model,
-            messages: request.messages.iter().filter_map(|m| serde_json::to_value(m).ok()).collect(),
+            messages: messages_to_router_json(&request.messages),
             system_prompt: request.system_prompt,
             max_tokens: request.max_tokens,
             temperature: request.temperature,
@@ -210,7 +278,10 @@ impl RouterProvider {
     ///
     /// Starts a background task that evicts expired cache entries every
     /// 5 minutes.
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "retry loop; bounded by provider count"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(unbounded_loop, reason = "retry loop; bounded by provider count")
+    )]
     pub fn with_db(providers: Vec<(String, Arc<dyn Provider>)>, db: RouterDb) -> Self {
         let mut this = Self::new(providers);
 
@@ -241,7 +312,10 @@ impl RouterProvider {
     /// 2. Alias resolution (e.g. "sonnet", "gpt-4o")
     /// 3. Provider prefix (e.g. "openai/gpt-4o")
     /// 4. Default provider
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "invariant: default_provider always exists in providers map"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(no_unwrap, reason = "invariant: default_provider always exists in providers map")
+    )]
     fn resolve(&self, model: &str) -> (&dyn Provider, Option<String>) {
         // 1-2. Registry lookup (handles exact + alias + substring)
         if let Some(registered) = self.registry.resolve(model)
@@ -334,8 +408,7 @@ impl RouterProvider {
                 let router_events: Vec<clanker_router::streaming::StreamEvent> =
                     collected.into_iter().map(Into::into).collect();
                 let entry =
-                    db.cache()
-                        .build_entry(key, &provider_name, &model_id, router_events, input_tokens, output_tokens);
+                    db.cache().build_entry(key, &provider_name, &model_id, router_events, input_tokens, output_tokens);
                 match db.cache().put(&entry) {
                     Ok(()) => debug!("cached response for {model_id} (key={key:.12}…)"),
                     Err(e) => warn!("cache write failed: {e}"),
@@ -367,10 +440,7 @@ impl Provider for RouterProvider {
         {
             match db.cache().get(key) {
                 Ok(Some(cached)) => {
-                    debug!(
-                        "cache hit for {} (key={:.12}…, hits={})",
-                        request.model, key, cached.hit_count
-                    );
+                    debug!("cache hit for {} (key={:.12}…, hits={})", request.model, key, cached.hit_count);
                     db.cache().record_hit(key).ok();
                     for event in cached.events {
                         if tx.send(StreamEvent::from(event)).await.is_err() {
@@ -400,7 +470,7 @@ impl Provider for RouterProvider {
         for (idx, model_id) in models_to_try.iter().enumerate() {
             let is_fallback = idx > 0;
             let (provider, _) = self.resolve(model_id);
-            
+
             // Check rate-limit health
             if let Some(ref db) = self.db
                 && let Ok(false) = db.rate_limits().is_healthy(provider.name(), model_id)
@@ -443,7 +513,13 @@ impl Provider for RouterProvider {
                 Err(e) => {
                     let is_retryable = e.is_retryable();
                     let status = e.status_code();
-                    warn!("{}:{} failed: {}{}", provider.name(), model_id, e, if is_retryable { " (is_retryable)" } else { "" });
+                    warn!(
+                        "{}:{} failed: {}{}",
+                        provider.name(),
+                        model_id,
+                        e,
+                        if is_retryable { " (is_retryable)" } else { "" }
+                    );
 
                     attempts.push(ProviderAttempt {
                         provider_name: provider.name().to_string(),
@@ -547,11 +623,8 @@ impl RouterProvider {
             return None;
         }
 
-        let messages: Vec<serde_json::Value> = request
-            .messages
-            .iter()
-            .filter_map(|m| serde_json::to_value(m).ok())
-            .collect();
+        let messages: Vec<serde_json::Value> =
+            request.messages.iter().filter_map(|m| serde_json::to_value(m).ok()).collect();
 
         let input = CacheKeyInput {
             model: &request.model,
@@ -569,8 +642,12 @@ impl RouterProvider {
 #[cfg(test)]
 mod tests {
     use std::sync::Mutex;
+    use std::time::Duration;
 
     use serde_json::json;
+    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
+    use tokio::net::TcpListener;
 
     use super::*;
     use crate::streaming::StreamEvent;
@@ -729,41 +806,39 @@ mod tests {
     impl Provider for CountingProvider {
         async fn complete(&self, _request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
             self.call_count.fetch_add(1, Ordering::SeqCst);
-            tx
-                .send(StreamEvent::MessageStart {
-                    message: clanker_router::streaming::MessageMetadata {
-                        id: "msg-1".into(),
-                        model: "test-model".into(),
-                        role: "assistant".into(),
-                    },
-                })
-                .await.ok();
-            tx
-                .send(StreamEvent::ContentBlockStart {
-                    index: 0,
-                    content_block: clankers_message::message::Content::Text { text: String::new() },
-                })
-                .await.ok();
-            tx
-                .send(StreamEvent::ContentBlockDelta {
-                    index: 0,
-                    delta: clanker_router::streaming::ContentDelta::TextDelta {
-                        text: "Hello!".into(),
-                    },
-                })
-                .await.ok();
+            tx.send(StreamEvent::MessageStart {
+                message: clanker_router::streaming::MessageMetadata {
+                    id: "msg-1".into(),
+                    model: "test-model".into(),
+                    role: "assistant".into(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: clankers_message::message::Content::Text { text: String::new() },
+            })
+            .await
+            .ok();
+            tx.send(StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: clanker_router::streaming::ContentDelta::TextDelta { text: "Hello!".into() },
+            })
+            .await
+            .ok();
             tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
-            tx
-                .send(StreamEvent::MessageDelta {
-                    stop_reason: Some("end_turn".into()),
-                    usage: clanker_router::Usage {
-                        input_tokens: 100,
-                        output_tokens: 20,
-                        cache_creation_input_tokens: 0,
-                        cache_read_input_tokens: 0,
-                    },
-                })
-                .await.ok();
+            tx.send(StreamEvent::MessageDelta {
+                stop_reason: Some("end_turn".into()),
+                usage: clanker_router::Usage {
+                    input_tokens: 100,
+                    output_tokens: 20,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                },
+            })
+            .await
+            .ok();
             tx.send(StreamEvent::MessageStop).await.ok();
             Ok(())
         }
@@ -1010,7 +1085,12 @@ mod tests {
         failing_mock_with_status(name, model_ids, error_msg, None)
     }
 
-    fn failing_mock_with_status(name: &str, model_ids: &[&str], error_msg: &str, status: Option<u16>) -> (String, Arc<dyn Provider>) {
+    fn failing_mock_with_status(
+        name: &str,
+        model_ids: &[&str],
+        error_msg: &str,
+        status: Option<u16>,
+    ) -> (String, Arc<dyn Provider>) {
         let models: Vec<Model> = model_ids
             .iter()
             .map(|id| Model {
@@ -1046,8 +1126,7 @@ mod tests {
         let (name1, provider1) = failing_mock_with_status("primary", &["primary-model"], "rate limited", Some(429));
         let (name2, provider2, call_count) = counting_mock("fallback", &["fallback-model"]);
 
-        let router = RouterProvider::new(vec![(name1, provider1), (name2, provider2)])
-            .with_fallbacks(fallback_config);
+        let router = RouterProvider::new(vec![(name1, provider1), (name2, provider2)]).with_fallbacks(fallback_config);
 
         let request = CompletionRequest {
             model: "primary-model".to_string(),
@@ -1064,7 +1143,7 @@ mod tests {
 
         let (tx, _rx) = mpsc::channel(10);
         let result = router.complete(request, tx).await;
-        
+
         // Should succeed via fallback
         assert!(result.is_ok());
         assert_eq!(call_count.load(Ordering::SeqCst), 1); // fallback was called
@@ -1078,8 +1157,7 @@ mod tests {
         let (name1, provider1) = failing_mock("primary", &["primary-model"], "Invalid API key");
         let (name2, provider2, call_count) = counting_mock("fallback", &["fallback-model"]);
 
-        let router = RouterProvider::new(vec![(name1, provider1), (name2, provider2)])
-            .with_fallbacks(fallback_config);
+        let router = RouterProvider::new(vec![(name1, provider1), (name2, provider2)]).with_fallbacks(fallback_config);
 
         let request = CompletionRequest {
             model: "primary-model".to_string(),
@@ -1096,7 +1174,7 @@ mod tests {
 
         let (tx, _rx) = mpsc::channel(10);
         let result = router.complete(request, tx).await;
-        
+
         // Should fail immediately
         assert!(result.is_err());
         assert_eq!(call_count.load(Ordering::SeqCst), 0); // fallback was NOT called
@@ -1105,7 +1183,7 @@ mod tests {
     #[tokio::test]
     async fn test_rate_limit_health_skip() {
         let db = test_db();
-        
+
         // Record a failure to put the provider in cooldown
         db.rate_limits().record_error("primary", "primary-model", 429, None).ok();
 
@@ -1115,10 +1193,8 @@ mod tests {
         let (name1, provider1, primary_count) = counting_mock("primary", &["primary-model"]);
         let (name2, provider2, fallback_count) = counting_mock("fallback", &["fallback-model"]);
 
-        let router = RouterProvider::with_db(
-            vec![(name1, provider1), (name2, provider2)], 
-            db
-        ).with_fallbacks(fallback_config);
+        let router =
+            RouterProvider::with_db(vec![(name1, provider1), (name2, provider2)], db).with_fallbacks(fallback_config);
 
         let request = CompletionRequest {
             model: "primary-model".to_string(),
@@ -1135,7 +1211,7 @@ mod tests {
 
         let (tx, _rx) = mpsc::channel(10);
         let result = router.complete(request, tx).await;
-        
+
         // Should skip primary (in cooldown) and use fallback
         assert!(result.is_ok());
         assert_eq!(primary_count.load(Ordering::SeqCst), 0); // primary skipped
@@ -1147,8 +1223,8 @@ mod tests {
         let mut fallback_config = FallbackConfig::with_defaults();
         fallback_config.set_chain("model-a", vec!["model-b".to_string(), "model-c".to_string()]);
 
-        let router = RouterProvider::new(vec![mock("test", &["model-a", "model-b", "model-c"])])
-            .with_fallbacks(fallback_config);
+        let router =
+            RouterProvider::new(vec![mock("test", &["model-a", "model-b", "model-c"])]).with_fallbacks(fallback_config);
 
         // Check that the chain is properly configured
         let chain = router.fallbacks.chain_for("model-a");
@@ -1161,17 +1237,11 @@ mod tests {
     #[tokio::test]
     async fn test_all_fallbacks_exhausted() {
         let mut fallback_config = FallbackConfig::with_defaults();
-        fallback_config.set_chain(
-            "primary-model",
-            vec!["fallback-a".to_string(), "fallback-b".to_string()],
-        );
+        fallback_config.set_chain("primary-model", vec!["fallback-a".to_string(), "fallback-b".to_string()]);
 
-        let (name1, provider1) =
-            failing_mock_with_status("p1", &["primary-model"], "rate limited", Some(429));
-        let (name2, provider2) =
-            failing_mock_with_status("p2", &["fallback-a"], "overloaded", Some(529));
-        let (name3, provider3) =
-            failing_mock_with_status("p3", &["fallback-b"], "overloaded", Some(529));
+        let (name1, provider1) = failing_mock_with_status("p1", &["primary-model"], "rate limited", Some(429));
+        let (name2, provider2) = failing_mock_with_status("p2", &["fallback-a"], "overloaded", Some(529));
+        let (name3, provider3) = failing_mock_with_status("p3", &["fallback-b"], "overloaded", Some(529));
 
         let router = RouterProvider::new(vec![(name1, provider1), (name2, provider2), (name3, provider3)])
             .with_fallbacks(fallback_config);
@@ -1216,8 +1286,8 @@ mod tests {
         let (name1, provider1, primary_count) = counting_mock("p1", &["primary-model"]);
         let (name2, provider2, fallback_count) = counting_mock("p2", &["fallback-model"]);
 
-        let router = RouterProvider::with_db(vec![(name1, provider1), (name2, provider2)], db)
-            .with_fallbacks(fallback_config);
+        let router =
+            RouterProvider::with_db(vec![(name1, provider1), (name2, provider2)], db).with_fallbacks(fallback_config);
 
         let request = CompletionRequest {
             model: "primary-model".to_string(),
@@ -1238,11 +1308,7 @@ mod tests {
         // Neither provider was called — both skipped due to cooldown
         assert_eq!(primary_count.load(Ordering::SeqCst), 0);
         assert_eq!(fallback_count.load(Ordering::SeqCst), 0);
-        assert!(
-            err.message.contains("All providers exhausted"),
-            "got: {}",
-            err.message
-        );
+        assert!(err.message.contains("All providers exhausted"), "got: {}", err.message);
     }
 
     // ── Empty router panics on resolve (defensive) ──────────────────
@@ -1272,48 +1338,42 @@ mod tests {
             _request: clanker_router::CompletionRequest,
             tx: mpsc::Sender<clanker_router::streaming::StreamEvent>,
         ) -> std::result::Result<(), clanker_router::Error> {
-            tx
-                .send(clanker_router::streaming::StreamEvent::MessageStart {
-                    message: clanker_router::streaming::MessageMetadata {
-                        id: "msg-1".into(),
-                        model: "test-model".into(),
-                        role: "assistant".into(),
-                    },
-                })
-                .await.ok();
-            tx
-                .send(clanker_router::streaming::StreamEvent::ContentBlockStart {
-                    index: 0,
-                    content_block: clanker_router::streaming::ContentBlock::Text {
-                        text: String::new(),
-                    },
-                })
-                .await.ok();
-            tx
-                .send(clanker_router::streaming::StreamEvent::ContentBlockDelta {
-                    index: 0,
-                    delta: clanker_router::streaming::ContentDelta::TextDelta {
-                        text: "Hello from router provider".into(),
-                    },
-                })
-                .await.ok();
-            tx
-                .send(clanker_router::streaming::StreamEvent::ContentBlockStop { index: 0 })
-                .await.ok();
-            tx
-                .send(clanker_router::streaming::StreamEvent::MessageDelta {
-                    stop_reason: Some("end_turn".into()),
-                    usage: clanker_router::Usage {
-                        input_tokens: 10,
-                        output_tokens: 5,
-                        cache_creation_input_tokens: 0,
-                        cache_read_input_tokens: 0,
-                    },
-                })
-                .await.ok();
-            tx
-                .send(clanker_router::streaming::StreamEvent::MessageStop)
-                .await.ok();
+            tx.send(clanker_router::streaming::StreamEvent::MessageStart {
+                message: clanker_router::streaming::MessageMetadata {
+                    id: "msg-1".into(),
+                    model: "test-model".into(),
+                    role: "assistant".into(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(clanker_router::streaming::StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: clanker_router::streaming::ContentBlock::Text { text: String::new() },
+            })
+            .await
+            .ok();
+            tx.send(clanker_router::streaming::StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: clanker_router::streaming::ContentDelta::TextDelta {
+                    text: "Hello from router provider".into(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(clanker_router::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(clanker_router::streaming::StreamEvent::MessageDelta {
+                stop_reason: Some("end_turn".into()),
+                usage: clanker_router::Usage {
+                    input_tokens: 10,
+                    output_tokens: 5,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                },
+            })
+            .await
+            .ok();
+            tx.send(clanker_router::streaming::StreamEvent::MessageStop).await.ok();
             Ok(())
         }
 
@@ -1464,6 +1524,178 @@ mod tests {
             .take()
             .expect("router request should be captured");
         assert_eq!(captured.extra_params.get("_session_id"), Some(&json!("session-local-1")));
+        assert_eq!(captured.messages, vec![json!({
+            "role": "user",
+            "content": [{"type": "text", "text": "Hello"}],
+        })]);
+    }
+
+    #[derive(Debug)]
+    struct CapturedHttpRequest {
+        path: String,
+        headers: HashMap<String, String>,
+        body: serde_json::Value,
+    }
+
+    struct OpenAICompatMockServer {
+        addr: std::net::SocketAddr,
+        captured: Arc<Mutex<Option<CapturedHttpRequest>>>,
+        _handle: tokio::task::JoinHandle<()>,
+    }
+
+    impl OpenAICompatMockServer {
+        async fn start() -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind test listener");
+            let addr = listener.local_addr().expect("listener addr");
+            let captured = Arc::new(Mutex::new(None));
+            let captured_clone = Arc::clone(&captured);
+
+            let handle = tokio::spawn(async move {
+                let (mut stream, _) = listener.accept().await.expect("accept test connection");
+                let request = read_http_request(&mut stream).await;
+                *captured_clone.lock().expect("capture lock poisoned") = Some(request);
+
+                let body = [
+                    r#"data: {\"id\":\"chatcmpl-test\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}"#,
+                    "",
+                    r#"data: {\"id\":\"chatcmpl-test\",\"model\":\"gpt-4o\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1}}"#,
+                    "",
+                    "data: [DONE]",
+                    "",
+                ]
+                .join("\n");
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                    body.len(),
+                    body,
+                );
+
+                stream.write_all(response.as_bytes()).await.expect("write mock response");
+                stream.flush().await.expect("flush mock response");
+            });
+
+            Self {
+                addr,
+                captured,
+                _handle: handle,
+            }
+        }
+
+        fn base_url(&self) -> String {
+            format!("http://{}", self.addr)
+        }
+
+        fn take_request(&self) -> CapturedHttpRequest {
+            self.captured.lock().expect("capture lock poisoned").take().expect("request should be captured")
+        }
+    }
+
+    async fn read_http_request(stream: &mut tokio::net::TcpStream) -> CapturedHttpRequest {
+        let mut buf = Vec::new();
+        let mut chunk = [0u8; 1024];
+
+        loop {
+            let read = stream.read(&mut chunk).await.expect("read mock request");
+            assert!(read > 0, "request closed before headers");
+            buf.extend_from_slice(&chunk[..read]);
+
+            if let Some(headers_end) = find_headers_end(&buf) {
+                let header_text = std::str::from_utf8(&buf[..headers_end]).expect("request headers should be utf8");
+                let mut lines = header_text.split("\r\n");
+                let request_line = lines.next().expect("request line");
+                let path = request_line.split_whitespace().nth(1).expect("request path").to_string();
+                let headers = parse_headers(lines);
+                let content_length =
+                    headers.get("content-length").and_then(|value| value.parse::<usize>().ok()).unwrap_or(0);
+                let body_start = headers_end + 4;
+
+                while buf.len() < body_start + content_length {
+                    let read = stream.read(&mut chunk).await.expect("read mock body");
+                    assert!(read > 0, "request closed before body");
+                    buf.extend_from_slice(&chunk[..read]);
+                }
+
+                let body = if content_length == 0 {
+                    serde_json::Value::Null
+                } else {
+                    serde_json::from_slice(&buf[body_start..body_start + content_length])
+                        .expect("request body should be valid json")
+                };
+
+                return CapturedHttpRequest { path, headers, body };
+            }
+        }
+    }
+
+    fn find_headers_end(buf: &[u8]) -> Option<usize> {
+        buf.windows(4).position(|window| window == b"\r\n\r\n")
+    }
+
+    fn parse_headers<'a>(lines: impl Iterator<Item = &'a str>) -> HashMap<String, String> {
+        lines
+            .filter_map(|line| {
+                line.split_once(':')
+                    .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_string()))
+            })
+            .collect()
+    }
+
+    #[tokio::test]
+    async fn test_openai_compat_transport_omits_codex_headers_and_session_semantics() {
+        use clanker_router::backends::openai_compat::OpenAICompatConfig;
+        use clanker_router::backends::openai_compat::OpenAICompatProvider;
+
+        let server = OpenAICompatMockServer::start().await;
+        let adapter = RouterCompatAdapter::new(OpenAICompatProvider::new(OpenAICompatConfig {
+            name: "openai".to_string(),
+            base_url: server.base_url(),
+            api_key: "sk-openai-test".to_string(),
+            extra_headers: vec![],
+            models: vec![Model {
+                id: "gpt-4o".to_string(),
+                name: "GPT-4o".to_string(),
+                provider: "openai".to_string(),
+                max_input_tokens: 128_000,
+                max_output_tokens: 16_384,
+                supports_thinking: true,
+                supports_images: true,
+                supports_tools: true,
+                input_cost_per_mtok: None,
+                output_cost_per_mtok: None,
+            }],
+            timeout: Duration::from_secs(5),
+        }));
+
+        let (tx, _rx) = mpsc::channel(16);
+        let request = CompletionRequest {
+            model: "gpt-4o".to_string(),
+            messages: vec![make_user_msg("Hello")],
+            system_prompt: Some("Be helpful".to_string()),
+            max_tokens: Some(128),
+            temperature: Some(0.1),
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+            extra_params: HashMap::from([("_session_id".to_string(), json!("session-openai-1"))]),
+        };
+
+        adapter.complete(request, tx).await.expect("openai compat request should succeed");
+
+        let captured = server.take_request();
+        assert_eq!(captured.path, "/chat/completions");
+        assert_eq!(captured.headers.get("authorization"), Some(&"Bearer sk-openai-test".to_string()));
+        assert_eq!(captured.headers.get("accept"), Some(&"text/event-stream".to_string()));
+        assert_eq!(captured.headers.get("content-type"), Some(&"application/json".to_string()));
+        assert!(!captured.headers.contains_key("openai-beta"));
+        assert!(!captured.headers.contains_key("chatgpt-account-id"));
+        assert!(!captured.headers.contains_key("originator"));
+        assert!(!captured.headers.contains_key("session_id"));
+        assert_eq!(captured.body.get("model"), Some(&json!("gpt-4o")));
+        assert_eq!(captured.body.get("stream"), Some(&json!(true)));
+        assert!(captured.body.get("prompt_cache_key").is_none());
+        assert!(captured.body.get("store").is_none());
+        assert!(captured.body.get("include").is_none());
     }
 
     #[tokio::test]
@@ -1502,8 +1734,8 @@ mod tests {
 
     fn codex_router_models() -> Vec<Model> {
         vec![Model {
-            id: "gpt-5.1-codex".to_string(),
-            name: "gpt-5.1-codex".to_string(),
+            id: "gpt-5.3-codex".to_string(),
+            name: "gpt-5.3-codex".to_string(),
             provider: "openai-codex".to_string(),
             max_input_tokens: 200_000,
             max_output_tokens: 16_384,
@@ -1517,7 +1749,7 @@ mod tests {
 
     fn explicit_codex_request() -> CompletionRequest {
         CompletionRequest {
-            model: "openai-codex/gpt-5.1-codex".to_string(),
+            model: "openai-codex/gpt-5.3-codex".to_string(),
             messages: vec![],
             system_prompt: None,
             max_tokens: None,
@@ -1542,8 +1774,9 @@ mod tests {
             _tx: mpsc::Sender<clanker_router::streaming::StreamEvent>,
         ) -> std::result::Result<(), clanker_router::Error> {
             Err(clanker_router::Error::Auth {
-                message: "authenticated but not entitled for Codex use. ChatGPT Plus or Pro is required for openai-codex"
-                    .into(),
+                message:
+                    "authenticated but not entitled for Codex use. ChatGPT Plus or Pro is required for openai-codex"
+                        .into(),
             })
         }
 
@@ -1641,7 +1874,7 @@ mod tests {
             .expect_err("probe failure should surface as retriable provider error");
         assert_eq!(
             err.message,
-            "All providers exhausted:\n  openai-codex:openai-codex/gpt-5.1-codex → 503 provider error: openai-codex entitlement check failed: boom"
+            "All providers exhausted:\n  openai-codex:openai-codex/gpt-5.3-codex → 503 provider error: openai-codex entitlement check failed: boom"
         );
         assert_eq!(err.status_code(), Some(503));
     }
@@ -1650,8 +1883,7 @@ mod tests {
 
     #[test]
     fn test_with_retry_configurable() {
-        let router = RouterProvider::new(vec![mock("test", &["model-a"])])
-            .with_retry(RetryConfig::default());
+        let router = RouterProvider::new(vec![mock("test", &["model-a"])]).with_retry(RetryConfig::default());
         assert_eq!(router.provider_count(), 1);
     }
 
@@ -1659,10 +1891,7 @@ mod tests {
 
     #[test]
     fn test_resolve_unknown_prefix_falls_to_default() {
-        let router = RouterProvider::new(vec![
-            mock("anthropic", &["claude-sonnet"]),
-            mock("openai", &["gpt-4o"]),
-        ]);
+        let router = RouterProvider::new(vec![mock("anthropic", &["claude-sonnet"]), mock("openai", &["gpt-4o"])]);
 
         // "google/gemini" — prefix "google" doesn't match any provider
         let (provider, _) = router.resolve("google/gemini");
@@ -1673,7 +1902,7 @@ mod tests {
     async fn test_missing_openai_codex_prefix_fails_closed() {
         let router = RouterProvider::new(vec![mock("anthropic", &["claude-sonnet"])]);
         let request = CompletionRequest {
-            model: "openai-codex/gpt-5.1-codex".to_string(),
+            model: "openai-codex/gpt-5.3-codex".to_string(),
             messages: vec![],
             system_prompt: None,
             max_tokens: None,
@@ -1691,10 +1920,7 @@ mod tests {
 
     #[test]
     fn test_resolve_prefix_exact_model() {
-        let router = RouterProvider::new(vec![
-            mock("anthropic", &["claude-sonnet"]),
-            mock("openai", &["gpt-4o"]),
-        ]);
+        let router = RouterProvider::new(vec![mock("anthropic", &["claude-sonnet"]), mock("openai", &["gpt-4o"])]);
 
         // "openai/gpt-4o" matches prefix → openai provider
         let (provider, _) = router.resolve("openai/gpt-4o");
@@ -1744,19 +1970,15 @@ mod tests {
     async fn test_fallback_chain_deduplicates() {
         // If fallback chain contains the primary model, it shouldn't be tried twice
         let mut fallback_config = FallbackConfig::with_defaults();
-        fallback_config.set_chain(
-            "model-a",
-            vec!["model-a".to_string(), "model-b".to_string()],
-        );
+        fallback_config.set_chain("model-a", vec!["model-a".to_string(), "model-b".to_string()]);
 
         let (name2, provider2, count_b) = counting_mock("test-b", &["model-b"]);
 
         // Provider that fails for model-a with is_retryable error
-        let (name1_fail, provider1_fail) =
-            failing_mock_with_status("test-a", &["model-a"], "fail", Some(429));
+        let (name1_fail, provider1_fail) = failing_mock_with_status("test-a", &["model-a"], "fail", Some(429));
 
-        let router = RouterProvider::new(vec![(name1_fail, provider1_fail), (name2, provider2)])
-            .with_fallbacks(fallback_config);
+        let router =
+            RouterProvider::new(vec![(name1_fail, provider1_fail), (name2, provider2)]).with_fallbacks(fallback_config);
 
         let request = CompletionRequest {
             model: "model-a".to_string(),
@@ -1784,18 +2006,12 @@ mod tests {
     #[tokio::test]
     async fn test_exhaustion_summary_two_providers() {
         let mut fallback_config = FallbackConfig::with_defaults();
-        fallback_config.set_chain(
-            "primary-model",
-            vec!["fallback-model".to_string()],
-        );
+        fallback_config.set_chain("primary-model", vec!["fallback-model".to_string()]);
 
-        let (name1, provider1) =
-            failing_mock_with_status("anthropic", &["primary-model"], "rate limited", Some(429));
-        let (name2, provider2) =
-            failing_mock_with_status("openai", &["fallback-model"], "overloaded", Some(529));
+        let (name1, provider1) = failing_mock_with_status("anthropic", &["primary-model"], "rate limited", Some(429));
+        let (name2, provider2) = failing_mock_with_status("openai", &["fallback-model"], "overloaded", Some(529));
 
-        let router = RouterProvider::new(vec![(name1, provider1), (name2, provider2)])
-            .with_fallbacks(fallback_config);
+        let router = RouterProvider::new(vec![(name1, provider1), (name2, provider2)]).with_fallbacks(fallback_config);
 
         let request = CompletionRequest {
             model: "primary-model".to_string(),
@@ -1824,8 +2040,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_exhaustion_summary_single_provider() {
-        let (name1, provider1) =
-            failing_mock_with_status("anthropic", &["the-model"], "internal error", Some(500));
+        let (name1, provider1) = failing_mock_with_status("anthropic", &["the-model"], "internal error", Some(500));
 
         let router = RouterProvider::new(vec![(name1, provider1)]);
 
@@ -1861,13 +2076,10 @@ mod tests {
         fallback_config.set_chain("primary-model", vec!["fallback-model".to_string()]);
 
         let (name1, provider1, _) = counting_mock("p1", &["primary-model"]);
-        let (name2, provider2) =
-            failing_mock_with_status("p2", &["fallback-model"], "overloaded", Some(529));
+        let (name2, provider2) = failing_mock_with_status("p2", &["fallback-model"], "overloaded", Some(529));
 
-        let router = RouterProvider::with_db(
-            vec![(name1, provider1), (name2, provider2)],
-            db,
-        ).with_fallbacks(fallback_config);
+        let router =
+            RouterProvider::with_db(vec![(name1, provider1), (name2, provider2)], db).with_fallbacks(fallback_config);
 
         let request = CompletionRequest {
             model: "primary-model".to_string(),

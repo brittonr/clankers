@@ -39,10 +39,14 @@ Summarize conversation to save tokens. Asks the model to create a compact summar
 ### `/model <name>`
 Switch to a different model.
 
+Provider-qualified names stay distinct when two providers expose similar families.
+Use `openai-codex/...` for ChatGPT subscription Codex models and `openai/...` for API-key OpenAI models.
+
 **Example:**
 ```
 /model claude-opus-4-6
-/model gpt-4
+/model openai-codex/gpt-5.3-codex
+/model openai/gpt-4o
 ```
 
 ### `/think [off|low|medium|high|max]`
@@ -165,14 +169,21 @@ Show loaded plugins. Lists all discovered and loaded plugins with their status.
 ## Authentication
 
 ### `/login [code|url|--account <name>]`
-Start or complete OAuth login flow with Anthropic.
+Start or complete OAuth login flow.
+
+Anthropic stays the default when provider is omitted.
+Use `openai-codex` for ChatGPT Plus or Pro personal subscriptions; it stays separate from API-key `openai`.
+`--account <name>` reuses your local clankers account names.
+Unsupported `openai-codex` plans stay authenticated but unavailable for Codex use.
 
 **Usage:**
 ```
-/login                      # generate an auth URL and display it
-/login <code#state>         # complete login with code from browser
-/login <callback URL>       # complete login with the full callback URL
-/login --account <name>     # login to a specific account
+/login                              # generate Anthropic auth URL and display it
+/login openai-codex                 # start OpenAI Codex subscription login
+/login <code#state>                 # complete login with code from browser
+/login <callback URL>               # complete login with the full callback URL
+/login --account <name>             # login to a specific local account name
+/login <provider> --account <name>  # combine provider + account
 ```
 
 See also: `/account`
@@ -180,21 +191,30 @@ See also: `/account`
 ### `/account [switch|login|logout|remove|status|list]`
 Manage multiple authenticated accounts.
 
+Anthropic-compatible behavior stays the default when provider is omitted.
+Use `/account --all` or `/account status openai-codex` to inspect Codex entitlement state.
+`openai-codex` stays separate from API-key `openai`, and explicit or resumed Codex requests fail closed instead of falling back.
+
 **Usage:**
 ```
-/account                    # list all accounts & status
-/account switch <name>      # switch active account
-/account login [name]       # login to an account (default: active)
-/account logout [name]      # logout an account
-/account remove <name>      # remove an account
-/account status [name]      # show account status
-/account list               # list all accounts
+/account                             # list Anthropic-compatible default status
+/account --all                       # list grouped status for all providers
+/account switch <name>               # switch active Anthropic account
+/account switch <provider> <name>    # switch active account for a provider
+/account login [name]                # login to an account (default: active)
+/account login openai-codex [name]   # login to a Codex subscription account
+/account logout [name]               # logout an account
+/account logout <provider> [name]    # logout a provider account
+/account remove <provider> <name>    # remove an account
+/account status [provider] [name]    # show provider/account status
+/account list                        # list Anthropic accounts
 ```
 
 **Examples:**
 ```
 /account switch work
-/account logout personal
+/account status openai-codex work
+/account logout openai-codex personal
 ```
 
 ## Collaboration

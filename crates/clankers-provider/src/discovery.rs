@@ -61,57 +61,44 @@ fn select_codex_store_and_account<'a>(
     account: Option<&str>,
 ) -> (&'a AuthStore, String) {
     if let Some(account) = account {
-        if primary_store
-            .credential_for(openai_codex::OPENAI_CODEX_PROVIDER, account)
-            .is_some()
-        {
+        if primary_store.credential_for(openai_codex::OPENAI_CODEX_PROVIDER, account).is_some() {
             return (primary_store, account.to_string());
         }
         if let Some(fallback_store) = fallback_store
-            && fallback_store
-                .credential_for(openai_codex::OPENAI_CODEX_PROVIDER, account)
-                .is_some()
+            && fallback_store.credential_for(openai_codex::OPENAI_CODEX_PROVIDER, account).is_some()
         {
             return (fallback_store, account.to_string());
         }
         return (primary_store, account.to_string());
     }
 
-    if primary_store
-        .active_credential(openai_codex::OPENAI_CODEX_PROVIDER)
-        .is_some()
-    {
+    if primary_store.active_credential(openai_codex::OPENAI_CODEX_PROVIDER).is_some() {
         return (
             primary_store,
-            primary_store
-                .active_account_name_for(openai_codex::OPENAI_CODEX_PROVIDER)
-                .to_string(),
+            primary_store.active_account_name_for(openai_codex::OPENAI_CODEX_PROVIDER).to_string(),
         );
     }
 
     if let Some(fallback_store) = fallback_store
-        && fallback_store
-            .active_credential(openai_codex::OPENAI_CODEX_PROVIDER)
-            .is_some()
+        && fallback_store.active_credential(openai_codex::OPENAI_CODEX_PROVIDER).is_some()
     {
         return (
             fallback_store,
-            fallback_store
-                .active_account_name_for(openai_codex::OPENAI_CODEX_PROVIDER)
-                .to_string(),
+            fallback_store.active_account_name_for(openai_codex::OPENAI_CODEX_PROVIDER).to_string(),
         );
     }
 
     (
         primary_store,
-        primary_store
-            .active_account_name_for(openai_codex::OPENAI_CODEX_PROVIDER)
-            .to_string(),
+        primary_store.active_account_name_for(openai_codex::OPENAI_CODEX_PROVIDER).to_string(),
     )
 }
 
 /// Build in-process (no RPC). Used as fallback when daemon is unavailable.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential setup/dispatch logic")
+)]
 pub fn build_router(
     api_key_override: Option<&str>,
     base_url: Option<String>,
@@ -141,33 +128,29 @@ pub fn build_router(
         let store = clanker_router::auth::AuthStore::load(auth_store_path);
         let all_creds = store.all_credentials("anthropic");
 
-        let provider: Arc<dyn Provider> = if credential.is_oauth()
-            || clanker_router::auth::is_oauth_token(credential.token())
-        {
-            let cm = CredentialManager::new(
-                credential,
-                auth_store_path.to_path_buf(),
-                fallback_auth_path.map(|p| p.to_path_buf()),
-            );
+        let provider: Arc<dyn Provider> =
+            if credential.is_oauth() || clanker_router::auth::is_oauth_token(credential.token()) {
+                let cm = CredentialManager::new(
+                    credential,
+                    auth_store_path.to_path_buf(),
+                    fallback_auth_path.map(|p| p.to_path_buf()),
+                );
 
-            if all_creds.len() > 1 {
-                // Multi-account: build a credential pool for failover
-                let pool_creds: Vec<(String, clanker_router::auth::StoredCredential)> = all_creds;
-                info!(
-                    "Anthropic: {} account(s) available, enabling credential pool failover",
-                    pool_creds.len()
-                );
-                let pool = clanker_router::credential_pool::CredentialPool::new(
-                    pool_creds,
-                    clanker_router::credential_pool::SelectionStrategy::Failover,
-                );
-                Arc::new(AnthropicProvider::with_credential_pool(cm, pool, base_url))
+                if all_creds.len() > 1 {
+                    // Multi-account: build a credential pool for failover
+                    let pool_creds: Vec<(String, clanker_router::auth::StoredCredential)> = all_creds;
+                    info!("Anthropic: {} account(s) available, enabling credential pool failover", pool_creds.len());
+                    let pool = clanker_router::credential_pool::CredentialPool::new(
+                        pool_creds,
+                        clanker_router::credential_pool::SelectionStrategy::Failover,
+                    );
+                    Arc::new(AnthropicProvider::with_credential_pool(cm, pool, base_url))
+                } else {
+                    Arc::new(AnthropicProvider::with_credential_manager(cm, base_url))
+                }
             } else {
-                Arc::new(AnthropicProvider::with_credential_manager(cm, base_url))
-            }
-        } else {
-            Arc::new(AnthropicProvider::new(credential, base_url))
-        };
+                Arc::new(AnthropicProvider::new(credential, base_url))
+            };
         backends.push(("anthropic".to_string(), provider));
     }
 
@@ -329,10 +312,7 @@ pub fn build_router(
     // file-lock contention.
     let cache_db = if std::env::var("CLANKERS_NO_DAEMON").is_err() {
         let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
-        let cache_db_path = std::path::PathBuf::from(home)
-            .join(".clankers")
-            .join("agent")
-            .join("cache.db");
+        let cache_db_path = std::path::PathBuf::from(home).join(".clankers").join("agent").join("cache.db");
 
         match clanker_router::RouterDb::open(&cache_db_path) {
             Ok(db) => {
@@ -368,11 +348,7 @@ struct UnconfiguredProvider;
 
 #[async_trait::async_trait]
 impl Provider for UnconfiguredProvider {
-    async fn complete(
-        &self,
-        _request: CompletionRequest,
-        _tx: tokio::sync::mpsc::Sender<StreamEvent>,
-    ) -> Result<()> {
+    async fn complete(&self, _request: CompletionRequest, _tx: tokio::sync::mpsc::Sender<StreamEvent>) -> Result<()> {
         Err(crate::error::auth_err(
             "No API credentials configured. Run 'clankers auth login', set ANTHROPIC_API_KEY, or start Ollama at localhost:11434.",
         ))
@@ -389,8 +365,10 @@ impl Provider for UnconfiguredProvider {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Mutex, OnceLock};
+    use std::sync::Mutex;
+    use std::sync::OnceLock;
 
+    use base64::Engine;
     use tokio::sync::mpsc;
 
     use super::*;
@@ -400,29 +378,37 @@ mod tests {
 
     fn codex_store_with_access_token(path: &std::path::Path, access: &str) {
         let mut store = crate::auth::AuthStore::default();
-        store.set_provider_credentials(
-            crate::openai_codex::OPENAI_CODEX_PROVIDER,
-            "work",
-            OAuthCredentials {
-                access: access.to_string(),
-                refresh: "refresh".to_string(),
-                expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
-            },
-        );
+        store.set_provider_credentials(crate::openai_codex::OPENAI_CODEX_PROVIDER, "work", OAuthCredentials {
+            access: access.to_string(),
+            refresh: "refresh".to_string(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
         store.switch_provider_account(crate::openai_codex::OPENAI_CODEX_PROVIDER, "work");
         store.save(path).expect("auth store should save");
     }
 
+    fn codex_access_token(account_id: &str) -> String {
+        format!(
+            "header.{}.signature",
+            base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
+                serde_json::json!({
+                    "https://api.openai.com/auth": {
+                        "chatgpt_account_id": account_id,
+                    }
+                })
+                .to_string()
+                .as_bytes(),
+            )
+        )
+    }
+
     fn codex_store(path: &std::path::Path) {
-        codex_store_with_access_token(
-            path,
-            "header.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL2F1dGgiOnsiY2hhdGdwdF9hY2NvdW50X2lkIjoiacctMTIzIn19.signature",
-        );
+        codex_store_with_access_token(path, &codex_access_token("acct-123"));
     }
 
     fn explicit_codex_request() -> CompletionRequest {
         CompletionRequest {
-            model: "openai-codex/gpt-5.1-codex".to_string(),
+            model: "openai-codex/gpt-5.3-codex".to_string(),
             messages: Vec::new(),
             system_prompt: None,
             max_tokens: None,
@@ -437,21 +423,9 @@ mod tests {
 
     fn assert_invalid_codex_jwt_error(err: &crate::error::ProviderError) {
         assert_eq!(err.status_code(), Some(503));
-        assert!(
-            err.message.contains("openai-codex entitlement check failed"),
-            "got: {}",
-            err.message
-        );
-        assert!(
-            err.message.contains("OpenAI Codex access token missing JWT payload"),
-            "got: {}",
-            err.message
-        );
-        assert!(
-            err.message.contains("openai-codex:openai-codex/gpt-5.1-codex"),
-            "got: {}",
-            err.message
-        );
+        assert!(err.message.contains("openai-codex entitlement check failed"), "got: {}", err.message);
+        assert!(err.message.contains("OpenAI Codex access token missing JWT payload"), "got: {}", err.message);
+        assert!(err.message.contains("openai-codex:openai-codex/gpt-5.3-codex"), "got: {}", err.message);
     }
 
     fn env_lock() -> &'static Mutex<()> {
@@ -502,12 +476,7 @@ mod tests {
         let provider = runtime
             .block_on(async { build_router(None, None, &auth_path, None, None) })
             .expect("router should build");
-        assert!(
-            provider
-                .models()
-                .iter()
-                .all(|model| model.provider != crate::openai_codex::OPENAI_CODEX_PROVIDER)
-        );
+        assert!(provider.models().iter().all(|model| model.provider != crate::openai_codex::OPENAI_CODEX_PROVIDER));
     }
 
     #[test]
@@ -522,8 +491,7 @@ mod tests {
 
                 let runtime = tokio::runtime::Runtime::new().expect("runtime should build");
                 runtime.block_on(async {
-                    let provider = build_router(None, None, &auth_path, None, None)
-                        .expect("router should build");
+                    let provider = build_router(None, None, &auth_path, None, None).expect("router should build");
                     let (tx, _rx) = mpsc::channel(1);
                     let err = provider
                         .complete(explicit_codex_request(), tx)
@@ -538,9 +506,11 @@ mod tests {
     #[test]
     fn explicit_codex_request_still_routes_when_catalog_is_hidden() {
         crate::openai_codex::with_test_probe_hook(
-            |_| crate::openai_codex::ProbeOutcome::NotEntitled(
-                "authenticated but not entitled for Codex use".to_string(),
-            ),
+            |_| {
+                crate::openai_codex::ProbeOutcome::NotEntitled(
+                    "authenticated but not entitled for Codex use".to_string(),
+                )
+            },
             || {
                 let _env = EnvVarGuard::set("CLANKERS_NO_DAEMON", "1");
                 let dir = tempfile::TempDir::new().expect("tempdir should exist");
@@ -549,8 +519,7 @@ mod tests {
 
                 let runtime = tokio::runtime::Runtime::new().expect("runtime should build");
                 runtime.block_on(async {
-                    let provider = build_router(None, None, &auth_path, None, None)
-                        .expect("router should build");
+                    let provider = build_router(None, None, &auth_path, None, None).expect("router should build");
                     assert!(
                         provider
                             .models()
@@ -590,10 +559,7 @@ mod tests {
                     .collect();
                 assert_eq!(
                     ids,
-                    crate::openai_codex::OPENAI_CODEX_MODEL_IDS
-                        .iter()
-                        .map(|id| id.to_string())
-                        .collect::<Vec<_>>()
+                    crate::openai_codex::OPENAI_CODEX_MODEL_IDS.iter().map(|id| id.to_string()).collect::<Vec<_>>()
                 );
             },
         );
@@ -622,10 +588,7 @@ mod tests {
                     .collect();
                 assert_eq!(
                     ids,
-                    crate::openai_codex::OPENAI_CODEX_MODEL_IDS
-                        .iter()
-                        .map(|id| id.to_string())
-                        .collect::<Vec<_>>()
+                    crate::openai_codex::OPENAI_CODEX_MODEL_IDS.iter().map(|id| id.to_string()).collect::<Vec<_>>()
                 );
             },
         );
@@ -634,9 +597,11 @@ mod tests {
     #[test]
     fn build_router_suppresses_codex_catalog_when_not_entitled() {
         crate::openai_codex::with_test_probe_hook(
-            |_| crate::openai_codex::ProbeOutcome::NotEntitled(
-                "authenticated but not entitled for Codex use".to_string(),
-            ),
+            |_| {
+                crate::openai_codex::ProbeOutcome::NotEntitled(
+                    "authenticated but not entitled for Codex use".to_string(),
+                )
+            },
             || {
                 let dir = tempfile::TempDir::new().expect("tempdir should exist");
                 let auth_path = dir.path().join("auth.json");
@@ -647,11 +612,70 @@ mod tests {
                     .block_on(async { build_router(None, None, &auth_path, None, None) })
                     .expect("router should build");
                 assert!(
-                    provider
+                    provider.models().iter().all(|model| model.provider != crate::openai_codex::OPENAI_CODEX_PROVIDER)
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn build_router_keeps_api_key_openai_models_when_codex_catalog_is_hidden() {
+        crate::openai_codex::with_test_probe_hook(
+            |_| {
+                crate::openai_codex::ProbeOutcome::NotEntitled(
+                    "authenticated but not entitled for Codex use".to_string(),
+                )
+            },
+            || {
+                let _env = EnvVarGuard::set("OPENAI_API_KEY", "sk-openai-test");
+                let dir = tempfile::TempDir::new().expect("tempdir should exist");
+                let auth_path = dir.path().join("auth.json");
+                codex_store(&auth_path);
+
+                let runtime = tokio::runtime::Runtime::new().expect("runtime should build");
+                let provider = runtime
+                    .block_on(async { build_router(None, None, &auth_path, None, None) })
+                    .expect("router should build");
+                assert!(
+                    provider.models().iter().all(|model| model.provider != crate::openai_codex::OPENAI_CODEX_PROVIDER)
+                );
+                assert!(
+                    provider.models().iter().any(|model| model.provider == "openai"),
+                    "models: {:?}",
+                    provider.models().iter().map(|model| (&model.provider, &model.id)).collect::<Vec<_>>()
+                );
+            },
+        );
+    }
+
+    #[test]
+    fn recorded_codex_model_resolution_and_turn_flow_uses_routed_backend() {
+        crate::openai_codex::with_test_probe_hook(
+            |_| crate::openai_codex::ProbeOutcome::Entitled,
+            || {
+                let _env = EnvVarGuard::set("CLANKERS_NO_DAEMON", "1");
+                let dir = tempfile::TempDir::new().expect("tempdir should exist");
+                let auth_path = dir.path().join("auth.json");
+                codex_store_with_access_token(&auth_path, "not-a-jwt");
+
+                let runtime = tokio::runtime::Runtime::new().expect("runtime should build");
+                runtime.block_on(async {
+                    let provider = build_router(None, None, &auth_path, None, None).expect("router should build");
+                    let codex_models: Vec<String> = provider
                         .models()
                         .iter()
-                        .all(|model| model.provider != crate::openai_codex::OPENAI_CODEX_PROVIDER)
-                );
+                        .filter(|model| model.provider == crate::openai_codex::OPENAI_CODEX_PROVIDER)
+                        .map(|model| model.id.clone())
+                        .collect();
+                    assert!(codex_models.contains(&"gpt-5.3-codex".to_string()), "models: {:?}", codex_models);
+
+                    let (tx, _rx) = mpsc::channel(1);
+                    let err = provider
+                        .complete(explicit_codex_request(), tx)
+                        .await
+                        .expect_err("fixture turn should fail through routed codex backend without live creds");
+                    assert_invalid_codex_jwt_error(&err);
+                });
             },
         );
     }
@@ -679,10 +703,7 @@ mod tests {
                     .collect();
                 assert_eq!(
                     ids,
-                    crate::openai_codex::OPENAI_CODEX_MODEL_IDS
-                        .iter()
-                        .map(|id| id.to_string())
-                        .collect::<Vec<_>>()
+                    crate::openai_codex::OPENAI_CODEX_MODEL_IDS.iter().map(|id| id.to_string()).collect::<Vec<_>>()
                 );
             },
         );
@@ -709,10 +730,7 @@ mod tests {
                     .collect();
                 assert_eq!(
                     ids,
-                    crate::openai_codex::OPENAI_CODEX_MODEL_IDS
-                        .iter()
-                        .map(|id| id.to_string())
-                        .collect::<Vec<_>>()
+                    crate::openai_codex::OPENAI_CODEX_MODEL_IDS.iter().map(|id| id.to_string()).collect::<Vec<_>>()
                 );
             },
         );

@@ -13,13 +13,6 @@
     };
     flake-utils.url = "github:numtide/flake-utils";
 
-    # Standalone source for the clanker-router CLI binary.
-    # The workspace uses it as a library dep; this builds the CLI.
-    clanker-router-src = {
-      url = "github:brittonr/clanker-router";
-      flake = false;
-    };
-
     # rat-* TUI crates used by clankers-tui. The workspace Cargo.toml
     # references these as path deps (../subwayrat/...); we pin them here
     # and patch the source so they resolve inside the Nix sandbox.
@@ -41,7 +34,7 @@
     };
   };
 
-  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, clanker-router-src, subwayrat-src, ratcore-src, clanker-plugin-sdk-src, ... }:
+  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, subwayrat-src, ratcore-src, clanker-plugin-sdk-src, ... }:
     {
       nixosModules = {
         clankers-daemon = import ./nix/modules/clankers-daemon.nix;
@@ -83,7 +76,7 @@
           workspace = true;
           noLocked = true;
           clippyArgs = [ "-D" "warnings" ];
-          # rat-* TUI crates live in a sibling repo, and subwayrat depends on
+          # rat-* TUI crates live in a sibling repo and subwayrat depends on
           # ratcore as another sibling path dependency.
           externalSources = {
             "../subwayrat" = subwayrat-src;
@@ -112,7 +105,7 @@
         # ── clanker-router standalone CLI binary ────────────────────────
         routerBuild = unit2nix.lib.${system}.buildFromUnitGraphAuto {
           inherit pkgs rustToolchain;
-          src = clanker-router-src;
+          src = ./vendor/clanker-router;
           features = "cli";
           buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
             rustc = rustToolchain;

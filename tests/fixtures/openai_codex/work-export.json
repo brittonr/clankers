@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "provider": "openai-codex",
+  "account": "work",
+  "active": true,
+  "credential": {
+    "credential_type": "oauth",
+    "access_token": "not-a-valid-jwt",
+    "refresh_token": "refresh-work",
+    "expires_at_ms": 4102444800000,
+    "label": "work fixture"
+  }
+}

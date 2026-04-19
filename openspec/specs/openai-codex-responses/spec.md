@@ -15,7 +15,7 @@ The system SHALL expose Codex subscription models under provider `openai-codex` 
 
 - GIVEN `openai-codex` credentials are configured
 - WHEN the user lists or resolves available models
-- THEN the initial Codex catalog exposes `gpt-5.1-codex`, `gpt-5.1-codex-max`, `gpt-5.1-codex-mini`, `gpt-5.2-codex`, `gpt-5.3-codex`, and `gpt-5.3-codex-spark` under provider `openai-codex`
+- THEN the initial Codex catalog exposes `gpt-5.3-codex` and `gpt-5.3-codex-spark` under provider `openai-codex`
 - AND those identifiers stay distinct from API-key `openai` model identifiers so selection is unambiguous
 
 #### Scenario: Missing subscription credentials hides the provider
@@ -132,7 +132,7 @@ The `openai-codex` provider SHALL translate generic completion requests into an 
 
 ### Requirement: Codex entitlement is evaluated through a lightweight probe
 
-The system SHALL evaluate Codex entitlement by sending a lightweight authenticated probe to `POST https://chatgpt.com/backend-api/codex/responses` with headers `Authorization`, `chatgpt-account-id`, `OpenAI-Beta: responses=experimental`, `originator=pi`, and `content-type=application/json`, while explicitly omitting `accept: text/event-stream` and `session_id`. The probe SHALL use body fields `model="gpt-5.1-codex-mini"`, `store=false`, `stream=false`, `instructions="codex entitlement probe"`, `input=[{"role":"user","content":[{"type":"input_text","text":"ping"}]}]`, and `text={"verbosity":"low"}`, omit `tools`, omit `prompt_cache_key`, and omit session-specific state.
+The system SHALL evaluate Codex entitlement by sending a lightweight authenticated probe to `POST https://chatgpt.com/backend-api/codex/responses` with headers `Authorization`, `chatgpt-account-id`, `OpenAI-Beta: responses=experimental`, `originator=pi`, `accept: text/event-stream`, and `content-type=application/json`, while explicitly omitting `session_id`. The probe SHALL use body fields `model="gpt-5.3-codex"`, `store=false`, `stream=true`, `instructions="codex entitlement probe"`, `input=[{"role":"user","content":[{"type":"input_text","text":"ping"}]}]`, and `text={"verbosity":"low"}`, omit `tools`, omit `prompt_cache_key`, and omit session-specific state.
 
 #### Scenario: Successful probe marks the account entitled
 

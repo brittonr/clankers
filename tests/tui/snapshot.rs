@@ -457,14 +457,14 @@ pub fn normalize_styled_text(text: &str) -> String {
     let re_branch_color = regex::Regex::new(r"\{\*(yel|mag)/-\}").unwrap();
     s = re_branch_color.replace_all(&s, "{*mag/-}").to_string();
 
-    // Strip working directory path from status bar (after last " | /")
-    // In styled text the path may span color tags, so match broadly.
-    let re_cwd = regex::Regex::new(r"(\| /)\S*").unwrap();
-    s = re_cwd.replace_all(&s, "${1}CWD").to_string();
+    // Drop the cwd segment from the status bar entirely. On narrower
+    // terminals the cwd may be truncated away before the path renders,
+    // leaving only the model or a trailing separator. Canonicalize both
+    // cases to the same no-cwd form.
+    let re_cwd = regex::Regex::new(r"\s+\|\s+/\S*").unwrap();
+    s = re_cwd.replace_all(&s, "").to_string();
 
-    // On narrower terminals the cwd can be truncated away completely, leaving
-    // a trailing status-bar pipe without the path payload.
-    let re_bare_pipe = regex::Regex::new(r"\s*\|\s*$").unwrap();
+    let re_bare_pipe = regex::Regex::new(r"\s+\|\s*$").unwrap();
     s = re_bare_pipe.replace_all(&s, "").to_string();
 
     s

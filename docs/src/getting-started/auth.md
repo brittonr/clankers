@@ -14,18 +14,26 @@ export OPENAI_API_KEY=sk-...
 Interactive login:
 
 ```bash
-clankers auth login              # pick a provider
-clankers auth login openai       # specific provider
-clankers auth status             # check credentials
+clankers auth login                                 # Anthropic default OAuth login
+clankers auth login --provider openai-codex         # ChatGPT Plus/Pro Codex subscription login
+clankers auth login --provider openai-codex --account work
+clankers auth status --all                          # grouped provider status
 ```
+
+`openai-codex` is separate from API-key `openai`.
+Use `openai-codex/gpt-5.3-codex` for ChatGPT subscription Codex models and
+`openai/gpt-4o` for API-key OpenAI models.
+Unsupported `openai-codex` plans stay authenticated but unavailable for Codex use, and explicit or resumed
+Codex requests fail closed instead of falling back to API-key `openai`.
 
 ## Multiple accounts
 
 ```bash
 clankers auth login --account work
-clankers auth login --account personal
+clankers auth login --provider openai-codex --account personal
 clankers auth switch work
-clankers auth status
+clankers auth switch --provider openai-codex personal
+clankers auth status --provider openai-codex
 ```
 
 ## Capability tokens

@@ -27,15 +27,17 @@ This design freezes the private Codex wire contract inside OpenSpec so implement
 - Deterministic OAuth fixtures verify the authorize URL base, all required query parameters, the token endpoint, and required exchange/refresh form fields.
 - Auth tests cover explicit `openai-codex` login, provider+account-scoped pending-login isolation, omitted-provider Anthropic defaults across login/status/switch/logout, grouped and provider-scoped CLI plus slash-command account/status output, separate OAuth validity/expiry reporting, proactive refresh, malformed-claim rejection, unsupported-plan suppression, unsupported-plan request blocking, entitlement-check-failed surfacing, and non-401 4xx handling.
 - Auth tests also prove interactive `/login openai-codex` reloads provider credentials without restart and leaves existing `anthropic` plus API-key `openai` credentials unchanged.
-- Deterministic constructor-inventory checks cover router-bound `CompletionRequest` construction in `crates/clankers-agent/src/turn/execution.rs`, `src/modes/agent_task.rs`, `src/worktree/llm_resolver.rs`, `crates/clankers-provider/src/router.rs`, `crates/clankers-provider/src/rpc_provider.rs`, and router test/helper constructors.
-- Deterministic cross-repo schema/serialization parity checks prove `crates/clankers-provider::CompletionRequest` and `clanker-router::CompletionRequest` preserve `extra_params`, including `_session_id`, across local and RPC transport boundaries.
-- Deterministic normal-request fixtures verify headers and body fields on initial, transient-retry, and 401 refresh-retry paths.
-- Deterministic entitlement-probe fixtures verify initial, transient-retry, and 401 refresh-retry probe paths, including required headers, omitted `accept`/`session_id`, JSON-path `error.code`, and the fixed probe body contract.
+- Deterministic constructor-inventory checks use the exact constructor-count inventory test in `crates/clankers-provider/src/lib.rs` over router-bound `CompletionRequest { ... }` sites covering `crates/clankers-agent/src/turn/execution.rs`, `src/modes/agent_task.rs`, `src/worktree/llm_resolver.rs`, `crates/clankers-provider/src/router.rs`, `crates/clankers-provider/src/rpc_provider.rs`, and router test/helper constructors.
+- Deterministic cross-repo schema/serialization parity checks use the shared-field serde projection parity tests in `crates/clankers-provider/src/lib.rs` to prove `crates/clankers-provider::CompletionRequest` and `clanker-router::CompletionRequest` preserve `extra_params`, including `_session_id`, across local and RPC transport boundaries.
+- Deterministic normal-request fixtures verify headers and body fields on initial, transient-retry, and 401 refresh-retry paths. Those checks use pinned literal JSON/header fixtures rather than expectations derived by calling the same request builders under test.
+- Routed/local-RPC boundary verification includes a runtime seam in `crates/clankers-provider/src/router.rs` proving `RouterCompatAdapter` converts live conversation messages into provider-native `{role, content}` JSON before the router backend builds Codex `input`, so message shape survives the adapter boundary alongside `_session_id`.
+- Deterministic entitlement-probe fixtures verify initial, transient-retry, and 401 refresh-retry probe paths, including required headers, included `accept: text/event-stream`, omitted `session_id`, JSON-path `error.code`, and the fixed probe body contract. Those checks use pinned literal JSON/header fixtures rather than expectations derived by calling the same request builders under test.
 - Retry verification explicitly checks the fixed 1s/2s/4s no-jitter schedule, one-refresh maximum, and remaining-budget behavior after 401 refresh.
 - Streaming verification includes helper-level mapping checks plus at least one real SSE seam test so `MessageStart`, `ContentBlockStart/Delta/Stop`, `MessageDelta`, `MessageStop`, reasoning signature replay, usage, and stop reasons are validated where raw SSE bytes enter the system.
-- Discovery/model-resolution verification covers entitled, missing, unsupported, and stale-selection cases; exact six-model catalog contents; fail-closed explicit/resumed `openai-codex` requests; and unchanged API-key `openai` behavior.
+- Discovery/model-resolution verification covers entitled, missing, unsupported, and stale-selection cases; exact current catalog contents (`gpt-5.3-codex`, `gpt-5.3-codex-spark`) and no extras; fail-closed explicit/resumed `openai-codex` requests via the `RouterProvider` fail-closed prefix sentinel; and unchanged API-key `openai` behavior. Routed discovery/completion tests run with daemon/cache isolation (`CLANKERS_NO_DAEMON=1`) so shared cooldown state cannot hide the real backend result.
 - Docs verification includes an acceptance check or snapshot comparison proving CLI help, slash help, and provider docs cover `openai-codex` login, account naming, model selection, personal-use/plan limitations, unsupported-plan behavior, and unchanged API-key `openai` help paths.
-- Finish-line checks include sibling `../clanker-router` pin update, `cargo nextest run`, `cargo clippy -- -D warnings`, `nix build .#clankers`, and one recorded live-credential smoke run.
+- Finish-line checks include sibling `../clanker-router` pin update, `cargo nextest run`, `cargo clippy -- -D warnings`, `nix build .#clankers`, and one recorded live-credential smoke run against an already-authenticated real subscription account for status/account switching, model resolution, and one Codex turn.
+- Auth/entitlement fixtures that need fake OAuth tokens use generated base64url JWT payloads with valid JSON claims rather than copied opaque literals so entitlement-path coverage does not silently degrade into JWT-parse failures.
 
 ## Decisions
 
@@ -125,14 +127,11 @@ When provider is omitted, login/status/switch/logout keep Anthropic-compatible d
 ### 8. Fixed Codex model catalog
 
 Initial `openai-codex` catalog is exactly:
-- `gpt-5.1-codex`
-- `gpt-5.1-codex-max`
-- `gpt-5.1-codex-mini`
-- `gpt-5.2-codex`
 - `gpt-5.3-codex`
 - `gpt-5.3-codex-spark`
 
 `openai-codex/<model>` always resolves to the subscription backend. Plain `openai/<model>` stays on the API-key backend.
+When discovery suppresses `openai-codex`, the resolver still reserves the known `openai-codex/...` prefix via a fail-closed sentinel in `RouterProvider` so explicit or resumed Codex selections surface the entitlement/provider error instead of silently falling back to Anthropic or API-key `openai`.
 
 ### 9. In-memory entitlement state
 
@@ -140,9 +139,9 @@ Each `openai-codex` account has in-memory entitlement state: `unknown`, `entitle
 
 Entitlement probe contract:
 - endpoint: `POST https://chatgpt.com/backend-api/codex/responses`
-- headers: `Authorization`, `chatgpt-account-id`, `OpenAI-Beta: responses=experimental`, `originator=pi`, `content-type=application/json`
-- omitted headers: `accept`, `session_id`
-- body: `model="gpt-5.1-codex-mini"`, `store=false`, `stream=false`, `instructions="codex entitlement probe"`, `input=[{"role":"user","content":[{"type":"input_text","text":"ping"}]}]`, `text={"verbosity":"low"}`
+- headers: `Authorization`, `chatgpt-account-id`, `OpenAI-Beta: responses=experimental`, `originator=pi`, `accept: text/event-stream`, `content-type=application/json`
+- omitted headers: `session_id`
+- body: `model="gpt-5.3-codex"`, `store=false`, `stream=true`, `instructions="codex entitlement probe"`, `input=[{"role":"user","content":[{"type":"input_text","text":"ping"}]}]`, `text={"verbosity":"low"}`
 - omitted body state: `tools`, `prompt_cache_key`, other session-specific state
 
 Probe result contract:
@@ -182,7 +181,7 @@ Raw Codex SSE events map to generic boundaries as follows:
 
 ## Human Review Gate
 
-The change is not ready until one live ChatGPT Plus/Pro smoke run is executed after automated checks pass, and pass/fail evidence is recorded in the implementation PR or change notes.
+The change is not ready until one live ChatGPT Plus/Pro smoke run is executed after automated checks pass, using an already-authenticated real subscription account to verify live status/account switching, model resolution, and one Codex turn, and pass/fail evidence is recorded in the implementation PR or change notes. Fresh login and interactive reload remain covered by recorded-fixture and automated auth tests.
 
 ## Risks / Trade-offs
 

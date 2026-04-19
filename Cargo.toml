@@ -46,7 +46,8 @@ rand = "0.9"
 reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"] }
 clanker-actor = { git = "https://github.com/brittonr/clanker-actor" }
 clanker-loop = { git = "https://github.com/brittonr/clanker-loop" }
-clanker-router = { git = "https://github.com/brittonr/clanker-router" }
+# Vendored snapshot from https://github.com/brittonr/clanker-router @ eed716b2df17c051235172bcdea58ed14b69755d
+clanker-router = { path = "vendor/clanker-router" }
 clanker-scheduler = { git = "https://github.com/brittonr/clanker-scheduler" }
 graggle = { git = "https://github.com/brittonr/graggle" }
 rat-branches = { path = "../subwayrat/crates/rat-branches" }
@@ -239,6 +240,7 @@ type_complexity = { level = "allow", priority = 1 }
 libraries = [
     { path = "../tigerstyle" },
 ]
+
 
 [profile.release]
 lto = "thin"

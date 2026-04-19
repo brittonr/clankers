@@ -21,15 +21,8 @@ const OPENAI_CODEX_RESPONSES_URL: &str = "https://chatgpt.com/backend-api/codex/
 const OPENAI_CODEX_BETA_HEADER: &str = "responses=experimental";
 const OPENAI_CODEX_NOT_ENTITLED_CODE: &str = "usage_not_included";
 
-pub const OPENAI_CODEX_MODEL_IDS: [&str; 6] = [
-    "gpt-5.1-codex",
-    "gpt-5.1-codex-max",
-    "gpt-5.1-codex-mini",
-    "gpt-5.2-codex",
-    "gpt-5.3-codex",
-    "gpt-5.3-codex-spark",
-];
-const OPENAI_CODEX_PROBE_MODEL: &str = "gpt-5.1-codex-mini";
+pub const OPENAI_CODEX_MODEL_IDS: [&str; 2] = ["gpt-5.3-codex", "gpt-5.3-codex-spark"];
+const OPENAI_CODEX_PROBE_MODEL: &str = "gpt-5.3-codex";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EntitlementState {
@@ -173,11 +166,12 @@ fn run_live_probe(credential: &StoredCredential) -> ProbeOutcome {
             .header("chatgpt-account-id", account_id)
             .header("OpenAI-Beta", OPENAI_CODEX_BETA_HEADER)
             .header("originator", "pi")
+            .header("accept", "text/event-stream")
             .header("content-type", "application/json")
             .json(&json!({
                 "model": OPENAI_CODEX_PROBE_MODEL,
                 "store": false,
-                "stream": false,
+                "stream": true,
                 "instructions": "codex entitlement probe",
                 "input": [{
                     "role": "user",
@@ -192,8 +186,12 @@ fn run_live_probe(credential: &StoredCredential) -> ProbeOutcome {
         };
 
         let status = response.status().as_u16();
-        let body = response.text().unwrap_or_default();
-        classify_probe_response(status, &body)
+        if (200..300).contains(&status) {
+            ProbeOutcome::Entitled
+        } else {
+            let body = response.text().unwrap_or_default();
+            classify_probe_response(status, &body)
+        }
     })
     .join()
     .unwrap_or_else(|_| ProbeOutcome::Error("entitlement probe thread panicked".to_string()))
@@ -401,6 +399,9 @@ where F: Fn(&StoredCredential) -> ProbeOutcome + Send + Sync + 'static {
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
+    use std::sync::Arc;
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
 
     use base64::Engine;
 
@@ -455,16 +456,9 @@ mod tests {
     fn codex_catalog_is_exact_fixed_set() {
         let ids: Vec<&str> = OPENAI_CODEX_MODEL_IDS.to_vec();
         let unique: HashSet<&str> = ids.iter().copied().collect();
-        assert_eq!(ids.len(), 6);
-        assert_eq!(unique.len(), 6);
-        assert_eq!(ids, vec![
-            "gpt-5.1-codex",
-            "gpt-5.1-codex-max",
-            "gpt-5.1-codex-mini",
-            "gpt-5.2-codex",
-            "gpt-5.3-codex",
-            "gpt-5.3-codex-spark",
-        ]);
+        assert_eq!(ids.len(), 2);
+        assert_eq!(unique.len(), 2);
+        assert_eq!(ids, vec!["gpt-5.3-codex", "gpt-5.3-codex-spark"]);
     }
 
     #[test]
@@ -487,6 +481,28 @@ mod tests {
                 let store = codex_store();
                 let suffix = codex_status_suffix(&store, "work").expect("suffix should exist");
                 assert_eq!(suffix, "authenticated, entitlement check failed");
+            },
+        );
+    }
+
+    #[test]
+    fn codex_status_suffix_triggers_probe_when_entitlement_is_unknown() {
+        let probe_calls = Arc::new(AtomicUsize::new(0));
+        with_test_probe_hook(
+            {
+                let probe_calls = Arc::clone(&probe_calls);
+                move |_| {
+                    probe_calls.fetch_add(1, Ordering::SeqCst);
+                    ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string())
+                }
+            },
+            || {
+                let store = codex_store();
+                let first = codex_status_suffix(&store, "work").expect("suffix should exist");
+                let second = codex_status_suffix(&store, "work").expect("suffix should exist");
+                assert_eq!(first, "authenticated but not entitled for Codex use");
+                assert_eq!(second, "authenticated but not entitled for Codex use");
+                assert_eq!(probe_calls.load(Ordering::SeqCst), 1);
             },
         );
     }

@@ -23,12 +23,18 @@ export ANTHROPIC_API_KEY=sk-...
 Or use OAuth:
 
 ```
-clankers auth login              # interactive provider selection
-clankers auth login openai       # specific provider
-clankers auth status             # check credentials
+clankers auth login                               # Anthropic default OAuth login
+clankers auth login --provider openai-codex       # ChatGPT Plus/Pro Codex subscription login
+clankers auth login --provider openai-codex --account work
+clankers auth status --all                        # grouped provider status
 ```
 
-Supports multiple accounts (`--account work`, `clankers auth switch personal`).
+`openai-codex` stays separate from API-key `openai`. Use provider-qualified model IDs such as
+`openai-codex/gpt-5.3-codex` for ChatGPT subscription Codex and `openai/gpt-4o` for API-key OpenAI.
+Unsupported `openai-codex` plans stay authenticated but unavailable for Codex use, and explicit Codex
+requests fail closed instead of falling back to API-key `openai`.
+
+Supports multiple accounts (`--account work`, `clankers auth switch --provider openai-codex work`).
 
 When using Anthropic OAuth, clankers now prepends a Claude Code
 billing-header system block and rewrites clankers-specific markers in outbound

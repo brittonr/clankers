@@ -13,13 +13,20 @@ impl SlashHandler for LoginHandler {
             name: "login",
             description: "Authenticate with an OAuth provider",
             help: "Start the OAuth login flow.\n\n\
+                   Anthropic stays the default when provider is omitted.\n\
+                   Use `openai-codex` for ChatGPT Plus or Pro personal subscriptions; it is separate from API-key `openai`.\n\
+                   Reuse local account names with `--account <name>`. Unsupported `openai-codex` plans stay authenticated but unavailable for Codex use.\n\n\
                    Usage:\n  \
                      /login                              — start Anthropic login\n  \
+                     /login openai-codex                 — start OpenAI Codex subscription login\n  \
                      /login <provider>                   — start login for a specific provider\n  \
                      /login <code#state>                 — complete login with code from browser\n  \
                      /login <callback URL>               — complete login with the full callback URL\n  \
-                     /login --account <name>             — login to a specific account\n  \
+                     /login --account <name>             — login to a specific local account name\n  \
                      /login <provider> --account <name>  — combine provider + account\n\n\
+                   Model selection examples:\n  \
+                     /model openai-codex/gpt-5.3-codex   — ChatGPT subscription Codex\n  \
+                     /model openai/gpt-4o                — API-key OpenAI remains separate\n\n\
                    See also: /account (list, switch, logout, status)",
             accepts_args: true,
             subcommands: vec![],
@@ -186,13 +193,15 @@ impl SlashHandler for AccountHandler {
             name: "account",
             description: "Switch or inspect accounts",
             help: "Manage multiple authenticated accounts.\n\n\
+                   Anthropic stays the default when provider is omitted. `/account --all` or `/account status openai-codex` shows Codex entitlement state, including authenticated-but-not-entitled and entitlement-check-failed.\n\
+                   `openai-codex` is separate from API-key `openai`; explicit or resumed Codex requests fail closed instead of falling back.\n\n\
                    Usage:\n  \
                      /account                             — show Anthropic-compatible default status\n  \
                      /account --all                       — show grouped status for all providers\n  \
                      /account switch <name>               — switch active Anthropic account\n  \
                      /account switch <provider> <name>    — switch active account for a provider\n  \
                      /account login [name]                — login to an Anthropic account\n  \
-                     /account login <provider> [name]     — login to a provider account\n  \
+                     /account login openai-codex [name]   — login to a Codex subscription account\n  \
                      /account logout [name]               — logout an Anthropic account\n  \
                      /account logout <provider> [name]    — logout a provider account\n  \
                      /account status [provider] [name]    — show account status\n  \
@@ -470,6 +479,55 @@ fn handle_account_status(ctx: &mut SlashContext<'_>, store: &crate::provider::au
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::modes::interactive::AgentCommand;
+    use crate::provider::auth::AuthStoreExt;
+
+    fn test_paths(root: &std::path::Path) -> crate::config::ClankersPaths {
+        crate::config::ClankersPaths {
+            global_config_dir: root.join("agent"),
+            global_settings: root.join("agent/settings.json"),
+            global_settings_ncl: root.join("agent/settings.ncl"),
+            global_auth: root.join("auth.json"),
+            global_agents_dir: root.join("agent/agents"),
+            global_skills_dir: root.join("agent/skills"),
+            global_prompts_dir: root.join("agent/prompts"),
+            global_plugins_dir: root.join("agent/plugins"),
+            global_sessions_dir: root.join("agent/sessions"),
+            global_themes_dir: root.join("agent/themes"),
+            pi_config_dir: None,
+            pi_settings: None,
+            pi_auth: None,
+        }
+    }
+
+    fn test_context<'a>(
+        app: &'a mut crate::tui::app::App,
+        cmd_tx: &'a tokio::sync::mpsc::UnboundedSender<AgentCommand>,
+        panel_tx: &'a tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
+        db: &'a Option<crate::db::Db>,
+        session_manager: &'a mut Option<crate::session::SessionManager>,
+    ) -> SlashContext<'a> {
+        SlashContext {
+            app,
+            cmd_tx,
+            plugin_manager: None,
+            panel_tx,
+            db,
+            session_manager,
+        }
+    }
+
+    fn latest_system_message(app: &crate::tui::app::App) -> String {
+        app.conversation
+            .blocks
+            .iter()
+            .rev()
+            .find_map(|entry| match entry {
+                crate::tui::components::block::BlockEntry::System(msg) => Some(msg.content.clone()),
+                _ => None,
+            })
+            .expect("system message should exist")
+    }
 
     #[test]
     fn parse_login_args_defaults_to_anthropic() {
@@ -499,5 +557,69 @@ mod tests {
     #[test]
     fn parse_login_args_preserves_omitted_provider_default_for_status_switch_logout_paths() {
         assert_eq!(crate::commands::auth::split_provider_prefix("work"), ("anthropic".to_string(), "work".to_string()));
+    }
+
+    #[test]
+    fn login_complete_dispatches_provider_scoped_agent_command() {
+        let mut app =
+            crate::tui::app::App::new("test-model".to_string(), "/tmp".to_string(), crate::tui::theme::Theme::dark());
+        let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (panel_tx, _panel_rx) = tokio::sync::mpsc::unbounded_channel();
+        let db = None;
+        let mut session_manager = None;
+        let mut ctx = test_context(&mut app, &cmd_tx, &panel_tx, &db, &mut session_manager);
+
+        handle_login_complete(&mut ctx, "code-123#state-456", "verifier-xyz".to_string(), "openai-codex", "work");
+
+        match cmd_rx.try_recv().expect("login command should be sent") {
+            AgentCommand::Login {
+                code,
+                state,
+                verifier,
+                provider,
+                account,
+            } => {
+                assert_eq!(code, "code-123");
+                assert_eq!(state, "state-456");
+                assert_eq!(verifier, "verifier-xyz");
+                assert_eq!(provider, "openai-codex");
+                assert_eq!(account, "work");
+            }
+            _ => panic!("expected AgentCommand::Login"),
+        }
+        assert!(latest_system_message(&app).contains("Exchanging code for provider 'openai-codex' account 'work'..."));
+    }
+
+    #[test]
+    fn provider_logout_triggers_interactive_reload_credentials() {
+        let dir = tempfile::TempDir::new().expect("tempdir should exist");
+        let paths = test_paths(dir.path());
+        std::fs::create_dir_all(&paths.global_config_dir).expect("config dir should exist");
+        let mut store = crate::provider::auth::AuthStore::default();
+        store.set_provider_credentials("openai-codex", "work", crate::provider::auth::OAuthCredentials {
+            access: "not-a-valid-jwt".to_string(),
+            refresh: "refresh".to_string(),
+            expires: chrono::Utc::now().timestamp_millis() + 3_600_000,
+        });
+        store.switch_provider_account("openai-codex", "work");
+        store.save(&paths.global_auth).expect("auth store should save");
+
+        let mut app =
+            crate::tui::app::App::new("test-model".to_string(), "/tmp".to_string(), crate::tui::theme::Theme::dark());
+        let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (panel_tx, _panel_rx) = tokio::sync::mpsc::unbounded_channel();
+        let db = None;
+        let mut session_manager = None;
+        let mut ctx = test_context(&mut app, &cmd_tx, &panel_tx, &db, &mut session_manager);
+
+        handle_account_logout(&mut ctx, &mut store, &paths, "openai-codex work");
+
+        match cmd_rx.try_recv().expect("reload command should be sent") {
+            AgentCommand::ReloadCredentials => {}
+            _ => panic!("expected AgentCommand::ReloadCredentials"),
+        }
+        assert!(latest_system_message(&app).contains("Logged out 'work' from provider 'openai-codex'."));
+        let reloaded = crate::provider::auth::AuthStore::load(&paths.global_auth);
+        assert!(reloaded.credential_for("openai-codex", "work").is_none());
     }
 }

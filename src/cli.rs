@@ -608,6 +608,7 @@ pub enum ConfigAction {
 #[derive(Subcommand, Debug)]
 pub enum AuthAction {
     /// Authenticate with a provider (OAuth)
+    #[command(long_about = "Start or complete provider OAuth login.\n\nIf --provider is omitted, clankers keeps the Anthropic default.\nUse --provider openai-codex for ChatGPT Plus or Pro personal subscriptions. openai-codex stays separate from API-key openai.\nUse --account <name> to reuse your existing local account names. Unsupported openai-codex plans stay authenticated but unavailable for Codex use.")]
     Login {
         /// Provider name (`anthropic`, `openai-codex`)
         #[arg(long)]
@@ -620,6 +621,7 @@ pub enum AuthAction {
         code: Option<String>,
     },
     /// Show current auth status
+    #[command(long_about = "Show provider-scoped auth status.\n\nWithout --provider or --all, clankers keeps the Anthropic default summary.\nUse --provider openai-codex or --all to inspect Codex subscription accounts, including entitled, authenticated-but-not-entitled, and entitlement-check-failed states. API-key openai remains a separate provider path.")]
     Status {
         /// Provider name (`anthropic`, `openai`, `openai-codex`, etc.)
         #[arg(long)]
