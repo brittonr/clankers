@@ -11,24 +11,24 @@ use serde::Serialize;
 pub enum Widget {
     Text {
         content: String,
-        #[serde(default)]
+        #[serde(default = "default_false")]
         bold: bool,
-        #[serde(default)]
+        #[serde(default = "default_none_string")]
         color: Option<String>,
     },
     Box {
         children: Vec<Widget>,
-        #[serde(default)]
+        #[serde(default = "default_direction")]
         direction: Direction,
     },
     List {
         items: Vec<String>,
-        #[serde(default)]
+        #[serde(default = "default_zero_usize")]
         selected: usize,
     },
     Input {
         value: String,
-        #[serde(default)]
+        #[serde(default = "default_empty_string")]
         placeholder: String,
     },
     Spacer {
@@ -37,16 +37,16 @@ pub enum Widget {
     },
     /// Progress bar (0.0 to 1.0).
     Progress {
-        #[serde(default)]
+        #[serde(default = "default_empty_string")]
         label: String,
         value: f64,
-        #[serde(default)]
+        #[serde(default = "default_none_string")]
         color: Option<String>,
     },
     /// Key-value table.
     Table {
         rows: Vec<Vec<String>>,
-        #[serde(default)]
+        #[serde(default = "default_empty_string_vec")]
         headers: Vec<String>,
     },
 }
@@ -58,6 +58,30 @@ pub enum Direction {
     #[default]
     Vertical,
     Horizontal,
+}
+
+fn default_false() -> bool {
+    false
+}
+
+fn default_none_string() -> Option<String> {
+    None
+}
+
+fn default_direction() -> Direction {
+    Direction::default()
+}
+
+fn default_zero_usize() -> usize {
+    0
+}
+
+fn default_empty_string() -> String {
+    String::new()
+}
+
+fn default_empty_string_vec() -> Vec<String> {
+    Vec::new()
 }
 
 fn default_one() -> u16 {

@@ -523,7 +523,9 @@ impl Agent {
                 enabled: true,
                 budget_tokens: Some(budget_tokens),
             });
-            self.thinking_level = ThinkingLevel::from_budget(budget_tokens);
+            self.thinking_level = ThinkingLevel::from_budget(
+                u32::try_from(budget_tokens).unwrap_or(u32::MAX),
+            );
             true
         }
     }

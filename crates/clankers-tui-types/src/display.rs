@@ -139,7 +139,7 @@ pub enum ThinkingLevel {
 
 impl ThinkingLevel {
     /// Token budget for this level (None for Off).
-    pub fn budget_tokens(self) -> Option<usize> {
+    pub fn budget_tokens(self) -> Option<u32> {
         match self {
             Self::Off => None,
             Self::Low => Some(5_000),
@@ -189,7 +189,7 @@ impl ThinkingLevel {
     }
 
     /// Find the closest level for a raw token budget.
-    pub fn from_budget(tokens: usize) -> Self {
+    pub fn from_budget(tokens: u32) -> Self {
         if tokens == 0 {
             Self::Off
         } else if tokens <= 5_000 {

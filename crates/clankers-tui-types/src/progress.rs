@@ -2,6 +2,17 @@
 
 use std::time::Instant;
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        ambient_clock,
+        reason = "UI progress timestamps must be captured at construction time"
+    )
+)]
+fn progress_timestamp() -> Instant {
+    Instant::now()
+}
+
 /// Structured progress information emitted by tools during execution.
 #[derive(Debug, Clone)]
 pub struct ToolProgressData {
@@ -139,7 +150,7 @@ impl ToolProgress {
         Self {
             kind: ProgressKind::Bytes { current, total },
             message: None,
-            timestamp: Instant::now(),
+            timestamp: progress_timestamp(),
         }
     }
 
@@ -148,7 +159,7 @@ impl ToolProgress {
         Self {
             kind: ProgressKind::Lines { current, total },
             message: None,
-            timestamp: Instant::now(),
+            timestamp: progress_timestamp(),
         }
     }
 
@@ -157,7 +168,7 @@ impl ToolProgress {
         Self {
             kind: ProgressKind::Items { current, total },
             message: None,
-            timestamp: Instant::now(),
+            timestamp: progress_timestamp(),
         }
     }
 
@@ -166,7 +177,7 @@ impl ToolProgress {
         Self {
             kind: ProgressKind::Percentage { percent },
             message: None,
-            timestamp: Instant::now(),
+            timestamp: progress_timestamp(),
         }
     }
 
@@ -179,7 +190,7 @@ impl ToolProgress {
                 total_steps,
             },
             message: None,
-            timestamp: Instant::now(),
+            timestamp: progress_timestamp(),
         }
     }
 

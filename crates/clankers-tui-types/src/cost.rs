@@ -1,3 +1,10 @@
+#![cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        float_for_currency,
+        reason = "TUI cost display currently mirrors router/model-selection USD floats"
+    )
+)]
 //! Cost tracking display types.
 
 /// Current budget status.

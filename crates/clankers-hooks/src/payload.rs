@@ -4,13 +4,44 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 
+fn default_empty_string() -> String {
+    String::new()
+}
+
+fn default_json_value() -> Value {
+    Value::Null
+}
+
+fn default_none_json_value() -> Option<Value> {
+    None
+}
+
+fn default_none_string() -> Option<String> {
+    None
+}
+
+fn default_empty_string_vec() -> Vec<String> {
+    Vec::new()
+}
+
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        ambient_clock,
+        reason = "hook payload timestamps are captured at the hook dispatch boundary"
+    )
+)]
+fn payload_timestamp() -> DateTime<Utc> {
+    Utc::now()
+}
+
 /// Payload delivered to every hook handler.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HookPayload {
     /// Hook point name (e.g. "pre_tool")
     pub hook: String,
     /// Current session ID
-    #[serde(default)]
+    #[serde(default = "default_empty_string")]
     pub session_id: String,
     /// When the hook fired
     pub timestamp: DateTime<Utc>,
@@ -28,16 +59,16 @@ pub enum HookData {
     Tool {
         tool_name: String,
         call_id: String,
-        #[serde(default)]
+        #[serde(default = "default_json_value")]
         input: Value,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default = "default_none_json_value", skip_serializing_if = "Option::is_none")]
         result: Option<Value>,
     },
     /// Prompt pre/post hook data
     #[serde(rename = "prompt")]
     Prompt {
         text: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default = "default_none_string", skip_serializing_if = "Option::is_none")]
         system_prompt: Option<String>,
     },
     /// Session lifecycle data
@@ -47,18 +78,18 @@ pub enum HookData {
     #[serde(rename = "git")]
     Git {
         action: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default = "default_none_string", skip_serializing_if = "Option::is_none")]
         hash: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default = "default_none_string", skip_serializing_if = "Option::is_none")]
         message: Option<String>,
-        #[serde(default)]
+        #[serde(default = "default_empty_string_vec")]
         files: Vec<String>,
     },
     /// Error data
     #[serde(rename = "error")]
     Error {
         message: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
+        #[serde(default = "default_none_string", skip_serializing_if = "Option::is_none")]
         source: Option<String>,
     },
     /// Model change data
@@ -71,6 +102,10 @@ pub enum HookData {
 
 impl HookPayload {
     /// Create a tool hook payload.
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(too_many_parameters, reason = "hook payload builder mirrors stable hook wire fields")
+    )]
     pub fn tool(
         hook: &str,
         session_id: &str,
@@ -82,7 +117,7 @@ impl HookPayload {
         Self {
             hook: hook.to_string(),
             session_id: session_id.to_string(),
-            timestamp: Utc::now(),
+            timestamp: payload_timestamp(),
             data: HookData::Tool {
                 tool_name: tool_name.to_string(),
                 call_id: call_id.to_string(),
@@ -97,7 +132,7 @@ impl HookPayload {
         Self {
             hook: hook.to_string(),
             session_id: session_id.to_string(),
-            timestamp: Utc::now(),
+            timestamp: payload_timestamp(),
             data: HookData::Prompt {
                 text: text.to_string(),
                 system_prompt: system_prompt.map(String::from),
@@ -110,7 +145,7 @@ impl HookPayload {
         Self {
             hook: hook.to_string(),
             session_id: session_id.to_string(),
-            timestamp: Utc::now(),
+            timestamp: payload_timestamp(),
             data: HookData::Session {
                 session_id: session_id.to_string(),
             },
@@ -118,6 +153,10 @@ impl HookPayload {
     }
 
     /// Create a git hook payload.
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(too_many_parameters, reason = "hook payload builder mirrors stable hook wire fields")
+    )]
     pub fn git(
         hook: &str,
         session_id: &str,
@@ -129,7 +168,7 @@ impl HookPayload {
         Self {
             hook: hook.to_string(),
             session_id: session_id.to_string(),
-            timestamp: Utc::now(),
+            timestamp: payload_timestamp(),
             data: HookData::Git {
                 action: action.to_string(),
                 hash: hash.map(String::from),
@@ -144,7 +183,7 @@ impl HookPayload {
         Self {
             hook: hook.to_string(),
             session_id: session_id.to_string(),
-            timestamp: Utc::now(),
+            timestamp: payload_timestamp(),
             data: HookData::Error {
                 message: message.to_string(),
                 source: source.map(String::from),
@@ -157,7 +196,7 @@ impl HookPayload {
         Self {
             hook: hook.to_string(),
             session_id: session_id.to_string(),
-            timestamp: Utc::now(),
+            timestamp: payload_timestamp(),
             data: HookData::ModelChange {
                 from: from.to_string(),
                 to: to.to_string(),
@@ -171,7 +210,7 @@ impl HookPayload {
         Self {
             hook: hook.to_string(),
             session_id: session_id.to_string(),
-            timestamp: Utc::now(),
+            timestamp: payload_timestamp(),
             data: HookData::Empty {},
         }
     }

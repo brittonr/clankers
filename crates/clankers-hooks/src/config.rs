@@ -3,6 +3,18 @@ use std::path::PathBuf;
 use serde::Deserialize;
 use serde::Serialize;
 
+fn default_none_path_buf() -> Option<PathBuf> {
+    None
+}
+
+fn default_empty_string_vec() -> Vec<String> {
+    Vec::new()
+}
+
+fn default_false() -> bool {
+    false
+}
+
 /// Hook system configuration (appears in settings.json as "hooks").
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -13,11 +25,11 @@ pub struct HooksConfig {
 
     /// Directory for user hook scripts.
     /// Default: `.clankers/hooks/` (relative to project root).
-    #[serde(default)]
+    #[serde(default = "default_none_path_buf")]
     pub hooks_dir: Option<PathBuf>,
 
     /// Hook points to disable (by kebab-case name, e.g. "pre-tool").
-    #[serde(default)]
+    #[serde(default = "default_empty_string_vec")]
     pub disabled_hooks: Vec<String>,
 
     /// Timeout for script hooks in seconds.
@@ -25,13 +37,14 @@ pub struct HooksConfig {
     pub script_timeout_secs: u64,
 
     /// Whether to manage .git/hooks/ shims.
-    #[serde(default)]
+    #[serde(default = "default_false")]
     pub manage_git_hooks: bool,
 }
 
 fn default_true() -> bool {
     true
 }
+
 fn default_script_timeout() -> u64 {
     10
 }

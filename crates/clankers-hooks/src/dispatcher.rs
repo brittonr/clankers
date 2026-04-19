@@ -119,8 +119,8 @@ impl HookPipeline {
     }
 
     /// Number of registered handlers.
-    pub fn handler_count(&self) -> usize {
-        self.handlers.len()
+    pub fn handler_count(&self) -> u32 {
+        u32::try_from(self.handlers.len()).unwrap_or(u32::MAX)
     }
 }
 

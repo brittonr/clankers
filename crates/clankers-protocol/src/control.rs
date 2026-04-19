@@ -5,6 +5,14 @@ use serde::Serialize;
 
 use crate::types::ProcessInfo;
 
+fn default_none_string() -> Option<String> {
+    None
+}
+
+fn default_false() -> bool {
+    false
+}
+
 /// Commands sent to the control socket.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ControlCommand {
@@ -16,13 +24,13 @@ pub enum ControlCommand {
         system_prompt: Option<String>,
         token: Option<String>,
         /// Resume a specific session by ID.
-        #[serde(default)]
+        #[serde(default = "default_none_string")]
         resume_id: Option<String>,
         /// Continue the most recent session for this cwd.
-        #[serde(default)]
+        #[serde(default = "default_false")]
         continue_last: bool,
         /// Working directory for session context.
-        #[serde(default)]
+        #[serde(default = "default_none_string")]
         cwd: Option<String>,
     },
     /// Attach to an existing session (returns the session socket path).

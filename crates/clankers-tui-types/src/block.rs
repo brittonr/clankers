@@ -3,6 +3,17 @@
 use chrono::DateTime;
 use chrono::Local;
 
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        ambient_clock,
+        reason = "conversation block timestamps are captured at the TUI shell boundary"
+    )
+)]
+fn block_timestamp() -> DateTime<Local> {
+    Local::now()
+}
+
 use crate::display::DisplayMessage;
 use crate::display::MessageRole;
 
@@ -36,10 +47,17 @@ pub struct ConversationBlock {
 }
 
 impl ConversationBlock {
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(
+            usize_in_public_api,
+            reason = "conversation block IDs are tree indexes shared with existing TUI code"
+        )
+    )]
     pub fn new(id: usize, prompt: String) -> Self {
         Self {
             id,
-            timestamp: Local::now(),
+            timestamp: block_timestamp(),
             prompt,
             responses: Vec::new(),
             collapsed: false,

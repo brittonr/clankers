@@ -63,7 +63,7 @@ impl SlashHandler for ThinkHandler {
             ctx.cmd_tx.send(AgentCommand::CycleThinkingLevel).ok();
         } else if let Some(level) = crate::provider::ThinkingLevel::from_str_or_budget(args) {
             ctx.cmd_tx.send(AgentCommand::SetThinkingLevel(level)).ok();
-        } else if let Ok(budget) = args.trim().parse::<usize>() {
+        } else if let Ok(budget) = args.trim().parse::<u32>() {
             let level = crate::provider::ThinkingLevel::from_budget(budget);
             ctx.cmd_tx.send(AgentCommand::SetThinkingLevel(level)).ok();
         } else {

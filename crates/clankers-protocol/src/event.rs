@@ -3,6 +3,18 @@
 use serde::Deserialize;
 use serde::Serialize;
 
+fn default_empty_string_vec() -> Vec<String> {
+    Vec::new()
+}
+
+fn default_empty_string() -> String {
+    String::new()
+}
+
+fn default_none_string() -> Option<String> {
+    None
+}
+
 use crate::types::ImageData;
 
 /// Events sent from the daemon to connected clients.
@@ -96,13 +108,13 @@ pub enum DaemonEvent {
         session_id: String,
         model: String,
         system_prompt_hash: String,
-        #[serde(default)]
+        #[serde(default = "default_empty_string_vec")]
         available_models: Vec<String>,
-        #[serde(default)]
+        #[serde(default = "default_empty_string")]
         active_account: String,
-        #[serde(default)]
+        #[serde(default = "default_empty_string_vec")]
         disabled_tools: Vec<String>,
-        #[serde(default)]
+        #[serde(default = "default_none_string")]
         auto_test_command: Option<String>,
     },
     /// Response to GetSystemPrompt.
@@ -135,20 +147,13 @@ pub enum DaemonEvent {
 
     // ── Tool metadata ────────────────────────────
     /// Full tool list available in this session.
-    ToolList {
-        tools: Vec<ToolInfo>,
-    },
+    ToolList { tools: Vec<ToolInfo> },
     /// Disabled tools changed.
-    DisabledToolsChanged {
-        tools: Vec<String>,
-    },
+    DisabledToolsChanged { tools: Vec<String> },
 
     // ── Thinking / loop / auto-test state ───────
     /// Thinking level changed.
-    ThinkingLevelChanged {
-        from: String,
-        to: String,
-    },
+    ThinkingLevelChanged { from: String, to: String },
     /// Loop status update.
     LoopStatus {
         active: bool,
@@ -157,10 +162,7 @@ pub enum DaemonEvent {
         break_condition: Option<String>,
     },
     /// Auto-test state changed.
-    AutoTestChanged {
-        enabled: bool,
-        command: Option<String>,
-    },
+    AutoTestChanged { enabled: bool, command: Option<String> },
 
     // ── Cost / accounting ───────────────────────
     /// Cumulative cost update for the session.
@@ -195,9 +197,7 @@ pub enum DaemonEvent {
         level: String,
     },
     /// Plugin list (response to GetPlugins).
-    PluginList {
-        plugins: Vec<PluginSummary>,
-    },
+    PluginList { plugins: Vec<PluginSummary> },
 
     // ── Schedule events ─────────────────────────
     /// A schedule fired — carries the schedule's payload for plugins.
@@ -221,7 +221,7 @@ pub struct ToolInfo {
     pub name: String,
     pub description: String,
     /// Source of the tool: "built-in" or plugin name.
-    #[serde(default)]
+    #[serde(default = "default_empty_string")]
     pub source: String,
 }
 
@@ -233,8 +233,8 @@ pub struct PluginSummary {
     pub state: String,
     pub tools: Vec<String>,
     pub permissions: Vec<String>,
-    #[serde(default)]
+    #[serde(default = "default_none_string")]
     pub kind: Option<String>,
-    #[serde(default)]
+    #[serde(default = "default_none_string")]
     pub last_error: Option<String>,
 }

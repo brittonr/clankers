@@ -107,7 +107,7 @@ pub fn thinking_level_to_config(level: ThinkingLevel) -> Option<ThinkingConfig> 
     if level.is_enabled() {
         Some(ThinkingConfig {
             enabled: true,
-            budget_tokens: level.budget_tokens(),
+            budget_tokens: level.budget_tokens().map(|tokens| tokens as usize),
         })
     } else {
         None
