@@ -29,7 +29,10 @@ impl GitHookHandler {
     }
 
     /// Map a HookPoint to a git hook filename (if applicable).
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
+    )]
     fn git_hook_name(point: HookPoint) -> Option<&'static str> {
         match point {
             HookPoint::PreCommit => Some("pre-commit"),
@@ -122,6 +125,8 @@ async fn run_git_hook(path: &Path) -> Result<i32, String> {
 /// Backs up existing hooks. The shim delegates to `clankers hook run <name>`.
 pub fn install_hook_shim(repo_root: &Path, hook_name: &str) -> Result<(), String> {
     let hooks_dir = repo_root.join(".git").join("hooks");
+    assert!(repo_root.is_dir());
+    assert!(!hook_name.is_empty());
     std::fs::create_dir_all(&hooks_dir).map_err(|e| format!("create hooks dir: {e}"))?;
 
     let hook_path = hooks_dir.join(hook_name);
@@ -149,6 +154,8 @@ pub fn install_hook_shim(repo_root: &Path, hook_name: &str) -> Result<(), String
             .map_err(|e| format!("chmod: {e}"))?;
     }
 
+    assert!(hook_path.is_file());
+    assert!(hook_path.starts_with(&hooks_dir));
     Ok(())
 }
 

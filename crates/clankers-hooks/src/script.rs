@@ -94,6 +94,8 @@ async fn run_script(
     use tokio::io::AsyncWriteExt;
     use tokio::process::Command;
 
+    assert!(path.is_file());
+    assert!(timeout > Duration::from_secs(0));
     let mut cmd = Command::new(path);
     cmd.stdin(std::process::Stdio::piped());
     cmd.stdout(std::process::Stdio::piped());
@@ -145,6 +147,10 @@ async fn run_script(
         .map_err(|_| format!("hook timed out after {}s", timeout.as_secs()))?
         .map_err(|e| format!("wait: {e}"))?;
 
+    assert!(serde_json::from_str::<serde_json::Value>(payload_json).is_ok());
+    if output.status.success() {
+        assert!(output.status.code().is_some());
+    }
     Ok(ScriptOutput {
         exit_code: output.status.code().unwrap_or(-1),
         stdout: String::from_utf8_lossy(&output.stdout).to_string(),
@@ -154,6 +160,9 @@ async fn run_script(
 
 /// Parse script output into a verdict.
 fn parse_script_output(point: HookPoint, output: &ScriptOutput) -> HookVerdict {
+    assert!(output.exit_code >= -1);
+    assert!(!output.stdout.contains('\0'));
+
     if !output.stderr.is_empty() {
         tracing::debug!(hook = %point, stderr = %output.stderr.trim(), "hook stderr");
     }
@@ -178,6 +187,7 @@ fn parse_script_output(point: HookPoint, output: &ScriptOutput) -> HookVerdict {
         return HookVerdict::Modify(modified);
     }
 
+    assert!(output.exit_code == 0);
     HookVerdict::Continue
 }
 
@@ -194,7 +204,10 @@ fn is_executable(path: &Path) -> bool {
 }
 
 #[cfg(test)]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_panic, no_unwrap, reason = "test code — panics are assertions"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_panic, no_unwrap, reason = "test code — panics are assertions")
+)]
 mod tests {
     use std::fs;
 

@@ -120,7 +120,9 @@ impl HookPipeline {
 
     /// Number of registered handlers.
     pub fn handler_count(&self) -> u32 {
-        u32::try_from(self.handlers.len()).unwrap_or(u32::MAX)
+        let handler_count = self.handlers.len();
+        assert!(u32::try_from(handler_count).is_ok());
+        handler_count as u32
     }
 }
 
