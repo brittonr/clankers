@@ -213,9 +213,30 @@ pub(crate) fn dispatch_daemon_events_to_plugins(
                         {
                             messages.push((info.name.clone(), msg.to_string()));
                         }
+                        if event_kind == "schedule_fire"
+                            && !should_display
+                            && let Some(msg) = parsed.get("message").and_then(|m| m.as_str())
+                        {
+                            let trimmed = msg.trim();
+                            if !trimmed.is_empty() {
+                                messages.push((info.name.clone(), trimmed.to_string()));
+                            }
+                        } else if event_kind == "schedule_fire"
+                            && let Some(msg) = parsed.as_str()
+                        {
+                            let trimmed = msg.trim();
+                            if !trimmed.is_empty() {
+                                messages.push((info.name.clone(), trimmed.to_string()));
+                            }
+                        }
                         let actions = crate::plugin::bridge::parse_ui_actions(&info.name, &parsed);
                         let actions = sandbox::filter_ui_actions(&info.manifest.permissions, actions);
                         ui_actions.extend(actions);
+                    } else if event_kind == "schedule_fire" {
+                        let trimmed = output.trim();
+                        if !trimmed.is_empty() {
+                            messages.push((info.name.clone(), trimmed.to_string()));
+                        }
                     }
                 }
                 Err(e) => {

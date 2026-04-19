@@ -50,8 +50,14 @@ use session_store::create_auth_layer;
 /// Flag indicating restart was requested (exit code 75).
 static RESTART_REQUESTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "signal handler and process setup failures are fatal"))]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "signal handler and process setup failures are fatal")
+)]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential setup/dispatch logic")
+)]
 pub async fn run_daemon(
     provider: Arc<dyn Provider>,
     tools: Vec<Arc<dyn Tool>>,
@@ -73,10 +79,8 @@ pub async fn run_daemon(
     // Crash recovery: any `active` entries from a previous daemon that died
     // without a clean shutdown should be treated as `suspended`.
     if let Some(ref catalog) = session_catalog {
-        let recovered = catalog.transition_all(
-            session_store::SessionLifecycle::Active,
-            session_store::SessionLifecycle::Suspended,
-        );
+        let recovered =
+            catalog.transition_all(session_store::SessionLifecycle::Active, session_store::SessionLifecycle::Suspended);
         if recovered > 0 {
             info!("Recovered {recovered} stale active session(s) → suspended");
         }
@@ -98,9 +102,7 @@ pub async fn run_daemon(
     // Phase 3: Unix domain socket control plane + shared factory + actor registry
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
-    let daemon_state = Arc::new(tokio::sync::Mutex::new(
-        clankers_controller::transport::DaemonState::new(),
-    ));
+    let daemon_state = Arc::new(tokio::sync::Mutex::new(clankers_controller::transport::DaemonState::new()));
 
     let process_registry = clanker_actor::ProcessRegistry::new();
 
@@ -196,7 +198,13 @@ pub async fn run_daemon(
     );
     spawn_heartbeat(&config, &identity, paths, cancel.clone()).await;
     spawn_status_logger(Arc::clone(&daemon_state), cancel.clone());
-    spawn_idle_reaper(&config, Arc::clone(&daemon_state), process_registry.clone(), session_catalog.clone(), cancel.clone());
+    spawn_idle_reaper(
+        &config,
+        Arc::clone(&daemon_state),
+        process_registry.clone(),
+        session_catalog.clone(),
+        cancel.clone(),
+    );
     spawn_catalog_updater(session_catalog.clone(), Arc::clone(&daemon_state), cancel.clone());
     spawn_catalog_gc(session_catalog.clone(), cancel.clone());
 
@@ -229,10 +237,8 @@ pub async fn run_daemon(
 
     // Transition all active catalog entries to suspended
     if let Some(ref catalog) = session_catalog {
-        let suspended = catalog.transition_all(
-            session_store::SessionLifecycle::Active,
-            session_store::SessionLifecycle::Suspended,
-        );
+        let suspended =
+            catalog.transition_all(session_store::SessionLifecycle::Active, session_store::SessionLifecycle::Suspended);
         if suspended > 0 {
             info!("Suspended {suspended} session(s) in catalog for recovery");
         }
@@ -276,9 +282,7 @@ pub async fn run_daemon(
 /// If no session_id is present or the session isn't active, the event
 /// is logged and dropped.
 /// Convert a `ScheduleEvent` into a `DaemonEvent::ScheduleFire`.
-fn schedule_event_to_daemon_event(
-    event: &clanker_scheduler::ScheduleEvent,
-) -> clankers_protocol::DaemonEvent {
+fn schedule_event_to_daemon_event(event: &clanker_scheduler::ScheduleEvent) -> clankers_protocol::DaemonEvent {
     clankers_protocol::DaemonEvent::ScheduleFire {
         schedule_id: event.schedule_id.0.clone(),
         schedule_name: event.schedule_name.clone(),
@@ -287,14 +291,88 @@ fn schedule_event_to_daemon_event(
     }
 }
 
+#[derive(Debug, Default)]
+pub struct ScheduleEventHandlingResult {
+    pub plugin_messages: Vec<(String, String)>,
+    pub prompt_target_session_id: Option<String>,
+    pub prompt_sent: bool,
+}
+
+/// Handle one fired schedule event: dispatch to plugins, then route prompts.
+///
+/// This is the shared seam used by the long-running consumer loop and focused
+/// integration tests. Plugin messages are returned so tests can assert on the
+/// real daemon dispatch path without depending on external mailbox indexing.
+pub async fn handle_schedule_event(
+    sched_event: &clanker_scheduler::ScheduleEvent,
+    state: &Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
+    plugin_manager: Option<&Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
+) -> ScheduleEventHandlingResult {
+    let mut result = ScheduleEventHandlingResult::default();
+
+    if let Some(pm) = plugin_manager {
+        let daemon_event = schedule_event_to_daemon_event(sched_event);
+        let dispatch = crate::modes::plugin_dispatch::dispatch_daemon_events_to_plugins(pm, &[daemon_event]);
+        for (plugin_name, message) in &dispatch.messages {
+            info!("schedule '{}' → plugin '{}': {}", sched_event.schedule_name, plugin_name, message,);
+        }
+        result.plugin_messages = dispatch.messages;
+    }
+
+    let prompt = sched_event.payload.get("prompt").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+
+    if prompt.is_empty() {
+        return result;
+    }
+
+    let explicit_id = sched_event
+        .payload
+        .get("_session_id")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string());
+
+    let st = state.lock().await;
+    let target = if let Some(ref id) = explicit_id {
+        st.sessions.get(id).map(|h| (id.clone(), h))
+    } else {
+        st.sessions.iter().next().map(|(id, h)| (id.clone(), h))
+    };
+
+    let Some((session_id, handle)) = target else {
+        warn!("schedule '{}' fired but no target session — prompt dropped", sched_event.schedule_name,);
+        return result;
+    };
+
+    result.prompt_target_session_id = Some(session_id.clone());
+
+    if let Some(ref cmd_tx) = handle.cmd_tx {
+        info!(
+            "schedule '{}' fired (#{}) → session {}",
+            sched_event.schedule_name, sched_event.fire_count, session_id,
+        );
+        cmd_tx
+            .send(clankers_protocol::SessionCommand::Prompt {
+                text: prompt,
+                images: vec![],
+            })
+            .ok();
+        result.prompt_sent = true;
+    } else {
+        warn!("schedule '{}' fired → session {} has no command channel", sched_event.schedule_name, session_id,);
+    }
+
+    result
+}
+
 /// Consume schedule events: dispatch to plugins, then route prompts to sessions.
 ///
 /// Two dispatch paths for each fired event:
-/// 1. **Plugin dispatch** — converts to `DaemonEvent::ScheduleFire` and sends to
-///    all subscribed plugins (e.g. clankers-email handles `action: send_email`).
+/// 1. **Plugin dispatch** — converts to `DaemonEvent::ScheduleFire` and sends to all subscribed
+///    plugins (e.g. clankers-email handles `action: send_email`).
 /// 2. **Session routing** — if the payload has a `prompt` field, injects it as a
-///    `SessionCommand::Prompt` into the target session (explicit `_session_id` or
-///    any active session as fallback).
+///    `SessionCommand::Prompt` into the target session (explicit `_session_id` or any active
+///    session as fallback).
 pub async fn run_schedule_consumer(
     mut rx: tokio::sync::broadcast::Receiver<clanker_scheduler::ScheduleEvent>,
     state: Arc<tokio::sync::Mutex<clankers_controller::transport::DaemonState>>,
@@ -307,75 +385,7 @@ pub async fn run_schedule_consumer(
             event = rx.recv() => {
                 match event {
                     Ok(sched_event) => {
-                        // Path 1: Dispatch to plugins
-                        if let Some(ref pm) = plugin_manager {
-                            let daemon_event = schedule_event_to_daemon_event(&sched_event);
-                            let result = crate::modes::plugin_dispatch::dispatch_daemon_events_to_plugins(
-                                pm,
-                                &[daemon_event],
-                            );
-                            for (plugin_name, message) in &result.messages {
-                                info!(
-                                    "schedule '{}' → plugin '{}': {}",
-                                    sched_event.schedule_name, plugin_name, message,
-                                );
-                            }
-                        }
-
-                        // Path 2: Route prompt to session (if present)
-                        let prompt = sched_event
-                            .payload
-                            .get("prompt")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string();
-
-                        if prompt.is_empty() {
-                            continue;
-                        }
-
-                        let explicit_id = sched_event
-                            .payload
-                            .get("_session_id")
-                            .and_then(|v| v.as_str())
-                            .filter(|s| !s.is_empty())
-                            .map(|s| s.to_string());
-
-                        let st = state.lock().await;
-                        let target = if let Some(ref id) = explicit_id {
-                            st.sessions.get(id).map(|h| (id.clone(), h))
-                        } else {
-                            st.sessions.iter().next().map(|(id, h)| (id.clone(), h))
-                        };
-
-                        let Some((session_id, handle)) = target else {
-                            warn!(
-                                "schedule '{}' fired but no target session — prompt dropped",
-                                sched_event.schedule_name,
-                            );
-                            continue;
-                        };
-
-                        if let Some(ref cmd_tx) = handle.cmd_tx {
-                            info!(
-                                "schedule '{}' fired (#{}) → session {}",
-                                sched_event.schedule_name,
-                                sched_event.fire_count,
-                                session_id,
-                            );
-                            cmd_tx
-                                .send(clankers_protocol::SessionCommand::Prompt {
-                                    text: prompt,
-                                    images: vec![],
-                                })
-                                .ok();
-                        } else {
-                            warn!(
-                                "schedule '{}' fired → session {} has no command channel",
-                                sched_event.schedule_name,
-                                session_id,
-                            );
-                        }
+                        handle_schedule_event(&sched_event, &state, plugin_manager.as_ref()).await;
                     }
                     Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                         warn!("schedule consumer lagged, skipped {n} events");
@@ -421,13 +431,11 @@ async fn build_endpoint(
 
     // Start from the default builder which includes DNS pkarr discovery.
     // Only add mDNS on top if not disabled.
-    let mut builder = ::iroh::Endpoint::builder()
-        .secret_key(identity.secret_key.clone())
-        .alpns(vec![
-            iroh::ALPN.to_vec(),
-            ALPN_CHAT.to_vec(),
-            quic_bridge::ALPN_DAEMON.to_vec(),
-        ]);
+    let mut builder = ::iroh::Endpoint::builder().secret_key(identity.secret_key.clone()).alpns(vec![
+        iroh::ALPN.to_vec(),
+        ALPN_CHAT.to_vec(),
+        quic_bridge::ALPN_DAEMON.to_vec(),
+    ]);
 
     if is_mdns_disabled {
         info!("mDNS disabled (CLANKERS_NO_MDNS=1), DNS/pkarr discovery still active");
@@ -436,12 +444,9 @@ async fn build_endpoint(
         builder = builder.address_lookup(mdns_service);
     }
 
-    let endpoint = builder
-        .bind()
-        .await
-        .map_err(|e| crate::error::Error::Provider {
-            message: format!("Failed to bind iroh endpoint: {e}"),
-        })?;
+    let endpoint = builder.bind().await.map_err(|e| crate::error::Error::Provider {
+        message: format!("Failed to bind iroh endpoint: {e}"),
+    })?;
 
     let acl_path = iroh::allowlist_path(paths);
     let acl = if config.allow_all {
@@ -599,14 +604,8 @@ async fn handle_iroh_connection_from_conn(
 
     match &*alpn {
         x if x == ALPN_CHAT => {
-            handlers::handle_chat_connection(
-                conn,
-                daemon_state,
-                registry,
-                session_factory,
-                auth,
-                &remote.to_string(),
-            ).await;
+            handlers::handle_chat_connection(conn, daemon_state, registry, session_factory, auth, &remote.to_string())
+                .await;
         }
         x if x == iroh::ALPN => {
             handlers::handle_rpc_v1_connection(conn, rpc_state, auth).await;
@@ -761,10 +760,7 @@ fn spawn_idle_reaper(
 }
 
 /// Periodically GC tombstoned catalog entries older than 7 days.
-fn spawn_catalog_gc(
-    catalog: Option<Arc<session_store::SessionCatalog>>,
-    cancel: CancellationToken,
-) {
+fn spawn_catalog_gc(catalog: Option<Arc<session_store::SessionCatalog>>, cancel: CancellationToken) {
     let Some(catalog) = catalog else { return };
 
     tokio::spawn(async move {
