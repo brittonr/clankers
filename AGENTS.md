@@ -9,6 +9,7 @@ cargo build                    # debug build
 cargo build --release          # release build
 cargo nextest run              # run tests (preferred over cargo test)
 cargo clippy -- -D warnings    # lint
+./xtask/tigerstyle.sh          # tigerstyle dylint run (pulls pinned tigerstyle-rs over SSH)
 ```
 
 ### Architecture
@@ -70,6 +71,8 @@ clankers daemon stop           # stop daemon
 - Config paths: `~/.clankers/agent/` (global), `.clankers/` (project).
 - Pi fallback: reads `~/.pi/agent/` for auth/settings when clankers versions missing.
 - Subwayrat crates are Cargo path deps (`../subwayrat/...`) but also a separately pinned Nix flake input (`subwayrat-src`); when subwayrat adds crates or new transitive deps, update both `Cargo.lock` and `flake.lock` so sandboxed Nix builds see the same source. If subwayrat starts depending on new sibling path deps (for example `../ratcore` via `rat-inline`), mirror those in `flake.nix` `externalSources` too.
+- Private SSH git dependencies need Cargo CLI fetches here. Keep `.cargo/config.toml` `[net] git-fetch-with-cli = true` or cargo/libgit2 will fail to authenticate even when plain `git` over SSH works.
+- Tigerstyle uses the first-class `cargo-tigerstyle` runner now, not `cargo dylint` directly. Root `Cargo.toml` must keep `[workspace.metadata.tigerstyle]` (`default_scope`, `cargo_check_args`) and `./xtask/tigerstyle.sh` bootstraps a compatible dylint driver plus the `libtigerstyle@<toolchain>.so` path for the runner.
 - Anthropic OAuth request shaping lives in `crates/clankers-provider/src/anthropic/{api.rs,subscription_compat.rs}`. The provider prepends a Claude Code billing-header system block and rewrites clankers markers by default; disable with `CLANKERS_DISABLE_CLAUDE_SUBSCRIPTION_COMPAT=1` or override the block contents with `CLANKERS_ANTHROPIC_BILLING_HEADER`.
 - `crates/clankers-provider/src/{auth.rs,credential_manager.rs}` was originally Anthropic-only. For any new OAuth provider, thread the provider name through `CredentialManager` and use provider-scoped `AuthStore` helpers for reload/save/refresh fallback so refreshed tokens do not overwrite Anthropic slots.
 - Pending OAuth login state now lives under `~/.clankers/agent/.login_verifiers/<provider>/<account>.json` with legacy fallback to `.login_verifier`; new auth flows should key verifier/state by provider+account, not one global file.

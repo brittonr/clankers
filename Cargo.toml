@@ -236,9 +236,13 @@ match_wildcard_for_single_variants = { level = "allow", priority = 1 }
 case_sensitive_file_extension_comparisons = { level = "allow", priority = 1 }
 type_complexity = { level = "allow", priority = 1 }
 
+[workspace.metadata.tigerstyle]
+default_scope = ["--workspace"]
+cargo_check_args = []
+
 [workspace.metadata.dylint]
 libraries = [
-    { path = "../tigerstyle" },
+    { git = "ssh://git@github.com/brittonr/tigerstyle-rs.git", rev = "bbf5fbb60679668ca8c42593fd617db2d0f89b43" },
 ]
 
 
