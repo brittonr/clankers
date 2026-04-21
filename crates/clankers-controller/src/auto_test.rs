@@ -8,6 +8,54 @@ use crate::SessionController;
 use crate::loop_mode::LoopConfig;
 
 impl SessionController {
+    /// Start a prompt in embedded mode through the reducer-backed prompt path.
+    pub fn start_embedded_prompt(&mut self, prompt_text: &str, image_count: u32) -> bool {
+        let input = clankers_core::CoreInput::PromptRequested(clankers_core::PromptRequest {
+            text: prompt_text.to_string(),
+            image_count,
+        });
+
+        match clankers_core::reduce(&self.core_state, &input) {
+            clankers_core::CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                debug_assert!(effects.iter().any(|effect| matches!(
+                    effect,
+                    clankers_core::CoreEffect::StartPrompt {
+                        prompt_text: effect_prompt,
+                        image_count: effect_image_count,
+                        ..
+                    } if effect_prompt == prompt_text && *effect_image_count == image_count
+                )));
+                true
+            }
+            clankers_core::CoreOutcome::Rejected { .. } => {
+                self.emit(clankers_protocol::DaemonEvent::SystemMessage {
+                    text: "Prompt start rejected".to_string(),
+                    is_error: true,
+                });
+                false
+            }
+        }
+    }
+
+    /// Complete an embedded-mode prompt through the reducer-backed prompt path.
+    pub fn finish_embedded_prompt(&mut self, completion_status: clankers_core::CompletionStatus) {
+        if let Some(pending_prompt) = self.core_state.pending_prompt.clone() {
+            let applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
+                effect_id: pending_prompt.effect_id,
+                completion_status,
+            });
+            debug_assert!(applied, "embedded prompt completion should match the pending prompt");
+            return;
+        }
+
+        self.busy = false;
+        self.core_state.busy = false;
+        if matches!(completion_status, clankers_core::CompletionStatus::Failed(_)) && self.active_loop_id.is_some() {
+            self.finish_loop("failed (error)");
+        }
+    }
+
     /// Check if auto-test should run after a prompt completes. Returns a
     /// prompt string to send to the agent, or None.
     pub fn maybe_auto_test(&mut self) -> Option<String> {
@@ -177,11 +225,14 @@ impl SessionController {
     /// Updates busy state. Called from the TUI when `TaskResult::PromptDone`
     /// is received, before calling `check_post_prompt()`.
     pub fn notify_prompt_done(&mut self, had_error: bool) {
-        self.busy = false;
-        self.core_state.busy = false;
-        if had_error && self.active_loop_id.is_some() {
-            self.finish_loop("failed (error)");
-        }
+        let completion_status = if had_error {
+            clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
+                "embedded prompt failed".to_string(),
+            ))
+        } else {
+            clankers_core::CompletionStatus::Succeeded
+        };
+        self.finish_embedded_prompt(completion_status);
     }
 }
 
@@ -304,6 +355,41 @@ mod tests {
             image_count: 0,
         });
         ctrl.core_state.next_effect_id = clankers_core::CoreEffectId(1);
+    }
+
+    #[test]
+    fn test_start_embedded_prompt_tracks_pending_prompt_and_busy() {
+        let mut ctrl = make_test_controller();
+
+        let started = ctrl.start_embedded_prompt("hello", 0);
+
+        assert!(started);
+        assert!(ctrl.busy);
+        assert!(ctrl.core_state.busy);
+        assert_eq!(
+            ctrl.core_state.pending_prompt,
+            Some(clankers_core::PendingPromptState {
+                effect_id: clankers_core::CoreEffectId(1),
+                prompt_text: "hello".to_string(),
+                image_count: 0,
+            })
+        );
+        assert!(ctrl.drain_events().is_empty());
+    }
+
+    #[test]
+    fn test_finish_embedded_prompt_consumes_pending_prompt_via_reducer() {
+        let mut ctrl = make_test_controller();
+        ctrl.set_auto_test(true, Some("cargo test".to_string()));
+        assert!(ctrl.start_embedded_prompt("hello", 0));
+
+        ctrl.finish_embedded_prompt(clankers_core::CompletionStatus::Succeeded);
+
+        assert!(!ctrl.busy);
+        assert!(!ctrl.core_state.busy);
+        assert!(ctrl.core_state.pending_prompt.is_none());
+        assert!(ctrl.drain_events().is_empty());
+        assert!(matches!(ctrl.check_post_prompt(), PostPromptAction::RunAutoTest { .. }));
     }
 
     #[test]

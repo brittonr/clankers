@@ -12,10 +12,13 @@ Created-At: 2026-04-21T14:02:12Z
 - Cover prompt completion success and failure through `crates/clankers-controller/src/auto_test.rs`.
 - Assert busy clearing, preserved prompt success/no-ack behavior, preserved success-path `PostPromptAction::{ContinueLoop, RunAutoTest}` categories, suppressed `PostPromptAction::{ContinueLoop, RunAutoTest}` on failure, and stale/mismatched prompt-completion feedback rejection through the controller seam.
 - Assert loop failure still surfaces the preserved loop-failure `DaemonEvent::SystemMessage`.
+- Assert the embedded follow-up bridge seeds reducer-owned pending prompt state before dispatch and routes prompt completion back through `apply_prompt_completion()` instead of clearing busy from shell ambient status.
 - Assert prompt completion outcome, active loop state, pending follow-up state, auto-test enabled state, auto-test command presence, and auto-test in-progress state are supplied as explicit core data instead of shell ambient inference.
 
 ## Latest added coverage
 
+- `crates/clankers-controller/src/auto_test.rs::test_start_embedded_prompt_tracks_pending_prompt_and_busy`
+- `crates/clankers-controller/src/auto_test.rs::test_finish_embedded_prompt_consumes_pending_prompt_via_reducer`
 - `crates/clankers-controller/src/auto_test.rs::test_prompt_completion_success_keeps_no_ack_and_allows_auto_test_follow_up`
 - `crates/clankers-controller/src/auto_test.rs::test_prompt_completion_success_keeps_no_ack_and_allows_loop_follow_up`
 - `crates/clankers-controller/src/auto_test.rs::test_prompt_completion_failure_suppresses_follow_up_and_finishes_loop`

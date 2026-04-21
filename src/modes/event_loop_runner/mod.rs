@@ -455,8 +455,9 @@ impl<'a> EventLoopRunner<'a> {
         while let Ok(result) = self.done_rx.try_recv() {
             match result {
                 TaskResult::PromptDone(Some(e)) => {
-                    // Notify controller so it clears busy + finishes loop on error
-                    self.controller.notify_prompt_done(true);
+                    self.controller.finish_embedded_prompt(clankers_core::CompletionStatus::Failed(
+                        clankers_core::CoreFailure::Message(e.to_string()),
+                    ));
 
                     if let Some(ref mut block) = self.app.conversation.active_block {
                         block.error = Some(e.to_string());
@@ -482,8 +483,7 @@ impl<'a> EventLoopRunner<'a> {
                     self.drain_controller_messages();
                 }
                 TaskResult::PromptDone(None) => {
-                    // Notify controller that prompt succeeded
-                    self.controller.notify_prompt_done(false);
+                    self.controller.finish_embedded_prompt(clankers_core::CompletionStatus::Succeeded);
 
                     if let Some(text) = self.app.queued_prompt.take() {
                         super::event_handlers::handle_input_with_plugins(
@@ -512,8 +512,16 @@ impl<'a> EventLoopRunner<'a> {
                                 // Paused check — only continue if TUI says active
                                 if self.app.loop_status.as_ref().is_some_and(|ls| ls.active) {
                                     self.cmd_tx.send(AgentCommand::ResetCancel).ok();
-                                    let completion_status = if self.cmd_tx.send(AgentCommand::Prompt(prompt)).is_ok() {
-                                        clankers_core::CompletionStatus::Succeeded
+                                    let completion_status = if self.cmd_tx.send(AgentCommand::Prompt(prompt.clone())).is_ok() {
+                                        if self.controller.start_embedded_prompt(&prompt, 0) {
+                                            clankers_core::CompletionStatus::Succeeded
+                                        } else {
+                                            clankers_core::CompletionStatus::Failed(
+                                                clankers_core::CoreFailure::Message(
+                                                    "embedded prompt start rejected".to_string(),
+                                                ),
+                                            )
+                                        }
                                     } else {
                                         clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
                                             "follow-up dispatch channel closed".to_string(),
@@ -534,8 +542,14 @@ impl<'a> EventLoopRunner<'a> {
                                     false,
                                 );
                                 self.cmd_tx.send(AgentCommand::ResetCancel).ok();
-                                let completion_status = if self.cmd_tx.send(AgentCommand::Prompt(prompt)).is_ok() {
-                                    clankers_core::CompletionStatus::Succeeded
+                                let completion_status = if self.cmd_tx.send(AgentCommand::Prompt(prompt.clone())).is_ok() {
+                                    if self.controller.start_embedded_prompt(&prompt, 0) {
+                                        clankers_core::CompletionStatus::Succeeded
+                                    } else {
+                                        clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
+                                            "embedded prompt start rejected".to_string(),
+                                        ))
+                                    }
                                 } else {
                                     clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
                                         "follow-up dispatch channel closed".to_string(),

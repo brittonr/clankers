@@ -240,23 +240,29 @@ impl SessionController {
         let input = CoreInput::SetThinkingLevel {
             requested: Self::parse_core_thinking_level_input(&level),
         };
-        let previous_level = self.core_state.thinking_level;
 
         match clankers_core::reduce(&self.core_state, &input) {
             CoreOutcome::Transitioned { next_state, effects } => {
                 self.apply_core_state(next_state);
+                let mut thinking_change = None;
                 for effect in effects {
-                    if let CoreEffect::ApplyThinkingLevel { level } = effect
-                        && let Some(agent) = self.agent.as_mut()
-                    {
-                        agent.set_thinking_level(Self::provider_thinking_level(level));
+                    match effect {
+                        CoreEffect::ApplyThinkingLevel { level } if let Some(agent) = self.agent.as_mut() => {
+                            agent.set_thinking_level(Self::provider_thinking_level(level));
+                        }
+                        CoreEffect::EmitLogicalEvent(CoreLogicalEvent::ThinkingLevelChanged { previous, current }) => {
+                            thinking_change = Some((previous, current));
+                        }
+                        _ => {}
                     }
                 }
+                let (previous_level, current_level) =
+                    thinking_change.expect("thinking level change must emit a logical event");
                 self.emit(DaemonEvent::SystemMessage {
                     text: format!(
                         "Thinking: {} → {}",
                         Self::thinking_label(previous_level),
-                        Self::thinking_label(self.core_state.thinking_level)
+                        Self::thinking_label(current_level)
                     ),
                     is_error: false,
                 });
@@ -278,13 +284,19 @@ impl SessionController {
         match clankers_core::reduce(&self.core_state, &CoreInput::CycleThinkingLevel) {
             CoreOutcome::Transitioned { next_state, effects } => {
                 self.apply_core_state(next_state);
+                let mut saw_thinking_change = false;
                 for effect in effects {
-                    if let CoreEffect::ApplyThinkingLevel { level } = effect
-                        && let Some(agent) = self.agent.as_mut()
-                    {
-                        agent.set_thinking_level(Self::provider_thinking_level(level));
+                    match effect {
+                        CoreEffect::ApplyThinkingLevel { level } if let Some(agent) = self.agent.as_mut() => {
+                            agent.set_thinking_level(Self::provider_thinking_level(level));
+                        }
+                        CoreEffect::EmitLogicalEvent(CoreLogicalEvent::ThinkingLevelChanged { .. }) => {
+                            saw_thinking_change = true;
+                        }
+                        _ => {}
                     }
                 }
+                debug_assert!(saw_thinking_change, "cycle thinking level must emit a logical event");
                 self.emit(DaemonEvent::SystemMessage {
                     text: "Thinking level cycled".to_string(),
                     is_error: false,
@@ -502,18 +514,25 @@ impl SessionController {
             CoreOutcome::Transitioned { next_state, effects } => {
                 self.apply_core_state(next_state);
                 let mut prompt_effect_id = None;
+                let mut saw_busy_change = false;
                 for effect in effects {
-                    if let CoreEffect::StartPrompt {
-                        effect_id,
-                        prompt_text,
-                        image_count: expected_image_count,
-                    } = effect
-                    {
-                        debug_assert_eq!(prompt_text, text);
-                        debug_assert_eq!(expected_image_count, image_count);
-                        prompt_effect_id = Some(effect_id);
+                    match effect {
+                        CoreEffect::EmitLogicalEvent(CoreLogicalEvent::BusyChanged { busy: true }) => {
+                            saw_busy_change = true;
+                        }
+                        CoreEffect::StartPrompt {
+                            effect_id,
+                            prompt_text,
+                            image_count: expected_image_count,
+                        } => {
+                            debug_assert_eq!(prompt_text, text);
+                            debug_assert_eq!(expected_image_count, image_count);
+                            prompt_effect_id = Some(effect_id);
+                        }
+                        _ => {}
                     }
                 }
+                debug_assert!(saw_busy_change, "prompt request must emit a busy logical event");
                 prompt_effect_id.expect("prompt request must yield a start effect")
             }
             CoreOutcome::Rejected {
@@ -574,15 +593,21 @@ impl SessionController {
         match clankers_core::reduce(&self.core_state, &completion_input) {
             CoreOutcome::Transitioned { next_state, effects } => {
                 self.apply_core_state(next_state);
+                let mut saw_busy_change = false;
                 for effect in effects {
-                    if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
-                        active_loop_state: None,
-                    }) = effect
-                        && self.active_loop_id.is_some()
-                    {
-                        self.finish_loop("failed (error)");
+                    match effect {
+                        CoreEffect::EmitLogicalEvent(CoreLogicalEvent::BusyChanged { busy: false }) => {
+                            saw_busy_change = true;
+                        }
+                        CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
+                            active_loop_state: None,
+                        }) if self.active_loop_id.is_some() => {
+                            self.finish_loop("failed (error)");
+                        }
+                        _ => {}
                     }
                 }
+                debug_assert!(saw_busy_change, "prompt completion must emit a busy logical event");
                 true
             }
             CoreOutcome::Rejected { .. } => {
