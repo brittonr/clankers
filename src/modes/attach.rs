@@ -10,7 +10,6 @@ use std::path::Path;
 use std::time::Duration;
 
 use clankers_controller::client::ClientAdapter;
-use clankers_controller::client::is_client_side_command;
 use clankers_controller::convert::daemon_event_to_tui_event;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
@@ -194,6 +193,7 @@ pub(crate) async fn run_attach_with_reconnect(
     recovery_mode: RecoveryMode,
 ) -> Result<()> {
     let mut is_replaying_history = true;
+    let mut parity_tracker = AttachParityTracker::default();
 
     loop {
         terminal.draw(|frame| render::render(frame, app)).map_err(|e| crate::error::Error::Tui {
@@ -206,7 +206,7 @@ pub(crate) async fn run_attach_with_reconnect(
         }
 
         // Drain daemon events
-        drain_daemon_events(app, &mut client, &mut is_replaying_history, max_subagent_panes);
+        drain_daemon_events(app, &mut client, &mut is_replaying_history, max_subagent_panes, &mut parity_tracker);
 
         // Detect disconnect and attempt reconnection
         if client.is_disconnected() && app.connection_mode != clankers_tui_types::ConnectionMode::Reconnecting {
@@ -219,6 +219,7 @@ pub(crate) async fn run_attach_with_reconnect(
                     client = new_client;
                     client.replay_history();
                     is_replaying_history = true;
+                    parity_tracker = AttachParityTracker::default();
                     app.connection_mode = restore_mode.clone();
                     app.push_system("Reconnected to daemon session.".to_string(), false);
                 }
@@ -237,6 +238,7 @@ pub(crate) async fn run_attach_with_reconnect(
                                     client = new_client;
                                     client.replay_history();
                                     is_replaying_history = true;
+                                    parity_tracker = AttachParityTracker::default();
                                     app.connection_mode = restore_mode.clone();
                                     if was_resumed {
                                         app.push_system("Session was_resumed after daemon restart.".to_string(), false);
@@ -266,7 +268,7 @@ pub(crate) async fn run_attach_with_reconnect(
         }
 
         // Handle terminal events (keys, mouse, paste)
-        handle_terminal_events(app, &mut client, terminal, &keymap, slash_registry)?;
+        handle_terminal_events(app, &mut client, terminal, &keymap, slash_registry, &mut parity_tracker)?;
 
         if app.open_editor_requested {
             app.open_editor_requested = false;
@@ -642,9 +644,10 @@ pub(crate) fn drain_daemon_events(
     client: &mut ClientAdapter,
     is_replaying_history: &mut bool,
     max_subagent_panes: usize,
+    parity_tracker: &mut AttachParityTracker,
 ) {
     while let Some(event) = client.try_recv() {
-        process_daemon_event(app, client, &event, is_replaying_history, max_subagent_panes);
+        process_daemon_event(app, client, &event, is_replaying_history, max_subagent_panes, parity_tracker);
     }
 }
 
@@ -659,7 +662,12 @@ fn process_daemon_event(
     event: &DaemonEvent,
     is_replaying_history: &mut bool,
     max_subagent_panes: usize,
+    parity_tracker: &mut AttachParityTracker,
 ) {
+    if parity_tracker.should_suppress(event) {
+        return;
+    }
+
     // First, try the TuiEvent conversion for all streaming/tool/session events.
     if let Some(tui_event) = daemon_event_to_tui_event(event) {
         app.handle_tui_event(&tui_event);
@@ -930,6 +938,7 @@ pub(crate) fn handle_terminal_events(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     keymap: &Keymap,
     slash_registry: &slash_commands::SlashRegistry,
+    parity_tracker: &mut AttachParityTracker,
 ) -> Result<()> {
     let mut poll_timeout = Duration::from_millis(50);
     while let Some(event) = tui_event::poll_event(poll_timeout) {
@@ -942,7 +951,7 @@ pub(crate) fn handle_terminal_events(
                 app.update_slash_menu();
             }
             AppEvent::Key(key) => {
-                handle_key_event(app, client, terminal, key, keymap, slash_registry);
+                handle_key_event(app, client, terminal, key, keymap, slash_registry, parity_tracker);
             }
             AppEvent::MouseDown(button, col, row) => {
                 crate::tui::mouse::handle_mouse_down(app, button, col, row);
@@ -987,6 +996,7 @@ fn handle_key_event(
     key: crossterm::event::KeyEvent,
     keymap: &Keymap,
     slash_registry: &slash_commands::SlashRegistry,
+    parity_tracker: &mut AttachParityTracker,
 ) {
     use crossterm::event::KeyCode;
     use crossterm::event::KeyModifiers;
@@ -1081,6 +1091,7 @@ fn handle_key_event(
         if dirty {
             let disabled: Vec<String> = app.overlays.tool_toggle.disabled_set().into_iter().collect();
             app.disabled_tools = disabled.iter().cloned().collect();
+            parity_tracker.expect_disabled_tools_message();
             client.send(SessionCommand::SetDisabledTools { tools: disabled });
         }
         if consumed {
@@ -1091,7 +1102,7 @@ fn handle_key_event(
     // Leader menu
     if app.overlays.leader_menu.visible() {
         if let Some(leader_action) = app.overlays.leader_menu.handle_key(&key) {
-            handle_leader_action_attach(app, client, leader_action, slash_registry);
+            handle_leader_action_attach(app, client, leader_action, slash_registry, parity_tracker);
         }
         return;
     }
@@ -1105,7 +1116,7 @@ fn handle_key_event(
     // Slash menu (insert mode only)
     if app.input_mode == InputMode::Insert
         && app.slash_menu.visible
-        && handle_slash_menu_key_attach(app, client, &key, keymap, slash_registry)
+        && handle_slash_menu_key_attach(app, client, &key, keymap, slash_registry, parity_tracker)
     {
         return;
     }
@@ -1128,7 +1139,7 @@ fn handle_key_event(
             Action::Core(CoreAction::Submit) => {
                 app.accept_slash_completion();
                 if let Some(text) = app.submit_input() {
-                    submit_input_attach(app, client, &text, slash_registry);
+                    submit_input_attach(app, client, &text, slash_registry, parity_tracker);
                 }
             }
             // Cancel: tell daemon to abort
@@ -1138,7 +1149,7 @@ fn handle_key_event(
             }
             // Client-side TUI actions handled locally
             _ => {
-                handle_local_action(app, client, &action, &key);
+                handle_local_action(app, client, &action, &key, parity_tracker);
             }
         }
     } else if app.input_mode == InputMode::Insert {
@@ -1146,28 +1157,154 @@ fn handle_key_event(
     }
 }
 
-/// Submit input in attach mode — client-side commands handled locally,
-/// everything else forwarded to the daemon.
+/// Attach-side slash routing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AttachSlashRoute {
+    CustomLocal,
+    RegistryLocal,
+    GetPlugins,
+    ForwardToDaemon,
+}
+
+#[derive(Debug, Default)]
+pub(crate) struct AttachParityTracker {
+    thinking_ack_messages_to_suppress: usize,
+    disabled_tools_messages_to_suppress: usize,
+    manual_compactions_to_suppress: usize,
+}
+
+impl AttachParityTracker {
+    fn expect_thinking_ack_message(&mut self) {
+        self.thinking_ack_messages_to_suppress += 1;
+    }
+
+    fn expect_disabled_tools_message(&mut self) {
+        self.disabled_tools_messages_to_suppress += 1;
+    }
+
+    fn expect_manual_compaction(&mut self) {
+        self.manual_compactions_to_suppress += 1;
+    }
+
+    fn should_suppress(&mut self, event: &DaemonEvent) -> bool {
+        if self.should_suppress_thinking_ack_message(event) {
+            return true;
+        }
+
+        if self.should_suppress_disabled_tools_message(event) {
+            return true;
+        }
+
+        self.should_suppress_manual_compaction(event)
+    }
+
+    fn should_suppress_thinking_ack_message(&mut self, event: &DaemonEvent) -> bool {
+        if self.thinking_ack_messages_to_suppress == 0 {
+            return false;
+        }
+
+        let should_suppress = is_thinking_ack_message(event);
+        if should_suppress {
+            self.thinking_ack_messages_to_suppress -= 1;
+        }
+        should_suppress
+    }
+
+    fn should_suppress_disabled_tools_message(&mut self, event: &DaemonEvent) -> bool {
+        if self.disabled_tools_messages_to_suppress == 0 {
+            return false;
+        }
+
+        let should_suppress = matches!(
+            event,
+            DaemonEvent::SystemMessage { text, is_error: false } if text.starts_with("Disabled tools updated:")
+        );
+        if should_suppress {
+            self.disabled_tools_messages_to_suppress -= 1;
+        }
+        should_suppress
+    }
+
+    fn should_suppress_manual_compaction(&mut self, event: &DaemonEvent) -> bool {
+        if self.manual_compactions_to_suppress == 0 {
+            return false;
+        }
+
+        let should_suppress = matches!(event, DaemonEvent::SessionCompaction { .. });
+        if should_suppress {
+            self.manual_compactions_to_suppress -= 1;
+        }
+        should_suppress
+    }
+}
+
+/// Decide how attach mode should handle a slash command.
+fn is_thinking_ack_message(event: &DaemonEvent) -> bool {
+    matches!(event, DaemonEvent::SystemMessage { text, is_error: false } if text.starts_with("Thinking"))
+}
+
+fn route_attach_slash(command: &str, args: &str) -> AttachSlashRoute {
+    if matches!(command, "quit" | "q" | "detach" | "zoom" | "help") {
+        return AttachSlashRoute::CustomLocal;
+    }
+
+    if command == "plugin" {
+        return AttachSlashRoute::GetPlugins;
+    }
+
+    if matches!(
+        command,
+        "status"
+            | "usage"
+            | "version"
+            | "router"
+            | "cd"
+            | "shell"
+            | "export"
+            | "layout"
+            | "preview"
+            | "editor"
+            | "todo"
+            | "tools"
+            | "think"
+            | "compact"
+            | "compress"
+    ) {
+        return AttachSlashRoute::RegistryLocal;
+    }
+
+    if matches!(command, "model" | "role") && args.trim().is_empty() {
+        return AttachSlashRoute::RegistryLocal;
+    }
+
+    if command == "session" && is_attach_local_session_command(args) {
+        return AttachSlashRoute::RegistryLocal;
+    }
+
+    AttachSlashRoute::ForwardToDaemon
+}
+
+fn is_attach_local_session_command(args: &str) -> bool {
+    let trimmed = args.trim();
+    if trimmed.is_empty() {
+        return true;
+    }
+
+    let subcommand = trimmed.split_whitespace().next().unwrap_or_default();
+    matches!(subcommand, "list" | "ls" | "delete" | "rm" | "purge")
+}
+
+/// Submit input in attach mode — some slash commands run locally,
+/// the rest are forwarded to the daemon.
 fn submit_input_attach(
     app: &mut App,
     client: &ClientAdapter,
     text: &str,
     slash_registry: &slash_commands::SlashRegistry,
+    parity_tracker: &mut AttachParityTracker,
 ) {
     if let Some((command, args)) = slash_commands::parse_command(text) {
-        if is_client_side_command(&command) {
-            // Handle locally — these are TUI-only commands
-            handle_client_side_slash(app, &command, &args, slash_registry);
-        } else if command == "plugin" {
-            // Request plugin list from daemon — response arrives as PluginList event
-            client.send(SessionCommand::GetPlugins);
-        } else {
-            // Forward to daemon
-            client.send(SessionCommand::SlashCommand {
-                command,
-                args: args.clone(),
-            });
-        }
+        dispatch_attach_slash(app, client, &command, &args, slash_registry, parity_tracker);
     } else {
         // Regular prompt — expand @file references, then send
         let expanded = crate::util::at_file::expand_at_refs_with_images(text, &app.cwd);
@@ -1175,8 +1312,33 @@ fn submit_input_attach(
     }
 }
 
+fn dispatch_attach_slash(
+    app: &mut App,
+    client: &ClientAdapter,
+    command: &str,
+    args: &str,
+    slash_registry: &slash_commands::SlashRegistry,
+    parity_tracker: &mut AttachParityTracker,
+) {
+    match route_attach_slash(command, args) {
+        AttachSlashRoute::CustomLocal => handle_client_side_slash(app, command, args),
+        AttachSlashRoute::RegistryLocal => {
+            handle_attach_registry_slash(app, client, command, args, slash_registry, parity_tracker)
+        }
+        AttachSlashRoute::GetPlugins => {
+            client.send(SessionCommand::GetPlugins);
+        }
+        AttachSlashRoute::ForwardToDaemon => {
+            client.send(SessionCommand::SlashCommand {
+                command: command.to_string(),
+                args: args.to_string(),
+            });
+        }
+    }
+}
+
 /// Handle a client-side slash command locally.
-fn handle_client_side_slash(app: &mut App, command: &str, args: &str, _slash_registry: &slash_commands::SlashRegistry) {
+fn handle_client_side_slash(app: &mut App, command: &str, args: &str) {
     match command {
         "quit" | "q" => {
             app.should_quit = true;
@@ -1189,18 +1351,136 @@ fn handle_client_side_slash(app: &mut App, command: &str, args: &str, _slash_reg
             app.zoom_toggle();
         }
         "help" => {
-            app.push_system("Attach mode — limited commands available:".to_string(), false);
-            app.push_system("  /quit, /detach — disconnect from session".to_string(), false);
-            app.push_system("  /zoom — toggle zoom on focused pane".to_string(), false);
-            app.push_system("  /help — this message".to_string(), false);
-            app.push_system("  All other commands are forwarded to the daemon.".to_string(), false);
+            app.push_system("Attach mode — locally handled slash commands include:".to_string(), false);
+            app.push_system(
+                "  /status /usage /version /router /model /role /session [list|delete|purge] /cd /shell /export"
+                    .to_string(),
+                false,
+            );
+            app.push_system(
+                "  /layout /preview /editor /todo /tools /think [level] /compact /compress /plugin".to_string(),
+                false,
+            );
+            app.push_system(
+                "  /think with no args cycles level; /plugin fetches daemon plugin inventory; /quit /detach /zoom stay client-side."
+                    .to_string(),
+                false,
+            );
+            app.push_system("  Unlisted commands generally forward to daemon.".to_string(), false);
         }
         _ => {
             app.push_system(format!("Client command /{command} not implemented in attach mode."), true);
         }
     }
 
-    let _ = args; // Some commands will use args later
+    let _ = args;
+}
+
+fn handle_attach_registry_slash(
+    app: &mut App,
+    client: &ClientAdapter,
+    command: &str,
+    args: &str,
+    slash_registry: &slash_commands::SlashRegistry,
+    parity_tracker: &mut AttachParityTracker,
+) {
+    let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+    let (panel_tx, _panel_rx) = tokio::sync::mpsc::unbounded_channel();
+    let db: Option<crate::db::Db> = None;
+    let mut session_manager = None;
+    let mut ctx = slash_commands::handlers::SlashContext {
+        app,
+        cmd_tx: &cmd_tx,
+        plugin_manager: None,
+        panel_tx: &panel_tx,
+        db: &db,
+        session_manager: &mut session_manager,
+    };
+    slash_registry.dispatch(command, args, &mut ctx);
+    flush_attach_agent_commands(app, client, &mut cmd_rx, command, parity_tracker);
+}
+
+fn flush_attach_agent_commands(
+    app: &mut App,
+    client: &ClientAdapter,
+    cmd_rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::modes::interactive::AgentCommand>,
+    command: &str,
+    parity_tracker: &mut AttachParityTracker,
+) {
+    while let Ok(agent_cmd) = cmd_rx.try_recv() {
+        match agent_cmd {
+            crate::modes::interactive::AgentCommand::SetThinkingLevel(level) => {
+                bridge_attach_thinking_level_change(
+                    app,
+                    client,
+                    parity_tracker,
+                    SessionCommand::SetThinkingLevel {
+                        level: level.label().to_string(),
+                    },
+                    level,
+                );
+            }
+            crate::modes::interactive::AgentCommand::CycleThinkingLevel => {
+                let next_level = app.thinking_level.next();
+                bridge_attach_thinking_level_change(
+                    app,
+                    client,
+                    parity_tracker,
+                    SessionCommand::CycleThinkingLevel,
+                    next_level,
+                );
+            }
+            crate::modes::interactive::AgentCommand::SetDisabledTools(disabled) => {
+                let mut tools: Vec<String> = disabled.into_iter().collect();
+                tools.sort();
+                parity_tracker.expect_disabled_tools_message();
+                client.send(SessionCommand::SetDisabledTools { tools });
+            }
+            crate::modes::interactive::AgentCommand::CompressContext => {
+                parity_tracker.expect_manual_compaction();
+                client.send(SessionCommand::CompactHistory);
+            }
+            other => {
+                if let Some(session_command) = translate_attach_agent_command(other) {
+                    client.send(session_command);
+                } else {
+                    warn!("attach local slash /{command} emitted unsupported agent command");
+                }
+            }
+        }
+    }
+}
+
+fn bridge_attach_thinking_level_change(
+    app: &mut App,
+    client: &ClientAdapter,
+    parity_tracker: &mut AttachParityTracker,
+    session_command: SessionCommand,
+    level: crate::provider::ThinkingLevel,
+) {
+    apply_standalone_thinking_level(app, level);
+    parity_tracker.expect_thinking_ack_message();
+    client.send(session_command);
+}
+
+fn apply_standalone_thinking_level(app: &mut App, level: crate::provider::ThinkingLevel) {
+    app.thinking_enabled = level.is_enabled();
+    app.thinking_level = level;
+    app.push_system(format_attach_thinking_message(level), false);
+}
+
+fn format_attach_thinking_message(level: crate::provider::ThinkingLevel) -> String {
+    match level.budget_tokens() {
+        Some(tokens) => format!("Thinking: {} ({} tokens)", level.label(), tokens),
+        None => "Thinking: off".to_string(),
+    }
+}
+
+fn translate_attach_agent_command(agent_cmd: crate::modes::interactive::AgentCommand) -> Option<SessionCommand> {
+    match agent_cmd {
+        crate::modes::interactive::AgentCommand::SetModel(model) => Some(SessionCommand::SetModel { model }),
+        _ => None,
+    }
 }
 
 /// Handle a leader menu action in attach mode.
@@ -1209,20 +1489,14 @@ fn handle_leader_action_attach(
     client: &ClientAdapter,
     action: clankers_tui_types::LeaderAction,
     slash_registry: &slash_commands::SlashRegistry,
+    parity_tracker: &mut AttachParityTracker,
 ) {
     use clankers_tui_types::LeaderAction;
 
     match action {
         LeaderAction::Command(cmd) => {
             if let Some((command, args)) = slash_commands::parse_command(&cmd) {
-                if is_client_side_command(&command) {
-                    handle_client_side_slash(app, &command, &args, slash_registry);
-                } else {
-                    client.send(SessionCommand::SlashCommand {
-                        command,
-                        args: args.clone(),
-                    });
-                }
+                dispatch_attach_slash(app, client, &command, &args, slash_registry, parity_tracker);
             }
         }
         LeaderAction::Action(action) => {
@@ -1231,7 +1505,7 @@ fn handle_leader_action_attach(
                 crossterm::event::KeyCode::Null,
                 crossterm::event::KeyModifiers::empty(),
             );
-            handle_local_action(app, client, &action, &dummy_key);
+            handle_local_action(app, client, &action, &dummy_key, parity_tracker);
         }
         LeaderAction::Submenu(_) => {
             // Submenus are handled by the leader menu widget itself
@@ -1250,6 +1524,7 @@ fn handle_slash_menu_key_attach(
     key: &crossterm::event::KeyEvent,
     keymap: &Keymap,
     slash_registry: &slash_commands::SlashRegistry,
+    parity_tracker: &mut AttachParityTracker,
 ) -> bool {
     use crossterm::event::KeyCode;
 
@@ -1291,7 +1566,7 @@ fn handle_slash_menu_key_attach(
         Some(Action::Core(CoreAction::Submit)) => {
             app.accept_slash_completion();
             if let Some(text) = app.submit_input() {
-                submit_input_attach(app, client, &text, slash_registry);
+                submit_input_attach(app, client, &text, slash_registry, parity_tracker);
             }
             true
         }
@@ -1320,6 +1595,7 @@ fn handle_local_action(
     client: &ClientAdapter,
     action: &crate::config::keybindings::Action,
     _key: &crossterm::event::KeyEvent,
+    parity_tracker: &mut AttachParityTracker,
 ) {
     use clankers_tui_types::AppState;
     use clankers_tui_types::BlockEntry;
@@ -1657,7 +1933,14 @@ fn handle_local_action(
 
         // ── Daemon-forwarded toggles ────────────────
         Action::Extended(ExtendedAction::ToggleThinking) => {
-            client.send(SessionCommand::CycleThinkingLevel);
+            let next_level = app.thinking_level.next();
+            bridge_attach_thinking_level_change(
+                app,
+                client,
+                parity_tracker,
+                SessionCommand::CycleThinkingLevel,
+                next_level,
+            );
         }
         Action::Extended(ExtendedAction::ToggleAutoTest) => {
             if app.auto_test_command.is_none() {
@@ -1724,8 +2007,9 @@ fn handle_panel_focused_key_attach(app: &mut App, key: crossterm::event::KeyEven
 // ── Slash registry for attach mode ──────────────────────────────────────────
 
 pub(crate) fn build_client_slash_registry() -> slash_commands::SlashRegistry {
-    // We build a full registry so the completion menu works, but in attach mode
-    // only client-side commands are handled locally — the rest are forwarded.
+    // We build the same registry as standalone mode so completion/help stay in
+    // sync. Attach mode still decides per command whether to run locally,
+    // bridge AgentCommand -> SessionCommand, or forward to the daemon.
     crate::modes::interactive::build_slash_registry(None)
 }
 
@@ -1735,18 +2019,301 @@ pub use super::attach_remote::*;
 #[cfg(test)]
 mod tests {
     use std::io::ErrorKind;
+    use std::sync::Arc;
 
+    use clankers_agent::Agent;
+    use clankers_controller::SessionController;
     use clankers_controller::client::ClientAdapter;
     use clankers_controller::client::is_client_side_command;
+    use clankers_controller::config::ControllerConfig;
     use clankers_protocol::DaemonEvent;
     use clankers_protocol::PluginSummary;
+    use clankers_protocol::SessionCommand;
     use clankers_tui::app::App;
     use clankers_tui_types::BlockEntry;
+    use clankers_tui_types::ConversationBlock;
+    use clankers_tui_types::DisplayMessage;
+
+    struct MockProvider;
+
+    #[async_trait::async_trait]
+    impl clankers_provider::Provider for MockProvider {
+        async fn complete(
+            &self,
+            _request: clankers_provider::CompletionRequest,
+            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> clankers_provider::error::Result<()> {
+            Ok(())
+        }
+
+        fn models(&self) -> &[clankers_provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "mock"
+        }
+    }
+
+    fn make_daemon_controller() -> SessionController {
+        let provider = Arc::new(MockProvider);
+        let agent = Agent::new(
+            provider,
+            vec![],
+            clankers_config::settings::Settings::default(),
+            "test-model".to_string(),
+            "You are a test assistant.".to_string(),
+        );
+        SessionController::new(agent, ControllerConfig {
+            session_id: "test-session".to_string(),
+            model: "test-model".to_string(),
+            ..Default::default()
+        })
+    }
 
     fn dummy_client() -> ClientAdapter {
         let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         let (_event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
         ClientAdapter::from_channels(cmd_tx, event_rx)
+    }
+
+    fn capturing_client() -> (ClientAdapter, tokio::sync::mpsc::UnboundedReceiver<SessionCommand>) {
+        let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (_event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+        (ClientAdapter::from_channels(cmd_tx, event_rx), cmd_rx)
+    }
+
+    fn test_app() -> App {
+        let mut app = App::new("test-model".to_string(), "/tmp".to_string(), crate::config::theme::detect_theme());
+        app.session_id = "session-123".to_string();
+        app.total_tokens = 321;
+        app.total_cost = 1.25;
+        app
+    }
+
+    fn system_texts(app: &App) -> Vec<String> {
+        app.conversation
+            .blocks
+            .iter()
+            .filter_map(|entry| match entry {
+                BlockEntry::System(message) => Some(message.content.clone()),
+                BlockEntry::Conversation(_) => None,
+            })
+            .collect()
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct ConversationSnapshot {
+        blocks: Vec<BlockEntrySnapshot>,
+        all_blocks: Vec<ConversationBlockSnapshot>,
+        active_block: Option<ConversationBlockSnapshot>,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    enum BlockEntrySnapshot {
+        Conversation(ConversationBlockSnapshot),
+        System(MessageSnapshot),
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct ConversationBlockSnapshot {
+        id: usize,
+        prompt: String,
+        responses: Vec<MessageSnapshot>,
+        collapsed: bool,
+        streaming: bool,
+        error: Option<String>,
+        tokens: usize,
+        parent_block_id: Option<usize>,
+        agent_msg_checkpoint: usize,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct MessageSnapshot {
+        role: clankers_tui_types::MessageRole,
+        content: String,
+        tool_name: Option<String>,
+        is_error: bool,
+        image_count: usize,
+    }
+
+    fn conversation_snapshot(app: &App) -> ConversationSnapshot {
+        ConversationSnapshot {
+            blocks: app.conversation.blocks.iter().map(block_entry_snapshot).collect(),
+            all_blocks: app.conversation.all_blocks.iter().map(conversation_block_snapshot).collect(),
+            active_block: app.conversation.active_block.as_ref().map(conversation_block_snapshot),
+        }
+    }
+
+    fn block_entry_snapshot(entry: &BlockEntry) -> BlockEntrySnapshot {
+        match entry {
+            BlockEntry::Conversation(block) => BlockEntrySnapshot::Conversation(conversation_block_snapshot(block)),
+            BlockEntry::System(message) => BlockEntrySnapshot::System(message_snapshot(message)),
+        }
+    }
+
+    fn conversation_block_snapshot(block: &ConversationBlock) -> ConversationBlockSnapshot {
+        ConversationBlockSnapshot {
+            id: block.id,
+            prompt: block.prompt.clone(),
+            responses: block.responses.iter().map(message_snapshot).collect(),
+            collapsed: block.collapsed,
+            streaming: block.streaming,
+            error: block.error.clone(),
+            tokens: block.tokens,
+            parent_block_id: block.parent_block_id,
+            agent_msg_checkpoint: block.agent_msg_checkpoint,
+        }
+    }
+
+    fn message_snapshot(message: &DisplayMessage) -> MessageSnapshot {
+        MessageSnapshot {
+            role: message.role.clone(),
+            content: message.content.clone(),
+            tool_name: message.tool_name.clone(),
+            is_error: message.is_error,
+            image_count: message.images.len(),
+        }
+    }
+
+    fn drain_session_commands(rx: &mut tokio::sync::mpsc::UnboundedReceiver<SessionCommand>) -> Vec<SessionCommand> {
+        let mut commands = Vec::new();
+        while let Ok(command) = rx.try_recv() {
+            commands.push(command);
+        }
+        commands
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct LayoutSnapshot {
+        pane_kinds: Vec<String>,
+        focused_panel: Option<crate::tui::panel::PanelId>,
+        zoomed: bool,
+    }
+
+    fn layout_snapshot(app: &App) -> LayoutSnapshot {
+        let mut pane_kinds = app
+            .layout
+            .pane_registry
+            .pane_ids()
+            .into_iter()
+            .map(|pane_id| {
+                let kind = app
+                    .layout
+                    .pane_registry
+                    .kind(pane_id)
+                    .map(|kind| format!("{kind:?}"))
+                    .unwrap_or_else(|| "Missing".to_string());
+                format!("{pane_id:?}:{kind}")
+            })
+            .collect::<Vec<_>>();
+        pane_kinds.sort();
+        LayoutSnapshot {
+            pane_kinds,
+            focused_panel: app.layout.focused_panel,
+            zoomed: app.layout.zoom_state.is_some(),
+        }
+    }
+
+    fn todo_summary(app: &App) -> String {
+        app.panels
+            .downcast_ref::<crate::tui::components::todo_panel::TodoPanel>(crate::tui::panel::PanelId::Todo)
+            .expect("todo panel registered at startup")
+            .summary()
+    }
+
+    fn run_standalone_slash(app: &mut App, text: &str) {
+        let registry = crate::modes::interactive::build_slash_registry(None);
+        let (cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (panel_tx, _panel_rx) = tokio::sync::mpsc::unbounded_channel();
+        let db: Option<crate::db::Db> = None;
+        let mut session_manager = None;
+        let (command, args) = crate::slash_commands::parse_command(text).expect("slash command parses");
+        {
+            let mut ctx = crate::slash_commands::handlers::SlashContext {
+                app,
+                cmd_tx: &cmd_tx,
+                plugin_manager: None,
+                panel_tx: &panel_tx,
+                db: &db,
+                session_manager: &mut session_manager,
+            };
+            registry.dispatch(&command, &args, &mut ctx);
+        }
+        apply_standalone_agent_commands(app, &mut cmd_rx);
+    }
+
+    fn apply_standalone_agent_commands(
+        app: &mut App,
+        cmd_rx: &mut tokio::sync::mpsc::UnboundedReceiver<crate::modes::interactive::AgentCommand>,
+    ) {
+        while let Ok(agent_cmd) = cmd_rx.try_recv() {
+            match agent_cmd {
+                crate::modes::interactive::AgentCommand::SetThinkingLevel(level) => {
+                    super::apply_standalone_thinking_level(app, level);
+                }
+                crate::modes::interactive::AgentCommand::CycleThinkingLevel => {
+                    let next_level = app.thinking_level.next();
+                    super::apply_standalone_thinking_level(app, next_level);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn run_attach_slash_locally(app: &mut App, text: &str) -> Vec<SessionCommand> {
+        let registry = super::build_client_slash_registry();
+        let (client, mut cmd_rx) = capturing_client();
+        let mut parity_tracker = super::AttachParityTracker::default();
+        let (command, args) = crate::slash_commands::parse_command(text).expect("slash command parses");
+
+        super::dispatch_attach_slash(app, &client, &command, &args, &registry, &mut parity_tracker);
+        drain_session_commands(&mut cmd_rx)
+    }
+
+    fn assert_local_attach_matches_standalone<FSetup, FAssert>(text: &str, setup: FSetup, assert_extra: FAssert)
+    where
+        FSetup: Fn(&mut App),
+        FAssert: Fn(&App, &App),
+    {
+        let mut standalone = test_app();
+        let mut attached = test_app();
+
+        setup(&mut standalone);
+        setup(&mut attached);
+
+        run_standalone_slash(&mut standalone, text);
+        let session_commands = run_attach_slash_locally(&mut attached, text);
+
+        assert!(session_commands.is_empty(), "expected no daemon commands for {text}, got {session_commands:?}");
+        assert_eq!(conversation_snapshot(&attached), conversation_snapshot(&standalone), "{text}");
+        assert_extra(&attached, &standalone);
+    }
+
+    async fn run_attach_slash_through_daemon(app: &mut App, text: &str) {
+        let registry = super::build_client_slash_registry();
+        let (client, mut cmd_rx) = capturing_client();
+        let event_client = dummy_client();
+        let mut controller = make_daemon_controller();
+        let mut is_replaying_history = false;
+        let mut parity_tracker = super::AttachParityTracker::default();
+        let (command, args) = crate::slash_commands::parse_command(text).expect("slash command parses");
+
+        super::dispatch_attach_slash(app, &client, &command, &args, &registry, &mut parity_tracker);
+
+        for session_command in drain_session_commands(&mut cmd_rx) {
+            controller.handle_command(session_command).await;
+            for event in controller.drain_events() {
+                super::process_daemon_event(
+                    app,
+                    &event_client,
+                    &event,
+                    &mut is_replaying_history,
+                    0,
+                    &mut parity_tracker,
+                );
+            }
+        }
     }
 
     #[test]
@@ -1781,10 +2348,302 @@ mod tests {
     }
 
     #[test]
+    fn route_attach_slash_keeps_safe_session_subcommands_local() {
+        assert_eq!(super::route_attach_slash("session", ""), super::AttachSlashRoute::RegistryLocal);
+        assert_eq!(super::route_attach_slash("session", "list 5"), super::AttachSlashRoute::RegistryLocal);
+        assert_eq!(super::route_attach_slash("session", "delete abc"), super::AttachSlashRoute::RegistryLocal);
+        assert_eq!(super::route_attach_slash("session", "resume abc"), super::AttachSlashRoute::ForwardToDaemon);
+        assert_eq!(super::route_attach_slash("model", ""), super::AttachSlashRoute::RegistryLocal);
+        assert_eq!(super::route_attach_slash("role", ""), super::AttachSlashRoute::RegistryLocal);
+        assert_eq!(super::route_attach_slash("think", ""), super::AttachSlashRoute::RegistryLocal);
+        assert_eq!(super::route_attach_slash("think", "high"), super::AttachSlashRoute::RegistryLocal);
+        assert_eq!(super::route_attach_slash("compress", ""), super::AttachSlashRoute::RegistryLocal);
+        assert_eq!(super::route_attach_slash("plugin", ""), super::AttachSlashRoute::GetPlugins);
+    }
+
+    #[test]
+    fn thinking_ack_suppression_stays_narrow_and_budgeted() {
+        let thinking_level_changed = DaemonEvent::ThinkingLevelChanged {
+            from: "off".to_string(),
+            to: "high".to_string(),
+        };
+        let thinking_ack = DaemonEvent::SystemMessage {
+            text: "Thinking: off → high".to_string(),
+            is_error: false,
+        };
+        let mut parity_tracker = super::AttachParityTracker::default();
+
+        parity_tracker.expect_thinking_ack_message();
+
+        assert!(!parity_tracker.should_suppress(&thinking_level_changed));
+        assert!(parity_tracker.should_suppress(&thinking_ack));
+        assert!(!parity_tracker.should_suppress(&thinking_ack));
+    }
+
+    #[tokio::test]
+    async fn set_thinking_level_bridge_emits_only_system_message_ack() {
+        let mut controller = make_daemon_controller();
+
+        controller
+            .handle_command(SessionCommand::SetThinkingLevel {
+                level: "high".to_string(),
+            })
+            .await;
+
+        let events = controller.drain_events();
+        assert!(events.iter().any(|event| super::is_thinking_ack_message(event)));
+        assert!(!events.iter().any(|event| matches!(event, DaemonEvent::ThinkingLevelChanged { .. })));
+    }
+
+    #[tokio::test]
+    async fn cycle_thinking_level_bridge_emits_only_system_message_ack() {
+        let mut controller = make_daemon_controller();
+
+        controller.handle_command(SessionCommand::CycleThinkingLevel).await;
+
+        let events = controller.drain_events();
+        assert!(events.iter().any(|event| super::is_thinking_ack_message(event)));
+        assert!(!events.iter().any(|event| matches!(event, DaemonEvent::ThinkingLevelChanged { .. })));
+    }
+
+    #[test]
+    fn attach_think_cycle_bridge_updates_local_state_and_emits_cycle_command() {
+        let mut attached = test_app();
+        let initial_level = attached.thinking_level;
+        let session_commands = run_attach_slash_locally(&mut attached, "/think");
+
+        assert!(matches!(session_commands.as_slice(), [SessionCommand::CycleThinkingLevel]));
+        assert_eq!(attached.thinking_level, initial_level.next());
+        assert_eq!(
+            system_texts(&attached).last().cloned(),
+            Some(super::format_attach_thinking_message(initial_level.next())),
+        );
+    }
+
+    #[test]
+    fn attach_plugin_route_requests_plugin_inventory() {
+        let mut attached = test_app();
+        let session_commands = run_attach_slash_locally(&mut attached, "/plugin");
+
+        assert!(matches!(session_commands.as_slice(), [SessionCommand::GetPlugins]));
+    }
+
+    #[test]
+    fn attach_help_describes_local_handling_not_parity() {
+        let mut app = test_app();
+
+        super::handle_client_side_slash(&mut app, "help", "");
+
+        let messages = system_texts(&app);
+        assert!(messages.iter().any(|message| message.contains("locally handled slash commands include")));
+        assert!(messages.iter().any(|message| message.contains("/model")));
+        assert!(messages.iter().any(|message| message.contains("/role")));
+        assert!(messages.iter().any(|message| message.contains("/think [level]")));
+        assert!(messages.iter().any(|message| message.contains("/compress")));
+        assert!(messages.iter().any(|message| message.contains("/plugin")));
+        assert!(messages.iter().any(|message| message.contains("/think with no args cycles level")));
+        assert!(messages.iter().any(|message| message.contains("Unlisted commands generally forward to daemon")));
+        assert!(!messages.iter().any(|message| message.contains("local parity commands")));
+        assert!(!messages.iter().any(|message| message.contains("other commands forward")));
+    }
+
+    #[test]
+    fn attach_local_informational_commands_match_standalone_output() {
+        for text in [
+            "/status", "/usage", "/version", "/router", "/model", "/role", "/session", "/cd", "/shell", "/layout",
+            "/todo",
+        ] {
+            assert_local_attach_matches_standalone(text, |_| {}, |_, _| {});
+        }
+    }
+
+    #[test]
+    fn attach_local_session_management_commands_match_standalone_output() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let cwd = tempdir.path().join("attach-session-sandbox");
+        std::fs::create_dir_all(&cwd).expect("sandbox cwd created");
+        let cwd = cwd.to_string_lossy().to_string();
+
+        for text in [
+            "/session list 1",
+            "/session delete definitely-missing-session",
+            "/session purge",
+        ] {
+            assert_local_attach_matches_standalone(text, |app| app.cwd = cwd.clone(), |_, _| {});
+        }
+    }
+
+    #[test]
+    fn attach_local_cd_change_matches_standalone_state() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let child = tempdir.path().join("child");
+        std::fs::create_dir_all(&child).expect("child dir created");
+        let root = tempdir.path().to_string_lossy().to_string();
+        let expected = child.canonicalize().expect("child canonicalized").to_string_lossy().to_string();
+
+        assert_local_attach_matches_standalone(
+            "/cd child",
+            |app| app.cwd = root.clone(),
+            |attached, standalone| {
+                assert_eq!(attached.cwd, standalone.cwd);
+                assert_eq!(attached.cwd, expected);
+            },
+        );
+    }
+
+    #[test]
+    fn attach_local_shell_exec_matches_standalone_output() {
+        assert_local_attach_matches_standalone("/shell printf attach-shell-ok", |_| {}, |_, _| {});
+    }
+
+    #[test]
+    fn attach_local_export_matches_standalone_output_and_file() {
+        let tempdir = tempfile::tempdir().expect("tempdir");
+        let cwd = tempdir.path().to_string_lossy().to_string();
+        let export_path = tempdir.path().join("attach-export.md");
+        let export_arg = export_path.to_string_lossy().to_string();
+        let command = format!("/export {export_arg}");
+
+        assert_local_attach_matches_standalone(
+            &command,
+            |app| {
+                app.cwd = cwd.clone();
+                app.push_system("export me".to_string(), false);
+            },
+            |_, _| {},
+        );
+
+        let exported = std::fs::read_to_string(&export_path).expect("exported file readable");
+        assert!(exported.contains("## System\nexport me"));
+    }
+
+    #[test]
+    fn attach_local_layout_change_matches_standalone_state() {
+        assert_local_attach_matches_standalone(
+            "/layout wide",
+            |_| {},
+            |attached, standalone| {
+                assert_eq!(layout_snapshot(attached), layout_snapshot(standalone));
+            },
+        );
+    }
+
+    #[test]
+    fn attach_local_preview_matches_standalone_output() {
+        assert_local_attach_matches_standalone("/preview ## Attach Preview", |_| {}, |_, _| {});
+    }
+
+    #[test]
+    fn attach_local_editor_matches_standalone_state() {
+        assert_local_attach_matches_standalone(
+            "/editor",
+            |_| {},
+            |attached, standalone| {
+                assert_eq!(attached.open_editor_requested, standalone.open_editor_requested);
+                assert!(attached.open_editor_requested);
+            },
+        );
+    }
+
+    #[test]
+    fn attach_local_todo_add_matches_standalone_state() {
+        assert_local_attach_matches_standalone(
+            "/todo add write parity coverage",
+            |_| {},
+            |attached, standalone| {
+                assert_eq!(todo_summary(attached), todo_summary(standalone));
+            },
+        );
+    }
+
+    #[test]
+    fn attach_local_tools_listing_matches_standalone_output() {
+        let tool_rows = vec![
+            ("bash".to_string(), "Run shell commands".to_string(), "built-in".to_string()),
+            ("read".to_string(), "Read a file".to_string(), "built-in".to_string()),
+        ];
+
+        assert_local_attach_matches_standalone(
+            "/tools",
+            |app| {
+                app.tool_info = tool_rows.clone();
+            },
+            |_, _| {},
+        );
+    }
+
+    #[tokio::test]
+    async fn attach_tools_disable_matches_standalone_after_daemon_roundtrip() {
+        let mut standalone = test_app();
+        let mut attached = test_app();
+        let tool_rows = vec![
+            ("bash".to_string(), "Run shell commands".to_string(), "built-in".to_string()),
+            ("read".to_string(), "Read a file".to_string(), "built-in".to_string()),
+        ];
+        standalone.tool_info = tool_rows.clone();
+        attached.tool_info = tool_rows;
+
+        run_standalone_slash(&mut standalone, "/tools disable bash");
+        run_attach_slash_through_daemon(&mut attached, "/tools disable bash").await;
+
+        assert_eq!(attached.disabled_tools, standalone.disabled_tools);
+        assert_eq!(conversation_snapshot(&attached), conversation_snapshot(&standalone));
+    }
+
+    #[tokio::test]
+    async fn attach_compact_matches_standalone_after_daemon_roundtrip() {
+        let mut standalone = test_app();
+        let mut attached = test_app();
+
+        run_standalone_slash(&mut standalone, "/compact");
+        run_attach_slash_through_daemon(&mut attached, "/compact").await;
+
+        assert_eq!(conversation_snapshot(&attached), conversation_snapshot(&standalone));
+    }
+
+    #[tokio::test]
+    async fn attach_compress_matches_standalone_after_daemon_roundtrip() {
+        let mut standalone = test_app();
+        let mut attached = test_app();
+
+        run_standalone_slash(&mut standalone, "/compress");
+        run_attach_slash_through_daemon(&mut attached, "/compress").await;
+
+        assert_eq!(conversation_snapshot(&attached), conversation_snapshot(&standalone));
+    }
+
+    #[tokio::test]
+    async fn attach_think_matches_standalone_after_daemon_roundtrip() {
+        let mut standalone = test_app();
+        let mut attached = test_app();
+
+        run_standalone_slash(&mut standalone, "/think high");
+        run_attach_slash_through_daemon(&mut attached, "/think high").await;
+
+        assert_eq!(attached.thinking_enabled, standalone.thinking_enabled);
+        assert_eq!(attached.thinking_level, standalone.thinking_level);
+        assert_eq!(conversation_snapshot(&attached), conversation_snapshot(&standalone));
+    }
+
+    #[tokio::test]
+    async fn attach_think_cycle_matches_standalone_after_daemon_roundtrip() {
+        let mut standalone = test_app();
+        let mut attached = test_app();
+
+        run_standalone_slash(&mut standalone, "/think");
+        run_attach_slash_through_daemon(&mut attached, "/think").await;
+
+        assert_eq!(attached.thinking_enabled, standalone.thinking_enabled);
+        assert_eq!(attached.thinking_level, standalone.thinking_level);
+        assert_eq!(conversation_snapshot(&attached), conversation_snapshot(&standalone));
+    }
+
+    #[test]
     fn plugin_list_event_renders_stdio_metadata_in_attach_mode() {
         let mut app = App::new("test-model".to_string(), ".".to_string(), crate::config::theme::detect_theme());
         let client = dummy_client();
         let mut is_replaying_history = false;
+        let mut parity_tracker = super::AttachParityTracker::default();
         let event = DaemonEvent::PluginList {
             plugins: vec![PluginSummary {
                 name: "stdio-demo".to_string(),
@@ -1797,7 +2656,7 @@ mod tests {
             }],
         };
 
-        super::process_daemon_event(&mut app, &client, &event, &mut is_replaying_history, 0);
+        super::process_daemon_event(&mut app, &client, &event, &mut is_replaying_history, 0, &mut parity_tracker);
 
         let plugins = app.daemon_plugins.expect("daemon plugins stored");
         assert_eq!(plugins[0].kind.as_deref(), Some("stdio"));
@@ -1821,6 +2680,7 @@ mod tests {
         let mut app = App::new("test-model".to_string(), ".".to_string(), crate::config::theme::detect_theme());
         let client = dummy_client();
         let mut is_replaying_history = false;
+        let mut parity_tracker = super::AttachParityTracker::default();
 
         super::process_daemon_event(
             &mut app,
@@ -1832,6 +2692,7 @@ mod tests {
             },
             &mut is_replaying_history,
             0,
+            &mut parity_tracker,
         );
         super::process_daemon_event(
             &mut app,
@@ -1843,6 +2704,7 @@ mod tests {
             },
             &mut is_replaying_history,
             0,
+            &mut parity_tracker,
         );
         super::process_daemon_event(
             &mut app,
@@ -1858,6 +2720,7 @@ mod tests {
             },
             &mut is_replaying_history,
             0,
+            &mut parity_tracker,
         );
         super::process_daemon_event(
             &mut app,
@@ -1868,6 +2731,7 @@ mod tests {
             },
             &mut is_replaying_history,
             0,
+            &mut parity_tracker,
         );
 
         assert_eq!(app.plugin_ui.status_segments["stdio-demo"].text, "ready");

@@ -23,7 +23,9 @@ use crate::tui::app::App;
 use crate::tui::render;
 use crate::config::theme::load_theme;
 
-use super::attach::{build_client_slash_registry, drain_daemon_events, handle_terminal_events};
+use super::attach::{
+    AttachParityTracker, build_client_slash_registry, drain_daemon_events, handle_terminal_events,
+};
 
 // ── QUIC stream adapter ─────────────────────────────────────────────────────
 
@@ -303,6 +305,7 @@ async fn run_remote_attach_loop(
     session_id: &str,
 ) -> Result<()> {
     let mut is_replaying_history = true;
+    let mut parity_tracker = AttachParityTracker::default();
 
     loop {
         terminal
@@ -317,7 +320,13 @@ async fn run_remote_attach_loop(
         }
 
         // Drain daemon events
-        drain_daemon_events(app, &mut client, &mut is_replaying_history, max_subagent_panes);
+        drain_daemon_events(
+            app,
+            &mut client,
+            &mut is_replaying_history,
+            max_subagent_panes,
+            &mut parity_tracker,
+        );
 
         // Detect disconnect and attempt reconnection over the same QUIC connection
         if client.is_disconnected()
@@ -340,6 +349,7 @@ async fn run_remote_attach_loop(
                     client = new_client;
                     client.replay_history();
                     is_replaying_history = true;
+                    parity_tracker = AttachParityTracker::default();
                     app.connection_mode = clankers_tui_types::ConnectionMode::Attached;
                     app.push_system("Reconnected to remote session.".to_string(), false);
                 }
@@ -353,7 +363,7 @@ async fn run_remote_attach_loop(
         }
 
         // Handle terminal events — same as regular attach
-        handle_terminal_events(app, &mut client, terminal, &keymap, slash_registry)?;
+        handle_terminal_events(app, &mut client, terminal, &keymap, slash_registry, &mut parity_tracker)?;
 
         if app.open_editor_requested {
             app.open_editor_requested = false;
