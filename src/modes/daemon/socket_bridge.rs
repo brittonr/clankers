@@ -73,10 +73,14 @@ impl SessionFactory {
         bash_confirm_tx: Option<crate::tools::bash::ConfirmTx>,
     ) -> Vec<Arc<dyn Tool>> {
         let child_factory = self.child_actor_factory();
-        let actor_ctx = self.registry.as_ref().zip(child_factory).map(|(reg, factory)| crate::tools::subagent::ActorContext {
-            registry: reg.clone(),
-            factory,
-        });
+        let actor_ctx =
+            self.registry
+                .as_ref()
+                .zip(child_factory)
+                .map(|(reg, factory)| crate::tools::subagent::ActorContext {
+                    registry: reg.clone(),
+                    factory,
+                });
         let env = crate::modes::common::ToolEnv {
             panel_tx: Some(panel_tx),
             bash_confirm_tx,
@@ -146,7 +150,10 @@ pub async fn run_control_socket_with_factory(
     }
 }
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential dispatch logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential dispatch logic")
+)]
 async fn handle_control(
     mut stream: tokio::net::UnixStream,
     state: Arc<Mutex<DaemonState>>,
@@ -168,11 +175,8 @@ async fn handle_control(
             cwd,
         } => {
             // If resuming, try to load seed messages from the session file.
-            let (session_id, seed_messages) = resolve_session_resume(
-                resume_id.as_deref(),
-                continue_last,
-                cwd.as_deref(),
-            );
+            let (session_id, seed_messages) =
+                resolve_session_resume(resume_id.as_deref(), continue_last, cwd.as_deref());
             let resolved_model = model.clone().unwrap_or_else(|| factory.default_model.clone());
 
             // Spawn as an actor process in the registry
@@ -220,13 +224,30 @@ async fn handle_control(
                 });
             }
 
-            // Spawn the session socket listener
+            // Bind the session socket before replying so attaches cannot race it.
+            let listener = match clankers_controller::transport::bind_session_socket(&session_id) {
+                Ok(listener) => listener,
+                Err(e) => {
+                    {
+                        let mut st = state.lock().await;
+                        st.remove_session(&session_id);
+                    }
+                    if let Some(ref catalog) = factory.catalog {
+                        catalog.set_state(&session_id, super::session_store::SessionLifecycle::Tombstoned);
+                    }
+                    return frame::write_frame(&mut writer, &ControlResponse::Error {
+                        message: format!("failed to bind session socket for {session_id}: {e}"),
+                    })
+                    .await;
+                }
+            };
             let sock_shutdown = shutdown.clone();
             let sock_cmd_tx = cmd_tx.clone();
             let sock_event_tx = event_tx.clone();
             let sock_session_id = session_id.clone();
             tokio::spawn(async move {
-                clankers_controller::transport::run_session_socket(
+                clankers_controller::transport::run_session_socket_with_listener(
+                    listener,
                     sock_session_id,
                     sock_cmd_tx,
                     sock_event_tx,
@@ -238,9 +259,11 @@ async fn handle_control(
             // Seed resumed messages if any
             if !seed_messages.is_empty() {
                 let count = seed_messages.len();
-                cmd_tx.send(SessionCommand::SeedMessages {
-                    messages: seed_messages,
-                }).ok();
+                cmd_tx
+                    .send(SessionCommand::SeedMessages {
+                        messages: seed_messages,
+                    })
+                    .ok();
                 info!("created session {session_id} (model: {resolved_model}, resumed {count} messages)");
             } else {
                 info!("created session {session_id} (model: {resolved_model})");
@@ -254,20 +277,21 @@ async fn handle_control(
 
         ControlCommand::AttachSession { session_id } => {
             let mut st = state.lock().await;
-            let needs_recovery = st.sessions.get(&session_id)
-                .is_some_and(|h| h.cmd_tx.is_none());
+            let needs_recovery = st.sessions.get(&session_id).is_some_and(|h| h.cmd_tx.is_none());
 
             if needs_recovery {
-                match super::agent_process::recover_session(
-                    &session_id, &registry, &factory, &mut st, &shutdown,
-                ) {
+                match super::agent_process::recover_session(&session_id, &registry, &factory, &mut st, &shutdown) {
                     Ok(_) => {
-                        let socket_path = st.sessions.get(&session_id)
+                        let socket_path = st
+                            .sessions
+                            .get(&session_id)
                             .map(|h| h.socket_path.to_string_lossy().into_owned())
                             .unwrap_or_default();
                         ControlResponse::Attached { socket_path }
                     }
-                    Err(e) => ControlResponse::Error { message: format!("recovery failed: {e}") },
+                    Err(e) => ControlResponse::Error {
+                        message: format!("recovery failed: {e}"),
+                    },
                 }
             } else if let Some(handle) = st.sessions.get(&session_id) {
                 ControlResponse::Attached {
@@ -331,12 +355,16 @@ async fn dispatch_control_command(
             // Use kill(getpid()) not raise() — raise sends to the calling
             // *thread* in multi-threaded programs, but tokio's signal handler
             // is process-level.
-            unsafe { libc::kill(libc::getpid(), libc::SIGTERM); }
+            unsafe {
+                libc::kill(libc::getpid(), libc::SIGTERM);
+            }
             ControlResponse::ShuttingDown
         }
         ControlCommand::RestartDaemon => {
             super::RESTART_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
-            unsafe { libc::kill(libc::getpid(), libc::SIGTERM); }
+            unsafe {
+                libc::kill(libc::getpid(), libc::SIGTERM);
+            }
             ControlResponse::Restarting
         }
         ControlCommand::ListPlugins => {
@@ -366,10 +394,12 @@ pub fn drain_and_broadcast(
 
         // Convert plugin display messages to SystemMessage events
         for (plugin_name, message) in result.messages {
-            event_tx.send(DaemonEvent::SystemMessage {
-                text: format!("\u{1f50c} {}: {}", plugin_name, message),
-                is_error: false,
-            }).ok();
+            event_tx
+                .send(DaemonEvent::SystemMessage {
+                    text: format!("\u{1f50c} {}: {}", plugin_name, message),
+                    is_error: false,
+                })
+                .ok();
         }
 
         // Convert plugin UI actions to protocol events
@@ -385,9 +415,7 @@ pub fn drain_and_broadcast(
     // Drain subagent panel events → DaemonEvent
     while let Ok(panel_event) = panel_rx.try_recv() {
         let daemon_event = match panel_event {
-            SubagentEvent::Started { id, name, task, pid } => {
-                DaemonEvent::SubagentStarted { id, name, task, pid }
-            }
+            SubagentEvent::Started { id, name, task, pid } => DaemonEvent::SubagentStarted { id, name, task, pid },
             SubagentEvent::Output { id, line } => DaemonEvent::SubagentOutput { id, line },
             SubagentEvent::Done { id } => DaemonEvent::SubagentDone { id },
             SubagentEvent::Error { id, message } => DaemonEvent::SubagentError { id, message },
@@ -414,45 +442,62 @@ fn resolve_session_resume(
         let mgr = clankers_session::SessionManager::open(file).ok()?;
         let msgs = mgr.build_context().ok()?;
         let session_id = mgr.session_id().to_string();
-        let serialized = msgs.iter().map(|m| {
-            let (role, content, model) = match m {
-                clankers_message::AgentMessage::User(u) => {
-                    let text = u.content.iter().filter_map(|c| match c {
-                        clankers_message::Content::Text { text } => Some(text.as_str()),
-                        _ => None,
-                    }).collect::<Vec<_>>().join("\n");
-                    ("user", text, None)
-                }
-                clankers_message::AgentMessage::Assistant(a) => {
-                    let text = a.content.iter().filter_map(|c| match c {
-                        clankers_message::Content::Text { text } => Some(text.as_str()),
-                        _ => None,
-                    }).collect::<Vec<_>>().join("\n");
-                    ("assistant", text, Some(a.model.clone()))
-                }
-                _ => return clankers_protocol::SerializedMessage {
-                    role: "user".to_string(),
-                    content: String::new(),
-                    model: None,
+        let serialized = msgs
+            .iter()
+            .map(|m| {
+                let (role, content, model) = match m {
+                    clankers_message::AgentMessage::User(u) => {
+                        let text = u
+                            .content
+                            .iter()
+                            .filter_map(|c| match c {
+                                clankers_message::Content::Text { text } => Some(text.as_str()),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        ("user", text, None)
+                    }
+                    clankers_message::AgentMessage::Assistant(a) => {
+                        let text = a
+                            .content
+                            .iter()
+                            .filter_map(|c| match c {
+                                clankers_message::Content::Text { text } => Some(text.as_str()),
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        ("assistant", text, Some(a.model.clone()))
+                    }
+                    _ => {
+                        return clankers_protocol::SerializedMessage {
+                            role: "user".to_string(),
+                            content: String::new(),
+                            model: None,
+                            timestamp: None,
+                        };
+                    }
+                };
+                clankers_protocol::SerializedMessage {
+                    role: role.to_string(),
+                    content,
+                    model,
                     timestamp: None,
-                },
-            };
-            clankers_protocol::SerializedMessage {
-                role: role.to_string(),
-                content,
-                model,
-                timestamp: None,
-            }
-        }).filter(|m| !m.content.is_empty()).collect();
+                }
+            })
+            .filter(|m| !m.content.is_empty())
+            .collect();
         Some((session_id, serialized))
     };
 
     // Try resume by ID
     if let Some(id) = resume_id {
         let files = clankers_session::store::list_sessions(sessions_dir, effective_cwd);
-        if let Some(file) = files.into_iter().find(|f| {
-            f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(id))
-        }) && let Some(result) = try_open(file) {
+        if let Some(file) =
+            files.into_iter().find(|f| f.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.contains(id)))
+            && let Some(result) = try_open(file)
+        {
             return result;
         }
     }

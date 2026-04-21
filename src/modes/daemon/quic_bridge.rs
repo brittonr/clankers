@@ -36,7 +36,10 @@ pub const ALPN_DAEMON: &[u8] = clankers_protocol::types::ALPN_DAEMON;
 /// When `should_skip_token_check` is true (daemon started with `--allow-all`),
 /// the per-stream token requirement is bypassed — the ACL already
 /// admitted this peer at the connection level.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by connection close"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by connection close")
+)]
 pub async fn handle_daemon_quic_connection(
     conn: iroh::endpoint::Connection,
     state: Arc<Mutex<DaemonState>>,
@@ -61,7 +64,10 @@ pub async fn handle_daemon_quic_connection(
         let shutdown = shutdown.clone();
         let auth = auth.clone();
         tokio::spawn(async move {
-            if let Err(e) = handle_daemon_stream(send, recv, state, factory, registry, shutdown, should_skip_token_check, auth).await {
+            if let Err(e) =
+                handle_daemon_stream(send, recv, state, factory, registry, shutdown, should_skip_token_check, auth)
+                    .await
+            {
                 debug!("daemon QUIC stream ended: {e}");
             }
         });
@@ -86,10 +92,30 @@ async fn handle_daemon_stream(
 
     match request {
         DaemonRequest::Control { command } => {
-            handle_control_stream(command, &mut send, &state, &factory, &registry, &shutdown, should_skip_token_check, auth.as_deref()).await?;
+            handle_control_stream(
+                command,
+                &mut send,
+                &state,
+                &factory,
+                &registry,
+                &shutdown,
+                should_skip_token_check,
+                auth.as_deref(),
+            )
+            .await?;
         }
         DaemonRequest::Attach { handshake } => {
-            handle_attach_stream(handshake, send, recv, &state, &factory, &registry, &shutdown, should_skip_token_check).await?;
+            handle_attach_stream(
+                handshake,
+                send,
+                recv,
+                &state,
+                &factory,
+                &registry,
+                &shutdown,
+                should_skip_token_check,
+            )
+            .await?;
         }
     }
 
@@ -133,14 +159,16 @@ async fn handle_control_stream(
                                 warn!("QUIC CreateSession: token verification failed: {e}");
                                 return write_quic_frame(send, &clankers_protocol::ControlResponse::Error {
                                     message: format!("token verification failed: {e}"),
-                                }).await;
+                                })
+                                .await;
                             }
                         },
                         Err(e) => {
                             warn!("QUIC CreateSession: invalid token encoding: {e}");
                             return write_quic_frame(send, &clankers_protocol::ControlResponse::Error {
                                 message: format!("invalid token encoding: {e}"),
-                            }).await;
+                            })
+                            .await;
                         }
                     }
                 } else {
@@ -279,13 +307,29 @@ async fn create_session_over_quic(
         });
     }
 
-    // Spawn the Unix session socket (local clients can still connect)
+    // Bind the Unix session socket before replying so local attaches cannot race it.
+    let listener = match clankers_controller::transport::bind_session_socket(&session_id) {
+        Ok(listener) => listener,
+        Err(e) => {
+            {
+                let mut st = state.lock().await;
+                st.remove_session(&session_id);
+            }
+            if let Some(ref catalog) = factory.catalog {
+                catalog.set_state(&session_id, super::session_store::SessionLifecycle::Tombstoned);
+            }
+            return clankers_protocol::ControlResponse::Error {
+                message: format!("failed to bind session socket for {session_id}: {e}"),
+            };
+        }
+    };
     let sock_shutdown = shutdown.clone();
     let sock_cmd_tx = cmd_tx.clone();
     let sock_event_tx = event_tx.clone();
     let sock_session_id = session_id.clone();
     tokio::spawn(async move {
-        clankers_controller::transport::run_session_socket(
+        clankers_controller::transport::run_session_socket_with_listener(
+            listener,
             sock_session_id,
             sock_cmd_tx,
             sock_event_tx,
@@ -306,8 +350,14 @@ async fn create_session_over_quic(
 /// The QUIC bidirectional stream carries the same protocol as a Unix session
 /// socket: DaemonEvent frames (daemon → client) and SessionCommand frames
 /// (client → daemon).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by connection close"))]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by connection close")
+)]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential setup/dispatch logic")
+)]
 async fn handle_attach_stream(
     handshake: clankers_protocol::Handshake,
     mut send: iroh::endpoint::SendStream,
@@ -366,13 +416,10 @@ async fn handle_attach_stream(
         let mut st = state.lock().await;
 
         // Check if session needs lazy recovery
-        let needs_recovery = st.sessions.get(&session_id)
-            .is_some_and(|h| h.cmd_tx.is_none());
+        let needs_recovery = st.sessions.get(&session_id).is_some_and(|h| h.cmd_tx.is_none());
 
         if needs_recovery {
-            match super::agent_process::recover_session(
-                &session_id, registry, factory, &mut st, shutdown,
-            ) {
+            match super::agent_process::recover_session(&session_id, registry, factory, &mut st, shutdown) {
                 Ok((cmd_tx, event_tx)) => (cmd_tx, event_tx.subscribe()),
                 Err(e) => {
                     let resp = AttachResponse::Error {
@@ -482,12 +529,12 @@ async fn write_quic_frame<T: serde::Serialize>(
         return Err(clankers_protocol::FrameError::TooLarge { size: data.len() });
     }
     let len = (data.len() as u32).to_be_bytes();
-    send.write_all(&len).await.map_err(|e| {
-        clankers_protocol::FrameError::Io(std::io::Error::other(e.to_string()))
-    })?;
-    send.write_all(&data).await.map_err(|e| {
-        clankers_protocol::FrameError::Io(std::io::Error::other(e.to_string()))
-    })?;
+    send.write_all(&len)
+        .await
+        .map_err(|e| clankers_protocol::FrameError::Io(std::io::Error::other(e.to_string())))?;
+    send.write_all(&data)
+        .await
+        .map_err(|e| clankers_protocol::FrameError::Io(std::io::Error::other(e.to_string())))?;
     Ok(())
 }
 
@@ -495,17 +542,17 @@ async fn read_quic_frame<T: serde::de::DeserializeOwned>(
     recv: &mut iroh::endpoint::RecvStream,
 ) -> Result<T, clankers_protocol::FrameError> {
     let mut len_buf = [0u8; 4];
-    recv.read_exact(&mut len_buf).await.map_err(|e| {
-        clankers_protocol::FrameError::Io(std::io::Error::other(e.to_string()))
-    })?;
+    recv.read_exact(&mut len_buf)
+        .await
+        .map_err(|e| clankers_protocol::FrameError::Io(std::io::Error::other(e.to_string())))?;
     let len = usize::try_from(u32::from_be_bytes(len_buf)).unwrap_or(0);
     if len > 10_000_000 {
         return Err(clankers_protocol::FrameError::TooLarge { size: len });
     }
     let mut data = vec![0u8; len];
-    recv.read_exact(&mut data).await.map_err(|e| {
-        clankers_protocol::FrameError::Io(std::io::Error::other(e.to_string()))
-    })?;
+    recv.read_exact(&mut data)
+        .await
+        .map_err(|e| clankers_protocol::FrameError::Io(std::io::Error::other(e.to_string())))?;
     let value = serde_json::from_slice(&data)?;
     Ok(value)
 }

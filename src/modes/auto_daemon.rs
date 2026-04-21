@@ -10,18 +10,18 @@ use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
 use clankers_protocol::control::ControlCommand;
 use clankers_protocol::control::ControlResponse;
-use tokio::net::UnixStream;
 use tracing::info;
 use tracing::warn;
 
+use super::attach::RecoveryMode;
+use super::attach::build_client_slash_registry;
+use super::attach::connect_session_socket;
+use super::attach::run_attach_with_reconnect;
+use super::attach::send_control;
 use crate::config::settings::Settings;
+use crate::config::theme::load_theme;
 use crate::error::Result;
 use crate::tui::app::App;
-use crate::config::theme::load_theme;
-
-use super::attach::{
-    RecoveryMode, build_client_slash_registry, run_attach_with_reconnect, send_control,
-};
 
 // ── Options ─────────────────────────────────────────────────────────────────
 
@@ -46,7 +46,13 @@ pub struct AutoDaemonOptions {
 /// This is the Phase 3 "flip the switch" entry point: `clankers` (no
 /// subcommand) auto-starts a daemon, creates a session with the caller's
 /// CLI options, and attaches the TUI to it.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic — splitting would fragment readability"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        function_length,
+        reason = "sequential setup/dispatch logic — splitting would fragment readability"
+    )
+)]
 pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     // 1. Ensure a daemon is running (starts one in the background if needed)
     crate::commands::daemon::ensure_daemon_running().await?;
@@ -63,7 +69,10 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
 
     let resp = send_control(create_cmd).await?;
     let (session_id, socket_path) = match resp {
-        ControlResponse::Created { session_id, socket_path } => (session_id, socket_path),
+        ControlResponse::Created {
+            session_id,
+            socket_path,
+        } => (session_id, socket_path),
         ControlResponse::Error { message } => {
             return Err(crate::error::Error::Provider {
                 message: format!("Failed to create daemon session: {message}"),
@@ -82,16 +91,15 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     let _guard = SessionGuard::new(session_id.clone());
 
     // 3. Connect to the session socket
-    let stream = UnixStream::connect(&socket_path).await.map_err(|e| {
-        crate::error::Error::Provider {
-            message: format!("Cannot connect to session socket {socket_path}: {e}"),
-        }
+    let stream = connect_session_socket(&socket_path).await.map_err(|e| crate::error::Error::Provider {
+        message: format!("Cannot connect to session socket {socket_path}: {e}"),
     })?;
 
-    let mut client = ClientAdapter::connect(stream, "clankers-tui", None, Some(session_id.clone()))
-        .await
-        .map_err(|e| crate::error::Error::Provider {
-            message: format!("Handshake failed: {e}"),
+    let mut client =
+        ClientAdapter::connect(stream, "clankers-tui", None, Some(session_id.clone())).await.map_err(|e| {
+            crate::error::Error::Provider {
+                message: format!("Handshake failed: {e}"),
+            }
         })?;
 
     // Read initial SessionInfo
@@ -137,9 +145,7 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
 
     let slash_registry = build_client_slash_registry();
-    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(
-        &slash_registry,
-    )));
+    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(&slash_registry)));
 
     crate::modes::interactive::rebuild_leader_menu(&mut app, None, &opts.settings);
 
@@ -157,10 +163,7 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
         );
     } else {
         app.push_system(
-            format!(
-                "clankers — {} — keymap: {} — press i to start typing",
-                display_model, keymap.preset
-            ),
+            format!("clankers — {} — keymap: {} — press i to start typing", display_model, keymap.preset),
             false,
         );
     }
@@ -247,8 +250,7 @@ fn send_kill_session_sync(session_id: &str) -> std::io::Result<()> {
     let cmd = ControlCommand::KillSession {
         session_id: session_id.to_string(),
     };
-    let payload = serde_json::to_vec(&cmd)
-        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let payload = serde_json::to_vec(&cmd).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
     let len = (payload.len() as u32).to_be_bytes();
 
     let mut buf = Vec::with_capacity(4 + payload.len());
@@ -286,9 +288,7 @@ mod tests {
 
         // Accept the connection and read the frame the guard sent.
         // Use a short timeout rather than non-blocking to avoid races.
-        listener
-            .set_nonblocking(false)
-            .unwrap();
+        listener.set_nonblocking(false).unwrap();
         let (mut conn, _) = listener.accept().expect("guard should have connected");
 
         use std::io::Read;
@@ -299,8 +299,7 @@ mod tests {
         let mut payload = vec![0u8; len];
         conn.read_exact(&mut payload).unwrap();
 
-        let cmd: clankers_protocol::control::ControlCommand =
-            serde_json::from_slice(&payload).unwrap();
+        let cmd: clankers_protocol::control::ControlCommand = serde_json::from_slice(&payload).unwrap();
         match cmd {
             clankers_protocol::control::ControlCommand::KillSession { session_id } => {
                 assert_eq!(session_id, "test-session-42");

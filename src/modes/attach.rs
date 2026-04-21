@@ -6,6 +6,7 @@
 //! are handled locally; everything else goes to the daemon.
 
 use std::io;
+use std::path::Path;
 use std::time::Duration;
 
 use clankers_controller::client::ClientAdapter;
@@ -26,13 +27,42 @@ use tracing::warn;
 use crate::config::keybindings::InputMode;
 use crate::config::keybindings::Keymap;
 use crate::config::settings::Settings;
+use crate::config::theme::load_theme;
 use crate::error::Result;
 use crate::slash_commands;
 use crate::tui::app::App;
 use crate::tui::event as tui_event;
 use crate::tui::event::AppEvent;
 use crate::tui::render;
-use crate::config::theme::load_theme;
+
+// ── Session socket connection ───────────────────────────────────────────────
+
+const SESSION_SOCKET_CONNECT_ATTEMPTS: usize = 20;
+const SESSION_SOCKET_CONNECT_RETRY_DELAY_MS: u64 = 25;
+
+fn should_retry_session_socket_connect(error: &io::Error) -> bool {
+    matches!(error.kind(), io::ErrorKind::NotFound | io::ErrorKind::ConnectionRefused)
+}
+
+pub(crate) async fn connect_session_socket(socket_path: impl AsRef<Path>) -> io::Result<UnixStream> {
+    let socket_path = socket_path.as_ref();
+    let retry_delay = Duration::from_millis(SESSION_SOCKET_CONNECT_RETRY_DELAY_MS);
+
+    for attempt_index in 0..SESSION_SOCKET_CONNECT_ATTEMPTS {
+        match UnixStream::connect(socket_path).await {
+            Ok(stream) => return Ok(stream),
+            Err(error)
+                if should_retry_session_socket_connect(&error)
+                    && attempt_index + 1 < SESSION_SOCKET_CONNECT_ATTEMPTS =>
+            {
+                tokio::time::sleep(retry_delay).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+
+    unreachable!("bounded retry loop must return success or final error");
+}
 
 // ── Entry point ─────────────────────────────────────────────────────────────
 
@@ -49,10 +79,8 @@ pub async fn run_attach(
     info!("attaching to session {resolved_session_id} at {socket_path}");
 
     // Connect to the session socket
-    let stream = UnixStream::connect(&socket_path).await.map_err(|e| {
-        crate::error::Error::Provider {
-            message: format!("Cannot connect to session socket {socket_path}: {e}"),
-        }
+    let stream = connect_session_socket(&socket_path).await.map_err(|e| crate::error::Error::Provider {
+        message: format!("Cannot connect to session socket {socket_path}: {e}"),
     })?;
 
     let mut client = ClientAdapter::connect(stream, "clankers-tui", None, Some(resolved_session_id.clone()))
@@ -91,10 +119,7 @@ pub async fn run_attach(
         model_name
     };
 
-    let cwd = std::env::current_dir()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned();
+    let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().into_owned();
     let paths = crate::config::ClankersPaths::get();
     let theme = load_theme(settings.theme.as_deref(), &paths.global_themes_dir);
     let keymap = settings.keymap.clone().into_keymap();
@@ -106,9 +131,7 @@ pub async fn run_attach(
 
     // Minimal slash registry for client-side commands only
     let slash_registry = build_client_slash_registry();
-    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(
-        &slash_registry,
-    )));
+    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(&slash_registry)));
 
     // Build leader menu from builtins
     crate::modes::interactive::rebuild_leader_menu(&mut app, None, settings);
@@ -120,11 +143,7 @@ pub async fn run_attach(
             "attached to session {} (model: {}, prompt hash: {})",
             resolved_session_id,
             display_model,
-            if session_hash.is_empty() {
-                "n/a"
-            } else {
-                &session_hash
-            }
+            if session_hash.is_empty() { "n/a" } else { &session_hash }
         ),
         false,
     );
@@ -151,12 +170,17 @@ pub async fn run_attach(
     result
 }
 
-
 // ── Auto-daemon mode (extracted to auto_daemon.rs) ──────────────────────────
 pub use super::auto_daemon::*;
 
 /// Run the attach event loop with automatic reconnection on disconnect.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        nested_conditionals,
+        reason = "complex control flow — extracting helpers would obscure logic"
+    )
+)]
 pub(crate) async fn run_attach_with_reconnect(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     app: &mut App,
@@ -172,11 +196,9 @@ pub(crate) async fn run_attach_with_reconnect(
     let mut is_replaying_history = true;
 
     loop {
-        terminal
-            .draw(|frame| render::render(frame, app))
-            .map_err(|e| crate::error::Error::Tui {
-                message: format!("Render failed: {e}"),
-            })?;
+        terminal.draw(|frame| render::render(frame, app)).map_err(|e| crate::error::Error::Tui {
+            message: format!("Render failed: {e}"),
+        })?;
 
         if app.should_quit {
             client.disconnect();
@@ -187,14 +209,9 @@ pub(crate) async fn run_attach_with_reconnect(
         drain_daemon_events(app, &mut client, &mut is_replaying_history, max_subagent_panes);
 
         // Detect disconnect and attempt reconnection
-        if client.is_disconnected()
-            && app.connection_mode != clankers_tui_types::ConnectionMode::Reconnecting
-        {
+        if client.is_disconnected() && app.connection_mode != clankers_tui_types::ConnectionMode::Reconnecting {
             app.connection_mode = clankers_tui_types::ConnectionMode::Reconnecting;
-            app.push_system(
-                "Connection to daemon lost. Attempting to reconnect...".to_string(),
-                true,
-            );
+            app.push_system("Connection to daemon lost. Attempting to reconnect...".to_string(), true);
 
             // First, try reconnecting to the existing socket (transient glitch).
             match try_reconnect(socket_path, session_id).await {
@@ -209,11 +226,12 @@ pub(crate) async fn run_attach_with_reconnect(
                     // Socket reconnect failed. For auto-daemon, try restarting
                     // the daemon and resuming the session.
                     match &recovery_mode {
-                        RecoveryMode::AutoDaemon { session_id: sid, model, cwd } => {
-                            app.push_system(
-                                "Restarting daemon...".to_string(),
-                                true,
-                            );
+                        RecoveryMode::AutoDaemon {
+                            session_id: sid,
+                            model,
+                            cwd,
+                        } => {
+                            app.push_system("Restarting daemon...".to_string(), true);
                             match try_recover_daemon(sid, model, cwd).await {
                                 Ok((new_client, new_socket_path, was_resumed)) => {
                                     client = new_client;
@@ -221,35 +239,24 @@ pub(crate) async fn run_attach_with_reconnect(
                                     is_replaying_history = true;
                                     app.connection_mode = restore_mode.clone();
                                     if was_resumed {
-                                        app.push_system(
-                                            "Session was_resumed after daemon restart.".to_string(),
-                                            false,
-                                        );
+                                        app.push_system("Session was_resumed after daemon restart.".to_string(), false);
                                     } else {
                                         app.push_system(
                                             "Session history lost — started fresh after daemon restart.".to_string(),
                                             true,
                                         );
                                     }
-                                    info!(
-                                        "auto-daemon: recovered to new socket {new_socket_path}"
-                                    );
+                                    info!("auto-daemon: recovered to new socket {new_socket_path}");
                                 }
                                 Err(e) => {
                                     warn!("auto-daemon: daemon recovery failed: {e}");
-                                    app.push_system(
-                                        format!(
-                                            "Daemon recovery failed: {e}. Use /quit to exit."
-                                        ),
-                                        true,
-                                    );
+                                    app.push_system(format!("Daemon recovery failed: {e}. Use /quit to exit."), true);
                                 }
                             }
                         }
                         RecoveryMode::ExplicitAttach => {
                             app.push_system(
-                                "Failed to reconnect after multiple attempts. Use /quit to exit."
-                                    .to_string(),
+                                "Failed to reconnect after multiple attempts. Use /quit to exit.".to_string(),
                                 true,
                             );
                         }
@@ -349,27 +356,21 @@ async fn resolve_session(
 /// Send a control command to the daemon and return the response.
 pub(crate) async fn send_control(cmd: ControlCommand) -> Result<ControlResponse> {
     let path = clankers_controller::transport::control_socket_path();
-    let stream = UnixStream::connect(&path).await.map_err(|e| {
-        crate::error::Error::Provider {
-            message: format!(
-                "Cannot connect to daemon at {}: {e}\nIs the daemon running? Start with: clankers daemon",
-                path.display()
-            ),
-        }
+    let stream = UnixStream::connect(&path).await.map_err(|e| crate::error::Error::Provider {
+        message: format!(
+            "Cannot connect to daemon at {}: {e}\nIs the daemon running? Start with: clankers daemon",
+            path.display()
+        ),
     })?;
 
     let (mut reader, mut writer) = stream.into_split();
 
-    frame::write_frame(&mut writer, &cmd).await.map_err(|e| {
-        crate::error::Error::Provider {
-            message: format!("Failed to send command: {e}"),
-        }
+    frame::write_frame(&mut writer, &cmd).await.map_err(|e| crate::error::Error::Provider {
+        message: format!("Failed to send command: {e}"),
     })?;
 
-    let resp: ControlResponse = frame::read_frame(&mut reader).await.map_err(|e| {
-        crate::error::Error::Provider {
-            message: format!("Failed to read response: {e}"),
-        }
+    let resp: ControlResponse = frame::read_frame(&mut reader).await.map_err(|e| crate::error::Error::Provider {
+        message: format!("Failed to read response: {e}"),
     })?;
 
     Ok(resp)
@@ -383,9 +384,13 @@ pub(crate) async fn send_control(cmd: ControlCommand) -> Result<ControlResponse>
 /// Runs BEFORE the full TUI is initialised.
 fn pick_session(sessions: &[clankers_protocol::SessionSummary]) -> Result<&clankers_protocol::SessionSummary> {
     use crossterm::cursor;
-    use crossterm::event::{self as ct_event, Event, KeyCode, KeyEventKind};
+    use crossterm::event::Event;
+    use crossterm::event::KeyCode;
+    use crossterm::event::KeyEventKind;
+    use crossterm::event::{self as ct_event};
     use crossterm::execute;
-    use crossterm::style::{self, Stylize};
+    use crossterm::style::Stylize;
+    use crossterm::style::{self};
     use crossterm::terminal::{self};
 
     debug_assert!(!sessions.is_empty());
@@ -399,7 +404,10 @@ fn pick_session(sessions: &[clankers_protocol::SessionSummary]) -> Result<&clank
 
     struct RawGuard;
     impl Drop for RawGuard {
-        #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; exits on quit signal"))]
+        #[cfg_attr(
+            dylint_lib = "tigerstyle",
+            allow(unbounded_loop, reason = "event loop; exits on quit signal")
+        )]
         fn drop(&mut self) {
             crossterm::terminal::disable_raw_mode().ok();
             crossterm::execute!(std::io::stdout(), crossterm::cursor::Show).ok();
@@ -411,25 +419,14 @@ fn pick_session(sessions: &[clankers_protocol::SessionSummary]) -> Result<&clank
 
     loop {
         // Clear and redraw.
-        execute!(
-            stdout,
-            terminal::Clear(terminal::ClearType::All),
-            cursor::MoveTo(0, 0),
-        )
-        .ok();
+        execute!(stdout, terminal::Clear(terminal::ClearType::All), cursor::MoveTo(0, 0),).ok();
 
         // Header
-        execute!(
-            stdout,
-            style::PrintStyledContent("Select a session to attach:\r\n\r\n".bold()),
-        )
-        .ok();
+        execute!(stdout, style::PrintStyledContent("Select a session to attach:\r\n\r\n".bold()),).ok();
 
         // Column header
-        let header = format!(
-            "  {:<10} {:<28} {:>5}  {:<20}  {}\r\n",
-            "SESSION", "MODEL", "TURNS", "LAST ACTIVE", "CLIENTS"
-        );
+        let header =
+            format!("  {:<10} {:<28} {:>5}  {:<20}  {}\r\n", "SESSION", "MODEL", "TURNS", "LAST ACTIVE", "CLIENTS");
         execute!(stdout, style::PrintStyledContent(header.dim())).ok();
 
         // Session rows
@@ -457,11 +454,7 @@ fn pick_session(sessions: &[clankers_protocol::SessionSummary]) -> Result<&clank
         }
 
         // Footer
-        execute!(
-            stdout,
-            style::PrintStyledContent("\r\n  ↑/↓ navigate  Enter select  q/Esc cancel\r\n".dim()),
-        )
-        .ok();
+        execute!(stdout, style::PrintStyledContent("\r\n  ↑/↓ navigate  Enter select  q/Esc cancel\r\n".dim()),).ok();
 
         // Wait for key
         if ct_event::poll(std::time::Duration::from_millis(200)).unwrap_or(false)
@@ -513,7 +506,6 @@ pub(crate) enum RecoveryMode {
     ExplicitAttach,
 }
 
-
 // ── Attach event loop ───────────────────────────────────────────────────────
 
 /// Reconnection backoff parameters.
@@ -525,10 +517,7 @@ const RECONNECT_MAX_ATTEMPTS: u32 = 20;
 ///
 /// Returns a new `ClientAdapter` on success, or `None` after exhausting
 /// all retry attempts or if the user cancels.
-async fn try_reconnect(
-    socket_path: &str,
-    session_id: &str,
-) -> Option<ClientAdapter> {
+async fn try_reconnect(socket_path: &str, session_id: &str) -> Option<ClientAdapter> {
     let mut delay_ms = RECONNECT_INITIAL_MS;
 
     for attempt in 1..=RECONNECT_MAX_ATTEMPTS {
@@ -545,14 +534,7 @@ async fn try_reconnect(
             }
         };
 
-        match ClientAdapter::connect(
-            stream,
-            "clankers-tui",
-            None,
-            Some(session_id.to_string()),
-        )
-        .await
-        {
+        match ClientAdapter::connect(stream, "clankers-tui", None, Some(session_id.to_string())).await {
             Ok(adapter) => return Some(adapter),
             Err(e) => {
                 debug!("reconnect handshake failed: {e}");
@@ -632,18 +614,13 @@ async fn try_recover_daemon(
     info!("auto-daemon: recovered session {new_session_id} at {socket_path} (was_resumed={was_resumed})");
 
     // 3. Connect to the new session socket
-    let stream = UnixStream::connect(&socket_path)
+    let stream = connect_session_socket(&socket_path)
         .await
         .map_err(|e| format!("cannot connect to recovered session socket {socket_path}: {e}"))?;
 
-    let mut adapter = ClientAdapter::connect(
-        stream,
-        "clankers-tui",
-        None,
-        Some(new_session_id),
-    )
-    .await
-    .map_err(|e| format!("handshake failed on recovered session: {e}"))?;
+    let mut adapter = ClientAdapter::connect(stream, "clankers-tui", None, Some(new_session_id))
+        .await
+        .map_err(|e| format!("handshake failed on recovered session: {e}"))?;
 
     // Consume SessionInfo
     match adapter.recv().await {
@@ -660,14 +637,22 @@ async fn try_recover_daemon(
 }
 
 /// Drain available DaemonEvents from the client and apply them to App state.
-pub(crate) fn drain_daemon_events(app: &mut App, client: &mut ClientAdapter, is_replaying_history: &mut bool, max_subagent_panes: usize) {
+pub(crate) fn drain_daemon_events(
+    app: &mut App,
+    client: &mut ClientAdapter,
+    is_replaying_history: &mut bool,
+    max_subagent_panes: usize,
+) {
     while let Some(event) = client.try_recv() {
         process_daemon_event(app, client, &event, is_replaying_history, max_subagent_panes);
     }
 }
 
 /// Process a single DaemonEvent — update App state, handle non-TUI events.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential event handling logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential event handling logic")
+)]
 fn process_daemon_event(
     app: &mut App,
     client: &ClientAdapter,
@@ -729,10 +714,7 @@ fn process_daemon_event(
                 approved: true, // default to Yes
             });
         }
-        DaemonEvent::TodoRequest {
-            request_id,
-            action,
-        } => {
+        DaemonEvent::TodoRequest { request_id, action } => {
             // Todo actions are TUI-local state updates (add/update/remove items).
             // The daemon sends these for panel synchronization. Auto-respond since
             // attach mode doesn't own the todo panel state.
@@ -750,20 +732,15 @@ fn process_daemon_event(
                 app.push_system(format!("Capabilities: {}", caps.join(", ")), false);
             }
         }
-        DaemonEvent::ToolBlocked {
-            tool_name, reason, ..
-        } => {
+        DaemonEvent::ToolBlocked { tool_name, reason, .. } => {
             app.push_system(format!("⛔ Tool blocked: {tool_name} — {reason}"), true);
         }
 
         // ── Subagent events ─────────────────────────
         DaemonEvent::SubagentStarted { id, name, task, pid } => {
-            if let Some(panel) = app
-                .panels
-                .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
-                    crate::tui::panel::PanelId::Subagents,
-                )
-            {
+            if let Some(panel) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
+                crate::tui::panel::PanelId::Subagents,
+            ) {
                 panel.add(id.clone(), name.clone(), task.clone(), *pid);
             }
             // Create a dedicated BSP pane for this subagent (same as embedded mode)
@@ -775,46 +752,30 @@ fn process_daemon_event(
                     *pid,
                     &mut app.layout.tiling,
                 );
-                app.layout.pane_registry.register(
-                    pane_id,
-                    crate::tui::panes::PaneKind::Subagent(id.clone()),
-                );
-                crate::tui::panes::auto_split_for_subagent(
-                    &mut app.layout.tiling,
-                    &app.layout.pane_registry,
-                    pane_id,
-                );
+                app.layout.pane_registry.register(pane_id, crate::tui::panes::PaneKind::Subagent(id.clone()));
+                crate::tui::panes::auto_split_for_subagent(&mut app.layout.tiling, &app.layout.pane_registry, pane_id);
             }
         }
         DaemonEvent::SubagentOutput { id, line } => {
-            if let Some(panel) = app
-                .panels
-                .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
-                    crate::tui::panel::PanelId::Subagents,
-                )
-            {
+            if let Some(panel) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
+                crate::tui::panel::PanelId::Subagents,
+            ) {
                 panel.append_output(id, line);
             }
             app.layout.subagent_panes.append_output(id, line);
         }
         DaemonEvent::SubagentDone { id } => {
-            if let Some(panel) = app
-                .panels
-                .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
-                    crate::tui::panel::PanelId::Subagents,
-                )
-            {
+            if let Some(panel) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
+                crate::tui::panel::PanelId::Subagents,
+            ) {
                 panel.mark_done(id);
             }
             app.layout.subagent_panes.mark_done(id);
         }
         DaemonEvent::SubagentError { id, message } => {
-            if let Some(panel) = app
-                .panels
-                .downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
-                    crate::tui::panel::PanelId::Subagents,
-                )
-            {
+            if let Some(panel) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(
+                crate::tui::panel::PanelId::Subagents,
+            ) {
                 panel.mark_error(id);
                 panel.append_output(id, &format!("Error: {message}"));
             }
@@ -826,8 +787,7 @@ fn process_daemon_event(
             if *is_replaying_history {
                 match serde_json::from_value::<clankers_message::AgentMessage>(block.clone()) {
                     Ok(msg) => {
-                        let events =
-                            clankers_controller::convert::agent_message_to_tui_events(&msg);
+                        let events = clankers_controller::convert::agent_message_to_tui_events(&msg);
                         for tui_event in &events {
                             app.handle_tui_event(tui_event);
                         }
@@ -851,9 +811,7 @@ fn process_daemon_event(
 
         // ── Tool metadata ────────────────────────────
         DaemonEvent::ToolList { tools } => {
-            app.tool_info = tools.iter().map(|t| {
-                (t.name.clone(), t.description.clone(), String::new())
-            }).collect();
+            app.tool_info = tools.iter().map(|t| (t.name.clone(), t.description.clone(), String::new())).collect();
         }
         DaemonEvent::DisabledToolsChanged { tools } => {
             app.disabled_tools = tools.iter().cloned().collect();
@@ -863,7 +821,12 @@ fn process_daemon_event(
         DaemonEvent::ThinkingLevelChanged { from, to } => {
             app.push_system(format!("Thinking: {from} → {to}"), false);
         }
-        DaemonEvent::LoopStatus { active, iteration, max_iterations, break_condition } => {
+        DaemonEvent::LoopStatus {
+            active,
+            iteration,
+            max_iterations,
+            break_condition,
+        } => {
             if *active {
                 let iter_str = match (iteration, max_iterations) {
                     (Some(i), Some(m)) => format!(" ({i}/{m})"),
@@ -903,10 +866,10 @@ fn process_daemon_event(
         }
         DaemonEvent::PluginStatus { plugin, text, color } => {
             if let Some(text) = text {
-                app.plugin_ui.status_segments.insert(
-                    plugin.clone(),
-                    clankers_tui_types::StatusSegment { text: text.clone(), color: color.clone() },
-                );
+                app.plugin_ui.status_segments.insert(plugin.clone(), clankers_tui_types::StatusSegment {
+                    text: text.clone(),
+                    color: color.clone(),
+                });
             } else {
                 app.plugin_ui.status_segments.remove(plugin);
             }
@@ -936,7 +899,11 @@ fn process_daemon_event(
                     };
                     let kind = p.kind.as_deref().unwrap_or("unknown");
                     lines.push(format!("  {} {} v{} [{} / {}]", marker, p.name, p.version, kind, p.state));
-                    let tools = if p.tools.is_empty() { "none".to_string() } else { p.tools.join(", ") };
+                    let tools = if p.tools.is_empty() {
+                        "none".to_string()
+                    } else {
+                        p.tools.join(", ")
+                    };
                     lines.push(format!("      tools: {}", tools));
                     if let Some(error) = &p.last_error {
                         lines.push(format!("      last error: {}", error));
@@ -1009,7 +976,10 @@ pub(crate) fn handle_terminal_events(
 /// Supports the same overlays, mode switching, and navigation as the embedded
 /// TUI. The key difference is input submission: instead of dispatching to an
 /// in-process agent, we send SessionCommand to the daemon.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential event handling logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential event handling logic")
+)]
 fn handle_key_event(
     app: &mut App,
     client: &mut ClientAdapter,
@@ -1018,12 +988,13 @@ fn handle_key_event(
     keymap: &Keymap,
     slash_registry: &slash_commands::SlashRegistry,
 ) {
+    use crossterm::event::KeyCode;
+    use crossterm::event::KeyModifiers;
+
     use crate::config::keybindings::Action;
     use crate::config::keybindings::CoreAction;
     use crate::config::keybindings::ExtendedAction;
     use crate::tui::selectors;
-    use crossterm::event::KeyCode;
-    use crossterm::event::KeyModifiers;
 
     app.selection = None;
 
@@ -1042,20 +1013,29 @@ fn handle_key_event(
             KeyCode::Char('y' | 'Y') => {
                 let request_id = confirm.request_id.clone();
                 app.overlays.confirm_dialog = None;
-                client.send(SessionCommand::ConfirmBash { request_id, approved: true });
+                client.send(SessionCommand::ConfirmBash {
+                    request_id,
+                    approved: true,
+                });
                 app.push_system("✅ Command approved.".to_string(), false);
             }
             KeyCode::Char('n' | 'N') | KeyCode::Esc => {
                 let request_id = confirm.request_id.clone();
                 app.overlays.confirm_dialog = None;
-                client.send(SessionCommand::ConfirmBash { request_id, approved: false });
+                client.send(SessionCommand::ConfirmBash {
+                    request_id,
+                    approved: false,
+                });
                 app.push_system("❌ Command denied.".to_string(), true);
             }
             KeyCode::Enter => {
                 let request_id = confirm.request_id.clone();
                 let is_approved = confirm.approved;
                 app.overlays.confirm_dialog = None;
-                client.send(SessionCommand::ConfirmBash { request_id, approved: is_approved });
+                client.send(SessionCommand::ConfirmBash {
+                    request_id,
+                    approved: is_approved,
+                });
                 if is_approved {
                     app.push_system("✅ Command approved.".to_string(), false);
                 } else {
@@ -1076,9 +1056,7 @@ fn handle_key_event(
     if app.overlays.model_selector.visible {
         let (consumed, action) = selectors::handle_model_selector_key(app, &key);
         if let Some(clankers_tui_types::SelectorAction::SetModel(model)) = action {
-            client.send(SessionCommand::SetModel {
-                model: model.clone(),
-            });
+            client.send(SessionCommand::SetModel { model: model.clone() });
             app.model = model;
         }
         if consumed {
@@ -1092,19 +1070,22 @@ fn handle_key_event(
         if let Some(clankers_tui_types::SelectorAction::SwitchAccount(name)) = action {
             client.send(SessionCommand::SwitchAccount { account: name });
         }
-        if consumed { return; }
+        if consumed {
+            return;
+        }
     }
 
     // Tool toggle overlay
     if app.overlays.tool_toggle.visible {
         let (consumed, dirty) = crate::tui::selectors::handle_tool_toggle_key(app, &key);
         if dirty {
-            let disabled: Vec<String> = app.overlays.tool_toggle.disabled_set()
-                .into_iter().collect();
+            let disabled: Vec<String> = app.overlays.tool_toggle.disabled_set().into_iter().collect();
             app.disabled_tools = disabled.iter().cloned().collect();
             client.send(SessionCommand::SetDisabledTools { tools: disabled });
         }
-        if consumed { return; }
+        if consumed {
+            return;
+        }
     }
 
     // Leader menu
@@ -1130,10 +1111,7 @@ fn handle_key_event(
     }
 
     // Panel focus keys
-    if app.has_panel_focus()
-        && app.input_mode == InputMode::Normal
-        && handle_panel_focused_key_attach(app, key)
-    {
+    if app.has_panel_focus() && app.input_mode == InputMode::Normal && handle_panel_focused_key_attach(app, key) {
         return;
     }
 
@@ -1198,12 +1176,7 @@ fn submit_input_attach(
 }
 
 /// Handle a client-side slash command locally.
-fn handle_client_side_slash(
-    app: &mut App,
-    command: &str,
-    args: &str,
-    _slash_registry: &slash_commands::SlashRegistry,
-) {
+fn handle_client_side_slash(app: &mut App, command: &str, args: &str, _slash_registry: &slash_commands::SlashRegistry) {
     match command {
         "quit" | "q" => {
             app.should_quit = true;
@@ -1223,10 +1196,7 @@ fn handle_client_side_slash(
             app.push_system("  All other commands are forwarded to the daemon.".to_string(), false);
         }
         _ => {
-            app.push_system(
-                format!("Client command /{command} not implemented in attach mode."),
-                true,
-            );
+            app.push_system(format!("Client command /{command} not implemented in attach mode."), true);
         }
     }
 
@@ -1270,7 +1240,10 @@ fn handle_leader_action_attach(
 }
 
 /// Handle the slash menu key event in attach mode.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
+)]
 fn handle_slash_menu_key_attach(
     app: &mut App,
     client: &ClientAdapter,
@@ -1278,9 +1251,10 @@ fn handle_slash_menu_key_attach(
     keymap: &Keymap,
     slash_registry: &slash_commands::SlashRegistry,
 ) -> bool {
+    use crossterm::event::KeyCode;
+
     use crate::config::keybindings::Action;
     use crate::config::keybindings::CoreAction;
-    use crossterm::event::KeyCode;
 
     // Menu navigation keys
     match key.code {
@@ -1334,21 +1308,28 @@ fn handle_slash_menu_key_attach(
 ///
 /// Handles all client-side actions. Daemon-dependent actions (thinking
 /// toggle, rerun, auto-test) are forwarded via the client.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic — splitting would fragment readability"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        function_length,
+        reason = "sequential setup/dispatch logic — splitting would fragment readability"
+    )
+)]
 fn handle_local_action(
     app: &mut App,
     client: &ClientAdapter,
     action: &crate::config::keybindings::Action,
     _key: &crossterm::event::KeyEvent,
 ) {
-    use crate::config::keybindings::Action;
-    use crate::config::keybindings::CoreAction;
-    use crate::config::keybindings::ExtendedAction;
     use clankers_tui_types::AppState;
     use clankers_tui_types::BlockEntry;
     use ratatui::layout::Direction;
     use ratatui_hypertile::HypertileAction;
     use ratatui_hypertile::Towards;
+
+    use crate::config::keybindings::Action;
+    use crate::config::keybindings::CoreAction;
+    use crate::config::keybindings::ExtendedAction;
 
     match action {
         // ── Mode switching ──────────────────────────
@@ -1369,12 +1350,14 @@ fn handle_local_action(
         Action::Core(CoreAction::ScrollToBottom) => app.conversation.scroll.scroll_to_bottom(),
         Action::Core(CoreAction::FocusPrevBlock) => {
             app.apply_tiling_action(HypertileAction::FocusDirection {
-                direction: Direction::Vertical, towards: Towards::Start,
+                direction: Direction::Vertical,
+                towards: Towards::Start,
             });
         }
         Action::Core(CoreAction::FocusNextBlock) => {
             app.apply_tiling_action(HypertileAction::FocusDirection {
-                direction: Direction::Vertical, towards: Towards::End,
+                direction: Direction::Vertical,
+                towards: Towards::End,
             });
         }
 
@@ -1457,7 +1440,8 @@ fn handle_local_action(
                 app.branch_prev();
             } else {
                 app.apply_tiling_action(HypertileAction::FocusDirection {
-                    direction: Direction::Horizontal, towards: Towards::Start,
+                    direction: Direction::Horizontal,
+                    towards: Towards::Start,
                 });
                 app.input_mode = InputMode::Normal;
             }
@@ -1467,7 +1451,8 @@ fn handle_local_action(
                 app.branch_next();
             } else {
                 app.apply_tiling_action(HypertileAction::FocusDirection {
-                    direction: Direction::Horizontal, towards: Towards::End,
+                    direction: Direction::Horizontal,
+                    towards: Towards::End,
                 });
                 app.input_mode = InputMode::Normal;
             }
@@ -1477,18 +1462,32 @@ fn handle_local_action(
             if app.layout.focused_panel == Some(PanelId::Branches) {
                 app.unfocus_panel();
             } else {
-                let active_ids: std::collections::HashSet<usize> = app.conversation.blocks.iter()
-                    .filter_map(|e| match e { BlockEntry::Conversation(b) => Some(b.id), _ => None })
+                let active_ids: std::collections::HashSet<usize> = app
+                    .conversation
+                    .blocks
+                    .iter()
+                    .filter_map(|e| match e {
+                        BlockEntry::Conversation(b) => Some(b.id),
+                        _ => None,
+                    })
                     .collect();
-                if let Some(bp) = app.panels.downcast_mut::<crate::tui::components::branch_panel::BranchPanel>(PanelId::Branches) {
+                if let Some(bp) =
+                    app.panels.downcast_mut::<crate::tui::components::branch_panel::BranchPanel>(PanelId::Branches)
+                {
                     bp.refresh(&app.conversation.all_blocks.clone(), &active_ids);
                 }
                 app.focus_panel(PanelId::Branches);
             }
         }
         Action::Extended(ExtendedAction::OpenBranchSwitcher) => {
-            let active_ids: std::collections::HashSet<usize> = app.conversation.blocks.iter()
-                .filter_map(|e| match e { BlockEntry::Conversation(b) => Some(b.id), _ => None })
+            let active_ids: std::collections::HashSet<usize> = app
+                .conversation
+                .blocks
+                .iter()
+                .filter_map(|e| match e {
+                    BlockEntry::Conversation(b) => Some(b.id),
+                    _ => None,
+                })
                 .collect();
             app.branching.switcher.open(&app.conversation.all_blocks.clone(), &active_ids);
         }
@@ -1504,13 +1503,15 @@ fn handle_local_action(
         }
         Action::Extended(ExtendedAction::PanelNextTab) => {
             app.apply_tiling_action(HypertileAction::FocusDirection {
-                direction: Direction::Horizontal, towards: Towards::End,
+                direction: Direction::Horizontal,
+                towards: Towards::End,
             });
             app.input_mode = InputMode::Normal;
         }
         Action::Extended(ExtendedAction::PanelPrevTab) => {
             app.apply_tiling_action(HypertileAction::FocusDirection {
-                direction: Direction::Horizontal, towards: Towards::Start,
+                direction: Direction::Horizontal,
+                towards: Towards::Start,
             });
             app.input_mode = InputMode::Normal;
         }
@@ -1534,46 +1535,58 @@ fn handle_local_action(
         }
         Action::Extended(ExtendedAction::PaneMoveLeft) => {
             app.apply_tiling_action(HypertileAction::MoveFocused {
-                direction: Direction::Horizontal, towards: Towards::Start,
+                direction: Direction::Horizontal,
+                towards: Towards::Start,
                 scope: ratatui_hypertile::MoveScope::Window,
             });
         }
         Action::Extended(ExtendedAction::PaneMoveRight) => {
             app.apply_tiling_action(HypertileAction::MoveFocused {
-                direction: Direction::Horizontal, towards: Towards::End,
+                direction: Direction::Horizontal,
+                towards: Towards::End,
                 scope: ratatui_hypertile::MoveScope::Window,
             });
         }
         Action::Extended(ExtendedAction::PaneMoveUp) => {
             app.apply_tiling_action(HypertileAction::MoveFocused {
-                direction: Direction::Vertical, towards: Towards::Start,
+                direction: Direction::Vertical,
+                towards: Towards::Start,
                 scope: ratatui_hypertile::MoveScope::Window,
             });
         }
         Action::Extended(ExtendedAction::PaneMoveDown) => {
             app.apply_tiling_action(HypertileAction::MoveFocused {
-                direction: Direction::Vertical, towards: Towards::End,
+                direction: Direction::Vertical,
+                towards: Towards::End,
                 scope: ratatui_hypertile::MoveScope::Window,
             });
         }
         Action::Extended(ExtendedAction::PaneZoom) => app.zoom_toggle(),
         Action::Extended(ExtendedAction::PanelScrollUp) => {
             use clankers_tui_types::PanelId;
-            if let Some(sp) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents) {
+            if let Some(sp) =
+                app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
+            {
                 sp.scroll.scroll_up(3);
             }
         }
         Action::Extended(ExtendedAction::PanelScrollDown) => {
             use clankers_tui_types::PanelId;
-            if let Some(sp) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents) {
+            if let Some(sp) =
+                app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
+            {
                 sp.scroll.scroll_down(3);
             }
         }
         Action::Extended(ExtendedAction::PanelClearDone) => {
             use clankers_tui_types::PanelId;
-            if let Some(sp) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents) {
+            if let Some(sp) =
+                app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
+            {
                 sp.clear_done();
-                if !sp.is_visible() { app.unfocus_panel(); }
+                if !sp.is_visible() {
+                    app.unfocus_panel();
+                }
             }
         }
         Action::Extended(ExtendedAction::PanelKill) => {
@@ -1581,7 +1594,9 @@ fn handle_local_action(
         }
         Action::Extended(ExtendedAction::PanelRemove) => {
             use clankers_tui_types::PanelId;
-            if let Some(sp) = app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents) {
+            if let Some(sp) =
+                app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
+            {
                 sp.remove_selected();
             }
         }
@@ -1605,8 +1620,10 @@ fn handle_local_action(
                 .list_anthropic_accounts()
                 .into_iter()
                 .map(|info| crate::tui::components::account_selector::AccountItem {
-                    name: info.name, label: info.label,
-                    is_active: info.is_active, is_expired: info.is_expired,
+                    name: info.name,
+                    label: info.label,
+                    is_active: info.is_active,
+                    is_expired: info.is_expired,
                 })
                 .collect();
             if accounts.is_empty() {
@@ -1622,7 +1639,8 @@ fn handle_local_action(
             app.overlays.session_popup_visible = !app.overlays.session_popup_visible;
             if app.overlays.session_popup_visible && app.conversation.focused_block.is_none() {
                 let last_id = app.conversation.blocks.iter().rev().find_map(|e| match e {
-                    BlockEntry::Conversation(b) => Some(b.id), _ => None,
+                    BlockEntry::Conversation(b) => Some(b.id),
+                    _ => None,
                 });
                 app.conversation.focused_block = last_id;
             }
@@ -1711,12 +1729,13 @@ pub(crate) fn build_client_slash_registry() -> slash_commands::SlashRegistry {
     crate::modes::interactive::build_slash_registry(None)
 }
 
-
 // ── Remote attach (extracted to attach_remote.rs) ─────────────────────────
 pub use super::attach_remote::*;
 
 #[cfg(test)]
 mod tests {
+    use std::io::ErrorKind;
+
     use clankers_controller::client::ClientAdapter;
     use clankers_controller::client::is_client_side_command;
     use clankers_protocol::DaemonEvent;
@@ -1728,6 +1747,17 @@ mod tests {
         let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::unbounded_channel();
         let (_event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
         ClientAdapter::from_channels(cmd_tx, event_rx)
+    }
+
+    #[test]
+    fn session_socket_retry_policy_covers_transient_errors() {
+        let missing = std::io::Error::from(ErrorKind::NotFound);
+        let refused = std::io::Error::from(ErrorKind::ConnectionRefused);
+        let denied = std::io::Error::from(ErrorKind::PermissionDenied);
+
+        assert!(super::should_retry_session_socket_connect(&missing));
+        assert!(super::should_retry_session_socket_connect(&refused));
+        assert!(!super::should_retry_session_socket_connect(&denied));
     }
 
     #[test]

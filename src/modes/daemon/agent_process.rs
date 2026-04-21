@@ -716,15 +716,22 @@ pub fn recover_session(
             .ok();
     }
 
-    // Start session socket
-    let _socket_path = clankers_controller::transport::session_socket_path(session_id);
+    // Bind session socket before publishing recovered session.
+    let listener = clankers_controller::transport::bind_session_socket(session_id)
+        .map_err(|e| format!("failed to bind session socket for {session_id}: {e}"))?;
     let sock_shutdown = shutdown.clone();
     let sock_cmd_tx = cmd_tx.clone();
     let sock_event_tx = event_tx.clone();
     let sock_session_id = session_id.to_string();
     tokio::spawn(async move {
-        clankers_controller::transport::run_session_socket(sock_session_id, sock_cmd_tx, sock_event_tx, sock_shutdown)
-            .await;
+        clankers_controller::transport::run_session_socket_with_listener(
+            listener,
+            sock_session_id,
+            sock_cmd_tx,
+            sock_event_tx,
+            sock_shutdown,
+        )
+        .await;
     });
 
     // Upgrade placeholder handle

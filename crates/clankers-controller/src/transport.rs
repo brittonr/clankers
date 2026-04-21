@@ -218,20 +218,13 @@ impl DaemonState {
     }
 
     /// Look up a session by transport key (iroh peer, Matrix user+room).
-    pub fn session_by_key(
-        &self,
-        key: &clankers_protocol::SessionKey,
-    ) -> Option<&SessionHandle> {
+    pub fn session_by_key(&self, key: &clankers_protocol::SessionKey) -> Option<&SessionHandle> {
         let session_id = self.key_index.get(key)?;
         self.sessions.get(session_id)
     }
 
     /// Register a session key → session_id mapping.
-    pub fn register_key(
-        &mut self,
-        key: clankers_protocol::SessionKey,
-        session_id: String,
-    ) {
+    pub fn register_key(&mut self, key: clankers_protocol::SessionKey, session_id: String) {
         self.key_index.insert(key, session_id);
     }
 
@@ -393,22 +386,37 @@ pub struct SessionSocketInfo {
     pub auto_test_command: Option<String>,
 }
 
+pub fn bind_session_socket(session_id: &str) -> std::io::Result<UnixListener> {
+    let path = session_socket_path(session_id);
+    std::fs::remove_file(&path).ok();
+    UnixListener::bind(&path)
+}
+
 pub async fn run_session_socket(
     session_id: String,
     cmd_tx: mpsc::UnboundedSender<SessionCommand>,
     event_tx: broadcast::Sender<DaemonEvent>,
     shutdown: tokio::sync::watch::Receiver<bool>,
 ) {
-    let path = session_socket_path(&session_id);
-    std::fs::remove_file(&path).ok();
-
-    let listener = match UnixListener::bind(&path) {
-        Ok(l) => l,
+    let listener = match bind_session_socket(&session_id) {
+        Ok(listener) => listener,
         Err(e) => {
             error!("failed to bind session socket for {session_id}: {e}");
             return;
         }
     };
+
+    run_session_socket_with_listener(listener, session_id, cmd_tx, event_tx, shutdown).await;
+}
+
+pub async fn run_session_socket_with_listener(
+    listener: UnixListener,
+    session_id: String,
+    cmd_tx: mpsc::UnboundedSender<SessionCommand>,
+    event_tx: broadcast::Sender<DaemonEvent>,
+    shutdown: tokio::sync::watch::Receiver<bool>,
+) {
+    let path = session_socket_path(&session_id);
     info!("session socket listening at {}", path.display());
 
     loop {
@@ -441,8 +449,14 @@ pub async fn run_session_socket(
 }
 
 /// Handle a single client connected to a session socket.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by connection close"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by channel close")
+)]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by connection close")
+)]
 async fn handle_session_client<S>(
     stream: S,
     session_id: String,
@@ -553,12 +567,17 @@ mod tests {
     use std::time::Duration;
 
     use clankers_protocol::command::SessionCommand;
-    use clankers_protocol::control::{ControlCommand, ControlResponse};
+    use clankers_protocol::control::ControlCommand;
+    use clankers_protocol::control::ControlResponse;
     use clankers_protocol::event::DaemonEvent;
     use clankers_protocol::frame;
-    use clankers_protocol::types::{Handshake, PROTOCOL_VERSION};
+    use clankers_protocol::types::Handshake;
+    use clankers_protocol::types::PROTOCOL_VERSION;
     use tokio::net::UnixStream;
-    use tokio::sync::{broadcast, mpsc, watch, Mutex};
+    use tokio::sync::Mutex;
+    use tokio::sync::broadcast;
+    use tokio::sync::mpsc;
+    use tokio::sync::watch;
 
     use super::*;
 
@@ -582,16 +601,22 @@ mod tests {
         // When XDG_RUNTIME_DIR already ends with "clankers" (e.g.
         // systemd RuntimeDirectory=clankers → /run/clankers), socket_dir()
         // should not append another clankers/ component.
-        unsafe { std::env::set_var("XDG_RUNTIME_DIR", "/run/clankers"); }
+        unsafe {
+            std::env::set_var("XDG_RUNTIME_DIR", "/run/clankers");
+        }
         let dir = socket_dir();
         assert_eq!(dir, PathBuf::from("/run/clankers"));
 
         // Normal case: still appends clankers
-        unsafe { std::env::set_var("XDG_RUNTIME_DIR", "/run/user/1000"); }
+        unsafe {
+            std::env::set_var("XDG_RUNTIME_DIR", "/run/user/1000");
+        }
         let dir = socket_dir();
         assert_eq!(dir, PathBuf::from("/run/user/1000/clankers"));
 
-        unsafe { std::env::remove_var("XDG_RUNTIME_DIR"); }
+        unsafe {
+            std::env::remove_var("XDG_RUNTIME_DIR");
+        }
     }
 
     #[test]
@@ -656,9 +681,7 @@ mod tests {
 
         // Connect and send ListSessions
         let mut stream = UnixStream::connect(&control_path).await.unwrap();
-        frame::write_frame(&mut stream, &ControlCommand::ListSessions)
-            .await
-            .unwrap();
+        frame::write_frame(&mut stream, &ControlCommand::ListSessions).await.unwrap();
 
         let response: ControlResponse = frame::read_frame(&mut stream).await.unwrap();
         assert!(matches!(response, ControlResponse::Sessions(sessions) if sessions.is_empty()));
@@ -697,9 +720,7 @@ mod tests {
 
         // Connect and send Status
         let mut stream = UnixStream::connect(&control_path).await.unwrap();
-        frame::write_frame(&mut stream, &ControlCommand::Status)
-            .await
-            .unwrap();
+        frame::write_frame(&mut stream, &ControlCommand::Status).await.unwrap();
 
         let response: ControlResponse = frame::read_frame(&mut stream).await.unwrap();
         assert!(matches!(response, ControlResponse::Status(_)));
@@ -723,25 +744,16 @@ mod tests {
         let (event_tx, _event_rx) = broadcast::channel(16);
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-        // Start session socket in background
+        // Start session socket in background from a pre-bound listener
+        let listener = bind_session_socket(&session_id).expect("bind session socket");
+        let session_path = session_socket_path(&session_id);
         let session_id_clone = session_id.clone();
         tokio::spawn(async move {
-            run_session_socket(session_id_clone, cmd_tx, event_tx, shutdown_rx).await;
+            run_session_socket_with_listener(listener, session_id_clone, cmd_tx, event_tx, shutdown_rx).await;
         });
 
-        // Wait for socket to be available
-        let session_path = session_socket_path(&session_id);
-        for _ in 0..20 {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            if session_path.exists() {
-                break;
-            }
-        }
-
         // Connect and perform handshake
-        let stream = UnixStream::connect(&session_path)
-            .await
-            .unwrap();
+        let stream = UnixStream::connect(&session_path).await.unwrap();
         let (reader, writer) = stream.into_split();
         let reader = Arc::new(Mutex::new(reader));
         let writer = Arc::new(Mutex::new(writer));
@@ -787,29 +799,18 @@ mod tests {
         let (event_tx, _event_rx) = broadcast::channel(16);
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-        // Start session socket
+        // Start session socket from a pre-bound listener
+        let listener = bind_session_socket(&session_id).expect("bind session socket");
+        let session_path = session_socket_path(&session_id);
         let session_id_clone = session_id.clone();
         let event_tx_clone = event_tx.clone();
         tokio::spawn(async move {
-            run_session_socket(session_id_clone, cmd_tx, event_tx_clone, shutdown_rx).await;
+            run_session_socket_with_listener(listener, session_id_clone, cmd_tx, event_tx_clone, shutdown_rx).await;
         });
 
-        // Wait for socket to be available
-        let session_path = session_socket_path(&session_id);
-        for _ in 0..20 {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            if session_path.exists() {
-                break;
-            }
-        }
-
         // Connect two clients
-        let stream1 = UnixStream::connect(&session_path)
-            .await
-            .unwrap();
-        let stream2 = UnixStream::connect(&session_path)
-            .await
-            .unwrap();
+        let stream1 = UnixStream::connect(&session_path).await.unwrap();
+        let stream2 = UnixStream::connect(&session_path).await.unwrap();
 
         // Setup client 1 handshake and reader
         let (mut reader1, mut writer1) = stream1.into_split();
@@ -858,7 +859,7 @@ mod tests {
     async fn test_client_disconnect_detection() {
         // Test client disconnect using duplex streams to avoid filesystem dependencies
         let (client_stream, server_stream) = tokio::io::duplex(4096);
-        
+
         let session_id = "test-session-disconnect".to_string();
         let (cmd_tx, _cmd_rx) = mpsc::unbounded_channel();
         let (_event_tx, event_rx) = broadcast::channel(16);
@@ -898,7 +899,7 @@ mod tests {
     #[test]
     fn test_stale_socket_cleanup() {
         let temp_dir = tempfile::tempdir().unwrap();
-        
+
         // Set custom socket dir by setting environment
         let temp_socket_dir = temp_dir.path().join("clankers");
         std::fs::create_dir_all(&temp_socket_dir).unwrap();
@@ -945,26 +946,17 @@ mod tests {
         let (event_tx, _event_rx) = broadcast::channel(16);
         let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
-        // Start session socket
+        // Start session socket from a pre-bound listener
+        let listener = bind_session_socket(&session_id).expect("bind session socket");
+        let session_path = session_socket_path(&session_id);
         let session_id_clone = session_id.clone();
         let event_tx_clone = event_tx.clone();
         tokio::spawn(async move {
-            run_session_socket(session_id_clone, cmd_tx, event_tx_clone, shutdown_rx).await;
+            run_session_socket_with_listener(listener, session_id_clone, cmd_tx, event_tx_clone, shutdown_rx).await;
         });
 
-        // Wait for socket to be available
-        let session_path = session_socket_path(&session_id);
-        for _ in 0..20 {
-            tokio::time::sleep(Duration::from_millis(10)).await;
-            if session_path.exists() {
-                break;
-            }
-        }
-
         // Connect to the session socket
-        let stream = UnixStream::connect(&session_path)
-            .await
-            .unwrap();
+        let stream = UnixStream::connect(&session_path).await.unwrap();
         let (mut reader, mut writer) = stream.into_split();
 
         // Send handshake
