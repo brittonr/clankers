@@ -3,7 +3,9 @@
 //! Contains the main command dispatch and prompt processing logic.
 
 use clankers_agent::AgentError;
+use clankers_core::CompletionStatus;
 use clankers_core::CoreEffect;
+use clankers_core::CoreFailure;
 use clankers_core::CoreInput;
 use clankers_core::CoreLogicalEvent;
 use clankers_core::CoreOutcome;
@@ -11,6 +13,7 @@ use clankers_core::CoreThinkingLevel;
 use clankers_core::CoreThinkingLevelInput;
 use clankers_core::DisabledToolsUpdate;
 use clankers_core::LoopRequest;
+use clankers_core::PromptRequest;
 use clankers_core::ToolFilterApplied;
 use clankers_message::AgentMessage;
 use clankers_message::AssistantMessage;
@@ -312,32 +315,14 @@ impl SessionController {
                             }
                         }
 
-                        let feedback = CoreInput::ToolFilterApplied(ToolFilterApplied {
+                        if self.apply_tool_filter_feedback(ToolFilterApplied {
                             effect_id,
                             applied_disabled_tool_set: disabled_tools.clone(),
-                        });
-                        match clankers_core::reduce(&self.core_state, &feedback) {
-                            CoreOutcome::Transitioned { next_state, effects } => {
-                                self.apply_core_state(next_state);
-                                for effect in effects {
-                                    if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::DisabledToolsChanged {
-                                        disabled_tools,
-                                    }) = effect
-                                    {
-                                        self.emit(DaemonEvent::DisabledToolsChanged { tools: disabled_tools });
-                                    }
-                                }
-                                self.emit(DaemonEvent::SystemMessage {
-                                    text: format!("Disabled tools updated: {}", tools.join(", ")),
-                                    is_error: false,
-                                });
-                            }
-                            CoreOutcome::Rejected { .. } => {
-                                self.emit(DaemonEvent::SystemMessage {
-                                    text: "Disabled tools update rejected".to_string(),
-                                    is_error: true,
-                                });
-                            }
+                        }) {
+                            self.emit(DaemonEvent::SystemMessage {
+                                text: format!("Disabled tools updated: {}", tools.join(", ")),
+                                is_error: false,
+                            });
                         }
                     }
                 }
@@ -352,6 +337,30 @@ impl SessionController {
                 });
             }
             CoreOutcome::Rejected { .. } => unreachable!("disabled-tool update should only reject on a pending filter"),
+        }
+    }
+
+    pub(crate) fn apply_tool_filter_feedback(&mut self, feedback: ToolFilterApplied) -> bool {
+        let input = CoreInput::ToolFilterApplied(feedback);
+        match clankers_core::reduce(&self.core_state, &input) {
+            CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                for effect in effects {
+                    if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::DisabledToolsChanged { disabled_tools }) =
+                        effect
+                    {
+                        self.emit(DaemonEvent::DisabledToolsChanged { tools: disabled_tools });
+                    }
+                }
+                true
+            }
+            CoreOutcome::Rejected { .. } => {
+                self.emit(DaemonEvent::SystemMessage {
+                    text: "Disabled tools update rejected".to_string(),
+                    is_error: true,
+                });
+                false
+            }
         }
     }
 
@@ -483,21 +492,47 @@ impl SessionController {
             return;
         }
 
-        if self.busy {
-            self.outgoing.push(DaemonEvent::SystemMessage {
-                text: "A prompt is already in progress".to_string(),
-                is_error: true,
-            });
-            return;
-        }
+        let image_count = u32::try_from(images.len()).unwrap_or(u32::MAX);
+        let prompt_input = CoreInput::PromptRequested(PromptRequest {
+            text: text.clone(),
+            image_count,
+        });
 
-        self.busy = true;
-        self.core_state.busy = true;
+        let prompt_effect_id = match clankers_core::reduce(&self.core_state, &prompt_input) {
+            CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                let mut prompt_effect_id = None;
+                for effect in effects {
+                    if let CoreEffect::StartPrompt {
+                        effect_id,
+                        prompt_text,
+                        image_count: expected_image_count,
+                    } = effect
+                    {
+                        debug_assert_eq!(prompt_text, text);
+                        debug_assert_eq!(expected_image_count, image_count);
+                        prompt_effect_id = Some(effect_id);
+                    }
+                }
+                prompt_effect_id.expect("prompt request must yield a start effect")
+            }
+            CoreOutcome::Rejected {
+                error: clankers_core::CoreError::Busy,
+                ..
+            } => {
+                self.emit(DaemonEvent::SystemMessage {
+                    text: "A prompt is already in progress".to_string(),
+                    is_error: true,
+                });
+                return;
+            }
+            CoreOutcome::Rejected { .. } => unreachable!("prompt request should only reject while busy"),
+        };
+
         self.outgoing.push(DaemonEvent::AgentStart);
 
-        // Take the agent out to avoid borrow conflicts with self
+        // Take the agent out to avoid borrow conflicts with self.
         let mut agent = self.agent.take().unwrap();
-
         let result = if images.is_empty() {
             agent.prompt(&text).await
         } else {
@@ -512,26 +547,50 @@ impl SessionController {
                 .collect();
             agent.prompt_with_images(&text, image_content).await
         };
-
-        // Put the agent back
         self.agent = Some(agent);
-        self.busy = false;
-        self.core_state.busy = false;
-        self.core_state.pending_prompt = None;
 
-        match result {
-            Ok(()) => {
-                self.emit(DaemonEvent::PromptDone { error: None });
-            }
+        let (completion_status, prompt_error) = match result {
+            Ok(()) => (CompletionStatus::Succeeded, None),
             Err(AgentError::Cancelled) => {
-                self.emit(DaemonEvent::PromptDone {
-                    error: Some("cancelled".to_string()),
-                });
+                (CompletionStatus::Failed(CoreFailure::Cancelled), Some("cancelled".to_string()))
             }
-            Err(e) => {
-                self.emit(DaemonEvent::PromptDone {
-                    error: Some(e.to_string()),
+            Err(error) => {
+                let message = error.to_string();
+                (CompletionStatus::Failed(CoreFailure::Message(message.clone())), Some(message))
+            }
+        };
+
+        let applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
+            effect_id: prompt_effect_id,
+            completion_status: completion_status.clone(),
+        });
+        debug_assert!(applied, "prompt completion should match the pending prompt");
+
+        self.emit(DaemonEvent::PromptDone { error: prompt_error });
+    }
+
+    pub(crate) fn apply_prompt_completion(&mut self, completed: clankers_core::PromptCompleted) -> bool {
+        let completion_input = CoreInput::PromptCompleted(completed);
+        match clankers_core::reduce(&self.core_state, &completion_input) {
+            CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                for effect in effects {
+                    if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
+                        active_loop_state: None,
+                    }) = effect
+                        && self.active_loop_id.is_some()
+                    {
+                        self.finish_loop("failed (error)");
+                    }
+                }
+                true
+            }
+            CoreOutcome::Rejected { .. } => {
+                self.emit(DaemonEvent::SystemMessage {
+                    text: "Prompt completion rejected".to_string(),
+                    is_error: true,
                 });
+                false
             }
         }
     }
@@ -802,6 +861,8 @@ mod tests {
     async fn test_reject_concurrent_prompt() {
         let mut ctrl = make_test_controller();
         ctrl.busy = true;
+        ctrl.core_state.busy = true;
+        let previous_state = ctrl.core_state.clone();
 
         ctrl.handle_command(SessionCommand::Prompt {
             text: "hello".to_string(),
@@ -809,8 +870,27 @@ mod tests {
         })
         .await;
 
+        assert_eq!(ctrl.core_state, previous_state);
         let events = ctrl.drain_events();
         assert!(events.iter().any(|e| matches!(e, DaemonEvent::SystemMessage { is_error: true, .. })));
+    }
+
+    #[tokio::test]
+    async fn test_prompt_command_routes_request_and_completion_through_core() {
+        let mut ctrl = make_test_controller();
+
+        ctrl.handle_command(SessionCommand::Prompt {
+            text: "hello".to_string(),
+            images: vec![],
+        })
+        .await;
+
+        assert!(!ctrl.busy);
+        assert!(ctrl.core_state.pending_prompt.is_none());
+        assert!(!ctrl.core_state.busy);
+
+        let events = ctrl.take_outgoing();
+        assert!(matches!(events.as_slice(), [DaemonEvent::AgentStart, DaemonEvent::PromptDone { error: None },]));
     }
 
     #[tokio::test]
@@ -855,11 +935,13 @@ mod tests {
     #[tokio::test]
     async fn test_set_thinking_level_invalid() {
         let mut ctrl = make_test_controller();
+        let previous_state = ctrl.core_state.clone();
         ctrl.handle_command(SessionCommand::SetThinkingLevel {
             level: "bogus".to_string(),
         })
         .await;
 
+        assert_eq!(ctrl.core_state, previous_state);
         let events = ctrl.drain_events();
         assert!(events.iter().any(|e| matches!(e, DaemonEvent::SystemMessage { is_error: true, .. })));
     }
@@ -907,6 +989,26 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn test_tool_filter_feedback_rejection_keeps_state_and_emits_only_error() {
+        let mut ctrl = make_test_controller();
+        ctrl.core_state.disabled_tools = vec!["bash".to_string()];
+        ctrl.core_state.pending_tool_filter = Some(clankers_core::PendingToolFilterState {
+            effect_id: clankers_core::CoreEffectId(1),
+            requested_disabled_tools: vec!["bash".to_string()],
+        });
+        let previous_state = ctrl.core_state.clone();
+
+        let applied = ctrl.apply_tool_filter_feedback(ToolFilterApplied {
+            effect_id: clankers_core::CoreEffectId(2),
+            applied_disabled_tool_set: vec!["bash".to_string()],
+        });
+
+        assert!(!applied);
+        assert_eq!(ctrl.core_state, previous_state);
+        assert!(matches!(ctrl.drain_events().as_slice(), [DaemonEvent::SystemMessage { is_error: true, .. }]));
+    }
+
     #[tokio::test]
     async fn test_start_loop_command_sets_active_loop_without_immediate_event() {
         let mut ctrl = make_test_controller();
@@ -942,6 +1044,74 @@ mod tests {
             events.as_slice(),
             [DaemonEvent::SystemMessage { text, is_error: false }] if text.contains("stopped by user")
         ));
+    }
+
+    #[tokio::test]
+    async fn test_start_loop_rejects_when_already_active() {
+        let mut ctrl = make_test_controller();
+        ctrl.handle_command(SessionCommand::StartLoop {
+            iterations: LOOP_ITERATION_LIMIT,
+            prompt: "repeat".to_string(),
+            break_condition: None,
+        })
+        .await;
+        let previous_state = ctrl.core_state.clone();
+
+        ctrl.handle_command(SessionCommand::StartLoop {
+            iterations: LOOP_ITERATION_LIMIT,
+            prompt: "again".to_string(),
+            break_condition: None,
+        })
+        .await;
+
+        assert_eq!(ctrl.core_state, previous_state);
+        assert!(matches!(ctrl.drain_events().as_slice(), [DaemonEvent::SystemMessage { is_error: true, .. }]));
+    }
+
+    #[tokio::test]
+    async fn test_stop_loop_rejects_without_active_loop() {
+        let mut ctrl = make_test_controller();
+        let previous_state = ctrl.core_state.clone();
+
+        ctrl.handle_command(SessionCommand::StopLoop).await;
+
+        assert_eq!(ctrl.core_state, previous_state);
+        assert!(matches!(ctrl.drain_events().as_slice(), [DaemonEvent::SystemMessage { is_error: true, .. }]));
+    }
+
+    #[tokio::test]
+    async fn test_loop_control_rejects_when_follow_up_pending() {
+        let mut ctrl = make_test_controller();
+        ctrl.core_state.pending_follow_up_state = Some(clankers_core::PendingFollowUpState {
+            effect_id: clankers_core::CoreEffectId(1),
+            prompt_text: "continue loop".to_string(),
+            source: clankers_core::FollowUpSource::LoopContinuation,
+        });
+        let previous_state = ctrl.core_state.clone();
+
+        ctrl.handle_command(SessionCommand::StartLoop {
+            iterations: LOOP_ITERATION_LIMIT,
+            prompt: "repeat".to_string(),
+            break_condition: None,
+        })
+        .await;
+        assert_eq!(ctrl.core_state, previous_state);
+        assert!(matches!(ctrl.drain_events().as_slice(), [DaemonEvent::SystemMessage { is_error: true, .. }]));
+
+        ctrl.core_state.pending_follow_up_state = previous_state.pending_follow_up_state.clone();
+        ctrl.core_state.active_loop_state = Some(clankers_core::ActiveLoopState {
+            loop_id: "loop-test".to_string(),
+            prompt_text: "repeat".to_string(),
+            current_iteration: 1,
+            max_iterations: LOOP_ITERATION_LIMIT,
+            break_condition: None,
+        });
+        let previous_stop_state = ctrl.core_state.clone();
+
+        ctrl.handle_command(SessionCommand::StopLoop).await;
+
+        assert_eq!(ctrl.core_state, previous_stop_state);
+        assert!(matches!(ctrl.drain_events().as_slice(), [DaemonEvent::SystemMessage { is_error: true, .. }]));
     }
 
     #[tokio::test]

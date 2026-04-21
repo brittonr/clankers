@@ -10,5 +10,10 @@ Created-At: 2026-04-21T14:01:45Z
 ## Summary
 
 - Exercise matching and mismatched completion IDs for prompt, tool-filter, and loop-follow-up effects.
-- Assert typed unchanged-state rejection for empty-slot, wrong-kind, duplicate, stale, busy, and loop-control conflict cases.
-- Record explicit failure-outcome handling for prompt and loop-follow-up completion.
+- Assert typed unchanged-state rejection for empty-slot, wrong-kind, duplicate, stale, busy, loop-control conflict, and out-of-order cases.
+- Include a simultaneous pending-slot fixture that proves prompt/tool-filter/follow-up effect IDs stay unique across the shared namespace and reject cross-kind feedback by the exact typed `CoreError` variant.
+- Record explicit success/failure round-trips for prompt, tool-filter, and loop-follow-up completion.
+
+## Latest validation command
+
+- `cargo test -p clankers-core --lib`

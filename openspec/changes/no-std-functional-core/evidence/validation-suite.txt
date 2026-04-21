@@ -9,7 +9,28 @@ Created-At: 2026-04-21T14:02:12Z
 
 ## Summary
 
-- Run the bare-metal `cargo check` rail, boundary scripts, public-core-surface shell-native/protocol-native boundary script, determinism rail, and migrated reducer/parity suites.
+- Run the bare-metal `cargo check` rail, boundary scripts, public-core-surface shell-native/protocol-native boundary script, determinism rail, direct reducer positive/rejection suites, and migrated shell-parity suites.
 - Assert the no-std crate still exposes the extracted slice `CoreState`/`CoreInput`/`CoreEffect`/`CoreOutcome`/`CoreError` surface while that bundle stays green.
 - Capture the ordinary validation path that must stay green for acceptance.
 - Use this bundle as the regression oracle for the no-std boundary and migrated shell behavior.
+
+## Latest passing commands
+
+- `./scripts/check-clankers-core-nostd.sh`
+- `./scripts/check-clankers-core-boundary.sh`
+- `./scripts/check-clankers-core-surface.sh`
+- `cargo test -p clankers-core`
+- `cargo test -p clankers-core --test determinism`
+- `cargo nextest run -p clankers-controller --tests`
+- `cargo test -p clankers-agent user_tool_filter --lib`
+- `cargo nextest run --test embedded_controller`
+- `./scripts/verify-no-std-functional-core.sh`
+
+## Ordinary validation path wiring
+
+- `./scripts/verify-no-std-functional-core.sh` is the change-local validation bundle for the no-std functional core capability.
+- `./scripts/verify.sh` now invokes that bundle before the existing Tracey coverage checks, so the rails run from the repo's ordinary validation entrypoint as well.
+
+## Latest result
+
+- All listed commands completed successfully on 2026-04-21 after prompt-request/completion reducer wiring, post-prompt loop-state adapter cleanup, and validation-path wiring.

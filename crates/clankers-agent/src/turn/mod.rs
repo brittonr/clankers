@@ -830,6 +830,44 @@ mod tests {
         assert!(!results[0].is_error);
     }
 
+    #[tokio::test]
+    async fn user_tool_filter_applies_latest_allowlist_per_call() {
+        let tool: Arc<dyn Tool> = Arc::new(DirectResultTool::new());
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("direct_tool".to_string(), tool);
+
+        let (event_tx, _rx) = broadcast::channel(256);
+        let tool_calls = vec![("call-1".to_string(), "direct_tool".to_string(), json!({}))];
+
+        let blocked_results = execute_tools_parallel(
+            &tools,
+            &tool_calls,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            "",
+            None,
+            None,
+            Some(vec!["read".to_string()]),
+        )
+        .await;
+        assert!(blocked_results[0].is_error);
+
+        let allowed_results = execute_tools_parallel(
+            &tools,
+            &tool_calls,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            "",
+            None,
+            None,
+            Some(vec!["direct_tool".to_string()]),
+        )
+        .await;
+        assert!(!allowed_results[0].is_error);
+    }
+
     // -----------------------------------------------------------------------
     // Turn-level retry tests
     // -----------------------------------------------------------------------

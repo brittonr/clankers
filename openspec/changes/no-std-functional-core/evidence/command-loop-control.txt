@@ -12,4 +12,13 @@ Created-At: 2026-04-21T14:01:45Z
 - Cover successful `StartLoop` and `StopLoop` transitions through `crates/clankers-controller/src/{command.rs,loop_mode.rs}`.
 - Assert no immediate acknowledgement for successful start, success acknowledgement for stop, and preserved visible loop-state transitions.
 - Assert preserved `loop_mode.rs::{test_start_loop,test_stop_loop}` baseline behavior.
-- Assert error `DaemonEvent::SystemMessage` acknowledgement categories for already-active, not-active, and pending-follow-up rejection paths.
+- Assert unchanged-state handling plus error `DaemonEvent::SystemMessage` acknowledgement categories for already-active, not-active, and pending-follow-up rejection paths.
+- Assert loop-visible shell state changes are driven from reducer-produced `CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged { .. })` output.
+
+## Latest added coverage
+
+- `crates/clankers-controller/src/command.rs::test_start_loop_command_sets_active_loop_without_immediate_event`
+- `crates/clankers-controller/src/command.rs::test_stop_loop_command_emits_stop_message`
+- `crates/clankers-controller/src/command.rs::test_start_loop_rejects_when_already_active`
+- `crates/clankers-controller/src/command.rs::test_stop_loop_rejects_without_active_loop`
+- `crates/clankers-controller/src/command.rs::test_loop_control_rejects_when_follow_up_pending`

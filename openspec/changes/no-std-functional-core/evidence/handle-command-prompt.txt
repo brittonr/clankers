@@ -11,6 +11,6 @@ Created-At: 2026-04-21T14:02:12Z
 
 - Drive `SessionController::handle_command(SessionCommand::Prompt { .. })` through the migrated reducer path.
 - Assert an allowed prompt request yields the expected prompt-start `CoreEffect`/shell work path without shell policy re-derivation.
-- Assert controller and agent adapters preserve reducer-emitted `CoreEffect` order whenever sequencing is shell-visible.
+- Assert controller and agent adapters preserve reducer-emitted `CoreEffect` order whenever sequencing is shell-visible, with prompt-start ordering pinned here and non-prompt ordered-effect paths pinned by the paired reducer/controller coverage cited in `reducer-determinism.txt` and `auto-test-prompt-completion.txt`.
 - Assert preserved emitted events, busy-state transitions, and prompt success/no-ack behavior.
 - Catch adapter regressions at the public controller seam.

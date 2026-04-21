@@ -6,6 +6,9 @@ verus --crate-type=lib verus/lib.rs
 echo "  ✓ All proofs verified"
 
 echo ""
+echo "=== No-std functional core: boundary and parity rails ==="
+./scripts/verify-no-std-functional-core.sh
+echo ""
 echo "=== Tracey: checking requirement coverage ==="
 tracey query status
 echo ""

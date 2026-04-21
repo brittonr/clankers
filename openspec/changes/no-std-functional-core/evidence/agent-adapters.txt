@@ -12,3 +12,13 @@ Created-At: 2026-04-21T14:02:12Z
 - Cover migrated tool-filter behavior in `crates/clankers-agent/src/turn/mod.rs` and thinking/tool-filter adapter behavior in `crates/clankers-agent/src/lib.rs`.
 - Assert `SessionController` owns the authoritative migrated-slice core state and the agent returns feedback without maintaining a second reducer or forked orchestration policy.
 - Confirm the std shells consume the shared `clankers-core` contracts in ordinary std builds.
+
+## Latest added coverage
+
+- `crates/clankers-agent/src/turn/mod.rs::user_tool_filter_applies_latest_allowlist_per_call`
+- `crates/clankers-agent/src/lib.rs::cycle_thinking_level_follows_expected_order`
+- `crates/clankers-agent/src/lib.rs::set_user_tool_filter_replaces_previous_filter`
+
+## Latest validation command
+
+- `cargo test -p clankers-agent user_tool_filter --lib`

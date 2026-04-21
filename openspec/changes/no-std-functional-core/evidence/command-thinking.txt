@@ -13,3 +13,10 @@ Created-At: 2026-04-21T14:01:45Z
 - Assert preserved `DaemonEvent::SystemMessage` acknowledgement categories.
 - Assert unchanged-state handling for invalid `SetThinkingLevel` inputs.
 - Assert exact cycle order `Off -> Low -> Medium -> High -> Max -> Off`.
+- Assert thinking-related shell-visible behavior is consumed from reducer-produced effect/logical-event output rather than shell-only policy branches.
+
+## Latest added coverage
+
+- `crates/clankers-controller/src/command.rs::test_set_thinking_level_valid`
+- `crates/clankers-controller/src/command.rs::test_set_thinking_level_invalid`
+- `crates/clankers-controller/src/command.rs::test_cycle_thinking_level_order`

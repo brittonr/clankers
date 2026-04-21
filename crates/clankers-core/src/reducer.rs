@@ -110,8 +110,15 @@ fn reduce_post_prompt_evaluation(state: &CoreState, evaluation: &PostPromptEvalu
     next_state.auto_test_command = evaluation.auto_test_command.clone();
     next_state.auto_test_in_progress = evaluation.auto_test_in_progress;
 
+    let mut effects = Vec::new();
+    if state.active_loop_state.is_some() != next_state.active_loop_state.is_some() {
+        effects.push(CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
+            active_loop_state: next_state.active_loop_state.clone(),
+        }));
+    }
+
     if next_state.pending_follow_up_state.is_some() {
-        return transitioned(next_state, Vec::new());
+        return transitioned(next_state, effects);
     }
 
     if let Some(active_loop_state) = next_state.active_loop_state.as_ref() {
@@ -122,11 +129,12 @@ fn reduce_post_prompt_evaluation(state: &CoreState, evaluation: &PostPromptEvalu
             prompt_text: prompt_text.clone(),
             source: FollowUpSource::LoopContinuation,
         });
-        return transitioned(next_state, vec![CoreEffect::RunLoopFollowUp {
+        effects.push(CoreEffect::RunLoopFollowUp {
             effect_id,
             prompt_text,
             source: FollowUpSource::LoopContinuation,
-        }]);
+        });
+        return transitioned(next_state, effects);
     }
 
     if next_state.auto_test_enabled
@@ -141,15 +149,16 @@ fn reduce_post_prompt_evaluation(state: &CoreState, evaluation: &PostPromptEvalu
             prompt_text: prompt_text.clone(),
             source: FollowUpSource::AutoTest,
         });
-        return transitioned(next_state, vec![CoreEffect::RunLoopFollowUp {
+        effects.push(CoreEffect::RunLoopFollowUp {
             effect_id,
             prompt_text,
             source: FollowUpSource::AutoTest,
-        }]);
+        });
+        return transitioned(next_state, effects);
     }
 
     next_state.auto_test_in_progress = false;
-    transitioned(next_state, Vec::new())
+    transitioned(next_state, effects)
 }
 
 fn reduce_set_thinking_level(state: &CoreState, requested: &crate::types::CoreThinkingLevelInput) -> CoreOutcome {
@@ -345,6 +354,7 @@ mod tests {
 
     const FIRST_EFFECT_ID: u64 = 1;
     const SECOND_EFFECT_ID: u64 = 2;
+    const THIRD_EFFECT_ID: u64 = 3;
     const LOOP_ITERATION_LIMIT: u32 = 3;
 
     fn loop_request() -> LoopRequest {
@@ -410,6 +420,30 @@ mod tests {
                 requested_disabled_tools: vec!["bash".to_string()],
             }),
             next_effect_id: CoreEffectId(FIRST_EFFECT_ID),
+            ..CoreState::default()
+        }
+    }
+
+    fn multi_slot_state() -> CoreState {
+        CoreState {
+            busy: true,
+            active_loop_state: Some(loop_state()),
+            pending_prompt: Some(PendingPromptState {
+                effect_id: CoreEffectId(FIRST_EFFECT_ID),
+                prompt_text: "hello".to_string(),
+                image_count: 0,
+            }),
+            pending_tool_filter: Some(PendingToolFilterState {
+                effect_id: CoreEffectId(SECOND_EFFECT_ID),
+                requested_disabled_tools: vec!["bash".to_string()],
+            }),
+            pending_follow_up_state: Some(PendingFollowUpState {
+                effect_id: CoreEffectId(THIRD_EFFECT_ID),
+                prompt_text: "continue loop".to_string(),
+                source: FollowUpSource::LoopContinuation,
+            }),
+            next_effect_id: CoreEffectId(THIRD_EFFECT_ID),
+            disabled_tools: vec!["bash".to_string()],
             ..CoreState::default()
         }
     }
@@ -539,11 +573,46 @@ mod tests {
             })
         );
         assert!(!next_state.auto_test_in_progress);
-        assert_eq!(effects, vec![CoreEffect::RunLoopFollowUp {
-            effect_id: CoreEffectId(FIRST_EFFECT_ID),
-            prompt_text: "continue loop".to_string(),
-            source: FollowUpSource::LoopContinuation,
-        }]);
+        assert_eq!(effects, vec![
+            CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
+                active_loop_state: Some(loop_state()),
+            }),
+            CoreEffect::RunLoopFollowUp {
+                effect_id: CoreEffectId(FIRST_EFFECT_ID),
+                prompt_text: "continue loop".to_string(),
+                source: FollowUpSource::LoopContinuation,
+            },
+        ]);
+    }
+
+    #[test]
+    fn post_prompt_evaluation_emits_loop_clear_before_auto_test() {
+        let state = CoreState {
+            active_loop_state: Some(loop_state()),
+            ..CoreState::default()
+        };
+        let input = CoreInput::EvaluatePostPrompt(PostPromptEvaluation {
+            active_loop_state: None,
+            pending_follow_up_state: None,
+            auto_test_enabled: true,
+            auto_test_command: Some("cargo test".to_string()),
+            auto_test_in_progress: false,
+        });
+
+        let (next_state, effects) = expect_transition(reduce(&state, &input));
+
+        assert!(next_state.active_loop_state.is_none());
+        assert!(next_state.auto_test_in_progress);
+        assert_eq!(effects, vec![
+            CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
+                active_loop_state: None,
+            }),
+            CoreEffect::RunLoopFollowUp {
+                effect_id: CoreEffectId(FIRST_EFFECT_ID),
+                prompt_text: "Run `cargo test` and fix any failures. Do not ask for confirmation.".to_string(),
+                source: FollowUpSource::AutoTest,
+            },
+        ]);
     }
 
     #[test]
@@ -769,6 +838,21 @@ mod tests {
     }
 
     #[test]
+    fn loop_follow_up_completion_success_clears_pending_without_extra_effects() {
+        let state = pending_loop_follow_up_state();
+        let input = CoreInput::LoopFollowUpCompleted(LoopFollowUpCompleted {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+            completion_status: CompletionStatus::Succeeded,
+        });
+
+        let (next_state, effects) = expect_transition(reduce(&state, &input));
+
+        assert!(next_state.pending_follow_up_state.is_none());
+        assert_eq!(next_state.active_loop_state, state.active_loop_state);
+        assert!(effects.is_empty());
+    }
+
+    #[test]
     fn loop_follow_up_completion_failure_clears_pending_and_ends_loop() {
         let state = pending_loop_follow_up_state();
         let input = CoreInput::LoopFollowUpCompleted(LoopFollowUpCompleted {
@@ -815,6 +899,21 @@ mod tests {
     }
 
     #[test]
+    fn tool_filter_feedback_empty_slot_is_rejected_with_tool_filter_mismatch() {
+        let input = CoreInput::ToolFilterApplied(ToolFilterApplied {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+            applied_disabled_tool_set: vec!["bash".to_string()],
+        });
+
+        let (unchanged_state, error) = expect_rejection(reduce(&CoreState::default(), &input));
+
+        assert_eq!(unchanged_state, CoreState::default());
+        assert_eq!(error, CoreError::ToolFilterMismatch {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+        });
+    }
+
+    #[test]
     fn tool_filter_feedback_with_mismatched_applied_set_is_rejected() {
         let state = pending_tool_filter_state();
         let input = CoreInput::ToolFilterApplied(ToolFilterApplied {
@@ -825,6 +924,23 @@ mod tests {
         let (unchanged_state, error) = expect_rejection(reduce(&state, &input));
 
         assert_eq!(unchanged_state, state);
+        assert_eq!(error, CoreError::ToolFilterMismatch {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+        });
+    }
+
+    #[test]
+    fn duplicate_tool_filter_feedback_is_rejected_after_slot_clears() {
+        let state = pending_tool_filter_state();
+        let feedback = CoreInput::ToolFilterApplied(ToolFilterApplied {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+            applied_disabled_tool_set: vec!["bash".to_string()],
+        });
+        let (next_state, _) = expect_transition(reduce(&state, &feedback));
+
+        let (unchanged_state, error) = expect_rejection(reduce(&next_state, &feedback));
+
+        assert_eq!(unchanged_state, next_state);
         assert_eq!(error, CoreError::ToolFilterMismatch {
             effect_id: CoreEffectId(FIRST_EFFECT_ID),
         });
@@ -891,6 +1007,53 @@ mod tests {
 
         assert_eq!(unchanged_state, next_state);
         assert_eq!(error, CoreError::LoopFollowUpMismatch {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+        });
+    }
+
+    #[test]
+    fn simultaneous_pending_slots_keep_effect_ids_unambiguous_across_feedback_kinds() {
+        let state = multi_slot_state();
+        assert_ne!(
+            state.pending_prompt.as_ref().map(|pending| pending.effect_id),
+            state.pending_tool_filter.as_ref().map(|pending| pending.effect_id)
+        );
+        assert_ne!(
+            state.pending_prompt.as_ref().map(|pending| pending.effect_id),
+            state.pending_follow_up_state.as_ref().map(|pending| pending.effect_id)
+        );
+        assert_ne!(
+            state.pending_tool_filter.as_ref().map(|pending| pending.effect_id),
+            state.pending_follow_up_state.as_ref().map(|pending| pending.effect_id)
+        );
+
+        let prompt_feedback = CoreInput::PromptCompleted(PromptCompleted {
+            effect_id: CoreEffectId(SECOND_EFFECT_ID),
+            completion_status: CompletionStatus::Succeeded,
+        });
+        let (prompt_state, prompt_error) = expect_rejection(reduce(&state, &prompt_feedback));
+        assert_eq!(prompt_state, state);
+        assert_eq!(prompt_error, CoreError::PromptCompletionMismatch {
+            effect_id: CoreEffectId(SECOND_EFFECT_ID),
+        });
+
+        let tool_feedback = CoreInput::ToolFilterApplied(ToolFilterApplied {
+            effect_id: CoreEffectId(THIRD_EFFECT_ID),
+            applied_disabled_tool_set: vec!["bash".to_string()],
+        });
+        let (tool_state, tool_error) = expect_rejection(reduce(&state, &tool_feedback));
+        assert_eq!(tool_state, state);
+        assert_eq!(tool_error, CoreError::ToolFilterMismatch {
+            effect_id: CoreEffectId(THIRD_EFFECT_ID),
+        });
+
+        let follow_up_feedback = CoreInput::LoopFollowUpCompleted(LoopFollowUpCompleted {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+            completion_status: CompletionStatus::Succeeded,
+        });
+        let (follow_up_state, follow_up_error) = expect_rejection(reduce(&state, &follow_up_feedback));
+        assert_eq!(follow_up_state, state);
+        assert_eq!(follow_up_error, CoreError::LoopFollowUpMismatch {
             effect_id: CoreEffectId(FIRST_EFFECT_ID),
         });
     }

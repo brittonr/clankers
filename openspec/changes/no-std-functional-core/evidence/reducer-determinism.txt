@@ -10,6 +10,12 @@ Created-At: 2026-04-21T14:01:45Z
 ## Summary
 
 - Replay identical migrated-slice state/input pairs twice.
-- Assert identical next state and identical effect plans for prompt, loop, thinking, and disabled-tool transitions.
+- Assert identical next state and identical ordered effect plans for prompt start, prompt completion success/failure, loop start/stop, post-prompt evaluation, loop-follow-up completion, thinking changes, disabled-tool requests, and tool-filter feedback.
+- Pair that replay rail with direct reducer unit tests in `crates/clankers-core/src/reducer.rs` that pin positive state/effect semantics, including busy changes, loop-state changes, `RunLoopFollowUp`, `ApplyToolFilter`, and the exact non-prompt ordering cases `prompt_completion_failure_clears_active_loop_and_pending_follow_up` plus `post_prompt_evaluation_emits_loop_clear_before_auto_test`.
 - Explicitly include prompt completion outcome, active loop state, pending follow-up state, auto-test enabled state, auto-test command presence, and auto-test in-progress state in the replayed core data.
 - Fail on any divergence.
+
+## Latest validation commands
+
+- `cargo test -p clankers-core --lib`
+- `cargo test -p clankers-core --test determinism`

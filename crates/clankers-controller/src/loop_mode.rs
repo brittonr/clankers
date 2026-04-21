@@ -22,6 +22,12 @@ pub struct LoopConfig {
     pub break_text: Option<String>,
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub(crate) struct ObservedLoopProgress {
+    pub active_loop_state: Option<ActiveLoopState>,
+    pub completion_reason: Option<String>,
+}
+
 impl SessionController {
     /// Register and start a loop from a client-provided config.
     pub fn start_loop(&mut self, config: LoopConfig) -> Option<LoopId> {
@@ -58,27 +64,30 @@ impl SessionController {
         Some(id)
     }
 
-    /// After a prompt completes, check whether to continue the loop.
-    /// Returns Some(prompt) if the loop should continue with another iteration.
-    pub fn maybe_continue_loop(&mut self) -> Option<String> {
-        let loop_id = self.active_loop_id.as_ref()?.clone();
+    /// Observe loop progress after a prompt finishes without mutating core state.
+    pub(crate) fn observe_post_prompt_loop_state(&mut self) -> ObservedLoopProgress {
+        let Some(loop_id) = self.active_loop_id.as_ref().cloned() else {
+            return ObservedLoopProgress::default();
+        };
 
         // Feed accumulated output to the engine for break condition checks.
         let output = std::mem::take(&mut self.loop_turn_output);
         let should_continue = self.loop_engine.record_iteration(&loop_id, output, None);
 
         if !should_continue {
-            let reason = self.loop_engine.get(&loop_id).map_or("finished", |s| match s.status {
+            let reason = self.loop_engine.get(&loop_id).map_or("finished", |state| match state.status {
                 LoopStatus::Completed => "completed",
                 LoopStatus::Stopped => "max iterations reached",
                 LoopStatus::Failed => "failed",
                 _ => "finished",
             });
-            self.finish_loop(reason);
-            return None;
+            return ObservedLoopProgress {
+                active_loop_state: None,
+                completion_reason: Some(reason.to_string()),
+            };
         }
 
-        let previous_loop_state = self.core_state.active_loop_state.clone();
+        let previous_loop_state = self.core_state.active_loop_state.as_ref();
         let next_loop_state = self.loop_engine.get(&loop_id).map(|state| ActiveLoopState {
             loop_id: loop_id.0.clone(),
             prompt_text: state
@@ -89,11 +98,27 @@ impl SessionController {
                 .map(String::from)
                 .unwrap_or_default(),
             current_iteration: state.current_iteration,
-            max_iterations: previous_loop_state.as_ref().map_or(0, |loop_state| loop_state.max_iterations),
-            break_condition: previous_loop_state.and_then(|loop_state| loop_state.break_condition),
+            max_iterations: previous_loop_state.map_or(0, |loop_state| loop_state.max_iterations),
+            break_condition: previous_loop_state.and_then(|loop_state| loop_state.break_condition.clone()),
         });
-        self.core_state.active_loop_state = next_loop_state.clone();
-        next_loop_state.map(|state| state.prompt_text)
+
+        ObservedLoopProgress {
+            active_loop_state: next_loop_state,
+            completion_reason: None,
+        }
+    }
+
+    /// After a prompt completes, check whether to continue the loop.
+    /// Returns Some(prompt) if the loop should continue with another iteration.
+    pub fn maybe_continue_loop(&mut self) -> Option<String> {
+        let observed = self.observe_post_prompt_loop_state();
+        if let Some(reason) = observed.completion_reason {
+            self.finish_loop(&reason);
+            return None;
+        }
+
+        self.core_state.active_loop_state = observed.active_loop_state.clone();
+        observed.active_loop_state.map(|state| state.prompt_text)
     }
 
     /// Stop the active loop.

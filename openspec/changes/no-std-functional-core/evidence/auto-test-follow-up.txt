@@ -10,5 +10,19 @@ Created-At: 2026-04-21T14:02:12Z
 ## Summary
 
 - Cover loop continuation, loop-follow-up completion success/failure, and stale/wrong completion rejection.
-- Assert visible loop-state transitions on success, error `DaemonEvent::SystemMessage` on failure, and no extra success acknowledgement events.
-- Assert stale or wrong completion feedback leaves state unchanged.
+- Assert visible loop-state transitions on success, loop-follow-up failure `DaemonEvent::SystemMessage`, and no extra success acknowledgement events.
+- Assert stale or wrong completion feedback leaves state unchanged through the controller seam.
+
+## Latest added coverage
+
+- `crates/clankers-controller/src/auto_test.rs::test_check_post_prompt_with_active_loop`
+- `crates/clankers-controller/src/auto_test.rs::test_check_post_prompt_finishes_completed_loop_without_follow_up`
+- `crates/clankers-controller/src/auto_test.rs::test_complete_follow_up_success_clears_pending_without_extra_events`
+- `crates/clankers-controller/src/auto_test.rs::test_complete_follow_up_failure_finishes_loop_and_emits_message`
+- `crates/clankers-controller/src/auto_test.rs::test_complete_follow_up_failure_without_loop_emits_error_message`
+- `crates/clankers-controller/src/auto_test.rs::test_complete_follow_up_rejection_keeps_state_and_emits_error`
+- `crates/clankers-controller/src/auto_test.rs::test_complete_follow_up_duplicate_completion_is_rejected`
+
+## Adapter note
+
+- `check_post_prompt()` now passes observed loop progress into `CoreInput::EvaluatePostPrompt` without pre-muting `core_state.active_loop_state`, and loop completion cleanup runs only when the reducer emits `LoopStateChanged { active_loop_state: None }`.

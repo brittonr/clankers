@@ -9,6 +9,11 @@ Created-At: 2026-04-21T14:01:45Z
 
 ## Summary
 
-- Cover accepted disabled-tool updates, filtered-tool rebuild application, and stale-slot rejection.
-- Assert `DaemonEvent::DisabledToolsChanged` fires before `DaemonEvent::SystemMessage` on success.
-- Assert stale-slot rejection emits only error acknowledgement and no disabled-tools-changed event.
+- Cover accepted disabled-tool updates, filtered-tool rebuild application, stale-slot rejection, and mismatched tool-filter feedback rejection through the controller seam.
+- Assert reducer-produced `ApplyToolFilter` work is consumed by the controller seam, then matching feedback emits `DaemonEvent::DisabledToolsChanged` before the success `DaemonEvent::SystemMessage` acknowledgement.
+- Assert rejected feedback emits only error acknowledgement and no disabled-tools-changed event while leaving controller core state unchanged.
+
+## Latest added coverage
+
+- `crates/clankers-controller/src/command.rs::test_set_disabled_tools_emits_change_before_ack`
+- `crates/clankers-controller/src/command.rs::test_tool_filter_feedback_rejection_keeps_state_and_emits_only_error`

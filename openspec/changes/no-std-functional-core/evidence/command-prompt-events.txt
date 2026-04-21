@@ -12,3 +12,12 @@ Created-At: 2026-04-21T14:01:45Z
 - Cover concurrent-prompt rejection through the migrated reducer path.
 - Assert logical session-event emission stays adapter-driven and shell-visible behavior remains unchanged.
 - Assert unchanged-state rejection with preserved error acknowledgement category.
+
+## Latest added coverage
+
+- `crates/clankers-controller/src/command.rs::test_reject_concurrent_prompt`
+- `crates/clankers-controller/src/command.rs::test_prompt_command_routes_request_and_completion_through_core`
+
+## Adapter note
+
+- `SessionCommand::Prompt` now enters `clankers-core` through `CoreInput::PromptRequested` and feeds runtime completion back through `CoreInput::PromptCompleted` before emitting `DaemonEvent::PromptDone`.

@@ -8,8 +8,9 @@ A terminal coding agent in Rust. Inspired by [pi](https://pi.dev), built to be h
 
 ```
 cargo build --release
-cargo nextest run              # run tests
-cargo clippy -- -D warnings    # lint
+cargo nextest run                      # run tests
+cargo clippy -- -D warnings            # lint
+./scripts/verify.sh                    # repo validation rails
 ```
 
 ## Auth
