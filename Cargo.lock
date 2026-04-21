@@ -1398,6 +1398,7 @@ dependencies = [
  "clankers-agent-defs",
  "clankers-config",
  "clankers-controller",
+ "clankers-core",
  "clankers-db",
  "clankers-hooks",
  "clankers-matrix",
@@ -1543,6 +1544,7 @@ dependencies = [
  "clanker-loop",
  "clankers-agent",
  "clankers-config",
+ "clankers-core",
  "clankers-hooks",
  "clankers-message",
  "clankers-protocol",
@@ -1556,6 +1558,10 @@ dependencies = [
  "tokio",
  "tracing",
 ]
+
+[[package]]
+name = "clankers-core"
+version = "0.1.0"
 
 [[package]]
 name = "clankers-db"

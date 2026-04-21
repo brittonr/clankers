@@ -1,0 +1,15 @@
+Evidence-ID: no-std-functional-core.V1.reducer-determinism
+Task-ID: V1
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.deterministic.transitions
+Created-By: pi
+Created-At: 2026-04-21T14:01:45Z
+
+# Evidence: reducer determinism
+
+## Summary
+
+- Replay identical migrated-slice state/input pairs twice.
+- Assert identical next state and identical effect plans for prompt, loop, thinking, and disabled-tool transitions.
+- Explicitly include prompt completion outcome, active loop state, pending follow-up state, auto-test enabled state, auto-test command presence, and auto-test in-progress state in the replayed core data.
+- Fail on any divergence.

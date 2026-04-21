@@ -124,7 +124,10 @@ impl<'a> EventLoopRunner<'a> {
     }
 
     /// Main event loop. Returns when `app.should_quit` is set.
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; exits on quit signal"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(unbounded_loop, reason = "event loop; exits on quit signal")
+    )]
     pub fn run(&mut self) -> Result<()> {
         loop {
             self.terminal.draw(|frame| render::render(frame, self.app)).map_err(|e| crate::error::Error::Tui {
@@ -157,7 +160,10 @@ impl<'a> EventLoopRunner<'a> {
 
     // ── Agent events + TUI rendering + controller feed ──────────────
 
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; exits on quit signal"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(unbounded_loop, reason = "event loop; exits on quit signal")
+    )]
     fn drain_agent_events(&mut self) {
         loop {
             match self.event_rx.try_recv() {
@@ -299,18 +305,10 @@ impl<'a> EventLoopRunner<'a> {
         loop {
             match self.schedule_rx.try_recv() {
                 Ok(event) => {
-                    let prompt = event
-                        .payload
-                        .get("prompt")
-                        .and_then(|v| v.as_str())
-                        .unwrap_or_default()
-                        .to_string();
+                    let prompt = event.payload.get("prompt").and_then(|v| v.as_str()).unwrap_or_default().to_string();
 
                     if prompt.is_empty() {
-                        tracing::debug!(
-                            "schedule '{}' fired but payload has no 'prompt' field",
-                            event.schedule_name,
-                        );
+                        tracing::debug!("schedule '{}' fired but payload has no 'prompt' field", event.schedule_name,);
                         continue;
                     }
 
@@ -426,10 +424,8 @@ impl<'a> EventLoopRunner<'a> {
 
     fn drain_bash_confirms(&mut self) {
         while let Ok(req) = self.bash_confirm_rx.try_recv() {
-            self.app.push_system(
-                format!("⚠️  Dangerous command detected ({}): {}", req.reason, req.command),
-                true,
-            );
+            self.app
+                .push_system(format!("⚠️  Dangerous command detected ({}): {}", req.reason, req.command), true);
             self.app.push_system("Type 'y' to approve or 'n' to block. Approving...".to_string(), false);
             req.resp_tx.send(true).ok();
         }
@@ -506,7 +502,7 @@ impl<'a> EventLoopRunner<'a> {
                         self.controller.sync_loop_from_tui(self.app.loop_status.as_ref());
 
                         match self.controller.check_post_prompt() {
-                            clankers_controller::PostPromptAction::ContinueLoop(prompt) => {
+                            clankers_controller::PostPromptAction::ContinueLoop { effect_id, prompt } => {
                                 // Sync iteration count back to TUI
                                 if let Some(iter) = self.controller.loop_iteration()
                                     && let Some(ref mut ls) = self.app.loop_status
@@ -516,16 +512,36 @@ impl<'a> EventLoopRunner<'a> {
                                 // Paused check — only continue if TUI says active
                                 if self.app.loop_status.as_ref().is_some_and(|ls| ls.active) {
                                     self.cmd_tx.send(AgentCommand::ResetCancel).ok();
-                                    self.cmd_tx.send(AgentCommand::Prompt(prompt)).ok();
+                                    let completion_status = if self.cmd_tx.send(AgentCommand::Prompt(prompt)).is_ok() {
+                                        clankers_core::CompletionStatus::Succeeded
+                                    } else {
+                                        clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
+                                            "follow-up dispatch channel closed".to_string(),
+                                        ))
+                                    };
+                                    self.controller.complete_follow_up(effect_id, completion_status);
+                                } else {
+                                    self.controller
+                                        .complete_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
                                 }
                             }
-                            clankers_controller::PostPromptAction::RunAutoTest(prompt) => {
+                            clankers_controller::PostPromptAction::RunAutoTest { effect_id, prompt } => {
                                 self.app.push_system(
-                                    format!("🧪 Running auto-test: {}", self.app.auto_test_command.as_deref().unwrap_or("?")),
+                                    format!(
+                                        "🧪 Running auto-test: {}",
+                                        self.app.auto_test_command.as_deref().unwrap_or("?")
+                                    ),
                                     false,
                                 );
                                 self.cmd_tx.send(AgentCommand::ResetCancel).ok();
-                                self.cmd_tx.send(AgentCommand::Prompt(prompt)).ok();
+                                let completion_status = if self.cmd_tx.send(AgentCommand::Prompt(prompt)).is_ok() {
+                                    clankers_core::CompletionStatus::Succeeded
+                                } else {
+                                    clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
+                                        "follow-up dispatch channel closed".to_string(),
+                                    ))
+                                };
+                                self.controller.complete_follow_up(effect_id, completion_status);
                             }
                             clankers_controller::PostPromptAction::None => {}
                         }
@@ -702,20 +718,16 @@ mod tests {
 
     #[test]
     fn sync_controller_session_id_updates_stale_controller_state() {
-        let mut app = crate::tui::app::App::new(
-            "test-model".to_string(),
-            "/tmp".to_string(),
-            crate::tui::theme::Theme::dark(),
-        );
+        let mut app =
+            crate::tui::app::App::new("test-model".to_string(), "/tmp".to_string(), crate::tui::theme::Theme::dark());
         app.session_id = "session-from-app".to_string();
 
-        let mut controller = clankers_controller::SessionController::new_embedded(
-            clankers_controller::config::ControllerConfig {
+        let mut controller =
+            clankers_controller::SessionController::new_embedded(clankers_controller::config::ControllerConfig {
                 session_id: "stale-controller-session".to_string(),
                 model: "test-model".to_string(),
                 ..Default::default()
-            },
-        );
+            });
 
         sync_controller_session_id(&app, &mut controller);
         assert_eq!(controller.session_id(), "session-from-app");

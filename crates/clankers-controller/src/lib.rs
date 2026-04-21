@@ -27,6 +27,7 @@ use clanker_loop::LoopEngine;
 use clanker_loop::LoopId;
 use clankers_agent::Agent;
 use clankers_agent::events::AgentEvent;
+use clankers_core::CoreState;
 use clankers_hooks::HookPipeline;
 use clankers_protocol::DaemonEvent;
 use clankers_session::SessionManager;
@@ -45,9 +46,15 @@ pub enum PostPromptAction {
     /// No continuation — prompt is done.
     None,
     /// Continue a loop iteration with this prompt.
-    ContinueLoop(String),
+    ContinueLoop {
+        effect_id: clankers_core::CoreEffectId,
+        prompt: String,
+    },
     /// Run an auto-test with this prompt.
-    RunAutoTest(String),
+    RunAutoTest {
+        effect_id: clankers_core::CoreEffectId,
+        prompt: String,
+    },
 }
 
 /// Transport-agnostic orchestrator that owns one agent session.
@@ -67,6 +74,8 @@ pub struct SessionController {
     pub(crate) event_rx: Option<broadcast::Receiver<AgentEvent>>,
     /// Session persistence.
     pub session_manager: Option<SessionManager>,
+    /// Authoritative reducer state for the migrated no_std slice.
+    pub(crate) core_state: CoreState,
     /// Loop engine for loop/retry iteration.
     pub(crate) loop_engine: LoopEngine,
     /// Active loop ID.
@@ -125,6 +134,11 @@ impl SessionController {
             agent: Some(agent),
             event_rx: Some(event_rx),
             session_manager: config.session_manager,
+            core_state: CoreState {
+                auto_test_enabled: config.auto_test_enabled,
+                auto_test_command: config.auto_test_command.clone(),
+                ..CoreState::default()
+            },
             loop_engine: LoopEngine::new(),
             active_loop_id: None,
             loop_turn_output: String::new(),
@@ -160,6 +174,11 @@ impl SessionController {
             agent: None,
             event_rx: None,
             session_manager: config.session_manager,
+            core_state: CoreState {
+                auto_test_enabled: config.auto_test_enabled,
+                auto_test_command: config.auto_test_command.clone(),
+                ..CoreState::default()
+            },
             loop_engine: LoopEngine::new(),
             active_loop_id: None,
             loop_turn_output: String::new(),
@@ -309,7 +328,9 @@ impl SessionController {
     /// Update auto-test settings from the TUI.
     pub fn set_auto_test(&mut self, enabled: bool, command: Option<String>) {
         self.auto_test_enabled = enabled;
-        self.auto_test_command = command;
+        self.auto_test_command = command.clone();
+        self.core_state.auto_test_enabled = enabled;
+        self.core_state.auto_test_command = command;
     }
 
     /// Register a pending bash confirmation request.
@@ -329,6 +350,16 @@ impl SessionController {
     /// Mutably access the session manager (for branch/merge operations).
     pub fn session_manager_mut(&mut self) -> Option<&mut SessionManager> {
         self.session_manager.as_mut()
+    }
+
+    /// Apply the authoritative core-state snapshot back onto controller mirrors.
+    fn apply_core_state(&mut self, next_state: CoreState) {
+        self.busy = next_state.busy;
+        self.disabled_tools = next_state.disabled_tools.clone();
+        self.auto_test_enabled = next_state.auto_test_enabled;
+        self.auto_test_command = next_state.auto_test_command.clone();
+        self.auto_test_in_progress = next_state.auto_test_in_progress;
+        self.core_state = next_state;
     }
 
     /// Queue an outgoing event.

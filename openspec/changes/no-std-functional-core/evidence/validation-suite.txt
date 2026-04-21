@@ -1,0 +1,15 @@
+Evidence-ID: no-std-functional-core.V11.validation-suite
+Task-ID: V11
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.portable.crate.no-std-build-succeeds, no.std.functional.core.deterministic.transitions.transition-logic-has-no-ambient-runtime-dependencies, no.std.functional.core.future.extraction.boundary.shell-native-types-stay-outside-the-core-boundary, no.std.functional.core.continuous.verification.dedicated-no-std-compile-rail-runs, no.std.functional.core.continuous.verification.banned-dependency-and-api-rail-runs, no.std.functional.core.continuous.verification.public-core-surface-shell-native-type-rail-runs, no.std.functional.core.continuous.verification.dedicated-determinism-check-runs, no.std.functional.core.continuous.verification.reducer-coverage-traces-each-required-behavior, no.std.functional.core.continuous.verification.shell-parity-coverage-traces-each-adapter-seam
+Created-By: pi
+Created-At: 2026-04-21T14:02:12Z
+
+# Evidence: ordinary validation bundle
+
+## Summary
+
+- Run the bare-metal `cargo check` rail, boundary scripts, public-core-surface shell-native/protocol-native boundary script, determinism rail, and migrated reducer/parity suites.
+- Assert the no-std crate still exposes the extracted slice `CoreState`/`CoreInput`/`CoreEffect`/`CoreOutcome`/`CoreError` surface while that bundle stays green.
+- Capture the ordinary validation path that must stay green for acceptance.
+- Use this bundle as the regression oracle for the no-std boundary and migrated shell behavior.

@@ -1,0 +1,16 @@
+Evidence-ID: no-std-functional-core.V9.handle-command-prompt
+Task-ID: V9
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.explicit.effects.prompt-request-yields-shell-work, no.std.functional.core.explicit.effects, no.std.functional.core.shell.parity
+Created-By: pi
+Created-At: 2026-04-21T14:02:12Z
+
+# Evidence: handle_command prompt shell seam
+
+## Summary
+
+- Drive `SessionController::handle_command(SessionCommand::Prompt { .. })` through the migrated reducer path.
+- Assert an allowed prompt request yields the expected prompt-start `CoreEffect`/shell work path without shell policy re-derivation.
+- Assert controller and agent adapters preserve reducer-emitted `CoreEffect` order whenever sequencing is shell-visible.
+- Assert preserved emitted events, busy-state transitions, and prompt success/no-ack behavior.
+- Catch adapter regressions at the public controller seam.

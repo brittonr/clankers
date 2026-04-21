@@ -1,0 +1,15 @@
+Evidence-ID: no-std-functional-core.V3.command-thinking
+Task-ID: V3
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.shell.parity
+Created-By: pi
+Created-At: 2026-04-21T14:01:45Z
+
+# Evidence: command thinking parity
+
+## Summary
+
+- Cover `SetThinkingLevel`, `CycleThinkingLevel`, and invalid thinking-level inputs through `crates/clankers-controller/src/command.rs`.
+- Assert preserved `DaemonEvent::SystemMessage` acknowledgement categories.
+- Assert unchanged-state handling for invalid `SetThinkingLevel` inputs.
+- Assert exact cycle order `Off -> Low -> Medium -> High -> Max -> Off`.

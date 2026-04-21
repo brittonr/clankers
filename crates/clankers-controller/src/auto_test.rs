@@ -3,7 +3,9 @@
 //! Contains logic for determining what action should be taken after
 //! a prompt completes, including auto-test execution and loop continuation.
 
-use crate::{loop_mode::LoopConfig, PostPromptAction, SessionController};
+use crate::PostPromptAction;
+use crate::SessionController;
+use crate::loop_mode::LoopConfig;
 
 impl SessionController {
     /// Check if auto-test should run after a prompt completes. Returns a
@@ -20,14 +22,14 @@ impl SessionController {
         }
         let cmd = self.auto_test_command.as_ref()?;
         self.auto_test_in_progress = true;
-        Some(format!(
-            "Run `{cmd}` and fix any failures. Do not ask for confirmation."
-        ))
+        self.core_state.auto_test_in_progress = true;
+        Some(format!("Run `{cmd}` and fix any failures. Do not ask for confirmation."))
     }
 
     /// Clear the auto-test guard (call after the auto-test prompt completes).
     pub fn clear_auto_test(&mut self) {
         self.auto_test_in_progress = false;
+        self.core_state.auto_test_in_progress = false;
     }
 
     /// Determine what to do after a prompt completes (embedded mode).
@@ -36,30 +38,96 @@ impl SessionController {
     /// `PromptDone(None)` and confirming there's no queued user prompt.
     /// Returns the action the TUI should take.
     pub fn check_post_prompt(&mut self) -> PostPromptAction {
-        // Loop continuation takes priority
-        if self.active_loop_id.is_some()
-            && let Some(prompt) = self.maybe_continue_loop()
-        {
-            return PostPromptAction::ContinueLoop(prompt);
+        if self.active_loop_id.is_some() {
+            let _ = self.maybe_continue_loop();
         }
 
-        // Auto-test
-        if let Some(prompt) = self.maybe_auto_test() {
-            return PostPromptAction::RunAutoTest(prompt);
-        }
-        self.clear_auto_test();
+        let input = clankers_core::CoreInput::EvaluatePostPrompt(clankers_core::PostPromptEvaluation {
+            active_loop_state: self.core_state.active_loop_state.clone(),
+            pending_follow_up_state: self.core_state.pending_follow_up_state.clone(),
+            auto_test_enabled: self.auto_test_enabled,
+            auto_test_command: self.auto_test_command.clone(),
+            auto_test_in_progress: self.auto_test_in_progress,
+        });
 
-        PostPromptAction::None
+        match clankers_core::reduce(&self.core_state, &input) {
+            clankers_core::CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                for effect in effects {
+                    if let clankers_core::CoreEffect::RunLoopFollowUp {
+                        effect_id,
+                        prompt_text,
+                        source,
+                    } = effect
+                    {
+                        return match source {
+                            clankers_core::FollowUpSource::LoopContinuation => PostPromptAction::ContinueLoop {
+                                effect_id,
+                                prompt: prompt_text,
+                            },
+                            clankers_core::FollowUpSource::AutoTest => PostPromptAction::RunAutoTest {
+                                effect_id,
+                                prompt: prompt_text,
+                            },
+                        };
+                    }
+                }
+                PostPromptAction::None
+            }
+            clankers_core::CoreOutcome::Rejected { .. } => PostPromptAction::None,
+        }
+    }
+
+    /// Notify the controller that a follow-up prompt was accepted or rejected by the shell.
+    pub fn complete_follow_up(
+        &mut self,
+        effect_id: clankers_core::CoreEffectId,
+        completion_status: clankers_core::CompletionStatus,
+    ) {
+        let input = clankers_core::CoreInput::LoopFollowUpCompleted(clankers_core::LoopFollowUpCompleted {
+            effect_id,
+            completion_status: completion_status.clone(),
+        });
+        let previous_loop_active = self.active_loop_id.is_some();
+
+        match clankers_core::reduce(&self.core_state, &input) {
+            clankers_core::CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                if matches!(completion_status, clankers_core::CompletionStatus::Failed(_)) {
+                    if previous_loop_active {
+                        self.finish_loop("failed (follow-up)");
+                    } else {
+                        self.emit(clankers_protocol::DaemonEvent::SystemMessage {
+                            text: "Post-prompt follow-up failed".to_string(),
+                            is_error: true,
+                        });
+                    }
+                }
+                for effect in effects {
+                    if let clankers_core::CoreEffect::EmitLogicalEvent(
+                        clankers_core::CoreLogicalEvent::LoopStateChanged {
+                            active_loop_state: None,
+                        },
+                    ) = effect
+                    {
+                        self.core_state.active_loop_state = None;
+                    }
+                }
+            }
+            clankers_core::CoreOutcome::Rejected { .. } => {
+                self.emit(clankers_protocol::DaemonEvent::SystemMessage {
+                    text: "Post-prompt follow-up completion rejected".to_string(),
+                    is_error: true,
+                });
+            }
+        }
     }
 
     /// Sync loop state from the TUI's loop_status.
     ///
     /// Called before `check_post_prompt()` to ensure the controller's
     /// loop engine matches the TUI's `/loop` command state.
-    pub fn sync_loop_from_tui(
-        &mut self,
-        loop_status: Option<&clankers_tui_types::LoopDisplayState>,
-    ) {
+    pub fn sync_loop_from_tui(&mut self, loop_status: Option<&clankers_tui_types::LoopDisplayState>) {
         match (loop_status, &self.active_loop_id) {
             // TUI has loop but controller doesn't → register it
             (Some(ls), None) => {
@@ -79,6 +147,8 @@ impl SessionController {
                 }
                 self.active_loop_id = None;
                 self.loop_turn_output.clear();
+                self.core_state.active_loop_state = None;
+                self.core_state.pending_follow_up_state = None;
             }
             // Both in sync (or neither has a loop)
             _ => {}
@@ -87,10 +157,7 @@ impl SessionController {
 
     /// Get the current loop iteration count (for TUI display sync).
     pub fn loop_iteration(&self) -> Option<u32> {
-        self.active_loop_id
-            .as_ref()
-            .and_then(|id| self.loop_engine.get(id))
-            .map(|s| s.current_iteration)
+        self.active_loop_id.as_ref().and_then(|id| self.loop_engine.get(id)).map(|s| s.current_iteration)
     }
 
     /// Notify the controller that a prompt completed (embedded mode).
@@ -99,6 +166,7 @@ impl SessionController {
     /// is received, before calling `check_post_prompt()`.
     pub fn notify_prompt_done(&mut self, had_error: bool) {
         self.busy = false;
+        self.core_state.busy = false;
         if had_error && self.active_loop_id.is_some() {
             self.finish_loop("failed (error)");
         }
@@ -107,9 +175,11 @@ impl SessionController {
 
 #[cfg(test)]
 mod tests {
-    use crate::{test_helpers::make_test_controller, PostPromptAction};
     use clanker_loop::LoopId;
     use clankers_tui_types::LoopDisplayState;
+
+    use crate::PostPromptAction;
+    use crate::test_helpers::make_test_controller;
 
     #[test]
     fn test_auto_test_disabled() {
@@ -148,7 +218,7 @@ mod tests {
     #[test]
     fn test_check_post_prompt_no_loop_no_autotest() {
         let mut ctrl = make_test_controller();
-        
+
         let action = ctrl.check_post_prompt();
         assert!(matches!(action, PostPromptAction::None));
     }
@@ -160,36 +230,30 @@ mod tests {
         ctrl.auto_test_command = Some("cargo test".to_string());
 
         let action = ctrl.check_post_prompt();
-        assert!(matches!(action, PostPromptAction::RunAutoTest(_)));
+        assert!(matches!(action, PostPromptAction::RunAutoTest { .. }));
 
-        if let PostPromptAction::RunAutoTest(prompt) = action {
+        if let PostPromptAction::RunAutoTest { prompt, .. } = action {
             assert!(prompt.contains("cargo test"));
         }
     }
 
     #[test]
     fn test_check_post_prompt_with_active_loop() {
+        const LOOP_ITERATION_LIMIT: u32 = 2;
+
         let mut ctrl = make_test_controller();
-        
-        // Set up a mock active loop
-        ctrl.active_loop_id = Some(LoopId("test-loop".to_string()));
-        
-        // Mock a loop config in the engine (this is a bit tricky without loop engine internals)
-        // For this test, we'll assume maybe_continue_loop returns Some when there's an active loop
-        // In practice, this would depend on loop engine implementation
+        ctrl.auto_test_enabled = true;
+        ctrl.auto_test_command = Some("cargo test".to_string());
+        ctrl.start_loop(crate::loop_mode::LoopConfig {
+            name: "test-loop".to_string(),
+            prompt: Some("continue loop".to_string()),
+            max_iterations: LOOP_ITERATION_LIMIT,
+            break_text: None,
+        });
 
         let action = ctrl.check_post_prompt();
-        // The behavior depends on whether maybe_continue_loop returns a prompt
-        // Since we don't have loop content, it should fall through to auto-test or None
-        match action {
-            PostPromptAction::ContinueLoop(_) => {
-                // Expected if loop has continuation prompt
-            }
-            PostPromptAction::None => {
-                // Expected if loop doesn't have continuation
-            }
-            _ => panic!("Unexpected action type"),
-        }
+        assert!(matches!(action, PostPromptAction::ContinueLoop { ref prompt, .. } if prompt == "continue loop"));
+        assert!(!ctrl.auto_test_in_progress);
     }
 
     #[test]
@@ -209,7 +273,7 @@ mod tests {
 
         ctrl.notify_prompt_done(true); // had_error = true
         assert!(!ctrl.busy);
-        
+
         // Loop should be finished (active_loop_id cleared by finish_loop)
         // This depends on finish_loop implementation, but we can test the busy state
     }
@@ -235,7 +299,7 @@ mod tests {
     #[test]
     fn test_sync_loop_from_tui_clears_loop() {
         let mut ctrl = make_test_controller();
-        
+
         // Set up active loop in controller
         ctrl.active_loop_id = Some(LoopId("existing-loop".to_string()));
 
@@ -263,7 +327,7 @@ mod tests {
     #[test]
     fn test_loop_iteration_with_active_loop() {
         let mut ctrl = make_test_controller();
-        
+
         // Create a loop config
         let config = crate::loop_mode::LoopConfig {
             name: "test-loop".to_string(),
@@ -271,10 +335,10 @@ mod tests {
             max_iterations: 5,
             break_text: Some("done".to_string()),
         };
-        
+
         // Start the loop
         ctrl.start_loop(config);
-        
+
         // Should return the current iteration (starts at 0)
         if let Some(iteration) = ctrl.loop_iteration() {
             assert_eq!(iteration, 0); // Default starting iteration

@@ -5,6 +5,7 @@ members = [
     "crates/clankers-agent-defs",
     "crates/clankers-ucan",
     "crates/clankers-config",
+    "crates/clankers-core",
     "crates/clankers-controller",
     "crates/clankers-db",
     "crates/clankers-hooks",
@@ -77,6 +78,7 @@ clankers-nix = { version = "0.1.0", path = "crates/clankers-nix", features = ["e
 clankers-agent-defs = { version = "0.1.0", path = "crates/clankers-agent-defs" }
 clankers-ucan = { version = "0.1.0", path = "crates/clankers-ucan" }
 clankers-config = { version = "0.1.0", path = "crates/clankers-config" }
+clankers-core = { version = "0.1.0", path = "crates/clankers-core" }
 clankers-db = { version = "0.1.0", path = "crates/clankers-db" }
 clankers-hooks = { version = "0.1.0", path = "crates/clankers-hooks" }
 clanker-loop = { workspace = true }

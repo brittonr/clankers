@@ -1,0 +1,15 @@
+Evidence-ID: no-std-functional-core.V7.auto-test-prompt-completion
+Task-ID: V7
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.deterministic.transitions, no.std.functional.core.explicit.effects.migrated-shell-results-re-enter-as-explicit-inputs, no.std.functional.core.shell.parity
+Created-By: pi
+Created-At: 2026-04-21T14:02:12Z
+
+# Evidence: auto-test prompt-completion parity
+
+## Summary
+
+- Cover prompt completion success and failure through `crates/clankers-controller/src/auto_test.rs`.
+- Assert busy clearing, preserved prompt success/no-ack behavior, and suppressed `PostPromptAction::{ContinueLoop, RunAutoTest}` on failure.
+- Assert loop failure still surfaces error `DaemonEvent::SystemMessage`.
+- Assert prompt completion outcome, active loop state, pending follow-up state, auto-test enabled state, auto-test command presence, and auto-test in-progress state are supplied as explicit core data instead of shell ambient inference.

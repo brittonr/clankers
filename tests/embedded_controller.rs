@@ -77,9 +77,7 @@ fn embedded_agent_start_produces_daemon_event() {
 #[test]
 fn embedded_agent_end_produces_daemon_event() {
     let mut ctrl = make_embedded_controller();
-    ctrl.feed_event(&AgentEvent::AgentEnd {
-        messages: vec![],
-    });
+    ctrl.feed_event(&AgentEvent::AgentEnd { messages: vec![] });
 
     let events = ctrl.take_outgoing();
     assert!(
@@ -239,7 +237,7 @@ fn embedded_auto_test_fires_when_enabled() {
 
     ctrl.notify_prompt_done(false);
     match ctrl.check_post_prompt() {
-        PostPromptAction::RunAutoTest(prompt) => {
+        PostPromptAction::RunAutoTest { prompt, .. } => {
             assert!(prompt.contains("cargo nextest run"));
         }
         other => panic!("expected RunAutoTest, got {other:?}"),
@@ -253,7 +251,12 @@ fn embedded_auto_test_no_recursive_trigger() {
 
     // First prompt done -> auto-test fires
     ctrl.notify_prompt_done(false);
-    assert!(matches!(ctrl.check_post_prompt(), PostPromptAction::RunAutoTest(_)));
+    match ctrl.check_post_prompt() {
+        PostPromptAction::RunAutoTest { effect_id, .. } => {
+            ctrl.complete_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+        }
+        other => panic!("expected RunAutoTest, got {other:?}"),
+    }
 
     // Second prompt done (auto-test itself completing) -> blocked by in_progress flag
     ctrl.notify_prompt_done(false);
@@ -265,7 +268,7 @@ fn embedded_auto_test_no_recursive_trigger() {
     // After clearing the guard, it fires again
     ctrl.clear_auto_test();
     ctrl.notify_prompt_done(false);
-    assert!(matches!(ctrl.check_post_prompt(), PostPromptAction::RunAutoTest(_)));
+    assert!(matches!(ctrl.check_post_prompt(), PostPromptAction::RunAutoTest { .. }));
 }
 
 // ── Embedded mode: loop integration ──────────────────────────────────────
@@ -285,7 +288,7 @@ fn embedded_loop_continuation() {
     // Simulate prompt completion + check
     ctrl.notify_prompt_done(false);
     match ctrl.check_post_prompt() {
-        PostPromptAction::ContinueLoop(prompt) => {
+        PostPromptAction::ContinueLoop { prompt, .. } => {
             assert_eq!(prompt, "iterate");
         }
         other => panic!("expected ContinueLoop, got {other:?}"),
@@ -304,7 +307,12 @@ fn embedded_loop_terminates_at_max() {
 
     // Iteration 1 → continue
     ctrl.notify_prompt_done(false);
-    assert!(matches!(ctrl.check_post_prompt(), PostPromptAction::ContinueLoop(_)));
+    match ctrl.check_post_prompt() {
+        PostPromptAction::ContinueLoop { effect_id, .. } => {
+            ctrl.complete_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+        }
+        other => panic!("expected ContinueLoop, got {other:?}"),
+    }
 
     // Iteration 2 → max reached, should terminate
     ctrl.notify_prompt_done(false);
@@ -445,8 +453,7 @@ async fn daemon_set_model_round_trip() {
 #[tokio::test]
 async fn daemon_get_system_prompt_round_trip() {
     let mut ctrl = make_daemon_controller();
-    ctrl.handle_command(clankers_protocol::SessionCommand::GetSystemPrompt)
-        .await;
+    ctrl.handle_command(clankers_protocol::SessionCommand::GetSystemPrompt).await;
 
     let events = ctrl.drain_events();
     assert!(events.iter().any(|e| matches!(
@@ -458,33 +465,30 @@ async fn daemon_get_system_prompt_round_trip() {
 #[tokio::test]
 async fn daemon_replay_history_ends_with_marker() {
     let mut ctrl = make_daemon_controller();
-    ctrl.handle_command(clankers_protocol::SessionCommand::ReplayHistory)
-        .await;
+    ctrl.handle_command(clankers_protocol::SessionCommand::ReplayHistory).await;
 
     let events = ctrl.drain_events();
-    assert!(events
-        .last()
-        .is_some_and(|e| matches!(e, DaemonEvent::HistoryEnd)));
+    assert!(events.last().is_some_and(|e| matches!(e, DaemonEvent::HistoryEnd)));
 }
 
 #[tokio::test]
 async fn daemon_abort_when_not_busy() {
     let mut ctrl = make_daemon_controller();
-    ctrl.handle_command(clankers_protocol::SessionCommand::Abort)
-        .await;
+    ctrl.handle_command(clankers_protocol::SessionCommand::Abort).await;
 
     let events = ctrl.drain_events();
-    assert!(events.iter().any(
-        |e| matches!(e, DaemonEvent::SystemMessage { text, .. } if text.contains("cancelled"))
-    ));
+    assert!(
+        events
+            .iter()
+            .any(|e| matches!(e, DaemonEvent::SystemMessage { text, .. } if text.contains("cancelled")))
+    );
 }
 
 #[tokio::test]
 async fn daemon_reject_prompt_when_busy() {
     let mut ctrl = make_daemon_controller();
     // Manually set busy
-    ctrl.handle_command(clankers_protocol::SessionCommand::ClearHistory)
-        .await;
+    ctrl.handle_command(clankers_protocol::SessionCommand::ClearHistory).await;
     let _ = ctrl.drain_events(); // clear
 
     // Force busy state via direct field (we have access since it's in the same crate? No.)
@@ -502,9 +506,7 @@ fn internal_events_not_forwarded() {
 
     // Events that should NOT produce DaemonEvent::TextDelta:
     ctrl.feed_event(&AgentEvent::TurnStart { index: 1 });
-    ctrl.feed_event(&AgentEvent::Context {
-        messages: vec![],
-    });
+    ctrl.feed_event(&AgentEvent::Context { messages: vec![] });
 
     let events = ctrl.take_outgoing();
     // TurnStart, TurnEnd, and Context are internal — not forwarded to clients

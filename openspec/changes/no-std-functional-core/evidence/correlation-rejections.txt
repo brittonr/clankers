@@ -1,0 +1,14 @@
+Evidence-ID: no-std-functional-core.V2.correlation-rejections
+Task-ID: V2
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.correlated.feedback, no.std.functional.core.invalid.transitions
+Created-By: pi
+Created-At: 2026-04-21T14:01:45Z
+
+# Evidence: correlation and rejection coverage
+
+## Summary
+
+- Exercise matching and mismatched completion IDs for prompt, tool-filter, and loop-follow-up effects.
+- Assert typed unchanged-state rejection for empty-slot, wrong-kind, duplicate, stale, busy, and loop-control conflict cases.
+- Record explicit failure-outcome handling for prompt and loop-follow-up completion.

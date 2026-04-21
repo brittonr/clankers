@@ -1,0 +1,14 @@
+Evidence-ID: no-std-functional-core.V5.command-disabled-tools
+Task-ID: V5
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.explicit.effects.migrated-shell-results-re-enter-as-explicit-inputs, no.std.functional.core.shell.parity
+Created-By: pi
+Created-At: 2026-04-21T14:01:45Z
+
+# Evidence: command disabled-tools parity
+
+## Summary
+
+- Cover accepted disabled-tool updates, filtered-tool rebuild application, and stale-slot rejection.
+- Assert `DaemonEvent::DisabledToolsChanged` fires before `DaemonEvent::SystemMessage` on success.
+- Assert stale-slot rejection emits only error acknowledgement and no disabled-tools-changed event.

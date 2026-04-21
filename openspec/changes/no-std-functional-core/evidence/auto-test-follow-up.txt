@@ -1,0 +1,14 @@
+Evidence-ID: no-std-functional-core.V8.auto-test-follow-up
+Task-ID: V8
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.correlated.feedback, no.std.functional.core.explicit.effects.migrated-shell-results-re-enter-as-explicit-inputs, no.std.functional.core.invalid.transitions, no.std.functional.core.shell.parity
+Created-By: pi
+Created-At: 2026-04-21T14:02:12Z
+
+# Evidence: auto-test follow-up parity
+
+## Summary
+
+- Cover loop continuation, loop-follow-up completion success/failure, and stale/wrong completion rejection.
+- Assert visible loop-state transitions on success, error `DaemonEvent::SystemMessage` on failure, and no extra success acknowledgement events.
+- Assert stale or wrong completion feedback leaves state unchanged.

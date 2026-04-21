@@ -7,6 +7,7 @@ use clanker_loop::BreakCondition;
 use clanker_loop::LoopDef;
 use clanker_loop::LoopId;
 use clanker_loop::LoopStatus;
+use clankers_core::ActiveLoopState;
 use clankers_protocol::DaemonEvent;
 use tracing::warn;
 
@@ -47,6 +48,13 @@ impl SessionController {
         };
         self.loop_engine.start(&id);
         self.active_loop_id = Some(id.clone());
+        self.core_state.active_loop_state = Some(ActiveLoopState {
+            loop_id: id.0.clone(),
+            prompt_text: config.prompt.unwrap_or_default(),
+            current_iteration: 0,
+            max_iterations: config.max_iterations,
+            break_condition: config.break_text,
+        });
         Some(id)
     }
 
@@ -70,10 +78,22 @@ impl SessionController {
             return None;
         }
 
-        // Get the prompt for the next iteration.
-        self.loop_engine
-            .get(&loop_id)
-            .and_then(|s| s.def.action.get("prompt").and_then(|v| v.as_str()).map(String::from))
+        let previous_loop_state = self.core_state.active_loop_state.clone();
+        let next_loop_state = self.loop_engine.get(&loop_id).map(|state| ActiveLoopState {
+            loop_id: loop_id.0.clone(),
+            prompt_text: state
+                .def
+                .action
+                .get("prompt")
+                .and_then(|value| value.as_str())
+                .map(String::from)
+                .unwrap_or_default(),
+            current_iteration: state.current_iteration,
+            max_iterations: previous_loop_state.as_ref().map_or(0, |loop_state| loop_state.max_iterations),
+            break_condition: previous_loop_state.and_then(|loop_state| loop_state.break_condition),
+        });
+        self.core_state.active_loop_state = next_loop_state.clone();
+        next_loop_state.map(|state| state.prompt_text)
     }
 
     /// Stop the active loop.
@@ -109,6 +129,8 @@ impl SessionController {
         }
         self.active_loop_id = None;
         self.loop_turn_output.clear();
+        self.core_state.active_loop_state = None;
+        self.core_state.pending_follow_up_state = None;
 
         self.emit(DaemonEvent::SystemMessage {
             text: format!("Loop {reason} after {iteration} iteration(s)."),

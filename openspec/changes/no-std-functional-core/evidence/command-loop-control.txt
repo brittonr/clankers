@@ -1,0 +1,15 @@
+Evidence-ID: no-std-functional-core.V6.command-loop-control
+Task-ID: V6
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.invalid.transitions, no.std.functional.core.shell.parity
+Created-By: pi
+Created-At: 2026-04-21T14:01:45Z
+
+# Evidence: command loop-control parity
+
+## Summary
+
+- Cover successful `StartLoop` and `StopLoop` transitions through `crates/clankers-controller/src/{command.rs,loop_mode.rs}`.
+- Assert no immediate acknowledgement for successful start, success acknowledgement for stop, and preserved visible loop-state transitions.
+- Assert preserved `loop_mode.rs::{test_start_loop,test_stop_loop}` baseline behavior.
+- Assert error `DaemonEvent::SystemMessage` acknowledgement categories for already-active, not-active, and pending-follow-up rejection paths.

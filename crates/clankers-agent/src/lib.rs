@@ -695,3 +695,74 @@ impl Agent {
         summaries
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use super::*;
+
+    struct MockProvider;
+
+    #[async_trait::async_trait]
+    impl clankers_provider::Provider for MockProvider {
+        async fn complete(
+            &self,
+            _request: clankers_provider::CompletionRequest,
+            _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> clankers_provider::error::Result<()> {
+            Ok(())
+        }
+
+        fn models(&self) -> &[clankers_provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "mock"
+        }
+    }
+
+    fn make_test_agent() -> Agent {
+        Agent::new(
+            Arc::new(MockProvider),
+            vec![],
+            Settings::default(),
+            "test-model".to_string(),
+            "test system prompt".to_string(),
+        )
+    }
+
+    #[test]
+    fn cycle_thinking_level_follows_expected_order() {
+        let mut agent = make_test_agent();
+        let expected_levels = [
+            clankers_provider::ThinkingLevel::Low,
+            clankers_provider::ThinkingLevel::Medium,
+            clankers_provider::ThinkingLevel::High,
+            clankers_provider::ThinkingLevel::Max,
+            clankers_provider::ThinkingLevel::Off,
+        ];
+
+        for expected_level in expected_levels {
+            assert_eq!(agent.cycle_thinking_level(), expected_level);
+            assert_eq!(agent.thinking_level(), expected_level);
+        }
+    }
+
+    #[test]
+    fn set_user_tool_filter_replaces_previous_filter() {
+        let mut agent = make_test_agent();
+        let first_filter = Some(vec!["read".to_string()]);
+        let second_filter = Some(vec!["bash".to_string(), "read".to_string()]);
+
+        agent.set_user_tool_filter(first_filter.clone());
+        assert_eq!(agent.user_tool_filter, first_filter);
+
+        agent.set_user_tool_filter(second_filter.clone());
+        assert_eq!(agent.user_tool_filter, second_filter);
+
+        agent.set_user_tool_filter(None);
+        assert!(agent.user_tool_filter.is_none());
+    }
+}

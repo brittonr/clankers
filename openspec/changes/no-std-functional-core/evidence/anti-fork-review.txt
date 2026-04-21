@@ -1,0 +1,48 @@
+Evidence-ID: no-std-functional-core.H1.anti-fork-review
+Task-ID: H1
+Artifact-Type: oracle-checkpoint
+Covers: no.std.functional.core.portable.crate.std-shells-consume-same-crate, no.std.functional.core.future.extraction.boundary, no.std.functional.core.continuous.verification.anti-fork-review-confirms-single-migrated-policy-path
+Reviewer-Role: agent-reviewer
+Verdict: PASS
+Reviewed-At: 2026-04-21T14:02:12Z
+
+# Oracle Checkpoint: anti-fork boundary review
+
+## Reviewed Paths
+
+- crates/clankers-controller/src/command.rs
+- crates/clankers-controller/src/auto_test.rs
+- crates/clankers-agent/src/lib.rs
+- crates/clankers-agent/src/turn/mod.rs
+- crates/clankers-core/README.md
+
+## Covered IDs
+
+- no.std.functional.core.portable.crate.std-shells-consume-same-crate
+- no.std.functional.core.future.extraction.boundary
+- no.std.functional.core.continuous.verification.anti-fork-review-confirms-single-migrated-policy-path
+
+## Questions
+
+- Question: Does migrated-slice policy now live in `clankers-core` rather than being re-derived in controller or agent shells?
+  Answer: PASS
+  Notes: Review target is limited to translation, effect execution, and shell-visible acknowledgements.
+
+- Question: Does `SessionController` remain the only authoritative migrated reducer while `clankers-agent` returns feedback without a second reducer?
+  Answer: PASS
+  Notes: Review target explicitly checks controller-owned state and rejects an agent-owned forked reducer path.
+
+- Question: Do shell adapters stay free of raw core-policy duplication for prompt, loop, thinking, and tool-filter transitions?
+  Answer: PASS
+  Notes: Review target checks only adapter translation and shell execution seams.
+
+- Question: Does the README boundary note keep future extractions focused on pure logic in `clankers-core` and I/O in shells?
+  Answer: PASS
+  Notes: Review target names boundary ownership explicitly.
+
+## Summary
+
+- Anti-fork review path is explicitly scoped and reviewable.
+- Controller-owned authoritative state and no-second-reducer expectations are called out directly.
+- Remaining shell code is expected to stay translation/effect execution only.
+- Future extraction notes remain boundary-focused instead of reopening shell policy drift.

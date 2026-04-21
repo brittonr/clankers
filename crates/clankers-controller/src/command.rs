@@ -3,6 +3,15 @@
 //! Contains the main command dispatch and prompt processing logic.
 
 use clankers_agent::AgentError;
+use clankers_core::CoreEffect;
+use clankers_core::CoreInput;
+use clankers_core::CoreLogicalEvent;
+use clankers_core::CoreOutcome;
+use clankers_core::CoreThinkingLevel;
+use clankers_core::CoreThinkingLevelInput;
+use clankers_core::DisabledToolsUpdate;
+use clankers_core::LoopRequest;
+use clankers_core::ToolFilterApplied;
 use clankers_message::AgentMessage;
 use clankers_message::AssistantMessage;
 use clankers_message::Content;
@@ -39,6 +48,8 @@ impl SessionController {
                     agent.abort();
                 }
                 self.busy = false;
+                self.core_state.busy = false;
+                self.core_state.pending_prompt = None;
                 self.emit(DaemonEvent::SystemMessage {
                     text: "Operation cancelled".to_string(),
                     is_error: false,
@@ -80,29 +91,10 @@ impl SessionController {
                 });
             }
             SessionCommand::SetThinkingLevel { level } => {
-                if let Some(parsed) = clankers_tui_types::ThinkingLevel::from_str_or_budget(&level) {
-                    if let Some(ref mut agent) = self.agent {
-                        let prev = agent.set_thinking_level(parsed);
-                        self.emit(DaemonEvent::SystemMessage {
-                            text: format!("Thinking: {} → {}", prev.label(), parsed.label()),
-                            is_error: false,
-                        });
-                    }
-                } else {
-                    self.emit(DaemonEvent::SystemMessage {
-                        text: format!("Unknown thinking level: {level}"),
-                        is_error: true,
-                    });
-                }
+                self.handle_set_thinking_level(level);
             }
             SessionCommand::CycleThinkingLevel => {
-                if let Some(ref mut agent) = self.agent {
-                    agent.cycle_thinking_level();
-                }
-                self.emit(DaemonEvent::SystemMessage {
-                    text: "Thinking level cycled".to_string(),
-                    is_error: false,
-                });
+                self.handle_cycle_thinking_level();
             }
             SessionCommand::SeedMessages { messages } => {
                 let agent_messages = self.convert_seed_messages(&messages);
@@ -135,19 +127,7 @@ impl SessionController {
                 });
             }
             SessionCommand::SetDisabledTools { tools } => {
-                self.disabled_tools = tools.clone();
-                // Rebuild tools with new disabled set if we have a tool rebuilder
-                if let Some(ref rebuilder) = self.tool_rebuilder {
-                    let filtered = rebuilder.rebuild_filtered(&tools);
-                    if let Some(ref mut agent) = self.agent {
-                        agent.set_tools(filtered);
-                    }
-                }
-                self.emit(DaemonEvent::DisabledToolsChanged { tools: tools.clone() });
-                self.emit(DaemonEvent::SystemMessage {
-                    text: format!("Disabled tools updated: {}", tools.join(", ")),
-                    is_error: false,
-                });
+                self.handle_set_disabled_tools(tools);
             }
             SessionCommand::ConfirmBash { request_id, approved } => {
                 if !self.bash_confirms.respond(&request_id, approved) {
@@ -182,22 +162,18 @@ impl SessionController {
                 prompt,
                 break_condition,
             } => {
-                let config = crate::loop_mode::LoopConfig {
-                    name: format!("loop-{}", self.session_id),
-                    prompt: Some(prompt),
-                    max_iterations: iterations,
-                    break_text: break_condition,
-                };
-                self.start_loop(config);
+                self.handle_start_loop(iterations, prompt, break_condition);
             }
             SessionCommand::StopLoop => {
-                self.stop_loop();
+                self.handle_stop_loop();
             }
             SessionCommand::SetAutoTest { enabled, command } => {
                 self.auto_test_enabled = enabled;
                 if let Some(cmd) = command.clone() {
                     self.auto_test_command = Some(cmd);
                 }
+                self.core_state.auto_test_enabled = self.auto_test_enabled;
+                self.core_state.auto_test_command = self.auto_test_command.clone();
                 self.emit(DaemonEvent::AutoTestChanged {
                     enabled,
                     command: self.auto_test_command.clone(),
@@ -257,6 +233,245 @@ impl SessionController {
         }
     }
 
+    fn handle_set_thinking_level(&mut self, level: String) {
+        let input = CoreInput::SetThinkingLevel {
+            requested: Self::parse_core_thinking_level_input(&level),
+        };
+        let previous_level = self.core_state.thinking_level;
+
+        match clankers_core::reduce(&self.core_state, &input) {
+            CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                for effect in effects {
+                    if let CoreEffect::ApplyThinkingLevel { level } = effect
+                        && let Some(agent) = self.agent.as_mut()
+                    {
+                        agent.set_thinking_level(Self::provider_thinking_level(level));
+                    }
+                }
+                self.emit(DaemonEvent::SystemMessage {
+                    text: format!(
+                        "Thinking: {} → {}",
+                        Self::thinking_label(previous_level),
+                        Self::thinking_label(self.core_state.thinking_level)
+                    ),
+                    is_error: false,
+                });
+            }
+            CoreOutcome::Rejected {
+                error: clankers_core::CoreError::InvalidThinkingLevel { raw },
+                ..
+            } => {
+                self.emit(DaemonEvent::SystemMessage {
+                    text: format!("Unknown thinking level: {raw}"),
+                    is_error: true,
+                });
+            }
+            CoreOutcome::Rejected { .. } => unreachable!("thinking-level input should only reject as invalid"),
+        }
+    }
+
+    fn handle_cycle_thinking_level(&mut self) {
+        match clankers_core::reduce(&self.core_state, &CoreInput::CycleThinkingLevel) {
+            CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                for effect in effects {
+                    if let CoreEffect::ApplyThinkingLevel { level } = effect
+                        && let Some(agent) = self.agent.as_mut()
+                    {
+                        agent.set_thinking_level(Self::provider_thinking_level(level));
+                    }
+                }
+                self.emit(DaemonEvent::SystemMessage {
+                    text: "Thinking level cycled".to_string(),
+                    is_error: false,
+                });
+            }
+            CoreOutcome::Rejected { .. } => unreachable!("cycle thinking level should not reject"),
+        }
+    }
+
+    fn handle_set_disabled_tools(&mut self, tools: Vec<String>) {
+        let input = CoreInput::SetDisabledTools(DisabledToolsUpdate {
+            requested_disabled_tools: tools.clone(),
+        });
+
+        match clankers_core::reduce(&self.core_state, &input) {
+            CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                for effect in effects {
+                    if let CoreEffect::ApplyToolFilter {
+                        effect_id,
+                        disabled_tools,
+                    } = effect
+                    {
+                        if let Some(rebuilder) = self.tool_rebuilder.as_ref() {
+                            let filtered = rebuilder.rebuild_filtered(&disabled_tools);
+                            if let Some(agent) = self.agent.as_mut() {
+                                agent.set_tools(filtered);
+                            }
+                        }
+
+                        let feedback = CoreInput::ToolFilterApplied(ToolFilterApplied {
+                            effect_id,
+                            applied_disabled_tool_set: disabled_tools.clone(),
+                        });
+                        match clankers_core::reduce(&self.core_state, &feedback) {
+                            CoreOutcome::Transitioned { next_state, effects } => {
+                                self.apply_core_state(next_state);
+                                for effect in effects {
+                                    if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::DisabledToolsChanged {
+                                        disabled_tools,
+                                    }) = effect
+                                    {
+                                        self.emit(DaemonEvent::DisabledToolsChanged { tools: disabled_tools });
+                                    }
+                                }
+                                self.emit(DaemonEvent::SystemMessage {
+                                    text: format!("Disabled tools updated: {}", tools.join(", ")),
+                                    is_error: false,
+                                });
+                            }
+                            CoreOutcome::Rejected { .. } => {
+                                self.emit(DaemonEvent::SystemMessage {
+                                    text: "Disabled tools update rejected".to_string(),
+                                    is_error: true,
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+            CoreOutcome::Rejected {
+                error: clankers_core::CoreError::ToolFilterStillPending,
+                ..
+            } => {
+                self.emit(DaemonEvent::SystemMessage {
+                    text: "Disabled tools update rejected: tool-filter rebuild still pending".to_string(),
+                    is_error: true,
+                });
+            }
+            CoreOutcome::Rejected { .. } => unreachable!("disabled-tool update should only reject on a pending filter"),
+        }
+    }
+
+    fn handle_start_loop(&mut self, iterations: u32, prompt: String, break_condition: Option<String>) {
+        let input = CoreInput::StartLoop(LoopRequest {
+            loop_id: format!("loop-{}", self.session_id),
+            prompt_text: prompt,
+            max_iterations: iterations,
+            break_condition,
+        });
+
+        match clankers_core::reduce(&self.core_state, &input) {
+            CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                for effect in effects {
+                    if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
+                        active_loop_state: Some(active_loop_state),
+                    }) = effect
+                    {
+                        let config = crate::loop_mode::LoopConfig {
+                            name: active_loop_state.loop_id,
+                            prompt: Some(active_loop_state.prompt_text),
+                            max_iterations: active_loop_state.max_iterations,
+                            break_text: active_loop_state.break_condition,
+                        };
+                        if self.start_loop(config).is_none() {
+                            self.core_state.active_loop_state = None;
+                        }
+                    }
+                }
+            }
+            CoreOutcome::Rejected {
+                error: clankers_core::CoreError::LoopAlreadyActive,
+                ..
+            } => {
+                self.emit(DaemonEvent::SystemMessage {
+                    text: "Loop already active".to_string(),
+                    is_error: true,
+                });
+            }
+            CoreOutcome::Rejected {
+                error: clankers_core::CoreError::LoopFollowUpStillPending,
+                ..
+            } => {
+                self.emit(DaemonEvent::SystemMessage {
+                    text: "Loop control rejected: loop follow-up still pending".to_string(),
+                    is_error: true,
+                });
+            }
+            CoreOutcome::Rejected { .. } => unreachable!("start-loop should reject only on active/pending loop state"),
+        }
+    }
+
+    fn handle_stop_loop(&mut self) {
+        match clankers_core::reduce(&self.core_state, &CoreInput::StopLoop) {
+            CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                for effect in effects {
+                    if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
+                        active_loop_state: None,
+                    }) = effect
+                    {
+                        self.stop_loop();
+                    }
+                }
+            }
+            CoreOutcome::Rejected {
+                error: clankers_core::CoreError::LoopNotActive,
+                ..
+            } => {
+                self.emit(DaemonEvent::SystemMessage {
+                    text: "No active loop".to_string(),
+                    is_error: true,
+                });
+            }
+            CoreOutcome::Rejected {
+                error: clankers_core::CoreError::LoopFollowUpStillPending,
+                ..
+            } => {
+                self.emit(DaemonEvent::SystemMessage {
+                    text: "Loop control rejected: loop follow-up still pending".to_string(),
+                    is_error: true,
+                });
+            }
+            CoreOutcome::Rejected { .. } => unreachable!("stop-loop should reject only on inactive/pending loop state"),
+        }
+    }
+
+    fn parse_core_thinking_level_input(level: &str) -> CoreThinkingLevelInput {
+        if let Some(parsed) = clankers_tui_types::ThinkingLevel::from_str_or_budget(level) {
+            CoreThinkingLevelInput::Level(Self::core_thinking_level(parsed))
+        } else {
+            CoreThinkingLevelInput::Invalid(level.to_string())
+        }
+    }
+
+    fn core_thinking_level(level: clankers_tui_types::ThinkingLevel) -> CoreThinkingLevel {
+        match level {
+            clankers_tui_types::ThinkingLevel::Off => CoreThinkingLevel::Off,
+            clankers_tui_types::ThinkingLevel::Low => CoreThinkingLevel::Low,
+            clankers_tui_types::ThinkingLevel::Medium => CoreThinkingLevel::Medium,
+            clankers_tui_types::ThinkingLevel::High => CoreThinkingLevel::High,
+            clankers_tui_types::ThinkingLevel::Max => CoreThinkingLevel::Max,
+        }
+    }
+
+    fn provider_thinking_level(level: CoreThinkingLevel) -> clankers_provider::ThinkingLevel {
+        match level {
+            CoreThinkingLevel::Off => clankers_provider::ThinkingLevel::Off,
+            CoreThinkingLevel::Low => clankers_provider::ThinkingLevel::Low,
+            CoreThinkingLevel::Medium => clankers_provider::ThinkingLevel::Medium,
+            CoreThinkingLevel::High => clankers_provider::ThinkingLevel::High,
+            CoreThinkingLevel::Max => clankers_provider::ThinkingLevel::Max,
+        }
+    }
+
+    fn thinking_label(level: CoreThinkingLevel) -> &'static str {
+        Self::provider_thinking_level(level).label()
+    }
+
     /// Handle a prompt command (daemon mode only).
     #[cfg_attr(
         dylint_lib = "tigerstyle",
@@ -277,6 +492,7 @@ impl SessionController {
         }
 
         self.busy = true;
+        self.core_state.busy = true;
         self.outgoing.push(DaemonEvent::AgentStart);
 
         // Take the agent out to avoid borrow conflicts with self
@@ -300,6 +516,8 @@ impl SessionController {
         // Put the agent back
         self.agent = Some(agent);
         self.busy = false;
+        self.core_state.busy = false;
+        self.core_state.pending_prompt = None;
 
         match result {
             Ok(()) => {
@@ -493,9 +711,12 @@ impl SessionController {
 #[cfg(test)]
 mod tests {
     use clankers_protocol::SessionCommand;
+    use clankers_provider::ThinkingLevel;
 
     use super::*;
     use crate::test_helpers::make_test_controller;
+
+    const LOOP_ITERATION_LIMIT: u32 = 2;
 
     #[tokio::test]
     async fn test_handle_abort() {
@@ -641,6 +862,86 @@ mod tests {
 
         let events = ctrl.drain_events();
         assert!(events.iter().any(|e| matches!(e, DaemonEvent::SystemMessage { is_error: true, .. })));
+    }
+
+    #[tokio::test]
+    async fn test_cycle_thinking_level_order() {
+        let mut ctrl = make_test_controller();
+        let expected_levels = [
+            ThinkingLevel::Low,
+            ThinkingLevel::Medium,
+            ThinkingLevel::High,
+            ThinkingLevel::Max,
+            ThinkingLevel::Off,
+        ];
+
+        for expected_level in expected_levels {
+            ctrl.handle_command(SessionCommand::CycleThinkingLevel).await;
+
+            let agent = ctrl.agent.as_ref().expect("controller should keep owning the agent");
+            assert_eq!(agent.thinking_level(), expected_level);
+
+            let events = ctrl.drain_events();
+            assert!(matches!(
+                events.as_slice(),
+                [DaemonEvent::SystemMessage { text, is_error: false }] if text == "Thinking level cycled"
+            ));
+        }
+    }
+
+    #[tokio::test]
+    async fn test_set_disabled_tools_emits_change_before_ack() {
+        let mut ctrl = make_test_controller();
+        let tools = vec!["bash".to_string(), "read".to_string()];
+
+        ctrl.handle_command(SessionCommand::SetDisabledTools { tools: tools.clone() }).await;
+
+        assert_eq!(ctrl.disabled_tools, tools);
+        let events = ctrl.drain_events();
+        assert!(matches!(
+            events.as_slice(),
+            [
+                DaemonEvent::DisabledToolsChanged { tools: changed_tools },
+                DaemonEvent::SystemMessage { text, is_error: false },
+            ] if changed_tools == &tools && text.contains("Disabled tools updated")
+        ));
+    }
+
+    #[tokio::test]
+    async fn test_start_loop_command_sets_active_loop_without_immediate_event() {
+        let mut ctrl = make_test_controller();
+
+        ctrl.handle_command(SessionCommand::StartLoop {
+            iterations: LOOP_ITERATION_LIMIT,
+            prompt: "repeat".to_string(),
+            break_condition: None,
+        })
+        .await;
+
+        assert!(ctrl.has_active_loop());
+        assert!(ctrl.drain_events().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_stop_loop_command_emits_stop_message() {
+        let mut ctrl = make_test_controller();
+        ctrl.handle_command(SessionCommand::StartLoop {
+            iterations: LOOP_ITERATION_LIMIT,
+            prompt: "repeat".to_string(),
+            break_condition: None,
+        })
+        .await;
+        assert!(ctrl.has_active_loop());
+        assert!(ctrl.drain_events().is_empty());
+
+        ctrl.handle_command(SessionCommand::StopLoop).await;
+
+        assert!(!ctrl.has_active_loop());
+        let events = ctrl.drain_events();
+        assert!(matches!(
+            events.as_slice(),
+            [DaemonEvent::SystemMessage { text, is_error: false }] if text.contains("stopped by user")
+        ));
     }
 
     #[tokio::test]
