@@ -1089,8 +1089,7 @@ fn handle_key_event(
     if app.overlays.tool_toggle.visible {
         let (consumed, dirty) = crate::tui::selectors::handle_tool_toggle_key(app, &key);
         if dirty {
-            let disabled: Vec<String> = app.overlays.tool_toggle.disabled_set().into_iter().collect();
-            app.disabled_tools = disabled.iter().cloned().collect();
+            let disabled = apply_standalone_disabled_tools(app, app.overlays.tool_toggle.disabled_set());
             parity_tracker.expect_disabled_tools_message();
             client.send(SessionCommand::SetDisabledTools { tools: disabled });
         }
@@ -1174,15 +1173,15 @@ pub(crate) struct AttachParityTracker {
 }
 
 impl AttachParityTracker {
-    fn expect_thinking_ack_message(&mut self) {
+    pub(crate) fn expect_thinking_ack_message(&mut self) {
         self.thinking_ack_messages_to_suppress += 1;
     }
 
-    fn expect_disabled_tools_message(&mut self) {
+    pub(crate) fn expect_disabled_tools_message(&mut self) {
         self.disabled_tools_messages_to_suppress += 1;
     }
 
-    fn expect_manual_compaction(&mut self) {
+    pub(crate) fn expect_manual_compaction(&mut self) {
         self.manual_compactions_to_suppress += 1;
     }
 
@@ -1431,8 +1430,7 @@ fn flush_attach_agent_commands(
                 );
             }
             crate::modes::interactive::AgentCommand::SetDisabledTools(disabled) => {
-                let mut tools: Vec<String> = disabled.into_iter().collect();
-                tools.sort();
+                let tools = apply_standalone_disabled_tools(app, disabled);
                 parity_tracker.expect_disabled_tools_message();
                 client.send(SessionCommand::SetDisabledTools { tools });
             }
@@ -1461,6 +1459,13 @@ fn bridge_attach_thinking_level_change(
     apply_standalone_thinking_level(app, level);
     parity_tracker.expect_thinking_ack_message();
     client.send(session_command);
+}
+
+fn apply_standalone_disabled_tools(app: &mut App, disabled: impl IntoIterator<Item = String>) -> Vec<String> {
+    let mut tools: Vec<String> = disabled.into_iter().collect();
+    tools.sort();
+    app.disabled_tools = tools.iter().cloned().collect();
+    tools
 }
 
 fn apply_standalone_thinking_level(app: &mut App, level: crate::provider::ThinkingLevel) {
@@ -2570,6 +2575,28 @@ mod tests {
             },
             |_, _| {},
         );
+    }
+
+    #[test]
+    fn attach_tools_disable_updates_local_state_before_daemon_ack() {
+        let mut standalone = test_app();
+        let mut attached = test_app();
+        let tool_rows = vec![
+            ("bash".to_string(), "Run shell commands".to_string(), "built-in".to_string()),
+            ("read".to_string(), "Read a file".to_string(), "built-in".to_string()),
+        ];
+        standalone.tool_info = tool_rows.clone();
+        attached.tool_info = tool_rows;
+
+        run_standalone_slash(&mut standalone, "/tools disable bash");
+        let session_commands = run_attach_slash_locally(&mut attached, "/tools disable bash");
+
+        assert_eq!(attached.disabled_tools, standalone.disabled_tools);
+        assert_eq!(conversation_snapshot(&attached), conversation_snapshot(&standalone));
+        assert!(matches!(
+            session_commands.as_slice(),
+            [SessionCommand::SetDisabledTools { tools }] if tools == &vec!["bash".to_string()]
+        ));
     }
 
     #[tokio::test]

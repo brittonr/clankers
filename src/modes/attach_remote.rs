@@ -15,17 +15,17 @@ use ratatui::backend::CrosstermBackend;
 use tracing::info;
 use tracing::warn;
 
+use super::attach::AttachParityTracker;
+use super::attach::build_client_slash_registry;
+use super::attach::drain_daemon_events;
+use super::attach::handle_terminal_events;
 use crate::config::keybindings::Keymap;
 use crate::config::settings::Settings;
+use crate::config::theme::load_theme;
 use crate::error::Result;
 use crate::slash_commands;
 use crate::tui::app::App;
 use crate::tui::render;
-use crate::config::theme::load_theme;
-
-use super::attach::{
-    AttachParityTracker, build_client_slash_registry, drain_daemon_events, handle_terminal_events,
-};
 
 // ── QUIC stream adapter ─────────────────────────────────────────────────────
 
@@ -54,27 +54,21 @@ impl tokio::io::AsyncWrite for QuicBiStream {
         cx: &mut std::task::Context<'_>,
         buf: &[u8],
     ) -> std::task::Poll<io::Result<usize>> {
-        std::pin::Pin::new(&mut self.send)
-            .poll_write(cx, buf)
-            .map_err(|e| io::Error::other(e.to_string()))
+        std::pin::Pin::new(&mut self.send).poll_write(cx, buf).map_err(|e| io::Error::other(e.to_string()))
     }
 
     fn poll_flush(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<io::Result<()>> {
-        std::pin::Pin::new(&mut self.send)
-            .poll_flush(cx)
-            .map_err(|e| io::Error::other(e.to_string()))
+        std::pin::Pin::new(&mut self.send).poll_flush(cx).map_err(|e| io::Error::other(e.to_string()))
     }
 
     fn poll_shutdown(
         mut self: std::pin::Pin<&mut Self>,
         cx: &mut std::task::Context<'_>,
     ) -> std::task::Poll<io::Result<()>> {
-        std::pin::Pin::new(&mut self.send)
-            .poll_shutdown(cx)
-            .map_err(|e| io::Error::other(e.to_string()))
+        std::pin::Pin::new(&mut self.send).poll_shutdown(cx).map_err(|e| io::Error::other(e.to_string()))
     }
 }
 
@@ -85,7 +79,10 @@ impl tokio::io::AsyncWrite for QuicBiStream {
 /// Connects to a remote daemon's `clankers/daemon/1` ALPN, performs the
 /// attach handshake, then reuses the same `ClientAdapter` + event loop as
 /// local Unix socket attach.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential event handling logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential event handling logic")
+)]
 pub async fn run_remote_attach(
     remote_id: &str,
     session_id: Option<String>,
@@ -111,10 +108,8 @@ pub async fn run_remote_attach(
         }
     };
 
-    let remote_pk: ::iroh::PublicKey = resolved_id.parse().map_err(|e| {
-        crate::error::Error::Provider {
-            message: format!("Invalid remote node ID '{resolved_id}' (from '{remote_id}'): {e}"),
-        }
+    let remote_pk: ::iroh::PublicKey = resolved_id.parse().map_err(|e| crate::error::Error::Provider {
+        message: format!("Invalid remote node ID '{resolved_id}' (from '{remote_id}'): {e}"),
     })?;
 
     // Start endpoint
@@ -123,12 +118,11 @@ pub async fn run_remote_attach(
     println!("Connecting to {}...", remote_pk.fmt_short());
 
     // Connect with daemon ALPN
-    let conn = endpoint
-        .connect(remote_pk, clankers_protocol::types::ALPN_DAEMON)
-        .await
-        .map_err(|e| crate::error::Error::Provider {
+    let conn = endpoint.connect(remote_pk, clankers_protocol::types::ALPN_DAEMON).await.map_err(|e| {
+        crate::error::Error::Provider {
             message: format!("Failed to connect to remote daemon: {e}"),
-        })?;
+        }
+    })?;
     info!("connected to remote daemon {}", remote_pk.fmt_short());
 
     // If --new, create the session first via a control stream
@@ -141,10 +135,8 @@ pub async fn run_remote_attach(
     };
 
     // Open an attach stream
-    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| {
-        crate::error::Error::Provider {
-            message: format!("Failed to open QUIC stream: {e}"),
-        }
+    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| crate::error::Error::Provider {
+        message: format!("Failed to open QUIC stream: {e}"),
     })?;
 
     // Send DaemonRequest::Attach as the first frame, then the normal
@@ -155,7 +147,9 @@ pub async fn run_remote_attach(
         token: None,
         session_id: target_session_id.clone(),
     };
-    let request = clankers_protocol::DaemonRequest::Attach { handshake: handshake.clone() };
+    let request = clankers_protocol::DaemonRequest::Attach {
+        handshake: handshake.clone(),
+    };
     quic_write_frame(&mut send, &request).await?;
 
     // Read AttachResponse
@@ -229,10 +223,7 @@ pub async fn run_remote_attach(
         model_name
     };
 
-    let cwd = std::env::current_dir()
-        .unwrap_or_default()
-        .to_string_lossy()
-        .into_owned();
+    let cwd = std::env::current_dir().unwrap_or_default().to_string_lossy().into_owned();
     let paths = crate::config::ClankersPaths::get();
     let theme = load_theme(settings.theme.as_deref(), &paths.global_themes_dir);
     let keymap = settings.keymap.clone().into_keymap();
@@ -243,9 +234,7 @@ pub async fn run_remote_attach(
     app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
 
     let slash_registry = build_client_slash_registry();
-    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(
-        &slash_registry,
-    )));
+    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(&slash_registry)));
     crate::modes::interactive::rebuild_leader_menu(&mut app, None, settings);
     app.connection_mode = clankers_tui_types::ConnectionMode::Remote {
         node_id_short: remote_pk.fmt_short().to_string(),
@@ -308,11 +297,9 @@ async fn run_remote_attach_loop(
     let mut parity_tracker = AttachParityTracker::default();
 
     loop {
-        terminal
-            .draw(|frame| render::render(frame, app))
-            .map_err(|e| crate::error::Error::Tui {
-                message: format!("Render failed: {e}"),
-            })?;
+        terminal.draw(|frame| render::render(frame, app)).map_err(|e| crate::error::Error::Tui {
+            message: format!("Render failed: {e}"),
+        })?;
 
         if app.should_quit {
             client.disconnect();
@@ -320,23 +307,12 @@ async fn run_remote_attach_loop(
         }
 
         // Drain daemon events
-        drain_daemon_events(
-            app,
-            &mut client,
-            &mut is_replaying_history,
-            max_subagent_panes,
-            &mut parity_tracker,
-        );
+        drain_daemon_events(app, &mut client, &mut is_replaying_history, max_subagent_panes, &mut parity_tracker);
 
         // Detect disconnect and attempt reconnection over the same QUIC connection
-        if client.is_disconnected()
-            && app.connection_mode != clankers_tui_types::ConnectionMode::Reconnecting
-        {
+        if client.is_disconnected() && app.connection_mode != clankers_tui_types::ConnectionMode::Reconnecting {
             app.connection_mode = clankers_tui_types::ConnectionMode::Reconnecting;
-            app.push_system(
-                "QUIC stream lost. Reconnecting on same connection...".to_string(),
-                true,
-            );
+            app.push_system("QUIC stream lost. Reconnecting on same connection...".to_string(), true);
 
             match try_quic_reconnect(&conn, endpoint, remote_pk, session_id).await {
                 Some((new_client, _new_conn)) => {
@@ -346,18 +322,16 @@ async fn run_remote_attach_loop(
                     // new connection. For now, the client works and a second
                     // disconnect would fail reconnect on the old conn then succeed
                     // by re-establishing again.
-                    client = new_client;
-                    client.replay_history();
-                    is_replaying_history = true;
-                    parity_tracker = AttachParityTracker::default();
-                    app.connection_mode = clankers_tui_types::ConnectionMode::Attached;
-                    app.push_system("Reconnected to remote session.".to_string(), false);
+                    finish_remote_reconnect(
+                        app,
+                        &mut client,
+                        new_client,
+                        &mut is_replaying_history,
+                        &mut parity_tracker,
+                    );
                 }
                 None => {
-                    app.push_system(
-                        "Failed to reconnect after 5 attempts. Use /quit to exit.".to_string(),
-                        true,
-                    );
+                    app.push_system("Failed to reconnect after 5 attempts. Use /quit to exit.".to_string(), true);
                 }
             }
         }
@@ -372,6 +346,21 @@ async fn run_remote_attach_loop(
     }
 
     Ok(())
+}
+
+fn finish_remote_reconnect(
+    app: &mut App,
+    client: &mut ClientAdapter,
+    new_client: ClientAdapter,
+    is_replaying_history: &mut bool,
+    parity_tracker: &mut AttachParityTracker,
+) {
+    *client = new_client;
+    client.replay_history();
+    *is_replaying_history = true;
+    *parity_tracker = AttachParityTracker::default();
+    app.connection_mode = clankers_tui_types::ConnectionMode::Attached;
+    app.push_system("Reconnected to remote session.".to_string(), false);
 }
 
 // ── Reconnection ────────────────────────────────────────────────────────────
@@ -422,10 +411,7 @@ async fn try_quic_reconnect(
 }
 
 /// Open a new bi-stream on a connection and perform the attach handshake.
-async fn try_quic_attach_stream(
-    conn: &::iroh::endpoint::Connection,
-    session_id: &str,
-) -> Option<ClientAdapter> {
+async fn try_quic_attach_stream(conn: &::iroh::endpoint::Connection, session_id: &str) -> Option<ClientAdapter> {
     let (mut send, mut recv) = conn.open_bi().await.ok()?;
 
     let request = clankers_protocol::DaemonRequest::Attach {
@@ -499,14 +485,9 @@ fn build_quic_client_adapter(stream: QuicBiStream) -> ClientAdapter {
 // ── Remote session management ───────────────────────────────────────────────
 
 /// Create a new session on the remote daemon via a control stream.
-async fn create_remote_session(
-    conn: &::iroh::endpoint::Connection,
-    model: Option<String>,
-) -> Result<String> {
-    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| {
-        crate::error::Error::Provider {
-            message: format!("Failed to open control stream: {e}"),
-        }
+async fn create_remote_session(conn: &::iroh::endpoint::Connection, model: Option<String>) -> Result<String> {
+    let (mut send, mut recv) = conn.open_bi().await.map_err(|e| crate::error::Error::Provider {
+        message: format!("Failed to open control stream: {e}"),
     })?;
 
     let request = clankers_protocol::DaemonRequest::Control {
@@ -525,11 +506,9 @@ async fn create_remote_session(
     let response: clankers_protocol::ControlResponse = quic_read_frame(&mut recv).await?;
     match response {
         clankers_protocol::ControlResponse::Created { session_id, .. } => Ok(session_id),
-        clankers_protocol::ControlResponse::Error { message } => {
-            Err(crate::error::Error::Provider {
-                message: format!("Failed to create remote session: {message}"),
-            })
-        }
+        clankers_protocol::ControlResponse::Error { message } => Err(crate::error::Error::Provider {
+            message: format!("Failed to create remote session: {message}"),
+        }),
         other => Err(crate::error::Error::Provider {
             message: format!("Unexpected response: {other:?}"),
         }),
@@ -538,10 +517,7 @@ async fn create_remote_session(
 
 // ── QUIC frame helpers ──────────────────────────────────────────────────────
 
-async fn quic_write_frame<T: serde::Serialize>(
-    send: &mut ::iroh::endpoint::SendStream,
-    value: &T,
-) -> Result<()> {
+async fn quic_write_frame<T: serde::Serialize>(send: &mut ::iroh::endpoint::SendStream, value: &T) -> Result<()> {
     let data = serde_json::to_vec(value).map_err(|e| crate::error::Error::Provider {
         message: format!("Serialize error: {e}"),
     })?;
@@ -555,9 +531,7 @@ async fn quic_write_frame<T: serde::Serialize>(
     Ok(())
 }
 
-async fn quic_read_frame<T: serde::de::DeserializeOwned>(
-    recv: &mut ::iroh::endpoint::RecvStream,
-) -> Result<T> {
+async fn quic_read_frame<T: serde::de::DeserializeOwned>(recv: &mut ::iroh::endpoint::RecvStream) -> Result<T> {
     let mut len_buf = [0u8; 4];
     recv.read_exact(&mut len_buf).await.map_err(|e| crate::error::Error::Provider {
         message: format!("QUIC read error: {e}"),
@@ -575,4 +549,69 @@ async fn quic_read_frame<T: serde::de::DeserializeOwned>(
     serde_json::from_slice(&data).map_err(|e| crate::error::Error::Provider {
         message: format!("Deserialize error: {e}"),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use clankers_controller::client::ClientAdapter;
+    use clankers_protocol::DaemonEvent;
+    use clankers_tui::app::App;
+    use clankers_tui_types::BlockEntry;
+    use clankers_tui_types::ConnectionMode;
+
+    use super::AttachParityTracker;
+    use super::drain_daemon_events;
+
+    fn test_app() -> App {
+        App::new("test-model".to_string(), ".".to_string(), crate::config::theme::detect_theme())
+    }
+
+    fn client_with_events(events: Vec<DaemonEvent>) -> ClientAdapter {
+        let (cmd_tx, _cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+        for event in events {
+            event_tx.send(event).expect("event queued");
+        }
+        ClientAdapter::from_channels(cmd_tx, event_rx)
+    }
+
+    fn system_texts(app: &App) -> Vec<String> {
+        app.conversation
+            .blocks
+            .iter()
+            .filter_map(|entry| match entry {
+                BlockEntry::System(message) => Some(message.content.clone()),
+                BlockEntry::Conversation(_) => None,
+            })
+            .collect()
+    }
+
+    #[test]
+    fn remote_reconnect_resets_parity_tracker_before_new_events_arrive() {
+        let mut app = test_app();
+        app.connection_mode = ConnectionMode::Reconnecting;
+        let mut client = client_with_events(vec![]);
+        let reconnect_client = client_with_events(vec![DaemonEvent::SystemMessage {
+            text: "Disabled tools updated: bash".to_string(),
+            is_error: false,
+        }]);
+        let mut is_replaying_history = false;
+        let mut parity_tracker = AttachParityTracker::default();
+        parity_tracker.expect_disabled_tools_message();
+
+        super::finish_remote_reconnect(
+            &mut app,
+            &mut client,
+            reconnect_client,
+            &mut is_replaying_history,
+            &mut parity_tracker,
+        );
+        drain_daemon_events(&mut app, &mut client, &mut is_replaying_history, 0, &mut parity_tracker);
+
+        assert!(is_replaying_history);
+        assert_eq!(app.connection_mode, ConnectionMode::Attached);
+        let messages = system_texts(&app);
+        assert!(messages.iter().any(|message| message == "Reconnected to remote session."));
+        assert!(messages.iter().any(|message| message == "Disabled tools updated: bash"));
+    }
 }
