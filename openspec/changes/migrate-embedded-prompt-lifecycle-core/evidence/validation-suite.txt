@@ -3,10 +3,41 @@ Task-ID: V5
 Artifact-Type: deterministic-proof
 Covers: no.std.functional.core.future.extraction.boundary.future-pure-logic-moves-into-the-core, no.std.functional.core.future.extraction.boundary.shell-native-types-stay-outside-the-core-boundary, no.std.functional.core.future.extraction.boundary.interactive-shell-work-stays-outside-the-core, no.std.functional.core.continuous.verification.dedicated-no-std-compile-rail-runs, no.std.functional.core.continuous.verification.banned-dependency-and-api-rail-runs, no.std.functional.core.continuous.verification.public-core-surface-shell-native-type-rail-runs, no.std.functional.core.continuous.verification.dedicated-determinism-check-runs, no.std.functional.core.continuous.verification.reducer-coverage-traces-each-required-behavior, no.std.functional.core.continuous.verification.shell-parity-coverage-traces-each-adapter-seam
 Created-By: pi
-Created-At: 2026-04-22T21:39:00Z
-Status: pending
+Created-At: 2026-04-22T11:51:08Z
+Status: complete
 
 # Evidence: extended ordinary validation bundle
 
-Pending implementation.
-Replace with the exact validation command, saved log path, and pass markers for the updated no-std functional-core bundle.
+## Command
+
+```bash
+./scripts/verify-no-std-functional-core.sh
+```
+
+Ran via pueue task `47` after adding the sixth embedded-runtime parity test.
+
+## Machine-produced log
+
+- pueue task: `47`
+- pueue result: `Success`
+- checked-in log copy: `openspec/changes/migrate-embedded-prompt-lifecycle-core/evidence/validation-suite.log`
+
+## Pass markers from the bundle
+
+- bare-metal no-std compile rail: `✓ No-std core bare-metal compile rail`
+- boundary rail: `✓ No-std core dependency and API boundary rail`
+- exported-surface rail: `✓ No-std core exported-surface rail`
+- reducer suite: `38 passed; 0 failed`
+- determinism rail: `1 passed; 0 failed`
+- controller reducer/parity suites: `133 passed; 0 failed; 2 skipped`
+- agent turn allowlist parity suite: `5 passed; 0 failed`
+- agent filtered inventory parity suite: `1 passed; 0 failed`
+- agent thinking adapter parity suite: `1 passed; 0 failed`
+- agent tool inventory adapter parity suite: `1 passed; 0 failed`
+- embedded runtime prompt-lifecycle parity suite: `6 passed; 0 failed`
+- embedded controller parity suite: `30 passed; 0 failed`
+- final trailer: `=== No-std functional core validation bundle passed ===`
+
+## Notes
+
+This bundle is the acceptance machine rail for the change. It exercised the exact script extended by `I7`, including the no-std compile check, boundary/surface checks, reducer/determinism rails, controller parity, agent parity, embedded runtime parity, and embedded controller parity. The checked-in log now includes the sixth embedded-runtime test, `controller_selected_loop_follow_up_stays_pending_until_follow_up_prompt_finishes`, so review does not depend on stale `/tmp` output.

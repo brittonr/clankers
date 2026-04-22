@@ -1,0 +1,718 @@
+=== No-std core bare-metal compile rail ===
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.16s
+  ✓ No-std core bare-metal compile rail
+
+=== No-std core dependency and API boundary rail ===
+  ✓ No-std core dependency and API boundary rail
+
+=== No-std core exported-surface rail ===
+  ✓ No-std core exported-surface rail
+
+=== No-std core reducer suite ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.11s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/clankers_core-bb84dcbb48f2fd23)
+
+running 38 tests
+test reducer::tests::cycle_thinking_level_uses_shared_transition_order ... ok
+test reducer::tests::dispatched_follow_up_prompt_completion_clears_busy_without_finishing_loop_locally ... ok
+test reducer::tests::disabled_tools_request_is_rejected_while_filter_pending ... ok
+test reducer::tests::disabled_tools_request_sets_pending_filter ... ok
+test reducer::tests::follow_up_completion_before_dispatch_ack_is_rejected_as_wrong_stage ... ok
+test reducer::tests::duplicate_follow_up_dispatch_ack_is_rejected_as_wrong_stage ... ok
+test reducer::tests::duplicate_loop_follow_up_completion_is_rejected_after_slot_clears ... ok
+test reducer::tests::duplicate_prompt_completion_is_rejected_after_slot_clears ... ok
+test reducer::tests::duplicate_tool_filter_feedback_is_rejected_after_slot_clears ... ok
+test reducer::tests::follow_up_dispatch_acceptance_advances_stage_without_clearing_pending ... ok
+test reducer::tests::follow_up_dispatch_rejection_clears_pending_and_ends_loop ... ok
+test reducer::tests::invalid_thinking_level_is_rejected_without_state_change ... ok
+test reducer::tests::loop_follow_up_completion_empty_slot_is_rejected_with_follow_up_mismatch ... ok
+test reducer::tests::loop_follow_up_completion_failure_clears_pending_and_ends_loop ... ok
+test reducer::tests::loop_follow_up_completion_success_clears_pending_without_extra_effects ... ok
+test reducer::tests::out_of_order_runtime_results_are_rejected ... ok
+test reducer::tests::mismatched_feedback_tokens_are_rejected_without_state_change ... ok
+test reducer::tests::post_prompt_evaluation_clears_auto_test_guard_when_no_follow_up_runs ... ok
+test reducer::tests::post_prompt_evaluation_emits_loop_clear_before_auto_test ... ok
+test reducer::tests::post_prompt_evaluation_prefers_loop_follow_up ... ok
+test reducer::tests::post_prompt_evaluation_schedules_auto_test_when_loop_inactive ... ok
+test reducer::tests::post_prompt_evaluation_replays_queued_prompt_before_follow_up ... ok
+test reducer::tests::prompt_completion_empty_slot_is_rejected_with_prompt_mismatch ... ok
+test reducer::tests::prompt_completion_failure_clears_active_loop_and_pending_follow_up ... ok
+test reducer::tests::prompt_completion_success_clears_busy_without_loop_mutation ... ok
+test reducer::tests::prompt_request_marks_busy_and_emits_start_effect ... ok
+test reducer::tests::repeated_prompt_request_is_rejected_while_busy ... ok
+test reducer::tests::simultaneous_pending_slots_keep_effect_ids_unambiguous_across_feedback_kinds ... ok
+test reducer::tests::start_loop_rejects_when_already_active ... ok
+test reducer::tests::start_loop_rejects_when_follow_up_pending ... ok
+test reducer::tests::start_loop_transitions_to_active_loop_state ... ok
+test reducer::tests::stop_loop_clears_active_loop ... ok
+test reducer::tests::stop_loop_rejects_when_follow_up_pending ... ok
+test reducer::tests::stop_loop_requires_active_loop ... ok
+test reducer::tests::tool_filter_feedback_accepts_matching_applied_set ... ok
+test reducer::tests::tool_filter_feedback_empty_slot_is_rejected_with_tool_filter_mismatch ... ok
+test reducer::tests::tool_filter_feedback_with_mismatched_applied_set_is_rejected ... ok
+test reducer::tests::valid_thinking_level_updates_state_and_effects ... ok
+
+test result: ok. 38 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+  ✓ No-std core reducer suite
+
+=== No-std core determinism rail ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.12s
+     Running tests/determinism.rs (/home/brittonr/.cargo-target/debug/deps/determinism-e54fce8d2de46764)
+
+running 1 test
+test reducer_replays_identical_state_and_input_pairs_deterministically ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+  ✓ No-std core determinism rail
+
+=== Controller reducer and parity suites ===
+   Compiling ratatui-core v0.1.0
+   Compiling hexane v0.1.7
+   Compiling automerge v0.7.4
+   Compiling ratatui-widgets v0.3.0
+   Compiling ratatui-crossterm v0.1.0
+   Compiling ratatui-macros v0.7.0
+   Compiling ratatui v0.30.0
+   Compiling rat-branches v0.1.0 (/home/brittonr/git/subwayrat/crates/rat-branches)
+   Compiling rat-markdown v0.1.0 (/home/brittonr/git/subwayrat/crates/rat-markdown)
+   Compiling rat-leaderkey v0.1.0 (/home/brittonr/git/subwayrat/crates/rat-leaderkey)
+   Compiling rat-keymap v0.1.0 (/home/brittonr/git/subwayrat/crates/rat-keymap)
+   Compiling rat-widgets v0.1.0 (/home/brittonr/git/subwayrat/crates/rat-widgets)
+   Compiling ratatui-hypertile v0.1.0
+   Compiling clankers-tui-types v0.1.0 (/home/brittonr/git/clankers/crates/clankers-tui-types)
+   Compiling clankers-model-selection v0.1.0 (/home/brittonr/git/clankers/crates/clankers-model-selection)
+   Compiling clankers-provider v0.1.0 (/home/brittonr/git/clankers/crates/clankers-provider)
+   Compiling clankers-util v0.1.0 (/home/brittonr/git/clankers/crates/clankers-util)
+   Compiling clankers-procmon v0.1.0 (/home/brittonr/git/clankers/crates/clankers-procmon)
+   Compiling clankers-tui v0.1.0 (/home/brittonr/git/clankers/crates/clankers-tui)
+   Compiling clankers-config v0.1.0 (/home/brittonr/git/clankers/crates/clankers-config)
+   Compiling clankers-agent v0.1.0 (/home/brittonr/git/clankers/crates/clankers-agent)
+   Compiling clankers-session v0.1.0 (/home/brittonr/git/clankers/crates/clankers-session)
+   Compiling clankers-controller v0.1.0 (/home/brittonr/git/clankers/crates/clankers-controller)
+    Finished `test` profile [optimized + debuginfo] target(s) in 9.22s
+────────────
+ Nextest run ID 969c2e69-8d4b-4a7e-9595-fb8dbc2cdac8 with nextest profile: default
+    Starting 133 tests across 1 binary (2 tests skipped)
+        PASS [   0.003s] (  1/133) clankers-controller audit::tests::test_audit_basic
+        PASS [   0.002s] (  2/133) clankers-controller audit::tests::test_audit_unknown_end
+        PASS [   0.003s] (  3/133) clankers-controller auto_test::tests::test_ack_follow_up_dispatch_and_completion_success_clear_pending_without_extra_events
+        PASS [   0.003s] (  4/133) clankers-controller auto_test::tests::test_auto_test_blocked_during_loop
+        PASS [   0.003s] (  5/133) clankers-controller auto_test::tests::test_auto_test_disabled
+        PASS [   0.003s] (  6/133) clankers-controller auto_test::tests::test_auto_test_fires
+        PASS [   0.003s] (  7/133) clankers-controller auto_test::tests::test_check_post_prompt_finishes_completed_loop_without_follow_up
+        PASS [   0.003s] (  8/133) clankers-controller auto_test::tests::test_check_post_prompt_no_loop_no_autotest
+        PASS [   0.003s] (  9/133) clankers-controller auto_test::tests::test_check_post_prompt_prefers_loop_over_auto_test_when_both_are_available
+        PASS [   0.005s] ( 10/133) clankers-controller auto_test::tests::test_check_post_prompt_replays_queued_prompt_before_follow_up
+        PASS [   0.003s] ( 11/133) clankers-controller auto_test::tests::test_check_post_prompt_with_active_loop
+        PASS [   0.003s] ( 12/133) clankers-controller auto_test::tests::test_check_post_prompt_with_auto_test_enabled
+        PASS [   0.003s] ( 13/133) clankers-controller auto_test::tests::test_complete_dispatched_follow_up_before_dispatch_ack_is_rejected
+        PASS [   0.003s] ( 14/133) clankers-controller auto_test::tests::test_complete_dispatched_follow_up_duplicate_completion_is_rejected
+        PASS [   0.003s] ( 15/133) clankers-controller auto_test::tests::test_dispatched_follow_up_failure_without_loop_emits_error_message
+        PASS [   0.003s] ( 16/133) clankers-controller auto_test::tests::test_finish_embedded_prompt_consumes_pending_prompt_via_reducer
+        PASS [   0.003s] ( 17/133) clankers-controller auto_test::tests::test_follow_up_dispatch_rejection_finishes_loop_and_emits_message
+        PASS [   0.003s] ( 18/133) clankers-controller auto_test::tests::test_follow_up_dispatch_rejection_keeps_state_and_emits_error_on_wrong_id
+        PASS [   0.003s] ( 19/133) clankers-controller auto_test::tests::test_loop_iteration_returns_none_when_no_loop
+        PASS [   0.003s] ( 20/133) clankers-controller auto_test::tests::test_loop_iteration_with_active_loop
+        PASS [   0.003s] ( 21/133) clankers-controller auto_test::tests::test_notify_prompt_done_clears_busy
+        PASS [   0.003s] ( 22/133) clankers-controller auto_test::tests::test_notify_prompt_done_with_error_finishes_loop
+        PASS [   0.003s] ( 23/133) clankers-controller auto_test::tests::test_prompt_completion_duplicate_completion_is_rejected
+        PASS [   0.003s] ( 24/133) clankers-controller auto_test::tests::test_prompt_completion_failure_suppresses_follow_up_and_finishes_loop
+        PASS [   0.003s] ( 25/133) clankers-controller auto_test::tests::test_prompt_completion_rejection_keeps_state_and_emits_error
+        PASS [   0.003s] ( 26/133) clankers-controller auto_test::tests::test_prompt_completion_success_keeps_no_ack_and_allows_auto_test_follow_up
+        PASS [   0.003s] ( 27/133) clankers-controller auto_test::tests::test_prompt_completion_success_keeps_no_ack_and_allows_loop_follow_up
+        PASS [   0.003s] ( 28/133) clankers-controller auto_test::tests::test_start_embedded_prompt_tracks_pending_prompt_and_busy
+        PASS [   0.003s] ( 29/133) clankers-controller auto_test::tests::test_sync_loop_from_tui_both_none
+        PASS [   0.003s] ( 30/133) clankers-controller auto_test::tests::test_sync_loop_from_tui_clears_loop
+        PASS [   0.003s] ( 31/133) clankers-controller auto_test::tests::test_sync_loop_from_tui_starts_loop
+        PASS [   0.002s] ( 32/133) clankers-controller capability::tests::test_clamp_both_full
+        PASS [   0.002s] ( 33/133) clankers-controller capability::tests::test_clamp_both_restricted
+        PASS [   0.002s] ( 34/133) clankers-controller capability::tests::test_clamp_child_exceeds_parent
+        PASS [   0.002s] ( 35/133) clankers-controller capability::tests::test_clamp_child_full_access
+        PASS [   0.002s] ( 36/133) clankers-controller capability::tests::test_clamp_parent_full_access
+        PASS [   0.002s] ( 37/133) clankers-controller capability::tests::test_multiple_capability_entries
+        PASS [   0.002s] ( 38/133) clankers-controller capability::tests::test_no_capabilities_allows_all
+        PASS [   0.002s] ( 39/133) clankers-controller capability::tests::test_specific_tools
+        PASS [   0.003s] ( 40/133) clankers-controller capability::tests::test_tool_blocked_event
+        PASS [   0.004s] ( 41/133) clankers-controller capability::tests::test_wildcard_allows_all
+        PASS [   0.003s] ( 42/133) clankers-controller client::tests::test_agent_side_commands
+        PASS [   0.054s] ( 43/133) clankers-controller client::tests::test_client_adapter_round_trip
+        PASS [   0.006s] ( 44/133) clankers-controller client::tests::test_client_side_commands
+        PASS [   0.003s] ( 45/133) clankers-controller client::tests::test_convenience_methods
+        PASS [   0.003s] ( 46/133) clankers-controller client::tests::test_from_channels
+        PASS [   0.003s] ( 47/133) clankers-controller client::tests::test_is_disconnected_when_sender_dropped
+        PASS [   0.003s] ( 48/133) clankers-controller client::tests::test_try_recv_when_channel_closed
+        PASS [   0.003s] ( 49/133) clankers-controller client::tests::test_try_recv_when_empty
+        PASS [   0.003s] ( 50/133) clankers-controller client::tests::test_try_recv_with_pending_events
+        PASS [   0.002s] ( 51/133) clankers-controller command::tests::test_confirm_bash_unknown_request
+        PASS [   0.003s] ( 52/133) clankers-controller command::tests::test_cycle_thinking_level_order
+        PASS [   0.003s] ( 53/133) clankers-controller command::tests::test_handle_abort
+        PASS [   0.003s] ( 54/133) clankers-controller command::tests::test_handle_clear_history
+        PASS [   0.003s] ( 55/133) clankers-controller command::tests::test_handle_command_prompt_uses_reducer_start_effect_and_preserves_shell_events
+        PASS [   0.003s] ( 56/133) clankers-controller command::tests::test_handle_get_capabilities_none
+        PASS [   0.003s] ( 57/133) clankers-controller command::tests::test_handle_get_capabilities_some
+        PASS [   0.002s] ( 58/133) clankers-controller command::tests::test_handle_get_system_prompt
+        PASS [   0.003s] ( 59/133) clankers-controller command::tests::test_handle_set_model
+        PASS [   0.002s] ( 60/133) clankers-controller command::tests::test_loop_control_rejects_when_follow_up_pending
+        PASS [   0.003s] ( 61/133) clankers-controller command::tests::test_reject_concurrent_prompt_preserves_busy_rejection_kind_and_no_shell_work
+        PASS [   0.003s] ( 62/133) clankers-controller command::tests::test_replay_history
+        PASS [   0.003s] ( 63/133) clankers-controller command::tests::test_seed_messages
+        PASS [   0.003s] ( 64/133) clankers-controller command::tests::test_set_capabilities_exceeding_ceiling_rejected
+        PASS [   0.003s] ( 65/133) clankers-controller command::tests::test_set_capabilities_no_ceiling_allows_anything
+        PASS [   0.003s] ( 66/133) clankers-controller command::tests::test_set_capabilities_none_with_ceiling_rejected
+        PASS [   0.003s] ( 67/133) clankers-controller command::tests::test_set_capabilities_none_without_ceiling_succeeds
+        PASS [   0.003s] ( 68/133) clankers-controller command::tests::test_set_capabilities_restore_to_ceiling
+        PASS [   0.003s] ( 69/133) clankers-controller command::tests::test_set_capabilities_within_ceiling_succeeds
+        PASS [   0.003s] ( 70/133) clankers-controller command::tests::test_set_disabled_tools_consumes_reducer_effect_and_emits_change_before_ack
+        PASS [   0.003s] ( 71/133) clankers-controller command::tests::test_set_disabled_tools_rejects_stale_pending_rebuild_without_change_event
+        PASS [   0.003s] ( 72/133) clankers-controller command::tests::test_set_thinking_level_invalid
+        PASS [   0.003s] ( 73/133) clankers-controller command::tests::test_set_thinking_level_valid
+        PASS [   0.003s] ( 74/133) clankers-controller command::tests::test_slash_stop_routes_through_reducer_backed_handler
+        PASS [   0.003s] ( 75/133) clankers-controller command::tests::test_slash_thinking_routes_through_reducer_backed_handlers
+        PASS [   0.003s] ( 76/133) clankers-controller command::tests::test_start_loop_command_sets_active_loop_without_immediate_event
+        PASS [   0.003s] ( 77/133) clankers-controller command::tests::test_start_loop_rejects_when_already_active
+        PASS [   0.003s] ( 78/133) clankers-controller command::tests::test_stop_loop_command_emits_stop_message
+        PASS [   0.005s] ( 79/133) clankers-controller command::tests::test_stop_loop_rejects_without_active_loop
+        PASS [   0.004s] ( 80/133) clankers-controller command::tests::test_tool_filter_feedback_mismatch_rejection_keeps_state_and_emits_only_error
+        PASS [   0.003s] ( 81/133) clankers-controller command::tests::test_tool_filter_feedback_out_of_order_rejection_keeps_state_and_emits_only_error
+        PASS [   0.003s] ( 82/133) clankers-controller command::tests::test_tool_filter_feedback_success_emits_disabled_tools_changed_from_reducer_event
+        PASS [   0.003s] ( 83/133) clankers-controller confirm::tests::test_confirm_clear
+        PASS [   0.003s] ( 84/133) clankers-controller confirm::tests::test_confirm_multiple
+        PASS [   0.002s] ( 85/133) clankers-controller confirm::tests::test_confirm_round_trip
+        PASS [   0.003s] ( 86/133) clankers-controller confirm::tests::test_confirm_unknown_request
+        PASS [   0.003s] ( 87/133) clankers-controller convert::tests::history_assistant_message_to_tui_events
+        PASS [   0.002s] ( 88/133) clankers-controller convert::tests::history_assistant_with_thinking_and_tool
+        PASS [   0.003s] ( 89/133) clankers-controller convert::tests::history_bash_execution_to_tui_events
+        PASS [   0.003s] ( 90/133) clankers-controller convert::tests::history_branch_and_custom_produce_no_events
+        PASS [   0.003s] ( 91/133) clankers-controller convert::tests::history_compaction_to_tui_events
+        PASS [   0.003s] ( 92/133) clankers-controller convert::tests::history_serialization_round_trip
+        PASS [   0.003s] ( 93/133) clankers-controller convert::tests::history_tool_result_to_tui_events
+        PASS [   0.003s] ( 94/133) clankers-controller convert::tests::history_user_message_to_tui_events
+        PASS [   0.003s] ( 95/133) clankers-controller convert::tests::test_agent_end_converts
+        PASS [   0.003s] ( 96/133) clankers-controller convert::tests::test_agent_start_converts
+        PASS [   0.003s] ( 97/133) clankers-controller convert::tests::test_daemon_to_tui_agent_start
+        PASS [   0.003s] ( 98/133) clankers-controller convert::tests::test_daemon_to_tui_non_tui_events
+        PASS [   0.002s] ( 99/133) clankers-controller convert::tests::test_daemon_to_tui_text_delta
+        PASS [   0.003s] (100/133) clankers-controller convert::tests::test_extract_tool_content_mixed
+        PASS [   0.002s] (101/133) clankers-controller convert::tests::test_ignored_events
+        PASS [   0.003s] (102/133) clankers-controller convert::tests::test_text_delta_converts
+        PASS [   0.002s] (103/133) clankers-controller convert::tests::test_tool_call_converts
+        PASS [   0.003s] (104/133) clankers-controller convert::tests::test_tool_done_converts
+        PASS [   0.002s] (105/133) clankers-controller event_processing::tests::test_drain_events_returns_empty_in_embedded_mode
+        PASS [   0.003s] (106/133) clankers-controller event_processing::tests::test_embedded_before_agent_start_seeds_pending_prompt
+        PASS [   0.003s] (107/133) clankers-controller event_processing::tests::test_feed_event_produces_daemon_event
+        PASS [   0.003s] (108/133) clankers-controller event_processing::tests::test_feed_event_tracks_tool_call_names
+        PASS [   0.003s] (109/133) clankers-controller event_processing::tests::test_process_agent_event_pipeline
+        PASS [   0.003s] (110/133) clankers-controller event_processing::tests::test_signal_loop_success_triggers_break
+        PASS [   0.003s] (111/133) clankers-controller event_processing::tests::test_take_outgoing_returns_and_clears
+        PASS [   0.003s] (112/133) clankers-controller event_processing::tests::test_tool_events_accumulate_output
+        PASS [   0.003s] (113/133) clankers-controller loop_mode::tests::test_loop_max_iterations
+        PASS [   0.003s] (114/133) clankers-controller loop_mode::tests::test_start_loop
+        PASS [   0.003s] (115/133) clankers-controller loop_mode::tests::test_stop_loop
+        PASS [   0.003s] (116/133) clankers-controller tests::refresh_tools_keeps_disabled_stdio_tool_hidden_when_rebuilder_reintroduces_it
+        PASS [   0.003s] (117/133) clankers-controller tests::refresh_tools_respects_disabled_tools
+        PASS [   0.004s] (118/133) clankers-controller tests::refresh_tools_updates_inventory_and_sources
+        PASS [   0.003s] (119/133) clankers-controller tests::test_controller_sets_agent_session_id
+        PASS [   0.003s] (120/133) clankers-controller tests::test_controller_updates_agent_session_id
+        PASS [   0.003s] (121/133) clankers-controller tests::test_not_busy_initially
+        PASS [   0.003s] (122/133) clankers-controller tests::test_session_id
+        PASS [   0.003s] (123/133) clankers-controller transport::tests::is_process_alive_bogus_pid
+        PASS [   0.003s] (124/133) clankers-controller transport::tests::is_process_alive_init
+        PASS [   0.003s] (125/133) clankers-controller transport::tests::is_process_alive_own_pid
+        PASS [   0.003s] (126/133) clankers-controller transport::tests::socket_dir_no_double_clankers
+        PASS [   0.015s] (127/133) clankers-controller transport::tests::test_client_disconnect_detection
+        PASS [   0.003s] (128/133) clankers-controller transport::tests::test_daemon_state
+        PASS [   0.003s] (129/133) clankers-controller transport::tests::test_multiple_clients_receive_broadcast_events
+        PASS [   0.003s] (130/133) clankers-controller transport::tests::test_session_client_command_processing
+        PASS [   0.003s] (131/133) clankers-controller transport::tests::test_session_socket_handshake_and_events
+        PASS [   0.003s] (132/133) clankers-controller transport::tests::test_socket_paths
+        PASS [   0.003s] (133/133) clankers-controller transport::tests::test_stale_socket_cleanup
+────────────
+     Summary [   0.443s] 133 tests run: 133 passed, 2 skipped
+  ✓ Controller reducer and parity suites
+
+=== Agent turn allowlist parity suite ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.20s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/clankers_agent-ee3cd593bfc03c1b)
+
+running 5 tests
+test tests::set_user_tool_filter_replaces_previous_filter ... ok
+test turn::tests::user_tool_filter_blocks_unlisted_tools ... ok
+test turn::tests::user_tool_filter_allows_listed_tools ... ok
+test turn::tests::user_tool_filter_none_allows_all ... ok
+test turn::tests::user_tool_filter_applies_latest_allowlist_per_call ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 91 filtered out; finished in 0.00s
+
+  ✓ Agent turn allowlist parity suite
+
+=== Agent filtered inventory parity suite ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.19s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/clankers_agent-ee3cd593bfc03c1b)
+
+running 1 test
+test turn::tests::controller_filtered_tool_inventory_replaces_available_tools_without_turn_local_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 95 filtered out; finished in 0.00s
+
+  ✓ Agent filtered inventory parity suite
+
+=== Agent thinking adapter parity suite ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.20s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/clankers_agent-ee3cd593bfc03c1b)
+
+running 1 test
+test tests::agent_applies_core_thinking_effect_without_agent_owned_reducer ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 95 filtered out; finished in 0.00s
+
+  ✓ Agent thinking adapter parity suite
+
+=== Agent tool inventory adapter parity suite ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.20s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/clankers_agent-ee3cd593bfc03c1b)
+
+running 1 test
+test tests::agent_tool_inventory_can_follow_core_disabled_tool_contract_without_local_policy ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 95 filtered out; finished in 0.00s
+
+  ✓ Agent tool inventory adapter parity suite
+
+=== Embedded runtime prompt-lifecycle parity suite ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.29s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/clankers-ba24a5663d9650cc)
+
+running 6 tests
+test modes::event_loop_runner::tests::sync_controller_session_id_updates_stale_controller_state ... ok
+test modes::event_loop_runner::tests::follow_up_dispatch_channel_failure_surfaces_controller_error ... ok
+test modes::event_loop_runner::tests::out_of_order_follow_up_completion_surfaces_error_through_app_push_system ... ok
+test modes::event_loop_runner::tests::controller_selected_loop_follow_up_stays_pending_until_follow_up_prompt_finishes ... ok
+test modes::event_loop_runner::tests::prompt_done_success_replays_queued_prompt_before_follow_up ... ok
+test modes::event_loop_runner::tests::prompt_done_failure_replays_queued_prompt_without_extra_error_banner ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 705 filtered out; finished in 0.01s
+
+  ✓ Embedded runtime prompt-lifecycle parity suite
+
+=== Embedded controller parity suite ===
+   Compiling num-traits v0.2.19
+   Compiling serde_json v1.0.149
+   Compiling zerocopy-derive v0.8.42
+   Compiling getrandom v0.3.4
+   Compiling getrandom v0.4.2
+   Compiling serde v1.0.228
+   Compiling crypto-common v0.1.7
+   Compiling derive_more-impl v2.1.1
+   Compiling anyhow v1.0.102
+   Compiling ring v0.17.14
+   Compiling openssl-sys v0.9.112
+   Compiling der v0.8.0
+   Compiling ratatui-core v0.1.0
+   Compiling num_enum_derive v0.7.6
+   Compiling ahash v0.8.12
+   Compiling pulley-macros v37.0.3
+   Compiling block-padding v0.3.3
+   Compiling wasmtime-internal-versioned-export-macros v37.0.3
+   Compiling digest v0.10.7
+   Compiling equator-macro v0.4.2
+   Compiling zmij v1.0.21
+   Compiling uuid v1.22.0
+   Compiling syn v1.0.109
+   Compiling redb v2.6.3
+   Compiling rand_core v0.9.5
+   Compiling thiserror v2.0.18
+   Compiling curve25519-dalek v4.1.3
+   Compiling inout v0.1.4
+   Compiling zstd-sys v2.0.16+zstd.1.5.7
+   Compiling getrandom v0.2.17
+   Compiling proc-macro-error-attr2 v2.0.0
+   Compiling proc-macro-error-attr v0.4.12
+   Compiling universal-hash v0.5.1
+   Compiling ruma-identifiers-validation v0.10.1
+   Compiling profiling-procmacros v1.0.17
+   Compiling sha2 v0.10.9
+   Compiling cipher v0.4.4
+   Compiling hmac v0.12.1
+   Compiling arg_enum_proc_macro v0.3.4
+   Compiling proc-macro-error v0.4.12
+   Compiling poly1305 v0.8.0
+   Compiling wasmparser v0.239.0
+   Compiling aead v0.5.2
+   Compiling pulley-interpreter v37.0.3
+   Compiling ittapi-sys v0.4.0
+   Compiling num-derive v0.4.2
+   Compiling chacha20 v0.9.1
+   Compiling fax_derive v0.2.0
+   Compiling simd_helpers v0.1.0
+   Compiling serde_spanned v0.6.9
+   Compiling smallvec v1.15.1
+   Compiling portable-atomic v1.13.1
+   Compiling bytes v1.11.1
+   Compiling arrayvec v0.7.6
+   Compiling heapless v0.7.17
+   Compiling serde_urlencoded v0.7.1
+   Compiling curve25519-dalek v5.0.0-pre.1
+   Compiling parking_lot_core v0.9.12
+   Compiling icu_normalizer v2.1.1
+   Compiling cranelift-bitset v0.124.3
+   Compiling blake3 v1.8.3
+   Compiling toml_datetime v0.6.11
+   Compiling num_enum v0.7.6
+   Compiling cranelift-entity v0.124.3
+   Compiling equator v0.4.2
+   Compiling bstr v1.12.1
+   Compiling parking_lot v0.12.5
+   Compiling js_int v0.2.2
+   Compiling regalloc2 v0.13.5
+   Compiling http v1.4.0
+   Compiling toml_edit v0.22.27
+   Compiling aligned-vec v0.6.4
+   Compiling once_cell v1.21.4
+   Compiling tokio v1.50.0
+   Compiling idna_adapter v1.2.1
+   Compiling postcard v1.1.3
+   Compiling spki v0.8.0-rc.4
+   Compiling chrono v0.4.44
+   Compiling zerocopy v0.8.42
+   Compiling idna v1.1.0
+   Compiling tracing-core v0.1.36
+   Compiling openssl v0.10.76
+   Compiling pkcs8 v0.11.0-rc.11
+   Compiling ratatui-widgets v0.3.0
+   Compiling ntimestamp v1.0.0
+   Compiling rustls-webpki v0.103.9
+   Compiling ed25519 v3.0.0-rc.4
+   Compiling num-integer v0.1.46
+   Compiling url v2.5.8
+   Compiling tracing v0.1.44
+   Compiling http-body v1.0.1
+   Compiling http-body-util v0.1.3
+   Compiling iroh-quinn-udp v0.8.0
+   Compiling ed25519-dalek v3.0.0-pre.1
+   Compiling iroh-metrics v0.38.3
+   Compiling rustls v0.23.37
+   Compiling attohttpc v0.30.1
+   Compiling moka v0.12.14
+   Compiling ratatui-macros v0.7.0
+   Compiling cranelift-codegen-meta v0.124.3
+   Compiling toml v0.8.23
+   Compiling num-bigint v0.4.6
+   Compiling v_frame v0.3.9
+   Compiling cranelift-bforest v0.124.3
+   Compiling rmp v0.8.15
+   Compiling derive_more v2.1.1
+   Compiling syn-mid v0.5.4
+   Compiling ruma-macros v0.15.2
+   Compiling rmp-serde v1.3.1
+   Compiling crossterm v0.29.0
+   Compiling iroh-base v0.96.1
+   Compiling proc-macro-error2 v2.0.1
+   Compiling ed25519 v2.2.3
+   Compiling js_option v0.1.1
+   Compiling ed25519-dalek v2.2.0
+   Compiling rustix-linux-procfs v0.1.1
+   Compiling num-rational v0.4.2
+   Compiling profiling v1.0.17
+   Compiling rustix v1.1.4
+   Compiling ratatui-crossterm v0.1.0
+   Compiling av-scenechange v0.14.1
+   Compiling av1-grain v0.2.5
+   Compiling cap-primitives v3.4.5
+   Compiling socks v0.3.4
+   Compiling ratatui v0.30.0
+   Compiling native-tls v0.2.18
+   Compiling rat-markdown v0.1.0 (/home/brittonr/git/subwayrat/crates/rat-markdown)
+   Compiling ppv-lite86 v0.2.21
+   Compiling half v2.7.1
+   Compiling rat-branches v0.1.0 (/home/brittonr/git/subwayrat/crates/rat-branches)
+   Compiling rat-leaderkey v0.1.0 (/home/brittonr/git/subwayrat/crates/rat-leaderkey)
+   Compiling rav1e v0.8.1
+   Compiling hashbrown v0.14.5
+   Compiling clankers-tui-types v0.1.0 (/home/brittonr/git/clankers/crates/clankers-tui-types)
+   Compiling rand_chacha v0.9.0
+   Compiling rand_chacha v0.3.1
+   Compiling matrix-pickle-derive v0.2.2
+   Compiling rand v0.9.2
+   Compiling rand v0.8.5
+   Compiling tempfile v3.27.0
+   Compiling fax v0.2.6
+   Compiling avif-serialize v0.8.8
+   Compiling cranelift-codegen v0.124.3
+   Compiling chacha20poly1305 v0.10.1
+   Compiling wit-parser v0.239.0
+   Compiling imbl v3.0.0
+   Compiling thiserror v1.0.69
+   Compiling wasmtime-internal-jit-debug v37.0.3
+   Compiling wasmtime-internal-fiber v37.0.3
+   Compiling fastbloom v0.14.1
+   Compiling libz-sys v1.1.25
+   Compiling prost-derive v0.13.5
+   Compiling include_dir_macros v0.7.4
+   Compiling memoffset v0.9.1
+   Compiling indexmap v1.9.3
+   Compiling exr v1.74.0
+   Compiling moxcms v0.8.1
+   Compiling proc-macro-utils v0.10.0
+   Compiling tokio-util v0.7.18
+   Compiling tower v0.5.3
+   Compiling tokio-native-tls v0.3.1
+   Compiling tokio-rustls v0.26.4
+   Compiling rustls-platform-verifier v0.6.2
+   Compiling netlink-sys v0.8.8
+   Compiling async-compat v0.2.5
+   Compiling iroh-quinn-proto v0.15.1
+   Compiling acto v0.8.0
+   Compiling backon v1.6.0
+   Compiling netdev v0.40.1
+   Compiling tower-http v0.6.8
+   Compiling netlink-proto v0.12.0
+   Compiling fs4 v0.13.1
+   Compiling eyeball-im v0.5.1
+   Compiling include_dir v0.7.4
+   Compiling h2 v0.4.13
+   Compiling tokio-stream v0.1.18
+   Compiling n0-future v0.3.2
+   Compiling tokio-websockets v0.12.3
+   Compiling deadpool-runtime v0.1.4
+   Compiling n0-watcher v0.6.1
+   Compiling ruma-common v0.15.4
+   Compiling readlock-tokio v0.1.6
+   Compiling libssh2-sys v0.3.1
+   Compiling netwatch v0.14.0
+   Compiling prost v0.13.5
+   Compiling genawaiter-proc-macro v0.99.1
+   Compiling witx v0.9.1
+   Compiling matrix-pickle v0.2.2
+   Compiling tiff v0.11.3
+   Compiling x25519-dalek v2.0.1
+   Compiling tracing-log v0.2.0
+   Compiling ureq-proto v0.5.3
+   Compiling debugid v0.8.0
+   Compiling aes v0.8.4
+   Compiling cbc v0.1.2
+   Compiling wasmtime v37.0.3
+   Compiling hkdf v0.12.4
+   Compiling pbkdf2 v0.12.2
+   Compiling matrixmultiply v0.3.10
+   Compiling wasmtime-internal-wit-bindgen v37.0.3
+   Compiling tracing-subscriber v0.3.23
+   Compiling ureq v3.2.0
+   Compiling wiggle-generate v37.0.3
+   Compiling vodozemac v0.8.1
+   Compiling eyeball v0.8.8
+   Compiling ravif v0.13.0
+   Compiling genawaiter v0.99.1
+   Compiling fxprof-processed-profile v0.6.0
+   Compiling aquamarine v0.6.0
+   Compiling libgit2-sys v0.18.3+1.9.2
+   Compiling ittapi v0.4.0
+   Compiling manyhow-macros v0.11.4
+   Compiling cap-std v3.4.5
+   Compiling ulid v1.2.1
+   Compiling hashlink v0.9.1
+   Compiling structmeta-derive v0.1.6
+   Compiling globset v0.4.18
+   Compiling toml_datetime v0.5.1
+   Compiling ctr v0.9.2
+   Compiling wasmtime-internal-jit-icache-coherence v37.0.3
+   Compiling wasmtime-internal-component-macro v37.0.3
+   Compiling image v0.25.10
+   Compiling libmimalloc-sys v0.1.44
+   Compiling rusqlite v0.32.1
+   Compiling growable-bloom-filter v2.1.1
+   Compiling toml_edit v0.18.1
+   Compiling rat-widgets v0.1.0 (/home/brittonr/git/subwayrat/crates/rat-widgets)
+   Compiling ruma-events v0.30.5
+   Compiling git2 v0.20.4
+   Compiling wasmprinter v0.239.0
+   Compiling structmeta v0.1.6
+   Compiling rowan v0.15.17
+   Compiling hyper v1.8.1
+   Compiling hickory-proto v0.25.2
+   Compiling iroh-quinn v0.16.1
+   Compiling hyper-util v0.1.20
+   Compiling wasmtime-environ v37.0.3
+   Compiling arboard v3.6.1
+   Compiling plist v1.8.0
+   Compiling deadpool v0.12.3
+   Compiling hyper-rustls v0.27.7
+   Compiling hyper-tls v0.6.0
+   Compiling reqwest v0.12.28
+   Compiling reqwest v0.13.2
+   Compiling hickory-resolver v0.25.2
+   Compiling igd-next v0.16.2
+   Compiling swarm-discovery v0.5.0
+   Compiling pkarr v5.0.3
+   Compiling ort-sys v2.0.0-rc.11
+   Compiling portmapper v0.14.0
+   Compiling reqwest-eventsource v0.6.0
+   Compiling manyhow v0.11.4
+   Compiling wiggle-macro v37.0.3
+   Compiling ruma-client-api v0.20.3
+   Compiling onig v6.5.1
+   Compiling cbindgen v0.29.2
+   Compiling matrix-sdk-store-encryption v0.9.0
+   Compiling deadpool-sync v0.1.4
+   Compiling clankers-hooks v0.1.0 (/home/brittonr/git/clankers/crates/clankers-hooks)
+   Compiling clankers-protocol v0.1.0 (/home/brittonr/git/clankers/crates/clankers-protocol)
+   Compiling rat-keymap v0.1.0 (/home/brittonr/git/subwayrat/crates/rat-keymap)
+   Compiling ratatui-hypertile v0.1.0
+   Compiling num-complex v0.4.6
+   Compiling bincode v1.3.3
+   Compiling rand_xorshift v0.4.0
+   Compiling prost-derive v0.14.3
+   Compiling ref-cast-impl v1.0.25
+   Compiling serde_yaml v0.9.34+deprecated
+   Compiling proptest v1.10.0
+   Compiling indicatif v0.18.4
+   Compiling ref-cast v1.0.25
+   Compiling syntect v5.3.0
+   Compiling ndarray v0.17.2
+   Compiling clankers-agent-defs v0.1.0 (/home/brittonr/git/clankers/crates/clankers-agent-defs)
+   Compiling prost v0.14.3
+   Compiling clankers-tui v0.1.0 (/home/brittonr/git/clankers/crates/clankers-tui)
+   Compiling extism v1.13.0
+   Compiling deadpool-sqlite v0.9.0
+   Compiling extism-convert-macros v1.13.0
+   Compiling system-interface v0.27.3
+   Compiling zstd-safe v7.2.4
+   Compiling rnix v0.11.0
+   Compiling toml v0.6.0
+   Compiling test-strategy v0.2.1
+   Compiling zstd v0.13.3
+   Compiling cap-fs-ext v3.4.5
+   Compiling ignore v0.4.25
+   Compiling cap-rand v3.4.5
+   Compiling wasmtime-internal-cache v37.0.3
+   Compiling cap-time-ext v3.4.5
+   Compiling snix-eval-builtin-macros v0.0.1 (https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#8fe3bade)
+   Compiling inplace-vec-builder v0.1.1
+   Compiling sha1 v0.10.6
+   Compiling md-5 v0.10.6
+   Compiling async-stream-impl v0.3.6
+   Compiling range-collections v0.4.6
+   Compiling snix-eval v0.1.0 (https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#8fe3bade)
+   Compiling backoff v0.4.0
+   Compiling rcgen v0.14.7
+   Compiling clankers-procmon v0.1.0 (/home/brittonr/git/clankers/crates/clankers-procmon)
+   Compiling ort v2.0.0-rc.11
+   Compiling async-stream v0.3.6
+   Compiling automerge v0.7.4
+   Compiling zip v2.4.2
+   Compiling mimalloc v0.1.48
+   Compiling extism-convert v1.13.0
+   Compiling openspec v0.1.0 (/home/brittonr/git/openspec)
+   Compiling clankers-db v0.1.0 (/home/brittonr/git/clankers/crates/clankers-db)
+   Compiling hf-hub v0.5.0
+   Compiling iroh-io v0.6.2
+   Compiling clanker-loop v0.1.0 (https://github.com/brittonr/clanker-loop#33224934)
+   Compiling is-docker v0.2.0
+   Compiling extism-manifest v1.13.0
+   Compiling clankers-prompts v0.1.0 (/home/brittonr/git/clankers/crates/clankers-prompts)
+   Compiling clankers-skills v0.1.0 (/home/brittonr/git/clankers/crates/clankers-skills)
+   Compiling irpc-derive v0.9.0
+   Compiling clap_derive v4.6.0
+   Compiling snafu-derive v0.8.9
+   Compiling bao-tree v0.16.0
+   Compiling is-wsl v0.4.0
+   Compiling nix-compat v0.1.0 (https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#8fe3bade)
+   Compiling snix-serde v0.1.0 (https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#8fe3bade)
+   Compiling dashmap v6.1.0
+   Compiling iroh-tickets v0.3.0
+   Compiling vte v0.15.0
+   Compiling filedescriptor v0.8.3
+   Compiling nested_enum_utils v0.2.3
+   Compiling ciborium-ll v0.2.2
+   Compiling snafu v0.8.9
+   Compiling clap v4.6.0
+   Compiling portable-pty v0.9.0
+   Compiling open v5.3.3
+   Compiling grep-searcher v0.1.16
+   Compiling clanker-actor v0.1.0 (https://github.com/brittonr/clanker-actor#55af40af)
+   Compiling vt100 v0.16.2
+   Compiling clankers-nix v0.1.0 (/home/brittonr/git/clankers/crates/clankers-nix)
+   Compiling grep-regex v0.1.14
+   Compiling clanker-scheduler v0.1.0 (https://github.com/brittonr/clanker-scheduler#4715085f)
+   Compiling rat-inline v0.1.0 (/home/brittonr/git/subwayrat/crates/rat-inline)
+   Compiling graggle v0.1.0 (https://github.com/brittonr/graggle#aaebeab0)
+   Compiling plotters v0.3.7
+   Compiling ciborium v0.2.2
+   Compiling console v0.15.11
+   Compiling tinytemplate v1.2.1
+   Compiling tokio-test v0.4.5
+   Compiling ruma v0.12.3
+   Compiling criterion v0.5.1
+   Compiling matrix-sdk-common v0.9.0
+   Compiling insta v1.46.3
+   Compiling cranelift-frontend v0.124.3
+   Compiling cranelift-native v0.124.3
+   Compiling wasmtime-internal-unwinder v37.0.3
+   Compiling wasmtime-internal-cranelift v37.0.3
+   Compiling matrix-sdk-crypto v0.9.0
+   Compiling kittentts v0.2.7
+   Compiling irpc v0.12.0
+   Compiling iroh-relay v0.96.1
+   Compiling clankers-tts v0.1.0 (/home/brittonr/git/clankers/crates/clankers-tts)
+   Compiling matrix-sdk-base v0.9.0
+   Compiling iroh v0.96.1
+   Compiling wiggle v37.0.3
+   Compiling wasi-common v37.0.3
+   Compiling matrix-sdk-sqlite v0.9.0
+   Compiling matrix-sdk v0.9.0
+   Compiling clankers-plugin v0.1.0 (/home/brittonr/git/clankers/crates/clankers-plugin)
+   Compiling clanker-router v0.1.0 (/home/brittonr/git/clankers/vendor/clanker-router)
+   Compiling clanker-auth v0.1.0 (https://github.com/brittonr/clanker-auth#af15bc38)
+   Compiling iroh-blobs v0.98.0
+   Compiling clankers-zellij v0.1.0 (/home/brittonr/git/clankers/crates/clankers-zellij)
+   Compiling clankers-ucan v0.1.0 (/home/brittonr/git/clankers/crates/clankers-ucan)
+   Compiling clankers-message v0.1.0 (/home/brittonr/git/clankers/crates/clankers-message)
+   Compiling clankers-model-selection v0.1.0 (/home/brittonr/git/clankers/crates/clankers-model-selection)
+   Compiling clankers-provider v0.1.0 (/home/brittonr/git/clankers/crates/clankers-provider)
+   Compiling clankers-util v0.1.0 (/home/brittonr/git/clankers/crates/clankers-util)
+   Compiling clankers-session v0.1.0 (/home/brittonr/git/clankers/crates/clankers-session)
+   Compiling clankers-config v0.1.0 (/home/brittonr/git/clankers/crates/clankers-config)
+   Compiling clankers-agent v0.1.0 (/home/brittonr/git/clankers/crates/clankers-agent)
+   Compiling clankers-controller v0.1.0 (/home/brittonr/git/clankers/crates/clankers-controller)
+   Compiling clankers-matrix v0.1.0 (/home/brittonr/git/clankers/crates/clankers-matrix)
+   Compiling clankers v0.1.0 (/home/brittonr/git/clankers)
+    Finished `test` profile [optimized + debuginfo] target(s) in 1m 39s
+────────────
+ Nextest run ID 1cdc221d-3a6a-468c-824e-a914806872f2 with nextest profile: default
+    Starting 30 tests across 1 binary
+        PASS [   0.003s] ( 1/30) clankers::embedded_controller audit_tracks_tool_calls
+        PASS [   0.003s] ( 2/30) clankers::embedded_controller daemon_abort_when_not_busy
+        PASS [   0.003s] ( 3/30) clankers::embedded_controller daemon_get_system_prompt_round_trip
+        PASS [   0.005s] ( 4/30) clankers::embedded_controller daemon_reject_prompt_when_busy
+        PASS [   0.003s] ( 5/30) clankers::embedded_controller daemon_replay_history_ends_with_marker
+        PASS [   0.003s] ( 6/30) clankers::embedded_controller daemon_set_model_round_trip
+        PASS [   0.003s] ( 7/30) clankers::embedded_controller embedded_agent_end_produces_daemon_event
+        PASS [   0.003s] ( 8/30) clankers::embedded_controller embedded_agent_start_produces_daemon_event
+        PASS [   0.003s] ( 9/30) clankers::embedded_controller embedded_auto_test_disabled_by_default
+        PASS [   0.003s] (10/30) clankers::embedded_controller embedded_auto_test_fires_when_enabled
+        PASS [   0.003s] (11/30) clankers::embedded_controller embedded_auto_test_no_recursive_trigger
+        PASS [   0.003s] (12/30) clankers::embedded_controller embedded_loop_break_condition
+        PASS [   0.003s] (13/30) clankers::embedded_controller embedded_loop_continuation
+        PASS [   0.003s] (14/30) clankers::embedded_controller embedded_loop_error_terminates
+        PASS [   0.003s] (15/30) clankers::embedded_controller embedded_loop_signal_break
+        PASS [   0.003s] (16/30) clankers::embedded_controller embedded_loop_sync_from_tui_starts
+        PASS [   0.003s] (17/30) clankers::embedded_controller embedded_loop_sync_from_tui_stops
+        PASS [   0.003s] (18/30) clankers::embedded_controller embedded_loop_terminates_at_max
+        PASS [   0.002s] (19/30) clankers::embedded_controller embedded_not_busy_initially
+        PASS [   0.003s] (20/30) clankers::embedded_controller embedded_session_id_and_model
+        PASS [   0.003s] (21/30) clankers::embedded_controller embedded_set_model
+        PASS [   0.003s] (22/30) clankers::embedded_controller embedded_set_session_id
+        PASS [   0.003s] (23/30) clankers::embedded_controller embedded_take_outgoing_clears_buffer
+        PASS [   0.003s] (24/30) clankers::embedded_controller embedded_text_delta_produces_daemon_event
+        PASS [   0.003s] (25/30) clankers::embedded_controller embedded_thinking_delta_produces_daemon_event
+        PASS [   0.003s] (26/30) clankers::embedded_controller embedded_tool_call_produces_daemon_event
+        PASS [   0.003s] (27/30) clankers::embedded_controller embedded_tool_execution_lifecycle
+        PASS [   0.003s] (28/30) clankers::embedded_controller internal_events_not_forwarded
+        PASS [   0.005s] (29/30) clankers::embedded_controller model_change_event_handled_by_hooks_not_forwarded
+        PASS [   0.003s] (30/30) clankers::embedded_controller usage_update_produces_daemon_event
+────────────
+     Summary [   0.086s] 30 tests run: 30 passed, 0 skipped
+  ✓ Embedded controller parity suite
+
+=== No-std functional core validation bundle passed ===

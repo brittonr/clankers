@@ -877,6 +877,12 @@ mod tests {
                 schedule_rx.take().expect("schedule_rx available"),
             )
         }
+
+        fn handle_task_results_and_take_controller(&mut self) -> SessionController {
+            let mut runner = self.runner();
+            runner.handle_task_results();
+            runner.controller
+        }
     }
 
     fn collect_system_messages(app: &App) -> Vec<(String, bool)> {
@@ -1011,6 +1017,44 @@ mod tests {
             system_messages.iter().any(|(text, is_error)| *is_error && text == "Post-prompt follow-up failed"),
             "expected follow-up dispatch failure banner: {system_messages:?}"
         );
+    }
+
+    #[test]
+    fn controller_selected_loop_follow_up_stays_pending_until_follow_up_prompt_finishes() {
+        let mut controller = embedded_controller(true, Some("cargo test"));
+        controller.start_loop(LoopConfig {
+            name: "test-loop".to_string(),
+            prompt: Some("continue loop".to_string()),
+            max_iterations: 2,
+            break_text: None,
+        });
+        assert!(controller.start_embedded_prompt("original prompt", 0));
+
+        let mut harness = RunnerHarness::new(controller);
+        harness.app.loop_status = Some(clankers_tui_types::LoopDisplayState {
+            iteration: 1,
+            max_iterations: 2,
+            name: "test-loop".to_string(),
+            active: true,
+            break_text: None,
+            prompt: Some("continue loop".to_string()),
+        });
+
+        harness.done_tx.send(TaskResult::PromptDone(None)).expect("task result queued");
+        let controller = harness.handle_task_results_and_take_controller();
+
+        expect_reset_then_prompt(&mut harness.cmd_rx, "continue loop");
+        assert_eq!(
+            harness.app.loop_status.as_ref().map(|status| (status.iteration, status.active)),
+            Some((1, true)),
+            "visible loop state must not advance or deactivate before follow-up prompt completion"
+        );
+        assert!(
+            controller.pending_dispatched_follow_up_effect_id().is_some(),
+            "accepted follow-up dispatch must remain pending until the follow-up prompt finishes"
+        );
+        assert!(controller.has_active_loop(), "loop must stay active until follow-up prompt completion");
+        assert!(collect_system_messages(&harness.app).is_empty());
     }
 
     #[test]

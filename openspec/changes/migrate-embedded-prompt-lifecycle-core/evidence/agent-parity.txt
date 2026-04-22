@@ -1,12 +1,42 @@
 Evidence-ID: migrate-embedded-prompt-lifecycle-core.V4.agent-parity
 Task-ID: V4
 Artifact-Type: deterministic-proof
-Covers: no.std.functional.core.shell.parity.prompt-and-prompt-completion-behavior-remain-aligned, no.std.functional.core.shell.parity.lifecycle-feedback-rejection-behavior-remains-aligned, no.std.functional.core.continuous.verification.shell-parity-coverage-traces-each-adapter-seam, no.std.functional.core.future.extraction.boundary.agent-runtime-apis-stay-shell-native
+Covers: no.std.functional.core.continuous.verification.shell-parity-coverage-traces-each-adapter-seam, no.std.functional.core.future.extraction.boundary.agent-runtime-apis-stay-shell-native
 Created-By: pi
-Created-At: 2026-04-22T21:58:00Z
-Status: pending
+Created-At: 2026-04-22T11:13:30Z
+Status: complete
 
 # Evidence: agent parity regressions
 
-Pending implementation.
-Replace with focused `clankers-agent` regression commands and pass markers for `src/turn/mod.rs` and `src/lib.rs`.
+## Commands
+
+```bash
+cargo test -p clankers-agent agent_prompt_api_stays_shell_native_and_emits_before_agent_start --lib -- --nocapture
+cargo test -p clankers-agent user_tool_filter --lib -- --nocapture
+cargo test -p clankers-agent controller_filtered_tool_inventory_replaces_available_tools_without_turn_local_state --lib -- --nocapture
+cargo test -p clankers-agent agent_applies_core_thinking_effect_without_agent_owned_reducer --lib -- --nocapture
+cargo test -p clankers-agent agent_tool_inventory_can_follow_core_disabled_tool_contract_without_local_policy --lib -- --nocapture
+rg "finish_embedded_prompt|ack_follow_up_dispatch|complete_dispatched_follow_up|check_post_prompt|pending_dispatched_follow_up_effect_id|notify_prompt_done" crates/clankers-agent/src
+```
+
+## Pass markers
+
+- prompt API rail: `1 passed; 0 failed`
+- allowlist rail: `5 passed; 0 failed`
+- filtered inventory rail: `1 passed; 0 failed`
+- thinking adapter rail: `1 passed; 0 failed`
+- tool inventory adapter rail: `1 passed; 0 failed`
+- lifecycle adapter source guard: `No matches found`
+
+## Covered agent boundary cases
+
+- `tests::agent_prompt_api_stays_shell_native_and_emits_before_agent_start` proves the agent prompt entrypoint remains shell-native (`prompt("hello world")`) and emits `BeforeAgentStart` with shell text, not a `clankers-core` boundary type
+- `turn::tests::user_tool_filter_blocks_unlisted_tools`, `user_tool_filter_allows_listed_tools`, `user_tool_filter_none_allows_all`, and `user_tool_filter_applies_latest_allowlist_per_call` keep positive/negative allowlist behavior at the shell boundary
+- `turn::tests::controller_filtered_tool_inventory_replaces_available_tools_without_turn_local_state` proves controller-provided filtered inventory is consumed directly by the turn shell without a second local policy path
+- `tests::agent_applies_core_thinking_effect_without_agent_owned_reducer` proves controller-owned thinking effects are translated into shell-native `ThinkingLevel` application at the agent boundary
+- `tests::agent_tool_inventory_can_follow_core_disabled_tool_contract_without_local_policy` proves controller-owned disabled-tool effects become shell-native tool inventory updates via `apply_core_filtered_tools(...)`
+- `rg "finish_embedded_prompt|ack_follow_up_dispatch|complete_dispatched_follow_up|check_post_prompt|pending_dispatched_follow_up_effect_id|notify_prompt_done" crates/clankers-agent/src` returning no matches proves prompt completion, follow-up dispatch acknowledgement/completion, and lifecycle-feedback rejection adapters do not live in `clankers-agent`; those paths stay controller/embedded-side instead of being reinterpreted locally in agent code
+
+## Result
+
+Agent boundary rail is green. `clankers-agent` keeps shell-native prompt/runtime APIs and controller-applied shell-native effects, while prompt completion and lifecycle-feedback adapters remain outside the crate. That is the anti-fork property this rail needs to pin.

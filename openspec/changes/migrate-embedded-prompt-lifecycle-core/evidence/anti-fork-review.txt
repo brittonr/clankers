@@ -3,18 +3,19 @@ Task-ID: H1
 Artifact-Type: oracle-checkpoint
 Covers: no.std.functional.core.future.extraction.boundary, no.std.functional.core.future.extraction.boundary.future-pure-logic-moves-into-the-core, no.std.functional.core.future.extraction.boundary.shell-native-types-stay-outside-the-core-boundary, no.std.functional.core.future.extraction.boundary.controller-shell-execution-stays-centralized, no.std.functional.core.future.extraction.boundary.agent-runtime-apis-stay-shell-native, no.std.functional.core.future.extraction.boundary.interactive-shell-work-stays-outside-the-core, no.std.functional.core.future.extraction.boundary.embedded-event-loop-runner-stays-adapter-only, no.std.functional.core.continuous.verification.anti-fork-review-confirms-single-migrated-policy-path
 Reviewer-Role: agent-reviewer
-Verdict: WARN
-Reviewed-At: 2026-04-22T21:45:00Z
+Verdict: PASS
+Reviewed-At: 2026-04-22T11:13:30Z
 
 # Oracle Checkpoint: embedded prompt-lifecycle anti-fork review
 
 ## Reviewed Paths
 
-- `src/modes/event_loop_runner/mod.rs`
-- `crates/clankers-controller/src/command.rs`
+- `crates/clankers-core/src/reducer.rs`
 - `crates/clankers-controller/src/auto_test.rs`
+- `crates/clankers-controller/src/command.rs`
 - `crates/clankers-controller/src/core_effects.rs`
 - `crates/clankers-controller/src/lib.rs`
+- `src/modes/event_loop_runner/mod.rs`
 - `crates/clankers-agent/src/lib.rs`
 - `crates/clankers-agent/src/turn/mod.rs`
 - `crates/clankers-core/README.md`
@@ -33,17 +34,36 @@ Reviewed-At: 2026-04-22T21:45:00Z
 ## Questions
 
 - Question: Does embedded prompt-lifecycle policy now live in `clankers-core` rather than `event_loop_runner` local branches?
-  Answer: WARN
-  Notes: Placeholder checkpoint only. Final review pending implementation.
+  Answer: PASS
+  Notes: `clankers-core/src/reducer.rs` owns prompt completion, post-prompt evaluation, follow-up dispatch acknowledgement, and follow-up completion through `reduce_prompt_completed`, `reduce_post_prompt_evaluation`, `reduce_follow_up_dispatch_acknowledged`, and `reduce_loop_follow_up_completed`. `src/modes/event_loop_runner/mod.rs` calls `SessionController::check_post_prompt(...)` and acts only on returned `PostPromptAction` values.
+
+- Question: Is `core_effects.rs` the single controller-owned shell executor for the migrated slice?
+  Answer: PASS
+  Notes: `crates/clankers-controller/src/core_effects.rs` owns prompt request/completion execution plus `execute_post_prompt_effects`, `execute_follow_up_dispatch_effects`, and `execute_follow_up_completion_effects`. `command.rs` and `auto_test.rs` reduce core inputs, apply next state, and forward effect execution into this one file instead of re-deriving shell semantics locally.
 
 - Question: Are follow-up dispatch acknowledgement and later prompt completion represented as distinct lifecycle stages?
-  Answer: WARN
-  Notes: Placeholder checkpoint only. Final review pending implementation.
+  Answer: PASS
+  Notes: `crates/clankers-controller/src/auto_test.rs` keeps `ack_follow_up_dispatch(...)` and `complete_dispatched_follow_up(...)` separate, and pending prompt metadata carries `originating_follow_up_effect_id`. `src/modes/event_loop_runner/mod.rs` first calls `ack_follow_up_dispatch(...)` when dispatch succeeds or fails, then later calls `complete_dispatched_follow_up(...)` only when the dispatched prompt actually finishes.
 
-- Question: Do runtime files stay limited to translation, channel dispatch, and UI updates after the migration?
-  Answer: WARN
-  Notes: Placeholder checkpoint only. Final review pending implementation.
+- Question: Do shell-native types stay outside exported core boundaries?
+  Answer: PASS
+  Notes: `clankers-core` exports plain data only. `DaemonEvent`, agent events, channels, and TUI state remain in controller/runtime files. `crates/clankers-core/README.md` documents the same boundary explicitly.
+
+- Question: Do agent/runtime APIs stay shell-native and avoid a second policy path?
+  Answer: PASS
+  Notes: `crates/clankers-agent/src/lib.rs` still exposes shell-native APIs such as `prompt(&str)`, `prompt_with_images(...)`, `apply_controller_thinking_level(...)`, and `apply_core_filtered_tools(...)`. `crates/clankers-agent/src/turn/mod.rs` consumes controller-provided tool inventories per call. No second reducer or post-prompt planner appears in agent code.
+
+- Question: Does `event_loop_runner` remain adapter-only for this slice?
+  Answer: PASS
+  Notes: `dispatch_controller_follow_up(...)` sends controller-selected prompts and feeds acceptance/rejection back into controller APIs. `handle_task_results()` replays queued prompts or dispatches controller-selected work, surfaces controller errors through `App::push_system(...)`, and does not mint its own queued-prompt precedence, follow-up completion, or loop/auto-test policy.
 
 ## Summary
 
-Placeholder checkpoint to satisfy typed traceability. Replace with final review findings once the change lands.
+Manual review found one migrated policy path for the embedded prompt lifecycle:
+
+1. `clankers-core` decides prompt/post-prompt/follow-up state transitions.
+2. `clankers-controller/src/core_effects.rs` interprets returned shell work.
+3. `src/modes/event_loop_runner/mod.rs` remains an adapter that replays queued shell input, dispatches controller-selected prompts, and forwards feedback.
+4. `clankers-agent` stays shell-native and only applies controller-owned effects.
+
+No competing local policy path remains in controller, agent, or embedded runtime code for the migrated slice.

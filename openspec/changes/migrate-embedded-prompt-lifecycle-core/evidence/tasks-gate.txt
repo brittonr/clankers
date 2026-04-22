@@ -1,0 +1,47 @@
+Evidence-ID: migrate-embedded-prompt-lifecycle-core.tasks-gate
+Task-ID: V5
+Artifact-Type: deterministic-check
+Covers: no.std.functional.core.continuous.verification, no.std.functional.core.continuous.verification.anti-fork-review-confirms-single-migrated-policy-path
+Created-By: pi
+Created-At: 2026-04-22T12:03:37Z
+Status: complete
+Stage: tasks
+Ran-At: 2026-04-22T12:03:37Z
+Strategy: same-family
+Verdict: PASS
+
+# OpenSpec tasks gate output
+
+## Findings
+
+None.
+
+## Stage Check
+
+- Matches:
+  - Tasks trace cleanly to proposal, design, and modified spec requirements.
+    - Deterministic transition migration is covered by `I2` and verified by `V1` in `openspec/changes/migrate-embedded-prompt-lifecycle-core/tasks.md`.
+    - Correlated feedback split and rejection behavior are covered by `I3` and `V1`.
+    - Controller and embedded shell rewiring are covered by `I4` and `I5`, with parity verification in `V2` and `V3`.
+    - Boundary and future-extraction constraints are carried by `I2`, `I4`, `I6`, `V4`, `V5`, and the human oracle `H1`.
+    - Continuous verification rails are covered by `I7` and `V5`.
+  - Tasks are ordered sensibly:
+    - characterization first (`I1`)
+    - data-flow and lifecycle contract definition (`I2`, `I3`)
+    - shell rewiring (`I4`, `I5`, `I6`, `I7`)
+    - verification and oracle review last (`V1`-`V5`, `H1`)
+  - Tasks are verifiable:
+    - each verification task names concrete files, behaviors, and evidence outputs such as `evidence/reducer-post-prompt-planning.txt`, `evidence/controller-post-prompt-parity.txt`, `evidence/embedded-runtime-parity.txt`, `evidence/agent-parity.txt`, `evidence/validation-suite.txt`, and `evidence/anti-fork-review.txt`.
+  - The traceability matrix is internally consistent with the task list, including oracle-backed requirements such as `no.std.functional.core.future.extraction.boundary.*` and `no.std.functional.core.continuous.verification.anti-fork-review-confirms-single-migrated-policy-path`.
+
+- Missing:
+  - No task-structure gaps are evident from the supplied artifacts.
+  - Evidence file contents were not supplied, so this gate can confirm task completeness and traceability, not independently validate the truth of each `[x]` completion claim.
+
+- Readiness:
+  - The tasks stage artifact is complete and consistent enough to proceed.
+  - Because `tasks.md` shows all work complete (`13 done, 0 in progress, 0 todo`), this change should now move to sync/archive handling rather than remain open in the tasks stage.
+
+## Next Actions
+- Move this change to sync/archive flow; tasks are fully complete.
+- Carry the referenced evidence files and `H1` anti-fork review record into the next gate, since completion claims were only referenced here by path.

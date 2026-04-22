@@ -3,10 +3,36 @@ Task-ID: V2
 Artifact-Type: deterministic-proof
 Covers: no.std.functional.core.shell.parity, no.std.functional.core.shell.parity.prompt-and-prompt-completion-behavior-remain-aligned, no.std.functional.core.shell.parity.thinking-level-behavior-remains-aligned, no.std.functional.core.shell.parity.disabled-tool-behavior-remains-aligned, no.std.functional.core.shell.parity.disabled-tool-stale-slot-rejection-remains-aligned, no.std.functional.core.shell.parity.post-prompt-follow-up-behavior-remains-aligned, no.std.functional.core.shell.parity.failed-loop-follow-up-completion-remains-aligned, no.std.functional.core.shell.parity.loop-control-behavior-remains-aligned, no.std.functional.core.shell.parity.embedded-prompt-lifecycle-behavior-remains-aligned, no.std.functional.core.shell.parity.lifecycle-feedback-rejection-behavior-remains-aligned, no.std.functional.core.future.extraction.boundary.controller-shell-execution-stays-centralized, no.std.functional.core.continuous.verification.shell-parity-coverage-traces-each-adapter-seam
 Created-By: pi
-Created-At: 2026-04-22T21:39:00Z
-Status: pending
+Created-At: 2026-04-22T11:13:30Z
+Status: complete
 
 # Evidence: controller post-prompt parity coverage
 
-Pending implementation.
-Replace with focused controller test commands, exact assertions exercised, and machine-produced pass markers.
+## Command
+
+```bash
+cargo nextest run -p clankers-controller --tests
+```
+
+## Pass markers
+
+- nextest run ID `c62f3cd5-a5d3-4e25-a81d-56659efd1fce`
+- summary: `133 tests run: 133 passed, 2 skipped`
+
+## Focused parity cases exercised
+
+`crates/clankers-controller/src/auto_test.rs` and `crates/clankers-controller/src/command.rs` now keep the migrated lifecycle on one controller path:
+
+- queued replay and precedence: `test_check_post_prompt_replays_queued_prompt_before_follow_up`, `test_check_post_prompt_prefers_loop_over_auto_test_when_both_are_available`
+- prompt completion without extra ack events: `test_prompt_completion_success_keeps_no_ack_and_allows_auto_test_follow_up`, `test_prompt_completion_success_keeps_no_ack_and_allows_loop_follow_up`
+- failed prompt suppression and visible loop failure: `test_prompt_completion_failure_suppresses_follow_up_and_finishes_loop`, `test_notify_prompt_done_with_error_finishes_loop`
+- correlated follow-up dispatch/completion: `test_ack_follow_up_dispatch_and_completion_success_clear_pending_without_extra_events`, `test_follow_up_dispatch_rejection_finishes_loop_and_emits_message`, `test_dispatched_follow_up_failure_without_loop_emits_error_message`
+- negative lifecycle feedback: `test_follow_up_dispatch_rejection_keeps_state_and_emits_error_on_wrong_id`, `test_complete_dispatched_follow_up_before_dispatch_ack_is_rejected`, `test_complete_dispatched_follow_up_duplicate_completion_is_rejected`, `test_prompt_completion_rejection_keeps_state_and_emits_error`, `test_prompt_completion_duplicate_completion_is_rejected`
+- one prompt shell seam plus busy rejection: `test_handle_command_prompt_uses_reducer_start_effect_and_preserves_shell_events`, `test_reject_concurrent_prompt_preserves_busy_rejection_kind_and_no_shell_work`
+- thinking parity: `test_set_thinking_level_valid`, `test_set_thinking_level_invalid`, `test_cycle_thinking_level_order`, `test_slash_thinking_routes_through_reducer_backed_handlers`
+- disabled-tool parity: `test_set_disabled_tools_consumes_reducer_effect_and_emits_change_before_ack`, `test_set_disabled_tools_rejects_stale_pending_rebuild_without_change_event`, `test_tool_filter_feedback_success_emits_disabled_tools_changed_from_reducer_event`, `test_tool_filter_feedback_mismatch_rejection_keeps_state_and_emits_only_error`, `test_tool_filter_feedback_out_of_order_rejection_keeps_state_and_emits_only_error`
+- loop-control parity: `test_start_loop_command_sets_active_loop_without_immediate_event`, `test_stop_loop_command_emits_stop_message`, `test_start_loop_rejects_when_already_active`, `test_stop_loop_rejects_without_active_loop`, `test_loop_control_rejects_when_follow_up_pending`
+
+## Result
+
+Controller parity rail is green. Busy gating, prompt completion, queued replay ordering, follow-up dispatch/completion separation, thinking/tool-filter updates, and loop-control rejections all still flow through reducer-driven controller execution with the expected `DaemonEvent::SystemMessage` and `DaemonEvent::DisabledToolsChanged` behavior.

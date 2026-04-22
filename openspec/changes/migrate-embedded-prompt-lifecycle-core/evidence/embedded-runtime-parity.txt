@@ -3,10 +3,35 @@ Task-ID: V3
 Artifact-Type: deterministic-proof
 Covers: no.std.functional.core.shell.parity.embedded-prompt-lifecycle-behavior-remains-aligned, no.std.functional.core.shell.parity.lifecycle-feedback-rejection-behavior-remains-aligned, no.std.functional.core.future.extraction.boundary.embedded-event-loop-runner-stays-adapter-only, no.std.functional.core.continuous.verification.shell-parity-coverage-traces-each-adapter-seam
 Created-By: pi
-Created-At: 2026-04-22T21:39:00Z
-Status: pending
+Created-At: 2026-04-22T11:13:30Z
+Status: complete
 
 # Evidence: embedded runtime prompt-lifecycle parity coverage
 
-Pending implementation.
-Replace with runtime-seam tests for `src/modes/event_loop_runner/mod.rs`, including queued-prompt precedence, explicit follow-up-dispatch rejection, and no premature loop-follow-up completion.
+## Command
+
+```bash
+env CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc \
+  RUSTFLAGS='-C link-arg=-fuse-ld=bfd' \
+  cargo test --lib event_loop_runner::tests -- --nocapture
+```
+
+## Pass markers
+
+- `running 6 tests`
+- `test result: ok. 6 passed; 0 failed`
+
+## Covered runtime-seam cases
+
+`src/modes/event_loop_runner/mod.rs` tests now pin the embedded adapter behavior:
+
+- `prompt_done_success_replays_queued_prompt_before_follow_up` proves queued user prompt replay still wins over controller-generated follow-up
+- `prompt_done_failure_replays_queued_prompt_without_extra_error_banner` proves failed prompt completion may still replay queued user work while suppressing extra follow-up banners
+- `follow_up_dispatch_channel_failure_surfaces_controller_error` proves rejected dispatch is surfaced explicitly instead of being treated as successful completion
+- `controller_selected_loop_follow_up_stays_pending_until_follow_up_prompt_finishes` proves `handle_task_results()` dispatches the controller-selected `ContinueLoop` prompt without local policy re-derivation, keeps visible loop state unchanged, and leaves the accepted follow-up pending until the follow-up prompt actually finishes
+- `out_of_order_follow_up_completion_surfaces_error_through_app_push_system` proves wrong-stage/out-of-order lifecycle feedback stays unchanged and is surfaced through `App::push_system(..., true)`
+- `sync_controller_session_id_updates_stale_controller_state` keeps the embedded adapter syncing controller-visible shell state instead of owning local policy
+
+## Result
+
+Embedded runtime seam is green. `handle_task_results()` delegates post-prompt choice to `SessionController::check_post_prompt(...)`, dispatches only the controller-selected next action, replays queued input only when the controller emits `ReplayQueuedPrompt`, and routes follow-up dispatch/completion feedback back through controller APIs without synthesizing loop completion locally.

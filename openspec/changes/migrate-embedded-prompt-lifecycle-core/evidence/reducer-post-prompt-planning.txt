@@ -3,10 +3,35 @@ Task-ID: V1
 Artifact-Type: deterministic-proof
 Covers: no.std.functional.core.deterministic.transitions, no.std.functional.core.deterministic.transitions.same-state-same-transition, no.std.functional.core.deterministic.transitions.loop-and-post-prompt-entrypoints-are-included, no.std.functional.core.deterministic.transitions.post-prompt-decisions-use-explicit-core-data, no.std.functional.core.deterministic.transitions.transition-logic-has-no-ambient-runtime-dependencies, no.std.functional.core.deterministic.transitions.embedded-queued-prompt-precedence-is-explicit, no.std.functional.core.deterministic.transitions.loop-continuation-outranks-auto-test-when-both-eligible, no.std.functional.core.correlated.feedback.correlation-identity-is-core-owned, no.std.functional.core.correlated.feedback.pending-work-identities-stay-unambiguous, no.std.functional.core.correlated.feedback.matching-shell-feedback-is-accepted, no.std.functional.core.correlated.feedback.prompt-completion-is-correlated, no.std.functional.core.correlated.feedback.failed-prompt-completion-carries-explicit-failure-data, no.std.functional.core.correlated.feedback.follow-up-dispatch-acknowledgement-is-correlated, no.std.functional.core.correlated.feedback.loop-follow-up-completion-is-correlated, no.std.functional.core.correlated.feedback.failed-loop-follow-up-completion-carries-explicit-failure-data, no.std.functional.core.correlated.feedback.filtered-tool-rebuild-application-is-correlated, no.std.functional.core.correlated.feedback.mismatched-shell-feedback-is-rejected, no.std.functional.core.correlated.feedback.wrong-stage-or-out-of-order-lifecycle-feedback-is-rejected, no.std.functional.core.correlated.feedback.follow-up-dispatch-and-prompt-completion-stay-distinct, no.std.functional.core.continuous.verification.reducer-coverage-traces-each-required-behavior
 Created-By: pi
-Created-At: 2026-04-22T21:39:00Z
-Status: pending
+Created-At: 2026-04-22T11:13:30Z
+Status: complete
 
 # Evidence: reducer and pure post-prompt planning coverage
 
-Pending implementation.
-Replace with the exact test commands, pass markers, and notes showing queued-prompt precedence and distinct dispatch-vs-completion lifecycle coverage.
+## Commands
+
+```bash
+cargo test -p clankers-core --lib -- --nocapture
+cargo test -p clankers-core --test determinism -- --nocapture
+```
+
+## Pass markers
+
+- `cargo test -p clankers-core --lib` finished with `38 passed; 0 failed`
+- `cargo test -p clankers-core --test determinism` finished with `1 passed; 0 failed`
+
+## Covered reducer cases
+
+Positive and negative reducer tests in `crates/clankers-core/src/reducer.rs` now cover the migrated slice directly, including:
+
+- prompt start and busy rejection: `prompt_request_marks_busy_and_emits_start_effect`, `repeated_prompt_request_is_rejected_while_busy`
+- prompt completion success/failure: `prompt_completion_success_clears_busy_without_loop_mutation`, `prompt_completion_failure_clears_active_loop_and_pending_follow_up`, `prompt_completion_empty_slot_is_rejected_with_prompt_mismatch`, `duplicate_prompt_completion_is_rejected_after_slot_clears`
+- explicit post-prompt ordering: `post_prompt_evaluation_prefers_loop_follow_up`, `post_prompt_evaluation_schedules_auto_test_when_loop_inactive`, `post_prompt_evaluation_replays_queued_prompt_before_follow_up`, `post_prompt_evaluation_emits_loop_clear_before_auto_test`
+- loop control and rejection: `start_loop_transitions_to_active_loop_state`, `start_loop_rejects_when_already_active`, `start_loop_rejects_when_follow_up_pending`, `stop_loop_clears_active_loop`, `stop_loop_requires_active_loop`, `stop_loop_rejects_when_follow_up_pending`
+- follow-up dispatch vs completion staging: `follow_up_dispatch_acceptance_advances_stage_without_clearing_pending`, `follow_up_dispatch_rejection_clears_pending_and_ends_loop`, `follow_up_completion_before_dispatch_ack_is_rejected_as_wrong_stage`, `dispatched_follow_up_prompt_completion_clears_busy_without_finishing_loop_locally`, `loop_follow_up_completion_success_clears_pending_without_extra_effects`, `loop_follow_up_completion_failure_clears_pending_and_ends_loop`
+- correlation and mismatch rails: `simultaneous_pending_slots_keep_effect_ids_unambiguous_across_feedback_kinds`, `mismatched_feedback_tokens_are_rejected_without_state_change`, `out_of_order_runtime_results_are_rejected`, `duplicate_follow_up_dispatch_ack_is_rejected_as_wrong_stage`, `duplicate_loop_follow_up_completion_is_rejected_after_slot_clears`, `tool_filter_feedback_accepts_matching_applied_set`, `tool_filter_feedback_empty_slot_is_rejected_with_tool_filter_mismatch`, `tool_filter_feedback_with_mismatched_applied_set_is_rejected`, `duplicate_tool_filter_feedback_is_rejected_after_slot_clears`
+- thinking and disabled-tool transitions: `valid_thinking_level_updates_state_and_effects`, `cycle_thinking_level_uses_shared_transition_order`, `invalid_thinking_level_is_rejected_without_state_change`, `disabled_tools_request_sets_pending_filter`, `disabled_tools_request_is_rejected_while_filter_pending`
+
+## Determinism replay rail
+
+`crates/clankers-core/tests/determinism.rs::reducer_replays_identical_state_and_input_pairs_deterministically` replays identical state/input pairs for prompt requests, prompt completion, post-prompt evaluation, thinking changes, disabled-tool changes, tool-filter feedback, loop follow-up completion, and loop control. Both runs returned identical `CoreOutcome` values for each case.
