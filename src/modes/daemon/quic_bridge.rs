@@ -12,9 +12,21 @@
 use std::sync::Arc;
 
 use clankers_controller::transport::DaemonState;
-use clankers_protocol::DaemonEvent;
+use clankers_controller::transport::SessionSocketInfo;
+use clankers_controller::transport_convert::attach_error;
+use clankers_controller::transport_convert::attach_ok;
+use clankers_controller::transport_convert::control_attached;
+use clankers_controller::transport_convert::control_created;
+use clankers_controller::transport_convert::control_error;
+use clankers_controller::transport_convert::control_killed;
+use clankers_controller::transport_convert::control_plugins;
+use clankers_controller::transport_convert::control_restarting;
+use clankers_controller::transport_convert::control_sessions;
+use clankers_controller::transport_convert::control_shutting_down;
+use clankers_controller::transport_convert::control_status;
+use clankers_controller::transport_convert::control_tree;
+use clankers_controller::transport_convert::session_info_event;
 use clankers_protocol::SessionCommand;
-use clankers_protocol::types::AttachResponse;
 use clankers_protocol::types::DaemonRequest;
 use clankers_protocol::types::PROTOCOL_VERSION;
 use tokio::sync::Mutex;
@@ -144,9 +156,7 @@ async fn handle_control_stream(
         } => {
             if !should_skip_token_check && token.is_none() {
                 warn!("QUIC CreateSession rejected: no auth token");
-                clankers_protocol::ControlResponse::Error {
-                    message: "authentication token required for remote session creation".to_string(),
-                }
+                control_error("authentication token required for remote session creation")
             } else {
                 // Verify token and extract capabilities when auth is available
                 let capabilities = if let Some(token_b64) = token.as_deref()
@@ -157,18 +167,17 @@ async fn handle_control_stream(
                             Ok(caps) => Some(caps),
                             Err(e) => {
                                 warn!("QUIC CreateSession: token verification failed: {e}");
-                                return write_quic_frame(send, &clankers_protocol::ControlResponse::Error {
-                                    message: format!("token verification failed: {e}"),
-                                })
+                                return write_quic_frame(
+                                    send,
+                                    &control_error(format!("token verification failed: {e}")),
+                                )
                                 .await;
                             }
                         },
                         Err(e) => {
                             warn!("QUIC CreateSession: invalid token encoding: {e}");
-                            return write_quic_frame(send, &clankers_protocol::ControlResponse::Error {
-                                message: format!("invalid token encoding: {e}"),
-                            })
-                            .await;
+                            return write_quic_frame(send, &control_error(format!("invalid token encoding: {e}")))
+                                .await;
                         }
                     }
                 } else {
@@ -196,47 +205,38 @@ fn dispatch_readonly_control(
     factory: &Arc<SessionFactory>,
 ) -> clankers_protocol::ControlResponse {
     use clankers_protocol::ControlCommand;
-    use clankers_protocol::ControlResponse;
 
     match cmd {
-        ControlCommand::ListSessions => ControlResponse::Sessions(state.session_summaries()),
-        ControlCommand::Status => ControlResponse::Status(state.status()),
-        ControlCommand::ProcessTree => ControlResponse::Tree(vec![]),
+        ControlCommand::ListSessions => control_sessions(state),
+        ControlCommand::Status => control_status(state),
+        ControlCommand::ProcessTree => control_tree(vec![]),
         ControlCommand::KillSession { session_id } => {
             if let Some(handle) = state.sessions.get(&session_id) {
                 if let Some(ref tx) = handle.cmd_tx {
                     tx.send(SessionCommand::Disconnect).ok();
                 }
-                ControlResponse::Killed
+                control_killed()
             } else {
-                ControlResponse::Error {
-                    message: format!("session '{session_id}' not found"),
-                }
+                control_error(format!("session '{session_id}' not found"))
             }
         }
         ControlCommand::AttachSession { session_id } => {
             if let Some(handle) = state.sessions.get(&session_id) {
-                ControlResponse::Attached {
-                    socket_path: handle.socket_path.to_string_lossy().into_owned(),
-                }
+                control_attached(&handle.socket_path)
             } else {
-                ControlResponse::Error {
-                    message: format!("session '{session_id}' not found"),
-                }
+                control_error(format!("session '{session_id}' not found"))
             }
         }
-        ControlCommand::Shutdown => ControlResponse::ShuttingDown,
-        ControlCommand::RestartDaemon => ControlResponse::Restarting,
-        ControlCommand::CreateSession { .. } => ControlResponse::Error {
-            message: "internal: CreateSession routed to readonly dispatch".to_string(),
-        },
+        ControlCommand::Shutdown => control_shutting_down(),
+        ControlCommand::RestartDaemon => control_restarting(),
+        ControlCommand::CreateSession { .. } => control_error("internal: CreateSession routed to readonly dispatch"),
         ControlCommand::ListPlugins => {
             let summaries = if let Some(ref pm) = factory.plugin_manager {
                 crate::plugin::build_protocol_plugin_summaries(pm)
             } else {
                 Vec::new()
             };
-            ControlResponse::Plugins(summaries)
+            control_plugins(summaries)
         }
     }
 }
@@ -318,9 +318,7 @@ async fn create_session_over_quic(
             if let Some(ref catalog) = factory.catalog {
                 catalog.set_state(&session_id, super::session_store::SessionLifecycle::Tombstoned);
             }
-            return clankers_protocol::ControlResponse::Error {
-                message: format!("failed to bind session socket for {session_id}: {e}"),
-            };
+            return control_error(format!("failed to bind session socket for {session_id}: {e}"));
         }
     };
     let sock_shutdown = shutdown.clone();
@@ -339,10 +337,7 @@ async fn create_session_over_quic(
     });
 
     info!("created session {session_id} via QUIC (model: {resolved_model})");
-    clankers_protocol::ControlResponse::Created {
-        session_id,
-        socket_path: socket_path.to_string_lossy().into_owned(),
-    }
+    control_created(&session_id, &socket_path)
 }
 
 /// Handle a session attach over QUIC.
@@ -370,12 +365,10 @@ async fn handle_attach_stream(
 ) -> Result<(), clankers_protocol::FrameError> {
     // Validate protocol version
     if handshake.protocol_version != PROTOCOL_VERSION {
-        let resp = AttachResponse::Error {
-            message: format!(
-                "unsupported protocol version {} (expected {PROTOCOL_VERSION})",
-                handshake.protocol_version,
-            ),
-        };
+        let resp = attach_error(format!(
+            "unsupported protocol version {} (expected {PROTOCOL_VERSION})",
+            handshake.protocol_version,
+        ));
         write_quic_frame(&mut send, &resp).await?;
         send.finish().ok();
         return Ok(());
@@ -384,9 +377,7 @@ async fn handle_attach_stream(
     // Require token for remote QUIC connections (unless --allow-all)
     if !should_skip_token_check && handshake.token.is_none() {
         warn!("QUIC attach rejected: no auth token in handshake");
-        let resp = AttachResponse::Error {
-            message: "authentication token required for remote connections".to_string(),
-        };
+        let resp = attach_error("authentication token required for remote connections");
         write_quic_frame(&mut send, &resp).await?;
         send.finish().ok();
         return Ok(());
@@ -401,9 +392,7 @@ async fn handle_attach_stream(
             match st.sessions.keys().next() {
                 Some(id) => id.clone(),
                 None => {
-                    let resp = AttachResponse::Error {
-                        message: "no sessions available".to_string(),
-                    };
+                    let resp = attach_error("no sessions available");
                     write_quic_frame(&mut send, &resp).await?;
                     send.finish().ok();
                     return Ok(());
@@ -422,9 +411,7 @@ async fn handle_attach_stream(
             match super::agent_process::recover_session(&session_id, registry, factory, &mut st, shutdown) {
                 Ok((cmd_tx, event_tx)) => (cmd_tx, event_tx.subscribe()),
                 Err(e) => {
-                    let resp = AttachResponse::Error {
-                        message: format!("session recovery failed: {e}"),
-                    };
+                    let resp = attach_error(format!("session recovery failed: {e}"));
                     write_quic_frame(&mut send, &resp).await?;
                     send.finish().ok();
                     return Ok(());
@@ -434,17 +421,13 @@ async fn handle_attach_stream(
             match st.sessions.get(&session_id) {
                 Some(handle) => {
                     let Some(ref cmd_tx) = handle.cmd_tx else {
-                        let resp = AttachResponse::Error {
-                            message: format!("session '{session_id}' has no command channel"),
-                        };
+                        let resp = attach_error(format!("session '{session_id}' has no command channel"));
                         write_quic_frame(&mut send, &resp).await?;
                         send.finish().ok();
                         return Ok(());
                     };
                     let Some(ref event_tx) = handle.event_tx else {
-                        let resp = AttachResponse::Error {
-                            message: format!("session '{session_id}' has no event channel"),
-                        };
+                        let resp = attach_error(format!("session '{session_id}' has no event channel"));
                         write_quic_frame(&mut send, &resp).await?;
                         send.finish().ok();
                         return Ok(());
@@ -452,9 +435,7 @@ async fn handle_attach_stream(
                     (cmd_tx.clone(), event_tx.subscribe())
                 }
                 None => {
-                    let resp = AttachResponse::Error {
-                        message: format!("session '{session_id}' not found"),
-                    };
+                    let resp = attach_error(format!("session '{session_id}' not found"));
                     write_quic_frame(&mut send, &resp).await?;
                     send.finish().ok();
                     return Ok(());
@@ -466,21 +447,11 @@ async fn handle_attach_stream(
     info!("QUIC attach to session {session_id} from {}", handshake.client_name);
 
     // Send attach success
-    let resp = AttachResponse::Ok {
-        session_id: session_id.clone(),
-    };
+    let resp = attach_ok(&session_id);
     write_quic_frame(&mut send, &resp).await?;
 
     // Send SessionInfo (same as Unix socket flow)
-    let session_info = DaemonEvent::SessionInfo {
-        session_id: session_id.clone(),
-        model: String::new(),
-        system_prompt_hash: String::new(),
-        available_models: Vec::new(),
-        active_account: String::new(),
-        disabled_tools: Vec::new(),
-        auto_test_command: None,
-    };
+    let session_info = session_info_event(&session_id, &SessionSocketInfo::default());
     write_quic_frame(&mut send, &session_info).await?;
 
     // Bidirectional relay: QUIC ↔ session channels

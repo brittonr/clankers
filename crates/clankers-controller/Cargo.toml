@@ -25,6 +25,7 @@ libc = "0.2"
 
 [dev-dependencies]
 async-trait = "0.1"
+syn = { version = "2", features = ["full", "visit"] }
 tempfile = "3.8"
 
 [lints.rust]

@@ -7,6 +7,7 @@ use std::io;
 use std::time::Duration;
 
 use clankers_controller::client::ClientAdapter;
+use clankers_controller::transport_convert::client_handshake;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
 use clankers_protocol::frame;
@@ -141,12 +142,8 @@ pub async fn run_remote_attach(
 
     // Send DaemonRequest::Attach as the first frame, then the normal
     // session protocol continues over the same stream.
-    let handshake = clankers_protocol::Handshake {
-        protocol_version: clankers_protocol::types::PROTOCOL_VERSION,
-        client_name: format!("clankers-tui/{}", env!("CARGO_PKG_VERSION")),
-        token: None,
-        session_id: target_session_id.clone(),
-    };
+    let handshake =
+        client_handshake(&format!("clankers-tui/{}", env!("CARGO_PKG_VERSION")), None, target_session_id.clone());
     let request = clankers_protocol::DaemonRequest::Attach {
         handshake: handshake.clone(),
     };

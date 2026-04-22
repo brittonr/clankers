@@ -7,14 +7,14 @@ use clankers_protocol::command::SessionCommand;
 use clankers_protocol::event::DaemonEvent;
 use clankers_protocol::frame::FrameError;
 use clankers_protocol::frame::{self};
-use clankers_protocol::types::Handshake;
-use clankers_protocol::types::{self};
 use tokio::io::AsyncRead;
 use tokio::io::AsyncWrite;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::mpsc;
 use tracing::debug;
 use tracing::warn;
+
+use crate::transport_convert::client_handshake;
 
 /// Client-side adapter that converts between the protocol and local events.
 ///
@@ -49,7 +49,10 @@ impl ClientAdapter {
     /// Connect to a daemon session over the given stream.
     ///
     /// Performs the handshake, then spawns background tasks for reading/writing.
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(unbounded_loop, reason = "event loop; bounded by channel close")
+    )]
     pub async fn connect<S>(
         stream: S,
         client_name: &str,
@@ -62,12 +65,7 @@ impl ClientAdapter {
         let (reader, mut writer) = tokio::io::split(stream);
 
         // Send handshake
-        let handshake = Handshake {
-            protocol_version: types::PROTOCOL_VERSION,
-            client_name: client_name.to_string(),
-            token,
-            session_id,
-        };
+        let handshake = client_handshake(client_name, token, session_id);
         frame::write_frame(&mut writer, &handshake).await?;
 
         // Read initial SessionInfo
@@ -195,6 +193,7 @@ pub fn is_client_side_command(command: &str) -> bool {
 mod tests {
     use std::time::Duration;
 
+    use clankers_protocol::types::Handshake;
     use clankers_protocol::types::PROTOCOL_VERSION;
 
     use super::*;
@@ -290,9 +289,11 @@ mod tests {
         assert!(!adapter.is_disconnected());
 
         // Send a test event
-        event_tx.send(DaemonEvent::TextDelta {
-            text: "test".to_string(),
-        }).unwrap();
+        event_tx
+            .send(DaemonEvent::TextDelta {
+                text: "test".to_string(),
+            })
+            .unwrap();
 
         // Should be able to send commands
         assert!(adapter.send(SessionCommand::Abort));

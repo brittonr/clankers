@@ -11,7 +11,6 @@ use std::time::Instant;
 
 use clankers_protocol::SessionCommand;
 use clankers_protocol::control::ControlCommand;
-use clankers_protocol::control::ControlResponse;
 use clankers_protocol::control::DaemonStatus;
 use clankers_protocol::control::SessionSummary;
 use clankers_protocol::event::DaemonEvent;
@@ -28,6 +27,19 @@ use tracing::debug;
 use tracing::error;
 use tracing::info;
 use tracing::warn;
+
+use crate::transport_convert::control_attached;
+use crate::transport_convert::control_error;
+use crate::transport_convert::control_killed;
+use crate::transport_convert::control_plugins;
+use crate::transport_convert::control_restarting;
+use crate::transport_convert::control_sessions;
+use crate::transport_convert::control_shutting_down;
+use crate::transport_convert::control_status;
+use crate::transport_convert::control_tree;
+use crate::transport_convert::daemon_status;
+use crate::transport_convert::session_info_event;
+use crate::transport_convert::session_summary;
 
 // Socket directory layout:
 //   $XDG_RUNTIME_DIR/clankers/
@@ -244,27 +256,11 @@ impl DaemonState {
     }
 
     pub fn session_summaries(&self) -> Vec<SessionSummary> {
-        self.sessions
-            .values()
-            .map(|h| SessionSummary {
-                session_id: h.session_id.clone(),
-                model: h.model.clone(),
-                turn_count: h.turn_count,
-                last_active: h.last_active.clone(),
-                client_count: h.client_count,
-                socket_path: h.socket_path.to_string_lossy().into_owned(),
-                state: h.state.clone(),
-            })
-            .collect()
+        self.sessions.values().map(session_summary).collect()
     }
 
     pub fn status(&self) -> DaemonStatus {
-        DaemonStatus {
-            uptime_secs: self.started_at.elapsed().as_secs_f64(),
-            session_count: self.sessions.len(),
-            total_clients: self.sessions.values().map(|h| h.client_count).sum(),
-            pid: std::process::id(),
-        }
+        daemon_status(self)
     }
 }
 
@@ -326,45 +322,37 @@ async fn handle_control_connection(mut stream: UnixStream, state: Arc<Mutex<Daem
     let response = {
         let state = state.lock().await;
         match cmd {
-            ControlCommand::ListSessions => ControlResponse::Sessions(state.session_summaries()),
-            ControlCommand::Status => ControlResponse::Status(state.status()),
+            ControlCommand::ListSessions => control_sessions(&state),
+            ControlCommand::Status => control_status(&state),
             ControlCommand::ProcessTree => {
                 // Process tree would come from the actor registry
-                ControlResponse::Tree(vec![])
+                control_tree(vec![])
             }
             ControlCommand::KillSession { session_id } => {
                 if let Some(handle) = state.sessions.get(&session_id) {
                     if let Some(ref tx) = handle.cmd_tx {
                         tx.send(SessionCommand::Disconnect).ok();
                     }
-                    ControlResponse::Killed
+                    control_killed()
                 } else {
-                    ControlResponse::Error {
-                        message: format!("session '{session_id}' not found"),
-                    }
+                    control_error(format!("session '{session_id}' not found"))
                 }
             }
             ControlCommand::AttachSession { session_id } => {
                 if let Some(handle) = state.sessions.get(&session_id) {
-                    ControlResponse::Attached {
-                        socket_path: handle.socket_path.to_string_lossy().into_owned(),
-                    }
+                    control_attached(&handle.socket_path)
                 } else {
-                    ControlResponse::Error {
-                        message: format!("session '{session_id}' not found"),
-                    }
+                    control_error(format!("session '{session_id}' not found"))
                 }
             }
             ControlCommand::CreateSession { .. } => {
                 // Session creation requires mutable state and agent setup.
                 // The caller handles this after receiving the response.
-                ControlResponse::Error {
-                    message: "CreateSession must be handled by the daemon main loop".to_string(),
-                }
+                control_error("CreateSession must be handled by the daemon main loop")
             }
-            ControlCommand::Shutdown => ControlResponse::ShuttingDown,
-            ControlCommand::RestartDaemon => ControlResponse::Restarting,
-            ControlCommand::ListPlugins => ControlResponse::Plugins(vec![]),
+            ControlCommand::Shutdown => control_shutting_down(),
+            ControlCommand::RestartDaemon => control_restarting(),
+            ControlCommand::ListPlugins => control_plugins(vec![]),
         }
     };
 
@@ -492,16 +480,9 @@ where
     // 2. Send SessionInfo
     {
         let mut w = writer.lock().await;
-        frame::write_frame(&mut *w, &DaemonEvent::SessionInfo {
-            session_id: session_id.clone(),
-            model: String::new(),
-            system_prompt_hash: String::new(),
-            available_models: Vec::new(),
-            active_account: String::new(),
-            disabled_tools: Vec::new(),
-            auto_test_command: None,
-        })
-        .await?;
+        let info = SessionSocketInfo::default();
+        let session_info = session_info_event(&session_id, &info);
+        frame::write_frame(&mut *w, &session_info).await?;
     }
 
     // 3. Bidirectional event loop: read commands, write events

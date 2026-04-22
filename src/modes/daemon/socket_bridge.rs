@@ -11,6 +11,16 @@ use clankers_controller::SessionController;
 use clankers_controller::transport::DaemonState;
 use clankers_controller::transport::SessionHandle;
 use clankers_controller::transport::session_socket_path;
+use clankers_controller::transport_convert::control_attached;
+use clankers_controller::transport_convert::control_created;
+use clankers_controller::transport_convert::control_error;
+use clankers_controller::transport_convert::control_killed;
+use clankers_controller::transport_convert::control_plugins;
+use clankers_controller::transport_convert::control_restarting;
+use clankers_controller::transport_convert::control_sessions;
+use clankers_controller::transport_convert::control_shutting_down;
+use clankers_controller::transport_convert::control_status;
+use clankers_controller::transport_convert::control_tree;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
 use clankers_protocol::control::ControlCommand;
@@ -235,9 +245,10 @@ async fn handle_control(
                     if let Some(ref catalog) = factory.catalog {
                         catalog.set_state(&session_id, super::session_store::SessionLifecycle::Tombstoned);
                     }
-                    return frame::write_frame(&mut writer, &ControlResponse::Error {
-                        message: format!("failed to bind session socket for {session_id}: {e}"),
-                    })
+                    return frame::write_frame(
+                        &mut writer,
+                        &control_error(format!("failed to bind session socket for {session_id}: {e}")),
+                    )
                     .await;
                 }
             };
@@ -269,10 +280,7 @@ async fn handle_control(
                 info!("created session {session_id} (model: {resolved_model})");
             }
 
-            ControlResponse::Created {
-                session_id,
-                socket_path: socket_path.to_string_lossy().into_owned(),
-            }
+            control_created(&session_id, &socket_path)
         }
 
         ControlCommand::AttachSession { session_id } => {
@@ -287,20 +295,14 @@ async fn handle_control(
                             .get(&session_id)
                             .map(|h| h.socket_path.to_string_lossy().into_owned())
                             .unwrap_or_default();
-                        ControlResponse::Attached { socket_path }
+                        control_attached(std::path::Path::new(&socket_path))
                     }
-                    Err(e) => ControlResponse::Error {
-                        message: format!("recovery failed: {e}"),
-                    },
+                    Err(e) => control_error(format!("recovery failed: {e}")),
                 }
             } else if let Some(handle) = st.sessions.get(&session_id) {
-                ControlResponse::Attached {
-                    socket_path: handle.socket_path.to_string_lossy().into_owned(),
-                }
+                control_attached(&handle.socket_path)
             } else {
-                ControlResponse::Error {
-                    message: format!("session '{session_id}' not found"),
-                }
+                control_error(format!("session '{session_id}' not found"))
             }
         }
 
@@ -320,9 +322,9 @@ async fn dispatch_control_command(
 ) -> ControlResponse {
     let st = state.lock().await;
     match cmd {
-        ControlCommand::ListSessions => ControlResponse::Sessions(st.session_summaries()),
-        ControlCommand::Status => ControlResponse::Status(st.status()),
-        ControlCommand::ProcessTree => ControlResponse::Tree(vec![]),
+        ControlCommand::ListSessions => control_sessions(&st),
+        ControlCommand::Status => control_status(&st),
+        ControlCommand::ProcessTree => control_tree(vec![]),
         ControlCommand::KillSession { session_id } => {
             if let Some(handle) = st.sessions.get(&session_id) {
                 if let Some(ref tx) = handle.cmd_tx {
@@ -331,24 +333,18 @@ async fn dispatch_control_command(
                 if let Some(ref catalog) = factory.catalog {
                     catalog.set_state(&session_id, super::session_store::SessionLifecycle::Tombstoned);
                 }
-                ControlResponse::Killed
+                control_killed()
             } else {
-                ControlResponse::Error {
-                    message: format!("session '{session_id}' not found"),
-                }
+                control_error(format!("session '{session_id}' not found"))
             }
         }
         ControlCommand::AttachSession { .. } => {
             // Handled in caller (needs mutable state for recovery)
-            ControlResponse::Error {
-                message: "internal error: AttachSession routed to dispatch".to_string(),
-            }
+            control_error("internal error: AttachSession routed to dispatch")
         }
         ControlCommand::CreateSession { .. } => {
             // Should not reach here — handled in the caller
-            ControlResponse::Error {
-                message: "internal error: CreateSession routed to dispatch".to_string(),
-            }
+            control_error("internal error: CreateSession routed to dispatch")
         }
         ControlCommand::Shutdown => {
             // Trigger daemon shutdown — runs checkpoint sequence.
@@ -358,14 +354,14 @@ async fn dispatch_control_command(
             unsafe {
                 libc::kill(libc::getpid(), libc::SIGTERM);
             }
-            ControlResponse::ShuttingDown
+            control_shutting_down()
         }
         ControlCommand::RestartDaemon => {
             super::RESTART_REQUESTED.store(true, std::sync::atomic::Ordering::SeqCst);
             unsafe {
                 libc::kill(libc::getpid(), libc::SIGTERM);
             }
-            ControlResponse::Restarting
+            control_restarting()
         }
         ControlCommand::ListPlugins => {
             let summaries = if let Some(ref pm) = factory.plugin_manager {
@@ -373,7 +369,7 @@ async fn dispatch_control_command(
             } else {
                 Vec::new()
             };
-            ControlResponse::Plugins(summaries)
+            control_plugins(summaries)
         }
     }
 }

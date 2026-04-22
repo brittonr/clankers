@@ -13,13 +13,14 @@ pub mod capability;
 pub mod client;
 pub mod command;
 pub mod config;
-pub mod core_effects;
 pub mod confirm;
 pub mod convert;
+pub mod core_effects;
 pub mod event_processing;
 pub mod loop_mode;
 pub mod persistence;
 pub mod transport;
+pub mod transport_convert;
 
 use std::collections::HashMap;
 use std::sync::Arc;
