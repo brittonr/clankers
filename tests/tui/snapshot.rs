@@ -474,11 +474,16 @@ pub fn normalize_styled_text(text: &str) -> String {
 ///
 /// Replaces volatile fields (git status counters, timestamps, etc.)
 /// with stable placeholders so snapshots don't break on unrelated changes.
-const TODO_EMPTY_TEXT: &str = "No items. Use /todo add <text> or the todo tool.";
-const TODO_MESSAGES_MARKER: &str = " │┌Messages";
+const TODO_EMPTY_FIRST_ROW_TEXT: &str = "No items. Use";
+const TODO_MESSAGES_TITLE: &str = "┌Messages";
 
 pub fn normalize_screen_text(text: &str) -> String {
-    text.lines().map(normalize_line).collect::<Vec<_>>().join("\n")
+    text.lines().map(normalize_screen_line).collect::<Vec<_>>().join("\n")
+}
+
+fn normalize_screen_line(line: &str) -> String {
+    let normalized = normalize_line(line);
+    normalize_todo_empty_first_row(&normalized)
 }
 
 fn clip_prefix_to_width(text: &str, width: usize) -> String {
@@ -487,15 +492,21 @@ fn clip_prefix_to_width(text: &str, width: usize) -> String {
 }
 
 fn normalize_todo_empty_first_row(line: &str) -> String {
-    let Some(marker_start) = line.find(TODO_MESSAGES_MARKER) else {
+    let Some(marker_start) = line.find(TODO_MESSAGES_TITLE) else {
         return line.to_string();
     };
     let Some(open_border) = line.find('│') else {
         return line.to_string();
     };
-    let Some(close_border) = line[..marker_start].rfind('│') else {
+    let separator_start = line[..marker_start]
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| !matches!(*ch, '│' | ' '))
+        .map_or(0, |(idx, ch)| idx + ch.len_utf8());
+    let Some(close_border_offset) = line[separator_start..marker_start].find('│') else {
         return line.to_string();
     };
+    let close_border = separator_start + close_border_offset;
     let inner_start = open_border + '│'.len_utf8();
     if close_border <= inner_start {
         return line.to_string();
@@ -506,7 +517,7 @@ fn normalize_todo_empty_first_row(line: &str) -> String {
         return line.to_string();
     }
 
-    let stable_inner = clip_prefix_to_width(TODO_EMPTY_TEXT, current_inner.chars().count());
+    let stable_inner = clip_prefix_to_width(TODO_EMPTY_FIRST_ROW_TEXT, current_inner.chars().count());
     format!("{}{}{}", &line[..inner_start], stable_inner, &line[close_border..])
 }
 
@@ -649,4 +660,42 @@ pub fn save_ansi_capture(name: &str, ansi: &str) {
     std::fs::create_dir_all(&dir).ok();
     let path = dir.join(format!("{name}.ansi"));
     std::fs::write(&path, ansi).expect("failed to write ANSI capture");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::normalize_screen_text;
+    use super::normalize_todo_empty_first_row;
+
+    const TMUX_TODO_ROW_WITH_BLEED: &str =
+        "│No items. Useh││┌Messages────────────────────────────┐││No subagents running  │";
+    const TMUX_TODO_ROW_NORMALIZED: &str =
+        "│No items. Use ││┌Messages────────────────────────────┐││No subagents running  │";
+    const TMUX_WIDE_TODO_ROW_WITH_BLEED: &str =
+        "│No items. Use /tod││┌Messages──────────────────────────────────────┐││No subagents running        │";
+    const TMUX_WIDE_TODO_ROW_NORMALIZED: &str =
+        "│No items. Use     ││┌Messages──────────────────────────────────────┐││No subagents running        │";
+    const STRUCTURE_TODO_ROW_WITH_SPACER: &str = " │No items. Useh│ │┌Messages───────────── ┐ │ │No subagents │";
+    const STRUCTURE_TODO_ROW_NORMALIZED: &str = " │No items. Use │ │┌Messages───────────── ┐ │ │No subagents │";
+    const NON_EMPTY_TODO_ROW: &str = "│/todo add     ││┌Messages────────────────────────────┐││No subagents running  │";
+
+    #[test]
+    fn normalize_screen_text_stabilizes_tmux_todo_row() {
+        assert_eq!(normalize_screen_text(TMUX_TODO_ROW_WITH_BLEED), TMUX_TODO_ROW_NORMALIZED);
+    }
+
+    #[test]
+    fn normalize_screen_text_stabilizes_wide_tmux_todo_row() {
+        assert_eq!(normalize_screen_text(TMUX_WIDE_TODO_ROW_WITH_BLEED), TMUX_WIDE_TODO_ROW_NORMALIZED);
+    }
+
+    #[test]
+    fn normalize_todo_empty_first_row_handles_structure_separator_spacing() {
+        assert_eq!(normalize_todo_empty_first_row(STRUCTURE_TODO_ROW_WITH_SPACER), STRUCTURE_TODO_ROW_NORMALIZED);
+    }
+
+    #[test]
+    fn normalize_todo_empty_first_row_leaves_non_empty_rows_unchanged() {
+        assert_eq!(normalize_todo_empty_first_row(NON_EMPTY_TODO_ROW), NON_EMPTY_TODO_ROW);
+    }
 }
