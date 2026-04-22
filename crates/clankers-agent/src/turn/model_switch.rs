@@ -16,11 +16,13 @@ pub(super) fn check_model_switch(
         && let Some(new_model) = slot.lock().take()
     {
         tracing::info!("Agent-requested model switch: {} → {}", active_model, new_model);
-        event_tx.send(AgentEvent::ModelChange {
-            from: active_model.clone(),
-            to: new_model.clone(),
-            reason: "agent_request".to_string(),
-        }).ok();
+        event_tx
+            .send(AgentEvent::ModelChange {
+                from: active_model.clone(),
+                to: new_model.clone(),
+                reason: "agent_request".to_string(),
+            })
+            .ok();
         *active_model = new_model;
     }
     Ok(())

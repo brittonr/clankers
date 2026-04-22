@@ -106,7 +106,12 @@ impl ContentBlockBuilder {
 
     pub(crate) fn finalize(mut self) -> Content {
         // Parse accumulated JSON for ToolUse
-        if let Content::ToolUse { ref mut input, ref name, .. } = self.content {
+        if let Content::ToolUse {
+            ref mut input,
+            ref name,
+            ..
+        } = self.content
+        {
             match self.raw_json {
                 Some(ref json_str) if !json_str.is_empty() => {
                     match serde_json::from_str::<Value>(json_str) {
@@ -118,7 +123,9 @@ impl ContentBlockBuilder {
                             // still sees something rather than empty {}.
                             tracing::warn!(
                                 tool = name,
-                                json_type = parsed.as_str().map(|_| "string")
+                                json_type = parsed
+                                    .as_str()
+                                    .map(|_| "string")
                                     .or(parsed.as_array().map(|_| "array"))
                                     .unwrap_or("other"),
                                 "tool input JSON is not an object, wrapping in {{\"_raw\": ...}}",
@@ -199,7 +206,9 @@ pub async fn run_turn_loop(
             let mut last_err = None;
             let mut collected_ok = None;
             for attempt in 0..=MAX_TURN_RETRIES {
-                match execute_turn(provider, messages, config, &active_model, &tool_defs, event_tx, &cancel, session_id).await {
+                match execute_turn(provider, messages, config, &active_model, &tool_defs, event_tx, &cancel, session_id)
+                    .await
+                {
                     Ok(c) => {
                         collected_ok = Some(c);
                         break;
@@ -246,9 +255,8 @@ pub async fn run_turn_loop(
             "turn collected",
         );
         for (call_id, name, input) in &tool_calls {
-            let input_keys: Vec<&str> = input.as_object()
-                .map(|m| m.keys().map(|k| k.as_str()).collect())
-                .unwrap_or_default();
+            let input_keys: Vec<&str> =
+                input.as_object().map(|m| m.keys().map(|k| k.as_str()).collect()).unwrap_or_default();
             tracing::debug!(
                 call_id,
                 tool = name,
@@ -268,11 +276,13 @@ pub async fn run_turn_loop(
                     "tool calls present but stop_reason is not ToolUse — tools will NOT execute",
                 );
             }
-            event_tx.send(AgentEvent::TurnEnd {
-                index: turn_index,
-                message: assistant_msg,
-                tool_results: vec![],
-            }).ok();
+            event_tx
+                .send(AgentEvent::TurnEnd {
+                    index: turn_index,
+                    message: assistant_msg,
+                    tool_results: vec![],
+                })
+                .ok();
             break;
         }
 
@@ -294,11 +304,13 @@ pub async fn run_turn_loop(
             messages.push(AgentMessage::ToolResult(msg.clone()));
         }
 
-        event_tx.send(AgentEvent::TurnEnd {
-            index: turn_index,
-            message: assistant_msg,
-            tool_results: tool_result_messages,
-        }).ok();
+        event_tx
+            .send(AgentEvent::TurnEnd {
+                index: turn_index,
+                message: assistant_msg,
+                tool_results: tool_result_messages,
+            })
+            .ok();
     }
 
     Ok(())
@@ -394,7 +406,10 @@ pub(crate) fn tool_result_content_to_message_content(tool_content: &[crate::tool
 }
 
 #[cfg(test)]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_panic, no_unwrap, reason = "test code — panics are assertions"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_panic, no_unwrap, reason = "test code — panics are assertions")
+)]
 mod tests {
     use std::sync::Arc;
 
@@ -779,10 +794,8 @@ mod tests {
 
         // Filter only allows "read" — direct_tool should be blocked
         let filter = Some(vec!["read".to_string()]);
-        let results = execute_tools_parallel(
-            &tools, &tool_calls, &event_tx, cancel, None, "", None, None, filter,
-        )
-        .await;
+        let results =
+            execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel, None, "", None, None, filter).await;
 
         assert_eq!(results.len(), 1);
         assert!(results[0].is_error);
@@ -806,10 +819,8 @@ mod tests {
 
         // Filter allows direct_tool
         let filter = Some(vec!["direct_tool,read".to_string()]);
-        let results = execute_tools_parallel(
-            &tools, &tool_calls, &event_tx, cancel, None, "", None, None, filter,
-        )
-        .await;
+        let results =
+            execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel, None, "", None, None, filter).await;
 
         assert_eq!(results.len(), 1);
         assert!(!results[0].is_error);
@@ -827,10 +838,7 @@ mod tests {
         let tool_calls = vec![("call-1".to_string(), "direct_tool".to_string(), json!({}))];
 
         // No filter — full access
-        let results = execute_tools_parallel(
-            &tools, &tool_calls, &event_tx, cancel, None, "", None, None, None,
-        )
-        .await;
+        let results = execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel, None, "", None, None, None).await;
 
         assert_eq!(results.len(), 1);
         assert!(!results[0].is_error);
@@ -921,7 +929,9 @@ mod tests {
     // Turn-level retry tests
     // -----------------------------------------------------------------------
 
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
+
     use tokio::sync::mpsc;
 
     /// Provider that fails N times with a retryable error, then succeeds.
@@ -960,25 +970,42 @@ mod tests {
                     model: "test-model".into(),
                     role: "assistant".into(),
                 },
-            }).await.ok();
+            })
+            .await
+            .ok();
             tx.send(StreamEvent::ContentBlockStart {
                 index: 0,
                 content_block: Content::Text { text: String::new() },
-            }).await.ok();
+            })
+            .await
+            .ok();
             tx.send(StreamEvent::ContentBlockDelta {
                 index: 0,
                 delta: ContentDelta::TextDelta { text: "OK".into() },
-            }).await.ok();
+            })
+            .await
+            .ok();
             tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
             tx.send(StreamEvent::MessageDelta {
                 stop_reason: Some("end_turn".into()),
-                usage: Usage { input_tokens: 10, output_tokens: 2, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
-            }).await.ok();
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 2,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                },
+            })
+            .await
+            .ok();
             tx.send(StreamEvent::MessageStop).await.ok();
             Ok(())
         }
-        fn models(&self) -> &[clankers_provider::Model] { &[] }
-        fn name(&self) -> &str { "test" }
+        fn models(&self) -> &[clankers_provider::Model] {
+            &[]
+        }
+        fn name(&self) -> &str {
+            "test"
+        }
     }
 
     fn make_turn_config() -> TurnConfig {
@@ -1025,15 +1052,21 @@ mod tests {
                         model: "test-model".into(),
                         role: "assistant".into(),
                     },
-                }).await.ok();
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::ContentBlockStart {
                     index: 0,
                     content_block: Content::Text { text: String::new() },
-                }).await.ok();
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::ContentBlockDelta {
                     index: 0,
                     delta: ContentDelta::TextDelta { text: "OK".into() },
-                }).await.ok();
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
                 tx.send(StreamEvent::MessageDelta {
                     stop_reason: Some("end_turn".into()),
@@ -1043,7 +1076,9 @@ mod tests {
                         cache_creation_input_tokens: 0,
                         cache_read_input_tokens: 0,
                     },
-                }).await.ok();
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::MessageStop).await.ok();
                 Ok(())
             }
@@ -1084,12 +1119,8 @@ mod tests {
         .await
         .expect("turn should succeed");
 
-        let captured = provider
-            .captured
-            .lock()
-            .expect("capture lock poisoned")
-            .take()
-            .expect("request should be captured");
+        let captured =
+            provider.captured.lock().expect("capture lock poisoned").take().expect("request should be captured");
         assert_eq!(captured.extra_params.get("_session_id"), Some(&json!("session-123")));
     }
 
@@ -1108,25 +1139,28 @@ mod tests {
                 request: clankers_provider::CompletionRequest,
                 tx: mpsc::Sender<StreamEvent>,
             ) -> clankers_provider::error::Result<()> {
-                self.captured
-                    .lock()
-                    .expect("capture lock poisoned")
-                    .push(request);
+                self.captured.lock().expect("capture lock poisoned").push(request);
                 tx.send(StreamEvent::MessageStart {
                     message: MessageMetadata {
                         id: "msg-1".into(),
                         model: "test-model".into(),
                         role: "assistant".into(),
                     },
-                }).await.ok();
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::ContentBlockStart {
                     index: 0,
                     content_block: Content::Text { text: String::new() },
-                }).await.ok();
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::ContentBlockDelta {
                     index: 0,
                     delta: ContentDelta::TextDelta { text: "OK".into() },
-                }).await.ok();
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
                 tx.send(StreamEvent::MessageDelta {
                     stop_reason: Some("end_turn".into()),
@@ -1136,7 +1170,9 @@ mod tests {
                         cache_creation_input_tokens: 0,
                         cache_read_input_tokens: 0,
                     },
-                }).await.ok();
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::MessageStop).await.ok();
                 Ok(())
             }
@@ -1178,7 +1214,9 @@ mod tests {
 
         messages.push(AgentMessage::User(UserMessage {
             id: MessageId::new("test-msg-2"),
-            content: vec![Content::Text { text: "hello again".into() }],
+            content: vec![Content::Text {
+                text: "hello again".into(),
+            }],
             timestamp: Utc::now(),
         }));
 
@@ -1221,25 +1259,28 @@ mod tests {
                 request: clankers_provider::CompletionRequest,
                 tx: mpsc::Sender<StreamEvent>,
             ) -> clankers_provider::error::Result<()> {
-                self.captured
-                    .lock()
-                    .expect("capture lock poisoned")
-                    .push(request);
+                self.captured.lock().expect("capture lock poisoned").push(request);
                 tx.send(StreamEvent::MessageStart {
                     message: MessageMetadata {
                         id: "msg-1".into(),
                         model: "test-model".into(),
                         role: "assistant".into(),
                     },
-                }).await.ok();
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::ContentBlockStart {
                     index: 0,
                     content_block: Content::Text { text: String::new() },
-                }).await.ok();
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::ContentBlockDelta {
                     index: 0,
                     delta: ContentDelta::TextDelta { text: "OK".into() },
-                }).await.ok();
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
                 tx.send(StreamEvent::MessageDelta {
                     stop_reason: Some("end_turn".into()),
@@ -1249,7 +1290,9 @@ mod tests {
                         cache_creation_input_tokens: 0,
                         cache_read_input_tokens: 0,
                     },
-                }).await.ok();
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::MessageStop).await.ok();
                 Ok(())
             }
@@ -1291,7 +1334,9 @@ mod tests {
 
         let mut resumed_messages = vec![AgentMessage::User(UserMessage {
             id: MessageId::new("test-msg-3"),
-            content: vec![Content::Text { text: "after resume".into() }],
+            content: vec![Content::Text {
+                text: "after resume".into(),
+            }],
             timestamp: Utc::now(),
         })];
 
@@ -1330,9 +1375,21 @@ mod tests {
         let cancel = CancellationToken::new();
 
         let result = run_turn_loop(
-            &provider, &tools, &mut messages, &config, &event_tx, cancel,
-            None, None, None, "test-session", None, None, None,
-        ).await;
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            cancel,
+            None,
+            None,
+            None,
+            "test-session",
+            None,
+            None,
+            None,
+        )
+        .await;
 
         assert!(result.is_ok(), "expected success after retry, got: {:?}", result);
         // Should have appended an assistant message
@@ -1350,9 +1407,21 @@ mod tests {
         let cancel = CancellationToken::new();
 
         let result = run_turn_loop(
-            &provider, &tools, &mut messages, &config, &event_tx, cancel,
-            None, None, None, "test-session", None, None, None,
-        ).await;
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            cancel,
+            None,
+            None,
+            None,
+            "test-session",
+            None,
+            None,
+            None,
+        )
+        .await;
 
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -1379,9 +1448,21 @@ mod tests {
         });
 
         let result = run_turn_loop(
-            &provider, &tools, &mut messages, &config, &event_tx, cancel,
-            None, None, None, "test-session", None, None, None,
-        ).await;
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            cancel,
+            None,
+            None,
+            None,
+            "test-session",
+            None,
+            None,
+            None,
+        )
+        .await;
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AgentError::Cancelled));

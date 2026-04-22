@@ -207,7 +207,12 @@ fn estimate_message_tokens(message: &AgentMessage) -> usize {
 }
 
 /// Build full context for an LLM request
-pub fn build_context(messages: &[AgentMessage], system_prompt: &str, max_input_tokens: usize, compact: bool) -> AgentContext {
+pub fn build_context(
+    messages: &[AgentMessage],
+    system_prompt: &str,
+    max_input_tokens: usize,
+    compact: bool,
+) -> AgentContext {
     let system_tokens = clankers_util::token::estimate_tokens(system_prompt);
     let effective_messages = if compact {
         compact_stale_tool_results(messages, 3)

@@ -40,10 +40,7 @@ pub(super) async fn execute_turn(
     let extra_params = if session_id.is_empty() {
         HashMap::new()
     } else {
-        HashMap::from([(
-            "_session_id".to_string(),
-            Value::String(session_id.to_string()),
-        )])
+        HashMap::from([("_session_id".to_string(), Value::String(session_id.to_string()))])
     };
 
     let request = CompletionRequest {
@@ -102,10 +99,12 @@ pub(super) async fn collect_stream_events(
             }
             StreamEvent::ContentBlockDelta { index, delta } => {
                 // Forward delta event with index
-                event_tx.send(AgentEvent::MessageUpdate {
-                    index,
-                    delta: delta.clone(),
-                }).ok();
+                event_tx
+                    .send(AgentEvent::MessageUpdate {
+                        index,
+                        delta: delta.clone(),
+                    })
+                    .ok();
 
                 // Apply delta to content block builder
                 if let Some(builder) = content_builders.get_mut(index) {
@@ -215,11 +214,13 @@ async fn execute_single_tool(
     user_tool_filter: Option<Vec<String>>,
 ) -> ToolResultMessage {
     // Emit ToolCall event
-    event_tx.send(AgentEvent::ToolCall {
-        tool_name: tool_name.clone(),
-        call_id: call_id.clone(),
-        input: input.clone(),
-    }).ok();
+    event_tx
+        .send(AgentEvent::ToolCall {
+            tool_name: tool_name.clone(),
+            call_id: call_id.clone(),
+            input: input.clone(),
+        })
+        .ok();
 
     // Check capability gate (UCAN token authorization — immutable ceiling)
     if let Some(ref gate) = capability_gate
@@ -230,9 +231,8 @@ async fn execute_single_tool(
 
     // Check user tool filter (user-adjustable — within ceiling)
     if let Some(ref filter) = user_tool_filter {
-        let is_allowed = filter.iter().any(|pattern| {
-            pattern == "*" || pattern.split(',').any(|p| p.trim() == tool_name)
-        });
+        let is_allowed =
+            filter.iter().any(|pattern| pattern == "*" || pattern.split(',').any(|p| p.trim() == tool_name));
         if !is_allowed {
             return create_error_result(
                 call_id,
@@ -269,10 +269,12 @@ async fn execute_single_tool(
         input
     };
 
-    event_tx.send(AgentEvent::ToolExecutionStart {
-        call_id: call_id.clone(),
-        tool_name: tool_name.clone(),
-    }).ok();
+    event_tx
+        .send(AgentEvent::ToolExecutionStart {
+            call_id: call_id.clone(),
+            tool_name: tool_name.clone(),
+        })
+        .ok();
 
     // Execute with accumulator
     let result = execute_tool_with_accumulator(
@@ -301,11 +303,13 @@ async fn execute_single_tool(
         pipeline.fire_async(clankers_hooks::HookPoint::PostTool, payload);
     }
 
-    event_tx.send(AgentEvent::ToolExecutionEnd {
-        call_id: call_id.clone(),
-        result: result.clone(),
-        is_error: result.is_error,
-    }).ok();
+    event_tx
+        .send(AgentEvent::ToolExecutionEnd {
+            call_id: call_id.clone(),
+            result: result.clone(),
+            is_error: result.is_error,
+        })
+        .ok();
 
     ToolResultMessage {
         id: MessageId::generate(),
@@ -319,7 +323,10 @@ async fn execute_single_tool(
 }
 
 /// Execute tool with result accumulator for streaming output
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "iteration loop; bounded by tool result collection"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "iteration loop; bounded by tool result collection")
+)]
 async fn execute_tool_with_accumulator(
     tool: Arc<dyn Tool>,
     call_id: &str,
@@ -386,11 +393,13 @@ pub(super) fn create_error_result(
 ) -> ToolResultMessage {
     let result = ToolExecResult::error(error_msg);
 
-    event_tx.send(AgentEvent::ToolExecutionEnd {
-        call_id: call_id.clone(),
-        result: result.clone(),
-        is_error: true,
-    }).ok();
+    event_tx
+        .send(AgentEvent::ToolExecutionEnd {
+            call_id: call_id.clone(),
+            result: result.clone(),
+            is_error: true,
+        })
+        .ok();
 
     ToolResultMessage {
         id: MessageId::generate(),

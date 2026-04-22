@@ -19,10 +19,12 @@ pub(super) fn update_usage_tracking(
     cumulative_usage.cache_creation_input_tokens += turn_usage.cache_creation_input_tokens;
     cumulative_usage.cache_read_input_tokens += turn_usage.cache_read_input_tokens;
 
-    event_tx.send(AgentEvent::UsageUpdate {
-        turn_usage: turn_usage.clone(),
-        cumulative_usage: cumulative_usage.clone(),
-    }).ok();
+    event_tx
+        .send(AgentEvent::UsageUpdate {
+            turn_usage: turn_usage.clone(),
+            cumulative_usage: cumulative_usage.clone(),
+        })
+        .ok();
 
     if let Some(tracker) = cost_tracker {
         record_cost(tracker, active_model, turn_usage);

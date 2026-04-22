@@ -5,11 +5,11 @@ use std::time::Duration;
 use std::time::Instant;
 
 use async_trait::async_trait;
+// Re-export ToolDefinition from clanker-router (canonical definition)
+pub use clanker_router::provider::ToolDefinition;
 // ToolResult and ToolResultContent — canonical definitions in clankers-message.
 pub use clankers_message::ToolResult;
 pub use clankers_message::ToolResultContent;
-// Re-export ToolDefinition from clanker-router (canonical definition)
-pub use clanker_router::provider::ToolDefinition;
 use parking_lot::Mutex;
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -135,7 +135,8 @@ impl ToolContext {
             tx.send(AgentEvent::ToolExecutionUpdate {
                 call_id: self.call_id.clone(),
                 partial: ToolResult::text(text),
-            }).ok();
+            })
+            .ok();
         }
     }
 
@@ -163,7 +164,8 @@ impl ToolContext {
             tx.send(AgentEvent::ToolProgressUpdate {
                 call_id: self.call_id.clone(),
                 progress,
-            }).ok();
+            })
+            .ok();
         }
     }
 
@@ -176,7 +178,8 @@ impl ToolContext {
             tx.send(AgentEvent::ToolResultChunk {
                 call_id: self.call_id.clone(),
                 chunk,
-            }).ok();
+            })
+            .ok();
         }
     }
 
