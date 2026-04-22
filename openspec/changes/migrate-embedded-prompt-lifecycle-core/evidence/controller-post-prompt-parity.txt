@@ -1,0 +1,12 @@
+Evidence-ID: migrate-embedded-prompt-lifecycle-core.V2.controller-post-prompt-parity
+Task-ID: V2
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.shell.parity, no.std.functional.core.shell.parity.prompt-and-prompt-completion-behavior-remain-aligned, no.std.functional.core.shell.parity.thinking-level-behavior-remains-aligned, no.std.functional.core.shell.parity.disabled-tool-behavior-remains-aligned, no.std.functional.core.shell.parity.disabled-tool-stale-slot-rejection-remains-aligned, no.std.functional.core.shell.parity.post-prompt-follow-up-behavior-remains-aligned, no.std.functional.core.shell.parity.failed-loop-follow-up-completion-remains-aligned, no.std.functional.core.shell.parity.loop-control-behavior-remains-aligned, no.std.functional.core.shell.parity.embedded-prompt-lifecycle-behavior-remains-aligned, no.std.functional.core.shell.parity.lifecycle-feedback-rejection-behavior-remains-aligned, no.std.functional.core.future.extraction.boundary.controller-shell-execution-stays-centralized, no.std.functional.core.continuous.verification.shell-parity-coverage-traces-each-adapter-seam
+Created-By: pi
+Created-At: 2026-04-22T21:39:00Z
+Status: pending
+
+# Evidence: controller post-prompt parity coverage
+
+Pending implementation.
+Replace with focused controller test commands, exact assertions exercised, and machine-produced pass markers.

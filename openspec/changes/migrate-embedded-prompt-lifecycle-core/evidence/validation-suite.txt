@@ -1,0 +1,12 @@
+Evidence-ID: migrate-embedded-prompt-lifecycle-core.V5.validation-suite
+Task-ID: V5
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.future.extraction.boundary.future-pure-logic-moves-into-the-core, no.std.functional.core.future.extraction.boundary.shell-native-types-stay-outside-the-core-boundary, no.std.functional.core.future.extraction.boundary.interactive-shell-work-stays-outside-the-core, no.std.functional.core.continuous.verification.dedicated-no-std-compile-rail-runs, no.std.functional.core.continuous.verification.banned-dependency-and-api-rail-runs, no.std.functional.core.continuous.verification.public-core-surface-shell-native-type-rail-runs, no.std.functional.core.continuous.verification.dedicated-determinism-check-runs, no.std.functional.core.continuous.verification.reducer-coverage-traces-each-required-behavior, no.std.functional.core.continuous.verification.shell-parity-coverage-traces-each-adapter-seam
+Created-By: pi
+Created-At: 2026-04-22T21:39:00Z
+Status: pending
+
+# Evidence: extended ordinary validation bundle
+
+Pending implementation.
+Replace with the exact validation command, saved log path, and pass markers for the updated no-std functional-core bundle.

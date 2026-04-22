@@ -1,0 +1,12 @@
+Evidence-ID: migrate-embedded-prompt-lifecycle-core.V1.reducer-post-prompt-planning
+Task-ID: V1
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.deterministic.transitions, no.std.functional.core.deterministic.transitions.same-state-same-transition, no.std.functional.core.deterministic.transitions.loop-and-post-prompt-entrypoints-are-included, no.std.functional.core.deterministic.transitions.post-prompt-decisions-use-explicit-core-data, no.std.functional.core.deterministic.transitions.transition-logic-has-no-ambient-runtime-dependencies, no.std.functional.core.deterministic.transitions.embedded-queued-prompt-precedence-is-explicit, no.std.functional.core.deterministic.transitions.loop-continuation-outranks-auto-test-when-both-eligible, no.std.functional.core.correlated.feedback.correlation-identity-is-core-owned, no.std.functional.core.correlated.feedback.pending-work-identities-stay-unambiguous, no.std.functional.core.correlated.feedback.matching-shell-feedback-is-accepted, no.std.functional.core.correlated.feedback.prompt-completion-is-correlated, no.std.functional.core.correlated.feedback.failed-prompt-completion-carries-explicit-failure-data, no.std.functional.core.correlated.feedback.follow-up-dispatch-acknowledgement-is-correlated, no.std.functional.core.correlated.feedback.loop-follow-up-completion-is-correlated, no.std.functional.core.correlated.feedback.failed-loop-follow-up-completion-carries-explicit-failure-data, no.std.functional.core.correlated.feedback.filtered-tool-rebuild-application-is-correlated, no.std.functional.core.correlated.feedback.mismatched-shell-feedback-is-rejected, no.std.functional.core.correlated.feedback.wrong-stage-or-out-of-order-lifecycle-feedback-is-rejected, no.std.functional.core.correlated.feedback.follow-up-dispatch-and-prompt-completion-stay-distinct, no.std.functional.core.continuous.verification.reducer-coverage-traces-each-required-behavior
+Created-By: pi
+Created-At: 2026-04-22T21:39:00Z
+Status: pending
+
+# Evidence: reducer and pure post-prompt planning coverage
+
+Pending implementation.
+Replace with the exact test commands, pass markers, and notes showing queued-prompt precedence and distinct dispatch-vs-completion lifecycle coverage.

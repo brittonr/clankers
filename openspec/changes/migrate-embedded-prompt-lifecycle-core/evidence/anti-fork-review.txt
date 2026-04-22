@@ -1,0 +1,49 @@
+Evidence-ID: migrate-embedded-prompt-lifecycle-core.H1.anti-fork-review
+Task-ID: H1
+Artifact-Type: oracle-checkpoint
+Covers: no.std.functional.core.future.extraction.boundary, no.std.functional.core.future.extraction.boundary.future-pure-logic-moves-into-the-core, no.std.functional.core.future.extraction.boundary.shell-native-types-stay-outside-the-core-boundary, no.std.functional.core.future.extraction.boundary.controller-shell-execution-stays-centralized, no.std.functional.core.future.extraction.boundary.agent-runtime-apis-stay-shell-native, no.std.functional.core.future.extraction.boundary.interactive-shell-work-stays-outside-the-core, no.std.functional.core.future.extraction.boundary.embedded-event-loop-runner-stays-adapter-only, no.std.functional.core.continuous.verification.anti-fork-review-confirms-single-migrated-policy-path
+Reviewer-Role: agent-reviewer
+Verdict: WARN
+Reviewed-At: 2026-04-22T21:45:00Z
+
+# Oracle Checkpoint: embedded prompt-lifecycle anti-fork review
+
+## Reviewed Paths
+
+- `src/modes/event_loop_runner/mod.rs`
+- `crates/clankers-controller/src/command.rs`
+- `crates/clankers-controller/src/auto_test.rs`
+- `crates/clankers-controller/src/core_effects.rs`
+- `crates/clankers-controller/src/lib.rs`
+- `crates/clankers-agent/src/lib.rs`
+- `crates/clankers-agent/src/turn/mod.rs`
+- `crates/clankers-core/README.md`
+
+## Covered IDs
+
+- `no.std.functional.core.future.extraction.boundary`
+- `no.std.functional.core.future.extraction.boundary.future-pure-logic-moves-into-the-core`
+- `no.std.functional.core.future.extraction.boundary.shell-native-types-stay-outside-the-core-boundary`
+- `no.std.functional.core.future.extraction.boundary.controller-shell-execution-stays-centralized`
+- `no.std.functional.core.future.extraction.boundary.agent-runtime-apis-stay-shell-native`
+- `no.std.functional.core.future.extraction.boundary.interactive-shell-work-stays-outside-the-core`
+- `no.std.functional.core.future.extraction.boundary.embedded-event-loop-runner-stays-adapter-only`
+- `no.std.functional.core.continuous.verification.anti-fork-review-confirms-single-migrated-policy-path`
+
+## Questions
+
+- Question: Does embedded prompt-lifecycle policy now live in `clankers-core` rather than `event_loop_runner` local branches?
+  Answer: WARN
+  Notes: Placeholder checkpoint only. Final review pending implementation.
+
+- Question: Are follow-up dispatch acknowledgement and later prompt completion represented as distinct lifecycle stages?
+  Answer: WARN
+  Notes: Placeholder checkpoint only. Final review pending implementation.
+
+- Question: Do runtime files stay limited to translation, channel dispatch, and UI updates after the migration?
+  Answer: WARN
+  Notes: Placeholder checkpoint only. Final review pending implementation.
+
+## Summary
+
+Placeholder checkpoint to satisfy typed traceability. Replace with final review findings once the change lands.

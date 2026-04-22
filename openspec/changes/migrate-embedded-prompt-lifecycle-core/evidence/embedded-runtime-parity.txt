@@ -1,0 +1,12 @@
+Evidence-ID: migrate-embedded-prompt-lifecycle-core.V3.embedded-runtime-parity
+Task-ID: V3
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.shell.parity.embedded-prompt-lifecycle-behavior-remains-aligned, no.std.functional.core.shell.parity.lifecycle-feedback-rejection-behavior-remains-aligned, no.std.functional.core.future.extraction.boundary.embedded-event-loop-runner-stays-adapter-only, no.std.functional.core.continuous.verification.shell-parity-coverage-traces-each-adapter-seam
+Created-By: pi
+Created-At: 2026-04-22T21:39:00Z
+Status: pending
+
+# Evidence: embedded runtime prompt-lifecycle parity coverage
+
+Pending implementation.
+Replace with runtime-seam tests for `src/modes/event_loop_runner/mod.rs`, including queued-prompt precedence, explicit follow-up-dispatch rejection, and no premature loop-follow-up completion.
