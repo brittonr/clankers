@@ -22,7 +22,7 @@ ID: no.std.functional.core.portable.crate.std-shells-consume-same-crate
 
 ### Requirement: Session command and prompt lifecycle decisions MUST be deterministic core transitions
 ID: no.std.functional.core.deterministic.transitions
-The system MUST move the initial session command and prompt lifecycle slice into pure core transitions. That initial slice MUST cover `SessionCommand::Prompt`, `SetThinkingLevel`, `CycleThinkingLevel`, `SetDisabledTools`, loop-state changes used by `StartLoop` / `StopLoop`, and the prompt-completion / post-prompt follow-up inputs currently driven by `notify_prompt_done()` and `check_post_prompt()`.
+The system MUST move the initial session command and prompt lifecycle slice into pure core transitions. That slice MUST cover `SessionCommand::Prompt`, `SetThinkingLevel`, `CycleThinkingLevel`, `SetDisabledTools`, loop-state changes used by `StartLoop` / `StopLoop`, the prompt-completion / post-prompt follow-up inputs currently driven by `notify_prompt_done()` and `check_post_prompt()`, and the embedded prompt-lifecycle ordering decisions that currently live in `src/modes/event_loop_runner/mod.rs` after prompt completion.
 
 #### Scenario: same state and input produce same transition
 ID: no.std.functional.core.deterministic.transitions.same-state-same-transition
@@ -31,21 +31,33 @@ ID: no.std.functional.core.deterministic.transitions.same-state-same-transition
 
 #### Scenario: loop and post-prompt entrypoints are included in the slice
 ID: no.std.functional.core.deterministic.transitions.loop-and-post-prompt-entrypoints-are-included
-- **WHEN** the shell routes `StartLoop`, `StopLoop`, `notify_prompt_done()`, or `check_post_prompt()` behavior through the migrated slice
-- **THEN** the core owns the state transition logic for those entrypoints
-- **THEN** the shell only translates the entrypoint into `CoreInput` and executes returned `CoreEffect` values
+- **WHEN** the shell routes `StartLoop`, `StopLoop`, `notify_prompt_done()`, `check_post_prompt()`, or embedded prompt-result handling through the migrated slice
+- **THEN** `clankers-core` owns the state transition logic for those entrypoints
+- **THEN** the shell only translates the entrypoint into explicit input data and executes returned work plans
 
 #### Scenario: post-prompt decisions use explicit core data
 ID: no.std.functional.core.deterministic.transitions.post-prompt-decisions-use-explicit-core-data
-- **WHEN** the core evaluates the transitions currently driven by `notify_prompt_done()` or `check_post_prompt()`
-- **THEN** prompt completion outcome, active loop state, pending follow-up state, auto-test enabled state, auto-test command presence, and auto-test in-progress state are all supplied as explicit core input/state data
+- **WHEN** the core evaluates the transitions currently driven by `notify_prompt_done()`, `check_post_prompt()`, or embedded prompt-result handling
+- **THEN** prompt completion outcome, active loop state, pending follow-up state, auto-test enabled state, auto-test command presence, auto-test in-progress state, queued user-prompt presence, and follow-up dispatch outcome are all supplied as explicit input or state data
 - **THEN** the core does not infer those facts from shell-only ambient state
 
 #### Scenario: transition logic has no ambient runtime dependencies
 ID: no.std.functional.core.deterministic.transitions.transition-logic-has-no-ambient-runtime-dependencies
-- **WHEN** the core decides whether a prompt can start, whether loop state changes, or whether tool filters change
+- **WHEN** the core decides whether a prompt can start, whether loop state changes, whether queued prompt replay wins over controller follow-up, or whether tool filters change
 - **THEN** the decision depends only on explicit input data passed to the core
-- **THEN** it does not read clocks, environment variables, filesystem state, sockets, or async handles directly
+- **THEN** it does not read clocks, environment variables, filesystem state, sockets, channels, or async handles directly
+
+#### Scenario: embedded queued-prompt precedence is explicit
+ID: no.std.functional.core.deterministic.transitions.embedded-queued-prompt-precedence-is-explicit
+- **WHEN** an embedded prompt finishes while both a queued user prompt and a controller-generated post-prompt follow-up are possible
+- **THEN** the migrated prompt-lifecycle slice chooses the precedence order through explicit transition logic
+- **THEN** the runtime shell does not re-derive that precedence with local branching after the controller has already selected the next action
+
+#### Scenario: loop continuation outranks auto-test when both are eligible
+ID: no.std.functional.core.deterministic.transitions.loop-continuation-outranks-auto-test-when-both-eligible
+- **WHEN** prompt completion leaves an active loop eligible for continuation and auto-test is also enabled with a command present
+- **THEN** the migrated prompt-lifecycle slice selects loop continuation rather than auto-test for that step
+- **THEN** auto-test stays suppressed until loop continuation no longer claims the next action
 
 ### Requirement: Core MUST request migrated shell work through explicit effects
 ID: no.std.functional.core.explicit.effects
@@ -65,7 +77,7 @@ ID: no.std.functional.core.explicit.effects.migrated-shell-results-re-enter-as-e
 
 ### Requirement: Effect plans and shell feedback MUST be explicitly correlated
 ID: no.std.functional.core.correlated.feedback
-Any `clankers-core` effect that expects shell feedback MUST carry an explicit correlation token or pending-work identity, and matching shell feedback inputs MUST return that identity to the core.
+Any `clankers-core` effect that expects shell feedback MUST carry an explicit correlation token or pending-work identity, and matching shell feedback inputs MUST return that identity to the core. Follow-up dispatch acknowledgement and follow-up prompt completion MUST remain distinct lifecycle stages when both matter to state progression.
 
 #### Scenario: correlation identity is core-owned
 ID: no.std.functional.core.correlated.feedback.correlation-identity-is-core-owned
@@ -96,6 +108,12 @@ ID: no.std.functional.core.correlated.feedback.failed-prompt-completion-carries-
 - **WHEN** the shell reports failed prompt completion
 - **THEN** the completion input includes the explicit failure outcome needed for the core to clear busy state and decide whether follow-up is suppressed or a loop is failed
 
+#### Scenario: follow-up dispatch acknowledgement is correlated
+ID: no.std.functional.core.correlated.feedback.follow-up-dispatch-acknowledgement-is-correlated
+- **WHEN** the shell reports acceptance or rejection of dispatch for follow-up work emitted by the core
+- **THEN** that dispatch-feedback input carries the originating follow-up effect identity plus explicit dispatch-result data
+- **THEN** the core matches it against the pending follow-up dispatch stage before advancing or returning an explicit rejection
+
 #### Scenario: loop follow-up completion is correlated
 ID: no.std.functional.core.correlated.feedback.loop-follow-up-completion-is-correlated
 - **WHEN** the shell reports completion of loop follow-up work emitted by the core
@@ -118,6 +136,18 @@ ID: no.std.functional.core.correlated.feedback.mismatched-shell-feedback-is-reje
 - **WHEN** the shell feeds back a completion input whose correlation token does not match pending work in the current core state
 - **THEN** the core returns an explicit rejection describing the mismatch
 - **THEN** previously valid state remains unchanged
+
+#### Scenario: wrong-stage or out-of-order lifecycle feedback is rejected
+ID: no.std.functional.core.correlated.feedback.wrong-stage-or-out-of-order-lifecycle-feedback-is-rejected
+- **WHEN** the shell reports feedback for the wrong lifecycle stage or in an order the current core state does not permit, even if the correlation identity is otherwise valid
+- **THEN** the core returns an explicit rejection describing the invalid stage or ordering
+- **THEN** previously valid state remains unchanged
+
+#### Scenario: follow-up dispatch and prompt completion stay distinct
+ID: no.std.functional.core.correlated.feedback.follow-up-dispatch-and-prompt-completion-stay-distinct
+- **WHEN** the shell accepts or rejects dispatch of a controller-selected follow-up prompt
+- **THEN** that dispatch result is reported to the migrated prompt-lifecycle slice as explicit feedback distinct from later prompt-completion feedback
+- **THEN** accepting dispatch alone does not clear pending follow-up state, mark loop continuation complete, or synthesize prompt completion before the follow-up prompt actually finishes
 
 ### Requirement: Invalid or out-of-order transitions MUST fail explicitly
 ID: no.std.functional.core.invalid.transitions
@@ -162,14 +192,15 @@ ID: no.std.functional.core.invalid.transitions.disabled-tools-update-with-stale-
 
 ### Requirement: std shells MUST preserve migrated behavior through the core
 ID: no.std.functional.core.shell.parity
-The system MUST route the extracted orchestration slice through `clankers-core` while preserving the current shell-visible behavior of controller and agent integrations for that slice.
+The system MUST route the extracted orchestration slice through `clankers-core` while preserving the current shell-visible behavior of controller, agent, and embedded runtime integrations for that slice.
 
 #### Scenario: prompt and prompt-completion behavior remain aligned
 ID: no.std.functional.core.shell.parity.prompt-and-prompt-completion-behavior-remain-aligned
 - **WHEN** existing controller or agent tests exercise prompt start, prompt completion feedback, and busy gating through the migrated `std` shells
 - **THEN** prompt start still marks the session busy only when allowed
-- **THEN** successful prompt completion still clears busy state, emits no dedicated completion acknowledgement event, and selects only `PostPromptAction::{None, ContinueLoop, RunAutoTest}` as the next-action surface
-- **THEN** failed prompt completion still clears busy state, suppresses `PostPromptAction::{ContinueLoop, RunAutoTest}`, emits no success acknowledgement, and preserves loop-related failure notification through the error `DaemonEvent::SystemMessage` category when an active loop is failed
+- **THEN** successful prompt completion still clears busy state, emits no dedicated completion acknowledgement event, and selects only one of queued user-prompt replay, `PostPromptAction::None`, `PostPromptAction::ContinueLoop`, or `PostPromptAction::RunAutoTest` as the next-action surface
+- **THEN** failed prompt completion still clears busy state, emits no success acknowledgement, suppresses `PostPromptAction::ContinueLoop` and `PostPromptAction::RunAutoTest`, and preserves loop-related failure notification through the error `DaemonEvent::SystemMessage` category when an active loop is failed
+- **THEN** after failed prompt completion, embedded mode may replay an already queued user prompt but otherwise selects no further next action
 - **THEN** repeated prompt start while busy still yields one explicit rejection, preserves the error `DaemonEvent::SystemMessage` acknowledgement category, and produces no duplicate prompt-start effect
 
 #### Scenario: thinking-level behavior remains aligned
@@ -196,27 +227,47 @@ ID: no.std.functional.core.shell.parity.disabled-tool-stale-slot-rejection-remai
 #### Scenario: post-prompt follow-up behavior remains aligned
 ID: no.std.functional.core.shell.parity.post-prompt-follow-up-behavior-remains-aligned
 - **WHEN** the shell routes `notify_prompt_done()` or `check_post_prompt()` through the migrated slice
-- **THEN** successful loop follow-up completion still clears the pending follow-up slot and advances visible loop iteration/active-state transitions for loop continuation
+- **THEN** when both a queued user prompt and a controller-generated post-prompt follow-up are eligible after prompt completion, queued user-prompt replay still wins for that step and controller-generated follow-up dispatch does not run first
+- **THEN** successful loop follow-up completion still clears the pending follow-up slot and advances visible loop iteration or active-state transitions only after the follow-up prompt actually completes
 - **THEN** non-loop follow-up completion finishes with no extra acknowledgement event
-- **THEN** post-prompt next-action selection still stays within the current `PostPromptAction::{None, ContinueLoop, RunAutoTest}` categories
+- **THEN** post-prompt next-action selection still stays within queued user-prompt replay plus `PostPromptAction::None`, `PostPromptAction::ContinueLoop`, and `PostPromptAction::RunAutoTest`
 
 #### Scenario: failed loop follow-up completion remains aligned
 ID: no.std.functional.core.shell.parity.failed-loop-follow-up-completion-remains-aligned
-- **WHEN** the shell routes failed `LoopFollowUpCompleted` through the migrated slice
+- **WHEN** the shell routes failed follow-up completion through the migrated slice
 - **THEN** the pending follow-up slot is cleared and no additional follow-up is scheduled from that failed completion
-- **THEN** any loop owned by that follow-up remains in its failed/inactive visible state
+- **THEN** any loop owned by that follow-up remains in its failed or inactive visible state
 - **THEN** the shell preserves error `DaemonEvent::SystemMessage` for the failed follow-up notification
 
 #### Scenario: loop-control behavior remains aligned
 ID: no.std.functional.core.shell.parity.loop-control-behavior-remains-aligned
 - **WHEN** the shell routes `StartLoop` or `StopLoop` through the migrated slice
-- **THEN** successful `StartLoop` still sets the active/visible loop state (`active_loop_id` present and loop shown active) and emits no immediate acknowledgement event
+- **THEN** successful `StartLoop` still sets the active or visible loop state (`active_loop_id` present and loop shown active) and emits no immediate acknowledgement event
 - **THEN** successful `StopLoop` still preserves the current visible loop-state transition plus the success `DaemonEvent::SystemMessage` acknowledgement category
 - **THEN** explicit rejection cases (`LoopAlreadyActive`, `LoopNotActive`, and pending-follow-up rejection) leave state unchanged and preserve the error `DaemonEvent::SystemMessage` acknowledgement category
 
+#### Scenario: embedded prompt lifecycle behavior remains aligned
+ID: no.std.functional.core.shell.parity.embedded-prompt-lifecycle-behavior-remains-aligned
+- **WHEN** embedded mode processes `TaskResult::PromptDone` for a prompt started through the migrated controller/core path
+- **THEN** queued user-prompt replay still takes precedence over controller-generated post-prompt follow-up when both are available
+- **THEN** when no queued user prompt exists, the next post-prompt action comes only from controller-owned migrated prompt-lifecycle output rather than TUI-local policy branches
+- **THEN** after failed prompt completion, queued user-prompt replay may still run if one is already pending, but controller-generated loop continuation and auto-test follow-up do not dispatch
+- **THEN** rejected or failed follow-up dispatch is reported back through explicit controller feedback instead of being treated as a successful follow-up completion
+
+#### Scenario: lifecycle feedback rejection behavior remains aligned
+ID: no.std.functional.core.shell.parity.lifecycle-feedback-rejection-behavior-remains-aligned
+- **WHEN** controller adapters receive mismatched, wrong-stage, or out-of-order lifecycle feedback for the migrated slice
+- **THEN** the shell surfaces the explicit rejection through the existing error `DaemonEvent::SystemMessage` category
+- **THEN** previously valid state remains unchanged
+- **THEN** rejected feedback does not synthesize queued-prompt replay, follow-up dispatch, or loop advancement
+- **WHEN** embedded adapters receive mismatched, wrong-stage, or out-of-order lifecycle feedback for the migrated slice
+- **THEN** standalone TUI surfaces the explicit rejection through the existing `App::push_system(..., true)` path used by `src/modes/event_loop_runner/mod.rs` rather than inventing a daemon-only event type
+- **THEN** previously valid state remains unchanged
+- **THEN** rejected feedback does not synthesize queued-prompt replay, follow-up dispatch, or loop advancement
+
 ### Requirement: Future deterministic extractions MUST reuse the same boundary
 ID: no.std.functional.core.future.extraction.boundary
-Any later orchestration logic moved under this capability MUST enter `clankers-core` as explicit state, input, and effect transformations when it does not require direct I/O. Shell-specific protocol, runtime, and transport types MUST stay in adapter code.
+Any later orchestration logic moved under this capability MUST enter `clankers-core` as explicit state, input, and effect transformations when it does not require direct I/O. Shell-specific protocol, runtime, transport, and terminal event-loop types MUST stay in adapter code.
 
 #### Scenario: future pure logic moves into the core
 ID: no.std.functional.core.future.extraction.boundary.future-pure-logic-moves-into-the-core
@@ -226,9 +277,33 @@ ID: no.std.functional.core.future.extraction.boundary.future-pure-logic-moves-in
 
 #### Scenario: shell-native types stay outside the core boundary
 ID: no.std.functional.core.future.extraction.boundary.shell-native-types-stay-outside-the-core-boundary
-- **WHEN** the migrated slice needs `DaemonEvent`, `AgentEvent`, Tokio, or transport-specific values
+- **WHEN** the migrated slice needs `DaemonEvent`, `AgentEvent`, Tokio, terminal, or transport-specific values
 - **THEN** those shell-native values are created and consumed in adapter code
 - **THEN** raw shell-native or protocol-native types do not appear in exported `clankers-core` boundary types including state, input, effect, outcome, or error types
+
+#### Scenario: controller shell execution stays centralized
+ID: no.std.functional.core.future.extraction.boundary.controller-shell-execution-stays-centralized
+- **WHEN** migrated prompt-lifecycle effects are interpreted in `std` shells
+- **THEN** `crates/clankers-controller/src/core_effects.rs` is the single controller-owned interpreter for that slice's effect semantics
+- **THEN** `command.rs`, `auto_test.rs`, embedded runtime files, and agent adapters do not keep their own prompt-lifecycle effect interpreters or re-derive the same shell semantics
+
+#### Scenario: agent runtime APIs stay shell-native
+ID: no.std.functional.core.future.extraction.boundary.agent-runtime-apis-stay-shell-native
+- **WHEN** migrated prompt-lifecycle effects or results cross from controller adapters into `clankers-agent`
+- **THEN** core-type translation happens in controller-owned adapters
+- **THEN** `clankers-agent` runtime and public APIs stay shell-native for this slice and do not adopt `clankers-core` types directly
+
+#### Scenario: interactive shell work stays outside the core
+ID: no.std.functional.core.future.extraction.boundary.interactive-shell-work-stays-outside-the-core
+- **WHEN** the migrated prompt-lifecycle slice touches actual prompt sending, plugin dispatch, clipboard or editor work, terminal rendering, or Tokio channel coordination
+- **THEN** those behaviors remain in shell adapters rather than `clankers-core`
+- **THEN** the core emits plain-data intents only and does not perform those interactive side effects directly
+
+#### Scenario: embedded event loop runner stays adapter-only
+ID: no.std.functional.core.future.extraction.boundary.embedded-event-loop-runner-stays-adapter-only
+- **WHEN** the embedded prompt-lifecycle slice is migrated after prompt completion
+- **THEN** `src/modes/event_loop_runner/mod.rs` and nearby runtime helpers stay limited to channel I/O, UI updates, and dispatch of controller-selected work
+- **THEN** those runtime files do not keep their own queued-prompt precedence rules, follow-up completion synthesis, or duplicated post-prompt state-transition logic
 
 ### Requirement: The no-std boundary and parity contract MUST be continuously verified
 ID: no.std.functional.core.continuous.verification
@@ -255,26 +330,26 @@ ID: no.std.functional.core.continuous.verification.public-core-surface-shell-nat
 #### Scenario: dedicated determinism check runs
 ID: no.std.functional.core.continuous.verification.dedicated-determinism-check-runs
 - **WHEN** validation runs for the capability
-- **THEN** it replays identical migrated-slice state/input pairs twice and asserts identical next state plus identical effect plans
+- **THEN** it replays identical migrated-slice state or input pairs twice and asserts identical next state plus identical effect plans
 - **THEN** failure blocks acceptance of the change
 
 #### Scenario: reducer coverage traces each required behavior
 ID: no.std.functional.core.continuous.verification.reducer-coverage-traces-each-required-behavior
 - **WHEN** validation runs for the capability
-- **THEN** reducer tests cover busy gating, prompt start, prompt completion, loop continuation, `StartLoop` / `StopLoop`, pending-follow-up loop-control rejection, `notify_prompt_done()`, `check_post_prompt()`, thinking changes, tool-filter changes, mismatched-feedback rejection, and out-of-order runtime-result rejection for the migrated slice
+- **THEN** reducer tests cover busy gating, prompt start, prompt completion, queued-prompt precedence, follow-up dispatch feedback, loop continuation, the simultaneous-eligibility case where loop continuation must outrank auto-test, failed loop follow-up completion, `StartLoop` / `StopLoop`, pending-follow-up loop-control rejection, `notify_prompt_done()`, `check_post_prompt()`, thinking changes, tool-filter changes, mismatched-feedback rejection, wrong-stage lifecycle-feedback rejection, and out-of-order runtime-result rejection for the migrated slice
 - **THEN** failure blocks acceptance of the change
 
 #### Scenario: shell parity coverage traces each adapter seam
 ID: no.std.functional.core.continuous.verification.shell-parity-coverage-traces-each-adapter-seam
 - **WHEN** validation runs for the capability
-- **THEN** controller parity tests cover `crates/clankers-controller/src/command.rs`, `crates/clankers-controller/src/auto_test.rs`, prompt-completion feedback, filtered-tool rebuild application, loop follow-up completion, one `SessionController::handle_command(SessionCommand::Prompt { .. })` shell seam, an explicit `SetDisabledTools` regression, an explicit `CycleThinkingLevel` regression, and an explicit `StartLoop` / `StopLoop` regression
-- **THEN** those tests assert required shell-visible ordering where specified, including `DaemonEvent::DisabledToolsChanged` before `DaemonEvent::SystemMessage`, stop-loop visible transition plus success `DaemonEvent::SystemMessage`, and stale-slot rejection with no `DaemonEvent::DisabledToolsChanged`
+- **THEN** controller parity tests cover `crates/clankers-controller/src/command.rs`, `crates/clankers-controller/src/auto_test.rs`, `crates/clankers-controller/src/core_effects.rs`, queued user-prompt replay winning over controller-generated follow-up when both are eligible, the simultaneous-eligibility case where loop continuation must outrank auto-test, prompt-completion feedback, follow-up dispatch feedback, failed loop follow-up completion, filtered-tool rebuild application, mismatched, wrong-stage, or out-of-order lifecycle feedback surfacing through error `DaemonEvent::SystemMessage`, one `SessionController::handle_command(SessionCommand::Prompt { .. })` shell seam, an explicit `SetThinkingLevel` regression, an explicit `SetDisabledTools` regression, an explicit `CycleThinkingLevel` regression, and an explicit `StartLoop` / `StopLoop` regression
+- **THEN** embedded runtime parity tests cover `src/modes/event_loop_runner/mod.rs` and assert queued-prompt precedence, controller-owned next-action dispatch, explicit follow-up-dispatch rejection handling, mismatched, wrong-stage, or out-of-order rejection surfacing through `App::push_system(..., true)`, and no premature loop-follow-up completion
 - **THEN** agent parity tests cover `crates/clankers-agent/src/turn/mod.rs` and one migrated-slice adapter regression in `crates/clankers-agent/src/lib.rs`
 - **THEN** failure blocks acceptance of the change
 
 #### Scenario: anti-fork review confirms single migrated policy path
 ID: no.std.functional.core.continuous.verification.anti-fork-review-confirms-single-migrated-policy-path
 - **WHEN** acceptance review runs for the capability
-- **THEN** `clankers-agent` and `clankers-controller` no longer keep duplicated policy logic for the migrated slice outside `clankers-core`
+- **THEN** `clankers-agent`, `clankers-controller`, and embedded runtime files no longer keep duplicated policy logic for the migrated slice outside `clankers-core`
 - **THEN** any remaining shell code for the slice is limited to translation and effect execution
 

@@ -20,7 +20,7 @@ None.
 
 - Matches:
   - Tasks trace cleanly to proposal, design, and modified spec requirements.
-    - Deterministic transition migration is covered by `I2` and verified by `V1` in `openspec/changes/migrate-embedded-prompt-lifecycle-core/tasks.md`.
+    - Deterministic transition migration is covered by `I2` and verified by `V1` in `openspec/changes/archive/2026-04-22-migrate-embedded-prompt-lifecycle-core/tasks.md`.
     - Correlated feedback split and rejection behavior are covered by `I3` and `V1`.
     - Controller and embedded shell rewiring are covered by `I4` and `I5`, with parity verification in `V2` and `V3`.
     - Boundary and future-extraction constraints are carried by `I2`, `I4`, `I6`, `V4`, `V5`, and the human oracle `H1`.

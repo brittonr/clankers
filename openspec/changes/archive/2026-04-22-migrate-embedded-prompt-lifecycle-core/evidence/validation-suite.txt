@@ -20,7 +20,7 @@ Ran via pueue task `47` after adding the sixth embedded-runtime parity test.
 
 - pueue task: `47`
 - pueue result: `Success`
-- checked-in log copy: `openspec/changes/migrate-embedded-prompt-lifecycle-core/evidence/validation-suite.log`
+- checked-in log copy: `openspec/changes/archive/2026-04-22-migrate-embedded-prompt-lifecycle-core/evidence/validation-suite.log`
 
 ## Pass markers from the bundle
 
