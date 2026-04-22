@@ -3,34 +3,50 @@ Task-ID: V11
 Artifact-Type: deterministic-proof
 Covers: no.std.functional.core.portable.crate.no-std-build-succeeds, no.std.functional.core.deterministic.transitions.transition-logic-has-no-ambient-runtime-dependencies, no.std.functional.core.future.extraction.boundary.shell-native-types-stay-outside-the-core-boundary, no.std.functional.core.continuous.verification.dedicated-no-std-compile-rail-runs, no.std.functional.core.continuous.verification.banned-dependency-and-api-rail-runs, no.std.functional.core.continuous.verification.public-core-surface-shell-native-type-rail-runs, no.std.functional.core.continuous.verification.dedicated-determinism-check-runs, no.std.functional.core.continuous.verification.reducer-coverage-traces-each-required-behavior, no.std.functional.core.continuous.verification.shell-parity-coverage-traces-each-adapter-seam
 Created-By: pi
-Created-At: 2026-04-21T14:02:12Z
+Created-At: 2026-04-21T23:55:30Z
 
 # Evidence: ordinary validation bundle
 
 ## Summary
 
-- Run the bare-metal `cargo check` rail, boundary scripts, public-core-surface shell-native/protocol-native boundary script, determinism rail, direct reducer positive/rejection suites, and migrated shell-parity suites.
-- Assert the no-std crate still exposes the extracted slice `CoreState`/`CoreInput`/`CoreEffect`/`CoreOutcome`/`CoreError` surface while that bundle stays green.
-- Capture the ordinary validation path that must stay green for acceptance.
-- Use this bundle as the regression oracle for the no-std boundary and migrated shell behavior.
+- Reran the full change-local validation bundle after the remaining controller/agent shell rewiring landed.
+- Bundle stayed green across the bare-metal no-std compile rail, boundary rails, reducer suite, determinism rail, controller parity suites, agent adapter parity suites, and embedded-controller parity suite.
+- Saved the full machine-produced `pueue` log for review and cited the exact pass markers below.
 
-## Latest passing commands
+## Machine-produced execution artifact
+
+- Raw log: `openspec/changes/no-std-functional-core/evidence/validation-suite.task-43.log`
+- Source: `pueue` task `43` (`label=verify-no-std-functional-core-post-review`)
+- Command: `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' ./scripts/verify-no-std-functional-core.sh`
+- Start: `2026-04-21T19:53:58-04:00`
+- End: `2026-04-21T19:54:50-04:00`
+- Result: `Success`
+
+## Verified pass markers from saved log
+
+- Controller parity footer: `Summary [   0.393s] 130 tests run: 130 passed, 2 skipped`
+- Agent allowlist suite: `test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 90 filtered out`
+- Agent filtered-inventory suite: `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 94 filtered out`
+- Agent thinking-adapter suite: `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 94 filtered out`
+- Agent tool-inventory-adapter suite: `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 94 filtered out`
+- Embedded controller footer: `Summary [   0.083s] 30 tests run: 30 passed, 0 skipped`
+- Bundle footer: `=== No-std functional core validation bundle passed ===`
+
+## Bundle contents
 
 - `./scripts/check-clankers-core-nostd.sh`
 - `./scripts/check-clankers-core-boundary.sh`
 - `./scripts/check-clankers-core-surface.sh`
-- `cargo test -p clankers-core`
+- `cargo test -p clankers-core --lib`
 - `cargo test -p clankers-core --test determinism`
 - `cargo nextest run -p clankers-controller --tests`
 - `cargo test -p clankers-agent user_tool_filter --lib`
+- `cargo test -p clankers-agent controller_filtered_tool_inventory_replaces_available_tools_without_turn_local_state --lib`
+- `cargo test -p clankers-agent agent_applies_core_thinking_effect_without_agent_owned_reducer --lib`
+- `cargo test -p clankers-agent agent_tool_inventory_can_follow_core_disabled_tool_contract_without_local_policy --lib`
 - `cargo nextest run --test embedded_controller`
-- `./scripts/verify-no-std-functional-core.sh`
 
 ## Ordinary validation path wiring
 
 - `./scripts/verify-no-std-functional-core.sh` is the change-local validation bundle for the no-std functional core capability.
-- `./scripts/verify.sh` now invokes that bundle before the existing Tracey coverage checks, so the rails run from the repo's ordinary validation entrypoint as well.
-
-## Latest result
-
-- All listed commands completed successfully on 2026-04-21 after prompt-request/completion reducer wiring, post-prompt loop-state adapter cleanup, and validation-path wiring.
+- `./scripts/verify.sh` invokes that bundle from the repo's ordinary validation entrypoint.

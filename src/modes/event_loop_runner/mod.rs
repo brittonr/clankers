@@ -451,6 +451,37 @@ impl<'a> EventLoopRunner<'a> {
 
     // ── Task completion handling (delegates to controller) ──────────
 
+    fn dispatch_controller_follow_up(
+        &mut self,
+        effect_id: clankers_core::CoreEffectId,
+        prompt: String,
+        requires_active_loop: bool,
+    ) {
+        let should_dispatch_prompt = !requires_active_loop || self.app.loop_status.as_ref().is_some_and(|status| status.active);
+        if !should_dispatch_prompt {
+            self.controller
+                .complete_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+            return;
+        }
+
+        self.cmd_tx.send(AgentCommand::ResetCancel).ok();
+        let sent_prompt = self.cmd_tx.send(AgentCommand::Prompt(prompt.clone())).is_ok();
+        let completion_status = if sent_prompt {
+            if self.controller.start_embedded_prompt(&prompt, 0) {
+                clankers_core::CompletionStatus::Succeeded
+            } else {
+                clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
+                    "embedded prompt start rejected".to_string(),
+                ))
+            }
+        } else {
+            clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
+                "follow-up dispatch channel closed".to_string(),
+            ))
+        };
+        self.controller.complete_follow_up(effect_id, completion_status);
+    }
+
     fn handle_task_results(&mut self) {
         while let Ok(result) = self.done_rx.try_recv() {
             match result {
@@ -509,29 +540,7 @@ impl<'a> EventLoopRunner<'a> {
                                 {
                                     ls.iteration = iter;
                                 }
-                                // Paused check — only continue if TUI says active
-                                if self.app.loop_status.as_ref().is_some_and(|ls| ls.active) {
-                                    self.cmd_tx.send(AgentCommand::ResetCancel).ok();
-                                    let completion_status = if self.cmd_tx.send(AgentCommand::Prompt(prompt.clone())).is_ok() {
-                                        if self.controller.start_embedded_prompt(&prompt, 0) {
-                                            clankers_core::CompletionStatus::Succeeded
-                                        } else {
-                                            clankers_core::CompletionStatus::Failed(
-                                                clankers_core::CoreFailure::Message(
-                                                    "embedded prompt start rejected".to_string(),
-                                                ),
-                                            )
-                                        }
-                                    } else {
-                                        clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
-                                            "follow-up dispatch channel closed".to_string(),
-                                        ))
-                                    };
-                                    self.controller.complete_follow_up(effect_id, completion_status);
-                                } else {
-                                    self.controller
-                                        .complete_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
-                                }
+                                self.dispatch_controller_follow_up(effect_id, prompt, true);
                             }
                             clankers_controller::PostPromptAction::RunAutoTest { effect_id, prompt } => {
                                 self.app.push_system(
@@ -541,21 +550,7 @@ impl<'a> EventLoopRunner<'a> {
                                     ),
                                     false,
                                 );
-                                self.cmd_tx.send(AgentCommand::ResetCancel).ok();
-                                let completion_status = if self.cmd_tx.send(AgentCommand::Prompt(prompt.clone())).is_ok() {
-                                    if self.controller.start_embedded_prompt(&prompt, 0) {
-                                        clankers_core::CompletionStatus::Succeeded
-                                    } else {
-                                        clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
-                                            "embedded prompt start rejected".to_string(),
-                                        ))
-                                    }
-                                } else {
-                                    clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
-                                        "follow-up dispatch channel closed".to_string(),
-                                    ))
-                                };
-                                self.controller.complete_follow_up(effect_id, completion_status);
+                                self.dispatch_controller_follow_up(effect_id, prompt, false);
                             }
                             clankers_controller::PostPromptAction::None => {}
                         }

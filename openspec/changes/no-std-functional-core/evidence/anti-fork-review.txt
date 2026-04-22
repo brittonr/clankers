@@ -4,45 +4,49 @@ Artifact-Type: oracle-checkpoint
 Covers: no.std.functional.core.portable.crate.std-shells-consume-same-crate, no.std.functional.core.future.extraction.boundary, no.std.functional.core.continuous.verification.anti-fork-review-confirms-single-migrated-policy-path
 Reviewer-Role: agent-reviewer
 Verdict: PASS
-Reviewed-At: 2026-04-21T14:02:12Z
+Reviewed-At: 2026-04-21T23:55:50Z
 
 # Oracle Checkpoint: anti-fork boundary review
 
 ## Reviewed Paths
 
-- crates/clankers-controller/src/command.rs
-- crates/clankers-controller/src/auto_test.rs
-- crates/clankers-agent/src/lib.rs
-- crates/clankers-agent/src/turn/mod.rs
-- crates/clankers-core/README.md
+- `crates/clankers-controller/src/command.rs`
+- `crates/clankers-controller/src/auto_test.rs`
+- `crates/clankers-controller/src/core_effects.rs`
+- `crates/clankers-controller/src/event_processing.rs`
+- `crates/clankers-agent/src/lib.rs`
+- `crates/clankers-agent/src/turn/mod.rs`
+- `crates/clankers-agent/src/turn/execution.rs`
+- `src/modes/event_loop_runner/mod.rs`
+- `crates/clankers-core/README.md`
 
 ## Covered IDs
 
-- no.std.functional.core.portable.crate.std-shells-consume-same-crate
-- no.std.functional.core.future.extraction.boundary
-- no.std.functional.core.continuous.verification.anti-fork-review-confirms-single-migrated-policy-path
+- `no.std.functional.core.portable.crate.std-shells-consume-same-crate`
+- `no.std.functional.core.future.extraction.boundary`
+- `no.std.functional.core.continuous.verification.anti-fork-review-confirms-single-migrated-policy-path`
 
 ## Questions
 
 - Question: Does migrated-slice policy now live in `clankers-core` rather than being re-derived in controller or agent shells?
   Answer: PASS
-  Notes: Review target is limited to translation, effect execution, and shell-visible acknowledgements.
+  Notes: `command.rs` and `auto_test.rs` now translate `CoreInput` and delegate ordered shell execution to `core_effects.rs`; reducer decisions stay in `clankers_core::reduce(...)`.
 
 - Question: Does `SessionController` remain the only authoritative migrated reducer while `clankers-agent` returns feedback without a second reducer?
   Answer: PASS
-  Notes: Review target explicitly checks controller-owned state and rejects an agent-owned forked reducer path.
+  Notes: `SessionController.core_state` is still the only authoritative migrated state. `core_effects.rs` translates `CoreThinkingLevel` before calling `Agent::apply_controller_thinking_level(...)`; `Agent::apply_core_filtered_tools(...)`, `turn::run_turn_loop(controller_tools, ...)`, and `execution::execute_tools_parallel(controller_tools, ...)` consume controller-provided contracts without minting agent-owned core state or adding a runtime `clankers-core` dependency to `clankers-agent`.
 
 - Question: Do shell adapters stay free of raw core-policy duplication for prompt, loop, thinking, and tool-filter transitions?
   Answer: PASS
-  Notes: Review target checks only adapter translation and shell execution seams.
+  Notes: Slash `/thinking` and `/stop` now reuse reducer-backed handlers. Embedded prompt completion no longer clears busy/loop state from ambient shell state; `event_processing.rs` seeds pending prompt correlation from `BeforeAgentStart`, `finish_embedded_prompt()` consumes reducer-owned pending work, and `event_loop_runner/mod.rs` only bridges shell dispatch success/failure back through controller completion APIs.
 
 - Question: Does the README boundary note keep future extractions focused on pure logic in `clankers-core` and I/O in shells?
   Answer: PASS
-  Notes: Review target names boundary ownership explicitly.
+  Notes: `crates/clankers-core/README.md` now names `core_effects.rs` as the shared controller shell executor, keeps `event_loop_runner/mod.rs` framed as runtime plumbing, and leaves `clankers-agent` turn/tool execution explicitly shell-side.
 
 ## Summary
 
-- Anti-fork review path is explicitly scoped and reviewable.
-- Controller-owned authoritative state and no-second-reducer expectations are called out directly.
-- Remaining shell code is expected to stay translation/effect execution only.
-- Future extraction notes remain boundary-focused instead of reopening shell policy drift.
+- `clankers-core` owns the migrated slice policy.
+- `SessionController` remains the only authoritative migrated reducer.
+- `clankers-agent` and embedded-mode runtime paths now consume controller-owned effect/input contracts without a second reducer or forked shell policy path.
+- Boundary notes remain focused on where future pure logic should move next.

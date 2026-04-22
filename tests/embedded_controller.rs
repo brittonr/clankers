@@ -60,6 +60,10 @@ fn make_daemon_controller() -> SessionController {
     })
 }
 
+fn start_embedded_prompt(ctrl: &mut SessionController, prompt: &str) {
+    assert!(ctrl.start_embedded_prompt(prompt, 0));
+}
+
 // ── Embedded mode: feed_event + take_outgoing ────────────────────────────
 
 #[test]
@@ -226,6 +230,7 @@ fn embedded_set_model() {
 #[test]
 fn embedded_auto_test_disabled_by_default() {
     let mut ctrl = make_embedded_controller();
+    start_embedded_prompt(&mut ctrl, "hello");
     ctrl.notify_prompt_done(false);
     assert!(matches!(ctrl.check_post_prompt(), PostPromptAction::None));
 }
@@ -235,6 +240,7 @@ fn embedded_auto_test_fires_when_enabled() {
     let mut ctrl = make_embedded_controller();
     ctrl.set_auto_test(true, Some("cargo nextest run".to_string()));
 
+    start_embedded_prompt(&mut ctrl, "hello");
     ctrl.notify_prompt_done(false);
     match ctrl.check_post_prompt() {
         PostPromptAction::RunAutoTest { prompt, .. } => {
@@ -250,6 +256,7 @@ fn embedded_auto_test_no_recursive_trigger() {
     ctrl.set_auto_test(true, Some("cargo test".to_string()));
 
     // First prompt done -> auto-test fires
+    start_embedded_prompt(&mut ctrl, "hello");
     ctrl.notify_prompt_done(false);
     match ctrl.check_post_prompt() {
         PostPromptAction::RunAutoTest { effect_id, .. } => {
@@ -259,6 +266,7 @@ fn embedded_auto_test_no_recursive_trigger() {
     }
 
     // Second prompt done (auto-test itself completing) -> blocked by in_progress flag
+    start_embedded_prompt(&mut ctrl, "auto-test");
     ctrl.notify_prompt_done(false);
     assert!(
         matches!(ctrl.check_post_prompt(), PostPromptAction::None),
@@ -267,6 +275,7 @@ fn embedded_auto_test_no_recursive_trigger() {
 
     // After clearing the guard, it fires again
     ctrl.clear_auto_test();
+    start_embedded_prompt(&mut ctrl, "hello again");
     ctrl.notify_prompt_done(false);
     assert!(matches!(ctrl.check_post_prompt(), PostPromptAction::RunAutoTest { .. }));
 }
@@ -286,6 +295,7 @@ fn embedded_loop_continuation() {
     assert!(ctrl.has_active_loop());
 
     // Simulate prompt completion + check
+    start_embedded_prompt(&mut ctrl, "iterate");
     ctrl.notify_prompt_done(false);
     match ctrl.check_post_prompt() {
         PostPromptAction::ContinueLoop { prompt, .. } => {
@@ -306,6 +316,7 @@ fn embedded_loop_terminates_at_max() {
     });
 
     // Iteration 1 → continue
+    start_embedded_prompt(&mut ctrl, "go");
     ctrl.notify_prompt_done(false);
     match ctrl.check_post_prompt() {
         PostPromptAction::ContinueLoop { effect_id, .. } => {
@@ -315,6 +326,7 @@ fn embedded_loop_terminates_at_max() {
     }
 
     // Iteration 2 → max reached, should terminate
+    start_embedded_prompt(&mut ctrl, "go");
     ctrl.notify_prompt_done(false);
     match ctrl.check_post_prompt() {
         PostPromptAction::None => {} // correct — loop finished
@@ -341,6 +353,7 @@ fn embedded_loop_break_condition() {
         is_error: false,
     });
 
+    start_embedded_prompt(&mut ctrl, "check");
     ctrl.notify_prompt_done(false);
     match ctrl.check_post_prompt() {
         PostPromptAction::None => {} // break condition met
@@ -365,6 +378,7 @@ fn embedded_loop_signal_break() {
         input: serde_json::json!({}),
     });
 
+    start_embedded_prompt(&mut ctrl, "go");
     ctrl.notify_prompt_done(false);
     match ctrl.check_post_prompt() {
         PostPromptAction::None => {} // signal break triggered
@@ -420,6 +434,7 @@ fn embedded_loop_error_terminates() {
     });
 
     // Prompt fails with an error
+    start_embedded_prompt(&mut ctrl, "go");
     ctrl.notify_prompt_done(true);
     assert!(!ctrl.has_active_loop(), "error should terminate the loop");
 }

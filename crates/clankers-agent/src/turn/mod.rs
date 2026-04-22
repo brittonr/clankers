@@ -50,6 +50,12 @@ pub(crate) struct CollectedResponse {
     stop_reason: StopReason,
 }
 
+fn tool_definitions_from_controller_inventory(
+    controller_tools: &HashMap<String, Arc<dyn Tool>>,
+) -> Vec<crate::tool::ToolDefinition> {
+    controller_tools.values().map(|tool| tool.definition().clone()).collect()
+}
+
 fn parse_stop_reason(s: &str) -> StopReason {
     match s {
         "end_turn" | "stop" => StopReason::Stop,
@@ -160,7 +166,7 @@ impl ContentBlockBuilder {
 #[allow(clippy::too_many_arguments)]
 pub async fn run_turn_loop(
     provider: &dyn Provider,
-    tools: &HashMap<String, Arc<dyn Tool>>,
+    controller_tools: &HashMap<String, Arc<dyn Tool>>,
     messages: &mut Vec<AgentMessage>,
     config: &TurnConfig,
     event_tx: &broadcast::Sender<AgentEvent>,
@@ -173,7 +179,7 @@ pub async fn run_turn_loop(
     capability_gate: Option<&Arc<dyn crate::tool::CapabilityGate>>,
     user_tool_filter: Option<&Vec<String>>,
 ) -> Result<()> {
-    let tool_defs: Vec<_> = tools.values().map(|t| t.definition().clone()).collect();
+    let tool_defs = tool_definitions_from_controller_inventory(controller_tools);
     let mut cumulative_usage = Usage::default();
     let mut active_model = config.model.clone();
 
@@ -272,7 +278,7 @@ pub async fn run_turn_loop(
 
         // Execute tools and append results (with truncation)
         let tool_result_messages = execute_tools_parallel(
-            tools,
+            controller_tools,
             &tool_calls,
             event_tx,
             cancel.clone(),
@@ -866,6 +872,49 @@ mod tests {
         )
         .await;
         assert!(!allowed_results[0].is_error);
+    }
+
+    #[tokio::test]
+    async fn controller_filtered_tool_inventory_replaces_available_tools_without_turn_local_state() {
+        let tool: Arc<dyn Tool> = Arc::new(DirectResultTool::new());
+        let mut full_tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        full_tools.insert("direct_tool".to_string(), Arc::clone(&tool));
+        let filtered_tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let (event_tx, _rx) = broadcast::channel(256);
+        let tool_calls = vec![("call-1".to_string(), "direct_tool".to_string(), json!({}))];
+
+        let allowed_results = execute_tools_parallel(
+            &full_tools,
+            &tool_calls,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            "",
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(!allowed_results[0].is_error);
+
+        let filtered_results = execute_tools_parallel(
+            &filtered_tools,
+            &tool_calls,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            "",
+            None,
+            None,
+            None,
+        )
+        .await;
+        assert!(filtered_results[0].is_error);
+        let text = match &filtered_results[0].content[0] {
+            Content::Text { text } => text,
+            other => panic!("expected Text, got {:?}", other),
+        };
+        assert_eq!(text, "Tool 'direct_tool' not found");
     }
 
     // -----------------------------------------------------------------------

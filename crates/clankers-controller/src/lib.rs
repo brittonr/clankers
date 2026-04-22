@@ -13,6 +13,7 @@ pub mod capability;
 pub mod client;
 pub mod command;
 pub mod config;
+pub mod core_effects;
 pub mod confirm;
 pub mod convert;
 pub mod event_processing;

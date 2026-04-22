@@ -219,6 +219,11 @@ impl Agent {
         self.tools = tools.into_iter().map(|t| (t.definition().name.clone(), t)).collect();
     }
 
+    /// Apply a controller-owned core tool inventory update.
+    pub fn apply_core_filtered_tools(&mut self, tools: Vec<Arc<dyn Tool>>) {
+        self.set_tools(tools);
+    }
+
     /// Get the active tools.
     pub fn tools(&self) -> Vec<&Arc<dyn Tool>> {
         self.tools.values().collect()
@@ -537,6 +542,11 @@ impl Agent {
         level
     }
 
+    /// Apply a controller-owned translated thinking level.
+    pub fn apply_controller_thinking_level(&mut self, level: ThinkingLevel) -> ThinkingLevel {
+        self.set_thinking_level(level)
+    }
+
     /// Cycle to the next thinking level. Returns the new level.
     pub fn cycle_thinking_level(&mut self) -> ThinkingLevel {
         let next = self.thinking_level.next();
@@ -700,6 +710,8 @@ impl Agent {
 mod tests {
     use std::sync::Arc;
 
+    use serde_json::json;
+
     use super::*;
 
     struct MockProvider;
@@ -723,6 +735,21 @@ mod tests {
         }
     }
 
+    struct StaticTool {
+        definition: ToolDefinition,
+    }
+
+    #[async_trait::async_trait]
+    impl Tool for StaticTool {
+        fn definition(&self) -> &ToolDefinition {
+            &self.definition
+        }
+
+        async fn execute(&self, _ctx: &ToolContext, _params: serde_json::Value) -> ToolResult {
+            ToolResult::text("ok")
+        }
+    }
+
     fn make_test_agent() -> Agent {
         Agent::new(
             Arc::new(MockProvider),
@@ -731,6 +758,42 @@ mod tests {
             "test-model".to_string(),
             "test system prompt".to_string(),
         )
+    }
+
+    fn make_tool_agent(tools: Vec<Arc<dyn Tool>>) -> Agent {
+        Agent::new(
+            Arc::new(MockProvider),
+            tools,
+            Settings::default(),
+            "test-model".to_string(),
+            "test system prompt".to_string(),
+        )
+    }
+
+    fn stub_tool(name: &str) -> Arc<dyn Tool> {
+        Arc::new(StaticTool {
+            definition: ToolDefinition {
+                name: name.to_string(),
+                description: format!("stub {name}"),
+                input_schema: json!({"type": "object"}),
+            },
+        })
+    }
+
+    fn provider_thinking_level(level: clankers_core::CoreThinkingLevel) -> ThinkingLevel {
+        match level {
+            clankers_core::CoreThinkingLevel::Off => ThinkingLevel::Off,
+            clankers_core::CoreThinkingLevel::Low => ThinkingLevel::Low,
+            clankers_core::CoreThinkingLevel::Medium => ThinkingLevel::Medium,
+            clankers_core::CoreThinkingLevel::High => ThinkingLevel::High,
+            clankers_core::CoreThinkingLevel::Max => ThinkingLevel::Max,
+        }
+    }
+
+    fn agent_tool_names(agent: &Agent) -> Vec<String> {
+        let mut names: Vec<String> = agent.tool_definitions().into_iter().map(|definition| definition.name).collect();
+        names.sort();
+        names
     }
 
     #[test]
@@ -763,6 +826,76 @@ mod tests {
         assert_eq!(agent.user_tool_filter, second_filter);
 
         agent.set_user_tool_filter(None);
+        assert!(agent.user_tool_filter.is_none());
+    }
+
+    #[test]
+    fn agent_applies_core_thinking_effect_without_agent_owned_reducer() {
+        let mut agent = make_test_agent();
+        let outcome = clankers_core::reduce(
+            &clankers_core::CoreState::default(),
+            &clankers_core::CoreInput::SetThinkingLevel {
+                requested: clankers_core::CoreThinkingLevelInput::Level(clankers_core::CoreThinkingLevel::High),
+            },
+        );
+
+        let (next_state, effects) = match outcome {
+            clankers_core::CoreOutcome::Transitioned { next_state, effects } => (next_state, effects),
+            other => panic!("expected transitioned outcome, got {other:?}"),
+        };
+        assert_eq!(next_state.thinking_level, clankers_core::CoreThinkingLevel::High);
+        assert_eq!(agent.thinking_level(), ThinkingLevel::Off);
+
+        for effect in effects {
+            match effect {
+                clankers_core::CoreEffect::ApplyThinkingLevel { level } => {
+                    let applied_level = agent.apply_controller_thinking_level(provider_thinking_level(level));
+                    assert_eq!(applied_level, provider_thinking_level(level));
+                }
+                clankers_core::CoreEffect::EmitLogicalEvent(clankers_core::CoreLogicalEvent::ThinkingLevelChanged {
+                    previous,
+                    current,
+                }) => {
+                    assert_eq!(previous, clankers_core::CoreThinkingLevel::Off);
+                    assert_eq!(current, clankers_core::CoreThinkingLevel::High);
+                }
+                other => panic!("unexpected core effect: {other:?}"),
+            }
+        }
+
+        assert_eq!(agent.thinking_level(), ThinkingLevel::High);
+    }
+
+    #[test]
+    fn agent_tool_inventory_can_follow_core_disabled_tool_contract_without_local_policy() {
+        let base_tools = vec![stub_tool("bash"), stub_tool("read")];
+        let mut agent = make_tool_agent(base_tools.clone());
+        let disabled_tools = vec!["bash".to_string()];
+        let outcome = clankers_core::reduce(
+            &clankers_core::CoreState::default(),
+            &clankers_core::CoreInput::SetDisabledTools(clankers_core::DisabledToolsUpdate {
+                requested_disabled_tools: disabled_tools.clone(),
+            }),
+        );
+
+        let filtered_tools = match outcome {
+            clankers_core::CoreOutcome::Transitioned { next_state, effects } => {
+                assert_eq!(next_state.disabled_tools, disabled_tools);
+                assert_eq!(effects.len(), 1);
+                match &effects[0] {
+                    clankers_core::CoreEffect::ApplyToolFilter { disabled_tools, .. } => base_tools
+                        .into_iter()
+                        .filter(|tool| !disabled_tools.contains(&tool.definition().name))
+                        .collect::<Vec<_>>(),
+                    other => panic!("unexpected core effect: {other:?}"),
+                }
+            }
+            other => panic!("expected transitioned outcome, got {other:?}"),
+        };
+
+        assert_eq!(agent_tool_names(&agent), vec!["bash".to_string(), "read".to_string()]);
+        agent.apply_core_filtered_tools(filtered_tools);
+        assert_eq!(agent_tool_names(&agent), vec!["read".to_string()]);
         assert!(agent.user_tool_filter.is_none());
     }
 }

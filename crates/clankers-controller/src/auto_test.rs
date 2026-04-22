@@ -18,14 +18,7 @@ impl SessionController {
         match clankers_core::reduce(&self.core_state, &input) {
             clankers_core::CoreOutcome::Transitioned { next_state, effects } => {
                 self.apply_core_state(next_state);
-                debug_assert!(effects.iter().any(|effect| matches!(
-                    effect,
-                    clankers_core::CoreEffect::StartPrompt {
-                        prompt_text: effect_prompt,
-                        image_count: effect_image_count,
-                        ..
-                    } if effect_prompt == prompt_text && *effect_image_count == image_count
-                )));
+                let _effect_id = self.execute_prompt_request_effects(effects, prompt_text, image_count);
                 true
             }
             clankers_core::CoreOutcome::Rejected { .. } => {
@@ -40,20 +33,19 @@ impl SessionController {
 
     /// Complete an embedded-mode prompt through the reducer-backed prompt path.
     pub fn finish_embedded_prompt(&mut self, completion_status: clankers_core::CompletionStatus) {
-        if let Some(pending_prompt) = self.core_state.pending_prompt.clone() {
-            let applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
-                effect_id: pending_prompt.effect_id,
-                completion_status,
+        let Some(pending_prompt) = self.core_state.pending_prompt.clone() else {
+            self.emit(clankers_protocol::DaemonEvent::SystemMessage {
+                text: "Embedded prompt completion rejected: no pending prompt".to_string(),
+                is_error: true,
             });
-            debug_assert!(applied, "embedded prompt completion should match the pending prompt");
             return;
-        }
+        };
 
-        self.busy = false;
-        self.core_state.busy = false;
-        if matches!(completion_status, clankers_core::CompletionStatus::Failed(_)) && self.active_loop_id.is_some() {
-            self.finish_loop("failed (error)");
-        }
+        let applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
+            effect_id: pending_prompt.effect_id,
+            completion_status,
+        });
+        debug_assert!(applied, "embedded prompt completion should match the pending prompt");
     }
 
     /// Check if auto-test should run after a prompt completes. Returns a
@@ -98,41 +90,7 @@ impl SessionController {
         match clankers_core::reduce(&self.core_state, &input) {
             clankers_core::CoreOutcome::Transitioned { next_state, effects } => {
                 self.apply_core_state(next_state);
-                let mut post_prompt_action = PostPromptAction::None;
-                let mut completion_reason = observed_loop_progress.completion_reason;
-
-                for effect in effects {
-                    match effect {
-                        clankers_core::CoreEffect::RunLoopFollowUp {
-                            effect_id,
-                            prompt_text,
-                            source,
-                        } => {
-                            post_prompt_action = match source {
-                                clankers_core::FollowUpSource::LoopContinuation => PostPromptAction::ContinueLoop {
-                                    effect_id,
-                                    prompt: prompt_text,
-                                },
-                                clankers_core::FollowUpSource::AutoTest => PostPromptAction::RunAutoTest {
-                                    effect_id,
-                                    prompt: prompt_text,
-                                },
-                            };
-                        }
-                        clankers_core::CoreEffect::EmitLogicalEvent(
-                            clankers_core::CoreLogicalEvent::LoopStateChanged {
-                                active_loop_state: None,
-                            },
-                        ) => {
-                            if let Some(reason) = completion_reason.take() {
-                                self.finish_loop(&reason);
-                            }
-                        }
-                        _ => {}
-                    }
-                }
-
-                post_prompt_action
+                self.execute_post_prompt_effects(effects, observed_loop_progress.completion_reason)
             }
             clankers_core::CoreOutcome::Rejected { .. } => PostPromptAction::None,
         }
@@ -148,31 +106,11 @@ impl SessionController {
             effect_id,
             completion_status: completion_status.clone(),
         });
-        let previous_loop_active = self.active_loop_id.is_some();
 
         match clankers_core::reduce(&self.core_state, &input) {
             clankers_core::CoreOutcome::Transitioned { next_state, effects } => {
                 self.apply_core_state(next_state);
-                if matches!(completion_status, clankers_core::CompletionStatus::Failed(_)) {
-                    if previous_loop_active {
-                        self.finish_loop("failed (follow-up)");
-                    } else {
-                        self.emit(clankers_protocol::DaemonEvent::SystemMessage {
-                            text: "Post-prompt follow-up failed".to_string(),
-                            is_error: true,
-                        });
-                    }
-                }
-                for effect in effects {
-                    if let clankers_core::CoreEffect::EmitLogicalEvent(
-                        clankers_core::CoreLogicalEvent::LoopStateChanged {
-                            active_loop_state: None,
-                        },
-                    ) = effect
-                    {
-                        self.core_state.active_loop_state = None;
-                    }
-                }
+                self.execute_follow_up_completion_effects(effects, &completion_status);
             }
             clankers_core::CoreOutcome::Rejected { .. } => {
                 self.emit(clankers_protocol::DaemonEvent::SystemMessage {
@@ -642,7 +580,7 @@ mod tests {
     #[test]
     fn test_notify_prompt_done_clears_busy() {
         let mut ctrl = make_test_controller();
-        ctrl.busy = true;
+        assert!(ctrl.start_embedded_prompt("hello", 0));
 
         ctrl.notify_prompt_done(false);
         assert!(!ctrl.busy);
@@ -651,14 +589,17 @@ mod tests {
     #[test]
     fn test_notify_prompt_done_with_error_finishes_loop() {
         let mut ctrl = make_test_controller();
-        ctrl.busy = true;
-        ctrl.active_loop_id = Some(LoopId("test-loop".to_string()));
+        ctrl.start_loop(crate::loop_mode::LoopConfig {
+            name: "test-loop".to_string(),
+            prompt: Some("continue loop".to_string()),
+            max_iterations: 2,
+            break_text: None,
+        });
+        assert!(ctrl.start_embedded_prompt("hello", 0));
 
         ctrl.notify_prompt_done(true); // had_error = true
         assert!(!ctrl.busy);
-
-        // Loop should be finished (active_loop_id cleared by finish_loop)
-        // This depends on finish_loop implementation, but we can test the busy state
+        assert!(ctrl.active_loop_id.is_none());
     }
 
     #[test]

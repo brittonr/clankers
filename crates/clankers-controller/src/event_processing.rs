@@ -59,7 +59,17 @@ impl SessionController {
         // 1. Audit tracking
         self.audit.process_event(event);
 
-        // 2. Track tool call names
+        // 2. In embedded mode, seed prompt correlation from the real prompt-start event.
+        if self.agent.is_none()
+            && !self.core_state.busy
+            && self.core_state.pending_prompt.is_none()
+            && let AgentEvent::BeforeAgentStart { prompt, .. } = event
+        {
+            let started = self.start_embedded_prompt(prompt, 0);
+            debug_assert!(started, "embedded before-agent-start should seed a pending prompt");
+        }
+
+        // 3. Track tool call names
         if let AgentEvent::ToolCall { call_id, tool_name, .. } = event {
             self.tool_call_names.insert(call_id.clone(), tool_name.clone());
 
@@ -69,7 +79,7 @@ impl SessionController {
             }
         }
 
-        // 3. Accumulate tool output for loop break conditions
+        // 4. Accumulate tool output for loop break conditions
         if let AgentEvent::ToolExecutionEnd { result, .. } = event {
             for content in &result.content {
                 if let clankers_agent::ToolResultContent::Text { text } = content {
@@ -81,15 +91,15 @@ impl SessionController {
             }
         }
 
-        // 4. Persist to session
+        // 5. Persist to session
         self.persist_event(event);
 
-        // 5. Translate to DaemonEvent
+        // 6. Translate to DaemonEvent
         if let Some(daemon_event) = agent_event_to_daemon_event(event) {
             self.outgoing.push(daemon_event);
         }
 
-        // 6. Fire lifecycle hooks
+        // 7. Fire lifecycle hooks
         self.fire_lifecycle_hooks(event);
     }
 
@@ -173,6 +183,26 @@ mod tests {
         let outgoing = ctrl.take_outgoing();
         assert_eq!(outgoing.len(), 1);
         assert!(matches!(outgoing[0], DaemonEvent::AgentStart { .. }));
+    }
+
+    #[test]
+    fn test_embedded_before_agent_start_seeds_pending_prompt() {
+        let mut ctrl = make_embedded_controller();
+
+        ctrl.feed_event(&AgentEvent::BeforeAgentStart {
+            prompt: "hello".to_string(),
+            system_prompt: "system".to_string(),
+        });
+
+        assert!(ctrl.core_state.busy);
+        assert_eq!(
+            ctrl.core_state.pending_prompt,
+            Some(clankers_core::PendingPromptState {
+                effect_id: clankers_core::CoreEffectId(1),
+                prompt_text: "hello".to_string(),
+                image_count: 0,
+            })
+        );
     }
 
     #[test]

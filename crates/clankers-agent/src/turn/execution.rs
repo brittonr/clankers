@@ -163,7 +163,7 @@ pub(super) async fn collect_stream_events(
 
 /// Execute tools in parallel and return their results
 pub(super) async fn execute_tools_parallel(
-    tools: &HashMap<String, Arc<dyn Tool>>,
+    controller_tools: &HashMap<String, Arc<dyn Tool>>,
     tool_calls: &[(String, String, Value)],
     event_tx: &broadcast::Sender<AgentEvent>,
     cancel: CancellationToken,
@@ -180,7 +180,7 @@ pub(super) async fn execute_tools_parallel(
         .iter()
         .map(|(call_id, tool_name, input)| {
             execute_single_tool(
-                tools.get(tool_name).cloned(),
+                controller_tools.get(tool_name).cloned(),
                 call_id.clone(),
                 tool_name.clone(),
                 input.clone(),

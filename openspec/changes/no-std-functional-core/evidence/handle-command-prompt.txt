@@ -3,14 +3,22 @@ Task-ID: V9
 Artifact-Type: deterministic-proof
 Covers: no.std.functional.core.explicit.effects.prompt-request-yields-shell-work, no.std.functional.core.explicit.effects, no.std.functional.core.shell.parity
 Created-By: pi
-Created-At: 2026-04-21T14:02:12Z
+Created-At: 2026-04-21T22:10:00Z
 
 # Evidence: handle_command prompt shell seam
 
 ## Summary
 
-- Drive `SessionController::handle_command(SessionCommand::Prompt { .. })` through the migrated reducer path.
-- Assert an allowed prompt request yields the expected prompt-start `CoreEffect`/shell work path without shell policy re-derivation.
-- Assert controller and agent adapters preserve reducer-emitted `CoreEffect` order whenever sequencing is shell-visible, with prompt-start ordering pinned here and non-prompt ordered-effect paths pinned by the paired reducer/controller coverage cited in `reducer-determinism.txt` and `auto-test-prompt-completion.txt`.
-- Assert preserved emitted events, busy-state transitions, and prompt success/no-ack behavior.
-- Catch adapter regressions at the public controller seam.
+- Drive `SessionController::handle_command(SessionCommand::Prompt { .. })` through the public controller shell seam.
+- Assert an allowed prompt request yields reducer output `BusyChanged(true)` then `StartPrompt { effect_id, prompt_text, image_count }` without shell policy re-derivation.
+- Assert the controller adapter forwards the reducer-owned prompt payload into the provider request, preserves the reducer-owned `_session_id` passthrough, and preserves `[DaemonEvent::AgentStart, DaemonEvent::PromptDone { error: None }]`.
+- Assert busy-state transitions still settle through the reducer path with no extra success acknowledgement event.
+- Pair with existing ordered-effect parity rails for disabled-tools and prompt-completion follow-up paths; prompt-start ordering is pinned here.
+
+## Latest added coverage
+
+- `crates/clankers-controller/src/command.rs::test_handle_command_prompt_uses_reducer_start_effect_and_preserves_shell_events`
+
+## Latest validation command
+
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' cargo test -p clankers-controller command::tests::`

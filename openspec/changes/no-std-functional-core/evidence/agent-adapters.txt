@@ -3,22 +3,37 @@ Task-ID: V10
 Artifact-Type: deterministic-proof
 Covers: no.std.functional.core.portable.crate.std-shells-consume-same-crate, no.std.functional.core.shell.parity
 Created-By: pi
-Created-At: 2026-04-21T14:02:12Z
+Created-At: 2026-04-21T23:55:45Z
 
 # Evidence: agent adapter parity
 
 ## Summary
 
-- Cover migrated tool-filter behavior in `crates/clankers-agent/src/turn/mod.rs` and thinking/tool-filter adapter behavior in `crates/clankers-agent/src/lib.rs`.
-- Assert `SessionController` owns the authoritative migrated-slice core state and the agent returns feedback without maintaining a second reducer or forked orchestration policy.
-- Confirm the std shells consume the shared `clankers-core` contracts in ordinary std builds.
+- `crates/clankers-agent/src/lib.rs` now exposes explicit shell helpers `Agent::apply_controller_thinking_level(...)` and `Agent::apply_core_filtered_tools(...)` so controller-owned reducer effects are applied through agent adapter methods without pulling `clankers-core` into the agent's runtime dependency graph.
+- `crates/clankers-agent/src/turn/mod.rs` now names the authoritative input `controller_tools` and builds turn tool definitions through `tool_definitions_from_controller_inventory(...)`, making the controller-provided filtered inventory the only turn-time tool source for the migrated slice.
+- `crates/clankers-controller/src/core_effects.rs` translates `CoreThinkingLevel` into `clankers_provider::ThinkingLevel` before crossing into `clankers-agent`, keeping the agent runtime boundary shell-native while still consuming reducer-produced thinking effects.
+- `crates/clankers-agent/src/turn/execution.rs` now threads that same `controller_tools` inventory through tool lookup, so removed tools fail as `Tool 'direct_tool' not found` instead of being recovered from hidden turn-local state.
+- The remaining user allowlist checks stay turn-local by design and remain covered separately as a shell-only capability rail.
+
+## Reviewed implementation points
+
+- `crates/clankers-agent/src/lib.rs::apply_controller_thinking_level`
+- `crates/clankers-agent/src/lib.rs::apply_core_filtered_tools`
+- `crates/clankers-agent/src/turn/mod.rs::tool_definitions_from_controller_inventory`
+- `crates/clankers-agent/src/turn/mod.rs::run_turn_loop`
+- `crates/clankers-agent/src/turn/execution.rs::execute_tools_parallel`
 
 ## Latest added coverage
 
+- `crates/clankers-agent/src/lib.rs::agent_applies_core_thinking_effect_without_agent_owned_reducer`
+- `crates/clankers-agent/src/lib.rs::agent_tool_inventory_can_follow_core_disabled_tool_contract_without_local_policy`
+- `crates/clankers-agent/src/turn/mod.rs::controller_filtered_tool_inventory_replaces_available_tools_without_turn_local_state`
 - `crates/clankers-agent/src/turn/mod.rs::user_tool_filter_applies_latest_allowlist_per_call`
-- `crates/clankers-agent/src/lib.rs::cycle_thinking_level_follows_expected_order`
 - `crates/clankers-agent/src/lib.rs::set_user_tool_filter_replaces_previous_filter`
 
-## Latest validation command
+## Latest validation commands
 
-- `cargo test -p clankers-agent user_tool_filter --lib`
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' cargo test -p clankers-agent agent_applies_core_thinking_effect_without_agent_owned_reducer --lib`
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' cargo test -p clankers-agent agent_tool_inventory_can_follow_core_disabled_tool_contract_without_local_policy --lib`
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' cargo test -p clankers-agent controller_filtered_tool_inventory_replaces_available_tools_without_turn_local_state --lib`
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' cargo test -p clankers-agent user_tool_filter --lib`

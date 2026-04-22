@@ -41,4 +41,5 @@ openspec = ["dep:openspec"]
 workspace = true
 
 [dev-dependencies]
+clankers-core = { version = "0.1.0", path = "../clankers-core" }
 tempfile = "3"

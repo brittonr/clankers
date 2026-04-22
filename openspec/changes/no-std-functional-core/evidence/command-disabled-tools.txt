@@ -3,17 +3,26 @@ Task-ID: V5
 Artifact-Type: deterministic-proof
 Covers: no.std.functional.core.explicit.effects.migrated-shell-results-re-enter-as-explicit-inputs, no.std.functional.core.shell.parity
 Created-By: pi
-Created-At: 2026-04-21T14:01:45Z
+Created-At: 2026-04-21T22:10:00Z
 
 # Evidence: command disabled-tools parity
 
 ## Summary
 
-- Cover accepted disabled-tool updates, filtered-tool rebuild application, stale-slot rejection, and mismatched tool-filter feedback rejection through the controller seam.
-- Assert reducer-produced `ApplyToolFilter` work is consumed by the controller seam, then matching feedback emits `DaemonEvent::DisabledToolsChanged` before the success `DaemonEvent::SystemMessage` acknowledgement.
-- Assert rejected feedback emits only error acknowledgement and no disabled-tools-changed event while leaving controller core state unchanged.
+- Cover accepted disabled-tool updates, filtered-tool rebuild application, stale-slot rejection, and feedback rejection through `crates/clankers-controller/src/command.rs`.
+- Assert `CoreInput::SetDisabledTools` yields reducer output `ApplyToolFilter { effect_id, disabled_tools }`, the controller seam consumes that work through the rebuilder, and matching feedback clears the pending slot.
+- Assert matching `ToolFilterApplied` feedback emits reducer-driven `DaemonEvent::DisabledToolsChanged`, and end-to-end command handling preserves `DaemonEvent::DisabledToolsChanged` before the success `DaemonEvent::SystemMessage` acknowledgement.
+- Assert stale pending rebuild rejection preserves unchanged state, emits only error acknowledgement, and performs no rebuild shell work.
+- Assert mismatched feedback yields typed `CoreError::ToolFilterMismatch`, out-of-order feedback yields typed `CoreError::OutOfOrderRuntimeResult`, both preserve unchanged state, emit only error acknowledgement, and emit no `DaemonEvent::DisabledToolsChanged`.
 
 ## Latest added coverage
 
-- `crates/clankers-controller/src/command.rs::test_set_disabled_tools_emits_change_before_ack`
-- `crates/clankers-controller/src/command.rs::test_tool_filter_feedback_rejection_keeps_state_and_emits_only_error`
+- `crates/clankers-controller/src/command.rs::test_set_disabled_tools_consumes_reducer_effect_and_emits_change_before_ack`
+- `crates/clankers-controller/src/command.rs::test_set_disabled_tools_rejects_stale_pending_rebuild_without_change_event`
+- `crates/clankers-controller/src/command.rs::test_tool_filter_feedback_success_emits_disabled_tools_changed_from_reducer_event`
+- `crates/clankers-controller/src/command.rs::test_tool_filter_feedback_mismatch_rejection_keeps_state_and_emits_only_error`
+- `crates/clankers-controller/src/command.rs::test_tool_filter_feedback_out_of_order_rejection_keeps_state_and_emits_only_error`
+
+## Latest validation command
+
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' cargo test -p clankers-controller command::tests::`

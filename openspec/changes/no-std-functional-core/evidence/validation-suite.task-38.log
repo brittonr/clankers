@@ -1,0 +1,292 @@
+=== No-std core bare-metal compile rail ===
+    Finished `dev` profile [optimized + debuginfo] target(s) in 0.17s
+  ✓ No-std core bare-metal compile rail
+
+=== No-std core dependency and API boundary rail ===
+  ✓ No-std core dependency and API boundary rail
+
+=== No-std core exported-surface rail ===
+  ✓ No-std core exported-surface rail
+
+=== No-std core reducer suite ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.12s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/clankers_core-5831ff3ce450fc3c)
+
+running 32 tests
+test reducer::tests::cycle_thinking_level_uses_shared_transition_order ... ok
+test reducer::tests::disabled_tools_request_is_rejected_while_filter_pending ... ok
+test reducer::tests::disabled_tools_request_sets_pending_filter ... ok
+test reducer::tests::duplicate_loop_follow_up_completion_is_rejected_after_slot_clears ... ok
+test reducer::tests::duplicate_prompt_completion_is_rejected_after_slot_clears ... ok
+test reducer::tests::duplicate_tool_filter_feedback_is_rejected_after_slot_clears ... ok
+test reducer::tests::invalid_thinking_level_is_rejected_without_state_change ... ok
+test reducer::tests::loop_follow_up_completion_empty_slot_is_rejected_with_follow_up_mismatch ... ok
+test reducer::tests::loop_follow_up_completion_failure_clears_pending_and_ends_loop ... ok
+test reducer::tests::loop_follow_up_completion_success_clears_pending_without_extra_effects ... ok
+test reducer::tests::mismatched_feedback_tokens_are_rejected_without_state_change ... ok
+test reducer::tests::out_of_order_runtime_results_are_rejected ... ok
+test reducer::tests::post_prompt_evaluation_clears_auto_test_guard_when_no_follow_up_runs ... ok
+test reducer::tests::post_prompt_evaluation_emits_loop_clear_before_auto_test ... ok
+test reducer::tests::post_prompt_evaluation_prefers_loop_follow_up ... ok
+test reducer::tests::post_prompt_evaluation_schedules_auto_test_when_loop_inactive ... ok
+test reducer::tests::prompt_completion_empty_slot_is_rejected_with_prompt_mismatch ... ok
+test reducer::tests::prompt_completion_failure_clears_active_loop_and_pending_follow_up ... ok
+test reducer::tests::prompt_completion_success_clears_busy_without_loop_mutation ... ok
+test reducer::tests::prompt_request_marks_busy_and_emits_start_effect ... ok
+test reducer::tests::repeated_prompt_request_is_rejected_while_busy ... ok
+test reducer::tests::simultaneous_pending_slots_keep_effect_ids_unambiguous_across_feedback_kinds ... ok
+test reducer::tests::start_loop_rejects_when_already_active ... ok
+test reducer::tests::start_loop_rejects_when_follow_up_pending ... ok
+test reducer::tests::start_loop_transitions_to_active_loop_state ... ok
+test reducer::tests::stop_loop_clears_active_loop ... ok
+test reducer::tests::stop_loop_rejects_when_follow_up_pending ... ok
+test reducer::tests::stop_loop_requires_active_loop ... ok
+test reducer::tests::tool_filter_feedback_accepts_matching_applied_set ... ok
+test reducer::tests::tool_filter_feedback_empty_slot_is_rejected_with_tool_filter_mismatch ... ok
+test reducer::tests::tool_filter_feedback_with_mismatched_applied_set_is_rejected ... ok
+test reducer::tests::valid_thinking_level_updates_state_and_effects ... ok
+
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+  ✓ No-std core reducer suite
+
+=== No-std core determinism rail ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.11s
+     Running tests/determinism.rs (/home/brittonr/.cargo-target/debug/deps/determinism-fb8ab9c98099a8f2)
+
+running 1 test
+test reducer_replays_identical_state_and_input_pairs_deterministically ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+  ✓ No-std core determinism rail
+
+=== Controller reducer and parity suites ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.20s
+────────────
+ Nextest run ID 5fc243a2-6338-414e-8285-3f08a942978c with nextest profile: default
+    Starting 130 tests across 1 binary (2 tests skipped)
+        PASS [   0.002s] (  1/130) clankers-controller audit::tests::test_audit_basic
+        PASS [   0.002s] (  2/130) clankers-controller audit::tests::test_audit_unknown_end
+        PASS [   0.003s] (  3/130) clankers-controller auto_test::tests::test_auto_test_blocked_during_loop
+        PASS [   0.003s] (  4/130) clankers-controller auto_test::tests::test_auto_test_disabled
+        PASS [   0.003s] (  5/130) clankers-controller auto_test::tests::test_auto_test_fires
+        PASS [   0.003s] (  6/130) clankers-controller auto_test::tests::test_check_post_prompt_finishes_completed_loop_without_follow_up
+        PASS [   0.003s] (  7/130) clankers-controller auto_test::tests::test_check_post_prompt_no_loop_no_autotest
+        PASS [   0.003s] (  8/130) clankers-controller auto_test::tests::test_check_post_prompt_with_active_loop
+        PASS [   0.003s] (  9/130) clankers-controller auto_test::tests::test_check_post_prompt_with_auto_test_enabled
+        PASS [   0.002s] ( 10/130) clankers-controller auto_test::tests::test_complete_follow_up_duplicate_completion_is_rejected
+        PASS [   0.002s] ( 11/130) clankers-controller auto_test::tests::test_complete_follow_up_failure_finishes_loop_and_emits_message
+        PASS [   0.002s] ( 12/130) clankers-controller auto_test::tests::test_complete_follow_up_failure_without_loop_emits_error_message
+        PASS [   0.003s] ( 13/130) clankers-controller auto_test::tests::test_complete_follow_up_rejection_keeps_state_and_emits_error
+        PASS [   0.002s] ( 14/130) clankers-controller auto_test::tests::test_complete_follow_up_success_clears_pending_without_extra_events
+        PASS [   0.003s] ( 15/130) clankers-controller auto_test::tests::test_finish_embedded_prompt_consumes_pending_prompt_via_reducer
+        PASS [   0.002s] ( 16/130) clankers-controller auto_test::tests::test_loop_iteration_returns_none_when_no_loop
+        PASS [   0.002s] ( 17/130) clankers-controller auto_test::tests::test_loop_iteration_with_active_loop
+        PASS [   0.002s] ( 18/130) clankers-controller auto_test::tests::test_notify_prompt_done_clears_busy
+        PASS [   0.003s] ( 19/130) clankers-controller auto_test::tests::test_notify_prompt_done_with_error_finishes_loop
+        PASS [   0.002s] ( 20/130) clankers-controller auto_test::tests::test_prompt_completion_duplicate_completion_is_rejected
+        PASS [   0.003s] ( 21/130) clankers-controller auto_test::tests::test_prompt_completion_failure_suppresses_follow_up_and_finishes_loop
+        PASS [   0.002s] ( 22/130) clankers-controller auto_test::tests::test_prompt_completion_rejection_keeps_state_and_emits_error
+        PASS [   0.003s] ( 23/130) clankers-controller auto_test::tests::test_prompt_completion_success_keeps_no_ack_and_allows_auto_test_follow_up
+        PASS [   0.002s] ( 24/130) clankers-controller auto_test::tests::test_prompt_completion_success_keeps_no_ack_and_allows_loop_follow_up
+        PASS [   0.002s] ( 25/130) clankers-controller auto_test::tests::test_start_embedded_prompt_tracks_pending_prompt_and_busy
+        PASS [   0.002s] ( 26/130) clankers-controller auto_test::tests::test_sync_loop_from_tui_both_none
+        PASS [   0.002s] ( 27/130) clankers-controller auto_test::tests::test_sync_loop_from_tui_clears_loop
+        PASS [   0.002s] ( 28/130) clankers-controller auto_test::tests::test_sync_loop_from_tui_starts_loop
+        PASS [   0.002s] ( 29/130) clankers-controller capability::tests::test_clamp_both_full
+        PASS [   0.003s] ( 30/130) clankers-controller capability::tests::test_clamp_both_restricted
+        PASS [   0.003s] ( 31/130) clankers-controller capability::tests::test_clamp_child_exceeds_parent
+        PASS [   0.002s] ( 32/130) clankers-controller capability::tests::test_clamp_child_full_access
+        PASS [   0.002s] ( 33/130) clankers-controller capability::tests::test_clamp_parent_full_access
+        PASS [   0.002s] ( 34/130) clankers-controller capability::tests::test_multiple_capability_entries
+        PASS [   0.002s] ( 35/130) clankers-controller capability::tests::test_no_capabilities_allows_all
+        PASS [   0.003s] ( 36/130) clankers-controller capability::tests::test_specific_tools
+        PASS [   0.003s] ( 37/130) clankers-controller capability::tests::test_tool_blocked_event
+        PASS [   0.003s] ( 38/130) clankers-controller capability::tests::test_wildcard_allows_all
+        PASS [   0.003s] ( 39/130) clankers-controller client::tests::test_agent_side_commands
+        PASS [   0.054s] ( 40/130) clankers-controller client::tests::test_client_adapter_round_trip
+        PASS [   0.004s] ( 41/130) clankers-controller client::tests::test_client_side_commands
+        PASS [   0.003s] ( 42/130) clankers-controller client::tests::test_convenience_methods
+        PASS [   0.003s] ( 43/130) clankers-controller client::tests::test_from_channels
+        PASS [   0.003s] ( 44/130) clankers-controller client::tests::test_is_disconnected_when_sender_dropped
+        PASS [   0.003s] ( 45/130) clankers-controller client::tests::test_try_recv_when_channel_closed
+        PASS [   0.003s] ( 46/130) clankers-controller client::tests::test_try_recv_when_empty
+        PASS [   0.003s] ( 47/130) clankers-controller client::tests::test_try_recv_with_pending_events
+        PASS [   0.003s] ( 48/130) clankers-controller command::tests::test_confirm_bash_unknown_request
+        PASS [   0.003s] ( 49/130) clankers-controller command::tests::test_cycle_thinking_level_order
+        PASS [   0.002s] ( 50/130) clankers-controller command::tests::test_handle_abort
+        PASS [   0.002s] ( 51/130) clankers-controller command::tests::test_handle_clear_history
+        PASS [   0.003s] ( 52/130) clankers-controller command::tests::test_handle_command_prompt_uses_reducer_start_effect_and_preserves_shell_events
+        PASS [   0.003s] ( 53/130) clankers-controller command::tests::test_handle_get_capabilities_none
+        PASS [   0.002s] ( 54/130) clankers-controller command::tests::test_handle_get_capabilities_some
+        PASS [   0.002s] ( 55/130) clankers-controller command::tests::test_handle_get_system_prompt
+        PASS [   0.002s] ( 56/130) clankers-controller command::tests::test_handle_set_model
+        PASS [   0.003s] ( 57/130) clankers-controller command::tests::test_loop_control_rejects_when_follow_up_pending
+        PASS [   0.003s] ( 58/130) clankers-controller command::tests::test_reject_concurrent_prompt_preserves_busy_rejection_kind_and_no_shell_work
+        PASS [   0.003s] ( 59/130) clankers-controller command::tests::test_replay_history
+        PASS [   0.003s] ( 60/130) clankers-controller command::tests::test_seed_messages
+        PASS [   0.003s] ( 61/130) clankers-controller command::tests::test_set_capabilities_exceeding_ceiling_rejected
+        PASS [   0.002s] ( 62/130) clankers-controller command::tests::test_set_capabilities_no_ceiling_allows_anything
+        PASS [   0.003s] ( 63/130) clankers-controller command::tests::test_set_capabilities_none_with_ceiling_rejected
+        PASS [   0.003s] ( 64/130) clankers-controller command::tests::test_set_capabilities_none_without_ceiling_succeeds
+        PASS [   0.002s] ( 65/130) clankers-controller command::tests::test_set_capabilities_restore_to_ceiling
+        PASS [   0.002s] ( 66/130) clankers-controller command::tests::test_set_capabilities_within_ceiling_succeeds
+        PASS [   0.002s] ( 67/130) clankers-controller command::tests::test_set_disabled_tools_consumes_reducer_effect_and_emits_change_before_ack
+        PASS [   0.002s] ( 68/130) clankers-controller command::tests::test_set_disabled_tools_rejects_stale_pending_rebuild_without_change_event
+        PASS [   0.002s] ( 69/130) clankers-controller command::tests::test_set_thinking_level_invalid
+        PASS [   0.002s] ( 70/130) clankers-controller command::tests::test_set_thinking_level_valid
+        PASS [   0.002s] ( 71/130) clankers-controller command::tests::test_slash_stop_routes_through_reducer_backed_handler
+        PASS [   0.002s] ( 72/130) clankers-controller command::tests::test_slash_thinking_routes_through_reducer_backed_handlers
+        PASS [   0.003s] ( 73/130) clankers-controller command::tests::test_start_loop_command_sets_active_loop_without_immediate_event
+        PASS [   0.002s] ( 74/130) clankers-controller command::tests::test_start_loop_rejects_when_already_active
+        PASS [   0.003s] ( 75/130) clankers-controller command::tests::test_stop_loop_command_emits_stop_message
+        PASS [   0.002s] ( 76/130) clankers-controller command::tests::test_stop_loop_rejects_without_active_loop
+        PASS [   0.002s] ( 77/130) clankers-controller command::tests::test_tool_filter_feedback_mismatch_rejection_keeps_state_and_emits_only_error
+        PASS [   0.002s] ( 78/130) clankers-controller command::tests::test_tool_filter_feedback_out_of_order_rejection_keeps_state_and_emits_only_error
+        PASS [   0.003s] ( 79/130) clankers-controller command::tests::test_tool_filter_feedback_success_emits_disabled_tools_changed_from_reducer_event
+        PASS [   0.002s] ( 80/130) clankers-controller confirm::tests::test_confirm_clear
+        PASS [   0.003s] ( 81/130) clankers-controller confirm::tests::test_confirm_multiple
+        PASS [   0.002s] ( 82/130) clankers-controller confirm::tests::test_confirm_round_trip
+        PASS [   0.002s] ( 83/130) clankers-controller confirm::tests::test_confirm_unknown_request
+        PASS [   0.002s] ( 84/130) clankers-controller convert::tests::history_assistant_message_to_tui_events
+        PASS [   0.002s] ( 85/130) clankers-controller convert::tests::history_assistant_with_thinking_and_tool
+        PASS [   0.003s] ( 86/130) clankers-controller convert::tests::history_bash_execution_to_tui_events
+        PASS [   0.002s] ( 87/130) clankers-controller convert::tests::history_branch_and_custom_produce_no_events
+        PASS [   0.002s] ( 88/130) clankers-controller convert::tests::history_compaction_to_tui_events
+        PASS [   0.002s] ( 89/130) clankers-controller convert::tests::history_serialization_round_trip
+        PASS [   0.002s] ( 90/130) clankers-controller convert::tests::history_tool_result_to_tui_events
+        PASS [   0.002s] ( 91/130) clankers-controller convert::tests::history_user_message_to_tui_events
+        PASS [   0.002s] ( 92/130) clankers-controller convert::tests::test_agent_end_converts
+        PASS [   0.002s] ( 93/130) clankers-controller convert::tests::test_agent_start_converts
+        PASS [   0.002s] ( 94/130) clankers-controller convert::tests::test_daemon_to_tui_agent_start
+        PASS [   0.002s] ( 95/130) clankers-controller convert::tests::test_daemon_to_tui_non_tui_events
+        PASS [   0.002s] ( 96/130) clankers-controller convert::tests::test_daemon_to_tui_text_delta
+        PASS [   0.002s] ( 97/130) clankers-controller convert::tests::test_extract_tool_content_mixed
+        PASS [   0.002s] ( 98/130) clankers-controller convert::tests::test_ignored_events
+        PASS [   0.002s] ( 99/130) clankers-controller convert::tests::test_text_delta_converts
+        PASS [   0.002s] (100/130) clankers-controller convert::tests::test_tool_call_converts
+        PASS [   0.002s] (101/130) clankers-controller convert::tests::test_tool_done_converts
+        PASS [   0.002s] (102/130) clankers-controller event_processing::tests::test_drain_events_returns_empty_in_embedded_mode
+        PASS [   0.002s] (103/130) clankers-controller event_processing::tests::test_embedded_before_agent_start_seeds_pending_prompt
+        PASS [   0.003s] (104/130) clankers-controller event_processing::tests::test_feed_event_produces_daemon_event
+        PASS [   0.002s] (105/130) clankers-controller event_processing::tests::test_feed_event_tracks_tool_call_names
+        PASS [   0.003s] (106/130) clankers-controller event_processing::tests::test_process_agent_event_pipeline
+        PASS [   0.002s] (107/130) clankers-controller event_processing::tests::test_signal_loop_success_triggers_break
+        PASS [   0.002s] (108/130) clankers-controller event_processing::tests::test_take_outgoing_returns_and_clears
+        PASS [   0.002s] (109/130) clankers-controller event_processing::tests::test_tool_events_accumulate_output
+        PASS [   0.003s] (110/130) clankers-controller loop_mode::tests::test_loop_max_iterations
+        PASS [   0.002s] (111/130) clankers-controller loop_mode::tests::test_start_loop
+        PASS [   0.003s] (112/130) clankers-controller loop_mode::tests::test_stop_loop
+        PASS [   0.003s] (113/130) clankers-controller tests::refresh_tools_keeps_disabled_stdio_tool_hidden_when_rebuilder_reintroduces_it
+        PASS [   0.002s] (114/130) clankers-controller tests::refresh_tools_respects_disabled_tools
+        PASS [   0.003s] (115/130) clankers-controller tests::refresh_tools_updates_inventory_and_sources
+        PASS [   0.003s] (116/130) clankers-controller tests::test_controller_sets_agent_session_id
+        PASS [   0.002s] (117/130) clankers-controller tests::test_controller_updates_agent_session_id
+        PASS [   0.002s] (118/130) clankers-controller tests::test_not_busy_initially
+        PASS [   0.002s] (119/130) clankers-controller tests::test_session_id
+        PASS [   0.002s] (120/130) clankers-controller transport::tests::is_process_alive_bogus_pid
+        PASS [   0.002s] (121/130) clankers-controller transport::tests::is_process_alive_init
+        PASS [   0.003s] (122/130) clankers-controller transport::tests::is_process_alive_own_pid
+        PASS [   0.002s] (123/130) clankers-controller transport::tests::socket_dir_no_double_clankers
+        PASS [   0.014s] (124/130) clankers-controller transport::tests::test_client_disconnect_detection
+        PASS [   0.002s] (125/130) clankers-controller transport::tests::test_daemon_state
+        PASS [   0.002s] (126/130) clankers-controller transport::tests::test_multiple_clients_receive_broadcast_events
+        PASS [   0.003s] (127/130) clankers-controller transport::tests::test_session_client_command_processing
+        PASS [   0.003s] (128/130) clankers-controller transport::tests::test_session_socket_handshake_and_events
+        PASS [   0.002s] (129/130) clankers-controller transport::tests::test_socket_paths
+        PASS [   0.003s] (130/130) clankers-controller transport::tests::test_stale_socket_cleanup
+────────────
+     Summary [   0.401s] 130 tests run: 130 passed, 2 skipped
+  ✓ Controller reducer and parity suites
+
+=== Agent turn allowlist parity suite ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.20s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/clankers_agent-f51f057ecaabdcd7)
+
+running 5 tests
+test tests::set_user_tool_filter_replaces_previous_filter ... ok
+test turn::tests::user_tool_filter_none_allows_all ... ok
+test turn::tests::user_tool_filter_allows_listed_tools ... ok
+test turn::tests::user_tool_filter_applies_latest_allowlist_per_call ... ok
+test turn::tests::user_tool_filter_blocks_unlisted_tools ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 90 filtered out; finished in 0.00s
+
+  ✓ Agent turn allowlist parity suite
+
+=== Agent filtered inventory parity suite ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.19s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/clankers_agent-f51f057ecaabdcd7)
+
+running 1 test
+test turn::tests::controller_filtered_tool_inventory_replaces_available_tools_without_turn_local_state ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 94 filtered out; finished in 0.00s
+
+  ✓ Agent filtered inventory parity suite
+
+=== Agent thinking adapter parity suite ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.19s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/clankers_agent-f51f057ecaabdcd7)
+
+running 1 test
+test tests::agent_applies_core_thinking_effect_without_agent_owned_reducer ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 94 filtered out; finished in 0.00s
+
+  ✓ Agent thinking adapter parity suite
+
+=== Agent tool inventory adapter parity suite ===
+    Finished `test` profile [optimized + debuginfo] target(s) in 0.18s
+     Running unittests src/lib.rs (/home/brittonr/.cargo-target/debug/deps/clankers_agent-f51f057ecaabdcd7)
+
+running 1 test
+test tests::agent_tool_inventory_can_follow_core_disabled_tool_contract_without_local_policy ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 94 filtered out; finished in 0.00s
+
+  ✓ Agent tool inventory adapter parity suite
+
+=== Embedded controller parity suite ===
+   Compiling clankers-controller v0.1.0 (/home/brittonr/git/clankers/crates/clankers-controller)
+   Compiling clankers v0.1.0 (/home/brittonr/git/clankers)
+    Finished `test` profile [optimized + debuginfo] target(s) in 32.20s
+────────────
+ Nextest run ID af146c51-7c0f-45ce-852f-48a27166c118 with nextest profile: default
+    Starting 30 tests across 1 binary
+        PASS [   0.003s] ( 1/30) clankers::embedded_controller audit_tracks_tool_calls
+        PASS [   0.003s] ( 2/30) clankers::embedded_controller daemon_abort_when_not_busy
+        PASS [   0.003s] ( 3/30) clankers::embedded_controller daemon_get_system_prompt_round_trip
+        PASS [   0.003s] ( 4/30) clankers::embedded_controller daemon_reject_prompt_when_busy
+        PASS [   0.003s] ( 5/30) clankers::embedded_controller daemon_replay_history_ends_with_marker
+        PASS [   0.003s] ( 6/30) clankers::embedded_controller daemon_set_model_round_trip
+        PASS [   0.003s] ( 7/30) clankers::embedded_controller embedded_agent_end_produces_daemon_event
+        PASS [   0.003s] ( 8/30) clankers::embedded_controller embedded_agent_start_produces_daemon_event
+        PASS [   0.003s] ( 9/30) clankers::embedded_controller embedded_auto_test_disabled_by_default
+        PASS [   0.003s] (10/30) clankers::embedded_controller embedded_auto_test_fires_when_enabled
+        PASS [   0.003s] (11/30) clankers::embedded_controller embedded_auto_test_no_recursive_trigger
+        PASS [   0.002s] (12/30) clankers::embedded_controller embedded_loop_break_condition
+        PASS [   0.003s] (13/30) clankers::embedded_controller embedded_loop_continuation
+        PASS [   0.003s] (14/30) clankers::embedded_controller embedded_loop_error_terminates
+        PASS [   0.003s] (15/30) clankers::embedded_controller embedded_loop_signal_break
+        PASS [   0.003s] (16/30) clankers::embedded_controller embedded_loop_sync_from_tui_starts
+        PASS [   0.003s] (17/30) clankers::embedded_controller embedded_loop_sync_from_tui_stops
+        PASS [   0.003s] (18/30) clankers::embedded_controller embedded_loop_terminates_at_max
+        PASS [   0.003s] (19/30) clankers::embedded_controller embedded_not_busy_initially
+        PASS [   0.003s] (20/30) clankers::embedded_controller embedded_session_id_and_model
+        PASS [   0.003s] (21/30) clankers::embedded_controller embedded_set_model
+        PASS [   0.002s] (22/30) clankers::embedded_controller embedded_set_session_id
+        PASS [   0.002s] (23/30) clankers::embedded_controller embedded_take_outgoing_clears_buffer
+        PASS [   0.003s] (24/30) clankers::embedded_controller embedded_text_delta_produces_daemon_event
+        PASS [   0.002s] (25/30) clankers::embedded_controller embedded_thinking_delta_produces_daemon_event
+        PASS [   0.002s] (26/30) clankers::embedded_controller embedded_tool_call_produces_daemon_event
+        PASS [   0.003s] (27/30) clankers::embedded_controller embedded_tool_execution_lifecycle
+        PASS [   0.003s] (28/30) clankers::embedded_controller internal_events_not_forwarded
+        PASS [   0.003s] (29/30) clankers::embedded_controller model_change_event_handled_by_hooks_not_forwarded
+        PASS [   0.003s] (30/30) clankers::embedded_controller usage_update_produces_daemon_event
+────────────
+     Summary [   0.080s] 30 tests run: 30 passed, 0 skipped
+  ✓ Embedded controller parity suite
+
+=== No-std functional core validation bundle passed ===

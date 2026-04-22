@@ -3,21 +3,26 @@ Task-ID: V4
 Artifact-Type: deterministic-proof
 Covers: no.std.functional.core.explicit.effects, no.std.functional.core.shell.parity
 Created-By: pi
-Created-At: 2026-04-21T14:01:45Z
+Created-At: 2026-04-21T22:10:00Z
 
 # Evidence: command prompt rejection and event emission parity
 
 ## Summary
 
-- Cover concurrent-prompt rejection through the migrated reducer path.
-- Assert logical session-event emission stays adapter-driven and shell-visible behavior remains unchanged.
-- Assert unchanged-state rejection with preserved error acknowledgement category.
+- Cover allowed prompt request shell work and concurrent-prompt rejection through `crates/clankers-controller/src/command.rs`.
+- Assert `CoreInput::PromptRequested` yields ordered reducer output `BusyChanged(true)` then `StartPrompt { effect_id, prompt_text, image_count }` for an allowed prompt.
+- Assert `SessionController::handle_command(SessionCommand::Prompt { .. })` consumes that reducer plan, forwards the prompt to the provider shell seam, and preserves `[DaemonEvent::AgentStart, DaemonEvent::PromptDone { error: None }]` with no duplicate acknowledgement event.
+- Assert concurrent prompt start preserves unchanged state, preserves the error `DaemonEvent::SystemMessage` category, and matches typed `CoreError::Busy` with no shell work.
 
 ## Latest added coverage
 
-- `crates/clankers-controller/src/command.rs::test_reject_concurrent_prompt`
-- `crates/clankers-controller/src/command.rs::test_prompt_command_routes_request_and_completion_through_core`
+- `crates/clankers-controller/src/command.rs::test_reject_concurrent_prompt_preserves_busy_rejection_kind_and_no_shell_work`
+- `crates/clankers-controller/src/command.rs::test_handle_command_prompt_uses_reducer_start_effect_and_preserves_shell_events`
+
+## Latest validation command
+
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' cargo test -p clankers-controller command::tests::`
 
 ## Adapter note
 
-- `SessionCommand::Prompt` now enters `clankers-core` through `CoreInput::PromptRequested` and feeds runtime completion back through `CoreInput::PromptCompleted` before emitting `DaemonEvent::PromptDone`.
+- `SessionCommand::Prompt` now enters `clankers-core` through `CoreInput::PromptRequested`, drives provider execution from the reducer-minted `StartPrompt` effect, and feeds runtime completion back through `CoreInput::PromptCompleted` before emitting `DaemonEvent::PromptDone`.
