@@ -12,13 +12,41 @@
 //! human review alongside the text snapshots.
 
 use std::time::Duration;
+use std::time::Instant;
 
 use super::harness::Key;
 use super::harness::TuiTestHarness;
 use super::snapshot::assert_structure_snapshot;
 
 const SETTLE: Duration = Duration::from_millis(300);
+const STABILITY_POLL: Duration = Duration::from_millis(50);
 const TIMEOUT: Duration = Duration::from_secs(5);
+
+fn wait_for_structure_stable(harness: &mut TuiTestHarness, stable_for: Duration, timeout: Duration) {
+    let start = Instant::now();
+    let mut stable_since = Instant::now();
+    let mut last_structure = super::snapshot::extract_structure(harness);
+
+    loop {
+        assert!(
+            start.elapsed() < timeout,
+            "Timed out waiting for stable small-terminal structure.\nLatest structure:\n{}",
+            last_structure
+        );
+
+        std::thread::sleep(STABILITY_POLL);
+        let current_structure = super::snapshot::extract_structure(harness);
+        if current_structure == last_structure {
+            if stable_since.elapsed() >= stable_for {
+                return;
+            }
+            continue;
+        }
+
+        last_structure = current_structure;
+        stable_since = Instant::now();
+    }
+}
 
 // ── Startup state ────────────────────────────────────────────
 
@@ -175,7 +203,9 @@ fn snapshot_panel_focused() {
 
 #[test]
 fn snapshot_small_terminal() {
-    let h = TuiTestHarness::spawn(12, 50);
+    let mut h = TuiTestHarness::spawn(12, 50);
+    wait_for_structure_stable(&mut h, SETTLE, TIMEOUT);
+
     h.save_screenshot("small_12x50");
     assert_structure_snapshot!("small_12x50_structure", &h);
 }

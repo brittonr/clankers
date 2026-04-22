@@ -474,8 +474,40 @@ pub fn normalize_styled_text(text: &str) -> String {
 ///
 /// Replaces volatile fields (git status counters, timestamps, etc.)
 /// with stable placeholders so snapshots don't break on unrelated changes.
+const TODO_EMPTY_TEXT: &str = "No items. Use /todo add <text> or the todo tool.";
+const TODO_MESSAGES_MARKER: &str = " │┌Messages";
+
 pub fn normalize_screen_text(text: &str) -> String {
     text.lines().map(normalize_line).collect::<Vec<_>>().join("\n")
+}
+
+fn clip_prefix_to_width(text: &str, width: usize) -> String {
+    let clipped: String = text.chars().take(width).collect();
+    format!("{clipped:<width$}")
+}
+
+fn normalize_todo_empty_first_row(line: &str) -> String {
+    let Some(marker_start) = line.find(TODO_MESSAGES_MARKER) else {
+        return line.to_string();
+    };
+    let Some(open_border) = line.find('│') else {
+        return line.to_string();
+    };
+    let Some(close_border) = line[..marker_start].rfind('│') else {
+        return line.to_string();
+    };
+    let inner_start = open_border + '│'.len_utf8();
+    if close_border <= inner_start {
+        return line.to_string();
+    }
+
+    let current_inner = &line[inner_start..close_border];
+    if !current_inner.starts_with("No") {
+        return line.to_string();
+    }
+
+    let stable_inner = clip_prefix_to_width(TODO_EMPTY_TEXT, current_inner.chars().count());
+    format!("{}{}{}", &line[..inner_start], stable_inner, &line[close_border..])
 }
 
 fn normalize_line(line: &str) -> String {
@@ -602,6 +634,7 @@ pub fn extract_structure(harness: &super::harness::TuiTestHarness) -> String {
                 }
             }
 
+            normalized = normalize_todo_empty_first_row(&normalized);
             out.push(format!("{:>3}: {}", i, normalized));
         }
     }
