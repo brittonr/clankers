@@ -182,27 +182,89 @@ struct NonTestConstructorCollector {
     paths: BTreeSet<String>,
 }
 
+macro_rules! impl_non_test_cfg_visit_guards {
+    () => {
+        fn visit_item(&mut self, item: &'ast Item) {
+            if item_has_test_only_cfg(item) {
+                return;
+            }
+            syn::visit::visit_item(self, item);
+        }
+
+        fn visit_impl_item(&mut self, item: &'ast ImplItem) {
+            if impl_item_has_test_only_cfg(item) {
+                return;
+            }
+            syn::visit::visit_impl_item(self, item);
+        }
+
+        fn visit_trait_item(&mut self, item: &'ast TraitItem) {
+            if trait_item_has_test_only_cfg(item) {
+                return;
+            }
+            syn::visit::visit_trait_item(self, item);
+        }
+
+        fn visit_expr(&mut self, expression: &'ast syn::Expr) {
+            if expr_has_test_only_cfg(expression) {
+                return;
+            }
+            syn::visit::visit_expr(self, expression);
+        }
+
+        fn visit_pat(&mut self, pattern: &'ast syn::Pat) {
+            if pat_has_test_only_cfg(pattern) {
+                return;
+            }
+            syn::visit::visit_pat(self, pattern);
+        }
+
+        fn visit_local(&mut self, local: &'ast syn::Local) {
+            if local_has_test_only_cfg(local) {
+                return;
+            }
+            syn::visit::visit_local(self, local);
+        }
+
+        fn visit_stmt_macro(&mut self, stmt_macro: &'ast syn::StmtMacro) {
+            if stmt_macro_has_test_only_cfg(stmt_macro) {
+                return;
+            }
+            syn::visit::visit_stmt_macro(self, stmt_macro);
+        }
+
+        fn visit_variant(&mut self, variant: &'ast syn::Variant) {
+            if variant_has_test_only_cfg(variant) {
+                return;
+            }
+            syn::visit::visit_variant(self, variant);
+        }
+
+        fn visit_field(&mut self, field: &'ast syn::Field) {
+            if field_has_test_only_cfg(field) {
+                return;
+            }
+            syn::visit::visit_field(self, field);
+        }
+
+        fn visit_field_value(&mut self, field_value: &'ast syn::FieldValue) {
+            if field_value_has_test_only_cfg(field_value) {
+                return;
+            }
+            syn::visit::visit_field_value(self, field_value);
+        }
+
+        fn visit_arm(&mut self, arm: &'ast syn::Arm) {
+            if arm_has_test_only_cfg(arm) {
+                return;
+            }
+            syn::visit::visit_arm(self, arm);
+        }
+    };
+}
+
 impl<'ast> Visit<'ast> for NonTestPathCollector {
-    fn visit_item(&mut self, item: &'ast Item) {
-        if item_has_test_only_cfg(item) {
-            return;
-        }
-        syn::visit::visit_item(self, item);
-    }
-
-    fn visit_impl_item(&mut self, item: &'ast ImplItem) {
-        if impl_item_has_test_only_cfg(item) {
-            return;
-        }
-        syn::visit::visit_impl_item(self, item);
-    }
-
-    fn visit_trait_item(&mut self, item: &'ast TraitItem) {
-        if trait_item_has_test_only_cfg(item) {
-            return;
-        }
-        syn::visit::visit_trait_item(self, item);
-    }
+    impl_non_test_cfg_visit_guards!();
 
     fn visit_path(&mut self, path: &'ast SynPath) {
         self.paths.insert(path_to_string(path));
@@ -211,26 +273,7 @@ impl<'ast> Visit<'ast> for NonTestPathCollector {
 }
 
 impl<'ast> Visit<'ast> for NonTestStructExprCollector {
-    fn visit_item(&mut self, item: &'ast Item) {
-        if item_has_test_only_cfg(item) {
-            return;
-        }
-        syn::visit::visit_item(self, item);
-    }
-
-    fn visit_impl_item(&mut self, item: &'ast ImplItem) {
-        if impl_item_has_test_only_cfg(item) {
-            return;
-        }
-        syn::visit::visit_impl_item(self, item);
-    }
-
-    fn visit_trait_item(&mut self, item: &'ast TraitItem) {
-        if trait_item_has_test_only_cfg(item) {
-            return;
-        }
-        syn::visit::visit_trait_item(self, item);
-    }
+    impl_non_test_cfg_visit_guards!();
 
     fn visit_expr_struct(&mut self, expression: &'ast syn::ExprStruct) {
         self.paths.insert(path_to_string(&expression.path));
@@ -239,26 +282,7 @@ impl<'ast> Visit<'ast> for NonTestStructExprCollector {
 }
 
 impl<'ast> Visit<'ast> for NonTestConstructorCollector {
-    fn visit_item(&mut self, item: &'ast Item) {
-        if item_has_test_only_cfg(item) {
-            return;
-        }
-        syn::visit::visit_item(self, item);
-    }
-
-    fn visit_impl_item(&mut self, item: &'ast ImplItem) {
-        if impl_item_has_test_only_cfg(item) {
-            return;
-        }
-        syn::visit::visit_impl_item(self, item);
-    }
-
-    fn visit_trait_item(&mut self, item: &'ast TraitItem) {
-        if trait_item_has_test_only_cfg(item) {
-            return;
-        }
-        syn::visit::visit_trait_item(self, item);
-    }
+    impl_non_test_cfg_visit_guards!();
 
     fn visit_expr_call(&mut self, expression: &'ast syn::ExprCall) {
         if let syn::Expr::Path(function) = &*expression.func {
@@ -348,6 +372,21 @@ fn collect_non_test_constructor_paths(relative_path: &str) -> BTreeSet<String> {
     collect_non_test_constructor_paths_from_source(&source)
 }
 
+fn collect_non_test_paths_from_visit(visit: impl FnOnce(&mut NonTestPathCollector)) -> BTreeSet<String> {
+    let mut collector = NonTestPathCollector::default();
+    visit(&mut collector);
+    collector.paths
+}
+
+fn parse_stmt_macro(statement: &str) -> syn::StmtMacro {
+    let parsed_statement = syn::parse_str::<syn::Stmt>(statement)
+        .unwrap_or_else(|error| panic!("failed to parse stmt macro for FCIS boundary rail: {error}"));
+    match parsed_statement {
+        syn::Stmt::Macro(stmt_macro) => stmt_macro,
+        _ => panic!("expected stmt macro in FCIS boundary rail test source"),
+    }
+}
+
 fn path_to_string(path: &SynPath) -> String {
     path.segments.iter().map(|segment| segment.ident.to_string()).collect::<Vec<_>>().join("::")
 }
@@ -365,6 +404,103 @@ fn parse_meta_list_items(meta_list: &syn::MetaList) -> Vec<Meta> {
         .unwrap_or_else(|error| panic!("failed to parse cfg meta list in FCIS boundary rail: {error}"))
         .into_iter()
         .collect()
+}
+
+fn expr_has_test_only_cfg(expression: &syn::Expr) -> bool {
+    let attributes = match expression {
+        syn::Expr::Array(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Assign(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Async(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Await(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Binary(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Block(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Break(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Call(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Cast(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Closure(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Const(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Continue(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Field(node) => Some(node.attrs.as_slice()),
+        syn::Expr::ForLoop(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Group(node) => Some(node.attrs.as_slice()),
+        syn::Expr::If(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Index(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Infer(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Let(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Lit(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Loop(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Macro(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Match(node) => Some(node.attrs.as_slice()),
+        syn::Expr::MethodCall(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Paren(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Path(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Range(node) => Some(node.attrs.as_slice()),
+        syn::Expr::RawAddr(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Reference(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Repeat(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Return(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Struct(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Try(node) => Some(node.attrs.as_slice()),
+        syn::Expr::TryBlock(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Tuple(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Unary(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Unsafe(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Verbatim(_) => None,
+        syn::Expr::While(node) => Some(node.attrs.as_slice()),
+        syn::Expr::Yield(node) => Some(node.attrs.as_slice()),
+        _ => None,
+    };
+
+    attributes.is_some_and(has_test_only_cfg_attribute)
+}
+
+fn pat_has_test_only_cfg(pattern: &syn::Pat) -> bool {
+    let attributes = match pattern {
+        syn::Pat::Const(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Ident(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Lit(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Macro(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Or(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Paren(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Path(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Range(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Reference(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Rest(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Slice(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Struct(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Tuple(node) => Some(node.attrs.as_slice()),
+        syn::Pat::TupleStruct(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Type(node) => Some(node.attrs.as_slice()),
+        syn::Pat::Verbatim(_) => None,
+        syn::Pat::Wild(node) => Some(node.attrs.as_slice()),
+        _ => None,
+    };
+
+    attributes.is_some_and(has_test_only_cfg_attribute)
+}
+
+fn local_has_test_only_cfg(local: &syn::Local) -> bool {
+    has_test_only_cfg_attribute(&local.attrs)
+}
+
+fn stmt_macro_has_test_only_cfg(stmt_macro: &syn::StmtMacro) -> bool {
+    has_test_only_cfg_attribute(&stmt_macro.attrs)
+}
+
+fn variant_has_test_only_cfg(variant: &syn::Variant) -> bool {
+    has_test_only_cfg_attribute(&variant.attrs)
+}
+
+fn field_has_test_only_cfg(field: &syn::Field) -> bool {
+    has_test_only_cfg_attribute(&field.attrs)
+}
+
+fn field_value_has_test_only_cfg(field_value: &syn::FieldValue) -> bool {
+    has_test_only_cfg_attribute(&field_value.attrs)
+}
+
+fn arm_has_test_only_cfg(arm: &syn::Arm) -> bool {
+    has_test_only_cfg_attribute(&arm.attrs)
 }
 
 fn cfg_envelope(meta: &Meta) -> CfgEnvelope {
@@ -664,6 +800,131 @@ fn runtime_constructor() {
     assert!(!constructor_paths.contains("TestWire::Unit"));
     assert!(!constructor_paths.contains("TestWire::Tuple"));
     assert!(!constructor_paths.contains("TestWire::Struct"));
+}
+
+#[test]
+fn collect_non_test_paths_skip_test_only_locals_and_cfg_fields() {
+    let source = r#"
+struct MixedStruct {
+    #[cfg(test)]
+    test_only: clankers_core::CoreInput,
+    runtime: clankers_core::CoreState,
+}
+
+fn runtime_boundary() {
+    #[cfg(test)]
+    let _test_input: Option<clankers_core::CoreInput> = None;
+    let _runtime_state: Option<clankers_core::CoreState> = None;
+}
+"#;
+
+    let paths = collect_non_test_paths_from_source(source);
+    assert!(!find_paths_with_segment(&paths, CORE_STATE_SEGMENT).is_empty());
+    assert!(find_paths_with_segment(&paths, CORE_INPUT_SEGMENT).is_empty());
+}
+
+#[test]
+fn collect_non_test_constructor_paths_skip_test_only_cfg_expressions() {
+    let source = r#"
+enum RuntimeWire {
+    Unit,
+}
+
+enum TestWire {
+    Unit,
+}
+
+fn runtime_constructor() {
+    #[cfg(test)]
+    TestWire::Unit;
+    RuntimeWire::Unit;
+}
+"#;
+
+    let constructor_paths = collect_non_test_constructor_paths_from_source(source);
+    assert!(constructor_paths.contains("RuntimeWire::Unit"));
+    assert!(!constructor_paths.contains("TestWire::Unit"));
+}
+
+#[test]
+fn collect_non_test_paths_skip_test_only_patterns() {
+    let mut test_only_pattern: syn::Pat = parse_quote!(TestWire::Unit);
+    match &mut test_only_pattern {
+        syn::Pat::Path(pattern) => pattern.attrs.push(parse_quote!(#[cfg(test)])),
+        _ => panic!("expected path pattern in FCIS boundary rail test"),
+    }
+    let runtime_pattern: syn::Pat = parse_quote!(RuntimeWire::Unit);
+
+    let test_only_paths = collect_non_test_paths_from_visit(|collector| collector.visit_pat(&test_only_pattern));
+    let runtime_paths = collect_non_test_paths_from_visit(|collector| collector.visit_pat(&runtime_pattern));
+
+    assert!(test_only_paths.is_empty());
+    assert!(runtime_paths.contains("RuntimeWire::Unit"));
+}
+
+#[test]
+fn collect_non_test_paths_skip_test_only_stmt_macros() {
+    let test_only_stmt_macro = parse_stmt_macro(
+        r#"
+        #[cfg(test)]
+        clankers_core::test_only_macro!();
+        "#,
+    );
+    let runtime_stmt_macro = parse_stmt_macro("runtime_macro!();");
+
+    let test_only_paths =
+        collect_non_test_paths_from_visit(|collector| collector.visit_stmt_macro(&test_only_stmt_macro));
+    let runtime_paths = collect_non_test_paths_from_visit(|collector| collector.visit_stmt_macro(&runtime_stmt_macro));
+
+    assert!(test_only_paths.is_empty());
+    assert!(runtime_paths.contains("runtime_macro"));
+}
+
+#[test]
+fn collect_non_test_paths_skip_test_only_variants() {
+    let test_only_variant: syn::Variant = parse_quote!(
+        #[cfg(test)]
+        Test(clankers_core::CoreInput)
+    );
+    let runtime_variant: syn::Variant = parse_quote!(Runtime(clankers_core::CoreState));
+
+    let test_only_paths = collect_non_test_paths_from_visit(|collector| collector.visit_variant(&test_only_variant));
+    let runtime_paths = collect_non_test_paths_from_visit(|collector| collector.visit_variant(&runtime_variant));
+
+    assert!(find_paths_with_segment(&test_only_paths, CORE_INPUT_SEGMENT).is_empty());
+    assert!(!find_paths_with_segment(&runtime_paths, CORE_STATE_SEGMENT).is_empty());
+}
+
+#[test]
+fn collect_non_test_paths_skip_test_only_field_values() {
+    let test_only_field_value: syn::FieldValue = parse_quote!(
+        #[cfg(test)]
+        test_only: None::<clankers_core::CoreInput>
+    );
+    let runtime_field_value: syn::FieldValue = parse_quote!(runtime: None::<clankers_core::CoreState>);
+
+    let test_only_paths =
+        collect_non_test_paths_from_visit(|collector| collector.visit_field_value(&test_only_field_value));
+    let runtime_paths =
+        collect_non_test_paths_from_visit(|collector| collector.visit_field_value(&runtime_field_value));
+
+    assert!(find_paths_with_segment(&test_only_paths, CORE_INPUT_SEGMENT).is_empty());
+    assert!(!find_paths_with_segment(&runtime_paths, CORE_STATE_SEGMENT).is_empty());
+}
+
+#[test]
+fn collect_non_test_paths_skip_test_only_match_arms() {
+    let test_only_arm: syn::Arm = parse_quote!(
+        #[cfg(test)]
+        TestWire::Unit => None::<clankers_core::CoreInput>
+    );
+    let runtime_arm: syn::Arm = parse_quote!(RuntimeWire::Unit => None::<clankers_core::CoreState>);
+
+    let test_only_paths = collect_non_test_paths_from_visit(|collector| collector.visit_arm(&test_only_arm));
+    let runtime_paths = collect_non_test_paths_from_visit(|collector| collector.visit_arm(&runtime_arm));
+
+    assert!(find_paths_with_segment(&test_only_paths, CORE_INPUT_SEGMENT).is_empty());
+    assert!(!find_paths_with_segment(&runtime_paths, CORE_STATE_SEGMENT).is_empty());
 }
 
 #[test]
