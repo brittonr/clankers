@@ -898,4 +898,85 @@ mod tests {
         assert_eq!(agent_tool_names(&agent), vec!["read".to_string()]);
         assert!(agent.user_tool_filter.is_none());
     }
+
+    #[tokio::test]
+    async fn agent_prompt_api_stays_shell_native_and_emits_before_agent_start() {
+        use tokio::sync::mpsc;
+
+        struct PromptProvider;
+
+        #[async_trait::async_trait]
+        impl clankers_provider::Provider for PromptProvider {
+            async fn complete(
+                &self,
+                _request: clankers_provider::CompletionRequest,
+                tx: mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+            ) -> clankers_provider::error::Result<()> {
+                tx.send(clankers_provider::streaming::StreamEvent::MessageStart {
+                    message: clankers_provider::streaming::MessageMetadata {
+                        id: "msg-1".into(),
+                        model: "test-model".into(),
+                        role: "assistant".into(),
+                    },
+                })
+                .await
+                .ok();
+                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStart {
+                    index: 0,
+                    content_block: clankers_provider::message::Content::Text { text: String::new() },
+                })
+                .await
+                .ok();
+                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: clankers_provider::streaming::ContentDelta::TextDelta { text: "ok".into() },
+                })
+                .await
+                .ok();
+                tx.send(clankers_provider::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                tx.send(clankers_provider::streaming::StreamEvent::MessageDelta {
+                    stop_reason: Some("end_turn".into()),
+                    usage: clankers_provider::Usage {
+                        input_tokens: 1,
+                        output_tokens: 1,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0,
+                    },
+                })
+                .await
+                .ok();
+                tx.send(clankers_provider::streaming::StreamEvent::MessageStop).await.ok();
+                Ok(())
+            }
+
+            fn models(&self) -> &[clankers_provider::Model] {
+                &[]
+            }
+
+            fn name(&self) -> &str {
+                "prompt-provider"
+            }
+        }
+
+        let mut agent = Agent::new(
+            Arc::new(PromptProvider),
+            vec![],
+            Settings::default(),
+            "test-model".to_string(),
+            "test system prompt".to_string(),
+        );
+        let mut events = agent.subscribe();
+
+        agent.prompt("hello world").await.expect("prompt succeeds");
+
+        let mut saw_before_agent_start = false;
+        while let Ok(event) = events.try_recv() {
+            if let AgentEvent::BeforeAgentStart { prompt, .. } = event {
+                saw_before_agent_start = true;
+                assert_eq!(prompt, "hello world");
+            }
+        }
+
+        assert!(saw_before_agent_start, "expected shell-native prompt text in BeforeAgentStart");
+    }
 }

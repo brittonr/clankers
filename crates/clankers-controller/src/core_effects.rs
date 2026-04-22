@@ -177,6 +177,9 @@ impl SessionController {
 
         for effect in effects {
             match effect {
+                CoreEffect::ReplayQueuedPrompt => {
+                    post_prompt_action = PostPromptAction::ReplayQueuedPrompt;
+                }
                 CoreEffect::RunLoopFollowUp {
                     effect_id,
                     prompt_text,
@@ -207,11 +210,27 @@ impl SessionController {
         post_prompt_action
     }
 
+    pub(crate) fn execute_follow_up_dispatch_effects(
+        &mut self,
+        effects: Vec<CoreEffect>,
+        dispatch_status: &clankers_core::FollowUpDispatchStatus,
+    ) {
+        let completion_status = match dispatch_status {
+            clankers_core::FollowUpDispatchStatus::Accepted => return,
+            clankers_core::FollowUpDispatchStatus::Rejected(failure) => CompletionStatus::Failed(failure.clone()),
+        };
+        self.execute_follow_up_failure_effects(effects, &completion_status);
+    }
+
     pub(crate) fn execute_follow_up_completion_effects(
         &mut self,
         effects: Vec<CoreEffect>,
         completion_status: &CompletionStatus,
     ) {
+        self.execute_follow_up_failure_effects(effects, completion_status);
+    }
+
+    fn execute_follow_up_failure_effects(&mut self, effects: Vec<CoreEffect>, completion_status: &CompletionStatus) {
         let mut loop_finished = false;
 
         for effect in effects {

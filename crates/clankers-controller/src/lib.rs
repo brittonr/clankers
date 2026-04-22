@@ -46,6 +46,8 @@ use self::confirm::ConfirmStore;
 pub enum PostPromptAction {
     /// No continuation — prompt is done.
     None,
+    /// Replay a queued user prompt that already lives in shell state.
+    ReplayQueuedPrompt,
     /// Continue a loop iteration with this prompt.
     ContinueLoop {
         effect_id: clankers_core::CoreEffectId,

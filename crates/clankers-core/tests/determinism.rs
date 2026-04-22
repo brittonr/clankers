@@ -10,6 +10,7 @@ use clankers_core::DisabledToolsUpdate;
 use clankers_core::FollowUpSource;
 use clankers_core::LoopFollowUpCompleted;
 use clankers_core::LoopRequest;
+use clankers_core::PendingFollowUpStage;
 use clankers_core::PendingFollowUpState;
 use clankers_core::PendingPromptState;
 use clankers_core::PendingToolFilterState;
@@ -41,6 +42,7 @@ fn prompt_pending_state() -> CoreState {
             effect_id: CoreEffectId(FIRST_EFFECT_ID),
             prompt_text: "hello".to_string(),
             image_count: 0,
+            originating_follow_up_effect_id: None,
         }),
         next_effect_id: CoreEffectId(FIRST_EFFECT_ID),
         ..CoreState::default()
@@ -55,11 +57,13 @@ fn prompt_failure_state() -> CoreState {
             effect_id: CoreEffectId(FIRST_EFFECT_ID),
             prompt_text: "hello".to_string(),
             image_count: 0,
+            originating_follow_up_effect_id: None,
         }),
         pending_follow_up_state: Some(PendingFollowUpState {
             effect_id: CoreEffectId(SECOND_EFFECT_ID),
             prompt_text: "continue loop".to_string(),
             source: FollowUpSource::LoopContinuation,
+            stage: PendingFollowUpStage::AwaitingPromptCompletion,
         }),
         next_effect_id: CoreEffectId(SECOND_EFFECT_ID),
         ..CoreState::default()
@@ -85,6 +89,7 @@ fn loop_follow_up_pending_state() -> CoreState {
             effect_id: CoreEffectId(FIRST_EFFECT_ID),
             prompt_text: "continue loop".to_string(),
             source: FollowUpSource::LoopContinuation,
+            stage: PendingFollowUpStage::AwaitingPromptCompletion,
         }),
         next_effect_id: CoreEffectId(FIRST_EFFECT_ID),
         ..CoreState::default()
@@ -99,6 +104,7 @@ fn reducer_replays_identical_state_and_input_pairs_deterministically() {
             CoreInput::PromptRequested(PromptRequest {
                 text: "hello".to_string(),
                 image_count: 0,
+                originating_follow_up_effect_id: None,
             }),
         ),
         (
@@ -139,6 +145,7 @@ fn reducer_replays_identical_state_and_input_pairs_deterministically() {
                 auto_test_enabled: true,
                 auto_test_command: Some("cargo test".to_string()),
                 auto_test_in_progress: false,
+                queued_prompt_present: false,
             }),
         ),
         (CoreState::default(), CoreInput::SetThinkingLevel {
@@ -172,6 +179,7 @@ fn reducer_replays_identical_state_and_input_pairs_deterministically() {
                     effect_id: CoreEffectId(FIRST_EFFECT_ID),
                     prompt_text: "continue loop".to_string(),
                     source: FollowUpSource::LoopContinuation,
+                    stage: PendingFollowUpStage::AwaitingPromptCompletion,
                 }),
                 next_effect_id: CoreEffectId(FIRST_EFFECT_ID),
                 ..CoreState::default()
@@ -189,6 +197,7 @@ fn reducer_replays_identical_state_and_input_pairs_deterministically() {
                 auto_test_enabled: true,
                 auto_test_command: Some("cargo test".to_string()),
                 auto_test_in_progress: false,
+                queued_prompt_present: false,
             }),
         ),
     ];

@@ -435,6 +435,7 @@ impl SessionController {
         let prompt_input = CoreInput::PromptRequested(PromptRequest {
             text: text.clone(),
             image_count,
+            originating_follow_up_effect_id: None,
         });
 
         let prompt_effect_id = match clankers_core::reduce(&self.core_state, &prompt_input) {
@@ -896,6 +897,7 @@ mod tests {
         let prompt_input = CoreInput::PromptRequested(PromptRequest {
             text: "hello".to_string(),
             image_count: 0,
+            originating_follow_up_effect_id: None,
         });
 
         let expected_outcome = clankers_core::reduce(&previous_state, &prompt_input);
@@ -931,6 +933,7 @@ mod tests {
         let prompt_input = CoreInput::PromptRequested(PromptRequest {
             text: prompt_text.clone(),
             image_count: 0,
+            originating_follow_up_effect_id: None,
         });
 
         let expected_outcome = clankers_core::reduce(&ctrl.core_state, &prompt_input);
@@ -943,6 +946,7 @@ mod tests {
                             effect_id: FIRST_EFFECT_ID,
                             prompt_text: prompt_text.clone(),
                             image_count: 0,
+                            originating_follow_up_effect_id: None,
                         })
                     && effects
                         == vec![
@@ -1214,6 +1218,7 @@ mod tests {
             effect_id: FIRST_EFFECT_ID,
             prompt_text: "hello".to_string(),
             image_count: 0,
+            originating_follow_up_effect_id: None,
         });
 
         assert_tool_filter_feedback_rejected(
@@ -1325,6 +1330,7 @@ mod tests {
             effect_id: clankers_core::CoreEffectId(1),
             prompt_text: "continue loop".to_string(),
             source: clankers_core::FollowUpSource::LoopContinuation,
+            stage: clankers_core::PendingFollowUpStage::AwaitingPromptCompletion,
         });
         let previous_state = ctrl.core_state.clone();
 

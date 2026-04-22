@@ -459,101 +459,142 @@ impl<'a> EventLoopRunner<'a> {
     ) {
         let should_dispatch_prompt = !requires_active_loop || self.app.loop_status.as_ref().is_some_and(|status| status.active);
         if !should_dispatch_prompt {
-            self.controller
-                .complete_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+            self.controller.ack_follow_up_dispatch(
+                effect_id,
+                clankers_core::FollowUpDispatchStatus::Rejected(clankers_core::CoreFailure::Message(
+                    "loop follow-up dispatch skipped because the loop is not active".to_string(),
+                )),
+            );
             return;
         }
 
         self.cmd_tx.send(AgentCommand::ResetCancel).ok();
         let sent_prompt = self.cmd_tx.send(AgentCommand::Prompt(prompt.clone())).is_ok();
-        let completion_status = if sent_prompt {
-            if self.controller.start_embedded_prompt(&prompt, 0) {
-                clankers_core::CompletionStatus::Succeeded
+        let dispatch_status = if sent_prompt {
+            if self
+                .controller
+                .start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id))
+            {
+                clankers_core::FollowUpDispatchStatus::Accepted
             } else {
-                clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
+                clankers_core::FollowUpDispatchStatus::Rejected(clankers_core::CoreFailure::Message(
                     "embedded prompt start rejected".to_string(),
                 ))
             }
         } else {
-            clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
+            clankers_core::FollowUpDispatchStatus::Rejected(clankers_core::CoreFailure::Message(
                 "follow-up dispatch channel closed".to_string(),
             ))
         };
-        self.controller.complete_follow_up(effect_id, completion_status);
+        self.controller.ack_follow_up_dispatch(effect_id, dispatch_status);
     }
 
     fn handle_task_results(&mut self) {
         while let Ok(result) = self.done_rx.try_recv() {
             match result {
                 TaskResult::PromptDone(Some(e)) => {
-                    self.controller.finish_embedded_prompt(clankers_core::CompletionStatus::Failed(
+                    let completion_status = clankers_core::CompletionStatus::Failed(
                         clankers_core::CoreFailure::Message(e.to_string()),
-                    ));
+                    );
+                    let completed_dispatched_follow_up = if let Some(effect_id) =
+                        self.controller.pending_dispatched_follow_up_effect_id()
+                    {
+                        self.controller.complete_dispatched_follow_up(effect_id, completion_status);
+                        true
+                    } else {
+                        self.controller.finish_embedded_prompt(completion_status);
+                        false
+                    };
 
                     if let Some(ref mut block) = self.app.conversation.active_block {
                         block.error = Some(e.to_string());
                     }
                     self.app.finalize_active_block();
-                    if self.app.queued_prompt.is_none() {
-                        self.app.push_system(format!("Error: {}", e), true);
+                    if !self.controller.has_active_loop() {
+                        self.app.loop_status = None;
+                    } else if completed_dispatched_follow_up
+                        && let Some(iteration) = self.controller.loop_iteration()
+                        && let Some(loop_status) = self.app.loop_status.as_mut()
+                    {
+                        loop_status.iteration = iteration;
                     }
-                    if let Some(text) = self.app.queued_prompt.take() {
-                        super::event_handlers::handle_input_with_plugins(
-                            self.app,
-                            &text,
-                            &self.cmd_tx,
-                            self.plugin_manager.as_ref(),
-                            &self.panel_tx,
-                            &self.db,
-                            &mut self.controller.session_manager,
-                            &self.slash_registry,
-                        );
-                        self.sync_controller_session_id_from_app();
+
+                    let post_prompt_action = self.controller.check_post_prompt(self.app.queued_prompt.is_some());
+                    if matches!(post_prompt_action, clankers_controller::PostPromptAction::ReplayQueuedPrompt) {
+                        if let Some(text) = self.app.queued_prompt.take() {
+                            super::event_handlers::handle_input_with_plugins(
+                                self.app,
+                                &text,
+                                &self.cmd_tx,
+                                self.plugin_manager.as_ref(),
+                                &self.panel_tx,
+                                &self.db,
+                                &mut self.controller.session_manager,
+                                &self.slash_registry,
+                            );
+                            self.sync_controller_session_id_from_app();
+                        }
+                    } else if self.app.queued_prompt.is_none() {
+                        self.app.push_system(format!("Error: {}", e), true);
                     }
                     // Drain any controller events (e.g. loop finish message)
                     self.drain_controller_messages();
                 }
                 TaskResult::PromptDone(None) => {
-                    self.controller.finish_embedded_prompt(clankers_core::CompletionStatus::Succeeded);
-
-                    if let Some(text) = self.app.queued_prompt.take() {
-                        super::event_handlers::handle_input_with_plugins(
-                            self.app,
-                            &text,
-                            &self.cmd_tx,
-                            self.plugin_manager.as_ref(),
-                            &self.panel_tx,
-                            &self.db,
-                            &mut self.controller.session_manager,
-                            &self.slash_registry,
-                        );
-                        self.sync_controller_session_id_from_app();
+                    let completed_dispatched_follow_up = if let Some(effect_id) =
+                        self.controller.pending_dispatched_follow_up_effect_id()
+                    {
+                        self.controller
+                            .complete_dispatched_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+                        true
                     } else {
-                        // Sync TUI loop state to controller, then check what to do
-                        self.controller.sync_loop_from_tui(self.app.loop_status.as_ref());
+                        self.controller.finish_embedded_prompt(clankers_core::CompletionStatus::Succeeded);
+                        false
+                    };
 
-                        match self.controller.check_post_prompt() {
-                            clankers_controller::PostPromptAction::ContinueLoop { effect_id, prompt } => {
-                                // Sync iteration count back to TUI
-                                if let Some(iter) = self.controller.loop_iteration()
-                                    && let Some(ref mut ls) = self.app.loop_status
-                                {
-                                    ls.iteration = iter;
-                                }
-                                self.dispatch_controller_follow_up(effect_id, prompt, true);
-                            }
-                            clankers_controller::PostPromptAction::RunAutoTest { effect_id, prompt } => {
-                                self.app.push_system(
-                                    format!(
-                                        "🧪 Running auto-test: {}",
-                                        self.app.auto_test_command.as_deref().unwrap_or("?")
-                                    ),
-                                    false,
+                    if !completed_dispatched_follow_up {
+                        // Sync TUI loop state to controller before post-prompt planning only for ordinary prompts.
+                        self.controller.sync_loop_from_tui(self.app.loop_status.as_ref());
+                    }
+                    if !self.controller.has_active_loop() {
+                        self.app.loop_status = None;
+                    } else if completed_dispatched_follow_up
+                        && let Some(iteration) = self.controller.loop_iteration()
+                        && let Some(loop_status) = self.app.loop_status.as_mut()
+                    {
+                        loop_status.iteration = iteration;
+                    }
+
+                    match self.controller.check_post_prompt(self.app.queued_prompt.is_some()) {
+                        clankers_controller::PostPromptAction::ReplayQueuedPrompt => {
+                            if let Some(text) = self.app.queued_prompt.take() {
+                                super::event_handlers::handle_input_with_plugins(
+                                    self.app,
+                                    &text,
+                                    &self.cmd_tx,
+                                    self.plugin_manager.as_ref(),
+                                    &self.panel_tx,
+                                    &self.db,
+                                    &mut self.controller.session_manager,
+                                    &self.slash_registry,
                                 );
-                                self.dispatch_controller_follow_up(effect_id, prompt, false);
+                                self.sync_controller_session_id_from_app();
                             }
-                            clankers_controller::PostPromptAction::None => {}
                         }
+                        clankers_controller::PostPromptAction::ContinueLoop { effect_id, prompt } => {
+                            self.dispatch_controller_follow_up(effect_id, prompt, true);
+                        }
+                        clankers_controller::PostPromptAction::RunAutoTest { effect_id, prompt } => {
+                            self.app.push_system(
+                                format!(
+                                    "🧪 Running auto-test: {}",
+                                    self.app.auto_test_command.as_deref().unwrap_or("?")
+                                ),
+                                false,
+                            );
+                            self.dispatch_controller_follow_up(effect_id, prompt, false);
+                        }
+                        clankers_controller::PostPromptAction::None => {}
                     }
                     // Drain any controller events (e.g. loop finish messages)
                     self.drain_controller_messages();
@@ -723,7 +764,160 @@ pub(super) fn peers_panel(app: &mut App) -> &mut crate::tui::components::peers_p
 
 #[cfg(test)]
 mod tests {
+    use std::io;
+
+    use clanker_scheduler::ScheduleEvent;
+    use clankers_controller::SessionController;
+    use clankers_controller::config::ControllerConfig;
+    use clankers_controller::loop_mode::LoopConfig;
+    use clankers_tui_types::BlockEntry;
+    use ratatui::Terminal;
+    use ratatui::backend::CrosstermBackend;
+
+    use super::EventLoopRunner;
     use super::sync_controller_session_id;
+    use crate::config::keybindings::Keymap;
+    use crate::modes::interactive::AgentCommand;
+    use crate::modes::interactive::TaskResult;
+    use crate::tui::app::App;
+
+    struct RunnerHarness {
+        terminal: Terminal<CrosstermBackend<io::Stdout>>,
+        app: App,
+        cmd_tx: tokio::sync::mpsc::UnboundedSender<AgentCommand>,
+        cmd_rx: tokio::sync::mpsc::UnboundedReceiver<AgentCommand>,
+        done_tx: tokio::sync::mpsc::UnboundedSender<TaskResult>,
+        done_rx: Option<tokio::sync::mpsc::UnboundedReceiver<TaskResult>>,
+        event_rx: Option<tokio::sync::broadcast::Receiver<crate::agent::events::AgentEvent>>,
+        panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
+        panel_rx: Option<tokio::sync::mpsc::UnboundedReceiver<crate::tui::components::subagent_event::SubagentEvent>>,
+        todo_rx: Option<tokio::sync::mpsc::UnboundedReceiver<(
+            crate::tools::todo::TodoAction,
+            tokio::sync::oneshot::Sender<crate::tools::todo::TodoResponse>,
+        )>>,
+        bash_confirm_rx: Option<crate::tools::bash::ConfirmRx>,
+        settings: crate::config::settings::Settings,
+        controller: Option<SessionController>,
+        schedule_rx: Option<tokio::sync::broadcast::Receiver<ScheduleEvent>>,
+    }
+
+    impl RunnerHarness {
+        fn new(controller: SessionController) -> Self {
+            let terminal = Terminal::new(CrosstermBackend::new(io::stdout())).expect("terminal should initialize");
+            let mut app = App::new(
+                "test-model".to_string(),
+                "/tmp".to_string(),
+                crate::tui::theme::Theme::dark(),
+            );
+            app.session_id = "test-session".to_string();
+
+            let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+            let (done_tx, done_rx) = tokio::sync::mpsc::unbounded_channel();
+            let (_event_tx, event_rx) = tokio::sync::broadcast::channel(4);
+            let (panel_tx, panel_rx) =
+                tokio::sync::mpsc::unbounded_channel::<crate::tui::components::subagent_event::SubagentEvent>();
+            let (_todo_tx, todo_rx) = tokio::sync::mpsc::unbounded_channel::<(
+                crate::tools::todo::TodoAction,
+                tokio::sync::oneshot::Sender<crate::tools::todo::TodoResponse>,
+            )>();
+            let (_bash_confirm_tx, bash_confirm_rx) = crate::tools::bash::confirm_channel();
+            let (_schedule_tx, schedule_rx) = tokio::sync::broadcast::channel(4);
+
+            Self {
+                terminal,
+                app,
+                cmd_tx,
+                cmd_rx,
+                done_tx,
+                done_rx: Some(done_rx),
+                event_rx: Some(event_rx),
+                panel_tx,
+                panel_rx: Some(panel_rx),
+                todo_rx: Some(todo_rx),
+                bash_confirm_rx: Some(bash_confirm_rx),
+                settings: crate::config::settings::Settings::default(),
+                controller: Some(controller),
+                schedule_rx: Some(schedule_rx),
+            }
+        }
+
+        fn runner(&mut self) -> EventLoopRunner<'_> {
+            let Self {
+                terminal,
+                app,
+                cmd_tx,
+                done_rx,
+                event_rx,
+                panel_tx,
+                panel_rx,
+                todo_rx,
+                bash_confirm_rx,
+                settings,
+                controller,
+                schedule_rx,
+                ..
+            } = self;
+
+            EventLoopRunner::new(
+                terminal,
+                app,
+                event_rx.take().expect("event_rx available"),
+                panel_rx.as_mut().expect("panel_rx available"),
+                todo_rx.as_mut().expect("todo_rx available"),
+                bash_confirm_rx.as_mut().expect("bash_confirm_rx available"),
+                panel_tx.clone(),
+                Keymap::default(),
+                None,
+                None,
+                settings,
+                cmd_tx.clone(),
+                done_rx.take().expect("done_rx available"),
+                crate::slash_commands::SlashRegistry::default(),
+                controller.take().expect("controller available"),
+                schedule_rx.take().expect("schedule_rx available"),
+            )
+        }
+    }
+
+    fn collect_system_messages(app: &App) -> Vec<(String, bool)> {
+        app.conversation
+            .blocks
+            .iter()
+            .filter_map(|entry| match entry {
+                BlockEntry::System(message) => Some((message.content.clone(), message.is_error)),
+                BlockEntry::Conversation(_) => None,
+            })
+            .collect()
+    }
+
+    fn expect_reset_then_prompt(
+        cmd_rx: &mut tokio::sync::mpsc::UnboundedReceiver<AgentCommand>,
+        expected_prompt: &str,
+    ) {
+        match cmd_rx.try_recv() {
+            Ok(AgentCommand::ResetCancel) => {}
+            Ok(_) => panic!("expected ResetCancel first"),
+            Err(error) => panic!("missing ResetCancel: {error}"),
+        }
+
+        match cmd_rx.try_recv() {
+            Ok(AgentCommand::Prompt(prompt)) => assert_eq!(prompt, expected_prompt),
+            Ok(_) => panic!("expected Prompt second"),
+            Err(error) => panic!("missing Prompt: {error}"),
+        }
+
+        assert!(cmd_rx.try_recv().is_err(), "expected only reset + prompt commands");
+    }
+
+    fn embedded_controller(auto_test_enabled: bool, auto_test_command: Option<&str>) -> SessionController {
+        SessionController::new_embedded(ControllerConfig {
+            session_id: "test-session".to_string(),
+            model: "test-model".to_string(),
+            auto_test_enabled,
+            auto_test_command: auto_test_command.map(str::to_string),
+            ..Default::default()
+        })
+    }
 
     #[test]
     fn sync_controller_session_id_updates_stale_controller_state() {
@@ -740,5 +934,108 @@ mod tests {
 
         sync_controller_session_id(&app, &mut controller);
         assert_eq!(controller.session_id(), "session-from-app");
+    }
+
+    #[test]
+    fn prompt_done_success_replays_queued_prompt_before_follow_up() {
+        let mut controller = embedded_controller(true, Some("cargo test"));
+        controller.start_loop(LoopConfig {
+            name: "test-loop".to_string(),
+            prompt: Some("continue loop".to_string()),
+            max_iterations: 2,
+            break_text: None,
+        });
+        assert!(controller.start_embedded_prompt("original prompt", 0));
+
+        let mut harness = RunnerHarness::new(controller);
+        harness.app.queued_prompt = Some("queued prompt".to_string());
+
+        harness.done_tx.send(TaskResult::PromptDone(None)).expect("task result queued");
+        {
+            let mut runner = harness.runner();
+            runner.handle_task_results();
+        }
+
+        expect_reset_then_prompt(&mut harness.cmd_rx, "queued prompt");
+        assert!(harness.app.queued_prompt.is_none());
+        assert!(collect_system_messages(&harness.app).is_empty());
+    }
+
+    #[test]
+    fn prompt_done_failure_replays_queued_prompt_without_extra_error_banner() {
+        let mut controller = embedded_controller(false, None);
+        assert!(controller.start_embedded_prompt("original prompt", 0));
+
+        let mut harness = RunnerHarness::new(controller);
+        harness.app.queued_prompt = Some("queued after failure".to_string());
+
+        harness
+            .done_tx
+            .send(TaskResult::PromptDone(Some(crate::error::Error::Agent {
+                message: "boom".to_string(),
+            })))
+            .expect("task result queued");
+        {
+            let mut runner = harness.runner();
+            runner.handle_task_results();
+        }
+
+        expect_reset_then_prompt(&mut harness.cmd_rx, "queued after failure");
+        assert!(harness.app.queued_prompt.is_none());
+        assert!(collect_system_messages(&harness.app).is_empty());
+    }
+
+    #[test]
+    fn follow_up_dispatch_channel_failure_surfaces_controller_error() {
+        let mut controller = embedded_controller(true, Some("cargo test"));
+        assert!(controller.start_embedded_prompt("original prompt", 0));
+
+        let mut harness = RunnerHarness::new(controller);
+        harness.app.auto_test_command = Some("cargo test".to_string());
+        let (_dummy_tx, dummy_rx) = tokio::sync::mpsc::unbounded_channel();
+        let closed_rx = std::mem::replace(&mut harness.cmd_rx, dummy_rx);
+        drop(closed_rx);
+
+        harness.done_tx.send(TaskResult::PromptDone(None)).expect("task result queued");
+        {
+            let mut runner = harness.runner();
+            runner.handle_task_results();
+        }
+
+        let system_messages = collect_system_messages(&harness.app);
+        assert!(
+            system_messages.iter().any(|(text, is_error)| !is_error && text.contains("Running auto-test: cargo test")),
+            "expected auto-test start banner: {system_messages:?}"
+        );
+        assert!(
+            system_messages.iter().any(|(text, is_error)| *is_error && text == "Post-prompt follow-up failed"),
+            "expected follow-up dispatch failure banner: {system_messages:?}"
+        );
+    }
+
+    #[test]
+    fn out_of_order_follow_up_completion_surfaces_error_through_app_push_system() {
+        let mut controller = embedded_controller(true, Some("cargo test"));
+        assert!(controller.start_embedded_prompt("original prompt", 0));
+        controller.finish_embedded_prompt(clankers_core::CompletionStatus::Succeeded);
+        let (effect_id, prompt) = match controller.check_post_prompt(false) {
+            clankers_controller::PostPromptAction::RunAutoTest { effect_id, prompt } => (effect_id, prompt),
+            other => panic!("expected RunAutoTest, got {other:?}"),
+        };
+        assert!(controller.start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id)));
+
+        let mut harness = RunnerHarness::new(controller);
+        harness.done_tx.send(TaskResult::PromptDone(None)).expect("task result queued");
+        {
+            let mut runner = harness.runner();
+            runner.handle_task_results();
+        }
+
+        let system_messages = collect_system_messages(&harness.app);
+        assert!(
+            system_messages.iter().any(|(text, is_error)| *is_error && text == "Post-prompt follow-up completion rejected"),
+            "expected wrong-stage rejection banner: {system_messages:?}"
+        );
+        assert!(harness.cmd_rx.try_recv().is_err(), "out-of-order completion must not synthesize prompt replay or follow-up");
     }
 }

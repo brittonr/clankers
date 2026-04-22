@@ -36,12 +36,25 @@ pub enum CoreThinkingLevelInput {
 pub struct PromptRequest {
     pub text: String,
     pub image_count: u32,
+    pub originating_follow_up_effect_id: Option<CoreEffectId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PromptCompleted {
     pub effect_id: CoreEffectId,
     pub completion_status: CompletionStatus,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FollowUpDispatchStatus {
+    Accepted,
+    Rejected(CoreFailure),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FollowUpDispatchAcknowledged {
+    pub effect_id: CoreEffectId,
+    pub dispatch_status: FollowUpDispatchStatus,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -76,6 +89,7 @@ pub struct PostPromptEvaluation {
     pub auto_test_enabled: bool,
     pub auto_test_command: Option<String>,
     pub auto_test_in_progress: bool,
+    pub queued_prompt_present: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -83,6 +97,7 @@ pub enum CoreInput {
     PromptRequested(PromptRequest),
     PromptCompleted(PromptCompleted),
     EvaluatePostPrompt(PostPromptEvaluation),
+    FollowUpDispatchAcknowledged(FollowUpDispatchAcknowledged),
     SetThinkingLevel { requested: CoreThinkingLevelInput },
     CycleThinkingLevel,
     SetDisabledTools(DisabledToolsUpdate),
@@ -112,6 +127,7 @@ pub struct PendingPromptState {
     pub effect_id: CoreEffectId,
     pub prompt_text: String,
     pub image_count: u32,
+    pub originating_follow_up_effect_id: Option<CoreEffectId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -120,11 +136,18 @@ pub struct PendingToolFilterState {
     pub requested_disabled_tools: Vec<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PendingFollowUpStage {
+    AwaitingDispatchAcknowledgement,
+    AwaitingPromptCompletion,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PendingFollowUpState {
     pub effect_id: CoreEffectId,
     pub prompt_text: String,
     pub source: FollowUpSource,
+    pub stage: PendingFollowUpStage,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -166,6 +189,7 @@ pub enum CoreEffect {
         prompt_text: String,
         image_count: u32,
     },
+    ReplayQueuedPrompt,
     ApplyThinkingLevel {
         level: CoreThinkingLevel,
     },
@@ -198,8 +222,10 @@ pub enum CoreError {
     Busy,
     InvalidThinkingLevel { raw: String },
     PromptCompletionMismatch { effect_id: CoreEffectId },
+    FollowUpDispatchMismatch { effect_id: CoreEffectId },
     LoopFollowUpMismatch { effect_id: CoreEffectId },
     ToolFilterMismatch { effect_id: CoreEffectId },
+    WrongLifecycleStage { effect_id: CoreEffectId },
     OutOfOrderRuntimeResult,
     LoopAlreadyActive,
     LoopNotActive,

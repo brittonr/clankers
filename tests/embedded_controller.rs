@@ -232,7 +232,7 @@ fn embedded_auto_test_disabled_by_default() {
     let mut ctrl = make_embedded_controller();
     start_embedded_prompt(&mut ctrl, "hello");
     ctrl.notify_prompt_done(false);
-    assert!(matches!(ctrl.check_post_prompt(), PostPromptAction::None));
+    assert!(matches!(ctrl.check_post_prompt(false), PostPromptAction::None));
 }
 
 #[test]
@@ -242,7 +242,7 @@ fn embedded_auto_test_fires_when_enabled() {
 
     start_embedded_prompt(&mut ctrl, "hello");
     ctrl.notify_prompt_done(false);
-    match ctrl.check_post_prompt() {
+    match ctrl.check_post_prompt(false) {
         PostPromptAction::RunAutoTest { prompt, .. } => {
             assert!(prompt.contains("cargo nextest run"));
         }
@@ -258,18 +258,18 @@ fn embedded_auto_test_no_recursive_trigger() {
     // First prompt done -> auto-test fires
     start_embedded_prompt(&mut ctrl, "hello");
     ctrl.notify_prompt_done(false);
-    match ctrl.check_post_prompt() {
-        PostPromptAction::RunAutoTest { effect_id, .. } => {
-            ctrl.complete_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+    match ctrl.check_post_prompt(false) {
+        PostPromptAction::RunAutoTest { effect_id, prompt } => {
+            ctrl.ack_follow_up_dispatch(effect_id, clankers_core::FollowUpDispatchStatus::Accepted);
+            assert!(ctrl.start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id)));
+            ctrl.complete_dispatched_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
         }
         other => panic!("expected RunAutoTest, got {other:?}"),
     }
 
-    // Second prompt done (auto-test itself completing) -> blocked by in_progress flag
-    start_embedded_prompt(&mut ctrl, "auto-test");
-    ctrl.notify_prompt_done(false);
+    // Auto-test completion should still suppress a recursive auto-test on the same step.
     assert!(
-        matches!(ctrl.check_post_prompt(), PostPromptAction::None),
+        matches!(ctrl.check_post_prompt(false), PostPromptAction::None),
         "auto-test should be blocked while in_progress"
     );
 
@@ -277,7 +277,7 @@ fn embedded_auto_test_no_recursive_trigger() {
     ctrl.clear_auto_test();
     start_embedded_prompt(&mut ctrl, "hello again");
     ctrl.notify_prompt_done(false);
-    assert!(matches!(ctrl.check_post_prompt(), PostPromptAction::RunAutoTest { .. }));
+    assert!(matches!(ctrl.check_post_prompt(false), PostPromptAction::RunAutoTest { .. }));
 }
 
 // ── Embedded mode: loop integration ──────────────────────────────────────
@@ -297,7 +297,7 @@ fn embedded_loop_continuation() {
     // Simulate prompt completion + check
     start_embedded_prompt(&mut ctrl, "iterate");
     ctrl.notify_prompt_done(false);
-    match ctrl.check_post_prompt() {
+    match ctrl.check_post_prompt(false) {
         PostPromptAction::ContinueLoop { prompt, .. } => {
             assert_eq!(prompt, "iterate");
         }
@@ -318,17 +318,17 @@ fn embedded_loop_terminates_at_max() {
     // Iteration 1 → continue
     start_embedded_prompt(&mut ctrl, "go");
     ctrl.notify_prompt_done(false);
-    match ctrl.check_post_prompt() {
-        PostPromptAction::ContinueLoop { effect_id, .. } => {
-            ctrl.complete_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+    match ctrl.check_post_prompt(false) {
+        PostPromptAction::ContinueLoop { effect_id, prompt } => {
+            ctrl.ack_follow_up_dispatch(effect_id, clankers_core::FollowUpDispatchStatus::Accepted);
+            assert!(ctrl.start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id)));
+            ctrl.complete_dispatched_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
         }
         other => panic!("expected ContinueLoop, got {other:?}"),
     }
 
     // Iteration 2 → max reached, should terminate
-    start_embedded_prompt(&mut ctrl, "go");
-    ctrl.notify_prompt_done(false);
-    match ctrl.check_post_prompt() {
+    match ctrl.check_post_prompt(false) {
         PostPromptAction::None => {} // correct — loop finished
         other => panic!("expected None (loop finished), got {other:?}"),
     }
@@ -355,7 +355,7 @@ fn embedded_loop_break_condition() {
 
     start_embedded_prompt(&mut ctrl, "check");
     ctrl.notify_prompt_done(false);
-    match ctrl.check_post_prompt() {
+    match ctrl.check_post_prompt(false) {
         PostPromptAction::None => {} // break condition met
         other => panic!("expected None (break triggered), got {other:?}"),
     }
@@ -380,7 +380,7 @@ fn embedded_loop_signal_break() {
 
     start_embedded_prompt(&mut ctrl, "go");
     ctrl.notify_prompt_done(false);
-    match ctrl.check_post_prompt() {
+    match ctrl.check_post_prompt(false) {
         PostPromptAction::None => {} // signal break triggered
         other => panic!("expected None (signal break), got {other:?}"),
     }

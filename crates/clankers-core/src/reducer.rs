@@ -13,9 +13,12 @@ use crate::types::CoreLogicalEvent;
 use crate::types::CoreOutcome;
 use crate::types::CoreState;
 use crate::types::DisabledToolsUpdate;
+use crate::types::FollowUpDispatchAcknowledged;
+use crate::types::FollowUpDispatchStatus;
 use crate::types::FollowUpSource;
 use crate::types::LoopFollowUpCompleted;
 use crate::types::LoopRequest;
+use crate::types::PendingFollowUpStage;
 use crate::types::PendingFollowUpState;
 use crate::types::PendingPromptState;
 use crate::types::PendingToolFilterState;
@@ -32,6 +35,9 @@ pub fn reduce(state: &CoreState, input: &CoreInput) -> CoreOutcome {
         CoreInput::PromptRequested(request) => reduce_prompt_requested(state, request),
         CoreInput::PromptCompleted(completed) => reduce_prompt_completed(state, completed),
         CoreInput::EvaluatePostPrompt(evaluation) => reduce_post_prompt_evaluation(state, evaluation),
+        CoreInput::FollowUpDispatchAcknowledged(acknowledged) => {
+            reduce_follow_up_dispatch_acknowledged(state, acknowledged)
+        }
         CoreInput::SetThinkingLevel { requested } => reduce_set_thinking_level(state, requested),
         CoreInput::CycleThinkingLevel => reduce_cycle_thinking_level(state),
         CoreInput::SetDisabledTools(update) => reduce_set_disabled_tools(state, update),
@@ -54,6 +60,7 @@ fn reduce_prompt_requested(state: &CoreState, request: &PromptRequest) -> CoreOu
         effect_id,
         prompt_text: request.text.clone(),
         image_count: request.image_count,
+        originating_follow_up_effect_id: request.originating_follow_up_effect_id,
     });
 
     transitioned(next_state, vec![
@@ -91,7 +98,10 @@ fn reduce_prompt_completed(state: &CoreState, completed: &PromptCompleted) -> Co
         busy: false,
     })];
 
-    if matches!(completed.completion_status, CompletionStatus::Failed(_)) && next_state.active_loop_state.is_some() {
+    if pending_prompt.originating_follow_up_effect_id.is_none()
+        && matches!(completed.completion_status, CompletionStatus::Failed(_))
+        && next_state.active_loop_state.is_some()
+    {
         next_state.active_loop_state = None;
         next_state.pending_follow_up_state = None;
         effects.push(CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
@@ -111,13 +121,18 @@ fn reduce_post_prompt_evaluation(state: &CoreState, evaluation: &PostPromptEvalu
     next_state.auto_test_in_progress = evaluation.auto_test_in_progress;
 
     let mut effects = Vec::new();
-    if state.active_loop_state.is_some() != next_state.active_loop_state.is_some() {
+    if state.active_loop_state != next_state.active_loop_state {
         effects.push(CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
             active_loop_state: next_state.active_loop_state.clone(),
         }));
     }
 
     if next_state.pending_follow_up_state.is_some() {
+        return transitioned(next_state, effects);
+    }
+
+    if evaluation.queued_prompt_present {
+        effects.push(CoreEffect::ReplayQueuedPrompt);
         return transitioned(next_state, effects);
     }
 
@@ -128,6 +143,7 @@ fn reduce_post_prompt_evaluation(state: &CoreState, evaluation: &PostPromptEvalu
             effect_id,
             prompt_text: prompt_text.clone(),
             source: FollowUpSource::LoopContinuation,
+            stage: PendingFollowUpStage::AwaitingDispatchAcknowledgement,
         });
         effects.push(CoreEffect::RunLoopFollowUp {
             effect_id,
@@ -148,6 +164,7 @@ fn reduce_post_prompt_evaluation(state: &CoreState, evaluation: &PostPromptEvalu
             effect_id,
             prompt_text: prompt_text.clone(),
             source: FollowUpSource::AutoTest,
+            stage: PendingFollowUpStage::AwaitingDispatchAcknowledgement,
         });
         effects.push(CoreEffect::RunLoopFollowUp {
             effect_id,
@@ -158,6 +175,59 @@ fn reduce_post_prompt_evaluation(state: &CoreState, evaluation: &PostPromptEvalu
     }
 
     next_state.auto_test_in_progress = false;
+    transitioned(next_state, effects)
+}
+
+fn reduce_follow_up_dispatch_acknowledged(
+    state: &CoreState,
+    acknowledged: &FollowUpDispatchAcknowledged,
+) -> CoreOutcome {
+    let Some(pending_follow_up_state) = state.pending_follow_up_state.as_ref() else {
+        return if has_pending_work_other_than_follow_up(state) {
+            rejection(state, CoreError::OutOfOrderRuntimeResult)
+        } else {
+            rejection(state, CoreError::FollowUpDispatchMismatch {
+                effect_id: acknowledged.effect_id,
+            })
+        };
+    };
+
+    if pending_follow_up_state.effect_id != acknowledged.effect_id {
+        return rejection(state, CoreError::FollowUpDispatchMismatch {
+            effect_id: acknowledged.effect_id,
+        });
+    }
+
+    if pending_follow_up_state.stage != PendingFollowUpStage::AwaitingDispatchAcknowledgement {
+        return rejection(state, CoreError::WrongLifecycleStage {
+            effect_id: acknowledged.effect_id,
+        });
+    }
+
+    let mut next_state = state.clone();
+    let mut effects = Vec::new();
+
+    match &acknowledged.dispatch_status {
+        FollowUpDispatchStatus::Accepted => {
+            if let Some(pending_follow_up_state) = next_state.pending_follow_up_state.as_mut() {
+                pending_follow_up_state.stage = PendingFollowUpStage::AwaitingPromptCompletion;
+            }
+        }
+        FollowUpDispatchStatus::Rejected(_) => {
+            let source = pending_follow_up_state.source;
+            next_state.pending_follow_up_state = None;
+            if matches!(source, FollowUpSource::AutoTest) {
+                next_state.auto_test_in_progress = false;
+            }
+            if matches!(source, FollowUpSource::LoopContinuation) && next_state.active_loop_state.is_some() {
+                next_state.active_loop_state = None;
+                effects.push(CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
+                    active_loop_state: None,
+                }));
+            }
+        }
+    }
+
     transitioned(next_state, effects)
 }
 
@@ -289,6 +359,12 @@ fn reduce_loop_follow_up_completed(state: &CoreState, completed: &LoopFollowUpCo
         });
     }
 
+    if pending_follow_up_state.stage != PendingFollowUpStage::AwaitingPromptCompletion {
+        return rejection(state, CoreError::WrongLifecycleStage {
+            effect_id: completed.effect_id,
+        });
+    }
+
     let mut next_state = state.clone();
     let source = pending_follow_up_state.source;
     next_state.pending_follow_up_state = None;
@@ -393,6 +469,7 @@ mod tests {
                 effect_id: CoreEffectId(FIRST_EFFECT_ID),
                 prompt_text: "hello".to_string(),
                 image_count: 0,
+                originating_follow_up_effect_id: None,
             }),
             next_effect_id: CoreEffectId(FIRST_EFFECT_ID),
             ..CoreState::default()
@@ -406,6 +483,21 @@ mod tests {
                 effect_id: CoreEffectId(FIRST_EFFECT_ID),
                 prompt_text: "continue loop".to_string(),
                 source: FollowUpSource::LoopContinuation,
+                stage: PendingFollowUpStage::AwaitingPromptCompletion,
+            }),
+            next_effect_id: CoreEffectId(FIRST_EFFECT_ID),
+            ..CoreState::default()
+        }
+    }
+
+    fn dispatch_pending_loop_follow_up_state() -> CoreState {
+        CoreState {
+            active_loop_state: Some(loop_state()),
+            pending_follow_up_state: Some(PendingFollowUpState {
+                effect_id: CoreEffectId(FIRST_EFFECT_ID),
+                prompt_text: "continue loop".to_string(),
+                source: FollowUpSource::LoopContinuation,
+                stage: PendingFollowUpStage::AwaitingDispatchAcknowledgement,
             }),
             next_effect_id: CoreEffectId(FIRST_EFFECT_ID),
             ..CoreState::default()
@@ -432,6 +524,7 @@ mod tests {
                 effect_id: CoreEffectId(FIRST_EFFECT_ID),
                 prompt_text: "hello".to_string(),
                 image_count: 0,
+                originating_follow_up_effect_id: None,
             }),
             pending_tool_filter: Some(PendingToolFilterState {
                 effect_id: CoreEffectId(SECOND_EFFECT_ID),
@@ -441,6 +534,7 @@ mod tests {
                 effect_id: CoreEffectId(THIRD_EFFECT_ID),
                 prompt_text: "continue loop".to_string(),
                 source: FollowUpSource::LoopContinuation,
+                stage: PendingFollowUpStage::AwaitingPromptCompletion,
             }),
             next_effect_id: CoreEffectId(THIRD_EFFECT_ID),
             disabled_tools: vec!["bash".to_string()],
@@ -467,6 +561,7 @@ mod tests {
         let request = CoreInput::PromptRequested(PromptRequest {
             text: "hello".to_string(),
             image_count: 0,
+            originating_follow_up_effect_id: None,
         });
 
         let (next_state, effects) = expect_transition(reduce(&CoreState::default(), &request));
@@ -478,6 +573,7 @@ mod tests {
                 effect_id: CoreEffectId(FIRST_EFFECT_ID),
                 prompt_text: "hello".to_string(),
                 image_count: 0,
+                originating_follow_up_effect_id: None,
             })
         );
         assert_eq!(effects, vec![
@@ -496,6 +592,7 @@ mod tests {
         let request = CoreInput::PromptRequested(PromptRequest {
             text: "again".to_string(),
             image_count: 0,
+            originating_follow_up_effect_id: None,
         });
 
         let (unchanged_state, error) = expect_rejection(reduce(&state, &request));
@@ -530,6 +627,7 @@ mod tests {
             effect_id: CoreEffectId(SECOND_EFFECT_ID),
             prompt_text: "continue loop".to_string(),
             source: FollowUpSource::LoopContinuation,
+            stage: PendingFollowUpStage::AwaitingPromptCompletion,
         });
         state.next_effect_id = CoreEffectId(SECOND_EFFECT_ID);
 
@@ -560,6 +658,7 @@ mod tests {
             auto_test_enabled: true,
             auto_test_command: Some("cargo test".to_string()),
             auto_test_in_progress: false,
+            queued_prompt_present: false,
         });
 
         let (next_state, effects) = expect_transition(reduce(&CoreState::default(), &input));
@@ -570,6 +669,7 @@ mod tests {
                 effect_id: CoreEffectId(FIRST_EFFECT_ID),
                 prompt_text: "continue loop".to_string(),
                 source: FollowUpSource::LoopContinuation,
+                stage: PendingFollowUpStage::AwaitingDispatchAcknowledgement,
             })
         );
         assert!(!next_state.auto_test_in_progress);
@@ -597,6 +697,7 @@ mod tests {
             auto_test_enabled: true,
             auto_test_command: Some("cargo test".to_string()),
             auto_test_in_progress: false,
+            queued_prompt_present: false,
         });
 
         let (next_state, effects) = expect_transition(reduce(&state, &input));
@@ -623,6 +724,7 @@ mod tests {
             auto_test_enabled: true,
             auto_test_command: Some("cargo test".to_string()),
             auto_test_in_progress: false,
+            queued_prompt_present: false,
         });
 
         let (next_state, effects) = expect_transition(reduce(&CoreState::default(), &input));
@@ -634,6 +736,7 @@ mod tests {
                 effect_id: CoreEffectId(FIRST_EFFECT_ID),
                 prompt_text: "Run `cargo test` and fix any failures. Do not ask for confirmation.".to_string(),
                 source: FollowUpSource::AutoTest,
+                stage: PendingFollowUpStage::AwaitingDispatchAcknowledgement,
             })
         );
         assert_eq!(effects, vec![CoreEffect::RunLoopFollowUp {
@@ -655,12 +758,35 @@ mod tests {
             auto_test_enabled: false,
             auto_test_command: None,
             auto_test_in_progress: true,
+            queued_prompt_present: false,
         });
 
         let (next_state, effects) = expect_transition(reduce(&state, &input));
 
         assert!(!next_state.auto_test_in_progress);
         assert!(effects.is_empty());
+    }
+
+    #[test]
+    fn post_prompt_evaluation_replays_queued_prompt_before_follow_up() {
+        let input = CoreInput::EvaluatePostPrompt(PostPromptEvaluation {
+            active_loop_state: Some(loop_state()),
+            pending_follow_up_state: None,
+            auto_test_enabled: true,
+            auto_test_command: Some("cargo test".to_string()),
+            auto_test_in_progress: false,
+            queued_prompt_present: true,
+        });
+
+        let (next_state, effects) = expect_transition(reduce(&CoreState::default(), &input));
+
+        assert!(next_state.pending_follow_up_state.is_none());
+        assert_eq!(effects, vec![
+            CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
+                active_loop_state: Some(loop_state()),
+            }),
+            CoreEffect::ReplayQueuedPrompt,
+        ]);
     }
 
     #[test]
@@ -834,6 +960,114 @@ mod tests {
         assert!(next_state.active_loop_state.is_none());
         assert_eq!(effects, vec![CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
             active_loop_state: None,
+        })]);
+    }
+
+    #[test]
+    fn follow_up_dispatch_acceptance_advances_stage_without_clearing_pending() {
+        let state = dispatch_pending_loop_follow_up_state();
+        let input = CoreInput::FollowUpDispatchAcknowledged(FollowUpDispatchAcknowledged {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+            dispatch_status: FollowUpDispatchStatus::Accepted,
+        });
+
+        let (next_state, effects) = expect_transition(reduce(&state, &input));
+
+        assert_eq!(
+            next_state.pending_follow_up_state,
+            Some(PendingFollowUpState {
+                effect_id: CoreEffectId(FIRST_EFFECT_ID),
+                prompt_text: "continue loop".to_string(),
+                source: FollowUpSource::LoopContinuation,
+                stage: PendingFollowUpStage::AwaitingPromptCompletion,
+            })
+        );
+        assert!(effects.is_empty());
+    }
+
+    #[test]
+    fn follow_up_dispatch_rejection_clears_pending_and_ends_loop() {
+        let state = dispatch_pending_loop_follow_up_state();
+        let input = CoreInput::FollowUpDispatchAcknowledged(FollowUpDispatchAcknowledged {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+            dispatch_status: FollowUpDispatchStatus::Rejected(CoreFailure::Message("boom".to_string())),
+        });
+
+        let (next_state, effects) = expect_transition(reduce(&state, &input));
+
+        assert!(next_state.pending_follow_up_state.is_none());
+        assert!(next_state.active_loop_state.is_none());
+        assert_eq!(effects, vec![CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
+            active_loop_state: None,
+        })]);
+    }
+
+    #[test]
+    fn duplicate_follow_up_dispatch_ack_is_rejected_as_wrong_stage() {
+        let state = dispatch_pending_loop_follow_up_state();
+        let accepted = CoreInput::FollowUpDispatchAcknowledged(FollowUpDispatchAcknowledged {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+            dispatch_status: FollowUpDispatchStatus::Accepted,
+        });
+        let (next_state, _) = expect_transition(reduce(&state, &accepted));
+
+        let (unchanged_state, error) = expect_rejection(reduce(&next_state, &accepted));
+
+        assert_eq!(unchanged_state, next_state);
+        assert_eq!(error, CoreError::WrongLifecycleStage {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+        });
+    }
+
+    #[test]
+    fn follow_up_completion_before_dispatch_ack_is_rejected_as_wrong_stage() {
+        let state = dispatch_pending_loop_follow_up_state();
+        let input = CoreInput::LoopFollowUpCompleted(LoopFollowUpCompleted {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+            completion_status: CompletionStatus::Succeeded,
+        });
+
+        let (unchanged_state, error) = expect_rejection(reduce(&state, &input));
+
+        assert_eq!(unchanged_state, state);
+        assert_eq!(error, CoreError::WrongLifecycleStage {
+            effect_id: CoreEffectId(FIRST_EFFECT_ID),
+        });
+    }
+
+    #[test]
+    fn dispatched_follow_up_prompt_completion_clears_busy_without_finishing_loop_locally() {
+        let state = CoreState {
+            busy: true,
+            active_loop_state: Some(loop_state()),
+            pending_prompt: Some(PendingPromptState {
+                effect_id: CoreEffectId(SECOND_EFFECT_ID),
+                prompt_text: "continue loop".to_string(),
+                image_count: 0,
+                originating_follow_up_effect_id: Some(CoreEffectId(FIRST_EFFECT_ID)),
+            }),
+            pending_follow_up_state: Some(PendingFollowUpState {
+                effect_id: CoreEffectId(FIRST_EFFECT_ID),
+                prompt_text: "continue loop".to_string(),
+                source: FollowUpSource::LoopContinuation,
+                stage: PendingFollowUpStage::AwaitingPromptCompletion,
+            }),
+            next_effect_id: CoreEffectId(SECOND_EFFECT_ID),
+            ..CoreState::default()
+        };
+        let input = CoreInput::PromptCompleted(PromptCompleted {
+            effect_id: CoreEffectId(SECOND_EFFECT_ID),
+            completion_status: CompletionStatus::Succeeded,
+        });
+
+        let (next_state, effects) = expect_transition(reduce(&state, &input));
+
+        assert!(!next_state.busy);
+        assert!(next_state.pending_prompt.is_none());
+        assert_eq!(next_state.pending_follow_up_state, state.pending_follow_up_state);
+        assert_eq!(next_state.active_loop_state, state.active_loop_state);
+        assert_eq!(effects, vec![CoreEffect::EmitLogicalEvent(CoreLogicalEvent::BusyChanged {
+            busy: false,
         })]);
     }
 

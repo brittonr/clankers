@@ -21,6 +21,7 @@ run_step "Agent turn allowlist parity suite" cargo test -p clankers-agent user_t
 run_step "Agent filtered inventory parity suite" cargo test -p clankers-agent controller_filtered_tool_inventory_replaces_available_tools_without_turn_local_state --lib
 run_step "Agent thinking adapter parity suite" cargo test -p clankers-agent agent_applies_core_thinking_effect_without_agent_owned_reducer --lib
 run_step "Agent tool inventory adapter parity suite" cargo test -p clankers-agent agent_tool_inventory_can_follow_core_disabled_tool_contract_without_local_policy --lib
+run_step "Embedded runtime prompt-lifecycle parity suite" env CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS=-C\ link-arg=-fuse-ld=bfd cargo test --lib event_loop_runner::tests
 run_step "Embedded controller parity suite" cargo nextest run --test embedded_controller
 
 echo "=== No-std functional core validation bundle passed ==="

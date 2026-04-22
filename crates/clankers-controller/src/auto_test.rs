@@ -10,9 +10,19 @@ use crate::loop_mode::LoopConfig;
 impl SessionController {
     /// Start a prompt in embedded mode through the reducer-backed prompt path.
     pub fn start_embedded_prompt(&mut self, prompt_text: &str, image_count: u32) -> bool {
+        self.start_embedded_prompt_with_follow_up(prompt_text, image_count, None)
+    }
+
+    pub fn start_embedded_prompt_with_follow_up(
+        &mut self,
+        prompt_text: &str,
+        image_count: u32,
+        originating_follow_up_effect_id: Option<clankers_core::CoreEffectId>,
+    ) -> bool {
         let input = clankers_core::CoreInput::PromptRequested(clankers_core::PromptRequest {
             text: prompt_text.to_string(),
             image_count,
+            originating_follow_up_effect_id,
         });
 
         match clankers_core::reduce(&self.core_state, &input) {
@@ -40,6 +50,10 @@ impl SessionController {
             });
             return;
         };
+        debug_assert!(
+            pending_prompt.originating_follow_up_effect_id.is_none(),
+            "follow-up prompt completion must use complete_dispatched_follow_up"
+        );
 
         let applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
             effect_id: pending_prompt.effect_id,
@@ -77,7 +91,7 @@ impl SessionController {
     /// Call this from the TUI's `handle_task_results` after receiving
     /// `PromptDone(None)` and confirming there's no queued user prompt.
     /// Returns the action the TUI should take.
-    pub fn check_post_prompt(&mut self) -> PostPromptAction {
+    pub fn check_post_prompt(&mut self, queued_prompt_present: bool) -> PostPromptAction {
         let observed_loop_progress = self.observe_post_prompt_loop_state();
         let input = clankers_core::CoreInput::EvaluatePostPrompt(clankers_core::PostPromptEvaluation {
             active_loop_state: observed_loop_progress.active_loop_state.clone(),
@@ -85,6 +99,7 @@ impl SessionController {
             auto_test_enabled: self.auto_test_enabled,
             auto_test_command: self.auto_test_command.clone(),
             auto_test_in_progress: self.auto_test_in_progress,
+            queued_prompt_present,
         });
 
         match clankers_core::reduce(&self.core_state, &input) {
@@ -96,8 +111,42 @@ impl SessionController {
         }
     }
 
-    /// Notify the controller that a follow-up prompt was accepted or rejected by the shell.
-    pub fn complete_follow_up(
+    pub fn pending_dispatched_follow_up_effect_id(&self) -> Option<clankers_core::CoreEffectId> {
+        self.core_state
+            .pending_prompt
+            .as_ref()
+            .and_then(|pending_prompt| pending_prompt.originating_follow_up_effect_id)
+    }
+
+    /// Notify the controller whether follow-up prompt dispatch was accepted or rejected by the shell.
+    pub fn ack_follow_up_dispatch(
+        &mut self,
+        effect_id: clankers_core::CoreEffectId,
+        dispatch_status: clankers_core::FollowUpDispatchStatus,
+    ) {
+        let input = clankers_core::CoreInput::FollowUpDispatchAcknowledged(
+            clankers_core::FollowUpDispatchAcknowledged {
+                effect_id,
+                dispatch_status: dispatch_status.clone(),
+            },
+        );
+
+        match clankers_core::reduce(&self.core_state, &input) {
+            clankers_core::CoreOutcome::Transitioned { next_state, effects } => {
+                self.apply_core_state(next_state);
+                self.execute_follow_up_dispatch_effects(effects, &dispatch_status);
+            }
+            clankers_core::CoreOutcome::Rejected { .. } => {
+                self.emit(clankers_protocol::DaemonEvent::SystemMessage {
+                    text: "Post-prompt follow-up dispatch rejected".to_string(),
+                    is_error: true,
+                });
+            }
+        }
+    }
+
+    /// Notify the controller that a dispatched follow-up prompt finished.
+    pub fn complete_dispatched_follow_up(
         &mut self,
         effect_id: clankers_core::CoreEffectId,
         completion_status: clankers_core::CompletionStatus,
@@ -106,24 +155,49 @@ impl SessionController {
             effect_id,
             completion_status: completion_status.clone(),
         });
+        if matches!(clankers_core::reduce(&self.core_state, &input), clankers_core::CoreOutcome::Rejected { .. }) {
+            self.emit(clankers_protocol::DaemonEvent::SystemMessage {
+                text: "Post-prompt follow-up completion rejected".to_string(),
+                is_error: true,
+            });
+            return;
+        }
+
+        let Some(pending_prompt) = self.core_state.pending_prompt.clone() else {
+            self.emit(clankers_protocol::DaemonEvent::SystemMessage {
+                text: "Post-prompt follow-up completion rejected".to_string(),
+                is_error: true,
+            });
+            return;
+        };
+        if pending_prompt.originating_follow_up_effect_id != Some(effect_id) {
+            self.emit(clankers_protocol::DaemonEvent::SystemMessage {
+                text: "Post-prompt follow-up completion rejected".to_string(),
+                is_error: true,
+            });
+            return;
+        }
+
+        let prompt_applied = self.apply_prompt_completion(clankers_core::PromptCompleted {
+            effect_id: pending_prompt.effect_id,
+            completion_status: completion_status.clone(),
+        });
+        if !prompt_applied {
+            return;
+        }
 
         match clankers_core::reduce(&self.core_state, &input) {
             clankers_core::CoreOutcome::Transitioned { next_state, effects } => {
                 self.apply_core_state(next_state);
                 self.execute_follow_up_completion_effects(effects, &completion_status);
             }
-            clankers_core::CoreOutcome::Rejected { .. } => {
-                self.emit(clankers_protocol::DaemonEvent::SystemMessage {
-                    text: "Post-prompt follow-up completion rejected".to_string(),
-                    is_error: true,
-                });
-            }
+            clankers_core::CoreOutcome::Rejected { .. } => unreachable!("preflight already rejected invalid follow-up completion"),
         }
     }
 
     /// Sync loop state from the TUI's loop_status.
     ///
-    /// Called before `check_post_prompt()` to ensure the controller's
+    /// Called before `check_post_prompt(false)` to ensure the controller's
     /// loop engine matches the TUI's `/loop` command state.
     pub fn sync_loop_from_tui(&mut self, loop_status: Option<&clankers_tui_types::LoopDisplayState>) {
         match (loop_status, &self.active_loop_id) {
@@ -161,7 +235,7 @@ impl SessionController {
     /// Notify the controller that a prompt completed (embedded mode).
     ///
     /// Updates busy state. Called from the TUI when `TaskResult::PromptDone`
-    /// is received, before calling `check_post_prompt()`.
+    /// is received, before calling `check_post_prompt(false)`.
     pub fn notify_prompt_done(&mut self, had_error: bool) {
         let completion_status = if had_error {
             clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(
@@ -220,7 +294,7 @@ mod tests {
     fn test_check_post_prompt_no_loop_no_autotest() {
         let mut ctrl = make_test_controller();
 
-        let action = ctrl.check_post_prompt();
+        let action = ctrl.check_post_prompt(false);
         assert!(matches!(action, PostPromptAction::None));
     }
 
@@ -230,7 +304,7 @@ mod tests {
         ctrl.auto_test_enabled = true;
         ctrl.auto_test_command = Some("cargo test".to_string());
 
-        let action = ctrl.check_post_prompt();
+        let action = ctrl.check_post_prompt(false);
         assert!(matches!(action, PostPromptAction::RunAutoTest { .. }));
 
         if let PostPromptAction::RunAutoTest { prompt, .. } = action {
@@ -253,12 +327,50 @@ mod tests {
             break_text: None,
         });
 
-        let action = ctrl.check_post_prompt();
+        let action = ctrl.check_post_prompt(false);
         assert!(matches!(action, PostPromptAction::ContinueLoop { ref prompt, .. } if prompt == "continue loop"));
         assert_eq!(
             ctrl.core_state.active_loop_state.as_ref().map(|loop_state| loop_state.current_iteration),
             Some(FIRST_COMPLETED_ITERATION)
         );
+        assert!(!ctrl.auto_test_in_progress);
+    }
+
+    #[test]
+    fn test_check_post_prompt_prefers_loop_over_auto_test_when_both_are_available() {
+        let mut ctrl = make_test_controller();
+        ctrl.auto_test_enabled = true;
+        ctrl.auto_test_command = Some("cargo test".to_string());
+        ctrl.start_loop(crate::loop_mode::LoopConfig {
+            name: "test-loop".to_string(),
+            prompt: Some("continue loop".to_string()),
+            max_iterations: 2,
+            break_text: None,
+        });
+
+        let action = ctrl.check_post_prompt(false);
+
+        assert!(matches!(action, PostPromptAction::ContinueLoop { .. }));
+        assert!(!matches!(action, PostPromptAction::RunAutoTest { .. }));
+        assert!(!ctrl.auto_test_in_progress);
+    }
+
+    #[test]
+    fn test_check_post_prompt_replays_queued_prompt_before_follow_up() {
+        let mut ctrl = make_test_controller();
+        ctrl.auto_test_enabled = true;
+        ctrl.auto_test_command = Some("cargo test".to_string());
+        ctrl.start_loop(crate::loop_mode::LoopConfig {
+            name: "test-loop".to_string(),
+            prompt: Some("continue loop".to_string()),
+            max_iterations: 2,
+            break_text: None,
+        });
+
+        let action = ctrl.check_post_prompt(true);
+
+        assert!(matches!(action, PostPromptAction::ReplayQueuedPrompt));
+        assert!(ctrl.core_state.pending_follow_up_state.is_none());
         assert!(!ctrl.auto_test_in_progress);
     }
 
@@ -274,7 +386,7 @@ mod tests {
             break_text: None,
         });
 
-        let action = ctrl.check_post_prompt();
+        let action = ctrl.check_post_prompt(false);
         assert!(matches!(action, PostPromptAction::None));
         assert!(ctrl.active_loop_id.is_none());
         let events = ctrl.drain_events();
@@ -291,6 +403,7 @@ mod tests {
             effect_id: clankers_core::CoreEffectId(1),
             prompt_text: "hello".to_string(),
             image_count: 0,
+            originating_follow_up_effect_id: None,
         });
         ctrl.core_state.next_effect_id = clankers_core::CoreEffectId(1);
     }
@@ -310,6 +423,7 @@ mod tests {
                 effect_id: clankers_core::CoreEffectId(1),
                 prompt_text: "hello".to_string(),
                 image_count: 0,
+                originating_follow_up_effect_id: None,
             })
         );
         assert!(ctrl.drain_events().is_empty());
@@ -327,7 +441,7 @@ mod tests {
         assert!(!ctrl.core_state.busy);
         assert!(ctrl.core_state.pending_prompt.is_none());
         assert!(ctrl.drain_events().is_empty());
-        assert!(matches!(ctrl.check_post_prompt(), PostPromptAction::RunAutoTest { .. }));
+        assert!(matches!(ctrl.check_post_prompt(false), PostPromptAction::RunAutoTest { .. }));
     }
 
     #[test]
@@ -346,7 +460,7 @@ mod tests {
         assert!(!ctrl.core_state.busy);
         assert!(ctrl.core_state.pending_prompt.is_none());
         assert!(ctrl.drain_events().is_empty());
-        assert!(matches!(ctrl.check_post_prompt(), PostPromptAction::RunAutoTest { .. }));
+        assert!(matches!(ctrl.check_post_prompt(false), PostPromptAction::RunAutoTest { .. }));
     }
 
     #[test]
@@ -370,7 +484,7 @@ mod tests {
         assert!(applied);
         assert!(ctrl.drain_events().is_empty());
         assert!(matches!(
-            ctrl.check_post_prompt(),
+            ctrl.check_post_prompt(false),
             PostPromptAction::ContinueLoop { ref prompt, .. } if prompt == "continue loop"
         ));
     }
@@ -403,7 +517,7 @@ mod tests {
             [clankers_protocol::DaemonEvent::SystemMessage { text, is_error: false }]
                 if text.contains("failed (error)")
         ));
-        assert!(matches!(ctrl.check_post_prompt(), PostPromptAction::None));
+        assert!(matches!(ctrl.check_post_prompt(false), PostPromptAction::None));
     }
 
     #[test]
@@ -450,7 +564,7 @@ mod tests {
     }
 
     #[test]
-    fn test_complete_follow_up_success_clears_pending_without_extra_events() {
+    fn test_ack_follow_up_dispatch_and_completion_success_clear_pending_without_extra_events() {
         const LOOP_ITERATION_LIMIT: u32 = 2;
 
         let mut ctrl = make_test_controller();
@@ -461,21 +575,24 @@ mod tests {
             break_text: None,
         });
 
-        let effect_id = match ctrl.check_post_prompt() {
-            PostPromptAction::ContinueLoop { effect_id, .. } => effect_id,
+        let (effect_id, prompt) = match ctrl.check_post_prompt(false) {
+            PostPromptAction::ContinueLoop { effect_id, prompt } => (effect_id, prompt),
             other => panic!("expected ContinueLoop, got {other:?}"),
         };
 
-        ctrl.complete_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+        ctrl.ack_follow_up_dispatch(effect_id, clankers_core::FollowUpDispatchStatus::Accepted);
+        assert!(ctrl.start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id)));
+        ctrl.complete_dispatched_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
 
         assert!(ctrl.has_active_loop());
         assert!(ctrl.core_state.pending_follow_up_state.is_none());
+        assert!(ctrl.core_state.pending_prompt.is_none());
         assert_eq!(ctrl.core_state.active_loop_state.as_ref().map(|loop_state| loop_state.current_iteration), Some(1));
         assert!(ctrl.drain_events().is_empty());
     }
 
     #[test]
-    fn test_complete_follow_up_failure_finishes_loop_and_emits_message() {
+    fn test_follow_up_dispatch_rejection_finishes_loop_and_emits_message() {
         const LOOP_ITERATION_LIMIT: u32 = 2;
 
         let mut ctrl = make_test_controller();
@@ -486,14 +603,14 @@ mod tests {
             break_text: None,
         });
 
-        let effect_id = match ctrl.check_post_prompt() {
+        let effect_id = match ctrl.check_post_prompt(false) {
             PostPromptAction::ContinueLoop { effect_id, .. } => effect_id,
             other => panic!("expected ContinueLoop, got {other:?}"),
         };
 
-        ctrl.complete_follow_up(
+        ctrl.ack_follow_up_dispatch(
             effect_id,
-            clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message("boom".to_string())),
+            clankers_core::FollowUpDispatchStatus::Rejected(clankers_core::CoreFailure::Message("boom".to_string())),
         );
 
         assert!(!ctrl.has_active_loop());
@@ -507,22 +624,25 @@ mod tests {
     }
 
     #[test]
-    fn test_complete_follow_up_failure_without_loop_emits_error_message() {
+    fn test_dispatched_follow_up_failure_without_loop_emits_error_message() {
         let mut ctrl = make_test_controller();
         ctrl.auto_test_enabled = true;
         ctrl.auto_test_command = Some("cargo test".to_string());
 
-        let effect_id = match ctrl.check_post_prompt() {
-            PostPromptAction::RunAutoTest { effect_id, .. } => effect_id,
+        let (effect_id, prompt) = match ctrl.check_post_prompt(false) {
+            PostPromptAction::RunAutoTest { effect_id, prompt } => (effect_id, prompt),
             other => panic!("expected RunAutoTest, got {other:?}"),
         };
 
-        ctrl.complete_follow_up(
+        ctrl.ack_follow_up_dispatch(effect_id, clankers_core::FollowUpDispatchStatus::Accepted);
+        assert!(ctrl.start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id)));
+        ctrl.complete_dispatched_follow_up(
             effect_id,
             clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message("boom".to_string())),
         );
 
         assert!(ctrl.core_state.pending_follow_up_state.is_none());
+        assert!(ctrl.core_state.pending_prompt.is_none());
         assert!(!ctrl.auto_test_in_progress);
         assert!(!ctrl.core_state.auto_test_in_progress);
         assert!(matches!(
@@ -533,19 +653,19 @@ mod tests {
     }
 
     #[test]
-    fn test_complete_follow_up_rejection_keeps_state_and_emits_error() {
+    fn test_follow_up_dispatch_rejection_keeps_state_and_emits_error_on_wrong_id() {
         let mut ctrl = make_test_controller();
         ctrl.auto_test_enabled = true;
         ctrl.auto_test_command = Some("cargo test".to_string());
 
-        let effect_id = match ctrl.check_post_prompt() {
+        let effect_id = match ctrl.check_post_prompt(false) {
             PostPromptAction::RunAutoTest { effect_id, .. } => effect_id,
             other => panic!("expected RunAutoTest, got {other:?}"),
         };
         let previous_state = ctrl.core_state.clone();
         let wrong_effect_id = clankers_core::CoreEffectId(effect_id.0 + 1);
 
-        ctrl.complete_follow_up(wrong_effect_id, clankers_core::CompletionStatus::Succeeded);
+        ctrl.ack_follow_up_dispatch(wrong_effect_id, clankers_core::FollowUpDispatchStatus::Accepted);
 
         assert_eq!(ctrl.core_state, previous_state);
         assert!(matches!(ctrl.drain_events().as_slice(), [clankers_protocol::DaemonEvent::SystemMessage {
@@ -555,20 +675,44 @@ mod tests {
     }
 
     #[test]
-    fn test_complete_follow_up_duplicate_completion_is_rejected() {
+    fn test_complete_dispatched_follow_up_before_dispatch_ack_is_rejected() {
         let mut ctrl = make_test_controller();
         ctrl.auto_test_enabled = true;
         ctrl.auto_test_command = Some("cargo test".to_string());
 
-        let effect_id = match ctrl.check_post_prompt() {
-            PostPromptAction::RunAutoTest { effect_id, .. } => effect_id,
+        let (effect_id, prompt) = match ctrl.check_post_prompt(false) {
+            PostPromptAction::RunAutoTest { effect_id, prompt } => (effect_id, prompt),
             other => panic!("expected RunAutoTest, got {other:?}"),
         };
-        ctrl.complete_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+        assert!(ctrl.start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id)));
+        let previous_state = ctrl.core_state.clone();
+
+        ctrl.complete_dispatched_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+
+        assert_eq!(ctrl.core_state, previous_state);
+        assert!(matches!(ctrl.drain_events().as_slice(), [clankers_protocol::DaemonEvent::SystemMessage {
+            is_error: true,
+            ..
+        }]));
+    }
+
+    #[test]
+    fn test_complete_dispatched_follow_up_duplicate_completion_is_rejected() {
+        let mut ctrl = make_test_controller();
+        ctrl.auto_test_enabled = true;
+        ctrl.auto_test_command = Some("cargo test".to_string());
+
+        let (effect_id, prompt) = match ctrl.check_post_prompt(false) {
+            PostPromptAction::RunAutoTest { effect_id, prompt } => (effect_id, prompt),
+            other => panic!("expected RunAutoTest, got {other:?}"),
+        };
+        ctrl.ack_follow_up_dispatch(effect_id, clankers_core::FollowUpDispatchStatus::Accepted);
+        assert!(ctrl.start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id)));
+        ctrl.complete_dispatched_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
         let settled_state = ctrl.core_state.clone();
         assert!(ctrl.drain_events().is_empty());
 
-        ctrl.complete_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+        ctrl.complete_dispatched_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
 
         assert_eq!(ctrl.core_state, settled_state);
         assert!(matches!(ctrl.drain_events().as_slice(), [clankers_protocol::DaemonEvent::SystemMessage {

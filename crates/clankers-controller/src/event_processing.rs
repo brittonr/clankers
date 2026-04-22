@@ -201,6 +201,7 @@ mod tests {
                 effect_id: clankers_core::CoreEffectId(1),
                 prompt_text: "hello".to_string(),
                 image_count: 0,
+                originating_follow_up_effect_id: None,
             })
         );
     }
