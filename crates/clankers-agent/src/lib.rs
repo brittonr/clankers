@@ -279,10 +279,12 @@ impl Agent {
         // Prepare context and run turn
         let ctx = self.prepare_turn_context(max_input);
 
-        self.event_tx.send(AgentEvent::BeforeAgentStart {
-            prompt: text.to_string(),
-            system_prompt: ctx.system_prompt.clone(),
-        }).ok();
+        self.event_tx
+            .send(AgentEvent::BeforeAgentStart {
+                prompt: text.to_string(),
+                system_prompt: ctx.system_prompt.clone(),
+            })
+            .ok();
 
         let config = TurnConfig {
             model: self.model.clone(),
@@ -316,26 +318,32 @@ impl Agent {
         // Sync model switch if tool requested it
         self.sync_model_switch();
 
-        self.event_tx.send(AgentEvent::AgentEnd {
-            messages: self.messages.clone(),
-        }).ok();
+        self.event_tx
+            .send(AgentEvent::AgentEnd {
+                messages: self.messages.clone(),
+            })
+            .ok();
 
         result
     }
 
     /// Append a user message to the conversation
     fn append_user_message(&mut self, text: &str, content: Vec<Content>) {
+        let timestamp = Utc::now();
         let user_msg = AgentMessage::User(UserMessage {
             id: MessageId::generate(),
             content,
-            timestamp: Utc::now(),
+            timestamp,
         });
 
         let agent_msg_count = self.messages.len();
-        self.event_tx.send(AgentEvent::UserInput {
-            text: text.to_string(),
-            agent_msg_count,
-        }).ok();
+        self.event_tx
+            .send(AgentEvent::UserInput {
+                text: text.to_string(),
+                agent_msg_count,
+                timestamp,
+            })
+            .ok();
         self.messages.push(user_msg);
     }
 
@@ -374,10 +382,12 @@ impl Agent {
 
         if result.compacted_count > 0 {
             self.messages = result.messages;
-            self.event_tx.send(AgentEvent::SessionCompaction {
-                compacted_count: result.compacted_count,
-                tokens_saved: result.tokens_saved,
-            }).ok();
+            self.event_tx
+                .send(AgentEvent::SessionCompaction {
+                    compacted_count: result.compacted_count,
+                    tokens_saved: result.tokens_saved,
+                })
+                .ok();
             tracing::info!("Auto-compacted {} messages, saved ~{} tokens", result.compacted_count, result.tokens_saved,);
         }
     }
@@ -408,11 +418,13 @@ impl Agent {
             let new_model = self.model_roles.resolve(&selection.role, &self.model);
             if new_model != self.model {
                 let old = std::mem::replace(&mut self.model, new_model.clone());
-                self.event_tx.send(AgentEvent::ModelChange {
-                    from: old,
-                    to: new_model,
-                    reason: selection.reason.to_string(),
-                }).ok();
+                self.event_tx
+                    .send(AgentEvent::ModelChange {
+                        from: old,
+                        to: new_model,
+                        reason: selection.reason.to_string(),
+                    })
+                    .ok();
             }
         }
 
@@ -451,10 +463,7 @@ impl Agent {
         let global_limit = Some(self.settings.memory.global_char_limit);
         let project_limit = Some(self.settings.memory.project_char_limit);
 
-        match db
-            .memory()
-            .context_for_with_limits(cwd_str, global_limit, project_limit)
-        {
+        match db.memory().context_for_with_limits(cwd_str, global_limit, project_limit) {
             Ok(memory_context) if !memory_context.is_empty() => {
                 format!("{}\n\n{}", self.system_prompt, memory_context)
             }
@@ -495,11 +504,13 @@ impl Agent {
     /// Change the model
     pub fn set_model(&mut self, model: String) {
         let old = std::mem::replace(&mut self.model, model.clone());
-        self.event_tx.send(AgentEvent::ModelChange {
-            from: old,
-            to: model,
-            reason: "user_request".to_string(),
-        }).ok();
+        self.event_tx
+            .send(AgentEvent::ModelChange {
+                from: old,
+                to: model,
+                reason: "user_request".to_string(),
+            })
+            .ok();
     }
 
     /// Seed the agent with pre-existing messages (for session resume)
@@ -528,9 +539,7 @@ impl Agent {
                 enabled: true,
                 budget_tokens: Some(budget_tokens),
             });
-            self.thinking_level = ThinkingLevel::from_budget(
-                u32::try_from(budget_tokens).unwrap_or(u32::MAX),
-            );
+            self.thinking_level = ThinkingLevel::from_budget(u32::try_from(budget_tokens).unwrap_or(u32::MAX));
             true
         }
     }
@@ -605,11 +614,13 @@ impl Agent {
             let phase_model = self.model_roles.resolve(&phase.role, &self.model);
             let old_model = std::mem::replace(&mut self.model, phase_model.clone());
             if phase_model != old_model {
-                self.event_tx.send(AgentEvent::ModelChange {
-                    from: old_model.clone(),
-                    to: phase_model.clone(),
-                    reason: format!("orchestration_phase({}/{}:{})", phase_idx + 1, total_phases, phase.label,),
-                }).ok();
+                self.event_tx
+                    .send(AgentEvent::ModelChange {
+                        from: old_model.clone(),
+                        to: phase_model.clone(),
+                        reason: format!("orchestration_phase({}/{}:{})", phase_idx + 1, total_phases, phase.label,),
+                    })
+                    .ok();
             }
 
             // Build phase system prompt
@@ -617,14 +628,16 @@ impl Agent {
             let is_compact = self.settings.no_cache;
             let ctx = context::build_context(&self.messages, &phase_system, max_input, is_compact);
 
-            self.event_tx.send(AgentEvent::BeforeAgentStart {
-                prompt: if phase_idx == 0 {
-                    user_text.to_string()
-                } else {
-                    format!("[Orchestration phase {}/{}] {}", phase_idx + 1, total_phases, phase.label)
-                },
-                system_prompt: ctx.system_prompt.clone(),
-            }).ok();
+            self.event_tx
+                .send(AgentEvent::BeforeAgentStart {
+                    prompt: if phase_idx == 0 {
+                        user_text.to_string()
+                    } else {
+                        format!("[Orchestration phase {}/{}] {}", phase_idx + 1, total_phases, phase.label)
+                    },
+                    system_prompt: ctx.system_prompt.clone(),
+                })
+                .ok();
 
             // Run turn loop for this phase
             let config = TurnConfig {
@@ -668,9 +681,11 @@ impl Agent {
             tracing::info!("Orchestration phase {}/{} ({}) complete", phase_idx + 1, total_phases, phase.label,);
         }
 
-        self.event_tx.send(AgentEvent::AgentEnd {
-            messages: self.messages.clone(),
-        }).ok();
+        self.event_tx
+            .send(AgentEvent::AgentEnd {
+                messages: self.messages.clone(),
+            })
+            .ok();
 
         Ok(())
     }
@@ -832,12 +847,10 @@ mod tests {
     #[test]
     fn agent_applies_core_thinking_effect_without_agent_owned_reducer() {
         let mut agent = make_test_agent();
-        let outcome = clankers_core::reduce(
-            &clankers_core::CoreState::default(),
-            &clankers_core::CoreInput::SetThinkingLevel {
+        let outcome =
+            clankers_core::reduce(&clankers_core::CoreState::default(), &clankers_core::CoreInput::SetThinkingLevel {
                 requested: clankers_core::CoreThinkingLevelInput::Level(clankers_core::CoreThinkingLevel::High),
-            },
-        );
+            });
 
         let (next_state, effects) = match outcome {
             clankers_core::CoreOutcome::Transitioned { next_state, effects } => (next_state, effects),
@@ -852,10 +865,9 @@ mod tests {
                     let applied_level = agent.apply_controller_thinking_level(provider_thinking_level(level));
                     assert_eq!(applied_level, provider_thinking_level(level));
                 }
-                clankers_core::CoreEffect::EmitLogicalEvent(clankers_core::CoreLogicalEvent::ThinkingLevelChanged {
-                    previous,
-                    current,
-                }) => {
+                clankers_core::CoreEffect::EmitLogicalEvent(
+                    clankers_core::CoreLogicalEvent::ThinkingLevelChanged { previous, current },
+                ) => {
                     assert_eq!(previous, clankers_core::CoreThinkingLevel::Off);
                     assert_eq!(current, clankers_core::CoreThinkingLevel::High);
                 }

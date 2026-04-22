@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 chrono = { workspace = true }
+blake3 = { workspace = true }
 rat-markdown = { workspace = true }
 rat-branches = { workspace = true }
 rat-leaderkey = { workspace = true }

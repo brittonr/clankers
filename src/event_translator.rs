@@ -79,9 +79,14 @@ pub fn translate(event: &AgentEvent) -> Option<TuiEvent> {
         }),
 
         // ── Session events ───────────────────────────
-        AgentEvent::UserInput { text, agent_msg_count } => Some(TuiEvent::UserInput {
+        AgentEvent::UserInput {
+            text,
+            agent_msg_count,
+            timestamp,
+        } => Some(TuiEvent::UserInput {
             text: text.clone(),
             agent_msg_count: *agent_msg_count,
+            timestamp: *timestamp,
         }),
         AgentEvent::SessionCompaction {
             compacted_count,
@@ -313,15 +318,23 @@ mod tests {
 
     #[test]
     fn test_translate_user_input() {
+        const AGENT_MESSAGE_COUNT: usize = 5;
+        let timestamp = Utc::now();
         let event = AgentEvent::UserInput {
             text: "Hello, agent!".to_string(),
-            agent_msg_count: 5,
+            agent_msg_count: AGENT_MESSAGE_COUNT,
+            timestamp,
         };
         let result = translate(&event);
         match result {
-            Some(TuiEvent::UserInput { text, agent_msg_count }) => {
+            Some(TuiEvent::UserInput {
+                text,
+                agent_msg_count,
+                timestamp: translated_timestamp,
+            }) => {
                 assert_eq!(text, "Hello, agent!");
-                assert_eq!(agent_msg_count, 5);
+                assert_eq!(agent_msg_count, AGENT_MESSAGE_COUNT);
+                assert_eq!(translated_timestamp, timestamp);
             }
             _ => panic!("Expected UserInput, got {:?}", result),
         }

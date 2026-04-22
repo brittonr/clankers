@@ -306,6 +306,7 @@ mod tests {
         let event = DaemonEvent::UserInput {
             text: "hello".into(),
             agent_msg_count: 5,
+            timestamp: "2026-04-22T12:34:56Z".into(),
         };
         let payload = daemon_event_to_plugin_payload(&event).unwrap();
         assert_eq!(payload["event"], "user_input");

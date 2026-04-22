@@ -1,0 +1,42 @@
+Evidence-ID: conversation-block-metadata.V1.canonical-hash-tests
+Task-ID: V1
+Artifact-Type: deterministic-proof
+Covers: conversation.block.metadata.finalized.blake3.hash.replay-of-same-sequence-matches, conversation.block.metadata.finalized.blake3.hash.content-changes-change-digest, conversation.block.metadata.finalized.blake3.hash.ui-state-does-not-change-digest, conversation.block.metadata.shared.surfaces.machine-readable-consumers-share-fields
+Created-By: pi
+Created-At: 2026-04-22T21:49:00Z
+Status: passed
+
+# Evidence: canonical hash and replay-conversion tests
+
+## Commands
+
+- `RUSTC_WRAPPER= cargo test -p clankers-tui-types --lib`
+- `RUSTC_WRAPPER= cargo test -p clankers-controller convert::tests:: --lib`
+
+## Observed Output
+
+### `RUSTC_WRAPPER= cargo test -p clankers-tui-types --lib`
+
+- `running 14 tests`
+- `test block::tests::canonical_block_envelope_v1_matches_fixture ... ok`
+- `test block::tests::identical_canonical_content_yields_same_hash ... ok`
+- `test block::tests::transient_ui_state_does_not_affect_finalized_hash ... ok`
+- `test block::tests::finalized_hash_changes_when_prompt_changes ... ok`
+- `test block::tests::finalized_hash_changes_when_assistant_or_tool_content_changes ... ok`
+- `test block::tests::finalized_hash_changes_when_started_at_changes ... ok`
+- `test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s`
+
+### `RUSTC_WRAPPER= cargo test -p clankers-controller convert::tests:: --lib`
+
+- `running 27 tests`
+- `test convert::tests::history_user_message_to_tui_events ... ok`
+- `test convert::tests::history_assistant_message_to_tui_events ... ok`
+- `test convert::tests::history_assistant_with_thinking_and_tool ... ok`
+- `test convert::tests::history_serialization_round_trip ... ok`
+- `test convert::tests::test_user_input_converts_with_timestamp ... ok`
+- `test convert::tests::test_daemon_user_input_converts_with_timestamp ... ok`
+- `test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 117 filtered out; finished in 0.00s`
+
+## Coverage Notes
+
+These commands prove the pinned v1 canonical envelope stays stable, the same persisted content rehashes identically, hashed content changes change the digest, transient UI state does not change the digest, and replay conversion preserves user-message timestamps needed to reconstruct the same canonical metadata later.

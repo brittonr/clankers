@@ -170,7 +170,7 @@
 ### Attach mode
 - `ClientAdapter.is_disconnected()` detects closed channel; reconnection via `try_reconnect()` with exponential backoff
 - `run_attach_with_reconnect()` owns the reconnection state machine, replaces `run_attach_loop()`
-- History replay: `agent_message_to_tui_events()` converts AgentMessage → TuiEvent sequences
+- History replay: `agent_message_to_tui_events()` converts `AgentMessage` → `TuiEvent` sequences, and block-metadata parity depends on replay keeping the block open across assistant + tool-result history until the next user prompt or `HistoryEnd`
 - Session picker runs BEFORE `init_terminal()` — standalone raw-mode mini-TUI
 - Input split: `is_client_side_command()` routes locally (quit, detach, zoom) vs forward to daemon
 - BashConfirmState popup in attach mode — higher priority than other overlay intercepts
@@ -200,7 +200,7 @@
 - Render loop: clone theme to avoid borrow conflict between `&app.theme` and `app.panel_mut()`
 - Hypertile BSP: `PaneId::ROOT` is chat (always exists), `PaneKind::Subagent(String)` for per-subagent panes
 - `allocate_pane_id()` for unique IDs — no collision with well-known IDs 0–6
-- Conversation blocks currently stamp `ConversationBlock.timestamp` at TUI construction time (`ConversationBlock::new` uses `Local::now()`), so restore/attach replay will mint fresh block times unless metadata is plumbed from persisted message timestamps
+- `ConversationBlock.started_at` is canonical UTC metadata from the opening user message, and `finalized_hash` is published only when the block is complete. Live paths must carry the stored user timestamp through `AgentEvent`/`TuiEvent`/`DaemonEvent`; restore and attach replay should reconstruct identical metadata from persisted history rather than minting wall-clock timestamps.
 
 ### Plugin system
 - Extism 1.13 host / extism-pdk 1.4.1 guest, WASM targets `wasm32-unknown-unknown`

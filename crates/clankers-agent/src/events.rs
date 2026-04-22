@@ -1,5 +1,7 @@
 //! AgentEvent enum (lifecycle, tool, message events)
 
+use chrono::DateTime;
+use chrono::Utc;
 use clankers_provider::Usage;
 use clankers_provider::message::AgentMessage;
 use clankers_provider::message::AssistantMessage;
@@ -128,6 +130,8 @@ pub enum AgentEvent {
         text: String,
         /// Number of agent messages *before* this user message was appended
         agent_msg_count: usize,
+        /// Canonical timestamp of the stored user message.
+        timestamp: DateTime<Utc>,
     },
     UserCancel,
 

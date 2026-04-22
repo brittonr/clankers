@@ -394,6 +394,7 @@ mod tests {
             DaemonEvent::UserInput {
                 text: "hello agent".to_string(),
                 agent_msg_count: 5,
+                timestamp: "2026-04-22T12:34:56Z".to_string(),
             },
             DaemonEvent::SessionCompaction {
                 compacted_count: 10,
@@ -544,9 +545,7 @@ mod tests {
             SessionCommand::SetCapabilities {
                 capabilities: Some(vec!["read".to_string(), "bash".to_string()]),
             },
-            SessionCommand::SetCapabilities {
-                capabilities: None,
-            },
+            SessionCommand::SetCapabilities { capabilities: None },
         ];
 
         for cmd in &commands {
@@ -675,17 +674,15 @@ mod tests {
         use crate::control::SessionSummary;
 
         let responses = vec![
-            ControlResponse::Sessions(vec![
-                SessionSummary {
-                    session_id: "s1".to_string(),
-                    model: "sonnet".to_string(),
-                    turn_count: 5,
-                    last_active: "2026-03-21T12:00:00Z".to_string(),
-                    client_count: 1,
-                    socket_path: "/tmp/s1.sock".to_string(),
-                    state: "active".to_string(),
-                },
-            ]),
+            ControlResponse::Sessions(vec![SessionSummary {
+                session_id: "s1".to_string(),
+                model: "sonnet".to_string(),
+                turn_count: 5,
+                last_active: "2026-03-21T12:00:00Z".to_string(),
+                client_count: 1,
+                socket_path: "/tmp/s1.sock".to_string(),
+                state: "active".to_string(),
+            }]),
             ControlResponse::Sessions(vec![]),
             ControlResponse::Created {
                 session_id: "s2".to_string(),
@@ -863,10 +860,7 @@ mod tests {
 
     #[test]
     fn test_frame_error_display() {
-        let io_err = FrameError::Io(std::io::Error::new(
-            std::io::ErrorKind::BrokenPipe,
-            "pipe broken",
-        ));
+        let io_err = FrameError::Io(std::io::Error::new(std::io::ErrorKind::BrokenPipe, "pipe broken"));
         assert!(io_err.to_string().contains("frame IO error"));
 
         let too_large = FrameError::TooLarge { size: 999 };
@@ -883,10 +877,7 @@ mod tests {
 
     #[test]
     fn test_frame_error_source() {
-        let io_err = FrameError::Io(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "test",
-        ));
+        let io_err = FrameError::Io(std::io::Error::new(std::io::ErrorKind::Other, "test"));
         assert!(std::error::Error::source(&io_err).is_some());
 
         let json_err = FrameError::Json(serde_json::from_str::<String>("{{").unwrap_err());

@@ -24,7 +24,7 @@ This change is cross-cutting because block metadata is assembled in more than on
 
 **Choice:** The canonical block timestamp is the timestamp of the user message that starts the block. Internally it should stay in UTC or another canonical representation; rendering can continue converting to local time for display.
 
-**Rationale:** A conversation block starts when the user prompt enters history. That timestamp already exists in persisted messages, so old sessions can reconstruct block times without migration. It also stays stable across restore, attach, and export paths.
+**Rationale:** A conversation block starts when the user prompt enters history. That timestamp already exists in persisted messages, so old sessions can reconstruct block times without migration. It also stays stable across restore, attach, and other in-process block consumers.
 
 **Alternative:** Keep using TUI creation time. Rejected because replay changes the value and makes block metadata depend on when the UI happened to rebuild history.
 
@@ -82,4 +82,4 @@ No on-disk migration is required for existing sessions if message timestamps are
 ## Open Questions
 
 - Should the first user-facing surface for the hash be block details/debug output only, or should the main block header show a short digest?
-- Do exported block-oriented formats need the full 32-byte digest, a hex string, or both?
+- If a future export surface adopts block hashes, should it expose the full 32-byte digest, a hex string, or both?

@@ -104,7 +104,10 @@ pub fn render_session_popup(frame: &mut Frame, app: &App, theme: &Theme) {
 /// `is_last` indicates whether this is the last child of its parent.
 /// Render a session tree node. Recursion follows the conversation tree
 /// (bounded by conversation depth, typically ≤10 for branching sessions).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "conversation tree depth bounded by session branching limits"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_recursion, reason = "conversation tree depth bounded by session branching limits")
+)]
 fn render_tree_node(
     lines: &mut Vec<Line<'static>>,
     app: &App,
@@ -323,7 +326,7 @@ mod tests {
         app.finalize_active_block();
         // Block 2: second child of block 0 (fork)
         // Manually create a fork by manipulating all_blocks
-        let mut forked = ConversationBlock::new(2, "alternative answer".into());
+        let mut forked = ConversationBlock::new_synthetic(2, "alternative answer".into());
         forked.parent_block_id = Some(0);
         forked.streaming = false;
         app.conversation.all_blocks.push(forked);

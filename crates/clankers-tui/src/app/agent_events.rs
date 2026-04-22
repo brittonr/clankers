@@ -21,6 +21,7 @@ impl App {
                     role: MessageRole::Thinking,
                     content,
                     tool_name: None,
+                    tool_input: None,
                     is_error: false,
                     images: Vec::new(),
                 });
@@ -37,6 +38,7 @@ impl App {
                     role: MessageRole::Assistant,
                     content,
                     tool_name: None,
+                    tool_input: None,
                     is_error: false,
                     images: Vec::new(),
                 });
@@ -92,8 +94,12 @@ impl App {
             } => {
                 self.on_tool_execution_end(call_id, text, images, *is_error);
             }
-            TuiEvent::UserInput { text, agent_msg_count } => {
-                self.start_block(text.clone(), *agent_msg_count);
+            TuiEvent::UserInput {
+                text,
+                agent_msg_count,
+                timestamp,
+            } => {
+                self.start_block_at(text.clone(), *agent_msg_count, *timestamp);
                 self.conversation.scroll.scroll_to_bottom();
             }
             TuiEvent::SessionCompaction {
@@ -175,6 +181,7 @@ impl App {
                 role: MessageRole::ToolCall,
                 content: tool_name.to_string(),
                 tool_name: Some(tool_name.to_string()),
+                tool_input: Some(input.clone()),
                 is_error: false,
                 images: Vec::new(),
             });
@@ -213,6 +220,7 @@ impl App {
                     role: MessageRole::ToolResult,
                     content: text.to_string(),
                     tool_name: Some(call_id.to_string()),
+                    tool_input: None,
                     is_error: false,
                     images: Vec::new(),
                 });
@@ -247,6 +255,7 @@ impl App {
                     role: MessageRole::ToolResult,
                     content: text.to_string(),
                     tool_name: None,
+                    tool_input: None,
                     is_error,
                     images: images.to_vec(),
                 });

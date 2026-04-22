@@ -81,10 +81,8 @@ impl BranchPanel {
     pub fn refresh(&mut self, all_blocks: &[ConversationBlock], active_block_ids: &std::collections::HashSet<usize>) {
         // Find leaf blocks using rat-branches generic tree algorithm
         let leaf_ids = rat_branches::tree::find_leaves(all_blocks);
-        let leaves: Vec<&ConversationBlock> = leaf_ids
-            .iter()
-            .filter_map(|&id| all_blocks.iter().find(|b| b.id == id))
-            .collect();
+        let leaves: Vec<&ConversationBlock> =
+            leaf_ids.iter().filter_map(|&id| all_blocks.iter().find(|b| b.id == id)).collect();
 
         // Preserve selection across refresh
         let prev_leaf = self.entries.get(self.nav.selected).map(|e| e.leaf_id);
@@ -198,7 +196,10 @@ impl Panel for BranchPanel {
         "No branches. Use /fork or edit a block to branch."
     }
 
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
+    )]
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<PanelAction> {
         if self.detail_view {
             return match key.code {
@@ -447,7 +448,7 @@ mod tests {
     use super::*;
 
     fn make_block(id: usize, prompt: &str, parent: Option<usize>, tokens: usize) -> ConversationBlock {
-        let mut b = ConversationBlock::new(id, prompt.to_string());
+        let mut b = ConversationBlock::new_synthetic(id, prompt.to_string());
         b.parent_block_id = parent;
         b.streaming = false;
         b.tokens = tokens;

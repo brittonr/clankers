@@ -43,7 +43,7 @@ fn restore_user_message(app: &mut App, user_msg: &crate::provider::message::User
 
     // Start a new block for each user message, recording the
     // agent message count at this point for branching support.
-    app.start_block(text, index);
+    app.start_block_at(text, index, user_msg.timestamp);
 }
 
 /// Restore an assistant message by processing its content (text, tool use, thinking).
@@ -55,8 +55,8 @@ fn restore_assistant_message(app: &mut App, asst_msg: &crate::provider::message:
             Content::Text { text } => {
                 add_text_response(app, text);
             }
-            Content::ToolUse { name, .. } => {
-                add_tool_call_response(app, name);
+            Content::ToolUse { name, input, .. } => {
+                add_tool_call_response(app, name, input);
             }
             Content::Thinking { thinking, .. } => {
                 add_thinking_response(app, thinking);
@@ -76,6 +76,7 @@ fn add_text_response(app: &mut App, text: &str) {
             role: MessageRole::Assistant,
             content: text.to_string(),
             tool_name: None,
+            tool_input: None,
             is_error: false,
             images: Vec::new(),
         });
@@ -83,7 +84,7 @@ fn add_text_response(app: &mut App, text: &str) {
 }
 
 /// Add a tool call response to the active block.
-fn add_tool_call_response(app: &mut App, name: &str) {
+fn add_tool_call_response(app: &mut App, name: &str, input: &serde_json::Value) {
     use clankers_tui_types::DisplayMessage;
     use clankers_tui_types::MessageRole;
 
@@ -92,6 +93,7 @@ fn add_tool_call_response(app: &mut App, name: &str) {
             role: MessageRole::ToolCall,
             content: name.to_string(),
             tool_name: Some(name.to_string()),
+            tool_input: Some(input.clone()),
             is_error: false,
             images: Vec::new(),
         });
@@ -108,6 +110,7 @@ fn add_thinking_response(app: &mut App, thinking: &str) {
             role: MessageRole::Thinking,
             content: thinking.to_string(),
             tool_name: None,
+            tool_input: None,
             is_error: false,
             images: Vec::new(),
         });
@@ -152,8 +155,112 @@ fn restore_tool_result(app: &mut App, tool_result: &crate::provider::message::To
             role: MessageRole::ToolResult,
             content: display,
             tool_name: None,
+            tool_input: None,
             is_error: tool_result.is_error,
             images,
         });
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chrono::DateTime;
+    use chrono::Utc;
+
+    use super::*;
+
+    fn parse_test_timestamp(rfc3339: &str) -> DateTime<Utc> {
+        match DateTime::parse_from_rfc3339(rfc3339) {
+            Ok(timestamp) => timestamp.with_timezone(&Utc),
+            Err(error) => panic!("test timestamp must parse: {error}"),
+        }
+    }
+
+    fn make_messages() -> Vec<crate::provider::message::AgentMessage> {
+        let user_timestamp = parse_test_timestamp("2026-04-22T12:34:56Z");
+        let assistant_timestamp = parse_test_timestamp("2026-04-22T12:35:10Z");
+        let tool_timestamp = parse_test_timestamp("2026-04-22T12:35:20Z");
+        vec![
+            crate::provider::message::AgentMessage::User(crate::provider::message::UserMessage {
+                id: crate::provider::message::MessageId::new("u1"),
+                content: vec![crate::provider::message::Content::Text {
+                    text: "hello".to_string(),
+                }],
+                timestamp: user_timestamp,
+            }),
+            crate::provider::message::AgentMessage::Assistant(crate::provider::message::AssistantMessage {
+                id: crate::provider::message::MessageId::new("a1"),
+                content: vec![
+                    crate::provider::message::Content::Thinking {
+                        thinking: "pondering".to_string(),
+                        signature: String::new(),
+                    },
+                    crate::provider::message::Content::ToolUse {
+                        id: "call-1".to_string(),
+                        name: "bash".to_string(),
+                        input: serde_json::json!({"command": "ls"}),
+                    },
+                    crate::provider::message::Content::Text {
+                        text: "done".to_string(),
+                    },
+                ],
+                model: "test-model".to_string(),
+                usage: crate::provider::Usage::default(),
+                stop_reason: crate::provider::message::StopReason::Stop,
+                timestamp: assistant_timestamp,
+            }),
+            crate::provider::message::AgentMessage::ToolResult(crate::provider::message::ToolResultMessage {
+                id: crate::provider::message::MessageId::new("t1"),
+                call_id: "call-1".to_string(),
+                tool_name: "bash".to_string(),
+                content: vec![crate::provider::message::Content::Text {
+                    text: "tool output".to_string(),
+                }],
+                is_error: false,
+                details: None,
+                timestamp: tool_timestamp,
+            }),
+        ]
+    }
+
+    #[test]
+    fn restore_display_blocks_preserves_started_at_and_finalized_hash() {
+        const EXPECTED_RESPONSE_COUNT: usize = 4;
+        let mut app = App::new("test".to_string(), "/tmp".to_string(), crate::config::theme::detect_theme());
+        let messages = make_messages();
+
+        restore_display_blocks(&mut app, &messages);
+
+        let restored_block = match app.conversation.blocks.last() {
+            Some(clankers_tui_types::BlockEntry::Conversation(block)) => block,
+            other => panic!("expected restored conversation block, got {other:?}"),
+        };
+
+        assert_eq!(restored_block.started_at, parse_test_timestamp("2026-04-22T12:34:56Z"));
+        assert!(restored_block.finalized_hash.is_some());
+        assert_eq!(restored_block.responses.len(), EXPECTED_RESPONSE_COUNT);
+        assert_eq!(restored_block.responses[1].tool_input, Some(serde_json::json!({"command": "ls"})));
+    }
+
+    #[test]
+    fn restore_display_blocks_does_not_stamp_wall_clock_rebuild_time() {
+        let mut first_app = App::new("test".to_string(), "/tmp".to_string(), crate::config::theme::detect_theme());
+        let mut second_app = App::new("test".to_string(), "/tmp".to_string(), crate::config::theme::detect_theme());
+        let messages = make_messages();
+
+        restore_display_blocks(&mut first_app, &messages);
+        restore_display_blocks(&mut second_app, &messages);
+
+        let first_block = match first_app.conversation.blocks.last() {
+            Some(clankers_tui_types::BlockEntry::Conversation(block)) => block,
+            other => panic!("expected first restored conversation block, got {other:?}"),
+        };
+        let second_block = match second_app.conversation.blocks.last() {
+            Some(clankers_tui_types::BlockEntry::Conversation(block)) => block,
+            other => panic!("expected second restored conversation block, got {other:?}"),
+        };
+
+        assert_eq!(first_block.started_at, second_block.started_at);
+        assert_eq!(first_block.finalized_hash, second_block.finalized_hash);
     }
 }

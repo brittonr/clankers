@@ -3,6 +3,8 @@
 //! This is the daemon-side equivalent of event_translator.rs in the main crate,
 //! but produces protocol DaemonEvents instead of TuiEvents.
 
+use chrono::DateTime;
+use chrono::Utc;
 use clankers_agent::ToolResultContent;
 use clankers_agent::events::AgentEvent;
 use clankers_protocol::event::DaemonEvent;
@@ -82,9 +84,14 @@ pub fn agent_event_to_daemon_event(event: &AgentEvent) -> Option<DaemonEvent> {
         }),
 
         // ── Session events ───────────────────────────
-        AgentEvent::UserInput { text, agent_msg_count } => Some(DaemonEvent::UserInput {
+        AgentEvent::UserInput {
+            text,
+            agent_msg_count,
+            timestamp,
+        } => Some(DaemonEvent::UserInput {
             text: text.clone(),
             agent_msg_count: *agent_msg_count,
+            timestamp: timestamp.to_rfc3339(),
         }),
         AgentEvent::SessionCompaction {
             compacted_count,
@@ -109,7 +116,13 @@ pub fn agent_event_to_daemon_event(event: &AgentEvent) -> Option<DaemonEvent> {
 ///
 /// This is the inverse of `agent_event_to_daemon_event` — the TUI client
 /// calls this to produce TuiEvents from the socket stream.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic — splitting would fragment readability"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        function_length,
+        reason = "sequential setup/dispatch logic — splitting would fragment readability"
+    )
+)]
 pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_types::TuiEvent> {
     match event {
         DaemonEvent::AgentStart => Some(clankers_tui_types::TuiEvent::AgentStart),
@@ -191,9 +204,14 @@ pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_typ
             is_error: *is_error,
         }),
 
-        DaemonEvent::UserInput { text, agent_msg_count } => Some(clankers_tui_types::TuiEvent::UserInput {
+        DaemonEvent::UserInput {
+            text,
+            agent_msg_count,
+            timestamp,
+        } => Some(clankers_tui_types::TuiEvent::UserInput {
             text: text.clone(),
             agent_msg_count: *agent_msg_count,
+            timestamp: parse_user_input_timestamp(timestamp),
         }),
         DaemonEvent::SessionCompaction {
             compacted_count,
@@ -226,11 +244,12 @@ pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_typ
 /// Convert a stored `AgentMessage` into TUI events for history replay.
 ///
 /// Returns the sequence of `TuiEvent`s that reconstruct this message in the
-/// TUI's block-based conversation view. For assistant messages this includes
-/// the `AgentStart`/`AgentEnd` lifecycle wrapper so the TUI state machine
-/// creates and finalises a response block.
+/// TUI's block-based conversation view. Replay keeps the active block open
+/// across assistant and tool-result messages until the next user prompt or the
+/// explicit history-end marker finalises it.
 pub fn agent_message_to_tui_events(msg: &clankers_message::AgentMessage) -> Vec<clankers_tui_types::TuiEvent> {
-    use clankers_message::{AgentMessage, Content};
+    use clankers_message::AgentMessage;
+    use clankers_message::Content;
     use clankers_tui_types::TuiEvent;
 
     match msg {
@@ -239,6 +258,7 @@ pub fn agent_message_to_tui_events(msg: &clankers_message::AgentMessage) -> Vec<
             vec![TuiEvent::UserInput {
                 text,
                 agent_msg_count: 0,
+                timestamp: m.timestamp,
             }]
         }
 
@@ -274,7 +294,6 @@ pub fn agent_message_to_tui_events(msg: &clankers_message::AgentMessage) -> Vec<
                 }
             }
 
-            events.push(TuiEvent::AgentEnd);
             events
         }
 
@@ -356,6 +375,13 @@ fn extract_display_images(content: &[clankers_message::Content]) -> Vec<clankers
     images
 }
 
+fn parse_user_input_timestamp(timestamp: &str) -> DateTime<Utc> {
+    match DateTime::parse_from_rfc3339(timestamp) {
+        Ok(parsed) => parsed.with_timezone(&Utc),
+        Err(error) => panic!("daemon user-input timestamp must be RFC3339 UTC: {error}"),
+    }
+}
+
 /// Extract text and images from ToolResult content.
 fn extract_tool_content(content: &[ToolResultContent]) -> (String, Vec<ImageData>) {
     let mut text = String::new();
@@ -434,6 +460,26 @@ mod tests {
     }
 
     #[test]
+    fn test_user_input_converts_with_timestamp() {
+        const AGENT_MESSAGE_COUNT: usize = 3;
+        let timestamp = chrono::Utc::now();
+        let event = AgentEvent::UserInput {
+            text: "hello".to_string(),
+            agent_msg_count: AGENT_MESSAGE_COUNT,
+            timestamp,
+        };
+        let result = agent_event_to_daemon_event(&event);
+        assert!(matches!(
+            result,
+            Some(DaemonEvent::UserInput {
+                text,
+                agent_msg_count: AGENT_MESSAGE_COUNT,
+                timestamp: converted_timestamp,
+            }) if text == "hello" && converted_timestamp == timestamp.to_rfc3339()
+        ));
+    }
+
+    #[test]
     fn test_ignored_events() {
         let ignored = vec![
             AgentEvent::SessionStart {
@@ -460,6 +506,25 @@ mod tests {
         };
         let result = daemon_event_to_tui_event(&event);
         assert!(matches!(result, Some(clankers_tui_types::TuiEvent::TextDelta(t)) if t == "hello"));
+    }
+
+    #[test]
+    fn test_daemon_user_input_converts_with_timestamp() {
+        const AGENT_MESSAGE_COUNT: usize = 3;
+        let timestamp = "2026-04-22T12:34:56Z".to_string();
+        let result = daemon_event_to_tui_event(&DaemonEvent::UserInput {
+            text: "hello".to_string(),
+            agent_msg_count: AGENT_MESSAGE_COUNT,
+            timestamp: timestamp.clone(),
+        });
+        assert!(matches!(
+            result,
+            Some(clankers_tui_types::TuiEvent::UserInput {
+                text,
+                agent_msg_count: AGENT_MESSAGE_COUNT,
+                timestamp: parsed_timestamp,
+            }) if text == "hello" && parsed_timestamp == parse_user_input_timestamp(&timestamp)
+        ));
     }
 
     #[test]
@@ -514,46 +579,56 @@ mod tests {
 
     // ── History replay tests ────────────────────────────────────────
 
+    fn fixed_timestamp() -> chrono::DateTime<chrono::Utc> {
+        match chrono::DateTime::parse_from_rfc3339("2026-04-22T12:34:56Z") {
+            Ok(timestamp) => timestamp.with_timezone(&chrono::Utc),
+            Err(error) => panic!("fixed replay timestamp must parse: {error}"),
+        }
+    }
+
     fn user_msg(text: &str) -> clankers_message::AgentMessage {
         clankers_message::AgentMessage::User(clankers_message::UserMessage {
             id: clankers_message::MessageId::new("u1"),
-            content: vec![clankers_message::Content::Text {
-                text: text.to_string(),
-            }],
-            timestamp: chrono::Utc::now(),
+            content: vec![clankers_message::Content::Text { text: text.to_string() }],
+            timestamp: fixed_timestamp(),
         })
     }
 
     fn assistant_msg(text: &str) -> clankers_message::AgentMessage {
         clankers_message::AgentMessage::Assistant(clankers_message::AssistantMessage {
             id: clankers_message::MessageId::new("a1"),
-            content: vec![clankers_message::Content::Text {
-                text: text.to_string(),
-            }],
+            content: vec![clankers_message::Content::Text { text: text.to_string() }],
             model: "test-model".to_string(),
             usage: clankers_message::Usage::default(),
             stop_reason: clankers_message::StopReason::Stop,
-            timestamp: chrono::Utc::now(),
+            timestamp: fixed_timestamp(),
         })
     }
 
     #[test]
     fn history_user_message_to_tui_events() {
-        let events = agent_message_to_tui_events(&user_msg("hello"));
+        let message = user_msg("hello");
+        let events = agent_message_to_tui_events(&message);
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0], clankers_tui_types::TuiEvent::UserInput { text, .. } if text == "hello"));
+        assert!(matches!(
+            &events[0],
+            clankers_tui_types::TuiEvent::UserInput {
+                text,
+                timestamp,
+                ..
+            } if text == "hello" && *timestamp == fixed_timestamp()
+        ));
     }
 
     #[test]
     fn history_assistant_message_to_tui_events() {
         let events = agent_message_to_tui_events(&assistant_msg("world"));
-        // AgentStart, ContentBlockStart, TextDelta, ContentBlockStop, AgentEnd
-        assert_eq!(events.len(), 5);
+        // AgentStart, ContentBlockStart, TextDelta, ContentBlockStop
+        assert_eq!(events.len(), 4);
         assert!(matches!(&events[0], clankers_tui_types::TuiEvent::AgentStart));
         assert!(matches!(&events[1], clankers_tui_types::TuiEvent::ContentBlockStart { is_thinking: false }));
         assert!(matches!(&events[2], clankers_tui_types::TuiEvent::TextDelta(t) if t == "world"));
         assert!(matches!(&events[3], clankers_tui_types::TuiEvent::ContentBlockStop));
-        assert!(matches!(&events[4], clankers_tui_types::TuiEvent::AgentEnd));
     }
 
     #[test]
@@ -581,14 +656,13 @@ mod tests {
         });
 
         let events = agent_message_to_tui_events(&msg);
-        // AgentStart, think block (3), text block (3), tool call + start (2), AgentEnd
-        assert_eq!(events.len(), 10);
+        // AgentStart, think block (3), text block (3), tool call + start (2)
+        assert_eq!(events.len(), 9);
         assert!(matches!(&events[0], clankers_tui_types::TuiEvent::AgentStart));
         assert!(matches!(&events[1], clankers_tui_types::TuiEvent::ContentBlockStart { is_thinking: true }));
         assert!(matches!(&events[4], clankers_tui_types::TuiEvent::ContentBlockStart { is_thinking: false }));
         assert!(matches!(&events[7], clankers_tui_types::TuiEvent::ToolCall { tool_name, .. } if tool_name == "bash"));
         assert!(matches!(&events[8], clankers_tui_types::TuiEvent::ToolStart { call_id, .. } if call_id == "call_1"));
-        assert!(matches!(&events[9], clankers_tui_types::TuiEvent::AgentEnd));
     }
 
     #[test]
@@ -673,10 +747,9 @@ mod tests {
         // Verify that AgentMessage survives serde_json::to_value → from_value
         let msg = assistant_msg("round trip test");
         let value = serde_json::to_value(&msg).expect("serialize");
-        let restored: clankers_message::AgentMessage =
-            serde_json::from_value(value).expect("deserialize");
+        let restored: clankers_message::AgentMessage = serde_json::from_value(value).expect("deserialize");
         let events = agent_message_to_tui_events(&restored);
-        assert_eq!(events.len(), 5);
+        assert_eq!(events.len(), 4);
         assert!(matches!(&events[2], clankers_tui_types::TuiEvent::TextDelta(t) if t == "round trip test"));
     }
 }

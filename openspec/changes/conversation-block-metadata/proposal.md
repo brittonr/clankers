@@ -1,11 +1,11 @@
 ## Why
 
-Clankers renders conversation history as prompt-and-response blocks, but block metadata is still ephemeral. Live blocks get a local creation time, restored blocks are rebuilt with fresh timestamps, and there is no stable content-derived identifier for a block across replay, attach mode, or exports.
+Clankers renders conversation history as prompt-and-response blocks, but block metadata is still ephemeral. Live blocks get a local creation time, restored blocks are rebuilt with fresh timestamps, and there is no stable content-derived identifier for a block across replay, attach mode, or other in-process/machine-readable block consumers.
 
 ## What Changes
 
 - Add canonical per-block timestamps derived from persisted conversation messages instead of transient TUI construction time.
-- Add finalized per-block BLAKE3 hashes so each conversation block has a stable content-derived identity across restore, attach, and export paths.
+- Add finalized per-block BLAKE3 hashes so each conversation block has a stable content-derived identity across restore, attach, and other in-process/machine-readable block consumers.
 - Expose block metadata through the shared block model used by live rendering, history replay, and any machine-readable block surfaces.
 - Keep block metadata derivation deterministic and replay-safe: same persisted message sequence yields the same timestamp and hash.
 

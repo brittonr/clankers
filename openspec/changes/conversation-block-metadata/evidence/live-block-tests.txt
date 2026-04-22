@@ -1,0 +1,27 @@
+Evidence-ID: conversation-block-metadata.V2.live-block-tests
+Task-ID: V2
+Artifact-Type: deterministic-proof
+Covers: conversation.block.metadata.canonical.timestamp.live-block-opening-message-time, conversation.block.metadata.canonical.timestamp.branch-gets-distinct-time, conversation.block.metadata.shared.surfaces.machine-readable-consumers-share-fields, conversation.block.metadata.shared.surfaces.streaming-blocks-defer-final-hash
+Created-By: pi
+Created-At: 2026-04-22T21:49:00Z
+Status: passed
+
+# Evidence: live block metadata tests
+
+## Commands
+
+- `RUSTC_WRAPPER= cargo test -p clankers-tui --lib`
+
+## Observed Output
+
+### `RUSTC_WRAPPER= cargo test -p clankers-tui --lib`
+
+- `running 278 tests`
+- `test app::tests::start_block_at_preserves_started_at_and_finalizes_hash ... ok`
+- `test app::tests::tool_heavy_block_keeps_hash_pending_until_completion ... ok`
+- `test app::tests::branched_blocks_keep_distinct_started_at_values ... ok`
+- `test result: ok. 278 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s`
+
+## Coverage Notes
+
+These tests prove live `ConversationBlock` values expose canonical `started_at` / `finalized_hash` fields directly to callers, take the opening user-message timestamp immediately, keep finalized hashes unpublished while streaming, finalize hashes only after completion, and keep branched turn timestamps distinct.

@@ -61,7 +61,10 @@ const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧
 /// Returns the plain-text lines that were rendered (for selection extraction).
 /// `branch_info` maps block_id → `BlockBranchInfo` with sibling, children, and ID display metadata.
 #[allow(clippy::too_many_arguments)]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential setup/dispatch logic")
+)]
 pub fn render_blocks(
     frame: &mut Frame,
     blocks: &[BlockEntry],
@@ -323,6 +326,7 @@ mod tests {
             role: MessageRole::ToolResult,
             content: (1..=20).map(|i| format!("line {}", i)).collect::<Vec<_>>().join("\n"),
             tool_name: Some("call_123".to_string()),
+            tool_input: None,
             is_error: false,
             images: Vec::new(),
         };
@@ -380,6 +384,7 @@ mod tests {
             role: MessageRole::ToolResult,
             content: "line 1\nline 2\nline 3".to_string(),
             tool_name: None, // completed
+            tool_input: None,
             is_error: false,
             images: Vec::new(),
         };
@@ -415,6 +420,7 @@ mod tests {
             role: MessageRole::ToolResult,
             content: "short output".to_string(),
             tool_name: Some("call_456".to_string()),
+            tool_input: None,
             is_error: false,
             images: Vec::new(),
         };
@@ -461,6 +467,7 @@ mod tests {
             role: MessageRole::ToolResult,
             content: "output line".to_string(),
             tool_name: Some("call_progress".to_string()),
+            tool_input: None,
             is_error: false,
             images: Vec::new(),
         };
@@ -511,6 +518,7 @@ mod tests {
             role: MessageRole::ToolResult,
             content: "data".to_string(),
             tool_name: Some("call_dl".to_string()),
+            tool_input: None,
             is_error: false,
             images: Vec::new(),
         };

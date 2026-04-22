@@ -42,6 +42,8 @@ pub struct DisplayMessage {
     pub role: MessageRole,
     pub content: String,
     pub tool_name: Option<String>,
+    /// Stable structured tool input for tool-call messages.
+    pub tool_input: Option<serde_json::Value>,
     pub is_error: bool,
     /// Optional inline images (base64 data + media type) for terminal rendering.
     pub images: Vec<DisplayImage>,

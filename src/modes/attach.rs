@@ -814,6 +814,7 @@ fn process_daemon_event(
             }
         }
         DaemonEvent::HistoryEnd => {
+            app.finalize_active_block();
             *is_replaying_history = false;
         }
 
@@ -2142,6 +2143,12 @@ mod tests {
         image_count: usize,
     }
 
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    struct BlockMetadataSnapshot {
+        started_at: chrono::DateTime<chrono::Utc>,
+        finalized_hash: Option<String>,
+    }
+
     fn conversation_snapshot(app: &App) -> ConversationSnapshot {
         ConversationSnapshot {
             blocks: app.conversation.blocks.iter().map(block_entry_snapshot).collect(),
@@ -2179,6 +2186,20 @@ mod tests {
             is_error: message.is_error,
             image_count: message.images.len(),
         }
+    }
+
+    fn block_metadata_snapshot(app: &App) -> Vec<BlockMetadataSnapshot> {
+        app.conversation
+            .blocks
+            .iter()
+            .filter_map(|entry| match entry {
+                BlockEntry::Conversation(block) => Some(BlockMetadataSnapshot {
+                    started_at: block.started_at,
+                    finalized_hash: block.finalized_hash.clone(),
+                }),
+                BlockEntry::System(_) => None,
+            })
+            .collect()
     }
 
     fn drain_session_commands(rx: &mut tokio::sync::mpsc::UnboundedReceiver<SessionCommand>) -> Vec<SessionCommand> {
@@ -2276,6 +2297,53 @@ mod tests {
         drain_session_commands(&mut cmd_rx)
     }
 
+    fn parse_test_timestamp(rfc3339: &str) -> chrono::DateTime<chrono::Utc> {
+        match chrono::DateTime::parse_from_rfc3339(rfc3339) {
+            Ok(timestamp) => timestamp.with_timezone(&chrono::Utc),
+            Err(error) => panic!("test timestamp must parse: {error}"),
+        }
+    }
+
+    fn replay_messages() -> Vec<clankers_message::AgentMessage> {
+        vec![
+            clankers_message::AgentMessage::User(clankers_message::UserMessage {
+                id: clankers_message::MessageId::new("u1"),
+                content: vec![clankers_message::Content::Text {
+                    text: "hello".to_string(),
+                }],
+                timestamp: parse_test_timestamp("2026-04-22T12:34:56Z"),
+            }),
+            clankers_message::AgentMessage::Assistant(clankers_message::AssistantMessage {
+                id: clankers_message::MessageId::new("a1"),
+                content: vec![
+                    clankers_message::Content::ToolUse {
+                        id: "call-1".to_string(),
+                        name: "bash".to_string(),
+                        input: serde_json::json!({"command": "ls"}),
+                    },
+                    clankers_message::Content::Text {
+                        text: "done".to_string(),
+                    },
+                ],
+                model: "test-model".to_string(),
+                usage: clankers_message::Usage::default(),
+                stop_reason: clankers_message::StopReason::Stop,
+                timestamp: parse_test_timestamp("2026-04-22T12:35:10Z"),
+            }),
+            clankers_message::AgentMessage::ToolResult(clankers_message::ToolResultMessage {
+                id: clankers_message::MessageId::new("t1"),
+                call_id: "call-1".to_string(),
+                tool_name: "bash".to_string(),
+                content: vec![clankers_message::Content::Text {
+                    text: "tool output".to_string(),
+                }],
+                is_error: false,
+                details: None,
+                timestamp: parse_test_timestamp("2026-04-22T12:35:20Z"),
+            }),
+        ]
+    }
+
     fn assert_local_attach_matches_standalone<FSetup, FAssert>(text: &str, setup: FSetup, assert_extra: FAssert)
     where
         FSetup: Fn(&mut App),
@@ -2319,6 +2387,40 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn history_replay_matches_session_restore_block_metadata() {
+        let messages = replay_messages();
+        let mut standalone = test_app();
+        let mut attached = test_app();
+        let client = dummy_client();
+        let mut is_replaying_history = true;
+        let mut parity_tracker = super::AttachParityTracker::default();
+
+        crate::modes::session_restore::restore_display_blocks(&mut standalone, &messages);
+
+        for message in &messages {
+            let block = serde_json::to_value(message).expect("history message serializes");
+            super::process_daemon_event(
+                &mut attached,
+                &client,
+                &DaemonEvent::HistoryBlock { block },
+                &mut is_replaying_history,
+                0,
+                &mut parity_tracker,
+            );
+        }
+        super::process_daemon_event(
+            &mut attached,
+            &client,
+            &DaemonEvent::HistoryEnd,
+            &mut is_replaying_history,
+            0,
+            &mut parity_tracker,
+        );
+
+        assert_eq!(block_metadata_snapshot(&attached), block_metadata_snapshot(&standalone));
     }
 
     #[test]

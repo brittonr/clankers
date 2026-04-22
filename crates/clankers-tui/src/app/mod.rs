@@ -6,14 +6,16 @@ mod block_nav;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use chrono::DateTime;
+use chrono::Utc;
 // Display types re-exported from clankers-tui-types.
 pub use clankers_tui_types::ActiveToolExecution;
 pub use clankers_tui_types::AppState;
+pub use clankers_tui_types::ConnectionMode;
 pub use clankers_tui_types::DisplayImage;
 pub use clankers_tui_types::DisplayMessage;
 use clankers_tui_types::InputMode;
 pub use clankers_tui_types::MessageRole;
-pub use clankers_tui_types::ConnectionMode;
 pub use clankers_tui_types::PendingImage;
 use clankers_tui_types::PluginUiState;
 pub use clankers_tui_types::RouterStatus;
@@ -612,7 +614,13 @@ impl App {
     }
 
     /// Get the current spinner character for animated indicators
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(
+            unchecked_division,
+            reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"
+        )
+    )]
     pub fn spinner_char(&self) -> char {
         const SPINNER: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
         // Divide tick by 3 to slow down (~150ms per frame at 50ms poll rate)
@@ -625,6 +633,7 @@ impl App {
             role: MessageRole::System,
             content,
             tool_name: None,
+            tool_input: None,
             is_error,
             images: Vec::new(),
         }));
@@ -635,6 +644,11 @@ impl App {
     /// `agent_msg_count` is the number of agent messages *before* this block's
     /// user message is appended (used for branching truncation).
     pub fn start_block(&mut self, prompt: String, agent_msg_count: usize) {
+        self.start_block_at(prompt, agent_msg_count, Utc::now());
+    }
+
+    /// Start a new conversation block with an explicit canonical timestamp.
+    pub fn start_block_at(&mut self, prompt: String, agent_msg_count: usize, started_at: DateTime<Utc>) {
         self.finalize_active_block();
 
         // Determine parent: the last conversation block on the visible list
@@ -643,7 +657,7 @@ impl App {
             _ => None,
         });
 
-        let mut block = ConversationBlock::new(self.conversation.next_block_id, prompt);
+        let mut block = ConversationBlock::new(self.conversation.next_block_id, prompt, started_at);
         block.parent_block_id = parent_id;
         block.agent_msg_checkpoint = agent_msg_count;
         self.conversation.next_block_id += 1;
@@ -658,6 +672,7 @@ impl App {
 
         if let Some(mut block) = self.conversation.active_block.take() {
             block.streaming = false;
+            block.finalize_metadata();
             // Store in both the active view and the full block history
             self.conversation.all_blocks.push(block.clone());
             self.conversation.blocks.push(BlockEntry::Conversation(block));
@@ -824,6 +839,13 @@ impl clankers_tui_types::CompletionSource for EmptyCompletionSource {
 mod tests {
     use super::*;
 
+    fn parse_test_timestamp(rfc3339: &str) -> chrono::DateTime<chrono::Utc> {
+        match chrono::DateTime::parse_from_rfc3339(rfc3339) {
+            Ok(timestamp) => timestamp.with_timezone(&chrono::Utc),
+            Err(error) => panic!("test timestamp must parse: {error}"),
+        }
+    }
+
     #[test]
     fn test_rect_contains_inside() {
         let area = Rect::new(10, 5, 20, 10);
@@ -868,5 +890,90 @@ mod tests {
         assert_eq!(app.hit_test(5, 25), HitRegion::Panel(PanelId::Files));
         // Click on status bar
         assert_eq!(app.hit_test(30, 40), HitRegion::StatusBar);
+    }
+
+    #[test]
+    fn start_block_at_preserves_started_at_and_finalizes_hash() {
+        let mut app = App::new("test".to_string(), "/tmp".to_string(), crate::theme::Theme::dark());
+        let started_at = parse_test_timestamp("2026-04-22T12:34:56Z");
+
+        app.start_block_at("hello".to_string(), 0, started_at);
+        {
+            let active = app.conversation.active_block.as_ref().expect("active block");
+            assert_eq!(active.started_at, started_at);
+            assert!(active.finalized_hash.is_none());
+        }
+        app.finalize_active_block();
+
+        let finalized = match app.conversation.blocks.last() {
+            Some(BlockEntry::Conversation(block)) => block,
+            other => panic!("expected finalized conversation block, got {other:?}"),
+        };
+        assert_eq!(finalized.started_at, started_at);
+        assert!(finalized.finalized_hash.is_some());
+    }
+
+    #[test]
+    fn tool_heavy_block_keeps_hash_pending_until_completion() {
+        let mut app = App::new("test".to_string(), "/tmp".to_string(), crate::theme::Theme::dark());
+        let started_at = parse_test_timestamp("2026-04-22T12:35:56Z");
+
+        app.handle_tui_event(&clankers_tui_types::TuiEvent::UserInput {
+            text: "run tool".to_string(),
+            agent_msg_count: 0,
+            timestamp: started_at,
+        });
+        app.handle_tui_event(&clankers_tui_types::TuiEvent::ToolCall {
+            tool_name: "bash".to_string(),
+            call_id: "call-1".to_string(),
+            input: serde_json::json!({"command": "ls"}),
+        });
+        app.handle_tui_event(&clankers_tui_types::TuiEvent::ToolOutput {
+            call_id: "call-1".to_string(),
+            text: "partial".to_string(),
+            images: Vec::new(),
+        });
+
+        let active = app.conversation.active_block.as_ref().expect("streaming block");
+        assert_eq!(active.started_at, started_at);
+        assert!(active.finalized_hash.is_none());
+
+        app.handle_tui_event(&clankers_tui_types::TuiEvent::ToolDone {
+            call_id: "call-1".to_string(),
+            text: "done".to_string(),
+            images: Vec::new(),
+            is_error: false,
+        });
+        app.handle_tui_event(&clankers_tui_types::TuiEvent::AgentEnd);
+
+        let finalized = match app.conversation.blocks.last() {
+            Some(BlockEntry::Conversation(block)) => block,
+            other => panic!("expected finalized conversation block, got {other:?}"),
+        };
+        assert_eq!(finalized.started_at, started_at);
+        assert!(finalized.finalized_hash.is_some());
+    }
+
+    #[test]
+    fn branched_blocks_keep_distinct_started_at_values() {
+        let mut app = App::new("test".to_string(), "/tmp".to_string(), crate::theme::Theme::dark());
+        let root_started_at = parse_test_timestamp("2026-04-22T12:00:00Z");
+        let child_started_at = parse_test_timestamp("2026-04-22T12:01:00Z");
+        let fork_started_at = parse_test_timestamp("2026-04-22T12:02:00Z");
+
+        app.start_block_at("root".to_string(), 0, root_started_at);
+        app.finalize_active_block();
+        app.start_block_at("child".to_string(), 1, child_started_at);
+        app.finalize_active_block();
+
+        let root_block = app.conversation.all_blocks[0].clone();
+        app.conversation.blocks = vec![BlockEntry::Conversation(root_block)];
+        app.start_block_at("fork".to_string(), 1, fork_started_at);
+        app.finalize_active_block();
+
+        let timestamps: Vec<_> = app.conversation.all_blocks.iter().map(|block| block.started_at).collect();
+        assert_eq!(timestamps, vec![root_started_at, child_started_at, fork_started_at]);
+        assert_eq!(app.conversation.all_blocks[2].parent_block_id, Some(0));
+        assert!(app.conversation.all_blocks.iter().all(|block| block.finalized_hash.is_some()));
     }
 }

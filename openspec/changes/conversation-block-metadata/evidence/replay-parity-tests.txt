@@ -1,0 +1,33 @@
+Evidence-ID: conversation-block-metadata.V3.replay-parity-tests
+Task-ID: V3
+Artifact-Type: deterministic-proof
+Covers: conversation.block.metadata.canonical.timestamp.restore-preserves-original-time, conversation.block.metadata.finalized.blake3.hash.replay-of-same-sequence-matches, conversation.block.metadata.shared.surfaces.machine-readable-consumers-share-fields, conversation.block.metadata.shared.surfaces.standalone-and-attach-agree
+Created-By: pi
+Created-At: 2026-04-22T21:49:00Z
+Status: passed
+
+# Evidence: replay and restore metadata parity tests
+
+## Commands
+
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' RUSTC_WRAPPER= cargo test --lib modes::attach::tests::history_replay_matches_session_restore_block_metadata`
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' RUSTC_WRAPPER= cargo test --lib modes::session_restore::tests::`
+
+## Observed Output
+
+### `... cargo test --lib modes::attach::tests::history_replay_matches_session_restore_block_metadata`
+
+- `running 1 test`
+- `test modes::attach::tests::history_replay_matches_session_restore_block_metadata ... ok`
+- `test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 713 filtered out; finished in 0.01s`
+
+### `... cargo test --lib modes::session_restore::tests::`
+
+- `running 2 tests`
+- `test modes::session_restore::tests::restore_display_blocks_preserves_started_at_and_finalized_hash ... ok`
+- `test modes::session_restore::tests::restore_display_blocks_does_not_stamp_wall_clock_rebuild_time ... ok`
+- `test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 712 filtered out; finished in 0.01s`
+
+## Coverage Notes
+
+These tests prove restored history keeps original block timestamps, replay of the same persisted message sequence yields the same finalized hash, and standalone restore plus attach replay expose the same canonical metadata through shared `ConversationBlock` values.

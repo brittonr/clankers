@@ -1796,6 +1796,7 @@ dependencies = [
 name = "clankers-tui-types"
 version = "0.1.0"
 dependencies = [
+ "blake3",
  "chrono",
  "rat-branches",
  "rat-leaderkey",

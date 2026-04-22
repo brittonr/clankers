@@ -27,7 +27,10 @@ impl SlashHandler for LayoutHandler {
         }
     }
 
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
+    )]
     fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
         use crate::tui::panes;
 
@@ -244,6 +247,7 @@ impl SlashHandler for PreviewHandler {
                 role: crate::tui::app::MessageRole::Assistant,
                 content,
                 tool_name: None,
+                tool_input: None,
                 is_error: false,
                 images: Vec::new(),
             });

@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use chrono::Local;
 use ratatui::style::Color;
 use ratatui::style::Modifier;
 use ratatui::style::Style;
@@ -28,7 +29,10 @@ use crate::theme::Theme;
 /// Render a single conversation block into lines.
 /// `branch_info` carries sibling/children/ID-display metadata when available.
 #[allow(clippy::too_many_arguments)]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential setup/dispatch logic")
+)]
 pub fn render_conversation_block<'a>(
     block: &ConversationBlock,
     focused: bool,
@@ -51,7 +55,7 @@ pub fn render_conversation_block<'a>(
     };
     let border_style = Style::default().fg(border_color);
 
-    let time = block.timestamp.format("%H:%M:%S").to_string();
+    let time = block.started_at.with_timezone(&Local).format("%H:%M:%S").to_string();
     let status_icon = if block.streaming {
         ("… ", Style::default().fg(Color::Yellow), 2)
     } else if block.error.is_some() {
@@ -197,9 +201,21 @@ pub fn render_conversation_block<'a>(
 ///
 /// `active_tools` and `tick` enable live-streaming rendering for in-progress tool output:
 /// a spinner, elapsed time, and scrollable output from the streaming buffer.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "tool_name checked via is_streaming guard"))]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "tool_name checked via is_streaming guard")
+)]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        unchecked_division,
+        reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"
+    )
+)]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential setup/dispatch logic")
+)]
 pub fn render_response_message<'a>(
     lines: &mut Vec<Line<'a>>,
     msg: &DisplayMessage,
@@ -370,7 +386,7 @@ pub fn render_active_block<'a>(
     let border_style = Style::default().fg(border_color);
 
     let mut lines = Vec::new();
-    let time = block.timestamp.format("%H:%M:%S").to_string();
+    let time = block.started_at.with_timezone(&Local).format("%H:%M:%S").to_string();
 
     // ── Top border ──────────────────────────────────
     let top_prefix_len = 3 + 2 + time.len() + 1;

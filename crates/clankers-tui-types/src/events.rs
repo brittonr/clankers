@@ -3,6 +3,9 @@
 //! The main crate translates `AgentEvent` → `TuiEvent` at the boundary
 //! so the TUI never imports agent, provider, or tool types.
 
+use chrono::DateTime;
+use chrono::Utc;
+
 use crate::DisplayImage;
 use crate::ToolProgress;
 
@@ -58,7 +61,11 @@ pub enum TuiEvent {
 
     // ── Session events ───────────────────────────────
     /// User input was submitted.
-    UserInput { text: String, agent_msg_count: usize },
+    UserInput {
+        text: String,
+        agent_msg_count: usize,
+        timestamp: DateTime<Utc>,
+    },
     /// Session was auto-compacted.
     SessionCompaction {
         compacted_count: usize,

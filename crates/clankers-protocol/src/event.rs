@@ -73,7 +73,11 @@ pub enum DaemonEvent {
 
     // ── Session events ──────────────────────────
     /// User input was submitted.
-    UserInput { text: String, agent_msg_count: usize },
+    UserInput {
+        text: String,
+        agent_msg_count: usize,
+        timestamp: String,
+    },
     /// Session was auto-compacted.
     SessionCompaction {
         compacted_count: usize,
