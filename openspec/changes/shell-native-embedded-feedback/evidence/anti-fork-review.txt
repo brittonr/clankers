@@ -1,0 +1,42 @@
+Evidence-ID: shell-native-embedded-feedback.H1.anti-fork-review
+Task-ID: H1
+Artifact-Type: oracle-checkpoint
+Covers: no.std.functional.core.embedded.feedback.shell.native.adapters.controller-owned-pending-work-identities-cross-the-shell-boundary, no.std.functional.core.embedded.feedback.shell.native.adapters.embedded-runtime-avoids-direct-core-feedback-construction
+Reviewer-Role: agent-reviewer
+Verdict: PASS
+Reviewed-At: 2026-04-22T19:46:47Z
+
+# Oracle Checkpoint: shell-native embedded feedback anti-fork review
+
+## Reviewed Paths
+
+- `src/modes/event_loop_runner/mod.rs`
+- `crates/clankers-controller/src/lib.rs`
+- `crates/clankers-controller/src/auto_test.rs`
+- `crates/clankers-controller/src/core_effects.rs`
+
+## Covered IDs
+
+- `no.std.functional.core.embedded.feedback.shell.native.adapters.controller-owned-pending-work-identities-cross-the-shell-boundary`
+- `no.std.functional.core.embedded.feedback.shell.native.adapters.embedded-runtime-avoids-direct-core-feedback-construction`
+- `no.std.functional.core.future.extraction.boundary.shell-native-types-stay-outside-the-core-boundary`
+- `no.std.functional.core.future.extraction.boundary.controller-shell-execution-stays-centralized`
+- `no.std.functional.core.future.extraction.boundary.embedded-event-loop-runner-stays-adapter-only`
+
+## Questions
+
+- Question: Does embedded runtime avoid direct `clankers_core` feedback construction in non-test code?
+  Answer: PASS
+  Notes: `src/modes/event_loop_runner/mod.rs` now reports prompt completion and follow-up dispatch/completion through `clankers_controller::{ShellPromptCompletion, ShellFollowUpDispatch, PendingWorkId}` and the FCIS rail asserts the runtime file has no non-test `clankers_core` paths at all.
+
+- Question: Does controller remain the only translation seam from shell-native embedded feedback into core inputs?
+  Answer: PASS
+  Notes: `crates/clankers-controller/src/lib.rs` owns the shell-native adapter types, `crates/clankers-controller/src/auto_test.rs` converts them into `clankers_core::{PromptCompleted, FollowUpDispatchAcknowledged, LoopFollowUpCompleted}` inputs, and `src/modes/event_loop_runner/mod.rs` only forwards shell-native facts.
+
+- Question: Do controller-owned pending-work identities cover both `ContinueLoop` and `RunAutoTest` follow-up paths?
+  Answer: PASS
+  Notes: `crates/clankers-controller/src/core_effects.rs` emits controller-owned `PendingWorkId` values for both `PostPromptAction::ContinueLoop` and `PostPromptAction::RunAutoTest`, and the embedded-controller parity tests exercise both branches end to end.
+
+## Summary
+
+Embedded feedback translation stays controller-owned, the runtime shell stays adapter-only, and the strengthened FCIS rail plus focused parity suites now make regressions reviewable.

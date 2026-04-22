@@ -123,15 +123,15 @@
       "locked": {
         "lastModified": 1775929862,
         "narHash": "sha256-7iHjPkxr9+qS5q4ct+XcMJCmUo/JkIsrFmj4XvDdR/8=",
-        "owner": "brittonr",
-        "repo": "subwayrat",
+        "ref": "refs/heads/main",
         "rev": "0d209cf4c832436ee90f11e7b2bbbbcb636f84c6",
-        "type": "github"
+        "revCount": 43,
+        "type": "git",
+        "url": "ssh://git@github.com/brittonr/subwayrat.git"
       },
       "original": {
-        "owner": "brittonr",
-        "repo": "subwayrat",
-        "type": "github"
+        "type": "git",
+        "url": "ssh://git@github.com/brittonr/subwayrat.git"
       }
     },
     "systems": {

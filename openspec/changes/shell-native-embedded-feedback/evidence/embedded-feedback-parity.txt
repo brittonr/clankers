@@ -1,0 +1,32 @@
+Evidence-ID: shell-native-embedded-feedback.V1.embedded-feedback-parity
+Task-ID: V1
+Artifact-Type: deterministic-proof
+Covers: no.std.functional.core.embedded.feedback.shell.native.adapters.controller-owned-pending-work-identities-cross-the-shell-boundary, no.std.functional.core.embedded.feedback.shell.native.adapters.embedded-feedback-behavior-remains-aligned
+Created-By: pi
+Created-At: 2026-04-22T19:46:47Z
+Status: passed
+
+# Evidence: shell-native embedded feedback parity
+
+## Commands
+
+- `RUSTC_WRAPPER= cargo test --test embedded_controller`
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' RUSTC_WRAPPER= cargo test --lib modes::event_loop_runner::tests::`
+
+## Observed Output
+
+### `RUSTC_WRAPPER= cargo test --test embedded_controller`
+
+- `running 30 tests`
+- `test result: ok. 30 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s`
+
+### `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' RUSTC_WRAPPER= cargo test --lib modes::event_loop_runner::tests::`
+
+- `running 6 tests`
+- `test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 705 filtered out; finished in 0.01s`
+
+## Coverage Notes
+
+`tests/embedded_controller.rs` now proves controller-owned pending-work identities cross both `PostPromptAction::ContinueLoop` and `PostPromptAction::RunAutoTest` and round-trip back through controller APIs.
+
+`src/modes/event_loop_runner/mod.rs` runtime tests now cover accepted dispatch, rejected dispatch, successful prompt completion, failed prompt completion, successful follow-up completion, failed follow-up completion, queued-prompt replay preservation, loop-failure/error surfacing preservation, loop-advancement timing, and unchanged-state rejection through the shell-native controller adapters.

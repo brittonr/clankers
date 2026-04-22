@@ -266,6 +266,11 @@ macro_rules! impl_non_test_cfg_visit_guards {
 impl<'ast> Visit<'ast> for NonTestPathCollector {
     impl_non_test_cfg_visit_guards!();
 
+    fn visit_item_use(&mut self, item_use: &'ast syn::ItemUse) {
+        collect_use_tree_paths(Vec::new(), &item_use.tree, &mut self.paths);
+        syn::visit::visit_item_use(self, item_use);
+    }
+
     fn visit_path(&mut self, path: &'ast SynPath) {
         self.paths.insert(path_to_string(path));
         syn::visit::visit_path(self, path);
@@ -384,6 +389,34 @@ fn parse_stmt_macro(statement: &str) -> syn::StmtMacro {
     match parsed_statement {
         syn::Stmt::Macro(stmt_macro) => stmt_macro,
         _ => panic!("expected stmt macro in FCIS boundary rail test source"),
+    }
+}
+
+fn collect_use_tree_paths(prefix: Vec<String>, use_tree: &syn::UseTree, paths: &mut BTreeSet<String>) {
+    match use_tree {
+        syn::UseTree::Path(path) => {
+            let mut next_prefix = prefix;
+            next_prefix.push(path.ident.to_string());
+            collect_use_tree_paths(next_prefix, &path.tree, paths);
+        }
+        syn::UseTree::Name(name) => {
+            let mut full_path = prefix;
+            full_path.push(name.ident.to_string());
+            paths.insert(full_path.join("::"));
+        }
+        syn::UseTree::Rename(rename) => {
+            let mut full_path = prefix;
+            full_path.push(rename.ident.to_string());
+            paths.insert(full_path.join("::"));
+        }
+        syn::UseTree::Glob(_) => {
+            paths.insert(prefix.join("::"));
+        }
+        syn::UseTree::Group(group) => {
+            for item in &group.items {
+                collect_use_tree_paths(prefix.clone(), item, paths);
+            }
+        }
     }
 }
 
@@ -824,6 +857,22 @@ fn runtime_boundary() {
 }
 
 #[test]
+fn collect_non_test_paths_include_runtime_use_tree_paths_and_skip_test_only_uses() {
+    let source = r#"
+use clankers_core::CompletionStatus as RuntimeCompletionStatus;
+
+#[cfg(test)]
+use clankers_core::CoreFailure as TestOnlyCoreFailure;
+
+fn runtime_boundary(_: RuntimeCompletionStatus) {}
+"#;
+
+    let paths = collect_non_test_paths_from_source(source);
+    assert!(paths.contains("clankers_core::CompletionStatus"));
+    assert!(!paths.contains("clankers_core::CoreFailure"));
+}
+
+#[test]
 fn collect_non_test_constructor_paths_skip_test_only_cfg_expressions() {
     let source = r#"
 enum RuntimeWire {
@@ -938,6 +987,7 @@ fn agent_runtime_files_stay_shell_native() {
 #[test]
 fn embedded_event_loop_runner_stays_adapter_only() {
     let paths = collect_non_test_paths(EVENT_LOOP_RUNTIME_FILE);
+    assert_segment_absent(EVENT_LOOP_RUNTIME_FILE, &paths, CORE_CRATE_NAME);
     assert_exact_path_absent(EVENT_LOOP_RUNTIME_FILE, &paths, CORE_REDUCE_PATH);
     assert_segment_absent(EVENT_LOOP_RUNTIME_FILE, &paths, CORE_INPUT_SEGMENT);
     assert_segment_absent(EVENT_LOOP_RUNTIME_FILE, &paths, CORE_OUTCOME_SEGMENT);

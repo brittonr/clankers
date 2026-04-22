@@ -17,7 +17,7 @@
     # references these as path deps (../subwayrat/...); we pin them here
     # and patch the source so they resolve inside the Nix sandbox.
     subwayrat-src = {
-      url = "github:brittonr/subwayrat";
+      url = "git+ssh://git@github.com/brittonr/subwayrat.git";
       flake = false;
     };
 

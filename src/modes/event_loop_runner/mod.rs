@@ -453,17 +453,18 @@ impl<'a> EventLoopRunner<'a> {
 
     fn dispatch_controller_follow_up(
         &mut self,
-        effect_id: clankers_core::CoreEffectId,
+        pending_work_id: clankers_controller::PendingWorkId,
         prompt: String,
         requires_active_loop: bool,
     ) {
-        let should_dispatch_prompt = !requires_active_loop || self.app.loop_status.as_ref().is_some_and(|status| status.active);
+        let should_dispatch_prompt =
+            !requires_active_loop || self.app.loop_status.as_ref().is_some_and(|status| status.active);
         if !should_dispatch_prompt {
             self.controller.ack_follow_up_dispatch(
-                effect_id,
-                clankers_core::FollowUpDispatchStatus::Rejected(clankers_core::CoreFailure::Message(
-                    "loop follow-up dispatch skipped because the loop is not active".to_string(),
-                )),
+                pending_work_id,
+                clankers_controller::ShellFollowUpDispatch::rejected(
+                    "loop follow-up dispatch skipped because the loop is not active",
+                ),
             );
             return;
         }
@@ -471,40 +472,30 @@ impl<'a> EventLoopRunner<'a> {
         self.cmd_tx.send(AgentCommand::ResetCancel).ok();
         let sent_prompt = self.cmd_tx.send(AgentCommand::Prompt(prompt.clone())).is_ok();
         let dispatch_status = if sent_prompt {
-            if self
-                .controller
-                .start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id))
-            {
-                clankers_core::FollowUpDispatchStatus::Accepted
+            if self.controller.start_embedded_prompt_with_follow_up(&prompt, 0, Some(pending_work_id)) {
+                clankers_controller::ShellFollowUpDispatch::Accepted
             } else {
-                clankers_core::FollowUpDispatchStatus::Rejected(clankers_core::CoreFailure::Message(
-                    "embedded prompt start rejected".to_string(),
-                ))
+                clankers_controller::ShellFollowUpDispatch::rejected("embedded prompt start rejected")
             }
         } else {
-            clankers_core::FollowUpDispatchStatus::Rejected(clankers_core::CoreFailure::Message(
-                "follow-up dispatch channel closed".to_string(),
-            ))
+            clankers_controller::ShellFollowUpDispatch::rejected("follow-up dispatch channel closed")
         };
-        self.controller.ack_follow_up_dispatch(effect_id, dispatch_status);
+        self.controller.ack_follow_up_dispatch(pending_work_id, dispatch_status);
     }
 
     fn handle_task_results(&mut self) {
         while let Ok(result) = self.done_rx.try_recv() {
             match result {
                 TaskResult::PromptDone(Some(e)) => {
-                    let completion_status = clankers_core::CompletionStatus::Failed(
-                        clankers_core::CoreFailure::Message(e.to_string()),
-                    );
-                    let completed_dispatched_follow_up = if let Some(effect_id) =
-                        self.controller.pending_dispatched_follow_up_effect_id()
-                    {
-                        self.controller.complete_dispatched_follow_up(effect_id, completion_status);
-                        true
-                    } else {
-                        self.controller.finish_embedded_prompt(completion_status);
-                        false
-                    };
+                    let completion_status = clankers_controller::ShellPromptCompletion::failed(e.to_string());
+                    let completed_dispatched_follow_up =
+                        if let Some(pending_work_id) = self.controller.pending_dispatched_follow_up_id() {
+                            self.controller.complete_dispatched_follow_up(pending_work_id, completion_status);
+                            true
+                        } else {
+                            self.controller.finish_embedded_prompt(completion_status);
+                            false
+                        };
 
                     if let Some(ref mut block) = self.app.conversation.active_block {
                         block.error = Some(e.to_string());
@@ -541,14 +532,16 @@ impl<'a> EventLoopRunner<'a> {
                     self.drain_controller_messages();
                 }
                 TaskResult::PromptDone(None) => {
-                    let completed_dispatched_follow_up = if let Some(effect_id) =
-                        self.controller.pending_dispatched_follow_up_effect_id()
+                    let completed_dispatched_follow_up = if let Some(pending_work_id) =
+                        self.controller.pending_dispatched_follow_up_id()
                     {
-                        self.controller
-                            .complete_dispatched_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+                        self.controller.complete_dispatched_follow_up(
+                            pending_work_id,
+                            clankers_controller::ShellPromptCompletion::Succeeded,
+                        );
                         true
                     } else {
-                        self.controller.finish_embedded_prompt(clankers_core::CompletionStatus::Succeeded);
+                        self.controller.finish_embedded_prompt(clankers_controller::ShellPromptCompletion::Succeeded);
                         false
                     };
 
@@ -581,10 +574,16 @@ impl<'a> EventLoopRunner<'a> {
                                 self.sync_controller_session_id_from_app();
                             }
                         }
-                        clankers_controller::PostPromptAction::ContinueLoop { effect_id, prompt } => {
-                            self.dispatch_controller_follow_up(effect_id, prompt, true);
+                        clankers_controller::PostPromptAction::ContinueLoop {
+                            pending_work_id,
+                            prompt,
+                        } => {
+                            self.dispatch_controller_follow_up(pending_work_id, prompt, true);
                         }
-                        clankers_controller::PostPromptAction::RunAutoTest { effect_id, prompt } => {
+                        clankers_controller::PostPromptAction::RunAutoTest {
+                            pending_work_id,
+                            prompt,
+                        } => {
                             self.app.push_system(
                                 format!(
                                     "🧪 Running auto-test: {}",
@@ -592,7 +591,7 @@ impl<'a> EventLoopRunner<'a> {
                                 ),
                                 false,
                             );
-                            self.dispatch_controller_follow_up(effect_id, prompt, false);
+                            self.dispatch_controller_follow_up(pending_work_id, prompt, false);
                         }
                         clankers_controller::PostPromptAction::None => {}
                     }
@@ -791,10 +790,12 @@ mod tests {
         event_rx: Option<tokio::sync::broadcast::Receiver<crate::agent::events::AgentEvent>>,
         panel_tx: tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
         panel_rx: Option<tokio::sync::mpsc::UnboundedReceiver<crate::tui::components::subagent_event::SubagentEvent>>,
-        todo_rx: Option<tokio::sync::mpsc::UnboundedReceiver<(
-            crate::tools::todo::TodoAction,
-            tokio::sync::oneshot::Sender<crate::tools::todo::TodoResponse>,
-        )>>,
+        todo_rx: Option<
+            tokio::sync::mpsc::UnboundedReceiver<(
+                crate::tools::todo::TodoAction,
+                tokio::sync::oneshot::Sender<crate::tools::todo::TodoResponse>,
+            )>,
+        >,
         bash_confirm_rx: Option<crate::tools::bash::ConfirmRx>,
         settings: crate::config::settings::Settings,
         controller: Option<SessionController>,
@@ -804,11 +805,7 @@ mod tests {
     impl RunnerHarness {
         fn new(controller: SessionController) -> Self {
             let terminal = Terminal::new(CrosstermBackend::new(io::stdout())).expect("terminal should initialize");
-            let mut app = App::new(
-                "test-model".to_string(),
-                "/tmp".to_string(),
-                crate::tui::theme::Theme::dark(),
-            );
+            let mut app = App::new("test-model".to_string(), "/tmp".to_string(), crate::tui::theme::Theme::dark());
             app.session_id = "test-session".to_string();
 
             let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel();
@@ -1010,7 +1007,9 @@ mod tests {
 
         let system_messages = collect_system_messages(&harness.app);
         assert!(
-            system_messages.iter().any(|(text, is_error)| !is_error && text.contains("Running auto-test: cargo test")),
+            system_messages
+                .iter()
+                .any(|(text, is_error)| !is_error && text.contains("Running auto-test: cargo test")),
             "expected auto-test start banner: {system_messages:?}"
         );
         assert!(
@@ -1050,7 +1049,7 @@ mod tests {
             "visible loop state must not advance or deactivate before follow-up prompt completion"
         );
         assert!(
-            controller.pending_dispatched_follow_up_effect_id().is_some(),
+            controller.pending_dispatched_follow_up_id().is_some(),
             "accepted follow-up dispatch must remain pending until the follow-up prompt finishes"
         );
         assert!(controller.has_active_loop(), "loop must stay active until follow-up prompt completion");
@@ -1061,12 +1060,15 @@ mod tests {
     fn out_of_order_follow_up_completion_surfaces_error_through_app_push_system() {
         let mut controller = embedded_controller(true, Some("cargo test"));
         assert!(controller.start_embedded_prompt("original prompt", 0));
-        controller.finish_embedded_prompt(clankers_core::CompletionStatus::Succeeded);
-        let (effect_id, prompt) = match controller.check_post_prompt(false) {
-            clankers_controller::PostPromptAction::RunAutoTest { effect_id, prompt } => (effect_id, prompt),
+        controller.finish_embedded_prompt(clankers_controller::ShellPromptCompletion::Succeeded);
+        let (pending_work_id, prompt) = match controller.check_post_prompt(false) {
+            clankers_controller::PostPromptAction::RunAutoTest {
+                pending_work_id,
+                prompt,
+            } => (pending_work_id, prompt),
             other => panic!("expected RunAutoTest, got {other:?}"),
         };
-        assert!(controller.start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id)));
+        assert!(controller.start_embedded_prompt_with_follow_up(&prompt, 0, Some(pending_work_id)));
 
         let mut harness = RunnerHarness::new(controller);
         harness.done_tx.send(TaskResult::PromptDone(None)).expect("task result queued");
@@ -1077,9 +1079,14 @@ mod tests {
 
         let system_messages = collect_system_messages(&harness.app);
         assert!(
-            system_messages.iter().any(|(text, is_error)| *is_error && text == "Post-prompt follow-up completion rejected"),
+            system_messages
+                .iter()
+                .any(|(text, is_error)| *is_error && text == "Post-prompt follow-up completion rejected"),
             "expected wrong-stage rejection banner: {system_messages:?}"
         );
-        assert!(harness.cmd_rx.try_recv().is_err(), "out-of-order completion must not synthesize prompt replay or follow-up");
+        assert!(
+            harness.cmd_rx.try_recv().is_err(),
+            "out-of-order completion must not synthesize prompt replay or follow-up"
+        );
     }
 }

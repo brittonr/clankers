@@ -6,6 +6,7 @@ use clankers_core::CoreThinkingLevel;
 use clankers_core::ToolFilterApplied;
 use clankers_protocol::DaemonEvent;
 
+use crate::PendingWorkId;
 use crate::PostPromptAction;
 use crate::SessionController;
 use crate::loop_mode::LoopConfig;
@@ -121,9 +122,7 @@ impl SessionController {
     pub(crate) fn execute_tool_filter_feedback_effects(&mut self, effects: Vec<CoreEffect>) {
         for effect in effects {
             if let CoreEffect::EmitLogicalEvent(CoreLogicalEvent::DisabledToolsChanged { disabled_tools }) = effect {
-                self.emit(DaemonEvent::DisabledToolsChanged {
-                    tools: disabled_tools,
-                });
+                self.emit(DaemonEvent::DisabledToolsChanged { tools: disabled_tools });
             }
         }
     }
@@ -187,11 +186,11 @@ impl SessionController {
                 } => {
                     post_prompt_action = match source {
                         clankers_core::FollowUpSource::LoopContinuation => PostPromptAction::ContinueLoop {
-                            effect_id,
+                            pending_work_id: PendingWorkId::from_core(effect_id),
                             prompt: prompt_text,
                         },
                         clankers_core::FollowUpSource::AutoTest => PostPromptAction::RunAutoTest {
-                            effect_id,
+                            pending_work_id: PendingWorkId::from_core(effect_id),
                             prompt: prompt_text,
                         },
                     };

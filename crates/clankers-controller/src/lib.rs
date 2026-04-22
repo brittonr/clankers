@@ -42,6 +42,78 @@ use self::audit::AuditTracker;
 use self::config::ControllerConfig;
 use self::confirm::ConfirmStore;
 
+/// Controller-owned identity for pending shell work correlated back into the core.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PendingWorkId(u64);
+
+impl PendingWorkId {
+    pub(crate) fn from_core(effect_id: clankers_core::CoreEffectId) -> Self {
+        Self(effect_id.0)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_raw(raw: u64) -> Self {
+        Self(raw)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn raw(self) -> u64 {
+        self.0
+    }
+
+    pub(crate) fn into_core(self) -> clankers_core::CoreEffectId {
+        clankers_core::CoreEffectId(self.0)
+    }
+}
+
+/// Shell-native completion outcome reported back to the controller.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShellPromptCompletion {
+    Succeeded,
+    Failed { message: String },
+}
+
+impl ShellPromptCompletion {
+    pub fn failed(message: impl Into<String>) -> Self {
+        Self::Failed {
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn to_core(&self) -> clankers_core::CompletionStatus {
+        match self {
+            Self::Succeeded => clankers_core::CompletionStatus::Succeeded,
+            Self::Failed { message } => {
+                clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(message.clone()))
+            }
+        }
+    }
+}
+
+/// Shell-native follow-up dispatch result reported back to the controller.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ShellFollowUpDispatch {
+    Accepted,
+    Rejected { message: String },
+}
+
+impl ShellFollowUpDispatch {
+    pub fn rejected(message: impl Into<String>) -> Self {
+        Self::Rejected {
+            message: message.into(),
+        }
+    }
+
+    pub(crate) fn to_core(&self) -> clankers_core::FollowUpDispatchStatus {
+        match self {
+            Self::Accepted => clankers_core::FollowUpDispatchStatus::Accepted,
+            Self::Rejected { message } => {
+                clankers_core::FollowUpDispatchStatus::Rejected(clankers_core::CoreFailure::Message(message.clone()))
+            }
+        }
+    }
+}
+
 /// Action the TUI should take after a prompt completes.
 #[derive(Debug)]
 pub enum PostPromptAction {
@@ -51,12 +123,12 @@ pub enum PostPromptAction {
     ReplayQueuedPrompt,
     /// Continue a loop iteration with this prompt.
     ContinueLoop {
-        effect_id: clankers_core::CoreEffectId,
+        pending_work_id: PendingWorkId,
         prompt: String,
     },
     /// Run an auto-test with this prompt.
     RunAutoTest {
-        effect_id: clankers_core::CoreEffectId,
+        pending_work_id: PendingWorkId,
         prompt: String,
     },
 }

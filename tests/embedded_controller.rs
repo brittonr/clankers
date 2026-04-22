@@ -259,10 +259,13 @@ fn embedded_auto_test_no_recursive_trigger() {
     start_embedded_prompt(&mut ctrl, "hello");
     ctrl.notify_prompt_done(false);
     match ctrl.check_post_prompt(false) {
-        PostPromptAction::RunAutoTest { effect_id, prompt } => {
-            ctrl.ack_follow_up_dispatch(effect_id, clankers_core::FollowUpDispatchStatus::Accepted);
-            assert!(ctrl.start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id)));
-            ctrl.complete_dispatched_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+        PostPromptAction::RunAutoTest {
+            pending_work_id,
+            prompt,
+        } => {
+            ctrl.ack_follow_up_dispatch(pending_work_id, clankers_controller::ShellFollowUpDispatch::Accepted);
+            assert!(ctrl.start_embedded_prompt_with_follow_up(&prompt, 0, Some(pending_work_id)));
+            ctrl.complete_dispatched_follow_up(pending_work_id, clankers_controller::ShellPromptCompletion::Succeeded);
         }
         other => panic!("expected RunAutoTest, got {other:?}"),
     }
@@ -319,10 +322,13 @@ fn embedded_loop_terminates_at_max() {
     start_embedded_prompt(&mut ctrl, "go");
     ctrl.notify_prompt_done(false);
     match ctrl.check_post_prompt(false) {
-        PostPromptAction::ContinueLoop { effect_id, prompt } => {
-            ctrl.ack_follow_up_dispatch(effect_id, clankers_core::FollowUpDispatchStatus::Accepted);
-            assert!(ctrl.start_embedded_prompt_with_follow_up(&prompt, 0, Some(effect_id)));
-            ctrl.complete_dispatched_follow_up(effect_id, clankers_core::CompletionStatus::Succeeded);
+        PostPromptAction::ContinueLoop {
+            pending_work_id,
+            prompt,
+        } => {
+            ctrl.ack_follow_up_dispatch(pending_work_id, clankers_controller::ShellFollowUpDispatch::Accepted);
+            assert!(ctrl.start_embedded_prompt_with_follow_up(&prompt, 0, Some(pending_work_id)));
+            ctrl.complete_dispatched_follow_up(pending_work_id, clankers_controller::ShellPromptCompletion::Succeeded);
         }
         other => panic!("expected ContinueLoop, got {other:?}"),
     }
