@@ -1,6 +1,6 @@
 ## ADDED Requirements
 
-### Requirement: Clankers provides a portable no-std core crate
+### Requirement: Clankers MUST provide a portable no-std core crate
 ID: no.std.functional.core.portable.crate
 The system MUST provide a workspace crate named `clankers-core` that compiles with `#![no_std]` and `alloc` and does not depend on Tokio, filesystem, networking, terminal, database, or process APIs.
 
@@ -17,7 +17,7 @@ ID: no.std.functional.core.portable.crate.std-shells-consume-same-crate
 - **THEN** `clankers-agent` uses the same core crate types and effect/input contracts, executes controller-owned effects, and returns explicit feedback without maintaining a second authoritative reducer for the migrated slice
 - **THEN** those shells do not keep a forked orchestration implementation outside the core for the migrated slice
 
-### Requirement: Session command and prompt lifecycle decisions are deterministic core transitions
+### Requirement: Session command and prompt lifecycle decisions MUST be deterministic core transitions
 ID: no.std.functional.core.deterministic.transitions
 The system MUST move the initial session command and prompt lifecycle slice into pure core transitions. That initial slice MUST cover `SessionCommand::Prompt`, `SetThinkingLevel`, `CycleThinkingLevel`, `SetDisabledTools`, loop-state changes used by `StartLoop` / `StopLoop`, and the prompt-completion / post-prompt follow-up inputs currently driven by `notify_prompt_done()` and `check_post_prompt()`.
 
@@ -44,7 +44,7 @@ ID: no.std.functional.core.deterministic.transitions.transition-logic-has-no-amb
 - **THEN** the decision depends only on explicit input data passed to the core
 - **THEN** it does not read clocks, environment variables, filesystem state, sockets, or async handles directly
 
-### Requirement: Core requests migrated shell work through explicit effects
+### Requirement: Core MUST request migrated shell work through explicit effects
 ID: no.std.functional.core.explicit.effects
 The system MUST encode prompt start, logical event emission, loop follow-up work, filtered-tool rebuild work, and any other runtime work migrated in this first slice as effect values returned from core transitions.
 
@@ -60,7 +60,7 @@ ID: no.std.functional.core.explicit.effects.migrated-shell-results-re-enter-as-e
 - **THEN** the shell feeds the resulting data back into the core as a new input
 - **THEN** the core derives the next state and follow-up effects from that explicit data alone
 
-### Requirement: Effect plans and shell feedback are explicitly correlated
+### Requirement: Effect plans and shell feedback MUST be explicitly correlated
 ID: no.std.functional.core.correlated.feedback
 Any `clankers-core` effect that expects shell feedback MUST carry an explicit correlation token or pending-work identity, and matching shell feedback inputs MUST return that identity to the core.
 
@@ -116,7 +116,7 @@ ID: no.std.functional.core.correlated.feedback.mismatched-shell-feedback-is-reje
 - **THEN** the core returns an explicit rejection describing the mismatch
 - **THEN** previously valid state remains unchanged
 
-### Requirement: Invalid or out-of-order transitions fail explicitly
+### Requirement: Invalid or out-of-order transitions MUST fail explicitly
 ID: no.std.functional.core.invalid.transitions
 The system MUST reject invalid inputs for the extracted orchestration slice with typed failures rather than panicking or silently mutating unrelated state.
 
@@ -157,7 +157,7 @@ ID: no.std.functional.core.invalid.transitions.disabled-tools-update-with-stale-
 - **THEN** the core returns an explicit stale-slot rejection
 - **THEN** previously valid state remains unchanged
 
-### Requirement: std shells preserve migrated behavior through the core
+### Requirement: std shells MUST preserve migrated behavior through the core
 ID: no.std.functional.core.shell.parity
 The system MUST route the extracted orchestration slice through `clankers-core` while preserving the current shell-visible behavior of controller and agent integrations for that slice.
 
@@ -211,7 +211,7 @@ ID: no.std.functional.core.shell.parity.loop-control-behavior-remains-aligned
 - **THEN** successful `StopLoop` still preserves the current visible loop-state transition plus the success `DaemonEvent::SystemMessage` acknowledgement category
 - **THEN** explicit rejection cases (`LoopAlreadyActive`, `LoopNotActive`, and pending-follow-up rejection) leave state unchanged and preserve the error `DaemonEvent::SystemMessage` acknowledgement category
 
-### Requirement: Future deterministic extractions reuse the same boundary
+### Requirement: Future deterministic extractions MUST reuse the same boundary
 ID: no.std.functional.core.future.extraction.boundary
 Any later orchestration logic moved under this capability MUST enter `clankers-core` as explicit state, input, and effect transformations when it does not require direct I/O. Shell-specific protocol, runtime, and transport types MUST stay in adapter code.
 
@@ -227,7 +227,7 @@ ID: no.std.functional.core.future.extraction.boundary.shell-native-types-stay-ou
 - **THEN** those shell-native values are created and consumed in adapter code
 - **THEN** raw shell-native or protocol-native types do not appear in exported `clankers-core` boundary types including state, input, effect, outcome, or error types
 
-### Requirement: The no-std boundary and parity contract are continuously verified
+### Requirement: The no-std boundary and parity contract MUST be continuously verified
 ID: no.std.functional.core.continuous.verification
 The system MUST keep dedicated verification rails for the `no-std-functional-core` capability so architectural and behavioral regressions are caught before acceptance.
 
