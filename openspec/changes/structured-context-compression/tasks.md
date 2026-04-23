@@ -1,9 +1,10 @@
 ## 1. Tool-result pruning pre-pass
 
-- [ ] 1.1 Create `crates/clankers-agent/src/compaction/tool_summaries.rs` with `summarize_tool_result(tool_name, args, content) -> String`
-- [ ] 1.2 Implement summarizers for core tools: bash (command + exit code + line count), read (path + offset + char count), write (path + line count), grep/rg (pattern + match count), edit (path + edit count), subagent (goal + result size)
-- [ ] 1.3 Implement generic fallback summarizer: `[tool_name] arg1=val1 (N chars result)`
-- [ ] 1.4 Implement `prune_tool_results(messages, tail_start_idx) -> Vec<AgentMessage>` that replaces tool results before tail_start_idx with one-line summaries
+- [x] 1.1 Create `crates/clankers-agent/src/compaction/tool_summaries.rs` with `summarize_tool_result(tool_name, args, content) -> String`
+- [x] 1.2 Implement summarizers for core tools: bash (command + exit code + line count), read (path + offset + char count), write (path + line count), grep/rg (pattern + match count), edit (path + edit count), subagent (goal + result size)
+- [x] 1.3 Implement generic fallback summarizer: `[tool_name] arg1=val1 (N chars result)`
+- [x] 1.4 Implement `prune_tool_results(messages, tail_start_idx) -> Vec<AgentMessage>` that replaces tool results before tail_start_idx with one-line summaries
+- [x] 1.5 Thread the shared pruning helper through `context::compact_stale_tool_results`, `Agent::compact_messages`, and controller/manual `/compact` handling so standalone and daemon paths stop drifting
 
 ## 2. Token-budget tail protection
 
@@ -34,7 +35,9 @@
 
 ## 6. Tests
 
-- [ ] 6.1 Unit test: tool-result summarizers produce correct one-liners for each tool type
+- [x] 6.1 Unit test: tool-result summarizers produce correct one-liners for each tool type, including unknown-tool fallback
 - [ ] 6.2 Unit test: tail budget selection preserves correct number of messages for various context sizes
-- [ ] 6.3 Unit test: handoff prefix is present in compacted output
-- [ ] 6.4 Integration test: full compaction pipeline with mock provider
+- [ ] 6.3 Unit test: handoff prefix and "background reference / do not re-execute" instruction notice are present in compacted output
+- [ ] 6.4 Integration test: full compaction pipeline with mock provider, including auxiliary-model-unavailable fallback and second-compaction previous-summary reuse
+- [x] 6.5 Regression coverage: `/compact` announces immediate compaction, shared pruning mutates old tool results, and recent tail tool results stay intact
+- [ ] 6.6 Verification: auxiliary-model timeout/default-strategy selection falls back correctly and chooses `Structured` only when an auxiliary summary model is configured

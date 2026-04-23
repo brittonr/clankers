@@ -62,9 +62,9 @@ impl SlashHandler for CompactHandler {
     fn command(&self) -> super::super::SlashCommand {
         super::super::SlashCommand {
             name: "compact",
-            description: "Compress conversation context (summarize older messages)",
-            help: "Summarizes older messages using a fast model, replacing them with a \
-                   structured summary while preserving recent messages. Use when context is large.\n\n\
+            description: "Compress conversation context (summarize older tool results)",
+            help: "Summarizes older tool results now while preserving recent messages intact. \
+                   Use when context is large and tool output is crowding the window.\n\n\
                    Alias: /compress",
             accepts_args: false,
             subcommands: vec![],
@@ -73,10 +73,8 @@ impl SlashHandler for CompactHandler {
 
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.cmd_tx.send(AgentCommand::CompressContext).ok();
-        ctx.app.push_system(
-            "Compression requested. Older messages will be summarized on the next turn.".to_string(),
-            false,
-        );
+        ctx.app
+            .push_system("Compression requested. Older tool results are being summarized now.".to_string(), false);
     }
 }
 
@@ -87,7 +85,7 @@ impl SlashHandler for CompressHandler {
         super::super::SlashCommand {
             name: "compress",
             description: "Compress conversation context (alias for /compact)",
-            help: "Same as /compact — summarizes older messages to free context window space.",
+            help: "Same as /compact — summarizes older tool results to free context window space.",
             accepts_args: false,
             subcommands: vec![],
         }
@@ -95,10 +93,8 @@ impl SlashHandler for CompressHandler {
 
     fn handle(&self, _args: &str, ctx: &mut SlashContext<'_>) {
         ctx.cmd_tx.send(AgentCommand::CompressContext).ok();
-        ctx.app.push_system(
-            "Compression requested. Older messages will be summarized on the next turn.".to_string(),
-            false,
-        );
+        ctx.app
+            .push_system("Compression requested. Older tool results are being summarized now.".to_string(), false);
     }
 }
 

@@ -150,7 +150,7 @@ fn slash_undo_with_nothing_says_nothing() {
 // ── /compact ────────────────────────────────────────────────
 
 #[test]
-fn slash_compact_shows_not_implemented() {
+fn slash_compact_announces_compaction() {
     let mut h = TuiTestHarness::spawn(24, 100);
     run_slash(&mut h, "/compact");
     h.wait_for_text("Compression requested", TIMEOUT);

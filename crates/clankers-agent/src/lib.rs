@@ -240,9 +240,12 @@ impl Agent {
         }
     }
 
-    /// Compact messages by truncating stale tool results.
-    pub fn compact_messages(&mut self) {
-        self.messages = crate::context::compact_stale_tool_results(&self.messages, 3);
+    /// Compact messages by summarizing old tool results.
+    pub fn compact_messages(&mut self) -> crate::compaction::CompactionResult {
+        let result =
+            crate::compaction::compact_tool_results(&self.messages, crate::compaction::RECENT_TOOL_RESULTS_TO_KEEP);
+        self.messages = result.messages.clone();
+        result
     }
 
     /// Run the agent with a user prompt and optional image content blocks
@@ -795,6 +798,33 @@ mod tests {
         })
     }
 
+    fn assistant_tool_use(call_id: &str, tool_name: &str, input: serde_json::Value) -> AgentMessage {
+        AgentMessage::Assistant(AssistantMessage {
+            id: MessageId::generate(),
+            content: vec![Content::ToolUse {
+                id: call_id.to_string(),
+                name: tool_name.to_string(),
+                input,
+            }],
+            model: "test-model".to_string(),
+            usage: clankers_provider::Usage::default(),
+            stop_reason: StopReason::ToolUse,
+            timestamp: Utc::now(),
+        })
+    }
+
+    fn tool_result_message(call_id: &str, tool_name: &str, text: &str) -> AgentMessage {
+        AgentMessage::ToolResult(ToolResultMessage {
+            id: MessageId::generate(),
+            call_id: call_id.to_string(),
+            tool_name: tool_name.to_string(),
+            content: vec![Content::Text { text: text.to_string() }],
+            is_error: false,
+            details: None,
+            timestamp: Utc::now(),
+        })
+    }
+
     fn provider_thinking_level(level: clankers_core::CoreThinkingLevel) -> ThinkingLevel {
         match level {
             clankers_core::CoreThinkingLevel::Off => ThinkingLevel::Off,
@@ -909,6 +939,53 @@ mod tests {
         agent.apply_core_filtered_tools(filtered_tools);
         assert_eq!(agent_tool_names(&agent), vec!["read".to_string()]);
         assert!(agent.user_tool_filter.is_none());
+    }
+
+    #[test]
+    fn compact_messages_summarizes_old_tool_results_and_keeps_recent_tail() {
+        let first_call_id = "call-1";
+        let second_call_id = "call-2";
+        let third_call_id = "call-3";
+        let fifth_call_id = "call-5";
+        let mut agent = make_test_agent();
+        agent.seed_messages(vec![
+            assistant_tool_use(first_call_id, "read", json!({"path": "src/main.rs", "offset": 4})),
+            tool_result_message(first_call_id, "read", "alpha beta"),
+            assistant_tool_use(second_call_id, "write", json!({"path": "src/lib.rs", "content": "x\ny"})),
+            tool_result_message(second_call_id, "write", "write ok"),
+            assistant_tool_use(third_call_id, "edit", json!({"path": "src/lib.rs", "old_text": "x", "new_text": "z"})),
+            tool_result_message(third_call_id, "edit", "edit ok"),
+            tool_result_message("call-4", "bash", "recent result 1"),
+            assistant_tool_use(fifth_call_id, "grep", json!({"pattern": "TODO"})),
+            tool_result_message(fifth_call_id, "grep", "src/main.rs:1: TODO"),
+            AgentMessage::User(UserMessage {
+                id: MessageId::generate(),
+                content: vec![Content::Text {
+                    text: "tail user message".to_string(),
+                }],
+                timestamp: Utc::now(),
+            }),
+        ]);
+
+        let result = agent.compact_messages();
+        assert_eq!(result.compacted_count, 2);
+        assert_eq!(result.messages.len(), agent.messages().len());
+
+        let AgentMessage::ToolResult(read_result) = &agent.messages()[1] else {
+            panic!("expected read tool result");
+        };
+        let Content::Text { text } = &read_result.content[0] else {
+            panic!("expected text content");
+        };
+        assert_eq!(text, "[read] src/main.rs @4 (10 chars)");
+
+        let AgentMessage::ToolResult(recent_bash_result) = &agent.messages()[6] else {
+            panic!("expected bash tool result");
+        };
+        let Content::Text { text } = &recent_bash_result.content[0] else {
+            panic!("expected text content");
+        };
+        assert_eq!(text, "recent result 1");
     }
 
     #[tokio::test]

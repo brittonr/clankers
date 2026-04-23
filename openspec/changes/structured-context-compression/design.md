@@ -2,13 +2,13 @@
 
 Clankers' `compaction.rs` supports two strategies: `Truncation` (drop middle messages) and `LlmSummary` (placeholder, not fully implemented). The `AutoCompactConfig` triggers at 80% context usage and preserves a fixed count of recent messages. Tool results — often the largest context consumers — are dropped whole with no summary.
 
-Hermes' `ContextCompressor` is a multi-pass pipeline: (1) prune old tool results with per-tool-type one-line summaries, (2) protect head + tail by token budget, (3) LLM-summarize middle turns with a structured template, (4) iteratively update the summary on subsequent compressions. The structured summary has sections for Active Task, Resolved Questions, Pending Questions, and Remaining Work.
+Hermes' `ContextCompressor` is a multi-pass pipeline: (1) prune old tool results with per-tool-type one-line summaries, (2) protect head + tail by token budget, (3) LLM-summarize middle turns with a structured template, (4) iteratively update the summary on subsequent compressions. For clankers, the structured summary contract is the narrower set used throughout this change: Active Task, Key Decisions Made, Files Modified, and Remaining Work.
 
 ## Goals / Non-Goals
 
 **Goals:**
 - Tool-result pruning pre-pass: replace old tool outputs with informative one-line summaries (no LLM needed)
-- LLM-powered structured summarization with a template that tracks what's resolved vs. active
+- LLM-powered structured summarization with a template that tracks active task, key decisions, files modified, and remaining work
 - Iterative summary updates: when compaction fires again, feed the previous summary to produce an updated one
 - Token-budget tail protection instead of fixed message count
 - Summary prefix that frames it as a handoff from a previous context window, not active instructions
@@ -24,7 +24,7 @@ Hermes' `ContextCompressor` is a multi-pass pipeline: (1) prune old tool results
 **Three-phase pipeline:**
 1. **Tool-result pruning** (cheap, synchronous): Walk messages, replace tool results older than the tail window with one-line summaries based on tool name and arguments. Pattern-match common tools: bash → show command + exit code + line count; read → show path + char count; write → show path + line count; grep → show pattern + match count. Generic fallback for unknown tools.
 2. **Token-budget tail selection**: Calculate tokens for the most recent messages working backward until the tail budget is consumed. Default tail budget: 40% of context window. This adapts to context window size automatically.
-3. **LLM summarization**: Send middle messages (between head and tail) to an auxiliary model with a structured prompt. The summary template has: `## Active Task`, `## Key Decisions Made`, `## Resolved Questions`, `## Files Modified`, `## Remaining Work`. On subsequent compressions, include the previous summary in the prompt so the model produces a cumulative update.
+3. **LLM summarization**: Send middle messages (between head and tail) to an auxiliary model with a structured prompt. The summary template has: `## Active Task`, `## Key Decisions Made`, `## Files Modified`, `## Remaining Work`. On subsequent compressions, include the previous summary in the prompt so the model produces a cumulative update.
 
 **Summary framing:** Prefix the summary with a handoff notice (similar to Hermes' `SUMMARY_PREFIX`) that tells the model to treat it as background reference, not active instructions. This prevents the model from re-executing completed tasks.
 

@@ -110,94 +110,8 @@ pub fn truncate_messages(
 /// Replaces old ToolResult messages with short summaries while keeping
 /// the last `keep_recent` tool results intact for context.
 pub fn compact_stale_tool_results(messages: &[AgentMessage], keep_recent: usize) -> Vec<AgentMessage> {
-    let mut result = Vec::with_capacity(messages.len());
-
-    // First pass: count ToolResult messages from the end
-    let tool_result_positions: Vec<usize> = messages
-        .iter()
-        .enumerate()
-        .rev()
-        .filter_map(|(i, msg)| match msg {
-            AgentMessage::ToolResult(_) => Some(i),
-            _ => None,
-        })
-        .collect();
-
-    // Second pass: process messages, compacting old tool results
-    for (i, message) in messages.iter().enumerate() {
-        match message {
-            AgentMessage::ToolResult(tool_result) => {
-                // Find this message's position in the tool result list
-                let tool_position = tool_result_positions.iter().position(|&pos| pos == i);
-
-                if let Some(pos) = tool_position {
-                    if pos < keep_recent {
-                        // Keep recent tool results intact
-                        result.push(message.clone());
-                    } else {
-                        // Replace old tool results with summary
-                        let summary = create_tool_result_summary(tool_result);
-                        let compacted_result = ToolResultMessage {
-                            id: tool_result.id.clone(),
-                            call_id: tool_result.call_id.clone(),
-                            tool_name: tool_result.tool_name.clone(),
-                            content: vec![Content::Text { text: summary }],
-                            is_error: tool_result.is_error,
-                            details: tool_result.details.clone(),
-                            timestamp: tool_result.timestamp,
-                        };
-                        result.push(AgentMessage::ToolResult(compacted_result));
-                    }
-                } else {
-                    // Shouldn't happen, but keep as-is if we can't find position
-                    result.push(message.clone());
-                }
-            }
-            _ => {
-                // All non-ToolResult messages pass through unchanged
-                result.push(message.clone());
-            }
-        }
-    }
-
-    result
-}
-
-/// Create a summary string for a tool result
-fn create_tool_result_summary(tool_result: &ToolResultMessage) -> String {
-    let mut text_lines = 0;
-    let mut text_bytes = 0;
-    let mut has_image = false;
-
-    for content in &tool_result.content {
-        match content {
-            Content::Text { text } => {
-                text_lines += text.lines().count();
-                text_bytes += text.len();
-            }
-            Content::Image { .. } => {
-                has_image = true;
-            }
-            Content::Thinking { thinking, .. } => {
-                text_lines += thinking.lines().count();
-                text_bytes += thinking.len();
-            }
-            Content::ToolUse { .. } | Content::ToolResult { .. } => {
-                // These are unlikely in tool result content, but count as text
-                let json_str = serde_json::to_string(content).unwrap_or_default();
-                text_lines += json_str.lines().count();
-                text_bytes += json_str.len();
-            }
-        }
-    }
-
-    if has_image && text_bytes > 0 {
-        format!("[{}: {} lines, {} bytes, image]", tool_result.tool_name, text_lines, text_bytes)
-    } else if has_image {
-        format!("[{}: image]", tool_result.tool_name)
-    } else {
-        format!("[{}: {} lines, {} bytes]", tool_result.tool_name, text_lines, text_bytes)
-    }
+    let tail_start_idx = crate::compaction::tail_start_for_recent_tool_results(messages, keep_recent);
+    crate::compaction::prune_tool_results(messages, tail_start_idx)
 }
 
 /// Estimate tokens for a single message
@@ -215,7 +129,7 @@ pub fn build_context(
 ) -> AgentContext {
     let system_tokens = clankers_util::token::estimate_tokens(system_prompt);
     let effective_messages = if compact {
-        compact_stale_tool_results(messages, 3)
+        compact_stale_tool_results(messages, crate::compaction::RECENT_TOOL_RESULTS_TO_KEEP)
     } else {
         messages.to_vec()
     };
@@ -368,8 +282,9 @@ mod tests {
         if let AgentMessage::ToolResult(tool_result) = &result[1] {
             assert_eq!(tool_result.tool_name, "read");
             if let Content::Text { text } = &tool_result.content[0] {
-                assert!(text.contains("[read:"));
-                assert!(text.contains("bytes]"));
+                assert!(text.starts_with("[read]"));
+                assert_ne!(text, "old content");
+                assert!(text.contains("chars"));
             }
         } else {
             panic!("Expected ToolResult");
@@ -390,9 +305,9 @@ mod tests {
         // First (old) result should be compacted
         if let AgentMessage::ToolResult(tool_result) = &result[0] {
             if let Content::Text { text } = &tool_result.content[0] {
-                assert!(text.starts_with("[read:"));
-                assert!(text.contains("3 lines"));
-                assert!(text.contains(&format!("{} bytes]", old_content.len())));
+                assert!(text.starts_with("[read]"));
+                assert_ne!(text, old_content);
+                assert!(text.contains("chars"));
             } else {
                 panic!("Expected text content");
             }
@@ -478,7 +393,7 @@ mod tests {
         // Image result should be compacted
         if let AgentMessage::ToolResult(tool_result) = &result[0] {
             if let Content::Text { text } = &tool_result.content[0] {
-                assert_eq!(text, "[screenshot: image]");
+                assert_eq!(text, "[screenshot] (image result)");
             } else {
                 panic!("Expected text content after compaction");
             }

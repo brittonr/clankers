@@ -149,12 +149,10 @@ impl SessionController {
             }
             SessionCommand::CompactHistory => {
                 if let Some(ref mut agent) = self.agent {
-                    let before = agent.messages().len();
-                    agent.compact_messages();
-                    let after = agent.messages().len();
+                    let result = agent.compact_messages();
                     self.emit(DaemonEvent::SessionCompaction {
-                        compacted_count: before.saturating_sub(after),
-                        tokens_saved: 0,
+                        compacted_count: result.compacted_count,
+                        tokens_saved: result.tokens_saved,
                     });
                 }
             }
@@ -587,12 +585,10 @@ impl SessionController {
             }
             "compact" => {
                 if let Some(ref mut agent) = self.agent {
-                    let before = agent.messages().len();
-                    agent.compact_messages();
-                    let after = agent.messages().len();
+                    let result = agent.compact_messages();
                     self.emit(DaemonEvent::SessionCompaction {
-                        compacted_count: before.saturating_sub(after),
-                        tokens_saved: 0,
+                        compacted_count: result.compacted_count,
+                        tokens_saved: result.tokens_saved,
                     });
                 }
             }
@@ -708,7 +704,8 @@ mod tests {
             request: clankers_provider::CompletionRequest,
             _tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
-            let prompt_text = extract_last_user_prompt_text(&request.messages).expect("prompt request should carry a user message");
+            let prompt_text =
+                extract_last_user_prompt_text(&request.messages).expect("prompt request should carry a user message");
             self.requests.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(RecordedPromptRequest {
                 model: request.model,
                 prompt_text,
@@ -769,14 +766,11 @@ mod tests {
             "test-model".to_string(),
             "You are a test assistant.".to_string(),
         );
-        SessionController::new(
-            agent,
-            ControllerConfig {
-                session_id: "test-session".to_string(),
-                model: "test-model".to_string(),
-                ..Default::default()
-            },
-        )
+        SessionController::new(agent, ControllerConfig {
+            session_id: "test-session".to_string(),
+            model: "test-model".to_string(),
+            ..Default::default()
+        })
     }
 
     fn seed_pending_tool_filter(ctrl: &mut SessionController, disabled_tools: Vec<String>) {
@@ -968,19 +962,17 @@ mod tests {
         assert!(!ctrl.busy);
         assert!(!ctrl.core_state.busy);
         assert!(ctrl.core_state.pending_prompt.is_none());
-        assert_eq!(
-            recorded_requests.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_slice(),
-            [RecordedPromptRequest {
+        assert_eq!(recorded_requests.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).as_slice(), [
+            RecordedPromptRequest {
                 model: "test-model".to_string(),
                 prompt_text,
                 system_prompt: Some("You are a test assistant.".to_string()),
                 session_id: Some("test-session".to_string()),
-            }]
-        );
-        assert!(matches!(
-            ctrl.take_outgoing().as_slice(),
-            [DaemonEvent::AgentStart, DaemonEvent::PromptDone { error: None }]
-        ));
+            }
+        ]);
+        assert!(matches!(ctrl.take_outgoing().as_slice(), [DaemonEvent::AgentStart, DaemonEvent::PromptDone {
+            error: None
+        }]));
     }
 
     #[tokio::test]
@@ -1149,10 +1141,7 @@ mod tests {
             } if unchanged_state == previous_state
         ));
 
-        ctrl.handle_command(SessionCommand::SetDisabledTools {
-            tools: requested_tools,
-        })
-        .await;
+        ctrl.handle_command(SessionCommand::SetDisabledTools { tools: requested_tools }).await;
 
         assert_eq!(ctrl.core_state, previous_state);
         assert!(rebuilder.take_calls().is_empty());

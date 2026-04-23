@@ -10,17 +10,23 @@
 //!
 //! Hooks allow custom behavior before/after compaction.
 
+mod tool_summaries;
+
 use clankers_provider::Provider;
 use clankers_provider::message::AgentMessage;
 use clankers_util::token::estimate_tokens;
 use tokio::sync::mpsc;
+pub use tool_summaries::prune_tool_results;
+pub use tool_summaries::summarize_tool_result;
+
+pub const RECENT_TOOL_RESULTS_TO_KEEP: usize = 3;
 
 /// Compaction result
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct CompactionResult {
-    /// Compacted messages (fewer than input)
+    /// Compacted messages after truncation or tool-result summarization.
     pub messages: Vec<AgentMessage>,
-    /// Number of messages removed
+    /// Number of messages compacted or summarized.
     pub compacted_count: usize,
     /// Estimated tokens saved
     pub tokens_saved: usize,
@@ -58,6 +64,53 @@ impl Default for AutoCompactConfig {
             strategy: CompactionStrategy::Truncation,
             enabled: true,
         }
+    }
+}
+
+pub fn tail_start_for_recent_tool_results(messages: &[AgentMessage], keep_recent: usize) -> usize {
+    if keep_recent == 0 {
+        return messages.len();
+    }
+
+    let tool_result_positions: Vec<usize> = messages
+        .iter()
+        .enumerate()
+        .filter_map(|(index, message)| match message {
+            AgentMessage::ToolResult(_) => Some(index),
+            _ => None,
+        })
+        .collect();
+
+    if tool_result_positions.len() <= keep_recent {
+        return 0;
+    }
+
+    let keep_start = tool_result_positions.len().saturating_sub(keep_recent);
+    tool_result_positions[keep_start]
+}
+
+pub fn compact_tool_results(messages: &[AgentMessage], keep_recent: usize) -> CompactionResult {
+    let tail_start_idx = tail_start_for_recent_tool_results(messages, keep_recent);
+    let compacted_count = tool_summaries::count_prunable_tool_results(messages, tail_start_idx);
+    if compacted_count == 0 {
+        return CompactionResult {
+            messages: messages.to_vec(),
+            compacted_count: 0,
+            tokens_saved: 0,
+            summary: None,
+        };
+    }
+
+    let compacted_messages = prune_tool_results(messages, tail_start_idx);
+    let before_tokens: usize = messages.iter().map(estimate_message_tokens).sum();
+    let after_tokens: usize = compacted_messages.iter().map(estimate_message_tokens).sum();
+    let tokens_saved = before_tokens.saturating_sub(after_tokens);
+
+    CompactionResult {
+        messages: compacted_messages,
+        compacted_count,
+        tokens_saved,
+        summary: None,
     }
 }
 

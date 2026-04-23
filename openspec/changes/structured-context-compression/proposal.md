@@ -1,12 +1,12 @@
 ## Why
 
-Clankers' current context compaction is truncation-only: it drops middle messages when the context window fills up. This discards tool results, decisions, and working state with no summary. Hermes has a structured compressor that summarizes tool outputs inline, generates iterative LLM summaries with Active Task / Resolved / Pending sections, and uses token-budget tail protection. The gap means clankers loses context quality rapidly in long sessions.
+Clankers' current context compaction is truncation-only: it drops middle messages when the context window fills up. This discards tool results, decisions, and working state with no summary. Hermes has a structured compressor that summarizes tool outputs inline, generates iterative LLM summaries with stable sections for active task, key decisions, files modified, and remaining work, and uses token-budget tail protection. The gap means clankers loses context quality rapidly in long sessions.
 
 ## What Changes
 
 - Replace truncation-only compaction with a multi-pass compression pipeline
 - Add tool-result summarization as a cheap pre-pass (no LLM needed — pattern-match tool name + args to generate one-line descriptions)
-- Add LLM-powered structured summarization with a template that tracks resolved questions, active task, and remaining work
+- Add LLM-powered structured summarization with a template that tracks active task, key decisions, files modified, and remaining work
 - Support iterative summary updates when compression fires multiple times in a session
 - Protect tail messages by token budget (not fixed count) to preserve recent context quality
 

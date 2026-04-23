@@ -15,6 +15,11 @@ The system SHALL replace tool result content older than the tail window with inf
 - **WHEN** a tool result for an unrecognized tool name is pruned
 - **THEN** a generic summary is generated showing tool name, first argument values, and content size
 
+#### Scenario: Manual /compact reuses pruning path
+- **WHEN** a user invokes `/compact` in standalone or daemon-backed sessions
+- **THEN** older tool results are pruned through the same shared helper used by the pruning pre-pass
+- **THEN** recent tail tool results remain intact
+
 ---
 
 ### Requirement: LLM-powered structured summarization
@@ -60,4 +65,4 @@ The system SHALL prefix compaction summaries with a notice that frames the summa
 #### Scenario: Model receives compacted context
 - **WHEN** the model receives a conversation with a compaction summary
 - **THEN** the summary is prefixed with a handoff notice
-- **THEN** the model does not re-execute tasks described in the summary
+- **THEN** the handoff notice tells the model to treat the summary as background reference and not to re-execute tasks described in it

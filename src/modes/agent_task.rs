@@ -121,10 +121,12 @@ pub(crate) fn spawn_agent_task(
                     agent = agent.with_tools(filtered);
                 }
                 AgentCommand::CompressContext => {
-                    // For now, this is a no-op signal. The actual compression
-                    // happens when the compress tool slot is read by the turn loop,
-                    // or can be expanded later to do inline compression here.
-                    tracing::info!("Compress context requested via slash command");
+                    let result = agent.compact_messages();
+                    tracing::info!(
+                        compacted_count = result.compacted_count,
+                        tokens_saved = result.tokens_saved,
+                        "Compress context requested via slash command"
+                    );
                 }
                 AgentCommand::Quit => break,
             }
@@ -220,10 +222,12 @@ async fn handle_login(
                 Ok(()) => {
                     crate::provider::openai_codex::reset_entitlement(provider, None);
                     agent.provider().reload_credentials().await;
-                    done_tx.send(TaskResult::LoginDone(Ok(format!(
-                        "Authentication successful! Saved '{}' for provider '{}'.",
-                        account, provider
-                    )))).ok();
+                    done_tx
+                        .send(TaskResult::LoginDone(Ok(format!(
+                            "Authentication successful! Saved '{}' for provider '{}'.",
+                            account, provider
+                        ))))
+                        .ok();
                 }
                 Err(e) => {
                     done_tx.send(TaskResult::LoginDone(Err(format!("Failed to save credentials: {}", e)))).ok();
@@ -399,14 +403,14 @@ mod tests {
             _request: CompletionRequest,
             tx: mpsc::Sender<StreamEvent>,
         ) -> crate::provider::error::Result<()> {
-            tx
-                .send(StreamEvent::ContentBlockDelta {
-                    index: 0,
-                    delta: ContentDelta::TextDelta {
-                        text: self.response.clone(),
-                    },
-                })
-                .await.ok();
+            tx.send(StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: ContentDelta::TextDelta {
+                    text: self.response.clone(),
+                },
+            })
+            .await
+            .ok();
             tx.send(StreamEvent::MessageStop).await.ok();
             Ok(())
         }
@@ -514,14 +518,14 @@ mod tests {
                 tx: mpsc::Sender<StreamEvent>,
             ) -> crate::provider::error::Result<()> {
                 *self.captured.lock().unwrap() = Some(request);
-                tx
-                    .send(StreamEvent::ContentBlockDelta {
-                        index: 0,
-                        delta: ContentDelta::TextDelta {
-                            text: "rewritten".into(),
-                        },
-                    })
-                    .await.ok();
+                tx.send(StreamEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: ContentDelta::TextDelta {
+                        text: "rewritten".into(),
+                    },
+                })
+                .await
+                .ok();
                 tx.send(StreamEvent::MessageStop).await.ok();
                 Ok(())
             }
