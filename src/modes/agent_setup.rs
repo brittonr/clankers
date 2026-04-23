@@ -45,6 +45,7 @@ pub(crate) fn build_agent_with_tools(
         .with_monitor(process_monitor.clone() as Arc<dyn clankers_tui_types::ProcessDataSource>);
 
     let tool_env = crate::modes::common::ToolEnv {
+        settings: Some(settings.clone()),
         event_tx: Some(event_tx),
         panel_tx: Some(panel_tx),
         todo_tx: Some(todo_tx),

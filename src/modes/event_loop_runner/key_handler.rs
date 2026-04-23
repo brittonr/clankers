@@ -674,6 +674,8 @@ mod tests {
             None,
         )
         .expect("persisted message should save");
+        mgr.record_compaction_summary("## Active Task\n- resumed work".to_string())
+            .expect("persisted compaction summary should save");
         (mgr.file_path().to_path_buf(), session_id, cwd)
     }
 
@@ -764,4 +766,5 @@ mod tests {
             .expect("router request should be captured");
         assert_eq!(captured.extra_params.get("_session_id"), Some(&json!(session_id)));
     }
+
 }

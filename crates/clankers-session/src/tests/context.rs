@@ -65,3 +65,18 @@ fn test_session_resume_with_resume_entry() {
     let context = mgr2.build_context().unwrap();
     assert_eq!(context.len(), 1);
 }
+
+#[test]
+fn test_session_persists_latest_compaction_summary() {
+    let tmp = tempfile::TempDir::new().unwrap();
+    let sessions_dir = tmp.path();
+
+    let mut mgr = SessionManager::create(sessions_dir, "/tmp/test", "claude-sonnet", None, None, None).unwrap();
+    assert!(mgr.latest_compaction_summary().is_none());
+
+    mgr.record_compaction_summary("## Active Task\n- continue".to_string()).unwrap();
+    assert_eq!(mgr.latest_compaction_summary(), Some("## Active Task\n- continue"));
+
+    let reopened = SessionManager::open(mgr.file_path().to_path_buf()).unwrap();
+    assert_eq!(reopened.latest_compaction_summary(), Some("## Active Task\n- continue"));
+}

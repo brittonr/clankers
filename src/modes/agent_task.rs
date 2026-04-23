@@ -74,6 +74,7 @@ pub(crate) fn spawn_agent_task(
                 AgentCommand::TruncateMessages(n) => agent.truncate_messages(n),
                 AgentCommand::SeedMessages(msgs) => agent.seed_messages(msgs),
                 AgentCommand::SetSessionId(session_id) => agent.set_session_id(session_id),
+                AgentCommand::SetCompactionSummary(summary) => agent.set_latest_compaction_summary(summary),
                 AgentCommand::SetThinkingLevel(level) => {
                     let level = agent.set_thinking_level(level);
                     done_tx.send(TaskResult::ThinkingToggled(thinking_msg(&level), level)).ok();

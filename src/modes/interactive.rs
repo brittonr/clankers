@@ -78,7 +78,7 @@ pub async fn run_interactive(
         crate::worktree::gc::spawn_startup_gc(db_clone, repo_root);
     }
 
-    let (session_manager, seed_messages, worktree_setup) =
+    let (session_manager, seed_messages, latest_compaction_summary, worktree_setup) =
         super::session_setup::setup_session(&mut app, &cwd, &model, &db, &settings, resume_opts);
 
     // ── Enter worktree working directory ─────────────────────────────
@@ -218,6 +218,7 @@ pub async fn run_interactive(
         keymap,
         plugin_manager,
         seed_messages,
+        latest_compaction_summary,
         db.clone(),
         &settings,
         slash_registry,
@@ -288,6 +289,7 @@ async fn run_event_loop(
     keymap: Keymap,
     plugin_manager: Option<Arc<std::sync::Mutex<crate::plugin::PluginManager>>>,
     seed_messages: Vec<crate::provider::message::AgentMessage>,
+    latest_compaction_summary: Option<String>,
     db: Option<crate::db::Db>,
     settings: &crate::config::settings::Settings,
     slash_registry: crate::slash_commands::SlashRegistry,
@@ -298,6 +300,10 @@ async fn run_event_loop(
     let (cmd_tx, cmd_rx) = tokio::sync::mpsc::unbounded_channel::<AgentCommand>();
     let (done_tx, done_rx) = tokio::sync::mpsc::unbounded_channel::<TaskResult>();
 
+    if latest_compaction_summary.is_some() {
+        cmd_tx.send(AgentCommand::SetCompactionSummary(latest_compaction_summary)).ok();
+    }
+
     // If we have seed messages from a resumed session, restore them into the agent
     // and rebuild display blocks so the user sees the conversation
     if !seed_messages.is_empty() {
@@ -307,6 +313,7 @@ async fn run_event_loop(
 
     // Clone tool_env and plugin_manager for tool rebuilds inside the agent task.
     let tool_env_for_rebuild = crate::modes::common::ToolEnv {
+        settings: Some(settings.clone()),
         event_tx: Some(agent.event_sender()),
         schedule_engine: Some(schedule_engine),
         ..Default::default()
@@ -355,9 +362,12 @@ pub(crate) fn resume_session_from_file(
             let msgs = mgr.build_context().unwrap_or_default();
             let msg_count = msgs.len();
             let resumed_session_id = mgr.session_id().to_string();
+            let latest_compaction_summary = mgr.latest_compaction_summary().map(str::to_string);
             app.session_id.clone_from(&resumed_session_id);
             mgr.record_resume(crate::provider::message::MessageId::new("slash-resume")).ok();
             *session_manager = Some(mgr);
+
+            cmd_tx.send(AgentCommand::SetCompactionSummary(latest_compaction_summary)).ok();
 
             app.conversation.blocks.clear();
             app.conversation.all_blocks.clear();

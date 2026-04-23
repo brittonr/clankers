@@ -628,6 +628,7 @@ fn build_agent_context(ctx: &CommandContext) -> Result<crate::modes::rpc::iroh::
         monitor
     };
     let env = crate::modes::common::ToolEnv {
+        settings: Some(ctx.settings.clone()),
         process_monitor: Some(rpc_process_monitor),
         ..Default::default()
     };

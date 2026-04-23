@@ -61,6 +61,8 @@ pub struct SessionManager {
     persisted_ids: std::collections::HashSet<MessageId>,
     /// The ID of the last message on the currently active branch.
     active_leaf_id: Option<MessageId>,
+    /// Latest persisted compaction summary for iterative structured compaction.
+    latest_compaction_summary: Option<String>,
     /// Worktree path if this session is running in a worktree
     worktree_path: Option<String>,
     /// Worktree branch name
@@ -103,6 +105,7 @@ impl SessionManager {
             doc,
             persisted_ids: std::collections::HashSet::new(),
             active_leaf_id: None,
+            latest_compaction_summary: None,
             worktree_path: worktree_path.map(String::from),
             worktree_branch: worktree_branch.map(String::from),
         })
@@ -135,6 +138,13 @@ impl SessionManager {
             messages.iter().map(|m| m.id.clone()).collect();
 
         let entries = automerge_store::to_session_entries(&doc)?;
+        let latest_compaction_summary = entries.iter().filter_map(|entry| {
+            if let SessionEntry::Compaction(compaction) = entry {
+                Some(compaction.summary.clone())
+            } else {
+                None
+            }
+        }).last();
         let tree = SessionTree::build(entries);
         let active_leaf_id = tree
             .find_latest_leaf(None)
@@ -149,6 +159,7 @@ impl SessionManager {
             doc,
             persisted_ids,
             active_leaf_id,
+            latest_compaction_summary,
             worktree_path: header.worktree_path,
             worktree_branch: header.worktree_branch,
         })
@@ -253,6 +264,27 @@ impl SessionManager {
         automerge_store::put_annotation(&mut self.doc, &annotation)?;
         automerge_store::save_incremental(&mut self.doc, &self.file_path)?;
         Ok(())
+    }
+
+    /// Record a compaction summary annotation for iterative reuse.
+    pub fn record_compaction_summary(&mut self, summary: String) -> Result<()> {
+        let annotation = AnnotationEntry::Compaction(CompactionEntry {
+            id: MessageId::generate(),
+            compacted_range: Vec::new(),
+            summary: summary.clone(),
+            tokens_before: 0,
+            tokens_after: 0,
+            timestamp: Utc::now(),
+        });
+
+        automerge_store::put_annotation(&mut self.doc, &annotation)?;
+        automerge_store::save_incremental(&mut self.doc, &self.file_path)?;
+        self.latest_compaction_summary = Some(summary);
+        Ok(())
+    }
+
+    pub fn latest_compaction_summary(&self) -> Option<&str> {
+        self.latest_compaction_summary.as_deref()
     }
 
     /// Get the current active leaf message ID.

@@ -99,6 +99,7 @@ async fn start_foreground(
     );
 
     let env = crate::modes::common::ToolEnv {
+        settings: Some(ctx.settings.clone()),
         process_monitor: Some(process_monitor),
         schedule_engine: Some(schedule_engine.clone()),
         ..Default::default()

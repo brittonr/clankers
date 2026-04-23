@@ -92,6 +92,7 @@ impl SessionFactory {
                     factory,
                 });
         let env = crate::modes::common::ToolEnv {
+            settings: Some(self.settings.clone()),
             panel_tx: Some(panel_tx),
             bash_confirm_tx,
             actor_ctx,

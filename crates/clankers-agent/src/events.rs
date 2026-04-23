@@ -117,6 +117,9 @@ pub enum AgentEvent {
         compacted_count: usize,
         tokens_saved: usize,
     },
+    SessionCompactionSummary {
+        summary: String,
+    },
 
     // Model events
     ModelChange {
@@ -182,6 +185,7 @@ impl AgentEvent {
             Self::UsageUpdate { .. } => "usage_update",
             Self::SessionBranch { .. } => "session_branch",
             Self::SessionCompaction { .. } => "session_compaction",
+            Self::SessionCompactionSummary { .. } => "session_compaction_summary",
             Self::UserCancel => "user_cancel",
             _ => "",
         }

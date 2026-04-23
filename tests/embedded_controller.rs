@@ -6,6 +6,7 @@
 //! auto-test) behave correctly.
 
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use clankers_agent::Agent;
 use clankers_agent::events::AgentEvent;
@@ -14,10 +15,21 @@ use clankers_controller::SessionController;
 use clankers_controller::config::ControllerConfig;
 use clankers_controller::loop_mode::LoopConfig;
 use clankers_protocol::DaemonEvent;
+use clankers_provider::message::AgentMessage;
+use clankers_provider::message::Content;
+use clankers_provider::message::MessageId;
+use clankers_provider::message::UserMessage;
 
 // ── Test helpers ─────────────────────────────────────────────────────────
 
 struct MockProvider;
+
+#[derive(Clone)]
+struct CapturingSummaryProvider {
+    captured_prompt: Arc<Mutex<Vec<String>>>,
+    response: &'static str,
+    fail: bool,
+}
 
 #[async_trait::async_trait]
 impl clankers_provider::Provider for MockProvider {
@@ -33,6 +45,70 @@ impl clankers_provider::Provider for MockProvider {
     }
     fn name(&self) -> &str {
         "mock"
+    }
+}
+
+#[async_trait::async_trait]
+impl clankers_provider::Provider for CapturingSummaryProvider {
+    async fn complete(
+        &self,
+        request: clankers_provider::CompletionRequest,
+        tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+    ) -> clankers_provider::error::Result<()> {
+        let prompt = request
+            .messages
+            .iter()
+            .find_map(|message| match message {
+                AgentMessage::User(user) => user.content.iter().find_map(|content| match content {
+                    Content::Text { text } => Some(text.clone()),
+                    _ => None,
+                }),
+                _ => None,
+            })
+            .unwrap_or_default();
+        self
+            .captured_prompt
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .push(prompt);
+
+        if self.fail {
+            return Err(clankers_provider::error::provider_err("summary model unavailable"));
+        }
+
+        tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+            index: 0,
+            delta: clankers_provider::streaming::ContentDelta::TextDelta {
+                text: self.response.to_string(),
+            },
+        })
+        .await
+        .ok();
+        Ok(())
+    }
+
+    fn models(&self) -> &[clankers_provider::Model] {
+        static MODELS: std::sync::OnceLock<Vec<clankers_provider::Model>> = std::sync::OnceLock::new();
+        MODELS
+            .get_or_init(|| {
+                vec![clankers_provider::Model {
+                    id: "test-model".to_string(),
+                    name: "test-model".to_string(),
+                    provider: "capturing-summary".to_string(),
+                    max_input_tokens: 4_096,
+                    max_output_tokens: 4_096,
+                    supports_thinking: false,
+                    supports_images: false,
+                    supports_tools: false,
+                    input_cost_per_mtok: None,
+                    output_cost_per_mtok: None,
+                }]
+            })
+            .as_slice()
+    }
+
+    fn name(&self) -> &str {
+        "capturing-summary"
     }
 }
 
@@ -62,6 +138,49 @@ fn make_daemon_controller() -> SessionController {
 
 fn start_embedded_prompt(ctrl: &mut SessionController, prompt: &str) {
     assert!(ctrl.start_embedded_prompt(prompt, 0));
+}
+
+fn user_text_message(text: &str) -> AgentMessage {
+    AgentMessage::User(UserMessage {
+        id: MessageId::generate(),
+        content: vec![Content::Text { text: text.to_string() }],
+        timestamp: chrono::Utc::now(),
+    })
+}
+
+fn structured_settings() -> clankers_config::settings::Settings {
+    let mut settings = clankers_config::settings::Settings::default();
+    settings.compression.summary_model = "haiku".to_string();
+    settings
+}
+
+fn make_structured_agent(provider: Arc<dyn clankers_provider::Provider>) -> Agent {
+    Agent::new(
+        provider,
+        vec![],
+        structured_settings(),
+        "test-model".to_string(),
+        "test system prompt".to_string(),
+    )
+}
+
+fn make_persisted_session(tmp: &tempfile::TempDir, summary: &str, message_count: usize) -> clankers_session::SessionManager {
+    let cwd = tmp.path().to_string_lossy().to_string();
+    let mut mgr = clankers_session::SessionManager::create(tmp.path(), &cwd, "test-model", None, None, None)
+        .expect("session should create");
+    for index in 0..message_count {
+        mgr.append_message(user_text_message(&"x".repeat((index + 1) * 120)), None)
+            .expect("message should persist");
+    }
+    mgr.record_compaction_summary(summary.to_string())
+        .expect("summary should persist");
+    mgr
+}
+
+fn restored_session_messages(message_count: usize) -> Vec<AgentMessage> {
+    (0..message_count)
+        .map(|index| user_text_message(&"x".repeat((index + 1) * 120)))
+        .collect()
 }
 
 // ── Embedded mode: feed_event + take_outgoing ────────────────────────────
@@ -609,4 +728,78 @@ fn audit_tracks_tool_calls() {
     // Should not crash — audit tracker processes these without error
     let events = ctrl.take_outgoing();
     assert!(events.len() >= 3); // ToolCall + ToolStart + ToolDone
+}
+
+#[tokio::test]
+async fn embedded_full_compaction_pipeline_reuses_persisted_summary_after_reopen() {
+    let tmp = tempfile::TempDir::new().expect("tempdir should exist");
+    let persisted_summary = "## Active Task\n- persisted summary";
+    let message_count = 8;
+    let session_manager = make_persisted_session(&tmp, persisted_summary, message_count);
+    let session_id = session_manager.session_id().to_string();
+    let reopened = clankers_session::SessionManager::open(session_manager.file_path().to_path_buf())
+        .expect("session should reopen");
+    let restored_summary = reopened.latest_compaction_summary().map(str::to_string);
+    assert_eq!(restored_summary.as_deref(), Some(persisted_summary));
+
+    let captured_prompt = Arc::new(Mutex::new(Vec::new()));
+    let provider: Arc<dyn clankers_provider::Provider> = Arc::new(CapturingSummaryProvider {
+        captured_prompt: captured_prompt.clone(),
+        response: "## Active Task\n- merged summary",
+        fail: false,
+    });
+    let mut agent = make_structured_agent(provider);
+    agent.set_session_id(session_id);
+    agent.seed_messages(restored_session_messages(message_count));
+    agent.set_latest_compaction_summary(restored_summary);
+
+    let prompt_text = &"follow-up prompt ".repeat(512);
+    let prompt_result = agent.prompt(prompt_text).await;
+    assert!(prompt_result.is_ok(), "prompt should succeed: {prompt_result:?}");
+    assert_eq!(agent.latest_compaction_summary(), Some("## Active Task\n- merged summary"));
+
+    let prompts = captured_prompt
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone();
+    let summary_prompt = prompts
+        .iter()
+        .find(|prompt| prompt.contains("## Conversation Excerpt"))
+        .expect("summary prompt should exist");
+    assert!(summary_prompt.contains("## Previous Summary"));
+    assert!(summary_prompt.contains(persisted_summary));
+    assert!(summary_prompt.contains("[User]"));
+}
+
+#[tokio::test]
+async fn embedded_structured_compaction_falls_back_when_summary_model_unavailable() {
+    let captured_prompt = Arc::new(Mutex::new(Vec::new()));
+    let provider: Arc<dyn clankers_provider::Provider> = Arc::new(CapturingSummaryProvider {
+        captured_prompt,
+        response: "",
+        fail: true,
+    });
+    let mut agent = make_structured_agent(provider);
+    agent.set_session_id("fallback-session".to_string());
+    agent.seed_messages(restored_session_messages(8));
+
+    let prompt_result = agent.prompt(&"x".repeat(20_000)).await;
+    assert!(prompt_result.is_err(), "provider failure should surface after fallback compaction");
+    assert!(agent.latest_compaction_summary().is_none());
+
+    let messages = agent.messages();
+    assert!(!messages.is_empty(), "fallback should still keep compacted messages");
+    let compacted_text = match &messages[1] {
+        AgentMessage::User(user) => user
+            .content
+            .iter()
+            .find_map(|content| match content {
+                Content::Text { text } => Some(text.as_str()),
+                _ => None,
+            })
+            .expect("compacted marker text should exist"),
+        other => panic!("expected compaction marker user message, got {other:?}"),
+    };
+    assert!(compacted_text.contains("[Context compacted:"));
+    assert!(compacted_text.contains("Recent context preserved."));
 }

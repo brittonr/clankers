@@ -403,6 +403,7 @@ async fn run_headless(
         use clankers::modes::common::build_all_tiered_tools;
         use clankers::modes::common::resolve_tool_tiers;
         let env = clankers::modes::common::ToolEnv {
+            settings: Some(ctx.settings.clone()),
             process_monitor: Some(headless_process_monitor),
             ..Default::default()
         };

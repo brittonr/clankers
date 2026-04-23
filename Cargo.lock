@@ -1546,6 +1546,7 @@ dependencies = [
  "clankers-agent",
  "clankers-config",
  "clankers-core",
+ "clankers-db",
  "clankers-hooks",
  "clankers-message",
  "clankers-protocol",

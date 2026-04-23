@@ -87,10 +87,14 @@
 
   # Context compression settings.
   compression | {
-    # Model for summarization (empty = cheapest available).
+    # Model for manual compression requests (empty = cheapest available).
     model | String | optional,
-    # Recent messages to keep intact during compression.
+    # Cheap/fast model for structured summary generation.
+    summaryModel | String | default = "haiku",
+    # Recent messages to keep intact during manual compression.
     keepRecent | Number | default = 4,
+    # Fraction of context window reserved for recent-message tail protection.
+    tailBudgetFraction | Number | default = 0.40,
     # Minimum message count before compression kicks in.
     minMessages | Number | default = 5,
   } | default = {},

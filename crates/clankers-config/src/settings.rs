@@ -288,30 +288,49 @@ impl Default for MemoryLimits {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompressionSettings {
-    /// Model to use for summarization. When absent, uses the cheapest
-    /// available model from the active provider.
+    /// Model to use for manual compression requests.
+    /// When absent, uses the cheapest available model from the active provider.
     #[serde(default)]
     pub model: Option<String>,
-    /// Number of recent messages to keep intact during compression.
+    /// Cheap/fast model to use for automatic structured summary generation.
+    #[serde(default = "default_summary_model")]
+    pub summary_model: String,
+    /// Number of recent messages to keep intact during manual compression.
     #[serde(default = "default_keep_recent")]
     pub keep_recent: usize,
+    /// Fraction of the context window reserved for recent-message tail protection.
+    #[serde(default = "default_tail_budget_fraction")]
+    pub tail_budget_fraction: f64,
     /// Minimum message count before compression is allowed.
     #[serde(default = "default_min_messages")]
     pub min_messages: usize,
 }
 
+const DEFAULT_KEEP_RECENT: usize = 4;
+const DEFAULT_TAIL_BUDGET_FRACTION: f64 = 0.40;
+const DEFAULT_MIN_MESSAGES: usize = 5;
+const DEFAULT_SUMMARY_MODEL: &str = "haiku";
+
 fn default_keep_recent() -> usize {
-    4
+    DEFAULT_KEEP_RECENT
+}
+fn default_summary_model() -> String {
+    DEFAULT_SUMMARY_MODEL.to_string()
+}
+fn default_tail_budget_fraction() -> f64 {
+    DEFAULT_TAIL_BUDGET_FRACTION
 }
 fn default_min_messages() -> usize {
-    5
+    DEFAULT_MIN_MESSAGES
 }
 
 impl Default for CompressionSettings {
     fn default() -> Self {
         Self {
             model: None,
+            summary_model: default_summary_model(),
             keep_recent: default_keep_recent(),
+            tail_budget_fraction: default_tail_budget_fraction(),
             min_messages: default_min_messages(),
         }
     }

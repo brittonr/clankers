@@ -176,6 +176,8 @@ impl ToolTier {
 /// Use `Default::default()` for headless / test contexts.
 #[derive(Default, Clone)]
 pub struct ToolEnv {
+    /// Settings needed by tool constructors that mirror runtime config.
+    pub settings: Option<crate::config::settings::Settings>,
     /// Event bus for streaming partial results to the TUI.
     pub event_tx: Option<broadcast::Sender<AgentEvent>>,
     /// Channel for subagent panel events (delegate/subagent status).
@@ -303,7 +305,17 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         ),
         (
             ToolTier::Specialty,
-            Arc::new(crate::tools::compress::CompressTool::new(crate::tools::compress::compression_slot(), 4, 5)),
+            Arc::new(crate::tools::compress::CompressTool::new(
+                crate::tools::compress::compression_slot(),
+                env.settings
+                    .as_ref()
+                    .map(|settings| settings.compression.keep_recent)
+                    .unwrap_or(crate::config::settings::CompressionSettings::default().keep_recent),
+                env.settings
+                    .as_ref()
+                    .map(|settings| settings.compression.min_messages)
+                    .unwrap_or(crate::config::settings::CompressionSettings::default().min_messages),
+            )),
         ),
         // ── Matrix (daemon only) ────────────────────────────────────
         (ToolTier::Matrix, Arc::new(crate::tools::matrix::MatrixSendTool::new())),

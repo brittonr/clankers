@@ -23,6 +23,7 @@ pub(crate) enum AgentCommand {
     CycleThinkingLevel,
     SeedMessages(Vec<crate::provider::message::AgentMessage>),
     SetSessionId(String),
+    SetCompactionSummary(Option<String>),
     Quit,
     Login {
         code: String,

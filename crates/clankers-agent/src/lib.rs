@@ -46,6 +46,8 @@ use self::turn::TurnConfig;
 pub struct Agent {
     /// The LLM provider
     provider: Arc<dyn Provider>,
+    /// Latest structured compaction summary for iterative updates.
+    latest_compaction_summary: Option<String>,
     /// Available tools by name
     tools: HashMap<String, Arc<dyn Tool>>,
     /// Conversation messages
@@ -102,6 +104,7 @@ impl Agent {
 
         Self {
             provider,
+            latest_compaction_summary: None,
             tools: tool_map,
             messages: Vec::new(),
             event_tx,
@@ -248,6 +251,14 @@ impl Agent {
         result
     }
 
+    pub fn latest_compaction_summary(&self) -> Option<&str> {
+        self.latest_compaction_summary.as_deref()
+    }
+
+    pub fn set_latest_compaction_summary(&mut self, summary: Option<String>) {
+        self.latest_compaction_summary = summary;
+    }
+
     /// Run the agent with a user prompt and optional image content blocks
     pub async fn prompt_with_images(&mut self, text: &str, images: Vec<Content>) -> Result<()> {
         let mut content = vec![Content::Text { text: text.to_string() }];
@@ -362,7 +373,7 @@ impl Agent {
 
     /// Handle auto-compaction if messages exceed threshold
     async fn handle_auto_compaction(&mut self, max_input: usize) {
-        let auto_compact_config = compaction::AutoCompactConfig::default();
+        let auto_compact_config = compaction::AutoCompactConfig::from_settings(&self.settings.compression);
         if !compaction::should_auto_compact(&self.messages, max_input, &auto_compact_config) {
             return;
         }
@@ -373,24 +384,46 @@ impl Agent {
             max_input,
         );
 
-        let result = compaction::compact_with_llm(
-            &self.messages,
-            max_input,
-            auto_compact_config.keep_recent,
-            self.provider.as_ref(),
-            &self.model,
-            &self.session_id,
-        )
-        .await;
+        let result = match auto_compact_config.strategy {
+            compaction::CompactionStrategy::Structured => compaction::compact_structured(
+                &self.messages,
+                max_input,
+                auto_compact_config.tail_budget_fraction,
+                self.provider.as_ref(),
+                auto_compact_config.summary_model.as_deref().unwrap_or(&self.model),
+                &self.session_id,
+                self.latest_compaction_summary.as_deref(),
+            )
+            .await,
+            compaction::CompactionStrategy::Truncation | compaction::CompactionStrategy::LlmSummary => {
+                let tail_budget_tokens =
+                    (max_input as f64 * auto_compact_config.tail_budget_fraction) as usize;
+                let tail_start_idx = compaction::select_tail_by_budget(&self.messages, tail_budget_tokens);
+                let keep_recent = self.messages.len().saturating_sub(tail_start_idx);
+                compaction::compact_with_llm(
+                    &self.messages,
+                    max_input,
+                    keep_recent,
+                    self.provider.as_ref(),
+                    &self.model,
+                    &self.session_id,
+                )
+                .await
+            }
+        };
 
         if result.compacted_count > 0 {
             self.messages = result.messages;
+            self.latest_compaction_summary = result.summary.clone();
             self.event_tx
                 .send(AgentEvent::SessionCompaction {
                     compacted_count: result.compacted_count,
                     tokens_saved: result.tokens_saved,
                 })
                 .ok();
+            if let Some(summary) = result.summary {
+                self.event_tx.send(AgentEvent::SessionCompactionSummary { summary }).ok();
+            }
             tracing::info!("Auto-compacted {} messages, saved ~{} tokens", result.compacted_count, result.tokens_saved,);
         }
     }
@@ -757,6 +790,54 @@ mod tests {
         definition: ToolDefinition,
     }
 
+    #[derive(Clone)]
+    struct CompactionSummaryProvider {
+        response: &'static str,
+        captured_prompt: Arc<std::sync::Mutex<Option<String>>>,
+    }
+
+    #[async_trait::async_trait]
+    impl clankers_provider::Provider for CompactionSummaryProvider {
+        async fn complete(
+            &self,
+            request: clankers_provider::CompletionRequest,
+            tx: tokio::sync::mpsc::Sender<clankers_provider::streaming::StreamEvent>,
+        ) -> clankers_provider::error::Result<()> {
+            let prompt = request
+                .messages
+                .iter()
+                .find_map(|message| match message {
+                    AgentMessage::User(user) => user.content.iter().find_map(|content| match content {
+                        Content::Text { text } => Some(text.clone()),
+                        _ => None,
+                    }),
+                    _ => None,
+                })
+                .unwrap_or_default();
+            *self
+                .captured_prompt
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(prompt);
+            tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: clankers_provider::streaming::ContentDelta::TextDelta {
+                    text: self.response.to_string(),
+                },
+            })
+            .await
+            .ok();
+            Ok(())
+        }
+
+        fn models(&self) -> &[clankers_provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "compaction-summary-provider"
+        }
+    }
+
     #[async_trait::async_trait]
     impl Tool for StaticTool {
         fn definition(&self) -> &ToolDefinition {
@@ -771,6 +852,16 @@ mod tests {
     fn make_test_agent() -> Agent {
         Agent::new(
             Arc::new(MockProvider),
+            vec![],
+            Settings::default(),
+            "test-model".to_string(),
+            "test system prompt".to_string(),
+        )
+    }
+
+    fn make_structured_test_agent(provider: Arc<dyn clankers_provider::Provider>) -> Agent {
+        Agent::new(
+            provider,
             vec![],
             Settings::default(),
             "test-model".to_string(),
@@ -809,6 +900,14 @@ mod tests {
             model: "test-model".to_string(),
             usage: clankers_provider::Usage::default(),
             stop_reason: StopReason::ToolUse,
+            timestamp: Utc::now(),
+        })
+    }
+
+    fn user_text_message(text: &str) -> AgentMessage {
+        AgentMessage::User(UserMessage {
+            id: MessageId::generate(),
+            content: vec![Content::Text { text: text.to_string() }],
             timestamp: Utc::now(),
         })
     }
@@ -986,6 +1085,30 @@ mod tests {
             panic!("expected text content");
         };
         assert_eq!(text, "recent result 1");
+    }
+
+    #[tokio::test]
+    async fn handle_auto_compaction_reuses_previous_summary() {
+        let captured_prompt = Arc::new(std::sync::Mutex::new(None));
+        let provider: Arc<dyn clankers_provider::Provider> = Arc::new(CompactionSummaryProvider {
+            response: "## Active Task\n- merged",
+            captured_prompt: captured_prompt.clone(),
+        });
+        let mut agent = make_structured_test_agent(provider);
+        agent.set_session_id("session-1".to_string());
+        agent.set_latest_compaction_summary(Some("## Active Task\n- previous".to_string()));
+        agent.seed_messages((0..8).map(|index| user_text_message(&"x".repeat((index + 1) * 120))).collect());
+
+        agent.handle_auto_compaction(200).await;
+
+        assert_eq!(agent.latest_compaction_summary(), Some("## Active Task\n- merged"));
+        let prompt = captured_prompt
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+            .expect("captured summary prompt");
+        assert!(prompt.contains("## Previous Summary"));
+        assert!(prompt.contains("## Active Task\n- previous"));
     }
 
     #[tokio::test]

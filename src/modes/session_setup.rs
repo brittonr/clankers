@@ -19,6 +19,7 @@ pub(crate) fn setup_session(
 ) -> (
     Option<crate::session::SessionManager>,
     Vec<crate::provider::message::AgentMessage>,
+    Option<String>,
     Option<crate::worktree::session_bridge::WorktreeSetup>,
 ) {
     let paths = crate::config::ClankersPaths::get();
@@ -26,7 +27,7 @@ pub(crate) fn setup_session(
     let should_use_worktrees = settings.use_worktrees;
 
     if resume_opts.no_session {
-        return (None, Vec::new(), None);
+        return (None, Vec::new(), None, None);
     }
 
     if resume_opts.continue_last {
@@ -54,6 +55,7 @@ fn create_new_session(
 ) -> (
     Option<crate::session::SessionManager>,
     Vec<crate::provider::message::AgentMessage>,
+    Option<String>,
     Option<crate::worktree::session_bridge::WorktreeSetup>,
 ) {
     // Try to set up a worktree first so we can record it in the session header
@@ -78,11 +80,11 @@ fn create_new_session(
             if let Some(ref s) = wt_setup {
                 app.push_system(format!("Worktree: {}", s.branch), false);
             }
-            (Some(mgr), Vec::new(), wt_setup)
+            (Some(mgr), Vec::new(), None, wt_setup)
         }
         Err(e) => {
             tracing::warn!("Failed to create session: {}", e);
-            (None, Vec::new(), None)
+            (None, Vec::new(), None, None)
         }
     }
 }
@@ -96,9 +98,11 @@ fn resume_session(
 ) -> (
     Option<crate::session::SessionManager>,
     Vec<crate::provider::message::AgentMessage>,
+    Option<String>,
     Option<crate::worktree::session_bridge::WorktreeSetup>,
 ) {
     let msgs = mgr.build_context().unwrap_or_default();
+    let latest_compaction_summary = mgr.latest_compaction_summary().map(str::to_string);
     app.session_id = mgr.session_id().to_string();
 
     mgr.record_resume(crate::provider::message::MessageId::new(from_label)).ok();
@@ -111,7 +115,7 @@ fn resume_session(
     if let Some(ref s) = wt_setup {
         app.push_system(format!("Worktree: {}", s.branch), false);
     }
-    (Some(mgr), msgs, wt_setup)
+    (Some(mgr), msgs, latest_compaction_summary, wt_setup)
 }
 
 /// Resume the most recent session for this working directory.
@@ -125,6 +129,7 @@ fn resume_latest(
 ) -> (
     Option<crate::session::SessionManager>,
     Vec<crate::provider::message::AgentMessage>,
+    Option<String>,
     Option<crate::worktree::session_bridge::WorktreeSetup>,
 ) {
     let files = crate::session::store::list_sessions(sessions_dir, cwd);
@@ -154,6 +159,7 @@ fn resume_by_id(
 ) -> (
     Option<crate::session::SessionManager>,
     Vec<crate::provider::message::AgentMessage>,
+    Option<String>,
     Option<crate::worktree::session_bridge::WorktreeSetup>,
 ) {
     let files = crate::session::store::list_sessions(sessions_dir, cwd);
