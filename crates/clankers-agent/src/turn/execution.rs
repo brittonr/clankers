@@ -4,11 +4,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
-use clankers_engine::EngineCorrelationId;
-use clankers_engine::EngineEffect;
-use clankers_engine::EnginePromptSubmission;
-use clankers_engine::EngineState;
-use clankers_engine::plan_initial_model_request;
+use clankers_engine::EngineMessage;
+use clankers_engine::EngineMessageRole;
+use clankers_engine::EngineModelRequest;
 use clankers_provider::CompletionRequest;
 use clankers_provider::Provider;
 use clankers_provider::Usage;
@@ -21,45 +19,27 @@ use tokio_util::sync::CancellationToken;
 
 use super::CollectedResponse;
 use super::ContentBlockBuilder;
-use super::TurnConfig;
 use crate::error::AgentError;
 use crate::error::Result;
-
-pub(super) struct ExecutedTurn {
-    pub response: CollectedResponse,
-    pub request_state: EngineState,
-    pub request_id: EngineCorrelationId,
-}
-
-struct PlannedModelRequest {
-    request: CompletionRequest,
-    request_state: EngineState,
-    request_id: EngineCorrelationId,
-}
-
 use crate::events::AgentEvent;
 use crate::tool::Tool;
 use crate::tool::ToolContext;
-use crate::tool::ToolDefinition;
 use crate::tool::ToolResult as ToolExecResult;
 use crate::tool::progress::ToolResultAccumulator;
 
-/// Execute a single turn: build request, stream response, collect results
-pub(super) async fn execute_turn(
+const ENGINE_REQUEST_ASSISTANT_MODEL: &str = "engine-assistant";
+const ENGINE_REQUEST_TOOL_NAME: &str = "engine-tool";
+
+/// Execute a single engine-requested model call: stream response and collect results.
+pub(super) async fn stream_model_request(
     provider: &dyn Provider,
-    messages: &[AgentMessage],
-    config: &TurnConfig,
-    active_model: &str,
-    tool_defs: &[ToolDefinition],
+    request: CompletionRequest,
     event_tx: &broadcast::Sender<AgentEvent>,
     cancel: &CancellationToken,
-    session_id: &str,
-) -> Result<ExecutedTurn> {
-    let planned_request = build_initial_model_request(messages, config, active_model, tool_defs, session_id)?;
-
+) -> Result<CollectedResponse> {
     let (stream_tx, mut stream_rx) = mpsc::channel(256);
     let event_tx_clone = event_tx.clone();
-    let complete_fut = provider.complete(planned_request.request, stream_tx);
+    let complete_fut = provider.complete(request, stream_tx);
     let collect_fut = collect_stream_events(&mut stream_rx, &event_tx_clone);
 
     let (complete_result, collected) = tokio::select! {
@@ -70,65 +50,89 @@ pub(super) async fn execute_turn(
         result = async { tokio::join!(complete_fut, collect_fut) } => result,
     };
     complete_result?;
-    Ok(ExecutedTurn {
-        response: collected?,
-        request_state: planned_request.request_state,
-        request_id: planned_request.request_id,
+    collected
+}
+
+pub(super) fn completion_request_from_engine_request(engine_request: &EngineModelRequest) -> Result<CompletionRequest> {
+    let messages = agent_messages_from_engine_messages(&engine_request.messages)?;
+    Ok(CompletionRequest {
+        model: engine_request.model.clone(),
+        messages,
+        system_prompt: Some(engine_request.system_prompt.clone()),
+        max_tokens: engine_request.max_tokens,
+        temperature: engine_request.temperature,
+        tools: engine_request.tools.clone(),
+        thinking: engine_request.thinking.clone(),
+        no_cache: engine_request.no_cache,
+        cache_ttl: engine_request.cache_ttl.clone(),
+        extra_params: build_extra_params(&engine_request.session_id),
     })
 }
 
-fn build_initial_model_request(
-    messages: &[AgentMessage],
-    config: &TurnConfig,
-    active_model: &str,
-    tool_defs: &[ToolDefinition],
-    session_id: &str,
-) -> Result<PlannedModelRequest> {
-    let submission = EnginePromptSubmission {
-        messages: messages.to_vec(),
-        model: active_model.to_string(),
-        system_prompt: config.system_prompt.clone(),
-        max_tokens: config.max_tokens,
-        temperature: config.temperature,
-        thinking: config.thinking.clone(),
-        tools: tool_defs.to_vec(),
-        no_cache: config.no_cache,
-        cache_ttl: config.cache_ttl.clone(),
-        session_id: session_id.to_string(),
-    };
-    let outcome = plan_initial_model_request(&EngineState::new(), &submission);
+fn agent_messages_from_engine_messages(messages: &[EngineMessage]) -> Result<Vec<AgentMessage>> {
+    let request_timestamp = Utc::now();
+    let mut converted_messages = Vec::with_capacity(messages.len());
 
-    if outcome.rejection.is_some() {
+    for message in messages {
+        let agent_message = match message.role {
+            EngineMessageRole::User => AgentMessage::User(UserMessage {
+                id: MessageId::generate(),
+                content: message.content.clone(),
+                timestamp: request_timestamp,
+            }),
+            EngineMessageRole::Assistant => AgentMessage::Assistant(AssistantMessage {
+                id: MessageId::generate(),
+                content: message.content.clone(),
+                model: ENGINE_REQUEST_ASSISTANT_MODEL.to_string(),
+                usage: Usage::default(),
+                stop_reason: StopReason::Stop,
+                timestamp: request_timestamp,
+            }),
+            EngineMessageRole::Tool => AgentMessage::ToolResult(tool_result_message_from_engine_message(
+                message,
+                request_timestamp,
+            )?),
+        };
+        converted_messages.push(agent_message);
+    }
+
+    Ok(converted_messages)
+}
+
+fn tool_result_message_from_engine_message(
+    message: &EngineMessage,
+    request_timestamp: chrono::DateTime<chrono::Utc>,
+) -> Result<ToolResultMessage> {
+    let Some(Content::ToolResult {
+        tool_use_id,
+        content,
+        is_error,
+    }) = message.content.first()
+    else {
         return Err(AgentError::ProviderStreaming {
-            message: "engine rejected initial model request planning".to_string(),
+            message: "engine emitted a tool-role message without a tool_result content block".to_string(),
             status: None,
             retryable: false,
         });
+    };
+
+    Ok(ToolResultMessage {
+        id: MessageId::generate(),
+        call_id: tool_use_id.clone(),
+        tool_name: ENGINE_REQUEST_TOOL_NAME.to_string(),
+        content: content.clone(),
+        is_error: is_error.unwrap_or(false),
+        details: None,
+        timestamp: request_timestamp,
+    })
+}
+
+fn build_extra_params(session_id: &str) -> HashMap<String, Value> {
+    if session_id.is_empty() {
+        return HashMap::new();
     }
 
-    let clankers_engine::EngineOutcome {
-        next_state,
-        effects,
-        rejection: _,
-    } = outcome;
-
-    let model_request = effects
-        .into_iter()
-        .find_map(|effect| match effect {
-            EngineEffect::RequestModel(model_effect) => Some(model_effect),
-            _ => None,
-        })
-        .ok_or_else(|| AgentError::ProviderStreaming {
-            message: "engine omitted initial model request effect".to_string(),
-            status: None,
-            retryable: false,
-        })?;
-
-    Ok(PlannedModelRequest {
-        request: model_request.request,
-        request_state: next_state,
-        request_id: model_request.request_id,
-    })
+    HashMap::from([("_session_id".to_string(), Value::String(session_id.to_string()))])
 }
 
 /// Collect streaming events into a complete response

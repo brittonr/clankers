@@ -178,14 +178,21 @@ const ENGINE_SURFACE_FORBIDDEN_PATHS: [&str; 12] = [
 ];
 const ENGINE_SURFACE_REQUIRED_PATHS: [&str; 2] = ["clankers_core::CoreState", "clankers_message::Content"];
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
-const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 4] = [
-    "clankers_engine::apply_model_completion",
+const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 6] = [
+    "clankers_engine::reduce",
+    "clankers_engine::EngineInput",
     "clankers_engine::EngineModelResponse",
-    "EngineEffect::ExecuteTool",
+    "EngineInput::ToolCompleted",
+    "EngineInput::ToolFailed",
     "EngineEvent::TurnFinished",
 ];
 const AGENT_TURN_ENGINE_REQUEST_PLANNING_FILE: &str = "crates/clankers-agent/src/turn/execution.rs";
 const AGENT_TURN_ENGINE_REQUEST_PLANNING_REQUIRED_PATHS: [&str; 3] = [
+    "clankers_engine::EngineModelRequest",
+    "clankers_engine::EngineMessage",
+    "clankers_engine::EngineMessageRole",
+];
+const AGENT_TURN_ENGINE_REQUEST_PLANNING_FORBIDDEN_PATHS: [&str; 3] = [
     "clankers_engine::plan_initial_model_request",
     "clankers_engine::EnginePromptSubmission",
     "clankers_engine::EngineState",
@@ -1191,6 +1198,9 @@ fn agent_turn_runtime_reuses_engine_request_planning_contract() {
         &paths,
         &AGENT_TURN_ENGINE_REQUEST_PLANNING_REQUIRED_PATHS,
     );
+    for forbidden_path in AGENT_TURN_ENGINE_REQUEST_PLANNING_FORBIDDEN_PATHS {
+        assert_exact_path_absent(AGENT_TURN_ENGINE_REQUEST_PLANNING_FILE, &paths, forbidden_path);
+    }
 }
 
 #[test]

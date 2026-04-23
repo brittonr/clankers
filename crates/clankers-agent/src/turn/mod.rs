@@ -10,16 +10,22 @@ use std::sync::Arc;
 use chrono::Utc;
 use clankers_engine::EngineEffect;
 use clankers_engine::EngineEvent;
+use clankers_engine::EngineInput;
+use clankers_engine::EngineModelRequest;
 use clankers_engine::EngineModelResponse;
-use clankers_engine::apply_model_completion;
+use clankers_engine::EngineOutcome;
+use clankers_engine::EngineState;
+use clankers_engine::EngineTurnPhase;
+use clankers_engine::reduce;
 use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_provider::Provider;
 use clankers_provider::ThinkingConfig;
 use clankers_provider::Usage;
 use clankers_provider::message::*;
 use clankers_provider::streaming::*;
+use execution::completion_request_from_engine_request;
 use execution::execute_tools_parallel;
-use execution::execute_turn;
+use execution::stream_model_request;
 use model_switch::check_model_switch;
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -173,7 +179,32 @@ enum EngineModelDecision {
     Finish(StopReason),
 }
 
-fn decide_model_completion(outcome: &clankers_engine::EngineOutcome) -> Result<EngineModelDecision> {
+fn request_model_effect(outcome: &EngineOutcome) -> Result<EngineModelRequest> {
+    let mut request_model = None;
+
+    for effect in &outcome.effects {
+        match effect {
+            EngineEffect::RequestModel(model_request) => {
+                if request_model.replace(model_request.clone()).is_some() {
+                    return Err(AgentError::ProviderStreaming {
+                        message: "engine emitted multiple model-request effects".to_string(),
+                        status: None,
+                        retryable: false,
+                    });
+                }
+            }
+            EngineEffect::ExecuteTool(_) | EngineEffect::EmitEvent(_) => {}
+        }
+    }
+
+    request_model.ok_or_else(|| AgentError::ProviderStreaming {
+        message: "engine omitted a required model-request effect".to_string(),
+        status: None,
+        retryable: false,
+    })
+}
+
+fn decide_model_completion(outcome: &EngineOutcome) -> Result<EngineModelDecision> {
     let mut tool_calls = Vec::new();
     let mut turn_finished = None;
 
@@ -211,6 +242,61 @@ fn decide_model_completion(outcome: &clankers_engine::EngineOutcome) -> Result<E
     }
 }
 
+fn emit_engine_notice_effects(outcome: &EngineOutcome, event_tx: &broadcast::Sender<AgentEvent>) {
+    for effect in &outcome.effects {
+        if let EngineEffect::EmitEvent(EngineEvent::Notice { message }) = effect {
+            event_tx
+                .send(AgentEvent::SystemMessage {
+                    message: message.clone(),
+                })
+                .ok();
+        }
+    }
+}
+
+fn engine_outcome_or_error(engine_outcome: EngineOutcome, context: &str) -> Result<EngineOutcome> {
+    if let Some(rejection) = &engine_outcome.rejection {
+        return Err(AgentError::ProviderStreaming {
+            message: format!("engine rejected {context}: {rejection:?}"),
+            status: None,
+            retryable: false,
+        });
+    }
+
+    Ok(engine_outcome)
+}
+
+fn update_engine_model(engine_state: &mut EngineState, active_model: &str) {
+    if let Some(request_template) = engine_state.request_template.as_mut() {
+        request_template.model = active_model.to_string();
+    }
+}
+
+fn tool_feedback_input(message: &ToolResultMessage) -> EngineInput {
+    if message.is_error {
+        EngineInput::ToolFailed {
+            call_id: clankers_engine::EngineCorrelationId(message.call_id.clone()),
+            error: first_text_block(&message.content).unwrap_or_else(|| "tool execution failed".to_string()),
+            result: message.content.clone(),
+        }
+    } else {
+        EngineInput::ToolCompleted {
+            call_id: clankers_engine::EngineCorrelationId(message.call_id.clone()),
+            result: message.content.clone(),
+        }
+    }
+}
+
+fn first_text_block(content: &[Content]) -> Option<String> {
+    content.iter().find_map(|block| match block {
+        Content::Text { text } => Some(text.clone()),
+        Content::Image { .. }
+        | Content::Thinking { .. }
+        | Content::ToolUse { .. }
+        | Content::ToolResult { .. } => None,
+    })
+}
+
 /// Run the agent turn loop.
 ///
 /// 1. Build CompletionRequest from messages + config
@@ -234,35 +320,72 @@ pub async fn run_turn_loop(
     capability_gate: Option<&Arc<dyn crate::tool::CapabilityGate>>,
     user_tool_filter: Option<&Vec<String>>,
 ) -> Result<()> {
+    const MAX_TURN_RETRIES: u32 = 2;
+    const RETRY_BACKOFF_BASE_SECONDS: u64 = 1;
+    const RETRY_BACKOFF_EXPONENT_STEP: u32 = 2;
+    const TURN_CANCELLED_REASON: &str = "turn cancelled";
+
     let tool_defs = tool_definitions_from_controller_inventory(controller_tools);
     let mut cumulative_usage = Usage::default();
     let mut active_model = config.model.clone();
+    let mut engine_state = EngineState::new();
+    let submit_outcome = engine_outcome_or_error(
+        reduce(
+            &engine_state,
+            &EngineInput::SubmitUserPrompt {
+                submission: clankers_engine::EnginePromptSubmission {
+                    messages: messages.clone(),
+                    model: active_model.clone(),
+                    system_prompt: config.system_prompt.clone(),
+                    max_tokens: config.max_tokens,
+                    temperature: config.temperature,
+                    thinking: config.thinking.clone(),
+                    tools: tool_defs,
+                    no_cache: config.no_cache,
+                    cache_ttl: config.cache_ttl.clone(),
+                    session_id: session_id.to_string(),
+                },
+            },
+        ),
+        "prompt submission",
+    )?;
+    emit_engine_notice_effects(&submit_outcome, event_tx);
+    engine_state = submit_outcome.next_state.clone();
+    let mut engine_outcome = submit_outcome;
 
     for turn_index in 0..config.max_turns {
-        // Check for model switch and cancellation
         check_model_switch(&mut active_model, model_switch_slot, event_tx)?;
+        update_engine_model(&mut engine_state, &active_model);
         if cancel.is_cancelled() {
+            cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
             return Err(AgentError::Cancelled);
         }
 
+        let mut engine_request = request_model_effect(&engine_outcome)?;
+        // The pending request effect was minted before any per-turn model switch for this loop
+        // iteration. Patch the extracted effect after synchronizing the template so the shell
+        // executes the currently selected model without re-owning continuation policy.
+        engine_request.model = active_model.clone();
         event_tx.send(AgentEvent::TurnStart { index: turn_index }).ok();
 
-        // Execute turn with retry on transient failures.
-        // Up to 2 retries with exponential backoff (1s, 4s).
         let collected = {
-            const MAX_TURN_RETRIES: u32 = 2;
             let mut last_err = None;
             let mut collected_ok = None;
             for attempt in 0..=MAX_TURN_RETRIES {
-                match execute_turn(provider, messages, config, &active_model, &tool_defs, event_tx, &cancel, session_id)
-                    .await
-                {
-                    Ok(c) => {
-                        collected_ok = Some(c);
+                let request = completion_request_from_engine_request(&engine_request)?;
+                match stream_model_request(provider, request, event_tx, &cancel).await {
+                    Ok(response) => {
+                        collected_ok = Some(response);
                         break;
                     }
+                    Err(AgentError::Cancelled) => {
+                        cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
+                        return Err(AgentError::Cancelled);
+                    }
                     Err(e) if e.is_retryable() && attempt < MAX_TURN_RETRIES => {
-                        let backoff = std::time::Duration::from_secs(1 << (attempt * 2));
+                        let backoff = std::time::Duration::from_secs(
+                            RETRY_BACKOFF_BASE_SECONDS << (attempt * RETRY_BACKOFF_EXPONENT_STEP),
+                        );
                         tracing::warn!(
                             attempt = attempt + 1,
                             max_retries = MAX_TURN_RETRIES,
@@ -271,39 +394,76 @@ pub async fn run_turn_loop(
                             "Retryable turn error, backing off before retry",
                         );
                         tokio::select! {
-                            () = cancel.cancelled() => return Err(AgentError::Cancelled),
+                            () = cancel.cancelled() => {
+                                cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
+                                return Err(AgentError::Cancelled);
+                            }
                             () = tokio::time::sleep(backoff) => {}
                         }
                         last_err = Some(e);
                     }
-                    Err(e) => return Err(e),
+                    Err(e) => {
+                        let failure_outcome = engine_outcome_or_error(
+                            reduce(
+                                &engine_state,
+                                &EngineInput::ModelFailed {
+                                    request_id: engine_request.request_id.clone(),
+                                    error: e.to_string(),
+                                },
+                            ),
+                            "model failure",
+                        )?;
+                        emit_engine_notice_effects(&failure_outcome, event_tx);
+                        return Err(e);
+                    }
                 }
             }
-            match collected_ok {
-                Some(c) => c,
-                None => return Err(last_err.expect("retry loop must set last_err")),
+            match (collected_ok, last_err) {
+                (Some(response), _) => response,
+                (None, Some(error)) => {
+                    let failure_outcome = engine_outcome_or_error(
+                        reduce(
+                            &engine_state,
+                            &EngineInput::ModelFailed {
+                                request_id: engine_request.request_id.clone(),
+                                error: error.to_string(),
+                            },
+                        ),
+                        "model failure after retries",
+                    )?;
+                    emit_engine_notice_effects(&failure_outcome, event_tx);
+                    return Err(error);
+                }
+                (None, None) => {
+                    return Err(AgentError::ProviderStreaming {
+                        message: "turn retry loop ended without a response or terminal error".to_string(),
+                        status: None,
+                        retryable: false,
+                    });
+                }
             }
         };
 
         let engine_response = EngineModelResponse {
-            output: collected.response.content.clone(),
-            stop_reason: collected.response.stop_reason.clone(),
+            output: collected.content.clone(),
+            stop_reason: collected.stop_reason.clone(),
         };
-        let engine_outcome = apply_model_completion(&collected.request_state, &collected.request_id, &engine_response);
-        if let Some(rejection) = &engine_outcome.rejection {
-            return Err(AgentError::ProviderStreaming {
-                message: format!("engine rejected model completion planning: {rejection:?}"),
-                status: None,
-                retryable: false,
-            });
-        }
-        let engine_decision = decide_model_completion(&engine_outcome)?;
-        let collected = collected.response;
+        let post_model_outcome = engine_outcome_or_error(
+            reduce(
+                &engine_state,
+                &EngineInput::ModelCompleted {
+                    request_id: engine_request.request_id.clone(),
+                    response: engine_response,
+                },
+            ),
+            "model completion",
+        )?;
+        emit_engine_notice_effects(&post_model_outcome, event_tx);
+        engine_state = post_model_outcome.next_state.clone();
+        let engine_decision = decide_model_completion(&post_model_outcome)?;
 
-        // Update usage tracking
         update_usage_tracking(&mut cumulative_usage, &collected.usage, &active_model, cost_tracker, event_tx);
 
-        // Build and append assistant message
         let assistant_msg = build_assistant_message(&collected);
         messages.push(AgentMessage::Assistant(assistant_msg.clone()));
 
@@ -344,6 +504,11 @@ pub async fn run_turn_loop(
                     );
                 }
 
+                if cancel.is_cancelled() {
+                    cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
+                    return Err(AgentError::Cancelled);
+                }
+
                 let tool_result_messages = execute_tools_parallel(
                     controller_tools,
                     &tool_calls,
@@ -356,9 +521,22 @@ pub async fn run_turn_loop(
                     user_tool_filter.cloned(),
                 )
                 .await;
+                if cancel.is_cancelled() {
+                    cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
+                    return Err(AgentError::Cancelled);
+                }
+
                 let tool_result_messages = apply_output_truncation(tool_result_messages, &config.output_truncation);
-                for msg in &tool_result_messages {
-                    messages.push(AgentMessage::ToolResult(msg.clone()));
+                let mut follow_up_outcome = None;
+                for message in &tool_result_messages {
+                    messages.push(AgentMessage::ToolResult(message.clone()));
+                    let next_outcome = engine_outcome_or_error(
+                        reduce(&engine_state, &tool_feedback_input(message)),
+                        "tool feedback",
+                    )?;
+                    emit_engine_notice_effects(&next_outcome, event_tx);
+                    engine_state = next_outcome.next_state.clone();
+                    follow_up_outcome = Some(next_outcome);
                 }
 
                 event_tx
@@ -368,10 +546,43 @@ pub async fn run_turn_loop(
                         tool_results: tool_result_messages,
                     })
                     .ok();
+
+                let Some(next_outcome) = follow_up_outcome else {
+                    return Err(AgentError::ProviderStreaming {
+                        message: "engine requested tools but the runtime produced no tool feedback".to_string(),
+                        status: None,
+                        retryable: false,
+                    });
+                };
+                engine_outcome = next_outcome;
+                // The current engine slice always continues back to a model request after the
+                // last tool result, but keep the defensive terminal check in case a later slice
+                // adds direct tool-feedback terminalization.
+                if engine_state.phase == EngineTurnPhase::Finished {
+                    break;
+                }
             }
         }
     }
 
+    Ok(())
+}
+
+fn cancel_active_engine_turn(
+    engine_state: &EngineState,
+    event_tx: &broadcast::Sender<AgentEvent>,
+    reason: &str,
+) -> Result<()> {
+    let cancel_outcome = engine_outcome_or_error(
+        reduce(
+            engine_state,
+            &EngineInput::CancelTurn {
+                reason: reason.to_string(),
+            },
+        ),
+        "turn cancellation",
+    )?;
+    emit_engine_notice_effects(&cancel_outcome, event_tx);
     Ok(())
 }
 
@@ -762,6 +973,34 @@ mod tests {
 
         async fn execute(&self, _ctx: &ToolContext, _params: Value) -> ToolExecResult {
             ToolExecResult::text("direct output")
+        }
+    }
+
+    /// A tool that returns an error result.
+    struct FailingTool {
+        def: ToolDefinition,
+    }
+
+    impl FailingTool {
+        fn new() -> Self {
+            Self {
+                def: ToolDefinition {
+                    name: "failing_tool".to_string(),
+                    description: "Returns an error result".to_string(),
+                    input_schema: json!({"type": "object", "properties": {}}),
+                },
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Tool for FailingTool {
+        fn definition(&self) -> &ToolDefinition {
+            &self.def
+        }
+
+        async fn execute(&self, _ctx: &ToolContext, _params: Value) -> ToolExecResult {
+            ToolExecResult::error("tool failed")
         }
     }
 
@@ -1602,6 +1841,153 @@ mod tests {
             panic!("expected final assistant message");
         };
         assert_eq!(final_assistant.stop_reason, StopReason::Stop);
+    }
+
+    #[tokio::test]
+    async fn run_turn_loop_feeds_tool_failures_back_through_engine() {
+        use std::sync::Mutex;
+        use std::sync::atomic::Ordering;
+
+        const FIRST_PROVIDER_CALL: usize = 0;
+        const SECOND_PROVIDER_CALL: usize = 1;
+        const EXPECTED_PROVIDER_CALLS: usize = 2;
+        const EXPECTED_MESSAGE_COUNT: usize = 4;
+
+        struct FailingToolProvider {
+            call_count: AtomicUsize,
+            captured_requests: Mutex<Vec<clankers_provider::CompletionRequest>>,
+        }
+
+        #[async_trait]
+        impl clankers_provider::Provider for FailingToolProvider {
+            async fn complete(
+                &self,
+                request: clankers_provider::CompletionRequest,
+                tx: mpsc::Sender<StreamEvent>,
+            ) -> clankers_provider::error::Result<()> {
+                self.captured_requests.lock().expect("capture lock poisoned").push(request);
+                let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
+                tx.send(StreamEvent::MessageStart {
+                    message: MessageMetadata {
+                        id: format!("msg-{call_index}"),
+                        model: "test-model".into(),
+                        role: "assistant".into(),
+                    },
+                })
+                .await
+                .ok();
+
+                match call_index {
+                    FIRST_PROVIDER_CALL => {
+                        tx.send(StreamEvent::ContentBlockStart {
+                            index: 0,
+                            content_block: Content::ToolUse {
+                                id: "call-1".into(),
+                                name: "failing_tool".into(),
+                                input: json!({}),
+                            },
+                        })
+                        .await
+                        .ok();
+                        tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                        tx.send(StreamEvent::MessageDelta {
+                            stop_reason: Some("tool_use".into()),
+                            usage: Usage {
+                                input_tokens: 10,
+                                output_tokens: 2,
+                                cache_creation_input_tokens: 0,
+                                cache_read_input_tokens: 0,
+                            },
+                        })
+                        .await
+                        .ok();
+                    }
+                    SECOND_PROVIDER_CALL => {
+                        tx.send(StreamEvent::ContentBlockStart {
+                            index: 0,
+                            content_block: Content::Text { text: String::new() },
+                        })
+                        .await
+                        .ok();
+                        tx.send(StreamEvent::ContentBlockDelta {
+                            index: 0,
+                            delta: ContentDelta::TextDelta { text: "done".into() },
+                        })
+                        .await
+                        .ok();
+                        tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                        tx.send(StreamEvent::MessageDelta {
+                            stop_reason: Some("end_turn".into()),
+                            usage: Usage {
+                                input_tokens: 10,
+                                output_tokens: 2,
+                                cache_creation_input_tokens: 0,
+                                cache_read_input_tokens: 0,
+                            },
+                        })
+                        .await
+                        .ok();
+                    }
+                    _ => panic!("unexpected provider call index: {call_index}"),
+                }
+
+                tx.send(StreamEvent::MessageStop).await.ok();
+                Ok(())
+            }
+
+            fn models(&self) -> &[clankers_provider::Model] {
+                &[]
+            }
+
+            fn name(&self) -> &str {
+                "failing-tool-provider"
+            }
+        }
+
+        let provider = FailingToolProvider {
+            call_count: AtomicUsize::new(0),
+            captured_requests: Mutex::new(Vec::new()),
+        };
+        let tool: Arc<dyn Tool> = Arc::new(FailingTool::new());
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("failing_tool".to_string(), tool);
+        let mut messages = vec![make_user_message()];
+        let mut config = make_turn_config();
+        config.max_turns = EXPECTED_PROVIDER_CALLS as u32;
+        let (event_tx, _rx) = broadcast::channel(256);
+
+        run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "session-engine-tool-failure",
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("tool failure roundtrip should succeed");
+
+        assert_eq!(provider.call_count.load(Ordering::SeqCst), EXPECTED_PROVIDER_CALLS);
+        assert_eq!(messages.len(), EXPECTED_MESSAGE_COUNT);
+        let AgentMessage::ToolResult(tool_result) = &messages[2] else {
+            panic!("expected tool result message");
+        };
+        assert!(tool_result.is_error);
+        assert_eq!(tool_result.tool_name, "failing_tool");
+
+        let captured_requests = provider.captured_requests.lock().expect("capture lock poisoned");
+        assert_eq!(captured_requests.len(), EXPECTED_PROVIDER_CALLS);
+        assert!(matches!(
+            captured_requests[1].messages.iter().find(|message| matches!(message, AgentMessage::ToolResult(_))),
+            Some(AgentMessage::ToolResult(tool_result)) if tool_result.call_id == "call-1" && tool_result.is_error
+        ));
     }
 
     #[tokio::test]
