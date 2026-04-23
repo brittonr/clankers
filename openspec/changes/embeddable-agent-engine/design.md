@@ -92,6 +92,148 @@ That means the current architecture is good at proving FCIS boundaries but not y
 4. Rebase `SessionController` and embedded/interactive shells onto engine adapters.
 5. Continue migrating deterministic sub-slices downward into `clankers-core` once they are expressed as explicit engine state/input/effect transformations.
 
+## Engine Contract
+
+### Public crate and layering
+
+The new workspace crate will be named `clankers-engine` and will sit between `clankers-core` and all Clankers-specific shells.
+
+```text
+clankers-core        -> pure deterministic reducers/effects that can be no_std
+clankers-engine      -> host-facing reusable agent-harness policy and contracts
+clankers-controller  -> session/daemon adapter over engine
+clankers-agent       -> async runtime adapter over engine
+src/modes/*          -> app shells, transport, TUI, attach, interactive mode
+```
+
+`clankers-engine` is the first landing zone for reusable harness semantics that still need richer host-facing contracts than the current `clankers-core` slice. Pure deterministic sub-slices discovered inside the engine remain candidates for later downward migration into `clankers-core`.
+
+### Host-facing plain-data types
+
+The public engine surface is defined in engine-native plain-data terms rather than daemon, TUI, or interactive-mode protocol types.
+
+- `EngineState`
+  - canonical conversation state for the reusable engine-owned slice
+  - pending model request slot keyed by an engine-owned correlation ID
+  - pending tool call slots keyed by engine-owned correlation IDs
+  - turn phase for the current reusable state machine
+  - retry/cancellation/token-limit bookkeeping required for deterministic next-step decisions
+  - reusable message-evolution state and continuation ordering state
+- `EngineInput`
+  - `SubmitUserPrompt { prompt, attachments, metadata }`
+  - `ModelCompleted { request_id, response }`
+  - `ModelFailed { request_id, failure }`
+  - `ToolCompleted { call_id, result }`
+  - `ToolFailed { call_id, failure }`
+  - `CancelTurn { reason }`
+  - any explicit host feedback required to advance the reusable turn slice
+- `EngineEffect`
+  - `RequestModel { request_id, request }`
+  - `ExecuteTool { call_id, tool_name, input }`
+  - `EmitEvent { event }`
+  - `FinishTurn { outcome }`
+- `EngineOutcome`
+  - next `EngineState`
+  - ordered `Vec<EngineEffect>` to execute outside the engine
+  - typed acceptance or rejection for the supplied input
+- `EngineEvent`
+  - semantic engine-native notices such as busy-state changes, tool/model lifecycle markers, retry notices, cancellation notices, and terminal turn status
+
+All correlation IDs are engine-owned plain data. Hosts echo those IDs back when reporting model or tool completion. The engine does not mint transport-native IDs and does not depend on `DaemonEvent`, `SessionCommand`, Tokio tasks, channel handles, TUI widgets, or terminal runtime state.
+
+### Execution contract
+
+The engine is host-driven.
+
+1. The host submits `EngineInput::SubmitUserPrompt`.
+2. The engine returns an `EngineOutcome` whose ordered effects may include a `RequestModel` effect and semantic `EmitEvent` effects.
+3. The host executes the model request outside the engine and feeds the result back through either `ModelCompleted` or `ModelFailed` with the same `request_id`.
+4. If the engine decides tool work is needed, it emits one or more `ExecuteTool` effects with correlated `call_id` values.
+5. The host executes those tool calls outside the engine and feeds results back through `ToolCompleted` or `ToolFailed`.
+6. The engine alone decides whether the turn stops, retries, requests another model continuation, emits terminal failure, or finishes successfully.
+
+This keeps execution policy deterministic and testable while leaving actual provider I/O, tool I/O, transport, hooks, and UI work in host shells.
+
+## Canonical crate map and ownership split
+
+| Layer | Owns | Must not own |
+|---|---|---|
+| `clankers-core` | pure deterministic reducers, correlation rules, plain-data effect planning that can be `no_std` | provider I/O, tool I/O, daemon/TUI/runtime types |
+| `clankers-engine` | reusable host-facing turn orchestration, message evolution, continuation policy, retry/cancellation/token-limit policy, engine-native semantic events | prompt discovery, AGENTS.md loading, OpenSpec/skills scanning, daemon protocol, TUI widgets, Tokio/runtime handles |
+| `clankers-controller` | session/daemon translation, engine-state persistence wiring, engine effect interpretation requests, protocol/event translation, embedded-shell adapter APIs | authoritative reusable turn policy for prompt/model/tool continuation |
+| `clankers-agent` | async runtime execution for provider calls, tool dispatch, hook plumbing, streaming assembly around engine-directed work | authoritative reusable turn-state-machine policy |
+| `clankers-provider` | provider-specific request/stream/auth execution | reusable engine turn policy or conversation ordering |
+| `clankers-message` | reusable message/content structs that remain shell-agnostic | engine control flow, prompt assembly, daemon/TUI policy |
+| app shells (`src/modes/*`, TUI, daemon, attach) | transport, terminal rendering, local slash UX, prompt assembly inputs, user-visible shell behavior | reusable engine semantics or direct engine-internal state transitions |
+
+## Next reusable slice to migrate
+
+The next extraction target is the end-to-end turn orchestration now centered in `crates/clankers-agent/src/turn/mod.rs` and its nearby helpers.
+
+The engine-owned reusable slice must include:
+
+- prompt submission acceptance/rejection and turn-start state transitions
+- model request planning after prompt submission
+- model completion ingestion and stop-reason interpretation
+- tool-call planning from model output
+- tool-result ingestion and continuation decisions
+- retry policy for retryable model/tool failures
+- cancellation handling and cancellation terminalization
+- token-limit handling and the decision to stop, retry, or request continuation
+- terminal stop behavior and typed turn outcome emission
+
+The engine-owned message evolution rules must include:
+
+- canonical user-input message insertion
+- canonical assistant/model output insertion
+- canonical tool-result message insertion
+- continuation ordering between assistant output, tool requests, tool results, and follow-up model requests
+- preserving message evolution independent of how a host assembled system prompts
+
+Prompt assembly remains outside the engine. AGENTS.md, SYSTEM.md, APPEND_SYSTEM.md, OpenSpec context, skills, and project-context discovery stay in app-shell or prompt-assembly crates that hand the engine already-prepared prompt inputs.
+
+## Adapter responsibilities after the split
+
+### `clankers-controller`
+
+`clankers-controller` becomes the adapter that:
+
+- translates session commands and embedded shell callbacks into `EngineInput`
+- persists and restores session-owned engine state
+- interprets engine semantic events into `DaemonEvent` and shell-native outputs
+- tracks controller-specific session metadata not owned by the reusable engine
+- exposes shell-native helper APIs so embedded runtime files do not construct raw engine internals directly
+
+It stops being the authoritative place for reusable prompt/model/tool continuation policy.
+
+### `clankers-agent`
+
+`clankers-agent` becomes the runtime host that:
+
+- executes provider/model work requested by `EngineEffect::RequestModel`
+- executes tool work requested by `EngineEffect::ExecuteTool`
+- streams provider output and converts it into engine feedback payloads
+- runs hooks and shell runtime concerns around engine-directed work
+- reports correlated model/tool success or failure back into the engine
+
+It stops being the authoritative place for reusable turn-state-machine policy currently living in async runtime code.
+
+## Verification rails
+
+The embeddable-engine architecture needs four explicit rails.
+
+1. **Engine public-surface rail**
+   - inventory exported `clankers-engine` API items
+   - reject `DaemonEvent`, `SessionCommand`, TUI widget/runtime types, and other app-shell types in public signatures
+2. **Adapter parity rail**
+   - prove `clankers-controller` and `clankers-agent` execute engine-requested model/tool work and only translate engine semantic events/results back to shell forms
+   - reject local re-derivation of reusable continuation policy in adapters for the migrated slice
+3. **Engine turn-state-machine rail**
+   - positive coverage for prompt -> model -> tool -> continuation -> stop
+   - negative coverage for wrong correlation IDs, duplicate completion, invalid cancellation timing, retry exhaustion, token-limit stop, and tool/model failure ordering
+4. **Architecture oracle review**
+   - human-reviewed checkpoint confirming prompt assembly, transport, and UI concerns stay outside the engine boundary while reusable harness semantics route through the engine first
+
 ## Open Questions
 
 - Should `clankers-engine` start with a fully serializable state surface, or is that a follow-on once the turn state machine is moved?
