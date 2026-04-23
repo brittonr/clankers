@@ -305,9 +305,11 @@ impl Provider for CodexStubProvider {
                 state: EntitlementState::Unknown,
                 last_error: Some(error),
             } => {
-                return Err(crate::error::provider_err_with_status(
+                let classified_message = format!("openai-codex entitlement check failed: {error}");
+                return Err(crate::error::provider_err_with_status_for_provider(
                     503,
-                    format!("openai-codex entitlement check failed: {error}"),
+                    classified_message,
+                    OPENAI_CODEX_PROVIDER,
                 ));
             }
             EntitlementRecord {
@@ -343,9 +345,11 @@ impl Provider for CodexStubProvider {
                     state: EntitlementState::Unknown,
                     last_error: Some(error.clone()),
                 });
-                Err(crate::error::provider_err_with_status(
+                let classified_message = format!("openai-codex entitlement check failed: {error}");
+                Err(crate::error::provider_err_with_status_for_provider(
                     503,
-                    format!("openai-codex entitlement check failed: {error}"),
+                    classified_message,
+                    OPENAI_CODEX_PROVIDER,
                 ))
             }
         }

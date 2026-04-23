@@ -10,11 +10,13 @@ Hermes has `error_classifier.py` with a `FailoverReason` enum (auth, billing, ra
 - `FailoverReason` enum covering all common API failure modes
 - `ClassifiedError` type with the original error, classified reason, and recovery hints
 - Provider-specific pattern matching for Anthropic, OpenAI, OpenRouter, and generic OpenAI-compatible endpoints
-- Recovery hints that the retry loop and router can act on without re-classifying
+- Preservation of classified Codex entitlement/probe failures through the current-repo `openai_codex.rs` wrapper without inventing a separate Codex-only pattern set in this change
+- Recovery hints that the retry loop and current-repo provider/agent callers can act on without re-classifying
 - Wire into existing credential pool rotation and the agent turn loop
 
 **Non-Goals:**
 - Automatic provider failover across different providers (that's the router's job — this just classifies errors to help the router decide)
+- Threading `ClassifiedError` through the external `clanker-router` crate in this change; this change only exports the payload needed for a follow-up external-router change
 - Retry budget management (existing retry logic handles backoff timing)
 - User-facing error reporting improvements (separate concern)
 
@@ -40,13 +42,16 @@ enum FailoverReason {
 **Classification pipeline (priority-ordered):**
 1. Check HTTP status code first (429, 402, 401, 403, 404, 413, 500, 502, 503, 529)
 2. Then pattern-match error message body against provider-specific string sets
-3. Disambiguate overlapping patterns (e.g., "quota" could be billing or rate limit — check for transient signals like "try again" or "resets at")
+3. Classify transport/network timeout errors through a sibling entrypoint that accepts a provider error or transport error string and maps timeout-shaped failures to `Timeout`
+4. Disambiguate overlapping patterns (e.g., "quota" could be billing or rate limit — check for transient signals like "try again" or "resets at")
 
 **Integration points:**
 - `clankers-provider` exports `classify_api_error(status, body, provider) -> ClassifiedError`
+- `clankers-provider` also exposes a timeout-aware helper for transport/provider errors without an HTTP response so `Timeout` remains observable in the taxonomy
 - The Anthropic credential pool uses `should_rotate_credential` instead of raw 429 checks
-- The agent turn loop uses `retryable` and `should_compress` to decide next action
-- `clanker-router` can consume `ClassifiedError` from provider errors to make routing decisions
+- `ProviderError` stores classifier output so downstream retry/fallback code consumes structured hints instead of re-parsing message strings
+- The agent turn loop uses classifier-derived `retryable` and `should_compress` to decide next action
+- External `clanker-router` threading is explicitly deferred; this change ends at stable current-repo exports plus a follow-up note
 
 **Module location:** `crates/clankers-provider/src/error_classifier.rs` — co-located with provider code since classification patterns are provider-specific.
 
@@ -54,4 +59,4 @@ enum FailoverReason {
 
 - **Pattern maintenance:** API error messages change without notice. Mitigate with broad patterns ("rate limit" matches multiple phrasings) and a catch-all `Unknown` that defaults to retry.
 - **Over-classification:** Risk of misclassifying a billing error as a rate limit (or vice versa). Hermes handles this with disambiguation heuristics; we should adopt the same approach.
-- **Cross-crate dependency:** `clanker-router` would benefit from seeing `ClassifiedError` but adding it to the router's error type requires coordinating the external crate. Start with classification in `clankers-provider` and expose it to the router via a trait or re-export.
+- **Cross-crate dependency:** `clanker-router` would benefit from seeing `ClassifiedError` but adding it to the router's error type requires coordinating the external crate. This change stops at classification in `clankers-provider`, current-repo wiring, and a documented follow-up note for the external crate.

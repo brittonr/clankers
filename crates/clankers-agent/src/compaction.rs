@@ -566,11 +566,7 @@ mod tests {
                 .push(prompt_text);
 
             if self.fail {
-                return Err(clankers_provider::error::ProviderError {
-                    message: "summary failed".to_string(),
-                    kind: clankers_provider::error::ProviderErrorKind::Api,
-                    status: None,
-                });
+                return Err(clankers_provider::error::provider_err("summary failed"));
             }
 
             tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {

@@ -5,9 +5,10 @@ Clankers has credential pool failover for rate-limited Anthropic accounts, but A
 ## What Changes
 
 - Add a structured error classifier in `clankers-provider` with a `FailoverReason` taxonomy and `ClassifiedError` type
-- Pattern-match API error responses (status codes, error messages) into the taxonomy across all supported providers (Anthropic, OpenAI, OpenRouter, Codex, local endpoints)
+- Pattern-match API error responses (status codes, error messages) into the taxonomy across the supported current-repo classifier surfaces (Anthropic, OpenAI, OpenRouter, and local OpenAI-compatible endpoints), while preserving Codex entitlement/error classifications through current-repo wrappers
 - Attach recovery hints to classified errors: retryable, should_compress, should_rotate, should_fallback
-- Wire the classifier into the existing retry/failover paths in the provider and router layers
+- Wire the classifier into the existing retry/failover paths in the current-repo provider and agent layers
+- Export classifier data in a form the external router layer can consume in a follow-up change
 
 ## Capabilities
 
@@ -19,6 +20,6 @@ Clankers has credential pool failover for rate-limited Anthropic accounts, but A
 ## Impact
 
 - `crates/clankers-provider/` — new `error_classifier` module; modify existing error handling in `anthropic/`, `openai_codex.rs`, and router integration
-- `clanker-router` (external) — may need `ClassifiedError` in its error types for the routing layer to make informed fallback decisions
+- `clanker-router` (external) — follow-up change may thread `ClassifiedError` through router-layer error types once current-repo exports stabilize
 - `crates/clankers-agent/src/turn.rs` — retry loop consults classifier instead of raw error strings
 - `crates/clankers-provider/src/anthropic/mod.rs` — credential pool rotation driven by `should_rotate` instead of raw 429 matching

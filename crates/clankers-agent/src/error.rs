@@ -64,7 +64,7 @@ impl From<clanker_router::Error> for AgentError {
 impl From<clankers_provider::error::ProviderError> for AgentError {
     fn from(e: clankers_provider::error::ProviderError) -> Self {
         let status = e.status;
-        let retryable = e.is_retryable();
+        let retryable = e.is_retryable() && !e.should_compress();
         Self::ProviderStreaming {
             message: e.message,
             status,

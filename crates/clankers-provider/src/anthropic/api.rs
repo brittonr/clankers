@@ -9,7 +9,8 @@ use crate::CompletionRequest;
 use crate::auth::Credential;
 use crate::error::Result;
 use crate::retry::RetryConfig;
-use crate::retry::is_retryable_status;
+use crate::error_classifier::classify_api_error;
+use crate::error_classifier::classify_transport_error;
 use crate::retry::parse_retry_after;
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
@@ -201,15 +202,19 @@ impl AnthropicClient {
                         return Ok(response);
                     }
 
+                    let retry_after_header = response
+                        .headers()
+                        .get("retry-after")
+                        .and_then(|value| value.to_str().ok())
+                        .map(str::to_owned);
+                    let body = response.text().await.unwrap_or_default();
+                    let classified = classify_api_error(Some(status), &body, "anthropic");
+
                     // Check if the error is retryable
-                    if is_retryable_status(status) && attempt < retry_config.max_retries {
+                    if classified.retryable && attempt < retry_config.max_retries {
                         // Check for Retry-After header
-                        let backoff = if let Some(retry_after) = response.headers().get("retry-after") {
-                            if let Ok(header_str) = retry_after.to_str() {
-                                parse_retry_after(header_str).unwrap_or_else(|| retry_config.backoff_for(attempt))
-                            } else {
-                                retry_config.backoff_for(attempt)
-                            }
+                        let backoff = if let Some(header_str) = retry_after_header.as_deref() {
+                            parse_retry_after(header_str).unwrap_or_else(|| retry_config.backoff_for(attempt))
                         } else {
                             retry_config.backoff_for(attempt)
                         };
@@ -228,7 +233,6 @@ impl AnthropicClient {
                     }
 
                     // Non-retryable status or max retries exceeded
-                    let body = response.text().await.unwrap_or_default();
                     return Err(crate::error::provider_err_with_status(
                         status,
                         format!("HTTP error {}: {}", status, body),
@@ -237,9 +241,9 @@ impl AnthropicClient {
                 Err(e) => {
                     // Check if the error message suggests a retryable condition
                     let error_msg = e.to_string();
-                    let is_retryable = crate::retry::is_retryable_error(&error_msg);
+                    let classified = classify_transport_error(&error_msg, "anthropic");
 
-                    if is_retryable && attempt < retry_config.max_retries {
+                    if classified.retryable && attempt < retry_config.max_retries {
                         let backoff = retry_config.backoff_for(attempt);
                         tracing::warn!(
                             attempt = attempt + 1,

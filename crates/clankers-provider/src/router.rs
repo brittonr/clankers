@@ -597,7 +597,7 @@ fn build_exhaustion_error(
         .or_else(|| last_error.as_ref().and_then(|e| e.status));
 
     match last_status {
-        Some(status) => crate::error::provider_err_with_status(status, summary),
+        Some(status) => crate::error::provider_err_with_status_for_provider(status, summary, "router"),
         None => crate::error::provider_err(summary),
     }
 }

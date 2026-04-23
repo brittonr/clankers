@@ -15,6 +15,7 @@ use tracing::warn;
 use crate::CompletionRequest;
 use crate::Model;
 use crate::Provider;
+use crate::classify_api_error;
 use crate::auth::Credential;
 use crate::credential_manager::CredentialManager;
 use crate::error::Result;
@@ -150,9 +151,11 @@ impl Provider for AnthropicProvider {
                             last_status = status;
                             last_error = msg;
 
+                            let mut refresh_attempted = false;
                             // 401 on OAuth → try refreshing before moving to next credential
                             if status == 401 && cred.is_oauth() && self.credential_manager.is_some() {
                                 info!("Got 401 on '{}', attempting token refresh", lease.account());
+                                refresh_attempted = true;
                                 if let Ok(refreshed) = self.force_refresh_credential().await {
                                     match self.try_with_credential(&request, &refreshed, &tx).await {
                                         Ok(()) => {
@@ -167,17 +170,39 @@ impl Provider for AnthropicProvider {
                                 }
                             }
 
-                            // Non-retryable errors stop immediately
-                            if !clanker_router::retry::is_retryable_status(status) && status != 401 {
-                                return Err(crate::error::provider_err_with_status(last_status, last_error));
+                            let mut classified = classify_api_error(Some(last_status), &last_error, self.name());
+                            if refresh_attempted && matches!(classified.reason, crate::FailoverReason::Auth) {
+                                classified = crate::classify_transport_error(&last_error, self.name());
+                                classified.reason = crate::FailoverReason::AuthPermanent;
+                                classified.retryable = false;
+                                classified.should_compress = false;
+                                classified.should_rotate_credential = false;
+                                classified.should_fallback = true;
                             }
 
-                            info!("Credential '{}' failed (HTTP {}), trying next", lease.account(), status);
+                            if classified.should_rotate_credential {
+                                info!("Credential '{}' failed (HTTP {}), rotating by classified hint", lease.account(), last_status);
+                                continue;
+                            }
+
+                            if !classified.retryable {
+                                return Err(crate::error::provider_err_with_status_for_provider(
+                                    last_status,
+                                    last_error,
+                                    self.name(),
+                                ));
+                            }
+
+                            info!("Credential '{}' failed (HTTP {}), trying next", lease.account(), last_status);
                         }
                     }
                 }
 
-                return Err(crate::error::provider_err_with_status(last_status, last_error));
+                return Err(crate::error::provider_err_with_status_for_provider(
+                    last_status,
+                    last_error,
+                    self.name(),
+                ));
             }
         }
 
@@ -190,6 +215,8 @@ impl Provider for AnthropicProvider {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
 
+            let classified = classify_api_error(Some(status.as_u16()), &body, self.name());
+
             // On 401, try refreshing the token and retrying once
             if status.as_u16() == 401 && self.credential_manager.is_some() {
                 info!("Got 401, attempting token refresh and retry");
@@ -200,10 +227,22 @@ impl Provider for AnthropicProvider {
                 if !retry_response.status().is_success() {
                     let retry_status = retry_response.status();
                     let retry_body = retry_response.text().await.unwrap_or_default();
-                    return Err(crate::error::provider_err_with_status(
+                    let retry_message = format!("Anthropic API error {} (after token refresh): {}", retry_status, retry_body);
+                    let mut classified = classify_api_error(Some(retry_status.as_u16()), &retry_message, self.name());
+                    if matches!(classified.reason, crate::FailoverReason::Auth) {
+                        classified.reason = crate::FailoverReason::AuthPermanent;
+                        classified.retryable = false;
+                        classified.should_compress = false;
+                        classified.should_rotate_credential = false;
+                        classified.should_fallback = true;
+                    }
+                    let mut error = crate::error::provider_err_with_status_for_provider(
                         retry_status.as_u16(),
-                        format!("Anthropic API error {} (after token refresh): {}", retry_status, retry_body),
-                    ));
+                        retry_message,
+                        self.name(),
+                    );
+                    error.classified = classified;
+                    return Err(error);
                 }
 
                 return streaming::parse_sse_stream(
@@ -214,9 +253,14 @@ impl Provider for AnthropicProvider {
                 .await;
             }
 
-            return Err(crate::error::provider_err_with_status(
+            if classified.should_rotate_credential && self.credential_manager.is_some() {
+                info!(status = status.as_u16(), "classified error wants credential rotation");
+            }
+
+            return Err(crate::error::provider_err_with_status_for_provider(
                 status.as_u16(),
                 format!("Anthropic API error {}: {}", status, body),
+                self.name(),
             ));
         }
 

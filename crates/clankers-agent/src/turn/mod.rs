@@ -958,9 +958,10 @@ mod tests {
         ) -> clankers_provider::error::Result<()> {
             let remaining = self.failures_remaining.fetch_sub(1, Ordering::SeqCst);
             if remaining > 0 {
-                return Err(clankers_provider::error::provider_err_with_status(
+                return Err(clankers_provider::error::provider_err_with_status_for_provider(
                     self.status,
                     format!("HTTP error {}", self.status),
+                    "anthropic",
                 ));
             }
             // Succeed: send minimal valid response
@@ -1399,7 +1400,7 @@ mod tests {
     #[tokio::test]
     async fn turn_retry_non_retryable_error_skips_retry() {
         // Fails with 400 (non-retryable) — should fail immediately
-        let provider = RetryableFailProvider::new(1, 400);
+        let provider = RetryableFailProvider::new(usize::MAX, 400);
         let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
         let mut messages = vec![make_user_message()];
         let config = make_turn_config();

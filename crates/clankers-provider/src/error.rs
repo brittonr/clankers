@@ -2,6 +2,11 @@
 
 use std::fmt;
 
+use crate::error_classifier::ClassifiedError;
+use crate::error_classifier::FailoverReason;
+use crate::error_classifier::classify_api_error;
+use crate::error_classifier::classify_transport_error;
+
 /// Provider error type.
 #[derive(Debug)]
 pub struct ProviderError {
@@ -11,6 +16,7 @@ pub struct ProviderError {
     /// Preserved through error conversions so retry/fallback logic can
     /// inspect it without parsing the message string.
     pub status: Option<u16>,
+    pub classified: ClassifiedError,
 }
 
 #[derive(Debug)]
@@ -51,20 +57,26 @@ impl std::error::Error for ProviderError {
 
 impl From<std::io::Error> for ProviderError {
     fn from(e: std::io::Error) -> Self {
+        let message = e.to_string();
+        let classified = classify_transport_error(&message, "unknown");
         Self {
-            message: e.to_string(),
+            message,
             kind: ProviderErrorKind::Io(e),
             status: None,
+            classified,
         }
     }
 }
 
 impl From<serde_json::Error> for ProviderError {
     fn from(e: serde_json::Error) -> Self {
+        let message = e.to_string();
+        let classified = classify_transport_error(&message, "unknown");
         Self {
-            message: e.to_string(),
+            message,
             kind: ProviderErrorKind::Json(e),
             status: None,
+            classified,
         }
     }
 }
@@ -82,10 +94,17 @@ impl From<clanker_router::Error> for ProviderError {
             clanker_router::Error::Json(_) => ProviderErrorKind::Api,
             _ => ProviderErrorKind::Api,
         };
+        let message = e.to_string();
+        let provider = "router";
+        let classified = match status {
+            Some(code) => classify_api_error(Some(code), &message, provider),
+            None => classify_transport_error(&message, provider),
+        };
         Self {
-            message: e.to_string(),
+            message,
             kind,
             status,
+            classified,
         }
     }
 }
@@ -94,16 +113,27 @@ impl ProviderError {
     /// Whether this error is likely transient and the request could succeed
     /// against a different provider or after a delay.
     pub fn is_retryable(&self) -> bool {
-        // Prefer the structured status code
-        if let Some(code) = self.status {
-            return clanker_router::retry::is_retryable_status(code);
-        }
-        // Fall back to message parsing
-        match &self.kind {
-            ProviderErrorKind::Api => clanker_router::retry::is_retryable_error(&self.message),
-            ProviderErrorKind::Streaming => clanker_router::retry::is_retryable_error(&self.message),
-            ProviderErrorKind::Auth | ProviderErrorKind::Io(_) | ProviderErrorKind::Json(_) => false,
-        }
+        self.classified.retryable
+    }
+
+    pub fn should_compress(&self) -> bool {
+        self.classified.should_compress
+    }
+
+    pub fn should_fallback(&self) -> bool {
+        self.classified.should_fallback
+    }
+
+    pub fn should_rotate_credential(&self) -> bool {
+        self.classified.should_rotate_credential
+    }
+
+    pub fn failover_reason(&self) -> FailoverReason {
+        self.classified.reason
+    }
+
+    pub fn classified(&self) -> &ClassifiedError {
+        &self.classified
     }
 
     /// Get the HTTP status code, if available.
@@ -114,35 +144,103 @@ impl ProviderError {
 
 /// Convenience constructors.
 pub fn provider_err(msg: impl Into<String>) -> ProviderError {
+    let message = msg.into();
+    let classified = classify_transport_error(&message, "unknown");
     ProviderError {
-        message: msg.into(),
+        message,
         kind: ProviderErrorKind::Api,
         status: None,
+        classified,
     }
 }
 
 pub fn provider_err_with_status(status: u16, msg: impl Into<String>) -> ProviderError {
+    provider_err_with_status_for_provider(status, msg, "unknown")
+}
+
+pub fn provider_err_with_status_for_provider(
+    status: u16,
+    msg: impl Into<String>,
+    provider: &str,
+) -> ProviderError {
+    let message = msg.into();
+    let classified = classify_api_error(Some(status), &message, provider);
     ProviderError {
-        message: msg.into(),
+        message,
         kind: ProviderErrorKind::Api,
         status: Some(status),
+        classified,
     }
 }
 
 pub fn auth_err(msg: impl Into<String>) -> ProviderError {
+    let message = msg.into();
+    let mut classified = classify_transport_error(&message, "unknown");
+    classified.reason = FailoverReason::Auth;
+    classified.retryable = false;
+    classified.should_compress = false;
+    classified.should_rotate_credential = true;
+    classified.should_fallback = true;
     ProviderError {
-        message: msg.into(),
+        message,
         kind: ProviderErrorKind::Auth,
         status: None,
+        classified,
     }
 }
 
 pub fn streaming_err(msg: impl Into<String>) -> ProviderError {
+    let message = msg.into();
+    let classified = classify_transport_error(&message, "unknown");
     ProviderError {
-        message: msg.into(),
+        message,
         kind: ProviderErrorKind::Streaming,
         status: None,
+        classified,
     }
 }
 
 pub type Result<T> = std::result::Result<T, ProviderError>;
+
+#[cfg(test)]
+mod tests {
+    use super::ProviderError;
+    use super::auth_err;
+    use super::provider_err_with_status;
+
+    #[test]
+    fn provider_error_retains_full_classified_payload() {
+        let error = provider_err_with_status(429, "quota exceeded try again in 5 minutes");
+        assert_eq!(error.classified.reason, crate::FailoverReason::RateLimit);
+        assert!(error.is_retryable());
+        assert!(error.should_rotate_credential());
+        assert!(error.should_fallback());
+        assert_eq!(error.classified.message, "quota exceeded try again in 5 minutes");
+    }
+
+    #[test]
+    fn auth_error_exposes_auth_classification() {
+        let error = auth_err("invalid api key");
+        assert_eq!(error.failover_reason(), crate::FailoverReason::Auth);
+        assert!(!error.is_retryable());
+        assert!(error.should_rotate_credential());
+    }
+
+    #[test]
+    fn auth_permanent_payload_can_be_observed() {
+        let mut error = ProviderError::from(std::io::Error::new(
+            std::io::ErrorKind::PermissionDenied,
+            "account disabled",
+        ));
+        let mut classified = crate::classify_transport_error("account disabled", "openai");
+        classified.reason = crate::FailoverReason::AuthPermanent;
+        classified.retryable = false;
+        classified.should_compress = false;
+        classified.should_rotate_credential = false;
+        classified.should_fallback = true;
+        error.classified = classified;
+        assert_eq!(error.failover_reason(), crate::FailoverReason::AuthPermanent);
+        assert!(!error.is_retryable());
+        assert!(error.should_fallback());
+    }
+}

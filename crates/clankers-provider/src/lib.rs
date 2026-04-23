@@ -14,11 +14,17 @@ use tokio::sync::mpsc;
 use crate::error::Result;
 
 pub mod error;
+pub use error_classifier::ClassifiedError;
+pub use error_classifier::FailoverReason;
+pub use error_classifier::classify_api_error;
+pub use error_classifier::classify_transport_error;
+pub use error_classifier::recovery_hints;
 
 pub mod anthropic;
 pub mod auth;
 pub mod credential_manager;
 pub mod discovery;
+pub mod error_classifier;
 pub mod message;
 pub mod openai_codex;
 /// Model registry — re-exported from `clanker-router`.
