@@ -21,6 +21,12 @@ Define a deterministic public-surface rail for the future `clankers-engine` crat
 
 ## Planned Command
 - `./scripts/check-clankers-engine-surface.sh`
+- `cargo test -p clankers-controller --test fcis_shell_boundaries clankers_engine_surface_stays_shell_native -- --nocapture`
 
 ## Expected Failure Mode
 The rail must exit non-zero when any forbidden app-shell or runtime pattern appears in the exported `clankers-engine` surface.
+
+## Current Implementation
+- `crates/clankers-engine/src/lib.rs` now exists as the first workspace seam for host-facing engine-native contracts.
+- `scripts/check-clankers-engine-surface.sh` fails closed on daemon, TUI, async-runtime, and other app-shell imports in the public engine surface.
+- `crates/clankers-controller/tests/fcis_shell_boundaries.rs::clankers_engine_surface_stays_shell_native` adds a deterministic repo-local rail that inventories engine source paths and rejects shell-native leakage.

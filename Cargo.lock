@@ -1482,6 +1482,7 @@ dependencies = [
  "clankers-config",
  "clankers-core",
  "clankers-db",
+ "clankers-engine",
  "clankers-hooks",
  "clankers-message",
  "clankers-model-selection",
@@ -1577,6 +1578,18 @@ dependencies = [
  "tempfile",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "clankers-engine"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "clanker-router",
+ "clankers-core",
+ "clankers-message",
+ "clankers-provider",
+ "serde_json",
 ]
 
 [[package]]

@@ -4,6 +4,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use clankers_engine::EngineEffect;
+use clankers_engine::EnginePromptSubmission;
+use clankers_engine::EngineState;
+use clankers_engine::plan_initial_model_request;
 use clankers_provider::CompletionRequest;
 use clankers_provider::Provider;
 use clankers_provider::Usage;
@@ -37,24 +41,7 @@ pub(super) async fn execute_turn(
     cancel: &CancellationToken,
     session_id: &str,
 ) -> Result<CollectedResponse> {
-    let extra_params = if session_id.is_empty() {
-        HashMap::new()
-    } else {
-        HashMap::from([("_session_id".to_string(), Value::String(session_id.to_string()))])
-    };
-
-    let request = CompletionRequest {
-        model: active_model.to_string(),
-        messages: messages.to_vec(),
-        system_prompt: Some(config.system_prompt.clone()),
-        max_tokens: config.max_tokens,
-        temperature: config.temperature,
-        tools: tool_defs.to_vec(),
-        thinking: config.thinking.clone(),
-        no_cache: config.no_cache,
-        cache_ttl: config.cache_ttl.clone(),
-        extra_params,
-    };
+    let request = build_initial_model_request(messages, config, active_model, tool_defs, session_id)?;
 
     let (stream_tx, mut stream_rx) = mpsc::channel(256);
     let event_tx_clone = event_tx.clone();
@@ -70,6 +57,49 @@ pub(super) async fn execute_turn(
     };
     complete_result?;
     collected
+}
+
+fn build_initial_model_request(
+    messages: &[AgentMessage],
+    config: &TurnConfig,
+    active_model: &str,
+    tool_defs: &[ToolDefinition],
+    session_id: &str,
+) -> Result<CompletionRequest> {
+    let submission = EnginePromptSubmission {
+        messages: messages.to_vec(),
+        model: active_model.to_string(),
+        system_prompt: config.system_prompt.clone(),
+        max_tokens: config.max_tokens,
+        temperature: config.temperature,
+        thinking: config.thinking.clone(),
+        tools: tool_defs.to_vec(),
+        no_cache: config.no_cache,
+        cache_ttl: config.cache_ttl.clone(),
+        session_id: session_id.to_string(),
+    };
+    let outcome = plan_initial_model_request(&EngineState::new(), &submission);
+
+    if outcome.rejection.is_some() {
+        return Err(AgentError::ProviderStreaming {
+            message: "engine rejected initial model request planning".to_string(),
+            status: None,
+            retryable: false,
+        });
+    }
+
+    outcome
+        .effects
+        .into_iter()
+        .find_map(|effect| match effect {
+            EngineEffect::RequestModel(model_effect) => Some(model_effect.request),
+            _ => None,
+        })
+        .ok_or_else(|| AgentError::ProviderStreaming {
+            message: "engine omitted initial model request effect".to_string(),
+            status: None,
+            retryable: false,
+        })
 }
 
 /// Collect streaming events into a complete response

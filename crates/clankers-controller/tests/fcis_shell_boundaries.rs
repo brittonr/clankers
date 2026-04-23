@@ -19,6 +19,7 @@ use syn::visit::Visit;
 
 const REPO_ROOT_PARENT_COUNT: usize = 2;
 const CONTROLLER_SOURCE_DIR: &str = "crates/clankers-controller/src";
+const ENGINE_CRATE_SOURCE_DIR: &str = "crates/clankers-engine/src";
 const RUST_SOURCE_EXTENSION: &str = "rs";
 const CFG_ATTRIBUTE_NAME: &str = "cfg";
 const TEST_CONFIGURATION_NAME: &str = "test";
@@ -26,6 +27,7 @@ const ANY_CONFIGURATION_NAME: &str = "any";
 const ALL_CONFIGURATION_NAME: &str = "all";
 const NOT_CONFIGURATION_NAME: &str = "not";
 const CORE_CRATE_NAME: &str = "clankers_core";
+const ENGINE_CRATE_NAME: &str = "clankers_engine";
 const CORE_REDUCE_PATH: &str = "clankers_core::reduce";
 const CORE_EFFECT_SEGMENT: &str = "CoreEffect";
 const CORE_LOGICAL_EVENT_SEGMENT: &str = "CoreLogicalEvent";
@@ -160,6 +162,21 @@ const CONTROL_PROTOCOL_CONVERSION_REQUIRED_CONSTRUCTOR_PATHS: [&str; 12] = [
 ];
 const CONTROL_PROTOCOL_DAEMON_BRIDGE_FILES: [&str; 2] =
     ["src/modes/daemon/socket_bridge.rs", "src/modes/daemon/quic_bridge.rs"];
+const ENGINE_SURFACE_FORBIDDEN_PATHS: [&str; 12] = [
+    "clankers_protocol::DaemonEvent",
+    "clankers_protocol::SessionCommand",
+    "chrono",
+    "crossterm",
+    "iroh",
+    "portable_pty",
+    "ratatui",
+    "redb",
+    "reqwest",
+    "tokio",
+    "tokio_util",
+    "clankers_agent",
+];
+const ENGINE_SURFACE_REQUIRED_PATHS: [&str; 2] = ["clankers_core::CoreState", "clankers_message::Content"];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct CfgEnvelope {
@@ -740,6 +757,11 @@ fn file_uses_allowed_controller_input_translation_boundary(relative_path: &str) 
     CONTROLLER_INPUT_TRANSLATION_FILES.contains(&relative_path)
 }
 
+fn assert_engine_surface_path_absent(relative_path: &str, paths: &BTreeSet<String>, forbidden_path: &str) {
+    assert_exact_path_absent(relative_path, paths, forbidden_path);
+    assert_segment_absent(relative_path, paths, forbidden_path);
+}
+
 #[test]
 fn cfg_attribute_detection_handles_literal_and_composite_test_only_forms() {
     let literal: Attribute = parse_quote!(#[cfg(test)]);
@@ -1136,6 +1158,25 @@ fn transport_protocol_construction_stays_in_pure_conversion_files() {
         &quic_bridge_paths,
         &QUIC_BRIDGE_PROTOCOL_REQUIRED_PATHS,
     );
+}
+
+#[test]
+fn clankers_engine_surface_stays_shell_native() {
+    for relative_path in rust_source_files_under(ENGINE_CRATE_SOURCE_DIR) {
+        let paths = collect_non_test_paths(&relative_path);
+        for forbidden_path in ENGINE_SURFACE_FORBIDDEN_PATHS {
+            assert_engine_surface_path_absent(&relative_path, &paths, forbidden_path);
+        }
+        assert_exact_path_absent(&relative_path, &paths, CORE_REDUCE_PATH);
+    }
+
+    let engine_root_paths = collect_non_test_paths("crates/clankers-engine/src/lib.rs");
+    assert_required_paths_present(
+        "crates/clankers-engine/src/lib.rs",
+        &engine_root_paths,
+        &ENGINE_SURFACE_REQUIRED_PATHS,
+    );
+    assert_segment_absent("crates/clankers-engine/src/lib.rs", &engine_root_paths, ENGINE_CRATE_NAME);
 }
 
 #[test]

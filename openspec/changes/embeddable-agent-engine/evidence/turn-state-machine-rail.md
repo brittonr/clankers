@@ -29,10 +29,13 @@ Define positive and negative deterministic state-machine rails for the reusable 
 
 ## Existing Session Evidence
 - `crates/clankers-agent/src/turn/mod.rs` already includes deterministic tests for retry recovery, non-retryable failure, and cancellation during backoff.
+- `crates/clankers-engine/src/lib.rs` now includes deterministic unit tests for the first migrated slice: initial prompt submission planning into an engine-owned model-request effect, busy-state rejection, and empty-session-id handling.
+- `crates/clankers-agent/src/turn/execution.rs` now consumes that first engine planner when building the initial model request, preserving the existing `_session_id` request metadata contract through the adapter path.
 - Those tests demonstrate the shape of the engine rail: positive and negative state-machine coverage anchored on one reusable turn loop.
 
 ## Planned Commands
+- `cargo test -p clankers-engine --lib`
+- `cargo test -p clankers-agent turn_request_includes_session_id_extra_param --lib`
 - `cargo test -p clankers-agent turn_retry_recovers_on_second_attempt --lib`
 - `cargo test -p clankers-agent turn_retry_non_retryable_error_skips_retry --lib`
 - `cargo test -p clankers-agent turn_retry_cancellation_during_backoff --lib`
-- future engine crate rail: `cargo test -p clankers-engine --test turn_state_machine`

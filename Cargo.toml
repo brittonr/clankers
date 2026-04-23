@@ -8,6 +8,7 @@ members = [
     "crates/clankers-core",
     "crates/clankers-controller",
     "crates/clankers-db",
+    "crates/clankers-engine",
     "crates/clankers-hooks",
     "crates/clankers-matrix",
     "crates/clankers-message",

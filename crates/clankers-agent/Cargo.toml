@@ -8,6 +8,7 @@ description = "Agent core — turn loop, event bus, tool interface, context mana
 [dependencies]
 clankers-config = { version = "0.1.0", path = "../clankers-config" }
 clankers-db = { version = "0.1.0", path = "../clankers-db" }
+clankers-engine = { version = "0.1.0", path = "../clankers-engine" }
 clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
 clanker-loop = { workspace = true }
 clankers-message = { version = "0.1.0", path = "../clankers-message" }
