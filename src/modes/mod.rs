@@ -22,5 +22,6 @@ pub(crate) mod plugin_dispatch;
 pub mod print;
 pub mod rpc;
 pub mod rpc_embed;
+pub(crate) mod scrollback_dump;
 pub(crate) mod session_restore;
 pub(crate) mod session_setup;

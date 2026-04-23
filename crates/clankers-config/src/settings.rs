@@ -140,6 +140,12 @@ pub struct Settings {
     #[serde(default = "default_true")]
     pub use_daemon: bool,
 
+    /// Whether the TUI should dump recent conversation blocks to terminal
+    /// scrollback after leaving the alternate screen. `None` keeps the default
+    /// enabled behavior while `Some(false)` disables the dump explicitly.
+    #[serde(default, alias = "scrollback_on_exit")]
+    pub scrollback_on_exit: Option<bool>,
+
     /// Default capability restrictions for all sessions (including local).
     ///
     /// When set, every agent session gets a capability gate that enforces
@@ -361,6 +367,7 @@ impl Default for Settings {
             cache_ttl: None,
             annotate_store_refs: false,
             use_daemon: true,
+            scrollback_on_exit: None,
             default_capabilities: None,
         }
     }
@@ -552,6 +559,35 @@ mod tests {
         let project = serde_json::json!({"useDaemon": false});
         let settings = Settings::merge_layers(None, Some(global), Some(project));
         assert!(!settings.use_daemon);
+    }
+
+    #[test]
+    fn scrollback_on_exit_default_none() {
+        let json = r#"{}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.scrollback_on_exit, None);
+    }
+
+    #[test]
+    fn scrollback_on_exit_snake_case_false() {
+        let json = r#"{"scrollback_on_exit": false}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.scrollback_on_exit, Some(false));
+    }
+
+    #[test]
+    fn scrollback_on_exit_camel_case_true() {
+        let json = r#"{"scrollbackOnExit": true}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.scrollback_on_exit, Some(true));
+    }
+
+    #[test]
+    fn scrollback_on_exit_project_overrides_global() {
+        let global = serde_json::json!({"scrollbackOnExit": false});
+        let project = serde_json::json!({"scrollbackOnExit": true});
+        let settings = Settings::merge_layers(None, Some(global), Some(project));
+        assert_eq!(settings.scrollback_on_exit, Some(true));
     }
 
     // ── Deep merge tests ───────────────────────────────────────────

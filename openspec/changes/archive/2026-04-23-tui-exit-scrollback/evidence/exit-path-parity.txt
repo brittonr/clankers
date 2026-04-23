@@ -1,0 +1,28 @@
+Evidence-ID: tui-exit-scrollback.V3.exit-path-parity
+Task-ID: V3
+Artifact-Type: deterministic-proof
+Covers: tui.exit.scrollback.dump.on.exit, tui.exit.scrollback.dump.on.exit.normal-exit-renders-conversation, tui.exit.scrollback.dump.on.exit.all-exit-paths-render, tui.exit.scrollback.dump.on.exit.non-terminal-stdout-skips-dump
+Created-By: pi
+Created-At: 2026-04-22T23:59:16Z
+Status: passed
+
+# Evidence: exit-path parity verification
+
+## Commands
+
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' RUSTC_WRAPPER= cargo test --lib modes::scrollback_dump::tests::`
+
+## Observed Output
+
+### `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' RUSTC_WRAPPER= cargo test --lib modes::scrollback_dump::tests::`
+
+- `running 16 tests`
+- `test modes::scrollback_dump::tests::interactive_mode_uses_shared_scrollback_finalizer ... ok`
+- `test modes::scrollback_dump::tests::attach_mode_uses_shared_scrollback_finalizer ... ok`
+- `test modes::scrollback_dump::tests::auto_daemon_mode_uses_shared_scrollback_finalizer ... ok`
+- `test modes::scrollback_dump::tests::scrollback_dump_disabled_when_stdout_is_not_terminal ... ok`
+- `test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 714 filtered out`
+
+## Coverage Notes
+
+These deterministic seam tests prove every interactive-mode exit path, including `/quit` and `Ctrl-C`, plus attach-mode and auto-daemon-mode exits, all route through the shared terminal-finalizer helper, so each path restores the terminal before attempting scrollback output and still honors the shared non-terminal stdout skip path.

@@ -1,0 +1,31 @@
+Evidence-ID: tui-exit-scrollback.V2.render-and-truncation
+Task-ID: V2
+Artifact-Type: deterministic-proof
+Covers: tui.exit.scrollback.dump.on.exit.normal-exit-renders-conversation, tui.exit.scrollback.dump.truncation, tui.exit.scrollback.dump.truncation.long-session-omits-earlier-blocks, tui.exit.scrollback.dump.truncation.short-session-renders-all-blocks, tui.exit.scrollback.dump.content.structure, tui.exit.scrollback.dump.content.structure.block-rendering-preserves-prompt-markdown-and-tool-sections, tui.exit.scrollback.dump.content.structure.tool-output-truncates-after-ten-lines
+Created-By: pi
+Created-At: 2026-04-22T23:59:16Z
+Status: passed
+
+# Evidence: render and truncation verification
+
+## Commands
+
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' RUSTC_WRAPPER= cargo test --lib modes::scrollback_dump::tests::`
+
+## Observed Output
+
+### `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' RUSTC_WRAPPER= cargo test --lib modes::scrollback_dump::tests::`
+
+- `running 16 tests`
+- `test modes::scrollback_dump::tests::render_width_falls_back_when_terminal_size_lookup_fails ... ok`
+- `test modes::scrollback_dump::tests::render_scrollback_output_contains_required_sections ... ok`
+- `test modes::scrollback_dump::tests::render_scrollback_output_omits_earlier_blocks_for_long_sessions ... ok`
+- `test modes::scrollback_dump::tests::render_scrollback_output_keeps_all_blocks_for_short_sessions ... ok`
+- `test modes::scrollback_dump::tests::thinking_summary_uses_first_non_empty_line ... ok`
+- `test modes::scrollback_dump::tests::thinking_summary_omits_blank_content ... ok`
+- `test modes::scrollback_dump::tests::write_scrollback_output_appends_style_reset_and_flushes ... ok`
+- `test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 714 filtered out`
+
+## Coverage Notes
+
+These tests prove the scrollback render plan includes the styled markdown, tool headers, and user prompts required for ordinary `/quit` and `Ctrl-C` exits, truncates tool output after 10 lines with an omission indicator, keeps only the last 20 blocks with an omission header for long sessions, renders all blocks with no omission header for short sessions, and falls back to 80 columns when terminal size lookup fails.

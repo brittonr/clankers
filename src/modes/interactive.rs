@@ -233,7 +233,12 @@ pub async fn run_interactive(
         cancel.cancel();
     }
 
-    super::common::restore_terminal(&mut terminal);
+    let result = super::scrollback_dump::finalize_terminal_and_scrollback(
+        result,
+        &mut terminal,
+        &app.conversation.blocks,
+        &settings,
+    );
 
     // ── Worktree cleanup: mark completed, merge, and GC ─────────────
     if let Some(ref wt) = worktree_setup

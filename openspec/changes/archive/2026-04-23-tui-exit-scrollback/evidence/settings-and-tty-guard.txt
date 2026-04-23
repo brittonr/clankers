@@ -1,0 +1,39 @@
+Evidence-ID: tui-exit-scrollback.V1.settings-and-tty-guard
+Task-ID: V1
+Artifact-Type: deterministic-proof
+Covers: tui.exit.scrollback.dump.on.exit.non-terminal-stdout-skips-dump, tui.exit.scrollback.dump.setting.opt-out, tui.exit.scrollback.dump.setting.opt-out.disabled-setting-skips-dump, tui.exit.scrollback.dump.setting.opt-out.default-or-true-enables-dump
+Created-By: pi
+Created-At: 2026-04-22T23:59:16Z
+Status: passed
+
+# Evidence: settings and TTY guard verification
+
+## Commands
+
+- `RUSTC_WRAPPER= cargo test -p clankers-config settings::tests:: --lib`
+- `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' RUSTC_WRAPPER= cargo test --lib modes::scrollback_dump::tests::`
+
+## Observed Output
+
+### `RUSTC_WRAPPER= cargo test -p clankers-config settings::tests:: --lib`
+
+- `running 17 tests`
+- `test settings::tests::scrollback_on_exit_default_none ... ok`
+- `test settings::tests::scrollback_on_exit_snake_case_false ... ok`
+- `test settings::tests::scrollback_on_exit_camel_case_true ... ok`
+- `test settings::tests::scrollback_on_exit_project_overrides_global ... ok`
+- `test result: ok. 17 passed; 0 failed; 0 ignored; 0 measured; 18 filtered out`
+
+### `CC=gcc CXX=g++ CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER=gcc RUSTFLAGS='-C link-arg=-fuse-ld=bfd' RUSTC_WRAPPER= cargo test --lib modes::scrollback_dump::tests::`
+
+- `running 16 tests`
+- `test modes::scrollback_dump::tests::scrollback_dump_disabled_when_setting_false ... ok`
+- `test modes::scrollback_dump::tests::scrollback_dump_enabled_when_setting_unset_and_stdout_is_terminal ... ok`
+- `test modes::scrollback_dump::tests::scrollback_dump_enabled_when_setting_true_and_stdout_is_terminal ... ok`
+- `test modes::scrollback_dump::tests::scrollback_dump_disabled_when_stdout_is_not_terminal ... ok`
+- `test modes::scrollback_dump::tests::dump_conversation_to_scrollback_skips_when_setting_disabled ... ok`
+- `test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 714 filtered out`
+
+## Coverage Notes
+
+These commands prove the setting defaults to enabled when unset, accepts both camelCase and `scrollback_on_exit` JSON input, lets project settings override global settings, disables scrollback when explicitly false, preserves the enabled path when unset or explicitly true, and short-circuits the dump when stdout is not a terminal.

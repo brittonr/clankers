@@ -190,7 +190,12 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     )
     .await;
 
-    super::common::restore_terminal(&mut term);
+    let result = super::scrollback_dump::finalize_terminal_and_scrollback(
+        result,
+        &mut term,
+        &app.conversation.blocks,
+        &opts.settings,
+    );
 
     // SessionGuard::drop fires here (or on panic/signal unwind) to kill the
     // session. No manual cleanup needed.

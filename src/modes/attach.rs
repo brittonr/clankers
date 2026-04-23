@@ -165,8 +165,7 @@ pub async fn run_attach(
     )
     .await;
 
-    super::common::restore_terminal(&mut term);
-    result
+    super::scrollback_dump::finalize_terminal_and_scrollback(result, &mut term, &app.conversation.blocks, settings)
 }
 
 // ── Auto-daemon mode (extracted to auto_daemon.rs) ──────────────────────────
