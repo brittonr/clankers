@@ -121,6 +121,7 @@
 - If a design depends on a private/external reference implementation for wire behavior, freeze the contract in the artifact itself: endpoint, required headers, body fields, claim path, and retry/status semantics. Pair it with fixture or integration coverage.
 - If proposal/design says docs/help or unchanged UX paths matter, tasks must include explicit acceptance/regression verification. "Update docs" alone is too weak.
 - If a spec says a value is stable, derived, or reused, define concrete source field, transform, scope, and lifetime. Do not leave identifier semantics implicit.
+- When syncing an `ADDED` delta into a new canonical spec, strip delta framing like `## ADDED Requirements` so the baseline reads as authoritative `## Requirements` rather than as a still-pending delta.
 - OpenSpec design gate evidence can truncate long artifacts before late verification bullets. Put a compact verification summary early in `design.md` so constructor/parity/request-fixture/docs/smoke checks stay visible.
 - Do not claim stage passes or file edits unless this turn's transcript shows the gate output or git status proving them. Re-run before summarizing if needed.
 
