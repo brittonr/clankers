@@ -6,10 +6,10 @@ When the TUI exits, it leaves the alternate screen and the entire conversation d
 
 ## What Changes
 
-- After `restore_terminal()` in each TUI exit path, render the conversation to scrollback using `rat-inline`
+- Route each TUI exit path through a shared `finalize_terminal_and_scrollback(...)` helper that restores the terminal, then renders the conversation to scrollback using `rat-inline`
 - The dump walks `App.conversation.blocks`, converting each block's prompt and responses into an `InlineView`
 - Reuses `InlineRenderer`, `InlineMarkdown`, and `InlineText` from `rat-inline`
-- Controlled by a setting (`scrollback_on_exit: bool`, default true) so users can disable it
+- Controlled by a setting (`scrollback_on_exit: Option<bool>`) so users can disable it explicitly, while `None` keeps the default enabled behavior
 
 ## Capabilities
 
@@ -22,7 +22,7 @@ _(none)_
 
 ## Impact
 
-- `src/modes/common.rs` or new `src/modes/scrollback_dump.rs`: function that takes `&ConversationState` and writes to stdout via `InlineRenderer`
+- `src/modes/scrollback_dump.rs`: shared helpers that take `&[BlockEntry]` plus `&Settings`, restore the terminal, and write rendered scrollback to stdout via `InlineRenderer`
 - `src/modes/interactive.rs`: call dump after `restore_terminal()`
 - `src/modes/attach.rs`: call dump after `restore_terminal()`
 - `src/modes/auto_daemon.rs`: call dump after `restore_terminal()`

@@ -2,12 +2,12 @@
 
 The TUI runs on the alternate screen. When it exits (`/quit`, Ctrl-C, agent finishes), `restore_terminal()` disables raw mode, leaves the alternate screen, and shows the cursor. At that point the terminal shows whatever was in the main screen buffer before the TUI launched — the conversation is gone.
 
-Three exit paths call `restore_terminal()`:
+Three exit paths need the same terminal-finalization behavior:
 - `src/modes/interactive.rs` — standalone interactive mode
 - `src/modes/attach.rs` — attached to daemon session
 - `src/modes/auto_daemon.rs` — auto-daemon attach
 
-All three have access to the `App` struct (or can pass the conversation state out) at the point of exit.
+All three have access to the `App` conversation entries at the point of exit, so they can route through one shared finalizer.
 
 ## Goals / Non-Goals
 
@@ -26,12 +26,19 @@ All three have access to the `App` struct (or can pass the conversation state ou
 
 ### 1. Shared dump function in a new module
 
-Create `src/modes/scrollback_dump.rs` with:
+Create `src/modes/scrollback_dump.rs` with shared helpers:
 ```rust
-pub fn dump_conversation_to_scrollback(blocks: &[ConversationBlock], width: u16)
+pub fn finalize_terminal_and_scrollback(
+    run_result: Result<()>,
+    terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+    entries: &[BlockEntry],
+    settings: &Settings,
+) -> Result<()>
+
+pub fn dump_conversation_to_scrollback(entries: &[BlockEntry], settings: &Settings) -> Result<()>
 ```
 
-This walks the blocks and builds an `InlineView` with keyed nodes for each block's prompt and responses, then renders and writes to stdout. All three exit paths call it after `restore_terminal()`.
+The dump helper walks `BlockEntry` values, keeps only conversation blocks, builds an `InlineView` with keyed nodes for each block's prompt and responses, then renders and writes to stdout. The shared finalizer restores the terminal first, then invokes the dump helper so all three exit paths share one shell.
 
 ### 2. Block → InlineView conversion
 
@@ -57,7 +64,7 @@ Use `crossterm::terminal::size()` after `restore_terminal()` — at that point t
 
 ### 5. Setting
 
-`scrollback_on_exit: bool` in settings, default `true`. Checked before calling the dump function.
+`scrollback_on_exit: Option<bool>` in settings. `Some(false)` disables the dump, while `None` or `Some(true)` keep the default enabled behavior. The setting is checked inside the dump helper together with the stdout-is-terminal guard.
 
 ## Risks / Trade-offs
 

@@ -355,6 +355,8 @@ mod tests {
     use chrono::DateTime;
     use chrono::Utc;
     use serde_json::json;
+    use vt100::Color as TermColor;
+    use vt100::Parser;
 
     use super::*;
 
@@ -362,12 +364,19 @@ mod tests {
     const TEST_ERROR_MESSAGE: &str = "test error";
     const RENDER_TEST_PROMPT: &str = "render prompt";
     const RENDER_TEST_ASSISTANT: &str = "assistant reply";
+    const RENDER_TEST_ASSISTANT_MARKDOWN: &str = "assistant **reply**";
+    const RENDER_TEST_ASSISTANT_RENDERED: &str = "assistant reply";
+    const RENDER_TEST_ASSISTANT_EMPHASIS: &str = "reply";
     const RENDER_TEST_TOOL_NAME: &str = "bash";
+    const RENDER_TEST_TOOL_RESULT: &str = "tool output";
+    const RENDER_TEST_TOOL_ERROR: &str = "tool failed";
     const RENDER_TEST_THINKING: &str = "think first\nthink later";
     const LONG_TOOL_RESULT: &str =
         "line-01\nline-02\nline-03\nline-04\nline-05\nline-06\nline-07\nline-08\nline-09\nline-10\nline-11\nline-12";
     const EXPECTED_TOOL_OMISSION: &str = "... (2 more lines)";
     const EXPECTED_OMISSION_HEADER: &str = "... 1 earlier blocks omitted";
+    const RENDER_TEST_WIDTH: u16 = 120;
+    const RENDER_TEST_ROWS: u16 = 40;
     const INTERACTIVE_SOURCE: &str = include_str!("interactive.rs");
     const ATTACH_SOURCE: &str = include_str!("attach.rs");
     const AUTO_DAEMON_SOURCE: &str = include_str!("auto_daemon.rs");
@@ -416,6 +425,117 @@ mod tests {
             images: Vec::new(),
         });
         BlockEntry::Conversation(block)
+    }
+
+    fn styled_conversation_entry(prompt: &str, index: usize) -> BlockEntry {
+        let mut block = ConversationBlock::new(index, prompt.to_string(), fixed_started_at());
+        block.streaming = false;
+        block.responses.push(DisplayMessage {
+            role: MessageRole::Assistant,
+            content: RENDER_TEST_ASSISTANT_MARKDOWN.to_string(),
+            tool_name: None,
+            tool_input: None,
+            is_error: false,
+            images: Vec::new(),
+        });
+        block.responses.push(DisplayMessage {
+            role: MessageRole::Thinking,
+            content: RENDER_TEST_THINKING.to_string(),
+            tool_name: None,
+            tool_input: None,
+            is_error: false,
+            images: Vec::new(),
+        });
+        block.responses.push(DisplayMessage {
+            role: MessageRole::ToolCall,
+            content: String::new(),
+            tool_name: Some(RENDER_TEST_TOOL_NAME.to_string()),
+            tool_input: Some(json!({"command": "ls"})),
+            is_error: false,
+            images: Vec::new(),
+        });
+        block.responses.push(DisplayMessage {
+            role: MessageRole::ToolResult,
+            content: RENDER_TEST_TOOL_RESULT.to_string(),
+            tool_name: None,
+            tool_input: None,
+            is_error: false,
+            images: Vec::new(),
+        });
+        block.responses.push(DisplayMessage {
+            role: MessageRole::ToolResult,
+            content: RENDER_TEST_TOOL_ERROR.to_string(),
+            tool_name: None,
+            tool_input: None,
+            is_error: true,
+            images: Vec::new(),
+        });
+        BlockEntry::Conversation(block)
+    }
+
+    fn render_parser(entries: &[BlockEntry], width: u16, rows: u16) -> Parser {
+        let render_output = render_scrollback_output(entries, width);
+        let mut parser = Parser::new(rows, width, 0);
+        parser.process(&render_output);
+        parser
+    }
+
+    fn screen_line(parser: &Parser, row: u16, width: u16) -> String {
+        let screen = parser.screen();
+        let mut line = String::new();
+        for col in 0..width {
+            let cell = screen.cell(row, col).expect("screen cell should exist");
+            line.push_str(cell.contents());
+        }
+        line.trim_end().to_string()
+    }
+
+    fn find_fragment_start(parser: &Parser, width: u16, rows: u16, needle: &str) -> (u16, u16) {
+        for row in 0..rows {
+            let line = screen_line(parser, row, width);
+            if let Some(byte_col) = line.find(needle) {
+                let char_col = line[..byte_col].chars().count();
+                let column = u16::try_from(char_col).expect("fragment column should fit in u16");
+                return (row, column);
+            }
+        }
+        panic!("fragment {needle:?} not found in rendered output");
+    }
+
+    fn assert_fragment_style(
+        parser: &Parser,
+        width: u16,
+        rows: u16,
+        needle: &str,
+        expected_bold: bool,
+        expected_dim: bool,
+        expected_italic: bool,
+        expected_fg: TermColor,
+    ) {
+        let (row, start_col) = find_fragment_start(parser, width, rows, needle);
+        let span_width = u16::try_from(needle.chars().count()).expect("fragment span should fit in u16");
+        let screen = parser.screen();
+
+        for offset in 0..span_width {
+            let col = start_col + offset;
+            let cell = screen.cell(row, col).expect("styled fragment cell should exist");
+            assert_eq!(cell.bold(), expected_bold, "unexpected bold for fragment {needle:?} at offset {offset}");
+            assert_eq!(cell.dim(), expected_dim, "unexpected dim for fragment {needle:?} at offset {offset}");
+            assert_eq!(
+                cell.italic(),
+                expected_italic,
+                "unexpected italic for fragment {needle:?} at offset {offset}"
+            );
+            assert_eq!(
+                cell.fgcolor(),
+                expected_fg,
+                "unexpected foreground color for fragment {needle:?} at offset {offset}"
+            );
+        }
+    }
+
+    fn screen_contains(parser: &Parser, width: u16, rows: u16, needle: &str) -> bool {
+        (0..rows).any(|row| screen_line(parser, row, width).contains(needle))
     }
 
     fn settings_with_scrollback(scrollback_on_exit: Option<bool>) -> Settings {
@@ -496,6 +616,75 @@ mod tests {
         assert!(contents.contains(&first_prompt));
         assert!(contents.contains(&second_prompt));
         assert!(!contents.iter().any(|content| content.contains(SCROLLBACK_OMISSION_SUFFIX)));
+    }
+
+    #[test]
+    fn render_scrollback_output_emits_expected_prompt_markdown_and_tool_styles() {
+        let parser = render_parser(&[styled_conversation_entry(RENDER_TEST_PROMPT, 1)], RENDER_TEST_WIDTH, RENDER_TEST_ROWS);
+
+        assert!(screen_contains(&parser, RENDER_TEST_WIDTH, RENDER_TEST_ROWS, RENDER_TEST_ASSISTANT_RENDERED));
+        assert!(!screen_contains(&parser, RENDER_TEST_WIDTH, RENDER_TEST_ROWS, RENDER_TEST_ASSISTANT_MARKDOWN));
+
+        assert_fragment_style(
+            &parser,
+            RENDER_TEST_WIDTH,
+            RENDER_TEST_ROWS,
+            RENDER_TEST_PROMPT,
+            true,
+            false,
+            false,
+            TermColor::Default,
+        );
+        assert_fragment_style(
+            &parser,
+            RENDER_TEST_WIDTH,
+            RENDER_TEST_ROWS,
+            RENDER_TEST_ASSISTANT_EMPHASIS,
+            true,
+            false,
+            false,
+            TermColor::Default,
+        );
+        assert_fragment_style(
+            &parser,
+            RENDER_TEST_WIDTH,
+            RENDER_TEST_ROWS,
+            SCROLLBACK_THINKING_PREFIX,
+            false,
+            true,
+            true,
+            TermColor::Default,
+        );
+        assert_fragment_style(
+            &parser,
+            RENDER_TEST_WIDTH,
+            RENDER_TEST_ROWS,
+            RENDER_TEST_TOOL_NAME,
+            true,
+            false,
+            false,
+            TermColor::Default,
+        );
+        assert_fragment_style(
+            &parser,
+            RENDER_TEST_WIDTH,
+            RENDER_TEST_ROWS,
+            RENDER_TEST_TOOL_RESULT,
+            false,
+            true,
+            false,
+            TermColor::Default,
+        );
+        assert_fragment_style(
+            &parser,
+            RENDER_TEST_WIDTH,
+            RENDER_TEST_ROWS,
+            RENDER_TEST_TOOL_ERROR,
+            false,
+            true,
+            false,
+            TermColor::Idx(1),
+        );
     }
 
     #[test]

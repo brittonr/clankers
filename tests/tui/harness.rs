@@ -18,6 +18,7 @@ use vt100::Parser;
 /// A running clankers TUI instance inside a PTY
 pub struct TuiTestHarness {
     parser: Arc<Mutex<Parser>>,
+    raw_output: Arc<Mutex<Vec<u8>>>,
     writer: Box<dyn Write + Send>,
     _child: Box<dyn portable_pty::Child + Send + Sync>,
     _reader_thread: std::thread::JoinHandle<()>,
@@ -29,6 +30,11 @@ impl TuiTestHarness {
     /// Spawn clankers in a PTY with the given dimensions.
     /// Waits for the initial render before returning.
     pub fn spawn(rows: u16, cols: u16) -> Self {
+        Self::spawn_with(rows, cols, &[], &[])
+    }
+
+    /// Spawn clankers in a PTY with extra CLI args and environment variables.
+    pub fn spawn_with(rows: u16, cols: u16, extra_args: &[&str], extra_env: &[(&str, &str)]) -> Self {
         let pty_system = NativePtySystem::default();
         let pair = pty_system
             .openpty(PtySize {
@@ -41,11 +47,15 @@ impl TuiTestHarness {
 
         let mut cmd = CommandBuilder::new(env!("CARGO_BIN_EXE_clankers"));
         cmd.args(["--no-zellij", "--no-daemon"]);
+        cmd.args(extra_args);
         cmd.env("RUST_LOG", "off");
         cmd.env("TERM", "xterm-256color");
         // Belt-and-suspenders: block daemon/router auto-start even if
         // --no-daemon is ever accidentally removed from the args above.
         cmd.env("CLANKERS_NO_DAEMON", "1");
+        for (key, value) in extra_env {
+            cmd.env(*key, *value);
+        }
         // Ensure CWD is the project root so plugins/ dir is discovered
         cmd.cwd(env!("CARGO_MANIFEST_DIR"));
 
@@ -56,16 +66,19 @@ impl TuiTestHarness {
         let writer = pair.master.take_writer().expect("Failed to take writer");
 
         let parser = Arc::new(Mutex::new(Parser::new(rows, cols, 0)));
+        let raw_output = Arc::new(Mutex::new(Vec::new()));
 
         // Spawn a background thread that continuously reads from the PTY
         // and feeds bytes into the vt100 parser.
         let parser_clone = Arc::clone(&parser);
+        let raw_output_clone = Arc::clone(&raw_output);
         let reader_thread = std::thread::spawn(move || {
             let mut buf = [0u8; 4096];
             loop {
                 match reader.read(&mut buf) {
                     Ok(0) => break, // EOF — process exited
                     Ok(n) => {
+                        raw_output_clone.lock().unwrap().extend_from_slice(&buf[..n]);
                         parser_clone.lock().unwrap().process(&buf[..n]);
                     }
                     Err(_) => break,
@@ -75,6 +88,7 @@ impl TuiTestHarness {
 
         let mut harness = Self {
             parser,
+            raw_output,
             writer,
             _child: child,
             _reader_thread: reader_thread,
@@ -151,6 +165,62 @@ impl TuiTestHarness {
             line.push_str(cell.contents());
         }
         line.trim_end().to_string()
+    }
+
+    /// Return the full raw PTY output captured so far, including ANSI escapes.
+    pub fn raw_output_text(&self) -> String {
+        let raw = self.raw_output.lock().unwrap();
+        String::from_utf8_lossy(&raw).into_owned()
+    }
+
+    /// Return the raw PTY output after the last occurrence of `marker`.
+    pub fn raw_output_after_last(&self, marker: &str) -> Option<String> {
+        let raw = self.raw_output_text();
+        let marker_index = raw.rfind(marker)?;
+        let start = marker_index + marker.len();
+        Some(raw[start..].to_string())
+    }
+
+    /// Return ANSI-decoded text after the last occurrence of `marker`.
+    pub fn rendered_text_after_last(&self, marker: &str) -> Option<String> {
+        let tail = self.raw_output_after_last(marker)?;
+        let mut parser = Parser::new(self.rows, self.cols, 0);
+        parser.process(tail.as_bytes());
+        let screen = parser.screen();
+        let mut lines = Vec::new();
+        for row in 0..self.rows {
+            let mut line = String::new();
+            for col in 0..self.cols {
+                let cell = screen.cell(row, col).expect("decoded tail cell should exist");
+                line.push_str(cell.contents());
+            }
+            lines.push(line.trim_end().to_string());
+        }
+        while lines.last().is_some_and(String::is_empty) {
+            lines.pop();
+        }
+        Some(lines.join("\n"))
+    }
+
+    /// Wait until ANSI-decoded text after the last `marker` contains `needle`.
+    pub fn wait_for_rendered_text_after_last(&mut self, marker: &str, needle: &str, timeout: Duration) {
+        let start = Instant::now();
+        loop {
+            if self
+                .rendered_text_after_last(marker)
+                .is_some_and(|tail| tail.contains(needle))
+            {
+                return;
+            }
+            assert!(
+                start.elapsed() < timeout,
+                "Timed out waiting for {:?} after marker {:?}.\nRaw output:\n{}",
+                needle,
+                marker,
+                self.raw_output_text()
+            );
+            std::thread::sleep(Duration::from_millis(50));
+        }
     }
 
     /// Check if any row contains the given text
