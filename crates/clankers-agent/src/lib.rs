@@ -1067,6 +1067,22 @@ mod tests {
     }
 
     #[test]
+    fn skill_creation_nudge_honors_custom_interval() {
+        let mut agent = make_test_agent();
+        agent.settings.skills.creation_nudge_interval = 3;
+        agent.skill_creation_nudge_counter = 2;
+
+        let mut events = agent.event_tx.subscribe();
+        agent.maybe_emit_skill_creation_nudge();
+        assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));
+
+        agent.skill_creation_nudge_counter = 3;
+        agent.maybe_emit_skill_creation_nudge();
+        let event = events.try_recv().expect("custom interval nudge should fire");
+        assert!(matches!(event, AgentEvent::SystemMessage { .. }));
+    }
+
+    #[test]
     fn skill_creation_nudge_does_not_fire_when_disabled() {
         let mut agent = make_test_agent();
         agent.settings.skills.creation_nudge_interval = NO_SKILL_NUDGE_COUNT;

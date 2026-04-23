@@ -36,14 +36,13 @@
 - [x] 5.2 Track tool-calling turn counter in agent turn loop state
 - [x] 5.3 Inject nudge system message when counter reaches the configured interval
 - [x] 5.4 Reset counter when `skill_manage` tool is called
-- [ ] 5.5 Reset counter when a skill is loaded (via slash command or auto-activation)
 
 ## 6. Tests
 
-- [x] 6.1 Unit test: create, edit, patch, delete operations on a temp directory
+- [x] 6.1 Unit test: create, edit, patch, delete operations on a temp directory, including duplicate-name rejection and category-path creation
 - [x] 6.2 Unit test: frontmatter validation rejects missing name, missing description, oversized content
-- [x] 6.3 Unit test: security scan blocks prompt injection patterns
+- [x] 6.3 Unit test: security scan blocks prompt injection and exfiltration patterns
 - [x] 6.4 Unit test: security scan blocks invisible unicode
 - [x] 6.5 Unit test: writable-root check rejects project-level skill deletion
-- [x] 6.6 Unit test: path traversal in supporting file paths is rejected
-- [x] 6.7 Unit test: nudge fires after configured interval, resets on skill_manage
+- [x] 6.6 Unit test: supporting-file management covers successful write/remove plus allowed-subdirectory/path-traversal enforcement
+- [x] 6.7 Unit test: nudge fires after configured interval, resets on skill_manage, and honors custom intervals
