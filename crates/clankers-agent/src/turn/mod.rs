@@ -8,6 +8,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use clankers_engine::EngineEffect;
+use clankers_engine::EngineEvent;
+use clankers_engine::EngineModelResponse;
+use clankers_engine::apply_model_completion;
 use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_provider::Provider;
 use clankers_provider::ThinkingConfig;
@@ -163,6 +167,50 @@ impl ContentBlockBuilder {
     }
 }
 
+#[derive(Debug)]
+enum EngineModelDecision {
+    ExecuteTools(Vec<(String, String, Value)>),
+    Finish(StopReason),
+}
+
+fn decide_model_completion(outcome: &clankers_engine::EngineOutcome) -> Result<EngineModelDecision> {
+    let mut tool_calls = Vec::new();
+    let mut turn_finished = None;
+
+    for effect in &outcome.effects {
+        match effect {
+            EngineEffect::ExecuteTool(call) => {
+                tool_calls.push((call.call_id.0.clone(), call.tool_name.clone(), call.input.clone()));
+            }
+            EngineEffect::EmitEvent(EngineEvent::TurnFinished { stop_reason }) => {
+                if turn_finished.replace(stop_reason.clone()).is_some() {
+                    return Err(AgentError::ProviderStreaming {
+                        message: "engine emitted multiple turn-finished effects".to_string(),
+                        status: None,
+                        retryable: false,
+                    });
+                }
+            }
+            EngineEffect::RequestModel(_) | EngineEffect::EmitEvent(_) => {}
+        }
+    }
+
+    let has_tool_calls = !tool_calls.is_empty();
+    let has_turn_finish = turn_finished.is_some();
+    if has_tool_calls == has_turn_finish {
+        return Err(AgentError::ProviderStreaming {
+            message: "engine emitted ambiguous model-completion effects".to_string(),
+            status: None,
+            retryable: false,
+        });
+    }
+
+    match turn_finished {
+        Some(stop_reason) => Ok(EngineModelDecision::Finish(stop_reason)),
+        None => Ok(EngineModelDecision::ExecuteTools(tool_calls)),
+    }
+}
+
 /// Run the agent turn loop.
 ///
 /// 1. Build CompletionRequest from messages + config
@@ -237,6 +285,21 @@ pub async fn run_turn_loop(
             }
         };
 
+        let engine_response = EngineModelResponse {
+            output: collected.response.content.clone(),
+            stop_reason: collected.response.stop_reason.clone(),
+        };
+        let engine_outcome = apply_model_completion(&collected.request_state, &collected.request_id, &engine_response);
+        if let Some(rejection) = &engine_outcome.rejection {
+            return Err(AgentError::ProviderStreaming {
+                message: format!("engine rejected model completion planning: {rejection:?}"),
+                status: None,
+                retryable: false,
+            });
+        }
+        let engine_decision = decide_model_completion(&engine_outcome)?;
+        let collected = collected.response;
+
         // Update usage tracking
         update_usage_tracking(&mut cumulative_usage, &collected.usage, &active_model, cost_tracker, event_tx);
 
@@ -244,73 +307,69 @@ pub async fn run_turn_loop(
         let assistant_msg = build_assistant_message(&collected);
         messages.push(AgentMessage::Assistant(assistant_msg.clone()));
 
-        // Extract tool calls
-        let tool_calls = extract_tool_calls(&collected.content);
-
+        let planned_tool_call_count = match &engine_decision {
+            EngineModelDecision::ExecuteTools(tool_calls) => tool_calls.len(),
+            EngineModelDecision::Finish(_) => 0,
+        };
         tracing::debug!(
             turn = turn_index,
             stop_reason = ?collected.stop_reason,
-            tool_calls = tool_calls.len(),
+            tool_calls = planned_tool_call_count,
             content_blocks = collected.content.len(),
             "turn collected",
         );
-        for (call_id, name, input) in &tool_calls {
-            let input_keys: Vec<&str> =
-                input.as_object().map(|m| m.keys().map(|k| k.as_str()).collect()).unwrap_or_default();
-            tracing::debug!(
-                call_id,
-                tool = name,
-                input_keys = ?input_keys,
-                input_empty = input.as_object().is_none_or(|m| m.is_empty()),
-                "extracted tool call",
-            );
-        }
 
-        // If no tool calls, we're done
-        if tool_calls.is_empty() || collected.stop_reason != StopReason::ToolUse {
-            if !tool_calls.is_empty() && collected.stop_reason != StopReason::ToolUse {
-                tracing::warn!(
-                    turn = turn_index,
-                    stop_reason = ?collected.stop_reason,
-                    tool_calls = tool_calls.len(),
-                    "tool calls present but stop_reason is not ToolUse — tools will NOT execute",
-                );
+        match engine_decision {
+            EngineModelDecision::Finish(stop_reason) => {
+                tracing::debug!(turn = turn_index, ?stop_reason, "engine finished turn without tool execution");
+                event_tx
+                    .send(AgentEvent::TurnEnd {
+                        index: turn_index,
+                        message: assistant_msg,
+                        tool_results: vec![],
+                    })
+                    .ok();
+                break;
             }
-            event_tx
-                .send(AgentEvent::TurnEnd {
-                    index: turn_index,
-                    message: assistant_msg,
-                    tool_results: vec![],
-                })
-                .ok();
-            break;
-        }
+            EngineModelDecision::ExecuteTools(tool_calls) => {
+                for (call_id, name, input) in &tool_calls {
+                    let input_keys: Vec<&str> =
+                        input.as_object().map(|map| map.keys().map(|key| key.as_str()).collect()).unwrap_or_default();
+                    tracing::debug!(
+                        call_id,
+                        tool = name,
+                        input_keys = ?input_keys,
+                        input_empty = input.as_object().is_none_or(|map| map.is_empty()),
+                        "engine requested tool call",
+                    );
+                }
 
-        // Execute tools and append results (with truncation)
-        let tool_result_messages = execute_tools_parallel(
-            controller_tools,
-            &tool_calls,
-            event_tx,
-            cancel.clone(),
-            hook_pipeline.clone(),
-            session_id,
-            db.clone(),
-            capability_gate.cloned(),
-            user_tool_filter.cloned(),
-        )
-        .await;
-        let tool_result_messages = apply_output_truncation(tool_result_messages, &config.output_truncation);
-        for msg in &tool_result_messages {
-            messages.push(AgentMessage::ToolResult(msg.clone()));
-        }
+                let tool_result_messages = execute_tools_parallel(
+                    controller_tools,
+                    &tool_calls,
+                    event_tx,
+                    cancel.clone(),
+                    hook_pipeline.clone(),
+                    session_id,
+                    db.clone(),
+                    capability_gate.cloned(),
+                    user_tool_filter.cloned(),
+                )
+                .await;
+                let tool_result_messages = apply_output_truncation(tool_result_messages, &config.output_truncation);
+                for msg in &tool_result_messages {
+                    messages.push(AgentMessage::ToolResult(msg.clone()));
+                }
 
-        event_tx
-            .send(AgentEvent::TurnEnd {
-                index: turn_index,
-                message: assistant_msg,
-                tool_results: tool_result_messages,
-            })
-            .ok();
+                event_tx
+                    .send(AgentEvent::TurnEnd {
+                        index: turn_index,
+                        message: assistant_msg,
+                        tool_results: tool_result_messages,
+                    })
+                    .ok();
+            }
+        }
     }
 
     Ok(())
@@ -326,20 +385,6 @@ fn build_assistant_message(collected: &CollectedResponse) -> AssistantMessage {
         stop_reason: collected.stop_reason.clone(),
         timestamp: Utc::now(),
     }
-}
-
-/// Extract tool calls from content blocks
-fn extract_tool_calls(content: &[Content]) -> Vec<(String, String, Value)> {
-    content
-        .iter()
-        .filter_map(|c| {
-            if let Content::ToolUse { id, name, input } = c {
-                Some((id.clone(), name.clone(), input.clone()))
-            } else {
-                None
-            }
-        })
-        .collect()
 }
 
 /// Apply output truncation to tool result messages.
@@ -1363,6 +1408,200 @@ mod tests {
         assert_eq!(captured.len(), 2);
         assert_eq!(captured[0].extra_params.get("_session_id"), Some(&json!("session-resumed")));
         assert_eq!(captured[1].extra_params.get("_session_id"), Some(&json!("session-resumed")));
+    }
+
+    #[test]
+    fn decide_model_completion_accepts_turn_finish_effect() {
+        let outcome = clankers_engine::EngineOutcome {
+            next_state: clankers_engine::EngineState::new(),
+            effects: vec![EngineEffect::EmitEvent(EngineEvent::TurnFinished {
+                stop_reason: StopReason::Stop,
+            })],
+            rejection: None,
+        };
+
+        let decision = decide_model_completion(&outcome).expect("turn finish decision should be accepted");
+        assert!(matches!(decision, EngineModelDecision::Finish(StopReason::Stop)));
+    }
+
+    #[test]
+    fn decide_model_completion_accepts_execute_tool_effects() {
+        let outcome = clankers_engine::EngineOutcome {
+            next_state: clankers_engine::EngineState::new(),
+            effects: vec![EngineEffect::ExecuteTool(clankers_engine::EngineToolCall {
+                call_id: clankers_engine::EngineCorrelationId("call-1".to_string()),
+                tool_name: "read".to_string(),
+                input: json!({"path": "src/main.rs"}),
+            })],
+            rejection: None,
+        };
+
+        let decision = decide_model_completion(&outcome).expect("tool decision should be accepted");
+        assert!(matches!(decision, EngineModelDecision::ExecuteTools(tool_calls) if tool_calls.len() == 1));
+    }
+
+    #[test]
+    fn decide_model_completion_rejects_ambiguous_effect_sets() {
+        let outcome = clankers_engine::EngineOutcome {
+            next_state: clankers_engine::EngineState::new(),
+            effects: vec![
+                EngineEffect::ExecuteTool(clankers_engine::EngineToolCall {
+                    call_id: clankers_engine::EngineCorrelationId("call-1".to_string()),
+                    tool_name: "read".to_string(),
+                    input: json!({"path": "src/main.rs"}),
+                }),
+                EngineEffect::EmitEvent(EngineEvent::TurnFinished {
+                    stop_reason: StopReason::Stop,
+                }),
+            ],
+            rejection: None,
+        };
+
+        let error = decide_model_completion(&outcome).expect_err("ambiguous effects should fail closed");
+        assert!(matches!(error, AgentError::ProviderStreaming { retryable: false, .. }));
+    }
+
+    #[tokio::test]
+    async fn run_turn_loop_executes_engine_requested_tool_roundtrip() {
+        use std::sync::atomic::Ordering;
+
+        const FIRST_PROVIDER_CALL: usize = 0;
+        const SECOND_PROVIDER_CALL: usize = 1;
+        const EXPECTED_PROVIDER_CALLS: usize = 2;
+        const EXPECTED_MESSAGE_COUNT: usize = 4;
+
+        struct ToolRoundTripProvider {
+            call_count: AtomicUsize,
+        }
+
+        #[async_trait]
+        impl clankers_provider::Provider for ToolRoundTripProvider {
+            async fn complete(
+                &self,
+                _request: clankers_provider::CompletionRequest,
+                tx: mpsc::Sender<StreamEvent>,
+            ) -> clankers_provider::error::Result<()> {
+                let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
+                tx.send(StreamEvent::MessageStart {
+                    message: MessageMetadata {
+                        id: format!("msg-{call_index}"),
+                        model: "test-model".into(),
+                        role: "assistant".into(),
+                    },
+                })
+                .await
+                .ok();
+
+                match call_index {
+                    FIRST_PROVIDER_CALL => {
+                        tx.send(StreamEvent::ContentBlockStart {
+                            index: 0,
+                            content_block: Content::ToolUse {
+                                id: "call-1".into(),
+                                name: "direct_tool".into(),
+                                input: json!({}),
+                            },
+                        })
+                        .await
+                        .ok();
+                        tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                        tx.send(StreamEvent::MessageDelta {
+                            stop_reason: Some("tool_use".into()),
+                            usage: Usage {
+                                input_tokens: 10,
+                                output_tokens: 2,
+                                cache_creation_input_tokens: 0,
+                                cache_read_input_tokens: 0,
+                            },
+                        })
+                        .await
+                        .ok();
+                    }
+                    SECOND_PROVIDER_CALL => {
+                        tx.send(StreamEvent::ContentBlockStart {
+                            index: 0,
+                            content_block: Content::Text { text: String::new() },
+                        })
+                        .await
+                        .ok();
+                        tx.send(StreamEvent::ContentBlockDelta {
+                            index: 0,
+                            delta: ContentDelta::TextDelta { text: "done".into() },
+                        })
+                        .await
+                        .ok();
+                        tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                        tx.send(StreamEvent::MessageDelta {
+                            stop_reason: Some("end_turn".into()),
+                            usage: Usage {
+                                input_tokens: 10,
+                                output_tokens: 2,
+                                cache_creation_input_tokens: 0,
+                                cache_read_input_tokens: 0,
+                            },
+                        })
+                        .await
+                        .ok();
+                    }
+                    _ => panic!("unexpected provider call index: {call_index}"),
+                }
+
+                tx.send(StreamEvent::MessageStop).await.ok();
+                Ok(())
+            }
+
+            fn models(&self) -> &[clankers_provider::Model] {
+                &[]
+            }
+
+            fn name(&self) -> &str {
+                "tool-roundtrip"
+            }
+        }
+
+        let provider = ToolRoundTripProvider {
+            call_count: AtomicUsize::new(0),
+        };
+        let tool: Arc<dyn Tool> = Arc::new(DirectResultTool::new());
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("direct_tool".to_string(), tool);
+        let mut messages = vec![make_user_message()];
+        let mut config = make_turn_config();
+        config.max_turns = EXPECTED_PROVIDER_CALLS as u32;
+        let (event_tx, _rx) = broadcast::channel(256);
+
+        run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "session-engine-tool-roundtrip",
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("tool roundtrip should succeed");
+
+        assert_eq!(provider.call_count.load(Ordering::SeqCst), EXPECTED_PROVIDER_CALLS);
+        assert_eq!(messages.len(), EXPECTED_MESSAGE_COUNT);
+        assert!(matches!(
+            &messages[1],
+            AgentMessage::Assistant(assistant) if assistant.stop_reason == StopReason::ToolUse
+        ));
+        let AgentMessage::ToolResult(tool_result) = &messages[2] else {
+            panic!("expected tool result message");
+        };
+        assert_eq!(tool_result.tool_name, "direct_tool");
+        let AgentMessage::Assistant(final_assistant) = &messages[3] else {
+            panic!("expected final assistant message");
+        };
+        assert_eq!(final_assistant.stop_reason, StopReason::Stop);
     }
 
     #[tokio::test]

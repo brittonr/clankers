@@ -177,6 +177,19 @@ const ENGINE_SURFACE_FORBIDDEN_PATHS: [&str; 12] = [
     "clankers_agent",
 ];
 const ENGINE_SURFACE_REQUIRED_PATHS: [&str; 2] = ["clankers_core::CoreState", "clankers_message::Content"];
+const AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
+const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 4] = [
+    "clankers_engine::apply_model_completion",
+    "clankers_engine::EngineModelResponse",
+    "EngineEffect::ExecuteTool",
+    "EngineEvent::TurnFinished",
+];
+const AGENT_TURN_ENGINE_REQUEST_PLANNING_FILE: &str = "crates/clankers-agent/src/turn/execution.rs";
+const AGENT_TURN_ENGINE_REQUEST_PLANNING_REQUIRED_PATHS: [&str; 3] = [
+    "clankers_engine::plan_initial_model_request",
+    "clankers_engine::EnginePromptSubmission",
+    "clankers_engine::EngineState",
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct CfgEnvelope {
@@ -1157,6 +1170,26 @@ fn transport_protocol_construction_stays_in_pure_conversion_files() {
         TRANSPORT_PROTOCOL_FRAMING_FILES[3],
         &quic_bridge_paths,
         &QUIC_BRIDGE_PROTOCOL_REQUIRED_PATHS,
+    );
+}
+
+#[test]
+fn agent_turn_runtime_reuses_engine_model_completion_contract() {
+    let paths = collect_non_test_paths(AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE);
+    assert_required_paths_present(
+        AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE,
+        &paths,
+        &AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS,
+    );
+}
+
+#[test]
+fn agent_turn_runtime_reuses_engine_request_planning_contract() {
+    let paths = collect_non_test_paths(AGENT_TURN_ENGINE_REQUEST_PLANNING_FILE);
+    assert_required_paths_present(
+        AGENT_TURN_ENGINE_REQUEST_PLANNING_FILE,
+        &paths,
+        &AGENT_TURN_ENGINE_REQUEST_PLANNING_REQUIRED_PATHS,
     );
 }
 

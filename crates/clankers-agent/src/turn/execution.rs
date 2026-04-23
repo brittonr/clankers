@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use clankers_engine::EngineCorrelationId;
 use clankers_engine::EngineEffect;
 use clankers_engine::EnginePromptSubmission;
 use clankers_engine::EngineState;
@@ -23,6 +24,19 @@ use super::ContentBlockBuilder;
 use super::TurnConfig;
 use crate::error::AgentError;
 use crate::error::Result;
+
+pub(super) struct ExecutedTurn {
+    pub response: CollectedResponse,
+    pub request_state: EngineState,
+    pub request_id: EngineCorrelationId,
+}
+
+struct PlannedModelRequest {
+    request: CompletionRequest,
+    request_state: EngineState,
+    request_id: EngineCorrelationId,
+}
+
 use crate::events::AgentEvent;
 use crate::tool::Tool;
 use crate::tool::ToolContext;
@@ -40,12 +54,12 @@ pub(super) async fn execute_turn(
     event_tx: &broadcast::Sender<AgentEvent>,
     cancel: &CancellationToken,
     session_id: &str,
-) -> Result<CollectedResponse> {
-    let request = build_initial_model_request(messages, config, active_model, tool_defs, session_id)?;
+) -> Result<ExecutedTurn> {
+    let planned_request = build_initial_model_request(messages, config, active_model, tool_defs, session_id)?;
 
     let (stream_tx, mut stream_rx) = mpsc::channel(256);
     let event_tx_clone = event_tx.clone();
-    let complete_fut = provider.complete(request, stream_tx);
+    let complete_fut = provider.complete(planned_request.request, stream_tx);
     let collect_fut = collect_stream_events(&mut stream_rx, &event_tx_clone);
 
     let (complete_result, collected) = tokio::select! {
@@ -56,7 +70,11 @@ pub(super) async fn execute_turn(
         result = async { tokio::join!(complete_fut, collect_fut) } => result,
     };
     complete_result?;
-    collected
+    Ok(ExecutedTurn {
+        response: collected?,
+        request_state: planned_request.request_state,
+        request_id: planned_request.request_id,
+    })
 }
 
 fn build_initial_model_request(
@@ -65,7 +83,7 @@ fn build_initial_model_request(
     active_model: &str,
     tool_defs: &[ToolDefinition],
     session_id: &str,
-) -> Result<CompletionRequest> {
+) -> Result<PlannedModelRequest> {
     let submission = EnginePromptSubmission {
         messages: messages.to_vec(),
         model: active_model.to_string(),
@@ -88,18 +106,29 @@ fn build_initial_model_request(
         });
     }
 
-    outcome
-        .effects
+    let clankers_engine::EngineOutcome {
+        next_state,
+        effects,
+        rejection: _,
+    } = outcome;
+
+    let model_request = effects
         .into_iter()
         .find_map(|effect| match effect {
-            EngineEffect::RequestModel(model_effect) => Some(model_effect.request),
+            EngineEffect::RequestModel(model_effect) => Some(model_effect),
             _ => None,
         })
         .ok_or_else(|| AgentError::ProviderStreaming {
             message: "engine omitted initial model request effect".to_string(),
             status: None,
             retryable: false,
-        })
+        })?;
+
+    Ok(PlannedModelRequest {
+        request: model_request.request,
+        request_state: next_state,
+        request_id: model_request.request_id,
+    })
 }
 
 /// Collect streaming events into a complete response
