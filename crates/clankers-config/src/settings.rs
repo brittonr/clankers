@@ -84,6 +84,10 @@ pub struct Settings {
     #[serde(default)]
     pub memory: MemoryLimits,
 
+    /// Skill-management settings.
+    #[serde(default)]
+    pub skills: SkillSettings,
+
     /// Context compression settings (LLM-based summarization)
     #[serde(default)]
     pub compression: CompressionSettings,
@@ -281,6 +285,34 @@ impl Default for MemoryLimits {
 }
 
 // ---------------------------------------------------------------------------
+// Skill settings
+// ---------------------------------------------------------------------------
+
+/// Configuration for agent-managed skill creation reminders.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SkillSettings {
+    /// Number of consecutive tool-calling turns before nudging skill creation.
+    /// 0 disables nudging.
+    #[serde(default = "default_creation_nudge_interval")]
+    pub creation_nudge_interval: usize,
+}
+
+const DEFAULT_CREATION_NUDGE_INTERVAL: usize = 15;
+
+fn default_creation_nudge_interval() -> usize {
+    DEFAULT_CREATION_NUDGE_INTERVAL
+}
+
+impl Default for SkillSettings {
+    fn default() -> Self {
+        Self {
+            creation_nudge_interval: default_creation_nudge_interval(),
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Compression settings
 // ---------------------------------------------------------------------------
 
@@ -375,6 +407,7 @@ impl Default for Settings {
             plan_mode: false,
             leader_menu: LeaderMenuConfig::default(),
             memory: MemoryLimits::default(),
+            skills: SkillSettings::default(),
             compression: CompressionSettings::default(),
             routing: None,
             cost_tracking: None,

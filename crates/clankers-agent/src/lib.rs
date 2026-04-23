@@ -43,6 +43,14 @@ pub use self::tool::model_switch_slot;
 use self::turn::TurnConfig;
 
 /// The main agent that manages the conversation loop
+const NO_SKILL_NUDGE_COUNT: usize = 0;
+const SKILL_MANAGE_TOOL_NAME: &str = "skill_manage";
+
+struct TurnToolUsage {
+    tool_call_count: usize,
+    used_skill_manage: bool,
+}
+
 pub struct Agent {
     /// The LLM provider
     provider: Arc<dyn Provider>,
@@ -87,6 +95,8 @@ pub struct Agent {
     /// Checked after capability_gate. Can only be narrowed within the
     /// session's capability ceiling — never escalated.
     user_tool_filter: Option<Vec<String>>,
+    /// Consecutive turns that executed at least one tool call without using skill_manage.
+    skill_creation_nudge_counter: usize,
 }
 
 impl Agent {
@@ -123,6 +133,7 @@ impl Agent {
             session_id: String::new(),
             capability_gate: None,
             user_tool_filter: None,
+            skill_creation_nudge_counter: NO_SKILL_NUDGE_COUNT,
         }
     }
 
@@ -290,6 +301,8 @@ impl Agent {
             return self.execute_orchestrated_turn(text, plan).await;
         }
 
+        self.maybe_emit_skill_creation_nudge();
+
         // Prepare context and run turn
         let ctx = self.prepare_turn_context(max_input);
 
@@ -328,6 +341,10 @@ impl Agent {
             self.user_tool_filter.as_ref(),
         )
         .await;
+
+        if result.is_ok() {
+            self.update_skill_creation_nudge_counter();
+        }
 
         // Sync model switch if tool requested it
         self.sync_model_switch();
@@ -726,6 +743,83 @@ impl Agent {
         Ok(())
     }
 
+    fn maybe_emit_skill_creation_nudge(&mut self) {
+        let interval = self.settings.skills.creation_nudge_interval;
+        if interval == NO_SKILL_NUDGE_COUNT {
+            return;
+        }
+        if self.skill_creation_nudge_counter < interval {
+            return;
+        }
+
+        self.event_tx
+            .send(AgentEvent::SystemMessage {
+                message: "Reminder: if you discover a reusable multi-step workflow, capture it with skill_manage so future sessions can reuse it.".to_string(),
+            })
+            .ok();
+        self.skill_creation_nudge_counter = NO_SKILL_NUDGE_COUNT;
+    }
+
+    fn update_skill_creation_nudge_counter(&mut self) {
+        let last_turn = self.last_completed_turn();
+        let Some(turn) = last_turn else {
+            return;
+        };
+        if turn.used_skill_manage {
+            self.skill_creation_nudge_counter = NO_SKILL_NUDGE_COUNT;
+            return;
+        }
+        if turn.tool_call_count == NO_SKILL_NUDGE_COUNT {
+            return;
+        }
+        self.skill_creation_nudge_counter += 1;
+    }
+
+    fn last_completed_turn(&self) -> Option<TurnToolUsage> {
+        let mut tool_call_count = NO_SKILL_NUDGE_COUNT;
+        let mut used_skill_manage = false;
+        let mut in_latest_turn = false;
+
+        for message in self.messages.iter().rev() {
+            match message {
+                AgentMessage::ToolResult(tool_result) => {
+                    in_latest_turn = true;
+                    tool_call_count += 1;
+                    if tool_result.tool_name == SKILL_MANAGE_TOOL_NAME {
+                        used_skill_manage = true;
+                    }
+                }
+                AgentMessage::Assistant(assistant) => {
+                    if in_latest_turn {
+                        for content in &assistant.content {
+                            if let Content::ToolUse { name, .. } = content {
+                                tool_call_count += 1;
+                                if name == SKILL_MANAGE_TOOL_NAME {
+                                    used_skill_manage = true;
+                                }
+                            }
+                        }
+                        return Some(TurnToolUsage {
+                            tool_call_count,
+                            used_skill_manage,
+                        });
+                    }
+                }
+                AgentMessage::User(_) => {
+                    if in_latest_turn {
+                        break;
+                    }
+                }
+                AgentMessage::BashExecution(_)
+                | AgentMessage::Custom(_)
+                | AgentMessage::BranchSummary(_)
+                | AgentMessage::CompactionSummary(_) => {}
+            }
+        }
+
+        None
+    }
+
     /// Extract recent tool call summaries from conversation history
     fn recent_tool_summaries(&self) -> Vec<ToolCallSummary> {
         let mut summaries = Vec::new();
@@ -938,6 +1032,51 @@ mod tests {
         let mut names: Vec<String> = agent.tool_definitions().into_iter().map(|definition| definition.name).collect();
         names.sort();
         names
+    }
+
+    #[test]
+    fn skill_creation_nudge_fires_after_configured_interval() {
+        let mut agent = make_test_agent();
+        agent.settings.skills.creation_nudge_interval = 2;
+        agent.skill_creation_nudge_counter = 2;
+
+        let mut events = agent.event_tx.subscribe();
+        agent.maybe_emit_skill_creation_nudge();
+
+        let event = events.try_recv().expect("nudge event should be emitted");
+        match event {
+            AgentEvent::SystemMessage { message } => {
+                assert!(message.contains("skill_manage"));
+            }
+            other => panic!("expected system message, got {other:?}"),
+        }
+        assert_eq!(agent.skill_creation_nudge_counter, NO_SKILL_NUDGE_COUNT);
+    }
+
+    #[test]
+    fn skill_creation_nudge_resets_after_skill_manage_turn() {
+        let mut agent = make_test_agent();
+        agent.skill_creation_nudge_counter = 3;
+        agent.messages.push(user_text_message("save this workflow"));
+        agent.messages.push(assistant_tool_use("call-1", SKILL_MANAGE_TOOL_NAME, json!({"action": "create"})));
+        agent.messages.push(tool_result_message("call-1", SKILL_MANAGE_TOOL_NAME, "created"));
+
+        agent.update_skill_creation_nudge_counter();
+
+        assert_eq!(agent.skill_creation_nudge_counter, NO_SKILL_NUDGE_COUNT);
+    }
+
+    #[test]
+    fn skill_creation_nudge_does_not_fire_when_disabled() {
+        let mut agent = make_test_agent();
+        agent.settings.skills.creation_nudge_interval = NO_SKILL_NUDGE_COUNT;
+        agent.skill_creation_nudge_counter = 10;
+
+        let mut events = agent.event_tx.subscribe();
+        agent.maybe_emit_skill_creation_nudge();
+
+        assert!(matches!(events.try_recv(), Err(tokio::sync::broadcast::error::TryRecvError::Empty)));
+        assert_eq!(agent.skill_creation_nudge_counter, 10);
     }
 
     #[test]

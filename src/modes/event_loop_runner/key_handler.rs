@@ -704,6 +704,7 @@ mod tests {
             cmd_rx,
             done_tx,
             ToolEnv {
+                settings: None,
                 event_tx: None,
                 panel_tx: None,
                 todo_tx: None,

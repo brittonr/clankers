@@ -137,6 +137,9 @@ pub enum AgentEvent {
         timestamp: DateTime<Utc>,
     },
     UserCancel,
+    SystemMessage {
+        message: String,
+    },
 
     // Cost tracking
     UsageUpdate {
@@ -187,6 +190,7 @@ impl AgentEvent {
             Self::SessionCompaction { .. } => "session_compaction",
             Self::SessionCompactionSummary { .. } => "session_compaction_summary",
             Self::UserCancel => "user_cancel",
+            Self::SystemMessage { .. } => "system_message",
             _ => "",
         }
     }

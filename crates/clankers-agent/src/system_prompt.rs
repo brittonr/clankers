@@ -472,12 +472,11 @@ You have a `skill_manage` tool for creating reusable skills from experience.
 **A good skill has:** a clear trigger condition, step-by-step procedure, \
 known pitfalls, and verification steps. Keep skills focused and actionable.
 
-## Skill Self-Review
+## Skill Maintenance
 
-Use `skill_manage` with action `log_outcome` after using a skill to record whether \
-it helped (success), led you astray (correction), or failed. Use `stats` to check \
-which skills have high correction rates. If a skill's correction rate exceeds 30%, \
-revise it with `patch` or `edit` based on what went wrong.";
+After you discover a better reusable workflow, keep the skill current with \
+`skill_manage` actions like `patch`, `edit`, `write_file`, or `remove_file`. \
+If a skill stops matching reality, revise it immediately instead of working around it.";
 
 #[cfg(test)]
 mod tests {

@@ -26,16 +26,16 @@
 
 ## 4. Agent tool
 
-- [ ] 4.1 Define `skill_manage` tool schema in `crates/clankers-agent/src/tool/` with action parameter and sub-fields per action
-- [ ] 4.2 Implement tool dispatch routing by action to the corresponding clankers-skills function
-- [ ] 4.3 Register tool in `crates/clankers-agent/src/tool/mod.rs`
+- [x] 4.1 Define `skill_manage` tool schema in `crates/clankers-agent/src/tool/` with action parameter and sub-fields per action
+- [x] 4.2 Implement tool dispatch routing by action to the corresponding clankers-skills function
+- [x] 4.3 Register tool in `crates/clankers-agent/src/tool/mod.rs`
 
 ## 5. Skill creation nudge
 
-- [ ] 5.1 Add `skills.creation_nudge_interval` config option (default 15, 0 to disable) in `crates/clankers-config/src/settings.rs`
-- [ ] 5.2 Track tool-calling turn counter in agent turn loop state
-- [ ] 5.3 Inject nudge system message when counter reaches the configured interval
-- [ ] 5.4 Reset counter when `skill_manage` tool is called
+- [x] 5.1 Add `skills.creation_nudge_interval` config option (default 15, 0 to disable) in `crates/clankers-config/src/settings.rs`
+- [x] 5.2 Track tool-calling turn counter in agent turn loop state
+- [x] 5.3 Inject nudge system message when counter reaches the configured interval
+- [x] 5.4 Reset counter when `skill_manage` tool is called
 - [ ] 5.5 Reset counter when a skill is loaded (via slash command or auto-activation)
 
 ## 6. Tests
@@ -46,4 +46,4 @@
 - [x] 6.4 Unit test: security scan blocks invisible unicode
 - [x] 6.5 Unit test: writable-root check rejects project-level skill deletion
 - [x] 6.6 Unit test: path traversal in supporting file paths is rejected
-- [ ] 6.7 Unit test: nudge fires after configured interval, resets on skill_manage
+- [x] 6.7 Unit test: nudge fires after configured interval, resets on skill_manage
