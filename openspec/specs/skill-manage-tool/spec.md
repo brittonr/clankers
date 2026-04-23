@@ -1,67 +1,89 @@
 # skill-manage-tool Specification
 
 ## Purpose
-TBD - created by archiving change agent-learning-loop. Update Purpose after archive.
-## Requirements
-### Requirement: Agent can create skills from experience
+Define the `skill_manage` tool behavior for creating, editing, deleting, validating, and listing agent-managed skills.
 
-The agent SHALL be able to create a new skill by calling the `skill_manage` tool with action `create`. The tool writes a SKILL.md file to `~/.clankers/agent/skills/<name>/SKILL.md` using the provided content.
+## Requirements
+
+### Requirement: Skill creation
+
+The agent SHALL be able to create new skills via a `skill_manage` tool with action `create`. Created skills SHALL be written to `~/.clankers/agent/skills/<name>/SKILL.md` with valid YAML frontmatter containing `name` and `description` fields.
 
 #### Scenario: Create a new skill
-- **WHEN** the agent calls `skill_manage` with `{"action": "create", "name": "deploy-k8s", "content": "---\nname: deploy-k8s\n..."}`
-- **THEN** the tool creates `~/.clankers/agent/skills/deploy-k8s/SKILL.md` with the provided content and returns success
+- **WHEN** the agent calls `skill_manage` with action `create`, name `git-rebase`, description `Interactive rebase workflow`, and content with valid frontmatter
+- **THEN** the system creates `~/.clankers/agent/skills/git-rebase/SKILL.md` with the provided content
 
-#### Scenario: Skill already exists
+#### Scenario: Create skill in category
+- **WHEN** the agent calls `skill_manage` with action `create`, name `docker-compose`, category `devops`
+- **THEN** the system creates `~/.clankers/agent/skills/devops/docker-compose/SKILL.md`
+
+#### Scenario: Duplicate name rejected
 - **WHEN** the agent calls `skill_manage` with action `create` and a skill with that name already exists
-- **THEN** the tool returns an error suggesting `patch` or `edit` instead
+- **THEN** the system returns an error indicating the skill already exists
 
-#### Scenario: Invalid skill name
-- **WHEN** the agent calls `skill_manage` with a name containing characters other than lowercase alphanumeric, hyphens, or underscores
-- **THEN** the tool returns an error with the naming constraints
+### Requirement: Skill editing
 
-### Requirement: Agent can patch existing skills
+The agent SHALL be able to fully rewrite an existing skill's SKILL.md content via action `edit`, or perform targeted find-and-replace via action `patch`.
 
-The agent SHALL be able to make targeted edits to an existing skill by calling the `skill_manage` tool with action `patch`. This uses exact string replacement (like the `edit` tool).
+#### Scenario: Full edit
+- **WHEN** the agent calls `skill_manage` with action `edit`, name `git-rebase`, and new content
+- **THEN** the SKILL.md file is replaced with the new content after validation
 
-#### Scenario: Patch a skill
-- **WHEN** the agent calls `skill_manage` with `{"action": "patch", "name": "deploy-k8s", "old_text": "kubectl apply", "new_text": "kubectl apply --server-side"}`
-- **THEN** the tool reads the SKILL.md, replaces the exact substring, writes it back, and returns success
+#### Scenario: Targeted patch
+- **WHEN** the agent calls `skill_manage` with action `patch`, name `git-rebase`, old_text and new_text
+- **THEN** the first occurrence of old_text in SKILL.md is replaced with new_text
 
-#### Scenario: Old text not found
-- **WHEN** the agent calls `skill_manage` with action `patch` and `old_text` does not appear in the skill
-- **THEN** the tool returns an error with a snippet of the current skill content
+### Requirement: Skill deletion
 
-### Requirement: Agent can overwrite skills
+The agent SHALL be able to delete agent-created skills via action `delete`. The system SHALL refuse to delete skills outside the writable root (`~/.clankers/agent/skills/`).
 
-The agent SHALL be able to fully replace a skill's content by calling the `skill_manage` tool with action `edit`. This replaces the entire SKILL.md file.
+#### Scenario: Delete agent-created skill
+- **WHEN** the agent calls `skill_manage` with action `delete` and name `git-rebase`
+- **THEN** the skill directory `~/.clankers/agent/skills/git-rebase/` is removed
 
-#### Scenario: Full rewrite
-- **WHEN** the agent calls `skill_manage` with `{"action": "edit", "name": "deploy-k8s", "content": "<new full content>"}`
-- **THEN** the tool overwrites `~/.clankers/agent/skills/deploy-k8s/SKILL.md` with the new content
+#### Scenario: Refuse to delete project skill
+- **WHEN** the agent calls `skill_manage` with action `delete` for a skill in `.clankers/skills/`
+- **THEN** the system returns an error indicating project-level skills are read-only
 
-### Requirement: Agent can delete skills
+### Requirement: Supporting file management
 
-The agent SHALL be able to remove a skill by calling the `skill_manage` tool with action `delete`.
+The agent SHALL be able to write and remove supporting files in allowed subdirectories (`references/`, `templates/`, `assets/`, `scripts/`) of a skill.
 
-#### Scenario: Delete a skill
-- **WHEN** the agent calls `skill_manage` with `{"action": "delete", "name": "deploy-k8s"}`
-- **THEN** the tool removes the `~/.clankers/agent/skills/deploy-k8s/` directory and returns success
+#### Scenario: Write a reference file
+- **WHEN** the agent calls `skill_manage` with action `write_file`, name `git-rebase`, path `references/advanced.md`, and content
+- **THEN** the file is written to `~/.clankers/agent/skills/git-rebase/references/advanced.md`
 
-#### Scenario: Delete nonexistent skill
-- **WHEN** the agent calls `skill_manage` with action `delete` for a skill that doesn't exist
-- **THEN** the tool returns an error indicating the skill was not found
+#### Scenario: Reject path traversal
+- **WHEN** the agent calls `skill_manage` with action `write_file` and path `../../etc/passwd`
+- **THEN** the system rejects the operation
 
-### Requirement: Agent can write supporting files
+### Requirement: Frontmatter validation
 
-The agent SHALL be able to add or update files within a skill's directory (references, templates, scripts) by calling `skill_manage` with action `write_file`.
+The system SHALL validate all skill content before writing. Content MUST start with YAML frontmatter containing at minimum `name` (max 64 chars) and `description` (max 1024 chars). Content body MUST be non-empty. Total content MUST NOT exceed 100,000 characters.
 
-#### Scenario: Add a reference file
-- **WHEN** the agent calls `skill_manage` with `{"action": "write_file", "name": "deploy-k8s", "file_path": "references/common-errors.md", "file_content": "..."}`
-- **THEN** the tool writes the file to `~/.clankers/agent/skills/deploy-k8s/references/common-errors.md`, creating parent directories as needed
+#### Scenario: Missing frontmatter rejected
+- **WHEN** the agent calls `skill_manage` with content that lacks YAML frontmatter
+- **THEN** the system returns a validation error
 
-#### Scenario: Path traversal blocked
-- **WHEN** the agent calls `skill_manage` with a `file_path` containing `..` or an absolute path
-- **THEN** the tool returns an error rejecting the path
+#### Scenario: Content too large
+- **WHEN** the agent calls `skill_manage` with content exceeding 100,000 characters
+- **THEN** the system returns a size limit error
+
+### Requirement: Security scanning
+
+The system SHALL scan skill content for prompt injection patterns, exfiltration commands, and invisible unicode characters before writing. Content matching threat patterns SHALL be rejected with a descriptive error.
+
+#### Scenario: Prompt injection blocked
+- **WHEN** skill content contains "ignore all previous instructions"
+- **THEN** the system rejects the write with error "matches threat pattern 'prompt_injection'"
+
+#### Scenario: Exfiltration blocked
+- **WHEN** skill content contains `curl ... $API_KEY`
+- **THEN** the system rejects the write with error "matches threat pattern 'exfil_curl'"
+
+#### Scenario: Invisible unicode blocked
+- **WHEN** skill content contains zero-width space characters (U+200B)
+- **THEN** the system rejects the write with error indicating invisible unicode
 
 ### Requirement: Agent can list skills
 
@@ -73,11 +95,11 @@ The agent SHALL be able to list installed skills by calling `skill_manage` with 
 
 ### Requirement: System prompt guides skill creation
 
-The system prompt SHALL include instructions telling the agent when to create skills: after completing complex tasks (5+ tool calls), after recovering from errors, after user corrections, and when discovering non-trivial workflows.
+The system prompt SHALL include instructions telling the agent when and how to maintain skills, including creating or updating reusable workflows with `skill_manage`.
 
 #### Scenario: Guidance present
-- **WHEN** the agent starts a session with the skill_manage tool available
-- **THEN** the system prompt contains a section explaining when and how to create skills
+- **WHEN** the agent starts a session with the `skill_manage` tool available
+- **THEN** the system prompt contains a section explaining when and how to create or maintain skills
 
 ### Requirement: Skills are scoped to global directory only
 
@@ -86,4 +108,3 @@ The `skill_manage` tool SHALL only write to `~/.clankers/agent/skills/`, never t
 #### Scenario: Writes go to global dir
 - **WHEN** the agent creates a skill
 - **THEN** the skill is written under the global skills directory regardless of the current working directory
-
