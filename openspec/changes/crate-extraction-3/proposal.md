@@ -1,6 +1,6 @@
 # crate-extraction-3
 
-## Intent
+## Why
 
 `crate-extraction-2` landed the highest-leverage shared extractions and was
 split so the remaining untouched work can continue in a focused change.
@@ -17,6 +17,16 @@ that still live in the clankers workspace:
 
 These are now the remaining standalone leaf/infrastructure extractions from the
 original ten-crate pass.
+
+## What Changes
+
+- Extract `clankers-nix` as `clanker-nix` while preserving snix pins and feature flags.
+- Extract `clankers-matrix` as `clanker-matrix` while preserving matrix-sdk features.
+- Extract `clankers-zellij` as `clanker-zellij` while preserving iroh mDNS support.
+- Extract `clankers-protocol` as `clanker-protocol` with durable wire-compatibility fixtures.
+- Extract `clankers-db` as `clanker-db` with all redb table modules intact.
+- Extract `clankers-hooks` as `clanker-hooks` while adding `HookPoint::Custom(String)` coverage.
+- Remove wrappers one crate at a time and refresh generated workspace artifacts at final cleanup.
 
 ## Scope
 
