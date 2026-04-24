@@ -30,9 +30,11 @@ cargo clippy -- -D warnings    # lint
 **Extracted crates** (standalone repos, direct git deps):
 - `graggle` — order-independent merge algorithm for worktrees
 - `clanker-actor` — Erlang-style actor system (ProcessRegistry, signals, supervisors)
-- `clanker-scheduler` — cron/interval/one-shot schedule engine
 - `clanker-loop` — loop/retry engine with output truncation
+- `clanker-message` — reusable conversation message/content/streaming types
 - `clanker-router` — multi-provider routing, fallback, caching, OAuth, RPC
+- `clanker-scheduler` — cron/interval/one-shot schedule engine
+- `clanker-tui-types` — shared TUI event/action/block/display types
 
 ### Daemon-Client Architecture
 

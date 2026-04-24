@@ -208,12 +208,12 @@ High-impact type extraction. 1 internal dep (clanker-router). 7 reverse deps.
 
 ## Phase 11: Final cleanup
 
-- [ ] Grep workspace for any remaining `clankers_plugin_sdk`, `clankers_nix`,
+- [x] Grep workspace for any remaining `clankers_plugin_sdk`, `clankers_nix`,
       `clankers_matrix`, `clankers_zellij`, `clankers_protocol`, `clankers_specs`,
       `clankers_db`, `clankers_hooks`, `clankers_tui_types`, `clankers_message`
-- [ ] Remove all remaining thin wrapper crates
-- [ ] Update workspace `members` list in root Cargo.toml
-- [ ] Update `AGENTS.md` extracted crates section
-- [ ] Update xtask crate list
+- [x] Remove all remaining thin wrapper crates
+- [x] Update workspace `members` list in root Cargo.toml
+- [x] Update `AGENTS.md` extracted crates section
+- [x] Update xtask crate list
 - [ ] `cargo check && cargo nextest run` — full workspace green
 - [ ] Verify openspec plugin loads and all 5 tools work

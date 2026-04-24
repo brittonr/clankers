@@ -145,7 +145,7 @@ impl ProviderError {
 /// Convenience constructors.
 pub fn provider_err(msg: impl Into<String>) -> ProviderError {
     let message = msg.into();
-    let classified = classify_transport_error(&message, "unknown");
+    let classified = classify_api_error(None, &message, "unknown");
     ProviderError {
         message,
         kind: ProviderErrorKind::Api,
@@ -206,6 +206,7 @@ pub type Result<T> = std::result::Result<T, ProviderError>;
 mod tests {
     use super::ProviderError;
     use super::auth_err;
+    use super::provider_err;
     use super::provider_err_with_status;
 
     #[test]
@@ -224,6 +225,24 @@ mod tests {
         assert_eq!(error.failover_reason(), crate::FailoverReason::Auth);
         assert!(!error.is_retryable());
         assert!(error.should_rotate_credential());
+    }
+
+    #[test]
+    fn provider_err_classifies_auth_like_messages_without_status() {
+        let error = provider_err("Invalid API key");
+        assert_eq!(error.failover_reason(), crate::FailoverReason::Auth);
+        assert!(!error.is_retryable());
+        assert!(error.should_rotate_credential());
+        assert!(error.should_fallback());
+    }
+
+    #[test]
+    fn provider_err_keeps_unknown_messages_retryable() {
+        let error = provider_err("completely novel failure");
+        assert_eq!(error.failover_reason(), crate::FailoverReason::Unknown);
+        assert!(error.is_retryable());
+        assert!(!error.should_rotate_credential());
+        assert!(!error.should_fallback());
     }
 
     #[test]

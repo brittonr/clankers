@@ -537,33 +537,41 @@ fn gen_crate_reference(root: &Path, crates: &[CrateInfo]) -> String {
 fn gen_architecture(_root: &Path, crates: &[CrateInfo]) -> String {
     let mut out = String::from(gen_warning());
     let layers: &[(&str, &[&str])] = &[
-        ("User interface", &["clankers-tui", "clankers-zellij"]),
+        ("User interface", &[
+            "clankers-tui",
+            "clankers-zellij",
+            "clankers-tts",
+        ]),
         ("Agent core", &[
             "clankers-agent",
             "clankers-agent-defs",
+            "clankers-core",
+            "clankers-engine",
             "clankers-controller",
-            "clanker-loop",
         ]),
-        ("LLM routing", &["clankers-provider", "clanker-router", "clankers-model-selection"]),
+        ("LLM routing", &[
+            "clankers-provider",
+            "clankers-model-selection",
+            "clankers-prompts",
+        ]),
         ("Infrastructure", &[
+            "clankers-config",
+            "clankers-db",
+            "clankers-hooks",
+            "clankers-nix",
             "clankers-protocol",
             "clankers-session",
-            "clankers-db",
-            "clankers-config",
         ]),
-        ("Extensions", &[
+        ("Networking & security", &[
+            "clankers-matrix",
+            "clankers-ucan",
+        ]),
+        ("Extensions & tooling", &[
             "clankers-plugin",
-            "clanker-plugin-sdk (external)",
             "clankers-skills",
-            "clankers-hooks",
-        ]),
-        ("Networking", &["clankers-auth", "clankers-matrix"]),
-        ("Utilities", &[
-            "clanker-message",
-            "clankers-prompts",
             "clankers-procmon",
-            "clankers-util",
         ]),
+        ("Utilities", &["clankers-util"]),
     ];
 
     assert!(!crates.is_empty());

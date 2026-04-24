@@ -73,6 +73,7 @@ graph TD
 |-------|------:|------:|-------------|
 | `tui` | 16421 | 278 | Terminal UI (ratatui + crossterm) |
 | `zellij` | 893 | 39 | Zellij integration and orchestration |
+| `tts` | 1286 | 49 | clankers-tts — Multi-provider text-to-speech router |
 
 ### Agent core
 
@@ -80,6 +81,8 @@ graph TD
 |-------|------:|------:|-------------|
 | `agent` | 6847 | 126 | Agent core — turn loop, event bus, tool interface, context management |
 | `agent-defs` | 873 | 29 | Agent definition system (first-class) |
+| `core` | 1565 | 39 |  |
+| `engine` | 978 | 17 | Host-facing reusable engine contracts that sit above `clankers-core` and below controller, agent-runtime, and UI/transport shells. |
 | `controller` | 7134 | 167 | Transport-agnostic session controller for agent orchestration. |
 
 ### LLM routing
@@ -88,35 +91,37 @@ graph TD
 |-------|------:|------:|-------------|
 | `provider` | 8107 | 158 | LLM provider abstraction |
 | `model-selection` | 1483 | 49 | Multi-model routing policy |
+| `prompts` | 163 | 5 | Prompt templates Prompt template scanning and loading |
 
 ### Infrastructure
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
+| `config` | 1702 | 43 | Configuration loading and path resolution for clankers. |
+| `db` | 4361 | 154 | Embedded database (redb) for structured persistent storage. |
+| `hooks` | 1225 | 32 |  |
+| `nix` | 1285 | 61 |  |
 | `protocol` | 2247 | 79 | Wire protocol types for daemon-client communication. |
 | `session` | 3952 | 102 | Session persistence and tree management for agent conversations |
-| `db` | 4361 | 154 | Embedded database (redb) for structured persistent storage. |
-| `config` | 1702 | 43 | Configuration loading and path resolution for clankers. |
 
-### Extensions
+### Networking & security
+
+| Crate | Lines | Tests | Description |
+|-------|------:|------:|-------------|
+| `matrix` | 1487 | 8 |  |
+| `ucan` | 1436 | 52 | Clankers-specific capability tokens over clanker-auth generic infrastructure. |
+
+### Extensions & tooling
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
 | `plugin` | 3725 | 39 | Plugin system (Extism WASM) |
 | `skills` | 859 | 17 | Skills (markdown-based) |
-| `hooks` | 1225 | 32 |  |
-
-### Networking
-
-| Crate | Lines | Tests | Description |
-|-------|------:|------:|-------------|
-| `matrix` | 1487 | 8 |  |
+| `procmon` | 467 | 5 | Core process monitor for tracking child processes and resource usage. |
 
 ### Utilities
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `prompts` | 163 | 5 | Prompt templates Prompt template scanning and loading |
-| `procmon` | 467 | 5 | Core process monitor for tracking child processes and resource usage. |
 | `util` | 1924 | 79 | Shared utility functions for clankers. |
 

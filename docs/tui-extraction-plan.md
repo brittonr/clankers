@@ -125,7 +125,7 @@ links, blockquotes, horizontal rules, nested formatting.
   bold, italic, bold_italic, heading, subheading, list_marker,
   blockquote, inline_code_bg, hrule, link styles)
 - `render_markdown(text, style, highlighter) -> Vec<Line>`
-- `SyntaxHighlighter` trait (moved here from clankers-tui-types)
+- `SyntaxHighlighter` trait (moved here from clanker-tui-types)
 - `HighlightSpan` struct (text, optional fg color)
 - `PlainHighlighter` (no-op impl)
 
@@ -135,11 +135,11 @@ links, blockquotes, horizontal rules, nested formatting.
 - `crate::theme::Theme` → only used in `MarkdownStyle::from_theme()`.
   Move that method to clankers-tui as a free fn or extension trait.
   The crate itself only needs `MarkdownStyle` (already self-contained).
-- `clankers_tui_types::SyntaxHighlighter` → move the trait + HighlightSpan
+- `clanker_tui_types::SyntaxHighlighter` → move the trait + HighlightSpan
   + PlainHighlighter (35 lines) into this crate. They belong here.
 
 **Consumers in clankers-tui:** `block_view/render.rs` (render_markdown,
-MarkdownStyle). After extraction, clankers-tui-types drops its `syntax.rs`
+MarkdownStyle). After extraction, clanker-tui-types drops its `syntax.rs`
 module and re-exports from rat-markdown instead.
 
 ---
@@ -278,7 +278,7 @@ No cycles. Only one inter-crate dep.
 7. Add bridge code in clankers-tui:
    - `MarkdownStyle::from_theme()` as a local fn
    - Bash-specific confirm rendering stays local
-   - `clankers-tui-types` drops `syntax.rs`, re-exports from rat-markdown
+   - `clanker-tui-types` drops `syntax.rs`, re-exports from rat-markdown
 8. Run `cargo nextest run` — fix any breakage
 
 ### Phase 3: Cleanup
