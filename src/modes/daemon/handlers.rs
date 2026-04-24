@@ -29,8 +29,17 @@ use crate::modes::rpc::protocol::Response;
 /// Each prompt creates or reuses an actor session keyed by the peer's public
 /// key. Responses are streamed back as JSON frames compatible with the legacy
 /// protocol (`text_delta`, `tool_call`, `tool_result`, `done`/`error`).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by connection close"))]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by connection close")
+)]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        nested_conditionals,
+        reason = "complex control flow — extracting helpers would obscure logic"
+    )
+)]
 pub(crate) async fn handle_chat_connection(
     conn: ::iroh::endpoint::Connection,
     state: Arc<Mutex<DaemonState>>,
@@ -128,7 +137,10 @@ pub(crate) async fn handle_chat_connection(
 }
 
 /// Run a single chat/1 prompt via the actor session, streaming back events.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by connection close"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by connection close")
+)]
 async fn run_chat_prompt(
     state: Arc<Mutex<DaemonState>>,
     registry: ProcessRegistry,
@@ -229,8 +241,17 @@ async fn run_chat_prompt(
 // ── RPC/1 handler (unchanged) ───────────────────────────────────────────────
 
 /// Handle a clankers/rpc/1 connection using the existing server code.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by connection close"))]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by connection close")
+)]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        nested_conditionals,
+        reason = "complex control flow — extracting helpers would obscure logic"
+    )
+)]
 pub(crate) async fn handle_rpc_v1_connection(
     conn: ::iroh::endpoint::Connection,
     state: Arc<iroh::ServerState>,
@@ -267,12 +288,19 @@ pub(crate) async fn handle_rpc_v1_connection(
                     match clankers_ucan::Credential::from_base64(token_b64) {
                         Ok(cred) => match auth.verify_credential(&cred) {
                             Ok(caps) => {
-                                info!("[rpc/1 {}] is_authenticated with {} capabilities", &peer_id[..8.min(peer_id.len())], caps.len());
+                                info!(
+                                    "[rpc/1 {}] is_authenticated with {} capabilities",
+                                    &peer_id[..8.min(peer_id.len())],
+                                    caps.len()
+                                );
                                 is_authenticated = true;
                                 auth.store_credential(&peer_id, &cred);
                             }
                             Err(e) => {
-                                warn!("[rpc/1 {}] credential verification failed: {e}", &peer_id[..8.min(peer_id.len())]);
+                                warn!(
+                                    "[rpc/1 {}] credential verification failed: {e}",
+                                    &peer_id[..8.min(peer_id.len())]
+                                );
                                 let err = json!({ "error": format!("Token rejected: {e}") });
                                 let mut send = send;
                                 write_frame(&mut send, &serde_json::to_vec(&err).unwrap_or_default()).await.ok();

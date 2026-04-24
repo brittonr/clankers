@@ -625,7 +625,9 @@ fn daemon_request_uses_type_tag() {
 fn attach_response_uses_type_tag() {
     use clankers_protocol::types::AttachResponse;
 
-    let ok = AttachResponse::Ok { session_id: "s1".into() };
+    let ok = AttachResponse::Ok {
+        session_id: "s1".into(),
+    };
     let json = serde_json::to_value(&ok).unwrap();
     assert_eq!(json["type"], "Ok");
 
@@ -642,9 +644,7 @@ fn session_command_externally_tagged() {
     assert_eq!(json, serde_json::json!("Abort"));
 
     // Struct variant → {"VariantName": {fields}}
-    let json = serde_json::to_value(&SessionCommand::SetModel {
-        model: "opus".into(),
-    }).unwrap();
+    let json = serde_json::to_value(&SessionCommand::SetModel { model: "opus".into() }).unwrap();
     assert!(json.get("SetModel").is_some(), "struct variant must use variant name as key");
     assert_eq!(json["SetModel"]["model"], "opus");
 }
@@ -657,9 +657,7 @@ fn daemon_event_externally_tagged() {
     assert_eq!(json, serde_json::json!("AgentStart"));
 
     // Struct variant → {"VariantName": {fields}}
-    let json = serde_json::to_value(&DaemonEvent::TextDelta {
-        text: "hello".into(),
-    }).unwrap();
+    let json = serde_json::to_value(&DaemonEvent::TextDelta { text: "hello".into() }).unwrap();
     assert!(json.get("TextDelta").is_some());
     assert_eq!(json["TextDelta"]["text"], "hello");
 }

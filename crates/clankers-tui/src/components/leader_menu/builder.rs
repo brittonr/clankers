@@ -10,12 +10,8 @@ use super::types::*;
 ///
 /// Collects items from the local [`MenuContributor`] trait and delegates to
 /// [`rat_leaderkey::build_from_items`] for conflict resolution and assembly.
-pub fn build(
-    contributors: &[&dyn MenuContributor],
-    hidden: &HiddenSet,
-) -> BuildResult {
-    let items: Vec<MenuContribution> =
-        contributors.iter().flat_map(|c| c.menu_items()).collect();
+pub fn build(contributors: &[&dyn MenuContributor], hidden: &HiddenSet) -> BuildResult {
+    let items: Vec<MenuContribution> = contributors.iter().flat_map(|c| c.menu_items()).collect();
     let (inner, conflicts) = rat_leaderkey::build_from_items(items, hidden);
     (super::LeaderMenu(inner), conflicts)
 }
@@ -50,12 +46,7 @@ impl MenuContributor for BuiltinKeymapContributor {
 // ── Builtin menu data (grouped by section) ─────────────────────────────
 
 /// Helper to build a builtin MenuContribution with less boilerplate.
-fn builtin(
-    key: char,
-    label: &str,
-    action: LeaderAction,
-    placement: MenuPlacement,
-) -> MenuContribution {
+fn builtin(key: char, label: &str, action: LeaderAction, placement: MenuPlacement) -> MenuContribution {
     MenuContribution {
         key,
         label: label.into(),
@@ -104,29 +95,14 @@ fn root_actions() -> Vec<MenuContribution> {
         builtin('f', "search output", ext(ExtendedAction::SearchOutput), r.clone()),
         builtin('`', "toggle panel", ext(ExtendedAction::TogglePanelFocus), r.clone()),
         builtin('o', "external editor", ext(ExtendedAction::OpenEditor), r.clone()),
-        builtin(
-            'c',
-            "cancel/abort",
-            LeaderAction::Action(Action::Core(CoreAction::Cancel)),
-            r.clone(),
-        ),
-        builtin(
-            'x',
-            "clear input",
-            LeaderAction::Action(Action::Core(CoreAction::ClearLine)),
-            r.clone(),
-        ),
+        builtin('c', "cancel/abort", LeaderAction::Action(Action::Core(CoreAction::Cancel)), r.clone()),
+        builtin('x', "clear input", LeaderAction::Action(Action::Core(CoreAction::ClearLine)), r.clone()),
         builtin('u', "undo last turn", cmd("/undo"), r.clone()),
         builtin('e', "export", cmd("/export"), r.clone()),
         builtin('R', "code review", cmd("/review"), r.clone()),
         builtin('C', "compact", cmd("/compact"), r.clone()),
         builtin('?', "help", cmd("/help"), r.clone()),
-        builtin(
-            'q',
-            "quit",
-            LeaderAction::Action(Action::Core(CoreAction::Quit)),
-            r,
-        ),
+        builtin('q', "quit", LeaderAction::Action(Action::Core(CoreAction::Quit)), r),
     ]
 }
 

@@ -240,7 +240,10 @@ impl Panel for ProcessPanel {
         "No processes tracked."
     }
 
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
+    )]
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<PanelAction> {
         // Detail mode: Esc goes back to list, other keys ignored
         if self.detail_pid.is_some() {

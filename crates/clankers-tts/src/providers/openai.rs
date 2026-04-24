@@ -6,8 +6,12 @@
 use async_trait::async_trait;
 use tracing::debug;
 
-use crate::error::{Error, Result};
-use crate::provider::{TtsProvider, TtsRequest, TtsResponse, Voice};
+use crate::error::Error;
+use crate::error::Result;
+use crate::provider::TtsProvider;
+use crate::provider::TtsRequest;
+use crate::provider::TtsResponse;
+use crate::provider::Voice;
 
 const OPENAI_TTS_URL: &str = "https://api.openai.com/v1/audio/speech";
 const SAMPLE_RATE: u32 = 24_000;

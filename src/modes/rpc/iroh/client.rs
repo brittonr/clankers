@@ -33,7 +33,10 @@ pub async fn send_rpc(
 
 /// Send an RPC request. Calls `on_notification` for each intermediate
 /// notification frame, then returns the final response.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by stream end"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by stream end")
+)]
 pub async fn send_rpc_streaming(
     endpoint: &Endpoint,
     remote: impl Into<EndpointAddr>,
@@ -82,7 +85,10 @@ pub async fn send_rpc_streaming(
 /// Opens a bidirectional stream, sends a `file.send` request with metadata,
 /// then streams the raw file bytes. The remote peer saves the file and
 /// responds with the path where it was stored.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by stream end"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by stream end")
+)]
 pub async fn send_file(
     endpoint: &Endpoint,
     remote: impl Into<EndpointAddr>,
@@ -140,7 +146,10 @@ pub async fn send_file(
 ///
 /// Sends a `file.recv` request. The server responds with a header frame
 /// containing the file size, followed by the raw file bytes.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by stream end"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by stream end")
+)]
 pub async fn recv_file(
     endpoint: &Endpoint,
     remote: impl Into<EndpointAddr>,

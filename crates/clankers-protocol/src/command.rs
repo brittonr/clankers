@@ -58,10 +58,7 @@ pub enum SessionCommand {
     /// Stop the active loop.
     StopLoop,
     /// Set auto-test command.
-    SetAutoTest {
-        enabled: bool,
-        command: Option<String>,
-    },
+    SetAutoTest { enabled: bool, command: Option<String> },
     /// Request the tool list.
     GetToolList,
     /// Request session history replay (on attach).
@@ -75,9 +72,7 @@ pub enum SessionCommand {
     /// `None` = remove user restrictions (restore to ceiling).
     /// `Some(patterns)` = restrict to these tool patterns.
     /// Rejected if the requested capabilities exceed the session's ceiling.
-    SetCapabilities {
-        capabilities: Option<Vec<String>>,
-    },
+    SetCapabilities { capabilities: Option<Vec<String>> },
     /// Graceful disconnect.
     Disconnect,
 }

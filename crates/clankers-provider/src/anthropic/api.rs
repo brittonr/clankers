@@ -8,9 +8,9 @@ use super::subscription_compat;
 use crate::CompletionRequest;
 use crate::auth::Credential;
 use crate::error::Result;
-use crate::retry::RetryConfig;
 use crate::error_classifier::classify_api_error;
 use crate::error_classifier::classify_transport_error;
+use crate::retry::RetryConfig;
 use crate::retry::parse_retry_after;
 
 const DEFAULT_BASE_URL: &str = "https://api.anthropic.com";
@@ -202,11 +202,8 @@ impl AnthropicClient {
                         return Ok(response);
                     }
 
-                    let retry_after_header = response
-                        .headers()
-                        .get("retry-after")
-                        .and_then(|value| value.to_str().ok())
-                        .map(str::to_owned);
+                    let retry_after_header =
+                        response.headers().get("retry-after").and_then(|value| value.to_str().ok()).map(str::to_owned);
                     let body = response.text().await.unwrap_or_default();
                     let classified = classify_api_error(Some(status), &body, "anthropic");
 

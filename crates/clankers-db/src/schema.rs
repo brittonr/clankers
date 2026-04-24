@@ -37,8 +37,13 @@ pub const CURRENT_VERSION: u32 = 5;
 /// Migrations receive a write transaction that already has the `_meta`
 /// table open. They must NOT commit — the caller commits once after
 /// all pending migrations succeed.
-const MIGRATIONS: &[fn(&WriteTransaction) -> Result<()>] =
-    &[migrate_0_to_1, migrate_1_to_2, migrate_2_to_3, migrate_3_to_4, migrate_4_to_5];
+const MIGRATIONS: &[fn(&WriteTransaction) -> Result<()>] = &[
+    migrate_0_to_1,
+    migrate_1_to_2,
+    migrate_2_to_3,
+    migrate_3_to_4,
+    migrate_4_to_5,
+];
 
 /// Run all pending migrations. Called from [`Db::open`] on every startup.
 ///

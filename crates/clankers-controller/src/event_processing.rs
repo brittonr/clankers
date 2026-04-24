@@ -6,7 +6,8 @@
 use clankers_agent::events::AgentEvent;
 use clankers_protocol::DaemonEvent;
 
-use crate::{convert::agent_event_to_daemon_event, SessionController};
+use crate::SessionController;
+use crate::convert::agent_event_to_daemon_event;
 
 impl SessionController {
     /// Drain pending events. Called in a loop by the transport layer.
@@ -138,13 +139,7 @@ impl SessionController {
             AgentEvent::ModelChange { from, to, reason } => {
                 pipeline.fire_async(
                     clankers_hooks::HookPoint::ModelChange,
-                    clankers_hooks::HookPayload::model_change(
-                        "model-change",
-                        &session_id,
-                        from,
-                        to,
-                        reason,
-                    ),
+                    clankers_hooks::HookPayload::model_change("model-change", &session_id, from, to, reason),
                 );
             }
             _ => {}
@@ -154,13 +149,14 @@ impl SessionController {
 
 #[cfg(test)]
 mod tests {
+    use clanker_message::ToolResult;
+    use clanker_message::ToolResultContent;
     use clankers_agent::events::AgentEvent;
-    use clanker_message::{ToolResult, ToolResultContent};
     use clankers_protocol::DaemonEvent;
     use serde_json::json;
 
-    use crate::config::ControllerConfig;
     use crate::SessionController;
+    use crate::config::ControllerConfig;
 
     fn make_embedded_controller() -> SessionController {
         let config = ControllerConfig {
@@ -260,10 +256,7 @@ mod tests {
         ctrl.feed_event(&event);
 
         // Should track the tool call name
-        assert_eq!(
-            ctrl.tool_call_names.get("test-call-id"),
-            Some(&"test_tool".to_string())
-        );
+        assert_eq!(ctrl.tool_call_names.get("test-call-id"), Some(&"test_tool".to_string()));
     }
 
     #[test]
@@ -280,10 +273,7 @@ mod tests {
 
         // Should have called signal_loop_break (this would affect active loop state
         // if there was one running, but we can verify the tool call was tracked)
-        assert_eq!(
-            ctrl.tool_call_names.get("signal-call"),
-            Some(&"signal_loop_success".to_string())
-        );
+        assert_eq!(ctrl.tool_call_names.get("signal-call"), Some(&"signal_loop_success".to_string()));
     }
 
     #[test]
@@ -292,9 +282,7 @@ mod tests {
 
         // Feed events to produce outgoing
         let event1 = AgentEvent::AgentStart;
-        let event2 = AgentEvent::AgentEnd {
-            messages: vec![],
-        };
+        let event2 = AgentEvent::AgentEnd { messages: vec![] };
         ctrl.feed_event(&event1);
         ctrl.feed_event(&event2);
 
@@ -371,9 +359,7 @@ mod tests {
 
         // 4. Feed AgentStart and AgentEnd
         let agent_start = AgentEvent::AgentStart;
-        let agent_end = AgentEvent::AgentEnd {
-            messages: vec![],
-        };
+        let agent_end = AgentEvent::AgentEnd { messages: vec![] };
 
         ctrl.feed_event(&agent_start);
         ctrl.feed_event(&agent_end);

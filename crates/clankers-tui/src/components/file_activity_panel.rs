@@ -272,7 +272,10 @@ impl Panel for FileActivityPanel {
         "No files touched yet."
     }
 
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
+    )]
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<PanelAction> {
         match self.view {
             FileView::List => match key.code {

@@ -35,7 +35,10 @@ pub enum PrintFormat {
 }
 
 /// Run print mode with full control over output behaviour
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential setup/dispatch logic")
+)]
 pub async fn run_print_with_options(
     prompt: &str,
     provider: Arc<dyn crate::provider::Provider>,
@@ -50,9 +53,7 @@ pub async fn run_print_with_options(
         builder = builder.with_thinking(thinking);
     }
     if let Some(caps) = &settings.default_capabilities {
-        let gate = std::sync::Arc::new(
-            crate::capability_gate::UcanCapabilityGate::new(caps.clone()),
-        );
+        let gate = std::sync::Arc::new(crate::capability_gate::UcanCapabilityGate::new(caps.clone()));
         builder = builder.with_capability_gate(gate);
     }
     let mut agent = builder.build();
@@ -157,15 +158,14 @@ pub async fn run_print_with_options(
                         cumulative_usage.input_tokens,
                         cumulative_usage.output_tokens,
                     );
-                    if cumulative_usage.cache_read_input_tokens > 0
-                        || cumulative_usage.cache_creation_input_tokens > 0
+                    if cumulative_usage.cache_read_input_tokens > 0 || cumulative_usage.cache_creation_input_tokens > 0
                     {
                         write!(
                             line,
                             "  cache: {}read/{}write",
-                            cumulative_usage.cache_read_input_tokens,
-                            cumulative_usage.cache_creation_input_tokens,
-                        ).ok();
+                            cumulative_usage.cache_read_input_tokens, cumulative_usage.cache_creation_input_tokens,
+                        )
+                        .ok();
                     }
                     eprintln!("{}", line);
                 }

@@ -27,7 +27,10 @@ use crate::theme::Theme;
 /// Render a plugin widget tree into the given area
 /// Render a plugin widget tree. Recursion follows the widget tree structure
 /// (bounded by plugin API constraints — typically ≤5 levels deep).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "widget tree depth bounded by plugin API"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_recursion, reason = "widget tree depth bounded by plugin API")
+)]
 pub fn render_widget(frame: &mut Frame, widget: &Widget, area: Rect) {
     match widget {
         Widget::Text { content, bold, color } => {
@@ -131,7 +134,13 @@ pub fn render_widget(frame: &mut Frame, widget: &Widget, area: Rect) {
 
 /// Render all plugin widget panels stacked vertically in the given area.
 /// Returns the number of rows consumed.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        unchecked_division,
+        reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"
+    )
+)]
 pub fn render_plugin_panels(frame: &mut Frame, plugin_ui: &PluginUiState, theme: &Theme, area: Rect) -> u16 {
     if plugin_ui.widgets.is_empty() {
         return 0;

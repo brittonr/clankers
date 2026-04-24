@@ -32,14 +32,20 @@ use tracing::error;
 use tracing::info;
 use tracing::warn;
 
+use super::daemon::ProactiveConfig;
 use super::daemon::session_store::AuthLayer;
 use super::daemon::socket_bridge::SessionFactory;
-use super::daemon::ProactiveConfig;
 use crate::config::ClankersPaths;
 use crate::error::Result;
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "take_event_rx called once at initialization"))]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "take_event_rx called once at initialization")
+)]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential setup/dispatch logic")
+)]
 pub(crate) async fn run_matrix_bridge(
     state: Arc<Mutex<DaemonState>>,
     registry: ProcessRegistry,
@@ -101,9 +107,16 @@ pub(crate) async fn run_matrix_bridge(
         let hb_prompt = proactive.heartbeat_prompt.clone();
         tokio::spawn(async move {
             run_session_heartbeat(
-                hb_state, hb_registry, hb_factory, hb_sessions_dir,
-                hb_client, hb_interval, hb_prompt, hb_cancel,
-            ).await;
+                hb_state,
+                hb_registry,
+                hb_factory,
+                hb_sessions_dir,
+                hb_client,
+                hb_interval,
+                hb_prompt,
+                hb_cancel,
+            )
+            .await;
         });
         info!("Session heartbeat scheduler started (interval: {}s)", proactive.session_heartbeat_secs);
     }

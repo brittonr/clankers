@@ -137,9 +137,7 @@ async fn tool_missing_required_params() {
     let ctx = make_ctx();
 
     // "once" without "at"
-    let r = tool
-        .execute(&ctx, json!({"action": "create", "kind": "once", "name": "bad"}))
-        .await;
+    let r = tool.execute(&ctx, json!({"action": "create", "kind": "once", "name": "bad"})).await;
     assert!(r.is_error);
     assert!(result_text(&r).contains("at"));
 }
@@ -178,10 +176,7 @@ fn no_prompt_field_is_empty_string() {
     // Verify that a payload without "prompt" yields an empty string,
     // which the consumer skips.
     let payload = json!({"command": "ls"});
-    let prompt = payload
-        .get("prompt")
-        .and_then(|v| v.as_str())
-        .unwrap_or_default();
+    let prompt = payload.get("prompt").and_then(|v| v.as_str()).unwrap_or_default();
     assert!(prompt.is_empty());
 }
 

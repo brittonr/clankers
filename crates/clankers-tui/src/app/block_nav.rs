@@ -245,7 +245,10 @@ impl App {
 
     /// Switch the visible block list to show the branch containing `target_block_id`.
     /// Rebuilds `self.blocks` to show the path from root through target and all its descendants.
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "traversal loop; bounded by block list length"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(unbounded_loop, reason = "traversal loop; bounded by block list length")
+    )]
     pub fn switch_to_branch(&mut self, target_block_id: usize) {
         // Walk up from target to root to find the full ancestor path
         let mut path_up = Vec::new();

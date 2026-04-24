@@ -766,10 +766,10 @@ mod tests {
     use std::io;
 
     use clanker_scheduler::ScheduleEvent;
+    use clanker_tui_types::BlockEntry;
     use clankers_controller::SessionController;
     use clankers_controller::config::ControllerConfig;
     use clankers_controller::loop_mode::LoopConfig;
-    use clanker_tui_types::BlockEntry;
     use ratatui::Terminal;
     use ratatui::backend::CrosstermBackend;
 

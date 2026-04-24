@@ -128,7 +128,13 @@ impl MergeInteractiveView {
         self.adjust_scroll();
     }
 
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(
+            unchecked_division,
+            reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"
+        )
+    )]
     pub fn move_down(&mut self) {
         if self.items.is_empty() {
             return;

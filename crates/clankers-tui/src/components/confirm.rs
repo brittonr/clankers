@@ -1,5 +1,7 @@
 //! Confirmation dialog
 
+// Re-export from rat-widgets
+pub use rat_widgets::confirm::ConfirmDialog;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -14,9 +16,6 @@ use ratatui::widgets::Paragraph;
 use ratatui::widgets::Wrap;
 
 use crate::app::BashConfirmState;
-
-// Re-export from rat-widgets
-pub use rat_widgets::confirm::ConfirmDialog;
 
 /// Render a bash confirm dialog for attach mode protocol
 pub fn render_bash_confirm(frame: &mut Frame, area: Rect, state: &BashConfirmState) {
@@ -54,10 +53,7 @@ pub fn render_bash_confirm(frame: &mut Frame, area: Rect, state: &BashConfirmSta
         Line::from(format!("dir: {}", state.working_dir)),
         Line::from(format!("cmd: {cmd_display}")),
         Line::from(""),
-        Line::from(vec![
-            Span::styled("  [Y]es ", yes_style),
-            Span::styled("  [N]o ", no_style),
-        ]),
+        Line::from(vec![Span::styled("  [Y]es ", yes_style), Span::styled("  [N]o ", no_style)]),
         Line::from(Span::styled("  y/n or ←/→ + Enter", Style::default().fg(Color::DarkGray))),
     ];
 

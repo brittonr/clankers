@@ -3,7 +3,8 @@
 use std::path::Path;
 
 use async_trait::async_trait;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 /// A single voice offered by a provider.
 #[derive(Debug, Clone, Serialize, Deserialize)]

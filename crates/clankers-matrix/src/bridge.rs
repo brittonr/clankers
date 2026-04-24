@@ -135,7 +135,10 @@ impl MatrixBridge {
     ///
     /// This spawns a background task that reads from the client's event
     /// stream and updates the peer registry / dispatches events.
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(unbounded_loop, reason = "event loop; bounded by channel close")
+    )]
     pub fn start(&self, mut event_rx: broadcast::Receiver<ClankersEvent>, our_user_id: &str) {
         let peers = self.peers.clone();
         let pending = self.pending.clone();
@@ -202,10 +205,12 @@ impl MatrixBridge {
                     return; // Not for us
                 }
 
-                agent_tx.send(BridgeEvent::IncomingRpc {
-                    request: request.clone(),
-                    room_id: String::new(), // filled by the caller
-                }).ok();
+                agent_tx
+                    .send(BridgeEvent::IncomingRpc {
+                        request: request.clone(),
+                        room_id: String::new(), // filled by the caller
+                    })
+                    .ok();
             }
 
             ClankersEvent::RpcResponse(response) => {
@@ -227,12 +232,14 @@ impl MatrixBridge {
                     return;
                 }
 
-                agent_tx.send(BridgeEvent::ChatMessage {
-                    sender: chat.user_id.clone(),
-                    instance_name: chat.instance_name.clone(),
-                    body: chat.body.clone(),
-                    room_id: String::new(),
-                }).ok();
+                agent_tx
+                    .send(BridgeEvent::ChatMessage {
+                        sender: chat.user_id.clone(),
+                        instance_name: chat.instance_name.clone(),
+                        body: chat.body.clone(),
+                        room_id: String::new(),
+                    })
+                    .ok();
             }
 
             ClankersEvent::Text {
@@ -242,11 +249,13 @@ impl MatrixBridge {
                     return;
                 }
 
-                agent_tx.send(BridgeEvent::TextMessage {
-                    sender: sender.clone(),
-                    body: body.clone(),
-                    room_id: room_id.clone(),
-                }).ok();
+                agent_tx
+                    .send(BridgeEvent::TextMessage {
+                        sender: sender.clone(),
+                        body: body.clone(),
+                        room_id: room_id.clone(),
+                    })
+                    .ok();
             }
 
             ClankersEvent::Media {
@@ -262,14 +271,16 @@ impl MatrixBridge {
                     return;
                 }
 
-                agent_tx.send(BridgeEvent::MediaMessage {
-                    sender: sender.clone(),
-                    body: body.clone(),
-                    filename: filename.clone(),
-                    media_type: media_type.clone(),
-                    source: source.clone(),
-                    room_id: room_id.clone(),
-                }).ok();
+                agent_tx
+                    .send(BridgeEvent::MediaMessage {
+                        sender: sender.clone(),
+                        body: body.clone(),
+                        filename: filename.clone(),
+                        media_type: media_type.clone(),
+                        source: source.clone(),
+                        room_id: room_id.clone(),
+                    })
+                    .ok();
             }
         }
     }

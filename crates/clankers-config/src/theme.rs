@@ -18,13 +18,12 @@
 
 use std::path::Path;
 
+use clankers_tui::theme::Theme;
 use ratatui::style::Color;
 use serde::Deserialize;
 use serde::Serialize;
 use terminal_colorsaurus::QueryOptions;
 use terminal_colorsaurus::ThemeMode;
-
-use clankers_tui::theme::Theme;
 
 // ── Serializable theme definition ───────────────────────────────────────────
 
@@ -90,27 +89,69 @@ pub struct ThemeDef {
 
 // ── Defaults (dark theme) ───────────────────────────────────────────────────
 
-fn d_bg() -> [u8; 3] { [30, 30, 30] }
-fn d_fg() -> [u8; 3] { [220, 220, 220] }
-fn d_border() -> [u8; 3] { [80, 80, 80] }
-fn d_highlight() -> [u8; 3] { [100, 180, 255] }
-fn d_error() -> [u8; 3] { [255, 100, 100] }
-fn d_user_msg() -> [u8; 3] { [120, 200, 120] }
-fn d_assistant_msg() -> [u8; 3] { [200, 200, 200] }
-fn d_system_msg() -> [u8; 3] { [150, 150, 150] }
-fn d_thinking_msg() -> [u8; 3] { [150, 130, 200] }
-fn d_block_border() -> [u8; 3] { [60, 60, 60] }
-fn d_block_border_focused() -> [u8; 3] { [100, 180, 255] }
-fn d_block_timestamp() -> [u8; 3] { [100, 100, 100] }
-fn d_md_code_block() -> [u8; 3] { [180, 220, 140] }
-fn d_md_code_fence() -> [u8; 3] { [100, 100, 100] }
-fn d_md_inline_code_fg() -> [u8; 3] { [230, 190, 80] }
-fn d_md_inline_code_bg() -> [u8; 3] { [45, 45, 45] }
-fn d_md_list_marker() -> [u8; 3] { [100, 100, 100] }
-fn d_md_blockquote() -> [u8; 3] { [160, 160, 160] }
-fn d_md_hrule() -> [u8; 3] { [80, 80, 80] }
-fn d_search_match() -> [u8; 3] { [120, 90, 30] }
-fn d_search_current() -> [u8; 3] { [220, 180, 40] }
+fn d_bg() -> [u8; 3] {
+    [30, 30, 30]
+}
+fn d_fg() -> [u8; 3] {
+    [220, 220, 220]
+}
+fn d_border() -> [u8; 3] {
+    [80, 80, 80]
+}
+fn d_highlight() -> [u8; 3] {
+    [100, 180, 255]
+}
+fn d_error() -> [u8; 3] {
+    [255, 100, 100]
+}
+fn d_user_msg() -> [u8; 3] {
+    [120, 200, 120]
+}
+fn d_assistant_msg() -> [u8; 3] {
+    [200, 200, 200]
+}
+fn d_system_msg() -> [u8; 3] {
+    [150, 150, 150]
+}
+fn d_thinking_msg() -> [u8; 3] {
+    [150, 130, 200]
+}
+fn d_block_border() -> [u8; 3] {
+    [60, 60, 60]
+}
+fn d_block_border_focused() -> [u8; 3] {
+    [100, 180, 255]
+}
+fn d_block_timestamp() -> [u8; 3] {
+    [100, 100, 100]
+}
+fn d_md_code_block() -> [u8; 3] {
+    [180, 220, 140]
+}
+fn d_md_code_fence() -> [u8; 3] {
+    [100, 100, 100]
+}
+fn d_md_inline_code_fg() -> [u8; 3] {
+    [230, 190, 80]
+}
+fn d_md_inline_code_bg() -> [u8; 3] {
+    [45, 45, 45]
+}
+fn d_md_list_marker() -> [u8; 3] {
+    [100, 100, 100]
+}
+fn d_md_blockquote() -> [u8; 3] {
+    [160, 160, 160]
+}
+fn d_md_hrule() -> [u8; 3] {
+    [80, 80, 80]
+}
+fn d_search_match() -> [u8; 3] {
+    [120, 90, 30]
+}
+fn d_search_current() -> [u8; 3] {
+    [220, 180, 40]
+}
 
 impl Default for ThemeDef {
     fn default() -> Self {
@@ -244,21 +285,14 @@ fn load_by_name(name: &str, themes_dir: &Path) -> Result<ThemeDef, String> {
 
 #[cfg(feature = "nickel")]
 fn load_ncl(path: &Path) -> Result<ThemeDef, String> {
-    let value = crate::nickel::eval_ncl_file(path).map_err(|e| {
-        format!("failed to evaluate {}: {e}", path.display())
-    })?;
-    serde_json::from_value(value).map_err(|e| {
-        format!("invalid theme in {}: {e}", path.display())
-    })
+    let value =
+        crate::nickel::eval_ncl_file(path).map_err(|e| format!("failed to evaluate {}: {e}", path.display()))?;
+    serde_json::from_value(value).map_err(|e| format!("invalid theme in {}: {e}", path.display()))
 }
 
 fn load_json(path: &Path) -> Result<ThemeDef, String> {
-    let content = std::fs::read_to_string(path).map_err(|e| {
-        format!("failed to read {}: {e}", path.display())
-    })?;
-    serde_json::from_str(&content).map_err(|e| {
-        format!("invalid theme in {}: {e}", path.display())
-    })
+    let content = std::fs::read_to_string(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    serde_json::from_str(&content).map_err(|e| format!("invalid theme in {}: {e}", path.display()))
 }
 
 // ── Tests ───────────────────────────────────────────────────────────────────
@@ -330,11 +364,7 @@ mod tests {
     fn load_json_theme_from_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("test.json");
-        std::fs::write(
-            &path,
-            r#"{ "bg": [10, 20, 30], "userMsg": [255, 128, 0] }"#,
-        )
-        .unwrap();
+        std::fs::write(&path, r#"{ "bg": [10, 20, 30], "userMsg": [255, 128, 0] }"#).unwrap();
 
         let theme = load_theme(Some("test"), dir.path());
         assert_eq!(theme.bg, Color::Rgb(10, 20, 30));
@@ -348,11 +378,7 @@ mod tests {
     fn load_ncl_theme_from_file() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("custom.ncl");
-        std::fs::write(
-            &path,
-            r#"(import "clankers://theme") & { bg = [5, 10, 15] }"#,
-        )
-        .unwrap();
+        std::fs::write(&path, r#"(import "clankers://theme") & { bg = [5, 10, 15] }"#).unwrap();
 
         let theme = load_theme(Some("custom"), dir.path());
         assert_eq!(theme.bg, Color::Rgb(5, 10, 15));

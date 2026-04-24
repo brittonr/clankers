@@ -16,8 +16,8 @@ use clanker_router::auth::ImportTarget;
 use clanker_router::auth::OAuthFlow;
 use clanker_router::auth::PendingOAuthLogin;
 use clanker_router::auth::StoredCredential;
-use clanker_router::auth::pending_oauth_login_path;
 use clanker_router::auth::env_var_for_provider;
+use clanker_router::auth::pending_oauth_login_path;
 use clanker_router::auth::resolve_credential;
 use clanker_router::backends::huggingface::HubClient;
 use clanker_router::backends::openai_codex;
@@ -341,10 +341,8 @@ struct LocalProviderConfig {
 }
 
 fn load_local_provider_configs(path: &std::path::Path) -> Result<Vec<LocalProviderConfig>, String> {
-    let raw = std::fs::read_to_string(path)
-        .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-    serde_json::from_str(&raw)
-        .map_err(|e| format!("failed to parse {}: {e}", path.display()))
+    let raw = std::fs::read_to_string(path).map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    serde_json::from_str(&raw).map_err(|e| format!("failed to parse {}: {e}", path.display()))
 }
 
 fn local_models(provider_name: &str, model_ids: &[String]) -> Vec<clanker_router::Model> {
@@ -472,12 +470,9 @@ async fn build_providers(cli: &Cli, auth_store: &AuthStore, auth_paths: &AuthSto
                 None,
                 openai_codex::refresh_fn_for_codex(),
             );
-            let models = openai_codex::catalog_for_active_account_with_manager(
-                auth_store,
-                &account,
-                Some(manager.as_ref()),
-            )
-            .await;
+            let models =
+                openai_codex::catalog_for_active_account_with_manager(auth_store, &account, Some(manager.as_ref()))
+                    .await;
             if !models.is_empty() {
                 providers.push(OpenAICodexProvider::new(manager, models, account));
             }
@@ -713,9 +708,7 @@ fn requests_openai_codex_explicitly(cli: &Cli) -> bool {
 
 fn exit_no_providers(cli: &Cli) -> ! {
     if requests_openai_codex_explicitly(cli) {
-        eprintln!(
-            "Error: openai-codex is unavailable because no valid openai-codex credential is active."
-        );
+        eprintln!("Error: openai-codex is unavailable because no valid openai-codex credential is active.");
         eprintln!("Import or log in to an openai-codex account first:");
         eprintln!("  clanker-router auth import --input record.json --target file");
         eprintln!("  clanker-router auth login --provider openai-codex");
@@ -818,7 +811,13 @@ async fn run_ask(
 
 // ── Models ──────────────────────────────────────────────────────────────
 
-async fn run_models(cli: &Cli, auth_store: &AuthStore, auth_paths: &AuthStorePaths, provider_filter: Option<&str>, json: bool) {
+async fn run_models(
+    cli: &Cli,
+    auth_store: &AuthStore,
+    auth_paths: &AuthStorePaths,
+    provider_filter: Option<&str>,
+    json: bool,
+) {
     let router = build_router(cli, auth_store, auth_paths).await;
     let models = if let Some(prov) = provider_filter {
         router.registry().list_for_provider(prov).into_iter().cloned().collect::<Vec<_>>()
@@ -895,31 +894,22 @@ async fn provider_status_lines(
     let mut lines = Vec::new();
     for sourced in infos {
         let marker = if sourced.info.is_active { "▸" } else { " " };
-        let label = sourced
-            .info
-            .label
-            .as_ref()
-            .map(|value| format!(" ({value})"))
-            .unwrap_or_default();
+        let label = sourced.info.label.as_ref().map(|value| format!(" ({value})")).unwrap_or_default();
         let base = effective
             .store()
             .credential_for(provider, &sourced.info.name)
             .map(describe_credential)
             .unwrap_or_else(|| "unknown".to_string());
         let detail = if provider == openai_codex::OPENAI_CODEX_PROVIDER {
-            let manager = effective
-                .store()
-                .credential_for(provider, &sourced.info.name)
-                .cloned()
-                .map(|credential| {
-                    CredentialManager::with_refresh_fn(
-                        provider.to_string(),
-                        credential,
-                        auth_paths.clone(),
-                        None,
-                        openai_codex::refresh_fn_for_codex(),
-                    )
-                });
+            let manager = effective.store().credential_for(provider, &sourced.info.name).cloned().map(|credential| {
+                CredentialManager::with_refresh_fn(
+                    provider.to_string(),
+                    credential,
+                    auth_paths.clone(),
+                    None,
+                    openai_codex::refresh_fn_for_codex(),
+                )
+            });
             match openai_codex::codex_status_suffix_with_manager(
                 effective.store(),
                 &sourced.info.name,
@@ -995,7 +985,11 @@ async fn run_auth(auth_paths: &AuthStorePaths, action: &AuthAction) {
                     "xai",
                 ] {
                     if let Some(var) = env_var_for_provider(p) {
-                        let status = if std::env::var(var).is_ok() { "✓ set" } else { "· not set" };
+                        let status = if std::env::var(var).is_ok() {
+                            "✓ set"
+                        } else {
+                            "· not set"
+                        };
                         println!("  {} {} ({})", status, p, var);
                     }
                 }
@@ -1153,12 +1147,7 @@ async fn run_auth(auth_paths: &AuthStorePaths, action: &AuthAction) {
 
 // ── OAuth login ─────────────────────────────────────────────────────────
 
-async fn run_auth_login(
-    auth_paths: &AuthStorePaths,
-    provider: Option<&str>,
-    account: &str,
-    code_input: Option<&str>,
-) {
+async fn run_auth_login(auth_paths: &AuthStorePaths, provider: Option<&str>, account: &str, code_input: Option<&str>) {
     let oauth_flow = OAuthFlow::from_provider(provider).expect("provider should be supported");
     let provider_name = oauth_flow.provider_name();
     let base_dir = auth_base_dir(auth_paths);
@@ -1196,18 +1185,17 @@ async fn run_auth_login(
         std::process::exit(1);
     });
 
-    let pending = PendingOAuthLogin::load(&verifier_path).or_else(|| PendingOAuthLogin::load(&legacy_path)).unwrap_or_else(|| {
-        eprintln!("Error: No login in progress. Run `clanker-router auth login` first.");
-        std::process::exit(1);
-    });
-
-    let creds = oauth_flow
-        .exchange_code(&code, &state, &pending.verifier)
-        .await
-        .unwrap_or_else(|e| {
-            eprintln!("Login failed: {}", e);
+    let pending = PendingOAuthLogin::load(&verifier_path)
+        .or_else(|| PendingOAuthLogin::load(&legacy_path))
+        .unwrap_or_else(|| {
+            eprintln!("Error: No login in progress. Run `clanker-router auth login` first.");
             std::process::exit(1);
         });
+
+    let creds = oauth_flow.exchange_code(&code, &state, &pending.verifier).await.unwrap_or_else(|e| {
+        eprintln!("Login failed: {}", e);
+        std::process::exit(1);
+    });
 
     std::fs::remove_file(&verifier_path).ok();
     std::fs::remove_file(&legacy_path).ok();

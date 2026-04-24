@@ -138,7 +138,8 @@ impl SlashHandler for BranchesHandler {
                                 output,
                                 "{} {}{}\n    {} messages    {}\n",
                                 marker, branch.name, active_label, branch.message_count, ago,
-                            ).ok();
+                            )
+                            .ok();
                         }
                         output.push_str("\n  Use /switch <name> to change branches");
                         ctx.app.push_system(output, false);

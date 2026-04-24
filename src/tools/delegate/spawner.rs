@@ -38,7 +38,8 @@ pub async fn run_worker_subprocess(
             name: worker_name.to_string(),
             task: task_preview,
             pid: child_pid,
-        }).ok();
+        })
+        .ok();
     }
 
     let stdout = match child.stdout.take() {
@@ -201,7 +202,8 @@ async fn handle_worker_exit(
             tx.send(SubagentEvent::Error {
                 id: sub_id.to_string(),
                 message: err_msg.clone(),
-            }).ok();
+            })
+            .ok();
         }
         ToolResult::error(err_msg)
     }

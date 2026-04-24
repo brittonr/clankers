@@ -550,11 +550,11 @@ async fn quic_read_frame<T: serde::de::DeserializeOwned>(recv: &mut ::iroh::endp
 
 #[cfg(test)]
 mod tests {
+    use clanker_tui_types::BlockEntry;
+    use clanker_tui_types::ConnectionMode;
     use clankers_controller::client::ClientAdapter;
     use clankers_protocol::DaemonEvent;
     use clankers_tui::app::App;
-    use clanker_tui_types::BlockEntry;
-    use clanker_tui_types::ConnectionMode;
 
     use super::AttachParityTracker;
     use super::drain_daemon_events;

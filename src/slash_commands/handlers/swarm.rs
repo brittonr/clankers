@@ -160,11 +160,11 @@ impl SlashHandler for SubagentsHandler {
                             ctx.app.push_system("No running subagents to kill.".to_string(), false);
                         } else {
                             for id in &running {
-                                ctx.panel_tx.send(
-                                    crate::tui::components::subagent_event::SubagentEvent::KillRequest {
+                                ctx.panel_tx
+                                    .send(crate::tui::components::subagent_event::SubagentEvent::KillRequest {
                                         id: id.clone(),
-                                    },
-                                ).ok();
+                                    })
+                                    .ok();
                             }
                             ctx.app.push_system(format!("Kill requested for {} subagent(s).", running.len()), false);
                         }
@@ -179,9 +179,11 @@ impl SlashHandler for SubagentsHandler {
                             .find(|e| e.id == target || e.name == target || e.id.contains(&target))
                             .map(|e| e.id.clone());
                         if let Some(id) = matched {
-                            ctx.panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest {
+                            ctx.panel_tx
+                                .send(crate::tui::components::subagent_event::SubagentEvent::KillRequest {
                                     id: id.clone(),
-                                }).ok();
+                                })
+                                .ok();
                             ctx.app.push_system(format!("Kill requested for subagent '{}'.", id), false);
                         } else {
                             ctx.app.push_system(format!("No subagent matching '{}'.", subcmd_args), true);

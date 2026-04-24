@@ -8,9 +8,13 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
-use super::{Tool, ToolContext, ToolDefinition, ToolResult};
+use super::Tool;
+use super::ToolContext;
+use super::ToolDefinition;
+use super::ToolResult;
 
 pub struct SkillManageTool {
     definition: ToolDefinition,
@@ -100,13 +104,7 @@ impl SkillManageTool {
         };
         let file = optional_str(params, "file_path").map(Path::new);
 
-        match clankers_skills::patch_skill(
-            &self.global_skills_dir,
-            name,
-            old_text,
-            new_text,
-            file,
-        ) {
+        match clankers_skills::patch_skill(&self.global_skills_dir, name, old_text, new_text, file) {
             Ok(()) => ToolResult::text(format!("Patched skill '{name}'.")),
             Err(err) => skill_error(err),
         }
@@ -154,12 +152,7 @@ impl SkillManageTool {
             Err(err) => return err,
         };
 
-        match clankers_skills::write_skill_file(
-            &self.global_skills_dir,
-            name,
-            Path::new(file_path),
-            file_content,
-        ) {
+        match clankers_skills::write_skill_file(&self.global_skills_dir, name, Path::new(file_path), file_content) {
             Ok(()) => ToolResult::text(format!("Wrote {file_path} to skill '{name}'.")),
             Err(err) => skill_error(err),
         }
@@ -249,7 +242,8 @@ mod tests {
     use super::*;
 
     const VALID_SKILL: &str = "---\nname: test-skill\ndescription: A test skill\n---\n# Test\nSome content\n";
-    const UPDATED_SKILL: &str = "---\nname: test-skill\ndescription: Updated test skill\n---\n# Test\nUpdated content\n";
+    const UPDATED_SKILL: &str =
+        "---\nname: test-skill\ndescription: Updated test skill\n---\n# Test\nUpdated content\n";
 
     fn make_ctx() -> ToolContext {
         ToolContext::new("test".to_string(), CancellationToken::new(), None)
@@ -273,12 +267,8 @@ mod tests {
         let tool = SkillManageTool::new(tmp.path().to_path_buf());
         let ctx = make_ctx();
 
-        let result = tool
-            .execute(
-                &ctx,
-                json!({"action": "create", "name": "test-skill", "content": VALID_SKILL}),
-            )
-            .await;
+        let result =
+            tool.execute(&ctx, json!({"action": "create", "name": "test-skill", "content": VALID_SKILL})).await;
         assert!(!result.is_error);
         assert!(result_text(&result).contains("Created skill"));
 
@@ -293,18 +283,10 @@ mod tests {
         let tool = SkillManageTool::new(tmp.path().to_path_buf());
         let ctx = make_ctx();
 
-        tool.execute(
-            &ctx,
-            json!({"action": "create", "name": "test-skill", "content": VALID_SKILL}),
-        )
-        .await;
+        tool.execute(&ctx, json!({"action": "create", "name": "test-skill", "content": VALID_SKILL})).await;
 
-        let result = tool
-            .execute(
-                &ctx,
-                json!({"action": "create", "name": "test-skill", "content": VALID_SKILL}),
-            )
-            .await;
+        let result =
+            tool.execute(&ctx, json!({"action": "create", "name": "test-skill", "content": VALID_SKILL})).await;
         assert!(result.is_error);
         assert!(result_text(&result).contains("already exists"));
     }
@@ -315,12 +297,7 @@ mod tests {
         let tool = SkillManageTool::new(tmp.path().to_path_buf());
         let ctx = make_ctx();
 
-        let result = tool
-            .execute(
-                &ctx,
-                json!({"action": "create", "name": "Bad Name!", "content": VALID_SKILL}),
-            )
-            .await;
+        let result = tool.execute(&ctx, json!({"action": "create", "name": "Bad Name!", "content": VALID_SKILL})).await;
         assert!(result.is_error);
         assert!(result_text(&result).contains("invalid skill name"));
     }
@@ -331,11 +308,7 @@ mod tests {
         let tool = SkillManageTool::new(tmp.path().to_path_buf());
         let ctx = make_ctx();
 
-        tool.execute(
-            &ctx,
-            json!({"action": "create", "name": "test-skill", "content": VALID_SKILL}),
-        )
-        .await;
+        tool.execute(&ctx, json!({"action": "create", "name": "test-skill", "content": VALID_SKILL})).await;
 
         let result = tool
             .execute(
@@ -359,14 +332,8 @@ mod tests {
         let tool = SkillManageTool::new(tmp.path().to_path_buf());
         let ctx = make_ctx();
 
-        tool.execute(
-            &ctx,
-            json!({"action": "create", "name": "test-skill", "content": VALID_SKILL}),
-        )
-        .await;
-        let result = tool
-            .execute(&ctx, json!({"action": "delete", "name": "test-skill"}))
-            .await;
+        tool.execute(&ctx, json!({"action": "create", "name": "test-skill", "content": VALID_SKILL})).await;
+        let result = tool.execute(&ctx, json!({"action": "delete", "name": "test-skill"})).await;
         assert!(!result.is_error);
         assert!(!tmp.path().join("test-skill").exists());
     }
@@ -377,11 +344,7 @@ mod tests {
         let tool = SkillManageTool::new(tmp.path().to_path_buf());
         let ctx = make_ctx();
 
-        tool.execute(
-            &ctx,
-            json!({"action": "create", "name": "test-skill", "content": VALID_SKILL}),
-        )
-        .await;
+        tool.execute(&ctx, json!({"action": "create", "name": "test-skill", "content": VALID_SKILL})).await;
 
         let write_result = tool
             .execute(
@@ -416,11 +379,7 @@ mod tests {
         let tool = SkillManageTool::new(tmp.path().to_path_buf());
         let ctx = make_ctx();
 
-        tool.execute(
-            &ctx,
-            json!({"action": "create", "name": "test-skill", "content": VALID_SKILL}),
-        )
-        .await;
+        tool.execute(&ctx, json!({"action": "create", "name": "test-skill", "content": VALID_SKILL})).await;
 
         let result = tool.execute(&ctx, json!({"action": "list"})).await;
         assert!(!result.is_error);
@@ -433,22 +392,11 @@ mod tests {
         let tool = SkillManageTool::new(tmp.path().to_path_buf());
         let ctx = make_ctx();
 
-        tool.execute(
-            &ctx,
-            json!({"action": "create", "name": "test-skill", "content": VALID_SKILL}),
-        )
-        .await;
+        tool.execute(&ctx, json!({"action": "create", "name": "test-skill", "content": VALID_SKILL})).await;
 
-        let result = tool
-            .execute(
-                &ctx,
-                json!({"action": "edit", "name": "test-skill", "content": UPDATED_SKILL}),
-            )
-            .await;
+        let result =
+            tool.execute(&ctx, json!({"action": "edit", "name": "test-skill", "content": UPDATED_SKILL})).await;
         assert!(!result.is_error);
-        assert_eq!(
-            std::fs::read_to_string(tmp.path().join("test-skill").join("SKILL.md")).unwrap(),
-            UPDATED_SKILL
-        );
+        assert_eq!(std::fs::read_to_string(tmp.path().join("test-skill").join("SKILL.md")).unwrap(), UPDATED_SKILL);
     }
 }

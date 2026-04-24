@@ -521,11 +521,7 @@ mod tests {
             let cell = screen.cell(row, col).expect("styled fragment cell should exist");
             assert_eq!(cell.bold(), expected_bold, "unexpected bold for fragment {needle:?} at offset {offset}");
             assert_eq!(cell.dim(), expected_dim, "unexpected dim for fragment {needle:?} at offset {offset}");
-            assert_eq!(
-                cell.italic(),
-                expected_italic,
-                "unexpected italic for fragment {needle:?} at offset {offset}"
-            );
+            assert_eq!(cell.italic(), expected_italic, "unexpected italic for fragment {needle:?} at offset {offset}");
             assert_eq!(
                 cell.fgcolor(),
                 expected_fg,
@@ -620,7 +616,8 @@ mod tests {
 
     #[test]
     fn render_scrollback_output_emits_expected_prompt_markdown_and_tool_styles() {
-        let parser = render_parser(&[styled_conversation_entry(RENDER_TEST_PROMPT, 1)], RENDER_TEST_WIDTH, RENDER_TEST_ROWS);
+        let parser =
+            render_parser(&[styled_conversation_entry(RENDER_TEST_PROMPT, 1)], RENDER_TEST_WIDTH, RENDER_TEST_ROWS);
 
         assert!(screen_contains(&parser, RENDER_TEST_WIDTH, RENDER_TEST_ROWS, RENDER_TEST_ASSISTANT_RENDERED));
         assert!(!screen_contains(&parser, RENDER_TEST_WIDTH, RENDER_TEST_ROWS, RENDER_TEST_ASSISTANT_MARKDOWN));

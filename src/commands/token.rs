@@ -310,7 +310,11 @@ fn print_credential_list_entry(hash_hex: &str, encoded: &[u8]) {
         Ok(cred) => {
             let now =
                 std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
-            let status = if cred.token.expires_at < now { "expired" } else { "valid" };
+            let status = if cred.token.expires_at < now {
+                "expired"
+            } else {
+                "valid"
+            };
             let expires = chrono::DateTime::from_timestamp(cred.token.expires_at as i64, 0)
                 .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
                 .unwrap_or_else(|| "?".to_string());

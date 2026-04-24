@@ -83,16 +83,10 @@ pub fn eval_ncl_with_contract(path: &Path) -> Result<serde_json::Value, NickelEr
 fn resolve_contract_import(src: &str) -> String {
     let mut result = src.to_string();
     if result.contains(CONTRACT_PREFIX) {
-        result = result.replace(
-            &format!("import \"{CONTRACT_PREFIX}\""),
-            &format!("({SETTINGS_CONTRACT})"),
-        );
+        result = result.replace(&format!("import \"{CONTRACT_PREFIX}\""), &format!("({SETTINGS_CONTRACT})"));
     }
     if result.contains(THEME_CONTRACT_PREFIX) {
-        result = result.replace(
-            &format!("import \"{THEME_CONTRACT_PREFIX}\""),
-            &format!("({THEME_CONTRACT})"),
-        );
+        result = result.replace(&format!("import \"{THEME_CONTRACT_PREFIX}\""), &format!("({THEME_CONTRACT})"));
     }
     result
 }
@@ -158,11 +152,7 @@ mod tests {
 
     #[test]
     fn eval_simple_record() {
-        let result = eval_ncl_source(
-            r#"{ model = "claude-opus-4-6", maxTokens = 32768 }"#,
-            "test".into(),
-        )
-        .unwrap();
+        let result = eval_ncl_source(r#"{ model = "claude-opus-4-6", maxTokens = 32768 }"#, "test".into()).unwrap();
         assert_eq!(result["model"], "claude-opus-4-6");
         assert_eq!(result["maxTokens"], 32768);
     }
@@ -218,34 +208,13 @@ mod tests {
         assert_eq!(settings.max_subagent_panes, defaults.max_subagent_panes);
         assert!(settings.disabled_tools.is_empty());
         assert_eq!(settings.hooks.enabled, defaults.hooks.enabled);
-        assert_eq!(
-            settings.hooks.script_timeout_secs,
-            defaults.hooks.script_timeout_secs
-        );
-        assert_eq!(
-            settings.memory.global_char_limit,
-            defaults.memory.global_char_limit
-        );
-        assert_eq!(
-            settings.memory.project_char_limit,
-            defaults.memory.project_char_limit
-        );
-        assert_eq!(
-            settings.compression.summary_model,
-            defaults.compression.summary_model
-        );
-        assert_eq!(
-            settings.compression.keep_recent,
-            defaults.compression.keep_recent
-        );
-        assert_eq!(
-            settings.compression.tail_budget_fraction,
-            defaults.compression.tail_budget_fraction
-        );
-        assert_eq!(
-            settings.compression.min_messages,
-            defaults.compression.min_messages
-        );
+        assert_eq!(settings.hooks.script_timeout_secs, defaults.hooks.script_timeout_secs);
+        assert_eq!(settings.memory.global_char_limit, defaults.memory.global_char_limit);
+        assert_eq!(settings.memory.project_char_limit, defaults.memory.project_char_limit);
+        assert_eq!(settings.compression.summary_model, defaults.compression.summary_model);
+        assert_eq!(settings.compression.keep_recent, defaults.compression.keep_recent);
+        assert_eq!(settings.compression.tail_budget_fraction, defaults.compression.tail_budget_fraction);
+        assert_eq!(settings.compression.min_messages, defaults.compression.min_messages);
     }
 
     #[test]

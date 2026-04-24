@@ -40,7 +40,10 @@ pub async fn run(ctx: &CommandContext, identity_path: Option<String>, action: Rp
         RpcAction::Allow { node_id } => handle_allow(ctx, &node_id),
         RpcAction::Deny { node_id } => handle_deny(ctx, &node_id),
         RpcAction::Allowed => handle_allowed(ctx),
-        RpcAction::Discover { mdns: has_mdns, scan_secs } => handle_discover(ctx, &identity, has_mdns, scan_secs).await,
+        RpcAction::Discover {
+            mdns: has_mdns,
+            scan_secs,
+        } => handle_discover(ctx, &identity, has_mdns, scan_secs).await,
         RpcAction::SendFile { node_id, file } => handle_send_file(&identity, &node_id, &file).await,
         RpcAction::RecvFile {
             node_id,

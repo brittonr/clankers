@@ -23,13 +23,18 @@ pub mod error;
 pub mod provider;
 pub mod providers;
 
-pub use error::{Error, Result};
-pub use provider::{AudioFormat, TtsProvider, TtsRequest, TtsResponse, Voice};
-
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use tracing::{info, warn};
+pub use error::Error;
+pub use error::Result;
+pub use provider::AudioFormat;
+pub use provider::TtsProvider;
+pub use provider::TtsRequest;
+pub use provider::TtsResponse;
+pub use provider::Voice;
+use tracing::info;
+use tracing::warn;
 
 /// Multi-provider TTS router.
 ///
@@ -62,14 +67,10 @@ impl TtsRouter {
         let name = provider.name().to_string();
 
         for voice in provider.voices() {
-            self.voice_map
-                .entry(voice.id.to_lowercase())
-                .or_insert(idx);
+            self.voice_map.entry(voice.id.to_lowercase()).or_insert(idx);
             // Also map the display name
             if voice.name.to_lowercase() != voice.id.to_lowercase() {
-                self.voice_map
-                    .entry(voice.name.to_lowercase())
-                    .or_insert(idx);
+                self.voice_map.entry(voice.name.to_lowercase()).or_insert(idx);
             }
         }
 
@@ -77,11 +78,7 @@ impl TtsRouter {
             self.default_provider = Some(idx);
         }
 
-        info!(
-            "TTS: registered {} with {} voices",
-            name,
-            provider.voices().len()
-        );
+        info!("TTS: registered {} with {} voices", name, provider.voices().len());
         self.providers.push(provider);
     }
 
@@ -115,12 +112,7 @@ impl TtsRouter {
     ///
     /// The voice name is resolved to a provider via the voice map.
     /// Falls back to the default provider if the voice isn't found.
-    pub async fn synthesize(
-        &self,
-        text: &str,
-        voice: &str,
-        speed: f32,
-    ) -> Result<TtsResponse> {
+    pub async fn synthesize(&self, text: &str, voice: &str, speed: f32) -> Result<TtsResponse> {
         let provider = self.resolve_provider(voice)?;
 
         let request = TtsRequest {

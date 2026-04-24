@@ -75,10 +75,7 @@ impl Keymap {
         };
 
         // Build mode bindings for rat-keymap
-        let mode_bindings = vec![
-            (InputMode::Normal, normal_map),
-            (InputMode::Insert, insert_map),
-        ];
+        let mode_bindings = vec![(InputMode::Normal, normal_map), (InputMode::Insert, insert_map)];
 
         // Build overrides for rat-keymap
         let overrides = vec![

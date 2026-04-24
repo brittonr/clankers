@@ -259,7 +259,8 @@ async fn run_parallel(
                 )
                 .await
             } else {
-                spawn_subprocess(&task_text, agent.as_deref(), cwd.as_deref(), ptx.as_ref(), &cid, sig, pmon.as_ref()).await
+                spawn_subprocess(&task_text, agent.as_deref(), cwd.as_deref(), ptx.as_ref(), &cid, sig, pmon.as_ref())
+                    .await
             }
         }));
     }
@@ -410,7 +411,8 @@ fn register_subprocess(
             name: short_name.to_string(),
             task: task_preview.to_string(),
             pid: child_pid,
-        }).ok();
+        })
+        .ok();
     }
 }
 
@@ -504,7 +506,8 @@ async fn spawn_subprocess(
             tx.send(SubagentEvent::Error {
                 id: sub_id,
                 message: err_msg.clone(),
-            }).ok();
+            })
+            .ok();
         }
         Err(err_msg)
     }

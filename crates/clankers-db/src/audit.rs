@@ -12,6 +12,8 @@
 //! The sequence number is zero-padded to 6 digits so entries sort correctly
 //! within a session (supports up to 999,999 tool calls per session).
 
+use std::fmt::Write;
+
 use chrono::DateTime;
 use chrono::Utc;
 use redb::ReadableTable;
@@ -20,7 +22,6 @@ use redb::TableDefinition;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
-use std::fmt::Write;
 
 use super::Db;
 use crate::error::Result;

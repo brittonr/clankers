@@ -47,8 +47,7 @@ pub(crate) async fn run_proactive_prompt(
     key: SessionKey,
     text: String,
 ) -> String {
-    let (_session_id, cmd_tx, event_tx) =
-        get_or_create_keyed_session(&state, &registry, &factory, &key, None).await;
+    let (_session_id, cmd_tx, event_tx) = get_or_create_keyed_session(&state, &registry, &factory, &key, None).await;
 
     prompt_and_collect(&cmd_tx, &event_tx, text, vec![]).await
 }

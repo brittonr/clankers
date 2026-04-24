@@ -4,7 +4,10 @@ use snafu::prelude::*;
 
 #[derive(Debug, Snafu)]
 #[snafu(visibility(pub))]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(acronym_style, reason = "NotAStorePath uses English article 'A', not an acronym"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(acronym_style, reason = "NotAStorePath uses English article 'A', not an acronym")
+)]
 pub enum NixError {
     /// The input string is not a valid nix store path.
     #[snafu(display("not a store path: {path}"))]
@@ -20,10 +23,7 @@ pub enum NixError {
 
     /// Failed to read a .drv file from disk.
     #[snafu(display("failed to read derivation '{path}': {source}"))]
-    DerivationIo {
-        path: String,
-        source: std::io::Error,
-    },
+    DerivationIo { path: String, source: std::io::Error },
 
     /// The .drv file contents are malformed.
     #[snafu(display("failed to parse derivation '{path}': {reason}"))]

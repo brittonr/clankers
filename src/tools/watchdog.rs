@@ -153,10 +153,12 @@ pub fn spawn_watchdog(
                     tx.send(SubagentEvent::Error {
                         id: tracker.id().to_string(),
                         message: format!("Watchdog: no output for {:.0}s, killing subagent", idle.as_secs_f64()),
-                    }).ok();
+                    })
+                    .ok();
                     tx.send(SubagentEvent::KillRequest {
                         id: tracker.id().to_string(),
-                    }).ok();
+                    })
+                    .ok();
                 }
                 break;
             }
@@ -170,7 +172,8 @@ pub fn spawn_watchdog(
                     tx.send(SubagentEvent::Output {
                         id: tracker.id().to_string(),
                         line: format!("⚠️  WATCHDOG: no output for {:.0}s — subagent may be stuck", idle.as_secs_f64()),
-                    }).ok();
+                    })
+                    .ok();
                 }
             }
 

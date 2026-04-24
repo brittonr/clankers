@@ -402,19 +402,20 @@ impl Agent {
         );
 
         let result = match auto_compact_config.strategy {
-            compaction::CompactionStrategy::Structured => compaction::compact_structured(
-                &self.messages,
-                max_input,
-                auto_compact_config.tail_budget_fraction,
-                self.provider.as_ref(),
-                auto_compact_config.summary_model.as_deref().unwrap_or(&self.model),
-                &self.session_id,
-                self.latest_compaction_summary.as_deref(),
-            )
-            .await,
+            compaction::CompactionStrategy::Structured => {
+                compaction::compact_structured(
+                    &self.messages,
+                    max_input,
+                    auto_compact_config.tail_budget_fraction,
+                    self.provider.as_ref(),
+                    auto_compact_config.summary_model.as_deref().unwrap_or(&self.model),
+                    &self.session_id,
+                    self.latest_compaction_summary.as_deref(),
+                )
+                .await
+            }
             compaction::CompactionStrategy::Truncation | compaction::CompactionStrategy::LlmSummary => {
-                let tail_budget_tokens =
-                    (max_input as f64 * auto_compact_config.tail_budget_fraction) as usize;
+                let tail_budget_tokens = (max_input as f64 * auto_compact_config.tail_budget_fraction) as usize;
                 let tail_start_idx = compaction::select_tail_by_budget(&self.messages, tail_budget_tokens);
                 let keep_recent = self.messages.len().saturating_sub(tail_start_idx);
                 compaction::compact_with_llm(
@@ -908,10 +909,7 @@ mod tests {
                     _ => None,
                 })
                 .unwrap_or_default();
-            *self
-                .captured_prompt
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(prompt);
+            *self.captured_prompt.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(prompt);
             tx.send(clankers_provider::streaming::StreamEvent::ContentBlockDelta {
                 index: 0,
                 delta: clankers_provider::streaming::ContentDelta::TextDelta {
@@ -954,13 +952,7 @@ mod tests {
     }
 
     fn make_structured_test_agent(provider: Arc<dyn clankers_provider::Provider>) -> Agent {
-        Agent::new(
-            provider,
-            vec![],
-            Settings::default(),
-            "test-model".to_string(),
-            "test system prompt".to_string(),
-        )
+        Agent::new(provider, vec![], Settings::default(), "test-model".to_string(), "test system prompt".to_string())
     }
 
     fn make_tool_agent(tools: Vec<Arc<dyn Tool>>) -> Agent {
@@ -1058,7 +1050,9 @@ mod tests {
         let mut agent = make_test_agent();
         agent.skill_creation_nudge_counter = 3;
         agent.messages.push(user_text_message("save this workflow"));
-        agent.messages.push(assistant_tool_use("call-1", SKILL_MANAGE_TOOL_NAME, json!({"action": "create"})));
+        agent
+            .messages
+            .push(assistant_tool_use("call-1", SKILL_MANAGE_TOOL_NAME, json!({"action": "create"})));
         agent.messages.push(tool_result_message("call-1", SKILL_MANAGE_TOOL_NAME, "created"));
 
         agent.update_skill_creation_nudge_counter();

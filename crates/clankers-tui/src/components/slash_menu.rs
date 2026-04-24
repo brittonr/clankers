@@ -89,7 +89,13 @@ impl SlashMenu {
     }
 
     /// Move selection down
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(
+            unchecked_division,
+            reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"
+        )
+    )]
     pub fn select_next(&mut self) {
         if !self.items.is_empty() {
             self.selected = (self.selected + 1) % self.items.len();

@@ -163,7 +163,10 @@ pub async fn diff_ref_stat(base: String, files: Vec<String>) -> Result<String> {
 }
 
 /// List staged file names (like `git diff --cached --name-only`).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "delta index in range from diff.deltas().len()"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "delta index in range from diff.deltas().len()")
+)]
 pub async fn staged_file_names() -> Result<Vec<String>> {
     tokio::task::spawn_blocking(|| {
         let repo = open_repo()?;

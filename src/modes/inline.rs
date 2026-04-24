@@ -8,8 +8,12 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::sync::Arc;
 
-use rat_inline::{InlineMarkdown, InlineRenderer, InlineText, InlineView};
-use ratatui::style::{Modifier, Style};
+use rat_inline::InlineMarkdown;
+use rat_inline::InlineRenderer;
+use rat_inline::InlineText;
+use rat_inline::InlineView;
+use ratatui::style::Modifier;
+use ratatui::style::Style;
 
 use crate::agent::builder::AgentBuilder;
 use crate::agent::events::AgentEvent;
@@ -112,14 +116,10 @@ impl InlineState {
                 use crate::provider::message::Content;
                 match content_block {
                     Content::Thinking { .. } => {
-                        self.current_blocks_mut().push(Block::Thinking {
-                            content: String::new(),
-                        });
+                        self.current_blocks_mut().push(Block::Thinking { content: String::new() });
                     }
                     Content::Text { text } if !text.is_empty() => {
-                        self.current_blocks_mut().push(Block::Text {
-                            content: text.clone(),
-                        });
+                        self.current_blocks_mut().push(Block::Text { content: text.clone() });
                     }
                     _ => {}
                 }
@@ -134,9 +134,7 @@ impl InlineState {
                 }
                 ContentDelta::ThinkingDelta { thinking } => {
                     self.ensure_thinking_block();
-                    if let Some(Block::Thinking { content }) =
-                        self.current_blocks_mut().last_mut()
-                    {
+                    if let Some(Block::Thinking { content }) = self.current_blocks_mut().last_mut() {
                         content.push_str(thinking);
                     }
                 }
@@ -149,16 +147,13 @@ impl InlineState {
                 input,
             } => {
                 let summary = tool_call_summary(tool_name, input);
-                self.tools.insert(
-                    call_id.clone(),
-                    ToolCallState {
-                        tool_name: tool_name.clone(),
-                        summary,
-                        output: String::new(),
-                        is_error: false,
-                        finished: false,
-                    },
-                );
+                self.tools.insert(call_id.clone(), ToolCallState {
+                    tool_name: tool_name.clone(),
+                    summary,
+                    output: String::new(),
+                    is_error: false,
+                    finished: false,
+                });
                 self.tool_order.push(call_id.clone());
                 self.tool_turn.insert(call_id.clone(), self.current_turn);
             }
@@ -187,9 +182,7 @@ impl InlineState {
                 }
             }
 
-            AgentEvent::UsageUpdate {
-                cumulative_usage, ..
-            } => {
+            AgentEvent::UsageUpdate { cumulative_usage, .. } => {
                 self.usage = Some(UsageStats {
                     input_tokens: cumulative_usage.input_tokens,
                     output_tokens: cumulative_usage.output_tokens,
@@ -210,15 +203,11 @@ impl InlineState {
             // Turn separator (after the first turn)
             if turn_idx > 0 {
                 let has_content = !blocks.is_empty()
-                    || self.tool_order.iter().any(|id| {
-                        self.tool_turn.get(id).copied() == Some(turn_idx)
-                    });
+                    || self.tool_order.iter().any(|id| self.tool_turn.get(id).copied() == Some(turn_idx));
                 if has_content {
                     view = view.keyed(
                         format!("sep-{turn_idx}"),
-                        InlineText::new("─".repeat(40)).style(
-                            Style::default().add_modifier(Modifier::DIM),
-                        ),
+                        InlineText::new("─".repeat(40)).style(Style::default().add_modifier(Modifier::DIM)),
                     );
                 }
             }
@@ -227,20 +216,14 @@ impl InlineState {
             for (block_idx, block) in blocks.iter().enumerate() {
                 match block {
                     Block::Text { content } if !content.is_empty() => {
-                        view = view.keyed(
-                            format!("msg-{turn_idx}-{block_idx}"),
-                            InlineMarkdown::new(content),
-                        );
+                        view = view.keyed(format!("msg-{turn_idx}-{block_idx}"), InlineMarkdown::new(content));
                     }
                     Block::Thinking { content } if !content.is_empty() => {
                         let display = format!("Thinking... {content}");
                         view = view.keyed(
                             format!("think-{turn_idx}-{block_idx}"),
-                            InlineText::new(display).style(
-                                Style::default()
-                                    .add_modifier(Modifier::DIM)
-                                    .add_modifier(Modifier::ITALIC),
-                            ),
+                            InlineText::new(display)
+                                .style(Style::default().add_modifier(Modifier::DIM).add_modifier(Modifier::ITALIC)),
                         );
                     }
                     _ => {}
@@ -258,25 +241,18 @@ impl InlineState {
                         let header = format!("⚡ {}: {}", tc.tool_name, tc.summary);
                         view = view.keyed(
                             format!("tool-{call_id}"),
-                            InlineText::new(header).style(
-                                Style::default().add_modifier(Modifier::BOLD),
-                            ),
+                            InlineText::new(header).style(Style::default().add_modifier(Modifier::BOLD)),
                         );
 
                         // Output (truncated)
                         if !tc.output.is_empty() {
                             let display = truncate_tool_output(&tc.output, 20);
                             let style = if tc.is_error {
-                                Style::default()
-                                    .fg(ratatui::style::Color::Red)
-                                    .add_modifier(Modifier::BOLD)
+                                Style::default().fg(ratatui::style::Color::Red).add_modifier(Modifier::BOLD)
                             } else {
                                 Style::default().add_modifier(Modifier::DIM)
                             };
-                            view = view.keyed(
-                                format!("tool-out-{call_id}"),
-                                InlineText::new(display).style(style),
-                            );
+                            view = view.keyed(format!("tool-out-{call_id}"), InlineText::new(display).style(style));
                         }
                     }
                 }
@@ -287,24 +263,12 @@ impl InlineState {
         if self.show_stats
             && let Some(ref usage) = self.usage
         {
-            let mut line = format!(
-                "tokens: {}in / {}out",
-                usage.input_tokens, usage.output_tokens,
-            );
+            let mut line = format!("tokens: {}in / {}out", usage.input_tokens, usage.output_tokens,);
             if usage.cache_read > 0 || usage.cache_write > 0 {
                 use std::fmt::Write;
-                let _ = write!(
-                    line,
-                    "  cache: {}read / {}write",
-                    usage.cache_read, usage.cache_write,
-                );
+                let _ = write!(line, "  cache: {}read / {}write", usage.cache_read, usage.cache_write,);
             }
-            view = view.keyed(
-                "usage",
-                InlineText::new(line).style(
-                    Style::default().add_modifier(Modifier::DIM),
-                ),
-            );
+            view = view.keyed("usage", InlineText::new(line).style(Style::default().add_modifier(Modifier::DIM)));
         }
 
         view
@@ -322,18 +286,14 @@ impl InlineState {
     fn ensure_text_block(&mut self) {
         let blocks = self.current_blocks_mut();
         if !matches!(blocks.last(), Some(Block::Text { .. })) {
-            blocks.push(Block::Text {
-                content: String::new(),
-            });
+            blocks.push(Block::Text { content: String::new() });
         }
     }
 
     fn ensure_thinking_block(&mut self) {
         let blocks = self.current_blocks_mut();
         if !matches!(blocks.last(), Some(Block::Thinking { .. })) {
-            blocks.push(Block::Thinking {
-                content: String::new(),
-            });
+            blocks.push(Block::Thinking { content: String::new() });
         }
     }
 }
@@ -356,15 +316,12 @@ pub async fn run_inline_with_options(
     system_prompt: String,
     opts: InlineOptions,
 ) -> Result<()> {
-    let mut builder =
-        AgentBuilder::new(provider, settings.clone(), model, system_prompt).with_tools(tools);
+    let mut builder = AgentBuilder::new(provider, settings.clone(), model, system_prompt).with_tools(tools);
     if let Some(thinking) = opts.thinking.clone() {
         builder = builder.with_thinking(thinking);
     }
     if let Some(caps) = &settings.default_capabilities {
-        let gate = Arc::new(crate::capability_gate::UcanCapabilityGate::new(
-            caps.clone(),
-        ));
+        let gate = Arc::new(crate::capability_gate::UcanCapabilityGate::new(caps.clone()));
         builder = builder.with_capability_gate(gate);
     }
     let mut agent = builder.build();
@@ -377,14 +334,10 @@ pub async fn run_inline_with_options(
     // Spawn the agent on a Send-compatible task; render on the current
     // thread because InlineRenderer contains non-Send dyn trait objects.
     let prompt_owned = prompt.to_string();
-    let agent_handle = tokio::spawn(async move {
-        agent.prompt(&prompt_owned).await
-    });
+    let agent_handle = tokio::spawn(async move { agent.prompt(&prompt_owned).await });
 
     // Detect terminal width, fall back to 80
-    let width = crossterm::terminal::size()
-        .map(|(w, _)| w)
-        .unwrap_or(80);
+    let width = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);
 
     let mut renderer = InlineRenderer::new(width);
     let mut state = InlineState::new(show_tools, show_stats);
@@ -441,21 +394,9 @@ fn tool_call_summary(tool_name: &str, input: &serde_json::Value) -> String {
             .and_then(|v| v.as_str())
             .map(|s| truncate_str(s, 60).to_string())
             .unwrap_or_default(),
-        "read" | "Read" => input
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        "write" | "Write" => input
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        "edit" | "Edit" => input
-            .get("path")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
+        "read" | "Read" => input.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        "write" | "Write" => input.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string(),
+        "edit" | "Edit" => input.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string(),
         _ => {
             let s = input.to_string();
             truncate_str(&s, 60).to_string()
@@ -482,11 +423,7 @@ fn truncate_tool_output(s: &str, max_lines: usize) -> String {
         s.to_string()
     } else {
         let kept: Vec<&str> = lines[..max_lines].to_vec();
-        format!(
-            "{}\n... ({} more lines)",
-            kept.join("\n"),
-            lines.len() - max_lines
-        )
+        format!("{}\n... ({} more lines)", kept.join("\n"), lines.len() - max_lines)
     }
 }
 
@@ -512,18 +449,17 @@ fn extract_tool_text(result: &crate::agent::tool::ToolResult) -> String {
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
     use crate::agent::events::AgentEvent;
     use crate::agent::tool::ToolResult;
     use crate::provider::streaming::ContentDelta;
-    use serde_json::json;
 
     fn text_delta(text: &str) -> AgentEvent {
         AgentEvent::MessageUpdate {
             index: 0,
-            delta: ContentDelta::TextDelta {
-                text: text.to_string(),
-            },
+            delta: ContentDelta::TextDelta { text: text.to_string() },
         }
     }
 

@@ -162,7 +162,8 @@ impl ProcessMonitor {
             tx.send(ProcessEvent::Spawn {
                 pid,
                 meta: meta.clone(),
-            }).ok();
+            })
+            .ok();
         }
 
         let tracked = TrackedProcess {

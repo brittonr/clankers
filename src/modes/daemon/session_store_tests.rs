@@ -7,9 +7,9 @@ mod tests {
 
     use clankers_protocol::SessionKey;
 
-    use crate::modes::daemon::session_store::{
-        SessionCatalog, SessionCatalogEntry, SessionLifecycle,
-    };
+    use crate::modes::daemon::session_store::SessionCatalog;
+    use crate::modes::daemon::session_store::SessionCatalogEntry;
+    use crate::modes::daemon::session_store::SessionLifecycle;
 
     fn temp_catalog() -> (tempfile::TempDir, Arc<SessionCatalog>) {
         let tmp = tempfile::tempdir().unwrap();
@@ -105,16 +105,10 @@ mod tests {
         catalog.insert_session(&make_entry("s1", SessionLifecycle::Active));
 
         catalog.set_state("s1", SessionLifecycle::Suspended);
-        assert_eq!(
-            catalog.get_session("s1").unwrap().state,
-            SessionLifecycle::Suspended
-        );
+        assert_eq!(catalog.get_session("s1").unwrap().state, SessionLifecycle::Suspended);
 
         catalog.set_state("s1", SessionLifecycle::Tombstoned);
-        assert_eq!(
-            catalog.get_session("s1").unwrap().state,
-            SessionLifecycle::Tombstoned
-        );
+        assert_eq!(catalog.get_session("s1").unwrap().state, SessionLifecycle::Tombstoned);
     }
 
     #[test]
@@ -131,10 +125,7 @@ mod tests {
         catalog.insert_session(&make_entry("b", SessionLifecycle::Active));
         catalog.insert_session(&make_entry("c", SessionLifecycle::Suspended));
 
-        let count = catalog.transition_all(
-            SessionLifecycle::Active,
-            SessionLifecycle::Suspended,
-        );
+        let count = catalog.transition_all(SessionLifecycle::Active, SessionLifecycle::Suspended);
         assert_eq!(count, 2);
 
         assert_eq!(catalog.list_by_state(SessionLifecycle::Active).len(), 0);
@@ -144,10 +135,7 @@ mod tests {
     #[test]
     fn transition_all_empty_returns_zero() {
         let (_tmp, catalog) = temp_catalog();
-        let count = catalog.transition_all(
-            SessionLifecycle::Active,
-            SessionLifecycle::Suspended,
-        );
+        let count = catalog.transition_all(SessionLifecycle::Active, SessionLifecycle::Suspended);
         assert_eq!(count, 0);
     }
 
@@ -262,24 +250,15 @@ mod tests {
 
         // Daemon shutdown → suspended
         catalog.set_state("s1", SessionLifecycle::Suspended);
-        assert_eq!(
-            catalog.get_session("s1").unwrap().state,
-            SessionLifecycle::Suspended
-        );
+        assert_eq!(catalog.get_session("s1").unwrap().state, SessionLifecycle::Suspended);
 
         // Recovery → active
         catalog.set_state("s1", SessionLifecycle::Active);
-        assert_eq!(
-            catalog.get_session("s1").unwrap().state,
-            SessionLifecycle::Active
-        );
+        assert_eq!(catalog.get_session("s1").unwrap().state, SessionLifecycle::Active);
 
         // Kill → tombstoned
         catalog.set_state("s1", SessionLifecycle::Tombstoned);
-        assert_eq!(
-            catalog.get_session("s1").unwrap().state,
-            SessionLifecycle::Tombstoned
-        );
+        assert_eq!(catalog.get_session("s1").unwrap().state, SessionLifecycle::Tombstoned);
     }
 
     #[test]
@@ -291,10 +270,7 @@ mod tests {
         catalog.insert_session(&make_entry("c", SessionLifecycle::Active));
 
         // On restart: all active → suspended
-        let count = catalog.transition_all(
-            SessionLifecycle::Active,
-            SessionLifecycle::Suspended,
-        );
+        let count = catalog.transition_all(SessionLifecycle::Active, SessionLifecycle::Suspended);
         assert_eq!(count, 3);
         assert_eq!(catalog.list_by_state(SessionLifecycle::Active).len(), 0);
         assert_eq!(catalog.list_by_state(SessionLifecycle::Suspended).len(), 3);

@@ -79,7 +79,8 @@ impl Tool for CostTool {
                             out,
                             "{:<25} | {:>9} | {:>10} | ${:>6.4} | {:>4.1}%",
                             m.display_name, m.input_tokens, m.output_tokens, m.cost_usd, m.percentage,
-                        ).ok();
+                        )
+                        .ok();
                     }
                 }
                 out.push('\n');

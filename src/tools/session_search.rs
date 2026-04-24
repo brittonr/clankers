@@ -7,9 +7,13 @@ use std::io::BufRead;
 use std::path::PathBuf;
 
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
-use super::{Tool, ToolContext, ToolDefinition, ToolResult};
+use super::Tool;
+use super::ToolContext;
+use super::ToolDefinition;
+use super::ToolResult;
 
 pub struct SessionSearchTool {
     definition: ToolDefinition,
@@ -50,13 +54,7 @@ impl SessionSearchTool {
     }
 
     /// Tier 1: search session index metadata via redb.
-    fn search_index(
-        &self,
-        db: &clankers_db::Db,
-        query: &str,
-        cwd: Option<&str>,
-        limit: usize,
-    ) -> Vec<SessionResult> {
+    fn search_index(&self, db: &clankers_db::Db, query: &str, cwd: Option<&str>, limit: usize) -> Vec<SessionResult> {
         let entries = db.sessions().search(query).unwrap_or_default();
 
         entries
@@ -75,13 +73,7 @@ impl SessionSearchTool {
     }
 
     /// Tier 2: scan JSONL files for content matches.
-    fn search_jsonl(
-        &self,
-        query: &str,
-        cwd: Option<&str>,
-        limit: usize,
-        exclude_ids: &[String],
-    ) -> Vec<SessionResult> {
+    fn search_jsonl(&self, query: &str, cwd: Option<&str>, limit: usize, exclude_ids: &[String]) -> Vec<SessionResult> {
         let lower_query = query.to_lowercase();
         let mut results = Vec::new();
 
@@ -90,13 +82,7 @@ impl SessionSearchTool {
             .into_iter()
             .flatten()
             .flatten()
-            .filter(|e| {
-                e.path()
-                    .extension()
-                    .and_then(|s| s.to_str())
-                    .map(|s| s == "jsonl")
-                    .unwrap_or(false)
-            })
+            .filter(|e| e.path().extension().and_then(|s| s.to_str()).map(|s| s == "jsonl").unwrap_or(false))
             .map(|e| e.path())
             .collect();
 
@@ -112,11 +98,7 @@ impl SessionSearchTool {
             }
 
             // Extract session ID from filename
-            let session_id = file
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown")
-                .to_string();
+            let session_id = file.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string();
 
             if exclude_ids.contains(&session_id) {
                 continue;
@@ -160,9 +142,10 @@ impl SessionSearchTool {
             });
 
             if let Some(filter_cwd) = cwd
-                && file_cwd.as_deref() != Some(filter_cwd) {
-                    continue;
-                }
+                && file_cwd.as_deref() != Some(filter_cwd)
+            {
+                continue;
+            }
 
             results.push(SessionResult {
                 session_id,
@@ -207,9 +190,7 @@ impl Tool for SessionSearchTool {
             _ => return ToolResult::error("Missing required 'query' parameter."),
         };
         let cwd = params.get("cwd").and_then(|v| v.as_str());
-        let limit = usize::try_from(
-            params.get("limit").and_then(|v| v.as_u64()).unwrap_or(10)
-        ).unwrap_or(10);
+        let limit = usize::try_from(params.get("limit").and_then(|v| v.as_u64()).unwrap_or(10)).unwrap_or(10);
 
         // Tier 1: index search
         let mut results = if let Some(db) = ctx.db() {
@@ -285,9 +266,7 @@ mod tests {
         let tool = SessionSearchTool::new(tmp.path().to_path_buf(), 100);
         let ctx = make_ctx();
 
-        let result = tool
-            .execute(&ctx, json!({"query": "database migration"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"query": "database migration"})).await;
         assert!(!result.is_error);
         let text = result_text(&result);
         assert!(text.contains("sess-001"));
@@ -300,9 +279,7 @@ mod tests {
         let tool = SessionSearchTool::new(tmp.path().to_path_buf(), 100);
         let ctx = make_ctx();
 
-        let result = tool
-            .execute(&ctx, json!({"query": "nonexistent query"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"query": "nonexistent query"})).await;
         assert!(!result.is_error);
         assert!(result_text(&result).contains("No sessions matching"));
     }
@@ -318,9 +295,7 @@ mod tests {
         let tool = SessionSearchTool::new(tmp.path().to_path_buf(), 100);
         let ctx = make_ctx();
 
-        let result = tool
-            .execute(&ctx, json!({"query": "keyword", "limit": 2}))
-            .await;
+        let result = tool.execute(&ctx, json!({"query": "keyword", "limit": 2})).await;
         let text = result_text(&result);
         assert!(text.contains("Found 2 session"));
     }
@@ -345,9 +320,7 @@ mod tests {
         let tool = SessionSearchTool::new(tmp.path().to_path_buf(), 100);
         let ctx = make_ctx_with_db(&db);
 
-        let result = tool
-            .execute(&ctx, json!({"query": "authentication"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"query": "authentication"})).await;
         let text = result_text(&result);
         assert!(text.contains("idx-001"));
         assert!(text.contains("authentication"));

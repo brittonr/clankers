@@ -5,11 +5,11 @@ use std::time::Duration;
 use std::time::Instant;
 
 use async_trait::async_trait;
-// Re-export ToolDefinition from clanker-router (canonical definition)
-pub use clanker_router::provider::ToolDefinition;
 // ToolResult and ToolResultContent — canonical definitions in clanker-message.
 pub use clanker_message::ToolResult;
 pub use clanker_message::ToolResultContent;
+// Re-export ToolDefinition from clanker-router (canonical definition)
+pub use clanker_router::provider::ToolDefinition;
 use parking_lot::Mutex;
 use serde_json::Value;
 use tokio::sync::broadcast;

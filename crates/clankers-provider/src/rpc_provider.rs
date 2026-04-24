@@ -120,11 +120,7 @@ impl Provider for RpcProvider {
             }
         });
 
-        let result = self
-            .client
-            .complete(router_request, router_tx)
-            .await
-            .map_err(crate::error::ProviderError::from);
+        let result = self.client.complete(router_request, router_tx).await.map_err(crate::error::ProviderError::from);
 
         translate_handle.await.ok();
         result
@@ -256,10 +252,7 @@ mod tests {
     #[test]
     fn rpc_request_conversion_preserves_session_id_extra_param() {
         let router_request = build_router_request(make_request());
-        assert_eq!(
-            router_request.extra_params.get("_session_id"),
-            Some(&json!("session-rpc-1"))
-        );
+        assert_eq!(router_request.extra_params.get("_session_id"), Some(&json!("session-rpc-1")));
     }
 
     #[test]

@@ -5,9 +5,13 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use tempfile::NamedTempFile;
 
-use crate::error::Error;
-use crate::provider::{AudioFormat, TtsProvider, TtsRequest, TtsResponse, Voice};
 use crate::TtsRouter;
+use crate::error::Error;
+use crate::provider::AudioFormat;
+use crate::provider::TtsProvider;
+use crate::provider::TtsRequest;
+use crate::provider::TtsResponse;
+use crate::provider::Voice;
 
 // ---------------------------------------------------------------------------
 // Mock provider
@@ -214,9 +218,7 @@ fn debug_format() {
 
 #[test]
 fn response_to_wav_roundtrip() {
-    let samples: Vec<f32> = (0..1000)
-        .map(|i| (i as f32 / 1000.0 * std::f32::consts::TAU).sin())
-        .collect();
+    let samples: Vec<f32> = (0..1000).map(|i| (i as f32 / 1000.0 * std::f32::consts::TAU).sin()).collect();
     let resp = TtsResponse {
         samples: samples.clone(),
         sample_rate: 22050,
@@ -351,10 +353,7 @@ async fn synthesize_to_file_writes_valid_wav() {
     router.register(Arc::new(MockProvider::new("mock", &["bella"])));
 
     let tmp = NamedTempFile::new().unwrap();
-    router
-        .synthesize_to_file("hello world", tmp.path(), "bella", 1.0)
-        .await
-        .unwrap();
+    router.synthesize_to_file("hello world", tmp.path(), "bella", 1.0).await.unwrap();
 
     let reader = hound::WavReader::open(tmp.path()).unwrap();
     assert!(reader.len() > 0);
@@ -365,10 +364,7 @@ async fn synthesize_to_file_writes_valid_wav() {
 async fn synthesize_to_file_no_provider_errors() {
     let router = TtsRouter::new();
     let tmp = NamedTempFile::new().unwrap();
-    let err = router
-        .synthesize_to_file("hello", tmp.path(), "bella", 1.0)
-        .await
-        .unwrap_err();
+    let err = router.synthesize_to_file("hello", tmp.path(), "bella", 1.0).await.unwrap_err();
     assert!(matches!(err, Error::NoProvider { .. }));
 }
 
@@ -402,9 +398,7 @@ async fn concurrent_synthesis_all_succeed() {
         .map(|i| {
             let r = Arc::clone(&router);
             let voice = if i % 2 == 0 { "bella" } else { "luna" };
-            tokio::spawn(async move {
-                r.synthesize(&format!("text {i}"), voice, 1.0).await
-            })
+            tokio::spawn(async move { r.synthesize(&format!("text {i}"), voice, 1.0).await })
         })
         .collect();
 
@@ -465,9 +459,15 @@ impl TtsProvider for MockProviderWithVoices {
             provider: self.name.to_string(),
         })
     }
-    fn voices(&self) -> &[Voice] { &self.voices }
-    fn name(&self) -> &str { self.name }
-    async fn is_available(&self) -> bool { true }
+    fn voices(&self) -> &[Voice] {
+        &self.voices
+    }
+    fn name(&self) -> &str {
+        self.name
+    }
+    async fn is_available(&self) -> bool {
+        true
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -567,9 +567,7 @@ fn wav_extreme_sample_values() {
 fn wav_large_sample_count() {
     // 5 seconds of 48kHz audio = 240,000 samples
     let n = 240_000;
-    let samples: Vec<f32> = (0..n)
-        .map(|i| (i as f32 / 48000.0 * 440.0 * std::f32::consts::TAU).sin())
-        .collect();
+    let samples: Vec<f32> = (0..n).map(|i| (i as f32 / 48000.0 * 440.0 * std::f32::consts::TAU).sin()).collect();
     let resp = TtsResponse {
         samples: samples.clone(),
         sample_rate: 48000,

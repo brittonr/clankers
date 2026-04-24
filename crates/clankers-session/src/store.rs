@@ -203,7 +203,13 @@ fn read_session_summary_automerge(path: &Path) -> Option<SessionSummary> {
     })
 }
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(nested_conditionals, reason = "complex control flow — extracting helpers would obscure logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        nested_conditionals,
+        reason = "complex control flow — extracting helpers would obscure logic"
+    )
+)]
 fn read_session_summary_jsonl(path: &Path) -> Option<SessionSummary> {
     let file = std::fs::File::open(path).ok()?;
     let reader = std::io::BufReader::new(file);

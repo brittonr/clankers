@@ -7,6 +7,7 @@
 use std::sync::Arc;
 
 use clanker_actor::ProcessRegistry;
+use clanker_tui_types::SubagentEvent;
 use clankers_controller::SessionController;
 use clankers_controller::transport::DaemonState;
 use clankers_controller::transport::SessionHandle;
@@ -26,7 +27,6 @@ use clankers_protocol::SessionCommand;
 use clankers_protocol::control::ControlCommand;
 use clankers_protocol::control::ControlResponse;
 use clankers_protocol::frame::{self};
-use clanker_tui_types::SubagentEvent;
 use tokio::net::UnixListener;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast;

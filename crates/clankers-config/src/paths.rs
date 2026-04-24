@@ -113,7 +113,8 @@ impl ClankersPaths {
             let runtime = std::env::var("CLANKERS_AUTH_RUNTIME_FILE").ok().filter(|value| !value.is_empty());
             if let (Some(seed), Some(runtime)) = (seed, runtime) {
                 let runtime_path = PathBuf::from(runtime);
-                let auth_paths = clanker_router::auth::AuthStorePaths::layered(PathBuf::from(seed), runtime_path.clone());
+                let auth_paths =
+                    clanker_router::auth::AuthStorePaths::layered(PathBuf::from(seed), runtime_path.clone());
                 if let Some(parent) = runtime_path.parent() {
                     std::fs::create_dir_all(parent).ok();
                 }
@@ -167,7 +168,10 @@ impl ProjectPaths {
 }
 
 /// Walk up from cwd looking for a .clankers/ directory
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "traversal loop; bounded by filesystem depth"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "traversal loop; bounded by filesystem depth")
+)]
 fn find_project_root(start: &Path) -> Option<PathBuf> {
     let mut current = start.to_path_buf();
     loop {

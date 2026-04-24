@@ -13,16 +13,15 @@ pub mod revocation;
 pub mod utils;
 
 // Re-export generic infrastructure
-pub use clanker_auth::AuthError;
-pub use clanker_auth::Cap;
-pub use clanker_auth::RevocationStore;
-pub use clanker_auth::Audience;
-pub use clanker_auth::bytes_to_sign;
-pub use clanker_auth::MAX_CREDENTIAL_SIZE;
-
 // Domain-specific types
 pub use capability::Capability;
 pub use capability::Operation;
+pub use clanker_auth::Audience;
+pub use clanker_auth::AuthError;
+pub use clanker_auth::Cap;
+pub use clanker_auth::MAX_CREDENTIAL_SIZE;
+pub use clanker_auth::RevocationStore;
+pub use clanker_auth::bytes_to_sign;
 pub use revocation::RedbRevocationStore;
 
 // Type aliases — callers use these without specifying the generic parameter

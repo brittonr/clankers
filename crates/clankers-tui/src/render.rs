@@ -176,7 +176,10 @@ fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
             Some(PaneKind::Panel(panel_id)) => {
                 let panel_id = *panel_id;
                 let is_focused = app.is_panel_focused(panel_id);
-                let ctx = DrawContext { theme: &theme, focused: is_focused };
+                let ctx = DrawContext {
+                    theme: &theme,
+                    focused: is_focused,
+                };
                 if let Some(panel) = app.panel_mut(panel_id) {
                     crate::panel::draw_panel_scrolled(frame, panel, pane.rect, &ctx);
                 } else {
@@ -191,7 +194,10 @@ fn render_side_panels(frame: &mut Frame, app: &mut App) -> (Rect, bool) {
             Some(PaneKind::Subagent(id)) => {
                 let id = id.clone();
                 let is_focused = app.layout.focused_subagent.as_deref() == Some(&id);
-                let ctx = DrawContext { theme: &theme, focused: is_focused };
+                let ctx = DrawContext {
+                    theme: &theme,
+                    focused: is_focused,
+                };
                 app.layout.subagent_panes.draw(&id, frame, pane.rect, &ctx);
             }
             Some(PaneKind::Chat) => {
@@ -283,10 +289,8 @@ fn render_status_bar_area(frame: &mut Frame, app: &mut App) {
         .panels
         .downcast_ref::<crate::components::process_panel::ProcessPanel>(crate::panel::PanelId::Processes)
         .and_then(|pp| pp.status_bar_span());
-    let budget_status = app
-        .cost_tracker
-        .as_ref()
-        .map_or(clanker_tui_types::BudgetStatus::NoBudget, |ct| ct.budget_status());
+    let budget_status =
+        app.cost_tracker.as_ref().map_or(clanker_tui_types::BudgetStatus::NoBudget, |ct| ct.budget_status());
     // Build tool activity summary for the status bar
     let tool_activity = if !app.streaming.active_tools.is_empty() {
         let count = app.streaming.active_tools.len();

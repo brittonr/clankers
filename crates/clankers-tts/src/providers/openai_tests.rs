@@ -130,10 +130,7 @@ fn pcm16_to_f32_conversion_range() {
         let bytes = input.to_le_bytes();
         let sample = i16::from_le_bytes([bytes[0], bytes[1]]);
         let result = f32::from(sample) / 32768.0;
-        assert!(
-            (result - expected).abs() < 0.001,
-            "pcm16({input}) = {result}, expected {expected}"
-        );
+        assert!((result - expected).abs() < 0.001, "pcm16({input}) = {result}, expected {expected}");
     }
 }
 
@@ -185,12 +182,7 @@ async fn synthesize_with_invalid_key_returns_error() {
 fn all_voice_ids_are_lowercase() {
     let p = OpenAiTtsProvider::new("k".to_string(), OpenAiModel::Tts1);
     for voice in p.voices() {
-        assert_eq!(
-            voice.id,
-            voice.id.to_lowercase(),
-            "voice id should be lowercase: {}",
-            voice.id
-        );
+        assert_eq!(voice.id, voice.id.to_lowercase(), "voice id should be lowercase: {}", voice.id);
     }
 }
 

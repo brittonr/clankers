@@ -66,11 +66,7 @@ impl clankers_provider::Provider for CapturingSummaryProvider {
                 _ => None,
             })
             .unwrap_or_default();
-        self
-            .captured_prompt
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .push(prompt);
+        self.captured_prompt.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(prompt);
 
         if self.fail {
             return Err(clankers_provider::error::provider_err("summary model unavailable"));
@@ -155,16 +151,14 @@ fn structured_settings() -> clankers_config::settings::Settings {
 }
 
 fn make_structured_agent(provider: Arc<dyn clankers_provider::Provider>) -> Agent {
-    Agent::new(
-        provider,
-        vec![],
-        structured_settings(),
-        "test-model".to_string(),
-        "test system prompt".to_string(),
-    )
+    Agent::new(provider, vec![], structured_settings(), "test-model".to_string(), "test system prompt".to_string())
 }
 
-fn make_persisted_session(tmp: &tempfile::TempDir, summary: &str, message_count: usize) -> clankers_session::SessionManager {
+fn make_persisted_session(
+    tmp: &tempfile::TempDir,
+    summary: &str,
+    message_count: usize,
+) -> clankers_session::SessionManager {
     let cwd = tmp.path().to_string_lossy().to_string();
     let mut mgr = clankers_session::SessionManager::create(tmp.path(), &cwd, "test-model", None, None, None)
         .expect("session should create");
@@ -172,15 +166,12 @@ fn make_persisted_session(tmp: &tempfile::TempDir, summary: &str, message_count:
         mgr.append_message(user_text_message(&"x".repeat((index + 1) * 120)), None)
             .expect("message should persist");
     }
-    mgr.record_compaction_summary(summary.to_string())
-        .expect("summary should persist");
+    mgr.record_compaction_summary(summary.to_string()).expect("summary should persist");
     mgr
 }
 
 fn restored_session_messages(message_count: usize) -> Vec<AgentMessage> {
-    (0..message_count)
-        .map(|index| user_text_message(&"x".repeat((index + 1) * 120)))
-        .collect()
+    (0..message_count).map(|index| user_text_message(&"x".repeat((index + 1) * 120))).collect()
 }
 
 // ── Embedded mode: feed_event + take_outgoing ────────────────────────────
@@ -758,10 +749,7 @@ async fn embedded_full_compaction_pipeline_reuses_persisted_summary_after_reopen
     assert!(prompt_result.is_ok(), "prompt should succeed: {prompt_result:?}");
     assert_eq!(agent.latest_compaction_summary(), Some("## Active Task\n- merged summary"));
 
-    let prompts = captured_prompt
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .clone();
+    let prompts = captured_prompt.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).clone();
     let summary_prompt = prompts
         .iter()
         .find(|prompt| prompt.contains("## Conversation Excerpt"))

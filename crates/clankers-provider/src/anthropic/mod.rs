@@ -15,8 +15,8 @@ use tracing::warn;
 use crate::CompletionRequest;
 use crate::Model;
 use crate::Provider;
-use crate::classify_api_error;
 use crate::auth::Credential;
+use crate::classify_api_error;
 use crate::credential_manager::CredentialManager;
 use crate::error::Result;
 use crate::streaming::StreamEvent;
@@ -181,7 +181,11 @@ impl Provider for AnthropicProvider {
                             }
 
                             if classified.should_rotate_credential {
-                                info!("Credential '{}' failed (HTTP {}), rotating by classified hint", lease.account(), last_status);
+                                info!(
+                                    "Credential '{}' failed (HTTP {}), rotating by classified hint",
+                                    lease.account(),
+                                    last_status
+                                );
                                 continue;
                             }
 
@@ -198,11 +202,7 @@ impl Provider for AnthropicProvider {
                     }
                 }
 
-                return Err(crate::error::provider_err_with_status_for_provider(
-                    last_status,
-                    last_error,
-                    self.name(),
-                ));
+                return Err(crate::error::provider_err_with_status_for_provider(last_status, last_error, self.name()));
             }
         }
 
@@ -227,7 +227,8 @@ impl Provider for AnthropicProvider {
                 if !retry_response.status().is_success() {
                     let retry_status = retry_response.status();
                     let retry_body = retry_response.text().await.unwrap_or_default();
-                    let retry_message = format!("Anthropic API error {} (after token refresh): {}", retry_status, retry_body);
+                    let retry_message =
+                        format!("Anthropic API error {} (after token refresh): {}", retry_status, retry_body);
                     let mut classified = classify_api_error(Some(retry_status.as_u16()), &retry_message, self.name());
                     if matches!(classified.reason, crate::FailoverReason::Auth) {
                         classified.reason = crate::FailoverReason::AuthPermanent;

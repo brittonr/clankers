@@ -2,18 +2,18 @@
 //!
 //! Two layers:
 //! - **Auth**: Token verification, capability resolution, credential storage.
-//! - **Catalog**: Persistent redb-backed index of daemon-managed sessions,
-//!   their lifecycle state, and transport key mappings. Survives daemon restarts.
+//! - **Catalog**: Persistent redb-backed index of daemon-managed sessions, their lifecycle state,
+//!   and transport key mappings. Survives daemon restarts.
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use clankers_ucan::Capability;
 use clankers_ucan::Credential;
-use redb::ReadableTable;
 use clankers_ucan::RedbRevocationStore;
 use clankers_ucan::RevocationStore;
 use clankers_ucan::TokenVerifier;
-use clankers_ucan::Capability;
+use redb::ReadableTable;
 use tracing::info;
 use tracing::warn;
 
@@ -80,9 +80,7 @@ impl AuthLayer {
 
     /// Verify a credential and return its leaf token's capabilities, or an error message.
     pub fn verify_credential(&self, cred: &Credential) -> std::result::Result<Vec<Capability>, String> {
-        self.verifier
-            .verify_with_chain(&cred.token, &cred.proofs, None)
-            .map_err(|e| format!("{e}"))?;
+        self.verifier.verify_with_chain(&cred.token, &cred.proofs, None).map_err(|e| format!("{e}"))?;
         Ok(cred.token.capabilities.clone())
     }
 
@@ -97,12 +95,10 @@ impl AuthLayer {
 // ── Session catalog ─────────────────────────────────────────────────────────
 
 /// redb table: session_id → JSON-encoded SessionCatalogEntry.
-pub const SESSION_CATALOG_TABLE: redb::TableDefinition<&str, &[u8]> =
-    redb::TableDefinition::new("session_catalog");
+pub const SESSION_CATALOG_TABLE: redb::TableDefinition<&str, &[u8]> = redb::TableDefinition::new("session_catalog");
 
 /// redb table: JSON-encoded SessionKey → session_id.
-pub const SESSION_KEYS_TABLE: redb::TableDefinition<&str, &str> =
-    redb::TableDefinition::new("session_keys");
+pub const SESSION_KEYS_TABLE: redb::TableDefinition<&str, &str> = redb::TableDefinition::new("session_keys");
 
 /// Lifecycle state of a catalog entry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -211,10 +207,7 @@ impl SessionCatalog {
     }
 
     pub fn list_by_state(&self, state: SessionLifecycle) -> Vec<SessionCatalogEntry> {
-        self.list_sessions()
-            .into_iter()
-            .filter(|e| e.state == state)
-            .collect()
+        self.list_sessions().into_iter().filter(|e| e.state == state).collect()
     }
 
     pub fn remove_session(&self, session_id: &str) {
@@ -285,7 +278,9 @@ impl SessionCatalog {
         // Collect keys to remove (can't mutate while iterating)
         let keys_to_remove: Vec<String> = {
             let Ok(tx) = self.db.begin_read() else { return };
-            let Ok(table) = tx.open_table(SESSION_KEYS_TABLE) else { return };
+            let Ok(table) = tx.open_table(SESSION_KEYS_TABLE) else {
+                return;
+            };
             let Ok(iter) = table.iter() else { return };
             let mut keys = Vec::new();
             for item in iter {
@@ -315,7 +310,9 @@ impl SessionCatalog {
     pub fn list_keys(&self) -> Vec<(clankers_protocol::SessionKey, String)> {
         let mut result = Vec::new();
         let Ok(tx) = self.db.begin_read() else { return result };
-        let Ok(table) = tx.open_table(SESSION_KEYS_TABLE) else { return result };
+        let Ok(table) = tx.open_table(SESSION_KEYS_TABLE) else {
+            return result;
+        };
         let Ok(iter) = table.iter() else { return result };
         for item in iter {
             let Ok((key, value)) = item else { continue };
@@ -337,10 +334,11 @@ impl SessionCatalog {
         let mut removed = 0;
         for entry in tombstoned {
             if let Ok(ts) = chrono::DateTime::parse_from_rfc3339(&entry.last_active)
-                && ts < cutoff {
-                    self.remove_session(&entry.session_id);
-                    removed += 1;
-                }
+                && ts < cutoff
+            {
+                self.remove_session(&entry.session_id);
+                removed += 1;
+            }
         }
         removed
     }

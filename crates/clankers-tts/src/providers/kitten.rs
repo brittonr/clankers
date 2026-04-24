@@ -6,10 +6,15 @@
 use std::sync::Mutex;
 
 use async_trait::async_trait;
-use tracing::{info, debug};
+use tracing::debug;
+use tracing::info;
 
-use crate::error::{Error, Result};
-use crate::provider::{TtsProvider, TtsRequest, TtsResponse, Voice};
+use crate::error::Error;
+use crate::error::Result;
+use crate::provider::TtsProvider;
+use crate::provider::TtsRequest;
+use crate::provider::TtsResponse;
+use crate::provider::Voice;
 
 /// Phonemize text to IPA via espeak-ng subprocess.
 ///
@@ -125,11 +130,9 @@ impl TtsProvider for KittenTtsProvider {
         })?;
 
         let text_len = text.len();
-        let samples = model
-            .generate_from_ipa(&ipa, &voice, speed, text_len)
-            .map_err(|e| Error::Provider {
-                message: format!("KittenTTS synthesis failed: {e}"),
-            })?;
+        let samples = model.generate_from_ipa(&ipa, &voice, speed, text_len).map_err(|e| Error::Provider {
+            message: format!("KittenTTS synthesis failed: {e}"),
+        })?;
 
         let sample_rate = kittentts::SAMPLE_RATE;
         let sample_count = samples.len() as u64;

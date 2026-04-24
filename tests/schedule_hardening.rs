@@ -11,7 +11,6 @@ use std::time::Duration;
 
 use clanker_scheduler::Schedule;
 use clanker_scheduler::ScheduleEngine;
-
 use clankers::agent::tool::Tool;
 use clankers::agent::tool::ToolContext;
 use clankers::tools::schedule::ScheduleTool;
@@ -34,11 +33,7 @@ fn result_text(result: &clankers::agent::tool::ToolResult) -> String {
 }
 
 fn extract_id(text: &str) -> String {
-    text.split("id: ")
-        .nth(1)
-        .unwrap()
-        .trim_end_matches(')')
-        .to_string()
+    text.split("id: ").nth(1).unwrap().trim_end_matches(')').to_string()
 }
 
 // ── Duplicate names ─────────────────────────────────────────────────
@@ -100,10 +95,7 @@ async fn double_pause_is_idempotent() {
     let ctx = make_ctx();
 
     let r = tool
-        .execute(
-            &ctx,
-            json!({"action": "create", "name": "dp", "kind": "interval", "interval": "1m", "payload": {}}),
-        )
+        .execute(&ctx, json!({"action": "create", "name": "dp", "kind": "interval", "interval": "1m", "payload": {}}))
         .await;
     let id = extract_id(&result_text(&r));
 
@@ -129,10 +121,7 @@ async fn resume_active_schedule_is_noop_error() {
     let ctx = make_ctx();
 
     let r = tool
-        .execute(
-            &ctx,
-            json!({"action": "create", "name": "ar", "kind": "interval", "interval": "1m", "payload": {}}),
-        )
+        .execute(&ctx, json!({"action": "create", "name": "ar", "kind": "interval", "interval": "1m", "payload": {}}))
         .await;
     let id = extract_id(&result_text(&r));
 
@@ -150,10 +139,7 @@ async fn unknown_kind_rejected() {
     let ctx = make_ctx();
 
     let r = tool
-        .execute(
-            &ctx,
-            json!({"action": "create", "name": "bad", "kind": "weekly", "payload": {}}),
-        )
+        .execute(&ctx, json!({"action": "create", "name": "bad", "kind": "weekly", "payload": {}}))
         .await;
     assert!(r.is_error);
     assert!(
@@ -194,17 +180,10 @@ async fn invalid_cron_pattern_rejected() {
     let ctx = make_ctx();
 
     let r = tool
-        .execute(
-            &ctx,
-            json!({"action": "create", "name": "bad-cron", "kind": "cron", "cron": "not a cron"}),
-        )
+        .execute(&ctx, json!({"action": "create", "name": "bad-cron", "kind": "cron", "cron": "not a cron"}))
         .await;
     assert!(r.is_error, "bad cron should fail: {}", result_text(&r));
-    assert!(
-        result_text(&r).contains("invalid cron pattern"),
-        "error msg: {}",
-        result_text(&r)
-    );
+    assert!(result_text(&r).contains("invalid cron pattern"), "error msg: {}", result_text(&r));
 }
 
 // ── Missing cron field for cron kind ────────────────────────────────
@@ -215,12 +194,7 @@ async fn cron_missing_pattern_rejected() {
     let tool = ScheduleTool::new(engine);
     let ctx = make_ctx();
 
-    let r = tool
-        .execute(
-            &ctx,
-            json!({"action": "create", "name": "no-cron", "kind": "cron"}),
-        )
-        .await;
+    let r = tool.execute(&ctx, json!({"action": "create", "name": "no-cron", "kind": "cron"})).await;
     assert!(r.is_error);
     assert!(result_text(&r).contains("cron"), "should mention cron: {}", result_text(&r));
 }
@@ -233,18 +207,9 @@ async fn interval_missing_field_rejected() {
     let tool = ScheduleTool::new(engine);
     let ctx = make_ctx();
 
-    let r = tool
-        .execute(
-            &ctx,
-            json!({"action": "create", "name": "no-interval", "kind": "interval"}),
-        )
-        .await;
+    let r = tool.execute(&ctx, json!({"action": "create", "name": "no-interval", "kind": "interval"})).await;
     assert!(r.is_error);
-    assert!(
-        result_text(&r).contains("interval"),
-        "should mention interval: {}",
-        result_text(&r)
-    );
+    assert!(result_text(&r).contains("interval"), "should mention interval: {}", result_text(&r));
 }
 
 // ── Operations on nonexistent ID ────────────────────────────────────
@@ -257,15 +222,9 @@ async fn operations_on_missing_id() {
     let fake = "00000000-0000-0000-0000-000000000000";
 
     for action in ["pause", "resume", "delete", "info"] {
-        let r = tool
-            .execute(&ctx, json!({"action": action, "id": fake}))
-            .await;
+        let r = tool.execute(&ctx, json!({"action": action, "id": fake})).await;
         assert!(r.is_error, "{action} on missing ID should fail");
-        assert!(
-            result_text(&r).contains("not found"),
-            "{action} error: {}",
-            result_text(&r)
-        );
+        assert!(result_text(&r).contains("not found"), "{action} error: {}", result_text(&r));
     }
 }
 
@@ -280,11 +239,7 @@ async fn operations_missing_id_param() {
     for action in ["pause", "resume", "delete", "info"] {
         let r = tool.execute(&ctx, json!({"action": action})).await;
         assert!(r.is_error, "{action} without id should fail");
-        assert!(
-            result_text(&r).contains("id"),
-            "{action} error should mention id: {}",
-            result_text(&r)
-        );
+        assert!(result_text(&r).contains("id"), "{action} error should mention id: {}", result_text(&r));
     }
 }
 
@@ -347,11 +302,7 @@ async fn empty_list_message() {
 
     let r = tool.execute(&ctx, json!({"action": "list"})).await;
     assert!(!r.is_error);
-    assert!(
-        result_text(&r).contains("No active"),
-        "empty list: {}",
-        result_text(&r)
-    );
+    assert!(result_text(&r).contains("No active"), "empty list: {}", result_text(&r));
 }
 
 // ── Persistence: corrupt file yields empty ──────────────────────────
@@ -381,9 +332,7 @@ fn persistence_missing_file_returns_empty() {
 
 #[tokio::test]
 async fn concurrent_add_during_tick_loop() {
-    let engine = Arc::new(
-        ScheduleEngine::new().with_tick_interval(Duration::from_millis(10)),
-    );
+    let engine = Arc::new(ScheduleEngine::new().with_tick_interval(Duration::from_millis(10)));
     let mut rx = engine.subscribe();
 
     // Start tick loop first
@@ -492,11 +441,7 @@ async fn once_past_time_fires_on_tick() {
 
     // Should be gc'd
     let list = tool.execute(&ctx, json!({"action": "list"})).await;
-    assert!(
-        result_text(&list).contains("No active"),
-        "expired once should be gc'd: {}",
-        result_text(&list)
-    );
+    assert!(result_text(&list).contains("No active"), "expired once should be gc'd: {}", result_text(&list));
 }
 
 // ── No-op tick on empty engine ──────────────────────────────────────

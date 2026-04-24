@@ -290,10 +290,7 @@ fn tool_feedback_input(message: &ToolResultMessage) -> EngineInput {
 fn first_text_block(content: &[Content]) -> Option<String> {
     content.iter().find_map(|block| match block {
         Content::Text { text } => Some(text.clone()),
-        Content::Image { .. }
-        | Content::Thinking { .. }
-        | Content::ToolUse { .. }
-        | Content::ToolResult { .. } => None,
+        Content::Image { .. } | Content::Thinking { .. } | Content::ToolUse { .. } | Content::ToolResult { .. } => None,
     })
 }
 
@@ -330,23 +327,20 @@ pub async fn run_turn_loop(
     let mut active_model = config.model.clone();
     let mut engine_state = EngineState::new();
     let submit_outcome = engine_outcome_or_error(
-        reduce(
-            &engine_state,
-            &EngineInput::SubmitUserPrompt {
-                submission: clankers_engine::EnginePromptSubmission {
-                    messages: messages.clone(),
-                    model: active_model.clone(),
-                    system_prompt: config.system_prompt.clone(),
-                    max_tokens: config.max_tokens,
-                    temperature: config.temperature,
-                    thinking: config.thinking.clone(),
-                    tools: tool_defs,
-                    no_cache: config.no_cache,
-                    cache_ttl: config.cache_ttl.clone(),
-                    session_id: session_id.to_string(),
-                },
+        reduce(&engine_state, &EngineInput::SubmitUserPrompt {
+            submission: clankers_engine::EnginePromptSubmission {
+                messages: messages.clone(),
+                model: active_model.clone(),
+                system_prompt: config.system_prompt.clone(),
+                max_tokens: config.max_tokens,
+                temperature: config.temperature,
+                thinking: config.thinking.clone(),
+                tools: tool_defs,
+                no_cache: config.no_cache,
+                cache_ttl: config.cache_ttl.clone(),
+                session_id: session_id.to_string(),
             },
-        ),
+        }),
         "prompt submission",
     )?;
     emit_engine_notice_effects(&submit_outcome, event_tx);
@@ -404,13 +398,10 @@ pub async fn run_turn_loop(
                     }
                     Err(e) => {
                         let failure_outcome = engine_outcome_or_error(
-                            reduce(
-                                &engine_state,
-                                &EngineInput::ModelFailed {
-                                    request_id: engine_request.request_id.clone(),
-                                    error: e.to_string(),
-                                },
-                            ),
+                            reduce(&engine_state, &EngineInput::ModelFailed {
+                                request_id: engine_request.request_id.clone(),
+                                error: e.to_string(),
+                            }),
                             "model failure",
                         )?;
                         emit_engine_notice_effects(&failure_outcome, event_tx);
@@ -422,13 +413,10 @@ pub async fn run_turn_loop(
                 (Some(response), _) => response,
                 (None, Some(error)) => {
                     let failure_outcome = engine_outcome_or_error(
-                        reduce(
-                            &engine_state,
-                            &EngineInput::ModelFailed {
-                                request_id: engine_request.request_id.clone(),
-                                error: error.to_string(),
-                            },
-                        ),
+                        reduce(&engine_state, &EngineInput::ModelFailed {
+                            request_id: engine_request.request_id.clone(),
+                            error: error.to_string(),
+                        }),
                         "model failure after retries",
                     )?;
                     emit_engine_notice_effects(&failure_outcome, event_tx);
@@ -449,13 +437,10 @@ pub async fn run_turn_loop(
             stop_reason: collected.stop_reason.clone(),
         };
         let post_model_outcome = engine_outcome_or_error(
-            reduce(
-                &engine_state,
-                &EngineInput::ModelCompleted {
-                    request_id: engine_request.request_id.clone(),
-                    response: engine_response,
-                },
-            ),
+            reduce(&engine_state, &EngineInput::ModelCompleted {
+                request_id: engine_request.request_id.clone(),
+                response: engine_response,
+            }),
             "model completion",
         )?;
         emit_engine_notice_effects(&post_model_outcome, event_tx);
@@ -530,10 +515,8 @@ pub async fn run_turn_loop(
                 let mut follow_up_outcome = None;
                 for message in &tool_result_messages {
                     messages.push(AgentMessage::ToolResult(message.clone()));
-                    let next_outcome = engine_outcome_or_error(
-                        reduce(&engine_state, &tool_feedback_input(message)),
-                        "tool feedback",
-                    )?;
+                    let next_outcome =
+                        engine_outcome_or_error(reduce(&engine_state, &tool_feedback_input(message)), "tool feedback")?;
                     emit_engine_notice_effects(&next_outcome, event_tx);
                     engine_state = next_outcome.next_state.clone();
                     follow_up_outcome = Some(next_outcome);
@@ -574,12 +557,9 @@ fn cancel_active_engine_turn(
     reason: &str,
 ) -> Result<()> {
     let cancel_outcome = engine_outcome_or_error(
-        reduce(
-            engine_state,
-            &EngineInput::CancelTurn {
-                reason: reason.to_string(),
-            },
-        ),
+        reduce(engine_state, &EngineInput::CancelTurn {
+            reason: reason.to_string(),
+        }),
         "turn cancellation",
     )?;
     emit_engine_notice_effects(&cancel_outcome, event_tx);

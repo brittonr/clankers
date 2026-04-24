@@ -16,7 +16,8 @@ pub async fn run_share(_ctx: &crate::commands::CommandContext, is_read_only: boo
     let secret_key = iroh::SecretKey::generate(&mut rand::rng());
     let node_id = secret_key.public();
 
-    let (_endpoint, psk) = crate::zellij::streaming::host::host_session(&session_name, secret_key, is_read_only).await?;
+    let (_endpoint, psk) =
+        crate::zellij::streaming::host::host_session(&session_name, secret_key, is_read_only).await?;
     let psk_hex = crate::zellij::streaming::handshake::psk_to_hex(&psk);
     println!("\nSession shared! Give the remote user these credentials:\n");
     println!("  clankers join {} {}\n", node_id, psk_hex);

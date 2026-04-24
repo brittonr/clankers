@@ -35,12 +35,32 @@ pub mod refscan;
 pub mod store_path;
 
 // Re-exports for convenience
-pub use derivation::{DerivationInfo, InputDrvInfo, OutputInfo, dependency_summary, read_derivation};
+pub use derivation::DerivationInfo;
+pub use derivation::InputDrvInfo;
+pub use derivation::OutputInfo;
+pub use derivation::dependency_summary;
+pub use derivation::read_derivation;
 pub use error::NixError;
 #[cfg(feature = "eval")]
-pub use eval::{EvalResult, FlakeOutputs, evaluate, evaluate_file, evaluate_with_timeout, introspect_flake};
-pub use flakeref::{
-    FlakeInfo, FlakeSourceType, ParsedFlakeRef, detect_flake, looks_like_flake_ref, parse_flake_ref,
-};
-pub use refscan::{annotate_store_refs, scan_store_refs};
-pub use store_path::{NixPath, extract_store_paths, parse_store_path};
+pub use eval::EvalResult;
+#[cfg(feature = "eval")]
+pub use eval::FlakeOutputs;
+#[cfg(feature = "eval")]
+pub use eval::evaluate;
+#[cfg(feature = "eval")]
+pub use eval::evaluate_file;
+#[cfg(feature = "eval")]
+pub use eval::evaluate_with_timeout;
+#[cfg(feature = "eval")]
+pub use eval::introspect_flake;
+pub use flakeref::FlakeInfo;
+pub use flakeref::FlakeSourceType;
+pub use flakeref::ParsedFlakeRef;
+pub use flakeref::detect_flake;
+pub use flakeref::looks_like_flake_ref;
+pub use flakeref::parse_flake_ref;
+pub use refscan::annotate_store_refs;
+pub use refscan::scan_store_refs;
+pub use store_path::NixPath;
+pub use store_path::extract_store_paths;
+pub use store_path::parse_store_path;

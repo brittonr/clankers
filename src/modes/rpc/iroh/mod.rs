@@ -200,21 +200,16 @@ pub async fn start_endpoint(identity: &Identity) -> Result<Endpoint, crate::erro
 
     // Default builder includes DNS pkarr discovery for WAN.
     // Only add mDNS (LAN auto-discovery) if not disabled.
-    let mut builder = Endpoint::builder()
-        .secret_key(identity.secret_key.clone())
-        .alpns(vec![ALPN.to_vec()]);
+    let mut builder = Endpoint::builder().secret_key(identity.secret_key.clone()).alpns(vec![ALPN.to_vec()]);
 
     if !is_mdns_disabled {
         let mdns = iroh::address_lookup::MdnsAddressLookup::builder().service_name(MDNS_SERVICE_NAME);
         builder = builder.address_lookup(mdns);
     }
 
-    let endpoint = builder
-        .bind()
-        .await
-        .map_err(|e| crate::error::Error::Provider {
-            message: format!("Failed to bind iroh endpoint: {}", e),
-        })?;
+    let endpoint = builder.bind().await.map_err(|e| crate::error::Error::Provider {
+        message: format!("Failed to bind iroh endpoint: {}", e),
+    })?;
     Ok(endpoint)
 }
 

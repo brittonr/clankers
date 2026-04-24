@@ -31,9 +31,7 @@ pub async fn run_json_with_options(
         builder = builder.with_thinking(thinking);
     }
     if let Some(caps) = &settings.default_capabilities {
-        let gate = std::sync::Arc::new(
-            crate::capability_gate::UcanCapabilityGate::new(caps.clone()),
-        );
+        let gate = std::sync::Arc::new(crate::capability_gate::UcanCapabilityGate::new(caps.clone()));
         builder = builder.with_capability_gate(gate);
     }
     let mut agent = builder.build();

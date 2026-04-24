@@ -346,11 +346,7 @@ impl Provider for CodexStubProvider {
                     last_error: Some(error.clone()),
                 });
                 let classified_message = format!("openai-codex entitlement check failed: {error}");
-                Err(crate::error::provider_err_with_status_for_provider(
-                    503,
-                    classified_message,
-                    OPENAI_CODEX_PROVIDER,
-                ))
+                Err(crate::error::provider_err_with_status_for_provider(503, classified_message, OPENAI_CODEX_PROVIDER))
             }
         }
     }

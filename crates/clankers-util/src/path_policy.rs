@@ -120,7 +120,10 @@ impl PathPolicy {
 static POLICY: OnceLock<PathPolicy> = OnceLock::new();
 
 /// Initialize the global path policy. Call once at startup.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "OnceLock was just set on the line above"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "OnceLock was just set on the line above")
+)]
 pub fn init_policy() {
     POLICY.set(PathPolicy::new()).ok();
     info!(

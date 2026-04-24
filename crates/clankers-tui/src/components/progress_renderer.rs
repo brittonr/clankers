@@ -224,7 +224,13 @@ fn progress_bar(percent: f32, width: usize) -> String {
 }
 
 /// Spinner animation frames, indexed by tick
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        unchecked_division,
+        reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"
+    )
+)]
 fn spinner_char(tick: u64) -> char {
     const FRAMES: &[char] = &['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
     FRAMES[(tick as usize / 3) % FRAMES.len()]

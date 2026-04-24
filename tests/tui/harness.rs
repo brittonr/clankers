@@ -206,10 +206,7 @@ impl TuiTestHarness {
     pub fn wait_for_rendered_text_after_last(&mut self, marker: &str, needle: &str, timeout: Duration) {
         let start = Instant::now();
         loop {
-            if self
-                .rendered_text_after_last(marker)
-                .is_some_and(|tail| tail.contains(needle))
-            {
+            if self.rendered_text_after_last(marker).is_some_and(|tail| tail.contains(needle)) {
                 return;
             }
             assert!(

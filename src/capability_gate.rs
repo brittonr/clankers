@@ -65,21 +65,15 @@ impl CapabilityGate for UcanCapabilityGate {
         // 3. For file tools, check FileAccess capability
         if let Some(path) = input.get("path").and_then(|v| v.as_str()) {
             if FILE_READ_TOOLS.contains(&tool_name) {
-                let is_read_allowed = self.capabilities.iter().any(|c| {
-                    c.authorizes(&Operation::FileRead {
-                        path: path.to_string(),
-                    })
-                });
+                let is_read_allowed =
+                    self.capabilities.iter().any(|c| c.authorizes(&Operation::FileRead { path: path.to_string() }));
                 if !is_read_allowed {
                     return Err(format!("File read not authorized: {path}"));
                 }
             }
             if FILE_WRITE_TOOLS.contains(&tool_name) {
-                let is_write_allowed = self.capabilities.iter().any(|c| {
-                    c.authorizes(&Operation::FileWrite {
-                        path: path.to_string(),
-                    })
-                });
+                let is_write_allowed =
+                    self.capabilities.iter().any(|c| c.authorizes(&Operation::FileWrite { path: path.to_string() }));
                 if !is_write_allowed {
                     return Err(format!("File write not authorized: {path}"));
                 }
@@ -150,14 +144,10 @@ mod tests {
         ]);
 
         // Allowed: matches ls* pattern
-        assert!(gate
-            .check_tool_call("bash", &json!({"command": "ls -la"}))
-            .is_ok());
+        assert!(gate.check_tool_call("bash", &json!({"command": "ls -la"})).is_ok());
 
         // Blocked: rm doesn't match ls* pattern
-        assert!(gate
-            .check_tool_call("bash", &json!({"command": "rm -rf /"}))
-            .is_err());
+        assert!(gate.check_tool_call("bash", &json!({"command": "rm -rf /"})).is_err());
     }
 
     // r[verify ucan.gate.file-read-check]
@@ -173,12 +163,8 @@ mod tests {
             },
         ]);
 
-        assert!(gate
-            .check_tool_call("read", &json!({"path": "/home/alice/project/src/main.rs"}))
-            .is_ok());
-        assert!(gate
-            .check_tool_call("read", &json!({"path": "/etc/shadow"}))
-            .is_err());
+        assert!(gate.check_tool_call("read", &json!({"path": "/home/alice/project/src/main.rs"})).is_ok());
+        assert!(gate.check_tool_call("read", &json!({"path": "/etc/shadow"})).is_err());
     }
 
     // r[verify ucan.gate.file-write-check]
@@ -195,12 +181,8 @@ mod tests {
             },
         ]);
 
-        assert!(gate
-            .check_tool_call("read", &json!({"path": "/home/alice/file.txt"}))
-            .is_ok());
-        assert!(gate
-            .check_tool_call("write", &json!({"path": "/home/alice/file.txt"}))
-            .is_err());
+        assert!(gate.check_tool_call("read", &json!({"path": "/home/alice/file.txt"})).is_ok());
+        assert!(gate.check_tool_call("write", &json!({"path": "/home/alice/file.txt"})).is_err());
     }
 
     // r[verify ucan.gate.file-read-check]
@@ -215,9 +197,7 @@ mod tests {
         ]);
 
         // Tool name check passes, but file path check fails
-        assert!(gate
-            .check_tool_call("read", &json!({"path": "/etc/passwd"}))
-            .is_err());
+        assert!(gate.check_tool_call("read", &json!({"path": "/etc/passwd"})).is_err());
     }
 
     #[test]

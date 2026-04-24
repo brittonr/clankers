@@ -133,7 +133,11 @@ impl AnthropicProvider {
 
     /// Create a provider with a single credential and managed auth-store reloads.
     #[allow(clippy::new_ret_no_self)]
-    pub fn new_managed(credential: Credential, base_url: Option<String>, auth_paths: AuthStorePaths) -> Arc<dyn Provider> {
+    pub fn new_managed(
+        credential: Credential,
+        base_url: Option<String>,
+        auth_paths: AuthStorePaths,
+    ) -> Arc<dyn Provider> {
         Arc::new(Self {
             client: common::build_http_client(Duration::from_secs(300)).expect("Failed to build HTTP client"),
             base_url: base_url.unwrap_or_else(|| BASE_URL.to_string()),
@@ -147,7 +151,11 @@ impl AnthropicProvider {
     }
 
     /// Create a pooled provider with managed auth-store reloads.
-    pub fn with_pool_managed(pool: CredentialPool, base_url: Option<String>, auth_paths: AuthStorePaths) -> Arc<dyn Provider> {
+    pub fn with_pool_managed(
+        pool: CredentialPool,
+        base_url: Option<String>,
+        auth_paths: AuthStorePaths,
+    ) -> Arc<dyn Provider> {
         let fallback = Credential::ApiKey(String::new());
         Arc::new(Self {
             client: common::build_http_client(Duration::from_secs(300)).expect("Failed to build HTTP client"),
@@ -430,11 +438,7 @@ fn build_request_body_inner(request: &CompletionRequest, is_oauth: bool) -> Resu
         // Anthropic requires temperature to be omitted when thinking is
         // enabled.  The old typed handler stripped it; the raw passthrough
         // must do the same or Anthropic returns 400.
-        if body.get("thinking")
-            .and_then(|t| t.get("type"))
-            .and_then(|t| t.as_str())
-            == Some("enabled")
-        {
+        if body.get("thinking").and_then(|t| t.get("type")).and_then(|t| t.as_str()) == Some("enabled") {
             if let Some(obj) = body.as_object_mut() {
                 obj.remove("temperature");
             }
@@ -460,11 +464,10 @@ fn build_request_body_inner(request: &CompletionRequest, is_oauth: bool) -> Resu
     }
 
     // System prompt handling:
-    // 1. If _anthropic_system is set (request came through the native Anthropic
-    //    proxy endpoint), use those pre-built blocks directly — they already
-    //    have the client's cache_control annotations.
-    // 2. Otherwise, construct system blocks from the plain-text system_prompt.
-    //    OAuth additionally requires the Claude Code identity prefix.
+    // 1. If _anthropic_system is set (request came through the native Anthropic proxy endpoint), use
+    //    those pre-built blocks directly — they already have the client's cache_control annotations.
+    // 2. Otherwise, construct system blocks from the plain-text system_prompt. OAuth additionally
+    //    requires the Claude Code identity prefix.
     if let Some(raw_system) = request.extra_params.get("_anthropic_system") {
         body["system"] = raw_system.clone();
     } else if is_oauth {

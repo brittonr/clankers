@@ -2,6 +2,12 @@
 //!
 //! Contains the main command dispatch and prompt processing logic.
 
+use clanker_message::AgentMessage;
+use clanker_message::AssistantMessage;
+use clanker_message::Content;
+use clanker_message::MessageId;
+use clanker_message::StopReason;
+use clanker_message::UserMessage;
 use clankers_agent::AgentError;
 use clankers_core::CompletionStatus;
 use clankers_core::CoreFailure;
@@ -13,12 +19,6 @@ use clankers_core::DisabledToolsUpdate;
 use clankers_core::LoopRequest;
 use clankers_core::PromptRequest;
 use clankers_core::ToolFilterApplied;
-use clanker_message::AgentMessage;
-use clanker_message::AssistantMessage;
-use clanker_message::Content;
-use clanker_message::MessageId;
-use clanker_message::StopReason;
-use clanker_message::UserMessage;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::ImageData;
 use clankers_protocol::SerializedMessage;

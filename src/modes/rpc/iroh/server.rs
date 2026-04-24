@@ -19,7 +19,10 @@ use crate::provider::streaming::ContentDelta;
 
 // ── Server: accept connections ──────────────────────────────────────────────
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by endpoint close"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by endpoint close")
+)]
 pub async fn serve_rpc(endpoint: Endpoint, state: Arc<ServerState>) -> Result<(), crate::error::Error> {
     info!("RPC server listening as {}", endpoint.id().fmt_short());
     loop {
@@ -38,7 +41,10 @@ pub async fn serve_rpc(endpoint: Endpoint, state: Arc<ServerState>) -> Result<()
     Ok(())
 }
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by endpoint close"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by endpoint close")
+)]
 async fn handle_connection(
     incoming: iroh::endpoint::Incoming,
     state: Arc<ServerState>,
@@ -196,7 +202,10 @@ async fn handle_file_send_inner(
 }
 
 /// Stream data from recv into a file. Returns total bytes written.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by connection close"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by connection close")
+)]
 async fn stream_to_file(recv: &mut iroh::endpoint::RecvStream, file: &mut tokio::fs::File) -> Result<u64, String> {
     let mut total = 0u64;
     let mut buf = vec![0u8; 64 * 1024];
@@ -276,7 +285,10 @@ fn get_file_metadata(file_path: &Path) -> Result<(String, u64), Response> {
 }
 
 /// Stream a file's contents to the send stream.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by endpoint close"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by endpoint close")
+)]
 async fn stream_file_to_send(file_path: &Path, send: &mut iroh::endpoint::SendStream) -> Result<(), ()> {
     let mut file = tokio::fs::File::open(file_path).await.map_err(|e| {
         warn!("Cannot open file for sending: {}", e);
@@ -326,9 +338,7 @@ pub async fn handle_prompt_streaming_pub(request: &Request, state: &ServerState,
         crate::agent::builder::AgentBuilder::new(Arc::clone(&ctx.provider), ctx.settings.clone(), model, system_prompt)
             .with_tools(ctx.tools.clone());
     if let Some(caps) = &ctx.settings.default_capabilities {
-        let gate = std::sync::Arc::new(
-            crate::capability_gate::UcanCapabilityGate::new(caps.clone()),
-        );
+        let gate = std::sync::Arc::new(crate::capability_gate::UcanCapabilityGate::new(caps.clone()));
         builder = builder.with_capability_gate(gate);
     }
     let mut agent = builder.build();

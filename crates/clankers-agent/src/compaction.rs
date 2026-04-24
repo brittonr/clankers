@@ -249,7 +249,8 @@ pub async fn compact_structured(
     previous_summary: Option<&str>,
 ) -> CompactionResult {
     let tail_budget_tokens = (max_tokens as f64 * tail_budget_fraction) as usize;
-    let pruned_result = compact_tool_results(messages, tail_start_for_recent_tool_results(messages, RECENT_TOOL_RESULTS_TO_KEEP));
+    let pruned_result =
+        compact_tool_results(messages, tail_start_for_recent_tool_results(messages, RECENT_TOOL_RESULTS_TO_KEEP));
     let pruned_messages = pruned_result.messages;
     let tail_start_idx = select_tail_by_budget(&pruned_messages, tail_budget_tokens);
     let keep_recent = pruned_messages.len().saturating_sub(tail_start_idx);
@@ -266,9 +267,8 @@ fn build_structured_summary_prompt(messages: &[AgentMessage], previous_summary: 
         writeln!(conversation_excerpt, "[{}] {}", role, text).ok();
     }
 
-    let previous_summary_block = previous_summary.map_or_else(String::new, |summary| {
-        format!("## Previous Summary\n{}\n\n", summary)
-    });
+    let previous_summary_block =
+        previous_summary.map_or_else(String::new, |summary| format!("## Previous Summary\n{}\n\n", summary));
 
     format!(
         "You are updating a structured handoff summary for earlier conversation context. \
@@ -504,7 +504,8 @@ fn estimate_message_tokens(msg: &AgentMessage) -> usize {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use std::sync::Arc;
+    use std::sync::Mutex;
 
     use chrono::Utc;
     use clankers_provider::message::*;
@@ -560,10 +561,7 @@ mod tests {
                     _ => None,
                 })
                 .unwrap_or_default();
-            self.captured_prompts
-                .lock()
-                .unwrap_or_else(|poisoned| poisoned.into_inner())
-                .push(prompt_text);
+            self.captured_prompts.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).push(prompt_text);
 
             if self.fail {
                 return Err(clankers_provider::error::provider_err("summary failed"));
@@ -688,16 +686,9 @@ mod tests {
         };
         let messages = vec![make_msg("first"), make_msg("second"), make_msg("third")];
 
-        let result = summarize_middle(
-            &messages,
-            1,
-            1,
-            Some("## Active Task\n- previous"),
-            &provider,
-            "haiku",
-            "session-1",
-        )
-        .await;
+        let result =
+            summarize_middle(&messages, 1, 1, Some("## Active Task\n- previous"), &provider, "haiku", "session-1")
+                .await;
 
         assert_eq!(result.summary.as_deref(), Some("## Active Task\n- merged"));
         let prompts = captured_prompts.lock().unwrap_or_else(|poisoned| poisoned.into_inner());

@@ -391,9 +391,11 @@ impl<'a> EventLoopRunner<'a> {
         };
         match (key.code, key.modifiers) {
             (KeyCode::Char('x'), m) if m.is_empty() => {
-                self.panel_tx.send(crate::tui::components::subagent_event::SubagentEvent::KillRequest {
-                    id: subagent_id.clone(),
-                }).ok();
+                self.panel_tx
+                    .send(crate::tui::components::subagent_event::SubagentEvent::KillRequest {
+                        id: subagent_id.clone(),
+                    })
+                    .ok();
                 true
             }
             (KeyCode::Char('q'), m) if m.is_empty() => {
@@ -477,13 +479,7 @@ impl<'a> EventLoopRunner<'a> {
                 self.cmd_tx.send(AgentCommand::SwitchAccount(name)).ok();
             }
             SelectorAction::ResumeSession { file_path, session_id } => {
-                resume_selected_session(
-                    self.app,
-                    &self.cmd_tx,
-                    &mut self.controller,
-                    file_path,
-                    &session_id,
-                );
+                resume_selected_session(self.app, &self.cmd_tx, &mut self.controller, file_path, &session_id);
             }
         }
     }
@@ -609,13 +605,13 @@ mod tests {
     use crate::modes::common::ToolEnv;
     use crate::modes::interactive::AgentCommand;
     use crate::modes::interactive::TaskResult;
+    use crate::provider::Model;
+    use crate::provider::Provider;
     use crate::provider::message::AgentMessage;
     use crate::provider::message::Content;
     use crate::provider::message::MessageId;
     use crate::provider::message::UserMessage;
     use crate::provider::router::RouterCompatAdapter;
-    use crate::provider::Model;
-    use crate::provider::Provider;
 
     struct CapturingRouterProvider {
         captured: Mutex<Option<clanker_router::CompletionRequest>>,
@@ -716,36 +712,25 @@ mod tests {
             None,
         );
 
-        let mut app = crate::tui::app::App::new(
-            "test-model".to_string(),
-            cwd,
-            crate::tui::theme::Theme::dark(),
-        );
+        let mut app = crate::tui::app::App::new("test-model".to_string(), cwd, crate::tui::theme::Theme::dark());
         app.session_id = "stale-app-session".to_string();
 
-        let mut controller = clankers_controller::SessionController::new_embedded(
-            clankers_controller::config::ControllerConfig {
+        let mut controller =
+            clankers_controller::SessionController::new_embedded(clankers_controller::config::ControllerConfig {
                 session_id: "stale-controller-session".to_string(),
                 model: "test-model".to_string(),
                 ..Default::default()
-            },
-        );
+            });
 
         resume_selected_session(&mut app, &cmd_tx, &mut controller, file_path, &session_id);
         assert_eq!(app.session_id, session_id);
         assert_eq!(controller.session_id(), session_id);
         assert_eq!(
-            controller
-                .session_manager
-                .as_ref()
-                .expect("session manager should be resumed")
-                .session_id(),
+            controller.session_manager.as_ref().expect("session manager should be resumed").session_id(),
             session_id
         );
 
-        cmd_tx
-            .send(AgentCommand::Prompt("prompt after resume".to_string()))
-            .expect("prompt should enqueue");
+        cmd_tx.send(AgentCommand::Prompt("prompt after resume".to_string())).expect("prompt should enqueue");
 
         timeout(Duration::from_secs(5), async {
             loop {
@@ -767,5 +752,4 @@ mod tests {
             .expect("router request should be captured");
         assert_eq!(captured.extra_params.get("_session_id"), Some(&json!(session_id)));
     }
-
 }

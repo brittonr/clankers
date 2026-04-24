@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, OnceLock};
+use std::sync::Arc;
+use std::sync::Mutex;
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -109,9 +111,7 @@ pub fn reset_entitlement(provider: &str, account: Option<&str>) {
         return;
     }
 
-    let mut cache = entitlement_cache()
-        .lock()
-        .expect("entitlement cache lock poisoned");
+    let mut cache = entitlement_cache().lock().expect("entitlement cache lock poisoned");
     if let Some(account) = account {
         cache.remove(&cache_key(account));
     } else {
@@ -132,20 +132,16 @@ fn classify_probe_response(status: u16, body: &str) -> ProbeOutcome {
         return ProbeOutcome::Entitled;
     }
 
-    let error_code = serde_json::from_str::<serde_json::Value>(body)
-        .ok()
-        .and_then(|value| {
-            value
-                .get("error")
-                .and_then(|error| error.get("code"))
-                .and_then(|code| code.as_str())
-                .map(str::to_string)
-        });
+    let error_code = serde_json::from_str::<serde_json::Value>(body).ok().and_then(|value| {
+        value
+            .get("error")
+            .and_then(|error| error.get("code"))
+            .and_then(|code| code.as_str())
+            .map(str::to_string)
+    });
 
     if status == 403 || error_code.as_deref() == Some(OPENAI_CODEX_NOT_ENTITLED_CODE) {
-        return ProbeOutcome::NotEntitled(
-            "authenticated but not entitled for Codex use".to_string(),
-        );
+        return ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string());
     }
 
     ProbeOutcome::Error(if body.trim().is_empty() {
@@ -181,11 +177,7 @@ fn responses_url_override() -> &'static Mutex<Option<String>> {
 
 fn responses_url() -> String {
     #[cfg(test)]
-    if let Some(url) = responses_url_override()
-        .lock()
-        .expect("responses url override lock poisoned")
-        .clone()
-    {
+    if let Some(url) = responses_url_override().lock().expect("responses url override lock poisoned").clone() {
         return url;
     }
 
@@ -194,11 +186,7 @@ fn responses_url() -> String {
 
 async fn codex_sleep(duration: Duration) {
     #[cfg(test)]
-    if let Some(hook) = sleep_hook()
-        .lock()
-        .expect("sleep hook lock poisoned")
-        .clone()
-    {
+    if let Some(hook) = sleep_hook().lock().expect("sleep hook lock poisoned").clone() {
         hook(duration);
         return;
     }
@@ -220,10 +208,7 @@ fn build_probe_request_body() -> Value {
     })
 }
 
-fn build_probe_request(
-    client: &reqwest::Client,
-    credential: &StoredCredential,
-) -> Result<reqwest::Request> {
+fn build_probe_request(client: &reqwest::Client, credential: &StoredCredential) -> Result<reqwest::Request> {
     let token = credential.token().to_string();
     let account_id = openai_codex_account_id_from_credential(credential)?;
 
@@ -246,10 +231,7 @@ async fn send_probe_request(credential: &StoredCredential) -> Result<reqwest::Re
     client.execute(request).await.map_err(Into::into)
 }
 
-async fn live_probe(
-    credential: &StoredCredential,
-    manager: Option<&CredentialManager>,
-) -> ProbeOutcome {
+async fn live_probe(credential: &StoredCredential, manager: Option<&CredentialManager>) -> ProbeOutcome {
     let retry = RetryConfig::deterministic();
     let mut transient_attempt = 0;
     let mut did_refresh = false;
@@ -279,9 +261,7 @@ async fn live_probe(
                         continue;
                     }
                     Err(e) => {
-                        return ProbeOutcome::Error(format!(
-                            "OpenAI Codex token refresh failed: {e}"
-                        ));
+                        return ProbeOutcome::Error(format!("OpenAI Codex token refresh failed: {e}"));
                     }
                 }
             }
@@ -303,16 +283,9 @@ async fn live_probe(
     }
 }
 
-async fn run_probe(
-    credential: &StoredCredential,
-    manager: Option<&CredentialManager>,
-) -> ProbeOutcome {
+async fn run_probe(credential: &StoredCredential, manager: Option<&CredentialManager>) -> ProbeOutcome {
     #[cfg(test)]
-    if let Some(hook) = probe_hook()
-        .lock()
-        .expect("probe hook lock poisoned")
-        .clone()
-    {
+    if let Some(hook) = probe_hook().lock().expect("probe hook lock poisoned").clone() {
         return hook(credential);
     }
 
@@ -331,10 +304,7 @@ pub async fn ensure_entitlement(
         EntitlementState::Unknown => {}
     }
 
-    let Some(mut credential) = store
-        .credential_for(OPENAI_CODEX_PROVIDER, account)
-        .cloned()
-    else {
+    let Some(mut credential) = store.credential_for(OPENAI_CODEX_PROVIDER, account).cloned() else {
         return cached;
     };
     if credential.is_expired() {
@@ -342,13 +312,10 @@ pub async fn ensure_entitlement(
             match manager.get_credential().await {
                 Ok(refreshed) => credential = refreshed,
                 Err(e) => {
-                    return set_entitlement_record(
-                        account,
-                        EntitlementRecord {
-                            state: EntitlementState::Unknown,
-                            last_error: Some(e.to_string()),
-                        },
-                    );
+                    return set_entitlement_record(account, EntitlementRecord {
+                        state: EntitlementState::Unknown,
+                        last_error: Some(e.to_string()),
+                    });
                 }
             }
         } else {
@@ -358,30 +325,18 @@ pub async fn ensure_entitlement(
 
     let checked_at_ms = now_ms();
     match run_probe(&credential, manager).await {
-        ProbeOutcome::Entitled => set_entitlement_record(
-            account,
-            EntitlementRecord {
-                state: EntitlementState::Entitled { checked_at_ms },
-                last_error: None,
-            },
-        ),
-        ProbeOutcome::NotEntitled(reason) => set_entitlement_record(
-            account,
-            EntitlementRecord {
-                state: EntitlementState::NotEntitled {
-                    reason,
-                    checked_at_ms,
-                },
-                last_error: None,
-            },
-        ),
-        ProbeOutcome::Error(error) => set_entitlement_record(
-            account,
-            EntitlementRecord {
-                state: EntitlementState::Unknown,
-                last_error: Some(error),
-            },
-        ),
+        ProbeOutcome::Entitled => set_entitlement_record(account, EntitlementRecord {
+            state: EntitlementState::Entitled { checked_at_ms },
+            last_error: None,
+        }),
+        ProbeOutcome::NotEntitled(reason) => set_entitlement_record(account, EntitlementRecord {
+            state: EntitlementState::NotEntitled { reason, checked_at_ms },
+            last_error: None,
+        }),
+        ProbeOutcome::Error(error) => set_entitlement_record(account, EntitlementRecord {
+            state: EntitlementState::Unknown,
+            last_error: Some(error),
+        }),
     }
 }
 
@@ -399,9 +354,7 @@ pub async fn codex_status_suffix_with_manager(
     let record = ensure_entitlement(store, account, manager).await;
     Some(match record.state {
         EntitlementState::Entitled { .. } => "codex entitled".to_string(),
-        EntitlementState::NotEntitled { .. } => {
-            "authenticated but not entitled for Codex use".to_string()
-        }
+        EntitlementState::NotEntitled { .. } => "authenticated but not entitled for Codex use".to_string(),
         EntitlementState::Unknown => {
             if record.last_error.is_some() {
                 "authenticated, entitlement check failed".to_string()
@@ -428,16 +381,12 @@ pub async fn catalog_for_active_account_with_manager(
 }
 
 pub fn refresh_fn_for_codex()
--> impl Fn(&str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<OAuthTokens>> + Send>>
-+ Send
-+ Sync
-+ 'static {
+-> impl Fn(&str) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<OAuthTokens>> + Send>> + Send + Sync + 'static
+{
     |refresh_token| {
         let refresh_token = refresh_token.to_string();
         Box::pin(async move {
-            let creds = crate::auth::OAuthFlow::OpenAiCodex
-                .refresh_token(&refresh_token)
-                .await?;
+            let creds = crate::auth::OAuthFlow::OpenAiCodex.refresh_token(&refresh_token).await?;
             Ok(OAuthTokens {
                 access_token: creds.access,
                 refresh_token: creds.refresh,
@@ -454,11 +403,7 @@ pub struct OpenAICodexProvider {
 }
 
 impl OpenAICodexProvider {
-    pub fn new(
-        credential_manager: Arc<CredentialManager>,
-        models: Vec<Model>,
-        account: String,
-    ) -> Arc<dyn Provider> {
+    pub fn new(credential_manager: Arc<CredentialManager>, models: Vec<Model>, account: String) -> Arc<dyn Provider> {
         Arc::new(Self {
             credential_manager,
             models,
@@ -469,22 +414,13 @@ impl OpenAICodexProvider {
 
 #[async_trait]
 impl Provider for OpenAICodexProvider {
-    async fn complete(
-        &self,
-        request: CompletionRequest,
-        tx: mpsc::Sender<StreamEvent>,
-    ) -> Result<()> {
+    async fn complete(&self, request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
         let credential = self.credential_manager.get_credential().await?;
         let mut record = entitlement_record(&self.account);
         if matches!(record.state, EntitlementState::Unknown) {
             let mut store = AuthStore::default();
             store.set_credential(OPENAI_CODEX_PROVIDER, &self.account, credential.clone());
-            record = ensure_entitlement(
-                &store,
-                &self.account,
-                Some(self.credential_manager.as_ref()),
-            )
-            .await;
+            record = ensure_entitlement(&store, &self.account, Some(self.credential_manager.as_ref())).await;
         }
 
         match &record.state {
@@ -501,19 +437,11 @@ impl Provider for OpenAICodexProvider {
                         format!("openai-codex entitlement check failed: {error}"),
                     ));
                 }
-                return Err(Error::provider_with_status(
-                    503,
-                    "openai-codex entitlement check failed".to_string(),
-                ));
+                return Err(Error::provider_with_status(503, "openai-codex entitlement check failed".to_string()));
             }
         }
 
-        let mut attempt = OpenAICodexAttempt::new(
-            request,
-            tx,
-            credential,
-            Arc::clone(&self.credential_manager),
-        );
+        let mut attempt = OpenAICodexAttempt::new(request, tx, credential, Arc::clone(&self.credential_manager));
         attempt.run().await
     }
 
@@ -611,10 +539,7 @@ fn build_codex_request(
 ) -> Result<reqwest::Request> {
     let token = credential.token().to_string();
     let account_id = openai_codex_account_id_from_credential(credential)?;
-    let session_id = request
-        .extra_params
-        .get("_session_id")
-        .and_then(|value| value.as_str());
+    let session_id = request.extra_params.get("_session_id").and_then(|value| value.as_str());
     let body = build_codex_request_body(request, session_id)?;
 
     let mut builder = client
@@ -638,21 +563,13 @@ fn map_codex_error(status: u16, body_text: &str) -> Error {
         .ok()
         .and_then(|value| value.get("error").cloned())
         .and_then(|error| {
-            let code = error
-                .get("code")
-                .and_then(|value| value.as_str())
-                .unwrap_or_default();
+            let code = error.get("code").and_then(|value| value.as_str()).unwrap_or_default();
             let plan = error.get("plan_type").and_then(|value| value.as_str());
             if code.eq_ignore_ascii_case("usage_not_included") {
                 let plan_suffix = plan.map(|value| format!(" ({value})")).unwrap_or_default();
-                Some(format!(
-                    "ChatGPT usage limit or entitlement block{plan_suffix}"
-                ))
+                Some(format!("ChatGPT usage limit or entitlement block{plan_suffix}"))
             } else {
-                error
-                    .get("message")
-                    .and_then(|value| value.as_str())
-                    .map(str::to_string)
+                error.get("message").and_then(|value| value.as_str()).map(str::to_string)
             }
         })
         .unwrap_or_else(|| body_text.to_string());
@@ -676,15 +593,10 @@ fn map_codex_error(status: u16, body_text: &str) -> Error {
 }
 
 fn codex_model_id(model: &str) -> &str {
-    model
-        .strip_prefix(&format!("{OPENAI_CODEX_PROVIDER}/"))
-        .unwrap_or(model)
+    model.strip_prefix(&format!("{OPENAI_CODEX_PROVIDER}/")).unwrap_or(model)
 }
 
-fn build_codex_request_body(
-    request: &CompletionRequest,
-    session_id: Option<&str>,
-) -> Result<Value> {
+fn build_codex_request_body(request: &CompletionRequest, session_id: Option<&str>) -> Result<Value> {
     let mut extra = request.extra_params.clone();
     let text_override = extra.remove("text");
     let reasoning_override = extra.remove("reasoning");
@@ -771,23 +683,15 @@ fn build_codex_input(messages: &[Value]) -> Result<Vec<Value>> {
         };
 
         if role == "user" {
-            if let Some(tool_results) = message
-                .get("content")
-                .and_then(|value| value.as_array())
-                .filter(|blocks| {
-                    blocks.iter().any(|block| {
-                        block.get("type").and_then(|value| value.as_str()) == Some("tool_result")
-                    })
-                })
-            {
+            if let Some(tool_results) = message.get("content").and_then(|value| value.as_array()).filter(|blocks| {
+                blocks.iter().any(|block| block.get("type").and_then(|value| value.as_str()) == Some("tool_result"))
+            }) {
                 for block in tool_results {
                     if block.get("type").and_then(|value| value.as_str()) != Some("tool_result") {
                         continue;
                     }
-                    let Some(call_id) = block
-                        .get("tool_use_id")
-                        .or_else(|| block.get("call_id"))
-                        .and_then(|value| value.as_str())
+                    let Some(call_id) =
+                        block.get("tool_use_id").or_else(|| block.get("call_id")).and_then(|value| value.as_str())
                     else {
                         continue;
                     };
@@ -836,10 +740,8 @@ fn build_codex_input(messages: &[Value]) -> Result<Vec<Value>> {
         for block in blocks {
             match block.get("type").and_then(|value| value.as_str()) {
                 Some("thinking") => {
-                    if let Some(signature) = block
-                        .get("signature")
-                        .and_then(|value| value.as_str())
-                        .filter(|value| !value.is_empty())
+                    if let Some(signature) =
+                        block.get("signature").and_then(|value| value.as_str()).filter(|value| !value.is_empty())
                     {
                         if let Ok(reasoning) = serde_json::from_str::<Value>(signature) {
                             input.push(reasoning);
@@ -848,8 +750,7 @@ fn build_codex_input(messages: &[Value]) -> Result<Vec<Value>> {
                 }
                 Some("text") => {
                     if let Some(text) = block.get("text").and_then(|value| value.as_str()) {
-                        assistant_parts
-                            .push(json!({"type": "output_text", "text": text, "annotations": []}));
+                        assistant_parts.push(json!({"type": "output_text", "text": text, "annotations": []}));
                     }
                 }
                 Some("refusal") => {
@@ -1010,10 +911,7 @@ impl CodexStreamState {
         if self.sent_start {
             return;
         }
-        let id = item
-            .get("id")
-            .and_then(|value| value.as_str())
-            .unwrap_or_default();
+        let id = item.get("id").and_then(|value| value.as_str()).unwrap_or_default();
         events.push(StreamEvent::MessageStart {
             message: MessageMetadata {
                 id: id.to_string(),
@@ -1042,25 +940,16 @@ impl CodexStreamState {
                 let item_id = item
                     .get("id")
                     .and_then(|value| value.as_str())
-                    .unwrap_or_else(|| {
-                        item.get("call_id")
-                            .and_then(|value| value.as_str())
-                            .unwrap_or_default()
-                    })
+                    .unwrap_or_else(|| item.get("call_id").and_then(|value| value.as_str()).unwrap_or_default())
                     .to_string();
                 let index = self.next_index;
                 self.next_index += 1;
                 match item_type {
                     "reasoning" => {
-                        self.active_blocks.insert(
-                            item_id,
-                            ActiveBlock {
-                                index,
-                                kind: BlockKind::Thinking {
-                                    buffer: String::new(),
-                                },
-                            },
-                        );
+                        self.active_blocks.insert(item_id, ActiveBlock {
+                            index,
+                            kind: BlockKind::Thinking { buffer: String::new() },
+                        });
                         events.push(StreamEvent::ContentBlockStart {
                             index,
                             content_block: ContentBlock::Thinking {
@@ -1070,51 +959,32 @@ impl CodexStreamState {
                         });
                     }
                     "message" => {
-                        self.active_blocks.insert(
-                            item_id,
-                            ActiveBlock {
-                                index,
-                                kind: BlockKind::Text {
-                                    buffer: String::new(),
-                                },
-                            },
-                        );
+                        self.active_blocks.insert(item_id, ActiveBlock {
+                            index,
+                            kind: BlockKind::Text { buffer: String::new() },
+                        });
                         events.push(StreamEvent::ContentBlockStart {
                             index,
-                            content_block: ContentBlock::Text {
-                                text: String::new(),
-                            },
+                            content_block: ContentBlock::Text { text: String::new() },
                         });
                     }
                     "function_call" => {
                         self.saw_tool_call = true;
-                        let call_id = item
-                            .get("call_id")
-                            .and_then(|value| value.as_str())
-                            .unwrap_or_default();
-                        let name = item
-                            .get("name")
-                            .and_then(|value| value.as_str())
-                            .unwrap_or_default();
+                        let call_id = item.get("call_id").and_then(|value| value.as_str()).unwrap_or_default();
+                        let name = item.get("name").and_then(|value| value.as_str()).unwrap_or_default();
                         let tool_id = if item_id.is_empty() {
                             call_id.to_string()
                         } else {
                             format!("{call_id}|{item_id}")
                         };
-                        let partial_json = item
-                            .get("arguments")
-                            .and_then(|value| value.as_str())
-                            .unwrap_or_default()
-                            .to_string();
-                        self.active_blocks.insert(
-                            item_id,
-                            ActiveBlock {
-                                index,
-                                kind: BlockKind::ToolUse {
-                                    partial_json: partial_json.clone(),
-                                },
+                        let partial_json =
+                            item.get("arguments").and_then(|value| value.as_str()).unwrap_or_default().to_string();
+                        self.active_blocks.insert(item_id, ActiveBlock {
+                            index,
+                            kind: BlockKind::ToolUse {
+                                partial_json: partial_json.clone(),
                             },
-                        );
+                        });
                         events.push(StreamEvent::ContentBlockStart {
                             index,
                             content_block: ContentBlock::ToolUse {
@@ -1213,8 +1083,7 @@ impl CodexStreamState {
                 let Some(item_id) = event.get("item_id").and_then(|value| value.as_str()) else {
                     return Ok(events);
                 };
-                let Some(arguments) = event.get("arguments").and_then(|value| value.as_str())
-                else {
+                let Some(arguments) = event.get("arguments").and_then(|value| value.as_str()) else {
                     return Ok(events);
                 };
                 if let Some(active) = self.active_blocks.get_mut(item_id)
@@ -1240,11 +1109,7 @@ impl CodexStreamState {
                 let item_id = item
                     .get("id")
                     .and_then(|value| value.as_str())
-                    .unwrap_or_else(|| {
-                        item.get("call_id")
-                            .and_then(|value| value.as_str())
-                            .unwrap_or_default()
-                    })
+                    .unwrap_or_else(|| item.get("call_id").and_then(|value| value.as_str()).unwrap_or_default())
                     .to_string();
                 let Some(active) = self.active_blocks.remove(&item_id) else {
                     return Ok(events);
@@ -1252,14 +1117,10 @@ impl CodexStreamState {
                 match active.kind {
                     BlockKind::Thinking { mut buffer } => {
                         if buffer.is_empty() {
-                            if let Some(summary) =
-                                item.get("summary").and_then(|value| value.as_array())
-                            {
+                            if let Some(summary) = item.get("summary").and_then(|value| value.as_array()) {
                                 buffer = summary
                                     .iter()
-                                    .filter_map(|part| {
-                                        part.get("text").and_then(|value| value.as_str())
-                                    })
+                                    .filter_map(|part| part.get("text").and_then(|value| value.as_str()))
                                     .collect::<Vec<_>>()
                                     .join("\n\n");
                                 if !buffer.is_empty() {
@@ -1275,51 +1136,35 @@ impl CodexStreamState {
                         events.push(StreamEvent::ContentBlockDelta {
                             index: active.index,
                             delta: ContentDelta::SignatureDelta {
-                                signature: serde_json::to_string(item)
-                                    .unwrap_or_else(|_| "{}".to_string()),
+                                signature: serde_json::to_string(item).unwrap_or_else(|_| "{}".to_string()),
                             },
                         });
-                        events.push(StreamEvent::ContentBlockStop {
-                            index: active.index,
-                        });
+                        events.push(StreamEvent::ContentBlockStop { index: active.index });
                     }
                     BlockKind::Text { mut buffer } => {
                         if buffer.is_empty() {
-                            if let Some(content) =
-                                item.get("content").and_then(|value| value.as_array())
-                            {
+                            if let Some(content) = item.get("content").and_then(|value| value.as_array()) {
                                 buffer = content
                                     .iter()
-                                    .filter_map(|part| {
-                                        match part.get("type").and_then(|value| value.as_str()) {
-                                            Some("output_text") => {
-                                                part.get("text").and_then(|value| value.as_str())
-                                            }
-                                            Some("refusal") => {
-                                                part.get("refusal").and_then(|value| value.as_str())
-                                            }
-                                            _ => None,
-                                        }
+                                    .filter_map(|part| match part.get("type").and_then(|value| value.as_str()) {
+                                        Some("output_text") => part.get("text").and_then(|value| value.as_str()),
+                                        Some("refusal") => part.get("refusal").and_then(|value| value.as_str()),
+                                        _ => None,
                                     })
                                     .collect::<Vec<_>>()
                                     .join("");
                                 if !buffer.is_empty() {
                                     events.push(StreamEvent::ContentBlockDelta {
                                         index: active.index,
-                                        delta: ContentDelta::TextDelta {
-                                            text: buffer.clone(),
-                                        },
+                                        delta: ContentDelta::TextDelta { text: buffer.clone() },
                                     });
                                 }
                             }
                         }
-                        events.push(StreamEvent::ContentBlockStop {
-                            index: active.index,
-                        });
+                        events.push(StreamEvent::ContentBlockStop { index: active.index });
                     }
                     BlockKind::ToolUse { partial_json } => {
-                        if let Some(arguments) =
-                            item.get("arguments").and_then(|value| value.as_str())
+                        if let Some(arguments) = item.get("arguments").and_then(|value| value.as_str())
                             && arguments.starts_with(partial_json.as_str())
                         {
                             let suffix = &arguments[partial_json.len()..];
@@ -1332,9 +1177,7 @@ impl CodexStreamState {
                                 });
                             }
                         }
-                        events.push(StreamEvent::ContentBlockStop {
-                            index: active.index,
-                        });
+                        events.push(StreamEvent::ContentBlockStop { index: active.index });
                     }
                 }
             }
@@ -1355,8 +1198,7 @@ impl CodexStreamState {
                             status: Some(500),
                         });
                     }
-                    Some("completed") | Some("incomplete") | Some("queued")
-                    | Some("in_progress") | None => {}
+                    Some("completed") | Some("incomplete") | Some("queued") | Some("in_progress") | None => {}
                     Some(other) => {
                         warn!("unexpected Codex response status '{other}'");
                     }
@@ -1370,10 +1212,7 @@ impl CodexStreamState {
                             .and_then(|details| details.get("cached_tokens"))
                             .and_then(|value| value.as_u64())
                             .unwrap_or(0) as usize;
-                        let input = usage
-                            .get("input_tokens")
-                            .and_then(|value| value.as_u64())
-                            .unwrap_or(0) as usize;
+                        let input = usage.get("input_tokens").and_then(|value| value.as_u64()).unwrap_or(0) as usize;
                         (input.saturating_sub(cached), cached)
                     })
                     .unwrap_or((0, 0));
@@ -1428,11 +1267,7 @@ impl CodexStreamState {
     }
 }
 
-async fn parse_codex_sse(
-    response: reqwest::Response,
-    model: &str,
-    tx: mpsc::Sender<StreamEvent>,
-) -> Result<()> {
+async fn parse_codex_sse(response: reqwest::Response, model: &str, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
     let mut reader = common::SseLineReader::new(response);
     let mut state = CodexStreamState::new(model.to_string());
 
@@ -1471,9 +1306,7 @@ where
     F: Fn(&StoredCredential) -> ProbeOutcome + Send + Sync + 'static,
     Fut: std::future::Future<Output = R>,
 {
-    let _guard = codex_test_lock()
-        .lock()
-        .unwrap_or_else(|poison| poison.into_inner());
+    let _guard = codex_test_lock().lock().unwrap_or_else(|poison| poison.into_inner());
 
     reset_entitlement(OPENAI_CODEX_PROVIDER, None);
     *probe_hook().lock().expect("probe hook lock poisoned") = Some(Arc::new(hook));
@@ -1485,21 +1318,23 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::collections::{BTreeMap, HashSet};
+    use std::collections::BTreeMap;
+    use std::collections::HashSet;
     use std::future::Future;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::atomic::AtomicUsize;
+    use std::sync::atomic::Ordering;
 
     use base64::Engine;
-    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::io::AsyncReadExt;
+    use tokio::io::AsyncWriteExt;
     use tokio::net::TcpListener;
 
     use super::*;
     use crate::auth::AuthStorePaths;
 
     fn fake_openai_codex_jwt(account_id: &str) -> String {
-        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD
-            .encode(r#"{"alg":"none","typ":"JWT"}"#);
+        let header = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(r#"{"alg":"none","typ":"JWT"}"#);
         let payload = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(
             serde_json::json!({
                 "https://api.openai.com/auth": {
@@ -1514,16 +1349,12 @@ mod tests {
 
     fn codex_store() -> AuthStore {
         let mut store = AuthStore::default();
-        store.set_credential(
-            OPENAI_CODEX_PROVIDER,
-            "work",
-            StoredCredential::OAuth {
-                access_token: fake_openai_codex_jwt("acct-123"),
-                refresh_token: "refresh".to_string(),
-                expires_at_ms: now_ms() + 3_600_000,
-                label: None,
-            },
-        );
+        store.set_credential(OPENAI_CODEX_PROVIDER, "work", StoredCredential::OAuth {
+            access_token: fake_openai_codex_jwt("acct-123"),
+            refresh_token: "refresh".to_string(),
+            expires_at_ms: now_ms() + 3_600_000,
+            label: None,
+        });
         store.switch_account(OPENAI_CODEX_PROVIDER, "work");
         store
     }
@@ -1683,12 +1514,7 @@ mod tests {
     fn test_provider(credential: StoredCredential) -> Arc<dyn Provider> {
         let dir = tempfile::TempDir::new().expect("tempdir should exist");
         let auth_paths = AuthStorePaths::single(dir.path().join("auth.json"));
-        let manager = CredentialManager::new(
-            OPENAI_CODEX_PROVIDER.to_string(),
-            credential,
-            auth_paths,
-            None,
-        );
+        let manager = CredentialManager::new(OPENAI_CODEX_PROVIDER.to_string(), credential, auth_paths, None);
         OpenAICodexProvider::new(manager, codex_models(), "work".to_string())
     }
 
@@ -1706,13 +1532,7 @@ mod tests {
     }
 
     fn request_body_json(request: &reqwest::Request) -> Value {
-        serde_json::from_slice(
-            request
-                .body()
-                .and_then(|body| body.as_bytes())
-                .expect("body bytes"),
-        )
-        .expect("json body")
+        serde_json::from_slice(request.body().and_then(|body| body.as_bytes()).expect("body bytes")).expect("json body")
     }
 
     fn collect_stream_events(raw_events: &[Value]) -> Result<Vec<StreamEvent>> {
@@ -1843,16 +1663,10 @@ mod tests {
         }
 
         match &events[1] {
-            StreamEvent::ContentBlockStart {
-                index,
-                content_block,
-            } => {
+            StreamEvent::ContentBlockStart { index, content_block } => {
                 assert_eq!(*index, 0);
                 match content_block {
-                    ContentBlock::Thinking {
-                        thinking,
-                        signature,
-                    } => {
+                    ContentBlock::Thinking { thinking, signature } => {
                         assert!(thinking.is_empty());
                         assert!(signature.is_empty());
                     }
@@ -1920,10 +1734,7 @@ mod tests {
         }
 
         match &events[7] {
-            StreamEvent::ContentBlockStart {
-                index,
-                content_block,
-            } => {
+            StreamEvent::ContentBlockStart { index, content_block } => {
                 assert_eq!(*index, 1);
                 match content_block {
                     ContentBlock::Text { text } => assert!(text.is_empty()),
@@ -1961,10 +1772,7 @@ mod tests {
         }
 
         match &events[11] {
-            StreamEvent::ContentBlockStart {
-                index,
-                content_block,
-            } => {
+            StreamEvent::ContentBlockStart { index, content_block } => {
                 assert_eq!(*index, 2);
                 match content_block {
                     ContentBlock::ToolUse { id, name, input } => {
@@ -2043,18 +1851,11 @@ mod tests {
 
     impl MockSseServer {
         async fn start(events: &[Value]) -> Self {
-            let listener = TcpListener::bind("127.0.0.1:0")
-                .await
-                .expect("bind test listener");
+            let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind test listener");
             let addr = listener.local_addr().expect("listener addr");
             let body = events
                 .iter()
-                .map(|event| {
-                    format!(
-                        "data: {}\n\n",
-                        serde_json::to_string(event).expect("event json")
-                    )
-                })
+                .map(|event| format!("data: {}\n\n", serde_json::to_string(event).expect("event json")))
                 .chain(std::iter::once("data: [DONE]\n\n".to_string()))
                 .collect::<String>();
 
@@ -2073,10 +1874,7 @@ mod tests {
                     body.len(),
                     body,
                 );
-                stream
-                    .write_all(response.as_bytes())
-                    .await
-                    .expect("write response");
+                stream.write_all(response.as_bytes()).await.expect("write response");
                 stream.flush().await.expect("flush response");
             });
 
@@ -2103,32 +1901,22 @@ mod tests {
 
     impl Drop for HttpHookGuard {
         fn drop(&mut self) {
-            *responses_url_override()
-                .lock()
-                .expect("responses url override lock poisoned") = None;
+            *responses_url_override().lock().expect("responses url override lock poisoned") = None;
             *sleep_hook().lock().expect("sleep hook lock poisoned") = None;
             reset_entitlement(OPENAI_CODEX_PROVIDER, None);
         }
     }
 
-    async fn with_test_http_hooks<F, Fut, R>(
-        url: String,
-        sleep_log: Option<Arc<Mutex<Vec<Duration>>>>,
-        f: F,
-    ) -> R
+    async fn with_test_http_hooks<F, Fut, R>(url: String, sleep_log: Option<Arc<Mutex<Vec<Duration>>>>, f: F) -> R
     where
         F: FnOnce() -> Fut,
         Fut: Future<Output = R>,
     {
-        let _guard = codex_test_lock()
-            .lock()
-            .unwrap_or_else(|poison| poison.into_inner());
+        let _guard = codex_test_lock().lock().unwrap_or_else(|poison| poison.into_inner());
         let _cleanup = HttpHookGuard;
 
         reset_entitlement(OPENAI_CODEX_PROVIDER, None);
-        *responses_url_override()
-            .lock()
-            .expect("responses url override lock poisoned") = Some(url);
+        *responses_url_override().lock().expect("responses url override lock poisoned") = Some(url);
         *sleep_hook().lock().expect("sleep hook lock poisoned") = sleep_log.map(|log| {
             Arc::new(move |duration| {
                 log.lock().expect("sleep log lock poisoned").push(duration);
@@ -2160,9 +1948,7 @@ mod tests {
 
     impl MockHttpSequenceServer {
         async fn start(responses: Vec<MockHttpResponse>) -> Self {
-            let listener = TcpListener::bind("127.0.0.1:0")
-                .await
-                .expect("bind test listener");
+            let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind test listener");
             let addr = listener.local_addr().expect("listener addr");
             let request_count = Arc::new(AtomicUsize::new(0));
             let requests = Arc::new(Mutex::new(Vec::new()));
@@ -2180,38 +1966,27 @@ mod tests {
                         buf.extend_from_slice(&chunk[..read]);
                     }
 
-                    let headers_end = buf
-                        .windows(4)
-                        .position(|window| window == b"\r\n\r\n")
-                        .expect("headers end");
-                    let header_text = std::str::from_utf8(&buf[..headers_end])
-                        .expect("request headers should be utf8");
+                    let headers_end = buf.windows(4).position(|window| window == b"\r\n\r\n").expect("headers end");
+                    let header_text = std::str::from_utf8(&buf[..headers_end]).expect("request headers should be utf8");
                     let headers = header_text
                         .lines()
                         .skip(1)
                         .filter_map(|line| {
-                            line.split_once(':').map(|(name, value)| {
-                                (name.trim().to_ascii_lowercase(), value.trim().to_string())
-                            })
+                            line.split_once(':')
+                                .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_string()))
                         })
                         .collect::<HashMap<_, _>>();
-                    let content_length = headers
-                        .get("content-length")
-                        .and_then(|value| value.parse::<usize>().ok())
-                        .unwrap_or(0);
+                    let content_length =
+                        headers.get("content-length").and_then(|value| value.parse::<usize>().ok()).unwrap_or(0);
                     let body_start = headers_end + 4;
                     while buf.len() < body_start + content_length {
                         let read = stream.read(&mut chunk).await.expect("read request body");
                         assert!(read > 0, "request closed before body");
                         buf.extend_from_slice(&chunk[..read]);
                     }
-                    let body =
-                        String::from_utf8(buf[body_start..body_start + content_length].to_vec())
-                            .expect("request body should be utf8");
-                    requests_clone
-                        .lock()
-                        .expect("requests lock poisoned")
-                        .push(CapturedHttpRequest { headers, body });
+                    let body = String::from_utf8(buf[body_start..body_start + content_length].to_vec())
+                        .expect("request body should be utf8");
+                    requests_clone.lock().expect("requests lock poisoned").push(CapturedHttpRequest { headers, body });
                     request_count_clone.fetch_add(1, Ordering::SeqCst);
 
                     let response_text = format!(
@@ -2221,10 +1996,7 @@ mod tests {
                         response.body.len(),
                         response.body,
                     );
-                    stream
-                        .write_all(response_text.as_bytes())
-                        .await
-                        .expect("write response");
+                    stream.write_all(response_text.as_bytes()).await.expect("write response");
                     stream.flush().await.expect("flush response");
                 }
             });
@@ -2254,39 +2026,26 @@ mod tests {
         }
     }
 
-    fn test_request_manager(
-        credential: StoredCredential,
-        refresh_calls: Arc<AtomicUsize>,
-    ) -> Arc<CredentialManager> {
-        let auth_path = std::env::temp_dir().join(format!(
-            "clanker-router-codex-refresh-{}-{}.json",
-            std::process::id(),
-            now_ms()
-        ));
+    fn test_request_manager(credential: StoredCredential, refresh_calls: Arc<AtomicUsize>) -> Arc<CredentialManager> {
+        let auth_path =
+            std::env::temp_dir().join(format!("clanker-router-codex-refresh-{}-{}.json", std::process::id(), now_ms()));
         let auth_paths = AuthStorePaths::single(auth_path);
-        CredentialManager::with_refresh_fn(
-            OPENAI_CODEX_PROVIDER.to_string(),
-            credential,
-            auth_paths,
-            None,
-            move |_| {
-                let refresh_calls = Arc::clone(&refresh_calls);
-                Box::pin(async move {
-                    refresh_calls.fetch_add(1, Ordering::SeqCst);
-                    Ok(OAuthTokens {
-                        access_token: fake_openai_codex_jwt("acct-refreshed"),
-                        refresh_token: "refresh-2".to_string(),
-                        expires_at_ms: now_ms() + 3_600_000,
-                    })
+        CredentialManager::with_refresh_fn(OPENAI_CODEX_PROVIDER.to_string(), credential, auth_paths, None, move |_| {
+            let refresh_calls = Arc::clone(&refresh_calls);
+            Box::pin(async move {
+                refresh_calls.fetch_add(1, Ordering::SeqCst);
+                Ok(OAuthTokens {
+                    access_token: fake_openai_codex_jwt("acct-refreshed"),
+                    refresh_token: "refresh-2".to_string(),
+                    expires_at_ms: now_ms() + 3_600_000,
                 })
-            },
-        )
+            })
+        })
     }
 
     #[test]
     fn codex_stream_state_normalizes_reasoning_text_and_tool_events() {
-        let events = collect_stream_events(&codex_stream_fixture_events())
-            .expect("stream events should normalize");
+        let events = collect_stream_events(&codex_stream_fixture_events()).expect("stream events should normalize");
         assert_codex_stream_fixture(&events);
     }
 
@@ -2300,24 +2059,18 @@ mod tests {
 
     #[test]
     fn codex_reasoning_summary_part_events_do_not_create_extra_block_boundaries() {
-        let events = collect_stream_events(&codex_stream_fixture_events())
-            .expect("stream events should normalize");
+        let events = collect_stream_events(&codex_stream_fixture_events()).expect("stream events should normalize");
         let thinking_starts = events
             .iter()
             .filter(|event| {
-                matches!(
-                    event,
-                    StreamEvent::ContentBlockStart {
-                        content_block: ContentBlock::Thinking { .. },
-                        ..
-                    }
-                )
+                matches!(event, StreamEvent::ContentBlockStart {
+                    content_block: ContentBlock::Thinking { .. },
+                    ..
+                })
             })
             .count();
-        let thinking_stops = events
-            .iter()
-            .filter(|event| matches!(event, StreamEvent::ContentBlockStop { index: 0 }))
-            .count();
+        let thinking_stops =
+            events.iter().filter(|event| matches!(event, StreamEvent::ContentBlockStop { index: 0 })).count();
 
         assert_eq!(thinking_starts, 1, "events: {events:#?}");
         assert_eq!(thinking_stops, 1, "events: {events:#?}");
@@ -2422,16 +2175,10 @@ mod tests {
     #[tokio::test]
     async fn codex_status_suffix_reports_not_entitled() {
         with_test_probe_hook_async(
-            |_| {
-                ProbeOutcome::NotEntitled(
-                    "authenticated but not entitled for Codex use".to_string(),
-                )
-            },
+            |_| ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string()),
             || async {
                 let store = codex_store();
-                let suffix = codex_status_suffix(&store, "work")
-                    .await
-                    .expect("suffix should exist");
+                let suffix = codex_status_suffix(&store, "work").await.expect("suffix should exist");
                 assert_eq!(suffix, "authenticated but not entitled for Codex use");
             },
         )
@@ -2444,9 +2191,7 @@ mod tests {
             |_| ProbeOutcome::Error("boom".to_string()),
             || async {
                 let store = codex_store();
-                let suffix = codex_status_suffix(&store, "work")
-                    .await
-                    .expect("suffix should exist");
+                let suffix = codex_status_suffix(&store, "work").await.expect("suffix should exist");
                 assert_eq!(suffix, "authenticated, entitlement check failed");
             },
         )
@@ -2461,23 +2206,13 @@ mod tests {
                 let store = codex_store();
                 let models = catalog_for_active_account(&store, "work").await;
                 let ids: Vec<String> = models.into_iter().map(|m| m.id).collect();
-                assert_eq!(
-                    ids,
-                    OPENAI_CODEX_MODEL_IDS
-                        .iter()
-                        .map(|id| id.to_string())
-                        .collect::<Vec<_>>()
-                );
+                assert_eq!(ids, OPENAI_CODEX_MODEL_IDS.iter().map(|id| id.to_string()).collect::<Vec<_>>());
             },
         )
         .await;
 
         with_test_probe_hook_async(
-            |_| {
-                ProbeOutcome::NotEntitled(
-                    "authenticated but not entitled for Codex use".to_string(),
-                )
-            },
+            |_| ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string()),
             || async {
                 let store = codex_store();
                 assert!(catalog_for_active_account(&store, "work").await.is_empty());
@@ -2527,18 +2262,9 @@ mod tests {
                     .await
                     .expect_err("probe failure should surface as retriable provider error");
                 assert_eq!(err.status_code(), Some(503));
-                assert_eq!(
-                    err.to_string(),
-                    "provider error: openai-codex entitlement check failed: boom"
-                );
-                assert!(matches!(
-                    entitlement_record("work").state,
-                    EntitlementState::Unknown
-                ));
-                assert_eq!(
-                    entitlement_record("work").last_error.as_deref(),
-                    Some("boom")
-                );
+                assert_eq!(err.to_string(), "provider error: openai-codex entitlement check failed: boom");
+                assert!(matches!(entitlement_record("work").state, EntitlementState::Unknown));
+                assert_eq!(entitlement_record("work").last_error.as_deref(), Some("boom"));
             },
         )
         .await;
@@ -2547,88 +2273,58 @@ mod tests {
     #[test]
     fn classify_probe_response_treats_usage_not_included_as_not_entitled() {
         let outcome = classify_probe_response(400, r#"{"error":{"code":"usage_not_included"}}"#);
-        assert_eq!(
-            outcome,
-            ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string())
-        );
+        assert_eq!(outcome, ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string()));
     }
 
     #[test]
     fn classify_probe_response_treats_http_403_as_not_entitled() {
         let outcome = classify_probe_response(403, "forbidden");
-        assert_eq!(
-            outcome,
-            ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string())
-        );
+        assert_eq!(outcome, ProbeOutcome::NotEntitled("authenticated but not entitled for Codex use".to_string()));
     }
 
     #[test]
     fn build_codex_request_body_matches_deterministic_fixture() {
         let request = codex_request_with_history(Some("session-1"));
-        let body =
-            build_codex_request_body(&request, Some("session-1")).expect("body should build");
+        let body = build_codex_request_body(&request, Some("session-1")).expect("body should build");
         assert_eq!(body, codex_request_body_fixture(Some("session-1")));
     }
 
     #[test]
     fn build_codex_request_body_defaults_to_medium_verbosity_and_allows_override() {
         let default_request = codex_request_with_history(Some("session-1"));
-        let default_body = build_codex_request_body(&default_request, Some("session-1"))
-            .expect("default body should build");
-        assert_eq!(
-            default_body.get("text"),
-            Some(&json!({"verbosity": "medium"}))
-        );
+        let default_body =
+            build_codex_request_body(&default_request, Some("session-1")).expect("default body should build");
+        assert_eq!(default_body.get("text"), Some(&json!({"verbosity": "medium"})));
 
         let mut overridden_request = codex_request_with_history(Some("session-1"));
-        overridden_request
-            .extra_params
-            .insert("verbosity".to_string(), json!("low"));
-        let overridden_body = build_codex_request_body(&overridden_request, Some("session-1"))
-            .expect("overridden body should build");
-        assert_eq!(
-            overridden_body.get("text"),
-            Some(&json!({"verbosity": "low"}))
-        );
-        assert_eq!(
-            overridden_body.get("prompt_cache_key"),
-            Some(&json!("session-1"))
-        );
-        assert_eq!(
-            overridden_body.get("input"),
-            codex_request_body_fixture(Some("session-1")).get("input")
-        );
+        overridden_request.extra_params.insert("verbosity".to_string(), json!("low"));
+        let overridden_body =
+            build_codex_request_body(&overridden_request, Some("session-1")).expect("overridden body should build");
+        assert_eq!(overridden_body.get("text"), Some(&json!({"verbosity": "low"})));
+        assert_eq!(overridden_body.get("prompt_cache_key"), Some(&json!("session-1")));
+        assert_eq!(overridden_body.get("input"), codex_request_body_fixture(Some("session-1")).get("input"));
     }
 
     #[test]
     fn build_codex_input_first_turn_contains_only_current_user_item() {
         let request = codex_request(None);
         let input = build_codex_input(&request.messages).expect("input should build");
-        assert_eq!(
-            input,
-            vec![json!({
-                "type": "message",
-                "role": "user",
-                "content": [{"type": "input_text", "text": "hello"}],
-            })]
-        );
+        assert_eq!(input, vec![json!({
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "hello"}],
+        })]);
     }
 
     #[test]
     fn build_codex_input_replays_signature_without_display_thinking_text() {
         let request = codex_request_with_history(Some("session-1"));
         let input = build_codex_input(&request.messages).expect("input should build");
-        assert!(
-            input.contains(
-                &serde_json::from_str::<Value>(&codex_reasoning_signature_fixture())
-                    .expect("reasoning fixture json")
-            )
-        );
+        assert!(input.contains(
+            &serde_json::from_str::<Value>(&codex_reasoning_signature_fixture()).expect("reasoning fixture json")
+        ));
         let serialized = serde_json::to_string(&input).expect("input should serialize");
-        assert!(
-            !serialized.contains("display-only reasoning"),
-            "input: {serialized}"
-        );
+        assert!(!serialized.contains("display-only reasoning"), "input: {serialized}");
         assert!(input.iter().any(|item| {
             item.get("type") == Some(&json!("function_call"))
                 && item.get("call_id") == Some(&json!("call-1"))
@@ -2643,16 +2339,14 @@ mod tests {
     }
 
     #[test]
-    fn build_codex_request_preserves_deterministic_body_fixture_on_initial_transient_and_refresh_retry_paths()
-     {
-        let client =
-            common::build_http_client(Duration::from_secs(30)).expect("client should build");
+    fn build_codex_request_preserves_deterministic_body_fixture_on_initial_transient_and_refresh_retry_paths() {
+        let client = common::build_http_client(Duration::from_secs(30)).expect("client should build");
         let request = codex_request_with_history(Some("session-1"));
         let expected_body = codex_request_body_fixture(Some("session-1"));
         let initial = build_codex_request(&client, &oauth_credential("acct-123"), &request)
             .expect("initial request should build");
-        let transient_retry = build_codex_request(&client, &oauth_credential("acct-123"), &request)
-            .expect("retry request should build");
+        let transient_retry =
+            build_codex_request(&client, &oauth_credential("acct-123"), &request).expect("retry request should build");
         let refresh_retry = build_codex_request(&client, &oauth_credential("acct-999"), &request)
             .expect("refresh retry request should build");
 
@@ -2660,53 +2354,29 @@ mod tests {
             assert_eq!(built.method(), reqwest::Method::POST);
             assert_eq!(built.url().as_str(), OPENAI_CODEX_RESPONSES_URL);
             assert_eq!(request_body_json(built), expected_body);
-            assert_eq!(
-                built.headers().get("OpenAI-Beta").unwrap(),
-                OPENAI_CODEX_BETA_HEADER
-            );
+            assert_eq!(built.headers().get("OpenAI-Beta").unwrap(), OPENAI_CODEX_BETA_HEADER);
             assert_eq!(built.headers().get("originator").unwrap(), "pi");
             assert_eq!(built.headers().get("accept").unwrap(), "text/event-stream");
-            assert_eq!(
-                built.headers().get("content-type").unwrap(),
-                "application/json"
-            );
+            assert_eq!(built.headers().get("content-type").unwrap(), "application/json");
             assert_eq!(built.headers().get("session_id").unwrap(), "session-1");
         }
 
         assert_eq!(
-            header_subset(
-                &initial,
-                &["authorization", "chatgpt-account-id", "session_id"]
-            ),
-            header_subset(
-                &transient_retry,
-                &["authorization", "chatgpt-account-id", "session_id"],
-            )
+            header_subset(&initial, &["authorization", "chatgpt-account-id", "session_id"]),
+            header_subset(&transient_retry, &["authorization", "chatgpt-account-id", "session_id"],)
         );
         assert_eq!(
-            header_subset(
-                &initial,
-                &["authorization", "chatgpt-account-id", "session_id"]
-            ),
+            header_subset(&initial, &["authorization", "chatgpt-account-id", "session_id"]),
             BTreeMap::from([
-                (
-                    "authorization".to_string(),
-                    format!("Bearer {}", fake_openai_codex_jwt("acct-123")),
-                ),
+                ("authorization".to_string(), format!("Bearer {}", fake_openai_codex_jwt("acct-123")),),
                 ("chatgpt-account-id".to_string(), "acct-123".to_string()),
                 ("session_id".to_string(), "session-1".to_string()),
             ])
         );
         assert_eq!(
-            header_subset(
-                &refresh_retry,
-                &["authorization", "chatgpt-account-id", "session_id"],
-            ),
+            header_subset(&refresh_retry, &["authorization", "chatgpt-account-id", "session_id"],),
             BTreeMap::from([
-                (
-                    "authorization".to_string(),
-                    format!("Bearer {}", fake_openai_codex_jwt("acct-999")),
-                ),
+                ("authorization".to_string(), format!("Bearer {}", fake_openai_codex_jwt("acct-999")),),
                 ("chatgpt-account-id".to_string(), "acct-999".to_string()),
                 ("session_id".to_string(), "session-1".to_string()),
             ])
@@ -2715,11 +2385,10 @@ mod tests {
 
     #[test]
     fn build_codex_request_omits_session_header_without_session_id() {
-        let client =
-            common::build_http_client(Duration::from_secs(30)).expect("client should build");
+        let client = common::build_http_client(Duration::from_secs(30)).expect("client should build");
         let request = codex_request(None);
-        let built = build_codex_request(&client, &oauth_credential("acct-123"), &request)
-            .expect("request should build");
+        let built =
+            build_codex_request(&client, &oauth_credential("acct-123"), &request).expect("request should build");
         let body = request_body_json(&built);
 
         assert!(built.headers().get("session_id").is_none());
@@ -2732,10 +2401,7 @@ mod tests {
         assert_eq!(body.get("model"), Some(&json!("gpt-5.3-codex")));
         assert_eq!(body.get("store"), Some(&json!(false)));
         assert_eq!(body.get("stream"), Some(&json!(true)));
-        assert_eq!(
-            body.get("instructions"),
-            Some(&json!("codex entitlement probe"))
-        );
+        assert_eq!(body.get("instructions"), Some(&json!("codex entitlement probe")));
         assert_eq!(body.get("text"), Some(&json!({"verbosity": "low"})));
         assert_eq!(
             body.get("input"),
@@ -2751,32 +2417,23 @@ mod tests {
     #[tokio::test]
     async fn live_probe_does_not_retry_non_401_4xx() {
         let sleep_log = Arc::new(Mutex::new(Vec::new()));
-        let server = MockHttpSequenceServer::start(vec![probe_json_response(
-            400,
-            json!({"error": {"message": "bad request"}}),
-        )])
-        .await;
+        let server =
+            MockHttpSequenceServer::start(vec![probe_json_response(400, json!({"error": {"message": "bad request"}}))])
+                .await;
 
-        let outcome =
-            with_test_http_hooks(server.url.clone(), Some(Arc::clone(&sleep_log)), || async {
-                live_probe(&oauth_credential("acct-123"), None).await
-            })
-            .await;
+        let outcome = with_test_http_hooks(server.url.clone(), Some(Arc::clone(&sleep_log)), || async {
+            live_probe(&oauth_credential("acct-123"), None).await
+        })
+        .await;
 
         assert_eq!(
             outcome,
             ProbeOutcome::Error(
-                "entitlement probe failed with HTTP 400: {\"error\":{\"message\":\"bad request\"}}"
-                    .to_string()
+                "entitlement probe failed with HTTP 400: {\"error\":{\"message\":\"bad request\"}}".to_string()
             )
         );
         assert_eq!(server.request_count.load(Ordering::SeqCst), 1);
-        assert!(
-            sleep_log
-                .lock()
-                .expect("sleep log lock poisoned")
-                .is_empty()
-        );
+        assert!(sleep_log.lock().expect("sleep log lock poisoned").is_empty());
     }
 
     #[tokio::test]
@@ -2790,22 +2447,18 @@ mod tests {
         ])
         .await;
 
-        let outcome =
-            with_test_http_hooks(server.url.clone(), Some(Arc::clone(&sleep_log)), || async {
-                live_probe(&oauth_credential("acct-123"), None).await
-            })
-            .await;
+        let outcome = with_test_http_hooks(server.url.clone(), Some(Arc::clone(&sleep_log)), || async {
+            live_probe(&oauth_credential("acct-123"), None).await
+        })
+        .await;
 
         assert_eq!(outcome, ProbeOutcome::Entitled);
         assert_eq!(server.request_count.load(Ordering::SeqCst), 4);
-        assert_eq!(
-            *sleep_log.lock().expect("sleep log lock poisoned"),
-            vec![
-                Duration::from_secs(1),
-                Duration::from_secs(2),
-                Duration::from_secs(4)
-            ]
-        );
+        assert_eq!(*sleep_log.lock().expect("sleep log lock poisoned"), vec![
+            Duration::from_secs(1),
+            Duration::from_secs(2),
+            Duration::from_secs(4)
+        ]);
     }
 
     #[tokio::test]
@@ -2819,32 +2472,18 @@ mod tests {
         }])
         .await;
 
-        let manager =
-            test_request_manager(oauth_credential("acct-123"), Arc::clone(&refresh_calls));
+        let manager = test_request_manager(oauth_credential("acct-123"), Arc::clone(&refresh_calls));
         let (tx, _rx) = mpsc::channel(8);
-        let mut attempt = OpenAICodexAttempt::new(
-            codex_request(Some("session-1")),
-            tx,
-            oauth_credential("acct-123"),
-            manager,
-        );
-        let err =
-            with_test_http_hooks(server.url.clone(), Some(Arc::clone(&sleep_log)), || async {
-                attempt
-                    .run()
-                    .await
-                    .expect_err("non-401 4xx should fail without retry")
-            })
-            .await;
+        let mut attempt =
+            OpenAICodexAttempt::new(codex_request(Some("session-1")), tx, oauth_credential("acct-123"), manager);
+        let err = with_test_http_hooks(server.url.clone(), Some(Arc::clone(&sleep_log)), || async {
+            attempt.run().await.expect_err("non-401 4xx should fail without retry")
+        })
+        .await;
 
         assert_eq!(server.request_count.load(Ordering::SeqCst), 1);
         assert_eq!(refresh_calls.load(Ordering::SeqCst), 0);
-        assert!(
-            sleep_log
-                .lock()
-                .expect("sleep log lock poisoned")
-                .is_empty()
-        );
+        assert!(sleep_log.lock().expect("sleep log lock poisoned").is_empty());
         assert_eq!(err.status_code(), Some(400));
         assert_eq!(err.to_string(), "provider error: bad request");
     }
@@ -2882,34 +2521,22 @@ mod tests {
         ])
         .await;
 
-        let manager =
-            test_request_manager(oauth_credential("acct-123"), Arc::clone(&refresh_calls));
+        let manager = test_request_manager(oauth_credential("acct-123"), Arc::clone(&refresh_calls));
         let (tx, _rx) = mpsc::channel(8);
-        let mut attempt = OpenAICodexAttempt::new(
-            codex_request(Some("session-1")),
-            tx,
-            oauth_credential("acct-123"),
-            manager,
-        );
-        let err =
-            with_test_http_hooks(server.url.clone(), Some(Arc::clone(&sleep_log)), || async {
-                attempt
-                    .run()
-                    .await
-                    .expect_err("retries should eventually exhaust")
-            })
-            .await;
+        let mut attempt =
+            OpenAICodexAttempt::new(codex_request(Some("session-1")), tx, oauth_credential("acct-123"), manager);
+        let err = with_test_http_hooks(server.url.clone(), Some(Arc::clone(&sleep_log)), || async {
+            attempt.run().await.expect_err("retries should eventually exhaust")
+        })
+        .await;
 
         assert_eq!(server.request_count.load(Ordering::SeqCst), 5);
         assert_eq!(refresh_calls.load(Ordering::SeqCst), 1);
-        assert_eq!(
-            *sleep_log.lock().expect("sleep log lock poisoned"),
-            vec![
-                Duration::from_secs(1),
-                Duration::from_secs(2),
-                Duration::from_secs(4)
-            ]
-        );
+        assert_eq!(*sleep_log.lock().expect("sleep log lock poisoned"), vec![
+            Duration::from_secs(1),
+            Duration::from_secs(2),
+            Duration::from_secs(4)
+        ]);
         let captured = server.requests.lock().expect("requests lock poisoned");
         assert_eq!(
             captured[0].headers.get("authorization"),
@@ -2921,24 +2548,15 @@ mod tests {
         );
         assert_eq!(
             captured[2].headers.get("authorization"),
-            Some(&format!(
-                "Bearer {}",
-                fake_openai_codex_jwt("acct-refreshed")
-            ))
+            Some(&format!("Bearer {}", fake_openai_codex_jwt("acct-refreshed")))
         );
         assert_eq!(
             captured[3].headers.get("authorization"),
-            Some(&format!(
-                "Bearer {}",
-                fake_openai_codex_jwt("acct-refreshed")
-            ))
+            Some(&format!("Bearer {}", fake_openai_codex_jwt("acct-refreshed")))
         );
         assert_eq!(
             captured[4].headers.get("authorization"),
-            Some(&format!(
-                "Bearer {}",
-                fake_openai_codex_jwt("acct-refreshed")
-            ))
+            Some(&format!("Bearer {}", fake_openai_codex_jwt("acct-refreshed")))
         );
         assert_eq!(err.status_code(), Some(429));
         assert_eq!(err.to_string(), "provider error: still limited");
@@ -2956,38 +2574,26 @@ mod tests {
         .await;
 
         let store = codex_store();
-        let record =
-            with_test_http_hooks(server.url.clone(), Some(Arc::clone(&sleep_log)), || async {
-                ensure_entitlement(&store, "work", None).await
-            })
-            .await;
+        let record = with_test_http_hooks(server.url.clone(), Some(Arc::clone(&sleep_log)), || async {
+            ensure_entitlement(&store, "work", None).await
+        })
+        .await;
 
         assert!(matches!(record.state, EntitlementState::Unknown));
-        assert!(
-            record
-                .last_error
-                .as_deref()
-                .unwrap_or_default()
-                .contains("entitlement probe failed with HTTP 500")
-        );
+        assert!(record.last_error.as_deref().unwrap_or_default().contains("entitlement probe failed with HTTP 500"));
         assert_eq!(server.request_count.load(Ordering::SeqCst), 4);
-        assert_eq!(
-            *sleep_log.lock().expect("sleep log lock poisoned"),
-            vec![
-                Duration::from_secs(1),
-                Duration::from_secs(2),
-                Duration::from_secs(4)
-            ]
-        );
+        assert_eq!(*sleep_log.lock().expect("sleep log lock poisoned"), vec![
+            Duration::from_secs(1),
+            Duration::from_secs(2),
+            Duration::from_secs(4)
+        ]);
     }
 
     #[tokio::test]
     async fn openai_codex_provider_probes_before_first_normal_request() {
-        let server = MockHttpSequenceServer::start(vec![
-            probe_json_response(200, json!({"ok": true})),
-            codex_sse_ok_response(),
-        ])
-        .await;
+        let server =
+            MockHttpSequenceServer::start(vec![probe_json_response(200, json!({"ok": true})), codex_sse_ok_response()])
+                .await;
         let provider = test_provider(oauth_credential("acct-123"));
         let (tx, _rx) = mpsc::channel(8);
 
@@ -3004,38 +2610,21 @@ mod tests {
         let probe_body: Value = serde_json::from_str(&requests[0].body).expect("probe body json");
         let normal_body: Value = serde_json::from_str(&requests[1].body).expect("normal body json");
         assert_eq!(probe_body.get("stream"), Some(&json!(true)));
-        assert_eq!(
-            probe_body.get("model"),
-            Some(&json!(OPENAI_CODEX_PROBE_MODEL))
-        );
+        assert_eq!(probe_body.get("model"), Some(&json!(OPENAI_CODEX_PROBE_MODEL)));
         assert!(probe_body.get("prompt_cache_key").is_none());
-        assert_eq!(
-            requests[0].headers.get("accept"),
-            Some(&"text/event-stream".to_string())
-        );
+        assert_eq!(requests[0].headers.get("accept"), Some(&"text/event-stream".to_string()));
         assert!(requests[0].headers.get("session_id").is_none());
         assert_eq!(normal_body.get("stream"), Some(&json!(true)));
-        assert_eq!(
-            normal_body.get("model"),
-            Some(&json!(OPENAI_CODEX_MODEL_IDS[0]))
-        );
-        assert_eq!(
-            normal_body.get("prompt_cache_key"),
-            Some(&json!("session-1"))
-        );
-        assert_eq!(
-            requests[1].headers.get("session_id"),
-            Some(&"session-1".to_string())
-        );
+        assert_eq!(normal_body.get("model"), Some(&json!(OPENAI_CODEX_MODEL_IDS[0])));
+        assert_eq!(normal_body.get("prompt_cache_key"), Some(&json!("session-1")));
+        assert_eq!(requests[1].headers.get("session_id"), Some(&"session-1".to_string()));
     }
 
     #[tokio::test]
     async fn openai_codex_provider_fails_closed_without_sending_normal_request_when_not_entitled() {
-        let server = MockHttpSequenceServer::start(vec![probe_json_response(
-            403,
-            json!({"error": {"message": "no plan"}}),
-        )])
-        .await;
+        let server =
+            MockHttpSequenceServer::start(vec![probe_json_response(403, json!({"error": {"message": "no plan"}}))])
+                .await;
         let provider = test_provider(oauth_credential("acct-123"));
         let (tx, _rx) = mpsc::channel(8);
 
@@ -3055,10 +2644,7 @@ mod tests {
         let requests = server.requests.lock().expect("requests lock poisoned");
         let probe_body: Value = serde_json::from_str(&requests[0].body).expect("probe body json");
         assert_eq!(probe_body.get("stream"), Some(&json!(true)));
-        assert_eq!(
-            requests[0].headers.get("accept"),
-            Some(&"text/event-stream".to_string())
-        );
+        assert_eq!(requests[0].headers.get("accept"), Some(&"text/event-stream".to_string()));
     }
 
     #[tokio::test]
@@ -3074,62 +2660,44 @@ mod tests {
         let provider = test_provider(oauth_credential("acct-123"));
         let (tx, _rx) = mpsc::channel(8);
 
-        let err =
-            with_test_http_hooks(server.url.clone(), Some(Arc::clone(&sleep_log)), || async {
-                provider
-                    .complete(codex_request(Some("session-1")), tx)
-                    .await
-                    .expect_err("probe failure should fail closed")
-            })
-            .await;
+        let err = with_test_http_hooks(server.url.clone(), Some(Arc::clone(&sleep_log)), || async {
+            provider
+                .complete(codex_request(Some("session-1")), tx)
+                .await
+                .expect_err("probe failure should fail closed")
+        })
+        .await;
 
         assert_eq!(server.request_count.load(Ordering::SeqCst), 4);
         assert_eq!(err.status_code(), Some(503));
-        assert!(
-            err.to_string()
-                .contains("provider error: openai-codex entitlement check failed")
-        );
+        assert!(err.to_string().contains("provider error: openai-codex entitlement check failed"));
         let requests = server.requests.lock().expect("requests lock poisoned");
-        assert!(
-            requests
-                .iter()
-                .all(|request| request.headers.get("session_id").is_none())
-        );
-        assert_eq!(
-            *sleep_log.lock().expect("sleep log lock poisoned"),
-            vec![
-                Duration::from_secs(1),
-                Duration::from_secs(2),
-                Duration::from_secs(4)
-            ]
-        );
+        assert!(requests.iter().all(|request| request.headers.get("session_id").is_none()));
+        assert_eq!(*sleep_log.lock().expect("sleep log lock poisoned"), vec![
+            Duration::from_secs(1),
+            Duration::from_secs(2),
+            Duration::from_secs(4)
+        ]);
     }
 
     #[test]
     fn build_probe_request_preserves_contract_on_initial_transient_and_refresh_retry_paths() {
-        let client =
-            common::build_http_client(Duration::from_secs(30)).expect("client should build");
+        let client = common::build_http_client(Duration::from_secs(30)).expect("client should build");
         let expected_body = build_probe_request_body();
-        let initial = build_probe_request(&client, &oauth_credential("acct-123"))
-            .expect("initial request should build");
-        let transient_retry = build_probe_request(&client, &oauth_credential("acct-123"))
-            .expect("retry request should build");
-        let refresh_retry = build_probe_request(&client, &oauth_credential("acct-999"))
-            .expect("refresh retry request should build");
+        let initial =
+            build_probe_request(&client, &oauth_credential("acct-123")).expect("initial request should build");
+        let transient_retry =
+            build_probe_request(&client, &oauth_credential("acct-123")).expect("retry request should build");
+        let refresh_retry =
+            build_probe_request(&client, &oauth_credential("acct-999")).expect("refresh retry request should build");
 
         for built in [&initial, &transient_retry, &refresh_retry] {
             assert_eq!(built.method(), reqwest::Method::POST);
             assert_eq!(built.url().as_str(), OPENAI_CODEX_RESPONSES_URL);
             assert_eq!(request_body_json(built), expected_body);
-            assert_eq!(
-                built.headers().get("OpenAI-Beta").unwrap(),
-                OPENAI_CODEX_BETA_HEADER
-            );
+            assert_eq!(built.headers().get("OpenAI-Beta").unwrap(), OPENAI_CODEX_BETA_HEADER);
             assert_eq!(built.headers().get("originator").unwrap(), "pi");
-            assert_eq!(
-                built.headers().get("content-type").unwrap(),
-                "application/json"
-            );
+            assert_eq!(built.headers().get("content-type").unwrap(), "application/json");
             assert_eq!(built.headers().get("accept").unwrap(), "text/event-stream");
             assert!(built.headers().get("session_id").is_none());
         }
@@ -3141,20 +2709,14 @@ mod tests {
         assert_eq!(
             header_subset(&initial, &["authorization", "chatgpt-account-id"]),
             BTreeMap::from([
-                (
-                    "authorization".to_string(),
-                    format!("Bearer {}", fake_openai_codex_jwt("acct-123")),
-                ),
+                ("authorization".to_string(), format!("Bearer {}", fake_openai_codex_jwt("acct-123")),),
                 ("chatgpt-account-id".to_string(), "acct-123".to_string()),
             ])
         );
         assert_eq!(
             header_subset(&refresh_retry, &["authorization", "chatgpt-account-id"]),
             BTreeMap::from([
-                (
-                    "authorization".to_string(),
-                    format!("Bearer {}", fake_openai_codex_jwt("acct-999")),
-                ),
+                ("authorization".to_string(), format!("Bearer {}", fake_openai_codex_jwt("acct-999")),),
                 ("chatgpt-account-id".to_string(), "acct-999".to_string()),
             ])
         );
@@ -3167,25 +2729,19 @@ mod tests {
         let runtime_path = dir.path().join("runtime.json");
 
         let mut seed = AuthStore::default();
-        seed.set_credential(
-            OPENAI_CODEX_PROVIDER,
-            "work",
-            StoredCredential::OAuth {
-                access_token: fake_openai_codex_jwt("acct-123"),
-                refresh_token: "refresh".to_string(),
-                expires_at_ms: now_ms() + 1000,
-                label: None,
-            },
-        );
+        seed.set_credential(OPENAI_CODEX_PROVIDER, "work", StoredCredential::OAuth {
+            access_token: fake_openai_codex_jwt("acct-123"),
+            refresh_token: "refresh".to_string(),
+            expires_at_ms: now_ms() + 1000,
+            label: None,
+        });
         seed.switch_account(OPENAI_CODEX_PROVIDER, "work");
         seed.save(&seed_path).expect("seed should save");
 
         let auth_paths = AuthStorePaths::layered(seed_path.clone(), runtime_path.clone());
         let manager = CredentialManager::with_refresh_fn(
             OPENAI_CODEX_PROVIDER.to_string(),
-            seed.active_credential(OPENAI_CODEX_PROVIDER)
-                .expect("credential should exist")
-                .clone(),
+            seed.active_credential(OPENAI_CODEX_PROVIDER).expect("credential should exist").clone(),
             auth_paths,
             None,
             refresh_fn_for_codex(),

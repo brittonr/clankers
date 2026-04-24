@@ -75,19 +75,13 @@ pub(crate) fn should_annotate_store_refs() -> bool {
     let config_paths = clankers_config::paths::ClankersPaths::resolve();
     let cwd = std::env::current_dir().unwrap_or_default();
     let project_paths = clankers_config::paths::ProjectPaths::resolve(&cwd);
-    let settings = clankers_config::settings::Settings::load(
-        &config_paths.global_settings,
-        &project_paths.settings,
-    );
+    let settings = clankers_config::settings::Settings::load(&config_paths.global_settings, &project_paths.settings);
     settings.annotate_store_refs
 }
 
 /// Nix subcommands that accept flake references as arguments.
 fn accepts_flake_ref(subcommand: &str) -> bool {
-    matches!(
-        subcommand,
-        "build" | "run" | "develop" | "shell" | "eval" | "flake"
-    )
+    matches!(subcommand, "build" | "run" | "develop" | "shell" | "eval" | "flake")
 }
 
 /// Format parsed store paths into a structured "[build outputs]" section.
@@ -103,15 +97,7 @@ fn format_build_outputs(paths: &[clankers_nix::NixPath]) -> String {
 
 /// Format a derivation summary for build failure context.
 fn format_derivation_summary(info: &clankers_nix::DerivationInfo) -> String {
-    let inputs: Vec<&str> = info
-        .input_drvs
-        .iter()
-        .map(|d| {
-            d.name
-                .strip_suffix(".drv")
-                .unwrap_or(&d.name)
-        })
-        .collect();
+    let inputs: Vec<&str> = info.input_drvs.iter().map(|d| d.name.strip_suffix(".drv").unwrap_or(&d.name)).collect();
 
     let input_list = if inputs.is_empty() {
         "none".to_string()
@@ -196,12 +182,8 @@ impl Tool for NixTool {
 
         // Annotate store path references in all output (opt-in via config)
         if should_annotate_store_refs() {
-            let all_output = format!(
-                "{}\n{}\n{}",
-                stdout_lines.join("\n"),
-                build_log_lines.join("\n"),
-                errors.join("\n")
-            );
+            let all_output =
+                format!("{}\n{}\n{}", stdout_lines.join("\n"), build_log_lines.join("\n"), errors.join("\n"));
             if let Some(annotation) = clankers_nix::annotate_store_refs(&all_output) {
                 append_to_result(&mut result, &annotation);
             }
@@ -210,10 +192,8 @@ impl Tool for NixTool {
         // On build failure, try to surface derivation info from the error log
         if exit_code != 0 && subcommand == "build" {
             let all_text = format!("{}\n{}", errors.join("\n"), build_log_lines.join("\n"));
-            let drv_paths: Vec<_> = clankers_nix::extract_store_paths(&all_text)
-                .into_iter()
-                .filter(|p| p.is_derivation)
-                .collect();
+            let drv_paths: Vec<_> =
+                clankers_nix::extract_store_paths(&all_text).into_iter().filter(|p| p.is_derivation).collect();
 
             if let Some(drv) = drv_paths.first() {
                 let drv_path = std::path::Path::new(&drv.path);

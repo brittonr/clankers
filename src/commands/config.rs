@@ -39,11 +39,7 @@ pub fn run(ctx: &CommandContext, action: ConfigAction) -> Result<()> {
             let editor = std::env::var("EDITOR").unwrap_or_else(|_| "vi".to_string());
             std::process::Command::new(&editor).arg(path).status().ok();
         }
-        ConfigAction::Init {
-            force,
-            nickel,
-            global,
-        } => {
+        ConfigAction::Init { force, nickel, global } => {
             run_init(ctx, force, nickel, global)?;
         }
         ConfigAction::Check => {

@@ -199,22 +199,24 @@ fn search_file_into(
     let out = Arc::clone(output);
     let file_path_str = path.display().to_string();
 
-    searcher.search_path(
-        matcher,
-        path,
-        UTF8(|line_num, line| {
-            let c = match_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-            if c >= MAX_MATCHES {
-                return Ok(false);
-            }
-            let mut buf = out.lock().unwrap_or_else(|e| e.into_inner());
-            write!(buf, "{}:{}:{}", file_path_str, line_num, line).ok();
-            if !line.ends_with('\n') {
-                writeln!(buf).ok();
-            }
-            Ok(true)
-        }),
-    ).ok();
+    searcher
+        .search_path(
+            matcher,
+            path,
+            UTF8(|line_num, line| {
+                let c = match_count.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                if c >= MAX_MATCHES {
+                    return Ok(false);
+                }
+                let mut buf = out.lock().unwrap_or_else(|e| e.into_inner());
+                write!(buf, "{}:{}:{}", file_path_str, line_num, line).ok();
+                if !line.ends_with('\n') {
+                    writeln!(buf).ok();
+                }
+                Ok(true)
+            }),
+        )
+        .ok();
 }
 
 /// Perform the actual in-process search.

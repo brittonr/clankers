@@ -89,7 +89,9 @@ pub fn render_screenshot(capture: &ScreenCapture) -> RgbaImage {
                 }
 
                 // Bold: shift right by 1px (classic VGA bold effect)
-                if cell.bold && let Some(glyph) = get_glyph(ch) {
+                if cell.bold
+                    && let Some(glyph) = get_glyph(ch)
+                {
                     for (dy, &row_bits) in glyph.iter().enumerate() {
                         for dx in 0..7u32 {
                             if row_bits & (0x80 >> dx) != 0 {

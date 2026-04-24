@@ -188,10 +188,7 @@ impl<'db> SkillUsageStore<'db> {
             }
         }
 
-        let mut stats: Vec<SkillStats> = by_skill
-            .iter()
-            .map(|(name, entries)| compute_stats(name, entries))
-            .collect();
+        let mut stats: Vec<SkillStats> = by_skill.iter().map(|(name, entries)| compute_stats(name, entries)).collect();
 
         // Sort by total loads descending
         stats.sort_by_key(|s| Reverse(s.total_loads));

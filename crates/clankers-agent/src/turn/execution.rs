@@ -88,10 +88,9 @@ fn agent_messages_from_engine_messages(messages: &[EngineMessage]) -> Result<Vec
                 stop_reason: StopReason::Stop,
                 timestamp: request_timestamp,
             }),
-            EngineMessageRole::Tool => AgentMessage::ToolResult(tool_result_message_from_engine_message(
-                message,
-                request_timestamp,
-            )?),
+            EngineMessageRole::Tool => {
+                AgentMessage::ToolResult(tool_result_message_from_engine_message(message, request_timestamp)?)
+            }
         };
         converted_messages.push(agent_message);
     }

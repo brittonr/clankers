@@ -483,14 +483,20 @@ fn suggest_commit_message(_status: &str, categories: &[(String, Vec<String>)]) -
     format!("chore: update {} files across {}", total_files, types.join(", "))
 }
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "compile-time constant regex pattern"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "compile-time constant regex pattern")
+)]
 static CONVENTIONAL_PARSE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
     regex::Regex::new(r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?(!)?: (.*)$")
         .expect("static regex")
 });
 
 static CONVENTIONAL_VALIDATE_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "compile-time constant regex pattern"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(no_unwrap, reason = "compile-time constant regex pattern")
+    )]
     regex::Regex::new(r"^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^)]*\))?(!)?: .+$")
         .expect("static regex")
 });

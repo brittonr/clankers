@@ -84,7 +84,10 @@ pub async fn host_session(
     Ok((endpoint, psk))
 }
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by endpoint close"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by endpoint close")
+)]
 async fn accept_guests(endpoint: Endpoint, socket_path: &Path, psk: &[u8; 32], session_info: &SessionInfo) {
     loop {
         let incoming = match endpoint.accept().await {

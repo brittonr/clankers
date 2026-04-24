@@ -239,10 +239,14 @@ impl<'db> UsageTracker<'db> {
                 let mut models: Vec<_> = all.by_model.iter().collect();
                 models.sort_by_key(|e| Reverse(e.1.input_tokens));
                 for (model, mu) in models {
-                    writeln!(out, "    {model}: {} in + {} out ({} reqs)",
+                    writeln!(
+                        out,
+                        "    {model}: {} in + {} out ({} reqs)",
                         format_tokens(mu.input_tokens),
                         format_tokens(mu.output_tokens),
-                        mu.requests).ok();
+                        mu.requests
+                    )
+                    .ok();
                 }
             }
         }

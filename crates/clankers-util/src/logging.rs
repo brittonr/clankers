@@ -31,7 +31,10 @@ const SILENCED_TARGETS: &[&str] = &[
 /// If `RUST_LOG` is set in the environment, it is used as-is.
 /// Otherwise, the given `default_level` is used and noisy transitive
 /// dependencies (iroh, quinn, wasmtime, etc.) are silenced to `error`.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "static filter directive strings are valid"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "static filter directive strings are valid")
+)]
 pub fn build_env_filter(default_level: tracing::Level) -> EnvFilter {
     if std::env::var("RUST_LOG").is_ok() {
         return EnvFilter::from_default_env();

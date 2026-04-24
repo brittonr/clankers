@@ -3,10 +3,12 @@
 //! Evaluates pure Nix expressions without spawning `nix eval`.
 //! Falls back to the CLI for impure operations (file import, fetchurl, IFD).
 
+use std::path::Path;
+use std::time::Duration;
+use std::time::Instant;
+
 use serde::Serialize;
 use serde_json::Value as JsonValue;
-use std::path::Path;
-use std::time::{Duration, Instant};
 
 use crate::error::*;
 
@@ -45,9 +47,7 @@ pub fn evaluate_with_timeout(expr: &str, timeout: Duration) -> Result<EvalResult
 
     // snix-eval uses Rc internally (not Send), so we run it on the current thread.
     // The caller should use spawn_blocking if needed.
-    let eval = snix_eval::Evaluation::builder_pure()
-        .mode(snix_eval::EvalMode::Strict)
-        .build();
+    let eval = snix_eval::Evaluation::builder_pure().mode(snix_eval::EvalMode::Strict).build();
 
     let result = eval.evaluate(&expr_owned, None);
 
@@ -82,13 +82,11 @@ pub fn evaluate_with_timeout(expr: &str, timeout: Duration) -> Result<EvalResult
         });
     }
 
-    let value = result
-        .value
-        .ok_or_else(|| NixError::EvalFailed {
-            expr: truncate_expr(&expr_owned),
-            reason: "evaluation produced no value".to_string(),
-            is_impure: false,
-        })?;
+    let value = result.value.ok_or_else(|| NixError::EvalFailed {
+        expr: truncate_expr(&expr_owned),
+        reason: "evaluation produced no value".to_string(),
+        is_impure: false,
+    })?;
 
     // Serialize to JSON
     let json = value_to_json(&value)?;
@@ -161,20 +159,21 @@ pub fn introspect_flake(flake_dir: &Path) -> Result<FlakeOutputs, NixError> {
 
 /// Convert a snix-eval Value to serde_json::Value.
 /// Recursion follows the Nix value tree structure (bounded by eval depth).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "follows nix value tree; depth bounded by eval limits"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_recursion, reason = "follows nix value tree; depth bounded by eval limits")
+)]
 fn value_to_json(value: &snix_eval::Value) -> Result<JsonValue, NixError> {
     match value {
         snix_eval::Value::Null => Ok(JsonValue::Null),
         snix_eval::Value::Bool(b) => Ok(JsonValue::Bool(*b)),
         snix_eval::Value::Integer(i) => Ok(serde_json::json!(*i)),
         snix_eval::Value::Float(f) => {
-            serde_json::Number::from_f64(*f)
-                .map(JsonValue::Number)
-                .ok_or_else(|| NixError::EvalFailed {
-                    expr: String::new(),
-                    reason: format!("non-finite float: {f}"),
-                    is_impure: false,
-                })
+            serde_json::Number::from_f64(*f).map(JsonValue::Number).ok_or_else(|| NixError::EvalFailed {
+                expr: String::new(),
+                reason: format!("non-finite float: {f}"),
+                is_impure: false,
+            })
         }
         snix_eval::Value::String(s) => Ok(JsonValue::String(s.as_bstr().to_string())),
         snix_eval::Value::Path(p) => Ok(JsonValue::String(p.display().to_string())),
@@ -188,13 +187,10 @@ fn value_to_json(value: &snix_eval::Value) -> Result<JsonValue, NixError> {
             Ok(JsonValue::Object(map))
         }
         snix_eval::Value::List(list) => {
-            let items: Result<Vec<JsonValue>, NixError> =
-                list.iter().map(value_to_json).collect();
+            let items: Result<Vec<JsonValue>, NixError> = list.iter().map(value_to_json).collect();
             Ok(JsonValue::Array(items?))
         }
-        snix_eval::Value::Closure(_) | snix_eval::Value::Builtin(_) => {
-            Ok(JsonValue::String("<lambda>".to_string()))
-        }
+        snix_eval::Value::Closure(_) | snix_eval::Value::Builtin(_) => Ok(JsonValue::String("<lambda>".to_string())),
         snix_eval::Value::Thunk(thunk) => {
             // Thunks should be forced in strict mode, but handle gracefully
             value_to_json(&thunk.value())
@@ -301,10 +297,7 @@ mod tests {
         // how snix-eval reports it, but it should definitely fail.
         if let Err(NixError::EvalFailed { reason, .. }) = &result {
             // Sanity check — the error message should mention something relevant
-            assert!(
-                !reason.is_empty(),
-                "expected non-empty error for import in pure mode"
-            );
+            assert!(!reason.is_empty(), "expected non-empty error for import in pure mode");
         }
     }
 

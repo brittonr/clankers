@@ -2026,6 +2026,9 @@ mod tests {
     use std::io::ErrorKind;
     use std::sync::Arc;
 
+    use clanker_tui_types::BlockEntry;
+    use clanker_tui_types::ConversationBlock;
+    use clanker_tui_types::DisplayMessage;
     use clankers_agent::Agent;
     use clankers_controller::SessionController;
     use clankers_controller::client::ClientAdapter;
@@ -2035,9 +2038,6 @@ mod tests {
     use clankers_protocol::PluginSummary;
     use clankers_protocol::SessionCommand;
     use clankers_tui::app::App;
-    use clanker_tui_types::BlockEntry;
-    use clanker_tui_types::ConversationBlock;
-    use clanker_tui_types::DisplayMessage;
 
     struct MockProvider;
 

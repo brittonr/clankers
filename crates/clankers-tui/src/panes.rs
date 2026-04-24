@@ -178,7 +178,10 @@ pub mod pane_ids {
 /// └──────┴────────────────────┴───────────┘
 ///   20%          50%              30%
 /// ```
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "default BSP tree construction is infallible"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "default BSP tree construction is infallible")
+)]
 pub fn default_tiling() -> Hypertile {
     let tree = Node::Split {
         direction: Direction::Horizontal,
@@ -234,7 +237,10 @@ pub fn focused_tiling() -> (Hypertile, PaneRegistry) {
 }
 
 /// Wide chat layout: thin left sidebar only.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "tiling construction is infallible"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "tiling construction is infallible")
+)]
 pub fn wide_chat_tiling() -> (Hypertile, PaneRegistry) {
     let tree = Node::Split {
         direction: Direction::Horizontal,
@@ -268,7 +274,10 @@ pub fn wide_chat_tiling() -> (Hypertile, PaneRegistry) {
     (tiling, reg)
 }
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "tiling construction is infallible"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "tiling construction is infallible")
+)]
 /// Right-heavy layout: everything on the right.
 pub fn right_heavy_tiling() -> (Hypertile, PaneRegistry) {
     let tree = Node::Split {
@@ -313,7 +322,10 @@ pub fn right_heavy_tiling() -> (Hypertile, PaneRegistry) {
 
 /// Remove a pane from the BSP tree, returning the pruned tree.
 /// Returns `None` if the pane is the only node (root leaf).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "BSP tree depth bounded by MAX_SPLIT_DEPTH"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_recursion, reason = "BSP tree depth bounded by MAX_SPLIT_DEPTH")
+)]
 pub fn remove_pane_from_tree(node: Node, target: PaneId) -> Option<Node> {
     match node {
         Node::Pane(id) => {
@@ -348,7 +360,10 @@ pub fn remove_pane_from_tree(node: Node, target: PaneId) -> Option<Node> {
 
 /// Insert a new pane beside an existing pane in the BSP tree.
 /// Splits the target pane, keeping the target in the `first` slot.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "BSP tree depth bounded by MAX_SPLIT_DEPTH"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_recursion, reason = "BSP tree depth bounded by MAX_SPLIT_DEPTH")
+)]
 pub fn insert_pane_beside(
     node: Node,
     target: PaneId,
@@ -399,7 +414,10 @@ pub fn insert_pane_beside(
 }
 
 /// Quick structural equality check for BSP nodes.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "BSP tree depth bounded by MAX_SPLIT_DEPTH"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_recursion, reason = "BSP tree depth bounded by MAX_SPLIT_DEPTH")
+)]
 fn nodes_equal(a: &Node, b: &Node) -> bool {
     match (a, b) {
         (Node::Pane(a_id), Node::Pane(b_id)) => a_id == b_id,

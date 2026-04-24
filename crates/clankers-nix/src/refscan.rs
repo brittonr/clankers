@@ -3,7 +3,8 @@
 //! Scans tool output for `/nix/store/...` paths and produces compact
 //! annotations for agent context.
 
-use crate::store_path::{NixPath, extract_store_paths};
+use crate::store_path::NixPath;
+use crate::store_path::extract_store_paths;
 
 /// Maximum output size to scan (skip for very large outputs).
 const MAX_SCAN_SIZE: usize = 1_024 * 1_024; // 1 MB

@@ -5,12 +5,12 @@
 //!
 //! Uses rat-branches NodeSwitcher for the underlying implementation.
 
-use ratatui::Frame;
-use ratatui::layout::Rect;
-
+use rat_branches::TreeNode;
+use rat_branches::compare::truncate_first_line;
 // Re-export rat-branches types for compatibility
 pub use rat_branches::{NodeSwitcher, SwitcherItem};
-use rat_branches::{TreeNode, compare::truncate_first_line};
+use ratatui::Frame;
+use ratatui::layout::Rect;
 
 use crate::components::block::ConversationBlock;
 
@@ -28,11 +28,8 @@ impl BranchSwitcher {
     /// Open the switcher with branches from the block tree.
     pub fn open(&mut self, all_blocks: &[ConversationBlock], active_block_ids: &std::collections::HashSet<usize>) {
         self.inner.open(all_blocks, |leaf, path| {
-            let tokens: usize = path
-                .iter()
-                .filter_map(|&id| all_blocks.iter().find(|b| b.id == id))
-                .map(|b| b.tokens)
-                .sum();
+            let tokens: usize =
+                path.iter().filter_map(|&id| all_blocks.iter().find(|b| b.id == id)).map(|b| b.tokens).sum();
 
             // Generate branch name using path index
             let leaf_ids = rat_branches::tree::find_leaves(all_blocks);
@@ -90,4 +87,3 @@ impl BranchSwitcher {
         &self.inner.model.filter
     }
 }
-

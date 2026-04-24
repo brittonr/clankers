@@ -55,9 +55,7 @@ async fn start_foreground(
     // Bail if a daemon is already running
     if let Some(pid) = transport::running_daemon_pid() {
         return Err(crate::error::Error::Provider {
-            message: format!(
-                "Daemon already running (PID {pid}).\nStop it first: clankers daemon stop"
-            ),
+            message: format!("Daemon already running (PID {pid}).\nStop it first: clankers daemon stop"),
         });
     }
 
@@ -78,9 +76,8 @@ async fn start_foreground(
     // Create the schedule engine once for the daemon process. It persists
     // across sessions so schedules survive session restarts.
     let schedules_path = ctx.paths.global_config_dir.join("schedules.json");
-    let schedule_engine = std::sync::Arc::new(
-        clanker_scheduler::ScheduleEngine::new().with_persistence(schedules_path.clone()),
-    );
+    let schedule_engine =
+        std::sync::Arc::new(clanker_scheduler::ScheduleEngine::new().with_persistence(schedules_path.clone()));
 
     // Load persisted schedules from previous daemon runs.
     let persisted = clanker_scheduler::ScheduleEngine::load_from(&schedules_path);
@@ -125,7 +122,8 @@ async fn start_foreground(
         ..Default::default()
     };
 
-    crate::modes::daemon::run_daemon(provider, tools, config, &ctx.paths, Some(schedule_engine), Some(plugin_manager)).await?;
+    crate::modes::daemon::run_daemon(provider, tools, config, &ctx.paths, Some(schedule_engine), Some(plugin_manager))
+        .await?;
     Ok(())
 }
 
@@ -141,9 +139,7 @@ fn start_background(
     // Bail if a daemon is already running
     if let Some(pid) = transport::running_daemon_pid() {
         return Err(crate::error::Error::Provider {
-            message: format!(
-                "Daemon already running (PID {pid}).\nStop it first: clankers daemon stop"
-            ),
+            message: format!("Daemon already running (PID {pid}).\nStop it first: clankers daemon stop"),
         });
     }
 
@@ -189,9 +185,7 @@ fn start_background(
         .append(true)
         .open(&log_path)
         .map_err(|e| crate::error::Error::Io { source: e })?;
-    let log_err = log_file
-        .try_clone()
-        .map_err(|e| crate::error::Error::Io { source: e })?;
+    let log_err = log_file.try_clone().map_err(|e| crate::error::Error::Io { source: e })?;
 
     cmd.stdin(std::process::Stdio::null());
     cmd.stdout(log_file);
@@ -253,9 +247,7 @@ pub async fn ensure_daemon_running() -> Result<()> {
             .append(true)
             .open(&log_path)
             .map_err(|e| crate::error::Error::Io { source: e })?;
-        let log_err = log_file
-            .try_clone()
-            .map_err(|e| crate::error::Error::Io { source: e })?;
+        let log_err = log_file.try_clone().map_err(|e| crate::error::Error::Io { source: e })?;
 
         let mut cmd = std::process::Command::new(exe);
         cmd.arg("--log-file").arg(&log_path);
@@ -285,10 +277,7 @@ pub async fn ensure_daemon_running() -> Result<()> {
 
     // Lock released on drop of lock_file.
     Err(crate::error::Error::Provider {
-        message: format!(
-            "Daemon control socket not responsive after 5s. Check logs: {}",
-            log_path.display()
-        ),
+        message: format!("Daemon control socket not responsive after 5s. Check logs: {}", log_path.display()),
     })
 }
 
@@ -346,9 +335,7 @@ async fn restart() -> Result<()> {
             tokio::time::sleep(std::time::Duration::from_secs(2)).await;
             // Re-launch: invoke ourselves with `daemon start -d`
             let exe = std::env::current_exe().unwrap_or_else(|_| "clankers".into());
-            let status = std::process::Command::new(exe)
-                .args(["daemon", "start", "-d"])
-                .status();
+            let status = std::process::Command::new(exe).args(["daemon", "start", "-d"]).status();
             match status {
                 Ok(s) if s.success() => println!("Daemon restarted."),
                 Ok(s) => eprintln!("Daemon restart failed (exit {})", s.code().unwrap_or(-1)),
@@ -534,8 +521,7 @@ fn logs(follow: bool, lines: usize) -> Result<()> {
         return Ok(());
     }
 
-    let file =
-        std::fs::File::open(&log_path).map_err(|e| crate::error::Error::Io { source: e })?;
+    let file = std::fs::File::open(&log_path).map_err(|e| crate::error::Error::Io { source: e })?;
 
     if follow {
         // tail -f: seek to end, print last N lines, then follow
@@ -550,9 +536,8 @@ fn logs(follow: bool, lines: usize) -> Result<()> {
 /// Print the last N lines of a file.
 fn print_tail_lines(file: &std::fs::File, n: usize) -> Result<()> {
     let reader = std::io::BufReader::new(file);
-    let all_lines: Vec<String> = reader.lines().collect::<std::io::Result<_>>().map_err(|e| {
-        crate::error::Error::Io { source: e }
-    })?;
+    let all_lines: Vec<String> =
+        reader.lines().collect::<std::io::Result<_>>().map_err(|e| crate::error::Error::Io { source: e })?;
     let start = all_lines.len().saturating_sub(n);
     for line in &all_lines[start..] {
         println!("{line}");
@@ -561,11 +546,13 @@ fn print_tail_lines(file: &std::fs::File, n: usize) -> Result<()> {
 }
 
 /// Follow a file, printing new lines as they appear (like `tail -f`).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "event loop; bounded by channel close"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "event loop; bounded by channel close")
+)]
 fn follow_file(mut file: std::fs::File) -> Result<()> {
     // Seek to end
-    file.seek(std::io::SeekFrom::End(0))
-        .map_err(|e| crate::error::Error::Io { source: e })?;
+    file.seek(std::io::SeekFrom::End(0)).map_err(|e| crate::error::Error::Io { source: e })?;
 
     let mut reader = std::io::BufReader::new(file);
     let mut line = String::new();
@@ -614,29 +601,22 @@ pub async fn run_merge_daemon(ctx: &CommandContext, interval: u64, is_once: bool
 /// Send a control command to the daemon and return the response.
 async fn send_control(cmd: ControlCommand) -> Result<ControlResponse> {
     let path = transport::control_socket_path();
-    let stream = UnixStream::connect(&path).await.map_err(|e| {
-        crate::error::Error::Provider {
-            message: format!(
-                "Cannot connect to daemon at {}: {e}\nIs the daemon running? Start with: clankers daemon start",
-                path.display()
-            ),
-        }
+    let stream = UnixStream::connect(&path).await.map_err(|e| crate::error::Error::Provider {
+        message: format!(
+            "Cannot connect to daemon at {}: {e}\nIs the daemon running? Start with: clankers daemon start",
+            path.display()
+        ),
     })?;
 
     let (mut reader, mut writer) = stream.into_split();
 
-    frame::write_frame(&mut writer, &cmd)
-        .await
-        .map_err(|e| crate::error::Error::Provider {
-            message: format!("Failed to send command: {e}"),
-        })?;
+    frame::write_frame(&mut writer, &cmd).await.map_err(|e| crate::error::Error::Provider {
+        message: format!("Failed to send command: {e}"),
+    })?;
 
-    let resp: ControlResponse =
-        frame::read_frame(&mut reader)
-            .await
-            .map_err(|e| crate::error::Error::Provider {
-                message: format!("Failed to read response: {e}"),
-            })?;
+    let resp: ControlResponse = frame::read_frame(&mut reader).await.map_err(|e| crate::error::Error::Provider {
+        message: format!("Failed to read response: {e}"),
+    })?;
 
     Ok(resp)
 }
@@ -667,21 +647,13 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let lock_path = dir.path().join("test.lock");
 
-        let f1 = std::fs::OpenOptions::new()
-            .create(true)
-            .truncate(true)
-            .write(true)
-            .open(&lock_path)
-            .unwrap();
+        let f1 = std::fs::OpenOptions::new().create(true).truncate(true).write(true).open(&lock_path).unwrap();
 
         // First lock succeeds.
         assert!(try_flock_exclusive(&f1));
 
         // Second lock on same file (different fd) fails — held by f1.
-        let f2 = std::fs::OpenOptions::new()
-            .write(true)
-            .open(&lock_path)
-            .unwrap();
+        let f2 = std::fs::OpenOptions::new().write(true).open(&lock_path).unwrap();
         assert!(!try_flock_exclusive(&f2));
 
         // Drop f1 releases the lock.

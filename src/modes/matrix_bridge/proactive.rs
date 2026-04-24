@@ -50,14 +50,7 @@ pub(crate) async fn ensure_trigger_pipe(
         return;
     }
 
-    let cancel = spawn_trigger_reader(
-        &session_dir,
-        key.clone(),
-        state,
-        registry,
-        factory,
-        matrix_client,
-    );
+    let cancel = spawn_trigger_reader(&session_dir, key.clone(), state, registry, factory, matrix_client);
 
     if cancel.is_none() {
         warn!("failed to spawn trigger reader for {}", key);
@@ -120,13 +113,9 @@ pub(crate) async fn run_session_heartbeat(
                 c.set_typing(&room_id_parsed, true).await.ok();
             }
 
-            let response = run_proactive_prompt(
-                Arc::clone(&state),
-                registry.clone(),
-                Arc::clone(&factory),
-                key.clone(),
-                prompt,
-            ).await;
+            let response =
+                run_proactive_prompt(Arc::clone(&state), registry.clone(), Arc::clone(&factory), key.clone(), prompt)
+                    .await;
 
             {
                 let c = matrix_client.read().await;
@@ -242,7 +231,8 @@ pub(crate) fn spawn_trigger_reader(
                             Arc::clone(&factory),
                             key.clone(),
                             text,
-                        ).await;
+                        )
+                        .await;
 
                         {
                             let c = matrix_client.read().await;

@@ -305,10 +305,18 @@ fn run_tui_test(
 
         // Log action
         match &step.action {
-            StepAction::Type { text } => { writeln!(report, "  {} type: {:?}", step_label, text).ok(); }
-            StepAction::Key { name } => { writeln!(report, "  {} key: {}", step_label, name).ok(); }
-            StepAction::Wait { ms } => { writeln!(report, "  {} wait: {}ms", step_label, ms).ok(); }
-            StepAction::SlashCommand { command } => { writeln!(report, "  {} slash: {}", step_label, command).ok(); }
+            StepAction::Type { text } => {
+                writeln!(report, "  {} type: {:?}", step_label, text).ok();
+            }
+            StepAction::Key { name } => {
+                writeln!(report, "  {} key: {}", step_label, name).ok();
+            }
+            StepAction::Wait { ms } => {
+                writeln!(report, "  {} wait: {}ms", step_label, ms).ok();
+            }
+            StepAction::SlashCommand { command } => {
+                writeln!(report, "  {} slash: {}", step_label, command).ok();
+            }
         }
 
         // Execute action

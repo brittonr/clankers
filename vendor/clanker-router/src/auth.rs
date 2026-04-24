@@ -498,16 +498,11 @@ impl AuthStorePaths {
     }
 
     pub fn write_path(&self) -> Option<&Path> {
-        self.runtime_file
-            .as_deref()
-            .or(self.auth_file.as_deref())
-            .or(self.seed_file.as_deref())
+        self.runtime_file.as_deref().or(self.auth_file.as_deref()).or(self.seed_file.as_deref())
     }
 
     pub fn pending_oauth_base_dir(&self) -> Option<PathBuf> {
-        self.write_path()
-            .and_then(Path::parent)
-            .map(Path::to_path_buf)
+        self.write_path().and_then(Path::parent).map(Path::to_path_buf)
     }
 
     pub fn load_effective(&self) -> EffectiveAuthStore {
@@ -515,11 +510,8 @@ impl AuthStorePaths {
             let store = self.auth_file.as_deref().map(AuthStore::load).unwrap_or_default();
             let mut sources = HashMap::new();
             for provider in store.configured_providers() {
-                let per_provider = store
-                    .list_accounts(provider)
-                    .into_iter()
-                    .map(|info| (info.name, AuthRecordSource::File))
-                    .collect();
+                let per_provider =
+                    store.list_accounts(provider).into_iter().map(|info| (info.name, AuthRecordSource::File)).collect();
                 sources.insert(provider.to_string(), per_provider);
             }
             return EffectiveAuthStore { store, sources };
@@ -566,9 +558,7 @@ impl AuthStorePaths {
     }
 
     pub fn mutate_write_store<F>(&self, mutate: F) -> crate::Result<()>
-    where
-        F: FnOnce(&mut AuthStore),
-    {
+    where F: FnOnce(&mut AuthStore) {
         let mut store = self.load_write_store();
         mutate(&mut store);
         self.save_write_store(&store)
@@ -786,21 +776,18 @@ fn openai_codex_refresh_form(refresh_token: &str) -> Vec<(&'static str, String)>
 
 fn build_openai_codex_auth_url() -> crate::Result<(String, String)> {
     let pkce = generate_pkce();
-    let url = url::Url::parse_with_params(
-        OPENAI_CODEX_AUTHORIZE_URL,
-        &[
-            ("response_type", "code"),
-            ("client_id", OPENAI_CODEX_CLIENT_ID),
-            ("redirect_uri", OPENAI_CODEX_REDIRECT_URI),
-            ("scope", OPENAI_CODEX_SCOPE),
-            ("code_challenge", pkce.challenge.as_str()),
-            ("code_challenge_method", "S256"),
-            ("state", pkce.verifier.as_str()),
-            ("id_token_add_organizations", "true"),
-            ("codex_cli_simplified_flow", "true"),
-            ("originator", "pi"),
-        ],
-    )
+    let url = url::Url::parse_with_params(OPENAI_CODEX_AUTHORIZE_URL, &[
+        ("response_type", "code"),
+        ("client_id", OPENAI_CODEX_CLIENT_ID),
+        ("redirect_uri", OPENAI_CODEX_REDIRECT_URI),
+        ("scope", OPENAI_CODEX_SCOPE),
+        ("code_challenge", pkce.challenge.as_str()),
+        ("code_challenge_method", "S256"),
+        ("state", pkce.verifier.as_str()),
+        ("id_token_add_organizations", "true"),
+        ("codex_cli_simplified_flow", "true"),
+        ("originator", "pi"),
+    ])
     .map_err(|e| crate::Error::Auth {
         message: format!("invalid OpenAI Codex authorization URL: {e}"),
     })?;
@@ -953,8 +940,7 @@ impl PendingOAuthLogin {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        let json = serde_json::to_string(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        let json = serde_json::to_string(self).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
         std::fs::write(path, json)
     }
 

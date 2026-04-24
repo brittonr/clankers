@@ -3,10 +3,11 @@
 //! Parses `.drv` files to extract build metadata the agent can reason about:
 //! builder, system, inputs, outputs, and filtered environment variables.
 
-use nix_compat::derivation::Derivation;
-use serde::Serialize;
 use std::collections::HashSet;
 use std::path::Path;
+
+use nix_compat::derivation::Derivation;
+use serde::Serialize;
 
 use crate::error::*;
 use crate::store_path::parse_store_path;
@@ -77,11 +78,9 @@ const MAX_VAR_LEN: usize = 2000;
 pub fn read_derivation(drv_path: &Path) -> Result<DerivationInfo, NixError> {
     let path_str = drv_path.display().to_string();
 
-    let bytes = std::fs::read(drv_path).map_err(|e| {
-        NixError::DerivationIo {
-            path: path_str.clone(),
-            source: e,
-        }
+    let bytes = std::fs::read(drv_path).map_err(|e| NixError::DerivationIo {
+        path: path_str.clone(),
+        source: e,
     })?;
 
     let drv = Derivation::from_aterm_bytes(&bytes).map_err(|e| NixError::DerivationParse {
@@ -89,18 +88,10 @@ pub fn read_derivation(drv_path: &Path) -> Result<DerivationInfo, NixError> {
         reason: format!("{e:?}"),
     })?;
 
-    let name = drv
-        .environment
-        .get("name")
-        .map(|v| v.to_string())
-        .unwrap_or_else(|| {
-            // Fall back to the drv filename
-            drv_path
-                .file_stem()
-                .and_then(|s| s.to_str())
-                .unwrap_or("unknown")
-                .to_string()
-        });
+    let name = drv.environment.get("name").map(|v| v.to_string()).unwrap_or_else(|| {
+        // Fall back to the drv filename
+        drv_path.file_stem().and_then(|s| s.to_str()).unwrap_or("unknown").to_string()
+    });
 
     let outputs = drv
         .outputs
@@ -130,11 +121,7 @@ pub fn read_derivation(drv_path: &Path) -> Result<DerivationInfo, NixError> {
         })
         .collect();
 
-    let input_srcs = drv
-        .input_sources
-        .iter()
-        .map(|sp| sp.to_absolute_path())
-        .collect();
+    let input_srcs = drv.input_sources.iter().map(|sp| sp.to_absolute_path()).collect();
 
     let build_env = filter_env(&drv.environment);
 
@@ -214,7 +201,10 @@ fn filter_env(env: &std::collections::BTreeMap<String, bstr::BString>) -> Vec<(S
 
 /// Build a tree representation of derivation dependencies.
 /// Recursion is bounded by max_depth parameter (typically 10).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_recursion, reason = "depth bounded by max_depth parameter"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_recursion, reason = "depth bounded by max_depth parameter")
+)]
 fn build_dep_tree(
     info: &DerivationInfo,
     lines: &mut Vec<String>,
@@ -235,14 +225,9 @@ fn build_dep_tree(
         let connector = if is_last { "└── " } else { "├── " };
 
         // Extract the human name from the drv name (strip .drv suffix)
-        let display_name = input_drv
-            .name
-            .strip_suffix(".drv")
-            .unwrap_or(&input_drv.name);
+        let display_name = input_drv.name.strip_suffix(".drv").unwrap_or(&input_drv.name);
 
-        let outputs_str = if input_drv.requested_outputs.len() == 1
-            && input_drv.requested_outputs[0] == "out"
-        {
+        let outputs_str = if input_drv.requested_outputs.len() == 1 && input_drv.requested_outputs[0] == "out" {
             String::new()
         } else {
             format!(" ({})", input_drv.requested_outputs.join(", "))
@@ -269,9 +254,7 @@ fn build_dep_tree(
         let is_last = idx == total;
         let connector = if is_last { "└── " } else { "├── " };
 
-        let name = parse_store_path(src_path)
-            .map(|p| p.name)
-            .unwrap_or_else(|_| src_path.clone());
+        let name = parse_store_path(src_path).map(|p| p.name).unwrap_or_else(|_| src_path.clone());
 
         lines.push(format!("{prefix}{connector}{name} (source)"));
     }
@@ -285,14 +268,8 @@ mod tests {
     fn filter_env_includes_name() {
         let mut env = std::collections::BTreeMap::new();
         env.insert("name".to_string(), bstr::BString::from("hello-2.12.1"));
-        env.insert(
-            "__sandboxProfile".to_string(),
-            bstr::BString::from("should be excluded"),
-        );
-        env.insert(
-            "passthruFoo".to_string(),
-            bstr::BString::from("should be excluded"),
-        );
+        env.insert("__sandboxProfile".to_string(), bstr::BString::from("should be excluded"));
+        env.insert("passthruFoo".to_string(), bstr::BString::from("should be excluded"));
 
         let filtered = filter_env(&env);
         let keys: Vec<&str> = filtered.iter().map(|(k, _)| k.as_str()).collect();

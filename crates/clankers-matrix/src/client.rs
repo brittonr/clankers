@@ -462,7 +462,10 @@ impl MatrixClient {
     ///
     /// Returns up to `limit` messages in reverse chronological order
     /// (newest first). Messages are decrypted if possible.
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "UInt::new(20) is a constant that always succeeds"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(no_unwrap, reason = "UInt::new(20) is a constant that always succeeds")
+    )]
     pub async fn message_history(&self, room_id: &RoomId, limit: usize) -> Result<Vec<HistoryMessage>, MatrixError> {
         let client = self.client.as_ref().ok_or(MatrixError::NotLoggedIn)?;
         let room = client.get_room(room_id).ok_or_else(|| MatrixError::RoomNotFound(room_id.to_string()))?;

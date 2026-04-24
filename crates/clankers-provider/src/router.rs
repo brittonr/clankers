@@ -1789,6 +1789,32 @@ mod tests {
         }
     }
 
+    struct StatuslessAuthLikeRouterProvider {
+        models: Vec<Model>,
+    }
+
+    #[async_trait]
+    impl clanker_router::Provider for StatuslessAuthLikeRouterProvider {
+        async fn complete(
+            &self,
+            _request: clanker_router::CompletionRequest,
+            _tx: mpsc::Sender<clanker_router::streaming::StreamEvent>,
+        ) -> std::result::Result<(), clanker_router::Error> {
+            Err(clanker_router::Error::Provider {
+                message: "Invalid API key".into(),
+                status: None,
+            })
+        }
+
+        fn models(&self) -> &[Model] {
+            &self.models
+        }
+
+        fn name(&self) -> &str {
+            "openai-codex"
+        }
+    }
+
     struct ProbeFailureCodexRouterProvider {
         models: Vec<Model>,
     }
@@ -1855,6 +1881,24 @@ mod tests {
             err.message,
             "auth error: authenticated but not entitled for Codex use. ChatGPT Plus or Pro is required for openai-codex"
         );
+        assert_eq!(err.status_code(), None);
+    }
+
+    #[tokio::test]
+    async fn test_routed_statusless_auth_like_provider_error_stays_non_retryable() {
+        let router = RouterProvider::new(vec![(
+            "openai-codex".to_string(),
+            Arc::new(RouterCompatAdapter::new(Arc::new(StatuslessAuthLikeRouterProvider {
+                models: codex_router_models(),
+            }))),
+        )]);
+
+        let (tx, _rx) = mpsc::channel(8);
+        let err = router
+            .complete(explicit_codex_request(), tx)
+            .await
+            .expect_err("statusless auth-like provider error should fail closed");
+        assert_eq!(err.message, "provider error: Invalid API key");
         assert_eq!(err.status_code(), None);
     }
 

@@ -6,19 +6,27 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use clankers::message::{
-    AgentMessage, AssistantMessage, Content, MessageId, StopReason, Usage, UserMessage,
-};
-use clankers::modes::daemon::agent_process::{
-    get_or_create_keyed_session, prompt_and_collect,
-};
-use clankers::modes::daemon::session_store::{
-    SessionCatalog, SessionCatalogEntry, SessionLifecycle,
-};
+use clankers::message::AgentMessage;
+use clankers::message::AssistantMessage;
+use clankers::message::Content;
+use clankers::message::MessageId;
+use clankers::message::StopReason;
+use clankers::message::Usage;
+use clankers::message::UserMessage;
+use clankers::modes::daemon::agent_process::get_or_create_keyed_session;
+use clankers::modes::daemon::agent_process::prompt_and_collect;
+use clankers::modes::daemon::session_store::SessionCatalog;
+use clankers::modes::daemon::session_store::SessionCatalogEntry;
+use clankers::modes::daemon::session_store::SessionLifecycle;
 use clankers::modes::daemon::socket_bridge::SessionFactory;
-use clankers::provider::streaming::{ContentDelta, MessageMetadata, StreamEvent};
-use clankers::provider::{CompletionRequest, Model, Provider};
-use clankers_controller::transport::{DaemonState, SessionHandle};
+use clankers::provider::CompletionRequest;
+use clankers::provider::Model;
+use clankers::provider::Provider;
+use clankers::provider::streaming::ContentDelta;
+use clankers::provider::streaming::MessageMetadata;
+use clankers::provider::streaming::StreamEvent;
+use clankers_controller::transport::DaemonState;
+use clankers_controller::transport::SessionHandle;
 use clankers_protocol::SessionKey;
 
 fn temp_catalog() -> (tempfile::TempDir, Arc<SessionCatalog>) {
@@ -79,10 +87,7 @@ fn checkpoint_transitions_active_to_suspended() {
     catalog.insert_session(&make_entry("s3", SessionLifecycle::Active));
 
     // Checkpoint: what run_daemon does on shutdown
-    let suspended = catalog.transition_all(
-        SessionLifecycle::Active,
-        SessionLifecycle::Suspended,
-    );
+    let suspended = catalog.transition_all(SessionLifecycle::Active, SessionLifecycle::Suspended);
 
     assert_eq!(suspended, 3);
     assert_eq!(catalog.list_by_state(SessionLifecycle::Active).len(), 0);
@@ -99,14 +104,8 @@ fn checkpoint_preserves_tombstoned() {
     catalog.transition_all(SessionLifecycle::Active, SessionLifecycle::Suspended);
 
     // Tombstoned stays tombstoned
-    assert_eq!(
-        catalog.get_session("dead").unwrap().state,
-        SessionLifecycle::Tombstoned
-    );
-    assert_eq!(
-        catalog.get_session("alive").unwrap().state,
-        SessionLifecycle::Suspended
-    );
+    assert_eq!(catalog.get_session("dead").unwrap().state, SessionLifecycle::Tombstoned);
+    assert_eq!(catalog.get_session("alive").unwrap().state, SessionLifecycle::Suspended);
 }
 
 #[test]
@@ -136,10 +135,7 @@ fn crash_recovery_marks_stale_active_as_suspended() {
     catalog.insert_session(&make_entry("already-suspended", SessionLifecycle::Suspended));
 
     // What run_daemon does on startup
-    let recovered = catalog.transition_all(
-        SessionLifecycle::Active,
-        SessionLifecycle::Suspended,
-    );
+    let recovered = catalog.transition_all(SessionLifecycle::Active, SessionLifecycle::Suspended);
 
     assert_eq!(recovered, 2);
     assert_eq!(catalog.list_by_state(SessionLifecycle::Active).len(), 0);
@@ -167,10 +163,7 @@ fn suspended_sessions_populate_daemon_state() {
     let key_mappings = catalog.list_keys();
 
     for entry in &suspended {
-        state.sessions.insert(
-            entry.session_id.clone(),
-            make_handle(&entry.session_id, false),
-        );
+        state.sessions.insert(entry.session_id.clone(), make_handle(&entry.session_id, false));
     }
     for (k, session_id) in &key_mappings {
         if state.sessions.contains_key(session_id) {
@@ -193,12 +186,8 @@ fn suspended_sessions_populate_daemon_state() {
 #[test]
 fn session_summaries_include_suspended() {
     let mut state = DaemonState::new();
-    state
-        .sessions
-        .insert("live".to_string(), make_handle("live", true));
-    state
-        .sessions
-        .insert("dead".to_string(), make_handle("dead", false));
+    state.sessions.insert("live".to_string(), make_handle("live", true));
+    state.sessions.insert("dead".to_string(), make_handle("dead", false));
 
     let summaries = state.session_summaries();
     assert_eq!(summaries.len(), 2);
@@ -259,7 +248,8 @@ fn restart_exit_code_is_75() {
 
 #[test]
 fn restart_daemon_command_serialization() {
-    use clankers_protocol::control::{ControlCommand, ControlResponse};
+    use clankers_protocol::control::ControlCommand;
+    use clankers_protocol::control::ControlResponse;
 
     let cmd = ControlCommand::RestartDaemon;
     let json = serde_json::to_string(&cmd).unwrap();
@@ -294,15 +284,16 @@ impl Provider for RecoveryEchoProvider {
         tx: tokio::sync::mpsc::Sender<StreamEvent>,
     ) -> clankers::provider::error::Result<()> {
         let saw_old_user = request.messages.iter().any(|msg| match msg {
-            AgentMessage::User(user) => user.content.iter().any(|content| {
-                matches!(content, Content::Text { text } if text == "hello from before")
-            }),
+            AgentMessage::User(user) => user
+                .content
+                .iter()
+                .any(|content| matches!(content, Content::Text { text } if text == "hello from before")),
             _ => false,
         });
         let saw_old_assistant = request.messages.iter().any(|msg| match msg {
-            AgentMessage::Assistant(asst) => asst.content.iter().any(|content| {
-                matches!(content, Content::Text { text } if text == "old reply")
-            }),
+            AgentMessage::Assistant(asst) => {
+                asst.content.iter().any(|content| matches!(content, Content::Text { text } if text == "old reply"))
+            }
             _ => false,
         });
         let current = request
@@ -317,15 +308,8 @@ impl Provider for RecoveryEchoProvider {
                 _ => None,
             })
             .unwrap_or_default();
-        let reply = format!(
-            "recovered={} current={}",
-            saw_old_user && saw_old_assistant,
-            current
-        );
-        self.observed_requests
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push(reply.clone());
+        let reply = format!("recovered={} current={}", saw_old_user && saw_old_assistant, current);
+        self.observed_requests.lock().unwrap_or_else(|e| e.into_inner()).push(reply.clone());
 
         tx.send(StreamEvent::MessageStart {
             message: MessageMetadata {
@@ -348,9 +332,7 @@ impl Provider for RecoveryEchoProvider {
         })
         .await
         .ok();
-        tx.send(StreamEvent::ContentBlockStop { index: 0 })
-            .await
-            .ok();
+        tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
         tx.send(StreamEvent::MessageDelta {
             stop_reason: Some("end_turn".to_string()),
             usage: Usage {
@@ -451,10 +433,7 @@ async fn keyed_matrix_prompt_recovers_suspended_session_before_replying() {
     catalog.insert_key(&key, &session_id);
 
     let mut daemon_state = DaemonState::new();
-    daemon_state.sessions.insert(
-        session_id.clone(),
-        make_handle(&session_id, false),
-    );
+    daemon_state.sessions.insert(session_id.clone(), make_handle(&session_id, false));
     daemon_state.register_key(key.clone(), session_id.clone());
 
     let state = tokio::sync::Mutex::new(daemon_state);
@@ -479,10 +458,7 @@ async fn keyed_matrix_prompt_recovers_suspended_session_before_replying() {
     assert_eq!(reused_session_id, session_id);
 
     let _response = prompt_and_collect(&cmd_tx, &event_tx, "followup".to_string(), vec![]).await;
-    let observed = observed_requests
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
+    let observed = observed_requests.lock().unwrap_or_else(|e| e.into_inner()).clone();
     assert_eq!(observed, vec!["recovered=true current=followup".to_string()]);
 
     let st = state.lock().await;
@@ -492,8 +468,5 @@ async fn keyed_matrix_prompt_recovers_suspended_session_before_replying() {
     assert_eq!(handle.state, "active");
     drop(st);
 
-    assert_eq!(
-        catalog.get_session(&session_id).unwrap().state,
-        SessionLifecycle::Active
-    );
+    assert_eq!(catalog.get_session(&session_id).unwrap().state, SessionLifecycle::Active);
 }

@@ -114,28 +114,19 @@ fn render_mode_indicators<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a
         ConnectionMode::Attached => {
             spans.push(Span::styled(
                 " ATTACHED ",
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Blue)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Black).bg(Color::Blue).add_modifier(Modifier::BOLD),
             ));
         }
         ConnectionMode::Remote { ref node_id_short } => {
             spans.push(Span::styled(
                 format!(" 🌐 {node_id_short} "),
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Cyan)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Black).bg(Color::Cyan).add_modifier(Modifier::BOLD),
             ));
         }
         ConnectionMode::Reconnecting => {
             spans.push(Span::styled(
                 " RECONNECTING ",
-                Style::default()
-                    .fg(Color::Black)
-                    .bg(Color::Red)
-                    .add_modifier(Modifier::BOLD),
+                Style::default().fg(Color::Black).bg(Color::Red).add_modifier(Modifier::BOLD),
             ));
         }
     }

@@ -57,14 +57,16 @@ pub fn export_markdown(path: &Path) -> Result<String> {
                                     "**Tool call**: `{}`\n```json\n{}\n```\n\n",
                                     name,
                                     serde_json::to_string_pretty(input).unwrap_or_default()
-                                ).ok();
+                                )
+                                .ok();
                             }
                             Content::Thinking { thinking, .. } => {
                                 write!(
                                     out,
                                     "<details>\n<summary>💭 Thinking</summary>\n\n{}\n\n</details>\n\n",
                                     thinking
-                                ).ok();
+                                )
+                                .ok();
                             }
                             _ => {}
                         }
@@ -105,7 +107,8 @@ pub fn export_text(path: &Path) -> Result<String> {
                     h.session_id,
                     h.model,
                     h.created_at.format("%Y-%m-%d %H:%M")
-                ).ok();
+                )
+                .ok();
                 writeln!(out, "CWD: {}", h.cwd).ok();
                 out.push_str(&"─".repeat(60));
                 out.push('\n');

@@ -16,7 +16,13 @@ use std::path::PathBuf;
 ///
 /// Returns `Ok(true)` if applied, `Ok(false)` if unsupported, `Err` on failure.
 #[cfg(target_os = "linux")]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic — splitting would fragment readability"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(
+        function_length,
+        reason = "sequential setup/dispatch logic — splitting would fragment readability"
+    )
+)]
 pub fn apply_landlock_to_current(project_root: &Path) -> Result<bool, String> {
     use std::os::unix::io::AsRawFd;
 

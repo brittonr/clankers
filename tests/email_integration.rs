@@ -259,10 +259,7 @@ fn search_email_no_filters() {
     assert_eq!(resp["status"], "ok", "search_email failed: {:?}", resp);
     let result = resp["result"].as_str().expect("result should be a string");
     // Should have found at least one message (we just sent test emails above)
-    assert!(
-        result.contains("Found") || result.contains("No messages"),
-        "unexpected search result: {result}"
-    );
+    assert!(result.contains("Found") || result.contains("No messages"), "unexpected search result: {result}");
 }
 
 #[test]

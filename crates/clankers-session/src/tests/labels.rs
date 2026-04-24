@@ -47,10 +47,8 @@ fn test_record_label_persisted_in_annotations() {
     // Verify via entries loaded from the document
     let entries = mgr.load_tree().unwrap();
     // The label should be in the entries as a Label type
-    let all_entries = automerge_store::to_session_entries(
-        &automerge_store::load_document(mgr.file_path()).unwrap(),
-    )
-    .unwrap();
+    let all_entries =
+        automerge_store::to_session_entries(&automerge_store::load_document(mgr.file_path()).unwrap()).unwrap();
     let has_label = all_entries.iter().any(|e| {
         if let SessionEntry::Label(label) = e {
             label.label == "my-label" && label.target_message_id == id

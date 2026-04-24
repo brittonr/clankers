@@ -72,9 +72,7 @@ impl Tool for NixEvalTool {
             (Some(e), _) => e.to_string(),
             (None, Some(f)) => format!("import {f}"),
             (None, None) => {
-                return ToolResult::error(
-                    "At least one of 'expr' or 'file' must be provided",
-                );
+                return ToolResult::error("At least one of 'expr' or 'file' must be provided");
             }
         };
 
@@ -89,8 +87,8 @@ impl Tool for NixEvalTool {
         // Try in-process pure evaluation first
         match clankers_nix::evaluate(&full_expr) {
             Ok(result) => {
-                let json_str = serde_json::to_string_pretty(&result.value)
-                    .unwrap_or_else(|_| format!("{:?}", result.value));
+                let json_str =
+                    serde_json::to_string_pretty(&result.value).unwrap_or_else(|_| format!("{:?}", result.value));
 
                 let mut output = json_str;
                 if !result.warnings.is_empty() {
@@ -129,14 +127,11 @@ async fn fallback_nix_eval_cli(expr: &str, _ctx: &ToolContext, timeout_secs: u64
     };
 
     let output = if timeout_secs > 0 {
-        match tokio::time::timeout(Duration::from_secs(timeout_secs), child.wait_with_output()).await
-        {
+        match tokio::time::timeout(Duration::from_secs(timeout_secs), child.wait_with_output()).await {
             Ok(Ok(output)) => output,
             Ok(Err(e)) => return ToolResult::error(format!("nix eval failed: {e}")),
             Err(_) => {
-                return ToolResult::error(format!(
-                    "nix eval timed out after {timeout_secs}s"
-                ));
+                return ToolResult::error(format!("nix eval timed out after {timeout_secs}s"));
             }
         }
     } else {
@@ -151,8 +146,7 @@ async fn fallback_nix_eval_cli(expr: &str, _ctx: &ToolContext, timeout_secs: u64
         // Try to pretty-print the JSON
         match serde_json::from_str::<serde_json::Value>(&stdout) {
             Ok(val) => {
-                let pretty = serde_json::to_string_pretty(&val)
-                    .unwrap_or_else(|_| stdout.to_string());
+                let pretty = serde_json::to_string_pretty(&val).unwrap_or_else(|_| stdout.to_string());
                 ToolResult::text(pretty)
             }
             Err(_) => ToolResult::text(stdout.to_string()),

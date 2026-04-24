@@ -6,10 +6,12 @@
 use std::sync::Arc;
 
 use clankers_controller::transport::DaemonState;
-use clankers_protocol::control::{ControlCommand, ControlResponse};
+use clankers_protocol::DaemonEvent;
+use clankers_protocol::SessionCommand;
+use clankers_protocol::control::ControlCommand;
+use clankers_protocol::control::ControlResponse;
 use clankers_protocol::frame;
 use clankers_protocol::types::Handshake;
-use clankers_protocol::{DaemonEvent, SessionCommand};
 use tokio::net::UnixStream;
 use tokio::sync::Mutex;
 
@@ -100,9 +102,7 @@ async fn test_control_socket_list_empty() {
     let stream = UnixStream::connect(&sock_path).await.unwrap();
     let (mut reader, mut writer) = stream.into_split();
 
-    frame::write_frame(&mut writer, &ControlCommand::ListSessions)
-        .await
-        .unwrap();
+    frame::write_frame(&mut writer, &ControlCommand::ListSessions).await.unwrap();
     let resp: ControlResponse = frame::read_frame(&mut reader).await.unwrap();
 
     assert!(matches!(resp, ControlResponse::Sessions(ref s) if s.is_empty()));
@@ -162,17 +162,14 @@ async fn test_control_socket_create_session() {
     let stream = UnixStream::connect(&sock_path).await.unwrap();
     let (mut reader, mut writer) = stream.into_split();
 
-    frame::write_frame(
-        &mut writer,
-        &ControlCommand::CreateSession {
-            model: Some("opus".to_string()),
-            system_prompt: None,
-            token: None,
-            resume_id: None,
-            continue_last: false,
-            cwd: None,
-        },
-    )
+    frame::write_frame(&mut writer, &ControlCommand::CreateSession {
+        model: Some("opus".to_string()),
+        system_prompt: None,
+        token: None,
+        resume_id: None,
+        continue_last: false,
+        cwd: None,
+    })
     .await
     .unwrap();
 
@@ -210,15 +207,12 @@ async fn test_control_socket_create_session() {
     let (mut sr, mut sw) = session_stream.into_split();
 
     // Send handshake
-    frame::write_frame(
-        &mut sw,
-        &Handshake {
-            protocol_version: 1,
-            client_name: "test-client".to_string(),
-            token: None,
-            session_id: Some(session_id.clone()),
-        },
-    )
+    frame::write_frame(&mut sw, &Handshake {
+        protocol_version: 1,
+        client_name: "test-client".to_string(),
+        token: None,
+        session_id: Some(session_id.clone()),
+    })
     .await
     .unwrap();
 
@@ -230,12 +224,7 @@ async fn test_control_socket_create_session() {
     );
 
     // Send a command and check that we get a response
-    frame::write_frame(
-        &mut sw,
-        &SessionCommand::GetSystemPrompt,
-    )
-    .await
-    .unwrap();
+    frame::write_frame(&mut sw, &SessionCommand::GetSystemPrompt).await.unwrap();
 
     // Give the driver time to process
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -247,9 +236,7 @@ async fn test_control_socket_create_session() {
     );
 
     // Disconnect
-    frame::write_frame(&mut sw, &SessionCommand::Disconnect)
-        .await
-        .unwrap();
+    frame::write_frame(&mut sw, &SessionCommand::Disconnect).await.unwrap();
 
     let _ = shutdown_tx.send(true);
     let _ = tokio::time::timeout(std::time::Duration::from_secs(2), server).await;

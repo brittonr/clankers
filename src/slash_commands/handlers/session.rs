@@ -96,7 +96,8 @@ fn handle_list(ctx: &mut SlashContext<'_>, args: &str) {
                 summary.model,
                 marker,
                 preview,
-            ).ok();
+            )
+            .ok();
         } else {
             let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("?");
             writeln!(out, "  {}. {}{}", i + 1, name, marker).ok();

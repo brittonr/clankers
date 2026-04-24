@@ -124,18 +124,11 @@ fn ollama_available() -> bool {
     // Check the model is pulled via a blocking HTTP call in a thread
     // (avoid nested runtime panic).
     let ok = std::thread::spawn(|| {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(2))
-            .build()
-            .ok()?;
+        let client = reqwest::blocking::Client::builder().timeout(Duration::from_secs(2)).build().ok()?;
         let resp = client.get(format!("{}/models", OLLAMA_BASE)).send().ok()?;
         let body: serde_json::Value = resp.json().ok()?;
         let models = body.get("data")?.as_array()?;
-        let found = models.iter().any(|m| {
-            m.get("id")
-                .and_then(|v| v.as_str())
-                == Some(MODEL_ID)
-        });
+        let found = models.iter().any(|m| m.get("id").and_then(|v| v.as_str()) == Some(MODEL_ID));
         Some(found)
     })
     .join()
@@ -153,18 +146,11 @@ fn ollama_available() -> bool {
 fn model_available(model_id: &str) -> bool {
     let id = model_id.to_string();
     std::thread::spawn(move || {
-        let client = reqwest::blocking::Client::builder()
-            .timeout(Duration::from_secs(2))
-            .build()
-            .ok()?;
+        let client = reqwest::blocking::Client::builder().timeout(Duration::from_secs(2)).build().ok()?;
         let resp = client.get(format!("{}/models", OLLAMA_BASE)).send().ok()?;
         let body: serde_json::Value = resp.json().ok()?;
         let models = body.get("data")?.as_array()?;
-        Some(models.iter().any(|m| {
-            m.get("id")
-                .and_then(|v| v.as_str())
-                .is_some_and(|mid| mid == id)
-        }))
+        Some(models.iter().any(|m| m.get("id").and_then(|v| v.as_str()).is_some_and(|mid| mid == id)))
     })
     .join()
     .ok()
@@ -202,10 +188,7 @@ async fn ollama_simple_completion() {
         matches!(events.first(), Some(StreamEvent::MessageStart { .. })),
         "first event should be MessageStart"
     );
-    assert!(
-        matches!(events.last(), Some(StreamEvent::MessageStop)),
-        "last event should be MessageStop"
-    );
+    assert!(matches!(events.last(), Some(StreamEvent::MessageStop)), "last event should be MessageStop");
 
     // Verify we got at least one MessageDelta event (stop reason + usage).
     //
@@ -213,9 +196,7 @@ async fn ollama_simple_completion() {
     // (empty array), but the router's SSE handler checks `choices.is_none()`
     // which only matches JSON null. This means usage tokens may be 0 in the
     // MessageDelta events. This is a known upstream issue in clanker-router.
-    let has_delta = events
-        .iter()
-        .any(|ev| matches!(ev, StreamEvent::MessageDelta { .. }));
+    let has_delta = events.iter().any(|ev| matches!(ev, StreamEvent::MessageDelta { .. }));
     assert!(has_delta, "expected at least one MessageDelta event");
 }
 
@@ -227,18 +208,12 @@ async fn ollama_message_metadata() {
     }
 
     let router = ollama_router();
-    let events = collect_events(&router, simple_request(MODEL_ID, "Hi"))
-        .await
-        .expect("completion failed");
+    let events = collect_events(&router, simple_request(MODEL_ID, "Hi")).await.expect("completion failed");
 
     if let Some(StreamEvent::MessageStart { message }) = events.first() {
         assert_eq!(message.role, "assistant");
         // Ollama returns the model name; it may include a tag suffix
-        assert!(
-            message.model.contains("qwen"),
-            "expected model to contain 'qwen', got '{}'",
-            message.model
-        );
+        assert!(message.model.contains("qwen"), "expected model to contain 'qwen', got '{}'", message.model);
     } else {
         panic!("first event was not MessageStart");
     }
@@ -261,10 +236,7 @@ async fn ollama_system_prompt() {
 
     // The model should mention "Rusty" somewhere (small models can be flaky,
     // but a direct identity instruction usually works).
-    assert!(
-        text.contains("rusty"),
-        "expected response to contain 'rusty' given system prompt, got: {text}"
-    );
+    assert!(text.contains("rusty"), "expected response to contain 'rusty' given system prompt, got: {text}");
 }
 
 /// Temperature=0 should produce deterministic output across two calls.
@@ -306,10 +278,7 @@ async fn ollama_max_tokens_limit() {
     // 20 tokens is roughly 15-60 chars depending on tokenizer.
     // The model should have been cut off well before 500 words.
     let word_count = text.split_whitespace().count();
-    assert!(
-        word_count < 60,
-        "expected short output with max_tokens=20, got {word_count} words: {text}"
-    );
+    assert!(word_count < 60, "expected short output with max_tokens=20, got {word_count} words: {text}");
 
     // Check the stop reason indicates truncation
     let truncated = events.iter().any(|ev| {
@@ -345,10 +314,7 @@ async fn ollama_multi_turn() {
 
     let events = collect_events(&router, req).await.expect("completion failed");
     let text = extract_text(&events).to_lowercase();
-    assert!(
-        text.contains("blue"),
-        "model should recall 'blue' from conversation history, got: {text}"
-    );
+    assert!(text.contains("blue"), "model should recall 'blue' from conversation history, got: {text}");
 }
 
 /// Streaming: events arrive in the correct order.
@@ -392,10 +358,7 @@ async fn ollama_streaming_event_order() {
     assert_eq!(*event_types.last().unwrap(), "MessageStop");
 
     // At least one ContentBlockDelta should be present
-    assert!(
-        event_types.contains(&"ContentBlockDelta"),
-        "expected at least one ContentBlockDelta"
-    );
+    assert!(event_types.contains(&"ContentBlockDelta"), "expected at least one ContentBlockDelta");
 }
 
 /// Router with DB: usage is recorded after a completion.
@@ -412,9 +375,7 @@ async fn ollama_usage_tracking() {
     let mut router = Router::with_db(MODEL_ID, db);
     router.register_provider(ollama_provider(vec![ollama_model(MODEL_ID)]));
 
-    let _ = collect_events(&router, simple_request(MODEL_ID, "Say yes."))
-        .await
-        .expect("completion failed");
+    let _ = collect_events(&router, simple_request(MODEL_ID, "Say yes.")).await.expect("completion failed");
 
     // Check usage was recorded.
     //
@@ -442,9 +403,7 @@ async fn ollama_request_log() {
     let mut router = Router::with_db(MODEL_ID, db);
     router.register_provider(ollama_provider(vec![ollama_model(MODEL_ID)]));
 
-    let _ = collect_events(&router, simple_request(MODEL_ID, "Ping"))
-        .await
-        .expect("completion failed");
+    let _ = collect_events(&router, simple_request(MODEL_ID, "Ping")).await.expect("completion failed");
 
     let log = router.db().unwrap().request_log();
     let entries = log.recent(10).expect("log query");
@@ -560,9 +519,7 @@ async fn ollama_model_routing() {
     assert!(!extract_text(&events).is_empty());
 
     // Request the 3b model
-    let events = collect_events(&router, simple_request(MODEL_ALT, "Hi"))
-        .await
-        .expect("alt model completion failed");
+    let events = collect_events(&router, simple_request(MODEL_ALT, "Hi")).await.expect("alt model completion failed");
     assert!(!extract_text(&events).is_empty());
 }
 
@@ -602,14 +559,8 @@ async fn ollama_with_tool_definitions() {
 
     // The model should produce some output — either a text response or a
     // tool call. Either way, we should get a valid event sequence.
-    assert!(
-        matches!(events.first(), Some(StreamEvent::MessageStart { .. })),
-        "expected MessageStart"
-    );
-    assert!(
-        matches!(events.last(), Some(StreamEvent::MessageStop)),
-        "expected MessageStop"
-    );
+    assert!(matches!(events.first(), Some(StreamEvent::MessageStart { .. })), "expected MessageStart");
+    assert!(matches!(events.last(), Some(StreamEvent::MessageStop)), "expected MessageStop");
 }
 
 /// Empty message list doesn't crash (some providers handle this gracefully).
@@ -738,10 +689,7 @@ async fn ollama_switch_history() {
     assert_eq!(history[1].reason, ModelSwitchReason::UserRequest);
     assert_eq!(history[1].from, MODEL_ID);
     assert_eq!(history[1].to, MODEL_ALT);
-    assert_eq!(
-        history[2].reason,
-        ModelSwitchReason::RoleSwitch { role: "smol".into() }
-    );
+    assert_eq!(history[2].reason, ModelSwitchReason::RoleSwitch { role: "smol".into() });
     assert_eq!(history[3].reason, ModelSwitchReason::ConfigChange);
 }
 
@@ -789,12 +737,8 @@ async fn ollama_switch_models_have_distinct_metadata() {
 
     let router = two_model_router();
 
-    let events1 = collect_events(&router, simple_request(MODEL_ID, "Hi"))
-        .await
-        .expect("model 1 failed");
-    let events2 = collect_events(&router, simple_request(MODEL_ALT, "Hi"))
-        .await
-        .expect("model 2 failed");
+    let events1 = collect_events(&router, simple_request(MODEL_ID, "Hi")).await.expect("model 1 failed");
+    let events2 = collect_events(&router, simple_request(MODEL_ALT, "Hi")).await.expect("model 2 failed");
 
     let model1 = match events1.first() {
         Some(StreamEvent::MessageStart { message }) => message.model.clone(),
@@ -805,10 +749,7 @@ async fn ollama_switch_models_have_distinct_metadata() {
         _ => panic!("expected MessageStart for model 2"),
     };
 
-    assert_ne!(
-        model1, model2,
-        "different models should report different model names in metadata"
-    );
+    assert_ne!(model1, model2, "different models should report different model names in metadata");
 }
 
 /// Model switch with DB: usage is tracked per-model across switches.
@@ -823,21 +764,14 @@ async fn ollama_switch_usage_per_model() {
     let db = RouterDb::open(&tmp.path().join("switch_usage.db")).expect("open db");
 
     let mut router = Router::with_db(MODEL_ID, db);
-    router.register_provider(ollama_provider(vec![
-        ollama_model(MODEL_ID),
-        ollama_model(MODEL_ALT),
-    ]));
+    router.register_provider(ollama_provider(vec![ollama_model(MODEL_ID), ollama_model(MODEL_ALT)]));
 
     // Complete on model 1
-    let _ = collect_events(&router, simple_request(MODEL_ID, "Hi"))
-        .await
-        .expect("model 1 failed");
+    let _ = collect_events(&router, simple_request(MODEL_ID, "Hi")).await.expect("model 1 failed");
 
     // Switch and complete on model 2
     router.switch_model(MODEL_ALT, ModelSwitchReason::UserRequest);
-    let _ = collect_events(&router, simple_request(MODEL_ALT, "Hi"))
-        .await
-        .expect("model 2 failed");
+    let _ = collect_events(&router, simple_request(MODEL_ALT, "Hi")).await.expect("model 2 failed");
 
     // Both models should appear in the request log
     let log = router.db().unwrap().request_log();
@@ -845,14 +779,8 @@ async fn ollama_switch_usage_per_model() {
     assert!(entries.len() >= 2, "expected at least 2 log entries, got {}", entries.len());
 
     let models_logged: Vec<&str> = entries.iter().map(|e| e.model.as_str()).collect();
-    assert!(
-        models_logged.contains(&MODEL_ID),
-        "log should contain {MODEL_ID}, got {models_logged:?}"
-    );
-    assert!(
-        models_logged.contains(&MODEL_ALT),
-        "log should contain {MODEL_ALT}, got {models_logged:?}"
-    );
+    assert!(models_logged.contains(&MODEL_ID), "log should contain {MODEL_ID}, got {models_logged:?}");
+    assert!(models_logged.contains(&MODEL_ALT), "log should contain {MODEL_ALT}, got {models_logged:?}");
 }
 
 // ── Dynamic model switching tests ───────────────────────────────────────
@@ -877,9 +805,7 @@ async fn ollama_dynamic_slot_switch() {
 
     // Turn 1: complete on MODEL_ID
     let mut active_model = MODEL_ID.to_string();
-    let events1 = collect_events(&router, simple_request(&active_model, "Say hello."))
-        .await
-        .expect("turn 1 failed");
+    let events1 = collect_events(&router, simple_request(&active_model, "Say hello.")).await.expect("turn 1 failed");
     assert!(!extract_text(&events1).is_empty(), "turn 1 should produce output");
 
     // Simulate SwitchModelTool writing to the slot
@@ -892,9 +818,7 @@ async fn ollama_dynamic_slot_switch() {
     assert_eq!(active_model, MODEL_ALT, "active model should have switched");
 
     // Turn 2: complete on MODEL_ALT
-    let events2 = collect_events(&router, simple_request(&active_model, "Say goodbye."))
-        .await
-        .expect("turn 2 failed");
+    let events2 = collect_events(&router, simple_request(&active_model, "Say goodbye.")).await.expect("turn 2 failed");
     assert!(!extract_text(&events2).is_empty(), "turn 2 should produce output");
 
     // Verify the two turns used different models (via MessageStart metadata)
@@ -925,21 +849,18 @@ async fn ollama_dynamic_switch_preserves_context() {
 
     // Turn 1 on MODEL_ID: establish a fact
     let mut active_model = MODEL_ID.to_string();
-    let events1 = collect_events(
-        &router,
-        CompletionRequest {
-            model: active_model.clone(),
-            messages: vec![json!({"role": "user", "content": "The secret word is 'banana'. Acknowledge this."})],
-            system_prompt: None,
-            max_tokens: Some(32),
-            temperature: Some(0.0),
-            tools: vec![],
-            thinking: None,
-            no_cache: false,
-            cache_ttl: None,
-            extra_params: HashMap::new(),
-        },
-    )
+    let events1 = collect_events(&router, CompletionRequest {
+        model: active_model.clone(),
+        messages: vec![json!({"role": "user", "content": "The secret word is 'banana'. Acknowledge this."})],
+        system_prompt: None,
+        max_tokens: Some(32),
+        temperature: Some(0.0),
+        tools: vec![],
+        thinking: None,
+        no_cache: false,
+        cache_ttl: None,
+        extra_params: HashMap::new(),
+    })
     .await
     .expect("turn 1 failed");
     let response1 = extract_text(&events1);
@@ -948,32 +869,26 @@ async fn ollama_dynamic_switch_preserves_context() {
     active_model = MODEL_ALT.to_string();
 
     // Turn 2 on MODEL_ALT: ask about the fact, passing full history
-    let events2 = collect_events(
-        &router,
-        CompletionRequest {
-            model: active_model.clone(),
-            messages: vec![
-                json!({"role": "user", "content": "The secret word is 'banana'. Acknowledge this."}),
-                json!({"role": "assistant", "content": response1}),
-                json!({"role": "user", "content": "What is the secret word? Reply with just the word."}),
-            ],
-            system_prompt: None,
-            max_tokens: Some(16),
-            temperature: Some(0.0),
-            tools: vec![],
-            thinking: None,
-            no_cache: false,
-            cache_ttl: None,
-            extra_params: HashMap::new(),
-        },
-    )
+    let events2 = collect_events(&router, CompletionRequest {
+        model: active_model.clone(),
+        messages: vec![
+            json!({"role": "user", "content": "The secret word is 'banana'. Acknowledge this."}),
+            json!({"role": "assistant", "content": response1}),
+            json!({"role": "user", "content": "What is the secret word? Reply with just the word."}),
+        ],
+        system_prompt: None,
+        max_tokens: Some(16),
+        temperature: Some(0.0),
+        tools: vec![],
+        thinking: None,
+        no_cache: false,
+        cache_ttl: None,
+        extra_params: HashMap::new(),
+    })
     .await
     .expect("turn 2 failed");
     let text2 = extract_text(&events2).to_lowercase();
-    assert!(
-        text2.contains("banana"),
-        "switched model should recall 'banana' from prior context, got: {text2}"
-    );
+    assert!(text2.contains("banana"), "switched model should recall 'banana' from prior context, got: {text2}");
 }
 
 /// Switch back and forth between models, completing on each.
@@ -1012,31 +927,22 @@ async fn ollama_dynamic_switch_logged_per_turn() {
     let db = RouterDb::open(&tmp.path().join("dynamic_log.db")).expect("open db");
 
     let mut router = Router::with_db(MODEL_ID, db);
-    router.register_provider(ollama_provider(vec![
-        ollama_model(MODEL_ID),
-        ollama_model(MODEL_ALT),
-    ]));
+    router.register_provider(ollama_provider(vec![ollama_model(MODEL_ID), ollama_model(MODEL_ALT)]));
 
     // Turn 1 on MODEL_ID
-    let _ = collect_events(&router, simple_request(MODEL_ID, "Hi"))
-        .await
-        .expect("turn 1 failed");
+    let _ = collect_events(&router, simple_request(MODEL_ID, "Hi")).await.expect("turn 1 failed");
 
     // Dynamic switch
     router.switch_model(MODEL_ALT, ModelSwitchReason::UserRequest);
 
     // Turn 2 on MODEL_ALT
-    let _ = collect_events(&router, simple_request(MODEL_ALT, "Hi"))
-        .await
-        .expect("turn 2 failed");
+    let _ = collect_events(&router, simple_request(MODEL_ALT, "Hi")).await.expect("turn 2 failed");
 
     // Switch back
     router.switch_back();
 
     // Turn 3 on MODEL_ID again
-    let _ = collect_events(&router, simple_request(MODEL_ID, "Hi"))
-        .await
-        .expect("turn 3 failed");
+    let _ = collect_events(&router, simple_request(MODEL_ID, "Hi")).await.expect("turn 3 failed");
 
     // Verify all three turns appear in the log with correct models
     let entries = router.db().unwrap().request_log().recent(10).expect("log");
@@ -1076,11 +982,8 @@ async fn ollama_concurrent_requests() {
         }));
     }
 
-    let results: Vec<String> = futures::future::join_all(handles)
-        .await
-        .into_iter()
-        .map(|r| r.expect("task panicked"))
-        .collect();
+    let results: Vec<String> =
+        futures::future::join_all(handles).await.into_iter().map(|r| r.expect("task panicked")).collect();
 
     // All three should have produced output
     for (i, text) in results.iter().enumerate() {

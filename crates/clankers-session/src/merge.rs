@@ -2,12 +2,12 @@
 //!
 //! With Automerge as the storage backend, merge operations are simplified:
 //!
-//! - `merge_branch`: Records a merge annotation. Both branches remain visible
-//!   in the DAG. No message cloning.
-//! - `merge_selective`: Copies selected messages from one branch to another
-//!   via plain `append_message` calls.
-//! - `cherry_pick`: Copies a message (and optionally its children) to a target
-//!   branch via plain `append_message` calls.
+//! - `merge_branch`: Records a merge annotation. Both branches remain visible in the DAG. No
+//!   message cloning.
+//! - `merge_selective`: Copies selected messages from one branch to another via plain
+//!   `append_message` calls.
+//! - `cherry_pick`: Copies a message (and optionally its children) to a target branch via plain
+//!   `append_message` calls.
 
 use chrono::Utc;
 use clanker_message::MessageId;
@@ -148,7 +148,10 @@ impl SessionManager {
     /// Cherry-pick a message (and optionally its children) into a target branch.
     ///
     /// Each message is copied with a fresh ID via `append_message`.
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "message ID verified to exist before lookup"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(no_unwrap, reason = "message ID verified to exist before lookup")
+    )]
     pub fn cherry_pick(
         &mut self,
         message_id: MessageId,

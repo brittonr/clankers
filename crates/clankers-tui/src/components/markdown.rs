@@ -6,7 +6,6 @@
 
 pub use rat_markdown::MarkdownStyle;
 pub use rat_markdown::render_markdown;
-
 use ratatui::style::Modifier;
 use ratatui::style::Style;
 

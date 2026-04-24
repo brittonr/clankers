@@ -7,9 +7,13 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 use parking_lot::Mutex;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 
-use super::{Tool, ToolContext, ToolDefinition, ToolResult};
+use super::Tool;
+use super::ToolContext;
+use super::ToolDefinition;
+use super::ToolResult;
 
 /// The compression prompt sent to the summarization model.
 pub const COMPRESSION_PROMPT: &str = "\

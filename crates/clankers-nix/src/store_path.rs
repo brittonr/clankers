@@ -3,11 +3,13 @@
 //! Wraps `nix_compat::store_path::StorePath` into an agent-friendly `NixPath`
 //! that includes the human name, hash, and derivation flag.
 
+use std::sync::LazyLock;
+
 use nix_compat::nixbase32;
-use nix_compat::store_path::{StorePath, StorePathRef};
+use nix_compat::store_path::StorePath;
+use nix_compat::store_path::StorePathRef;
 use regex::Regex;
 use serde::Serialize;
-use std::sync::LazyLock;
 
 use crate::error::*;
 
@@ -15,7 +17,10 @@ use crate::error::*;
 ///
 /// The nix store hash is always exactly 32 nixbase32 characters ([0-9a-df-np-sv-z]).
 /// The name is one or more characters from the valid set.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "compile-time constant regex pattern"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "compile-time constant regex pattern")
+)]
 static STORE_PATH_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"/nix/store/([0-9a-df-np-sv-z]{32})-([a-zA-Z0-9+\-._?=][a-zA-Z0-9+\-._?=]*)").expect("static regex")
 });
@@ -43,21 +48,17 @@ pub fn parse_store_path(path: &str) -> Result<NixPath, NixError> {
     // direct child of /nix/store/.
     let store_part = strip_to_store_entry(path);
 
-    let parsed: StorePathRef<'_> =
-        StorePath::from_absolute_path(store_part.as_bytes()).map_err(|e| {
-            if store_part.starts_with("/nix/store/") {
-                InvalidStorePathSnafu {
-                    path: path.to_string(),
-                    reason: e.to_string(),
-                }
-                .build()
-            } else {
-                NotAStorePathSnafu {
-                    path: path.to_string(),
-                }
-                .build()
+    let parsed: StorePathRef<'_> = StorePath::from_absolute_path(store_part.as_bytes()).map_err(|e| {
+        if store_part.starts_with("/nix/store/") {
+            InvalidStorePathSnafu {
+                path: path.to_string(),
+                reason: e.to_string(),
             }
-        })?;
+            .build()
+        } else {
+            NotAStorePathSnafu { path: path.to_string() }.build()
+        }
+    })?;
 
     let name: String = (*parsed.name()).to_string();
     let store_hash = nixbase32::encode(parsed.digest());
@@ -75,7 +76,10 @@ pub fn parse_store_path(path: &str) -> Result<NixPath, NixError> {
 /// Scans for `/nix/store/<hash>-<name>` patterns using regex and parses each
 /// through nix-compat. Invalid matches (hash decoding failure, etc.) are
 /// silently skipped. Results are deduplicated by path.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "regex capture group 0 always exists when captures_iter yields"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "regex capture group 0 always exists when captures_iter yields")
+)]
 pub fn extract_store_paths(text: &str) -> Vec<NixPath> {
     let mut seen = std::collections::HashSet::new();
     let mut results = Vec::new();
@@ -142,10 +146,7 @@ mod tests {
         let result = parse_store_path(path).unwrap();
         assert_eq!(result.name, "hello-2.12.1");
         // Subpath is stripped — only the store entry is returned
-        assert_eq!(
-            result.path,
-            "/nix/store/00bgd045z0d4icpbc2yyz4gx48ak44la-hello-2.12.1"
-        );
+        assert_eq!(result.path, "/nix/store/00bgd045z0d4icpbc2yyz4gx48ak44la-hello-2.12.1");
     }
 
     #[test]

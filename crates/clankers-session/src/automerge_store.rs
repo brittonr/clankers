@@ -14,11 +14,11 @@
 
 use std::path::Path;
 
-use automerge::transaction::Transactable;
 use automerge::AutoCommit;
 use automerge::ObjType;
 use automerge::ReadDoc;
 use automerge::Value;
+use automerge::transaction::Transactable;
 use clanker_message::MessageId;
 
 use crate::entry::BranchEntry;
@@ -64,38 +64,27 @@ pub fn create_document(header: &HeaderEntry) -> Result<AutoCommit> {
 
     // Root-level maps
     let header_obj = doc.put_object(automerge::ROOT, KEY_HEADER, ObjType::Map).map_err(session_err)?;
-    doc.put_object(automerge::ROOT, KEY_MESSAGES, ObjType::Map)
-        .map_err(session_err)?;
-    doc.put_object(automerge::ROOT, KEY_ANNOTATIONS, ObjType::List)
-        .map_err(session_err)?;
+    doc.put_object(automerge::ROOT, KEY_MESSAGES, ObjType::Map).map_err(session_err)?;
+    doc.put_object(automerge::ROOT, KEY_ANNOTATIONS, ObjType::List).map_err(session_err)?;
 
     // Populate header
-    doc.put(&header_obj, H_SESSION_ID, header.session_id.as_str())
-        .map_err(session_err)?;
-    doc.put(&header_obj, H_CREATED_AT, header.created_at.to_rfc3339().as_str())
-        .map_err(session_err)?;
-    doc.put(&header_obj, H_CWD, header.cwd.as_str())
-        .map_err(session_err)?;
-    doc.put(&header_obj, H_MODEL, header.model.as_str())
-        .map_err(session_err)?;
-    doc.put(&header_obj, H_VERSION, header.version.as_str())
-        .map_err(session_err)?;
+    doc.put(&header_obj, H_SESSION_ID, header.session_id.as_str()).map_err(session_err)?;
+    doc.put(&header_obj, H_CREATED_AT, header.created_at.to_rfc3339().as_str()).map_err(session_err)?;
+    doc.put(&header_obj, H_CWD, header.cwd.as_str()).map_err(session_err)?;
+    doc.put(&header_obj, H_MODEL, header.model.as_str()).map_err(session_err)?;
+    doc.put(&header_obj, H_VERSION, header.version.as_str()).map_err(session_err)?;
 
     if let Some(agent) = &header.agent {
-        doc.put(&header_obj, H_AGENT, agent.as_str())
-            .map_err(session_err)?;
+        doc.put(&header_obj, H_AGENT, agent.as_str()).map_err(session_err)?;
     }
     if let Some(parent) = &header.parent_session_id {
-        doc.put(&header_obj, H_PARENT_SESSION_ID, parent.as_str())
-            .map_err(session_err)?;
+        doc.put(&header_obj, H_PARENT_SESSION_ID, parent.as_str()).map_err(session_err)?;
     }
     if let Some(wt_path) = &header.worktree_path {
-        doc.put(&header_obj, H_WORKTREE_PATH, wt_path.as_str())
-            .map_err(session_err)?;
+        doc.put(&header_obj, H_WORKTREE_PATH, wt_path.as_str()).map_err(session_err)?;
     }
     if let Some(wt_branch) = &header.worktree_branch {
-        doc.put(&header_obj, H_WORKTREE_BRANCH, wt_branch.as_str())
-            .map_err(session_err)?;
+        doc.put(&header_obj, H_WORKTREE_BRANCH, wt_branch.as_str()).map_err(session_err)?;
     }
 
     Ok(doc)
@@ -106,24 +95,25 @@ pub fn put_message(doc: &mut AutoCommit, entry: &MessageEntry) -> Result<()> {
     let messages_obj = doc
         .get(automerge::ROOT, KEY_MESSAGES)
         .map_err(session_err)?
-        .and_then(|(val, id)| if matches!(val, Value::Object(ObjType::Map)) { Some(id) } else { None })
+        .and_then(|(val, id)| {
+            if matches!(val, Value::Object(ObjType::Map)) {
+                Some(id)
+            } else {
+                None
+            }
+        })
         .ok_or_else(|| session_err("messages map not found in document"))?;
 
-    let msg_obj = doc
-        .put_object(&messages_obj, entry.id.0.as_str(), ObjType::Map)
-        .map_err(session_err)?;
+    let msg_obj = doc.put_object(&messages_obj, entry.id.0.as_str(), ObjType::Map).map_err(session_err)?;
 
     if let Some(parent_id) = &entry.parent_id {
-        doc.put(&msg_obj, M_PARENT_ID, parent_id.0.as_str())
-            .map_err(session_err)?;
+        doc.put(&msg_obj, M_PARENT_ID, parent_id.0.as_str()).map_err(session_err)?;
     }
 
     let message_json = serde_json::to_string(&entry.message).map_err(session_err)?;
-    doc.put(&msg_obj, M_MESSAGE_JSON, message_json.as_str())
-        .map_err(session_err)?;
+    doc.put(&msg_obj, M_MESSAGE_JSON, message_json.as_str()).map_err(session_err)?;
 
-    doc.put(&msg_obj, M_TIMESTAMP, entry.timestamp.to_rfc3339().as_str())
-        .map_err(session_err)?;
+    doc.put(&msg_obj, M_TIMESTAMP, entry.timestamp.to_rfc3339().as_str()).map_err(session_err)?;
 
     Ok(())
 }
@@ -133,19 +123,22 @@ pub fn put_annotation(doc: &mut AutoCommit, annotation: &AnnotationEntry) -> Res
     let annotations_obj = doc
         .get(automerge::ROOT, KEY_ANNOTATIONS)
         .map_err(session_err)?
-        .and_then(|(val, id)| if matches!(val, Value::Object(ObjType::List)) { Some(id) } else { None })
+        .and_then(|(val, id)| {
+            if matches!(val, Value::Object(ObjType::List)) {
+                Some(id)
+            } else {
+                None
+            }
+        })
         .ok_or_else(|| session_err("annotations list not found in document"))?;
 
     let len = doc.length(&annotations_obj);
-    let ann_obj = doc
-        .insert_object(&annotations_obj, len, ObjType::Map)
-        .map_err(session_err)?;
+    let ann_obj = doc.insert_object(&annotations_obj, len, ObjType::Map).map_err(session_err)?;
 
     // Serialize the annotation as JSON and store it — same rationale as message_json:
     // annotations are write-once, never partially merged.
     let json = serde_json::to_string(annotation).map_err(session_err)?;
-    doc.put(&ann_obj, A_KIND, annotation.kind_str())
-        .map_err(session_err)?;
+    doc.put(&ann_obj, A_KIND, annotation.kind_str()).map_err(session_err)?;
     doc.put(&ann_obj, "data", json.as_str()).map_err(session_err)?;
 
     Ok(())
@@ -156,13 +149,25 @@ pub fn read_header(doc: &AutoCommit) -> Result<HeaderEntry> {
     let header_obj = doc
         .get(automerge::ROOT, KEY_HEADER)
         .map_err(session_err)?
-        .and_then(|(val, id)| if matches!(val, Value::Object(ObjType::Map)) { Some(id) } else { None })
+        .and_then(|(val, id)| {
+            if matches!(val, Value::Object(ObjType::Map)) {
+                Some(id)
+            } else {
+                None
+            }
+        })
         .ok_or_else(|| session_err("header not found in document"))?;
 
     let get_str = |key: &str| -> Result<String> {
         doc.get(&header_obj, key)
             .map_err(session_err)?
-            .and_then(|(val, _)| if let Value::Scalar(s) = val { s.to_str().map(String::from) } else { None })
+            .and_then(|(val, _)| {
+                if let Value::Scalar(s) = val {
+                    s.to_str().map(String::from)
+                } else {
+                    None
+                }
+            })
             .ok_or_else(|| session_err(format!("header field '{}' not found", key)))
     };
 
@@ -194,12 +199,21 @@ pub fn read_header(doc: &AutoCommit) -> Result<HeaderEntry> {
 /// Read all messages from the Automerge document.
 ///
 /// Returns messages in insertion order (Automerge map iteration order).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
+)]
 pub fn read_messages(doc: &AutoCommit) -> Result<Vec<MessageEntry>> {
     let messages_obj = doc
         .get(automerge::ROOT, KEY_MESSAGES)
         .map_err(session_err)?
-        .and_then(|(val, id)| if matches!(val, Value::Object(ObjType::Map)) { Some(id) } else { None })
+        .and_then(|(val, id)| {
+            if matches!(val, Value::Object(ObjType::Map)) {
+                Some(id)
+            } else {
+                None
+            }
+        })
         .ok_or_else(|| session_err("messages map not found in document"))?;
 
     let mut entries = Vec::new();
@@ -209,7 +223,13 @@ pub fn read_messages(doc: &AutoCommit) -> Result<Vec<MessageEntry>> {
         let msg_obj = doc
             .get(&messages_obj, key.as_str())
             .map_err(session_err)?
-            .and_then(|(val, id)| if matches!(val, Value::Object(ObjType::Map)) { Some(id) } else { None })
+            .and_then(|(val, id)| {
+                if matches!(val, Value::Object(ObjType::Map)) {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
             .ok_or_else(|| session_err(format!("message '{}' is not a map", key)))?;
 
         let parent_id = match doc.get(&msg_obj, M_PARENT_ID).map_err(session_err)? {
@@ -220,7 +240,13 @@ pub fn read_messages(doc: &AutoCommit) -> Result<Vec<MessageEntry>> {
         let message_json = doc
             .get(&msg_obj, M_MESSAGE_JSON)
             .map_err(session_err)?
-            .and_then(|(val, _)| if let Value::Scalar(s) = val { s.to_str().map(String::from) } else { None })
+            .and_then(|(val, _)| {
+                if let Value::Scalar(s) = val {
+                    s.to_str().map(String::from)
+                } else {
+                    None
+                }
+            })
             .ok_or_else(|| session_err(format!("message '{}' has no message_json", key)))?;
 
         let message = serde_json::from_str(&message_json).map_err(session_err)?;
@@ -228,7 +254,13 @@ pub fn read_messages(doc: &AutoCommit) -> Result<Vec<MessageEntry>> {
         let timestamp_str = doc
             .get(&msg_obj, M_TIMESTAMP)
             .map_err(session_err)?
-            .and_then(|(val, _)| if let Value::Scalar(s) = val { s.to_str().map(String::from) } else { None })
+            .and_then(|(val, _)| {
+                if let Value::Scalar(s) = val {
+                    s.to_str().map(String::from)
+                } else {
+                    None
+                }
+            })
             .ok_or_else(|| session_err(format!("message '{}' has no timestamp", key)))?;
 
         let timestamp = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
@@ -251,7 +283,13 @@ pub fn read_annotations(doc: &AutoCommit) -> Result<Vec<AnnotationEntry>> {
     let annotations_obj = doc
         .get(automerge::ROOT, KEY_ANNOTATIONS)
         .map_err(session_err)?
-        .and_then(|(val, id)| if matches!(val, Value::Object(ObjType::List)) { Some(id) } else { None })
+        .and_then(|(val, id)| {
+            if matches!(val, Value::Object(ObjType::List)) {
+                Some(id)
+            } else {
+                None
+            }
+        })
         .ok_or_else(|| session_err("annotations list not found in document"))?;
 
     let len = doc.length(&annotations_obj);
@@ -261,13 +299,25 @@ pub fn read_annotations(doc: &AutoCommit) -> Result<Vec<AnnotationEntry>> {
         let ann_obj = doc
             .get(&annotations_obj, i)
             .map_err(session_err)?
-            .and_then(|(val, id)| if matches!(val, Value::Object(ObjType::Map)) { Some(id) } else { None })
+            .and_then(|(val, id)| {
+                if matches!(val, Value::Object(ObjType::Map)) {
+                    Some(id)
+                } else {
+                    None
+                }
+            })
             .ok_or_else(|| session_err(format!("annotation at index {} is not a map", i)))?;
 
         let json = doc
             .get(&ann_obj, "data")
             .map_err(session_err)?
-            .and_then(|(val, _)| if let Value::Scalar(s) = val { s.to_str().map(String::from) } else { None })
+            .and_then(|(val, _)| {
+                if let Value::Scalar(s) = val {
+                    s.to_str().map(String::from)
+                } else {
+                    None
+                }
+            })
             .ok_or_else(|| session_err(format!("annotation at index {} has no data", i)))?;
 
         let annotation: AnnotationEntry = serde_json::from_str(&json).map_err(session_err)?;
@@ -492,9 +542,7 @@ mod tests {
             parent_id: parent.map(MessageId::new),
             message: AgentMessage::User(UserMessage {
                 id: msg_id,
-                content: vec![Content::Text {
-                    text: text.to_string(),
-                }],
+                content: vec![Content::Text { text: text.to_string() }],
                 timestamp: Utc::now(),
             }),
             timestamp: Utc::now(),
@@ -1003,9 +1051,8 @@ mod tests {
         assert_eq!(branch_b.len(), 2);
 
         // Label annotation preserved
-        let has_label = entries.iter().any(|e| {
-            matches!(e, crate::entry::SessionEntry::Label(l) if l.label == "checkpoint")
-        });
+        let has_label =
+            entries.iter().any(|e| matches!(e, crate::entry::SessionEntry::Label(l) if l.label == "checkpoint"));
         assert!(has_label);
     }
 }

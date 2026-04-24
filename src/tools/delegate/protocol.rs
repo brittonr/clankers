@@ -73,7 +73,8 @@ pub async fn run_remote_worker(
                 tx.send(SubagentEvent::Error {
                     id: sub_id,
                     message: msg.clone(),
-                }).ok();
+                })
+                .ok();
             }
             return ToolResult::error(msg);
         }
@@ -98,7 +99,8 @@ fn emit_started_event(
             name: format!("{} → {}", worker_name, short_node),
             task: task_preview.to_string(),
             pid: None,
-        }).ok();
+        })
+        .ok();
     }
 }
 
@@ -117,7 +119,8 @@ fn parse_peer_node_id(
                 tx.send(SubagentEvent::Error {
                     id: sub_id.to_string(),
                     message: msg.clone(),
-                }).ok();
+                })
+                .ok();
             }
             Err(ToolResult::error(msg))
         }
@@ -158,7 +161,8 @@ async fn retry_remote_call(
                     tx.send(SubagentEvent::Error {
                         id: sub_id.to_string(),
                         message: msg.clone(),
-                    }).ok();
+                    })
+                    .ok();
                 }
                 return ToolResult::error(msg);
             }
@@ -184,7 +188,8 @@ async fn retry_remote_call(
         tx.send(SubagentEvent::Error {
             id: sub_id.to_string(),
             message: msg.clone(),
-        }).ok();
+        })
+        .ok();
     }
     ToolResult::error(msg)
 }
@@ -247,7 +252,8 @@ fn handle_streaming_notification(notification: &Value, sub_id: &str, panel_tx: O
                         tx.send(SubagentEvent::Output {
                             id: sub_id.to_string(),
                             line: line.to_string(),
-                        }).ok();
+                        })
+                        .ok();
                     }
                 }
             }
@@ -259,7 +265,8 @@ fn handle_streaming_notification(notification: &Value, sub_id: &str, panel_tx: O
                 tx.send(SubagentEvent::Output {
                     id: sub_id.to_string(),
                     line: format!("[tool: {}]", tool),
-                }).ok();
+                })
+                .ok();
             }
         }
         Some("agent.tool_result") => {
@@ -273,7 +280,8 @@ fn handle_streaming_notification(notification: &Value, sub_id: &str, panel_tx: O
                     tx.send(SubagentEvent::Output {
                         id: sub_id.to_string(),
                         line: "[tool error]".to_string(),
-                    }).ok();
+                    })
+                    .ok();
                 }
             }
         }
@@ -293,7 +301,8 @@ async fn wait_for_retry(
         tx.send(SubagentEvent::Output {
             id: sub_id.to_string(),
             line: format!("Retry {}/{} after {:?}...", attempt, MAX_RETRIES, backoff),
-        }).ok();
+        })
+        .ok();
     }
     tokio::select! {
         () = tokio::time::sleep(backoff) => Ok(()),

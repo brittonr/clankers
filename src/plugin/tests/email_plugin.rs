@@ -130,8 +130,11 @@ fn email_search_without_token_returns_config_error() {
     let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
     assert_ne!(parsed["status"], "ok");
     let result_text = parsed["result"].as_str().unwrap_or("");
-    assert!(result_text.contains("jmap_token") || result_text.contains("Missing config"),
-        "Error should mention missing config: {}", result_text);
+    assert!(
+        result_text.contains("jmap_token") || result_text.contains("Missing config"),
+        "Error should mention missing config: {}",
+        result_text
+    );
 }
 
 #[test]
@@ -142,8 +145,11 @@ fn email_read_without_token_returns_config_error() {
     let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
     assert_ne!(parsed["status"], "ok");
     let result_text = parsed["result"].as_str().unwrap_or("");
-    assert!(result_text.contains("jmap_token") || result_text.contains("Missing config"),
-        "Error should mention missing config: {}", result_text);
+    assert!(
+        result_text.contains("jmap_token") || result_text.contains("Missing config"),
+        "Error should mention missing config: {}",
+        result_text
+    );
 }
 
 #[test]

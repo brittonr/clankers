@@ -21,7 +21,6 @@ pub use control::SessionSummary;
 pub use event::DaemonEvent;
 pub use event::PluginSummary;
 pub use event::ToolInfo;
-
 pub use frame::FrameError;
 pub use frame::read_frame;
 pub use frame::write_frame;

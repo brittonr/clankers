@@ -160,7 +160,10 @@ fn render_kitty(data: &[u8], max_width: u16, max_height: u16) -> io::Result<usiz
 ///   `\x1b]1337;File=key=value;key=value:base64data\x07`
 ///
 /// Reference: <https://iterm2.com/documentation-images.html>
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, reason = "base64 output is always valid UTF-8"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, reason = "base64 output is always valid UTF-8")
+)]
 fn render_iterm2(data: &[u8], max_width: u16, _max_height: u16) -> io::Result<usize> {
     let encoded = BASE64.encode(data);
     let mut tty = open_tty()?;

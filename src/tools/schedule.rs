@@ -310,8 +310,9 @@ fn format_duration(secs: u64) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tokio_util::sync::CancellationToken;
+
+    use super::*;
 
     #[test]
     fn parse_duration_units() {

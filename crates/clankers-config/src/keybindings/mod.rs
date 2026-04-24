@@ -8,7 +8,6 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-pub use clankers_tui::keymap::*;
 // Re-export action types (canonical home is clanker-tui-types).
 pub use clanker_tui_types::Action;
 pub use clanker_tui_types::ActionRegistry;
@@ -17,6 +16,7 @@ pub use clanker_tui_types::ExtendedAction;
 pub use clanker_tui_types::ExtendedActionDef;
 pub use clanker_tui_types::InputMode;
 pub use clanker_tui_types::parse_action;
+pub use clankers_tui::keymap::*;
 use serde::Deserialize;
 use serde::Serialize;
 

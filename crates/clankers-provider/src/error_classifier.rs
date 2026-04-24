@@ -21,13 +21,7 @@ const PROVIDER_VLLM: &str = "vllm";
 const PROVIDER_OLLAMA: &str = "ollama";
 const PROVIDER_LLAMA_CPP: &str = "llama.cpp";
 
-const TRANSIENT_QUOTA_SIGNALS: [&str; 5] = [
-    "try again",
-    "retry",
-    "resets at",
-    "reset at",
-    "per minute",
-];
+const TRANSIENT_QUOTA_SIGNALS: [&str; 5] = ["try again", "retry", "resets at", "reset at", "per minute"];
 
 const BILLING_PATTERNS: [&str; 8] = [
     "insufficient_quota",
@@ -153,7 +147,12 @@ pub const fn recovery_hints(reason: FailoverReason) -> (bool, bool, bool, bool) 
 }
 
 pub fn classify_api_error(status_code: Option<u16>, body: &str, provider: &str) -> ClassifiedError {
-    build_classified_error(status_code, body, provider, classify_reason(status_code, &body.trim().to_ascii_lowercase(), &provider.trim().to_ascii_lowercase()))
+    build_classified_error(
+        status_code,
+        body,
+        provider,
+        classify_reason(status_code, &body.trim().to_ascii_lowercase(), &provider.trim().to_ascii_lowercase()),
+    )
 }
 
 pub fn classify_transport_error(message: &str, provider: &str) -> ClassifiedError {
@@ -296,7 +295,9 @@ fn auth_patterns(provider: &str) -> &'static [&'static str] {
 
 fn billing_patterns(provider: &str) -> &'static [&'static str] {
     match provider {
-        PROVIDER_OPENAI | PROVIDER_OPENAI_CODEX => &["insufficient_quota", "billing_hard_limit_reached", "quota exceeded"],
+        PROVIDER_OPENAI | PROVIDER_OPENAI_CODEX => {
+            &["insufficient_quota", "billing_hard_limit_reached", "quota exceeded"]
+        }
         PROVIDER_OPENROUTER => &["credits", "insufficient credits", "payment required", "quota exceeded"],
         _ => &BILLING_PATTERNS,
     }
@@ -304,31 +305,59 @@ fn billing_patterns(provider: &str) -> &'static [&'static str] {
 
 fn rate_limit_patterns(provider: &str) -> &'static [&'static str] {
     match provider {
-        PROVIDER_ANTHROPIC => &["rate limit", "too many requests", "retry after", "request was throttled"],
-        PROVIDER_OPENROUTER => &["rate limited", "too many requests", "retry after", "upstream rate limit"],
+        PROVIDER_ANTHROPIC => &[
+            "rate limit",
+            "too many requests",
+            "retry after",
+            "request was throttled",
+        ],
+        PROVIDER_OPENROUTER => &[
+            "rate limited",
+            "too many requests",
+            "retry after",
+            "upstream rate limit",
+        ],
         _ => &RATE_LIMIT_PATTERNS,
     }
 }
 
 fn context_overflow_patterns(provider: &str) -> &'static [&'static str] {
     match provider {
-        PROVIDER_VLLM => &["maximum context length", "context length exceeded", "prompt is too long"],
+        PROVIDER_VLLM => &[
+            "maximum context length",
+            "context length exceeded",
+            "prompt is too long",
+        ],
         PROVIDER_OLLAMA => &["input length exceeds context", "context window", "too many tokens"],
-        PROVIDER_LLAMA_CPP => &["requested tokens exceed context window", "context overflow", "too many tokens"],
+        PROVIDER_LLAMA_CPP => &[
+            "requested tokens exceed context window",
+            "context overflow",
+            "too many tokens",
+        ],
         _ => &CONTEXT_OVERFLOW_PATTERNS,
     }
 }
 
 fn model_not_found_patterns(provider: &str) -> &'static [&'static str] {
     match provider {
-        PROVIDER_OPENROUTER => &["model not found", "no endpoints found", "provider routing failed", "unsupported model"],
+        PROVIDER_OPENROUTER => &[
+            "model not found",
+            "no endpoints found",
+            "provider routing failed",
+            "unsupported model",
+        ],
         _ => &MODEL_NOT_FOUND_PATTERNS,
     }
 }
 
 fn overloaded_patterns(provider: &str) -> &'static [&'static str] {
     match provider {
-        PROVIDER_OPENROUTER => &["upstream provider error", "provider is overloaded", "temporarily unavailable", "overloaded"],
+        PROVIDER_OPENROUTER => &[
+            "upstream provider error",
+            "provider is overloaded",
+            "temporarily unavailable",
+            "overloaded",
+        ],
         _ => &OVERLOADED_PATTERNS,
     }
 }
@@ -454,14 +483,8 @@ mod tests {
 
     #[test]
     fn body_pattern_classification_covers_shared_and_provider_specific_patterns() {
-        assert_eq!(
-            classify_api_error(None, "invalid_api_key: no key", "openai").reason,
-            FailoverReason::Auth
-        );
-        assert_eq!(
-            classify_api_error(None, "insufficient_quota on account", "openai").reason,
-            FailoverReason::Billing
-        );
+        assert_eq!(classify_api_error(None, "invalid_api_key: no key", "openai").reason, FailoverReason::Auth);
+        assert_eq!(classify_api_error(None, "insufficient_quota on account", "openai").reason, FailoverReason::Billing);
         assert_eq!(
             classify_api_error(None, "request exceeded maximum context length", "vllm").reason,
             FailoverReason::ContextOverflow
@@ -490,10 +513,7 @@ mod tests {
             classify_api_error(None, "quota exceeded try again in 5 minutes", "openai").reason,
             FailoverReason::RateLimit
         );
-        assert_eq!(
-            classify_api_error(None, "quota exceeded", "openai").reason,
-            FailoverReason::Billing
-        );
+        assert_eq!(classify_api_error(None, "quota exceeded", "openai").reason, FailoverReason::Billing);
     }
 
     #[test]
@@ -528,13 +548,7 @@ mod tests {
             classify_transport_error("request timed out while contacting upstream", "openrouter").reason,
             FailoverReason::Timeout
         );
-        assert_eq!(
-            classify_api_error(Some(429), "invalid api key", "openai").reason,
-            FailoverReason::RateLimit
-        );
-        assert_eq!(
-            classify_api_error(Some(429), "invalid api key", "unknown").reason,
-            FailoverReason::RateLimit
-        );
+        assert_eq!(classify_api_error(Some(429), "invalid api key", "openai").reason, FailoverReason::RateLimit);
+        assert_eq!(classify_api_error(Some(429), "invalid api key", "unknown").reason, FailoverReason::RateLimit);
     }
 }

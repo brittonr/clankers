@@ -3,11 +3,11 @@
 use std::sync::Arc;
 
 use clanker_actor::ProcessRegistry;
-use clankers_ucan::Capability;
-use clankers_ucan::Credential;
 use clankers_controller::transport::DaemonState;
 use clankers_protocol::SessionCommand;
 use clankers_protocol::SessionKey;
+use clankers_ucan::Capability;
+use clankers_ucan::Credential;
 use tokio::sync::Mutex;
 
 use super::prompt::run_matrix_prompt;
@@ -48,10 +48,7 @@ pub(crate) async fn handle_bot_command(
                      • Turns: {}\n\
                      • Session ID: `{}`\n\
                      • Last active: {}",
-                    handle.model,
-                    handle.turn_count,
-                    handle.session_id,
-                    handle.last_active,
+                    handle.model, handle.turn_count, handle.session_id, handle.last_active,
                 )
             } else {
                 "No active session. Send a message to start one.".to_string()
@@ -62,9 +59,10 @@ pub(crate) async fn handle_bot_command(
             let mut st = state.lock().await;
             if let Some(session_id) = st.key_index.get(key).cloned() {
                 if let Some(handle) = st.sessions.get(&session_id)
-                    && let Some(ref tx) = handle.cmd_tx {
-                        tx.send(SessionCommand::Disconnect).ok();
-                    }
+                    && let Some(ref tx) = handle.cmd_tx
+                {
+                    tx.send(SessionCommand::Disconnect).ok();
+                }
                 st.remove_session(&session_id);
             }
             "Session cleared. Next message starts a fresh conversation.".to_string()
@@ -84,10 +82,8 @@ pub(crate) async fn handle_bot_command(
         "!model" => {
             if args.is_empty() {
                 let st = state.lock().await;
-                let model = st
-                    .session_by_key(key)
-                    .map(|h| h.model.clone())
-                    .unwrap_or_else(|| factory.default_model.clone());
+                let model =
+                    st.session_by_key(key).map(|h| h.model.clone()).unwrap_or_else(|| factory.default_model.clone());
                 format!("Current model: `{}`. Usage: `!model <name>`", model)
             } else {
                 // Switch model on the session controller
@@ -97,7 +93,8 @@ pub(crate) async fn handle_bot_command(
                     if let Some(ref tx) = handle.cmd_tx {
                         tx.send(SessionCommand::SetModel {
                             model: args.to_string(),
-                        }).ok();
+                        })
+                        .ok();
                     }
                     format!("Model switched: `{}` → `{}`", old_model, args)
                 } else {
@@ -106,11 +103,7 @@ pub(crate) async fn handle_bot_command(
             }
         }
         "!skills" => {
-            let tool_names: Vec<String> = factory
-                .tools
-                .iter()
-                .map(|t| t.definition().name.clone())
-                .collect();
+            let tool_names: Vec<String> = factory.tools.iter().map(|t| t.definition().name.clone()).collect();
             if tool_names.is_empty() {
                 "No tools loaded.".to_string()
             } else {
@@ -166,9 +159,10 @@ async fn handle_token_command(
                 let mut st = state.lock().await;
                 if let Some(session_id) = st.key_index.get(key).cloned() {
                     if let Some(handle) = st.sessions.get(&session_id)
-                        && let Some(ref tx) = handle.cmd_tx {
-                            tx.send(SessionCommand::Disconnect).ok();
-                        }
+                        && let Some(ref tx) = handle.cmd_tx
+                    {
+                        tx.send(SessionCommand::Disconnect).ok();
+                    }
                     st.remove_session(&session_id);
                 }
             }
@@ -206,12 +200,11 @@ async fn handle_token_command(
     }
 }
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
-fn handle_delegate_command(
-    args: &str,
-    key: &SessionKey,
-    auth: &Option<Arc<AuthLayer>>,
-) -> String {
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential setup/dispatch logic")
+)]
+fn handle_delegate_command(args: &str, key: &SessionKey, auth: &Option<Arc<AuthLayer>>) -> String {
     if args.is_empty() {
         return "**Delegate a child token from yours**\n\n\
                 Usage: `!delegate [options]`\n\n\

@@ -1,5 +1,7 @@
 use std::path::PathBuf;
-use std::process::{Command, Output, Stdio};
+use std::process::Command;
+use std::process::Output;
+use std::process::Stdio;
 
 fn clankers_bin() -> PathBuf {
     std::env::var_os("CARGO_BIN_EXE_clankers")
@@ -8,9 +10,7 @@ fn clankers_bin() -> PathBuf {
 }
 
 fn fixture_path(name: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/fixtures/openai_codex")
-        .join(name)
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/openai_codex").join(name)
 }
 
 fn run_clankers(home: &std::path::Path, args: &[&str], stdin: &str) -> Output {
@@ -27,12 +27,7 @@ fn run_clankers(home: &std::path::Path, args: &[&str], stdin: &str) -> Output {
 
     if !stdin.is_empty() {
         use std::io::Write;
-        child
-            .stdin
-            .as_mut()
-            .expect("stdin should exist")
-            .write_all(stdin.as_bytes())
-            .expect("write stdin");
+        child.stdin.as_mut().expect("stdin should exist").write_all(stdin.as_bytes()).expect("write stdin");
     }
 
     child.wait_with_output().expect("wait for clankers")
@@ -45,19 +40,13 @@ fn stdout_text(output: &Output) -> String {
 #[test]
 fn recorded_cli_login_start_persists_pending_codex_login_fixture() {
     let home = tempfile::TempDir::new().expect("tempdir should exist");
-    let output = run_clankers(
-        home.path(),
-        &["auth", "login", "--provider", "openai-codex", "--account", "work"],
-        "\n",
-    );
+    let output = run_clankers(home.path(), &["auth", "login", "--provider", "openai-codex", "--account", "work"], "\n");
 
     let stdout = stdout_text(&output);
     assert!(stdout.contains("Logging in to provider 'openai-codex' as account 'work'."), "{stdout}");
     assert!(stdout.contains("https://auth.openai.com/oauth/authorize"), "{stdout}");
 
-    let pending_path = home
-        .path()
-        .join(".clankers/agent/.login_verifiers/openai-codex/work.json");
+    let pending_path = home.path().join(".clankers/agent/.login_verifiers/openai-codex/work.json");
     let pending = std::fs::read_to_string(&pending_path).expect("pending login file should exist");
     assert!(pending.contains("\"provider\":\"openai-codex\""), "{pending}");
     assert!(pending.contains("\"account\":\"work\""), "{pending}");
@@ -91,11 +80,7 @@ fn recorded_cli_status_and_switch_flow_uses_fixture_accounts() {
     );
     assert!(import_backup.status.success(), "{}", stdout_text(&import_backup));
 
-    let status_before = run_clankers(
-        home.path(),
-        &["auth", "status", "--provider", "openai-codex"],
-        "",
-    );
+    let status_before = run_clankers(home.path(), &["auth", "status", "--provider", "openai-codex"], "");
     assert!(status_before.status.success());
     let before = stdout_text(&status_before);
     assert!(before.contains("openai-codex:"), "{before}");
@@ -103,19 +88,11 @@ fn recorded_cli_status_and_switch_flow_uses_fixture_accounts() {
     assert!(before.contains("backup (backup fixture)"), "{before}");
     assert!(before.contains("authenticated, entitlement check failed"), "{before}");
 
-    let switch = run_clankers(
-        home.path(),
-        &["auth", "switch", "--provider", "openai-codex", "backup"],
-        "",
-    );
+    let switch = run_clankers(home.path(), &["auth", "switch", "--provider", "openai-codex", "backup"], "");
     assert!(switch.status.success());
     assert!(stdout_text(&switch).contains("Switched provider 'openai-codex' to account 'backup'."));
 
-    let status_after = run_clankers(
-        home.path(),
-        &["auth", "status", "--provider", "openai-codex"],
-        "",
-    );
+    let status_after = run_clankers(home.path(), &["auth", "status", "--provider", "openai-codex"], "");
     assert!(status_after.status.success());
     let after = stdout_text(&status_after);
     assert!(after.contains("▸ backup (backup fixture)"), "{after}");

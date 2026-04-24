@@ -59,12 +59,19 @@ impl AuditTracker {
     }
 
     /// Average tool call duration in milliseconds (0 if no calls completed).
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(unchecked_division, reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(
+            unchecked_division,
+            reason = "divisor guarded by is_empty/non-zero check or TUI layout constraint"
+        )
+    )]
     pub fn avg_duration_ms(&self) -> u64 {
         if self.completed == 0 {
             0
         } else {
-            u64::try_from((self.total_duration_ms / self.completed as u128).min(u128::from(u64::MAX))).unwrap_or(u64::MAX)
+            u64::try_from((self.total_duration_ms / self.completed as u128).min(u128::from(u64::MAX)))
+                .unwrap_or(u64::MAX)
         }
     }
 }

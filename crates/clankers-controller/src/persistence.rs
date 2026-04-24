@@ -81,8 +81,9 @@ mod tests {
         let tmp = TempDir::new().expect("tempdir should exist");
         let db = clankers_db::Db::in_memory().expect("db should exist");
         let cwd = tmp.path().to_string_lossy().to_string();
-        let session_manager = clankers_session::SessionManager::create(tmp.path(), &cwd, "test-model", None, None, None)
-            .expect("session manager should create");
+        let session_manager =
+            clankers_session::SessionManager::create(tmp.path(), &cwd, "test-model", None, None, None)
+                .expect("session manager should create");
         let agent = clankers_agent::Agent::new(
             Arc::new(MockProvider),
             vec![],
@@ -91,15 +92,12 @@ mod tests {
             "test system prompt".to_string(),
         )
         .with_db(db.clone());
-        let controller = SessionController::new(
-            agent,
-            ControllerConfig {
-                session_id: session_manager.session_id().to_string(),
-                model: "test-model".to_string(),
-                session_manager: Some(session_manager),
-                ..Default::default()
-            },
-        );
+        let controller = SessionController::new(agent, ControllerConfig {
+            session_id: session_manager.session_id().to_string(),
+            model: "test-model".to_string(),
+            session_manager: Some(session_manager),
+            ..Default::default()
+        });
         (controller, tmp, db)
     }
 
@@ -112,10 +110,7 @@ mod tests {
             summary: summary.clone(),
         });
 
-        let session_summary = controller
-            .session_manager()
-            .expect("session manager")
-            .latest_compaction_summary();
+        let session_summary = controller.session_manager().expect("session manager").latest_compaction_summary();
         assert_eq!(session_summary, Some(summary.as_str()));
 
         let db_entry = db

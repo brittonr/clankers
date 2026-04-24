@@ -62,10 +62,7 @@ impl LeaderMenu {
     /// Collects all [`MenuContribution`] items, deduplicates by `(key, placement)`
     /// with highest priority winning, removes hidden entries, and assembles the
     /// menu tree.
-    pub fn build(
-        contributors: &[&dyn MenuContributor],
-        hidden: &HiddenSet,
-    ) -> BuildResult {
+    pub fn build(contributors: &[&dyn MenuContributor], hidden: &HiddenSet) -> BuildResult {
         builder::build(contributors, hidden)
     }
 }
@@ -149,9 +146,7 @@ mod tests {
             LeaderAction::Action(a) => {
                 assert_eq!(
                     a,
-                    clanker_tui_types::Action::Extended(
-                        clanker_tui_types::ExtendedAction::OpenModelSelector
-                    )
+                    clanker_tui_types::Action::Extended(clanker_tui_types::ExtendedAction::OpenModelSelector)
                 );
             }
             _ => panic!("Expected Action"),
@@ -210,9 +205,7 @@ mod tests {
             LeaderAction::Action(a) => {
                 assert_eq!(
                     a,
-                    clanker_tui_types::Action::Extended(
-                        clanker_tui_types::ExtendedAction::ToggleShowThinking
-                    )
+                    clanker_tui_types::Action::Extended(clanker_tui_types::ExtendedAction::ToggleShowThinking)
                 );
             }
             _ => panic!("Expected Action"),
@@ -292,8 +285,7 @@ mod tests {
             }],
         };
 
-        let (menu, conflicts) =
-            LeaderMenu::build(&[&builtin, &plugin], &HashSet::new());
+        let (menu, conflicts) = LeaderMenu::build(&[&builtin, &plugin], &HashSet::new());
         assert_eq!(conflicts.len(), 1);
         assert_eq!(conflicts[0].winner, "my-plugin");
         assert_eq!(conflicts[0].loser, "builtin");
@@ -391,11 +383,7 @@ mod tests {
         assert_eq!(menu.root_def().items[0].key, 'p');
 
         // Submenu should exist with one item
-        let plugins_sub = menu
-            .submenu_defs()
-            .iter()
-            .find(|s| s.label == "plugins")
-            .unwrap();
+        let plugins_sub = menu.submenu_defs().iter().find(|s| s.label == "plugins").unwrap();
         assert_eq!(plugins_sub.items.len(), 1);
         assert_eq!(plugins_sub.items[0].key, 'c');
         assert_eq!(plugins_sub.items[0].label, "calendar");
@@ -435,11 +423,7 @@ mod tests {
         let (menu, conflicts) = LeaderMenu::build(&[&contrib], &HashSet::new());
         assert!(conflicts.is_empty());
         assert_eq!(menu.root_def().items.len(), 1);
-        let foo_sub = menu
-            .submenu_defs()
-            .iter()
-            .find(|s| s.label == "foo")
-            .unwrap();
+        let foo_sub = menu.submenu_defs().iter().find(|s| s.label == "foo").unwrap();
         assert_eq!(foo_sub.items.len(), 1);
     }
 

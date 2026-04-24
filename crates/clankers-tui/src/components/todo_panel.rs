@@ -246,7 +246,10 @@ impl Panel for TodoPanel {
         "No items. Use /todo add <text> or the todo tool."
     }
 
-    #[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
+    #[cfg_attr(
+        dylint_lib = "tigerstyle",
+        allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
+    )]
     fn handle_key_event(&mut self, key: KeyEvent) -> Option<PanelAction> {
         match key.code {
             KeyCode::Char('j') | KeyCode::Down => {

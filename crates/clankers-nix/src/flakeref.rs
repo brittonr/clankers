@@ -3,9 +3,11 @@
 //! Parses and validates flake references before spawning the nix CLI.
 //! Catches malformed refs early with actionable errors.
 
+use std::path::Path;
+use std::path::PathBuf;
+
 use nix_compat::flakeref::FlakeRef;
 use serde::Serialize;
-use std::path::{Path, PathBuf};
 
 use crate::error::*;
 
@@ -150,20 +152,14 @@ fn split_fragment(input: &str) -> (&str, Option<String>) {
 
 /// Check whether a string is a bare path (not a URL-scheme ref).
 fn is_bare_path(s: &str) -> bool {
-    s == "."
-        || s == ".."
-        || s.starts_with("./")
-        || s.starts_with("../")
-        || s.starts_with('/')
+    s == "." || s == ".." || s.starts_with("./") || s.starts_with("../") || s.starts_with('/')
 }
 
 /// Classify a parsed `FlakeRef` into our `FlakeSourceType`.
 fn classify_flake_ref(flake_ref: &FlakeRef) -> FlakeSourceType {
     match flake_ref {
         FlakeRef::Path { .. } => FlakeSourceType::Path,
-        FlakeRef::Git { url, .. } => FlakeSourceType::Git {
-            url: url.to_string(),
-        },
+        FlakeRef::Git { url, .. } => FlakeSourceType::Git { url: url.to_string() },
         FlakeRef::GitHub { owner, repo, .. } => FlakeSourceType::GitHub {
             owner: owner.clone(),
             repo: repo.clone(),
@@ -172,13 +168,9 @@ fn classify_flake_ref(flake_ref: &FlakeRef) -> FlakeSourceType {
             owner: owner.clone(),
             repo: repo.clone(),
         },
-        FlakeRef::Tarball { url, .. } => FlakeSourceType::Tarball {
-            url: url.to_string(),
-        },
+        FlakeRef::Tarball { url, .. } => FlakeSourceType::Tarball { url: url.to_string() },
         FlakeRef::Indirect { id, .. } => FlakeSourceType::Indirect { id: id.clone() },
-        FlakeRef::File { url, .. } => FlakeSourceType::File {
-            url: url.to_string(),
-        },
+        FlakeRef::File { url, .. } => FlakeSourceType::File { url: url.to_string() },
         FlakeRef::SourceHut { owner, repo, .. } => FlakeSourceType::SourceHut {
             owner: owner.clone(),
             repo: repo.clone(),
@@ -204,10 +196,7 @@ mod tests {
     fn parse_path_with_dotslash_fragment() {
         let result = parse_flake_ref("./#packages.x86_64-linux.hello").unwrap();
         assert!(matches!(result.source_type, FlakeSourceType::Path));
-        assert_eq!(
-            result.fragment,
-            Some("packages.x86_64-linux.hello".to_string())
-        );
+        assert_eq!(result.fragment, Some("packages.x86_64-linux.hello".to_string()));
     }
 
     #[test]

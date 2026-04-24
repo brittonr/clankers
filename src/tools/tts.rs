@@ -7,10 +7,14 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use serde_json::{Value, json};
+use serde_json::Value;
+use serde_json::json;
 use tokio::sync::OnceCell;
 
-use super::{Tool, ToolContext, ToolDefinition, ToolResult};
+use super::Tool;
+use super::ToolContext;
+use super::ToolDefinition;
+use super::ToolResult;
 #[cfg(test)]
 use super::ToolResultContent;
 
@@ -91,18 +95,12 @@ impl Tool for TtsTool {
 
         let voice = params["voice"].as_str().unwrap_or("Bella");
         let speed = params["speed"].as_f64().unwrap_or(1.0) as f32;
-        let output = params["output"]
-            .as_str()
-            .map(String::from)
-            .unwrap_or_else(|| {
-                let ts = chrono::Utc::now().format("%Y%m%d-%H%M%S");
-                format!("tts-{ts}.wav")
-            });
+        let output = params["output"].as_str().map(String::from).unwrap_or_else(|| {
+            let ts = chrono::Utc::now().format("%Y%m%d-%H%M%S");
+            format!("tts-{ts}.wav")
+        });
 
-        ctx.emit_progress(&format!(
-            "synthesizing speech: voice={voice}, speed={speed:.1}, {} chars",
-            text.len()
-        ));
+        ctx.emit_progress(&format!("synthesizing speech: voice={voice}, speed={speed:.1}, {} chars", text.len()));
 
         let router = get_router().await;
 
@@ -122,9 +120,7 @@ impl Tool for TtsTool {
         let result = tokio::task::spawn_blocking(move || {
             let rt = tokio::runtime::Handle::current();
             rt.block_on(async {
-                let response = router_clone
-                    .synthesize(&text_owned, &voice_owned, speed)
-                    .await?;
+                let response = router_clone.synthesize(&text_owned, &voice_owned, speed).await?;
                 response.write_wav(std::path::Path::new(&output_clone))?;
                 Ok::<_, clankers_tts::Error>((response.duration_ms, response.provider))
             })
@@ -275,12 +271,7 @@ mod tests {
     fn schema_output_not_required() {
         let tool = TtsTool::new();
         let schema = &tool.definition().input_schema;
-        let required: Vec<&str> = schema["required"]
-            .as_array()
-            .unwrap()
-            .iter()
-            .filter_map(|v| v.as_str())
-            .collect();
+        let required: Vec<&str> = schema["required"].as_array().unwrap().iter().filter_map(|v| v.as_str()).collect();
         assert!(!required.contains(&"output"));
         assert!(!required.contains(&"voice"));
         assert!(!required.contains(&"speed"));

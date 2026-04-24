@@ -412,7 +412,10 @@ pub(crate) fn handle_insert_char(app: &mut App, key: &crossterm::event::KeyEvent
 // Input routing
 // ---------------------------------------------------------------------------
 
-#[cfg_attr(dylint_lib = "tigerstyle", allow(catch_all_on_enum, reason = "default handler covers many variants uniformly"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(catch_all_on_enum, reason = "default handler covers many variants uniformly")
+)]
 pub(crate) fn handle_input_with_plugins(
     app: &mut App,
     text: &str,
@@ -461,18 +464,22 @@ pub(crate) fn handle_input_with_plugins(
             if pending_images.is_empty() {
                 cmd_tx.send(super::interactive::AgentCommand::RewriteAndPrompt(prompt_text)).ok();
             } else {
-                cmd_tx.send(super::interactive::AgentCommand::RewriteAndPromptWithImages {
-                    text: prompt_text,
-                    images: pending_images,
-                }).ok();
+                cmd_tx
+                    .send(super::interactive::AgentCommand::RewriteAndPromptWithImages {
+                        text: prompt_text,
+                        images: pending_images,
+                    })
+                    .ok();
             }
         } else if pending_images.is_empty() {
             cmd_tx.send(super::interactive::AgentCommand::Prompt(prompt_text)).ok();
         } else {
-            cmd_tx.send(super::interactive::AgentCommand::PromptWithImages {
-                text: prompt_text,
-                images: pending_images,
-            }).ok();
+            cmd_tx
+                .send(super::interactive::AgentCommand::PromptWithImages {
+                    text: prompt_text,
+                    images: pending_images,
+                })
+                .ok();
         }
     }
 }

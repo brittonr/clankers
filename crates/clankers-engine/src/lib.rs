@@ -1,11 +1,11 @@
 //! Host-facing reusable engine contracts that sit above `clankers-core`
 //! and below controller, agent-runtime, and UI/transport shells.
 
-use clanker_router::provider::ToolDefinition;
-use clankers_core::CoreState;
 use clanker_message::AgentMessage;
 use clanker_message::Content;
 use clanker_message::StopReason;
+use clanker_router::provider::ToolDefinition;
+use clankers_core::CoreState;
 use clankers_provider::ThinkingConfig;
 use serde_json::Value;
 
@@ -103,7 +103,9 @@ pub enum EngineEffect {
 
 #[derive(Debug, Clone)]
 pub enum EngineInput {
-    SubmitUserPrompt { submission: EnginePromptSubmission },
+    SubmitUserPrompt {
+        submission: EnginePromptSubmission,
+    },
     ModelCompleted {
         request_id: EngineCorrelationId,
         response: EngineModelResponse,
@@ -195,21 +197,12 @@ impl Default for EngineState {
 pub fn reduce(state: &EngineState, input: &EngineInput) -> EngineOutcome {
     match input {
         EngineInput::SubmitUserPrompt { submission } => apply_submit_user_prompt(state, submission),
-        EngineInput::ModelCompleted {
-            request_id,
-            response,
-        } => apply_model_completion(state, request_id, response),
+        EngineInput::ModelCompleted { request_id, response } => apply_model_completion(state, request_id, response),
         EngineInput::ModelFailed { request_id, error } => apply_model_failed(state, request_id, error),
         EngineInput::ToolCompleted { call_id, result } => apply_tool_feedback(state, call_id, result, false),
-        EngineInput::ToolFailed {
-            call_id,
-            error,
-            result,
-        } => {
+        EngineInput::ToolFailed { call_id, error, result } => {
             let tool_result_content = if result.is_empty() {
-                vec![Content::Text {
-                    text: error.clone(),
-                }]
+                vec![Content::Text { text: error.clone() }]
             } else {
                 result.clone()
             };
@@ -388,11 +381,7 @@ fn apply_tool_feedback(
     if !state.pending_tool_calls.iter().any(|pending_call_id| pending_call_id == call_id) {
         return rejected_outcome(state, EngineRejection::CorrelationMismatch);
     }
-    if state
-        .buffered_tool_results
-        .iter()
-        .any(|buffered_result| buffered_result.call_id == *call_id)
-    {
+    if state.buffered_tool_results.iter().any(|buffered_result| buffered_result.call_id == *call_id) {
         return rejected_outcome(state, EngineRejection::CorrelationMismatch);
     }
 
@@ -428,9 +417,8 @@ fn apply_tool_feedback(
 
     let mut next_messages = state.messages.clone();
     for pending_call_id in &state.pending_tool_calls {
-        let Some(buffered_result) = buffered_tool_results
-            .iter()
-            .find(|candidate| candidate.call_id == *pending_call_id)
+        let Some(buffered_result) =
+            buffered_tool_results.iter().find(|candidate| candidate.call_id == *pending_call_id)
         else {
             return rejected_outcome(state, EngineRejection::CorrelationMismatch);
         };
@@ -664,25 +652,16 @@ mod tests {
             ],
             stop_reason: StopReason::ToolUse,
         };
-        let outcome = reduce(
-            &state,
-            &EngineInput::ModelCompleted {
-                request_id,
-                response,
-            },
-        );
+        let outcome = reduce(&state, &EngineInput::ModelCompleted { request_id, response });
         outcome.next_state
     }
 
     #[test]
     fn submit_user_prompt_builds_request_effect() {
         let state = EngineState::new();
-        let outcome = reduce(
-            &state,
-            &EngineInput::SubmitUserPrompt {
-                submission: submission_with_session("session-123"),
-            },
-        );
+        let outcome = reduce(&state, &EngineInput::SubmitUserPrompt {
+            submission: submission_with_session("session-123"),
+        });
 
         assert!(outcome.rejection.is_none());
         assert_eq!(outcome.next_state.phase, EngineTurnPhase::WaitingForModel);
@@ -706,12 +685,9 @@ mod tests {
         state.phase = EngineTurnPhase::WaitingForModel;
         state.pending_model_request = Some(EngineCorrelationId("existing".to_string()));
 
-        let outcome = reduce(
-            &state,
-            &EngineInput::SubmitUserPrompt {
-                submission: submission_with_session("session-123"),
-            },
-        );
+        let outcome = reduce(&state, &EngineInput::SubmitUserPrompt {
+            submission: submission_with_session("session-123"),
+        });
 
         assert!(outcome.effects.is_empty());
         assert_eq!(outcome.rejection, Some(EngineRejection::Busy));
@@ -721,12 +697,9 @@ mod tests {
 
     #[test]
     fn submit_user_prompt_preserves_empty_session_id() {
-        let outcome = reduce(
-            &EngineState::new(),
-            &EngineInput::SubmitUserPrompt {
-                submission: submission_with_session(""),
-            },
-        );
+        let outcome = reduce(&EngineState::new(), &EngineInput::SubmitUserPrompt {
+            submission: submission_with_session(""),
+        });
 
         let model_effect = request_model_effect(&outcome);
         assert!(model_effect.session_id.is_empty());
@@ -744,13 +717,7 @@ mod tests {
             stop_reason: StopReason::ToolUse,
         };
 
-        let outcome = reduce(
-            &state,
-            &EngineInput::ModelCompleted {
-                request_id,
-                response,
-            },
-        );
+        let outcome = reduce(&state, &EngineInput::ModelCompleted { request_id, response });
 
         assert!(outcome.rejection.is_none());
         assert_eq!(outcome.next_state.phase, EngineTurnPhase::WaitingForTools);
@@ -777,13 +744,7 @@ mod tests {
             stop_reason: StopReason::Stop,
         };
 
-        let outcome = reduce(
-            &state,
-            &EngineInput::ModelCompleted {
-                request_id,
-                response,
-            },
-        );
+        let outcome = reduce(&state, &EngineInput::ModelCompleted { request_id, response });
 
         assert!(outcome.rejection.is_none());
         assert_eq!(outcome.next_state.phase, EngineTurnPhase::Finished);
@@ -807,13 +768,10 @@ mod tests {
             stop_reason: StopReason::Stop,
         };
 
-        let outcome = reduce(
-            &state,
-            &EngineInput::ModelCompleted {
-                request_id: EngineCorrelationId("wrong".to_string()),
-                response,
-            },
-        );
+        let outcome = reduce(&state, &EngineInput::ModelCompleted {
+            request_id: EngineCorrelationId("wrong".to_string()),
+            response,
+        });
 
         assert!(outcome.effects.is_empty());
         assert_eq!(outcome.rejection, Some(EngineRejection::CorrelationMismatch));
@@ -827,13 +785,10 @@ mod tests {
             stop_reason: StopReason::Stop,
         };
 
-        let outcome = reduce(
-            &EngineState::new(),
-            &EngineInput::ModelCompleted {
-                request_id: expected_model_request_id(ENGINE_INITIAL_MODEL_REQUEST_SEQUENCE),
-                response,
-            },
-        );
+        let outcome = reduce(&EngineState::new(), &EngineInput::ModelCompleted {
+            request_id: expected_model_request_id(ENGINE_INITIAL_MODEL_REQUEST_SEQUENCE),
+            response,
+        });
 
         assert!(outcome.effects.is_empty());
         assert_eq!(outcome.rejection, Some(EngineRejection::InvalidPhase));
@@ -850,13 +805,7 @@ mod tests {
             stop_reason: StopReason::ToolUse,
         };
 
-        let outcome = reduce(
-            &state,
-            &EngineInput::ModelCompleted {
-                request_id,
-                response,
-            },
-        );
+        let outcome = reduce(&state, &EngineInput::ModelCompleted { request_id, response });
 
         assert!(outcome.effects.is_empty());
         assert_eq!(outcome.rejection, Some(EngineRejection::MissingToolCall));
@@ -866,31 +815,25 @@ mod tests {
     #[test]
     fn tool_feedback_waits_for_all_pending_results_before_continuing() {
         let state = waiting_for_tools_state();
-        let partial_outcome = reduce(
-            &state,
-            &EngineInput::ToolCompleted {
-                call_id: EngineCorrelationId("call-2".to_string()),
-                result: vec![Content::Text {
-                    text: "second result".to_string(),
-                }],
-            },
-        );
+        let partial_outcome = reduce(&state, &EngineInput::ToolCompleted {
+            call_id: EngineCorrelationId("call-2".to_string()),
+            result: vec![Content::Text {
+                text: "second result".to_string(),
+            }],
+        });
 
         assert!(partial_outcome.rejection.is_none());
         assert_eq!(partial_outcome.next_state.phase, EngineTurnPhase::WaitingForTools);
         assert!(partial_outcome.effects.is_empty());
         assert_eq!(partial_outcome.next_state.buffered_tool_results.len(), 1);
 
-        let final_outcome = reduce(
-            &partial_outcome.next_state,
-            &EngineInput::ToolFailed {
-                call_id: EngineCorrelationId("call-1".to_string()),
-                error: "tool failed".to_string(),
-                result: vec![Content::Text {
-                    text: "tool failed".to_string(),
-                }],
-            },
-        );
+        let final_outcome = reduce(&partial_outcome.next_state, &EngineInput::ToolFailed {
+            call_id: EngineCorrelationId("call-1".to_string()),
+            error: "tool failed".to_string(),
+            result: vec![Content::Text {
+                text: "tool failed".to_string(),
+            }],
+        });
 
         assert!(final_outcome.rejection.is_none());
         assert_eq!(final_outcome.next_state.phase, EngineTurnPhase::WaitingForModel);
@@ -911,9 +854,7 @@ mod tests {
         } = &follow_up_request.messages[TOOL_USE_MESSAGE_COUNT];
         assert_eq!(*first_tool_role, EngineMessageRole::Tool);
         let Content::ToolResult {
-            tool_use_id,
-            is_error,
-            ..
+            tool_use_id, is_error, ..
         } = &first_tool_content[0]
         else {
             panic!("expected first tool result content block");
@@ -925,13 +866,10 @@ mod tests {
     #[test]
     fn tool_feedback_rejects_unknown_call_id() {
         let state = waiting_for_tools_state();
-        let outcome = reduce(
-            &state,
-            &EngineInput::ToolCompleted {
-                call_id: EngineCorrelationId("wrong".to_string()),
-                result: Vec::new(),
-            },
-        );
+        let outcome = reduce(&state, &EngineInput::ToolCompleted {
+            call_id: EngineCorrelationId("wrong".to_string()),
+            result: Vec::new(),
+        });
 
         assert!(outcome.effects.is_empty());
         assert_eq!(outcome.rejection, Some(EngineRejection::CorrelationMismatch));
@@ -941,24 +879,18 @@ mod tests {
     #[test]
     fn tool_feedback_rejects_duplicate_call_id() {
         let state = waiting_for_tools_state();
-        let partial_outcome = reduce(
-            &state,
-            &EngineInput::ToolCompleted {
-                call_id: EngineCorrelationId("call-1".to_string()),
-                result: vec![Content::Text {
-                    text: "result".to_string(),
-                }],
-            },
-        );
-        let duplicate_outcome = reduce(
-            &partial_outcome.next_state,
-            &EngineInput::ToolCompleted {
-                call_id: EngineCorrelationId("call-1".to_string()),
-                result: vec![Content::Text {
-                    text: "result".to_string(),
-                }],
-            },
-        );
+        let partial_outcome = reduce(&state, &EngineInput::ToolCompleted {
+            call_id: EngineCorrelationId("call-1".to_string()),
+            result: vec![Content::Text {
+                text: "result".to_string(),
+            }],
+        });
+        let duplicate_outcome = reduce(&partial_outcome.next_state, &EngineInput::ToolCompleted {
+            call_id: EngineCorrelationId("call-1".to_string()),
+            result: vec![Content::Text {
+                text: "result".to_string(),
+            }],
+        });
 
         assert!(duplicate_outcome.effects.is_empty());
         assert_eq!(duplicate_outcome.rejection, Some(EngineRejection::CorrelationMismatch));
@@ -967,13 +899,10 @@ mod tests {
 
     #[test]
     fn tool_feedback_rejects_wrong_phase() {
-        let outcome = reduce(
-            &EngineState::new(),
-            &EngineInput::ToolCompleted {
-                call_id: EngineCorrelationId("call-1".to_string()),
-                result: Vec::new(),
-            },
-        );
+        let outcome = reduce(&EngineState::new(), &EngineInput::ToolCompleted {
+            call_id: EngineCorrelationId("call-1".to_string()),
+            result: Vec::new(),
+        });
 
         assert!(outcome.effects.is_empty());
         assert_eq!(outcome.rejection, Some(EngineRejection::InvalidPhase));
@@ -983,12 +912,9 @@ mod tests {
     #[test]
     fn cancel_turn_terminalizes_pending_model_work() {
         let (state, _) = submitted_state();
-        let outcome = reduce(
-            &state,
-            &EngineInput::CancelTurn {
-                reason: "cancelled".to_string(),
-            },
-        );
+        let outcome = reduce(&state, &EngineInput::CancelTurn {
+            reason: "cancelled".to_string(),
+        });
 
         assert!(outcome.rejection.is_none());
         assert_eq!(outcome.next_state.phase, EngineTurnPhase::Finished);
@@ -1000,12 +926,9 @@ mod tests {
     #[test]
     fn cancel_turn_terminalizes_pending_tool_work() {
         let state = waiting_for_tools_state();
-        let outcome = reduce(
-            &state,
-            &EngineInput::CancelTurn {
-                reason: "cancelled".to_string(),
-            },
-        );
+        let outcome = reduce(&state, &EngineInput::CancelTurn {
+            reason: "cancelled".to_string(),
+        });
 
         assert!(outcome.rejection.is_none());
         assert_eq!(outcome.next_state.phase, EngineTurnPhase::Finished);
@@ -1016,12 +939,9 @@ mod tests {
 
     #[test]
     fn cancel_turn_rejects_idle_phase() {
-        let outcome = reduce(
-            &EngineState::new(),
-            &EngineInput::CancelTurn {
-                reason: "cancelled".to_string(),
-            },
-        );
+        let outcome = reduce(&EngineState::new(), &EngineInput::CancelTurn {
+            reason: "cancelled".to_string(),
+        });
 
         assert!(outcome.effects.is_empty());
         assert_eq!(outcome.rejection, Some(EngineRejection::InvalidPhase));
@@ -1031,13 +951,10 @@ mod tests {
     #[test]
     fn model_failed_terminalizes_pending_request() {
         let (state, request_id) = submitted_state();
-        let outcome = reduce(
-            &state,
-            &EngineInput::ModelFailed {
-                request_id,
-                error: "provider failed".to_string(),
-            },
-        );
+        let outcome = reduce(&state, &EngineInput::ModelFailed {
+            request_id,
+            error: "provider failed".to_string(),
+        });
 
         assert!(outcome.rejection.is_none());
         assert_eq!(outcome.next_state.phase, EngineTurnPhase::Finished);
@@ -1067,10 +984,7 @@ mod tests {
             timestamp: test_timestamp(),
         }));
 
-        let outcome = reduce(
-            &EngineState::new(),
-            &EngineInput::SubmitUserPrompt { submission },
-        );
+        let outcome = reduce(&EngineState::new(), &EngineInput::SubmitUserPrompt { submission });
 
         let model_effect = request_model_effect(&outcome);
         assert_eq!(model_effect.messages.len(), 2);

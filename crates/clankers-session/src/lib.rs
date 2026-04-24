@@ -134,22 +134,21 @@ impl SessionManager {
         let header = automerge_store::read_header(&doc)?;
         let messages = automerge_store::read_messages(&doc)?;
 
-        let persisted_ids: std::collections::HashSet<MessageId> =
-            messages.iter().map(|m| m.id.clone()).collect();
+        let persisted_ids: std::collections::HashSet<MessageId> = messages.iter().map(|m| m.id.clone()).collect();
 
         let entries = automerge_store::to_session_entries(&doc)?;
-        let latest_compaction_summary = entries.iter().filter_map(|entry| {
-            if let SessionEntry::Compaction(compaction) = entry {
-                Some(compaction.summary.clone())
-            } else {
-                None
-            }
-        }).last();
+        let latest_compaction_summary = entries
+            .iter()
+            .filter_map(|entry| {
+                if let SessionEntry::Compaction(compaction) = entry {
+                    Some(compaction.summary.clone())
+                } else {
+                    None
+                }
+            })
+            .last();
         let tree = SessionTree::build(entries);
-        let active_leaf_id = tree
-            .find_latest_leaf(None)
-            .or_else(|| tree.latest_message())
-            .map(|m| m.id.clone());
+        let active_leaf_id = tree.find_latest_leaf(None).or_else(|| tree.latest_message()).map(|m| m.id.clone());
 
         Ok(Self {
             session_id: header.session_id,

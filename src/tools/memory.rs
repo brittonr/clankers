@@ -3,13 +3,20 @@
 //! Actions: add, replace, remove, search.
 //! Capacity-bounded with usage reporting.
 
-use async_trait::async_trait;
 use std::fmt::Write;
-use clankers_config::settings::MemoryLimits;
-use clankers_db::memory::{MemoryEntry, MemoryScope, MemorySource};
-use serde_json::{Value, json};
 
-use super::{Tool, ToolContext, ToolDefinition, ToolResult};
+use async_trait::async_trait;
+use clankers_config::settings::MemoryLimits;
+use clankers_db::memory::MemoryEntry;
+use clankers_db::memory::MemoryScope;
+use clankers_db::memory::MemorySource;
+use serde_json::Value;
+use serde_json::json;
+
+use super::Tool;
+use super::ToolContext;
+use super::ToolDefinition;
+use super::ToolResult;
 
 pub struct MemoryTool {
     definition: ToolDefinition,
@@ -70,10 +77,7 @@ impl MemoryTool {
     fn resolve_scope(&self, params: &Value) -> MemoryScope {
         let scope_str = params.get("scope").and_then(|v| v.as_str()).unwrap_or("global");
         if scope_str == "project" {
-            let cwd = std::env::current_dir()
-                .ok()
-                .and_then(|p| p.to_str().map(String::from))
-                .unwrap_or_default();
+            let cwd = std::env::current_dir().ok().and_then(|p| p.to_str().map(String::from)).unwrap_or_default();
             MemoryScope::Project { path: cwd }
         } else {
             MemoryScope::Global
@@ -133,9 +137,7 @@ impl MemoryTool {
         }
 
         let usage = self.format_usage(db, &scope);
-        ToolResult::text(format!(
-            "Saved memory (id: {id}, scope: {scope}).\nUsage: {usage}"
-        ))
+        ToolResult::text(format!("Saved memory (id: {id}, scope: {scope}).\nUsage: {usage}"))
     }
 
     fn handle_replace(&self, db: &clankers_db::Db, params: &Value) -> ToolResult {
@@ -150,10 +152,7 @@ impl MemoryTool {
 
         let entries = db.memory().list(None).unwrap_or_default();
         let lower = old_text.to_lowercase();
-        let matches: Vec<&MemoryEntry> = entries
-            .iter()
-            .filter(|e| e.text.to_lowercase().contains(&lower))
-            .collect();
+        let matches: Vec<&MemoryEntry> = entries.iter().filter(|e| e.text.to_lowercase().contains(&lower)).collect();
 
         if matches.is_empty() {
             return ToolResult::error(format!("No memory entry found matching '{old_text}'."));
@@ -185,10 +184,7 @@ impl MemoryTool {
         }
 
         let usage = self.format_usage(db, &scope);
-        ToolResult::text(format!(
-            "Replaced memory (id: {}).\nUsage: {usage}",
-            entry.id
-        ))
+        ToolResult::text(format!("Replaced memory (id: {}).\nUsage: {usage}", entry.id))
     }
 
     fn handle_remove(&self, db: &clankers_db::Db, params: &Value) -> ToolResult {
@@ -199,10 +195,7 @@ impl MemoryTool {
 
         let entries = db.memory().list(None).unwrap_or_default();
         let lower = old_text.to_lowercase();
-        let matches: Vec<&MemoryEntry> = entries
-            .iter()
-            .filter(|e| e.text.to_lowercase().contains(&lower))
-            .collect();
+        let matches: Vec<&MemoryEntry> = entries.iter().filter(|e| e.text.to_lowercase().contains(&lower)).collect();
 
         if matches.is_empty() {
             return ToolResult::error(format!("No memory entry found matching '{old_text}'."));
@@ -269,9 +262,9 @@ impl Tool for MemoryTool {
             "replace" => self.handle_replace(db, &params),
             "remove" => self.handle_remove(db, &params),
             "search" => self.handle_search(db, &params),
-            other => ToolResult::error(format!(
-                "Unknown action '{other}'. Use 'add', 'replace', 'remove', or 'search'."
-            )),
+            other => {
+                ToolResult::error(format!("Unknown action '{other}'. Use 'add', 'replace', 'remove', or 'search'."))
+            }
         }
     }
 }
@@ -305,9 +298,7 @@ mod tests {
         let tool = MemoryTool::new(MemoryLimits::default());
         let ctx = make_ctx(&db);
 
-        let result = tool
-            .execute(&ctx, json!({"action": "add", "text": "User prefers tabs"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"action": "add", "text": "User prefers tabs"})).await;
         assert!(!result.is_error);
         let text = result_text(&result);
         assert!(text.contains("Saved memory"));
@@ -330,13 +321,10 @@ mod tests {
         let ctx = make_ctx(&db);
 
         // Fill up (15 chars)
-        tool.execute(&ctx, json!({"action": "add", "text": "123456789012345"}))
-            .await;
+        tool.execute(&ctx, json!({"action": "add", "text": "123456789012345"})).await;
 
         // Try adding 10 more (would be 25 > 20)
-        let result = tool
-            .execute(&ctx, json!({"action": "add", "text": "1234567890"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"action": "add", "text": "1234567890"})).await;
         assert!(result.is_error);
         let text = result_text(&result);
         assert!(text.contains("exceed the limit"));
@@ -349,14 +337,10 @@ mod tests {
         let tool = MemoryTool::new(MemoryLimits::default());
         let ctx = make_ctx(&db);
 
-        tool.execute(&ctx, json!({"action": "add", "text": "User prefers snake_case"}))
-            .await;
+        tool.execute(&ctx, json!({"action": "add", "text": "User prefers snake_case"})).await;
 
         let result = tool
-            .execute(
-                &ctx,
-                json!({"action": "replace", "old_text": "snake_case", "text": "User prefers camelCase"}),
-            )
+            .execute(&ctx, json!({"action": "replace", "old_text": "snake_case", "text": "User prefers camelCase"}))
             .await;
         assert!(!result.is_error);
         assert!(result_text(&result).contains("Replaced memory"));
@@ -371,17 +355,10 @@ mod tests {
         let tool = MemoryTool::new(MemoryLimits::default());
         let ctx = make_ctx(&db);
 
-        tool.execute(&ctx, json!({"action": "add", "text": "User prefers dark mode"}))
-            .await;
-        tool.execute(&ctx, json!({"action": "add", "text": "User profile is dark theme"}))
-            .await;
+        tool.execute(&ctx, json!({"action": "add", "text": "User prefers dark mode"})).await;
+        tool.execute(&ctx, json!({"action": "add", "text": "User profile is dark theme"})).await;
 
-        let result = tool
-            .execute(
-                &ctx,
-                json!({"action": "replace", "old_text": "dark", "text": "something"}),
-            )
-            .await;
+        let result = tool.execute(&ctx, json!({"action": "replace", "old_text": "dark", "text": "something"})).await;
         assert!(result.is_error);
         assert!(result_text(&result).contains("Multiple entries match"));
     }
@@ -392,13 +369,10 @@ mod tests {
         let tool = MemoryTool::new(MemoryLimits::default());
         let ctx = make_ctx(&db);
 
-        tool.execute(&ctx, json!({"action": "add", "text": "temp fact"}))
-            .await;
+        tool.execute(&ctx, json!({"action": "add", "text": "temp fact"})).await;
         assert_eq!(db.memory().count().unwrap(), 1);
 
-        let result = tool
-            .execute(&ctx, json!({"action": "remove", "old_text": "temp"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"action": "remove", "old_text": "temp"})).await;
         assert!(!result.is_error);
         assert!(result_text(&result).contains("Removed memory"));
         assert_eq!(db.memory().count().unwrap(), 0);
@@ -410,9 +384,7 @@ mod tests {
         let tool = MemoryTool::new(MemoryLimits::default());
         let ctx = make_ctx(&db);
 
-        let result = tool
-            .execute(&ctx, json!({"action": "remove", "old_text": "ghost"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"action": "remove", "old_text": "ghost"})).await;
         assert!(result.is_error);
         assert!(result_text(&result).contains("No memory entry found"));
     }
@@ -423,14 +395,10 @@ mod tests {
         let tool = MemoryTool::new(MemoryLimits::default());
         let ctx = make_ctx(&db);
 
-        tool.execute(&ctx, json!({"action": "add", "text": "Uses PostgreSQL 16"}))
-            .await;
-        tool.execute(&ctx, json!({"action": "add", "text": "Runs on Ubuntu 22.04"}))
-            .await;
+        tool.execute(&ctx, json!({"action": "add", "text": "Uses PostgreSQL 16"})).await;
+        tool.execute(&ctx, json!({"action": "add", "text": "Runs on Ubuntu 22.04"})).await;
 
-        let result = tool
-            .execute(&ctx, json!({"action": "search", "query": "postgres"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"action": "search", "query": "postgres"})).await;
         assert!(!result.is_error);
         let text = result_text(&result);
         assert!(text.contains("PostgreSQL"));
@@ -443,9 +411,7 @@ mod tests {
         let tool = MemoryTool::new(MemoryLimits::default());
         let ctx = make_ctx(&db);
 
-        let result = tool
-            .execute(&ctx, json!({"action": "search", "query": "nonexistent"}))
-            .await;
+        let result = tool.execute(&ctx, json!({"action": "search", "query": "nonexistent"})).await;
         assert!(!result.is_error);
         assert!(result_text(&result).contains("No memories matching"));
     }

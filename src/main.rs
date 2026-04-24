@@ -16,7 +16,10 @@ use tracing::info;
 
 #[snafu::report]
 #[tokio::main]
-#[cfg_attr(dylint_lib = "tigerstyle", allow(no_unwrap, no_panic, reason = "main function — startup failures are fatal"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(no_unwrap, no_panic, reason = "main function — startup failures are fatal")
+)]
 async fn main() -> Result<()> {
     let mut cli = Cli::parse();
 
@@ -235,7 +238,15 @@ async fn dispatch(
         Some(Commands::Plugin { action }) => {
             clankers::commands::plugin::run(&ctx, action)?;
         }
-        Some(Commands::Attach { session_id, new, model, remote, auto_daemon, read_only: _, capabilities: _ }) => {
+        Some(Commands::Attach {
+            session_id,
+            new,
+            model,
+            remote,
+            auto_daemon,
+            read_only: _,
+            capabilities: _,
+        }) => {
             if auto_daemon {
                 clankers::commands::daemon::ensure_daemon_running().await?;
             }
@@ -247,7 +258,8 @@ async fn dispatch(
                     model,
                     &ctx.settings,
                     &ctx.paths,
-                ).await?;
+                )
+                .await?;
             } else {
                 clankers::modes::attach::run_attach(session_id, new, model, &ctx.settings).await?;
             }
@@ -335,7 +347,10 @@ async fn run_agent_mode(
 }
 
 /// Resolve agent definition overrides for model and system prompt.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential setup/dispatch logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential setup/dispatch logic")
+)]
 fn resolve_agent_overrides(cli: &Cli, ctx: &CommandContext) -> Result<(String, String)> {
     if let Some(ref agent_name) = cli.agent {
         let agent_scope = cli
@@ -371,7 +386,10 @@ fn resolve_agent_overrides(cli: &Cli, ctx: &CommandContext) -> Result<(String, S
 }
 
 /// Run in headless mode (print/json/markdown).
-#[cfg_attr(dylint_lib = "tigerstyle", allow(function_length, reason = "sequential agent setup logic"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(function_length, reason = "sequential agent setup logic")
+)]
 async fn run_headless(
     cli: &Cli,
     ctx: &CommandContext,

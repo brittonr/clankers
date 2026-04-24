@@ -88,9 +88,7 @@ pub(crate) fn build_agent_with_tools(
 
     // Apply default capability restrictions from settings
     if let Some(caps) = &settings.default_capabilities {
-        let gate = std::sync::Arc::new(
-            crate::capability_gate::UcanCapabilityGate::new(caps.clone()),
-        );
+        let gate = std::sync::Arc::new(crate::capability_gate::UcanCapabilityGate::new(caps.clone()));
         agent_builder = agent_builder.with_capability_gate(gate);
     }
 
@@ -115,7 +113,10 @@ pub(crate) fn build_agent_with_tools(
 // ── Helpers ──────────────────────────────────────────────────────────
 
 /// Create and start the process monitor, bridging ProcessEvent → AgentEvent.
-#[cfg_attr(dylint_lib = "tigerstyle", allow(unbounded_loop, reason = "traversal loop; bounded by config chain length"))]
+#[cfg_attr(
+    dylint_lib = "tigerstyle",
+    allow(unbounded_loop, reason = "traversal loop; bounded by config chain length")
+)]
 fn create_process_monitor(agent_tx: tokio::sync::broadcast::Sender<AgentEvent>) -> Arc<crate::procmon::ProcessMonitor> {
     let config = crate::procmon::ProcessMonitorConfig::default();
     let (proc_tx, mut proc_rx) = tokio::sync::broadcast::channel::<crate::procmon::ProcessEvent>(256);

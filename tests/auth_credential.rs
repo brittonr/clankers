@@ -17,10 +17,7 @@ use clankers_ucan::TokenBuilder;
 /// Returns (auth_layer, _tmpdir) — hold onto _tmpdir to keep the database alive.
 fn test_auth_layer(
     owner_key: &iroh::SecretKey,
-) -> (
-    Arc<clankers::modes::daemon::session_store::AuthLayer>,
-    tempfile::TempDir,
-) {
+) -> (Arc<clankers::modes::daemon::session_store::AuthLayer>, tempfile::TempDir) {
     let tmp = tempfile::tempdir().unwrap();
     let db_path = tmp.path().join("auth.db");
     let key_path = tmp.path().join("identity.key");
@@ -28,8 +25,7 @@ fn test_auth_layer(
         secret_key: owner_key.clone(),
         path: key_path,
     };
-    let db = clankers::modes::daemon::session_store::open_daemon_db(&db_path)
-        .expect("db should open");
+    let db = clankers::modes::daemon::session_store::open_daemon_db(&db_path).expect("db should open");
     let auth = clankers::modes::daemon::session_store::create_auth_layer(&db, &identity)
         .expect("auth layer should initialize");
     (auth, tmp)
@@ -250,9 +246,7 @@ fn stale_entry_cleaned_on_decode_failure() {
         let db = &auth.db;
         let tx = db.begin_write().unwrap();
         {
-            let mut table = tx
-                .open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE)
-                .unwrap();
+            let mut table = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE).unwrap();
             table.insert("stale-user", b"this is not a valid credential".as_slice()).unwrap();
         }
         tx.commit().unwrap();
@@ -265,9 +259,7 @@ fn stale_entry_cleaned_on_decode_failure() {
     {
         let db = &auth.db;
         let tx = db.begin_read().unwrap();
-        let table = tx
-            .open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE)
-            .unwrap();
+        let table = tx.open_table(clankers_ucan::revocation::AUTH_TOKENS_TABLE).unwrap();
         assert!(table.get("stale-user").unwrap().is_none());
     }
 }

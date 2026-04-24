@@ -7,8 +7,12 @@
 //! 2. BashTool annotates output containing nix store paths (when enabled)
 //! 3. `build_tiered_tools` conditionally registers NixEvalTool based on nix availability
 
-use clankers::modes::common::{ToolEnv, build_tiered_tools};
-use clankers::tools::{Tool, ToolContext, ToolResult, ToolResultContent};
+use clankers::modes::common::ToolEnv;
+use clankers::modes::common::build_tiered_tools;
+use clankers::tools::Tool;
+use clankers::tools::ToolContext;
+use clankers::tools::ToolResult;
+use clankers::tools::ToolResultContent;
 use serde_json::json;
 use tokio_util::sync::CancellationToken;
 
@@ -166,9 +170,7 @@ async fn bash_tool_runs_echo_with_store_path() {
 async fn bash_tool_preserves_output_without_store_paths() {
     let tool = clankers::tools::bash::BashTool::new();
     let ctx = make_ctx();
-    let result = tool
-        .execute(&ctx, json!({ "command": "echo 'hello world'" }))
-        .await;
+    let result = tool.execute(&ctx, json!({ "command": "echo 'hello world'" })).await;
 
     assert!(!result.is_error);
     let text = result_text(&result);
@@ -196,9 +198,7 @@ async fn bash_tool_annotation_matches_nix_tool_format() {
     // Run through BashTool (annotation depends on config, but format is same)
     let tool = clankers::tools::bash::BashTool::new();
     let ctx = make_ctx();
-    let result = tool
-        .execute(&ctx, json!({ "command": format!("echo '{store_path}'") }))
-        .await;
+    let result = tool.execute(&ctx, json!({ "command": format!("echo '{store_path}'") })).await;
 
     let text = result_text(&result);
     if text.contains("[nix refs:") {
@@ -228,15 +228,9 @@ fn build_tiered_tools_nix_eval_matches_path_availability() {
     let nix_eval_registered = names.contains(&"nix_eval".to_string());
 
     if nix_available {
-        assert!(
-            nix_eval_registered,
-            "nix_eval should be registered when nix is on PATH"
-        );
+        assert!(nix_eval_registered, "nix_eval should be registered when nix is on PATH");
     } else {
-        assert!(
-            !nix_eval_registered,
-            "nix_eval should NOT be registered when nix is not on PATH"
-        );
+        assert!(!nix_eval_registered, "nix_eval should NOT be registered when nix is not on PATH");
     }
 }
 

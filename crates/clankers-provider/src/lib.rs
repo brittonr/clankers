@@ -147,11 +147,7 @@ mod tests {
         let source = std::fs::read_to_string(workspace_root().join(path))
             .unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
         let occurrences: Vec<usize> = source.match_indices("CompletionRequest {").map(|(idx, _)| idx).collect();
-        assert_eq!(
-            occurrences.len(),
-            expected_count,
-            "unexpected CompletionRequest constructor count in {path}"
-        );
+        assert_eq!(occurrences.len(), expected_count, "unexpected CompletionRequest constructor count in {path}");
 
         for start in occurrences {
             let snippet = source[start..].lines().take(40).collect::<Vec<_>>().join("\n");
@@ -254,10 +250,9 @@ mod tests {
             ("_session_id".to_string(), json!("session-parity-1")),
             ("verbosity".to_string(), json!("medium")),
         ]);
-        let provider_json = serde_json::to_value(provider_request(extra_params.clone()))
-            .expect("provider request should serialize");
-        let router_json = serde_json::to_value(router_request(extra_params))
-            .expect("router request should serialize");
+        let provider_json =
+            serde_json::to_value(provider_request(extra_params.clone())).expect("provider request should serialize");
+        let router_json = serde_json::to_value(router_request(extra_params)).expect("router request should serialize");
 
         assert_eq!(
             shared_field_projection(&provider_json),
@@ -268,10 +263,10 @@ mod tests {
 
     #[test]
     fn provider_and_router_request_omit_empty_extra_params_consistently() {
-        let provider_json = serde_json::to_value(provider_request(HashMap::new()))
-            .expect("provider request should serialize");
-        let router_json = serde_json::to_value(router_request(HashMap::new()))
-            .expect("router request should serialize");
+        let provider_json =
+            serde_json::to_value(provider_request(HashMap::new())).expect("provider request should serialize");
+        let router_json =
+            serde_json::to_value(router_request(HashMap::new())).expect("router request should serialize");
 
         assert!(provider_json.get("extra_params").is_none());
         assert!(router_json.get("extra_params").is_none());

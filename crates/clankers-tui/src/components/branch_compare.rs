@@ -7,8 +7,11 @@
 //! Uses rat-branches for generic tree algorithms and comparison structures.
 
 // Re-export rat-branches types for compatibility
-pub use rat_branches::{BranchComparison, BranchCompareView, CompareBlock};
-use rat_branches::compare::{compare_branches as rb_compare_branches, truncate_first_line};
+pub use rat_branches::BranchCompareView;
+pub use rat_branches::BranchComparison;
+pub use rat_branches::CompareBlock;
+use rat_branches::compare::compare_branches as rb_compare_branches;
+use rat_branches::compare::truncate_first_line;
 
 use crate::components::block::ConversationBlock;
 
@@ -22,13 +25,9 @@ pub fn compare_branches(leaf_a: usize, leaf_b: usize, all_blocks: &[Conversation
 /// This function accesses clankers-specific fields (responses, MessageRole).
 fn block_to_compare(b: &ConversationBlock) -> CompareBlock {
     use crate::app::MessageRole;
-    CompareBlock::new(
-        b.id,
-        truncate_first_line(&b.prompt, 50),
-        b.tokens,
-    )
-    .add_detail_count("responses", b.responses.len())
-    .add_detail_count("tools", b.responses.iter().filter(|m| m.role == MessageRole::ToolCall).count())
+    CompareBlock::new(b.id, truncate_first_line(&b.prompt, 50), b.tokens)
+        .add_detail_count("responses", b.responses.len())
+        .add_detail_count("tools", b.responses.iter().filter(|m| m.role == MessageRole::ToolCall).count())
 }
 
 /// Clankers-specific extension for BranchCompareView.
@@ -44,4 +43,3 @@ impl BranchCompareViewExt for BranchCompareView {
         }
     }
 }
-

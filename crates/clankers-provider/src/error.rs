@@ -6,6 +6,7 @@ use crate::error_classifier::ClassifiedError;
 use crate::error_classifier::FailoverReason;
 use crate::error_classifier::classify_api_error;
 use crate::error_classifier::classify_transport_error;
+use crate::error_classifier::recovery_hints;
 
 /// Provider error type.
 #[derive(Debug)]
@@ -96,16 +97,49 @@ impl From<clanker_router::Error> for ProviderError {
         };
         let message = e.to_string();
         let provider = "router";
-        let classified = match status {
-            Some(code) => classify_api_error(Some(code), &message, provider),
-            None => classify_transport_error(&message, provider),
-        };
+        let classified = classify_router_error(&e, &message, provider, status);
         Self {
             message,
             kind,
             status,
             classified,
         }
+    }
+}
+
+fn classified_with_reason(
+    message: &str,
+    provider: &str,
+    status: Option<u16>,
+    reason: FailoverReason,
+) -> ClassifiedError {
+    let normalized_provider = provider.trim().to_ascii_lowercase();
+    let (retryable, should_compress, should_rotate_credential, should_fallback) = recovery_hints(reason);
+    ClassifiedError {
+        reason,
+        status_code: status,
+        provider: normalized_provider,
+        message: message.trim().to_string(),
+        retryable,
+        should_compress,
+        should_rotate_credential,
+        should_fallback,
+    }
+}
+
+fn classify_router_error(
+    error: &clanker_router::Error,
+    message: &str,
+    provider: &str,
+    status: Option<u16>,
+) -> ClassifiedError {
+    match status {
+        Some(code) => classify_api_error(Some(code), message, provider),
+        None => match error {
+            clanker_router::Error::Auth { .. } => classified_with_reason(message, provider, None, FailoverReason::Auth),
+            clanker_router::Error::Provider { .. } => classify_api_error(None, message, provider),
+            _ => classify_transport_error(message, provider),
+        },
     }
 }
 
@@ -158,11 +192,7 @@ pub fn provider_err_with_status(status: u16, msg: impl Into<String>) -> Provider
     provider_err_with_status_for_provider(status, msg, "unknown")
 }
 
-pub fn provider_err_with_status_for_provider(
-    status: u16,
-    msg: impl Into<String>,
-    provider: &str,
-) -> ProviderError {
+pub fn provider_err_with_status_for_provider(status: u16, msg: impl Into<String>, provider: &str) -> ProviderError {
     let message = msg.into();
     let classified = classify_api_error(Some(status), &message, provider);
     ProviderError {
@@ -175,12 +205,7 @@ pub fn provider_err_with_status_for_provider(
 
 pub fn auth_err(msg: impl Into<String>) -> ProviderError {
     let message = msg.into();
-    let mut classified = classify_transport_error(&message, "unknown");
-    classified.reason = FailoverReason::Auth;
-    classified.retryable = false;
-    classified.should_compress = false;
-    classified.should_rotate_credential = true;
-    classified.should_fallback = true;
+    let classified = classified_with_reason(&message, "unknown", None, FailoverReason::Auth);
     ProviderError {
         message,
         kind: ProviderErrorKind::Auth,
@@ -246,11 +271,32 @@ mod tests {
     }
 
     #[test]
+    fn router_auth_error_conversion_preserves_non_retryable_contract() {
+        let error = ProviderError::from(clanker_router::Error::Auth {
+            message: "authenticated but not entitled for Codex use".into(),
+        });
+        assert_eq!(error.failover_reason(), crate::FailoverReason::Auth);
+        assert!(!error.is_retryable());
+        assert!(error.should_rotate_credential());
+        assert!(error.should_fallback());
+    }
+
+    #[test]
+    fn router_statusless_provider_error_uses_api_body_classification() {
+        let error = ProviderError::from(clanker_router::Error::Provider {
+            message: "Invalid API key".into(),
+            status: None,
+        });
+        assert_eq!(error.failover_reason(), crate::FailoverReason::Auth);
+        assert!(!error.is_retryable());
+        assert!(error.should_rotate_credential());
+        assert!(error.should_fallback());
+    }
+
+    #[test]
     fn auth_permanent_payload_can_be_observed() {
-        let mut error = ProviderError::from(std::io::Error::new(
-            std::io::ErrorKind::PermissionDenied,
-            "account disabled",
-        ));
+        let mut error =
+            ProviderError::from(std::io::Error::new(std::io::ErrorKind::PermissionDenied, "account disabled"));
         let mut classified = crate::classify_transport_error("account disabled", "openai");
         classified.reason = crate::FailoverReason::AuthPermanent;
         classified.retryable = false;
