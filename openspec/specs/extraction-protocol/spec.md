@@ -1,7 +1,8 @@
 # extraction-protocol Specification
 
 ## Purpose
-TBD - created by archiving change crate-extraction-2. Update Purpose after archive.
+Defines invariants every workspace crate extraction must satisfy: history preservation, namespace rename, workspace continuity, re-export wrappers, standalone CI, licensing, and README.
+
 ## Requirements
 ### Requirement: History Preservation
 The extracted crate MUST either retain its git history from the clankers repository or record a design-level clean-move exception. Use `git subtree split` or `git filter-repo` when preserving history. Use a clean-move exception only when the design explains why the crate already has an independent identity or why the new repository intentionally starts from a curated snapshot.

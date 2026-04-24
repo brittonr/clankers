@@ -1,4 +1,7 @@
-use openspec::core::{change, spec, templates, verify};
+use openspec::core::change;
+use openspec::core::spec;
+use openspec::core::templates;
+use openspec::core::verify;
 
 #[test]
 fn test_pure_api_basic() {
@@ -20,12 +23,8 @@ fn test_pure_api_basic() {
     assert_eq!(progress.todo, 1);
 
     // Test template expansion
-    let expanded = templates::expand_template(
-        "# {{change_name}}\nContext: {{context}}",
-        "test-change",
-        "test context",
-        &[],
-    );
+    let expanded =
+        templates::expand_template("# {{change_name}}\nContext: {{context}}", "test-change", "test context", &[]);
     assert!(expanded.contains("test-change"));
     assert!(expanded.contains("test context"));
 
@@ -53,9 +52,7 @@ fn test_fs_api_basic() {
     assert!(engine.discover_changes().is_empty());
 
     // Test change creation
-    engine
-        .create_change("test-change", None)
-        .expect("failed to create change");
+    engine.create_change("test-change", None).expect("failed to create change");
     let changes = engine.discover_changes();
     assert_eq!(changes.len(), 1);
     assert_eq!(changes[0].name, "test-change");

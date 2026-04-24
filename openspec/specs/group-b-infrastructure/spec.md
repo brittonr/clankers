@@ -1,7 +1,8 @@
 # group-b-infrastructure Specification
 
 ## Purpose
-TBD - created by archiving change crate-extraction-2. Update Purpose after archive.
+Governs extraction of infrastructure crates such as the specs engine, including the pure-core / filesystem-shell split needed for native use and plugin wrapping.
+
 ## Requirements
 ### Requirement: specs Extraction
 The `clankers-specs` crate MUST be extracted to `openspec`. The entire spec engine moves: schema, artifacts, changes, specs, delta, merge, verify, templates, and config modules.

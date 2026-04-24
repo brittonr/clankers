@@ -59,7 +59,7 @@ The plugin MUST ship with a `plugin.json` manifest that declares plugin name, ve
 The plugin MUST have durable checked-in runtime coverage in addition to any ad-hoc smoke scripts.
 
 #### Scenario: Runtime coverage exercises positive and negative calls
-- GIVEN `vendor/openspec/openspec-plugin/tests/runtime.rs`
+- GIVEN the `openspec-plugin/tests/runtime.rs` integration test
 - WHEN `cargo test --manifest-path openspec-plugin/Cargo.toml` runs
 - THEN Extism loads the built plugin module
 - AND the test exercises `describe`, `on_event`, and all five tools

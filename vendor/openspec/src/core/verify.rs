@@ -27,31 +27,14 @@ pub struct VerifyReport {
 
 impl VerifyReport {
     pub fn has_critical(&self) -> bool {
-        self.items
-            .iter()
-            .any(|i| matches!(i.severity, Severity::Critical))
+        self.items.iter().any(|i| matches!(i.severity, Severity::Critical))
     }
 
     pub fn summary(&self) -> String {
-        let critical = self
-            .items
-            .iter()
-            .filter(|i| matches!(i.severity, Severity::Critical))
-            .count();
-        let warnings = self
-            .items
-            .iter()
-            .filter(|i| matches!(i.severity, Severity::Warning))
-            .count();
-        let suggestions = self
-            .items
-            .iter()
-            .filter(|i| matches!(i.severity, Severity::Suggestion))
-            .count();
-        format!(
-            "{} critical, {} warnings, {} suggestions",
-            critical, warnings, suggestions
-        )
+        let critical = self.items.iter().filter(|i| matches!(i.severity, Severity::Critical)).count();
+        let warnings = self.items.iter().filter(|i| matches!(i.severity, Severity::Warning)).count();
+        let suggestions = self.items.iter().filter(|i| matches!(i.severity, Severity::Suggestion)).count();
+        format!("{} critical, {} warnings, {} suggestions", critical, warnings, suggestions)
     }
 }
 
@@ -125,45 +108,25 @@ mod tests {
         let report = verify_from_content(Some(content), true);
         assert!(!report.has_critical());
         // Should have no warnings about incomplete tasks
-        assert!(
-            !report
-                .items
-                .iter()
-                .any(|i| i.message.contains("incomplete"))
-        );
+        assert!(!report.items.iter().any(|i| i.message.contains("incomplete")));
     }
 
     #[test]
     fn test_verify_from_content_incomplete_tasks() {
         let content = "# Tasks\n- [x] Task 1\n- [ ] Task 2";
         let report = verify_from_content(Some(content), true);
-        assert!(
-            report
-                .items
-                .iter()
-                .any(|i| i.message.contains("incomplete"))
-        );
+        assert!(report.items.iter().any(|i| i.message.contains("incomplete")));
     }
 
     #[test]
     fn test_verify_from_content_no_tasks() {
         let report = verify_from_content(None, true);
-        assert!(
-            report
-                .items
-                .iter()
-                .any(|i| i.message.contains("No tasks.md"))
-        );
+        assert!(report.items.iter().any(|i| i.message.contains("No tasks.md")));
     }
 
     #[test]
     fn test_verify_from_content_no_specs_dir() {
         let report = verify_from_content(Some("# No tasks"), false);
-        assert!(
-            report
-                .items
-                .iter()
-                .any(|i| i.message.contains("No delta specs"))
-        );
+        assert!(report.items.iter().any(|i| i.message.contains("No delta specs")));
     }
 }

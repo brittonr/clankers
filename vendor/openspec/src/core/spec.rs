@@ -1,9 +1,8 @@
 //! Spec document parsing (markdown -> structured types)
 
-use std::path::PathBuf;
-
 #[cfg(feature = "fs")]
 use std::path::Path;
+use std::path::PathBuf;
 
 use serde::Deserialize;
 use serde::Serialize;
@@ -54,12 +53,7 @@ pub fn parse_spec_content(content: &str, domain: &str) -> Option<Spec> {
     for line in content.lines() {
         if line.starts_with("## Purpose") {
             // Flush current
-            flush_requirement(
-                &current_heading,
-                &current_body,
-                &current_scenarios,
-                &mut requirements,
-            );
+            flush_requirement(&current_heading, &current_body, &current_scenarios, &mut requirements);
             current_heading = None;
             current_body.clear();
             current_scenarios.clear();
@@ -69,12 +63,7 @@ pub fn parse_spec_content(content: &str, domain: &str) -> Option<Spec> {
             if current_heading.is_none() && !current_body.is_empty() && purpose.is_none() {
                 purpose = Some(current_body.trim().to_string());
             }
-            flush_requirement(
-                &current_heading,
-                &current_body,
-                &current_scenarios,
-                &mut requirements,
-            );
+            flush_requirement(&current_heading, &current_body, &current_scenarios, &mut requirements);
             current_heading = Some(line.trim_start_matches('#').trim().to_string());
             current_body.clear();
             current_scenarios.clear();
@@ -93,12 +82,7 @@ pub fn parse_spec_content(content: &str, domain: &str) -> Option<Spec> {
     if current_heading.is_none() && !current_body.is_empty() && purpose.is_none() {
         purpose = Some(current_body.trim().to_string());
     }
-    flush_requirement(
-        &current_heading,
-        &current_body,
-        &current_scenarios,
-        &mut requirements,
-    );
+    flush_requirement(&current_heading, &current_body, &current_scenarios, &mut requirements);
 
     Some(Spec {
         domain: domain.to_string(),
@@ -109,11 +93,7 @@ pub fn parse_spec_content(content: &str, domain: &str) -> Option<Spec> {
 }
 
 /// Parse spec content from a string with explicit file path (pure function)
-pub fn parse_spec_content_with_path(
-    content: &str,
-    domain: &str,
-    file_path: PathBuf,
-) -> Option<Spec> {
+pub fn parse_spec_content_with_path(content: &str, domain: &str, file_path: PathBuf) -> Option<Spec> {
     let mut spec = parse_spec_content(content, domain)?;
     spec.file_path = file_path;
     Some(spec)
@@ -152,12 +132,7 @@ fn walk_spec_dir(dir: &Path, root: &Path, specs: &mut Vec<Spec>) {
 /// Parse a single spec markdown file
 pub fn parse_spec_file(path: &Path, root: &Path) -> Option<Spec> {
     let content = std::fs::read_to_string(path).ok()?;
-    let domain = path
-        .parent()?
-        .strip_prefix(root)
-        .ok()?
-        .to_string_lossy()
-        .to_string();
+    let domain = path.parent()?.strip_prefix(root).ok()?.to_string_lossy().to_string();
     let mut spec = parse_spec_content(&content, &domain)?;
     spec.file_path = path.to_path_buf();
     Some(spec)
@@ -227,9 +202,7 @@ pub fn parse_scenarios(text: &str) -> Vec<Scenario> {
             if let Some((_, _, ref mut t)) = current {
                 t.push(trimmed.to_string());
             }
-        } else if (trimmed.starts_with("- ")
-            || trimmed.starts_with("AND ")
-            || trimmed.starts_with("and "))
+        } else if (trimmed.starts_with("- ") || trimmed.starts_with("AND ") || trimmed.starts_with("and "))
             && let Some((ref mut g, ref mut w, ref mut t)) = current
         {
             match phase {
@@ -259,27 +232,18 @@ mod tests {
 
     #[test]
     fn test_detect_strength_must() {
-        assert_eq!(
-            detect_strength("The system MUST do X"),
-            RequirementStrength::Must
-        );
+        assert_eq!(detect_strength("The system MUST do X"), RequirementStrength::Must);
         assert_eq!(detect_strength("It SHALL work"), RequirementStrength::Must);
     }
 
     #[test]
     fn test_detect_strength_should() {
-        assert_eq!(
-            detect_strength("The system SHOULD do X"),
-            RequirementStrength::Should
-        );
+        assert_eq!(detect_strength("The system SHOULD do X"), RequirementStrength::Should);
     }
 
     #[test]
     fn test_detect_strength_may() {
-        assert_eq!(
-            detect_strength("This feature exists"),
-            RequirementStrength::May
-        );
+        assert_eq!(detect_strength("This feature exists"), RequirementStrength::May);
     }
 
     #[test]

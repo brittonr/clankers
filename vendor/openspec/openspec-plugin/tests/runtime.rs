@@ -3,9 +3,12 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::OnceLock;
 
-use extism::{Manifest, Plugin, Wasm};
+use extism::Manifest;
+use extism::Plugin;
+use extism::Wasm;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::json;
+use serde_json::Value;
 
 const BUILD_PROFILE_DIR: &str = "debug";
 const CARGO_BUILD_SUBCOMMAND: &str = "build";
@@ -93,15 +96,10 @@ fn build_plugin_wasm() -> Result<PathBuf, String> {
     if !output.status.success() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!(
-            "cargo build --target {WASM_TARGET_TRIPLE} failed\nstdout:\n{stdout}\nstderr:\n{stderr}"
-        ));
+        return Err(format!("cargo build --target {WASM_TARGET_TRIPLE} failed\nstdout:\n{stdout}\nstderr:\n{stderr}"));
     }
 
-    let wasm_path = target_dir
-        .join(WASM_TARGET_TRIPLE)
-        .join(BUILD_PROFILE_DIR)
-        .join(WASM_FILENAME);
+    let wasm_path = target_dir.join(WASM_TARGET_TRIPLE).join(BUILD_PROFILE_DIR).join(WASM_FILENAME);
     if !wasm_path.is_file() {
         return Err(format!("expected wasm artifact at {}", wasm_path.display()));
     }
@@ -119,18 +117,13 @@ fn load_plugin() -> Plugin {
 }
 
 fn parse_json<T>(raw: &str, context: &str) -> T
-where
-    T: for<'de> Deserialize<'de>,
-{
+where T: for<'de> Deserialize<'de> {
     serde_json::from_str(raw).unwrap_or_else(|error| panic!("{context}: {error}; raw={raw}"))
 }
 
 fn call_tool(plugin: &mut Plugin, tool: &str, args: Value) -> ToolCallEnvelope {
     let raw = plugin
-        .call::<String, String>(
-            HANDLE_TOOL_CALL_FUNCTION,
-            json!({ "tool": tool, "args": args }).to_string(),
-        )
+        .call::<String, String>(HANDLE_TOOL_CALL_FUNCTION, json!({ "tool": tool, "args": args }).to_string())
         .unwrap_or_else(|error| panic!("tool {tool} call failed: {error}"));
     parse_json(&raw, "invalid tool response")
 }
@@ -142,10 +135,7 @@ fn parse_ok_tool_json(envelope: ToolCallEnvelope) -> Value {
 
 fn call_event(plugin: &mut Plugin, event: &str, data: Value) -> EventEnvelope {
     let raw = plugin
-        .call::<String, String>(
-            ON_EVENT_FUNCTION,
-            json!({ "event": event, "data": data }).to_string(),
-        )
+        .call::<String, String>(ON_EVENT_FUNCTION, json!({ "event": event, "data": data }).to_string())
         .unwrap_or_else(|error| panic!("event {event} call failed: {error}"));
     parse_json(&raw, "invalid event response")
 }
@@ -154,17 +144,11 @@ fn call_event(plugin: &mut Plugin, event: &str, data: Value) -> EventEnvelope {
 fn describe_and_agent_start_event_work_via_extism() {
     let mut plugin = load_plugin();
 
-    let describe_raw = plugin
-        .call::<&str, String>(DESCRIBE_FUNCTION, "null")
-        .expect("describe call failed");
+    let describe_raw = plugin.call::<&str, String>(DESCRIBE_FUNCTION, "null").expect("describe call failed");
     let describe: PluginMetaEnvelope = parse_json(&describe_raw, "invalid describe response");
     assert_eq!(describe.name, PLUGIN_NAME);
 
-    let tool_names: Vec<&str> = describe
-        .tools
-        .iter()
-        .map(|tool| tool.name.as_str())
-        .collect();
+    let tool_names: Vec<&str> = describe.tools.iter().map(|tool| tool.name.as_str()).collect();
     assert_eq!(tool_names, EXPECTED_TOOL_NAMES);
 
     let event = call_event(&mut plugin, "agent_start", json!({}));
@@ -187,9 +171,7 @@ fn all_tools_return_expected_payloads_via_extism() {
             }],
         }),
     ));
-    let spec_entries = spec_list
-        .as_array()
-        .expect("spec_list should return an array");
+    let spec_entries = spec_list.as_array().expect("spec_list should return an array");
     assert_eq!(spec_entries.len(), 1);
     assert_eq!(spec_entries[0]["domain"], "demo");
     assert_eq!(spec_entries[0]["requirement_count"], 1);
@@ -205,10 +187,7 @@ fn all_tools_return_expected_payloads_via_extism() {
     assert_eq!(spec_parse["domain"], "demo");
     assert_eq!(spec_parse["requirements"][0]["heading"], "Requirement");
     assert_eq!(spec_parse["requirements"][0]["strength"], "Must");
-    assert_eq!(
-        spec_parse["requirements"][0]["scenarios"][0]["given"][0],
-        "Given a valid request"
-    );
+    assert_eq!(spec_parse["requirements"][0]["scenarios"][0]["given"][0], "Given a valid request");
 
     let change_list = parse_ok_tool_json(call_tool(
         &mut plugin,
@@ -221,9 +200,7 @@ fn all_tools_return_expected_payloads_via_extism() {
             }],
         }),
     ));
-    let change_entries = change_list
-        .as_array()
-        .expect("change_list should return an array");
+    let change_entries = change_list.as_array().expect("change_list should return an array");
     assert_eq!(change_entries.len(), 1);
     assert_eq!(change_entries[0]["name"], "demo-change");
     assert_eq!(change_entries[0]["task_progress"]["done"], 1);
@@ -237,10 +214,7 @@ fn all_tools_return_expected_payloads_via_extism() {
             "has_specs_dir": true,
         }),
     ));
-    assert_eq!(
-        change_verify["summary"],
-        "0 critical, 0 warnings, 0 suggestions"
-    );
+    assert_eq!(change_verify["summary"], "0 critical, 0 warnings, 0 suggestions");
     assert_eq!(change_verify["has_critical"], false);
 
     let artifact_status = parse_ok_tool_json(call_tool(
@@ -271,21 +245,10 @@ fn invalid_and_unknown_tool_calls_fail_cleanly_via_extism() {
     let mut plugin = load_plugin();
 
     let invalid_spec_parse = call_tool(&mut plugin, "spec_parse", json!({}));
-    assert!(
-        invalid_spec_parse.status.starts_with("error:"),
-        "expected invalid args to return an error status"
-    );
-    assert!(
-        invalid_spec_parse
-            .result
-            .contains("missing 'content' string"),
-        "expected missing content error"
-    );
+    assert!(invalid_spec_parse.status.starts_with("error:"), "expected invalid args to return an error status");
+    assert!(invalid_spec_parse.result.contains("missing 'content' string"), "expected missing content error");
 
     let unknown_tool = call_tool(&mut plugin, "missing_tool", json!({}));
     assert_eq!(unknown_tool.status, UNKNOWN_TOOL_STATUS);
-    assert!(
-        unknown_tool.result.is_empty(),
-        "unknown tool should not return a payload"
-    );
+    assert!(unknown_tool.result.is_empty(), "unknown tool should not return a payload");
 }

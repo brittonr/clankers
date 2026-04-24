@@ -4,7 +4,10 @@ use std::path::Path;
 use std::path::PathBuf;
 
 use crate::config::SpecConfig;
-use crate::core::{change, merge, spec, verify};
+use crate::core::change;
+use crate::core::merge;
+use crate::core::spec;
+use crate::core::verify;
 
 /// Main entry point for spec operations
 pub struct SpecEngine {
@@ -78,11 +81,7 @@ impl SpecEngine {
         }
         let mut context = String::from("## Project Specifications\n\n");
         for spec in &specs {
-            context.push_str(&format!(
-                "### {} ({})",
-                spec.domain,
-                spec.file_path.display()
-            ));
+            context.push_str(&format!("### {} ({})", spec.domain, spec.file_path.display()));
             context.push('\n');
             if let Some(ref purpose) = spec.purpose {
                 context.push_str(purpose);
@@ -104,8 +103,9 @@ impl SpecEngine {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use tempfile::TempDir;
+
+    use super::*;
 
     #[test]
     fn test_spec_engine_new() {
@@ -164,9 +164,7 @@ mod tests {
         let engine = SpecEngine::new(dir.path());
 
         engine.init().expect("failed to initialize");
-        engine
-            .create_change("test-change", None)
-            .expect("failed to create change");
+        engine.create_change("test-change", None).expect("failed to create change");
 
         let changes = engine.discover_changes();
         assert_eq!(changes.len(), 1);
@@ -179,12 +177,8 @@ mod tests {
         let engine = SpecEngine::new(dir.path());
 
         engine.init().expect("failed to initialize");
-        engine
-            .create_change("old-change", None)
-            .expect("failed to create change");
-        engine
-            .archive_change("old-change")
-            .expect("failed to archive change");
+        engine.create_change("old-change", None).expect("failed to create change");
+        engine.archive_change("old-change").expect("failed to archive change");
 
         let changes = engine.discover_changes();
         assert!(changes.is_empty());

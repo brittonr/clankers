@@ -20,10 +20,7 @@ pub struct SpecConfig {
 impl SpecConfig {
     pub fn load(openspec_dir: &Path) -> Self {
         let path = openspec_dir.join("config.yaml");
-        std::fs::read_to_string(&path)
-            .ok()
-            .and_then(|s| serde_yaml::from_str(&s).ok())
-            .unwrap_or_default()
+        std::fs::read_to_string(&path).ok().and_then(|s| serde_yaml::from_str(&s).ok()).unwrap_or_default()
     }
 }
 
@@ -41,8 +38,9 @@ mod tests {
 
     #[cfg(all(test, feature = "fs"))]
     mod fs_tests {
-        use super::*;
         use tempfile::TempDir;
+
+        use super::*;
 
         #[test]
         fn test_load_config_missing() {

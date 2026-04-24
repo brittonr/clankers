@@ -15,18 +15,29 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - run: rustup target add wasm32-unknown-unknown
       - run: cargo check
       - run: cargo check --no-default-features
-      - run: cargo check --manifest-path openspec-plugin/Cargo.toml
+      - run: cargo check --manifest-path openspec-plugin/Cargo.toml --target wasm32-unknown-unknown
 
   test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - run: rustup target add wasm32-unknown-unknown
       - uses: taiki-e/install-action@nextest
       - run: cargo nextest run
       - run: cargo test --doc
+      - run: cargo test --manifest-path openspec-plugin/Cargo.toml --locked
+
+  wasm-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: rustup target add wasm32-unknown-unknown
+      - run: cargo build --manifest-path openspec-plugin/Cargo.toml --target wasm32-unknown-unknown --release --locked
 
   clippy:
     runs-on: ubuntu-latest
@@ -35,7 +46,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - run: rustup target add wasm32-unknown-unknown
       - run: cargo clippy -- -D warnings
+      - run: cargo clippy --manifest-path openspec-plugin/Cargo.toml --target wasm32-unknown-unknown -- -D warnings
 
   fmt:
     runs-on: ubuntu-latest
@@ -45,3 +58,4 @@ jobs:
         with:
           components: rustfmt
       - run: cargo fmt --check
+      - run: cargo fmt --manifest-path openspec-plugin/Cargo.toml --check

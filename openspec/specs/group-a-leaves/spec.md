@@ -1,7 +1,8 @@
 # group-a-leaves Specification
 
 ## Purpose
-TBD - created by archiving change crate-extraction-2. Update Purpose after archive.
+Governs extraction of leaf and SDK crates that can move out of the workspace without taking internal runtime dependencies with them.
+
 ## Requirements
 ### Requirement: plugin-sdk Extraction
 The `clankers-plugin-sdk` crate MUST be extracted to `clanker-plugin-sdk`. It already declares its own `[workspace]` in Cargo.toml and targets `wasm32-unknown-unknown`. The extraction is a repo move with no API changes.

@@ -74,20 +74,11 @@ pub const TASKS_TEMPLATE: &str = r"# {{change_name}} — Tasks
 ";
 
 /// Expand template variables
-pub fn expand_template(
-    template: &str,
-    change_name: &str,
-    context: &str,
-    rules: &[String],
-) -> String {
+pub fn expand_template(template: &str, change_name: &str, context: &str, rules: &[String]) -> String {
     let mut result = template.replace("{{change_name}}", change_name);
     result = result.replace("{{context}}", context);
     if !rules.is_empty() {
-        let rules_text = rules
-            .iter()
-            .map(|r| format!("- {}", r))
-            .collect::<Vec<_>>()
-            .join("\n");
+        let rules_text = rules.iter().map(|r| format!("- {}", r)).collect::<Vec<_>>().join("\n");
         result = result.replace("{{rules}}", &rules_text);
     } else {
         result = result.replace("{{rules}}", "");

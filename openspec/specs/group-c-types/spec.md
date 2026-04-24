@@ -1,7 +1,8 @@
 # group-c-types Specification
 
 ## Purpose
-TBD - created by archiving change crate-extraction-2. Update Purpose after archive.
+Governs extraction of high-fanout shared type crates consumed across the workspace while preserving direct caller compatibility and source-graph consistency.
+
 ## Requirements
 ### Requirement: tui-types Extraction
 The `clankers-tui-types` crate MUST be extracted to `clanker-tui-types`. This crate defines the UI event, action, block, completion, cost, display, menu, merge, panel, peer, plugin, process, progress, registry, selector, subagent, and syntax types used by many workspace crates.

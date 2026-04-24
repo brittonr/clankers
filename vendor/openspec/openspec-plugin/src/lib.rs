@@ -16,7 +16,10 @@ pub fn describe(_input: String) -> FnResult<String> {
         "0.1.0",
         &[
             ("spec_list", "List project specs with domains, purposes, and requirement counts"),
-            ("spec_parse", "Parse a spec markdown file into structured requirements with GIVEN/WHEN/THEN scenarios"),
+            (
+                "spec_parse",
+                "Parse a spec markdown file into structured requirements with GIVEN/WHEN/THEN scenarios",
+            ),
             ("change_list", "List active OpenSpec changes with task progress summaries"),
             ("change_verify", "Verify an OpenSpec change — check task completion and spec coverage"),
             ("artifact_status", "Show artifact dependency graph state for an OpenSpec change"),
@@ -39,7 +42,5 @@ pub fn handle_tool_call(input: String) -> FnResult<String> {
 
 #[plugin_fn]
 pub fn on_event(input: String) -> FnResult<String> {
-    dispatch_events(&input, "openspec", &[
-        ("agent_start", |_| "OpenSpec plugin ready".to_string()),
-    ])
+    dispatch_events(&input, "openspec", &[("agent_start", |_| "OpenSpec plugin ready".to_string())])
 }

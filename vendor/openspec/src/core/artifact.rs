@@ -38,10 +38,7 @@ pub struct ArtifactGraph {
 
 impl ArtifactGraph {
     /// Build from schema artifacts and existing files (pure version)
-    pub fn from_state(
-        schema_artifacts: &[SchemaArtifact],
-        existing_files: &HashSet<String>,
-    ) -> Self {
+    pub fn from_state(schema_artifacts: &[SchemaArtifact], existing_files: &HashSet<String>) -> Self {
         let mut graph = DiGraph::new();
         let mut node_map = HashMap::new();
 
@@ -85,11 +82,10 @@ impl ArtifactGraph {
             let mut changed = false;
             for i in 0..artifacts.len() {
                 if artifacts[i].state == ArtifactState::Blocked {
-                    let all_deps_done = artifacts[i].requires.iter().all(|dep| {
-                        artifacts
-                            .iter()
-                            .any(|a| a.id == *dep && a.state == ArtifactState::Done)
-                    });
+                    let all_deps_done = artifacts[i]
+                        .requires
+                        .iter()
+                        .all(|dep| artifacts.iter().any(|a| a.id == *dep && a.state == ArtifactState::Done));
                     if all_deps_done {
                         artifacts[i].state = ArtifactState::Ready;
                         changed = true;
@@ -154,11 +150,10 @@ impl ArtifactGraph {
             let mut changed = false;
             for i in 0..artifacts.len() {
                 if artifacts[i].state == ArtifactState::Blocked {
-                    let all_deps_done = artifacts[i].requires.iter().all(|dep| {
-                        artifacts
-                            .iter()
-                            .any(|a| a.id == *dep && a.state == ArtifactState::Done)
-                    });
+                    let all_deps_done = artifacts[i]
+                        .requires
+                        .iter()
+                        .all(|dep| artifacts.iter().any(|a| a.id == *dep && a.state == ArtifactState::Done));
                     if all_deps_done {
                         artifacts[i].state = ArtifactState::Ready;
                         changed = true;
@@ -193,17 +188,12 @@ impl ArtifactGraph {
 
     /// Get all ready artifacts
     pub fn all_ready(&self) -> Vec<&Artifact> {
-        self.artifacts
-            .iter()
-            .filter(|a| a.state == ArtifactState::Ready)
-            .collect()
+        self.artifacts.iter().filter(|a| a.state == ArtifactState::Ready).collect()
     }
 
     /// Check if all artifacts are done
     pub fn is_complete(&self) -> bool {
-        self.artifacts
-            .iter()
-            .all(|a| a.state == ArtifactState::Done)
+        self.artifacts.iter().all(|a| a.state == ArtifactState::Done)
     }
 }
 
@@ -284,14 +274,14 @@ mod tests {
 
     #[cfg(all(test, feature = "fs"))]
     mod fs_tests {
-        use super::*;
         use tempfile::TempDir;
+
+        use super::*;
 
         #[test]
         fn test_artifact_state_done_when_file_exists() {
             let dir = TempDir::new().expect("failed to create temp dir for test");
-            std::fs::write(dir.path().join("proposal.md"), "# Proposal")
-                .expect("failed to write proposal file");
+            std::fs::write(dir.path().join("proposal.md"), "# Proposal").expect("failed to write proposal file");
 
             let artifacts = vec![SchemaArtifact {
                 id: "proposal".to_string(),
@@ -306,8 +296,7 @@ mod tests {
         #[test]
         fn test_artifact_state_ready_when_deps_done() {
             let dir = TempDir::new().expect("failed to create temp dir for test");
-            std::fs::write(dir.path().join("proposal.md"), "# Proposal")
-                .expect("failed to write proposal file");
+            std::fs::write(dir.path().join("proposal.md"), "# Proposal").expect("failed to write proposal file");
 
             let artifacts = vec![
                 SchemaArtifact {
@@ -352,8 +341,7 @@ mod tests {
         #[test]
         fn test_next_ready() {
             let dir = TempDir::new().expect("failed to create temp dir for test");
-            std::fs::write(dir.path().join("proposal.md"), "done")
-                .expect("failed to write proposal file");
+            std::fs::write(dir.path().join("proposal.md"), "done").expect("failed to write proposal file");
 
             let artifacts = vec![
                 SchemaArtifact {
@@ -377,10 +365,8 @@ mod tests {
         #[test]
         fn test_is_complete() {
             let dir = TempDir::new().expect("failed to create temp dir for test");
-            std::fs::write(dir.path().join("proposal.md"), "done")
-                .expect("failed to write proposal file");
-            std::fs::write(dir.path().join("design.md"), "done")
-                .expect("failed to write design file");
+            std::fs::write(dir.path().join("proposal.md"), "done").expect("failed to write proposal file");
+            std::fs::write(dir.path().join("design.md"), "done").expect("failed to write design file");
 
             let artifacts = vec![
                 SchemaArtifact {

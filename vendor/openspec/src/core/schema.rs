@@ -100,8 +100,9 @@ mod tests {
 
     #[cfg(all(test, feature = "fs"))]
     mod fs_tests {
-        use super::*;
         use tempfile::TempDir;
+
+        use super::*;
 
         #[test]
         fn test_load_schema_yaml() {
@@ -145,8 +146,7 @@ artifacts:
             let schema_dir = dir.path().join("custom");
             std::fs::create_dir(&schema_dir).expect("failed to create schema dir");
             let schema_file = schema_dir.join("schema.yaml");
-            std::fs::write(&schema_file, "name: custom\nartifacts: []")
-                .expect("failed to write schema file");
+            std::fs::write(&schema_file, "name: custom\nartifacts: []").expect("failed to write schema file");
 
             let schema = resolve_schema(Some("custom"), None, Some(dir.path()));
             assert_eq!(schema.name, "custom");
@@ -159,25 +159,15 @@ artifacts:
 
             let user_schema = user_dir.path().join("test");
             std::fs::create_dir(&user_schema).expect("failed to create user schema dir");
-            std::fs::write(
-                user_schema.join("schema.yaml"),
-                "name: user-test\nartifacts: []",
-            )
-            .expect("failed to write user schema");
+            std::fs::write(user_schema.join("schema.yaml"), "name: user-test\nartifacts: []")
+                .expect("failed to write user schema");
 
             let project_schema = project_dir.path().join("test");
             std::fs::create_dir(&project_schema).expect("failed to create project schema dir");
-            std::fs::write(
-                project_schema.join("schema.yaml"),
-                "name: project-test\nartifacts: []",
-            )
-            .expect("failed to write project schema");
+            std::fs::write(project_schema.join("schema.yaml"), "name: project-test\nartifacts: []")
+                .expect("failed to write project schema");
 
-            let schema = resolve_schema(
-                Some("test"),
-                Some(project_dir.path()),
-                Some(user_dir.path()),
-            );
+            let schema = resolve_schema(Some("test"), Some(project_dir.path()), Some(user_dir.path()));
             assert_eq!(schema.name, "project-test");
         }
     }

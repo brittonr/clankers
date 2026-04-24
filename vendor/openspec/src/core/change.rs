@@ -1,9 +1,8 @@
 //! Change lifecycle management
 
-use std::path::PathBuf;
-
 #[cfg(feature = "fs")]
 use std::path::Path;
+use std::path::PathBuf;
 
 use chrono::DateTime;
 use chrono::Utc;
@@ -86,18 +85,9 @@ pub fn parse_task_progress_content(content: &str) -> Option<TaskProgress> {
         return None;
     }
 
-    let done = tasks
-        .iter()
-        .filter(|t| matches!(t.state, TaskState::Done { .. }))
-        .count();
-    let in_progress = tasks
-        .iter()
-        .filter(|t| matches!(t.state, TaskState::InProgress { .. }))
-        .count();
-    let todo = tasks
-        .iter()
-        .filter(|t| matches!(t.state, TaskState::Todo))
-        .count();
+    let done = tasks.iter().filter(|t| matches!(t.state, TaskState::Done { .. })).count();
+    let in_progress = tasks.iter().filter(|t| matches!(t.state, TaskState::InProgress { .. })).count();
+    let todo = tasks.iter().filter(|t| matches!(t.state, TaskState::Todo)).count();
     let total = tasks.len();
 
     Some(TaskProgress {
@@ -150,11 +140,7 @@ pub fn list_changes(changes_dir: &Path) -> Vec<ChangeInfo> {
         if !path.is_dir() {
             continue;
         }
-        let name = path
-            .file_name()
-            .unwrap_or_default()
-            .to_string_lossy()
-            .to_string();
+        let name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
         if name == "archive" {
             continue;
         }
@@ -220,12 +206,7 @@ fn parse_in_progress(rest: &str) -> (String, Option<DateTime<Utc>>) {
 }
 
 /// Parsed fields from a done line (`✅`).
-type DoneParts = (
-    String,
-    Option<DateTime<Utc>>,
-    Option<DateTime<Utc>>,
-    Option<String>,
-);
+type DoneParts = (String, Option<DateTime<Utc>>, Option<DateTime<Utc>>, Option<String>);
 
 /// Parse a done line: "Description ✅ 2h 15m (started: … → completed: …)"
 fn parse_done(rest: &str) -> DoneParts {
@@ -253,10 +234,7 @@ fn extract_timestamp(text: &str, label: &str) -> Option<DateTime<Utc>> {
     let idx = text.find(label)?;
     let after = text[idx + label.len()..].trim();
     // Take characters until we hit a delimiter: →, ), or end of string
-    let ts_str: String = after
-        .chars()
-        .take_while(|c| !matches!(c, '→' | ')' | '\n'))
-        .collect();
+    let ts_str: String = after.chars().take_while(|c| !matches!(c, '→' | ')' | '\n')).collect();
     let ts_str = ts_str.trim();
     // Try parsing with various formats
     parse_flexible_timestamp(ts_str)
@@ -311,11 +289,7 @@ pub fn format_task_line(task: &TaskItem) -> String {
         TaskState::Todo => format!("- [ ] {}", task.description),
         TaskState::InProgress { started } => {
             if let Some(ts) = started {
-                format!(
-                    "- [~] {} ⏱ started: {}",
-                    task.description,
-                    ts.format("%Y-%m-%dT%H:%MZ")
-                )
+                format!("- [~] {} ⏱ started: {}", task.description, ts.format("%Y-%m-%dT%H:%MZ"))
             } else {
                 format!("- [~] {}", task.description)
             }
@@ -373,8 +347,7 @@ mod tests {
 
     #[test]
     fn test_parse_task_progress_content_with_in_progress() {
-        let content =
-            "- [x] Done task\n- [~] Working on it ⏱ started: 2026-03-03T11:22Z\n- [ ] Not started";
+        let content = "- [x] Done task\n- [~] Working on it ⏱ started: 2026-03-03T11:22Z\n- [ ] Not started";
         let progress = parse_task_progress_content(content).expect("failed to parse task progress");
         assert_eq!(progress.done, 1);
         assert_eq!(progress.in_progress, 1);
@@ -383,16 +356,12 @@ mod tests {
 
         // Verify the in-progress task has a parsed timestamp
         let wip = &progress.tasks[1];
-        assert!(matches!(
-            &wip.state,
-            TaskState::InProgress { started: Some(_) }
-        ));
+        assert!(matches!(&wip.state, TaskState::InProgress { started: Some(_) }));
     }
 
     #[test]
     fn test_parse_task_progress_content_done_with_timing() {
-        let content =
-            "- [x] Feature A ✅ 2h 15m (started: 2026-03-03T09:00Z → completed: 2026-03-03T11:15Z)";
+        let content = "- [x] Feature A ✅ 2h 15m (started: 2026-03-03T09:00Z → completed: 2026-03-03T11:15Z)";
         let progress = parse_task_progress_content(content).expect("failed to parse task progress");
         assert_eq!(progress.done, 1);
         assert_eq!(progress.total, 1);
@@ -437,14 +406,9 @@ mod tests {
             .with_timezone(&Utc);
         let task = TaskItem {
             description: "Working".to_string(),
-            state: TaskState::InProgress {
-                started: Some(started),
-            },
+            state: TaskState::InProgress { started: Some(started) },
         };
-        assert_eq!(
-            format_task_line(&task),
-            "- [~] Working ⏱ started: 2026-03-03T11:22Z"
-        );
+        assert_eq!(format_task_line(&task), "- [~] Working ⏱ started: 2026-03-03T11:22Z");
     }
 
     #[test]
@@ -492,21 +456,21 @@ mod tests {
 
     #[cfg(all(test, feature = "fs"))]
     mod fs_tests {
-        use super::*;
         use tempfile::TempDir;
+
+        use super::*;
 
         #[test]
         fn test_create_change() {
             let dir = TempDir::new().expect("failed to create temp dir for test");
-            let change_path = create_change(dir.path(), "test-change", "spec-driven")
-                .expect("failed to create change");
+            let change_path = create_change(dir.path(), "test-change", "spec-driven").expect("failed to create change");
 
             assert!(change_path.exists());
             assert!(change_path.join("specs").exists());
             assert!(change_path.join(".openspec.yaml").exists());
 
-            let meta = std::fs::read_to_string(change_path.join(".openspec.yaml"))
-                .expect("failed to read metadata file");
+            let meta =
+                std::fs::read_to_string(change_path.join(".openspec.yaml")).expect("failed to read metadata file");
             assert!(meta.contains("schema: spec-driven"));
         }
 
@@ -532,13 +496,10 @@ mod tests {
         #[test]
         fn test_archive_change() {
             let dir = TempDir::new().expect("failed to create temp dir for test");
-            let change_path = create_change(dir.path(), "old-change", "spec-driven")
-                .expect("failed to create change");
-            std::fs::write(change_path.join("data.txt"), "test")
-                .expect("failed to write test data");
+            let change_path = create_change(dir.path(), "old-change", "spec-driven").expect("failed to create change");
+            std::fs::write(change_path.join("data.txt"), "test").expect("failed to write test data");
 
-            let archived =
-                archive_change(dir.path(), "old-change").expect("failed to archive change");
+            let archived = archive_change(dir.path(), "old-change").expect("failed to archive change");
             assert!(archived.exists());
             assert!(archived.join("data.txt").exists());
             assert!(!change_path.exists());

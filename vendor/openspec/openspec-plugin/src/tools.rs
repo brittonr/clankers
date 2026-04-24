@@ -7,13 +7,12 @@
 use std::collections::HashSet;
 
 use clanker_plugin_sdk::prelude::*;
-use openspec::core::{
-    artifact::ArtifactGraph,
-    change::{parse_change_meta, parse_task_progress_content},
-    schema::SchemaArtifact,
-    spec::parse_spec_content,
-    verify::verify_from_content,
-};
+use openspec::core::artifact::ArtifactGraph;
+use openspec::core::change::parse_change_meta;
+use openspec::core::change::parse_task_progress_content;
+use openspec::core::schema::SchemaArtifact;
+use openspec::core::spec::parse_spec_content;
+use openspec::core::verify::verify_from_content;
 
 // ── spec_list ───────────────────────────────────────────────────────
 
@@ -26,21 +25,12 @@ use openspec::core::{
 ///
 /// Output: JSON array of spec summaries.
 pub fn handle_spec_list(args: &Value) -> Result<String, String> {
-    let entries = args
-        .get("entries")
-        .and_then(|v| v.as_array())
-        .ok_or("missing 'entries' array")?;
+    let entries = args.get("entries").and_then(|v| v.as_array()).ok_or("missing 'entries' array")?;
 
     let mut specs = Vec::new();
     for entry in entries {
-        let domain = entry
-            .get("domain")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        let content = entry
-            .get("content")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
+        let domain = entry.get("domain").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let content = entry.get("content").and_then(|v| v.as_str()).unwrap_or("");
 
         if let Some(spec) = parse_spec_content(content, domain) {
             let summary = serde_json::json!({
@@ -71,17 +61,10 @@ pub fn handle_spec_list(args: &Value) -> Result<String, String> {
 /// {"content": "# Spec\n## Purpose\n...", "domain": "auth"}
 /// ```
 pub fn handle_spec_parse(args: &Value) -> Result<String, String> {
-    let content = args
-        .get("content")
-        .and_then(|v| v.as_str())
-        .ok_or("missing 'content' string")?;
-    let domain = args
-        .get("domain")
-        .and_then(|v| v.as_str())
-        .unwrap_or("unknown");
+    let content = args.get("content").and_then(|v| v.as_str()).ok_or("missing 'content' string")?;
+    let domain = args.get("domain").and_then(|v| v.as_str()).unwrap_or("unknown");
 
-    let spec =
-        parse_spec_content(content, domain).ok_or("failed to parse spec content")?;
+    let spec = parse_spec_content(content, domain).ok_or("failed to parse spec content")?;
 
     let result = serde_json::json!({
         "domain": spec.domain,
@@ -115,24 +98,13 @@ pub fn handle_spec_parse(args: &Value) -> Result<String, String> {
 /// {"entries": [{"name": "my-change", "meta_content": "schema: spec-driven\ncreated: ...", "tasks_content": "- [x] Done\n- [ ] Todo"}]}
 /// ```
 pub fn handle_change_list(args: &Value) -> Result<String, String> {
-    let entries = args
-        .get("entries")
-        .and_then(|v| v.as_array())
-        .ok_or("missing 'entries' array")?;
+    let entries = args.get("entries").and_then(|v| v.as_array()).ok_or("missing 'entries' array")?;
 
     let mut changes = Vec::new();
     for entry in entries {
-        let name = entry
-            .get("name")
-            .and_then(|v| v.as_str())
-            .unwrap_or("unknown");
-        let meta_content = entry
-            .get("meta_content")
-            .and_then(|v| v.as_str())
-            .unwrap_or("");
-        let tasks_content = entry
-            .get("tasks_content")
-            .and_then(|v| v.as_str());
+        let name = entry.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+        let meta_content = entry.get("meta_content").and_then(|v| v.as_str()).unwrap_or("");
+        let tasks_content = entry.get("tasks_content").and_then(|v| v.as_str());
 
         let (schema, created) = parse_change_meta(meta_content);
 
@@ -168,13 +140,8 @@ pub fn handle_change_list(args: &Value) -> Result<String, String> {
 /// {"tasks_content": "- [x] Done\n- [ ] Todo", "has_specs_dir": true}
 /// ```
 pub fn handle_change_verify(args: &Value) -> Result<String, String> {
-    let tasks_content = args
-        .get("tasks_content")
-        .and_then(|v| v.as_str());
-    let has_specs_dir = args
-        .get("has_specs_dir")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false);
+    let tasks_content = args.get("tasks_content").and_then(|v| v.as_str());
+    let has_specs_dir = args.get("has_specs_dir").and_then(|v| v.as_bool()).unwrap_or(false);
 
     let report = verify_from_content(tasks_content, has_specs_dir);
 
@@ -208,10 +175,8 @@ pub fn handle_change_verify(args: &Value) -> Result<String, String> {
 /// }
 /// ```
 pub fn handle_artifact_status(args: &Value) -> Result<String, String> {
-    let raw_artifacts = args
-        .get("schema_artifacts")
-        .and_then(|v| v.as_array())
-        .ok_or("missing 'schema_artifacts' array")?;
+    let raw_artifacts =
+        args.get("schema_artifacts").and_then(|v| v.as_array()).ok_or("missing 'schema_artifacts' array")?;
 
     let schema_artifacts: Vec<SchemaArtifact> = raw_artifacts
         .iter()
@@ -222,11 +187,7 @@ pub fn handle_artifact_status(args: &Value) -> Result<String, String> {
                 requires: v
                     .get("requires")
                     .and_then(|r| r.as_array())
-                    .map(|arr| {
-                        arr.iter()
-                            .filter_map(|s| s.as_str().map(String::from))
-                            .collect()
-                    })
+                    .map(|arr| arr.iter().filter_map(|s| s.as_str().map(String::from)).collect())
                     .unwrap_or_default(),
             })
         })
@@ -235,11 +196,7 @@ pub fn handle_artifact_status(args: &Value) -> Result<String, String> {
     let existing: HashSet<String> = args
         .get("existing_files")
         .and_then(|v| v.as_array())
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|s| s.as_str().map(String::from))
-                .collect()
-        })
+        .map(|arr| arr.iter().filter_map(|s| s.as_str().map(String::from)).collect())
         .unwrap_or_default();
 
     let graph = ArtifactGraph::from_state(&schema_artifacts, &existing);

@@ -49,9 +49,7 @@ pub fn sync_change(main_specs_dir: &Path, change_specs_dir: &Path, dry_run: bool
 
     for delta_path in delta_files {
         let Some(delta) = parse_delta_file(&delta_path, change_specs_dir) else {
-            result
-                .errors
-                .push(format!("Failed to parse delta: {}", delta_path.display()));
+            result.errors.push(format!("Failed to parse delta: {}", delta_path.display()));
             continue;
         };
 
@@ -138,7 +136,8 @@ pub fn append_requirement(lines: &mut Vec<String>, heading: &str, body: &str) {
 #[cfg(test)]
 mod tests {
     use super::super::delta::DeltaSpec;
-    use super::super::spec::{Requirement, RequirementStrength};
+    use super::super::spec::Requirement;
+    use super::super::spec::RequirementStrength;
     use super::*;
 
     #[test]
@@ -208,8 +207,9 @@ mod tests {
 
     #[cfg(all(test, feature = "fs"))]
     mod fs_tests {
-        use super::*;
         use tempfile::TempDir;
+
+        use super::*;
 
         #[test]
         fn test_sync_empty_change() {

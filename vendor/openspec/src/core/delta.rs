@@ -6,7 +6,9 @@ use std::path::Path;
 use serde::Deserialize;
 use serde::Serialize;
 
-use super::spec::{Requirement, detect_strength, parse_scenarios};
+use super::spec::Requirement;
+use super::spec::detect_strength;
+use super::spec::parse_scenarios;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeltaSpec {
@@ -28,50 +30,22 @@ pub fn parse_delta_content(content: &str, domain: &str) -> Option<DeltaSpec> {
     for line in content.lines() {
         let trimmed = line.trim();
         if trimmed.starts_with("## ADDED") {
-            flush_delta(
-                section,
-                &current_heading,
-                &current_body,
-                &mut added,
-                &mut modified,
-                &mut removed,
-            );
+            flush_delta(section, &current_heading, &current_body, &mut added, &mut modified, &mut removed);
             section = "added";
             current_heading = None;
             current_body.clear();
         } else if trimmed.starts_with("## MODIFIED") {
-            flush_delta(
-                section,
-                &current_heading,
-                &current_body,
-                &mut added,
-                &mut modified,
-                &mut removed,
-            );
+            flush_delta(section, &current_heading, &current_body, &mut added, &mut modified, &mut removed);
             section = "modified";
             current_heading = None;
             current_body.clear();
         } else if trimmed.starts_with("## REMOVED") {
-            flush_delta(
-                section,
-                &current_heading,
-                &current_body,
-                &mut added,
-                &mut modified,
-                &mut removed,
-            );
+            flush_delta(section, &current_heading, &current_body, &mut added, &mut modified, &mut removed);
             section = "removed";
             current_heading = None;
             current_body.clear();
         } else if trimmed.starts_with("### ") {
-            flush_delta(
-                section,
-                &current_heading,
-                &current_body,
-                &mut added,
-                &mut modified,
-                &mut removed,
-            );
+            flush_delta(section, &current_heading, &current_body, &mut added, &mut modified, &mut removed);
             current_heading = Some(trimmed.trim_start_matches('#').trim().to_string());
             current_body.clear();
         } else {
@@ -79,14 +53,7 @@ pub fn parse_delta_content(content: &str, domain: &str) -> Option<DeltaSpec> {
             current_body.push('\n');
         }
     }
-    flush_delta(
-        section,
-        &current_heading,
-        &current_body,
-        &mut added,
-        &mut modified,
-        &mut removed,
-    );
+    flush_delta(section, &current_heading, &current_body, &mut added, &mut modified, &mut removed);
 
     Some(DeltaSpec {
         domain: domain.to_string(),
@@ -100,12 +67,7 @@ pub fn parse_delta_content(content: &str, domain: &str) -> Option<DeltaSpec> {
 /// Parse a delta spec file (from changes/<name>/specs/<domain>/spec.md)
 pub fn parse_delta_file(path: &Path, specs_root: &Path) -> Option<DeltaSpec> {
     let content = std::fs::read_to_string(path).ok()?;
-    let domain = path
-        .parent()?
-        .strip_prefix(specs_root)
-        .ok()?
-        .to_string_lossy()
-        .to_string();
+    let domain = path.parent()?.strip_prefix(specs_root).ok()?.to_string_lossy().to_string();
     parse_delta_content(&content, &domain)
 }
 
@@ -192,18 +154,16 @@ mod tests {
 
     #[cfg(all(test, feature = "fs"))]
     mod fs_tests {
-        use super::*;
         use tempfile::TempDir;
+
+        use super::*;
 
         #[test]
         fn test_parse_delta_file() {
             let dir = TempDir::new().expect("failed to create temp dir for test");
             let file = dir.path().join("spec.md");
-            std::fs::write(
-                &file,
-                "## ADDED\n\n### New Feature\nThe system MUST support this",
-            )
-            .expect("failed to write delta file");
+            std::fs::write(&file, "## ADDED\n\n### New Feature\nThe system MUST support this")
+                .expect("failed to write delta file");
 
             let delta = parse_delta_file(&file, dir.path()).expect("failed to parse delta file");
             assert_eq!(delta.added.len(), 1);
