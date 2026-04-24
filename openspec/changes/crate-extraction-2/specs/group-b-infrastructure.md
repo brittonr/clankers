@@ -1,26 +1,11 @@
-# Group B: Infrastructure Extractions — Spec
+# Group B: Spec Engine Extraction — Spec
 
 ## Purpose
 
-Contracts for four infrastructure crates with zero internal dependencies and
-moderate reverse dependency counts. These require more care because multiple
-workspace crates import them.
+Defines the extraction contract for the shared spec engine and its WASM plugin
+wrapper that moved out of the clankers workspace during `crate-extraction-2`.
 
 ## Requirements
-
-### protocol Extraction
-
-The `clankers-protocol` crate MUST be extracted to `clanker-protocol`.
-The framing layer (4-byte length prefix + JSON) and all command/event/control
-types MUST move together.
-
-GIVEN `crates/clankers-protocol/` with modules: command, control, event, frame, types
-WHEN extracted to `clanker-protocol` repo
-THEN `read_frame` and `write_frame` async functions work with any `AsyncRead`/`AsyncWrite`
-AND `DaemonEvent`, `SessionCommand`, `ControlRequest`, `ControlResponse` serialize/
-    deserialize identically to the pre-extraction wire format
-AND the tokio dependency is preserved (framing uses `AsyncReadExt`/`AsyncWriteExt`)
-AND 2 reverse dependents (root crate, clankers-controller) compile via re-export wrapper
 
 ### specs Extraction
 
@@ -29,15 +14,28 @@ spec engine moves: schema, artifacts, changes, specs, delta, merge, verify,
 templates, and config modules.
 
 GIVEN `crates/clankers-specs/` with petgraph + serde_yaml deps
-WHEN extracted to `openspec` repo
+WHEN extracted to the `openspec` repo
 THEN `SpecEngine::new()`, `init()`, `discover_specs()`, `discover_changes()`,
     `create_change()`, `archive_change()`, `sync_change()`, `verify_change()`,
     and `specs_for_context()` all work
 AND the `Schema`, `Artifact`, `ArtifactGraph`, `Spec`, `Requirement`, `Scenario`,
-    `ChangeInfo`, `TaskProgress`, `DeltaSpec`, `SyncResult`, `VerifyReport` types
-    are all public
+    `ChangeInfo`, `TaskProgress`, `DeltaSpec`, `SyncResult`, and `VerifyReport`
+    types are public
 AND the builtin `spec-driven` schema is available via `builtin_spec_driven()`
 AND all `clankers_specs` references are renamed to `openspec`
+
+### specs Core/Shell Split
+
+The extracted `openspec` crate MUST separate pure parsing/graph logic from the
+filesystem-backed shell so the same library can support native use and WASM
+plugin wrapping.
+
+GIVEN the extracted `openspec` repo
+WHEN the crate is compiled with default features disabled
+THEN the pure `openspec::core` parsing, graph, schema, delta, and verification
+    modules compile without `std::fs`
+AND the root crate can still expose `SpecEngine` and config helpers when the
+    `fs` feature is enabled
 
 ### specs WASM Plugin
 
@@ -47,48 +45,24 @@ created that wraps the pure parsing/graph logic as a clankers WASM plugin.
 GIVEN the `openspec` library crate
 WHEN an `openspec-plugin` crate is built targeting wasm32-unknown-unknown
 THEN it exposes these tools via the plugin SDK:
-  - `spec_list` — list discovered specs with domains and requirement counts
-  - `spec_parse` — parse a spec markdown document into structured requirements and scenarios
-  - `change_list` — list active changes with task progress
-  - `change_verify` — run verification on a change, return report
-  - `artifact_status` — show artifact graph state for a change
+  - `spec_list`
+  - `spec_parse`
+  - `change_list`
+  - `change_verify`
+  - `artifact_status`
 AND it handles `agent_start` events to log readiness
-AND filesystem paths are passed via tool args (the host resolves them)
+AND filesystem paths are resolved by the host, not by the WASM module
 AND the plugin compiles with `cargo build --target wasm32-unknown-unknown`
 
-The plugin MUST separate pure logic (parsing, graph traversal, verification)
-from filesystem access. The tool handlers receive file contents or directory
-listings as string arguments rather than reading the filesystem directly.
+### specs WASM Plugin Verification
 
-GIVEN a `spec_list` tool call with `{"specs_dir": "/path/to/specs"}`
-WHEN the host invokes the plugin
-THEN the plugin returns a JSON array of spec summaries
-AND no `std::fs` calls happen inside the WASM module
+The `openspec-plugin` crate MUST have durable checked-in runtime coverage that
+loads the built plugin through Extism and exercises the exported tools.
 
-### db Extraction
-
-The `clankers-db` crate MUST be extracted to `clanker-db`. All table
-modules (audit, memory, sessions, history, usage, file_cache, tool_results,
-registry) MUST move. The redb dependency MUST be preserved.
-
-GIVEN `crates/clankers-db/` with redb 2.6 and modules for 8 table types
-WHEN extracted to `clanker-db` repo
-THEN all table definitions and their read/write methods work
-AND the `schema.rs` module correctly defines all redb table types
-AND the `error.rs` module provides typed errors
-AND 2 reverse dependents (root crate, clankers-agent) compile via re-export wrapper
-
-### hooks Extraction
-
-The `clankers-hooks` crate MUST be extracted to `clanker-hooks`. The
-dispatch pipeline, hook points, verdicts, and script execution MUST all move.
-
-GIVEN `crates/clankers-hooks/` with modules: config, dispatcher, git, payload, point,
-      script, verdict
-WHEN extracted to `clanker-hooks` repo
-THEN `HookPipeline`, `HookHandler`, `HookVerdict`, `HookPoint`, `HookPayload`,
-    `HookConfig`, and `GitHooks` types are public
-AND the async `HookHandler` trait works with tokio
-AND script hook execution (subprocess spawning) works
-AND 5 reverse dependents (root, agent, config, controller, plugin) compile
-    via re-export wrapper
+GIVEN the checked-in runtime test suite for `openspec-plugin`
+WHEN `cargo test --manifest-path openspec-plugin/Cargo.toml` runs
+THEN Extism loads the built plugin module
+AND `describe` reports the five tool names
+AND `on_event` handles `agent_start`
+AND each exported tool returns a structured result for valid input
+AND invalid and unknown tool calls fail cleanly without panicking

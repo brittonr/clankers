@@ -2,278 +2,163 @@
 
 ## Status
 
-Not started. All 10 crates still live in the workspace.
+Reduced-scope implementation is complete except for one publication task:
+`~/git/openspec` still needs to be published as the `openspec` GitHub repo.
+The remaining six extractions were split into `crate-extraction-3`.
+
+## Goals / Non-Goals
+
+**Goals**
+- preserve the completed shared-crate extractions in one coherent change
+- keep the `openspec` core/native split and plugin packaging documented here
+- keep the two highest-fanout type migrations (`tui-types`, `message`) with
+  their validation evidence
+- leave the remaining six extractions to a separate continuation change
+
+**Non-Goals**
+- finish the remaining leaf/infrastructure extractions in this change
+- redesign extracted crate APIs beyond what extraction required
+- move filesystem access into the `openspec` WASM module
 
 ## Decisions
 
-### Three groups, ordered by risk
+### 1. Split the original ten-crate plan into two changes
 
-**Choice:** Group A (leaves) → Group B (infrastructure) → Group C (types)
-**Rationale:** Leaves have 1–2 reverse deps — if something breaks, the
-blast radius is small. Infrastructure crates have 2–5 reverse deps and
-need re-export wrappers. Type crates have 10 reverse deps each and need
-the most careful migration. Building confidence on easy extractions before
-tackling the high-fanout ones.
+**Choice:** Keep the completed high-leverage work in `crate-extraction-2` and
+move the remaining six extractions into `crate-extraction-3`.
 
-### plugin-sdk: repo move, not subtree split
+**Rationale:** The shared SDK/spec/type work is already implemented and
+verified. Leaving 63 unrelated todos in the same change obscures the real
+completion boundary and makes archive readiness hard to judge.
 
-**Choice:** Copy the directory into a new repo rather than `git subtree split`.
-**Rationale:** `clankers-plugin-sdk` already declares its own `[workspace]`
-and isn't part of the main workspace's dependency graph. It's consumed by
-external plugin crates, not by the workspace itself. A clean repo start is
-simpler than splitting a directory that was never a workspace member.
-**Alternative:** subtree split. Works but produces a confusing history since
-the crate's Cargo.toml has `[workspace]` overriding the parent.
+**Alternative:** Keep all ten crates in one long-running change. Rejected
+because it mixes finished migration work with untouched future work.
 
-### nix: keep snix rev pinned
+### 2. plugin-sdk stays a repo move, not a subtree split
 
-**Choice:** Carry the exact `rev = "8fe3bade..."` pin into the extracted repo.
-**Rationale:** snix is pre-1.0 and evolving. The pin guarantees the extracted
-crate compiles with the same snix version. Upgrading snix can happen in the
-extracted repo independently of clankers.
+**Choice:** Treat `clankers-plugin-sdk` as a clean standalone repo move.
 
-### matrix: preserve full feature set
+**Rationale:** It already had its own `[workspace]`, targets wasm32, and is
+consumed by external plugin crates rather than by the main clankers workspace.
+A clean repo identity is simpler than preserving a mostly unrelated parent
+workspace history slice.
 
-**Choice:** Keep `e2e-encryption`, `sqlite`, `rustls-tls` features on
-matrix-sdk in the extracted crate.
-**Rationale:** Dropping any of these would break E2E encryption or
-persistence. The extracted crate should be a drop-in replacement.
+### 3. `openspec` uses a functional core + filesystem shell split
 
-### zellij: iroh version alignment
+**Choice:** Keep `openspec` as two layers:
+1. `openspec::core` — pure parsing, graph, delta, schema, and verification logic
+2. root `openspec` — `SpecEngine`, config, and filesystem-backed helpers
 
-**Choice:** Pin iroh to the same version used in the clankers workspace.
-**Rationale:** iroh has breaking changes between minor versions. The
-workspace's iroh version is used by the daemon's QUIC bridge too. Version
-mismatch could cause link errors if both are in the same binary.
-
-### protocol: tokio stays
-
-**Choice:** Keep tokio as a dependency in `clanker-protocol`.
-**Rationale:** `read_frame`/`write_frame` use `AsyncReadExt`/`AsyncWriteExt`.
-Making the framing generic over `futures::AsyncRead` would require an
-API-breaking refactor. Not worth it for the extraction — do it later if
-someone needs a non-tokio runtime.
-
-### specs → openspec: pure core + filesystem shell
-
-**Choice:** Restructure `openspec` into two layers:
-1. `openspec::core` — pure functions that take strings/structs and return
-   structs. No `std::fs`. Compilable to wasm32.
-2. `openspec` (root) — `SpecEngine` and convenience functions that use
-   `std::fs`. Not wasm-compatible. Re-exports core types.
-
-**Rationale:** The WASM plugin needs the parsing and graph logic but can't
-do filesystem I/O. Separating them lets the plugin depend on `openspec::core`
-while the native library keeps the filesystem convenience API.
+**Rationale:** The pure core is testable without I/O and compiles for the WASM
+plugin. The native shell preserves the ergonomic API used by clankers and the
+standalone repo.
 
 **Implementation:**
-```
+```text
 openspec/
 ├── src/
-│   ├── lib.rs          # SpecEngine (filesystem), re-exports core::*
-│   ├── core/
-│   │   ├── mod.rs      # pub mod spec, artifact, change, delta, ...
-│   │   ├── spec.rs     # parse_spec_content(content: &str) -> Spec
-│   │   ├── artifact.rs # ArtifactGraph::from_state(artifacts, existing_files)
-│   │   ├── change.rs   # TaskProgress parsing from string
-│   │   ├── delta.rs    # parse_delta_content(content: &str) -> DeltaSpec
-│   │   ├── merge.rs    # merge operations on in-memory data
-│   │   ├── schema.rs   # Schema, SchemaArtifact types
-│   │   ├── verify.rs   # verify_from_content(tasks: &str, has_specs: bool)
-│   │   └── templates.rs
-│   ├── engine.rs       # SpecEngine (uses std::fs, calls core::*)
-│   └── config.rs       # SpecConfig (uses std::fs)
-└── Cargo.toml          # features: default=["fs"], fs=[]
+│   ├── core/         # pure parsing / graph / verification logic
+│   ├── engine.rs     # filesystem-backed SpecEngine
+│   ├── config.rs     # filesystem-backed config helpers
+│   └── lib.rs        # re-exports core + native API
+└── openspec-plugin/  # wasm plugin crate
 ```
 
-The `fs` feature gates `SpecEngine` and `config.rs`. Without it, only
-`core` types are available — wasm-compatible.
+### 4. `openspec-plugin` remains a separate crate in the `openspec` repo
 
-### specs WASM plugin: separate crate
+**Choice:** Keep the plugin in `openspec-plugin/` with
+`openspec = { default-features = false }`.
 
-**Choice:** `openspec-plugin` is a separate crate in the same repo (or a
-sibling repo) that depends on `openspec` with `default-features = false`.
+**Rationale:** The plugin needs `clanker-plugin-sdk` / `extism-pdk`, but the
+library crate should not inherit WASM-only runtime dependencies. A sibling
+crate keeps the dependency graph clean and version coordination simple.
 
-**Rationale:** The plugin needs `clankers-plugin-sdk` (extism-pdk) which
-targets wasm32. Keeping it in the same repo as the library makes version
-coordination easy. Keeping it in a separate crate avoids polluting the
-library's dependency tree with extism-pdk.
+**Verification:**
+- checked-in Extism integration test at `../openspec/openspec-plugin/tests/runtime.rs`
+- host-runtime smoke against the installed plugin under
+  `~/.clankers/agent/plugins/openspec`
 
-```
-openspec/
-├── Cargo.toml          # library crate
-├── src/
-└── openspec-plugin/
-    ├── Cargo.toml      # [lib] crate-type = ["cdylib"], deps: openspec (no fs), clankers-plugin-sdk
-    ├── src/lib.rs      # tool handlers, event handlers, describe()
-    └── plugin.json     # manifest
-```
+### 5. `clanker-tui-types` lands before `clanker-message`
 
-### db: keep all table schemas
+**Choice:** Keep the high-fanout order as `tui-types` first, then `message`.
 
-**Choice:** Move all 8 table modules as-is.
-**Rationale:** The tables are generic key-value patterns over redb. The
-column names are descriptive ("audit_log", "memory_store") but not
-tightly coupled to clankers internals. Other projects could use the same
-table schemas or define their own using the same patterns.
-**Alternative:** Only extract the redb wrapper/error types and leave
-table definitions in-tree. More work for marginal benefit — the table
-modules are already well-isolated.
+**Rationale:** `tui-types` had the widest blast radius and needed the
+subwayrat dependency cleanup first. Once those callers were migrated, the
+message extraction had fewer moving pieces and could focus on the router edge.
 
-### hooks: HookPoint stays concrete
+### 6. `clanker-message` shares the vendored router source graph
 
-**Choice:** Extract `clanker-hooks` with the concrete `HookPoint` enum
-(PreCommit, SessionStart, ToolPre, ToolPost, etc.).
-**Rationale:** Generalizing HookPoint into a trait was considered in phase 1
-and rejected. The enum is small (8 variants) and other projects that use
-this crate can either use the existing variants or we add a `Custom(String)`
-variant for extensibility.
-**Change from phase 1:** Phase 1 decided not to extract hooks. Re-evaluating
-because the hook system has matured and 5 crates depend on it — extracting
-it reduces workspace coupling significantly.
+**Choice:** Keep the extracted `clanker-message` repo on a git dependency for
+`clanker-router`, while patching the main workspace back to
+`vendor/clanker-router`.
 
-### tui-types: resolve subwayrat path deps
+**Rationale:** This avoids compiling two distinct router source graphs inside
+clankers and preserves shared `Usage` / stream-event types.
 
-**Choice:** Convert `rat-branches` and `rat-leaderkey` path deps to git
-deps pointing at the subwayrat repository before extracting tui-types.
-**Rationale:** The extracted `clanker-tui-types` can't have path deps to
-a sibling repo. Git deps work for the same reason they work for the
-already-extracted crates.
+### 7. Final cleanup only removes wrappers for the reduced-scope crates
 
-### message: extract after tui-types
+**Choice:** The final cleanup in this change covers only:
+- `clankers-plugin-sdk`
+- `clankers-specs`
+- `clankers-tui-types`
+- `clankers-message`
 
-**Choice:** Extract `clanker-message` after `clanker-tui-types`.
-**Rationale:** `clankers-message` depends on `clanker-router` (done) but
-several of its reverse dependents also depend on `clankers-tui-types`. If
-tui-types is extracted first, the message extraction has fewer moving parts.
-
-### New crate names
-
-| Workspace crate | Extracted name | Rationale |
-|---|---|---|
-| clankers-plugin-sdk | `clanker-plugin-sdk` | Drop the s. Consistent with clanker-* convention. |
-| clankers-nix | `clanker-nix` | Drop the s. |
-| clankers-matrix | `clanker-matrix` | Drop the s. |
-| clankers-zellij | `clanker-zellij` | Drop the s. |
-| clankers-protocol | `clanker-protocol` | Drop the s. |
-| clankers-specs | `openspec` | Standalone identity. The spec engine isn't clankers-specific. |
-| clankers-db | `clanker-db` | Drop the s. |
-| clankers-hooks | `clanker-hooks` | Drop the s. |
-| clankers-tui-types | `clanker-tui-types` | Drop the s. |
-| clankers-message | `clanker-message` | Drop the s. |
+**Rationale:** The remaining six crates still live in-tree and now belong to
+`crate-extraction-3`. Cleanup and grep assertions in this change must not
+pretend those future extractions already happened.
 
 ## Architecture
 
-### Before extraction
+### Before the reduced-scope extraction
 
-```
-clankers (workspace) — 24 crates
-├── crates/clankers-plugin-sdk/  (own [workspace], 0 reverse deps in main workspace)
-├── crates/clankers-nix/         (0 internal deps, 1 reverse dep)
-├── crates/clankers-matrix/      (0 internal deps, 1 reverse dep)
-├── crates/clankers-zellij/      (0 internal deps, 1 reverse dep)
-├── crates/clankers-protocol/    (0 internal deps, 2 reverse deps)
-├── crates/clankers-specs/       (0 internal deps, 2 reverse deps)
-├── crates/clankers-db/          (0 internal deps, 2 reverse deps)
-├── crates/clankers-hooks/       (0 internal deps, 5 reverse deps)
-├── crates/clankers-tui-types/   (0 internal deps, 10 reverse deps)
-├── crates/clankers-message/     (1 internal dep, 7 reverse deps)
-└── ... 14 other crates
+The workspace still owned these shared crates directly:
+
+```text
+crates/clankers-plugin-sdk/
+crates/clankers-specs/
+crates/clankers-tui-types/
+crates/clankers-message/
 ```
 
-### After extraction
+### After the reduced-scope extraction
 
-```
-GitHub repos (git deps):
-├── brittonr/clanker-plugin-sdk/   (from clankers-plugin-sdk)
-├── brittonr/clanker-nix/          (from clankers-nix)
-├── brittonr/clanker-matrix/       (from clankers-matrix)
-├── brittonr/clanker-zellij/       (from clankers-zellij)
-├── brittonr/clanker-protocol/     (from clankers-protocol)
-├── brittonr/openspec/             (from clankers-specs, + openspec-plugin)
-├── brittonr/clanker-db/           (from clankers-db)
-├── brittonr/clanker-hooks/        (from clankers-hooks)
-├── brittonr/clanker-tui-types/    (from clankers-tui-types)
-└── brittonr/clanker-message/      (from clankers-message)
+```text
+Standalone repos / git deps:
+├── brittonr/clanker-plugin-sdk/
+├── brittonr/openspec/
+│   └── openspec-plugin/
+├── brittonr/clanker-tui-types/
+└── brittonr/clanker-message/
 
-clankers (workspace) — 14 crates remaining
-├── crates/clankers-agent/
-├── crates/clankers-agent-defs/
-├── crates/clankers-config/
-├── crates/clankers-controller/
-├── crates/clankers-model-selection/
-├── crates/clankers-plugin/
-├── crates/clankers-procmon/
-├── crates/clankers-prompts/
-├── crates/clankers-provider/
-├── crates/clankers-session/
-├── crates/clankers-skills/
-├── crates/clankers-tui/
-├── crates/clankers-ucan/
-├── crates/clankers-util/
-└── xtask/
+clankers workspace:
+- consumes those crates via git deps
+- no longer keeps wrapper crates for those four extracted crates
+- keeps the remaining six planned extractions in-tree until crate-extraction-3
 ```
 
-### openspec Plugin Data Flow
+### openspec plugin data flow
 
-```
-LLM invokes "spec_list" tool
-  → clankers host reads openspec/specs/ directory
-  → host builds JSON: {"entries": [{"domain":"auth","content":"# Auth spec\n..."}]}
-  → host calls plugin WASM: handle_tool_call(json)
-    → plugin deserializes entries
-    → plugin calls openspec::core::spec::parse_spec_content() for each
-    → plugin builds response JSON
-  → host returns tool result to LLM
+```text
+LLM invokes tool
+  → host gathers filesystem data / file contents
+  → host serializes JSON args
+  → openspec-plugin calls pure openspec::core helpers
+  → plugin returns structured JSON
+  → host shows the result to the agent
 ```
 
-The host handles all filesystem access. The plugin is a pure
-parse-and-transform layer.
+The WASM module stays pure. Filesystem reads remain in the host.
 
-## Coupling Analysis
+## Risks / Trade-offs
 
-### clankers-tui-types (10 reverse deps) — highest impact
+**Remote publishing lag for `openspec`**
+→ Mitigation: keep the GitHub-repo creation task open in this change until the
+repo is published and CI can run on the standalone remote.
 
-```
-Cargo.toml (root)                      — direct dep
-crates/clankers-agent/Cargo.toml       — direct dep
-crates/clankers-config/Cargo.toml      — direct dep
-crates/clankers-controller/Cargo.toml  — direct dep
-crates/clankers-model-selection/       — direct dep
-crates/clankers-plugin/Cargo.toml      — direct dep
-crates/clankers-procmon/Cargo.toml     — direct dep
-crates/clankers-provider/Cargo.toml    — direct dep
-crates/clankers-tui/Cargo.toml         — direct dep
-crates/clankers-util/Cargo.toml        — direct dep
-```
+**Evidence drift between checked-in tests and ad-hoc smoke scripts**
+→ Mitigation: lead with checked-in test evidence (`openspec-plugin/tests/runtime.rs`)
+and treat `/tmp` smoke scripts as supplemental runtime confirmation only.
 
-Every crate that interacts with the UI imports tui-types. The re-export
-wrapper is load-bearing. Don't remove it until all 10 are migrated.
-
-### clankers-message (7 reverse deps)
-
-```
-Cargo.toml (root)
-crates/clankers-agent/Cargo.toml
-crates/clankers-controller/Cargo.toml
-crates/clankers-engine/Cargo.toml
-crates/clankers-provider/Cargo.toml
-crates/clankers-session/Cargo.toml
-crates/clankers-util/Cargo.toml
-```
-
-Core message types. All callers use `Message`, `Role`, `Content`.
-Re-export wrapper needed during migration.
-
-### clankers-hooks (5 reverse deps)
-
-```
-Cargo.toml (root)
-crates/clankers-agent/Cargo.toml
-crates/clankers-config/Cargo.toml
-crates/clankers-controller/Cargo.toml
-crates/clankers-plugin/Cargo.toml
-```
-
-Hook points and dispatch. The `HookHandler` trait is implemented by
-the agent and plugin systems.
+**Future extraction work could accidentally regress the completed slice**
+→ Mitigation: `crate-extraction-3` gets its own tasks/specs and will rerun the
+workspace validation bundle after each extraction and at final cleanup.

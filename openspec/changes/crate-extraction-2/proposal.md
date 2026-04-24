@@ -2,101 +2,104 @@
 
 ## Intent
 
-Phase 1 extracted 6 crates (graggle, clanker-actor, clanker-scheduler,
-clanker-loop, clanker-router, clanker-auth). All done. The workspace still
-has 24 crates, 12 of which have zero internal dependencies and could stand
-on their own.
+This change originally covered a second extraction pass for ten crates. After
+landing the highest-leverage shared crates, the scope was split so the finished
+work can stand on its own and the remaining extractions can continue in a new
+change.
 
-This second pass targets two groups:
+`crate-extraction-2` now records the completed shared-core slice:
 
-1. **Leaf crates** with zero internal deps that are genuinely reusable
-   outside clankers — same pattern as phase 1.
-2. **High-fanout type crates** (tui-types, message) that 10+ other crates
-   depend on. Extracting these would convert a large chunk of the remaining
-   path deps into git deps.
+1. **clankers-plugin-sdk** → `clanker-plugin-sdk`
+2. **clankers-specs** → `openspec`
+3. **openspec-plugin** — WASM plugin wrapper for `openspec`
+4. **clankers-tui-types** → `clanker-tui-types`
+5. **clankers-message** → `clanker-message`
 
-We also evaluate each candidate for WASM plugin packaging. The answer for
-most is no — they're compile-time infrastructure, not runtime tools — but
-one (openspec) has a viable plugin path.
+These extractions carried the biggest fanout reduction in the workspace:
+- plugin authoring moved to a standalone SDK repo
+- spec tooling became a standalone library plus plugin
+- the two highest-fanout shared type crates moved out of-tree
+
+The remaining six extractions continue in `crate-extraction-3`.
 
 ## Scope
 
 ### In Scope
 
-Ten crates, grouped by extraction difficulty:
+#### Shared SDK extraction
+- **clankers-plugin-sdk** → `clanker-plugin-sdk`
+  - preserve wasm32 support
+  - preserve prelude and protocol re-exports
+  - update downstream plugins to the git dependency
 
-**Group A — Trivial leaf extractions (zero internal deps, 1–2 reverse deps):**
+#### Spec engine extraction
+- **clankers-specs** → `openspec`
+  - split pure parsing/graph logic from filesystem I/O
+  - expose `openspec::core` for wasm-compatible logic
+  - keep `SpecEngine` and native convenience API in the root crate
 
-1. **clankers-plugin-sdk** → `clanker-plugin-sdk` — already has its own
-   `[workspace]`, targets wasm32. Just needs a repo.
-2. **clankers-nix** → `clanker-nix` — snix-based Nix integration. Leaf.
-3. **clankers-matrix** → `clanker-matrix` — Matrix protocol bridge. Leaf.
-4. **clankers-zellij** → `clanker-zellij` — P2P terminal sharing via
-   Zellij + iroh. Leaf.
+#### Spec tool WASM plugin
+- **openspec-plugin**
+  - package the pure `openspec` logic as an Extism plugin
+  - expose the five spec/change/artifact tools used by clankers
+  - keep filesystem access in the host, not in WASM
 
-**Group B — Generic infrastructure (zero internal deps, moderate reverse deps):**
+#### High-fanout type extractions
+- **clankers-tui-types** → `clanker-tui-types`
+  - migrate all direct callers to the extracted crate
+  - remove the thin wrapper once callers are updated
+- **clankers-message** → `clanker-message`
+  - keep the router dependency on the extracted `clanker-router`
+  - migrate all direct callers and remove the wrapper
 
-5. **clankers-protocol** → `clanker-protocol` — daemon↔client wire types.
-6. **clankers-specs** → `openspec` — spec-driven development engine.
-   Also gets a WASM plugin wrapper exposing spec tools to the LLM.
-7. **clankers-db** → `clanker-db` — redb embedded database.
-8. **clankers-hooks** → `clanker-hooks` — lifecycle hook dispatch.
-
-**Group C — High-impact type crates (zero/minimal internal deps, many reverse deps):**
-
-9.  **clankers-tui-types** → `clanker-tui-types` — UI event/action/block
-    types. Zero internal deps, depended on by 10 crates.
-10. **clankers-message** → `clanker-message` — conversation message types.
-    1 internal dep (clanker-router, already extracted), depended on by 6.
+#### Verification and cleanup
+- remove reduced-scope wrapper crates from the workspace
+- update workspace metadata/docs references for the extracted crates
+- verify full-workspace continuity after the reduced-scope migration
 
 ### Out of Scope
 
-- **clankers-agent-defs** — uses redb and is somewhat domain-specific.
-  Revisit after clanker-db extraction if the redb dep can be inverted.
-- **clankers-prompts**, **clankers-skills** — single `lib.rs` files with
-  only a serde dep. Too thin for their own repos.
-- **clankers-procmon** — depends on tui-types. Extract after tui-types.
-- **clankers-model-selection** — depends on router + tui-types.
-- **clankers-provider** — 3 internal deps, core integration layer.
-- Core crates (agent, controller, config, tui, session, plugin, util) —
-  too many deps, inherently application-specific.
+Moved to `crate-extraction-3`:
+- **clankers-nix** → `clanker-nix`
+- **clankers-matrix** → `clanker-matrix`
+- **clankers-zellij** → `clanker-zellij`
+- **clankers-protocol** → `clanker-protocol`
+- **clankers-db** → `clanker-db`
+- **clankers-hooks** → `clanker-hooks`
 
-### WASM Plugin Assessment
+Still out of scope for this extraction pass:
+- `clankers-agent-defs`
+- `clankers-prompts`
+- `clankers-skills`
+- `clankers-procmon`
+- `clankers-model-selection`
+- `clankers-provider`
+- core app/runtime crates (`agent`, `controller`, `config`, `tui`, `session`, `plugin`, `util`)
 
-Each candidate was evaluated for packaging as a WASM plugin (extism,
-wasm32-unknown-unknown target). A crate qualifies if:
-(a) its dependency tree compiles to wasm32, and
-(b) its functionality makes sense as an LLM-callable runtime tool.
+## WASM Plugin Assessment
 
-| Crate | Compiles to wasm32? | Useful as LLM tool? | Verdict |
-|---|---|---|---|
-| plugin-sdk | Yes (it's the SDK) | N/A — it IS the SDK | Extract as lib only |
-| nix | No (snix = native) | Yes | Extract as lib only |
-| matrix | No (sqlite, TLS, crypto) | Marginal | Extract as lib only |
-| zellij | No (iroh QUIC, tokio) | Marginal | Extract as lib only |
-| protocol | No (tokio) | No — wire types | Extract as lib only |
-| specs | Partially (petgraph ok, std::fs not) | Yes — spec ops | Extract as lib + WASM plugin |
-| db | No (redb = mmap) | No — storage layer | Extract as lib only |
-| hooks | No (tokio, async-trait) | No — dispatch infra | Extract as lib only |
-| tui-types | Possibly (serde, chrono) | No — UI types | Extract as lib only |
-| message | No (clanker-router) | No — conversation types | Extract as lib only |
+Within the reduced scope, only `openspec` qualifies for plugin packaging:
+- `openspec` has a pure parsing/graph core that can compile to `wasm32-unknown-unknown`
+- its operations are useful as LLM-callable tools
+- its interface fits stateless JSON request/response semantics
 
-Only `clankers-specs` gets a WASM plugin. The plugin wraps the pure
-parsing/graph logic and exposes OpenSpec operations as LLM tools
-(spec_list, change_create, change_verify, spec_context). Filesystem
-access goes through the extism host.
+The other reduced-scope crates do not become plugins:
+- `clanker-plugin-sdk` is the SDK itself
+- `clanker-tui-types` and `clanker-message` are compile-time shared types, not runtime tools
 
 ## Approach
 
-Same mechanical pattern as phase 1:
+Keep the proven extraction protocol from phase 1 and apply it only to the
+reduced-scope crates:
 
-1. Create GitHub repo
-2. Move source with `git subtree split`, preserving history
-3. Rename crate, strip clankers references
-4. Add CI, README, LICENSE
-5. In workspace: replace path dep with git dep
-6. Thin re-export wrapper during migration, remove later
+1. preserve history (or do a clean repo move where appropriate)
+2. rename the crate into the `clanker-*` / standalone namespace
+3. add standalone repo scaffolding (README, LICENSE, CI)
+4. switch the workspace to a git dependency
+5. keep a thin re-export wrapper only while callers are migrating
+6. remove wrappers once all direct callers use the extracted crate
+7. verify the full workspace after each high-risk migration step
 
-New for phase 2: the openspec extraction also produces a WASM plugin
-crate (`openspec-plugin`) that depends on the `openspec` library and
-exposes tools via the clankers-plugin-sdk interface.
+The split itself is part of the approach: completed shared crates stay in this
+change, while the remaining leaf/infrastructure crates move to
+`crate-extraction-3` so each change has one coherent completion boundary.
