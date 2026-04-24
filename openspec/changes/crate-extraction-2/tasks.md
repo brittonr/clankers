@@ -157,10 +157,10 @@ High-impact type extraction. Zero internal deps. 10 reverse deps.
 
 ### 9a: Resolve subwayrat path deps
 
-- [ ] Convert `rat-branches` path dep to git dep (subwayrat repo)
-- [ ] Convert `rat-leaderkey` path dep to git dep (subwayrat repo)
-- [ ] Convert `rat-widgets` path dep to git dep (subwayrat repo) if needed elsewhere
-- [ ] Verify workspace compiles with git deps instead of path deps
+- [x] Convert `rat-branches` path dep to git dep (subwayrat repo)
+- [x] Convert `rat-leaderkey` path dep to git dep (subwayrat repo)
+- [x] Convert `rat-widgets` path dep to git dep (subwayrat repo) if needed elsewhere
+- [x] Verify workspace compiles with git deps instead of path deps
 
 ### 9b: Extract
 
