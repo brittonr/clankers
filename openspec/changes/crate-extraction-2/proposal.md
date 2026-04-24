@@ -1,6 +1,6 @@
 # crate-extraction-2
 
-## Intent
+## Why
 
 This change originally covered a second extraction pass for ten crates. After
 landing the highest-leverage shared crates, the scope was split so the finished
@@ -21,6 +21,15 @@ These extractions carried the biggest fanout reduction in the workspace:
 - the two highest-fanout shared type crates moved out of-tree
 
 The remaining six extractions continue in `crate-extraction-3`.
+
+## What Changes
+
+- Extract `clankers-plugin-sdk` as the standalone `clanker-plugin-sdk` crate.
+- Extract `clankers-specs` as `openspec` with a pure core and filesystem shell.
+- Package the `openspec` pure core as the `openspec-plugin` WASM plugin.
+- Extract `clankers-tui-types` as `clanker-tui-types` and migrate direct callers.
+- Extract `clankers-message` as `clanker-message` while keeping router sources unified.
+- Remove reduced-scope wrapper crates and refresh workspace metadata for these extractions.
 
 ## Scope
 
