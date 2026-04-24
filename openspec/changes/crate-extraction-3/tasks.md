@@ -7,9 +7,9 @@
 
 ## Phase 0: Shared preflight
 
-- [ ] Audit the six extraction targets for dependencies on already-extracted or vendored crates; add any required root `[patch."<source-url>"]` entries before the first migration lands
-- [ ] Verify sibling path dependencies used by validation rails are clean (or record external contamination before treating failures as extraction regressions)
-- [ ] Decide whether any planned rename can affect user-visible TUI snapshots; if so, include snapshot refresh in final cleanup evidence
+- [x] Audit the six extraction targets for dependencies on already-extracted or vendored crates; add any required root `[patch."<source-url>"]` entries before the first migration lands (`evidence/preflight-audit.md`: no new patches needed)
+- [x] Verify sibling path dependencies used by validation rails are clean (or record external contamination before treating failures as extraction regressions) (`evidence/preflight-audit.md`: `../subwayrat`, `../ratcore`, and `../openspec` dirty; treat as external contamination)
+- [x] Decide whether any planned rename can affect user-visible TUI snapshots; if so, include snapshot refresh in final cleanup evidence (`evidence/preflight-audit.md`: no expected snapshot impact; keep final refresh conditional)
 
 ## Phase 1: nix (clankers-nix → clanker-nix)
 
