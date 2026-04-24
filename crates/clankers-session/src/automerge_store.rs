@@ -19,7 +19,7 @@ use automerge::AutoCommit;
 use automerge::ObjType;
 use automerge::ReadDoc;
 use automerge::Value;
-use clankers_message::MessageId;
+use clanker_message::MessageId;
 
 use crate::entry::BranchEntry;
 use crate::entry::CompactionEntry;
@@ -465,9 +465,9 @@ pub enum MigrateResult {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use clankers_message::AgentMessage;
-    use clankers_message::Content;
-    use clankers_message::UserMessage;
+    use clanker_message::AgentMessage;
+    use clanker_message::Content;
+    use clanker_message::UserMessage;
 
     use super::*;
 

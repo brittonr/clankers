@@ -792,7 +792,7 @@ fn process_daemon_event(
         // ── History replay ──────────────────────────
         DaemonEvent::HistoryBlock { block } => {
             if *is_replaying_history {
-                match serde_json::from_value::<clankers_message::AgentMessage>(block.clone()) {
+                match serde_json::from_value::<clanker_message::AgentMessage>(block.clone()) {
                     Ok(msg) => {
                         let events = clankers_controller::convert::agent_message_to_tui_events(&msg);
                         for tui_event in &events {
@@ -2303,37 +2303,37 @@ mod tests {
         }
     }
 
-    fn replay_messages() -> Vec<clankers_message::AgentMessage> {
+    fn replay_messages() -> Vec<clanker_message::AgentMessage> {
         vec![
-            clankers_message::AgentMessage::User(clankers_message::UserMessage {
-                id: clankers_message::MessageId::new("u1"),
-                content: vec![clankers_message::Content::Text {
+            clanker_message::AgentMessage::User(clanker_message::UserMessage {
+                id: clanker_message::MessageId::new("u1"),
+                content: vec![clanker_message::Content::Text {
                     text: "hello".to_string(),
                 }],
                 timestamp: parse_test_timestamp("2026-04-22T12:34:56Z"),
             }),
-            clankers_message::AgentMessage::Assistant(clankers_message::AssistantMessage {
-                id: clankers_message::MessageId::new("a1"),
+            clanker_message::AgentMessage::Assistant(clanker_message::AssistantMessage {
+                id: clanker_message::MessageId::new("a1"),
                 content: vec![
-                    clankers_message::Content::ToolUse {
+                    clanker_message::Content::ToolUse {
                         id: "call-1".to_string(),
                         name: "bash".to_string(),
                         input: serde_json::json!({"command": "ls"}),
                     },
-                    clankers_message::Content::Text {
+                    clanker_message::Content::Text {
                         text: "done".to_string(),
                     },
                 ],
                 model: "test-model".to_string(),
-                usage: clankers_message::Usage::default(),
-                stop_reason: clankers_message::StopReason::Stop,
+                usage: clanker_message::Usage::default(),
+                stop_reason: clanker_message::StopReason::Stop,
                 timestamp: parse_test_timestamp("2026-04-22T12:35:10Z"),
             }),
-            clankers_message::AgentMessage::ToolResult(clankers_message::ToolResultMessage {
-                id: clankers_message::MessageId::new("t1"),
+            clanker_message::AgentMessage::ToolResult(clanker_message::ToolResultMessage {
+                id: clanker_message::MessageId::new("t1"),
                 call_id: "call-1".to_string(),
                 tool_name: "bash".to_string(),
-                content: vec![clankers_message::Content::Text {
+                content: vec![clanker_message::Content::Text {
                     text: "tool output".to_string(),
                 }],
                 is_error: false,

@@ -1,6 +1,6 @@
 //! Tree query and analysis methods
 
-use clankers_message::MessageId;
+use clanker_message::MessageId;
 
 use super::SessionTree;
 use crate::entry::MessageEntry;

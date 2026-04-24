@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use clankers_message::MessageId;
+use clanker_message::MessageId;
 
 use crate::entry::MessageEntry;
 use crate::entry::SessionEntry;
@@ -70,9 +70,9 @@ impl SessionTree {
 #[cfg(test)]
 mod tests {
     use chrono::Utc;
-    use clankers_message::AgentMessage;
-    use clankers_message::Content;
-    use clankers_message::UserMessage;
+    use clanker_message::AgentMessage;
+    use clanker_message::Content;
+    use clanker_message::UserMessage;
 
     use super::*;
 

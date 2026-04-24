@@ -191,20 +191,20 @@ High-impact type extraction. Zero internal deps. 10 reverse deps.
 
 ## Phase 10: message (clankers-message → clanker-message)
 
-High-impact type extraction. 1 internal dep (clanker-router). 6 reverse deps.
+High-impact type extraction. 1 internal dep (clanker-router). 7 reverse deps.
 
-- [ ] Create `clanker-message` repo on GitHub
-- [ ] `git subtree split -P crates/clankers-message -b extract-message`
-- [ ] Push split branch to new repo
-- [ ] Rename crate in Cargo.toml (`name = "clanker-message"`)
-- [ ] Convert clanker-router workspace dep to git dep in new repo
-- [ ] Replace all `clankers_message` / `clankers-message` references in source
-- [ ] Add README.md, LICENSE, CI
-- [ ] In workspace: add git dep, thin re-export wrapper
-- [ ] Remove moved source files
-- [ ] `cargo check && cargo nextest run` — verify all 6 reverse deps compile
-- [ ] Migrate all 6 callers from `clankers_message` to `clanker_message`
-- [ ] Remove thin wrapper crate from workspace
+- [x] Create `clanker-message` repo on GitHub
+- [x] `git subtree split -P crates/clankers-message -b extract-message`
+- [x] Push split branch to new repo
+- [x] Rename crate in Cargo.toml (`name = "clanker-message"`)
+- [x] Convert clanker-router workspace dep to git dep in new repo
+- [x] Replace all `clankers_message` / `clankers-message` references in source
+- [x] Add README.md, LICENSE, CI
+- [x] In workspace: add git dep, thin re-export wrapper
+- [x] Remove moved source files
+- [x] `cargo check && cargo nextest run` — verify all 7 reverse deps compile
+- [x] Migrate all 7 callers from `clankers_message` to `clanker_message`
+- [x] Remove thin wrapper crate from workspace
 
 ## Phase 11: Final cleanup
 

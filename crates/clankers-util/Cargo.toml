@@ -6,7 +6,7 @@ license.workspace = true
 description = "Shared utility functions for clankers"
 
 [dependencies]
-clankers-message = { version = "0.1.0", path = "../clankers-message" }
+clanker-message = { workspace = true }
 clanker-tui-types = { workspace = true }
 dirs = "6"
 base64 = "0.22"

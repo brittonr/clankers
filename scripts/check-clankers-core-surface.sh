@@ -9,7 +9,7 @@ readonly NOT_FOUND_STATUS="1"
 
 readonly SURFACE_PATTERNS=(
   "clankers_agent::events::AgentEvent"
-  "clankers_message"
+  "clanker_message"
   "clankers_protocol::DaemonEvent"
   "clankers_protocol::SessionCommand"
   "chrono::"

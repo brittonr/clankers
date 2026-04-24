@@ -2,8 +2,8 @@
 
 use chrono::DateTime;
 use chrono::Utc;
-use clankers_message::AgentMessage;
-use clankers_message::MessageId;
+use clanker_message::AgentMessage;
+use clanker_message::MessageId;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
@@ -109,8 +109,8 @@ pub struct ResumeEntry {
 
 #[cfg(test)]
 mod tests {
-    use clankers_message::Content;
-    use clankers_message::UserMessage;
+    use clanker_message::Content;
+    use clanker_message::UserMessage;
 
     use super::*;
 

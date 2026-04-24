@@ -423,6 +423,16 @@ fn extract_item_name(line: &str, item_kind: ItemKind) -> String {
     }
 }
 
+const WORKSPACE_DEP_PREFIXES: [&str; 2] = ["clankers-", "clanker-"];
+
+fn parse_workspace_dep_name(line: &str) -> Option<String> {
+    let candidate = line.split(|c: char| !c.is_alphanumeric() && c != '-').next()?;
+    if WORKSPACE_DEP_PREFIXES.iter().any(|prefix| candidate.starts_with(prefix)) {
+        return Some(candidate.to_string());
+    }
+    None
+}
+
 /// Extract workspace dependency names from Cargo.toml.
 fn extract_workspace_deps(crate_path: &Path) -> Vec<String> {
     let manifest = crate_path.join("Cargo.toml");
@@ -437,18 +447,15 @@ fn extract_workspace_deps(crate_path: &Path) -> Vec<String> {
     let mut deps = Vec::with_capacity(contents.lines().count());
     for line in contents.lines() {
         let trimmed = line.trim();
-        if trimmed.starts_with("clankers-")
-            && let Some(name) = trimmed.split(|c: char| !c.is_alphanumeric() && c != '-').next()
-            && name.starts_with("clankers-")
-        {
-            deps.push(name.to_string());
+        if let Some(name) = parse_workspace_dep_name(trimmed) {
+            deps.push(name);
         }
     }
 
     deps.sort();
     deps.dedup();
     assert!(deps.windows(2).all(|pair| pair[0] < pair[1]));
-    assert!(deps.iter().all(|dep| dep.starts_with("clankers-")));
+    assert!(deps.iter().all(|dep| WORKSPACE_DEP_PREFIXES.iter().any(|prefix| dep.starts_with(prefix))));
     deps
 }
 
@@ -552,7 +559,7 @@ fn gen_architecture(_root: &Path, crates: &[CrateInfo]) -> String {
         ]),
         ("Networking", &["clankers-auth", "clankers-matrix"]),
         ("Utilities", &[
-            "clankers-message",
+            "clanker-message",
             "clankers-prompts",
             "clankers-procmon",
             "clankers-util",

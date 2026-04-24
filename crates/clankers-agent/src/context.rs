@@ -1,7 +1,7 @@
 //! Context building, token estimation, window management
 
 use clankers_config::settings::Settings;
-use clankers_message::message::*;
+use clanker_message::message::*;
 
 /// Built context ready for an LLM request
 #[derive(Debug, Clone)]

@@ -42,24 +42,26 @@ AND `cargo check && cargo nextest run` passes
 
 The `clankers-message` crate MUST be extracted to `clanker-message`. This
 crate depends on `clanker-router` (already extracted in phase 1). It
-defines conversation message types used by 6 other workspace crates.
+defines conversation message types used by 7 other workspace crates.
 
-GIVEN `crates/clankers-message/` with 1 internal dep: clanker-router (workspace git dep)
+GIVEN `crates/clankers-message/` with 1 internal dep: clanker-router (vendored workspace snapshot)
 WHEN extracted to `clanker-message` repo
 THEN the clanker-router dependency is declared as a git dep in the new repo
+AND the main workspace patches that git source back to `vendor/clanker-router`
+    while the vendored snapshot remains authoritative locally
 AND all message types (Message, Role, Content, ToolUse, ToolResult, Usage, etc.)
     are public and serialize identically to pre-extraction
 AND all `clankers_message` references are renamed to `clanker_message`
-AND 6 reverse dependents compile via re-export wrapper:
-    root, agent, controller, provider, session, util
+AND 7 reverse dependents compile via re-export wrapper:
+    root, agent, controller, engine, provider, session, util
 
 ### message Reverse Dep Migration
 
-After extraction, each of the 6 reverse dependents SHOULD be migrated
+After extraction, each of the 7 reverse dependents SHOULD be migrated
 from `use clankers_message::` to `use clanker_message::` directly.
 
 GIVEN the re-export wrapper at `crates/clankers-message/src/lib.rs`
-WHEN all 6 dependents have been updated to import `clanker_message`
+WHEN all 7 dependents have been updated to import `clanker_message`
 THEN the `crates/clankers-message/` directory can be deleted
 AND `cargo check && cargo nextest run` passes
 

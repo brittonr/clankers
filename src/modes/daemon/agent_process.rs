@@ -350,7 +350,7 @@ pub async fn run_ephemeral_agent(
     sub_id: &str,
     signal: CancellationToken,
 ) -> Result<String, String> {
-    let session_id = clankers_message::generate_id();
+    let session_id = clanker_message::generate_id();
 
     // Resolve agent definition to model + system prompt overrides
     let (model, system_prompt) = resolve_agent_def(agent_def, factory);
@@ -506,24 +506,24 @@ fn load_recovery_seed_messages(
                         .iter()
                         .filter_map(|m| {
                             let (role, content, model) = match m {
-                                clankers_message::AgentMessage::User(u) => {
+                                clanker_message::AgentMessage::User(u) => {
                                     let text = u
                                         .content
                                         .iter()
                                         .filter_map(|c| match c {
-                                            clankers_message::Content::Text { text } => Some(text.as_str()),
+                                            clanker_message::Content::Text { text } => Some(text.as_str()),
                                             _ => None,
                                         })
                                         .collect::<Vec<_>>()
                                         .join("\n");
                                     ("user", text, None)
                                 }
-                                clankers_message::AgentMessage::Assistant(a) => {
+                                clanker_message::AgentMessage::Assistant(a) => {
                                     let text = a
                                         .content
                                         .iter()
                                         .filter_map(|c| match c {
-                                            clankers_message::Content::Text { text } => Some(text.as_str()),
+                                            clanker_message::Content::Text { text } => Some(text.as_str()),
                                             _ => None,
                                         })
                                         .collect::<Vec<_>>()
@@ -634,7 +634,7 @@ pub async fn get_or_create_keyed_session(
     }
 
     // Slow path: create a new session
-    let session_id = clankers_message::generate_id();
+    let session_id = clanker_message::generate_id();
     let spawned = spawn_agent_process(registry, factory, session_id.clone(), None, None, None, capabilities);
     let cmd_tx = spawned.cmd_tx;
     let event_tx = spawned.event_tx;

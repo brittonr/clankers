@@ -10,7 +10,7 @@
 //!   branch via plain `append_message` calls.
 
 use chrono::Utc;
-use clankers_message::MessageId;
+use clanker_message::MessageId;
 use serde_json::json;
 
 use super::SessionManager;

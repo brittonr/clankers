@@ -275,7 +275,7 @@ Plugins add additional tools at runtime.
 | [`clanker-loop`](https://github.com/brittonr/clanker-loop) | Loop/retry engine |
 | `clankers-matrix` | Matrix protocol bridge |
 | [`graggle`](https://github.com/brittonr/graggle) | Order-independent merge algorithm |
-| `clankers-message` | Message types and serialization |
+| [`clanker-message`](https://github.com/brittonr/clanker-message) | Message types and serialization |
 | `clankers-model-selection` | Complexity routing and cost tracking |
 | `clankers-plugin` | WASM plugin host (Extism) |
 | [`clanker-plugin-sdk`](https://github.com/brittonr/clanker-plugin-sdk) | Plugin development SDK |
@@ -289,7 +289,7 @@ Plugins add additional tools at runtime.
 | `clankers-skills` | Skill discovery and loading |
 | `clankers-specs` | OpenSpec integration |
 | `clankers-tui` | Terminal UI (ratatui) |
-| `clankers-tui-types` | Shared TUI type definitions |
+| [`clanker-tui-types`](https://github.com/brittonr/clanker-tui-types) | Shared TUI type definitions |
 | `clankers-util` | Shared utilities (logging, direnv, etc.) |
 | `clankers-zellij` | Zellij session sharing |
 

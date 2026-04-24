@@ -48,7 +48,7 @@ GIVEN the `openspec` library crate
 WHEN an `openspec-plugin` crate is built targeting wasm32-unknown-unknown
 THEN it exposes these tools via the plugin SDK:
   - `spec_list` — list discovered specs with domains and requirement counts
-  - `spec_search` — find specs matching a keyword or domain
+  - `spec_parse` — parse a spec markdown document into structured requirements and scenarios
   - `change_list` — list active changes with task progress
   - `change_verify` — run verification on a change, return report
   - `artifact_status` — show artifact graph state for a change

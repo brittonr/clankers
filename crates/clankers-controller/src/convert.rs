@@ -247,9 +247,9 @@ pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clanker_tui_type
 /// TUI's block-based conversation view. Replay keeps the active block open
 /// across assistant and tool-result messages until the next user prompt or the
 /// explicit history-end marker finalises it.
-pub fn agent_message_to_tui_events(msg: &clankers_message::AgentMessage) -> Vec<clanker_tui_types::TuiEvent> {
-    use clankers_message::AgentMessage;
-    use clankers_message::Content;
+pub fn agent_message_to_tui_events(msg: &clanker_message::AgentMessage) -> Vec<clanker_tui_types::TuiEvent> {
+    use clanker_message::AgentMessage;
+    use clanker_message::Content;
     use clanker_tui_types::TuiEvent;
 
     match msg {
@@ -345,10 +345,10 @@ pub fn agent_message_to_tui_events(msg: &clankers_message::AgentMessage) -> Vec<
 }
 
 /// Extract display text from content blocks.
-fn extract_user_text(content: &[clankers_message::Content]) -> String {
+fn extract_user_text(content: &[clanker_message::Content]) -> String {
     let mut text = String::new();
     for block in content {
-        if let clankers_message::Content::Text { text: t } = block {
+        if let clanker_message::Content::Text { text: t } = block {
             if !text.is_empty() {
                 text.push('\n');
             }
@@ -359,11 +359,11 @@ fn extract_user_text(content: &[clankers_message::Content]) -> String {
 }
 
 /// Extract images from content blocks as `DisplayImage`.
-fn extract_display_images(content: &[clankers_message::Content]) -> Vec<clanker_tui_types::DisplayImage> {
+fn extract_display_images(content: &[clanker_message::Content]) -> Vec<clanker_tui_types::DisplayImage> {
     let mut images = Vec::new();
     for block in content {
-        if let clankers_message::Content::Image {
-            source: clankers_message::ImageSource::Base64 { media_type, data },
+        if let clanker_message::Content::Image {
+            source: clanker_message::ImageSource::Base64 { media_type, data },
         } = block
         {
             images.push(clanker_tui_types::DisplayImage {
@@ -586,21 +586,21 @@ mod tests {
         }
     }
 
-    fn user_msg(text: &str) -> clankers_message::AgentMessage {
-        clankers_message::AgentMessage::User(clankers_message::UserMessage {
-            id: clankers_message::MessageId::new("u1"),
-            content: vec![clankers_message::Content::Text { text: text.to_string() }],
+    fn user_msg(text: &str) -> clanker_message::AgentMessage {
+        clanker_message::AgentMessage::User(clanker_message::UserMessage {
+            id: clanker_message::MessageId::new("u1"),
+            content: vec![clanker_message::Content::Text { text: text.to_string() }],
             timestamp: fixed_timestamp(),
         })
     }
 
-    fn assistant_msg(text: &str) -> clankers_message::AgentMessage {
-        clankers_message::AgentMessage::Assistant(clankers_message::AssistantMessage {
-            id: clankers_message::MessageId::new("a1"),
-            content: vec![clankers_message::Content::Text { text: text.to_string() }],
+    fn assistant_msg(text: &str) -> clanker_message::AgentMessage {
+        clanker_message::AgentMessage::Assistant(clanker_message::AssistantMessage {
+            id: clanker_message::MessageId::new("a1"),
+            content: vec![clanker_message::Content::Text { text: text.to_string() }],
             model: "test-model".to_string(),
-            usage: clankers_message::Usage::default(),
-            stop_reason: clankers_message::StopReason::Stop,
+            usage: clanker_message::Usage::default(),
+            stop_reason: clanker_message::StopReason::Stop,
             timestamp: fixed_timestamp(),
         })
     }
@@ -633,25 +633,25 @@ mod tests {
 
     #[test]
     fn history_assistant_with_thinking_and_tool() {
-        let msg = clankers_message::AgentMessage::Assistant(clankers_message::AssistantMessage {
-            id: clankers_message::MessageId::new("a2"),
+        let msg = clanker_message::AgentMessage::Assistant(clanker_message::AssistantMessage {
+            id: clanker_message::MessageId::new("a2"),
             content: vec![
-                clankers_message::Content::Thinking {
+                clanker_message::Content::Thinking {
                     thinking: "let me think".to_string(),
                     signature: String::new(),
                 },
-                clankers_message::Content::Text {
+                clanker_message::Content::Text {
                     text: "here's my answer".to_string(),
                 },
-                clankers_message::Content::ToolUse {
+                clanker_message::Content::ToolUse {
                     id: "call_1".to_string(),
                     name: "bash".to_string(),
                     input: serde_json::json!({"command": "ls"}),
                 },
             ],
             model: "test".to_string(),
-            usage: clankers_message::Usage::default(),
-            stop_reason: clankers_message::StopReason::ToolUse,
+            usage: clanker_message::Usage::default(),
+            stop_reason: clanker_message::StopReason::ToolUse,
             timestamp: chrono::Utc::now(),
         });
 
@@ -667,11 +667,11 @@ mod tests {
 
     #[test]
     fn history_tool_result_to_tui_events() {
-        let msg = clankers_message::AgentMessage::ToolResult(clankers_message::ToolResultMessage {
-            id: clankers_message::MessageId::new("tr1"),
+        let msg = clanker_message::AgentMessage::ToolResult(clanker_message::ToolResultMessage {
+            id: clanker_message::MessageId::new("tr1"),
             call_id: "call_1".to_string(),
             tool_name: "bash".to_string(),
-            content: vec![clankers_message::Content::Text {
+            content: vec![clanker_message::Content::Text {
                 text: "output".to_string(),
             }],
             is_error: false,
@@ -687,8 +687,8 @@ mod tests {
 
     #[test]
     fn history_bash_execution_to_tui_events() {
-        let msg = clankers_message::AgentMessage::BashExecution(clankers_message::BashExecutionMessage {
-            id: clankers_message::MessageId::new("be1"),
+        let msg = clanker_message::AgentMessage::BashExecution(clanker_message::BashExecutionMessage {
+            id: clanker_message::MessageId::new("be1"),
             command: "ls".to_string(),
             stdout: "file.txt".to_string(),
             stderr: String::new(),
@@ -704,11 +704,11 @@ mod tests {
 
     #[test]
     fn history_compaction_to_tui_events() {
-        let msg = clankers_message::AgentMessage::CompactionSummary(clankers_message::CompactionSummaryMessage {
-            id: clankers_message::MessageId::new("cs1"),
+        let msg = clanker_message::AgentMessage::CompactionSummary(clanker_message::CompactionSummaryMessage {
+            id: clanker_message::MessageId::new("cs1"),
             compacted_ids: vec![
-                clankers_message::MessageId::new("m1"),
-                clankers_message::MessageId::new("m2"),
+                clanker_message::MessageId::new("m1"),
+                clanker_message::MessageId::new("m2"),
             ],
             summary: "compacted".to_string(),
             tokens_saved: 1000,
@@ -725,16 +725,16 @@ mod tests {
 
     #[test]
     fn history_branch_and_custom_produce_no_events() {
-        let branch = clankers_message::AgentMessage::BranchSummary(clankers_message::BranchSummaryMessage {
-            id: clankers_message::MessageId::new("bs1"),
-            from_id: clankers_message::MessageId::new("m1"),
+        let branch = clanker_message::AgentMessage::BranchSummary(clanker_message::BranchSummaryMessage {
+            id: clanker_message::MessageId::new("bs1"),
+            from_id: clanker_message::MessageId::new("m1"),
             summary: "branched".to_string(),
             timestamp: chrono::Utc::now(),
         });
         assert!(agent_message_to_tui_events(&branch).is_empty());
 
-        let custom = clankers_message::AgentMessage::Custom(clankers_message::CustomMessage {
-            id: clankers_message::MessageId::new("cu1"),
+        let custom = clanker_message::AgentMessage::Custom(clanker_message::CustomMessage {
+            id: clanker_message::MessageId::new("cu1"),
             kind: "test".to_string(),
             data: serde_json::json!({}),
             timestamp: chrono::Utc::now(),
@@ -747,7 +747,7 @@ mod tests {
         // Verify that AgentMessage survives serde_json::to_value → from_value
         let msg = assistant_msg("round trip test");
         let value = serde_json::to_value(&msg).expect("serialize");
-        let restored: clankers_message::AgentMessage = serde_json::from_value(value).expect("deserialize");
+        let restored: clanker_message::AgentMessage = serde_json::from_value(value).expect("deserialize");
         let events = agent_message_to_tui_events(&restored);
         assert_eq!(events.len(), 4);
         assert!(matches!(&events[2], clanker_tui_types::TuiEvent::TextDelta(t) if t == "round trip test"));

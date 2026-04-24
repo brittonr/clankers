@@ -7,9 +7,9 @@ use std::time::Instant;
 use async_trait::async_trait;
 // Re-export ToolDefinition from clanker-router (canonical definition)
 pub use clanker_router::provider::ToolDefinition;
-// ToolResult and ToolResultContent — canonical definitions in clankers-message.
-pub use clankers_message::ToolResult;
-pub use clankers_message::ToolResultContent;
+// ToolResult and ToolResultContent — canonical definitions in clanker-message.
+pub use clanker_message::ToolResult;
+pub use clanker_message::ToolResultContent;
 use parking_lot::Mutex;
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -20,10 +20,10 @@ use crate::events::AgentEvent;
 /// Re-export progress types from their canonical crates.
 pub mod progress {
     // ProgressKind and ToolProgress — canonical definitions in clanker-tui-types.
-    // ResultChunk, TruncationConfig, ToolResultAccumulator — canonical definitions in clankers-message.
-    pub use clankers_message::ResultChunk;
-    pub use clankers_message::ToolResultAccumulator;
-    pub use clankers_message::TruncationConfig;
+    // ResultChunk, TruncationConfig, ToolResultAccumulator — canonical definitions in clanker-message.
+    pub use clanker_message::ResultChunk;
+    pub use clanker_message::ToolResultAccumulator;
+    pub use clanker_message::TruncationConfig;
     pub use clanker_tui_types::ProgressKind;
     pub use clanker_tui_types::ToolProgress;
 }

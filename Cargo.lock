@@ -1334,6 +1334,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "clanker-message"
+version = "0.1.0"
+source = "git+https://github.com/brittonr/clanker-message#58bfda3436ac8eb8c34dbf6e26b2afe5be69115d"
+dependencies = [
+ "chrono",
+ "clanker-router",
+ "hex",
+ "rand 0.9.4",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "clanker-router"
 version = "0.1.0"
 dependencies = [
@@ -1416,6 +1429,7 @@ dependencies = [
  "chrono",
  "clanker-actor",
  "clanker-loop",
+ "clanker-message",
  "clanker-router",
  "clanker-scheduler",
  "clanker-tui-types",
@@ -1427,7 +1441,6 @@ dependencies = [
  "clankers-db",
  "clankers-hooks",
  "clankers-matrix",
- "clankers-message",
  "clankers-model-selection",
  "clankers-nix",
  "clankers-plugin",
@@ -1502,6 +1515,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "clanker-loop",
+ "clanker-message",
  "clanker-router",
  "clanker-tui-types",
  "clankers-config",
@@ -1509,7 +1523,6 @@ dependencies = [
  "clankers-db",
  "clankers-engine",
  "clankers-hooks",
- "clankers-message",
  "clankers-model-selection",
  "clankers-procmon",
  "clankers-prompts",
@@ -1568,13 +1581,13 @@ dependencies = [
  "async-trait",
  "chrono",
  "clanker-loop",
+ "clanker-message",
  "clanker-tui-types",
  "clankers-agent",
  "clankers-config",
  "clankers-core",
  "clankers-db",
  "clankers-hooks",
- "clankers-message",
  "clankers-protocol",
  "clankers-provider",
  "clankers-session",
@@ -1609,9 +1622,9 @@ name = "clankers-engine"
 version = "0.1.0"
 dependencies = [
  "chrono",
+ "clanker-message",
  "clanker-router",
  "clankers-core",
- "clankers-message",
  "clankers-provider",
  "serde_json",
 ]
@@ -1648,19 +1661,6 @@ dependencies = [
  "tracing",
  "url",
  "uuid",
-]
-
-[[package]]
-name = "clankers-message"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "clanker-router",
- "hex",
- "pretty_assertions",
- "rand 0.9.4",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -1747,9 +1747,9 @@ dependencies = [
  "async-trait",
  "base64",
  "chrono",
+ "clanker-message",
  "clanker-router",
  "clanker-tui-types",
- "clankers-message",
  "fs4",
  "futures",
  "rand 0.9.4",
@@ -1771,7 +1771,7 @@ version = "0.1.0"
 dependencies = [
  "automerge",
  "chrono",
- "clankers-message",
+ "clanker-message",
  "pretty_assertions",
  "serde",
  "serde_json",
@@ -1849,8 +1849,8 @@ name = "clankers-util"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "clanker-message",
  "clanker-tui-types",
- "clankers-message",
  "dirs 6.0.0",
  "hex",
  "ignore",

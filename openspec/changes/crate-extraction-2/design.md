@@ -177,7 +177,7 @@ clankers (workspace) — 24 crates
 ├── crates/clankers-db/          (0 internal deps, 2 reverse deps)
 ├── crates/clankers-hooks/       (0 internal deps, 5 reverse deps)
 ├── crates/clankers-tui-types/   (0 internal deps, 10 reverse deps)
-├── crates/clankers-message/     (1 internal dep, 6 reverse deps)
+├── crates/clankers-message/     (1 internal dep, 7 reverse deps)
 └── ... 14 other crates
 ```
 
@@ -250,12 +250,13 @@ crates/clankers-util/Cargo.toml        — direct dep
 Every crate that interacts with the UI imports tui-types. The re-export
 wrapper is load-bearing. Don't remove it until all 10 are migrated.
 
-### clankers-message (6 reverse deps)
+### clankers-message (7 reverse deps)
 
 ```
 Cargo.toml (root)
 crates/clankers-agent/Cargo.toml
 crates/clankers-controller/Cargo.toml
+crates/clankers-engine/Cargo.toml
 crates/clankers-provider/Cargo.toml
 crates/clankers-session/Cargo.toml
 crates/clankers-util/Cargo.toml

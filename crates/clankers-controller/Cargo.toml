@@ -12,7 +12,7 @@ clankers-core = { version = "0.1.0", path = "../clankers-core" }
 clankers-session = { version = "0.1.0", path = "../clankers-session" }
 clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
 clanker-loop = { workspace = true }
-clankers-message = { version = "0.1.0", path = "../clankers-message" }
+clanker-message = { workspace = true }
 clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
 clanker-tui-types = { workspace = true }
 clankers-config = { version = "0.1.0", path = "../clankers-config" }

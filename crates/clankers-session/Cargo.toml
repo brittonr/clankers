@@ -6,7 +6,7 @@ license.workspace = true
 description = "Session persistence and tree management for agent conversations"
 
 [dependencies]
-clankers-message = { version = "0.1.0", path = "../clankers-message" }
+clanker-message = { workspace = true }
 automerge = "0.7"
 chrono = { workspace = true }
 serde = { workspace = true }

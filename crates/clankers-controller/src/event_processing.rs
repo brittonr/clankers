@@ -155,7 +155,7 @@ impl SessionController {
 #[cfg(test)]
 mod tests {
     use clankers_agent::events::AgentEvent;
-    use clankers_message::{ToolResult, ToolResultContent};
+    use clanker_message::{ToolResult, ToolResultContent};
     use clankers_protocol::DaemonEvent;
     use serde_json::json;
 

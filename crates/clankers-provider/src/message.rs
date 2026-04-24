@@ -1,3 +1,3 @@
-//! Message types for LLM communication — re-exported from `clankers-message`.
+//! Message types for LLM communication — re-exported from `clanker-message`.
 
-pub use clankers_message::message::*;
+pub use clanker_message::message::*;

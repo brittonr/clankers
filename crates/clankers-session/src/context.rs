@@ -1,7 +1,7 @@
 //! Build LLM context from session tree
 
-use clankers_message::AgentMessage;
-use clankers_message::MessageId;
+use clanker_message::AgentMessage;
+use clanker_message::MessageId;
 
 use super::tree::SessionTree;
 

@@ -817,7 +817,7 @@ mod tests {
             .ok();
             tx.send(StreamEvent::ContentBlockStart {
                 index: 0,
-                content_block: clankers_message::message::Content::Text { text: String::new() },
+                content_block: clanker_message::message::Content::Text { text: String::new() },
             })
             .await
             .ok();
@@ -879,8 +879,8 @@ mod tests {
         )
     }
 
-    fn make_user_msg(text: &str) -> clankers_message::message::AgentMessage {
-        use clankers_message::message::*;
+    fn make_user_msg(text: &str) -> clanker_message::message::AgentMessage {
+        use clanker_message::message::*;
         AgentMessage::User(UserMessage {
             id: MessageId::new("test-msg"),
             content: vec![Content::Text { text: text.into() }],

@@ -443,24 +443,24 @@ fn resolve_session_resume(
             .iter()
             .map(|m| {
                 let (role, content, model) = match m {
-                    clankers_message::AgentMessage::User(u) => {
+                    clanker_message::AgentMessage::User(u) => {
                         let text = u
                             .content
                             .iter()
                             .filter_map(|c| match c {
-                                clankers_message::Content::Text { text } => Some(text.as_str()),
+                                clanker_message::Content::Text { text } => Some(text.as_str()),
                                 _ => None,
                             })
                             .collect::<Vec<_>>()
                             .join("\n");
                         ("user", text, None)
                     }
-                    clankers_message::AgentMessage::Assistant(a) => {
+                    clanker_message::AgentMessage::Assistant(a) => {
                         let text = a
                             .content
                             .iter()
                             .filter_map(|c| match c {
-                                clankers_message::Content::Text { text } => Some(text.as_str()),
+                                clanker_message::Content::Text { text } => Some(text.as_str()),
                                 _ => None,
                             })
                             .collect::<Vec<_>>()
@@ -510,7 +510,7 @@ fn resolve_session_resume(
     }
 
     // New session
-    (clankers_message::generate_id(), Vec::new())
+    (clanker_message::generate_id(), Vec::new())
 }
 
 async fn shutdown_signal(shutdown: &tokio::sync::watch::Receiver<bool>) {

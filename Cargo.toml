@@ -11,7 +11,6 @@ members = [
     "crates/clankers-engine",
     "crates/clankers-hooks",
     "crates/clankers-matrix",
-    "crates/clankers-message",
     "crates/clankers-model-selection",
     "crates/clankers-nix",
     "crates/clankers-plugin",
@@ -51,6 +50,7 @@ clanker-loop = { git = "https://github.com/brittonr/clanker-loop" }
 # Vendored snapshot from https://github.com/brittonr/clanker-router @ eed716b2df17c051235172bcdea58ed14b69755d
 clanker-router = { path = "vendor/clanker-router" }
 clanker-scheduler = { git = "https://github.com/brittonr/clanker-scheduler" }
+clanker-message = { git = "https://github.com/brittonr/clanker-message" }
 clanker-tui-types = { git = "https://github.com/brittonr/clanker-tui-types" }
 graggle = { git = "https://github.com/brittonr/graggle" }
 rat-branches = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
@@ -85,7 +85,7 @@ clankers-db = { version = "0.1.0", path = "crates/clankers-db" }
 clankers-hooks = { version = "0.1.0", path = "crates/clankers-hooks" }
 clanker-loop = { workspace = true }
 graggle = { workspace = true }
-clankers-message = { version = "0.1.0", path = "crates/clankers-message" }
+clanker-message = { workspace = true }
 clankers-model-selection = { version = "0.1.0", path = "crates/clankers-model-selection" }
 clankers-session = { version = "0.1.0", path = "crates/clankers-session" }
 clankers-plugin = { version = "0.1.0", path = "crates/clankers-plugin" }
@@ -243,6 +243,9 @@ type_complexity = { level = "allow", priority = 1 }
 [workspace.metadata.tigerstyle]
 default_scope = ["--workspace"]
 cargo_check_args = []
+
+[patch."https://github.com/brittonr/clanker-router"]
+clanker-router = { path = "vendor/clanker-router" }
 
 [patch."ssh://git@github.com/brittonr/ratcore.git"]
 ratcore = { git = "ssh://git@github.com:22/brittonr/ratcore.git", rev = "16333a505696b324637f021b657c474600a9b838" }

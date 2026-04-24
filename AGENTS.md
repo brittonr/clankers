@@ -139,6 +139,7 @@ clankers daemon stop           # stop daemon
 - `crates/clankers-controller/src/lib.rs` — SessionController (handle_command, feed_event)
 - `crate-hashes.json` — unit2nix git source hashes for first-party extracted crates; stale entries fail `nix build .#clankers` with fixed-output hash mismatch before workspace code even builds. For extracted-crate pin bumps, rerun `nix build .#clankers -L` and use the reported `got:` hash to refresh `crate-hashes.json` before chasing Rust errors.
 - Removing a thin extracted-crate wrapper from the workspace needs more than Cargo.toml surgery: update `flake.nix`'s `inherit (ws.test.check)` list and `xtask/src/main.rs` architecture layers in the same change or `nix flake check` / docs generation will keep referencing the deleted crate.
+- Extracted crates that depend on `clanker-router` must not pull a second router source into the workspace. Point the standalone repo at a real remote `clanker-router` rev, then patch `[patch."https://github.com/brittonr/clanker-router"] clanker-router = { path = "vendor/clanker-router" }` in the main workspace so transitive git deps reuse the vendored snapshot and `Usage` / streaming types stay identical.
 
 ### Orchestration Notes
 

@@ -12,41 +12,57 @@ Workspace crate dependencies (auto-extracted from Cargo.toml files).
 
 ```mermaid
 graph TD
+    agent --> clanker-loop
+    agent --> clanker-message
+    agent --> clanker-router
+    agent --> clanker-tui-types
     agent --> config
+    agent --> core
     agent --> db
+    agent --> engine
     agent --> hooks
-    agent --> message
     agent --> model-selection
     agent --> procmon
     agent --> prompts
     agent --> provider
     agent --> skills
-    agent --> specs
-    agent --> tui-types
     agent --> util
+    config --> clanker-router
+    config --> clanker-tui-types
     config --> agent-defs
     config --> hooks
     config --> model-selection
     config --> tui
-    config --> tui-types
+    config --> ucan
+    controller --> clanker-loop
+    controller --> clanker-message
+    controller --> clanker-tui-types
     controller --> agent
     controller --> config
+    controller --> core
+    controller --> db
     controller --> hooks
-    controller --> message
     controller --> protocol
     controller --> provider
     controller --> session
-    controller --> tui-types
-    model-selection --> tui-types
+    engine --> clanker-message
+    engine --> clanker-router
+    engine --> core
+    engine --> provider
+    model-selection --> clanker-router
+    model-selection --> clanker-tui-types
+    plugin --> clanker-tui-types
     plugin --> hooks
-    plugin --> tui-types
-    procmon --> tui-types
-    provider --> message
-    provider --> tui-types
-    session --> message
-    tui --> tui-types
-    util --> message
-    util --> tui-types
+    procmon --> clanker-tui-types
+    provider --> clanker-message
+    provider --> clanker-router
+    provider --> clanker-tui-types
+    session --> clanker-message
+    tui --> clanker-tui-types
+    tui --> protocol
+    ucan --> clanker-auth
+    util --> clanker-message
+    util --> clanker-tui-types
 ```
 
 ## Layers
@@ -55,57 +71,52 @@ graph TD
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `tui` | 18071 | 324 | Terminal UI (ratatui + crossterm) |
-| `tui-types` | 1585 | 8 | Shared types for the clankers TUI crate boundary. |
-| `zellij` | 892 | 39 | Zellij integration and orchestration |
+| `tui` | 16421 | 278 | Terminal UI (ratatui + crossterm) |
+| `zellij` | 893 | 39 | Zellij integration and orchestration |
 
 ### Agent core
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `agent` | 3971 | 78 | Agent core — turn loop, event bus, tool interface, context management |
-| `agent-defs` | 872 | 29 | Agent definition system (first-class) |
-| `controller` | 3542 | 89 | Transport-agnostic session controller for agent orchestration. |
+| `agent` | 6847 | 126 | Agent core — turn loop, event bus, tool interface, context management |
+| `agent-defs` | 873 | 29 | Agent definition system (first-class) |
+| `controller` | 7134 | 167 | Transport-agnostic session controller for agent orchestration. |
 
 ### LLM routing
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `provider` | 1883 | 12 | LLM provider abstraction |
-| `model-selection` | 1477 | 49 | Multi-model routing policy |
+| `provider` | 8107 | 158 | LLM provider abstraction |
+| `model-selection` | 1483 | 49 | Multi-model routing policy |
 
 ### Infrastructure
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `protocol` | 1289 | 28 | Wire protocol types for daemon-client communication. |
-| `session` | 3910 | 101 | Session persistence and tree management for agent conversations |
-| `db` | 3954 | 144 | Embedded database (redb) for structured persistent storage. |
-| `config` | 797 | 17 | Configuration loading and path resolution for clankers. |
+| `protocol` | 2247 | 79 | Wire protocol types for daemon-client communication. |
+| `session` | 3952 | 102 | Session persistence and tree management for agent conversations |
+| `db` | 4361 | 154 | Embedded database (redb) for structured persistent storage. |
+| `config` | 1702 | 43 | Configuration loading and path resolution for clankers. |
 
 ### Extensions
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `plugin` | 958 | 0 | Plugin system (Extism WASM) |
-| `plugin-sdk` | 530 | 0 |  |
-| `skills` | 168 | 5 | Skills (markdown-based) |
-| `hooks` | 1160 | 32 |  |
-| `specs` | 1638 | 40 | Spec-driven development (OpenSpec) |
+| `plugin` | 3725 | 39 | Plugin system (Extism WASM) |
+| `skills` | 859 | 17 | Skills (markdown-based) |
+| `hooks` | 1225 | 32 |  |
 
 ### Networking
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `auth` | 1418 | 52 | Clankers-specific capability tokens over clanker-auth generic infrastructure. |
-| `matrix` | 1485 | 8 |  |
+| `matrix` | 1487 | 8 |  |
 
 ### Utilities
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `message` | 866 | 25 | Message types for LLM agent conversations |
 | `prompts` | 163 | 5 | Prompt templates Prompt template scanning and loading |
 | `procmon` | 467 | 5 | Core process monitor for tracking child processes and resource usage. |
-| `util` | 1920 | 79 | Shared utility functions for clankers. |
+| `util` | 1924 | 79 | Shared utility functions for clankers. |
 

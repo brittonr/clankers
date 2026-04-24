@@ -259,7 +259,7 @@ async fn create_session_over_quic(
     use clankers_controller::transport::SessionHandle;
     use clankers_controller::transport::session_socket_path;
 
-    let session_id = clankers_message::generate_id();
+    let session_id = clanker_message::generate_id();
     let resolved_model = model.clone().unwrap_or_else(|| factory.default_model.clone());
 
     // Spawn as an actor process in the registry (with UCAN capability enforcement)

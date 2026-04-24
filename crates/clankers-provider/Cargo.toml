@@ -6,7 +6,7 @@ license.workspace = true
 description = "LLM provider abstraction layer for clankers"
 
 [dependencies]
-clankers-message = { version = "0.1.0", path = "../clankers-message" }
+clanker-message = { workspace = true }
 clanker-router = { workspace = true, features = ["rpc"] }
 clanker-tui-types = { workspace = true }
 async-trait = "0.1"

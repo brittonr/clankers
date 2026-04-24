@@ -3,9 +3,9 @@
 
 use clanker_router::provider::ToolDefinition;
 use clankers_core::CoreState;
-use clankers_message::AgentMessage;
-use clankers_message::Content;
-use clankers_message::StopReason;
+use clanker_message::AgentMessage;
+use clanker_message::Content;
+use clanker_message::StopReason;
 use clankers_provider::ThinkingConfig;
 use serde_json::Value;
 
@@ -578,9 +578,9 @@ fn mint_model_request_id(sequence: u32) -> (EngineCorrelationId, u32) {
 
 #[cfg(test)]
 mod tests {
-    use clankers_message::MessageId;
-    use clankers_message::ToolResultMessage;
-    use clankers_message::UserMessage;
+    use clanker_message::MessageId;
+    use clanker_message::ToolResultMessage;
+    use clanker_message::UserMessage;
     use serde_json::json;
 
     use super::*;
@@ -1060,7 +1060,7 @@ mod tests {
             details: None,
             timestamp: test_timestamp(),
         }));
-        submission.messages.push(AgentMessage::Custom(clankers_message::CustomMessage {
+        submission.messages.push(AgentMessage::Custom(clanker_message::CustomMessage {
             id: MessageId::new("custom-1"),
             kind: "meta".to_string(),
             data: json!({"ignored": true}),

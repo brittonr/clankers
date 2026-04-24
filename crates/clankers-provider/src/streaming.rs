@@ -1,3 +1,3 @@
-//! Streaming response types — re-exported from `clankers-message`.
+//! Streaming response types — re-exported from `clanker-message`.
 
-pub use clankers_message::streaming::*;
+pub use clanker_message::streaming::*;

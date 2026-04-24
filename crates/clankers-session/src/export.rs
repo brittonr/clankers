@@ -3,8 +3,8 @@
 use std::fmt::Write;
 use std::path::Path;
 
-use clankers_message::AgentMessage;
-use clankers_message::Content;
+use clanker_message::AgentMessage;
+use clanker_message::Content;
 
 use super::entry::SessionEntry;
 use crate::error::Result;
@@ -174,8 +174,8 @@ pub fn export_json(path: &Path) -> Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use clankers_message::MessageId;
-    use clankers_message::UserMessage;
+    use clanker_message::MessageId;
+    use clanker_message::UserMessage;
     use tempfile::TempDir;
 
     use super::*;

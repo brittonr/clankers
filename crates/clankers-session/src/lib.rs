@@ -18,8 +18,8 @@ use std::path::PathBuf;
 
 use automerge::AutoCommit;
 use chrono::Utc;
-use clankers_message::AgentMessage;
-use clankers_message::MessageId;
+use clanker_message::AgentMessage;
+use clanker_message::MessageId;
 
 use self::automerge_store::AnnotationEntry;
 use self::entry::*;
@@ -79,7 +79,7 @@ impl SessionManager {
         worktree_path: Option<&str>,
         worktree_branch: Option<&str>,
     ) -> Result<Self> {
-        let session_id = clankers_message::generate_id();
+        let session_id = clanker_message::generate_id();
         let file_path = store::session_file_path_automerge(sessions_dir, cwd, &session_id);
 
         let header = HeaderEntry {

@@ -11,7 +11,7 @@ clankers-db = { version = "0.1.0", path = "../clankers-db" }
 clankers-engine = { version = "0.1.0", path = "../clankers-engine" }
 clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
 clanker-loop = { workspace = true }
-clankers-message = { version = "0.1.0", path = "../clankers-message" }
+clanker-message = { workspace = true }
 clankers-model-selection = { version = "0.1.0", path = "../clankers-model-selection" }
 clankers-procmon = { version = "0.1.0", path = "../clankers-procmon" }
 clankers-prompts = { version = "0.1.0", path = "../clankers-prompts" }

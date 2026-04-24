@@ -176,7 +176,7 @@ const ENGINE_SURFACE_FORBIDDEN_PATHS: [&str; 12] = [
     "tokio_util",
     "clankers_agent",
 ];
-const ENGINE_SURFACE_REQUIRED_PATHS: [&str; 2] = ["clankers_core::CoreState", "clankers_message::Content"];
+const ENGINE_SURFACE_REQUIRED_PATHS: [&str; 2] = ["clankers_core::CoreState", "clanker_message::Content"];
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 6] = [
     "clankers_engine::reduce",
