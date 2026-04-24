@@ -1,7 +1,8 @@
-# WASM Plugin Packaging — Spec
+# wasm-plugin Specification
 
-## ADDED Requirements
-
+## Purpose
+TBD - created by archiving change crate-extraction-2. Update Purpose after archive.
+## Requirements
 ### Requirement: Plugin Eligibility Criteria
 A crate MUST be packaged as a WASM plugin only when its core logic compiles to `wasm32-unknown-unknown`, its functionality is useful as an LLM-callable tool during an agent session, and the tool semantics fit the plugin SDK request/response model.
 
@@ -59,7 +60,7 @@ The plugin MUST ship with a `plugin.json` manifest that declares plugin name, ve
 The plugin MUST have durable checked-in runtime coverage in addition to any ad-hoc smoke scripts.
 
 #### Scenario: Runtime coverage exercises positive and negative calls
-- GIVEN `../openspec/openspec-plugin/tests/runtime.rs`
+- GIVEN `vendor/openspec/openspec-plugin/tests/runtime.rs`
 - WHEN `cargo test --manifest-path openspec-plugin/Cargo.toml` runs
 - THEN Extism loads the built plugin module
 - AND the test exercises `describe`, `on_event`, and all five tools

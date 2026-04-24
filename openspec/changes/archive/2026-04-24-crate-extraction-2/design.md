@@ -2,15 +2,16 @@
 
 ## Status
 
-Reduced-scope implementation is complete except for one publication task:
-`~/git/openspec` still needs to be published as the `openspec` GitHub repo.
-The remaining six extractions were split into `crate-extraction-3`.
+Reduced-scope implementation is complete. `openspec` is consumed through the
+checked-in `vendor/openspec` snapshot because the GitHub repo was not published
+and this session did not have an explicit push request. The remaining six
+extractions were split into `crate-extraction-3`.
 
 ## Goals / Non-Goals
 
 **Goals**
 - preserve the completed shared-crate extractions in one coherent change
-- keep the `openspec` core/native split and plugin packaging documented here
+- keep the `openspec` core/native split, vendored source pin, and plugin packaging documented here
 - keep the two highest-fanout type migrations (`tui-types`, `message`) with
   their validation evidence
 - leave the remaining six extractions to a separate continuation change
@@ -36,12 +37,18 @@ because it mixes finished migration work with untouched future work.
 
 ### 2. plugin-sdk stays a repo move, not a subtree split
 
-**Choice:** Treat `clankers-plugin-sdk` as a clean standalone repo move.
+**Choice:** Treat `clankers-plugin-sdk` as a clean standalone repo move and record this as a history-preservation exception.
 
 **Rationale:** It already had its own `[workspace]`, targets wasm32, and is
 consumed by external plugin crates rather than by the main clankers workspace.
 A clean repo identity is simpler than preserving a mostly unrelated parent
 workspace history slice.
+
+### 2a. openspec is vendored until remote publication
+
+**Choice:** Treat `openspec` as a curated extracted snapshot under `vendor/openspec` until an explicit remote publication/push happens.
+
+**Rationale:** The local `~/git/openspec` repository contains the completed core/shell split and plugin work, but `brittonr/openspec` was not published. Vendoring keeps clankers reproducible without relying on a sibling checkout or requiring an implicit push. `vendor/openspec/VENDORED_FROM` records the source commit and snapshot status.
 
 ### 3. `openspec` uses a functional core + filesystem shell split
 
@@ -74,7 +81,7 @@ library crate should not inherit WASM-only runtime dependencies. A sibling
 crate keeps the dependency graph clean and version coordination simple.
 
 **Verification:**
-- checked-in Extism integration test at `../openspec/openspec-plugin/tests/runtime.rs`
+- checked-in Extism integration test at `vendor/openspec/openspec-plugin/tests/runtime.rs`
 - host-runtime smoke against the installed plugin under
   `~/.clankers/agent/plugins/openspec`
 
@@ -123,15 +130,16 @@ crates/clankers-message/
 ### After the reduced-scope extraction
 
 ```text
-Standalone repos / git deps:
+Standalone repos / checked-in source deps:
 ├── brittonr/clanker-plugin-sdk/
-├── brittonr/openspec/
+├── vendor/openspec/                 # vendored snapshot until remote publication
 │   └── openspec-plugin/
 ├── brittonr/clanker-tui-types/
 └── brittonr/clanker-message/
 
 clankers workspace:
-- consumes those crates via git deps
+- consumes plugin-sdk, tui-types, and message via git deps
+- consumes openspec via the checked-in vendored path dependency
 - no longer keeps wrapper crates for those four extracted crates
 - keeps the remaining six planned extractions in-tree until crate-extraction-3
 ```
@@ -152,8 +160,10 @@ The WASM module stays pure. Filesystem reads remain in the host.
 ## Risks / Trade-offs
 
 **Remote publishing lag for `openspec`**
-→ Mitigation: keep the GitHub-repo creation task open in this change until the
-repo is published and CI can run on the standalone remote.
+→ Mitigation: vendor the extracted snapshot under `vendor/openspec` and record
+its source commit in `vendor/openspec/VENDORED_FROM` so fresh checkouts and Nix
+builds no longer depend on a sibling `../openspec` path. Remote publication can
+happen later without blocking this change.
 
 **Evidence drift between checked-in tests and ad-hoc smoke scripts**
 → Mitigation: lead with checked-in test evidence (`openspec-plugin/tests/runtime.rs`)

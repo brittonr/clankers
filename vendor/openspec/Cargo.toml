@@ -1,0 +1,20 @@
+[package]
+name = "openspec"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+description = "Spec-driven development engine"
+
+[features]
+default = ["fs", "clock"]
+fs = ["dep:serde_yaml"]
+clock = ["chrono/clock"]
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["serde", "std"] }
+petgraph = "0.7"
+serde = { version = "1.0", features = ["derive"] }
+serde_yaml = { version = "0.9", optional = true }
+
+[dev-dependencies]
+tempfile = "3"

@@ -104,7 +104,7 @@ reduced-scope crates:
 1. preserve history (or do a clean repo move where appropriate)
 2. rename the crate into the `clanker-*` / standalone namespace
 3. add standalone repo scaffolding (README, LICENSE, CI)
-4. switch the workspace to a git dependency
+4. switch the workspace to a reproducible source dependency (git when published, checked-in vendor snapshot for `openspec` until then)
 5. keep a thin re-export wrapper only while callers are migrating
 6. remove wrappers once all direct callers use the extracted crate
 7. verify the full workspace after each high-risk migration step

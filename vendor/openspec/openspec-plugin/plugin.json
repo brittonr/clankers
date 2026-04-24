@@ -1,0 +1,108 @@
+{
+  "name": "openspec",
+  "version": "0.1.0",
+  "description": "Spec-driven development tools — list, verify, and inspect OpenSpec artifacts",
+  "wasm": "openspec_plugin.wasm",
+  "kind": "extism",
+  "permissions": [],
+  "tools": ["spec_list", "spec_parse", "change_list", "change_verify", "artifact_status"],
+  "events": ["agent_start"],
+  "tool_definitions": [
+    {
+      "name": "spec_list",
+      "description": "List project specs with domains, purposes, and requirement counts",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "description": "Array of spec entries with domain and markdown content",
+            "items": {
+              "type": "object",
+              "properties": {
+                "domain": { "type": "string", "description": "Spec domain (e.g. 'auth', 'protocol')" },
+                "content": { "type": "string", "description": "Markdown content of the spec file" }
+              },
+              "required": ["domain", "content"]
+            }
+          }
+        },
+        "required": ["entries"]
+      }
+    },
+    {
+      "name": "spec_parse",
+      "description": "Parse a spec markdown file into structured requirements with GIVEN/WHEN/THEN scenarios",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "content": { "type": "string", "description": "Markdown content of the spec file" },
+          "domain": { "type": "string", "description": "Domain name (e.g. 'auth', 'protocol')" }
+        },
+        "required": ["content"]
+      }
+    },
+    {
+      "name": "change_list",
+      "description": "List active OpenSpec changes with task progress summaries",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": "array",
+            "description": "Array of change entries with name, metadata, and optional tasks content",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": { "type": "string", "description": "Change name" },
+                "meta_content": { "type": "string", "description": "Content of .openspec.yaml metadata file" },
+                "tasks_content": { "type": "string", "description": "Content of tasks.md file" }
+              },
+              "required": ["name"]
+            }
+          }
+        },
+        "required": ["entries"]
+      }
+    },
+    {
+      "name": "change_verify",
+      "description": "Verify an OpenSpec change — check task completion and spec coverage",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "tasks_content": { "type": "string", "description": "Content of tasks.md file" },
+          "has_specs_dir": { "type": "boolean", "description": "Whether a specs/ directory exists for this change" }
+        }
+      }
+    },
+    {
+      "name": "artifact_status",
+      "description": "Show artifact dependency graph state for an OpenSpec change",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "schema_artifacts": {
+            "type": "array",
+            "description": "Schema artifact definitions",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "string", "description": "Artifact ID" },
+                "generates": { "type": "string", "description": "File pattern this artifact generates" },
+                "requires": { "type": "array", "items": { "type": "string" }, "description": "IDs of required artifacts" }
+              },
+              "required": ["id", "generates"]
+            }
+          },
+          "existing_files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "List of files that already exist in the change directory"
+          }
+        },
+        "required": ["schema_artifacts"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+[package]
+name = "openspec-plugin"
+version = "0.1.0"
+edition = "2021"
+description = "OpenSpec WASM plugin — spec-driven development tools for LLM agents"
+license = "AGPL-3.0-or-later"
+keywords = ["wasm", "plugin", "openspec", "spec"]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+openspec = { path = "..", default-features = false }
+clanker-plugin-sdk = { git = "https://github.com/brittonr/clanker-plugin-sdk" }
+extism-pdk = "1"
+serde_json = "1"
+
+[dev-dependencies]
+extism = "=1.13.0"
+serde = { version = "1", features = ["derive"] }
+
+[workspace]

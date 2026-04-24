@@ -52,6 +52,8 @@ clanker-router = { path = "vendor/clanker-router" }
 clanker-scheduler = { git = "https://github.com/brittonr/clanker-scheduler" }
 clanker-message = { git = "https://github.com/brittonr/clanker-message" }
 clanker-tui-types = { git = "https://github.com/brittonr/clanker-tui-types" }
+# Vendored snapshot; see vendor/openspec/VENDORED_FROM for source provenance.
+openspec = { path = "vendor/openspec" }
 graggle = { git = "https://github.com/brittonr/graggle" }
 rat-branches = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
 rat-keymap = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
@@ -99,7 +101,7 @@ clankers-skills = { version = "0.1.0", path = "crates/clankers-skills" }
 clankers-protocol = { version = "0.1.0", path = "crates/clankers-protocol" }
 clanker-actor = { workspace = true }
 clankers-controller = { version = "0.1.0", path = "crates/clankers-controller" }
-openspec = { path = "../openspec", optional = true }
+openspec = { workspace = true, optional = true }
 clankers-tts = { version = "0.1.0", path = "crates/clankers-tts" }
 clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }
 clankers-zellij = { version = "0.1.0", path = "crates/clankers-zellij", optional = true }

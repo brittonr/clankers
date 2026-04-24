@@ -56,23 +56,10 @@
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         isX86Linux = system == "x86_64-linux";
 
-        # Strip openspec path dep — not published yet, and cargo resolves
-        # all path deps at manifest load time even when optional/disabled.
-        workspaceSrc = pkgs.runCommand "clankers-workspace-src" {} ''
-          cp -r ${./.} $out
-          chmod -R u+w $out
-          sed -i '/^openspec = { path = /d' $out/Cargo.toml
-          sed -i 's/openspec = \["dep:openspec"\]//' $out/Cargo.toml
-          sed -i 's/"openspec", //' $out/Cargo.toml
-          sed -i '/^openspec = { path = /d' $out/crates/clankers-agent/Cargo.toml
-          sed -i 's/openspec = \["dep:openspec"\]//' $out/crates/clankers-agent/Cargo.toml
-          sed -i 's/"openspec"//' $out/crates/clankers-agent/Cargo.toml
-        '';
-
         # ── Main workspace (unit2nix auto mode) ─────────────────────────
         ws = unit2nix.lib.${system}.buildFromUnitGraphAuto {
           inherit pkgs rustToolchain;
-          src = workspaceSrc;
+          src = ./.;
           workspace = true;
           noLocked = true;
           clippyArgs = [ "-D" "warnings" ];

@@ -1,0 +1,4 @@
+source_repo=local:/home/brittonr/git/openspec
+base_commit=effdd1b66aba0144f4bee69edf82241f60c86fe8
+snapshot=working-tree
+reason=brittonr/openspec remote was not published when clankers switched away from ../openspec path dependencies

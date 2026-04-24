@@ -7151,6 +7151,7 @@ dependencies = [
  "petgraph 0.7.1",
  "serde",
  "serde_yaml",
+ "tempfile",
 ]
 
 [[package]]

@@ -1,15 +1,22 @@
-# Crate Extraction Protocol — Spec
+# extraction-protocol Specification
 
-## ADDED Requirements
-
+## Purpose
+TBD - created by archiving change crate-extraction-2. Update Purpose after archive.
+## Requirements
 ### Requirement: History Preservation
-The extracted crate MUST retain its full git history from the clankers repository. Use `git subtree split` or `git filter-repo` to produce a branch containing only the crate's directory, then push that branch as the initial commit of the new repo.
+The extracted crate MUST either retain its git history from the clankers repository or record a design-level clean-move exception. Use `git subtree split` or `git filter-repo` when preserving history. Use a clean-move exception only when the design explains why the crate already has an independent identity or why the new repository intentionally starts from a curated snapshot.
 
 #### Scenario: Subtree split preserves crate history
 - GIVEN a crate at `crates/clankers-foo/`
 - WHEN `git subtree split -P crates/clankers-foo -b extract-foo` runs
 - THEN the resulting branch contains all commits that touched files under `crates/clankers-foo/`
 - AND the new repo's `git log` shows the original commit messages and dates
+
+#### Scenario: Clean move exception is documented
+- GIVEN a crate extraction does not preserve full parent-repo history
+- WHEN the extraction is marked complete
+- THEN `design.md` records the exception and rationale
+- AND `tasks.md` includes a checked task that records the exception or snapshot provenance
 
 ### Requirement: Namespace Rename
 The extracted crate MUST be renamed to drop the `clankers-` prefix. The new name SHOULD be descriptive and short. The crate name, module paths, doc comments, and binary names, if any, MUST all be updated.
@@ -25,9 +32,15 @@ The clankers workspace MUST compile and pass all tests after each individual ext
 
 #### Scenario: Workspace validates after one crate migration
 - GIVEN a crate has been extracted to a standalone repo
-- WHEN the workspace `Cargo.toml` replaces `path = "crates/clankers-foo"` with a git dependency on the new repo
+- WHEN the workspace `Cargo.toml` replaces `path = "crates/clankers-foo"` with a reproducible git dependency or checked-in vendored source dependency
 - THEN `cargo check` succeeds on the full workspace
 - AND `cargo nextest run` passes with zero regressions
+
+#### Scenario: Historical split uses final continuity bundle
+- GIVEN a reduced-scope change was split after implementation was already complete
+- WHEN per-extraction validation logs are incomplete or include a documented pre-existing flake
+- THEN final closeout evidence MUST record the waiver and rationale
+- AND a current full-workspace validation bundle MUST pass with zero known extraction regressions
 
 ### Requirement: Re-export Wrapper
 During migration, the old crate directory MUST be allowed to contain a thin wrapper that re-exports all items from the extracted crate. This preserves existing import paths and avoids a mass find-replace while callers move to the standalone crate.
@@ -41,9 +54,9 @@ During migration, the old crate directory MUST be allowed to contain a thin wrap
 ### Requirement: Standalone CI
 The extracted crate MUST have its own CI configuration that runs `cargo check`, `cargo clippy -- -D warnings`, `cargo fmt -- --check`, and `cargo nextest run`, or `cargo test` if nextest is not configured.
 
-#### Scenario: Pushed extracted repo runs validation
-- GIVEN an extracted repo on GitHub
-- WHEN a commit is pushed
+#### Scenario: Extracted source declares validation
+- GIVEN an extracted repo on GitHub or a checked-in vendored source tree prepared for publication
+- WHEN its CI workflow is inspected
 - THEN CI runs all required checks
 - AND the repo's README shows a CI badge
 

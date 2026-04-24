@@ -18,7 +18,7 @@ clankers-prompts = { version = "0.1.0", path = "../clankers-prompts" }
 clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
 clanker-router = { workspace = true }
 clankers-skills = { version = "0.1.0", path = "../clankers-skills" }
-openspec = { path = "../../../openspec", optional = true }
+openspec = { workspace = true, optional = true }
 clanker-tui-types = { workspace = true }
 clankers-util = { version = "0.1.0", path = "../clankers-util" }
 
