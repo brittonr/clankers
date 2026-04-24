@@ -164,16 +164,16 @@ High-impact type extraction. Zero internal deps. 10 reverse deps.
 
 ### 9b: Extract
 
-- [ ] Create `clanker-tui-types` repo on GitHub
-- [ ] `git subtree split -P crates/clankers-tui-types -b extract-tui-types`
-- [ ] Push split branch to new repo
-- [ ] Rename crate in Cargo.toml (`name = "clanker-tui-types"`)
-- [ ] Replace all `clankers_tui_types` / `clankers-tui-types` references in source
-- [ ] Verify all 18 type modules compile
-- [ ] Add README.md, LICENSE, CI
-- [ ] In workspace: add git dep, thin re-export wrapper
-- [ ] Remove moved source files
-- [ ] `cargo check && cargo nextest run` — verify all 10 reverse deps compile
+- [x] Create `clanker-tui-types` repo on GitHub
+- [x] `git subtree split -P crates/clankers-tui-types -b extract-tui-types`
+- [x] Push split branch to new repo
+- [x] Rename crate in Cargo.toml (`name = "clanker-tui-types"`)
+- [x] Replace all `clankers_tui_types` / `clankers-tui-types` references in source
+- [x] Verify all 18 type modules compile
+- [x] Add README.md, LICENSE, CI
+- [x] In workspace: add git dep, thin re-export wrapper
+- [x] Remove moved source files
+- [x] `cargo check && cargo nextest run` — verify all 10 reverse deps compile
 
 ### 9c: Migrate callers
 

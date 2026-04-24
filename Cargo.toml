@@ -52,6 +52,7 @@ clanker-loop = { git = "https://github.com/brittonr/clanker-loop" }
 # Vendored snapshot from https://github.com/brittonr/clanker-router @ eed716b2df17c051235172bcdea58ed14b69755d
 clanker-router = { path = "vendor/clanker-router" }
 clanker-scheduler = { git = "https://github.com/brittonr/clanker-scheduler" }
+clanker-tui-types = { git = "https://github.com/brittonr/clanker-tui-types" }
 graggle = { git = "https://github.com/brittonr/graggle" }
 rat-branches = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
 rat-keymap = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }

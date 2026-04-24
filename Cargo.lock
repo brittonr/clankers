@@ -1391,6 +1391,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "clanker-tui-types"
+version = "0.1.0"
+source = "git+https://github.com/brittonr/clanker-tui-types#0c72646a3dfa9333869690d181c8675cb7865453"
+dependencies = [
+ "blake3",
+ "chrono",
+ "rat-branches",
+ "rat-leaderkey",
+ "rat-markdown",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "clankers"
 version = "0.1.0"
 dependencies = [
@@ -1820,13 +1834,7 @@ dependencies = [
 name = "clankers-tui-types"
 version = "0.1.0"
 dependencies = [
- "blake3",
- "chrono",
- "rat-branches",
- "rat-leaderkey",
- "rat-markdown",
- "serde",
- "serde_json",
+ "clanker-tui-types",
 ]
 
 [[package]]

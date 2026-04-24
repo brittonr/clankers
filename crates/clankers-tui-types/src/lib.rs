@@ -1,42 +1,6 @@
-//! Shared types for the clankers TUI crate boundary.
+//! Thin compatibility wrapper for the extracted `clanker-tui-types` crate.
 //!
-//! This crate contains types that flow between the TUI rendering layer and
-//! the rest of the application (tools, modes, slash commands, config). It has
-//! no dependency on ratatui or crossterm — purely data types.
+//! Existing workspace crates still import `clankers_tui_types`; this wrapper
+//! keeps those paths working while callers migrate to `clanker_tui_types`.
 
-pub mod actions;
-pub mod block;
-pub mod completion;
-pub mod cost;
-pub mod display;
-pub mod events;
-pub mod menu;
-pub mod merge;
-pub mod panel;
-pub mod peers;
-pub mod plugin;
-pub mod process;
-pub mod progress;
-pub mod registry;
-pub mod selector;
-pub mod subagent;
-pub mod syntax;
-
-// Re-export all public types at the crate root for convenience.
-pub use actions::*;
-pub use block::*;
-pub use completion::*;
-pub use cost::*;
-pub use display::*;
-pub use events::*;
-pub use menu::*;
-pub use merge::*;
-pub use panel::*;
-pub use peers::*;
-pub use plugin::*;
-pub use process::*;
-pub use progress::*;
-pub use registry::*;
-pub use selector::*;
-pub use subagent::*;
-pub use syntax::*;
+pub use clanker_tui_types::*;
