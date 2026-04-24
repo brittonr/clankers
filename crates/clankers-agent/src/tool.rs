@@ -19,13 +19,13 @@ use crate::events::AgentEvent;
 
 /// Re-export progress types from their canonical crates.
 pub mod progress {
-    // ProgressKind and ToolProgress — canonical definitions in clankers-tui-types.
+    // ProgressKind and ToolProgress — canonical definitions in clanker-tui-types.
     // ResultChunk, TruncationConfig, ToolResultAccumulator — canonical definitions in clankers-message.
     pub use clankers_message::ResultChunk;
     pub use clankers_message::ToolResultAccumulator;
     pub use clankers_message::TruncationConfig;
-    pub use clankers_tui_types::ProgressKind;
-    pub use clankers_tui_types::ToolProgress;
+    pub use clanker_tui_types::ProgressKind;
+    pub use clanker_tui_types::ToolProgress;
 }
 
 /// Shared slot the turn loop reads after each tool execution round.

@@ -1,7 +1,7 @@
 //! Info and export slash command handlers.
 
-use clankers_tui_types::BlockEntry;
-use clankers_tui_types::MessageRole;
+use clanker_tui_types::BlockEntry;
+use clanker_tui_types::MessageRole;
 
 use super::SlashContext;
 use super::SlashHandler;
@@ -158,7 +158,7 @@ impl SlashHandler for LeaderHandler {
 }
 
 fn format_leader_action(action: &crate::tui::components::leader_menu::LeaderAction) -> String {
-    use clankers_tui_types::LeaderAction;
+    use clanker_tui_types::LeaderAction;
     match action {
         LeaderAction::Action(a) => format!("→ {:?}", a),
         LeaderAction::Command(cmd) => format!("→ {}", cmd),

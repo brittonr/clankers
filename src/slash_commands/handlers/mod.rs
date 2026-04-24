@@ -33,7 +33,7 @@ pub(crate) mod tui;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use clankers_tui_types::SubagentEvent;
+use clanker_tui_types::SubagentEvent;
 
 use crate::modes::interactive::AgentCommand;
 use crate::plugin::PluginManager;

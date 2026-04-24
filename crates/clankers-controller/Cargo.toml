@@ -14,7 +14,7 @@ clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
 clanker-loop = { workspace = true }
 clankers-message = { version = "0.1.0", path = "../clankers-message" }
 clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
-clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
+clanker-tui-types = { workspace = true }
 clankers-config = { version = "0.1.0", path = "../clankers-config" }
 clankers-db = { version = "0.1.0", path = "../clankers-db" }
 serde = { workspace = true }

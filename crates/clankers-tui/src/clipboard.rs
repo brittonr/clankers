@@ -3,9 +3,9 @@
 use std::io;
 
 /// Result of a background clipboard read.
-// ClipboardResult re-exported from clankers-tui-types.
-pub use clankers_tui_types::ClipboardResult;
-use clankers_tui_types::InputMode;
+// ClipboardResult re-exported from clanker-tui-types.
+pub use clanker_tui_types::ClipboardResult;
+use clanker_tui_types::InputMode;
 use crossterm::event::DisableBracketedPaste;
 use crossterm::event::DisableMouseCapture;
 use crossterm::event::EnableBracketedPaste;

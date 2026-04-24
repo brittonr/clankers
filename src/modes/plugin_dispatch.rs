@@ -383,7 +383,7 @@ mod tests {
 
     #[test]
     fn set_widget_maps_to_plugin_widget() {
-        use clankers_tui_types::Widget;
+        use clanker_tui_types::Widget;
 
         use crate::plugin::ui::PluginUiAction;
         let action = PluginUiAction::SetWidget {

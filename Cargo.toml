@@ -23,7 +23,6 @@ members = [
     "crates/clankers-skills",
 
     "crates/clankers-tui",
-    "crates/clankers-tui-types",
     "crates/clankers-util",
     "crates/clankers-zellij",
     "crates/clankers-tts",
@@ -104,7 +103,7 @@ openspec = { path = "../openspec", optional = true }
 clankers-tts = { version = "0.1.0", path = "crates/clankers-tts" }
 clankers-tui = { version = "0.1.0", path = "crates/clankers-tui" }
 clankers-zellij = { version = "0.1.0", path = "crates/clankers-zellij", optional = true }
-clankers-tui-types = { version = "0.1.0", path = "crates/clankers-tui-types" }
+clanker-tui-types = { workspace = true }
 clankers-util = { version = "0.1.0", path = "crates/clankers-util" }
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["codec"] }

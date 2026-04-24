@@ -8,7 +8,7 @@ description = "LLM provider abstraction layer for clankers"
 [dependencies]
 clankers-message = { version = "0.1.0", path = "../clankers-message" }
 clanker-router = { workspace = true, features = ["rpc"] }
-clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
+clanker-tui-types = { workspace = true }
 async-trait = "0.1"
 futures = "0.3"
 base64 = "0.22"

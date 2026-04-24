@@ -333,7 +333,7 @@ impl<'a> EventLoopRunner<'a> {
 
     fn drain_panel_events(&mut self) {
         while let Ok(event) = self.panel_rx.try_recv() {
-            use clankers_tui_types::SubagentEvent;
+            use clanker_tui_types::SubagentEvent;
             match event {
                 SubagentEvent::Started { id, name, task, pid } => {
                     subagent_panel(self.app).add(id.clone(), name.clone(), task.clone(), pid);
@@ -769,7 +769,7 @@ mod tests {
     use clankers_controller::SessionController;
     use clankers_controller::config::ControllerConfig;
     use clankers_controller::loop_mode::LoopConfig;
-    use clankers_tui_types::BlockEntry;
+    use clanker_tui_types::BlockEntry;
     use ratatui::Terminal;
     use ratatui::backend::CrosstermBackend;
 
@@ -1030,7 +1030,7 @@ mod tests {
         assert!(controller.start_embedded_prompt("original prompt", 0));
 
         let mut harness = RunnerHarness::new(controller);
-        harness.app.loop_status = Some(clankers_tui_types::LoopDisplayState {
+        harness.app.loop_status = Some(clanker_tui_types::LoopDisplayState {
             iteration: 1,
             max_iterations: 2,
             name: "test-loop".to_string(),

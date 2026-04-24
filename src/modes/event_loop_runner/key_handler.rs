@@ -196,7 +196,7 @@ impl<'a> EventLoopRunner<'a> {
     // ── Panel-focused key handling ──────────────────────────────────
 
     pub(super) fn handle_panel_focused_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
-        use clankers_tui_types::PanelAction;
+        use clanker_tui_types::PanelAction;
 
         // Tab / Shift+Tab cycles focus
         if matches!(key.code, KeyCode::Tab) {
@@ -385,7 +385,7 @@ impl<'a> EventLoopRunner<'a> {
     }
 
     fn handle_subagent_pane_key(&mut self, key: crossterm::event::KeyEvent) -> bool {
-        use clankers_tui_types::PanelAction;
+        use clanker_tui_types::PanelAction;
         let Some(ref subagent_id) = self.app.layout.focused_subagent.clone() else {
             return false;
         };
@@ -432,7 +432,7 @@ impl<'a> EventLoopRunner<'a> {
         let Some(focused_id) = self.app.layout.focused_panel else {
             return false;
         };
-        use clankers_tui_types::PanelId;
+        use clanker_tui_types::PanelId;
         match (focused_id, key.code, key.modifiers) {
             (PanelId::Subagents, KeyCode::Char('x'), m) if m.is_empty() => {
                 use crate::tui::components::subagent_panel::SubagentPanel;
@@ -467,8 +467,8 @@ impl<'a> EventLoopRunner<'a> {
     }
 
     /// Map a `SelectorAction` to the appropriate `AgentCommand` or side-effect.
-    fn dispatch_selector_action(&mut self, action: clankers_tui_types::SelectorAction) {
-        use clankers_tui_types::SelectorAction;
+    fn dispatch_selector_action(&mut self, action: clanker_tui_types::SelectorAction) {
+        use clanker_tui_types::SelectorAction;
         match action {
             SelectorAction::SetModel(model) => {
                 self.cmd_tx.send(AgentCommand::SetModel(model)).ok();

@@ -177,17 +177,17 @@ High-impact type extraction. Zero internal deps. 10 reverse deps.
 
 ### 9c: Migrate callers
 
-- [ ] Migrate root crate imports to `clanker_tui_types`
-- [ ] Migrate clankers-agent imports
-- [ ] Migrate clankers-config imports
-- [ ] Migrate clankers-controller imports
-- [ ] Migrate clankers-model-selection imports
-- [ ] Migrate clankers-plugin imports
-- [ ] Migrate clankers-procmon imports
-- [ ] Migrate clankers-provider imports
-- [ ] Migrate clankers-tui imports
-- [ ] Migrate clankers-util imports
-- [ ] Remove thin wrapper crate from workspace
+- [x] Migrate root crate imports to `clanker_tui_types`
+- [x] Migrate clankers-agent imports
+- [x] Migrate clankers-config imports
+- [x] Migrate clankers-controller imports
+- [x] Migrate clankers-model-selection imports
+- [x] Migrate clankers-plugin imports
+- [x] Migrate clankers-procmon imports
+- [x] Migrate clankers-provider imports
+- [x] Migrate clankers-tui imports
+- [x] Migrate clankers-util imports
+- [x] Remove thin wrapper crate from workspace
 
 ## Phase 10: message (clankers-message → clanker-message)
 

@@ -8,7 +8,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use clankers_tui_types::SubagentEvent;
+use clanker_tui_types::SubagentEvent;
 use serde_json::Value;
 
 use crate::plugin::PluginManager;

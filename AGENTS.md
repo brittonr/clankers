@@ -138,6 +138,7 @@ clankers daemon stop           # stop daemon
 - `clanker-actor` (external) — ProcessRegistry (spawn, link, shutdown)
 - `crates/clankers-controller/src/lib.rs` — SessionController (handle_command, feed_event)
 - `crate-hashes.json` — unit2nix git source hashes for first-party extracted crates; stale entries fail `nix build .#clankers` with fixed-output hash mismatch before workspace code even builds. For extracted-crate pin bumps, rerun `nix build .#clankers -L` and use the reported `got:` hash to refresh `crate-hashes.json` before chasing Rust errors.
+- Removing a thin extracted-crate wrapper from the workspace needs more than Cargo.toml surgery: update `flake.nix`'s `inherit (ws.test.check)` list and `xtask/src/main.rs` architecture layers in the same change or `nix flake check` / docs generation will keep referencing the deleted crate.
 
 ### Orchestration Notes
 

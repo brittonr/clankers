@@ -4,7 +4,7 @@
 
 use std::sync::Arc;
 
-use clankers_tui_types::AppState;
+use clanker_tui_types::AppState;
 
 use crate::config::keybindings::CoreAction;
 use crate::config::keybindings::InputMode;

@@ -5,7 +5,7 @@
 //! - `SelectorAction`: an optional side-effect for the caller to dispatch to the backend (model
 //!   switch, account switch, session resume).
 
-use clankers_tui_types::SelectorAction;
+use clanker_tui_types::SelectorAction;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyModifiers;
 

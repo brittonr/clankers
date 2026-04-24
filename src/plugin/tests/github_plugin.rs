@@ -201,7 +201,7 @@ fn github_issue_get_missing_number_returns_error() {
 
 #[test]
 fn github_plugin_contributes_leader_menu() {
-    use clankers_tui_types::MenuContributor;
+    use clanker_tui_types::MenuContributor;
 
     let mgr = manager_with_test_plugin();
     let contrib = crate::plugin::contributions::PluginMenuContributor(&mgr);

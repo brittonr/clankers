@@ -56,7 +56,7 @@ pub async fn run_interactive(
 
     // Build slash command registry and set completion source on app
     let slash_registry = build_slash_registry(plugin_manager.as_ref());
-    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(&slash_registry)));
+    app.set_completion_source(Box::new(clanker_tui_types::CompletionSnapshot::from_source(&slash_registry)));
 
     // Build leader menu from all contributors (builtins + plugins + user config)
     rebuild_leader_menu(&mut app, plugin_manager.as_ref(), &settings);

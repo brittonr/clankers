@@ -61,7 +61,7 @@ fn builtin(
         label: label.into(),
         action,
         placement,
-        priority: clankers_tui_types::PRIORITY_BUILTIN,
+        priority: clanker_tui_types::PRIORITY_BUILTIN,
         source: "builtin".into(),
     }
 }
@@ -84,9 +84,9 @@ fn root_submenu_openers() -> Vec<MenuContribution> {
 }
 
 fn root_actions() -> Vec<MenuContribution> {
-    use clankers_tui_types::Action;
-    use clankers_tui_types::CoreAction;
-    use clankers_tui_types::ExtendedAction;
+    use clanker_tui_types::Action;
+    use clanker_tui_types::CoreAction;
+    use clanker_tui_types::ExtendedAction;
     let r = MenuPlacement::Root;
     let ext = |e: ExtendedAction| LeaderAction::Action(Action::Extended(e));
     let cmd = |s: &str| LeaderAction::Command(s.into());
@@ -185,8 +185,8 @@ fn layout_submenu_items() -> Vec<MenuContribution> {
 // ── Pane submenu ────────────────────────────────────────────────────────
 
 fn pane_submenu_items() -> Vec<MenuContribution> {
-    use clankers_tui_types::Action;
-    use clankers_tui_types::ExtendedAction;
+    use clanker_tui_types::Action;
+    use clanker_tui_types::ExtendedAction;
     let p = || MenuPlacement::Submenu("pane".into());
     let ext = |e: ExtendedAction| LeaderAction::Action(Action::Extended(e));
     vec![
@@ -261,8 +261,8 @@ fn debug_submenu_items() -> Vec<MenuContribution> {
 // ── Model/Thinking submenu ──────────────────────────────────────────────
 
 fn model_submenu_items() -> Vec<MenuContribution> {
-    use clankers_tui_types::Action;
-    use clankers_tui_types::ExtendedAction;
+    use clanker_tui_types::Action;
+    use clanker_tui_types::ExtendedAction;
     let p = || MenuPlacement::Submenu("model".into());
     let ext = |e: ExtendedAction| LeaderAction::Action(Action::Extended(e));
     let cmd = |s: &str| LeaderAction::Command(s.into());

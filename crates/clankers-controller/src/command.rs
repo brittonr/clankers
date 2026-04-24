@@ -387,20 +387,20 @@ impl SessionController {
     }
 
     fn parse_core_thinking_level_input(level: &str) -> CoreThinkingLevelInput {
-        if let Some(parsed) = clankers_tui_types::ThinkingLevel::from_str_or_budget(level) {
+        if let Some(parsed) = clanker_tui_types::ThinkingLevel::from_str_or_budget(level) {
             CoreThinkingLevelInput::Level(Self::core_thinking_level(parsed))
         } else {
             CoreThinkingLevelInput::Invalid(level.to_string())
         }
     }
 
-    fn core_thinking_level(level: clankers_tui_types::ThinkingLevel) -> CoreThinkingLevel {
+    fn core_thinking_level(level: clanker_tui_types::ThinkingLevel) -> CoreThinkingLevel {
         match level {
-            clankers_tui_types::ThinkingLevel::Off => CoreThinkingLevel::Off,
-            clankers_tui_types::ThinkingLevel::Low => CoreThinkingLevel::Low,
-            clankers_tui_types::ThinkingLevel::Medium => CoreThinkingLevel::Medium,
-            clankers_tui_types::ThinkingLevel::High => CoreThinkingLevel::High,
-            clankers_tui_types::ThinkingLevel::Max => CoreThinkingLevel::Max,
+            clanker_tui_types::ThinkingLevel::Off => CoreThinkingLevel::Off,
+            clanker_tui_types::ThinkingLevel::Low => CoreThinkingLevel::Low,
+            clanker_tui_types::ThinkingLevel::Medium => CoreThinkingLevel::Medium,
+            clanker_tui_types::ThinkingLevel::High => CoreThinkingLevel::High,
+            clanker_tui_types::ThinkingLevel::Max => CoreThinkingLevel::Max,
         }
     }
 

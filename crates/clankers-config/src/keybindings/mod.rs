@@ -9,14 +9,14 @@ use std::collections::HashMap;
 use std::path::Path;
 
 pub use clankers_tui::keymap::*;
-// Re-export action types (canonical home is clankers-tui-types).
-pub use clankers_tui_types::Action;
-pub use clankers_tui_types::ActionRegistry;
-pub use clankers_tui_types::CoreAction;
-pub use clankers_tui_types::ExtendedAction;
-pub use clankers_tui_types::ExtendedActionDef;
-pub use clankers_tui_types::InputMode;
-pub use clankers_tui_types::parse_action;
+// Re-export action types (canonical home is clanker-tui-types).
+pub use clanker_tui_types::Action;
+pub use clanker_tui_types::ActionRegistry;
+pub use clanker_tui_types::CoreAction;
+pub use clanker_tui_types::ExtendedAction;
+pub use clanker_tui_types::ExtendedActionDef;
+pub use clanker_tui_types::InputMode;
+pub use clanker_tui_types::parse_action;
 use serde::Deserialize;
 use serde::Serialize;
 

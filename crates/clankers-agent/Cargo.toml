@@ -19,7 +19,7 @@ clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
 clanker-router = { workspace = true }
 clankers-skills = { version = "0.1.0", path = "../clankers-skills" }
 openspec = { path = "../../../openspec", optional = true }
-clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
+clanker-tui-types = { workspace = true }
 clankers-util = { version = "0.1.0", path = "../clankers-util" }
 
 async-trait = "0.1"

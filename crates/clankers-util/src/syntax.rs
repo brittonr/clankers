@@ -350,13 +350,13 @@ pub fn supported_languages() -> Vec<&'static str> {
 /// Syntect-backed syntax highlighter implementing the TUI trait.
 pub struct SyntectHighlighter;
 
-impl clankers_tui_types::SyntaxHighlighter for SyntectHighlighter {
-    fn highlight(&self, code: &str, language: &str) -> Vec<clankers_tui_types::HighlightSpan> {
+impl clanker_tui_types::SyntaxHighlighter for SyntectHighlighter {
+    fn highlight(&self, code: &str, language: &str) -> Vec<clanker_tui_types::HighlightSpan> {
         highlight(code, language)
             .into_iter()
             .map(|s| {
                 let fg = s.fg;
-                clankers_tui_types::HighlightSpan { text: s.text, fg }
+                clanker_tui_types::HighlightSpan { text: s.text, fg }
             })
             .collect()
     }

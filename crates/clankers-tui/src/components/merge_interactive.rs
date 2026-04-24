@@ -68,7 +68,7 @@ impl MergeInteractiveView {
         target_leaf: String,
         source_name: &str,
         target_name: &str,
-        messages: &[clankers_tui_types::MergeMessageView],
+        messages: &[clanker_tui_types::MergeMessageView],
     ) {
         self.items = messages
             .iter()
@@ -286,7 +286,7 @@ fn truncate_preview(text: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
-    use clankers_tui_types::MergeMessageView;
+    use clanker_tui_types::MergeMessageView;
 
     use super::*;
 

@@ -390,26 +390,26 @@ impl ProcessMonitor {
     }
 }
 
-impl clankers_tui_types::ProcessDataSource for ProcessMonitor {
-    fn active_processes(&self) -> Vec<clankers_tui_types::ProcessSnapshot> {
+impl clanker_tui_types::ProcessDataSource for ProcessMonitor {
+    fn active_processes(&self) -> Vec<clanker_tui_types::ProcessSnapshot> {
         self.snapshot().into_iter().map(|(pid, t)| tracked_to_snapshot(pid, &t)).collect()
     }
 
-    fn completed_processes(&self) -> Vec<clankers_tui_types::ProcessSnapshot> {
+    fn completed_processes(&self) -> Vec<clanker_tui_types::ProcessSnapshot> {
         self.history().into_iter().map(|(pid, t)| tracked_to_snapshot(pid, &t)).collect()
     }
 }
 
-fn tracked_to_snapshot(pid: u32, t: &TrackedProcess) -> clankers_tui_types::ProcessSnapshot {
+fn tracked_to_snapshot(pid: u32, t: &TrackedProcess) -> clanker_tui_types::ProcessSnapshot {
     let (cpu_percent, rss_bytes) = t.snapshots.last().map(|s| (s.cpu_percent, s.rss_bytes)).unwrap_or((0.0, 0));
     let state = match &t.state {
-        ProcessState::Running => clankers_tui_types::ProcessDisplayState::Running,
-        ProcessState::Exited { code, wall_time } => clankers_tui_types::ProcessDisplayState::Exited {
+        ProcessState::Running => clanker_tui_types::ProcessDisplayState::Running,
+        ProcessState::Exited { code, wall_time } => clanker_tui_types::ProcessDisplayState::Exited {
             code: *code,
             wall_time: *wall_time,
         },
     };
-    clankers_tui_types::ProcessSnapshot {
+    clanker_tui_types::ProcessSnapshot {
         pid,
         cpu_percent,
         rss_bytes,

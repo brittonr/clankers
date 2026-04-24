@@ -468,7 +468,7 @@ impl SlashHandler for MergeInteractiveHandler {
             .map(|b| b.name.clone())
             .unwrap_or_else(|| target.to_string());
 
-        let views: Vec<clankers_tui_types::MergeMessageView> =
+        let views: Vec<clanker_tui_types::MergeMessageView> =
             unique.iter().map(|e| crate::session::merge_view::to_merge_view(e)).collect();
         ctx.app.branching.merge_interactive.open(
             source.to_string(),

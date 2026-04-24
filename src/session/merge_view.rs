@@ -1,7 +1,7 @@
 //! Convert session entries to TUI merge views.
 //!
 //! Lives in the main crate because it bridges `clankers-session` types
-//! and `clankers-tui-types` — neither should depend on the other.
+//! and `clanker-tui-types` — neither should depend on the other.
 
 use clankers_message::AgentMessage;
 use clankers_message::Content;
@@ -9,7 +9,7 @@ use clankers_message::Content;
 use crate::session::entry::MessageEntry;
 
 /// Convert a `MessageEntry` into a `MergeMessageView` for the TUI merge overlay.
-pub fn to_merge_view(entry: &MessageEntry) -> clankers_tui_types::MergeMessageView {
+pub fn to_merge_view(entry: &MessageEntry) -> clanker_tui_types::MergeMessageView {
     fn content_text(content: &[Content]) -> String {
         content
             .iter()
@@ -50,7 +50,7 @@ pub fn to_merge_view(entry: &MessageEntry) -> clankers_tui_types::MergeMessageVi
         AgentMessage::CompactionSummary(m) => (truncate(&m.summary, 70), "Compact"),
     };
 
-    clankers_tui_types::MergeMessageView {
+    clanker_tui_types::MergeMessageView {
         id: entry.id.to_string(),
         preview,
         variant_label,

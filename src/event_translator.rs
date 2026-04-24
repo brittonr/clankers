@@ -3,8 +3,8 @@
 //! This module is the single point where agent/provider types are converted
 //! into TUI-native events. The TUI crate never imports agent types directly.
 
-use clankers_tui_types::DisplayImage;
-use clankers_tui_types::TuiEvent;
+use clanker_tui_types::DisplayImage;
+use clanker_tui_types::TuiEvent;
 
 use crate::agent::events::AgentEvent;
 use crate::provider::message::Content;

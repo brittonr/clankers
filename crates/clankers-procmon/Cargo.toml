@@ -6,7 +6,7 @@ license.workspace = true
 description = "Process monitoring — tracks child processes, CPU, and memory usage"
 
 [dependencies]
-clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
+clanker-tui-types = { workspace = true }
 parking_lot = "0.12"
 serde = { workspace = true }
 sysinfo = "0.34"

@@ -204,7 +204,7 @@ impl SessionController {
     ///
     /// Called before `check_post_prompt(false)` to ensure the controller's
     /// loop engine matches the TUI's `/loop` command state.
-    pub fn sync_loop_from_tui(&mut self, loop_status: Option<&clankers_tui_types::LoopDisplayState>) {
+    pub fn sync_loop_from_tui(&mut self, loop_status: Option<&clanker_tui_types::LoopDisplayState>) {
         match (loop_status, &self.active_loop_id) {
             // TUI has loop but controller doesn't → register it
             (Some(ls), None) => {
@@ -254,7 +254,7 @@ impl SessionController {
 #[cfg(test)]
 mod tests {
     use clanker_loop::LoopId;
-    use clankers_tui_types::LoopDisplayState;
+    use clanker_tui_types::LoopDisplayState;
 
     use crate::PendingWorkId;
     use crate::PostPromptAction;

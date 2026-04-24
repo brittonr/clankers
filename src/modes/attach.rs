@@ -130,12 +130,12 @@ pub async fn run_attach(
 
     // Minimal slash registry for client-side commands only
     let slash_registry = build_client_slash_registry();
-    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(&slash_registry)));
+    app.set_completion_source(Box::new(clanker_tui_types::CompletionSnapshot::from_source(&slash_registry)));
 
     // Build leader menu from builtins
     crate::modes::interactive::rebuild_leader_menu(&mut app, None, settings);
 
-    app.connection_mode = clankers_tui_types::ConnectionMode::Attached;
+    app.connection_mode = clanker_tui_types::ConnectionMode::Attached;
 
     app.push_system(
         format!(
@@ -160,7 +160,7 @@ pub async fn run_attach(
         max_subagent_panes,
         &socket_path,
         &resolved_session_id,
-        clankers_tui_types::ConnectionMode::Attached,
+        clanker_tui_types::ConnectionMode::Attached,
         RecoveryMode::ExplicitAttach,
     )
     .await;
@@ -188,7 +188,7 @@ pub(crate) async fn run_attach_with_reconnect(
     max_subagent_panes: usize,
     socket_path: &str,
     session_id: &str,
-    restore_mode: clankers_tui_types::ConnectionMode,
+    restore_mode: clanker_tui_types::ConnectionMode,
     recovery_mode: RecoveryMode,
 ) -> Result<()> {
     let mut is_replaying_history = true;
@@ -208,8 +208,8 @@ pub(crate) async fn run_attach_with_reconnect(
         drain_daemon_events(app, &mut client, &mut is_replaying_history, max_subagent_panes, &mut parity_tracker);
 
         // Detect disconnect and attempt reconnection
-        if client.is_disconnected() && app.connection_mode != clankers_tui_types::ConnectionMode::Reconnecting {
-            app.connection_mode = clankers_tui_types::ConnectionMode::Reconnecting;
+        if client.is_disconnected() && app.connection_mode != clanker_tui_types::ConnectionMode::Reconnecting {
+            app.connection_mode = clanker_tui_types::ConnectionMode::Reconnecting;
             app.push_system("Connection to daemon lost. Attempting to reconnect...".to_string(), true);
 
             // First, try reconnecting to the existing socket (transient glitch).
@@ -865,7 +865,7 @@ fn process_daemon_event(
         // ── Plugin events ───────────────────────
         DaemonEvent::PluginWidget { plugin, widget } => {
             if let Some(widget_json) = widget {
-                if let Ok(w) = serde_json::from_value::<clankers_tui_types::Widget>(widget_json.clone()) {
+                if let Ok(w) = serde_json::from_value::<clanker_tui_types::Widget>(widget_json.clone()) {
                     app.plugin_ui.widgets.insert(plugin.clone(), w);
                 }
             } else {
@@ -874,7 +874,7 @@ fn process_daemon_event(
         }
         DaemonEvent::PluginStatus { plugin, text, color } => {
             if let Some(text) = text {
-                app.plugin_ui.status_segments.insert(plugin.clone(), clankers_tui_types::StatusSegment {
+                app.plugin_ui.status_segments.insert(plugin.clone(), clanker_tui_types::StatusSegment {
                     text: text.clone(),
                     color: color.clone(),
                 });
@@ -883,7 +883,7 @@ fn process_daemon_event(
             }
         }
         DaemonEvent::PluginNotify { plugin, message, level } => {
-            app.plugin_ui.notifications.push(clankers_tui_types::PluginNotification {
+            app.plugin_ui.notifications.push(clanker_tui_types::PluginNotification {
                 plugin: plugin.clone(),
                 message: message.clone(),
                 level: level.clone(),
@@ -1065,7 +1065,7 @@ fn handle_key_event(
 
     if app.overlays.model_selector.visible {
         let (consumed, action) = selectors::handle_model_selector_key(app, &key);
-        if let Some(clankers_tui_types::SelectorAction::SetModel(model)) = action {
+        if let Some(clanker_tui_types::SelectorAction::SetModel(model)) = action {
             client.send(SessionCommand::SetModel { model: model.clone() });
             app.model = model;
         }
@@ -1077,7 +1077,7 @@ fn handle_key_event(
     // Account selector overlay
     if app.overlays.account_selector.visible {
         let (consumed, action) = crate::tui::selectors::handle_account_selector_key(app, &key);
-        if let Some(clankers_tui_types::SelectorAction::SwitchAccount(name)) = action {
+        if let Some(clanker_tui_types::SelectorAction::SwitchAccount(name)) = action {
             client.send(SessionCommand::SwitchAccount { account: name });
         }
         if consumed {
@@ -1492,11 +1492,11 @@ fn translate_attach_agent_command(agent_cmd: crate::modes::interactive::AgentCom
 fn handle_leader_action_attach(
     app: &mut App,
     client: &ClientAdapter,
-    action: clankers_tui_types::LeaderAction,
+    action: clanker_tui_types::LeaderAction,
     slash_registry: &slash_commands::SlashRegistry,
     parity_tracker: &mut AttachParityTracker,
 ) {
-    use clankers_tui_types::LeaderAction;
+    use clanker_tui_types::LeaderAction;
 
     match action {
         LeaderAction::Command(cmd) => {
@@ -1602,8 +1602,8 @@ fn handle_local_action(
     _key: &crossterm::event::KeyEvent,
     parity_tracker: &mut AttachParityTracker,
 ) {
-    use clankers_tui_types::AppState;
-    use clankers_tui_types::BlockEntry;
+    use clanker_tui_types::AppState;
+    use clanker_tui_types::BlockEntry;
     use ratatui::layout::Direction;
     use ratatui_hypertile::HypertileAction;
     use ratatui_hypertile::Towards;
@@ -1739,7 +1739,7 @@ fn handle_local_action(
             }
         }
         Action::Extended(ExtendedAction::ToggleBranchPanel) => {
-            use clankers_tui_types::PanelId;
+            use clanker_tui_types::PanelId;
             if app.layout.focused_panel == Some(PanelId::Branches) {
                 app.unfocus_panel();
             } else {
@@ -1844,7 +1844,7 @@ fn handle_local_action(
         }
         Action::Extended(ExtendedAction::PaneZoom) => app.zoom_toggle(),
         Action::Extended(ExtendedAction::PanelScrollUp) => {
-            use clankers_tui_types::PanelId;
+            use clanker_tui_types::PanelId;
             if let Some(sp) =
                 app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
             {
@@ -1852,7 +1852,7 @@ fn handle_local_action(
             }
         }
         Action::Extended(ExtendedAction::PanelScrollDown) => {
-            use clankers_tui_types::PanelId;
+            use clanker_tui_types::PanelId;
             if let Some(sp) =
                 app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
             {
@@ -1860,7 +1860,7 @@ fn handle_local_action(
             }
         }
         Action::Extended(ExtendedAction::PanelClearDone) => {
-            use clankers_tui_types::PanelId;
+            use clanker_tui_types::PanelId;
             if let Some(sp) =
                 app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
             {
@@ -1874,7 +1874,7 @@ fn handle_local_action(
             // No panel_tx in attach mode — kill not supported yet
         }
         Action::Extended(ExtendedAction::PanelRemove) => {
-            use clankers_tui_types::PanelId;
+            use clanker_tui_types::PanelId;
             if let Some(sp) =
                 app.panels.downcast_mut::<crate::tui::components::subagent_panel::SubagentPanel>(PanelId::Subagents)
             {
@@ -1973,7 +1973,7 @@ fn handle_local_action(
 ///
 /// Returns true if the key was consumed.
 fn handle_panel_focused_key_attach(app: &mut App, key: crossterm::event::KeyEvent) -> bool {
-    use clankers_tui_types::PanelAction;
+    use clanker_tui_types::PanelAction;
     use crossterm::event::KeyCode;
 
     // Tab / Shift+Tab cycles focus
@@ -2035,9 +2035,9 @@ mod tests {
     use clankers_protocol::PluginSummary;
     use clankers_protocol::SessionCommand;
     use clankers_tui::app::App;
-    use clankers_tui_types::BlockEntry;
-    use clankers_tui_types::ConversationBlock;
-    use clankers_tui_types::DisplayMessage;
+    use clanker_tui_types::BlockEntry;
+    use clanker_tui_types::ConversationBlock;
+    use clanker_tui_types::DisplayMessage;
 
     struct MockProvider;
 
@@ -2135,7 +2135,7 @@ mod tests {
 
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct MessageSnapshot {
-        role: clankers_tui_types::MessageRole,
+        role: clanker_tui_types::MessageRole,
         content: String,
         tool_name: Option<String>,
         is_error: bool,

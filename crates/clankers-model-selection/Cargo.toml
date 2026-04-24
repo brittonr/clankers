@@ -7,7 +7,7 @@ description = "Multi-model routing policy, cost tracking, and orchestration"
 
 [dependencies]
 clanker-router = { workspace = true }
-clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
+clanker-tui-types = { workspace = true }
 tracing = { workspace = true }
 parking_lot = "0.12"
 serde = { workspace = true }

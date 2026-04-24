@@ -8,17 +8,17 @@ use std::sync::Arc;
 
 use chrono::DateTime;
 use chrono::Utc;
-// Display types re-exported from clankers-tui-types.
-pub use clankers_tui_types::ActiveToolExecution;
-pub use clankers_tui_types::AppState;
-pub use clankers_tui_types::ConnectionMode;
-pub use clankers_tui_types::DisplayImage;
-pub use clankers_tui_types::DisplayMessage;
-use clankers_tui_types::InputMode;
-pub use clankers_tui_types::MessageRole;
-pub use clankers_tui_types::PendingImage;
-use clankers_tui_types::PluginUiState;
-pub use clankers_tui_types::RouterStatus;
+// Display types re-exported from clanker-tui-types.
+pub use clanker_tui_types::ActiveToolExecution;
+pub use clanker_tui_types::AppState;
+pub use clanker_tui_types::ConnectionMode;
+pub use clanker_tui_types::DisplayImage;
+pub use clanker_tui_types::DisplayMessage;
+use clanker_tui_types::InputMode;
+pub use clanker_tui_types::MessageRole;
+pub use clanker_tui_types::PendingImage;
+use clanker_tui_types::PluginUiState;
+pub use clanker_tui_types::RouterStatus;
 use ratatui::layout::Rect;
 
 /// Detailed information about the active router / provider setup.
@@ -127,7 +127,7 @@ pub struct OverlayState {
     /// Whether to show block IDs in conversation view
     pub show_block_ids: bool,
     /// Plan mode state
-    pub plan_state: clankers_tui_types::PlanState,
+    pub plan_state: clanker_tui_types::PlanState,
     /// History search overlay (Ctrl+R)
     pub history_search: super::components::history_search::HistorySearch,
     /// Output search overlay (Ctrl+F / f)
@@ -173,11 +173,11 @@ pub struct App {
     pub session_id: String,
     pub total_tokens: usize,
     pub total_cost: f64,
-    pub cost_tracker: Option<Arc<dyn clankers_tui_types::CostProvider>>,
+    pub cost_tracker: Option<Arc<dyn clanker_tui_types::CostProvider>>,
     pub cwd: String,
     pub should_quit: bool,
     pub thinking_enabled: bool,
-    pub thinking_level: clankers_tui_types::ThinkingLevel,
+    pub thinking_level: clanker_tui_types::ThinkingLevel,
     pub show_thinking: bool,
     pub tool_info: Vec<(String, String, String)>,
     /// Tools disabled by the user (names). Applied at tool-build time.
@@ -195,7 +195,7 @@ pub struct App {
     pub login_verifiers: HashMap<(String, String), String>,
     pub tick: u64,
     /// Loop mode state (None when not in a loop).
-    pub loop_status: Option<clankers_tui_types::LoopDisplayState>,
+    pub loop_status: Option<clanker_tui_types::LoopDisplayState>,
     /// Auto-test: run this command after the agent finishes a turn.
     pub auto_test_command: Option<String>,
     /// Auto-test: whether the feature is currently enabled.
@@ -212,7 +212,7 @@ pub struct App {
 
     // Components (keep flat — they're already self-contained)
     pub slash_menu: SlashMenu,
-    pub completion_source: Box<dyn clankers_tui_types::CompletionSource>,
+    pub completion_source: Box<dyn clanker_tui_types::CompletionSource>,
     pub plugin_ui: PluginUiState,
     /// Plugin summaries from the daemon (populated via DaemonEvent::PluginList).
     pub daemon_plugins: Option<Vec<clankers_protocol::PluginSummary>>,
@@ -231,13 +231,13 @@ pub struct App {
     // Clipboard
     pub pending_images: Vec<PendingImage>,
     pub clipboard_pending: bool,
-    pub clipboard_rx: Option<std::sync::mpsc::Receiver<clankers_tui_types::ClipboardResult>>,
+    pub clipboard_rx: Option<std::sync::mpsc::Receiver<clanker_tui_types::ClipboardResult>>,
 
     // Mouse state
     pub scrollbar_drag: Option<ScrollbarDrag>,
 
     // External services
-    pub highlighter: Box<dyn clankers_tui_types::SyntaxHighlighter>,
+    pub highlighter: Box<dyn clanker_tui_types::SyntaxHighlighter>,
 }
 
 /// State for an active scrollbar drag operation
@@ -247,7 +247,7 @@ pub struct ScrollbarDrag {
     pub initial_mouse_y: u16,
 }
 
-// PendingImage re-exported from clankers-tui-types above.
+// PendingImage re-exported from clanker-tui-types above.
 
 impl App {
     pub fn new(model: String, cwd: String, theme: Theme) -> Self {
@@ -267,7 +267,7 @@ impl App {
             cwd,
             should_quit: false,
             thinking_enabled: false,
-            thinking_level: clankers_tui_types::ThinkingLevel::Off,
+            thinking_level: clanker_tui_types::ThinkingLevel::Off,
             show_thinking: true,
             tool_info: Vec::new(),
             disabled_tools: std::collections::HashSet::new(),
@@ -316,7 +316,7 @@ impl App {
                 session_popup_visible: false,
                 cost_overlay_visible: false,
                 show_block_ids: false,
-                plan_state: clankers_tui_types::PlanState::Inactive,
+                plan_state: clanker_tui_types::PlanState::Inactive,
                 history_search: super::components::history_search::HistorySearch::new(),
                 output_search: super::components::output_search::OutputSearch::new(),
                 model_selector: ModelSelector::new(Vec::new()),
@@ -360,7 +360,7 @@ impl App {
             // Mouse state
             scrollbar_drag: None,
 
-            highlighter: Box::new(clankers_tui_types::PlainHighlighter),
+            highlighter: Box::new(clanker_tui_types::PlainHighlighter),
         }
     }
 
@@ -371,7 +371,7 @@ impl App {
     pub fn rebuild_leader_menu(
         &mut self,
         contributors: &[&dyn super::components::leader_menu::MenuContributor],
-        hidden: &std::collections::HashSet<(char, clankers_tui_types::MenuPlacement)>,
+        hidden: &std::collections::HashSet<(char, clanker_tui_types::MenuPlacement)>,
     ) {
         let (menu, conflicts) = super::components::leader_menu::LeaderMenu::build(contributors, hidden);
 
@@ -389,7 +389,7 @@ impl App {
     }
 
     /// Set the completion source for slash menu autocompletion.
-    pub fn set_completion_source(&mut self, source: Box<dyn clankers_tui_types::CompletionSource>) {
+    pub fn set_completion_source(&mut self, source: Box<dyn clanker_tui_types::CompletionSource>) {
         self.completion_source = source;
     }
 
@@ -803,7 +803,7 @@ impl App {
 
 // ── Hit-testing helpers ──────────────────────────────────────────────────────
 
-pub use clankers_tui_types::HitRegion;
+pub use clanker_tui_types::HitRegion;
 
 /// Check whether a screen coordinate (col, row) is inside a `Rect`.
 fn rect_contains(area: Rect, col: u16, row: u16) -> bool {
@@ -826,11 +826,11 @@ fn register_default_panels() -> super::panel::PanelManager {
 
 /// Empty completion source used as initial default before the real one is set.
 struct EmptyCompletionSource;
-impl clankers_tui_types::CompletionSource for EmptyCompletionSource {
-    fn completions(&self, _input: &str) -> Vec<clankers_tui_types::CompletionItem> {
+impl clanker_tui_types::CompletionSource for EmptyCompletionSource {
+    fn completions(&self, _input: &str) -> Vec<clanker_tui_types::CompletionItem> {
         Vec::new()
     }
-    fn slash_commands(&self) -> Vec<clankers_tui_types::SlashCommandInfo> {
+    fn slash_commands(&self) -> Vec<clanker_tui_types::SlashCommandInfo> {
         Vec::new()
     }
 }
@@ -918,17 +918,17 @@ mod tests {
         let mut app = App::new("test".to_string(), "/tmp".to_string(), crate::theme::Theme::dark());
         let started_at = parse_test_timestamp("2026-04-22T12:35:56Z");
 
-        app.handle_tui_event(&clankers_tui_types::TuiEvent::UserInput {
+        app.handle_tui_event(&clanker_tui_types::TuiEvent::UserInput {
             text: "run tool".to_string(),
             agent_msg_count: 0,
             timestamp: started_at,
         });
-        app.handle_tui_event(&clankers_tui_types::TuiEvent::ToolCall {
+        app.handle_tui_event(&clanker_tui_types::TuiEvent::ToolCall {
             tool_name: "bash".to_string(),
             call_id: "call-1".to_string(),
             input: serde_json::json!({"command": "ls"}),
         });
-        app.handle_tui_event(&clankers_tui_types::TuiEvent::ToolOutput {
+        app.handle_tui_event(&clanker_tui_types::TuiEvent::ToolOutput {
             call_id: "call-1".to_string(),
             text: "partial".to_string(),
             images: Vec::new(),
@@ -938,13 +938,13 @@ mod tests {
         assert_eq!(active.started_at, started_at);
         assert!(active.finalized_hash.is_none());
 
-        app.handle_tui_event(&clankers_tui_types::TuiEvent::ToolDone {
+        app.handle_tui_event(&clanker_tui_types::TuiEvent::ToolDone {
             call_id: "call-1".to_string(),
             text: "done".to_string(),
             images: Vec::new(),
             is_error: false,
         });
-        app.handle_tui_event(&clankers_tui_types::TuiEvent::AgentEnd);
+        app.handle_tui_event(&clanker_tui_types::TuiEvent::AgentEnd);
 
         let finalized = match app.conversation.blocks.last() {
             Some(BlockEntry::Conversation(block)) => block,

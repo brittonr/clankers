@@ -1,8 +1,8 @@
 //! Footer status bar
 
-use clankers_tui_types::BudgetStatus;
-use clankers_tui_types::ConnectionMode;
-use clankers_tui_types::InputMode;
+use clanker_tui_types::BudgetStatus;
+use clanker_tui_types::ConnectionMode;
+use clanker_tui_types::InputMode;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -26,7 +26,7 @@ pub struct StatusBarData<'a> {
     pub session_id: &'a str,
     pub input_mode: InputMode,
     pub thinking_enabled: bool,
-    pub thinking_level: clankers_tui_types::ThinkingLevel,
+    pub thinking_level: clanker_tui_types::ThinkingLevel,
     /// Plugin-contributed status bar segments
     pub plugin_spans: Vec<Span<'a>>,
     /// Context window gauge span
@@ -94,11 +94,11 @@ fn render_mode_indicators<'a>(spans: &mut Vec<Span<'a>>, data: &StatusBarData<'a
     if data.thinking_enabled {
         let level_label = format!(" 💭 {} ", data.thinking_level.label());
         let level_color = match data.thinking_level {
-            clankers_tui_types::ThinkingLevel::Off => Color::DarkGray,
-            clankers_tui_types::ThinkingLevel::Low => Color::Blue,
-            clankers_tui_types::ThinkingLevel::Medium => Color::Magenta,
-            clankers_tui_types::ThinkingLevel::High => Color::Yellow,
-            clankers_tui_types::ThinkingLevel::Max => Color::Red,
+            clanker_tui_types::ThinkingLevel::Off => Color::DarkGray,
+            clanker_tui_types::ThinkingLevel::Low => Color::Blue,
+            clanker_tui_types::ThinkingLevel::Medium => Color::Magenta,
+            clanker_tui_types::ThinkingLevel::High => Color::Yellow,
+            clanker_tui_types::ThinkingLevel::Max => Color::Red,
         };
         spans.push(Span::styled(
             level_label,

@@ -1418,6 +1418,7 @@ dependencies = [
  "clanker-loop",
  "clanker-router",
  "clanker-scheduler",
+ "clanker-tui-types",
  "clankers-agent",
  "clankers-agent-defs",
  "clankers-config",
@@ -1438,7 +1439,6 @@ dependencies = [
  "clankers-skills",
  "clankers-tts",
  "clankers-tui",
- "clankers-tui-types",
  "clankers-ucan",
  "clankers-util",
  "clankers-zellij",
@@ -1503,6 +1503,7 @@ dependencies = [
  "chrono",
  "clanker-loop",
  "clanker-router",
+ "clanker-tui-types",
  "clankers-config",
  "clankers-core",
  "clankers-db",
@@ -1514,7 +1515,6 @@ dependencies = [
  "clankers-prompts",
  "clankers-provider",
  "clankers-skills",
- "clankers-tui-types",
  "clankers-util",
  "dirs 6.0.0",
  "futures",
@@ -1545,11 +1545,11 @@ name = "clankers-config"
 version = "0.1.0"
 dependencies = [
  "clanker-router",
+ "clanker-tui-types",
  "clankers-agent-defs",
  "clankers-hooks",
  "clankers-model-selection",
  "clankers-tui",
- "clankers-tui-types",
  "clankers-ucan",
  "dirs 6.0.0",
  "indexmap 2.14.0",
@@ -1568,6 +1568,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "clanker-loop",
+ "clanker-tui-types",
  "clankers-agent",
  "clankers-config",
  "clankers-core",
@@ -1577,7 +1578,6 @@ dependencies = [
  "clankers-protocol",
  "clankers-provider",
  "clankers-session",
- "clankers-tui-types",
  "libc",
  "serde",
  "serde_json",
@@ -1668,7 +1668,7 @@ name = "clankers-model-selection"
 version = "0.1.0"
 dependencies = [
  "clanker-router",
- "clankers-tui-types",
+ "clanker-tui-types",
  "parking_lot",
  "serde",
  "serde_json",
@@ -1700,8 +1700,8 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "chrono",
+ "clanker-tui-types",
  "clankers-hooks",
- "clankers-tui-types",
  "extism",
  "libc",
  "serde",
@@ -1714,7 +1714,7 @@ dependencies = [
 name = "clankers-procmon"
 version = "0.1.0"
 dependencies = [
- "clankers-tui-types",
+ "clanker-tui-types",
  "parking_lot",
  "serde",
  "sysinfo",
@@ -1748,8 +1748,8 @@ dependencies = [
  "base64",
  "chrono",
  "clanker-router",
+ "clanker-tui-types",
  "clankers-message",
- "clankers-tui-types",
  "fs4",
  "futures",
  "rand 0.9.4",
@@ -1809,8 +1809,8 @@ dependencies = [
  "arboard",
  "base64",
  "chrono",
+ "clanker-tui-types",
  "clankers-protocol",
- "clankers-tui-types",
  "crossterm",
  "git2",
  "image",
@@ -1828,13 +1828,6 @@ dependencies = [
  "tempfile",
  "tracing",
  "unicode-width",
-]
-
-[[package]]
-name = "clankers-tui-types"
-version = "0.1.0"
-dependencies = [
- "clanker-tui-types",
 ]
 
 [[package]]
@@ -1856,8 +1849,8 @@ name = "clankers-util"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "clanker-tui-types",
  "clankers-message",
- "clankers-tui-types",
  "dirs 6.0.0",
  "hex",
  "ignore",

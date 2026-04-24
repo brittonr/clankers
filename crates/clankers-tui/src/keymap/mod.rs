@@ -13,11 +13,11 @@ use std::collections::HashMap;
 use std::fmt;
 
 // Re-export public types
-pub use clankers_tui_types::Action;
-pub use clankers_tui_types::CoreAction;
-pub use clankers_tui_types::ExtendedAction;
-pub use clankers_tui_types::InputMode;
-pub use clankers_tui_types::parse_action;
+pub use clanker_tui_types::Action;
+pub use clanker_tui_types::CoreAction;
+pub use clanker_tui_types::ExtendedAction;
+pub use clanker_tui_types::InputMode;
+pub use clanker_tui_types::parse_action;
 use crossterm::event::KeyEvent;
 pub use parser::KeyCombo;
 pub use parser::format_key_combo;

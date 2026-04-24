@@ -171,7 +171,7 @@ pub(crate) fn handle_leader_action(
     session_manager: &mut Option<crate::session::SessionManager>,
     slash_registry: &crate::slash_commands::SlashRegistry,
 ) {
-    use clankers_tui_types::LeaderAction;
+    use clanker_tui_types::LeaderAction;
 
     match action {
         LeaderAction::Action(keymap_action) => {
@@ -375,14 +375,14 @@ pub(crate) fn handle_session_popup_key(app: &mut App, key: &crossterm::event::Ke
         }
         Some(Action::Core(CoreAction::ScrollToTop)) => {
             app.conversation.focused_block = app.conversation.blocks.iter().find_map(|e| match e {
-                clankers_tui_types::BlockEntry::Conversation(b) => Some(b.id),
+                clanker_tui_types::BlockEntry::Conversation(b) => Some(b.id),
                 _ => None,
             });
             true
         }
         Some(Action::Core(CoreAction::ScrollToBottom)) => {
             app.conversation.focused_block = app.conversation.blocks.iter().rev().find_map(|e| match e {
-                clankers_tui_types::BlockEntry::Conversation(b) => Some(b.id),
+                clanker_tui_types::BlockEntry::Conversation(b) => Some(b.id),
                 _ => None,
             });
             true

@@ -44,7 +44,7 @@ pub fn render_conversation_block<'a>(
     progress: &ProgressRenderer,
     streaming_outputs: &mut StreamingOutputManager,
     tick: u64,
-    highlighter: &dyn clankers_tui_types::SyntaxHighlighter,
+    highlighter: &dyn clanker_tui_types::SyntaxHighlighter,
 ) -> Vec<Line<'a>> {
     let mut lines = Vec::new();
 
@@ -225,7 +225,7 @@ pub fn render_response_message<'a>(
     progress: &ProgressRenderer,
     streaming_outputs: &mut StreamingOutputManager,
     tick: u64,
-    highlighter: &dyn clankers_tui_types::SyntaxHighlighter,
+    highlighter: &dyn clanker_tui_types::SyntaxHighlighter,
 ) {
     match msg.role {
         MessageRole::Assistant => {
@@ -380,7 +380,7 @@ pub fn render_active_block<'a>(
     progress: &ProgressRenderer,
     streaming_outputs: &mut StreamingOutputManager,
     tick: u64,
-    highlighter: &dyn clankers_tui_types::SyntaxHighlighter,
+    highlighter: &dyn clanker_tui_types::SyntaxHighlighter,
 ) -> Vec<Line<'a>> {
     let border_color = theme.block_border_focused;
     let border_style = Style::default().fg(border_color);

@@ -3,7 +3,7 @@
 //! Renders a floating popup above the editor showing matching slash commands
 //! as the user types.
 
-use clankers_tui_types::CompletionItem;
+use clanker_tui_types::CompletionItem;
 use ratatui::Frame;
 use ratatui::layout::Rect;
 use ratatui::style::Color;
@@ -63,7 +63,7 @@ impl SlashMenu {
     }
 
     /// Update the menu with new completions based on the current input
-    pub fn update(&mut self, source: &dyn clankers_tui_types::CompletionSource, input: &str) {
+    pub fn update(&mut self, source: &dyn clanker_tui_types::CompletionSource, input: &str) {
         let completions = source.completions(input);
         if completions.is_empty() || !input.starts_with('/') {
             self.visible = false;

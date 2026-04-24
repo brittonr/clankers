@@ -1,6 +1,6 @@
 //! Local worker subprocess spawning and management
 
-use clankers_tui_types::SubagentEvent;
+use clanker_tui_types::SubagentEvent;
 use tokio_util::sync::CancellationToken;
 
 use crate::tools::ToolResult;

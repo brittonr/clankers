@@ -2,9 +2,9 @@
 
 use std::collections::HashMap;
 
-use clankers_tui_types::Action;
-use clankers_tui_types::CoreAction;
-use clankers_tui_types::ExtendedAction;
+use clanker_tui_types::Action;
+use clanker_tui_types::CoreAction;
+use clanker_tui_types::ExtendedAction;
 use crossterm::event::KeyCode;
 
 use super::parser::KeyCombo;

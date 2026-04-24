@@ -5,9 +5,9 @@
 
 use std::time::Duration;
 
-use clankers_tui_types::ProcessDataSource;
-use clankers_tui_types::ProcessDisplayState;
-use clankers_tui_types::ProcessSnapshot;
+use clanker_tui_types::ProcessDataSource;
+use clanker_tui_types::ProcessDisplayState;
+use clanker_tui_types::ProcessSnapshot;
 use crossterm::event::KeyCode;
 use crossterm::event::KeyEvent;
 

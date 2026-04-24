@@ -3,10 +3,10 @@ use std::io::IsTerminal;
 use std::io::Write;
 
 use chrono::Local;
-use clankers_tui_types::BlockEntry;
-use clankers_tui_types::ConversationBlock;
-use clankers_tui_types::DisplayMessage;
-use clankers_tui_types::MessageRole;
+use clanker_tui_types::BlockEntry;
+use clanker_tui_types::ConversationBlock;
+use clanker_tui_types::DisplayMessage;
+use clanker_tui_types::MessageRole;
 use rat_inline::InlineMarkdown;
 use rat_inline::InlineRenderer;
 use rat_inline::InlineText;

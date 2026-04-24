@@ -10,7 +10,7 @@ clankers-agent-defs = { version = "0.1.0", path = "../clankers-agent-defs" }
 clankers-hooks = { version = "0.1.0", path = "../clankers-hooks" }
 clankers-model-selection = { version = "0.1.0", path = "../clankers-model-selection" }
 clankers-tui = { version = "0.1.0", path = "../clankers-tui" }
-clankers-tui-types = { version = "0.1.0", path = "../clankers-tui-types" }
+clanker-tui-types = { workspace = true }
 clankers-ucan = { version = "0.1.0", path = "../clankers-ucan" }
 clanker-router = { workspace = true }
 dirs = "6"

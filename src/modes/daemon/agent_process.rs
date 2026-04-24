@@ -19,7 +19,7 @@ use clankers_controller::SessionController;
 use clankers_controller::config::ControllerConfig;
 use clankers_protocol::DaemonEvent;
 use clankers_protocol::SessionCommand;
-use clankers_tui_types::SubagentEvent;
+use clanker_tui_types::SubagentEvent;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;

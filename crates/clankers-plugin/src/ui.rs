@@ -1,11 +1,11 @@
 //! Declarative UI widget protocol for plugins
 
-// Widget types re-exported from clankers-tui-types (canonical definitions).
-pub use clankers_tui_types::Direction;
-pub use clankers_tui_types::PluginNotification;
-pub use clankers_tui_types::PluginUiState;
-pub use clankers_tui_types::StatusSegment;
-pub use clankers_tui_types::Widget;
+// Widget types re-exported from clanker-tui-types (canonical definitions).
+pub use clanker_tui_types::Direction;
+pub use clanker_tui_types::PluginNotification;
+pub use clanker_tui_types::PluginUiState;
+pub use clanker_tui_types::StatusSegment;
+pub use clanker_tui_types::Widget;
 use serde::Deserialize;
 use serde::Serialize;
 

@@ -18,10 +18,10 @@ pub struct PluginMenuContributor<'a>(pub &'a PluginManager);
 
 impl crate::tui::components::leader_menu::MenuContributor for PluginMenuContributor<'_> {
     fn menu_items(&self) -> Vec<crate::tui::components::leader_menu::MenuContribution> {
-        use clankers_tui_types::LeaderAction;
-        use clankers_tui_types::MenuContribution;
-        use clankers_tui_types::MenuPlacement;
-        use clankers_tui_types::PRIORITY_PLUGIN;
+        use clanker_tui_types::LeaderAction;
+        use clanker_tui_types::MenuContribution;
+        use clanker_tui_types::MenuPlacement;
+        use clanker_tui_types::PRIORITY_PLUGIN;
 
         self.0
             .active_plugin_infos()
@@ -77,7 +77,7 @@ pub struct PluginSlashContributor<'a>(pub &'a PluginManager);
 
 impl crate::slash_commands::SlashContributor for PluginSlashContributor<'_> {
     fn slash_commands(&self) -> Vec<crate::slash_commands::SlashCommandDef> {
-        use clankers_tui_types::PRIORITY_PLUGIN;
+        use clanker_tui_types::PRIORITY_PLUGIN;
 
         self.0
             .active_plugin_infos()

@@ -349,7 +349,7 @@ fn test_registry_build_from_builtins() {
 
 #[test]
 fn test_registry_conflict_resolution() {
-    use clankers_tui_types::PRIORITY_PLUGIN;
+    use clanker_tui_types::PRIORITY_PLUGIN;
 
     // Create a mock contributor with a conflicting command
     struct MockContributor;

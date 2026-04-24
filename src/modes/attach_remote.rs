@@ -231,9 +231,9 @@ pub async fn run_remote_attach(
     app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
 
     let slash_registry = build_client_slash_registry();
-    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(&slash_registry)));
+    app.set_completion_source(Box::new(clanker_tui_types::CompletionSnapshot::from_source(&slash_registry)));
     crate::modes::interactive::rebuild_leader_menu(&mut app, None, settings);
-    app.connection_mode = clankers_tui_types::ConnectionMode::Remote {
+    app.connection_mode = clanker_tui_types::ConnectionMode::Remote {
         node_id_short: remote_pk.fmt_short().to_string(),
     };
 
@@ -307,8 +307,8 @@ async fn run_remote_attach_loop(
         drain_daemon_events(app, &mut client, &mut is_replaying_history, max_subagent_panes, &mut parity_tracker);
 
         // Detect disconnect and attempt reconnection over the same QUIC connection
-        if client.is_disconnected() && app.connection_mode != clankers_tui_types::ConnectionMode::Reconnecting {
-            app.connection_mode = clankers_tui_types::ConnectionMode::Reconnecting;
+        if client.is_disconnected() && app.connection_mode != clanker_tui_types::ConnectionMode::Reconnecting {
+            app.connection_mode = clanker_tui_types::ConnectionMode::Reconnecting;
             app.push_system("QUIC stream lost. Reconnecting on same connection...".to_string(), true);
 
             match try_quic_reconnect(&conn, endpoint, remote_pk, session_id).await {
@@ -356,7 +356,7 @@ fn finish_remote_reconnect(
     client.replay_history();
     *is_replaying_history = true;
     *parity_tracker = AttachParityTracker::default();
-    app.connection_mode = clankers_tui_types::ConnectionMode::Attached;
+    app.connection_mode = clanker_tui_types::ConnectionMode::Attached;
     app.push_system("Reconnected to remote session.".to_string(), false);
 }
 
@@ -553,8 +553,8 @@ mod tests {
     use clankers_controller::client::ClientAdapter;
     use clankers_protocol::DaemonEvent;
     use clankers_tui::app::App;
-    use clankers_tui_types::BlockEntry;
-    use clankers_tui_types::ConnectionMode;
+    use clanker_tui_types::BlockEntry;
+    use clanker_tui_types::ConnectionMode;
 
     use super::AttachParityTracker;
     use super::drain_daemon_events;

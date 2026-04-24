@@ -530,7 +530,7 @@ fn gen_crate_reference(root: &Path, crates: &[CrateInfo]) -> String {
 fn gen_architecture(_root: &Path, crates: &[CrateInfo]) -> String {
     let mut out = String::from(gen_warning());
     let layers: &[(&str, &[&str])] = &[
-        ("User interface", &["clankers-tui", "clankers-tui-types", "clankers-zellij"]),
+        ("User interface", &["clankers-tui", "clankers-zellij"]),
         ("Agent core", &[
             "clankers-agent",
             "clankers-agent-defs",

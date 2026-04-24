@@ -7,8 +7,8 @@
 //!
 //! Toggled via `/plan` slash command or `--plan` CLI flag.
 
-// PlanState re-exported from clankers-tui-types (canonical definition).
-pub use clankers_tui_types::PlanState;
+// PlanState re-exported from clanker-tui-types (canonical definition).
+pub use clanker_tui_types::PlanState;
 
 /// System prompt suffix added when plan mode is active
 pub const PLAN_MODE_PROMPT: &str = r"

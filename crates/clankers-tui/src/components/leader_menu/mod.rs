@@ -27,10 +27,10 @@ pub use types::MenuPlacement;
 // ---------------------------------------------------------------------------
 
 /// Clankers leader menu: wraps `rat_leaderkey::LeaderMenu<Action>`.
-pub struct LeaderMenu(pub(crate) rat_leaderkey::LeaderMenu<clankers_tui_types::Action>);
+pub struct LeaderMenu(pub(crate) rat_leaderkey::LeaderMenu<clanker_tui_types::Action>);
 
 impl std::ops::Deref for LeaderMenu {
-    type Target = rat_leaderkey::LeaderMenu<clankers_tui_types::Action>;
+    type Target = rat_leaderkey::LeaderMenu<clanker_tui_types::Action>;
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -78,9 +78,9 @@ impl LeaderMenu {
 mod tests {
     use std::collections::HashSet;
 
-    use clankers_tui_types::PRIORITY_BUILTIN;
-    use clankers_tui_types::PRIORITY_PLUGIN;
-    use clankers_tui_types::PRIORITY_USER;
+    use clanker_tui_types::PRIORITY_BUILTIN;
+    use clanker_tui_types::PRIORITY_PLUGIN;
+    use clanker_tui_types::PRIORITY_USER;
     use crossterm::event::KeyCode;
     use crossterm::event::KeyEvent;
     use crossterm::event::KeyEventKind;
@@ -149,8 +149,8 @@ mod tests {
             LeaderAction::Action(a) => {
                 assert_eq!(
                     a,
-                    clankers_tui_types::Action::Extended(
-                        clankers_tui_types::ExtendedAction::OpenModelSelector
+                    clanker_tui_types::Action::Extended(
+                        clanker_tui_types::ExtendedAction::OpenModelSelector
                     )
                 );
             }
@@ -210,8 +210,8 @@ mod tests {
             LeaderAction::Action(a) => {
                 assert_eq!(
                     a,
-                    clankers_tui_types::Action::Extended(
-                        clankers_tui_types::ExtendedAction::ToggleShowThinking
+                    clanker_tui_types::Action::Extended(
+                        clanker_tui_types::ExtendedAction::ToggleShowThinking
                     )
                 );
             }

@@ -403,7 +403,7 @@ fn render_detail_view(frame: &mut Frame, panel: &PeersPanel, _theme: &Theme, are
 /// Build a `PeerEntry` list from the peer registry, determining online/offline
 /// based on `last_seen` recency.
 pub fn entries_from_registry(
-    peers: &[clankers_tui_types::PeerInfoView],
+    peers: &[clanker_tui_types::PeerInfoView],
     stale_threshold: chrono::Duration,
 ) -> Vec<PeerEntry> {
     let now = chrono::Utc::now();

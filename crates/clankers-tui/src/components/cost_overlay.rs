@@ -8,9 +8,9 @@
 
 use std::sync::Arc;
 
-use clankers_tui_types::BudgetStatus;
-use clankers_tui_types::CostProvider;
-use clankers_tui_types::CostSummary;
+use clanker_tui_types::BudgetStatus;
+use clanker_tui_types::CostProvider;
+use clanker_tui_types::CostSummary;
 
 use super::prelude::*;
 

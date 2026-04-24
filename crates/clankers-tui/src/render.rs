@@ -286,7 +286,7 @@ fn render_status_bar_area(frame: &mut Frame, app: &mut App) {
     let budget_status = app
         .cost_tracker
         .as_ref()
-        .map_or(clankers_tui_types::BudgetStatus::NoBudget, |ct| ct.budget_status());
+        .map_or(clanker_tui_types::BudgetStatus::NoBudget, |ct| ct.budget_status());
     // Build tool activity summary for the status bar
     let tool_activity = if !app.streaming.active_tools.is_empty() {
         let count = app.streaming.active_tools.len();
@@ -345,11 +345,11 @@ fn render_status_bar_area(frame: &mut Frame, app: &mut App) {
 }
 
 /// Compute the input indicator based on app state and input mode
-fn compute_input_indicator(state: AppState, input_mode: clankers_tui_types::InputMode) -> &'static str {
+fn compute_input_indicator(state: AppState, input_mode: clanker_tui_types::InputMode) -> &'static str {
     match (state, input_mode) {
         (AppState::Streaming, _) => "… ",
-        (_, clankers_tui_types::InputMode::Normal) => "  ",
-        (_, clankers_tui_types::InputMode::Insert) => "> ",
+        (_, clanker_tui_types::InputMode::Normal) => "  ",
+        (_, clanker_tui_types::InputMode::Insert) => "> ",
     }
 }
 

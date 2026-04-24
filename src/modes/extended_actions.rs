@@ -2,8 +2,8 @@
 //!
 //! Extracted from event_handlers.rs to keep each function under 70 lines.
 
-use clankers_tui_types::AppState;
-use clankers_tui_types::BlockEntry;
+use clanker_tui_types::AppState;
+use clanker_tui_types::BlockEntry;
 
 use crate::config::keybindings::ExtendedAction;
 use crate::config::keybindings::InputMode;
@@ -233,7 +233,7 @@ fn handle_directional_focus(app: &mut App, towards: ratatui_hypertile::Towards) 
 }
 
 fn handle_panel_scroll(app: &mut App, up: bool) {
-    use clankers_tui_types::PanelId;
+    use clanker_tui_types::PanelId;
 
     use crate::tui::components::subagent_panel::SubagentPanel;
     if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
@@ -246,7 +246,7 @@ fn handle_panel_scroll(app: &mut App, up: bool) {
 }
 
 fn handle_panel_clear_done(app: &mut App) {
-    use clankers_tui_types::PanelId;
+    use clanker_tui_types::PanelId;
 
     use crate::tui::components::subagent_panel::SubagentPanel;
     if let Some(subagent_panel) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
@@ -261,7 +261,7 @@ fn handle_panel_kill(
     app: &mut App,
     panel_tx: &tokio::sync::mpsc::UnboundedSender<crate::tui::components::subagent_event::SubagentEvent>,
 ) {
-    use clankers_tui_types::PanelId;
+    use clanker_tui_types::PanelId;
 
     use crate::tui::components::subagent_panel::SubagentPanel;
     if let Some(sp) = app.panels.downcast_ref::<SubagentPanel>(PanelId::Subagents)
@@ -272,7 +272,7 @@ fn handle_panel_kill(
 }
 
 fn handle_panel_remove(app: &mut App) {
-    use clankers_tui_types::PanelId;
+    use clanker_tui_types::PanelId;
 
     use crate::tui::components::subagent_panel::SubagentPanel;
     if let Some(sp) = app.panels.downcast_mut::<SubagentPanel>(PanelId::Subagents) {
@@ -292,7 +292,7 @@ fn handle_toggle_session_popup(app: &mut App) {
 }
 
 fn handle_toggle_branch_panel(app: &mut App) {
-    use clankers_tui_types::PanelId;
+    use clanker_tui_types::PanelId;
 
     use crate::tui::components::branch_panel::BranchPanel;
 

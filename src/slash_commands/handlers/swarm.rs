@@ -1,6 +1,6 @@
 //! Swarm slash command handlers.
 
-use clankers_tui_types::PanelId;
+use clanker_tui_types::PanelId;
 use tokio_util::sync::CancellationToken;
 
 use super::SlashContext;

@@ -123,38 +123,38 @@ pub fn agent_event_to_daemon_event(event: &AgentEvent) -> Option<DaemonEvent> {
         reason = "sequential setup/dispatch logic — splitting would fragment readability"
     )
 )]
-pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_types::TuiEvent> {
+pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clanker_tui_types::TuiEvent> {
     match event {
-        DaemonEvent::AgentStart => Some(clankers_tui_types::TuiEvent::AgentStart),
-        DaemonEvent::AgentEnd => Some(clankers_tui_types::TuiEvent::AgentEnd),
+        DaemonEvent::AgentStart => Some(clanker_tui_types::TuiEvent::AgentStart),
+        DaemonEvent::AgentEnd => Some(clanker_tui_types::TuiEvent::AgentEnd),
 
-        DaemonEvent::ContentBlockStart { is_thinking } => Some(clankers_tui_types::TuiEvent::ContentBlockStart {
+        DaemonEvent::ContentBlockStart { is_thinking } => Some(clanker_tui_types::TuiEvent::ContentBlockStart {
             is_thinking: *is_thinking,
         }),
-        DaemonEvent::ContentBlockStop => Some(clankers_tui_types::TuiEvent::ContentBlockStop),
+        DaemonEvent::ContentBlockStop => Some(clanker_tui_types::TuiEvent::ContentBlockStop),
 
-        DaemonEvent::TextDelta { text } => Some(clankers_tui_types::TuiEvent::TextDelta(text.clone())),
-        DaemonEvent::ThinkingDelta { text } => Some(clankers_tui_types::TuiEvent::ThinkingDelta(text.clone())),
+        DaemonEvent::TextDelta { text } => Some(clanker_tui_types::TuiEvent::TextDelta(text.clone())),
+        DaemonEvent::ThinkingDelta { text } => Some(clanker_tui_types::TuiEvent::ThinkingDelta(text.clone())),
 
         DaemonEvent::ToolCall {
             tool_name,
             call_id,
             input,
-        } => Some(clankers_tui_types::TuiEvent::ToolCall {
+        } => Some(clanker_tui_types::TuiEvent::ToolCall {
             tool_name: tool_name.clone(),
             call_id: call_id.clone(),
             input: input.clone(),
         }),
-        DaemonEvent::ToolStart { call_id, tool_name } => Some(clankers_tui_types::TuiEvent::ToolStart {
+        DaemonEvent::ToolStart { call_id, tool_name } => Some(clanker_tui_types::TuiEvent::ToolStart {
             call_id: call_id.clone(),
             tool_name: tool_name.clone(),
         }),
-        DaemonEvent::ToolOutput { call_id, text, images } => Some(clankers_tui_types::TuiEvent::ToolOutput {
+        DaemonEvent::ToolOutput { call_id, text, images } => Some(clanker_tui_types::TuiEvent::ToolOutput {
             call_id: call_id.clone(),
             text: text.clone(),
             images: images
                 .iter()
-                .map(|i| clankers_tui_types::DisplayImage {
+                .map(|i| clanker_tui_types::DisplayImage {
                     data: i.data.clone(),
                     media_type: i.media_type.clone(),
                 })
@@ -164,10 +164,10 @@ pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_typ
             // Best-effort conversion — structured progress may not round-trip perfectly
             // ToolProgress contains non-serializable Instant, so we reconstruct
             let _ = progress;
-            Some(clankers_tui_types::TuiEvent::ToolProgressUpdate {
+            Some(clanker_tui_types::TuiEvent::ToolProgressUpdate {
                 call_id: call_id.clone(),
-                progress: clankers_tui_types::ToolProgress {
-                    kind: clankers_tui_types::ProgressKind::Phase {
+                progress: clanker_tui_types::ToolProgress {
+                    kind: clanker_tui_types::ProgressKind::Phase {
                         name: "progress".to_string(),
                         step: 0,
                         total_steps: None,
@@ -181,7 +181,7 @@ pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_typ
             call_id,
             content,
             content_type,
-        } => Some(clankers_tui_types::TuiEvent::ToolChunk {
+        } => Some(clanker_tui_types::TuiEvent::ToolChunk {
             call_id: call_id.clone(),
             content: content.clone(),
             content_type: content_type.clone(),
@@ -191,12 +191,12 @@ pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_typ
             text,
             images,
             is_error,
-        } => Some(clankers_tui_types::TuiEvent::ToolDone {
+        } => Some(clanker_tui_types::TuiEvent::ToolDone {
             call_id: call_id.clone(),
             text: text.clone(),
             images: images
                 .iter()
-                .map(|i| clankers_tui_types::DisplayImage {
+                .map(|i| clanker_tui_types::DisplayImage {
                     data: i.data.clone(),
                     media_type: i.media_type.clone(),
                 })
@@ -208,7 +208,7 @@ pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_typ
             text,
             agent_msg_count,
             timestamp,
-        } => Some(clankers_tui_types::TuiEvent::UserInput {
+        } => Some(clanker_tui_types::TuiEvent::UserInput {
             text: text.clone(),
             agent_msg_count: *agent_msg_count,
             timestamp: parse_user_input_timestamp(timestamp),
@@ -216,7 +216,7 @@ pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_typ
         DaemonEvent::SessionCompaction {
             compacted_count,
             tokens_saved,
-        } => Some(clankers_tui_types::TuiEvent::SessionCompaction {
+        } => Some(clanker_tui_types::TuiEvent::SessionCompaction {
             compacted_count: *compacted_count,
             tokens_saved: *tokens_saved,
         }),
@@ -225,7 +225,7 @@ pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_typ
             output_tokens,
             cache_read,
             ..
-        } => Some(clankers_tui_types::TuiEvent::UsageUpdate {
+        } => Some(clanker_tui_types::TuiEvent::UsageUpdate {
             total_tokens: usize::try_from(*input_tokens + *output_tokens).unwrap_or(usize::MAX),
             input_tokens: usize::try_from(*input_tokens).unwrap_or(usize::MAX),
             output_tokens: usize::try_from(*output_tokens).unwrap_or(usize::MAX),
@@ -247,10 +247,10 @@ pub fn daemon_event_to_tui_event(event: &DaemonEvent) -> Option<clankers_tui_typ
 /// TUI's block-based conversation view. Replay keeps the active block open
 /// across assistant and tool-result messages until the next user prompt or the
 /// explicit history-end marker finalises it.
-pub fn agent_message_to_tui_events(msg: &clankers_message::AgentMessage) -> Vec<clankers_tui_types::TuiEvent> {
+pub fn agent_message_to_tui_events(msg: &clankers_message::AgentMessage) -> Vec<clanker_tui_types::TuiEvent> {
     use clankers_message::AgentMessage;
     use clankers_message::Content;
-    use clankers_tui_types::TuiEvent;
+    use clanker_tui_types::TuiEvent;
 
     match msg {
         AgentMessage::User(m) => {
@@ -359,14 +359,14 @@ fn extract_user_text(content: &[clankers_message::Content]) -> String {
 }
 
 /// Extract images from content blocks as `DisplayImage`.
-fn extract_display_images(content: &[clankers_message::Content]) -> Vec<clankers_tui_types::DisplayImage> {
+fn extract_display_images(content: &[clankers_message::Content]) -> Vec<clanker_tui_types::DisplayImage> {
     let mut images = Vec::new();
     for block in content {
         if let clankers_message::Content::Image {
             source: clankers_message::ImageSource::Base64 { media_type, data },
         } = block
         {
-            images.push(clankers_tui_types::DisplayImage {
+            images.push(clanker_tui_types::DisplayImage {
                 data: data.clone(),
                 media_type: media_type.clone(),
             });
@@ -496,7 +496,7 @@ mod tests {
     fn test_daemon_to_tui_agent_start() {
         let event = DaemonEvent::AgentStart;
         let result = daemon_event_to_tui_event(&event);
-        assert!(matches!(result, Some(clankers_tui_types::TuiEvent::AgentStart)));
+        assert!(matches!(result, Some(clanker_tui_types::TuiEvent::AgentStart)));
     }
 
     #[test]
@@ -505,7 +505,7 @@ mod tests {
             text: "hello".to_string(),
         };
         let result = daemon_event_to_tui_event(&event);
-        assert!(matches!(result, Some(clankers_tui_types::TuiEvent::TextDelta(t)) if t == "hello"));
+        assert!(matches!(result, Some(clanker_tui_types::TuiEvent::TextDelta(t)) if t == "hello"));
     }
 
     #[test]
@@ -519,7 +519,7 @@ mod tests {
         });
         assert!(matches!(
             result,
-            Some(clankers_tui_types::TuiEvent::UserInput {
+            Some(clanker_tui_types::TuiEvent::UserInput {
                 text,
                 agent_msg_count: AGENT_MESSAGE_COUNT,
                 timestamp: parsed_timestamp,
@@ -612,7 +612,7 @@ mod tests {
         assert_eq!(events.len(), 1);
         assert!(matches!(
             &events[0],
-            clankers_tui_types::TuiEvent::UserInput {
+            clanker_tui_types::TuiEvent::UserInput {
                 text,
                 timestamp,
                 ..
@@ -625,10 +625,10 @@ mod tests {
         let events = agent_message_to_tui_events(&assistant_msg("world"));
         // AgentStart, ContentBlockStart, TextDelta, ContentBlockStop
         assert_eq!(events.len(), 4);
-        assert!(matches!(&events[0], clankers_tui_types::TuiEvent::AgentStart));
-        assert!(matches!(&events[1], clankers_tui_types::TuiEvent::ContentBlockStart { is_thinking: false }));
-        assert!(matches!(&events[2], clankers_tui_types::TuiEvent::TextDelta(t) if t == "world"));
-        assert!(matches!(&events[3], clankers_tui_types::TuiEvent::ContentBlockStop));
+        assert!(matches!(&events[0], clanker_tui_types::TuiEvent::AgentStart));
+        assert!(matches!(&events[1], clanker_tui_types::TuiEvent::ContentBlockStart { is_thinking: false }));
+        assert!(matches!(&events[2], clanker_tui_types::TuiEvent::TextDelta(t) if t == "world"));
+        assert!(matches!(&events[3], clanker_tui_types::TuiEvent::ContentBlockStop));
     }
 
     #[test]
@@ -658,11 +658,11 @@ mod tests {
         let events = agent_message_to_tui_events(&msg);
         // AgentStart, think block (3), text block (3), tool call + start (2)
         assert_eq!(events.len(), 9);
-        assert!(matches!(&events[0], clankers_tui_types::TuiEvent::AgentStart));
-        assert!(matches!(&events[1], clankers_tui_types::TuiEvent::ContentBlockStart { is_thinking: true }));
-        assert!(matches!(&events[4], clankers_tui_types::TuiEvent::ContentBlockStart { is_thinking: false }));
-        assert!(matches!(&events[7], clankers_tui_types::TuiEvent::ToolCall { tool_name, .. } if tool_name == "bash"));
-        assert!(matches!(&events[8], clankers_tui_types::TuiEvent::ToolStart { call_id, .. } if call_id == "call_1"));
+        assert!(matches!(&events[0], clanker_tui_types::TuiEvent::AgentStart));
+        assert!(matches!(&events[1], clanker_tui_types::TuiEvent::ContentBlockStart { is_thinking: true }));
+        assert!(matches!(&events[4], clanker_tui_types::TuiEvent::ContentBlockStart { is_thinking: false }));
+        assert!(matches!(&events[7], clanker_tui_types::TuiEvent::ToolCall { tool_name, .. } if tool_name == "bash"));
+        assert!(matches!(&events[8], clanker_tui_types::TuiEvent::ToolStart { call_id, .. } if call_id == "call_1"));
     }
 
     #[test]
@@ -681,7 +681,7 @@ mod tests {
 
         let events = agent_message_to_tui_events(&msg);
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0], clankers_tui_types::TuiEvent::ToolDone { call_id, text, is_error, .. }
+        assert!(matches!(&events[0], clanker_tui_types::TuiEvent::ToolDone { call_id, text, is_error, .. }
             if call_id == "call_1" && text == "output" && !is_error));
     }
 
@@ -698,7 +698,7 @@ mod tests {
 
         let events = agent_message_to_tui_events(&msg);
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0], clankers_tui_types::TuiEvent::ToolDone { text, is_error, .. }
+        assert!(matches!(&events[0], clanker_tui_types::TuiEvent::ToolDone { text, is_error, .. }
             if text.contains("file.txt") && !is_error));
     }
 
@@ -717,7 +717,7 @@ mod tests {
 
         let events = agent_message_to_tui_events(&msg);
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0], clankers_tui_types::TuiEvent::SessionCompaction {
+        assert!(matches!(&events[0], clanker_tui_types::TuiEvent::SessionCompaction {
             compacted_count: 2,
             tokens_saved: 1000,
         }));
@@ -750,6 +750,6 @@ mod tests {
         let restored: clankers_message::AgentMessage = serde_json::from_value(value).expect("deserialize");
         let events = agent_message_to_tui_events(&restored);
         assert_eq!(events.len(), 4);
-        assert!(matches!(&events[2], clankers_tui_types::TuiEvent::TextDelta(t) if t == "round trip test"));
+        assert!(matches!(&events[2], clanker_tui_types::TuiEvent::TextDelta(t) if t == "round trip test"));
     }
 }

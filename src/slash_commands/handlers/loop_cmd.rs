@@ -157,7 +157,7 @@ fn start_loop(args: &str, ctx: &mut SlashContext<'_>) {
 
     // Set loop display state on the app. The EventLoopRunner reads this
     // to drive iterations. This keeps SlashContext simple — no new channels.
-    ctx.app.loop_status = Some(clankers_tui_types::LoopDisplayState {
+    ctx.app.loop_status = Some(clanker_tui_types::LoopDisplayState {
         iteration: 0,
         max_iterations,
         name: truncate_name(&prompt, 30),

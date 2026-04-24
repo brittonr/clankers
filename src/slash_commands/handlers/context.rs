@@ -1,6 +1,6 @@
 //! Context and navigation slash command handlers.
 
-use clankers_tui_types::BlockEntry;
+use clanker_tui_types::BlockEntry;
 
 use super::SlashContext;
 use super::SlashHandler;

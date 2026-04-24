@@ -2,7 +2,7 @@
 
 use std::time::Instant;
 
-use clankers_tui_types::TuiEvent;
+use clanker_tui_types::TuiEvent;
 
 use super::ActiveToolExecution;
 use super::App;

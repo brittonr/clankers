@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 
-use clankers_tui_types::SubagentEvent;
+use clanker_tui_types::SubagentEvent;
 use parking_lot::Mutex;
 use tokio_util::sync::CancellationToken;
 use tracing::info;

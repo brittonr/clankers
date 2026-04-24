@@ -145,7 +145,7 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
     app.highlighter = Box::new(crate::util::syntax::SyntectHighlighter);
 
     let slash_registry = build_client_slash_registry();
-    app.set_completion_source(Box::new(clankers_tui_types::CompletionSnapshot::from_source(&slash_registry)));
+    app.set_completion_source(Box::new(clanker_tui_types::CompletionSnapshot::from_source(&slash_registry)));
 
     crate::modes::interactive::rebuild_leader_menu(&mut app, None, &opts.settings);
 
@@ -185,7 +185,7 @@ pub async fn run_auto_daemon_attach(opts: AutoDaemonOptions) -> Result<()> {
         max_subagent_panes,
         &socket_path,
         &session_id,
-        clankers_tui_types::ConnectionMode::Embedded,
+        clanker_tui_types::ConnectionMode::Embedded,
         recovery,
     )
     .await;

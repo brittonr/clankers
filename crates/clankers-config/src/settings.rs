@@ -3,7 +3,7 @@
 use std::path::Path;
 
 use clankers_agent_defs::definition::AgentScope;
-use clankers_tui_types::MenuPlacement;
+use clanker_tui_types::MenuPlacement;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json;
@@ -210,11 +210,11 @@ pub struct LeaderMenuHideConfig {
     pub submenu: Option<String>,
 }
 
-impl clankers_tui_types::MenuContributor for LeaderMenuConfig {
-    fn menu_items(&self) -> Vec<clankers_tui_types::MenuContribution> {
-        use clankers_tui_types::LeaderAction;
-        use clankers_tui_types::MenuContribution;
-        use clankers_tui_types::PRIORITY_USER;
+impl clanker_tui_types::MenuContributor for LeaderMenuConfig {
+    fn menu_items(&self) -> Vec<clanker_tui_types::MenuContribution> {
+        use clanker_tui_types::LeaderAction;
+        use clanker_tui_types::MenuContribution;
+        use clanker_tui_types::PRIORITY_USER;
 
         self.items
             .iter()

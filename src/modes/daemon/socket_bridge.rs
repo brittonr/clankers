@@ -26,7 +26,7 @@ use clankers_protocol::SessionCommand;
 use clankers_protocol::control::ControlCommand;
 use clankers_protocol::control::ControlResponse;
 use clankers_protocol::frame::{self};
-use clankers_tui_types::SubagentEvent;
+use clanker_tui_types::SubagentEvent;
 use tokio::net::UnixListener;
 use tokio::sync::Mutex;
 use tokio::sync::broadcast;

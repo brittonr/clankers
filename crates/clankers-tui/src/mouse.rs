@@ -3,10 +3,10 @@
 //! Handles mouse clicks (left/middle/right), dragging for text selection,
 //! scroll wheel, and block collapse toggles.
 
-use clankers_tui_types::AppState;
-use clankers_tui_types::BlockEntry;
-use clankers_tui_types::HitRegion;
-use clankers_tui_types::InputMode;
+use clanker_tui_types::AppState;
+use clanker_tui_types::BlockEntry;
+use clanker_tui_types::HitRegion;
+use clanker_tui_types::InputMode;
 
 use crate::app::App;
 use crate::event::Button;

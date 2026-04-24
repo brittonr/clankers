@@ -68,8 +68,8 @@ fn restore_assistant_message(app: &mut App, asst_msg: &crate::provider::message:
 
 /// Add a text response to the active block.
 fn add_text_response(app: &mut App, text: &str) {
-    use clankers_tui_types::DisplayMessage;
-    use clankers_tui_types::MessageRole;
+    use clanker_tui_types::DisplayMessage;
+    use clanker_tui_types::MessageRole;
 
     if let Some(ref mut block) = app.conversation.active_block {
         block.responses.push(DisplayMessage {
@@ -85,8 +85,8 @@ fn add_text_response(app: &mut App, text: &str) {
 
 /// Add a tool call response to the active block.
 fn add_tool_call_response(app: &mut App, name: &str, input: &serde_json::Value) {
-    use clankers_tui_types::DisplayMessage;
-    use clankers_tui_types::MessageRole;
+    use clanker_tui_types::DisplayMessage;
+    use clanker_tui_types::MessageRole;
 
     if let Some(ref mut block) = app.conversation.active_block {
         block.responses.push(DisplayMessage {
@@ -102,8 +102,8 @@ fn add_tool_call_response(app: &mut App, name: &str, input: &serde_json::Value) 
 
 /// Add a thinking response to the active block.
 fn add_thinking_response(app: &mut App, thinking: &str) {
-    use clankers_tui_types::DisplayMessage;
-    use clankers_tui_types::MessageRole;
+    use clanker_tui_types::DisplayMessage;
+    use clanker_tui_types::MessageRole;
 
     if let Some(ref mut block) = app.conversation.active_block {
         block.responses.push(DisplayMessage {
@@ -119,9 +119,9 @@ fn add_thinking_response(app: &mut App, thinking: &str) {
 
 /// Restore a tool result by extracting text and images.
 fn restore_tool_result(app: &mut App, tool_result: &crate::provider::message::ToolResultMessage) {
-    use clankers_tui_types::DisplayImage;
-    use clankers_tui_types::DisplayMessage;
-    use clankers_tui_types::MessageRole;
+    use clanker_tui_types::DisplayImage;
+    use clanker_tui_types::DisplayMessage;
+    use clanker_tui_types::MessageRole;
 
     use crate::provider::message::Content;
 
@@ -232,7 +232,7 @@ mod tests {
         restore_display_blocks(&mut app, &messages);
 
         let restored_block = match app.conversation.blocks.last() {
-            Some(clankers_tui_types::BlockEntry::Conversation(block)) => block,
+            Some(clanker_tui_types::BlockEntry::Conversation(block)) => block,
             other => panic!("expected restored conversation block, got {other:?}"),
         };
 
@@ -252,11 +252,11 @@ mod tests {
         restore_display_blocks(&mut second_app, &messages);
 
         let first_block = match first_app.conversation.blocks.last() {
-            Some(clankers_tui_types::BlockEntry::Conversation(block)) => block,
+            Some(clanker_tui_types::BlockEntry::Conversation(block)) => block,
             other => panic!("expected first restored conversation block, got {other:?}"),
         };
         let second_block = match second_app.conversation.blocks.last() {
-            Some(clankers_tui_types::BlockEntry::Conversation(block)) => block,
+            Some(clanker_tui_types::BlockEntry::Conversation(block)) => block,
             other => panic!("expected second restored conversation block, got {other:?}"),
         };
 

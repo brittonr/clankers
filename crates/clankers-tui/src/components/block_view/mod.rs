@@ -84,7 +84,7 @@ pub fn render_blocks(
     progress: &ProgressRenderer,
     streaming_outputs: &mut StreamingOutputManager,
     tick: u64,
-    highlighter: &dyn clankers_tui_types::SyntaxHighlighter,
+    highlighter: &dyn clanker_tui_types::SyntaxHighlighter,
 ) -> Vec<String> {
     // Inner width of the Paragraph (inside the outer border)
     let inner_width = area.width.saturating_sub(2) as usize;
@@ -358,7 +358,7 @@ mod tests {
             &progress,
             &mut streaming_outputs,
             0,
-            &clankers_tui_types::PlainHighlighter,
+            &clanker_tui_types::PlainHighlighter,
         );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
@@ -404,7 +404,7 @@ mod tests {
             &progress,
             &mut streaming_outputs,
             0,
-            &clankers_tui_types::PlainHighlighter,
+            &clanker_tui_types::PlainHighlighter,
         );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
@@ -448,7 +448,7 @@ mod tests {
             &progress,
             &mut streaming_outputs,
             0,
-            &clankers_tui_types::PlainHighlighter,
+            &clanker_tui_types::PlainHighlighter,
         );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
@@ -461,7 +461,7 @@ mod tests {
 
     #[test]
     fn streaming_with_structured_progress_shows_bar() {
-        use clankers_tui_types::ToolProgress;
+        use clanker_tui_types::ToolProgress;
 
         let msg = DisplayMessage {
             role: MessageRole::ToolResult,
@@ -498,7 +498,7 @@ mod tests {
             &progress,
             &mut streaming_outputs,
             0,
-            &clankers_tui_types::PlainHighlighter,
+            &clanker_tui_types::PlainHighlighter,
         );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();
@@ -512,7 +512,7 @@ mod tests {
 
     #[test]
     fn streaming_with_progress_bar_and_total() {
-        use clankers_tui_types::ToolProgress;
+        use clanker_tui_types::ToolProgress;
 
         let msg = DisplayMessage {
             role: MessageRole::ToolResult,
@@ -548,7 +548,7 @@ mod tests {
             &progress,
             &mut streaming_outputs,
             0,
-            &clankers_tui_types::PlainHighlighter,
+            &clanker_tui_types::PlainHighlighter,
         );
 
         let plain: Vec<String> = lines.iter().map(|l| l.spans.iter().map(|s| s.content.as_ref()).collect()).collect();

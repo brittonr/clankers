@@ -1,8 +1,8 @@
 //! Render plugin Widget trees via ratatui
 
-use clankers_tui_types::PluginNotification;
-use clankers_tui_types::PluginUiState;
-use clankers_tui_types::Widget;
+use clanker_tui_types::PluginNotification;
+use clanker_tui_types::PluginUiState;
+use clanker_tui_types::Widget;
 use ratatui::Frame;
 use ratatui::layout::Constraint;
 use ratatui::layout::Direction;
@@ -45,7 +45,7 @@ pub fn render_widget(frame: &mut Frame, widget: &Widget, area: Rect) {
             if children.is_empty() {
                 return;
             }
-            let is_vertical = matches!(direction, clankers_tui_types::Direction::Vertical);
+            let is_vertical = matches!(direction, clanker_tui_types::Direction::Vertical);
             let constraints: Vec<Constraint> =
                 children.iter().map(|_| Constraint::Ratio(1, children.len() as u32)).collect();
             let layout = Layout::default()
@@ -211,7 +211,7 @@ pub fn plugin_status_spans(plugin_ui: &PluginUiState) -> Vec<Span<'static>> {
         return Vec::new();
     }
 
-    let mut sorted: Vec<(&String, &clankers_tui_types::StatusSegment)> = plugin_ui.status_segments.iter().collect();
+    let mut sorted: Vec<(&String, &clanker_tui_types::StatusSegment)> = plugin_ui.status_segments.iter().collect();
     sorted.sort_by_key(|(name, _)| *name);
 
     let mut spans = Vec::new();

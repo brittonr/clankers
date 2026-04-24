@@ -42,7 +42,7 @@ pub(crate) fn build_agent_with_tools(
 
     // Wire process monitor into the TUI panel
     *process_panel(app) = crate::tui::components::process_panel::ProcessPanel::new()
-        .with_monitor(process_monitor.clone() as Arc<dyn clankers_tui_types::ProcessDataSource>);
+        .with_monitor(process_monitor.clone() as Arc<dyn clanker_tui_types::ProcessDataSource>);
 
     let tool_env = crate::modes::common::ToolEnv {
         settings: Some(settings.clone()),
@@ -104,7 +104,7 @@ pub(crate) fn build_agent_with_tools(
 
     // Extract cost tracker reference for the app UI
     if settings.cost_tracking.is_some() {
-        app.cost_tracker = agent.cost_tracker().map(|ct| ct.clone() as Arc<dyn clankers_tui_types::CostProvider>);
+        app.cost_tracker = agent.cost_tracker().map(|ct| ct.clone() as Arc<dyn clanker_tui_types::CostProvider>);
     }
 
     let event_rx = agent.subscribe();

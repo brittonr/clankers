@@ -9,8 +9,8 @@ pub mod handlers;
 use std::cell::RefCell;
 use std::collections::HashMap;
 
-use clankers_tui_types::Conflict;
-use clankers_tui_types::PRIORITY_BUILTIN;
+use clanker_tui_types::Conflict;
+use clanker_tui_types::PRIORITY_BUILTIN;
 
 // ---------------------------------------------------------------------------
 // Slash command dispatch is handled by `SlashRegistry::dispatch()` below.
@@ -77,10 +77,10 @@ pub fn builtin_commands() -> Vec<SlashCommand> {
 }
 
 /// Get builtin command info.
-pub fn builtin_command_infos() -> Vec<clankers_tui_types::SlashCommandInfo> {
+pub fn builtin_command_infos() -> Vec<clanker_tui_types::SlashCommandInfo> {
     builtin_commands()
         .iter()
-        .map(|cmd| clankers_tui_types::SlashCommandInfo {
+        .map(|cmd| clanker_tui_types::SlashCommandInfo {
             name: cmd.name.to_string(),
             description: cmd.description.to_string(),
         })
@@ -301,11 +301,11 @@ pub use completion::completions;
 pub use completion::completions_from_registry;
 pub use completion::help_text;
 
-impl clankers_tui_types::CompletionSource for SlashRegistry {
-    fn completions(&self, input: &str) -> Vec<clankers_tui_types::CompletionItem> {
+impl clanker_tui_types::CompletionSource for SlashRegistry {
+    fn completions(&self, input: &str) -> Vec<clanker_tui_types::CompletionItem> {
         completions_from_registry(self, input)
             .into_iter()
-            .map(|c| clankers_tui_types::CompletionItem {
+            .map(|c| clanker_tui_types::CompletionItem {
                 display: c.display,
                 description: c.description.to_string(),
                 insert_text: c.insert_text,
@@ -314,10 +314,10 @@ impl clankers_tui_types::CompletionSource for SlashRegistry {
             .collect()
     }
 
-    fn slash_commands(&self) -> Vec<clankers_tui_types::SlashCommandInfo> {
+    fn slash_commands(&self) -> Vec<clanker_tui_types::SlashCommandInfo> {
         self.all_commands()
             .into_iter()
-            .map(|def| clankers_tui_types::SlashCommandInfo {
+            .map(|def| clanker_tui_types::SlashCommandInfo {
                 name: def.name.clone(),
                 description: def.description.clone(),
             })

@@ -518,7 +518,7 @@ fn embedded_loop_sync_from_tui_starts() {
     assert!(!ctrl.has_active_loop());
 
     // Simulate TUI creating a loop state
-    let ls = clankers_tui_types::LoopDisplayState {
+    let ls = clanker_tui_types::LoopDisplayState {
         name: "tui-loop".to_string(),
         prompt: Some("do stuff".to_string()),
         max_iterations: 5,

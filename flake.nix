@@ -175,7 +175,6 @@
             clankers-protocol
             clankers-router
             clankers-tui
-            clankers-tui-types
             clankers-zellij
             ;
 
