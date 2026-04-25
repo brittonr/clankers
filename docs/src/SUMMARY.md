@@ -21,6 +21,7 @@
 # Tutorials
 
 - [Branching Conversations](./tutorials/branching.md)
+- [Embedded Agent SDK](./tutorials/embedded-agent-sdk.md)
 
 # Auto-Generated
 
