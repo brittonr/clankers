@@ -4,7 +4,7 @@ Artifact-Type: validation-log
 Covers: embeddable-agent-engine.engine-state-active-data, embeddable-agent-engine.composition-tests, embeddable-agent-engine.core-engine-boundary-rails, embeddable-agent-engine.cross-reducer-source-rail, embeddable-agent-engine.agent-core-type-rail, embeddable-agent-engine.engine-excludes-core-dependency, no.std.functional.core.pre.engine.cancellation
 Creator: pi
 Created: 2026-04-25T11:47:00Z
-Status: IN_PROGRESS
+Status: COMPLETE
 
 ## Validation Log
 
@@ -480,6 +480,59 @@ Result: PASS
 Output excerpt:
 
 ```text
+ok: clankers-engine normal-edge tree excludes forbidden crates
+ok: clanker-message normal-edge tree excludes forbidden crates
+ok: crates/clankers-engine/src excludes forbidden source tokens
+```
+
+
+### V14 — final acceptance bundle
+
+Command:
+
+```bash
+cargo check -Zbuild-std=core,alloc --target thumbv7em-none-eabi -p clankers-core --no-default-features
+cargo test -p clankers-core pre_engine_cancellation
+cargo test -p clankers-engine --lib
+cargo test -p clankers-engine --lib engine_state_fields_are_active
+cargo test -p clankers-controller core_engine_composition
+cargo test -p clankers-controller pre_engine_cancellation
+cargo test -p clankers-controller accepted_engine_prompt
+cargo test -p clankers-controller thinking_effects_remain_core_owned
+cargo test -p clankers-controller disabled_tool_effects_remain_core_owned
+cargo test -p clankers-agent engine_feedback
+cargo test -p clankers-agent accepted_prompt_submission_reduces_engine
+cargo test -p clankers-controller --test fcis_shell_boundaries
+./scripts/check-llm-contract-boundary.sh
+```
+
+Result: PASS
+
+Output excerpt (pueue task 39):
+
+```text
+Finished `dev` profile [optimized + debuginfo] target(s) in 0.17s
+test reducer::tests::pre_engine_cancellation_follow_up_before_engine_submission_clears_pending_follow_up ... ok
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 38 filtered out; finished in 0.00s
+
+running 29 tests
+test tests::engine_state_fields_are_active ... ok
+test result: ok. 29 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+test core_engine_composition::tests::composition_positive_prompt_sequencing_runs_core_engine_core_in_order ... ok
+test auto_test::tests::pre_engine_cancellation_embedded_prompt_uses_core_completion_not_engine_cancel ... ok
+test core_effects::accepted_engine_prompt_tests::accepted_engine_prompt_normalizes_start_prompt ... ok
+test command::tests::thinking_effects_remain_core_owned ... ok
+test command::tests::disabled_tool_effects_remain_core_owned ... ok
+test turn::tests::engine_feedback_model_tool_retry_and_cancel_reduce_through_engine ... ok
+test turn::tests::accepted_prompt_submission_reduces_engine ... ok
+
+running 28 tests
+test adapter_constructor_and_feedback_inventories_stay_on_allowed_seams ... ok
+test core_and_engine_reducer_policy_inventories_stay_closed ... ok
+test engine_terminal_policy_symbols_stay_inside_engine_source ... ok
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.33s
+
 ok: clankers-engine normal-edge tree excludes forbidden crates
 ok: clanker-message normal-edge tree excludes forbidden crates
 ok: crates/clankers-engine/src excludes forbidden source tokens

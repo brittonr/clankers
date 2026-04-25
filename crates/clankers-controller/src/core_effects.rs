@@ -351,6 +351,7 @@ impl SessionController {
 
 #[cfg(test)]
 mod accepted_engine_prompt_tests {
+    use clankers_core::CoreEffectId;
     use clankers_core::CoreError;
     use clankers_core::CoreInput;
     use clankers_core::CoreState;

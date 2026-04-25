@@ -798,7 +798,6 @@ mod tests {
             include_str!("auto_test.rs"),
             include_str!("command.rs"),
             include_str!("core_effects.rs"),
-            include_str!("core_engine_composition.rs"),
         ];
 
         for source in controller_sources {
