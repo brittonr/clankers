@@ -10,41 +10,47 @@
 
 | Metric | Count |
 |--------|------:|
-| Workspace crates | 23 |
-| Lines of Rust (crates/) | 70,420 |
-| Lines of Rust (src/) | 47,522 |
-| **Total lines of Rust** | **117,942** |
-| Tests (crates/) | 1,627 |
-| Tests (src/) | 729 |
-| **Total tests** | **2,356** |
-| Public API items | 1,385 |
+| Workspace crates | 29 |
+| Lines of Rust (crates/) | 102,059 |
+| Lines of Rust (src/) | 47,773 |
+| **Total lines of Rust** | **149,832** |
+| Tests (crates/) | 2,172 |
+| Tests (src/) | 730 |
+| **Total tests** | **2,902** |
+| Public API items | 2,035 |
 
 ## Crates by size
 
 | Crate | Lines | Tests |
 |-------|------:|------:|
-| `src/ (binary)` | 47,522 | 729 |
-| `clankers-tui` | 16,421 | 278 |
-| `clankers-provider` | 8,107 | 158 |
-| `clankers-controller` | 7,134 | 167 |
-| `clankers-agent` | 6,847 | 126 |
-| `clankers-db` | 4,361 | 154 |
-| `clankers-session` | 3,952 | 102 |
+| `src/ (binary)` | 47,773 | 730 |
+| `clanker-router` | 22,100 | 382 |
+| `clankers-tui` | 16,617 | 279 |
+| `clankers-provider` | 8,200 | 163 |
+| `clankers-controller` | 7,575 | 176 |
+| `clankers-agent` | 7,187 | 132 |
+| `clankers-db` | 6,698 | 206 |
+| `clankers-session` | 4,014 | 102 |
 | `clankers-plugin` | 3,725 | 39 |
-| `clankers-protocol` | 2,247 | 79 |
-| `clankers-util` | 1,924 | 79 |
+| `clankers-protocol` | 2,240 | 79 |
+| `clankers-util` | 1,942 | 79 |
+| `clanker-tui-types` | 1,815 | 14 |
+| `clanker-auth` | 1,813 | 21 |
 | `clankers-config` | 1,702 | 43 |
 | `clankers-core` | 1,565 | 39 |
-| `clankers-matrix` | 1,487 | 8 |
-| `clankers-model-selection` | 1,483 | 49 |
+| `clankers-matrix` | 1,501 | 8 |
+| `clankers-model-selection` | 1,501 | 49 |
+| `clankers-engine` | 1,446 | 28 |
 | `clankers-ucan` | 1,436 | 52 |
-| `clankers-tts` | 1,286 | 49 |
-| `clankers-nix` | 1,285 | 61 |
+| `clankers-tts` | 1,277 | 49 |
+| `clankers-nix` | 1,262 | 61 |
 | `clankers-hooks` | 1,225 | 32 |
-| `clankers-engine` | 978 | 17 |
-| `clankers-zellij` | 893 | 39 |
+| `clanker-message` | 904 | 25 |
+| `clankers-zellij` | 896 | 39 |
 | `clankers-agent-defs` | 873 | 29 |
-| `clankers-skills` | 859 | 17 |
-| `clankers-procmon` | 467 | 5 |
+| `clankers-skills` | 756 | 17 |
+| `clankers-autoresearch` | 628 | 19 |
+| `clanker-plugin-sdk` | 530 | 0 |
+| `clankers-procmon` | 468 | 5 |
 | `clankers-prompts` | 163 | 5 |
 

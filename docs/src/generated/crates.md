@@ -8,11 +8,642 @@
 
 Each crate in the `crates/` workspace directory.
 
+## clanker-auth
+
+UCAN-inspired capability tokens over iroh Ed25519 identity.
+
+**1813** lines of Rust · **21** tests
+
+<details><summary>Public API</summary>
+
+```
+enum Audience
+enum AuthError
+fn authorize
+fn build
+fn bytes_to_sign
+fn clear_parent_cache
+fn clear_revocations
+fn current_time_secs
+fn decode
+fn delegate
+fn delegate_bearer
+fn delegated_from
+fn deserialize
+fn encode
+fn for_audience
+fn for_key
+fn from_base64
+fn from_root
+fn get_all_revoked
+fn hash
+fn is_revoked
+fn load_revoked
+fn new
+fn register_parent_token
+fn revocation_count
+fn revoke
+fn revoke_token
+fn serialize
+fn to_base64
+fn verify
+fn verify_with_chain
+fn with_capabilities
+fn with_capability
+fn with_clock_skew_tolerance
+fn with_lifetime
+fn with_nonce
+fn with_random_nonce
+fn with_trusted_root
+struct CapabilityToken
+struct Credential
+struct TokenBuilder
+struct TokenVerifier
+trait Cap
+trait RevocationStore
+```
+
+</details>
+
+[Source](https://github.com/brittonr/clankers/tree/main/crates/clanker-auth/src/)
+
+---
+
+## clanker-message
+
+Message types for LLM agent conversations
+
+**904** lines of Rust · **25** tests
+
+**Workspace deps:** `clanker-router`
+
+<details><summary>Public API</summary>
+
+```
+enum AgentMessage
+enum Content
+enum ImageSource
+enum StopReason
+enum StreamEvent
+enum ToolResultContent
+fn base64
+fn error
+fn finalize
+fn generate
+fn generate_id
+fn id
+fn is_assistant
+fn is_user
+fn json
+fn new
+fn push
+fn push_text
+fn role
+fn text
+fn timestamp
+fn total_bytes
+fn total_lines
+fn with_config
+fn with_details
+fn with_sequence
+struct AssistantMessage
+struct BashExecutionMessage
+struct BranchSummaryMessage
+struct CompactionSummaryMessage
+struct CustomMessage
+struct MessageId
+struct ResultChunk
+struct ToolResult
+struct ToolResultAccumulator
+struct ToolResultMessage
+struct TruncationConfig
+struct UserMessage
+```
+
+</details>
+
+[Source](https://github.com/brittonr/clankers/tree/main/crates/clanker-message/src/)
+
+---
+
+## clanker-plugin-sdk
+
+SDK for building [clankers](https://github.com/brittonr/clankers) WASM plugins.
+
+**530** lines of Rust · **0** tests
+
+<details><summary>Public API</summary>
+
+```
+fn dispatch_events
+fn dispatch_tools
+fn error
+fn get
+fn handled
+fn is_success
+fn json
+fn new
+fn ok
+fn post
+fn request
+fn text
+fn unhandled
+fn unknown
+struct Event
+struct EventResult
+struct PluginMeta
+struct Response
+struct ToolCall
+struct ToolMeta
+struct ToolResult
+trait Args
+```
+
+</details>
+
+[Source](https://github.com/brittonr/clankers/tree/main/crates/clanker-plugin-sdk/src/)
+
+---
+
+## clanker-router
+
+clanker-router — Model router and auth gateway for LLM providers
+
+**22100** lines of Rust · **382** tests
+
+<details><summary>Public API</summary>
+
+```
+enum AuthRecordSource
+enum AuthScheme
+enum CircuitState
+enum ConsensusStrategy
+enum ContentBlock
+enum ContentDelta
+enum Credential
+enum EntitlementState
+enum Error
+enum ImportTarget
+enum ModelSwitchReason
+enum MultiStrategy
+enum OAuthFlow
+enum RequestOutcome
+enum SelectionStrategy
+enum StoredCredential
+enum StreamEvent
+fn account
+fn active_credential
+fn active_model
+fn active_streams
+fn all_credentials
+fn append
+fn apply
+fn apply_to
+fn auto_start_daemon
+fn backoff_for
+fn bearer
+fn bound_addrs
+fn build_app
+fn build_auth_url
+fn build_entry
+fn build_http_client
+fn build_judge_prompt
+fn build_request_body_for_test
+fn cache
+fn cache_dir
+fn cache_enabled
+fn catalog_for_active_account
+fn catalog_for_active_account_with_manager
+fn chain_for
+fn chains
+fn clear
+fn cluster_by_similarity
+fn cluster_representative
+fn codex_models
+fn codex_status_suffix
+fn codex_status_suffix_with_manager
+fn complete
+fn complete_multi
+fn complete_quorum
+fn complete_race_streaming
+fn compute_key
+fn configured_providers
+fn connect
+fn connect_with_addrs
+fn convert
+fn cooldown_remaining_secs
+fn count
+fn credential
+fn credential_for
+fn current_active_duration
+fn current_model
+fn custom_header
+fn daemon_info_path
+fn daily
+fn db
+fn deepseek
+fn default_model
+fn default_models
+fn deterministic
+fn downloads_display
+fn effective_circuit
+fn ensure_entitlement
+fn entitlement_record
+fn env_var_for_provider
+fn error
+fn errors
+fn estimate_cost
+fn event_type
+fn evict_expired
+fn exchange_code
+fn export_account
+fn failed
+fn fallbacks
+fn fallbacks_mut
+fn fireworks
+fn for_provider
+fn force_refresh
+fn format_bytes
+fn from_builtin_models
+fn from_provider
+fn from_provider_usage
+fn from_stored
+fn get
+fn get_credential
+fn get_or_default
+fn google
+fn groq
+fn health_map
+fn history
+fn hub_models_to_catalog
+fn huggingface
+fn import_account
+fn in_memory
+fn into_inner
+fn into_store
+fn is_alive
+fn is_cooling_down
+fn is_done
+fn is_empty
+fn is_error
+fn is_expired
+fn is_gated
+fn is_healthy
+fn is_layered
+fn is_multi
+fn is_oauth
+fn is_oauth_token
+fn is_ok
+fn is_retryable
+fn is_retryable_error
+fn is_retryable_status
+fn label
+fn layered
+fn legacy_pending_oauth_login_path
+fn len
+fn list
+fn list_accounts
+fn list_accounts_with_sources
+fn list_all
+fn list_cached
+fn list_files
+fn list_for_provider
+fn list_gguf_files
+fn list_models
+fn load
+fn load_effective
+fn load_write_store
+fn local
+fn mistral
+fn model_info
+fn models
+fn models_by_usage
+fn mutate_write_store
+fn new
+fn new_managed
+fn next_event
+fn node_id
+fn open
+fn openai
+fn openai_codex_account_id_from_access_token
+fn openai_codex_account_id_from_credential
+fn openrouter
+fn parse_json
+fn parse_judge_response
+fn parse_retry_after
+fn pending_oauth_base_dir
+fn pending_oauth_login_path
+fn perplexity
+fn ping
+fn pool
+fn process_sse_stream
+fn provider
+fn provider_for
+fn provider_name
+fn provider_names
+fn provider_with_status
+fn pull
+fn put
+fn rate_limits
+fn reactive_handle
+fn read_frame
+fn recent
+fn recent_days
+fn recent_history
+fn record
+fn record_error
+fn record_hit
+fn record_request
+fn record_success
+fn refresh_fn_for_codex
+fn refresh_token
+fn register_aliases
+fn register_models
+fn register_provider
+fn register_with_ollama
+fn registry
+fn registry_mut
+fn reload_credentials
+fn reload_from_disk
+fn remove
+fn remove_account
+fn remove_cached
+fn remove_chain
+fn replicas
+fn report_failure
+fn report_success
+fn request_log
+fn request_with_retry
+fn reset_account_health
+fn reset_entitlement
+fn reset_health
+fn resolve
+fn resolve_credential
+fn resolve_model
+fn resolve_provider
+fn run
+fn save
+fn save_write_store
+fn search
+fn select
+fn select_all_available
+fn serve
+fn set_cache_enabled
+fn set_chain
+fn set_credential
+fn set_default_model
+fn set_fallbacks
+fn set_max_history
+fn set_refresh_notify
+fn single
+fn slot_summaries
+fn source_for
+fn start_cache_eviction
+fn start_proactive_refresh
+fn stats
+fn stats_for
+fn status
+fn status_code
+fn stop_proactive_refresh
+fn store
+fn strategy
+fn success
+fn successful
+fn summary
+fn switch
+fn switch_account
+fn switch_back
+fn switch_model
+fn switch_tracker
+fn switch_tracker_mut
+fn text
+fn text_similarity
+fn to_local_model
+fn to_stored
+fn today
+fn together
+fn token
+fn total
+fn total_requests
+fn total_streams
+fn total_switches
+fn total_tokens
+fn total_usage
+fn truncate
+fn unhealthy
+fn update_credential
+fn usage
+fn winning_response
+fn with_cache_dir
+fn with_cache_hit
+fn with_cache_tokens
+fn with_capability
+fn with_cost
+fn with_db
+fn with_defaults
+fn with_pool
+fn with_pool_managed
+fn with_refresh_fn
+fn with_stop_reason
+fn with_temperature
+fn with_temperature_spread
+fn with_ttl
+fn write_frame
+fn write_path
+fn write_source
+fn xai
+struct AccountInfo
+struct AnthropicProvider
+struct AuthStore
+struct AuthStorePaths
+struct CacheKeyInput
+struct CachedResponse
+struct CompletionRequest
+struct Cost
+struct CredentialLease
+struct CredentialManager
+struct CredentialPool
+struct CredentialRefresher
+struct DaemonInfo
+struct DailyUsage
+struct EffectiveAuthStore
+struct EntitlementRecord
+struct FallbackConfig
+struct GgufFileInfo
+struct HubClient
+struct HubFile
+struct HubModelDetail
+struct HubModelInfo
+struct HubSibling
+struct IrohTunnel
+struct LegacyOAuthCredentials
+struct LogEntry
+struct MessageMetadata
+struct Model
+struct ModelAliases
+struct ModelCatalog
+struct ModelRegistry
+struct ModelSwitchRecord
+struct ModelSwitchTracker
+struct ModelUsage
+struct ModelUsageStats
+struct MultiRequest
+struct MultiResponse
+struct MultiResult
+struct Notification
+struct OAuthCredentials
+struct OAuthTokens
+struct OpenAICodexProvider
+struct OpenAICompatConfig
+struct OpenAICompatProvider
+struct PendingOAuthLogin
+struct ProviderAccountExport
+struct ProviderAuth
+struct ProviderUsage
+struct ProxyConfig
+struct ProxyState
+struct PulledModel
+struct QuorumRequest
+struct QuorumResult
+struct QuorumSlot
+struct QuorumTarget
+struct RateLimitState
+struct RateLimitStore
+struct Request
+struct RequestLog
+struct RequestUsage
+struct Response
+struct ResponseCache
+struct RetryConfig
+struct Router
+struct RouterDb
+struct RpcClient
+struct RpcError
+struct RpcHandler
+struct RpcServer
+struct ScopeGuard
+struct SlotSummary
+struct SourcedAccountInfo
+struct SseEvent
+struct SseLineReader
+struct TaggedStreamEvent
+struct ThinkingConfig
+struct ToolDefinition
+struct Usage
+struct UsageTracker
+trait Provider
+trait SseEventHandler
+```
+
+</details>
+
+[Source](https://github.com/brittonr/clankers/tree/main/crates/clanker-router/src/)
+
+---
+
+## clanker-tui-types
+
+Shared types for terminal-agent TUI boundaries.
+
+**1815** lines of Rust · **14** tests
+
+<details><summary>Public API</summary>
+
+```
+enum Action
+enum AppState
+enum BlockEntry
+enum BudgetStatus
+enum ClipboardResult
+enum ConnectionMode
+enum CoreAction
+enum Direction
+enum ExtendedAction
+enum HitRegion
+enum InputMode
+enum MessageRole
+enum PanelAction
+enum PanelId
+enum PlanState
+enum ProcessDisplayState
+enum ProgressKind
+enum RouterStatus
+enum SelectorAction
+enum SubagentEvent
+enum ThinkingLevel
+enum TuiEvent
+enum Widget
+fn all
+fn as_percentage
+fn budget_tokens
+fn bytes
+fn canonical_block_envelope_v1_bytes
+fn display_string
+fn emoji
+fn finalize_metadata
+fn finalized_block_hash
+fn from_budget
+fn from_name
+fn from_source
+fn from_str_or_budget
+fn gc_notifications
+fn has_content
+fn is_active
+fn is_complete
+fn is_enabled
+fn items
+fn label
+fn lines
+fn name
+fn new
+fn new_synthetic
+fn next
+fn parse_action
+fn percentage
+fn phase
+fn register
+fn summary
+fn toggle_collapse
+fn with_message
+struct ActionRegistry
+struct ActiveToolExecution
+struct CompletionItem
+struct CompletionSnapshot
+struct ConversationBlock
+struct CostSummary
+struct DisplayImage
+struct DisplayMessage
+struct ExtendedActionDef
+struct LoopDisplayState
+struct MergeMessageView
+struct ModelCostBreakdown
+struct PeerCapabilitiesView
+struct PeerInfoView
+struct PendingImage
+struct PluginNotification
+struct PluginUiState
+struct ProcessSnapshot
+struct SlashCommandInfo
+struct StatusSegment
+struct ToolProgress
+struct ToolProgressData
+trait CompletionSource
+trait CostProvider
+trait MenuContributor
+trait ProcessDataSource
+```
+
+</details>
+
+[Source](https://github.com/brittonr/clankers/tree/main/crates/clanker-tui-types/src/)
+
+---
+
 ## clankers-agent
 
 Agent core — turn loop, event bus, tool interface, context management
 
-**6847** lines of Rust · **126** tests
+**7187** lines of Rust · **132** tests
 
 **Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-router`, `clanker-tui-types`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-hooks`, `clankers-model-selection`, `clankers-procmon`, `clankers-prompts`, `clankers-provider`, `clankers-skills`, `clankers-util`
 
@@ -71,6 +702,7 @@ fn prune_tool_results
 fn reset_cancel
 fn reset_window
 fn run_turn_loop
+fn search_index
 fn seed_messages
 fn select_tail_by_budget
 fn session_id
@@ -106,6 +738,7 @@ fn with_model_roles
 fn with_model_switch_slot
 fn with_paths
 fn with_routing_policy
+fn with_search_index
 fn with_thinking
 fn with_tools
 struct Agent
@@ -180,6 +813,46 @@ struct WorkRecord
 
 ---
 
+## clankers-autoresearch
+
+Autonomous experiment loop — init/run/log workflow with JSONL persistence, metric extraction, confidence scoring, and git integration.
+
+**628** lines of Rust · **19** tests
+
+<details><summary>Public API</summary>
+
+```
+enum ResultStatus
+fn append_config
+fn append_result
+fn commit
+fn compute_confidence
+fn create_branch
+fn extract_metrics
+fn init
+fn is_minimize
+fn kept_count
+fn load
+fn new
+fn read_log
+fn record_result
+fn revert_preserving
+fn short_hash
+fn total_runs
+struct ConfidenceResult
+struct ExperimentConfig
+struct ExperimentLog
+struct ExperimentResult
+struct ExperimentSession
+struct RecordOutcome
+```
+
+</details>
+
+[Source](https://github.com/brittonr/clankers/tree/main/crates/clankers-autoresearch/src/)
+
+---
+
 ## clankers-config
 
 Configuration loading and path resolution for clankers.
@@ -241,7 +914,7 @@ struct ThemeDef
 
 Transport-agnostic session controller for agent orchestration.
 
-**7134** lines of Rust · **167** tests
+**7575** lines of Rust · **176** tests
 
 **Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-tui-types`, `clankers-agent`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-hooks`, `clankers-protocol`, `clankers-provider`, `clankers-session`
 
@@ -286,13 +959,16 @@ fn daemon_log_path
 fn daemon_status
 fn disconnect
 fn drain_events
+fn events_dropped
 fn failed
 fn feed_event
 fn finish_embedded_prompt
+fn flush_to_db
 fn from_channels
 fn handle_command
 fn has_active_loop
 fn init_socket_dir
+fn into_summary
 fn is_busy
 fn is_client_side_command
 fn is_disconnected
@@ -302,6 +978,8 @@ fn make_test_controller
 fn matrix_keys
 fn maybe_auto_test
 fn maybe_continue_loop
+fn metrics_mut
+fn metrics_summary
 fn model
 fn new
 fn new_embedded
@@ -309,8 +987,13 @@ fn notify_prompt_done
 fn pending_count
 fn pending_dispatched_follow_up_id
 fn pid_file_path
+fn process
 fn process_event
 fn prompt
+fn record_plugin_error
+fn record_plugin_event
+fn record_plugin_hook_denial
+fn record_plugin_load
 fn recv
 fn refresh_tools
 fn register
@@ -334,7 +1017,9 @@ fn session_socket_path
 fn session_summaries
 fn session_summary
 fn set_auto_test
+fn set_model
 fn set_model_name
+fn set_search_index
 fn set_session_id
 fn set_tool_rebuilder
 fn shutdown
@@ -345,8 +1030,10 @@ fn start_embedded_prompt_with_follow_up
 fn start_loop
 fn status
 fn stop_loop
+fn summary
 fn sync_loop_from_tui
 fn take_outgoing
+fn take_pending
 fn tool_blocked_event
 fn try_recv
 struct AuditTracker
@@ -355,6 +1042,7 @@ struct ConfirmStore
 struct ControllerConfig
 struct DaemonState
 struct LoopConfig
+struct MetricsCollector
 struct MockProvider
 struct PendingWorkId
 struct SessionController
@@ -415,24 +1103,30 @@ struct ToolFilterApplied
 
 Embedded database (redb) for structured persistent storage.
 
-**4361** lines of Rust · **154** tests
+**6698** lines of Rust · **206** tests
 
 <details><summary>Public API</summary>
 
 ```
 enum CacheLookup
+enum FingerprintKind
 enum MemoryScope
 enum MemorySource
+enum MetricEvent
+enum MetricEventKind
 enum ResourceKind
 enum SkillOutcome
 fn add
 fn all_stats
+fn append_recent_event
+fn apply
 fn audit
 fn begin_read
 fn begin_write
 fn blocking
 fn check
 fn clear
+fn clear_all
 fn clear_error
 fn clear_kind
 fn clear_session
@@ -441,17 +1135,35 @@ fn context_for_with_limits
 fn correction_rate
 fn count
 fn count_for_session
+fn current_session_report
 fn daily
 fn db_err
+fn document_count
+fn duration_secs
+fn encode
 fn entries_for
 fn file_cache
 fn find_by_partial_id
+fn fold_into_rollup
 fn for_session
+fn format_current_session
+fn format_historical
+fn format_insights_terminal
 fn format_session
 fn format_summary
+fn generate_insights
 fn get
+fn get_daily_rollup
+fn get_session_summary
+fn has_session
+fn hex
+fn historical_report
 fn history
 fn in_memory
+fn increment
+fn index_message
+fn index_messages_batch
+fn into_summary
 fn is_enabled
 fn list
 fn list_all
@@ -459,15 +1171,25 @@ fn list_by_cwd
 fn list_disabled
 fn list_enabled
 fn list_kind
+fn list_session_summaries
+fn mean_ms
 fn memory
+fn merge
+fn merge_session
+fn metrics
 fn migrate
 fn most_recent
 fn new
 fn next_seq
 fn open
+fn other_count
 fn parse
+fn path
 fn recent
+fn recent_daily_rollups
 fn recent_days
+fn recent_events_for_session
+fn recent_events_report
 fn record
 fn record_error
 fn record_hit
@@ -477,6 +1199,8 @@ fn record_use
 fn registry
 fn remove
 fn save
+fn save_daily_rollup
+fn save_session_summary
 fn schema_version
 fn search
 fn search_in_cwd
@@ -488,9 +1212,12 @@ fn spawn_write
 fn stats_for
 fn store
 fn success_rate
+fn sum_ms
+fn summary
 fn sync_from_disk
 fn today
 fn tool_results
+fn top
 fn total
 fn total_chars
 fn total_tokens
@@ -503,27 +1230,48 @@ fn with_source
 fn with_tags
 struct AuditEntry
 struct AuditLog
+struct BackfillResult
 struct CachedFileRead
+struct CurrentSessionReport
+struct DailyMetricsRollup
 struct DailyUsage
+struct DayActivity
+struct DaySummary
 struct Db
 struct DbError
 struct FileReadCache
+struct Fingerprint
+struct HistoricalReport
 struct HistoryDb
 struct HistoryEntry
+struct InsightsReport
+struct LatencyHistogram
 struct MemoryEntry
 struct MemoryStore
+struct MetricEventRecord
+struct MetricsReducer
+struct MetricsStore
+struct ModelEntry
 struct ModelUsage
+struct Overview
+struct RecentEvent
 struct Registry
 struct RegistryEntry
 struct RequestUsage
+struct SearchHit
+struct SearchIndex
+struct SessionEntry
 struct SessionIndex
 struct SessionIndexEntry
+struct SessionMetricsSummary
 struct SkillStats
 struct SkillUsageEntry
 struct SkillUsageStore
 struct StoredToolResult
 struct SyncReport
+struct ToolEntry
 struct ToolResultStore
+struct TopKCounter
 struct UsageTracker
 ```
 
@@ -537,7 +1285,7 @@ struct UsageTracker
 
 Host-facing reusable engine contracts that sit above `clankers-core` and below controller, agent-runtime, and UI/transport shells.
 
-**978** lines of Rust · **17** tests
+**1446** lines of Rust · **28** tests
 
 **Workspace deps:** `clanker-message`, `clanker-router`, `clankers-core`, `clankers-provider`
 
@@ -560,7 +1308,9 @@ struct EngineModelResponse
 struct EngineOutcome
 struct EnginePromptSubmission
 struct EngineRequestTemplate
+struct EngineRetryPolicy
 struct EngineState
+struct EngineTerminalFailure
 struct EngineToolCall
 ```
 
@@ -619,7 +1369,7 @@ trait HookHandler
 
 ## clankers-matrix
 
-**1487** lines of Rust · **8** tests
+**1501** lines of Rust · **8** tests
 
 <details><summary>Public API</summary>
 
@@ -694,7 +1444,7 @@ struct RpcResponse
 
 Multi-model routing policy
 
-**1483** lines of Rust · **49** tests
+**1501** lines of Rust · **49** tests
 
 **Workspace deps:** `clanker-router`, `clanker-tui-types`
 
@@ -746,7 +1496,7 @@ struct ToolCallSummary
 
 ## clankers-nix
 
-**1285** lines of Rust · **61** tests
+**1262** lines of Rust · **61** tests
 
 <details><summary>Public API</summary>
 
@@ -901,7 +1651,7 @@ struct ToolManifest
 
 Core process monitor for tracking child processes and resource usage.
 
-**467** lines of Rust · **5** tests
+**468** lines of Rust · **5** tests
 
 **Workspace deps:** `clanker-tui-types`
 
@@ -960,7 +1710,7 @@ struct PromptTemplate
 
 Wire protocol types for daemon-client communication.
 
-**2247** lines of Rust · **79** tests
+**2240** lines of Rust · **79** tests
 
 <details><summary>Public API</summary>
 
@@ -1000,7 +1750,7 @@ struct ToolInfo
 
 LLM provider abstraction
 
-**8107** lines of Rust · **158** tests
+**8200** lines of Rust · **163** tests
 
 **Workspace deps:** `clanker-message`, `clanker-router`, `clanker-tui-types`
 
@@ -1095,7 +1845,7 @@ trait Provider
 
 Session persistence and tree management for agent conversations
 
-**3952** lines of Rust · **102** tests
+**4014** lines of Rust · **102** tests
 
 **Workspace deps:** `clanker-message`
 
@@ -1201,7 +1951,7 @@ struct SessionTree
 
 Skills (markdown-based)
 
-**859** lines of Rust · **17** tests
+**756** lines of Rust · **17** tests
 
 <details><summary>Public API</summary>
 
@@ -1236,7 +1986,7 @@ struct Skill
 
 clankers-tts — Multi-provider text-to-speech router
 
-**1286** lines of Rust · **49** tests
+**1277** lines of Rust · **49** tests
 
 <details><summary>Public API</summary>
 
@@ -1276,9 +2026,9 @@ trait TtsProvider
 
 Terminal UI (ratatui + crossterm)
 
-**16421** lines of Rust · **278** tests
+**16617** lines of Rust · **279** tests
 
-**Workspace deps:** `clanker-tui-types`, `clankers-protocol`
+**Workspace deps:** `clanker-tui-types`, `clankers-autoresearch`, `clankers-protocol`
 
 <details><summary>Public API</summary>
 
@@ -1392,6 +2142,7 @@ fn focused_call_id
 fn focused_tiling
 fn format_elapsed
 fn format_tokens
+fn from_jsonl
 fn get
 fn get_by_id
 fn get_focused_block_prompt
@@ -1500,6 +2251,7 @@ fn render_blocks
 fn render_conversation_block
 fn render_cost_overlay
 fn render_editor
+fn render_experiment_dashboard
 fn render_image_to_terminal
 fn render_inline
 fn render_lines
@@ -1614,6 +2366,8 @@ struct DiffLine
 struct DiffView
 struct DrawContext
 struct Editor
+struct ExperimentDashboardRow
+struct ExperimentDashboardState
 struct FileActivityPanel
 struct FileEntry
 struct FreeScroll
@@ -1710,7 +2464,7 @@ struct RedbRevocationStore
 
 Shared utility functions for clankers.
 
-**1924** lines of Rust · **79** tests
+**1942** lines of Rust · **79** tests
 
 **Workspace deps:** `clanker-message`, `clanker-tui-types`
 
@@ -1764,7 +2518,7 @@ struct WalkOptions
 
 Zellij integration and orchestration
 
-**893** lines of Rust · **39** tests
+**896** lines of Rust · **39** tests
 
 <details><summary>Public API</summary>
 

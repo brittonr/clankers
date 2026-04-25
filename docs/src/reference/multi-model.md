@@ -816,4 +816,4 @@ Agent: [auto-routed to "debug" role via keyword matching]
 
 - [`commands.md`](commands.md) — `/model`, `/usage`, `/status` slash commands
 - [`session-format.md`](session-format.md) — How conversations are persisted
-- [clanker-router](https://github.com/brittonr/clanker-router) — Multi-provider routing and caching
+- `crates/clanker-router/` — Multi-provider routing and caching

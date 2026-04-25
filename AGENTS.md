@@ -1,6 +1,6 @@
 ## Clankers Development
 
-Rust terminal coding agent. Workspace with ~30 crates under `crates/`.
+Rust terminal coding agent. Workspace with 30+ crates under `crates/`.
 
 ### Build & Test
 
@@ -27,14 +27,18 @@ cargo clippy -- -D warnings    # lint
 - `crates/clankers-hooks/` — event hooks (pre-commit, session start, etc.)
 - `crates/clankers-matrix/` — Matrix bridge for multi-agent chat
 
+**Workspace-local `clanker-*` crates**:
+- `clanker-auth` — generic capability token infrastructure used by `clankers-ucan`
+- `clanker-message` — reusable conversation message/content/streaming types
+- `clanker-plugin-sdk` — Extism guest SDK used by plugins via path deps
+- `clanker-router` — multi-provider routing, fallback, caching, OAuth, RPC
+- `clanker-tui-types` — shared TUI event/action/block/display types
+
 **Extracted crates** (standalone repos, direct git deps):
 - `graggle` — order-independent merge algorithm for worktrees
 - `clanker-actor` — Erlang-style actor system (ProcessRegistry, signals, supervisors)
 - `clanker-loop` — loop/retry engine with output truncation
-- `clanker-message` — reusable conversation message/content/streaming types
-- `clanker-router` — multi-provider routing, fallback, caching, OAuth, RPC
 - `clanker-scheduler` — cron/interval/one-shot schedule engine
-- `clanker-tui-types` — shared TUI event/action/block/display types
 
 ### Daemon-Client Architecture
 
@@ -85,10 +89,10 @@ clankers daemon stop           # stop daemon
 - Keyed daemon sessions (`SessionKey::Matrix`, chat/1 iroh) recover through `get_or_create_keyed_session()`, not only attach-path `recover_session()`. If a key maps to a suspended placeholder, revive that exact session ID in place or Matrix/chat recovery will silently fork a new session and lose history.
 - Review-sensitive `_session_id` work needs one runtime resume-path test, not just direct `run_turn_loop(...)` calls. `src/modes/event_loop_runner/key_handler.rs` now has a good pattern: resume persisted session via real helper, prompt through `RouterCompatAdapter`, assert captured router request keeps `_session_id`.
 - For cross-crate request-shape drift, `crates/clankers-provider/src/lib.rs` now has good deterministic rails: (1) exact constructor-count inventory over router-bound `CompletionRequest {` sites, requiring `extra_params` in each snippet, and (2) provider-vs-router shared-field serde projection parity tests. Update those counts when adding real constructors.
-- `crates/clankers-provider/src/openai_codex.rs` still owns local Codex auth/status helpers, but the extracted `clanker-router` now has the routed Codex backend. `build_router_with_rpc()` should not skip the daemon just because local `openai-codex` auth exists anymore.
+- `crates/clankers-provider/src/openai_codex.rs` still owns local Codex auth/status helpers, but workspace-local `crates/clanker-router` now has the routed Codex backend. `build_router_with_rpc()` should not skip the daemon just because local `openai-codex` auth exists anymore.
 - When wiring a `clanker-router` backend directly inside `crates/clankers-provider/src/discovery.rs`, use `clanker_router::credential::CredentialManager` plus `clanker_router::auth::AuthStorePaths`; the local `clankers-provider::credential_manager::CredentialManager` is a different type and will not satisfy routed backend constructors.
 - `crates/clankers-provider/src/discovery.rs` tests that call `build_router()` and then `complete()` should usually set `CLANKERS_NO_DAEMON=1`; otherwise they may open the shared `~/.clankers/agent/cache.db` and inherit router cooldown state from earlier failures, producing misleading `skipped in cooldown` errors.
-- The local `crates/clankers-provider::openai_codex::with_test_probe_hook(...)` only affects the legacy/local helper module, not the routed `clanker-router` Codex backend inside the git dependency. To mirror routed backend auth/probe failures in current-repo tests, use deterministic public inputs (for example invalid JWTs) or fake `clanker_router::Provider` implementations behind `RouterCompatAdapter`.
+- The local `crates/clankers-provider::openai_codex::with_test_probe_hook(...)` only affects the legacy/local helper module, not the routed `clanker-router` Codex backend. To mirror routed backend auth/probe failures in current-repo tests, use deterministic public inputs (for example invalid JWTs) or fake `clanker_router::Provider` implementations behind `RouterCompatAdapter`.
 - Codex discovery must use the same auth store that supplied the credential. If `resolve_provider_credential_with_fallback()` found `openai-codex` only in `~/.pi`, loading just the primary auth store will suppress the catalog by probing the wrong account or no account at all.
 - Auth docs/help drift risk: clap auth commands use `--provider ...`, not positional provider args. When auth UX changes, update README/docs/slash help together and keep an acceptance test (for example `tests/openai_codex_help_docs.rs`) so examples stay aligned with `src/cli.rs`.
 - For request-contract tests against extracted backends, do not build the expected JSON by calling the same body-builder under test. Pin one explicit literal fixture with representative history/reasoning/tool replay, then compare initial/retry/refresh requests against that literal and cover overrides in a separate test.
@@ -97,7 +101,7 @@ clankers daemon stop           # stop daemon
 - OpenAI Codex backend tests share one global entitlement cache plus test-only URL/sleep overrides. Serialize those tests on one shared mutex and use RAII cleanup guards that clear overrides on panic, or parallel runs will poison locks / leak fake endpoints into unrelated assertions.
 - Sanitized live Codex smoke against a real ChatGPT account found contract drift versus the frozen fixtures: `gpt-5.1/5.2` ChatGPT-account Codex models returned HTTP 400 unsupported-model, while `gpt-5.3-codex` and `gpt-5.3-codex-spark` accepted requests only when `stream=true`. Do one real-account probe before declaring Codex transport/model contracts stable.
 - `RouterCompatAdapter` cannot forward `AgentMessage` via plain `serde_json::to_value(...)` for routed backends. Extracted providers expect provider-native `{role, content}` message JSON, so reuse the RPC-style content/message conversion or live routed backends can send empty Codex/OpenAI inputs even when clankers had a prompt.
-- Do not satisfy extracted-crate pin tasks with host-local overrides like `../clanker-router` or absolute-path flake inputs. If the needed extracted commit is not on the remote yet, vendor a snapshot inside this repo (and record the source commit) or use a real remote git pin.
+- The first-party `clanker-auth`, `clanker-message`, `clanker-plugin-sdk`, `clanker-router`, and `clanker-tui-types` crates are workspace-local under `crates/`; do not reintroduce sibling path overrides, `vendor/clanker-router`, or flake inputs for those crates.
 - Service auth path overrides: `CLANKERS_AUTH_FILE` points at a single auth.json, while `CLANKERS_AUTH_SEED_FILE` + `CLANKERS_AUTH_RUNTIME_FILE` cause `crates/clankers-config/src/paths.rs` to materialize the merged effective auth store into the runtime file at process start. Existing call sites still read `paths.global_auth`, so daemon modules should point that env pair at the managed router seed/runtime locations.
 - `RouterProvider` now keeps a fail-closed sentinel for explicit `openai-codex/...` prefixes when the backend is absent. Unknown random prefixes still fall back to default; known-but-unavailable Codex prefixes must error instead of silently routing to Anthropic.
 - Mixed plugin kinds: `PluginManifest` now validates `kind: stdio` launch policy at discovery time, but only `PluginKind::Extism` should flow through `load_wasm()` / `init_plugin_manager()`'s eager WASM load loop. If non-Extism kinds hit that path, they degrade into bogus missing-WASM errors instead of staying ready for their own runtime.
@@ -140,9 +144,8 @@ clankers daemon stop           # stop daemon
 - `src/modes/daemon/socket_bridge.rs` — control socket, SessionFactory, drain_and_broadcast
 - `clanker-actor` (external) — ProcessRegistry (spawn, link, shutdown)
 - `crates/clankers-controller/src/lib.rs` — SessionController (handle_command, feed_event)
-- `crate-hashes.json` — unit2nix git source hashes for first-party extracted crates; stale entries fail `nix build .#clankers` with fixed-output hash mismatch before workspace code even builds. For extracted-crate pin bumps, rerun `nix build .#clankers -L` and use the reported `got:` hash to refresh `crate-hashes.json` before chasing Rust errors.
-- Removing a thin extracted-crate wrapper from the workspace needs more than Cargo.toml surgery: update `flake.nix`'s `inherit (ws.test.check)` list and `xtask/src/main.rs` architecture layers in the same change or `nix flake check` / docs generation will keep referencing the deleted crate.
-- Extracted crates that depend on `clanker-router` must not pull a second router source into the workspace. Point the standalone repo at a real remote `clanker-router` rev, then patch `[patch."https://github.com/brittonr/clanker-router"] clanker-router = { path = "vendor/clanker-router" }` in the main workspace so transitive git deps reuse the vendored snapshot and `Usage` / streaming types stay identical.
+- `crate-hashes.json` — unit2nix git source hashes for external git dependencies; stale entries fail `nix build .#clankers` with fixed-output hash mismatch before workspace code even builds. First-party workspace-local `clanker-*` crates should not have entries there.
+- Moving crates into or out of the workspace needs more than Cargo.toml surgery: update `flake.nix`'s `inherit (ws.test.check)` list, `xtask/src/main.rs` architecture layers, plugin Cargo.lock files, and generated docs/build-plan together or Nix/docs will keep referencing stale crate locations.
 
 ### Orchestration Notes
 

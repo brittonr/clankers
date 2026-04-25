@@ -304,3 +304,6 @@
 - PTY tests: 5 flaky tests (`slash_commands`, `slash_menu`) timeout intermittently — pre-existing
 - `DaemonConfig` construction: use `..Default::default()` for new fields
 - `PaneId::new()` is not const — use functions for non-ROOT pane IDs
+| 2026-04-25 | self | `../clankers-fcis-baseline` looked like a crate/source repo in a move-back request, but it is actually a detached git worktree of the same clankers repo at an older FCIS baseline commit | Treat it as historical reference only; move actual crate sources from the named `clanker-*` sibling repos into `crates/`, not the whole baseline worktree. |
+| 2026-04-25 | self | Regenerating `build-plan.json` from a `.pi/worktrees/...` checkout writes that absolute temp path into the plan | Normalize generated build-plan paths back to `/home/brittonr/git/clankers` before finalizing, or regenerate from the canonical checkout. |
+| 2026-04-25 | self | Nix flake eval for newly moved workspace files failed until the new files were staged, and standalone `clanker-router` Nix source still needed `crates/clanker-router/Cargo.lock` | For Nix validation after adding local crates, add new files to the git index first and keep the router crate lockfile if `flake.nix` builds it as its own source. |

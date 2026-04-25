@@ -1,11 +1,7 @@
 {
   "https://github.com/brittonr/clanker-actor#clanker-actor@0.1.0": "0cpzcg3fk07p7d01azpjsvyn8inmv8cpk6y65pl6whrzgxzi1jjl",
-  "https://github.com/brittonr/clanker-auth#clanker-auth@0.1.0": "1d8gaa8xwbn7bn5iwcjjfqwksqbim98hh43rb616y539jwaa2a9k",
   "https://github.com/brittonr/clanker-loop#clanker-loop@0.1.0": "0rs8iv0my7mhaq4d2df818xparmap5aa1b7fpr5xik5jzb5lvns8",
-  "https://github.com/brittonr/clanker-router#clanker-router@0.1.0": "0hcrsd3sbf7jp87kdi6ffrslcrqjawdlzq3ysf591kx5r2xslndd",
   "https://github.com/brittonr/clanker-scheduler#clanker-scheduler@0.1.0": "02iyyy821rl487n2li0ywkayimvgxr70h22f8say7s3lh3n56bf6",
-  "https://github.com/brittonr/clanker-message#clanker-message@0.1.0": "1059irngl4lidxsibbf0rd5gi3jkp54rnlyaw68lqgflxmkkdsrp",
-  "https://github.com/brittonr/clanker-tui-types#clanker-tui-types@0.1.0": "0may6fyagzzj1qwz7l21ha79izgqbq5vssx9skfyysbvba2jgchn",
   "https://github.com/brittonr/graggle#graggle@0.1.0": "1fjpbq4vr6i2bscmllndidkh0kdskykf1f6k757nzawqgzxrc35m",
   "ssh://git@github.com:22/brittonr/ratcore.git?rev=16333a505696b324637f021b657c474600a9b838#ratcore@0.1.0": "0wb71x9rb7c713bz8gl6wbasn1m29q224cpv46801f6pgzlw2k5d",
   "ssh://git@github.com/brittonr/subwayrat.git?rev=d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc#rat-branches@0.1.0": "1g9b0c1kws88jwwc928fw8b82xswc0fvg4zsncpshxkn6ywlqqk8",

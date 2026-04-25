@@ -1,7 +1,7 @@
 # wasm-plugin Specification
 
 ## Purpose
-Defines which extracted crates are packaged as Extism WASM plugins and the manifest, tool surface, host-data, and runtime-coverage requirements for those plugins.
+Defines which library crates are packaged as Extism WASM plugins and the manifest, tool surface, host-data, and runtime-coverage requirements for those plugins.
 
 ## Requirements
 ### Requirement: Plugin Eligibility Criteria
@@ -11,16 +11,16 @@ A crate MUST be packaged as a WASM plugin only when its core logic compiles to `
 - GIVEN a candidate crate for WASM plugin packaging
 - WHEN it depends on native-only runtime features or only exports compile-time shared types
 - THEN it MUST NOT be packaged as a WASM plugin
-- AND it SHOULD be extracted as a library crate only
+- AND it SHOULD remain a library crate only
 
 ### Requirement: Disqualified Reduced-Scope Crates
 The reduced-scope crates `clanker-plugin-sdk`, `clanker-tui-types`, and `clanker-message` MUST NOT be packaged as WASM plugins.
 
 #### Scenario: Reduced-scope non-tool crates are not plugin packaged
-- GIVEN the reduced-scope extracted crates are assessed for WASM plugin packaging
+- GIVEN the reduced-scope workspace-local crates are assessed for WASM plugin packaging
 - WHEN the crate is the plugin SDK itself or only provides compile-time shared types
 - THEN no WASM plugin wrapper is created for that crate
-- AND the crate remains a standalone library crate only
+- AND the crate remains a workspace-local library crate only
 
 ### Requirement: openspec Plugin Architecture
 The `openspec` library MUST support both native library use and WASM plugin wrapping. Core parsing and graph logic MUST be separated from filesystem access.

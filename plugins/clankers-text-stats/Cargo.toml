@@ -7,7 +7,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
-clanker-plugin-sdk = { git = "https://github.com/brittonr/clanker-plugin-sdk" }
+clanker-plugin-sdk = { path = "../../crates/clanker-plugin-sdk" }
 extism-pdk = "1"
 serde = { version = "1", features = ["derive"] }
 

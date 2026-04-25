@@ -6,7 +6,7 @@ license.workspace = true
 description = "Clankers-specific capability types over clanker-auth generic tokens"
 
 [dependencies]
-clanker-auth = { git = "https://github.com/brittonr/clanker-auth" }
+clanker-auth = { workspace = true }
 iroh = { version = "0.96", features = ["address-lookup-mdns"] }
 serde = { workspace = true }
 redb = "2.6"

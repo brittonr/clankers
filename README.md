@@ -260,14 +260,18 @@ Plugins add additional tools at runtime.
 
 ## Architecture
 
-~30 workspace crates under `crates/`:
+30+ workspace crates under `crates/`:
 
 | Crate | Purpose |
 |---|---|
-| `clankers-agent` | Agent loop, system prompt, tool dispatch |
 | [`clanker-actor`](https://github.com/brittonr/clanker-actor) | Erlang-style actor system (ProcessRegistry, signals, links) |
+| `clanker-auth` | Generic capability token infrastructure |
+| `clanker-message` | Message types and serialization |
+| `clanker-plugin-sdk` | Plugin development SDK |
+| `clanker-router` | Multi-provider routing, fallback, caching, proxy |
+| `clanker-tui-types` | Shared TUI type definitions |
+| `clankers-agent` | Agent loop, system prompt, tool dispatch |
 | `clankers-agent-defs` | Agent definition discovery and loading |
-| `clankers-auth` | OAuth and credential management |
 | `clankers-config` | Settings, paths, keybindings |
 | `clankers-controller` | SessionController (transport-agnostic agent driver) |
 | `clankers-db` | Embedded database (redb) |
@@ -275,21 +279,18 @@ Plugins add additional tools at runtime.
 | [`clanker-loop`](https://github.com/brittonr/clanker-loop) | Loop/retry engine |
 | `clankers-matrix` | Matrix protocol bridge |
 | [`graggle`](https://github.com/brittonr/graggle) | Order-independent merge algorithm |
-| [`clanker-message`](https://github.com/brittonr/clanker-message) | Message types and serialization |
 | `clankers-model-selection` | Complexity routing and cost tracking |
 | `clankers-plugin` | WASM plugin host (Extism) |
-| [`clanker-plugin-sdk`](https://github.com/brittonr/clanker-plugin-sdk) | Plugin development SDK |
 | `clankers-procmon` | Process monitor |
 | `clankers-prompts` | Prompt template system |
 | `clankers-protocol` | Daemon-client wire protocol (frames, events, commands) |
 | `clankers-provider` | LLM provider abstraction |
-| [`clanker-router`](https://github.com/brittonr/clanker-router) | Multi-provider routing, fallback, caching, proxy |
 | [`clanker-scheduler`](https://github.com/brittonr/clanker-scheduler) | Task scheduling |
 | `clankers-session` | JSONL session persistence |
 | `clankers-skills` | Skill discovery and loading |
 | `clankers-specs` | OpenSpec integration |
 | `clankers-tui` | Terminal UI (ratatui) |
-| [`clanker-tui-types`](https://github.com/brittonr/clanker-tui-types) | Shared TUI type definitions |
+| `clankers-ucan` | Clankers-specific capability tokens over `clanker-auth` |
 | `clankers-util` | Shared utilities (logging, direnv, etc.) |
 | `clankers-zellij` | Zellij session sharing |
 

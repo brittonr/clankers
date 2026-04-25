@@ -4,9 +4,8 @@
 # wasm32-unknown-unknown with -Zbuild-std. unit2nix doesn't handle WASM
 # targets, so these use a plain stdenv derivation.
 #
-# Git dependencies (clanker-plugin-sdk) are vendored from a flake input
-# alongside crates.io deps so the build runs fully offline in the sandbox.
-{ pkgs, rustToolchain, unit2nix, system, src, clanker-plugin-sdk-src }:
+# Plugin Cargo.toml files depend on the workspace-local SDK via path deps.
+{ pkgs, rustToolchain, unit2nix, system, src }:
 let
   specs = [
     { dir = "plugins/clankers-calendar";              name = "clankers_calendar"; }
@@ -34,28 +33,7 @@ let
       ++ [ "${rustToolchain}/lib/rustlib/src/rust/library/Cargo.lock" ];
   };
 
-  # Augmented vendor directory: crates.io deps + git-sourced plugin SDK.
-  augmentedVendor = pkgs.runCommand "augmented-vendor" {} ''
-    sdk_vendor_dir=$(grep 'directory' ${vendor.cargoConfig} | cut -d'"' -f2)
-    cp -r $sdk_vendor_dir $out
-    chmod -R u+w $out
-    cp -r ${clanker-plugin-sdk-src} $out/clanker-plugin-sdk-0.1.0
-    chmod -R u+w $out/clanker-plugin-sdk-0.1.0
-    echo '{"files":{}}' > $out/clanker-plugin-sdk-0.1.0/.cargo-checksum.json
-  '';
-
-  # Cargo config that redirects both crates-io and the git SDK to our vendor dir.
-  cargoConfig = pkgs.writeText "cargo-config.toml" ''
-    [source.crates-io]
-    replace-with = "vendored-sources"
-
-    [source."git+https://github.com/brittonr/clanker-plugin-sdk"]
-    git = "https://github.com/brittonr/clanker-plugin-sdk"
-    replace-with = "vendored-sources"
-
-    [source.vendored-sources]
-    directory = "${augmentedVendor}"
-  '';
+  cargoConfig = vendor.cargoConfig;
 
   # Writable copy of the source with cargo configs injected.
   preparedSrc = pkgs.runCommand "clankers-plugin-src" {} ''

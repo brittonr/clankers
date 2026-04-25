@@ -12,6 +12,7 @@ Workspace crate dependencies (auto-extracted from Cargo.toml files).
 
 ```mermaid
 graph TD
+    clanker-message --> clanker-router
     agent --> clanker-loop
     agent --> clanker-message
     agent --> clanker-router
@@ -59,6 +60,7 @@ graph TD
     provider --> clanker-tui-types
     session --> clanker-message
     tui --> clanker-tui-types
+    tui --> autoresearch
     tui --> protocol
     ucan --> clanker-auth
     util --> clanker-message
@@ -71,26 +73,29 @@ graph TD
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `tui` | 16421 | 278 | Terminal UI (ratatui + crossterm) |
-| `zellij` | 893 | 39 | Zellij integration and orchestration |
-| `tts` | 1286 | 49 | clankers-tts — Multi-provider text-to-speech router |
+| `clanker-tui-types` | 1815 | 14 | Shared types for terminal-agent TUI boundaries. |
+| `tui` | 16617 | 279 | Terminal UI (ratatui + crossterm) |
+| `zellij` | 896 | 39 | Zellij integration and orchestration |
+| `tts` | 1277 | 49 | clankers-tts — Multi-provider text-to-speech router |
 
 ### Agent core
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `agent` | 6847 | 126 | Agent core — turn loop, event bus, tool interface, context management |
+| `clanker-message` | 904 | 25 | Message types for LLM agent conversations |
+| `agent` | 7187 | 132 | Agent core — turn loop, event bus, tool interface, context management |
 | `agent-defs` | 873 | 29 | Agent definition system (first-class) |
 | `core` | 1565 | 39 |  |
-| `engine` | 978 | 17 | Host-facing reusable engine contracts that sit above `clankers-core` and below controller, agent-runtime, and UI/transport shells. |
-| `controller` | 7134 | 167 | Transport-agnostic session controller for agent orchestration. |
+| `engine` | 1446 | 28 | Host-facing reusable engine contracts that sit above `clankers-core` and below controller, agent-runtime, and UI/transport shells. |
+| `controller` | 7575 | 176 | Transport-agnostic session controller for agent orchestration. |
 
 ### LLM routing
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `provider` | 8107 | 158 | LLM provider abstraction |
-| `model-selection` | 1483 | 49 | Multi-model routing policy |
+| `clanker-router` | 22100 | 382 | clanker-router — Model router and auth gateway for LLM providers |
+| `provider` | 8200 | 163 | LLM provider abstraction |
+| `model-selection` | 1501 | 49 | Multi-model routing policy |
 | `prompts` | 163 | 5 | Prompt templates Prompt template scanning and loading |
 
 ### Infrastructure
@@ -98,30 +103,32 @@ graph TD
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
 | `config` | 1702 | 43 | Configuration loading and path resolution for clankers. |
-| `db` | 4361 | 154 | Embedded database (redb) for structured persistent storage. |
+| `db` | 6698 | 206 | Embedded database (redb) for structured persistent storage. |
 | `hooks` | 1225 | 32 |  |
-| `nix` | 1285 | 61 |  |
-| `protocol` | 2247 | 79 | Wire protocol types for daemon-client communication. |
-| `session` | 3952 | 102 | Session persistence and tree management for agent conversations |
+| `nix` | 1262 | 61 |  |
+| `protocol` | 2240 | 79 | Wire protocol types for daemon-client communication. |
+| `session` | 4014 | 102 | Session persistence and tree management for agent conversations |
 
 ### Networking & security
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `matrix` | 1487 | 8 |  |
+| `clanker-auth` | 1813 | 21 | UCAN-inspired capability tokens over iroh Ed25519 identity. |
+| `matrix` | 1501 | 8 |  |
 | `ucan` | 1436 | 52 | Clankers-specific capability tokens over clanker-auth generic infrastructure. |
 
 ### Extensions & tooling
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
+| `clanker-plugin-sdk` | 530 | 0 | SDK for building [clankers](https://github.com/brittonr/clankers) WASM plugins. |
 | `plugin` | 3725 | 39 | Plugin system (Extism WASM) |
-| `skills` | 859 | 17 | Skills (markdown-based) |
-| `procmon` | 467 | 5 | Core process monitor for tracking child processes and resource usage. |
+| `skills` | 756 | 17 | Skills (markdown-based) |
+| `procmon` | 468 | 5 | Core process monitor for tracking child processes and resource usage. |
 
 ### Utilities
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `util` | 1924 | 79 | Shared utility functions for clankers. |
+| `util` | 1942 | 79 | Shared utility functions for clankers. |
 

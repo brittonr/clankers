@@ -1,21 +1,5 @@
 {
   "nodes": {
-    "clanker-plugin-sdk-src": {
-      "flake": false,
-      "locked": {
-        "lastModified": 1773745748,
-        "narHash": "sha256-hQNqu0KmNPO6bg+B4nic5ytsAkfBE+0db/R2BkN8ZcM=",
-        "owner": "brittonr",
-        "repo": "clanker-plugin-sdk",
-        "rev": "742cd4ee1806a73a61be706bad5a6547fab87e55",
-        "type": "github"
-      },
-      "original": {
-        "owner": "brittonr",
-        "repo": "clanker-plugin-sdk",
-        "type": "github"
-      }
-    },
     "flake-parts": {
       "inputs": {
         "nixpkgs-lib": [
@@ -89,7 +73,6 @@
     },
     "root": {
       "inputs": {
-        "clanker-plugin-sdk-src": "clanker-plugin-sdk-src",
         "flake-utils": "flake-utils",
         "nixpkgs": "nixpkgs",
         "ratcore-src": "ratcore-src",

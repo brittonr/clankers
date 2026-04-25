@@ -26,15 +26,9 @@
       url = "github:brittonr/ratcore";
       flake = false;
     };
-
-    # Plugin SDK used by all WASM plugins.
-    clanker-plugin-sdk-src = {
-      url = "github:brittonr/clanker-plugin-sdk";
-      flake = false;
-    };
   };
 
-  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, subwayrat-src, ratcore-src, clanker-plugin-sdk-src, ... }:
+  outputs = { self, nixpkgs, unit2nix, rust-overlay, flake-utils, subwayrat-src, ratcore-src, ... }:
     {
       nixosModules = {
         clankers-daemon = import ./nix/modules/clankers-daemon.nix;
@@ -92,7 +86,7 @@
         # ── clanker-router standalone CLI binary ────────────────────────
         routerBuild = unit2nix.lib.${system}.buildFromUnitGraphAuto {
           inherit pkgs rustToolchain;
-          src = ./vendor/clanker-router;
+          src = ./crates/clanker-router;
           features = "cli";
           buildRustCrateForPkgs = pkgs: pkgs.buildRustCrate.override {
             rustc = rustToolchain;
@@ -105,12 +99,12 @@
           };
         };
 
-        # ── Extracted derivations ───────────────────────────────────────
+        # ── Additional derivations ──────────────────────────────────────
         clankersPkg = ws.workspaceMembers."clankers".build;
         verus = import ./nix/verus.nix { inherit pkgs; };
         clankers-docs = import ./nix/docs.nix { inherit pkgs; src = ./.; };
         clankers-plugins = import ./nix/plugins.nix {
-          inherit pkgs rustToolchain unit2nix system clanker-plugin-sdk-src;
+          inherit pkgs rustToolchain unit2nix system;
           src = ./.;
         };
         routerPkg = routerBuild.rootCrate.build;
@@ -150,17 +144,18 @@
           # Root `clankers` crate excluded — its integration tests need
           # CARGO_BIN_EXE_clankers which isn't available in buildRustCrate.
           inherit (ws.test.check)
-            clankers-actor
+            clanker-auth
+            clanker-message
+            clanker-plugin-sdk
+            clanker-router
+            clanker-tui-types
             clankers-agent-defs
-            clankers-auth
             clankers-controller
             clankers-db
             clankers-matrix
-            clankers-merge
             clankers-model-selection
             clankers-procmon
             clankers-protocol
-            clankers-router
             clankers-tui
             clankers-zellij
             ;

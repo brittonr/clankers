@@ -1,0 +1,14 @@
+specs (
+  {
+    name auth-framework
+    include (docs/*.md)
+    impls (
+      {
+        name rust
+        include (src/**/*.rs verus/**/*.rs)
+        exclude (target/**)
+        test_include (src/tests.rs)
+      }
+    )
+  }
+)

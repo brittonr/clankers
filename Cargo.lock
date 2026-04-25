@@ -1357,7 +1357,6 @@ dependencies = [
 [[package]]
 name = "clanker-auth"
 version = "0.1.0"
-source = "git+https://github.com/brittonr/clanker-auth#af15bc384463952a69191fd607537a6418856d7c"
 dependencies = [
  "base64",
  "blake3",
@@ -1366,6 +1365,7 @@ dependencies = [
  "rand 0.9.4",
  "serde",
  "thiserror 2.0.18",
+ "tokio",
 ]
 
 [[package]]
@@ -1385,12 +1385,21 @@ dependencies = [
 [[package]]
 name = "clanker-message"
 version = "0.1.0"
-source = "git+https://github.com/brittonr/clanker-message#58bfda3436ac8eb8c34dbf6e26b2afe5be69115d"
 dependencies = [
  "chrono",
  "clanker-router",
  "hex",
+ "pretty_assertions",
  "rand 0.9.4",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "clanker-plugin-sdk"
+version = "0.1.0"
+dependencies = [
+ "extism-pdk",
  "serde",
  "serde_json",
 ]
@@ -1455,7 +1464,6 @@ dependencies = [
 [[package]]
 name = "clanker-tui-types"
 version = "0.1.0"
-source = "git+https://github.com/brittonr/clanker-tui-types#0c72646a3dfa9333869690d181c8675cb7865453"
 dependencies = [
  "blake3",
  "chrono",
@@ -3394,6 +3402,32 @@ dependencies = [
  "base64",
  "serde",
  "serde_json",
+]
+
+[[package]]
+name = "extism-pdk"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "352fcb5a66eb74145a1c4a01f2bd15d59c62c85be73aac8471880c65b26b798f"
+dependencies = [
+ "anyhow",
+ "base64",
+ "extism-convert",
+ "extism-manifest",
+ "extism-pdk-derive",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "extism-pdk-derive"
+version = "1.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d086daea5fd844e3c5ac69ddfe36df4a9a43e7218cf7d1f888182b089b09806c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
 ]
 
 [[package]]

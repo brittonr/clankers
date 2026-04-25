@@ -1,0 +1,36 @@
+[package]
+name = "clanker-auth"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "UCAN-inspired capability tokens — generic signing, verification, and delegation over iroh Ed25519 identity"
+keywords = ["ucan", "capability", "token", "authorization", "ed25519"]
+categories = ["authentication", "cryptography"]
+repository = "https://github.com/brittonr/clankers"
+
+[dependencies]
+iroh = { version = "0.96", features = ["address-lookup-mdns"] }
+serde = { version = "1", features = ["derive"] }
+postcard = { version = "1.0", features = ["alloc"] }
+blake3 = "1.5"
+base64 = "0.22"
+thiserror = "2"
+rand = "0.9"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+module_name_repetitions = "allow"
+must_use_candidate = "allow"
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+doc_markdown = "allow"
+missing_fields_in_debug = "allow"
+map_unwrap_or = "allow"
+cast_possible_truncation = "allow"
+duration_suboptimal_units = "allow"
+return_self_not_must_use = "allow"
+redundant_closure_for_method_calls = "allow"
+uninlined_format_args = "allow"

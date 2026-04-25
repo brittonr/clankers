@@ -1,0 +1,22 @@
+[package]
+name = "clanker-tui-types"
+version = "0.1.0"
+edition = "2024"
+description = "Shared UI event, action, display, progress, and plugin types for terminal agents"
+repository = "https://github.com/brittonr/clankers"
+license = "AGPL-3.0-or-later"
+readme = "README.md"
+keywords = ["tui", "types", "terminal", "agent"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+blake3 = "1"
+chrono = { version = "0.4", features = ["serde"] }
+rat-markdown = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
+rat-branches = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
+rat-leaderkey = { git = "ssh://git@github.com/brittonr/subwayrat.git", rev = "d930e8ce693bc3761eff5a4ed4a8bd109b2cd7fc" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(dylint_lib, values("tigerstyle"))'] }

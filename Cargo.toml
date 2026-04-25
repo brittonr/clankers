@@ -1,6 +1,11 @@
 [workspace]
 members = [
     ".",
+    "crates/clanker-auth",
+    "crates/clanker-message",
+    "crates/clanker-plugin-sdk",
+    "crates/clanker-router",
+    "crates/clanker-tui-types",
     "crates/clankers-agent",
     "crates/clankers-autoresearch",
     "crates/clankers-agent-defs",
@@ -48,12 +53,13 @@ uuid = { version = "1", features = ["v4"] }
 rand = "0.9"
 reqwest = { version = "0.12", features = ["json", "stream", "rustls-tls"] }
 clanker-actor = { git = "https://github.com/brittonr/clanker-actor" }
+clanker-auth = { path = "crates/clanker-auth" }
 clanker-loop = { git = "https://github.com/brittonr/clanker-loop" }
-# Vendored snapshot from https://github.com/brittonr/clanker-router @ eed716b2df17c051235172bcdea58ed14b69755d
-clanker-router = { path = "vendor/clanker-router" }
+clanker-message = { path = "crates/clanker-message" }
+clanker-plugin-sdk = { path = "crates/clanker-plugin-sdk" }
+clanker-router = { path = "crates/clanker-router" }
 clanker-scheduler = { git = "https://github.com/brittonr/clanker-scheduler" }
-clanker-message = { git = "https://github.com/brittonr/clanker-message" }
-clanker-tui-types = { git = "https://github.com/brittonr/clanker-tui-types" }
+clanker-tui-types = { path = "crates/clanker-tui-types" }
 # Vendored snapshot; see vendor/openspec/VENDORED_FROM for source provenance.
 openspec = { path = "vendor/openspec" }
 graggle = { git = "https://github.com/brittonr/graggle" }
@@ -248,9 +254,6 @@ type_complexity = { level = "allow", priority = 1 }
 [workspace.metadata.tigerstyle]
 default_scope = ["--workspace"]
 cargo_check_args = []
-
-[patch."https://github.com/brittonr/clanker-router"]
-clanker-router = { path = "vendor/clanker-router" }
 
 [patch."ssh://git@github.com/brittonr/ratcore.git"]
 ratcore = { git = "ssh://git@github.com:22/brittonr/ratcore.git", rev = "16333a505696b324637f021b657c474600a9b838" }
