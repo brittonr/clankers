@@ -5,8 +5,10 @@
 //! reducer policy.
 
 use clanker_message::Content;
-use clankers_engine::{EngineCorrelationId, EngineToolCall};
-use serde::{Deserialize, Serialize};
+use clankers_engine::EngineCorrelationId;
+use clankers_engine::EngineToolCall;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -50,12 +52,29 @@ pub struct ToolTruncationMetadata {
 
 #[derive(Debug, Clone)]
 pub enum ToolHostOutcome {
-    Succeeded { content: Vec<Content>, details: Value },
-    ToolError { content: Vec<Content>, details: Value, message: String },
-    MissingTool { name: String },
-    CapabilityDenied { name: String, reason: String },
-    Cancelled { name: String },
-    Truncated { content: Vec<Content>, metadata: ToolTruncationMetadata },
+    Succeeded {
+        content: Vec<Content>,
+        details: Value,
+    },
+    ToolError {
+        content: Vec<Content>,
+        details: Value,
+        message: String,
+    },
+    MissingTool {
+        name: String,
+    },
+    CapabilityDenied {
+        name: String,
+        reason: String,
+    },
+    Cancelled {
+        name: String,
+    },
+    Truncated {
+        content: Vec<Content>,
+        metadata: ToolTruncationMetadata,
+    },
 }
 
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
@@ -93,7 +112,10 @@ impl ToolOutputAccumulator {
     pub fn new(limits: ToolTruncationLimits) -> Self {
         assert!(limits.max_bytes > 0, "tool truncation max_bytes must be positive");
         assert!(limits.max_lines > 0, "tool truncation max_lines must be positive");
-        Self { limits, chunks: Vec::new() }
+        Self {
+            limits,
+            chunks: Vec::new(),
+        }
     }
 
     pub fn push(&mut self, chunk: impl Into<String>) {
@@ -184,6 +206,55 @@ mod tests {
     const SMALL_BYTES: usize = 6;
     const TWO_LINES: usize = 2;
 
+    struct FakeCatalog {
+        tools: Vec<ToolDescriptor>,
+    }
+
+    impl ToolCatalog for FakeCatalog {
+        fn describe_tools(&self) -> Vec<ToolDescriptor> {
+            self.tools.clone()
+        }
+
+        fn contains_tool(&self, name: &str) -> bool {
+            self.tools.iter().any(|tool| tool.name == name)
+        }
+    }
+
+    struct FakeCapabilityChecker {
+        decision: CapabilityDecision,
+    }
+
+    impl CapabilityChecker for FakeCapabilityChecker {
+        fn check_capability(&mut self, _call: &EngineToolCall) -> CapabilityDecision {
+            self.decision.clone()
+        }
+    }
+
+    #[derive(Default)]
+    struct RecordingHook {
+        events: Vec<&'static str>,
+    }
+
+    impl ToolHook for RecordingHook {
+        fn before_tool(&mut self, _call: &EngineToolCall) -> Result<(), ToolHostError> {
+            self.events.push("before");
+            Ok(())
+        }
+
+        fn after_tool(&mut self, _call: &EngineToolCall, _outcome: &ToolHostOutcome) -> Result<(), ToolHostError> {
+            self.events.push("after");
+            Ok(())
+        }
+    }
+
+    fn engine_tool_call(name: &str) -> EngineToolCall {
+        EngineToolCall {
+            call_id: EngineCorrelationId("call-1".to_string()),
+            tool_name: name.to_string(),
+            input: serde_json::json!({}),
+        }
+    }
+
     fn first_text(content: &[Content]) -> &str {
         let Some(Content::Text { text }) = content.first() else {
             panic!("expected first text content block");
@@ -244,8 +315,107 @@ mod tests {
     }
 
     #[test]
+    fn catalog_lists_metadata_and_checks_lookup() {
+        let catalog = FakeCatalog {
+            tools: vec![ToolDescriptor {
+                name: "read".to_string(),
+                description: "read file".to_string(),
+            }],
+        };
+
+        let tools = catalog.describe_tools();
+
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0].name, "read");
+        assert!(catalog.contains_tool("read"));
+        assert!(!catalog.contains_tool("write"));
+    }
+
+    #[test]
+    fn capability_checker_allows_and_denies() {
+        let call = engine_tool_call("read");
+        let mut allowed = FakeCapabilityChecker {
+            decision: CapabilityDecision::Allowed,
+        };
+        let mut denied = FakeCapabilityChecker {
+            decision: CapabilityDecision::Denied {
+                reason: "blocked".to_string(),
+            },
+        };
+
+        assert_eq!(allowed.check_capability(&call), CapabilityDecision::Allowed);
+        assert_eq!(denied.check_capability(&call), CapabilityDecision::Denied {
+            reason: "blocked".to_string()
+        });
+    }
+
+    #[test]
+    fn hook_ordering_is_explicit() {
+        let call = engine_tool_call("read");
+        let outcome = ToolHostOutcome::Succeeded {
+            content: vec![Content::Text { text: "ok".to_string() }],
+            details: serde_json::json!({}),
+        };
+        let mut hook = RecordingHook::default();
+
+        hook.before_tool(&call).expect("before hook should pass");
+        hook.after_tool(&call, &outcome).expect("after hook should pass");
+
+        assert_eq!(hook.events, vec!["before", "after"]);
+    }
+
+    #[test]
+    fn outcome_variants_are_explicit() {
+        let outcomes = vec![
+            ToolHostOutcome::Succeeded {
+                content: Vec::new(),
+                details: serde_json::json!({}),
+            },
+            ToolHostOutcome::ToolError {
+                content: Vec::new(),
+                details: serde_json::json!({}),
+                message: "bad".to_string(),
+            },
+            ToolHostOutcome::MissingTool {
+                name: "missing".to_string(),
+            },
+            ToolHostOutcome::CapabilityDenied {
+                name: "read".to_string(),
+                reason: "blocked".to_string(),
+            },
+            ToolHostOutcome::Cancelled {
+                name: "read".to_string(),
+            },
+            ToolHostOutcome::Truncated {
+                content: Vec::new(),
+                metadata: ToolTruncationMetadata {
+                    original_bytes: 2,
+                    original_lines: 1,
+                    truncated_bytes: 1,
+                    truncated_lines: 1,
+                },
+            },
+        ];
+
+        assert_eq!(outcomes.len(), 6);
+    }
+
+    #[test]
+    #[should_panic(expected = "tool truncation max_lines must be positive")]
+    fn accumulator_rejects_zero_line_limit() {
+        let _ = ToolOutputAccumulator::new(ToolTruncationLimits {
+            max_bytes: DEFAULT_TOOL_MAX_BYTES,
+            max_lines: 0,
+        });
+    }
+
+    #[test]
     fn capability_decision_can_deny() {
-        let denied = CapabilityDecision::Denied { reason: "blocked".to_string() };
-        assert_eq!(denied, CapabilityDecision::Denied { reason: "blocked".to_string() });
+        let denied = CapabilityDecision::Denied {
+            reason: "blocked".to_string(),
+        };
+        assert_eq!(denied, CapabilityDecision::Denied {
+            reason: "blocked".to_string()
+        });
     }
 }

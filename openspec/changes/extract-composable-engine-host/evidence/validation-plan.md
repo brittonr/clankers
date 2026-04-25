@@ -45,3 +45,8 @@ Record exact command output before marking V6 complete.
 
 - `cargo test -p clankers-controller --test fcis_shell_boundaries`: PASS (32 tests).
 - Coverage added: host feedback constructors are allowed only in `clankers-engine-host::runtime`, host crates reject shell-runtime source leakage, `clankers-tool-host` rejects reducer-internal source leakage, and `clankers-engine-host` rejects retry/backoff, continuation-budget, terminalization-helper, direct `EngineEvent::TurnFinished`, and direct `StopReason::{ToolUse,MaxTokens}` policy leakage outside tests.
+
+### V3 tool-host contract tests
+
+- `cargo test -p clankers-tool-host --lib`: PASS (10 tests).
+- Coverage added: catalog metadata/listing and lookup, capability allow/deny, hook ordering, explicit outcome variants, successful accumulation, UTF-8 byte truncation, line-boundary truncation, deterministic truncation metadata, and invalid zero byte/line limits.
