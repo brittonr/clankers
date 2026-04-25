@@ -242,8 +242,10 @@ fn decide_model_completion(outcome: &EngineOutcome) -> Result<EngineModelDecisio
             EngineEffect::ExecuteTool(call) => {
                 tool_calls.push((call.call_id.0.clone(), call.tool_name.clone(), call.input.clone()));
             }
-            EngineEffect::EmitEvent(EngineEvent::TurnFinished { stop_reason }) => {
-                if turn_finished.replace(stop_reason.clone()).is_some() {
+            EngineEffect::RequestModel(_) | EngineEffect::ScheduleRetry { .. } | EngineEffect::EmitEvent(_) => {
+                if let Some(stop_reason) = effect.turn_finished_stop_reason()
+                    && turn_finished.replace(stop_reason.clone()).is_some()
+                {
                     return Err(AgentError::ProviderStreaming {
                         message: "engine emitted multiple turn-finished effects".to_string(),
                         status: None,
@@ -251,7 +253,6 @@ fn decide_model_completion(outcome: &EngineOutcome) -> Result<EngineModelDecisio
                     });
                 }
             }
-            EngineEffect::RequestModel(_) | EngineEffect::ScheduleRetry { .. } | EngineEffect::EmitEvent(_) => {}
         }
     }
 

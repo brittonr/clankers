@@ -420,3 +420,29 @@ test adapter_constructor_and_feedback_inventories_stay_on_allowed_seams ... ok
 test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
 ```
 
+
+### V11 — engine terminal policy FCIS rails
+
+Commands:
+
+```bash
+cargo test -p clankers-agent --lib decide_model_completion_accepts_turn_finish_effect
+cargo test -p clankers-controller --test fcis_shell_boundaries engine_terminal_policy_symbols_stay_inside_engine_source
+cargo test -p clankers-controller --test fcis_shell_boundaries
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test turn::tests::decide_model_completion_accepts_turn_finish_effect ... ok
+test engine_terminal_policy_symbols_stay_inside_engine_source ... ok
+
+running 27 tests
+...
+test engine_terminal_policy_symbols_stay_inside_engine_source ... ok
+
+test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
+```
+

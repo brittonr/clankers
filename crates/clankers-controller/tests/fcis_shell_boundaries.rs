@@ -365,19 +365,27 @@ const CONTROLLER_ENGINE_POLICY_FORBIDDEN_SEGMENTS: [&str; 5] = [
     "retry_attempt",
     "retry_budget",
 ];
+
+const OUTSIDE_ENGINE_TERMINAL_FORBIDDEN_SEGMENTS: [&str; 6] = [
+    "RETRY_BACKOFF_BASE_SECONDS",
+    "RETRY_BACKOFF_EXPONENT_STEP",
+    "DEFAULT_MAX_MODEL_REQUESTS_PER_TURN",
+    "TurnFinished",
+    "terminal_failure_outcome",
+    "terminal_state_with_messages",
+];
 const CORE_ENGINE_COMPOSITION_FILE: &str = "crates/clankers-controller/src/core_engine_composition.rs";
 const AGENT_ENGINE_FEEDBACK_FILES: [&str; 2] = [
     "crates/clankers-agent/src/turn/mod.rs",
     "crates/clankers-agent/src/turn/execution.rs",
 ];
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
-const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 6] = [
+const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 5] = [
     "clankers_engine::reduce",
     "clankers_engine::EngineInput",
     "clankers_engine::EngineModelResponse",
     "EngineInput::ToolCompleted",
     "EngineInput::ToolFailed",
-    "EngineEvent::TurnFinished",
 ];
 const AGENT_TURN_ENGINE_RETRY_REQUIRED_PATHS: [&str; 5] = [
     "EngineEffect::ScheduleRetry",
@@ -1466,6 +1474,17 @@ fn llm_contract_sources_reject_shell_runtime_dependencies() {
         for forbidden_path in LLM_CONTRACT_SOURCE_FORBIDDEN_PATHS {
             assert_engine_surface_path_absent(relative_path, &paths, forbidden_path);
         }
+    }
+}
+
+#[test]
+fn engine_terminal_policy_symbols_stay_inside_engine_source() {
+    for relative_path in rust_source_files_under("crates") {
+        if relative_path.starts_with(ENGINE_CRATE_SOURCE_DIR) {
+            continue;
+        }
+        let paths = collect_non_test_paths(&relative_path);
+        assert_segments_absent(&relative_path, &paths, &OUTSIDE_ENGINE_TERMINAL_FORBIDDEN_SEGMENTS);
     }
 }
 

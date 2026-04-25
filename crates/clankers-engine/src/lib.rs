@@ -150,6 +150,16 @@ pub enum EngineEffect {
     EmitEvent(EngineEvent),
 }
 
+impl EngineEffect {
+    #[must_use]
+    pub fn turn_finished_stop_reason(&self) -> Option<&StopReason> {
+        match self {
+            Self::EmitEvent(EngineEvent::TurnFinished { stop_reason }) => Some(stop_reason),
+            Self::RequestModel(_) | Self::ExecuteTool(_) | Self::ScheduleRetry { .. } | Self::EmitEvent(_) => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum EngineInput {
     SubmitUserPrompt {
