@@ -277,9 +277,24 @@ test core_engine_composition::tests::composition_terminal_engine_outcome_waits_f
 test core_engine_composition::tests::composition_follow_up_engine_failure_maps_to_loop_follow_up_completed ... ok
 ```
 
-### V4 — engine/core source rail inventory
+### V4 — negative prompt gate tests
 
-Status: PLANNED
+Command:
+
+```bash
+cargo test -p clankers-controller --lib accepted_engine_prompt
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+running 7 tests
+test core_effects::accepted_engine_prompt_tests::accepted_engine_prompt_allows_mixed_logical_effect_two_pass ... ok
+... accepted_engine_prompt negative cases ... ok
+test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 167 filtered out; finished in 0.00s
+```
 
 ### V5 — adapter source rail inventory
 

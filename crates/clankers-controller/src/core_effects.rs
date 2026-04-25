@@ -486,4 +486,28 @@ mod accepted_engine_prompt_tests {
 
         assert_eq!(rejection, CoreEffectGateRejection::UnexpectedCoreEffect);
     }
+
+    #[test]
+    fn accepted_engine_prompt_allows_mixed_logical_effect_two_pass() {
+        let effects = vec![
+            CoreEffect::EmitLogicalEvent(CoreLogicalEvent::BusyChanged { busy: true }),
+            CoreEffect::StartPrompt {
+                effect_id: CoreEffectId(1),
+                prompt_text: TEST_PROMPT.to_owned(),
+                image_count: TEST_IMAGE_COUNT,
+            },
+        ];
+        let outcome = CoreOutcome::Transitioned {
+            next_state: CoreState::default(),
+            effects: effects.clone(),
+        };
+
+        let accepted = accepted_engine_prompt_from_core_outcome(&outcome)
+            .expect("mixed logical plus prompt effects must still create prompt start");
+        assert!(matches!(accepted, AcceptedEnginePrompt::UserPrompt(_)));
+        assert!(matches!(effects.as_slice(), [
+            CoreEffect::EmitLogicalEvent(CoreLogicalEvent::BusyChanged { busy: true }),
+            CoreEffect::StartPrompt { .. }
+        ]));
+    }
 }
