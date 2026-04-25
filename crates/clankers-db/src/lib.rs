@@ -22,6 +22,7 @@ pub mod registry;
 pub use error::DbError;
 pub use error::db_err;
 pub mod memory;
+pub mod metrics;
 pub mod schema;
 pub mod session_index;
 pub mod skill_usage;
