@@ -2,7 +2,7 @@
 
 - [x] R1 Validate this change before implementation with `openspec validate decouple-llm-contract-surface --strict` and, if using gates, proposal/design/tasks gates before marking implementation tasks done. ✅ 23m (started: 2026-04-25T04:55:35Z → completed: 2026-04-25T05:18:51Z)
 - [x] R2 Add pre-migration inline-golden serde baseline tests before moving imports: pin current JSON shapes for `Usage`, `ToolDefinition`, `ThinkingConfig`, `MessageMetadata`, `ContentDelta`, and representative provider request shapes using explicit `serde_json::json!` literals that do not call the builder under test. ✅ 2m (started: 2026-04-25T05:19:48Z → completed: 2026-04-25T05:22:26Z) [covers=embeddable-agent-engine.router-provider-reexports]
-- [ ] R3 Initialize `openspec/changes/decouple-llm-contract-surface/evidence/validation-plan.md` as the typed validation evidence artifact; each V task must append its captured command/test logs there before being marked done.
+- [x] R3 Initialize `openspec/changes/decouple-llm-contract-surface/evidence/validation-plan.md` as the typed validation evidence artifact; each V task must append its captured command/test logs there before being marked done. ✅ 1m (started: 2026-04-25T05:22:39Z → completed: 2026-04-25T05:22:39Z)
 
 ## Phase 1: Canonical contract ownership
 
