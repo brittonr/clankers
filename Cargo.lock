@@ -1508,6 +1508,7 @@ dependencies = [
  "clankers-provider",
  "clankers-session",
  "clankers-skills",
+ "clankers-tool-host",
  "clankers-tts",
  "clankers-tui",
  "clankers-ucan",
@@ -1854,6 +1855,17 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "tempfile",
+]
+
+[[package]]
+name = "clankers-tool-host"
+version = "0.1.0"
+dependencies = [
+ "clanker-message",
+ "clankers-engine",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
 ]
 
 [[package]]

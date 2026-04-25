@@ -1,0 +1,12 @@
+[package]
+name = "clankers-tool-host"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+clanker-message = { workspace = true }
+clankers-engine = { path = "../clankers-engine" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }

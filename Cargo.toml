@@ -27,6 +27,7 @@ members = [
     "crates/clankers-session",
     "crates/clankers-skills",
 
+    "crates/clankers-tool-host",
     "crates/clankers-tui",
     "crates/clankers-util",
     "crates/clankers-zellij",
@@ -99,6 +100,7 @@ graggle = { workspace = true }
 clanker-message = { workspace = true }
 clankers-model-selection = { version = "0.1.0", path = "crates/clankers-model-selection" }
 clankers-session = { version = "0.1.0", path = "crates/clankers-session" }
+clankers-tool-host = { version = "0.1.0", path = "crates/clankers-tool-host" }
 clankers-plugin = { version = "0.1.0", path = "crates/clankers-plugin" }
 clankers-procmon = { version = "0.1.0", path = "crates/clankers-procmon" }
 clankers-prompts = { version = "0.1.0", path = "crates/clankers-prompts" }
