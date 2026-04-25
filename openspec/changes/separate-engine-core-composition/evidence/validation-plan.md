@@ -39,6 +39,26 @@ Result: PASS
 Created validation log artifact at `openspec/changes/separate-engine-core-composition/evidence/validation-plan.md` with planned sections for implementation and verification tasks.
 
 
+### I1 — remove dormant engine core state
+
+Commands:
+
+```bash
+cargo test -p clankers-engine --lib
+rg 'core_state|clankers_core|CoreState' crates/clankers-engine || true
+cargo tree -p clankers-engine --edges normal | grep -F 'clankers-core v' || true
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+(no core_state/clankers_core/CoreState matches in clankers-engine)
+(no clankers-core normal-edge dependency under clankers-engine)
+```
+
 ### I2 — EngineState active-field inventory
 
 Status: PLANNED

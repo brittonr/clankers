@@ -1,5 +1,5 @@
-//! Host-facing reusable engine contracts that sit above `clankers-core`
-//! and below controller, agent-runtime, and UI/transport shells.
+//! Host-facing reusable engine contracts for model/tool turn policy that compose
+//! alongside `clankers-core` through controller/agent adapter seams.
 
 use core::time::Duration;
 
@@ -7,7 +7,6 @@ use clanker_message::Content;
 use clanker_message::StopReason;
 use clanker_message::ThinkingConfig;
 use clanker_message::ToolDefinition;
-use clankers_core::CoreState;
 use serde_json::Value;
 
 pub const ENGINE_CONTRACT_VERSION: u32 = 1;
@@ -180,7 +179,6 @@ pub enum EngineRejection {
 #[derive(Debug, Clone)]
 pub struct EngineState {
     pub contract_version: u32,
-    pub core_state: Option<CoreState>,
     pub phase: EngineTurnPhase,
     pub messages: Vec<EngineMessage>,
     pub request_template: Option<EngineRequestTemplate>,
@@ -221,7 +219,6 @@ impl EngineState {
     pub fn new() -> Self {
         Self {
             contract_version: ENGINE_CONTRACT_VERSION,
-            core_state: None,
             phase: EngineTurnPhase::Idle,
             messages: Vec::new(),
             request_template: None,
@@ -289,7 +286,6 @@ fn apply_submit_user_prompt(state: &EngineState, submission: &EnginePromptSubmis
 
     let next_state = EngineState {
         contract_version: state.contract_version,
-        core_state: state.core_state.clone(),
         phase: EngineTurnPhase::WaitingForModel,
         messages: canonical_messages,
         request_template: Some(request_template),
@@ -360,7 +356,6 @@ fn apply_tool_use_model_completion(
     let pending_tool_calls = tool_calls.iter().map(|call| call.call_id.clone()).collect();
     let next_state = EngineState {
         contract_version: state.contract_version,
-        core_state: state.core_state.clone(),
         phase: EngineTurnPhase::WaitingForTools,
         messages: next_messages,
         request_template: state.request_template.clone(),
@@ -405,8 +400,7 @@ fn apply_model_failed(
     {
         let next_state = EngineState {
             contract_version: state.contract_version,
-            core_state: state.core_state.clone(),
-            phase: EngineTurnPhase::WaitingForRetry,
+                phase: EngineTurnPhase::WaitingForRetry,
             messages: state.messages.clone(),
             request_template: state.request_template.clone(),
             pending_model_request: Some(request_id.clone()),
@@ -449,7 +443,6 @@ fn apply_retry_ready(state: &EngineState, request_id: &EngineCorrelationId) -> E
     let model_request = build_model_request(request_template, &state.messages, request_id.clone());
     let next_state = EngineState {
         contract_version: state.contract_version,
-        core_state: state.core_state.clone(),
         phase: EngineTurnPhase::WaitingForModel,
         messages: state.messages.clone(),
         request_template: state.request_template.clone(),
@@ -517,8 +510,7 @@ fn apply_tool_feedback(
     if buffered_tool_results.len() < state.pending_tool_calls.len() {
         let next_state = EngineState {
             contract_version: state.contract_version,
-            core_state: state.core_state.clone(),
-            phase: EngineTurnPhase::WaitingForTools,
+                phase: EngineTurnPhase::WaitingForTools,
             messages: state.messages.clone(),
             request_template: state.request_template.clone(),
             pending_model_request: None,
@@ -559,7 +551,6 @@ fn apply_tool_feedback(
     let model_request = build_model_request(request_template, &next_messages, request_id.clone());
     let next_state = EngineState {
         contract_version: state.contract_version,
-        core_state: state.core_state.clone(),
         phase: EngineTurnPhase::WaitingForModel,
         messages: next_messages,
         request_template: Some(request_template.clone()),
@@ -647,7 +638,6 @@ fn terminal_failure_outcome(state: &EngineState, failure: EngineTerminalFailure)
 fn terminal_state_with_messages(state: &EngineState, messages: Vec<EngineMessage>) -> EngineState {
     EngineState {
         contract_version: state.contract_version,
-        core_state: state.core_state.clone(),
         phase: EngineTurnPhase::Finished,
         messages,
         request_template: None,
