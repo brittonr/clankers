@@ -807,7 +807,7 @@ mod tests {
         async fn complete(&self, _request: CompletionRequest, tx: mpsc::Sender<StreamEvent>) -> Result<()> {
             self.call_count.fetch_add(1, Ordering::SeqCst);
             tx.send(StreamEvent::MessageStart {
-                message: clanker_router::streaming::MessageMetadata {
+                message: crate::streaming::MessageMetadata {
                     id: "msg-1".into(),
                     model: "test-model".into(),
                     role: "assistant".into(),
@@ -823,14 +823,14 @@ mod tests {
             .ok();
             tx.send(StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: clanker_router::streaming::ContentDelta::TextDelta { text: "Hello!".into() },
+                delta: crate::streaming::ContentDelta::TextDelta { text: "Hello!".into() },
             })
             .await
             .ok();
             tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
             tx.send(StreamEvent::MessageDelta {
                 stop_reason: Some("end_turn".into()),
-                usage: clanker_router::Usage {
+                usage: crate::Usage {
                     input_tokens: 100,
                     output_tokens: 20,
                     cache_creation_input_tokens: 0,
@@ -1339,7 +1339,7 @@ mod tests {
             tx: mpsc::Sender<clanker_router::streaming::StreamEvent>,
         ) -> std::result::Result<(), clanker_router::Error> {
             tx.send(clanker_router::streaming::StreamEvent::MessageStart {
-                message: clanker_router::streaming::MessageMetadata {
+                message: crate::streaming::MessageMetadata {
                     id: "msg-1".into(),
                     model: "test-model".into(),
                     role: "assistant".into(),
@@ -1355,7 +1355,7 @@ mod tests {
             .ok();
             tx.send(clanker_router::streaming::StreamEvent::ContentBlockDelta {
                 index: 0,
-                delta: clanker_router::streaming::ContentDelta::TextDelta {
+                delta: crate::streaming::ContentDelta::TextDelta {
                     text: "Hello from router provider".into(),
                 },
             })
@@ -1364,7 +1364,7 @@ mod tests {
             tx.send(clanker_router::streaming::StreamEvent::ContentBlockStop { index: 0 }).await.ok();
             tx.send(clanker_router::streaming::StreamEvent::MessageDelta {
                 stop_reason: Some("end_turn".into()),
-                usage: clanker_router::Usage {
+                usage: crate::Usage {
                     input_tokens: 10,
                     output_tokens: 5,
                     cache_creation_input_tokens: 0,
@@ -1997,7 +1997,7 @@ mod tests {
         let req1 = test_request("model-a");
 
         let mut req2 = test_request("model-a");
-        req2.tools = vec![clanker_router::provider::ToolDefinition {
+        req2.tools = vec![crate::ToolDefinition {
             name: "bash".into(),
             description: "Run bash".into(),
             input_schema: serde_json::json!({"type": "object"}),

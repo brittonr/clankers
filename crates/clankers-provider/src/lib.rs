@@ -85,7 +85,7 @@ pub struct CompletionRequest {
     pub temperature: Option<f64>,
 
     /// Available tools for the model to call
-    pub tools: Vec<clanker_router::provider::ToolDefinition>,
+    pub tools: Vec<ToolDefinition>,
 
     /// Extended thinking configuration (if supported)
     pub thinking: Option<ThinkingConfig>,
@@ -103,8 +103,10 @@ pub struct CompletionRequest {
     pub extra_params: HashMap<String, serde_json::Value>,
 }
 
-// Re-export ThinkingConfig from clanker-router (canonical definition)
-pub use clanker_router::ThinkingConfig;
+// Re-export ThinkingConfig from clanker-message (canonical definition)
+pub use clanker_message::ThinkingConfig;
+// Re-export ToolDefinition from clanker-message (canonical definition)
+pub use clanker_message::ToolDefinition;
 // ThinkingLevel re-exported from clanker-tui-types (canonical definition).
 pub use clanker_tui_types::ThinkingLevel;
 
@@ -120,8 +122,8 @@ pub fn thinking_level_to_config(level: ThinkingLevel) -> Option<ThinkingConfig> 
     }
 }
 
-// Re-export Usage and Cost from clanker-router (canonical definitions)
-pub use clanker_router::Usage;
+// Re-export Usage from clanker-message and Cost from clanker-router.
+pub use clanker_message::Usage;
 pub use clanker_router::provider::Cost;
 
 #[cfg(test)]
@@ -134,6 +136,7 @@ mod tests {
 
     use super::CompletionRequest;
     use super::ThinkingConfig;
+    use super::ToolDefinition;
     use super::Usage;
     use crate::message::AgentMessage;
     use crate::message::Content;
@@ -183,7 +186,7 @@ mod tests {
             system_prompt: Some("Be helpful".to_string()),
             max_tokens: Some(TEST_MAX_TOKENS),
             temperature: Some(TEST_TEMPERATURE),
-            tools: vec![clanker_router::provider::ToolDefinition {
+            tools: vec![ToolDefinition {
                 name: "read".to_string(),
                 description: "Read a file".to_string(),
                 input_schema: json!({"type": "object"}),
@@ -208,7 +211,7 @@ mod tests {
             system_prompt: Some("Be helpful".to_string()),
             max_tokens: Some(TEST_MAX_TOKENS),
             temperature: Some(TEST_TEMPERATURE),
-            tools: vec![clanker_router::provider::ToolDefinition {
+            tools: vec![ToolDefinition {
                 name: "read".to_string(),
                 description: "Read a file".to_string(),
                 input_schema: json!({"type": "object"}),
@@ -283,7 +286,7 @@ mod tests {
             })
         );
 
-        let tool = clanker_router::provider::ToolDefinition {
+        let tool = ToolDefinition {
             name: "read".to_string(),
             description: "Read a file".to_string(),
             input_schema: json!({"type": "object"}),

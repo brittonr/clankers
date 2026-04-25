@@ -440,7 +440,7 @@ fn convert_content_block(content: &crate::message::Content) -> ApiContentBlock {
     }
 }
 
-fn convert_tools(tools: &[clanker_router::provider::ToolDefinition]) -> Vec<ApiTool> {
+fn convert_tools(tools: &[crate::ToolDefinition]) -> Vec<ApiTool> {
     tools
         .iter()
         .map(|t| ApiTool {
