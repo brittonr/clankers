@@ -97,11 +97,7 @@ impl MetricsStore<'_> {
         Ok(report)
     }
 
-    pub fn recent_events_report(
-        &self,
-        session_id: &str,
-        limit: usize,
-    ) -> Result<Vec<RecentEvent>> {
+    pub fn recent_events_report(&self, session_id: &str, limit: usize) -> Result<Vec<RecentEvent>> {
         let events = self.recent_events_for_session(session_id, limit)?;
         Ok(events.iter().map(event_to_report).collect())
     }
@@ -147,9 +143,7 @@ fn event_to_report(e: &MetricEventRecord) -> RecentEvent {
         }
         MetricEventKind::TurnCancel => ("turn_cancel", String::new()),
         MetricEventKind::ModelChange { from, to } => ("model_change", format!("{from} -> {to}")),
-        MetricEventKind::Compaction { tokens_saved } => {
-            ("compaction", format!("{tokens_saved} tokens saved"))
-        }
+        MetricEventKind::Compaction { tokens_saved } => ("compaction", format!("{tokens_saved} tokens saved")),
         MetricEventKind::ToolExec {
             tool,
             duration_ms,
@@ -164,21 +158,14 @@ fn event_to_report(e: &MetricEventRecord) -> RecentEvent {
         }
         MetricEventKind::PluginEvent { plugin } => ("plugin_event", plugin.clone()),
         MetricEventKind::PluginError { plugin } => ("plugin_error", plugin.clone()),
-        MetricEventKind::PluginHookDenial { plugin, hook } => {
-            ("plugin_hook_denial", format!("{plugin}:{hook}"))
-        }
+        MetricEventKind::PluginHookDenial { plugin, hook } => ("plugin_hook_denial", format!("{plugin}:{hook}")),
         MetricEventKind::UsageUpdate {
             input_tokens,
             output_tokens,
             model,
-        } => (
-            "usage_update",
-            format!("{model} {input_tokens}in/{output_tokens}out"),
-        ),
+        } => ("usage_update", format!("{model} {input_tokens}in/{output_tokens}out")),
         MetricEventKind::ProcessSpawn { pid } => ("process_spawn", format!("pid {pid}")),
-        MetricEventKind::ProcessExit { pid, peak_rss } => {
-            ("process_exit", format!("pid {pid} peak_rss {peak_rss}"))
-        }
+        MetricEventKind::ProcessExit { pid, peak_rss } => ("process_exit", format!("pid {pid} peak_rss {peak_rss}")),
     };
     RecentEvent {
         seq: e.seq,

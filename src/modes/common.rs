@@ -286,6 +286,9 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         (ToolTier::Specialty, Arc::new(crate::tools::ask::AskTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::image_gen::ImageGenTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::tts::TtsTool::new())),
+        (ToolTier::Specialty, Arc::new(crate::tools::autoresearch::InitExperimentTool::new())),
+        (ToolTier::Specialty, Arc::new(crate::tools::autoresearch::RunExperimentTool::new())),
+        (ToolTier::Specialty, Arc::new(crate::tools::autoresearch::LogExperimentTool::new())),
         (
             ToolTier::Specialty,
             Arc::new(crate::tools::memory::MemoryTool::new(clankers_config::settings::MemoryLimits::default())),

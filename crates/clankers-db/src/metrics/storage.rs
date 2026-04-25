@@ -10,14 +10,11 @@ use crate::Db;
 use crate::error::Result;
 use crate::error::db_err;
 
-pub(crate) const SESSION_SUMMARY_TABLE: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("metrics_session_summary");
+pub(crate) const SESSION_SUMMARY_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("metrics_session_summary");
 
-pub(crate) const DAILY_ROLLUP_TABLE: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("metrics_daily_rollup");
+pub(crate) const DAILY_ROLLUP_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("metrics_daily_rollup");
 
-pub(crate) const RECENT_EVENTS_TABLE: TableDefinition<&str, &[u8]> =
-    TableDefinition::new("metrics_recent_events");
+pub(crate) const RECENT_EVENTS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("metrics_recent_events");
 
 const MAX_RECENT_EVENTS_PER_SESSION: u32 = 500;
 const EVICTION_BATCH_FRACTION: u32 = 10;
@@ -40,9 +37,7 @@ impl<'db> MetricsStore<'db> {
         let tx = self.db.begin_write()?;
         {
             let mut table = tx.open_table(SESSION_SUMMARY_TABLE).map_err(db_err)?;
-            table
-                .insert(summary.session_id.as_str(), bytes.as_slice())
-                .map_err(db_err)?;
+            table.insert(summary.session_id.as_str(), bytes.as_slice()).map_err(db_err)?;
         }
         tx.commit().map_err(db_err)?;
         Ok(())
@@ -87,9 +82,7 @@ impl<'db> MetricsStore<'db> {
         let tx = self.db.begin_write()?;
         {
             let mut table = tx.open_table(DAILY_ROLLUP_TABLE).map_err(db_err)?;
-            table
-                .insert(rollup.date.as_str(), bytes.as_slice())
-                .map_err(db_err)?;
+            table.insert(rollup.date.as_str(), bytes.as_slice()).map_err(db_err)?;
         }
         tx.commit().map_err(db_err)?;
         Ok(())
@@ -144,20 +137,12 @@ impl<'db> MetricsStore<'db> {
         Ok(())
     }
 
-    fn maybe_evict_in_tx(
-        &self,
-        table: &mut redb::Table<&str, &[u8]>,
-        session_id: &str,
-    ) -> Result<()> {
+    fn maybe_evict_in_tx(&self, table: &mut redb::Table<&str, &[u8]>, session_id: &str) -> Result<()> {
         let prefix = format!("{session_id}:");
         let count = table
             .range(prefix.as_str()..)
             .map_err(db_err)?
-            .take_while(|r| {
-                r.as_ref()
-                    .map(|(k, _)| k.value().starts_with(&prefix))
-                    .unwrap_or(false)
-            })
+            .take_while(|r| r.as_ref().map(|(k, _)| k.value().starts_with(&prefix)).unwrap_or(false))
             .count() as u32;
 
         if count <= MAX_RECENT_EVENTS_PER_SESSION {
@@ -168,11 +153,7 @@ impl<'db> MetricsStore<'db> {
         let keys_to_remove: Vec<String> = table
             .range(prefix.as_str()..)
             .map_err(db_err)?
-            .take_while(|r| {
-                r.as_ref()
-                    .map(|(k, _)| k.value().starts_with(&prefix))
-                    .unwrap_or(false)
-            })
+            .take_while(|r| r.as_ref().map(|(k, _)| k.value().starts_with(&prefix)).unwrap_or(false))
             .take(to_evict as usize)
             .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
             .collect();
@@ -184,11 +165,7 @@ impl<'db> MetricsStore<'db> {
         Ok(())
     }
 
-    pub fn recent_events_for_session(
-        &self,
-        session_id: &str,
-        limit: usize,
-    ) -> Result<Vec<MetricEventRecord>> {
+    pub fn recent_events_for_session(&self, session_id: &str, limit: usize) -> Result<Vec<MetricEventRecord>> {
         let tx = self.db.begin_read()?;
         let table = tx.open_table(RECENT_EVENTS_TABLE).map_err(db_err)?;
         let prefix = format!("{session_id}:");

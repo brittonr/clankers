@@ -40,10 +40,7 @@ impl Fingerprint {
 
 fn normalize(s: &str) -> String {
     let trimmed = s.trim();
-    let collapsed: String = trimmed
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    let collapsed: String = trimmed.split_whitespace().collect::<Vec<_>>().join(" ");
     collapsed.to_lowercase()
 }
 

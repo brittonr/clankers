@@ -12,6 +12,7 @@ pub mod cost_overlay;
 pub mod diff_view;
 pub mod editor;
 pub mod environment_panel;
+pub mod experiment_dashboard;
 pub mod file_activity_panel;
 pub mod git_status;
 pub mod header;

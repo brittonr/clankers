@@ -1484,6 +1484,7 @@ dependencies = [
  "clanker-tui-types",
  "clankers-agent",
  "clankers-agent-defs",
+ "clankers-autoresearch",
  "clankers-config",
  "clankers-controller",
  "clankers-core",
@@ -1600,6 +1601,18 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+]
+
+[[package]]
+name = "clankers-autoresearch"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
@@ -1861,6 +1874,7 @@ dependencies = [
  "base64",
  "chrono",
  "clanker-tui-types",
+ "clankers-autoresearch",
  "clankers-protocol",
  "crossterm",
  "git2",

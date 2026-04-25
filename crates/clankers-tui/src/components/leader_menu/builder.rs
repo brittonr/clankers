@@ -91,6 +91,7 @@ fn root_actions() -> Vec<MenuContribution> {
         builtin('A', "auto-test", ext(ExtendedAction::ToggleAutoTest), r.clone()),
         builtin('I', "prompt improve", ext(ExtendedAction::TogglePromptImprove), r.clone()),
         builtin('P', "plan mode", cmd("/plan"), r.clone()),
+        builtin('E', "experiments", cmd("/insights"), r.clone()),
         // Actions
         builtin('f', "search output", ext(ExtendedAction::SearchOutput), r.clone()),
         builtin('`', "toggle panel", ext(ExtendedAction::TogglePanelFocus), r.clone()),

@@ -2,6 +2,7 @@
 members = [
     ".",
     "crates/clankers-agent",
+    "crates/clankers-autoresearch",
     "crates/clankers-agent-defs",
     "crates/clankers-ucan",
     "crates/clankers-config",
@@ -79,6 +80,7 @@ path = "src/main.rs"
 
 [dependencies]
 clankers-agent = { version = "0.1.0", path = "crates/clankers-agent" }
+clankers-autoresearch = { version = "0.1.0", path = "crates/clankers-autoresearch" }
 clankers-nix = { version = "0.1.0", path = "crates/clankers-nix", features = ["eval"] }
 clankers-agent-defs = { version = "0.1.0", path = "crates/clankers-agent-defs" }
 clankers-ucan = { version = "0.1.0", path = "crates/clankers-ucan" }

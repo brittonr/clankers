@@ -105,9 +105,7 @@ impl MetricEvent {
 
     fn session_id_ref(&self) -> Option<&str> {
         match self {
-            Self::SessionStart { session_id, .. } | Self::SessionEnd { session_id, .. } => {
-                Some(session_id)
-            }
+            Self::SessionStart { session_id, .. } | Self::SessionEnd { session_id, .. } => Some(session_id),
             _ => None,
         }
     }
@@ -143,9 +141,7 @@ impl MetricsReducer {
                 self.summary.turns_total += 1;
                 MetricEventKind::TurnStart { index: *index }
             }
-            MetricEvent::TurnEnd {
-                index, tool_calls, ..
-            } => MetricEventKind::TurnEnd {
+            MetricEvent::TurnEnd { index, tool_calls, .. } => MetricEventKind::TurnEnd {
                 index: *index,
                 tool_calls: *tool_calls,
             },
@@ -216,15 +212,11 @@ impl MetricsReducer {
             }
             MetricEvent::PluginEvent { plugin, .. } => {
                 self.summary.plugin_events += 1;
-                MetricEventKind::PluginEvent {
-                    plugin: plugin.clone(),
-                }
+                MetricEventKind::PluginEvent { plugin: plugin.clone() }
             }
             MetricEvent::PluginError { plugin, .. } => {
                 self.summary.plugin_errors += 1;
-                MetricEventKind::PluginError {
-                    plugin: plugin.clone(),
-                }
+                MetricEventKind::PluginError { plugin: plugin.clone() }
             }
             MetricEvent::PluginHookDenial { plugin, hook, .. } => {
                 self.summary.plugin_hook_denials += 1;
@@ -248,10 +240,7 @@ impl MetricsReducer {
             }
         };
 
-        let session_id = event
-            .session_id_ref()
-            .unwrap_or(&self.summary.session_id)
-            .to_string();
+        let session_id = event.session_id_ref().unwrap_or(&self.summary.session_id).to_string();
 
         MetricEventRecord {
             session_id,
@@ -382,9 +371,7 @@ mod tests {
             index: 0,
             timestamp: ts(10, 0),
         });
-        r.apply(&MetricEvent::TurnCancel {
-            timestamp: ts(10, 1),
-        });
+        r.apply(&MetricEvent::TurnCancel { timestamp: ts(10, 1) });
         assert_eq!(r.summary().turns_total, 1);
         assert_eq!(r.summary().turns_cancelled, 1);
     }

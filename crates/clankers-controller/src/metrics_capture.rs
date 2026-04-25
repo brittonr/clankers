@@ -100,9 +100,11 @@ impl MetricsCollector {
 
         // Update daily rollup
         let date = Utc::now().format("%Y-%m-%d").to_string();
-        let mut rollup = store.get_daily_rollup(&date).ok().flatten().unwrap_or_else(|| {
-            DailyMetricsRollup::new(date.clone())
-        });
+        let mut rollup = store
+            .get_daily_rollup(&date)
+            .ok()
+            .flatten()
+            .unwrap_or_else(|| DailyMetricsRollup::new(date.clone()));
         rollup.merge_session(summary);
         if let Err(e) = store.save_daily_rollup(&rollup) {
             tracing::warn!("metrics flush: failed to save daily rollup: {e}");
@@ -180,13 +182,10 @@ impl MetricsCollector {
                 timestamp: now,
             }],
             AgentEvent::ToolExecutionStart { call_id, tool_name } => {
-                self.tool_starts
-                    .insert(call_id.clone(), (tool_name.clone(), Instant::now()));
+                self.tool_starts.insert(call_id.clone(), (tool_name.clone(), Instant::now()));
                 vec![]
             }
-            AgentEvent::ToolExecutionEnd {
-                call_id, is_error, ..
-            } => {
+            AgentEvent::ToolExecutionEnd { call_id, is_error, .. } => {
                 let (tool_name, duration_ms) = match self.tool_starts.remove(call_id) {
                     Some((name, start)) => (name, start.elapsed().as_millis() as u64),
                     None => ("unknown".to_string(), 0),

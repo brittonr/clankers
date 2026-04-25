@@ -11,12 +11,7 @@ pub fn format_current_session(r: &CurrentSessionReport) -> String {
     if let Some(dur) = r.duration_secs {
         writeln!(out, "  Duration: {}", format_duration(dur)).ok();
     }
-    writeln!(
-        out,
-        "  Turns: {} ({} cancelled)",
-        r.turns, r.turns_cancelled
-    )
-    .ok();
+    writeln!(out, "  Turns: {} ({} cancelled)", r.turns, r.turns_cancelled).ok();
     writeln!(out).ok();
 
     writeln!(out, "### Tokens").ok();
@@ -86,13 +81,7 @@ pub fn format_current_session(r: &CurrentSessionReport) -> String {
 
 pub fn format_historical(r: &HistoricalReport) -> String {
     let mut out = String::new();
-    writeln!(
-        out,
-        "## History ({} days, {} sessions)",
-        r.days.len(),
-        r.total_sessions
-    )
-    .ok();
+    writeln!(out, "## History ({} days, {} sessions)", r.days.len(), r.total_sessions).ok();
     writeln!(
         out,
         "  Total turns: {}  Tokens: {} in / {} out  Tool calls: {}",

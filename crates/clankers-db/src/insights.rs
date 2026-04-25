@@ -136,9 +136,7 @@ pub fn generate_insights(db: &Db, days: u32) -> Result<InsightsReport> {
                 }
             })
             .collect();
-        entries.sort_by(|a, b| {
-            (b.input_tokens + b.output_tokens).cmp(&(a.input_tokens + a.output_tokens))
-        });
+        entries.sort_by(|a, b| (b.input_tokens + b.output_tokens).cmp(&(a.input_tokens + a.output_tokens)));
         entries
     };
 
@@ -157,11 +155,7 @@ pub fn generate_insights(db: &Db, days: u32) -> Result<InsightsReport> {
 
     let daily_activity: Vec<DayActivity> = daily_map
         .into_iter()
-        .map(|(date, (sessions, tokens))| DayActivity {
-            date,
-            sessions,
-            tokens,
-        })
+        .map(|(date, (sessions, tokens))| DayActivity { date, sessions, tokens })
         .collect();
 
     let top_sessions = build_top_sessions(&session_data, &usage_data);
@@ -176,19 +170,13 @@ pub fn generate_insights(db: &Db, days: u32) -> Result<InsightsReport> {
     })
 }
 
-fn query_usage_in_window(
-    db: &Db,
-    cutoff: &DateTime<Utc>,
-) -> Result<Vec<crate::usage::DailyUsage>> {
+fn query_usage_in_window(db: &Db, cutoff: &DateTime<Utc>) -> Result<Vec<crate::usage::DailyUsage>> {
     let cutoff_date = cutoff.format("%Y-%m-%d").to_string();
     let all = db.usage().recent_days(365)?;
     Ok(all.into_iter().filter(|d| d.date >= cutoff_date).collect())
 }
 
-fn query_tool_calls_in_window(
-    db: &Db,
-    cutoff: &DateTime<Utc>,
-) -> Result<Vec<(String, u64)>> {
+fn query_tool_calls_in_window(db: &Db, cutoff: &DateTime<Utc>) -> Result<Vec<(String, u64)>> {
     let entries = db.audit().recent(10_000)?;
     let mut counts: HashMap<String, u64> = HashMap::new();
     for e in entries {
@@ -201,10 +189,7 @@ fn query_tool_calls_in_window(
     Ok(result)
 }
 
-fn query_sessions_in_window(
-    db: &Db,
-    cutoff: &DateTime<Utc>,
-) -> Result<Vec<crate::session_index::SessionIndexEntry>> {
+fn query_sessions_in_window(db: &Db, cutoff: &DateTime<Utc>) -> Result<Vec<crate::session_index::SessionIndexEntry>> {
     let all = db.sessions().list_all()?;
     Ok(all.into_iter().filter(|s| s.created_at >= *cutoff).collect())
 }
@@ -317,14 +302,7 @@ pub fn format_insights_terminal(report: &InsightsReport) -> String {
                 0
             };
             let bar: String = "\u{2588}".repeat(bar_len);
-            writeln!(
-                out,
-                "  {} {:>3}s {:>8}  {bar}",
-                d.date,
-                d.sessions,
-                fmt_count(d.tokens)
-            )
-            .ok();
+            writeln!(out, "  {} {:>3}s {:>8}  {bar}", d.date, d.sessions, fmt_count(d.tokens)).ok();
         }
         writeln!(out).ok();
     }
@@ -370,10 +348,9 @@ fn truncate(s: &str, max: usize) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::session_index::SessionIndexEntry;
     use crate::usage::RequestUsage;
-
-    use super::*;
 
     fn setup_test_db() -> Result<Db> {
         let db = Db::in_memory()?;
@@ -443,10 +420,8 @@ mod tests {
         let report = generate_insights(&db, 30)?;
 
         if report.model_breakdown.len() >= 2 {
-            let first_total =
-                report.model_breakdown[0].input_tokens + report.model_breakdown[0].output_tokens;
-            let second_total =
-                report.model_breakdown[1].input_tokens + report.model_breakdown[1].output_tokens;
+            let first_total = report.model_breakdown[0].input_tokens + report.model_breakdown[0].output_tokens;
+            let second_total = report.model_breakdown[1].input_tokens + report.model_breakdown[1].output_tokens;
             assert!(first_total >= second_total);
         }
         Ok(())

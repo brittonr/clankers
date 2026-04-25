@@ -413,9 +413,7 @@ impl SlashHandler for MetricsHandler {
 
         // Historical report
         let historical = match store.historical_report(days) {
-            Ok(report) if report.total_sessions > 0 => {
-                crate::db::metrics::format::format_historical(&report)
-            }
+            Ok(report) if report.total_sessions > 0 => crate::db::metrics::format::format_historical(&report),
             Ok(_) => String::new(),
             Err(e) => format!("Failed to read historical metrics: {e}"),
         };

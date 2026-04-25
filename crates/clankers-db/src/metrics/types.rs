@@ -89,13 +89,8 @@ impl TopKCounter {
         // Evict the lowest entry if the new key would surpass it.
         let min_count = self.entries.values().copied().min().unwrap_or(0);
         if 1 > min_count {
-            let evict_key = self
-                .entries
-                .iter()
-                .filter(|&(_, v)| *v == min_count)
-                .map(|(k, _)| k.clone())
-                .next()
-                .unwrap();
+            let evict_key =
+                self.entries.iter().filter(|&(_, v)| *v == min_count).map(|(k, _)| k.clone()).next().unwrap();
             self.other_count += min_count;
             self.entries.remove(&evict_key);
             self.entries.insert(key.to_string(), 1);
@@ -125,13 +120,8 @@ impl TopKCounter {
         // Re-cap after merge by evicting lowest until within cap.
         while self.entries.len() > self.cap {
             let min_count = self.entries.values().copied().min().unwrap_or(0);
-            let evict_key = self
-                .entries
-                .iter()
-                .filter(|&(_, v)| *v == min_count)
-                .map(|(k, _)| k.clone())
-                .next()
-                .unwrap();
+            let evict_key =
+                self.entries.iter().filter(|&(_, v)| *v == min_count).map(|(k, _)| k.clone()).next().unwrap();
             self.other_count += min_count;
             self.entries.remove(&evict_key);
         }
@@ -267,19 +257,52 @@ pub struct MetricEventRecord {
 pub enum MetricEventKind {
     SessionStart,
     SessionEnd,
-    TurnStart { index: u32 },
-    TurnEnd { index: u32, tool_calls: u32 },
+    TurnStart {
+        index: u32,
+    },
+    TurnEnd {
+        index: u32,
+        tool_calls: u32,
+    },
     TurnCancel,
-    ModelChange { from: String, to: String },
-    Compaction { tokens_saved: usize },
-    ToolExec { tool: String, duration_ms: u64, is_error: bool },
-    PluginLoad { plugin: String, ok: bool },
-    PluginEvent { plugin: String },
-    PluginError { plugin: String },
-    PluginHookDenial { plugin: String, hook: String },
-    UsageUpdate { input_tokens: u64, output_tokens: u64, model: String },
-    ProcessSpawn { pid: u32 },
-    ProcessExit { pid: u32, peak_rss: u64 },
+    ModelChange {
+        from: String,
+        to: String,
+    },
+    Compaction {
+        tokens_saved: usize,
+    },
+    ToolExec {
+        tool: String,
+        duration_ms: u64,
+        is_error: bool,
+    },
+    PluginLoad {
+        plugin: String,
+        ok: bool,
+    },
+    PluginEvent {
+        plugin: String,
+    },
+    PluginError {
+        plugin: String,
+    },
+    PluginHookDenial {
+        plugin: String,
+        hook: String,
+    },
+    UsageUpdate {
+        input_tokens: u64,
+        output_tokens: u64,
+        model: String,
+    },
+    ProcessSpawn {
+        pid: u32,
+    },
+    ProcessExit {
+        pid: u32,
+        peak_rss: u64,
+    },
 }
 
 #[cfg(test)]

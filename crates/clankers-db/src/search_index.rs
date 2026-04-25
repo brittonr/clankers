@@ -6,6 +6,11 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+use tantivy::Index;
+use tantivy::IndexReader;
+use tantivy::IndexWriter;
+use tantivy::ReloadPolicy;
+use tantivy::Searcher;
 use tantivy::collector::Count;
 use tantivy::collector::TopDocs;
 use tantivy::directory::MmapDirectory;
@@ -13,11 +18,6 @@ use tantivy::doc;
 use tantivy::query::QueryParser;
 use tantivy::schema::*;
 use tantivy::snippet::SnippetGenerator;
-use tantivy::Index;
-use tantivy::IndexReader;
-use tantivy::IndexWriter;
-use tantivy::ReloadPolicy;
-use tantivy::Searcher;
 
 use crate::error::Result;
 
@@ -64,19 +64,15 @@ impl SearchIndex {
             message: format!("failed to open search index directory: {e}"),
         })?;
 
-        let index = Index::open_or_create(dir, schema.clone()).map_err(|e| {
-            crate::error::DbError {
-                message: format!("failed to open search index: {e}"),
-            }
+        let index = Index::open_or_create(dir, schema.clone()).map_err(|e| crate::error::DbError {
+            message: format!("failed to open search index: {e}"),
         })?;
 
-        let reader = index
-            .reader_builder()
-            .reload_policy(ReloadPolicy::OnCommitWithDelay)
-            .try_into()
-            .map_err(|e| crate::error::DbError {
+        let reader = index.reader_builder().reload_policy(ReloadPolicy::OnCommitWithDelay).try_into().map_err(|e| {
+            crate::error::DbError {
                 message: format!("failed to create index reader: {e}"),
-            })?;
+            }
+        })?;
 
         Ok(Self {
             index,
@@ -121,10 +117,7 @@ impl SearchIndex {
         Ok(())
     }
 
-    pub fn index_messages_batch(
-        &self,
-        messages: &[(&str, &str, &str, &str, i64)],
-    ) -> Result<u64> {
+    pub fn index_messages_batch(&self, messages: &[(&str, &str, &str, &str, i64)]) -> Result<u64> {
         if messages.is_empty() {
             return Ok(0);
         }
@@ -163,51 +156,30 @@ impl SearchIndex {
 
         let searcher = self.searcher();
         let query_parser = QueryParser::for_index(&self.index, vec![self.f_content]);
-        let query = query_parser.parse_query(query_str).map_err(|e| {
-            crate::error::DbError {
-                message: format!("failed to parse search query: {e}"),
-            }
+        let query = query_parser.parse_query(query_str).map_err(|e| crate::error::DbError {
+            message: format!("failed to parse search query: {e}"),
         })?;
 
         let collector = TopDocs::with_limit(limit).order_by_score();
-        let top_docs = searcher
-            .search(&query, &collector)
-            .map_err(|e| crate::error::DbError {
-                message: format!("search failed: {e}"),
-            })?;
+        let top_docs = searcher.search(&query, &collector).map_err(|e| crate::error::DbError {
+            message: format!("search failed: {e}"),
+        })?;
 
-        let snippet_gen = SnippetGenerator::create(&searcher, &query, self.f_content)
-            .map_err(|e| crate::error::DbError {
+        let snippet_gen =
+            SnippetGenerator::create(&searcher, &query, self.f_content).map_err(|e| crate::error::DbError {
                 message: format!("failed to create snippet generator: {e}"),
             })?;
 
         let mut hits = Vec::with_capacity(top_docs.len());
         for (score, doc_address) in top_docs {
-            let doc = searcher.doc::<TantivyDocument>(doc_address).map_err(|e| {
-                crate::error::DbError {
-                    message: format!("failed to retrieve document: {e}"),
-                }
+            let doc = searcher.doc::<TantivyDocument>(doc_address).map_err(|e| crate::error::DbError {
+                message: format!("failed to retrieve document: {e}"),
             })?;
 
-            let session_id = doc
-                .get_first(self.f_session_id)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let message_id = doc
-                .get_first(self.f_message_id)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let role = doc
-                .get_first(self.f_role)
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let timestamp = doc
-                .get_first(self.f_timestamp)
-                .and_then(|v| v.as_i64())
-                .unwrap_or(0);
+            let session_id = doc.get_first(self.f_session_id).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let message_id = doc.get_first(self.f_message_id).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let role = doc.get_first(self.f_role).and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let timestamp = doc.get_first(self.f_timestamp).and_then(|v| v.as_i64()).unwrap_or(0);
 
             let snippet = snippet_gen.snippet_from_doc(&doc);
             let snippet_text = snippet.to_html();
@@ -229,11 +201,9 @@ impl SearchIndex {
         let searcher = self.searcher();
         let term = tantivy::Term::from_field_text(self.f_session_id, session_id);
         let query = tantivy::query::TermQuery::new(term, IndexRecordOption::Basic);
-        let count = searcher
-            .search(&query, &Count)
-            .map_err(|e| crate::error::DbError {
-                message: format!("session check failed: {e}"),
-            })?;
+        let count = searcher.search(&query, &Count).map_err(|e| crate::error::DbError {
+            message: format!("session check failed: {e}"),
+        })?;
         Ok(count > 0)
     }
 
@@ -247,11 +217,9 @@ impl SearchIndex {
     }
 
     fn writer(&self) -> Result<IndexWriter> {
-        self.index
-            .writer(INDEX_HEAP_SIZE)
-            .map_err(|e| crate::error::DbError {
-                message: format!("failed to create index writer: {e}"),
-            })
+        self.index.writer(INDEX_HEAP_SIZE).map_err(|e| crate::error::DbError {
+            message: format!("failed to create index writer: {e}"),
+        })
     }
 
     fn searcher(&self) -> Searcher {
@@ -285,12 +253,9 @@ mod tests {
     fn index_and_search() {
         let (_tmp, idx) = test_index();
 
-        idx.index_message("s1", "m1", "user", "fix the authentication bug in login", 1000)
-            .unwrap();
-        idx.index_message("s1", "m2", "assistant", "I found the issue in the auth module", 1001)
-            .unwrap();
-        idx.index_message("s2", "m3", "user", "refactor the database layer", 2000)
-            .unwrap();
+        idx.index_message("s1", "m1", "user", "fix the authentication bug in login", 1000).unwrap();
+        idx.index_message("s1", "m2", "assistant", "I found the issue in the auth module", 1001).unwrap();
+        idx.index_message("s2", "m3", "user", "refactor the database layer", 2000).unwrap();
 
         // Force reload
         idx.reader.reload().unwrap();
@@ -334,8 +299,7 @@ mod tests {
     #[test]
     fn has_session_check() {
         let (_tmp, idx) = test_index();
-        idx.index_message("sess-abc", "m1", "user", "hello world", 1000)
-            .unwrap();
+        idx.index_message("sess-abc", "m1", "user", "hello world", 1000).unwrap();
         idx.reader.reload().unwrap();
         assert!(idx.has_session("sess-abc").unwrap());
         assert!(!idx.has_session("nonexistent").unwrap());
@@ -345,24 +309,13 @@ mod tests {
     fn ranking_by_relevance() {
         let (_tmp, idx) = test_index();
 
-        idx.index_message("s1", "m1", "user", "rust programming language", 1000)
-            .unwrap();
-        idx.index_message(
-            "s2",
-            "m2",
-            "user",
-            "rust rust rust programming in rust",
-            2000,
-        )
-        .unwrap();
+        idx.index_message("s1", "m1", "user", "rust programming language", 1000).unwrap();
+        idx.index_message("s2", "m2", "user", "rust rust rust programming in rust", 2000).unwrap();
 
         idx.reader.reload().unwrap();
 
         let hits = idx.search("rust", 10).unwrap();
         assert!(hits.len() >= 2);
-        assert!(
-            hits[0].score >= hits[1].score,
-            "higher term frequency should rank higher"
-        );
+        assert!(hits[0].score >= hits[1].score, "higher term frequency should rank higher");
     }
 }

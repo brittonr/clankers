@@ -193,27 +193,30 @@ impl Tool for SessionSearchTool {
         let limit = usize::try_from(params.get("limit").and_then(|v| v.as_u64()).unwrap_or(10)).unwrap_or(10);
 
         // Tier 0: tantivy full-text search (best quality)
-        let mut results = if let Some(search_index) = ctx.search_index() {
-            match search_index.search(query, limit * 3) {
-                Ok(hits) => {
-                    let mut seen_sessions = std::collections::HashSet::new();
-                    hits.into_iter()
-                        .filter(|_h| cwd.is_none() || true) // TODO: filter by cwd when indexed
-                        .filter(|h| seen_sessions.insert(h.session_id.clone()))
-                        .take(limit)
-                        .map(|h| SessionResult {
-                            session_id: h.session_id,
-                            date: chrono::DateTime::from_timestamp(h.timestamp, 0)
-                                .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-                                .unwrap_or_default(),
-                            model: String::new(),
-                            cwd: String::new(),
-                            preview: h.snippet,
-                            source: "fts".to_string(),
-                        })
-                        .collect()
+        let mut results = if cwd.is_none() {
+            if let Some(search_index) = ctx.search_index() {
+                match search_index.search(query, limit * 3) {
+                    Ok(hits) => {
+                        let mut seen_sessions = std::collections::HashSet::new();
+                        hits.into_iter()
+                            .filter(|h| seen_sessions.insert(h.session_id.clone()))
+                            .take(limit)
+                            .map(|h| SessionResult {
+                                session_id: h.session_id,
+                                date: chrono::DateTime::from_timestamp(h.timestamp, 0)
+                                    .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
+                                    .unwrap_or_default(),
+                                model: String::new(),
+                                cwd: String::new(),
+                                preview: h.snippet,
+                                source: "fts".to_string(),
+                            })
+                            .collect()
+                    }
+                    Err(_) => Vec::new(),
                 }
-                Err(_) => Vec::new(),
+            } else {
+                Vec::new()
             }
         } else {
             Vec::new()
@@ -224,11 +227,7 @@ impl Tool for SessionSearchTool {
             if let Some(db) = ctx.db() {
                 let exclude_ids: Vec<String> = results.iter().map(|r| r.session_id.clone()).collect();
                 let idx_results = self.search_index(db, query, cwd, limit - results.len());
-                results.extend(
-                    idx_results
-                        .into_iter()
-                        .filter(|r| !exclude_ids.contains(&r.session_id)),
-                );
+                results.extend(idx_results.into_iter().filter(|r| !exclude_ids.contains(&r.session_id)));
             }
         }
 
