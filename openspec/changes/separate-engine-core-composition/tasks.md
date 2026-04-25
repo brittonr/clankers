@@ -1,7 +1,7 @@
 ## Phase 0: Readiness
 
 - [x] R1 Validate readiness with `openspec validate separate-engine-core-composition --strict`, proposal gate, design gate, and tasks gate before implementation. ✅ 1m (started: 2026-04-25T16:09:08Z → completed: 2026-04-25T16:09:21Z) [covers=embeddable-agent-engine.core-engine-ownership,embeddable-agent-engine.no-dormant-core-state,embeddable-agent-engine.core-engine-boundary-rails]
-- [ ] R2 Prepare `openspec/changes/separate-engine-core-composition/evidence/validation-plan.md` as the validation log for all verification tasks. [covers=embeddable-agent-engine.composition-tests,embeddable-agent-engine.core-engine-boundary-rails,no.std.functional.core.pre.engine.cancellation] [evidence=openspec/changes/separate-engine-core-composition/evidence/validation-plan.md]
+- [x] R2 Prepare `openspec/changes/separate-engine-core-composition/evidence/validation-plan.md` as the validation log for all verification tasks. ✅ 1m (started: 2026-04-25T16:09:33Z → completed: 2026-04-25T16:09:33Z) [covers=embeddable-agent-engine.composition-tests,embeddable-agent-engine.core-engine-boundary-rails,no.std.functional.core.pre.engine.cancellation] [evidence=openspec/changes/separate-engine-core-composition/evidence/validation-plan.md]
 
 ## Phase 1: Ownership cleanup
 

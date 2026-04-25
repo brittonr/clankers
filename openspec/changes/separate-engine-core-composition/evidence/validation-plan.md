@@ -34,7 +34,10 @@ Tasks gate: PASS
 
 ### R2 — validation evidence setup
 
-Status: PLANNED
+Result: PASS
+
+Created validation log artifact at `openspec/changes/separate-engine-core-composition/evidence/validation-plan.md` with planned sections for implementation and verification tasks.
+
 
 ### I2 — EngineState active-field inventory
 
