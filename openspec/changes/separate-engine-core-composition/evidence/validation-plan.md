@@ -350,6 +350,24 @@ test turn::tests::accepted_prompt_submission_reduces_engine ... ok
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 137 filtered out; finished in 0.00s
 ```
 
+### V8 — engine tool-effect confirmation
+
+Command:
+
+```bash
+cargo test -p clankers-engine --lib model_completion_schedules_tool_effects_for_tool_use_stop
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test tests::model_completion_schedules_tool_effects_for_tool_use_stop ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+```
+
 ### V8 — final acceptance bundle
 
 Status: PLANNED
