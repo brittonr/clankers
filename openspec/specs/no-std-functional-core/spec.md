@@ -1,7 +1,7 @@
 # no-std-functional-core Specification
 
 ## Purpose
-Define the portable `clankers-core` functional core boundary for deterministic prompt, loop, thinking, and tool-filter orchestration so `clankers-controller` and `clankers-agent` share one no-std-safe policy layer with explicit effects and continuous parity/boundary verification.
+Define the portable `clankers-core` functional core boundary for deterministic prompt, loop, thinking, and tool-filter orchestration so `clankers-controller` owns one no-std-safe policy layer with explicit effects while `clankers-agent` integrates through shell-native controller adapters and continuous parity/boundary verification.
 ## Requirements
 ### Requirement: Clankers MUST provide a portable no-std core crate
 ID: no.std.functional.core.portable.crate

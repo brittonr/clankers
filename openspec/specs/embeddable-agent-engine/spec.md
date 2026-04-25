@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Define the reusable `clankers-engine` boundary for host-facing agent harness semantics that sit above pure core reducers and below Clankers-specific shells such as daemon, TUI, interactive mode, provider runtime, and prompt assembly.
+Define the reusable `clankers-engine` boundary for host-facing model/tool turn semantics that compose alongside pure core reducers through adapter seams and sit below Clankers-specific shells such as daemon, TUI, interactive mode, provider runtime, and prompt assembly.
 ## Requirements
 ### Requirement: Clankers MUST provide a reusable embeddable engine crate
 
