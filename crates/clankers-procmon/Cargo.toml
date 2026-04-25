@@ -12,3 +12,6 @@ serde = { workspace = true }
 sysinfo = "0.34"
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["codec"] }
+
+[lints]
+workspace = true
