@@ -525,6 +525,34 @@ const HOST_CRATE_BUILTIN_TOOL_FORBIDDEN_TEXT: [&str; 12] = [
     "clankers_agent::system_prompt",
     "build_system_prompt",
 ];
+const SDK_CRATE_RUNTIME_FORBIDDEN_TEXT: &[&str] = &[
+    "clankers_agent",
+    "clankers_provider",
+    "clanker_router",
+    "clankers_protocol",
+    "clanker_tui_types",
+    "clankers_db",
+    "clankers_config",
+    "CompletionRequest",
+    "CompletionResponse",
+    "ProviderResponse",
+    "tokio::runtime::Handle",
+    "tokio::task::JoinHandle",
+    "reqwest::Client",
+    "AgentMessage",
+    "MessageId",
+    "Utc",
+    "DateTime",
+    "Instant::now",
+    "SystemTime",
+    "OnceLock",
+    "OnceCell",
+    "LazyLock",
+    "lazy_static",
+    "service_locator",
+    "global_service",
+    "singleton",
+];
 const ENGINE_HOST_RUNTIME_FEEDBACK_REQUIRED_PATHS: [&str; 6] = [
     "EngineInput::ModelCompleted",
     "EngineInput::ModelFailed",
@@ -1754,6 +1782,7 @@ fn core_and_engine_reducer_policy_inventories_stay_closed() {
         let paths = collect_non_test_paths(&relative_path);
         assert_segments_absent(&relative_path, &paths, &ENGINE_CORE_POLICY_FORBIDDEN_SEGMENTS);
         assert_segments_absent(&relative_path, &paths, &ENGINE_SHELL_RUNTIME_FORBIDDEN_SEGMENTS);
+        assert_source_text_absent(&relative_path, SDK_CRATE_RUNTIME_FORBIDDEN_TEXT);
     }
 
     for relative_path in rust_source_files_under("crates/clankers-core/src") {
@@ -1811,6 +1840,7 @@ fn host_crates_reject_shell_runtime_source_leakage() {
             let paths = collect_non_test_paths(&relative_path);
             assert_segments_absent(&relative_path, &paths, &HOST_CRATE_SHELL_FORBIDDEN_SEGMENTS);
             assert_source_text_absent(&relative_path, &HOST_CRATE_BUILTIN_TOOL_FORBIDDEN_TEXT);
+            assert_source_text_absent(&relative_path, SDK_CRATE_RUNTIME_FORBIDDEN_TEXT);
         }
     }
 }
