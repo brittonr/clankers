@@ -288,6 +288,7 @@
 - Nickel `| optional` for `Option<T>` fields — omitted fields don't appear in JSON output, serde `#[serde(default)]` fills in `None`
 
 ### Tigerstyle lints
+- 2026-04-25 audit: `./xtask/tigerstyle.sh` on current 2026-04-22/23 nightly failed building pinned tigerstyle `bbf5fbb` with rustc API drift (`implicit_self` field vs method). Use `PATH=/nix/store/0izrvzijsphfir87zh7bfv6ndb2l0lk8-rust-default-1.97.0-nightly-2026-04-16/bin:$PATH RUSTC_WRAPPER= ./xtask/tigerstyle.sh -- --keep-going` for now; pinned runner rejects `--output-format json`, so parse human stderr.
 - dylint driver needs manual build in Nix: `RUSTUP_TOOLCHAIN=nightly cargo build` in temp dir, copy to `~/.dylint_drivers/`
 - `cargo clean` wipes the lint library — must rebuild from `~/git/tigerstyle`
 - `cfg_attr(dylint_lib = "tigerstyle", allow(...))` needs `check-cfg` in workspace Cargo.toml
@@ -304,6 +305,7 @@
 - PTY tests: 5 flaky tests (`slash_commands`, `slash_menu`) timeout intermittently — pre-existing
 - `DaemonConfig` construction: use `..Default::default()` for new fields
 - `PaneId::new()` is not const — use functions for non-ROOT pane IDs
+| 2026-04-25 | self | Guessed `cargo test -p clanker-auth --lib` would finish under 30s after cache warmup; it still timed out in bash at 60s while compiling iroh deps | Use pueue for clanker-auth/clankers-db tests even when the target looks warm; auth pulls enough networking deps to exceed quick-command budget. |
 | 2026-04-25 | self | Twice tried to pass multiple test-name filters directly to `cargo test`, which fails with `unexpected argument` because Cargo accepts only one TESTNAME before `--` | Use one broad filter (for example `cargo test -p crate --lib tests::`) or run separate cargo commands for separate exact filters; do not list multiple test names as positional args. |
 | 2026-04-25 | self | `../clankers-fcis-baseline` looked like a crate/source repo in a move-back request, but it is actually a detached git worktree of the same clankers repo at an older FCIS baseline commit | Treat it as historical reference only; move actual crate sources from the named `clanker-*` sibling repos into `crates/`, not the whole baseline worktree. |
 | 2026-04-25 | self | Regenerating `build-plan.json` from a `.pi/worktrees/...` checkout writes that absolute temp path into the plan | Normalize generated build-plan paths back to `/home/brittonr/git/clankers` before finalizing, or regenerate from the canonical checkout. |

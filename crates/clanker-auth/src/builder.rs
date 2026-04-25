@@ -5,9 +5,11 @@ use std::time::Duration;
 use iroh::PublicKey;
 use iroh::SecretKey;
 use rand::RngCore;
+use serde::Serialize;
 
 use crate::Cap;
 use crate::constants::MAX_CAPABILITIES_PER_TOKEN;
+use crate::constants::MAX_CAPABILITIES_PER_TOKEN_USIZE;
 use crate::constants::MAX_DELEGATION_DEPTH;
 use crate::error::AuthError;
 use crate::token::Audience;
@@ -23,6 +25,9 @@ pub struct TokenBuilder<C: Cap> {
     nonce: Option<[u8; 16]>,
     parent: Option<CapabilityToken<C>>,
 }
+
+const SIGNING_BUFFER_BYTES: usize = 256;
+const MIN_SIGNING_TOKEN_BYTES: usize = 49;
 
 impl<C: Cap> TokenBuilder<C> {
     /// Create a new token builder.
@@ -89,9 +94,13 @@ impl<C: Cap> TokenBuilder<C> {
 
     /// Build and sign the token.
     pub fn build(self) -> Result<CapabilityToken<C>, AuthError> {
-        if self.capabilities.len() > MAX_CAPABILITIES_PER_TOKEN as usize {
+        if self.capabilities.len() > MAX_CAPABILITIES_PER_TOKEN_USIZE {
+            let count = match u32::try_from(self.capabilities.len()) {
+                Ok(count) => count,
+                Err(_) => u32::MAX,
+            };
             return Err(AuthError::TooManyCapabilities {
-                count: self.capabilities.len() as u32,
+                count,
                 max: MAX_CAPABILITIES_PER_TOKEN,
             });
         }
@@ -141,7 +150,7 @@ impl<C: Cap> TokenBuilder<C> {
             [0u8; 64],
         );
 
-        let sign_bytes = bytes_to_sign(&token);
+        let sign_bytes = bytes_to_sign(&token)?;
         let signature = self.issuer_key.sign(&sign_bytes);
         token.signature = signature.to_bytes();
 
@@ -152,16 +161,16 @@ impl<C: Cap> TokenBuilder<C> {
 /// Compute bytes to sign for a token.
 ///
 /// Signs everything except the signature field itself.
-pub fn bytes_to_sign<C: Cap>(token: &CapabilityToken<C>) -> Vec<u8> {
-    let mut bytes = Vec::with_capacity(256);
+pub fn bytes_to_sign<C: Cap>(token: &CapabilityToken<C>) -> Result<Vec<u8>, AuthError> {
+    let mut bytes = Vec::with_capacity(SIGNING_BUFFER_BYTES);
 
     bytes.push(token.version);
     bytes.extend_from_slice(token.issuer.as_bytes());
 
-    let audience_bytes = postcard::to_allocvec(&token.audience).expect("audience must be serializable");
+    let audience_bytes = encode_signing_field(&token.audience, "audience")?;
     bytes.extend_from_slice(&audience_bytes);
 
-    let cap_bytes = postcard::to_allocvec(&token.capabilities).expect("capabilities must be serializable");
+    let cap_bytes = encode_signing_field(&token.capabilities, "capabilities")?;
     bytes.extend_from_slice(&cap_bytes);
 
     bytes.extend_from_slice(&token.issued_at.to_le_bytes());
@@ -176,7 +185,11 @@ pub fn bytes_to_sign<C: Cap>(token: &CapabilityToken<C>) -> Vec<u8> {
 
     bytes.push(token.delegation_depth);
 
-    assert!(bytes.len() > 33 + 16);
+    assert!(bytes.len() > MIN_SIGNING_TOKEN_BYTES);
 
-    bytes
+    Ok(bytes)
+}
+
+fn encode_signing_field<T: Serialize>(field: &T, field_name: &str) -> Result<Vec<u8>, AuthError> {
+    postcard::to_allocvec(field).map_err(|error| AuthError::EncodingError(format!("{field_name}: {error}")))
 }

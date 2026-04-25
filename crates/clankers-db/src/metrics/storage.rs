@@ -16,8 +16,8 @@ pub(crate) const DAILY_ROLLUP_TABLE: TableDefinition<&str, &[u8]> = TableDefinit
 
 pub(crate) const RECENT_EVENTS_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("metrics_recent_events");
 
-const MAX_RECENT_EVENTS_PER_SESSION: u32 = 500;
-const EVICTION_BATCH_FRACTION: u32 = 10;
+const MAX_RECENT_EVENTS_PER_SESSION: usize = 500;
+const EVICTION_BATCH_FRACTION: usize = 10;
 
 pub struct MetricsStore<'db> {
     db: &'db Db,
@@ -143,7 +143,7 @@ impl<'db> MetricsStore<'db> {
             .range(prefix.as_str()..)
             .map_err(db_err)?
             .take_while(|r| r.as_ref().map(|(k, _)| k.value().starts_with(&prefix)).unwrap_or(false))
-            .count() as u32;
+            .count();
 
         if count <= MAX_RECENT_EVENTS_PER_SESSION {
             return Ok(());
@@ -154,7 +154,7 @@ impl<'db> MetricsStore<'db> {
             .range(prefix.as_str()..)
             .map_err(db_err)?
             .take_while(|r| r.as_ref().map(|(k, _)| k.value().starts_with(&prefix)).unwrap_or(false))
-            .take(to_evict as usize)
+            .take(to_evict)
             .filter_map(|r| r.ok().map(|(k, _)| k.value().to_string()))
             .collect();
 

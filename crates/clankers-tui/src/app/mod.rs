@@ -672,7 +672,9 @@ impl App {
 
         if let Some(mut block) = self.conversation.active_block.take() {
             block.streaming = false;
-            block.finalize_metadata();
+            if let Err(error) = block.finalize_metadata() {
+                block.error = Some(format!("failed to finalize block metadata: {error}"));
+            }
             // Store in both the active view and the full block history
             self.conversation.all_blocks.push(block.clone());
             self.conversation.blocks.push(BlockEntry::Conversation(block));

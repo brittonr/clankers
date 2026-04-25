@@ -42,6 +42,8 @@ pub struct MatrixPeer {
     pub last_seen: chrono::DateTime<Utc>,
 }
 
+const MATRIX_BRIDGE_EVENT_CAPACITY: usize = 1024;
+
 /// Pending RPC request awaiting a response.
 struct PendingRequest {
     /// Channel to send the response back to the caller
@@ -53,17 +55,19 @@ struct PendingRequest {
 /// The Matrix bridge manages the bidirectional flow between Matrix rooms
 /// and the clankers agent system.
 pub struct MatrixBridge {
-    /// Known clankers peers discovered via announcements
+    /// Known clankers peers discovered via announcements.
+    /// Lock order: acquire peers before pending if both are ever needed.
     peers: Arc<RwLock<HashMap<String, MatrixPeer>>>,
 
-    /// Pending RPC requests (keyed by request ID)
+    /// Pending RPC requests (keyed by request ID).
+    /// Lock order: acquire after peers; current handlers hold only one bridge lock at a time.
     pending: Arc<RwLock<HashMap<String, PendingRequest>>>,
 
     /// Channel for events the agent should see (chat messages, etc.)
-    agent_event_tx: mpsc::UnboundedSender<BridgeEvent>,
+    agent_event_tx: mpsc::Sender<BridgeEvent>,
 
     /// Receiver for agent events
-    agent_event_rx: Option<mpsc::UnboundedReceiver<BridgeEvent>>,
+    agent_event_rx: Option<mpsc::Receiver<BridgeEvent>>,
 }
 
 /// Events forwarded from the bridge to the agent/TUI.
@@ -107,7 +111,7 @@ pub enum BridgeEvent {
 impl MatrixBridge {
     /// Create a new bridge.
     pub fn new() -> Self {
-        let (agent_event_tx, agent_event_rx) = mpsc::unbounded_channel();
+        let (agent_event_tx, agent_event_rx) = mpsc::channel(MATRIX_BRIDGE_EVENT_CAPACITY);
         Self {
             peers: Arc::new(RwLock::new(HashMap::new())),
             pending: Arc::new(RwLock::new(HashMap::new())),
@@ -117,7 +121,7 @@ impl MatrixBridge {
     }
 
     /// Take the agent event receiver (can only be called once).
-    pub fn take_event_rx(&mut self) -> Option<mpsc::UnboundedReceiver<BridgeEvent>> {
+    pub fn take_event_rx(&mut self) -> Option<mpsc::Receiver<BridgeEvent>> {
         self.agent_event_rx.take()
     }
 
@@ -169,7 +173,7 @@ impl MatrixBridge {
         event: &ClankersEvent,
         peers: &Arc<RwLock<HashMap<String, MatrixPeer>>>,
         pending: &Arc<RwLock<HashMap<String, PendingRequest>>>,
-        agent_tx: &mpsc::UnboundedSender<BridgeEvent>,
+        agent_tx: &mpsc::Sender<BridgeEvent>,
         our_user_id: &str,
     ) {
         match event {
@@ -193,7 +197,7 @@ impl MatrixBridge {
                     last_seen: announce.timestamp,
                 };
 
-                agent_tx.send(BridgeEvent::PeerUpdate(peer.clone())).ok();
+                Self::send_agent_event(agent_tx, BridgeEvent::PeerUpdate(peer.clone())).await;
                 peers.write().await.insert(announce.user_id.clone(), peer);
             }
 
@@ -205,12 +209,11 @@ impl MatrixBridge {
                     return; // Not for us
                 }
 
-                agent_tx
-                    .send(BridgeEvent::IncomingRpc {
-                        request: request.clone(),
-                        room_id: String::new(), // filled by the caller
-                    })
-                    .ok();
+                Self::send_agent_event(agent_tx, BridgeEvent::IncomingRpc {
+                    request: request.clone(),
+                    room_id: String::new(), // filled by the caller
+                })
+                .await;
             }
 
             ClankersEvent::RpcResponse(response) => {
@@ -232,14 +235,13 @@ impl MatrixBridge {
                     return;
                 }
 
-                agent_tx
-                    .send(BridgeEvent::ChatMessage {
-                        sender: chat.user_id.clone(),
-                        instance_name: chat.instance_name.clone(),
-                        body: chat.body.clone(),
-                        room_id: String::new(),
-                    })
-                    .ok();
+                Self::send_agent_event(agent_tx, BridgeEvent::ChatMessage {
+                    sender: chat.user_id.clone(),
+                    instance_name: chat.instance_name.clone(),
+                    body: chat.body.clone(),
+                    room_id: String::new(),
+                })
+                .await;
             }
 
             ClankersEvent::Text {
@@ -249,13 +251,12 @@ impl MatrixBridge {
                     return;
                 }
 
-                agent_tx
-                    .send(BridgeEvent::TextMessage {
-                        sender: sender.clone(),
-                        body: body.clone(),
-                        room_id: room_id.clone(),
-                    })
-                    .ok();
+                Self::send_agent_event(agent_tx, BridgeEvent::TextMessage {
+                    sender: sender.clone(),
+                    body: body.clone(),
+                    room_id: room_id.clone(),
+                })
+                .await;
             }
 
             ClankersEvent::Media {
@@ -271,17 +272,22 @@ impl MatrixBridge {
                     return;
                 }
 
-                agent_tx
-                    .send(BridgeEvent::MediaMessage {
-                        sender: sender.clone(),
-                        body: body.clone(),
-                        filename: filename.clone(),
-                        media_type: media_type.clone(),
-                        source: source.clone(),
-                        room_id: room_id.clone(),
-                    })
-                    .ok();
+                Self::send_agent_event(agent_tx, BridgeEvent::MediaMessage {
+                    sender: sender.clone(),
+                    body: body.clone(),
+                    filename: filename.clone(),
+                    media_type: media_type.clone(),
+                    source: source.clone(),
+                    room_id: room_id.clone(),
+                })
+                .await;
             }
+        }
+    }
+
+    async fn send_agent_event(agent_tx: &mpsc::Sender<BridgeEvent>, event: BridgeEvent) {
+        if let Err(error) = agent_tx.send(event).await {
+            warn!("Matrix bridge agent-event receiver closed: {error}");
         }
     }
 

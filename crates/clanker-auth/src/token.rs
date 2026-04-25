@@ -8,6 +8,7 @@ use serde::Serialize;
 
 use crate::Cap;
 use crate::constants::MAX_TOKEN_SIZE;
+use crate::constants::MAX_TOKEN_SIZE_USIZE;
 use crate::error::AuthError;
 
 /// Who can use this token.
@@ -78,7 +79,7 @@ impl<C: Cap> CapabilityToken<C> {
     /// Encode token to bytes.
     pub fn encode(&self) -> Result<Vec<u8>, AuthError> {
         let bytes = postcard::to_allocvec(self).map_err(|e| AuthError::EncodingError(e.to_string()))?;
-        if bytes.len() > MAX_TOKEN_SIZE as usize {
+        if bytes.len() > MAX_TOKEN_SIZE_USIZE {
             return Err(AuthError::TokenTooLarge {
                 size_bytes: bytes.len() as u64,
                 max_bytes: u64::from(MAX_TOKEN_SIZE),
@@ -89,7 +90,7 @@ impl<C: Cap> CapabilityToken<C> {
 
     /// Decode token from bytes.
     pub fn decode(bytes: &[u8]) -> Result<Self, AuthError> {
-        if bytes.len() > MAX_TOKEN_SIZE as usize {
+        if bytes.len() > MAX_TOKEN_SIZE_USIZE {
             return Err(AuthError::TokenTooLarge {
                 size_bytes: bytes.len() as u64,
                 max_bytes: u64::from(MAX_TOKEN_SIZE),

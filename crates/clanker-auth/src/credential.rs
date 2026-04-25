@@ -14,14 +14,14 @@ use serde::Serialize;
 use crate::Cap;
 use crate::TokenBuilder;
 use crate::TokenVerifier;
-use crate::constants::MAX_DELEGATION_DEPTH;
-use crate::constants::MAX_TOKEN_SIZE;
+use crate::constants::MAX_DELEGATION_DEPTH_USIZE;
+use crate::constants::MAX_TOKEN_SIZE_USIZE;
 use crate::error::AuthError;
 use crate::token::Audience;
 use crate::token::CapabilityToken;
 
 /// Maximum credential size: bounded by delegation depth × token size.
-pub const MAX_CREDENTIAL_SIZE: usize = MAX_DELEGATION_DEPTH as usize * MAX_TOKEN_SIZE as usize;
+pub const MAX_CREDENTIAL_SIZE: usize = MAX_DELEGATION_DEPTH_USIZE * MAX_TOKEN_SIZE_USIZE;
 
 /// A self-contained credential for offline chain verification.
 ///
@@ -58,11 +58,7 @@ impl<C: Cap> Credential<C> {
     /// Walks from leaf to root, checking signatures, expiry, and
     /// capability attenuation at each level. Stateless — no parent
     /// cache or network calls needed.
-    pub fn verify(
-        &self,
-        trusted_roots: &[PublicKey],
-        presenter: Option<&PublicKey>,
-    ) -> Result<(), AuthError> {
+    pub fn verify(&self, trusted_roots: &[PublicKey], presenter: Option<&PublicKey>) -> Result<(), AuthError> {
         let mut verifier = TokenVerifier::new();
         for root in trusted_roots {
             verifier = verifier.with_trusted_root(*root);
@@ -129,8 +125,7 @@ impl<C: Cap> Credential<C> {
 
     /// Encode credential to bytes for wire transmission.
     pub fn encode(&self) -> Result<Vec<u8>, AuthError> {
-        let bytes =
-            postcard::to_allocvec(self).map_err(|e| AuthError::EncodingError(e.to_string()))?;
+        let bytes = postcard::to_allocvec(self).map_err(|e| AuthError::EncodingError(e.to_string()))?;
         if bytes.len() > MAX_CREDENTIAL_SIZE {
             return Err(AuthError::TokenTooLarge {
                 size_bytes: bytes.len() as u64,

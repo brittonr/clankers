@@ -89,8 +89,9 @@ impl ConversationBlock {
         Self::new(id, prompt, synthetic_block_timestamp())
     }
 
-    pub fn finalize_metadata(&mut self) {
-        self.finalized_hash = Some(finalized_block_hash(self.started_at, &self.prompt, &self.responses));
+    pub fn finalize_metadata(&mut self) -> Result<(), serde_json::Error> {
+        self.finalized_hash = Some(finalized_block_hash(self.started_at, &self.prompt, &self.responses)?);
+        Ok(())
     }
 
     /// One-line summary for collapsed view.
@@ -181,27 +182,28 @@ pub fn canonical_block_envelope_v1_bytes(
     started_at: DateTime<Utc>,
     prompt: &str,
     responses: &[DisplayMessage],
-) -> Vec<u8> {
+) -> Result<Vec<u8>, serde_json::Error> {
     let envelope = CanonicalBlockEnvelopeV1 {
         v: CANONICAL_BLOCK_ENVELOPE_VERSION_V1,
         started_at: started_at.to_rfc3339(),
         items: canonical_block_items(prompt, responses),
     };
-    match serde_json::to_vec(&envelope) {
-        Ok(bytes) => bytes,
-        Err(error) => panic!("canonical conversation block envelope must serialize: {error}"),
-    }
+    serde_json::to_vec(&envelope)
 }
 
-pub fn finalized_block_hash(started_at: DateTime<Utc>, prompt: &str, responses: &[DisplayMessage]) -> String {
-    let canonical_bytes = canonical_block_envelope_v1_bytes(started_at, prompt, responses);
-    blake3::hash(&canonical_bytes).to_hex().to_string()
+pub fn finalized_block_hash(
+    started_at: DateTime<Utc>,
+    prompt: &str,
+    responses: &[DisplayMessage],
+) -> Result<String, serde_json::Error> {
+    let canonical_bytes = canonical_block_envelope_v1_bytes(started_at, prompt, responses)?;
+    Ok(blake3::hash(&canonical_bytes).to_hex().to_string())
 }
 
 fn canonical_block_items(prompt: &str, responses: &[DisplayMessage]) -> Vec<CanonicalBlockItemV1> {
     let response_item_count = responses.len();
     let user_item_count = 1usize;
-    let total_item_count = user_item_count + response_item_count;
+    let total_item_count = user_item_count.saturating_add(response_item_count);
     let mut items = Vec::with_capacity(total_item_count);
     items.push(CanonicalBlockItemV1::User {
         text: prompt.to_string(),
@@ -336,7 +338,8 @@ mod tests {
 
     #[test]
     fn canonical_block_envelope_v1_matches_fixture() {
-        let actual_bytes = canonical_block_envelope_v1_bytes(fixed_started_at(), FIXTURE_PROMPT, &base_responses());
+        let actual_bytes = canonical_block_envelope_v1_bytes(fixed_started_at(), FIXTURE_PROMPT, &base_responses())
+            .expect("canonical block envelope fixture must serialize");
         let actual = match String::from_utf8(actual_bytes) {
             Ok(text) => text,
             Err(error) => panic!("canonical block fixture must stay UTF-8: {error}"),
@@ -347,8 +350,10 @@ mod tests {
 
     #[test]
     fn identical_canonical_content_yields_same_hash() {
-        let first_hash = finalized_block_hash(fixed_started_at(), FIXTURE_PROMPT, &base_responses());
-        let second_hash = finalized_block_hash(fixed_started_at(), FIXTURE_PROMPT, &base_responses());
+        let first_hash = finalized_block_hash(fixed_started_at(), FIXTURE_PROMPT, &base_responses())
+            .expect("first canonical hash must serialize");
+        let second_hash = finalized_block_hash(fixed_started_at(), FIXTURE_PROMPT, &base_responses())
+            .expect("second canonical hash must serialize");
 
         assert_eq!(first_hash, second_hash);
     }
@@ -373,39 +378,47 @@ mod tests {
         changed.parent_block_id = Some(CHANGED_PARENT_BLOCK_ID);
         changed.agent_msg_checkpoint = CHANGED_AGENT_MESSAGE_CHECKPOINT;
 
-        let original_hash = finalized_block_hash(original.started_at, &original.prompt, &original.responses);
-        let changed_hash = finalized_block_hash(changed.started_at, &changed.prompt, &changed.responses);
+        let original_hash = finalized_block_hash(original.started_at, &original.prompt, &original.responses)
+            .expect("original canonical hash must serialize");
+        let changed_hash = finalized_block_hash(changed.started_at, &changed.prompt, &changed.responses)
+            .expect("changed canonical hash must serialize");
 
         assert_eq!(original_hash, changed_hash);
     }
 
     #[test]
     fn finalized_hash_changes_when_prompt_changes() {
-        let original_hash = finalized_block_hash(fixed_started_at(), FIXTURE_PROMPT, &base_responses());
-        let changed_hash = finalized_block_hash(fixed_started_at(), "different prompt", &base_responses());
+        let original_hash = finalized_block_hash(fixed_started_at(), FIXTURE_PROMPT, &base_responses())
+            .expect("original canonical hash must serialize");
+        let changed_hash = finalized_block_hash(fixed_started_at(), "different prompt", &base_responses())
+            .expect("prompt-changed canonical hash must serialize");
 
         assert_ne!(original_hash, changed_hash);
     }
 
     #[test]
     fn finalized_hash_changes_when_assistant_or_tool_content_changes() {
-        let original_hash = finalized_block_hash(fixed_started_at(), FIXTURE_PROMPT, &base_responses());
+        let original_hash = finalized_block_hash(fixed_started_at(), FIXTURE_PROMPT, &base_responses())
+            .expect("original canonical hash must serialize");
         let mut changed_responses = base_responses();
         changed_responses[0].content = "changed assistant reply".to_string();
         changed_responses[3].content = "changed tool output".to_string();
-        let changed_hash = finalized_block_hash(fixed_started_at(), FIXTURE_PROMPT, &changed_responses);
+        let changed_hash = finalized_block_hash(fixed_started_at(), FIXTURE_PROMPT, &changed_responses)
+            .expect("content-changed canonical hash must serialize");
 
         assert_ne!(original_hash, changed_hash);
     }
 
     #[test]
     fn finalized_hash_changes_when_started_at_changes() {
-        let original_hash = finalized_block_hash(fixed_started_at(), FIXTURE_PROMPT, &base_responses());
+        let original_hash = finalized_block_hash(fixed_started_at(), FIXTURE_PROMPT, &base_responses())
+            .expect("original canonical hash must serialize");
         let changed_started_at = match DateTime::parse_from_rfc3339(CHANGED_STARTED_AT) {
             Ok(timestamp) => timestamp.with_timezone(&Utc),
             Err(error) => panic!("changed test timestamp must parse: {error}"),
         };
-        let changed_hash = finalized_block_hash(changed_started_at, FIXTURE_PROMPT, &base_responses());
+        let changed_hash = finalized_block_hash(changed_started_at, FIXTURE_PROMPT, &base_responses())
+            .expect("timestamp-changed canonical hash must serialize");
 
         assert_ne!(original_hash, changed_hash);
     }

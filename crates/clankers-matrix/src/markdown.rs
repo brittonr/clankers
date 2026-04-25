@@ -104,12 +104,18 @@ pub fn chunk_response(text: &str, max_bytes: usize) -> Vec<String> {
 /// A code block is a fenced block delimited by triple backticks.
 /// Paragraphs are separated by double newlines.
 fn split_into_blocks(text: &str) -> Vec<String> {
-    let mut blocks = Vec::new();
+    let max_line_count = text.lines().count();
+    let mut blocks = Vec::with_capacity(max_line_count);
     let mut current = String::new();
     let mut is_in_code_block = false;
     let mut lines = text.lines().peekable();
+    let mut processed_line_count = 0usize;
 
-    while let Some(line) = lines.next() {
+    while processed_line_count < max_line_count {
+        let Some(line) = lines.next() else {
+            break;
+        };
+        processed_line_count = processed_line_count.saturating_add(1);
         let trimmed = line.trim();
 
         // Detect code fence
@@ -127,6 +133,7 @@ fn split_into_blocks(text: &str) -> Vec<String> {
                     && next_line.trim().is_empty()
                 {
                     lines.next();
+                    processed_line_count = processed_line_count.saturating_add(1);
                 }
                 blocks.push(current.trim().to_string());
                 current.clear();

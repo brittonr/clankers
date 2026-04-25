@@ -8,11 +8,17 @@
 /// Tiger Style: Bounded to prevent token bloat and DoS.
 pub const MAX_CAPABILITIES_PER_TOKEN: u32 = 32;
 
+/// Maximum number of capabilities per token as a platform-local collection bound.
+pub const MAX_CAPABILITIES_PER_TOKEN_USIZE: usize = 32;
+
 /// Maximum delegation chain depth (8 levels).
 ///
 /// Tiger Style: Bounded to prevent unbounded proof chains.
 /// Root -> Service -> User -> ... max 8 levels
 pub const MAX_DELEGATION_DEPTH: u8 = 8;
+
+/// Maximum delegation chain depth as a platform-local collection bound.
+pub const MAX_DELEGATION_DEPTH_USIZE: usize = 8;
 
 /// Maximum token size in bytes (8 KB).
 ///
@@ -20,11 +26,17 @@ pub const MAX_DELEGATION_DEPTH: u8 = 8;
 /// Typical token with 10 capabilities is ~500 bytes.
 pub const MAX_TOKEN_SIZE: u32 = 8 * 1024;
 
+/// Maximum token size as a platform-local collection bound.
+pub const MAX_TOKEN_SIZE_USIZE: usize = 8 * 1024;
+
 /// Maximum revocation list size (10,000 entries).
 ///
 /// Tiger Style: Bounded to prevent unbounded memory growth.
 /// Old revocations can be pruned after token expiry.
 pub const MAX_REVOCATION_LIST_SIZE: u32 = 10_000;
+
+/// Maximum revocation list size as a platform-local collection bound.
+pub const MAX_REVOCATION_LIST_SIZE_USIZE: usize = 10_000;
 
 /// Token clock skew tolerance (60 seconds).
 ///

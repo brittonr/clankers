@@ -87,15 +87,16 @@ impl TopKCounter {
             return;
         }
         // Evict the lowest entry if the new key would surpass it.
-        let min_count = self.entries.values().copied().min().unwrap_or(0);
+        let Some((evict_key, min_count)) = self.lowest_entry() else {
+            self.other_count = self.other_count.saturating_add(1);
+            return;
+        };
         if 1 > min_count {
-            let evict_key =
-                self.entries.iter().filter(|&(_, v)| *v == min_count).map(|(k, _)| k.clone()).next().unwrap();
-            self.other_count += min_count;
+            self.other_count = self.other_count.saturating_add(min_count);
             self.entries.remove(&evict_key);
             self.entries.insert(key.to_string(), 1);
         } else {
-            self.other_count += 1;
+            self.other_count = self.other_count.saturating_add(1);
         }
     }
 
@@ -109,7 +110,7 @@ impl TopKCounter {
 
     pub fn total(&self) -> u64 {
         let tracked: u64 = self.entries.values().sum();
-        tracked + self.other_count
+        tracked.saturating_add(self.other_count)
     }
 
     pub fn merge(&mut self, other: &Self) {
@@ -119,12 +120,19 @@ impl TopKCounter {
         self.other_count += other.other_count;
         // Re-cap after merge by evicting lowest until within cap.
         while self.entries.len() > self.cap {
-            let min_count = self.entries.values().copied().min().unwrap_or(0);
-            let evict_key =
-                self.entries.iter().filter(|&(_, v)| *v == min_count).map(|(k, _)| k.clone()).next().unwrap();
-            self.other_count += min_count;
+            let Some((evict_key, min_count)) = self.lowest_entry() else {
+                return;
+            };
+            self.other_count = self.other_count.saturating_add(min_count);
             self.entries.remove(&evict_key);
         }
+    }
+
+    fn lowest_entry(&self) -> Option<(String, u64)> {
+        self.entries
+            .iter()
+            .min_by(|left, right| left.1.cmp(right.1).then_with(|| left.0.cmp(right.0)))
+            .map(|(key, count)| (key.clone(), *count))
     }
 }
 
@@ -367,6 +375,16 @@ mod tests {
         assert_eq!(t.entries.len(), 2);
         assert_eq!(t.other_count(), 1);
         assert_eq!(t.total(), 3);
+    }
+
+    #[test]
+    fn topk_zero_capacity_counts_everything_as_other() {
+        let mut t = TopKCounter::new(0);
+        t.increment("a");
+        t.increment("b");
+        assert!(t.entries.is_empty());
+        assert_eq!(t.other_count(), 2);
+        assert_eq!(t.total(), 2);
     }
 
     #[test]

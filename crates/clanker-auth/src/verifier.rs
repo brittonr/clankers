@@ -11,6 +11,7 @@ use crate::Cap;
 use crate::builder::bytes_to_sign;
 use crate::constants::MAX_DELEGATION_DEPTH;
 use crate::constants::MAX_REVOCATION_LIST_SIZE;
+use crate::constants::MAX_REVOCATION_LIST_SIZE_USIZE;
 use crate::constants::TOKEN_CLOCK_SKEW_SECS;
 use crate::error::AuthError;
 use crate::token::Audience;
@@ -19,7 +20,9 @@ use crate::utils::current_time_secs;
 
 /// Verifies capability tokens and checks authorization.
 pub struct TokenVerifier<C: Cap> {
+    /// Lock order: revoked before parent_cache if both are ever needed together.
     revoked: RwLock<HashSet<[u8; 32]>>,
+    /// Lock order: acquire after revoked; current verification drops revoked before this lock.
     parent_cache: RwLock<HashMap<[u8; 32], CapabilityToken<C>>>,
     trusted_roots: Vec<PublicKey>,
     clock_skew_tolerance: u64,
@@ -92,7 +95,7 @@ impl<C: Cap> TokenVerifier<C> {
         }
 
         // Signature
-        let sign_bytes = bytes_to_sign(token);
+        let sign_bytes = bytes_to_sign(token)?;
         let signature = iroh::Signature::from_bytes(&token.signature);
         token.issuer.verify(&sign_bytes, &signature).map_err(|_| AuthError::InvalidSignature)?;
 
@@ -193,16 +196,22 @@ impl<C: Cap> TokenVerifier<C> {
             });
         }
 
-        let sign_bytes = bytes_to_sign(token);
+        let sign_bytes = bytes_to_sign(token)?;
         let signature = iroh::Signature::from_bytes(&token.signature);
         token.issuer.verify(&sign_bytes, &signature).map_err(|_| AuthError::InvalidSignature)?;
 
         let now = current_time_secs();
         if token.expires_at + self.clock_skew_tolerance < now {
-            return Err(AuthError::TokenExpired { expired_at: token.expires_at, now });
+            return Err(AuthError::TokenExpired {
+                expired_at: token.expires_at,
+                now,
+            });
         }
         if token.issued_at > now + self.clock_skew_tolerance {
-            return Err(AuthError::TokenFromFuture { issued_at: token.issued_at, now });
+            return Err(AuthError::TokenFromFuture {
+                issued_at: token.issued_at,
+                now,
+            });
         }
 
         if chain_depth == 0 {
@@ -210,7 +219,10 @@ impl<C: Cap> TokenVerifier<C> {
                 Audience::Key(expected) => {
                     if let Some(actual) = presenter {
                         if expected != actual {
-                            return Err(AuthError::WrongAudience { expected: expected.to_string(), actual: actual.to_string() });
+                            return Err(AuthError::WrongAudience {
+                                expected: expected.to_string(),
+                                actual: actual.to_string(),
+                            });
                         }
                     } else {
                         return Err(AuthError::AudienceRequired);
@@ -278,7 +290,7 @@ impl<C: Cap> TokenVerifier<C> {
         let mut revoked = self.revoked.write().map_err(|_| AuthError::InternalError {
             reason: "revocation lock poisoned".to_string(),
         })?;
-        if revoked.len() >= MAX_REVOCATION_LIST_SIZE as usize {
+        if revoked.len() >= MAX_REVOCATION_LIST_SIZE_USIZE {
             if revoked.contains(&token_hash) {
                 return Ok(());
             }
@@ -302,9 +314,12 @@ impl<C: Cap> TokenVerifier<C> {
     }
 
     pub fn clear_revocations(&self) -> Result<(), AuthError> {
-        self.revoked.write().map_err(|_| AuthError::InternalError {
-            reason: "revocation lock poisoned".to_string(),
-        })?.clear();
+        self.revoked
+            .write()
+            .map_err(|_| AuthError::InternalError {
+                reason: "revocation lock poisoned".to_string(),
+            })?
+            .clear();
         Ok(())
     }
 
@@ -332,7 +347,9 @@ impl<C: Cap> TokenVerifier<C> {
 }
 
 impl<C: Cap> Default for TokenVerifier<C> {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl<C: Cap> std::fmt::Debug for TokenVerifier<C> {

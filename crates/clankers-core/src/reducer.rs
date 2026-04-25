@@ -232,11 +232,11 @@ fn reduce_follow_up_dispatch_acknowledged(
 }
 
 fn reduce_set_thinking_level(state: &CoreState, requested: &crate::types::CoreThinkingLevelInput) -> CoreOutcome {
-    let crate::types::CoreThinkingLevelInput::Level(level) = requested else {
-        let crate::types::CoreThinkingLevelInput::Invalid(raw) = requested else {
-            unreachable!("thinking input must be level or invalid")
-        };
-        return rejection(state, CoreError::InvalidThinkingLevel { raw: raw.clone() });
+    let level = match requested {
+        crate::types::CoreThinkingLevelInput::Level(level) => level,
+        crate::types::CoreThinkingLevelInput::Invalid(raw) => {
+            return rejection(state, CoreError::InvalidThinkingLevel { raw: raw.clone() });
+        }
     };
 
     let mut next_state = state.clone();
