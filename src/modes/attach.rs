@@ -1255,6 +1255,7 @@ fn route_attach_slash(command: &str, args: &str) -> AttachSlashRoute {
         command,
         "status"
             | "usage"
+            | "metrics"
             | "version"
             | "router"
             | "cd"
