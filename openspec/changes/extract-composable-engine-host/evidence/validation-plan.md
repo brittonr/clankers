@@ -1,8 +1,12 @@
 Task-ID: V1,V2,V3,V4,V5,V6
 Covers: embeddable-agent-engine.reusable-stream-accumulator, embeddable-agent-engine.stream-folding-positive, embeddable-agent-engine.stream-folding-negative, embeddable-agent-engine.host-runner-traits, embeddable-agent-engine.tool-host-outcome-verification, embeddable-agent-engine.cancellation-phase-ownership, embeddable-agent-engine.reusable-tool-host, embeddable-agent-engine.tool-host-catalog, embeddable-agent-engine.plugin-tool-adapter, embeddable-agent-engine.agent-default-assembly, embeddable-agent-engine.host-adapter-parity, embeddable-agent-engine.adapter-parity-rails, embeddable-agent-engine.reducer-retry-tests, embeddable-agent-engine.reducer-budget-token-tests, embeddable-agent-engine.invalid-retry-feedback, embeddable-agent-engine.host-extraction-rails, embeddable-agent-engine.no-duplicated-runner-policy, embeddable-agent-engine.host-crate-boundary-rails, embeddable-agent-engine.core-engine-boundary-rails, embeddable-agent-engine.engine-state-active-data, embeddable-agent-engine.host-artifact-refresh, embeddable-agent-engine.composable-host-contract, embeddable-agent-engine.host-artifact-freshness
-Artifact-Type: validation-plan
+Artifact-Type: validation-evidence
 
-# Validation Plan
+# Validation Evidence
+
+## Evidence index
+
+This file records both the planned validation bundle and concrete completed command evidence for V tasks as they land.
 
 ## Prerequisite gates
 
