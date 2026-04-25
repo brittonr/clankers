@@ -3,6 +3,8 @@
 //! The runner owns effect interpretation and correlation plumbing while callers
 //! supply model, tool, sleep, event, cancellation, and usage adapters.
 
+pub mod stream;
+
 use core::time::Duration;
 
 use clanker_message::Usage;
