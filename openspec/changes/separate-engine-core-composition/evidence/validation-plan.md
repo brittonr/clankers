@@ -220,7 +220,21 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 166 filtered out; fi
 
 ### V1 — positive composition sequencing
 
-Status: PLANNED
+Command:
+
+```bash
+cargo test -p clankers-controller --lib composition_positive_prompt_sequencing
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test core_engine_composition::tests::composition_positive_prompt_sequencing_runs_core_engine_core_in_order ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 167 filtered out; finished in 0.00s
+```
 
 ### V2 — negative composition sequencing
 

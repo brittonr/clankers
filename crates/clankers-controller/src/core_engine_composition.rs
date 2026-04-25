@@ -136,13 +136,19 @@ pub(crate) fn apply_composition_feedback_for_tests(
 #[cfg(test)]
 mod tests {
     use clanker_message::Content;
+    use clankers_core::CompletionStatus;
     use clankers_core::CoreInput;
+    use clankers_core::CoreOutcome;
+    use clankers_core::PostPromptEvaluation;
+    use clankers_core::PromptCompleted;
     use clankers_core::PromptRequest;
     use clankers_engine::EngineEffect;
     use clankers_engine::EngineMessageRole;
     use clankers_engine::EngineState;
 
     use super::*;
+    use crate::core_effects::AcceptedEnginePrompt;
+    use crate::core_effects::accepted_engine_prompt_from_core_outcome;
 
     const TEST_EFFECT_ID: u64 = 42;
     const TEST_IMAGE_COUNT: u32 = 0;
@@ -261,5 +267,86 @@ mod tests {
         .expect_err("core lifecycle feedback must not route to engine reducer");
 
         assert_eq!(rejection, CompositionRejection::LifecycleFeedbackSentToEngine);
+    }
+
+    #[test]
+    fn composition_positive_prompt_sequencing_runs_core_engine_core_in_order() {
+        let initial_core_state = clankers_core::CoreState::default();
+        let prompt_outcome = clankers_core::reduce(
+            &initial_core_state,
+            &CoreInput::PromptRequested(PromptRequest {
+                text: TEST_PROMPT.to_owned(),
+                image_count: TEST_IMAGE_COUNT,
+                originating_follow_up_effect_id: None,
+            }),
+        );
+        let accepted_prompt = accepted_engine_prompt_from_core_outcome(&prompt_outcome)
+            .expect("accepted core prompt must create engine prompt gate");
+        let AcceptedEnginePrompt::UserPrompt(prompt_start) = accepted_prompt else {
+            panic!("plain prompt must normalize as user prompt");
+        };
+        let CoreOutcome::Transitioned {
+            next_state: prompt_pending_core_state,
+            ..
+        } = prompt_outcome
+        else {
+            panic!("prompt request must transition core state");
+        };
+        assert!(prompt_pending_core_state.busy);
+        assert!(prompt_pending_core_state.pending_prompt.is_some());
+
+        let plan = engine_submission_from_prompt_start(&prompt_start, prior_messages(), test_policy());
+        assert_eq!(plan.core_effect_id, prompt_start.core_effect_id);
+        let engine_step = apply_composition_feedback_for_tests(
+            CompositionReducer::EngineTurn,
+            &prompt_pending_core_state,
+            &EngineState::new(),
+            CompositionFeedback::Engine(plan.engine_input),
+        )
+        .expect("adapter plan must reduce through engine");
+        let CompositionStep::Engine(engine_outcome) = engine_step else {
+            panic!("engine prompt plan must target engine reducer");
+        };
+        assert!(engine_outcome.rejection.is_none());
+        assert!(engine_outcome.next_state.pending_model_request.is_some());
+
+        let prompt_completion = clankers_core::reduce(
+            &prompt_pending_core_state,
+            &CoreInput::PromptCompleted(PromptCompleted {
+                effect_id: prompt_start.core_effect_id,
+                completion_status: CompletionStatus::Succeeded,
+            }),
+        );
+        let CoreOutcome::Transitioned {
+            next_state: completed_core_state,
+            effects: completion_effects,
+        } = prompt_completion
+        else {
+            panic!("prompt completion must transition core state");
+        };
+        assert!(!completed_core_state.busy);
+        assert!(completed_core_state.pending_prompt.is_none());
+        assert!(!completion_effects.is_empty());
+
+        let post_prompt = clankers_core::reduce(
+            &completed_core_state,
+            &CoreInput::EvaluatePostPrompt(PostPromptEvaluation {
+                active_loop_state: None,
+                pending_follow_up_state: None,
+                auto_test_enabled: false,
+                auto_test_command: None,
+                auto_test_in_progress: false,
+                queued_prompt_present: false,
+            }),
+        );
+        let CoreOutcome::Transitioned {
+            next_state: post_prompt_state,
+            effects: post_prompt_effects,
+        } = post_prompt
+        else {
+            panic!("post-prompt evaluation must transition core state");
+        };
+        assert_eq!(post_prompt_state, completed_core_state);
+        assert!(post_prompt_effects.is_empty());
     }
 }
