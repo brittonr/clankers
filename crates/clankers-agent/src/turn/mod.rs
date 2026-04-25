@@ -971,6 +971,35 @@ mod tests {
         }
     }
 
+    #[test]
+    fn output_truncation_preserves_existing_clankers_limit_metadata() {
+        const SMALL_OUTPUT_BYTES: usize = 8;
+        const SMALL_OUTPUT_LINES: usize = 2;
+        let messages = vec![ToolResultMessage {
+            id: MessageId::new("tool-truncate"),
+            call_id: "call-truncate".to_string(),
+            tool_name: "direct_tool".to_string(),
+            content: vec![Content::Text {
+                text: "one\ntwo\nthree\n".to_string(),
+            }],
+            is_error: false,
+            details: None,
+            timestamp: Utc::now(),
+        }];
+        let config = clanker_loop::OutputTruncationConfig {
+            max_bytes: SMALL_OUTPUT_BYTES,
+            max_lines: SMALL_OUTPUT_LINES,
+            enabled: true,
+        };
+
+        let truncated = apply_output_truncation(messages, &config);
+
+        assert!(truncated[0].details.is_none());
+        assert!(
+            matches!(&truncated[0].content[0], Content::Text { text } if text.contains("Output truncated") && text.contains("Use `read"))
+        );
+    }
+
     #[tokio::test]
     async fn accumulator_collects_chunks_from_tool() {
         let tool: Arc<dyn Tool> = Arc::new(ChunkEmittingTool::new());
