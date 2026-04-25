@@ -1,9 +1,10 @@
 # Crate Extraction 3 Preflight Audit
 
-Evidence-ID: ce3-preflight-audit
-Task-ID: phase-0-preflight
 Artifact-Type: audit-note
-Covers: shared-preflight
+Evidence-ID: ce3-preflight-audit
+Task-ID: V6
+Covers: workspace-crate-preservation.preflight-evidence, workspace-crate-preservation.preflight-audit
+Creator: pi
 Created: 2026-04-24
 Status: complete
 
@@ -44,6 +45,6 @@ Treat failures involving those sibling repos as externally contaminated until th
 
 ## TUI Snapshot Impact Decision
 
-The planned renames are Cargo crate/module namespace changes. They should not affect user-visible TUI snapshots by themselves.
+The revised scope performs no crate renames, code moves, wrapper removals, or user-visible TUI output changes.
 
-Snapshot refresh remains conditional in final cleanup: refresh only if an extraction changes rendered TUI text/layout or a failing snapshot proves visible output changed.
+Snapshot refresh is not required for this local-workspace preservation change. Future rename or API changes must decide their own snapshot/generated-artifact refresh requirements.
