@@ -35,3 +35,8 @@ Record exact command output before marking V6 complete.
 
 - `cargo test -p clankers-agent --lib turn:: && cargo test -p clankers-engine-host --lib`: PASS.
 - Coverage: host stream accumulator positive text/thinking/tool JSON/usage/model/stop cases; negative malformed JSON, non-object JSON, missing starts, duplicate indexes, late deltas, provider errors preserving status/retryability, usage-only and empty stops; provider stream normalizer feeds provider-native `StreamEvent` data into `HostStreamEvent` and `StreamAccumulator`.
+
+### V2 host runner diagnostics and tool outcomes
+
+- `cargo test -p clankers-engine-host --lib`: PASS (22 tests).
+- Coverage added: retryable model failure sleeps before `RetryReady`, stream malformed-input matrix maps to correlated non-retryable reducer model failures, event-sink and usage-observer failures are report diagnostics only, and all `ToolHostOutcome` variants map through correlated engine feedback/cancellation without reducer rejection.

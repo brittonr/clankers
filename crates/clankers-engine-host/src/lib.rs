@@ -459,6 +459,8 @@ mod tests {
     const TEST_TOOL: &str = "tool";
     const TEST_USAGE_INPUT: usize = 3;
     const TEST_USAGE_OUTPUT: usize = 5;
+    const TEST_PROVIDER_STATUS: u16 = 429;
+    const TEST_RETRY_DELAY_MIN_MS: u128 = 1;
 
     fn block_on<F: core::future::Future>(future: F) -> F::Output {
         use std::sync::Arc;
@@ -769,7 +771,7 @@ mod tests {
                 events: vec![HostStreamEvent::ProviderError {
                     error: stream::ProviderStreamError {
                         message: "rate limited".to_string(),
-                        status: Some(429),
+                        status: Some(TEST_PROVIDER_STATUS),
                         retryable: false,
                     },
                 }],
@@ -780,9 +782,220 @@ mod tests {
         let mut cancel = FakeCancel::default();
         let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
         let failure = report.last_outcome.terminal_failure.expect("provider error should become engine failure");
-        assert_eq!(failure.status, Some(429));
+        assert_eq!(failure.status, Some(TEST_PROVIDER_STATUS));
         assert!(!failure.retryable);
         assert_eq!(failure.message, "rate limited");
+    }
+
+    #[test]
+    fn retryable_model_failure_sleeps_before_retry_ready() {
+        let mut model = FakeModel {
+            outcomes: vec![
+                ModelHostOutcome::Failed {
+                    failure: EngineTerminalFailure {
+                        message: "temporary".to_string(),
+                        status: Some(TEST_PROVIDER_STATUS),
+                        retryable: true,
+                    },
+                },
+                ModelHostOutcome::Completed {
+                    response: EngineModelResponse {
+                        output: vec![Content::Text {
+                            text: "recovered".to_string(),
+                        }],
+                        stop_reason: StopReason::Stop,
+                    },
+                    usage: None,
+                },
+            ],
+        };
+        let mut tools = FakeTools::default();
+        let mut sleeper = FakeSleeper::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = FakeCancel::default();
+        let mut usage = FakeUsage::default();
+        let report = block_on(run_engine_turn(seed(), HostAdapters {
+            model: &mut model,
+            tools: &mut tools,
+            retry_sleeper: &mut sleeper,
+            event_sink: &mut events,
+            cancellation: &mut cancel,
+            usage_observer: &mut usage,
+        }));
+
+        assert!(report.last_outcome.terminal_failure.is_none());
+        assert_eq!(sleeper.slept.len(), 1);
+        assert!(sleeper.slept[0].1.as_millis() >= TEST_RETRY_DELAY_MIN_MS);
+        assert!(report.observed_events.iter().any(|event| matches!(event, EngineEvent::TurnFinished { .. })));
+    }
+
+    #[test]
+    fn tool_host_outcomes_map_to_correlated_engine_feedback() {
+        let outcomes = vec![
+            ToolHostOutcome::Succeeded {
+                content: vec![Content::Text { text: "ok".to_string() }],
+                details: json!({}),
+            },
+            ToolHostOutcome::Truncated {
+                content: vec![Content::Text {
+                    text: "truncated".to_string(),
+                }],
+                metadata: clankers_tool_host::ToolTruncationMetadata {
+                    original_bytes: 9,
+                    original_lines: 1,
+                    truncated_bytes: 4,
+                    truncated_lines: 1,
+                },
+            },
+            ToolHostOutcome::ToolError {
+                content: vec![Content::Text {
+                    text: "bad".to_string(),
+                }],
+                details: json!({}),
+                message: "bad".to_string(),
+            },
+            ToolHostOutcome::MissingTool {
+                name: TEST_TOOL.to_string(),
+            },
+            ToolHostOutcome::CapabilityDenied {
+                name: TEST_TOOL.to_string(),
+                reason: "blocked".to_string(),
+            },
+            ToolHostOutcome::Cancelled {
+                name: TEST_TOOL.to_string(),
+            },
+        ];
+
+        for outcome in outcomes {
+            let mut model = FakeModel {
+                outcomes: vec![ModelHostOutcome::Completed {
+                    response: EngineModelResponse {
+                        output: vec![Content::ToolUse {
+                            id: "call-1".to_string(),
+                            name: TEST_TOOL.to_string(),
+                            input: json!({}),
+                        }],
+                        stop_reason: StopReason::ToolUse,
+                    },
+                    usage: None,
+                }],
+            };
+            let mut tools = FakeTools {
+                outcomes: vec![outcome],
+            };
+            let mut events = FakeEvents::default();
+            let mut cancel = FakeCancel::default();
+            let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+
+            assert!(report.last_outcome.rejection.is_none());
+            assert!(report.observed_events.iter().any(|event| matches!(event, EngineEvent::TurnFinished { .. })));
+        }
+    }
+
+    #[test]
+    fn stream_malformed_matrix_maps_to_non_retryable_model_failures() {
+        let cases = vec![
+            ("missing content block start", vec![HostStreamEvent::TextDelta {
+                index: 0,
+                text: "x".to_string(),
+            }]),
+            ("duplicate content block index", vec![
+                HostStreamEvent::TextStart { index: 0 },
+                HostStreamEvent::TextStart { index: 0 },
+            ]),
+            ("late content delta", vec![
+                HostStreamEvent::TextStart { index: 0 },
+                HostStreamEvent::ContentBlockStop { index: 0 },
+                HostStreamEvent::TextDelta {
+                    index: 0,
+                    text: "x".to_string(),
+                },
+            ]),
+            ("malformed tool JSON", vec![
+                HostStreamEvent::ToolUseStart {
+                    index: 0,
+                    id: "call-1".to_string(),
+                    name: TEST_TOOL.to_string(),
+                },
+                HostStreamEvent::ToolUseJsonDelta {
+                    index: 0,
+                    json: "{".to_string(),
+                },
+            ]),
+            ("non-object tool JSON", vec![
+                HostStreamEvent::ToolUseStart {
+                    index: 0,
+                    id: "call-1".to_string(),
+                    name: TEST_TOOL.to_string(),
+                },
+                HostStreamEvent::ToolUseJsonDelta {
+                    index: 0,
+                    json: "[]".to_string(),
+                },
+            ]),
+        ];
+
+        for (message, events) in cases {
+            let mut model = FakeModel {
+                outcomes: vec![ModelHostOutcome::Streamed { events }],
+            };
+            let mut tools = FakeTools::default();
+            let mut events = FakeEvents::default();
+            let mut cancel = FakeCancel::default();
+            let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+            let failure = report.last_outcome.terminal_failure.expect("malformed stream should fail through reducer");
+
+            assert!(!failure.retryable);
+            assert_eq!(failure.status, None);
+            assert!(failure.message.contains(message), "missing '{message}' in {}", failure.message);
+        }
+    }
+
+    #[test]
+    fn usage_observer_failure_records_diagnostic_without_terminalizing() {
+        struct FailingUsage;
+
+        impl UsageObserver for FailingUsage {
+            fn observe_usage(&mut self, _observation: &UsageObservation) -> Result<(), HostAdapterError> {
+                Err(HostAdapterError::failed("usage failed"))
+            }
+        }
+
+        let mut model = FakeModel {
+            outcomes: vec![ModelHostOutcome::Completed {
+                response: EngineModelResponse {
+                    output: vec![Content::Text { text: "hi".to_string() }],
+                    stop_reason: StopReason::Stop,
+                },
+                usage: Some(Usage {
+                    input_tokens: TEST_USAGE_INPUT,
+                    output_tokens: TEST_USAGE_OUTPUT,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                }),
+            }],
+        };
+        let mut tools = FakeTools::default();
+        let mut sleeper = FakeSleeper::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = FakeCancel::default();
+        let mut usage = FailingUsage;
+        let report = block_on(run_engine_turn(seed(), HostAdapters {
+            model: &mut model,
+            tools: &mut tools,
+            retry_sleeper: &mut sleeper,
+            event_sink: &mut events,
+            cancellation: &mut cancel,
+            usage_observer: &mut usage,
+        }));
+
+        assert!(report.last_outcome.terminal_failure.is_none());
+        assert!(
+            report
+                .adapter_diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.component == HostAdapterComponent::UsageObserver)
+        );
     }
 
     #[test]
