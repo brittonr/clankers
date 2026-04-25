@@ -134,10 +134,22 @@ mod tests {
 
     use super::CompletionRequest;
     use super::ThinkingConfig;
+    use super::Usage;
     use crate::message::AgentMessage;
     use crate::message::Content;
     use crate::message::MessageId;
     use crate::message::UserMessage;
+    use crate::streaming::ContentDelta;
+    use crate::streaming::MessageMetadata;
+    use crate::streaming::StreamDelta;
+
+    const TEST_MAX_TOKENS: usize = 256;
+    const TEST_TEMPERATURE: f64 = 0.1;
+    const TEST_THINKING_BUDGET_TOKENS: usize = 1024;
+    const TEST_INPUT_TOKENS: usize = 11;
+    const TEST_OUTPUT_TOKENS: usize = 7;
+    const TEST_CACHE_CREATION_TOKENS: usize = 3;
+    const TEST_CACHE_READ_TOKENS: usize = 5;
 
     fn workspace_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
@@ -169,8 +181,8 @@ mod tests {
                 timestamp: chrono::Utc::now(),
             })],
             system_prompt: Some("Be helpful".to_string()),
-            max_tokens: Some(256),
-            temperature: Some(0.1),
+            max_tokens: Some(TEST_MAX_TOKENS),
+            temperature: Some(TEST_TEMPERATURE),
             tools: vec![clanker_router::provider::ToolDefinition {
                 name: "read".to_string(),
                 description: "Read a file".to_string(),
@@ -178,7 +190,7 @@ mod tests {
             }],
             thinking: Some(ThinkingConfig {
                 enabled: true,
-                budget_tokens: Some(1024),
+                budget_tokens: Some(TEST_THINKING_BUDGET_TOKENS),
             }),
             no_cache: true,
             cache_ttl: Some("1h".to_string()),
@@ -194,8 +206,8 @@ mod tests {
                 "content": [{"type": "text", "text": "hello"}],
             })],
             system_prompt: Some("Be helpful".to_string()),
-            max_tokens: Some(256),
-            temperature: Some(0.1),
+            max_tokens: Some(TEST_MAX_TOKENS),
+            temperature: Some(TEST_TEMPERATURE),
             tools: vec![clanker_router::provider::ToolDefinition {
                 name: "read".to_string(),
                 description: "Read a file".to_string(),
@@ -203,12 +215,36 @@ mod tests {
             }],
             thinking: Some(ThinkingConfig {
                 enabled: true,
-                budget_tokens: Some(1024),
+                budget_tokens: Some(TEST_THINKING_BUDGET_TOKENS),
             }),
             no_cache: true,
             cache_ttl: Some("1h".to_string()),
             extra_params,
         }
+    }
+
+    fn expected_shared_request_shape() -> Value {
+        json!({
+            "model": "test-model",
+            "system_prompt": "Be helpful",
+            "max_tokens": TEST_MAX_TOKENS,
+            "temperature": TEST_TEMPERATURE,
+            "tools": [{
+                "name": "read",
+                "description": "Read a file",
+                "input_schema": {"type": "object"},
+            }],
+            "thinking": {
+                "enabled": true,
+                "budget_tokens": TEST_THINKING_BUDGET_TOKENS,
+            },
+            "no_cache": true,
+            "cache_ttl": "1h",
+            "extra_params": {
+                "_session_id": "session-parity-1",
+                "verbosity": "medium",
+            },
+        })
     }
 
     fn shared_field_projection(value: &Value) -> Value {
@@ -227,6 +263,99 @@ mod tests {
             "cache_ttl": field(value, "cache_ttl"),
             "extra_params": field(value, "extra_params"),
         })
+    }
+
+    #[test]
+    fn moved_contract_json_shapes_match_inline_golden() {
+        let usage = Usage {
+            input_tokens: TEST_INPUT_TOKENS,
+            output_tokens: TEST_OUTPUT_TOKENS,
+            cache_creation_input_tokens: TEST_CACHE_CREATION_TOKENS,
+            cache_read_input_tokens: TEST_CACHE_READ_TOKENS,
+        };
+        assert_eq!(
+            serde_json::to_value(usage).expect("usage should serialize"),
+            json!({
+                "input_tokens": TEST_INPUT_TOKENS,
+                "output_tokens": TEST_OUTPUT_TOKENS,
+                "cache_creation_input_tokens": TEST_CACHE_CREATION_TOKENS,
+                "cache_read_input_tokens": TEST_CACHE_READ_TOKENS,
+            })
+        );
+
+        let tool = clanker_router::provider::ToolDefinition {
+            name: "read".to_string(),
+            description: "Read a file".to_string(),
+            input_schema: json!({"type": "object"}),
+        };
+        assert_eq!(
+            serde_json::to_value(tool).expect("tool should serialize"),
+            json!({
+                "name": "read",
+                "description": "Read a file",
+                "input_schema": {"type": "object"},
+            })
+        );
+
+        let thinking = ThinkingConfig {
+            enabled: true,
+            budget_tokens: Some(TEST_THINKING_BUDGET_TOKENS),
+        };
+        assert_eq!(
+            serde_json::to_value(thinking).expect("thinking config should serialize"),
+            json!({
+                "enabled": true,
+                "budget_tokens": TEST_THINKING_BUDGET_TOKENS,
+            })
+        );
+
+        let metadata = MessageMetadata {
+            id: "msg_1".to_string(),
+            model: "test-model".to_string(),
+            role: "assistant".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_value(metadata).expect("message metadata should serialize"),
+            json!({
+                "id": "msg_1",
+                "model": "test-model",
+                "role": "assistant",
+            })
+        );
+
+        let delta = ContentDelta::InputJsonDelta {
+            partial_json: "{\"path\"".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_value(delta).expect("content delta should serialize"),
+            json!({
+                "type": "InputJsonDelta",
+                "partial_json": "{\"path\"",
+            })
+        );
+
+        let stream_delta: StreamDelta = ContentDelta::TextDelta {
+            text: "hello".to_string(),
+        };
+        assert_eq!(
+            serde_json::to_value(stream_delta).expect("stream delta should serialize"),
+            json!({
+                "type": "TextDelta",
+                "text": "hello",
+            })
+        );
+    }
+
+    #[test]
+    fn provider_request_shared_fields_match_inline_golden() {
+        let extra_params = HashMap::from([
+            ("_session_id".to_string(), json!("session-parity-1")),
+            ("verbosity".to_string(), json!("medium")),
+        ]);
+        let provider_json =
+            serde_json::to_value(provider_request(extra_params)).expect("provider request should serialize");
+
+        assert_eq!(shared_field_projection(&provider_json), expected_shared_request_shape());
     }
 
     #[test]
