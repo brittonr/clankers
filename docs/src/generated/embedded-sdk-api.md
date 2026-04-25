@@ -50,6 +50,7 @@ Support labels:
 | `EngineToolCall` | `clankers-engine` | struct | supported | `crates/clankers-engine/src/lib.rs` |
 | `EngineTurnPhase` | `clankers-engine` | enum | supported | `crates/clankers-engine/src/lib.rs` |
 | `reduce` | `clankers-engine` | function | supported | `crates/clankers-engine/src/lib.rs` |
+| `embedded-agent-sdk example` | `example` | example | supported | `examples/embedded-agent-sdk/Cargo.toml` |
 | `CAPABILITY_DENIED_ERROR_PREFIX` | `clankers-engine-host` | constant | unsupported-internal | `crates/clankers-engine-host/src/lib.rs` |
 | `HOST_CANCELLED_REASON` | `clankers-engine-host` | constant | supported | `crates/clankers-engine-host/src/lib.rs` |
 | `MISSING_TOOL_ERROR_PREFIX` | `clankers-engine-host` | constant | unsupported-internal | `crates/clankers-engine-host/src/lib.rs` |

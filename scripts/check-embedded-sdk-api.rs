@@ -4,9 +4,11 @@
 //! edition = "2024"
 //! ```
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
+use std::path::PathBuf;
 
 const GUIDE_PATH: &str = "docs/src/tutorials/embedded-agent-sdk.md";
 const INVENTORY_PATH: &str = "docs/src/generated/embedded-sdk-api.md";
@@ -28,6 +30,7 @@ const PUBLIC_TRAIT_PREFIX: &str = "pub trait ";
 const PUBLIC_TYPE_PREFIX: &str = "pub type ";
 const PUBLIC_USE_PREFIX: &str = "pub use ";
 const PRIVATE_PUBLIC_PREFIX: &str = "pub(";
+const EXAMPLE_KIND: &str = "example";
 const ERROR_EXIT: i32 = 1;
 
 const SOURCE_ROOTS: &[&str] = &[
@@ -37,12 +40,7 @@ const SOURCE_ROOTS: &[&str] = &[
     "crates/clanker-message/src",
 ];
 
-const VALID_STABILITIES: &[&str] = &[
-    "supported",
-    "optional-support",
-    "experimental",
-    "unsupported-internal",
-];
+const VALID_STABILITIES: &[&str] = &["supported", "optional-support", "experimental", "unsupported-internal"];
 
 #[derive(Debug, Clone, Eq, PartialEq, Ord, PartialOrd)]
 struct PublicItemKey {
@@ -85,11 +83,7 @@ fn parse_inventory(text: &str) -> Result<Vec<InventoryEntry>, Vec<String>> {
             continue;
         }
 
-        let cells: Vec<String> = trimmed
-            .trim_matches('|')
-            .split('|')
-            .map(|cell| cell.trim().to_string())
-            .collect();
+        let cells: Vec<String> = trimmed.trim_matches('|').split('|').map(|cell| cell.trim().to_string()).collect();
 
         if cells.len() != EXPECTED_COLUMN_COUNT {
             errors.push(format!(
@@ -125,11 +119,7 @@ fn parse_inventory(text: &str) -> Result<Vec<InventoryEntry>, Vec<String>> {
         errors.push(format!("{INVENTORY_PATH} contains no inventory rows"));
     }
 
-    if errors.is_empty() {
-        Ok(entries)
-    } else {
-        Err(errors)
-    }
+    if errors.is_empty() { Ok(entries) } else { Err(errors) }
 }
 
 fn extract_code_span(cell: &str) -> Option<String> {
@@ -243,7 +233,10 @@ fn scan_public_items(roots: &[&str]) -> Result<Vec<PublicItem>, String> {
 }
 
 fn parse_public_item_line(line: &str) -> Option<PublicItemKey> {
-    if !line.starts_with(PUBLIC_PREFIX) || line.starts_with(PRIVATE_PUBLIC_PREFIX) || line.starts_with(PUBLIC_USE_PREFIX) {
+    if !line.starts_with(PUBLIC_PREFIX)
+        || line.starts_with(PRIVATE_PUBLIC_PREFIX)
+        || line.starts_with(PUBLIC_USE_PREFIX)
+    {
         return None;
     }
 
@@ -284,24 +277,14 @@ fn key(name: String, kind: &str) -> PublicItemKey {
 
 fn extract_identifier_after(line: &str, prefix: &str) -> Option<String> {
     let tail = line.strip_prefix(prefix)?;
-    let name: String = tail
-        .chars()
-        .take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_')
-        .collect();
-    if name.is_empty() {
-        None
-    } else {
-        Some(name)
-    }
+    let name: String = tail.chars().take_while(|ch| ch.is_ascii_alphanumeric() || *ch == '_').collect();
+    if name.is_empty() { None } else { Some(name) }
 }
 
 fn index_scanned(items: &[PublicItem]) -> BTreeMap<PublicItemKey, BTreeSet<PathBuf>> {
     let mut index: BTreeMap<PublicItemKey, BTreeSet<PathBuf>> = BTreeMap::new();
     for item in items {
-        index
-            .entry(item.key.clone())
-            .or_default()
-            .insert(item.source.clone());
+        index.entry(item.key.clone()).or_default().insert(item.source.clone());
     }
     index
 }
@@ -316,21 +299,14 @@ fn validate_inventory(entries: &[InventoryEntry], scanned: &[PublicItem], guide:
     let inventory_keys = inventory_key_set(entries);
 
     if !guide.contains(INVENTORY_GUIDE_LINK) {
-        errors.push(format!(
-            "{GUIDE_PATH} must link to {INVENTORY_GUIDE_LINK} so SDK entrypoints resolve to inventory"
-        ));
+        errors
+            .push(format!("{GUIDE_PATH} must link to {INVENTORY_GUIDE_LINK} so SDK entrypoints resolve to inventory"));
     }
 
     let valid_stabilities: BTreeSet<&str> = VALID_STABILITIES.iter().copied().collect();
     let mut seen_rows = BTreeSet::new();
     for entry in entries {
-        let row_key = format!(
-            "{}|{}|{}|{}",
-            entry.key.name,
-            entry.key.kind,
-            entry.crate_name,
-            entry.source.display()
-        );
+        let row_key = format!("{}|{}|{}|{}", entry.key.name, entry.key.kind, entry.crate_name, entry.source.display());
         if !seen_rows.insert(row_key) {
             errors.push(format!(
                 "duplicate inventory row for `{}` ({}) from {}",
@@ -348,11 +324,11 @@ fn validate_inventory(entries: &[InventoryEntry], scanned: &[PublicItem], guide:
         }
 
         if !entry.source.exists() {
-            errors.push(format!(
-                "source path for `{}` does not exist: {}",
-                entry.key.name,
-                entry.source.display()
-            ));
+            errors.push(format!("source path for `{}` does not exist: {}", entry.key.name, entry.source.display()));
+            continue;
+        }
+
+        if entry.key.kind == EXAMPLE_KIND {
             continue;
         }
 
