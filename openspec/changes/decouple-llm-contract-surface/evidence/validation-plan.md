@@ -20,9 +20,28 @@ Durable validation log for `decouple-llm-contract-surface`. Each V task appends 
 
 ## Evidence Log
 
-### V1 — pending
+### V1 — post-migration re-export/type-identity tests
 
-No command output captured yet.
+Command:
+
+```bash
+cargo test -p clankers-provider --lib tests::router_and_provider_contract_paths_resolve_to_message_types && \
+  cargo test -p clankers-provider --lib tests::router_and_provider_do_not_define_independent_stream_delta
+```
+
+Result: PASS (`pueue` task 130)
+
+Output excerpt:
+
+```text
+test tests::router_and_provider_contract_paths_resolve_to_message_types ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 166 filtered out; finished in 0.00s
+
+test tests::router_and_provider_do_not_define_independent_stream_delta ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 166 filtered out; finished in 0.00s
+```
 
 ### V2 — pending
 

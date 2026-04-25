@@ -154,6 +154,17 @@ mod tests {
     const TEST_CACHE_CREATION_TOKENS: usize = 3;
     const TEST_CACHE_READ_TOKENS: usize = 5;
 
+    const MAX_STREAM_DELTA_SCAN_FILES: usize = 512;
+    const STREAM_DELTA_TYPE_NAME: &str = "StreamDelta";
+
+    fn stream_delta_definition_needles() -> [String; 3] {
+        [
+            format!("pub type {STREAM_DELTA_TYPE_NAME}"),
+            format!("pub struct {STREAM_DELTA_TYPE_NAME}"),
+            format!("pub enum {STREAM_DELTA_TYPE_NAME}"),
+        ]
+    }
+
     fn workspace_root() -> PathBuf {
         PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
     }
@@ -226,6 +237,46 @@ mod tests {
         }
     }
 
+    fn assert_same_type<T>(_left: &T, _right: &T) {}
+
+    fn rust_files_under(root: PathBuf) -> Vec<PathBuf> {
+        let mut stack = vec![root];
+        let mut files = Vec::new();
+        while let Some(path) = stack.pop() {
+            let metadata = std::fs::metadata(&path)
+                .unwrap_or_else(|error| panic!("failed to read metadata for {}: {error}", path.display()));
+            if metadata.is_dir() {
+                for entry in std::fs::read_dir(&path)
+                    .unwrap_or_else(|error| panic!("failed to read dir {}: {error}", path.display()))
+                {
+                    let entry = entry.expect("directory entry should be readable");
+                    stack.push(entry.path());
+                    assert!(
+                        stack.len() + files.len() <= MAX_STREAM_DELTA_SCAN_FILES,
+                        "StreamDelta source scan exceeded bounded file count"
+                    );
+                }
+            } else if path.extension().is_some_and(|extension| extension == "rs") {
+                files.push(path);
+            }
+        }
+        files
+    }
+
+    fn assert_no_stream_delta_definition_under(path: &str) {
+        for source_path in rust_files_under(workspace_root().join(path)) {
+            let source = std::fs::read_to_string(&source_path)
+                .unwrap_or_else(|error| panic!("failed to read {}: {error}", source_path.display()));
+            for needle in stream_delta_definition_needles() {
+                assert!(
+                    !source.contains(&needle),
+                    "{} must not define independent StreamDelta via {needle}",
+                    source_path.display()
+                );
+            }
+        }
+    }
+
     fn expected_shared_request_shape() -> Value {
         json!({
             "model": "test-model",
@@ -266,6 +317,69 @@ mod tests {
             "cache_ttl": field(value, "cache_ttl"),
             "extra_params": field(value, "extra_params"),
         })
+    }
+
+    #[test]
+    fn router_and_provider_contract_paths_resolve_to_message_types() {
+        let canonical_usage = clanker_message::Usage {
+            input_tokens: TEST_INPUT_TOKENS,
+            output_tokens: TEST_OUTPUT_TOKENS,
+            cache_creation_input_tokens: TEST_CACHE_CREATION_TOKENS,
+            cache_read_input_tokens: TEST_CACHE_READ_TOKENS,
+        };
+        let router_provider_usage: clanker_router::provider::Usage = canonical_usage.clone();
+        let router_root_usage: clanker_router::Usage = canonical_usage.clone();
+        let provider_usage: Usage = canonical_usage.clone();
+        assert_same_type(&canonical_usage, &router_provider_usage);
+        assert_same_type(&canonical_usage, &router_root_usage);
+        assert_same_type(&canonical_usage, &provider_usage);
+
+        let canonical_tool = clanker_message::ToolDefinition {
+            name: "read".to_string(),
+            description: "Read a file".to_string(),
+            input_schema: json!({"type": "object"}),
+        };
+        let router_tool: clanker_router::provider::ToolDefinition = canonical_tool.clone();
+        let provider_tool: ToolDefinition = canonical_tool.clone();
+        assert_same_type(&canonical_tool, &router_tool);
+        assert_same_type(&canonical_tool, &provider_tool);
+
+        let canonical_thinking = clanker_message::ThinkingConfig {
+            enabled: true,
+            budget_tokens: Some(TEST_THINKING_BUDGET_TOKENS),
+        };
+        let router_provider_thinking: clanker_router::provider::ThinkingConfig = canonical_thinking.clone();
+        let router_root_thinking: clanker_router::ThinkingConfig = canonical_thinking.clone();
+        let provider_thinking: ThinkingConfig = canonical_thinking.clone();
+        assert_same_type(&canonical_thinking, &router_provider_thinking);
+        assert_same_type(&canonical_thinking, &router_root_thinking);
+        assert_same_type(&canonical_thinking, &provider_thinking);
+
+        let canonical_metadata = clanker_message::MessageMetadata {
+            id: "msg_1".to_string(),
+            model: "test-model".to_string(),
+            role: "assistant".to_string(),
+        };
+        let router_metadata: clanker_router::streaming::MessageMetadata = canonical_metadata.clone();
+        let provider_metadata: MessageMetadata = canonical_metadata.clone();
+        assert_same_type(&canonical_metadata, &router_metadata);
+        assert_same_type(&canonical_metadata, &provider_metadata);
+
+        let canonical_delta = clanker_message::ContentDelta::TextDelta {
+            text: "hello".to_string(),
+        };
+        let router_delta: clanker_router::streaming::ContentDelta = canonical_delta.clone();
+        let provider_delta: ContentDelta = canonical_delta.clone();
+        let stream_delta: clanker_message::StreamDelta = canonical_delta.clone();
+        assert_same_type(&canonical_delta, &router_delta);
+        assert_same_type(&canonical_delta, &provider_delta);
+        assert_same_type(&canonical_delta, &stream_delta);
+    }
+
+    #[test]
+    fn router_and_provider_do_not_define_independent_stream_delta() {
+        assert_no_stream_delta_definition_under("crates/clanker-router/src");
+        assert_no_stream_delta_definition_under("crates/clankers-provider/src");
     }
 
     #[test]
