@@ -36,7 +36,7 @@ Tasks gate: PASS
 
 Result: PASS
 
-Created validation log artifact at `openspec/changes/separate-engine-core-composition/evidence/validation-plan.md` with planned sections for implementation and verification tasks.
+Created validation log artifact at `openspec/changes/archive/2026-04-25-separate-engine-core-composition/evidence/validation-plan.md` with planned sections for implementation and verification tasks.
 
 
 ### I1 — remove dormant engine core state
