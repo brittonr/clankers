@@ -19,6 +19,11 @@ use clankers_engine::EngineState;
 use clankers_engine::EngineTerminalFailure;
 use clankers_engine::EngineTurnPhase;
 use clankers_engine::reduce;
+use clankers_engine_host::runtime::cancel_turn_input;
+use clankers_engine_host::runtime::model_completed_input;
+use clankers_engine_host::runtime::model_failed_input;
+use clankers_engine_host::runtime::retry_ready_input;
+use clankers_engine_host::runtime::tool_feedback_input as host_tool_feedback_input;
 use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_provider::Provider;
 use clankers_provider::ThinkingConfig;
@@ -303,25 +308,11 @@ fn update_engine_model(engine_state: &mut EngineState, active_model: &str) {
 }
 
 fn tool_feedback_input(message: &ToolResultMessage) -> EngineInput {
-    if message.is_error {
-        EngineInput::ToolFailed {
-            call_id: clankers_engine::EngineCorrelationId(message.call_id.clone()),
-            error: first_text_block(&message.content).unwrap_or_else(|| "tool execution failed".to_string()),
-            result: message.content.clone(),
-        }
-    } else {
-        EngineInput::ToolCompleted {
-            call_id: clankers_engine::EngineCorrelationId(message.call_id.clone()),
-            result: message.content.clone(),
-        }
-    }
-}
-
-fn first_text_block(content: &[Content]) -> Option<String> {
-    content.iter().find_map(|block| match block {
-        Content::Text { text } => Some(text.clone()),
-        Content::Image { .. } | Content::Thinking { .. } | Content::ToolUse { .. } | Content::ToolResult { .. } => None,
-    })
+    host_tool_feedback_input(
+        clankers_engine::EngineCorrelationId(message.call_id.clone()),
+        message.is_error,
+        message.content.clone(),
+    )
 }
 
 /// Run the agent turn loop.
@@ -405,10 +396,7 @@ pub async fn run_turn_loop(
                 Err(error) => {
                     let failure = engine_failure_from_agent_error(&error);
                     let failure_outcome = engine_outcome_or_error(
-                        reduce(&engine_state, &EngineInput::ModelFailed {
-                            request_id: engine_request.request_id.clone(),
-                            failure,
-                        }),
+                        reduce(&engine_state, &model_failed_input(engine_request.request_id.clone(), failure)),
                         "model failure",
                     )?;
                     emit_engine_notice_effects(&failure_outcome, event_tx);
@@ -432,9 +420,7 @@ pub async fn run_turn_loop(
                     }
 
                     let retry_ready_outcome = engine_outcome_or_error(
-                        reduce(&engine_state, &EngineInput::RetryReady {
-                            request_id: retry_request_id,
-                        }),
+                        reduce(&engine_state, &retry_ready_input(retry_request_id)),
                         "retry ready",
                     )?;
                     emit_engine_notice_effects(&retry_ready_outcome, event_tx);
@@ -451,10 +437,7 @@ pub async fn run_turn_loop(
             stop_reason: collected.stop_reason.clone(),
         };
         let post_model_outcome = engine_outcome_or_error(
-            reduce(&engine_state, &EngineInput::ModelCompleted {
-                request_id: engine_request.request_id.clone(),
-                response: engine_response,
-            }),
+            reduce(&engine_state, &model_completed_input(engine_request.request_id.clone(), engine_response)),
             "model completion",
         )?;
         emit_engine_notice_effects(&post_model_outcome, event_tx);
@@ -569,12 +552,8 @@ fn cancel_active_engine_turn(
     event_tx: &broadcast::Sender<AgentEvent>,
     reason: &str,
 ) -> Result<()> {
-    let cancel_outcome = engine_outcome_or_error(
-        reduce(engine_state, &EngineInput::CancelTurn {
-            reason: reason.to_string(),
-        }),
-        "turn cancellation",
-    )?;
+    let cancel_outcome =
+        engine_outcome_or_error(reduce(engine_state, &cancel_turn_input(reason.to_string())), "turn cancellation")?;
     emit_engine_notice_effects(&cancel_outcome, event_tx);
     Ok(())
 }

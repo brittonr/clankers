@@ -3,18 +3,30 @@
 //! The runner owns effect interpretation and correlation plumbing while callers
 //! supply model, tool, sleep, event, cancellation, and usage adapters.
 
+pub mod runtime;
 pub mod stream;
 
 use core::time::Duration;
 
 use clanker_message::Usage;
-use clankers_engine::{
-    reduce, EngineCorrelationId, EngineEffect, EngineEvent, EngineInput, EngineModelRequest, EngineModelResponse,
-    EngineOutcome, EngineState, EngineTerminalFailure, EngineToolCall,
-};
-use clankers_tool_host::{ToolExecutor, ToolHostOutcome};
-use stream::{HostStreamEvent, StreamAccumulator, StreamAccumulatorError};
-use serde::{Deserialize, Serialize};
+use clankers_engine::EngineCorrelationId;
+use clankers_engine::EngineEffect;
+use clankers_engine::EngineEvent;
+use clankers_engine::EngineInput;
+use clankers_engine::EngineModelRequest;
+use clankers_engine::EngineModelResponse;
+use clankers_engine::EngineOutcome;
+use clankers_engine::EngineState;
+use clankers_engine::EngineTerminalFailure;
+use clankers_engine::EngineToolCall;
+use clankers_engine::reduce;
+use clankers_tool_host::ToolExecutor;
+use clankers_tool_host::ToolHostOutcome;
+use serde::Deserialize;
+use serde::Serialize;
+use stream::HostStreamEvent;
+use stream::StreamAccumulator;
+use stream::StreamAccumulatorError;
 use thiserror::Error;
 
 pub const HOST_CANCELLED_REASON: &str = "turn cancelled";
@@ -139,7 +151,10 @@ pub enum ModelHostOutcome {
 }
 
 pub trait ModelHost {
-    fn execute_model(&mut self, request: EngineModelRequest) -> impl core::future::Future<Output = ModelHostOutcome> + Send;
+    fn execute_model(
+        &mut self,
+        request: EngineModelRequest,
+    ) -> impl core::future::Future<Output = ModelHostOutcome> + Send;
 }
 
 pub trait RetrySleeper {
@@ -267,18 +282,14 @@ where
             if let Some(usage) = usage {
                 observe_usage(report, hosts.usage_observer, UsageObservationKind::FinalSummary, usage);
             }
-            EngineInput::ModelCompleted { request_id, response }
+            runtime::model_completed_input(request_id, response)
         }
-        ModelHostOutcome::Streamed { events } => stream_events_to_model_input(
-            report,
-            hosts.usage_observer,
-            request_id,
-            events,
-        ),
-        ModelHostOutcome::Failed { failure } => EngineInput::ModelFailed { request_id, failure },
+        ModelHostOutcome::Streamed { events } => {
+            stream_events_to_model_input(report, hosts.usage_observer, request_id, events)
+        }
+        ModelHostOutcome::Failed { failure } => runtime::model_failed_input(request_id, failure),
     }
 }
-
 
 fn stream_events_to_model_input<U: UsageObserver>(
     report: &mut EngineRunReport,
@@ -292,10 +303,7 @@ fn stream_events_to_model_input<U: UsageObserver>(
             observe_usage(report, usage_observer, UsageObservationKind::StreamDelta, usage.clone());
         }
         if let Err(error) = accumulator.push(event) {
-            return EngineInput::ModelFailed {
-                request_id,
-                failure: stream_error_to_failure(error),
-            };
+            return runtime::model_failed_input(request_id, stream_error_to_failure(error));
         }
     }
 
@@ -304,18 +312,12 @@ fn stream_events_to_model_input<U: UsageObserver>(
             if let Some(usage) = folded.usage {
                 observe_usage(report, usage_observer, UsageObservationKind::FinalSummary, usage);
             }
-            EngineInput::ModelCompleted {
-                request_id,
-                response: EngineModelResponse {
-                    output: folded.content,
-                    stop_reason: folded.stop_reason.unwrap_or(clanker_message::StopReason::Stop),
-                },
-            }
+            runtime::model_completed_input(request_id, EngineModelResponse {
+                output: folded.content,
+                stop_reason: folded.stop_reason.unwrap_or(clanker_message::StopReason::Stop),
+            })
         }
-        Err(error) => EngineInput::ModelFailed {
-            request_id,
-            failure: stream_error_to_failure(error),
-        },
+        Err(error) => runtime::model_failed_input(request_id, stream_error_to_failure(error)),
     }
 }
 
@@ -361,7 +363,7 @@ where
     if hosts.cancellation.is_cancelled() {
         return cancel_input(hosts.cancellation);
     }
-    EngineInput::RetryReady { request_id }
+    runtime::retry_ready_input(request_id)
 }
 
 async fn tool_input_from_effect<M, T, R, E, C, U>(
@@ -393,40 +395,27 @@ fn tool_outcome_to_input<C: CancellationSource>(
     }
     match outcome {
         ToolHostOutcome::Succeeded { content, .. } | ToolHostOutcome::Truncated { content, .. } => {
-            EngineInput::ToolCompleted { call_id, result: content }
+            runtime::tool_completed_input(call_id, content)
         }
-        ToolHostOutcome::ToolError { content, message, .. } => EngineInput::ToolFailed {
-            call_id,
-            error: message,
-            result: content,
-        },
-        ToolHostOutcome::MissingTool { name } => tool_failed_with_message(
-            call_id,
-            format_tool_error(MISSING_TOOL_ERROR_PREFIX, &name),
-        ),
-        ToolHostOutcome::CapabilityDenied { name, reason } => tool_failed_with_message(
-            call_id,
-            format!("{CAPABILITY_DENIED_ERROR_PREFIX}: {name}: {reason}"),
-        ),
-        ToolHostOutcome::Cancelled { name } => tool_failed_with_message(
-            call_id,
-            format_tool_error(TOOL_CANCELLED_ERROR_PREFIX, &name),
-        ),
+        ToolHostOutcome::ToolError { content, message, .. } => runtime::tool_failed_input(call_id, message, content),
+        ToolHostOutcome::MissingTool { name } => {
+            tool_failed_with_message(call_id, format_tool_error(MISSING_TOOL_ERROR_PREFIX, &name))
+        }
+        ToolHostOutcome::CapabilityDenied { name, reason } => {
+            tool_failed_with_message(call_id, format!("{CAPABILITY_DENIED_ERROR_PREFIX}: {name}: {reason}"))
+        }
+        ToolHostOutcome::Cancelled { name } => {
+            tool_failed_with_message(call_id, format_tool_error(TOOL_CANCELLED_ERROR_PREFIX, &name))
+        }
     }
 }
 
 fn tool_failed_with_message(call_id: EngineCorrelationId, message: String) -> EngineInput {
-    EngineInput::ToolFailed {
-        call_id,
-        error: message,
-        result: Vec::new(),
-    }
+    runtime::tool_failed_input(call_id, message, Vec::new())
 }
 
 fn cancel_input<C: CancellationSource>(cancellation: &mut C) -> EngineInput {
-    EngineInput::CancelTurn {
-        reason: cancellation.cancellation_reason(),
-    }
+    runtime::cancel_turn_input(cancellation.cancellation_reason())
 }
 
 fn observe_event<E: EngineEventSink>(report: &mut EngineRunReport, sink: &mut E, event: EngineEvent) {
@@ -455,11 +444,14 @@ fn format_tool_error(prefix: &str, name: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use clanker_message::Content;
     use clanker_message::StopReason;
-    use clankers_engine::{EngineInput, EnginePromptSubmission, EngineRejection};
+    use clankers_engine::EngineInput;
+    use clankers_engine::EnginePromptSubmission;
+    use clankers_engine::EngineRejection;
     use serde_json::json;
+
+    use super::*;
 
     const TEST_MODEL: &str = "test-model";
     const TEST_PROMPT: &str = "system";
@@ -470,7 +462,10 @@ mod tests {
 
     fn block_on<F: core::future::Future>(future: F) -> F::Output {
         use std::sync::Arc;
-        use std::task::{Context, Poll, Wake, Waker};
+        use std::task::Context;
+        use std::task::Poll;
+        use std::task::Wake;
+        use std::task::Waker;
 
         struct NoopWaker;
 
@@ -572,7 +567,9 @@ mod tests {
         let submission = EnginePromptSubmission {
             messages: vec![clankers_engine::EngineMessage {
                 role: clankers_engine::EngineMessageRole::User,
-                content: vec![Content::Text { text: "hello".to_string() }],
+                content: vec![Content::Text {
+                    text: "hello".to_string(),
+                }],
             }],
             model: TEST_MODEL.to_string(),
             system_prompt: TEST_PROMPT.to_string(),
@@ -590,24 +587,26 @@ mod tests {
         EngineRunSeed::new(state, outcome)
     }
 
-    async fn run_with<M, T>(model: &mut M, tools: &mut T, events: &mut FakeEvents, cancel: &mut FakeCancel) -> EngineRunReport
+    async fn run_with<M, T>(
+        model: &mut M,
+        tools: &mut T,
+        events: &mut FakeEvents,
+        cancel: &mut FakeCancel,
+    ) -> EngineRunReport
     where
         M: ModelHost,
         T: ToolExecutor,
     {
         let mut sleeper = FakeSleeper::default();
         let mut usage = FakeUsage::default();
-        run_engine_turn(
-            seed(),
-            HostAdapters {
-                model,
-                tools,
-                retry_sleeper: &mut sleeper,
-                event_sink: events,
-                cancellation: cancel,
-                usage_observer: &mut usage,
-            },
-        )
+        run_engine_turn(seed(), HostAdapters {
+            model,
+            tools,
+            retry_sleeper: &mut sleeper,
+            event_sink: events,
+            cancellation: cancel,
+            usage_observer: &mut usage,
+        })
         .await
     }
 
@@ -634,10 +633,7 @@ mod tests {
         assert!(report.last_outcome.rejection.is_none());
         assert!(report.last_outcome.terminal_failure.is_none());
         assert_eq!(report.usage_observations.len(), 1);
-        assert!(report
-            .observed_events
-            .iter()
-            .any(|event| matches!(event, EngineEvent::TurnFinished { .. })));
+        assert!(report.observed_events.iter().any(|event| matches!(event, EngineEvent::TurnFinished { .. })));
     }
 
     #[test]
@@ -652,15 +648,20 @@ mod tests {
             }],
         };
         let mut tools = FakeTools::default();
-        let mut events = FakeEvents { events: Vec::new(), fail: true };
+        let mut events = FakeEvents {
+            events: Vec::new(),
+            fail: true,
+        };
         let mut cancel = FakeCancel::default();
         let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
         assert!(report.last_outcome.rejection.is_none());
         assert!(!report.adapter_diagnostics.is_empty());
-        assert!(report
-            .adapter_diagnostics
-            .iter()
-            .all(|diagnostic| diagnostic.component == HostAdapterComponent::EventSink));
+        assert!(
+            report
+                .adapter_diagnostics
+                .iter()
+                .all(|diagnostic| diagnostic.component == HostAdapterComponent::EventSink)
+        );
     }
 
     #[test]
@@ -679,7 +680,9 @@ mod tests {
             }],
         };
         let mut tools = FakeTools {
-            outcomes: vec![ToolHostOutcome::MissingTool { name: TEST_TOOL.to_string() }],
+            outcomes: vec![ToolHostOutcome::MissingTool {
+                name: TEST_TOOL.to_string(),
+            }],
         };
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel::default();
@@ -697,12 +700,10 @@ mod tests {
         let mut cancel = FakeCancel { cancelled: true };
         let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
         assert!(report.last_outcome.rejection.is_none());
-        assert!(report
-            .observed_events
-            .iter()
-            .any(|event| matches!(event, EngineEvent::TurnFinished { stop_reason } if *stop_reason == StopReason::Stop)));
+        assert!(report.observed_events.iter().any(
+            |event| matches!(event, EngineEvent::TurnFinished { stop_reason } if *stop_reason == StopReason::Stop)
+        ));
     }
-
 
     #[test]
     fn streamed_model_events_fold_into_completion_and_usage_order() {
@@ -710,9 +711,22 @@ mod tests {
             outcomes: vec![ModelHostOutcome::Streamed {
                 events: vec![
                     HostStreamEvent::TextStart { index: 0 },
-                    HostStreamEvent::TextDelta { index: 0, text: "hi".to_string() },
-                    HostStreamEvent::Usage { usage: Usage { input_tokens: TEST_USAGE_INPUT, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
-                    HostStreamEvent::MessageStop { model: Some(TEST_MODEL.to_string()), stop_reason: StopReason::Stop },
+                    HostStreamEvent::TextDelta {
+                        index: 0,
+                        text: "hi".to_string(),
+                    },
+                    HostStreamEvent::Usage {
+                        usage: Usage {
+                            input_tokens: TEST_USAGE_INPUT,
+                            output_tokens: 0,
+                            cache_creation_input_tokens: 0,
+                            cache_read_input_tokens: 0,
+                        },
+                    },
+                    HostStreamEvent::MessageStop {
+                        model: Some(TEST_MODEL.to_string()),
+                        stop_reason: StopReason::Stop,
+                    },
                 ],
             }],
         };
@@ -730,14 +744,20 @@ mod tests {
     fn malformed_stream_maps_to_non_retryable_model_failure() {
         let mut model = FakeModel {
             outcomes: vec![ModelHostOutcome::Streamed {
-                events: vec![HostStreamEvent::ToolUseJsonDelta { index: 0, json: "{".to_string() }],
+                events: vec![HostStreamEvent::ToolUseJsonDelta {
+                    index: 0,
+                    json: "{".to_string(),
+                }],
             }],
         };
         let mut tools = FakeTools::default();
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel::default();
         let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
-        let failure = report.last_outcome.terminal_failure.expect("stream error should terminalize through engine failure");
+        let failure = report
+            .last_outcome
+            .terminal_failure
+            .expect("stream error should terminalize through engine failure");
         assert!(!failure.retryable);
         assert!(failure.message.contains("missing content block start"));
     }
@@ -767,32 +787,26 @@ mod tests {
 
     #[test]
     fn reducer_rejection_is_reported_without_local_terminalization() {
-        let bad_seed = EngineRunSeed::new(
-            EngineState::new(),
-            EngineOutcome {
-                next_state: EngineState::new(),
-                effects: Vec::new(),
-                rejection: Some(EngineRejection::InvalidPhase),
-                terminal_failure: None,
-            },
-        );
+        let bad_seed = EngineRunSeed::new(EngineState::new(), EngineOutcome {
+            next_state: EngineState::new(),
+            effects: Vec::new(),
+            rejection: Some(EngineRejection::InvalidPhase),
+            terminal_failure: None,
+        });
         let mut model = FakeModel::default();
         let mut tools = FakeTools::default();
         let mut sleeper = FakeSleeper::default();
         let mut events = FakeEvents::default();
         let mut cancel = FakeCancel::default();
         let mut usage = FakeUsage::default();
-        let report = block_on(run_engine_turn(
-            bad_seed,
-            HostAdapters {
-                model: &mut model,
-                tools: &mut tools,
-                retry_sleeper: &mut sleeper,
-                event_sink: &mut events,
-                cancellation: &mut cancel,
-                usage_observer: &mut usage,
-            },
-        ));
+        let report = block_on(run_engine_turn(bad_seed, HostAdapters {
+            model: &mut model,
+            tools: &mut tools,
+            retry_sleeper: &mut sleeper,
+            event_sink: &mut events,
+            cancellation: &mut cancel,
+            usage_observer: &mut usage,
+        }));
         assert_eq!(report.last_outcome.rejection, Some(EngineRejection::InvalidPhase));
         assert!(report.observed_events.is_empty());
     }

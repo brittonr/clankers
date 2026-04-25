@@ -1581,6 +1581,7 @@ dependencies = [
  "clankers-core",
  "clankers-db",
  "clankers-engine",
+ "clankers-engine-host",
  "clankers-hooks",
  "clankers-model-selection",
  "clankers-procmon",

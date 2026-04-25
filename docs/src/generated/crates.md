@@ -644,9 +644,9 @@ trait ProcessDataSource
 
 Agent core — turn loop, event bus, tool interface, context management
 
-**7551** lines of Rust · **138** tests
+**7531** lines of Rust · **138** tests
 
-**Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-router`, `clanker-tui-types`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-hooks`, `clankers-model-selection`, `clankers-procmon`, `clankers-prompts`, `clankers-provider`, `clankers-skills`, `clankers-util`
+**Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-router`, `clanker-tui-types`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-engine-host`, `clankers-hooks`, `clankers-model-selection`, `clankers-procmon`, `clankers-prompts`, `clankers-provider`, `clankers-skills`, `clankers-util`
 
 <details><summary>Public API</summary>
 
@@ -1328,7 +1328,7 @@ struct EngineToolCall
 
 Reusable async host runner for `clankers-engine` effects.
 
-**1089** lines of Rust · **16** tests
+**1171** lines of Rust · **18** tests
 
 **Workspace deps:** `clanker-message`, `clankers-engine`, `clankers-tool-host`
 
@@ -1341,12 +1341,19 @@ enum HostStreamEvent
 enum ModelHostOutcome
 enum StreamAccumulatorError
 enum UsageObservationKind
+fn cancel_turn_input
 fn failed
 fn finish
 fn message
+fn model_completed_input
+fn model_failed_input
 fn new
 fn push
+fn retry_ready_input
 fn run_engine_turn
+fn tool_completed_input
+fn tool_failed_input
+fn tool_feedback_input
 struct AdapterDiagnostic
 struct EngineRunReport
 struct EngineRunSeed

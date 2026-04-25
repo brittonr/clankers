@@ -11,13 +11,13 @@
 | Metric | Count |
 |--------|------:|
 | Workspace crates | 31 |
-| Lines of Rust (crates/) | 105,443 |
+| Lines of Rust (crates/) | 105,505 |
 | Lines of Rust (src/) | 47,773 |
-| **Total lines of Rust** | **153,216** |
-| Tests (crates/) | 2,234 |
+| **Total lines of Rust** | **153,278** |
+| Tests (crates/) | 2,236 |
 | Tests (src/) | 730 |
-| **Total tests** | **2,964** |
-| Public API items | 2,079 |
+| **Total tests** | **2,966** |
+| Public API items | 2,086 |
 
 ## Crates by size
 
@@ -28,7 +28,7 @@
 | `clankers-tui` | 16,617 | 279 |
 | `clankers-controller` | 8,946 | 203 |
 | `clankers-provider` | 8,425 | 167 |
-| `clankers-agent` | 7,551 | 138 |
+| `clankers-agent` | 7,531 | 138 |
 | `clankers-db` | 6,698 | 206 |
 | `clankers-session` | 4,014 | 102 |
 | `clankers-plugin` | 3,725 | 39 |
@@ -45,7 +45,7 @@
 | `clankers-tts` | 1,277 | 49 |
 | `clankers-nix` | 1,262 | 61 |
 | `clankers-hooks` | 1,225 | 32 |
-| `clankers-engine-host` | 1,089 | 16 |
+| `clankers-engine-host` | 1,171 | 18 |
 | `clankers-zellij` | 896 | 39 |
 | `clanker-message` | 882 | 25 |
 | `clankers-agent-defs` | 873 | 29 |

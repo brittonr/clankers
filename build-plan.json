@@ -73,8 +73,8 @@
     "clankers-zellij": "path+file:///home/brittonr/git/clankers/crates/clankers-zellij#0.1.0",
     "openspec": "path+file:///home/brittonr/git/clankers/vendor/openspec#0.1.0"
   },
-  "cargoLockHash": "197f7c0f14e1f1d7a55a28d53575e4af6b549ec5a4cb405914429fd3f136d1a3",
-  "inputsHash": "c65906fd285c75f4f54b47b6e20d7f0684456f07dfbac03a1f35d8665db21c89",
+  "cargoLockHash": "6b7562b2f5497d71354d4090eee5741261f980e357ab42aac5c2bfbec86060f7",
+  "inputsHash": "287a2e8003b759a3f04394f2369c02b8a7a2ee0e6e0f8aeb3c0472bb3bc29567",
   "crates": {
     "git+https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#nix-compat@0.1.0": {
       "crateName": "nix-compat",
@@ -1621,6 +1621,10 @@
         {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-engine#0.1.0",
           "externCrateName": "clankers_engine"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-engine-host#0.1.0",
+          "externCrateName": "clankers_engine_host"
         },
         {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-hooks#0.1.0",

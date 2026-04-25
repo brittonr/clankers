@@ -21,6 +21,7 @@ graph TD
     agent --> core
     agent --> db
     agent --> engine
+    agent --> engine-host
     agent --> hooks
     agent --> model-selection
     agent --> procmon
@@ -86,7 +87,7 @@ graph TD
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
 | `clanker-message` | 882 | 25 | Message types for LLM agent conversations |
-| `agent` | 7551 | 138 | Agent core — turn loop, event bus, tool interface, context management |
+| `agent` | 7531 | 138 | Agent core — turn loop, event bus, tool interface, context management |
 | `agent-defs` | 873 | 29 | Agent definition system (first-class) |
 | `core` | 1643 | 42 |  |
 | `engine` | 1472 | 29 | Host-facing reusable engine contracts for model/tool turn policy that compose alongside `clankers-core` through controller/agent adapter seams. |
