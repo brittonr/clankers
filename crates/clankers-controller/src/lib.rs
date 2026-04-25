@@ -195,6 +195,8 @@ pub struct SessionController {
     pub(crate) tool_rebuilder: Option<Arc<dyn ToolRebuilder>>,
     /// Metrics collector (aggregates session metrics from agent events).
     pub(crate) metrics: metrics_capture::MetricsCollector,
+    /// Full-text search index for session content (optional).
+    pub(crate) search_index: Option<Arc<clankers_db::search_index::SearchIndex>>,
 }
 
 /// Trait for rebuilding the filtered tool set when disabled tools change.
@@ -239,6 +241,7 @@ impl SessionController {
             disabled_tools: Vec::new(),
             tool_rebuilder: None,
             metrics,
+            search_index: None,
         }
     }
 
@@ -281,12 +284,17 @@ impl SessionController {
             disabled_tools: Vec::new(),
             tool_rebuilder: None,
             metrics,
+            search_index: None,
         }
     }
 
     /// Set the tool rebuilder for hot-reloading tools on toggle.
     pub fn set_tool_rebuilder(&mut self, rebuilder: Arc<dyn ToolRebuilder>) {
         self.tool_rebuilder = Some(rebuilder);
+    }
+
+    pub fn set_search_index(&mut self, index: Arc<clankers_db::search_index::SearchIndex>) {
+        self.search_index = Some(index);
     }
 
     /// Snapshot the current tool list as protocol metadata.

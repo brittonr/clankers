@@ -25,6 +25,7 @@ pub mod insights;
 pub mod memory;
 pub mod metrics;
 pub mod schema;
+pub mod search_index;
 pub mod session_index;
 pub mod skill_usage;
 pub mod tool_results;

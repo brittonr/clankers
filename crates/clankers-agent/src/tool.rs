@@ -76,6 +76,8 @@ pub struct ToolContext {
     session_id: String,
     /// Optional database handle for tools that need persistent storage
     db: Option<clankers_db::Db>,
+    /// Optional full-text search index for session content
+    search_index: Option<Arc<clankers_db::search_index::SearchIndex>>,
 }
 
 impl ToolContext {
@@ -89,6 +91,7 @@ impl ToolContext {
             hook_pipeline: None,
             session_id: String::new(),
             db: None,
+            search_index: None,
         }
     }
 
@@ -108,6 +111,17 @@ impl ToolContext {
     /// Access the database handle (if set).
     pub fn db(&self) -> Option<&clankers_db::Db> {
         self.db.as_ref()
+    }
+
+    /// Attach a search index to this context.
+    pub fn with_search_index(mut self, index: Arc<clankers_db::search_index::SearchIndex>) -> Self {
+        self.search_index = Some(index);
+        self
+    }
+
+    /// Access the search index (if set).
+    pub fn search_index(&self) -> Option<&clankers_db::search_index::SearchIndex> {
+        self.search_index.as_deref()
     }
 
     /// Access the hook pipeline (if set).

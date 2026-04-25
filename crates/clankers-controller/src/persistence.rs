@@ -19,6 +19,9 @@ impl SessionController {
 
         if let AgentEvent::AgentEnd { messages } = event {
             persist_messages(sm, messages);
+            if let Some(search_index) = &self.search_index {
+                index_messages_for_search(search_index, sm.session_id(), messages);
+            }
             return;
         }
 
@@ -38,13 +41,64 @@ impl SessionController {
 /// Persist a batch of agent messages to the session manager.
 fn persist_messages(sm: &mut SessionManager, messages: &[clankers_provider::message::AgentMessage]) {
     for msg in messages {
-        // Each message appended with the session manager's current active
-        // leaf as parent. The session manager tracks the head internally.
         let parent = sm.active_leaf_id().cloned();
         if let Err(e) = sm.append_message(msg.clone(), parent) {
             warn!("failed to persist message: {e}");
         }
     }
+}
+
+/// Index persisted messages into the full-text search index.
+pub(crate) fn index_messages_for_search(
+    search_index: &clankers_db::search_index::SearchIndex,
+    session_id: &str,
+    messages: &[clankers_provider::message::AgentMessage],
+) {
+    let mut batch: Vec<(&str, String, &str, String, i64)> = Vec::new();
+
+    for msg in messages {
+        let id = msg.id().to_string();
+        let role = msg.role();
+        let timestamp = msg.timestamp().timestamp();
+
+        let text = match msg {
+            clanker_message::AgentMessage::User(m) => extract_text(&m.content),
+            clanker_message::AgentMessage::Assistant(m) => extract_text(&m.content),
+            clanker_message::AgentMessage::ToolResult(m) => extract_text(&m.content),
+            clanker_message::AgentMessage::BashExecution(m) => {
+                format!("{} {} {}", m.command, m.stdout, m.stderr)
+            }
+            _ => continue,
+        };
+
+        if !text.trim().is_empty() {
+            batch.push((session_id, id, role, text, timestamp));
+        }
+    }
+
+    if batch.is_empty() {
+        return;
+    }
+
+    let refs: Vec<(&str, &str, &str, &str, i64)> = batch
+        .iter()
+        .map(|(sid, id, role, text, ts)| (*sid, id.as_str(), *role, text.as_str(), *ts))
+        .collect();
+
+    if let Err(e) = search_index.index_messages_batch(&refs) {
+        warn!("failed to index messages for search: {e}");
+    }
+}
+
+fn extract_text(content: &[clanker_message::Content]) -> String {
+    content
+        .iter()
+        .filter_map(|c| match c {
+            clanker_message::Content::Text { text } => Some(text.as_str()),
+            _ => None,
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 pub(crate) fn persist_compaction_summary_tool_result(
