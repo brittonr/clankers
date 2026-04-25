@@ -1,10 +1,10 @@
 Evidence-ID: separate-engine-core-composition.validation-plan
-Task-ID: R2,I2,I7,I8,I9,V1,V2,V3,V4,V5,V6,V7,V8
+Task-ID: R2,I1,I2,I4,I5,I7,I8,I9,V1,V2,V3,V4,V5,V6,V7,V8,V9,V10,V11,V12,V13,V14
 Artifact-Type: validation-log
 Covers: embeddable-agent-engine.engine-state-active-data, embeddable-agent-engine.composition-tests, embeddable-agent-engine.core-engine-boundary-rails, embeddable-agent-engine.cross-reducer-source-rail, embeddable-agent-engine.agent-core-type-rail, embeddable-agent-engine.engine-excludes-core-dependency, no.std.functional.core.pre.engine.cancellation
 Creator: pi
 Created: 2026-04-25T11:47:00Z
-Status: PLANNED
+Status: IN_PROGRESS
 
 ## Validation Log
 
@@ -75,6 +75,51 @@ Output excerpt:
 test tests::engine_state_fields_are_active ... ok
 
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+```
+
+### I4 — pure core/engine composition seam
+
+Command:
+
+```bash
+cargo test -p clankers-controller --lib core_engine_composition
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+running 3 tests
+test core_engine_composition::tests::apply_composition_feedback_rejects_cross_reducer_feedback ... ok
+test core_engine_composition::tests::engine_submission_preserves_prompt_identity_and_policy ... ok
+test core_engine_composition::tests::apply_composition_feedback_routes_engine_submission_to_engine_reducer ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 153 filtered out; finished in 0.00s
+```
+
+### I5 — accepted engine prompt gate
+
+Command:
+
+```bash
+cargo test -p clankers-controller --lib accepted_engine_prompt
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+running 6 tests
+test core_effects::accepted_engine_prompt_tests::accepted_engine_prompt_normalizes_loop_follow_up ... ok
+test core_effects::accepted_engine_prompt_tests::accepted_engine_prompt_normalizes_start_prompt ... ok
+test core_effects::accepted_engine_prompt_tests::accepted_engine_prompt_rejects_core_rejection ... ok
+test core_effects::accepted_engine_prompt_tests::accepted_engine_prompt_rejects_multiple_submittable_effects ... ok
+test core_effects::accepted_engine_prompt_tests::accepted_engine_prompt_rejects_missing_prompt_effect ... ok
+test core_effects::accepted_engine_prompt_tests::accepted_engine_prompt_rejects_replay_without_fresh_core_prompt ... ok
+
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 156 filtered out; finished in 0.00s
 ```
 
 ### I7 — core pre-engine cancellation reducer tests

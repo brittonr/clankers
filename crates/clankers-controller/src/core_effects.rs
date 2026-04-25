@@ -2,6 +2,7 @@ use clankers_core::CompletionStatus;
 use clankers_core::CoreEffect;
 use clankers_core::CoreEffectId;
 use clankers_core::CoreLogicalEvent;
+use clankers_core::CoreOutcome;
 use clankers_core::CoreThinkingLevel;
 use clankers_core::ToolFilterApplied;
 use clankers_protocol::DaemonEvent;
@@ -9,12 +10,97 @@ use clankers_protocol::DaemonEvent;
 use crate::PendingWorkId;
 use crate::PostPromptAction;
 use crate::SessionController;
+use crate::core_engine_composition::AcceptedPromptKind;
+use crate::core_engine_composition::AcceptedPromptStart;
 use crate::loop_mode::LoopConfig;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ThinkingEffectExecution {
     pub previous: CoreThinkingLevel,
     pub current: CoreThinkingLevel,
+}
+
+const FOLLOW_UP_IMAGE_COUNT: u32 = 0;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum CoreEffectGateRejection {
+    CoreRejected(clankers_core::CoreError),
+    MissingEnginePromptEffect,
+    ReplayQueuedPromptNeedsFreshCorePrompt,
+    UnexpectedCoreEffect,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum AcceptedEnginePrompt {
+    UserPrompt(AcceptedPromptStart),
+    FollowUp(AcceptedPromptStart),
+}
+
+impl AcceptedEnginePrompt {
+    #[allow(dead_code)] // Handoff wiring lands after the prompt gate helper.
+    pub(crate) fn prompt_start(&self) -> &AcceptedPromptStart {
+        match self {
+            Self::UserPrompt(prompt_start) | Self::FollowUp(prompt_start) => prompt_start,
+        }
+    }
+}
+
+pub(crate) fn accepted_engine_prompt_from_core_outcome(
+    core_outcome: &CoreOutcome,
+) -> Result<AcceptedEnginePrompt, CoreEffectGateRejection> {
+    let effects = match core_outcome {
+        CoreOutcome::Transitioned { effects, .. } => effects,
+        CoreOutcome::Rejected { error, .. } => {
+            return Err(CoreEffectGateRejection::CoreRejected(error.clone()));
+        }
+    };
+
+    let mut replay_queued_prompt = false;
+    let mut accepted_prompt = None;
+    for effect in effects {
+        let candidate = match effect {
+            CoreEffect::StartPrompt {
+                effect_id,
+                prompt_text,
+                image_count,
+            } => Some(AcceptedEnginePrompt::UserPrompt(AcceptedPromptStart {
+                core_effect_id: *effect_id,
+                kind: AcceptedPromptKind::UserPrompt,
+                prompt_text: prompt_text.clone(),
+                image_count: *image_count,
+            })),
+            CoreEffect::RunLoopFollowUp {
+                effect_id,
+                prompt_text,
+                source,
+            } => Some(AcceptedEnginePrompt::FollowUp(AcceptedPromptStart {
+                core_effect_id: *effect_id,
+                kind: AcceptedPromptKind::FollowUp(*source),
+                prompt_text: prompt_text.clone(),
+                image_count: FOLLOW_UP_IMAGE_COUNT,
+            })),
+            CoreEffect::ReplayQueuedPrompt => {
+                replay_queued_prompt = true;
+                None
+            }
+            CoreEffect::EmitLogicalEvent(_)
+            | CoreEffect::ApplyThinkingLevel { .. }
+            | CoreEffect::ApplyToolFilter { .. } => None,
+        };
+
+        if let Some(candidate) = candidate {
+            if accepted_prompt.is_some() {
+                return Err(CoreEffectGateRejection::UnexpectedCoreEffect);
+            }
+            accepted_prompt = Some(candidate);
+        }
+    }
+
+    match accepted_prompt {
+        Some(prompt) => Ok(prompt),
+        None if replay_queued_prompt => Err(CoreEffectGateRejection::ReplayQueuedPromptNeedsFreshCorePrompt),
+        None => Err(CoreEffectGateRejection::MissingEnginePromptEffect),
+    }
 }
 
 impl SessionController {
@@ -252,5 +338,147 @@ impl SessionController {
                 is_error: true,
             });
         }
+    }
+}
+
+#[cfg(test)]
+mod accepted_engine_prompt_tests {
+    use clankers_core::CoreError;
+    use clankers_core::CoreInput;
+    use clankers_core::CoreState;
+    use clankers_core::FollowUpSource;
+    use clankers_core::PostPromptEvaluation;
+    use clankers_core::PromptRequest;
+
+    use super::*;
+
+    const TEST_IMAGE_COUNT: u32 = 2;
+    const TEST_PROMPT: &str = "compose accepted prompt";
+    const FOLLOW_UP_PROMPT: &str = "continue loop";
+
+    fn accepted_prompt_outcome() -> CoreOutcome {
+        clankers_core::reduce(
+            &CoreState::default(),
+            &CoreInput::PromptRequested(PromptRequest {
+                text: TEST_PROMPT.to_owned(),
+                image_count: TEST_IMAGE_COUNT,
+                originating_follow_up_effect_id: None,
+            }),
+        )
+    }
+
+    #[test]
+    fn accepted_engine_prompt_normalizes_start_prompt() {
+        let accepted = accepted_engine_prompt_from_core_outcome(&accepted_prompt_outcome())
+            .expect("prompt request must normalize to engine prompt");
+
+        match accepted {
+            AcceptedEnginePrompt::UserPrompt(prompt_start) => {
+                assert_eq!(prompt_start.kind, AcceptedPromptKind::UserPrompt);
+                assert_eq!(prompt_start.prompt_text, TEST_PROMPT);
+                assert_eq!(prompt_start.image_count, TEST_IMAGE_COUNT);
+            }
+            AcceptedEnginePrompt::FollowUp(_) => panic!("expected user prompt normalization"),
+        }
+    }
+
+    #[test]
+    fn accepted_engine_prompt_normalizes_loop_follow_up() {
+        let outcome = CoreOutcome::Transitioned {
+            next_state: CoreState::default(),
+            effects: vec![CoreEffect::RunLoopFollowUp {
+                effect_id: CoreEffectId(1),
+                prompt_text: FOLLOW_UP_PROMPT.to_owned(),
+                source: FollowUpSource::LoopContinuation,
+            }],
+        };
+
+        let accepted =
+            accepted_engine_prompt_from_core_outcome(&outcome).expect("loop follow-up must normalize to engine prompt");
+
+        match accepted {
+            AcceptedEnginePrompt::FollowUp(prompt_start) => {
+                assert_eq!(prompt_start.kind, AcceptedPromptKind::FollowUp(FollowUpSource::LoopContinuation));
+                assert_eq!(prompt_start.prompt_text, FOLLOW_UP_PROMPT);
+                assert_eq!(prompt_start.image_count, FOLLOW_UP_IMAGE_COUNT);
+            }
+            AcceptedEnginePrompt::UserPrompt(_) => panic!("expected follow-up normalization"),
+        }
+    }
+
+    #[test]
+    fn accepted_engine_prompt_rejects_core_rejection() {
+        let mut busy = CoreState::default();
+        busy.busy = true;
+        let outcome = clankers_core::reduce(
+            &busy,
+            &CoreInput::PromptRequested(PromptRequest {
+                text: TEST_PROMPT.to_owned(),
+                image_count: TEST_IMAGE_COUNT,
+                originating_follow_up_effect_id: None,
+            }),
+        );
+
+        let rejection = accepted_engine_prompt_from_core_outcome(&outcome)
+            .expect_err("busy core rejection must not create engine input");
+
+        assert_eq!(rejection, CoreEffectGateRejection::CoreRejected(CoreError::Busy));
+    }
+
+    #[test]
+    fn accepted_engine_prompt_rejects_replay_without_fresh_core_prompt() {
+        let outcome = CoreOutcome::Transitioned {
+            next_state: CoreState::default(),
+            effects: vec![CoreEffect::ReplayQueuedPrompt],
+        };
+
+        let rejection = accepted_engine_prompt_from_core_outcome(&outcome)
+            .expect_err("queued replay must be resubmitted through core prompt request");
+
+        assert_eq!(rejection, CoreEffectGateRejection::ReplayQueuedPromptNeedsFreshCorePrompt);
+    }
+
+    #[test]
+    fn accepted_engine_prompt_rejects_missing_prompt_effect() {
+        let outcome = clankers_core::reduce(
+            &CoreState::default(),
+            &CoreInput::EvaluatePostPrompt(PostPromptEvaluation {
+                active_loop_state: None,
+                pending_follow_up_state: None,
+                auto_test_enabled: false,
+                auto_test_command: None,
+                auto_test_in_progress: false,
+                queued_prompt_present: false,
+            }),
+        );
+
+        let rejection = accepted_engine_prompt_from_core_outcome(&outcome)
+            .expect_err("non-prompt core transition must not create engine input");
+
+        assert_eq!(rejection, CoreEffectGateRejection::MissingEnginePromptEffect);
+    }
+
+    #[test]
+    fn accepted_engine_prompt_rejects_multiple_submittable_effects() {
+        let outcome = CoreOutcome::Transitioned {
+            next_state: CoreState::default(),
+            effects: vec![
+                CoreEffect::StartPrompt {
+                    effect_id: CoreEffectId(1),
+                    prompt_text: TEST_PROMPT.to_owned(),
+                    image_count: TEST_IMAGE_COUNT,
+                },
+                CoreEffect::RunLoopFollowUp {
+                    effect_id: CoreEffectId(2),
+                    prompt_text: FOLLOW_UP_PROMPT.to_owned(),
+                    source: FollowUpSource::AutoTest,
+                },
+            ],
+        };
+
+        let rejection = accepted_engine_prompt_from_core_outcome(&outcome)
+            .expect_err("multiple prompt effects must be impossible at the gate");
+
+        assert_eq!(rejection, CoreEffectGateRejection::UnexpectedCoreEffect);
     }
 }
