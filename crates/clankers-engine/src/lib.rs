@@ -6,9 +6,9 @@ use core::time::Duration;
 use clanker_message::AgentMessage;
 use clanker_message::Content;
 use clanker_message::StopReason;
-use clanker_router::provider::ToolDefinition;
+use clanker_message::ThinkingConfig;
+use clanker_message::ToolDefinition;
 use clankers_core::CoreState;
-use clankers_provider::ThinkingConfig;
 use serde_json::Value;
 
 pub const ENGINE_CONTRACT_VERSION: u32 = 1;

@@ -8,8 +8,6 @@ description = "Host-facing reusable agent engine contracts for clankers"
 [dependencies]
 clankers-core = { version = "0.1.0", path = "../clankers-core" }
 clanker-message = { workspace = true }
-clankers-provider = { version = "0.1.0", path = "../clankers-provider" }
-clanker-router = { workspace = true }
 serde_json = { workspace = true }
 
 [dev-dependencies]

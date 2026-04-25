@@ -1695,9 +1695,7 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clanker-message",
- "clanker-router",
  "clankers-core",
- "clankers-provider",
  "serde_json",
 ]
 
