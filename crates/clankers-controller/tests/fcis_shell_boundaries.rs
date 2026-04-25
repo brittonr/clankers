@@ -315,6 +315,61 @@ const CORE_ENGINE_POLICY_FORBIDDEN_SEGMENTS: [&str; 39] = [
     "EngineRejection",
     "EngineTurnPhase",
 ];
+
+const ENGINE_INPUT_SUBMIT_SEGMENTS: [&str; 1] = ["SubmitUserPrompt"];
+const ENGINE_INPUT_FEEDBACK_SEGMENTS: [&str; 6] = [
+    "ModelCompleted",
+    "ModelFailed",
+    "ToolCompleted",
+    "ToolFailed",
+    "RetryReady",
+    "CancelTurn",
+];
+const CORE_EFFECT_CONSTRUCTOR_SEGMENTS: [&str; 6] = [
+    "StartPrompt",
+    "ReplayQueuedPrompt",
+    "RunLoopFollowUp",
+    "ApplyThinkingLevel",
+    "ApplyToolFilter",
+    "EmitLogicalEvent",
+];
+const EVENT_LOOP_RECURSIVE_FORBIDDEN_SEGMENTS: [&str; 6] = [
+    "clankers_core",
+    "PromptCompleted",
+    "EvaluatePostPrompt",
+    "FollowUpDispatchAcknowledged",
+    "LoopFollowUpCompleted",
+    "PostPromptEvaluation",
+];
+const AGENT_CORE_TYPE_FORBIDDEN_SEGMENTS: [&str; 15] = [
+    "clankers_core",
+    "CoreInput",
+    "CoreEffect",
+    "CoreState",
+    "CoreOutcome",
+    "CoreLogicalEvent",
+    "CoreEffectId",
+    "PromptCompleted",
+    "PostPromptEvaluation",
+    "FollowUpDispatchAcknowledged",
+    "LoopFollowUpCompleted",
+    "ToolFilterApplied",
+    "CompletionStatus",
+    "CoreFailure",
+    "PostPromptAction",
+];
+const CONTROLLER_ENGINE_POLICY_FORBIDDEN_SEGMENTS: [&str; 5] = [
+    "ScheduleRetry",
+    "pending_model_request",
+    "pending_tool_calls",
+    "retry_attempt",
+    "retry_budget",
+];
+const CORE_ENGINE_COMPOSITION_FILE: &str = "crates/clankers-controller/src/core_engine_composition.rs";
+const AGENT_ENGINE_FEEDBACK_FILES: [&str; 2] = [
+    "crates/clankers-agent/src/turn/mod.rs",
+    "crates/clankers-agent/src/turn/execution.rs",
+];
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 6] = [
     "clankers_engine::reduce",
@@ -1410,6 +1465,47 @@ fn llm_contract_sources_reject_shell_runtime_dependencies() {
         let paths = collect_non_test_paths(relative_path);
         for forbidden_path in LLM_CONTRACT_SOURCE_FORBIDDEN_PATHS {
             assert_engine_surface_path_absent(relative_path, &paths, forbidden_path);
+        }
+    }
+}
+
+#[test]
+fn adapter_constructor_and_feedback_inventories_stay_on_allowed_seams() {
+    for relative_path in rust_source_files_under(CONTROLLER_SOURCE_DIR) {
+        let paths = collect_non_test_paths(&relative_path);
+        if relative_path != CORE_ENGINE_COMPOSITION_FILE {
+            assert_segments_absent(&relative_path, &paths, &ENGINE_INPUT_SUBMIT_SEGMENTS);
+        }
+        if relative_path != CONTROLLER_EFFECT_INTERPRETER_FILE {
+            assert_segments_absent(&relative_path, &paths, &CORE_EFFECT_CONSTRUCTOR_SEGMENTS);
+        }
+        if relative_path != CORE_ENGINE_COMPOSITION_FILE {
+            assert_segments_absent(&relative_path, &paths, &CONTROLLER_ENGINE_POLICY_FORBIDDEN_SEGMENTS);
+        }
+        assert_segments_absent(&relative_path, &paths, &ENGINE_INPUT_FEEDBACK_SEGMENTS);
+    }
+
+    for relative_path in rust_source_files_under("src/modes/event_loop_runner") {
+        let paths = collect_non_test_paths(&relative_path);
+        assert_segments_absent(&relative_path, &paths, &EVENT_LOOP_RECURSIVE_FORBIDDEN_SEGMENTS);
+    }
+
+    for relative_path in rust_source_files_under("crates/clankers-agent/src") {
+        let paths = collect_non_test_paths(&relative_path);
+        assert_segments_absent(&relative_path, &paths, &AGENT_CORE_TYPE_FORBIDDEN_SEGMENTS);
+        if !AGENT_ENGINE_FEEDBACK_FILES.contains(&relative_path.as_str()) {
+            assert_segments_absent(&relative_path, &paths, &ENGINE_INPUT_FEEDBACK_SEGMENTS);
+        }
+    }
+
+    for relative_path in AGENT_ENGINE_FEEDBACK_FILES {
+        let paths = collect_non_test_paths(relative_path);
+        if ENGINE_INPUT_FEEDBACK_SEGMENTS
+            .iter()
+            .any(|segment| !find_paths_with_segment(&paths, segment).is_empty())
+        {
+            assert_exact_path_absent(relative_path, &paths, "clankers_engine");
+            assert_required_paths_present(relative_path, &paths, &["clankers_engine::reduce"]);
         }
     }
 }

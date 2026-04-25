@@ -396,3 +396,27 @@ test core_and_engine_reducer_policy_inventories_stay_closed ... ok
 test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
 ```
 
+
+### V10 — adapter constructor and feedback FCIS inventories
+
+Commands:
+
+```bash
+cargo test -p clankers-controller --test fcis_shell_boundaries adapter_constructor_and_feedback_inventories_stay_on_allowed_seams
+cargo test -p clankers-controller --test fcis_shell_boundaries
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test adapter_constructor_and_feedback_inventories_stay_on_allowed_seams ... ok
+
+running 26 tests
+...
+test adapter_constructor_and_feedback_inventories_stay_on_allowed_seams ... ok
+
+test result: ok. 26 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.06s
+```
+
