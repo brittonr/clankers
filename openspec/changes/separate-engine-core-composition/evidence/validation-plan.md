@@ -446,3 +446,22 @@ test engine_terminal_policy_symbols_stay_inside_engine_source ... ok
 test result: ok. 27 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.32s
 ```
 
+
+### V12 — pure composition adapter FCIS rail
+
+Command:
+
+```bash
+cargo test -p clankers-controller --test fcis_shell_boundaries core_engine_composition_stays_pure_adapter_source
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test core_engine_composition_stays_pure_adapter_source ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 27 filtered out; finished in 0.00s
+```
+

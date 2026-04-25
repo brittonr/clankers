@@ -1478,6 +1478,12 @@ fn llm_contract_sources_reject_shell_runtime_dependencies() {
 }
 
 #[test]
+fn core_engine_composition_stays_pure_adapter_source() {
+    let paths = collect_non_test_paths(CORE_ENGINE_COMPOSITION_FILE);
+    assert_segments_absent(CORE_ENGINE_COMPOSITION_FILE, &paths, &ENGINE_SHELL_RUNTIME_FORBIDDEN_SEGMENTS);
+}
+
+#[test]
 fn engine_terminal_policy_symbols_stay_inside_engine_source() {
     for relative_path in rust_source_files_under("crates") {
         if relative_path.starts_with(ENGINE_CRATE_SOURCE_DIR) {
