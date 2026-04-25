@@ -465,3 +465,23 @@ test core_engine_composition_stays_pure_adapter_source ... ok
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 27 filtered out; finished in 0.00s
 ```
 
+
+### V13 — script-level dependency/source rail
+
+Command:
+
+```bash
+bash -n scripts/check-llm-contract-boundary.sh
+./scripts/check-llm-contract-boundary.sh
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+ok: clankers-engine normal-edge tree excludes forbidden crates
+ok: clanker-message normal-edge tree excludes forbidden crates
+ok: crates/clankers-engine/src excludes forbidden source tokens
+```
+
