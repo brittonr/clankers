@@ -86,7 +86,7 @@ Effect scheduling:
 In-flight cancellation:
 
 - The runner races `CancellationSource::cancelled()` against awaited model, tool, and retry-sleep futures.
-- If cancellation wins, the runner sends `EngineInput::CancelTurn` once with the current engine correlation ID, emits cancellation observation, and ignores any late model/tool/sleep result for that effect.
+- If cancellation wins, the runner sends `EngineInput::CancelTurn` once with the current accepted turn state and cancellation reason, emits cancellation observation, and ignores any late model/tool/sleep result for that effect. The accepted turn state carries the engine correlation data needed by the reducer; there is no standalone cancellation ID field in the current input type.
 - Adapters may also abort their underlying work, but reducer correctness cannot depend on successful abort. The production runner drops late results after cancellation once it has sent `CancelTurn`; separate engine/host harness tests inject duplicate/post-terminal feedback directly into the reducer seam to prove rejection behavior without requiring the production runner to forward ignored late adapter results.
 
 Policy boundary:

@@ -381,15 +381,14 @@ const AGENT_ENGINE_FEEDBACK_FILES: [&str; 2] = [
 ];
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 4] = [
-    "clankers_engine::reduce",
-    "clankers_engine::EngineInput",
-    "clankers_engine::EngineModelResponse",
-    "host_tool_feedback_input",
+    "run_engine_turn",
+    "HostAdapters",
+    "ModelHostOutcome::Completed",
+    "tool_result_message_to_host_outcome",
 ];
-const AGENT_TURN_ENGINE_RETRY_REQUIRED_PATHS: [&str; 5] = [
-    "EngineEffect::ScheduleRetry",
-    "model_failed_input",
-    "retry_ready_input",
+const AGENT_TURN_ENGINE_RETRY_REQUIRED_PATHS: [&str; 4] = [
+    "RetrySleeper",
+    "AgentRetrySleeper",
     "clankers_engine::EnginePromptSubmission",
     "EngineTerminalFailure",
 ];
@@ -422,6 +421,26 @@ const AGENT_TURN_ENGINE_REQUEST_PLANNING_FORBIDDEN_PATHS: [&str; 3] = [
     "clankers_engine::EnginePromptSubmission",
     "clankers_engine::EngineState",
 ];
+
+const AGENT_TURN_DUPLICATED_RUNNER_FORBIDDEN_SEGMENTS: [&str; 15] = [
+    "ModelCompleted",
+    "ModelFailed",
+    "ToolCompleted",
+    "ToolFailed",
+    "RetryReady",
+    "CancelTurn",
+    "ScheduleRetry",
+    "pending_tool_calls",
+    "pending_model_request",
+    "retry_attempt",
+    "retry_budget",
+    "terminal_failure_outcome",
+    "terminal_state_with_messages",
+    "cancel_active_engine_turn",
+    "EngineEvent::TurnFinished",
+];
+const AGENT_TURN_HOST_RUNNER_REQUIRED_PATHS: [&str; 4] =
+    ["run_engine_turn", "HostAdapters", "AgentModelHost", "AgentToolHost"];
 
 const ENGINE_HOST_SOURCE_DIR: &str = "crates/clankers-engine-host/src";
 const ENGINE_HOST_RUNTIME_FEEDBACK_FILE: &str = "crates/clankers-engine-host/src/runtime.rs";
@@ -549,6 +568,11 @@ struct NonTestConstructorCollector {
     paths: BTreeSet<String>,
 }
 
+#[derive(Default)]
+struct NonTestRunnerPolicyCollector {
+    findings: BTreeSet<String>,
+}
+
 macro_rules! impl_non_test_cfg_visit_guards {
     () => {
         fn visit_item(&mut self, item: &'ast Item) {
@@ -674,6 +698,30 @@ impl<'ast> Visit<'ast> for NonTestConstructorCollector {
     }
 }
 
+impl<'ast> Visit<'ast> for NonTestRunnerPolicyCollector {
+    impl_non_test_cfg_visit_guards!();
+
+    fn visit_expr_for_loop(&mut self, expression: &'ast syn::ExprForLoop) {
+        if has_test_only_cfg_attribute(&expression.attrs) {
+            return;
+        }
+        if expr_mentions_field_named(&expression.expr, "effects") {
+            self.findings.insert("for-loop-over-effects".to_string());
+        }
+        syn::visit::visit_expr_for_loop(self, expression);
+    }
+
+    fn visit_expr_while(&mut self, expression: &'ast syn::ExprWhile) {
+        if has_test_only_cfg_attribute(&expression.attrs) {
+            return;
+        }
+        if expr_mentions_field_named(&expression.cond, "effects") {
+            self.findings.insert("while-loop-over-effects".to_string());
+        }
+        syn::visit::visit_expr_while(self, expression);
+    }
+}
+
 fn repo_root() -> PathBuf {
     let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     for _ in 0..REPO_ROOT_PARENT_COUNT {
@@ -744,6 +792,14 @@ fn collect_non_test_constructor_paths(relative_path: &str) -> BTreeSet<String> {
     collect_non_test_constructor_paths_from_source(&source)
 }
 
+fn collect_non_test_runner_policy_findings(relative_path: &str) -> BTreeSet<String> {
+    let source = read_relative_file(relative_path);
+    let file = parse_rust_file(&source);
+    let mut collector = NonTestRunnerPolicyCollector::default();
+    collector.visit_file(&file);
+    collector.findings
+}
+
 fn collect_non_test_paths_from_visit(visit: impl FnOnce(&mut NonTestPathCollector)) -> BTreeSet<String> {
     let mut collector = NonTestPathCollector::default();
     visit(&mut collector);
@@ -789,6 +845,25 @@ fn collect_use_tree_paths(prefix: Vec<String>, use_tree: &syn::UseTree, paths: &
 
 fn path_to_string(path: &SynPath) -> String {
     path.segments.iter().map(|segment| segment.ident.to_string()).collect::<Vec<_>>().join("::")
+}
+
+fn expr_mentions_field_named(expression: &syn::Expr, expected_field: &str) -> bool {
+    match expression {
+        syn::Expr::Field(field) => match &field.member {
+            syn::Member::Named(member) if member == expected_field => true,
+            _ => expr_mentions_field_named(&field.base, expected_field),
+        },
+        syn::Expr::Reference(reference) => expr_mentions_field_named(&reference.expr, expected_field),
+        syn::Expr::Paren(paren) => expr_mentions_field_named(&paren.expr, expected_field),
+        syn::Expr::Group(group) => expr_mentions_field_named(&group.expr, expected_field),
+        syn::Expr::Let(let_expr) => expr_mentions_field_named(&let_expr.expr, expected_field),
+        syn::Expr::MethodCall(method) => expr_mentions_field_named(&method.receiver, expected_field),
+        syn::Expr::Call(call) => call.args.iter().any(|arg| expr_mentions_field_named(arg, expected_field)),
+        syn::Expr::Await(await_expr) => expr_mentions_field_named(&await_expr.base, expected_field),
+        syn::Expr::Unary(unary) => expr_mentions_field_named(&unary.expr, expected_field),
+        syn::Expr::Index(index) => expr_mentions_field_named(&index.expr, expected_field),
+        _ => false,
+    }
 }
 
 fn parse_cfg_meta(attribute: &Attribute) -> Meta {
@@ -1526,6 +1601,28 @@ fn transport_protocol_construction_stays_in_pure_conversion_files() {
         &quic_bridge_paths,
         &QUIC_BRIDGE_PROTOCOL_REQUIRED_PATHS,
     );
+}
+
+#[test]
+fn agent_turn_delegates_runner_policy_to_host_runner() {
+    let turn_paths = collect_non_test_paths(AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE);
+    assert_required_paths_present(
+        AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE,
+        &turn_paths,
+        &AGENT_TURN_HOST_RUNNER_REQUIRED_PATHS,
+    );
+
+    for relative_path in AGENT_ENGINE_FEEDBACK_FILES {
+        let paths = collect_non_test_paths(relative_path);
+        assert_segments_absent(relative_path, &paths, &AGENT_TURN_DUPLICATED_RUNNER_FORBIDDEN_SEGMENTS);
+        let runner_policy_findings = collect_non_test_runner_policy_findings(relative_path);
+        assert!(
+            runner_policy_findings.is_empty(),
+            "{} crossed FCIS runner-loop boundary: {:?}",
+            relative_path,
+            runner_policy_findings
+        );
+    }
 }
 
 #[test]

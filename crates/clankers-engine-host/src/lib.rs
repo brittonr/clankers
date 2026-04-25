@@ -277,7 +277,11 @@ where
         return cancel_input(hosts.cancellation);
     }
     let request_id = request.request_id.clone();
-    match hosts.model.execute_model(request).await {
+    let outcome = hosts.model.execute_model(request).await;
+    if hosts.cancellation.is_cancelled() {
+        return cancel_input(hosts.cancellation);
+    }
+    match outcome {
         ModelHostOutcome::Completed { response, usage } => {
             if let Some(usage) = usage {
                 observe_usage(report, hosts.usage_observer, UsageObservationKind::FinalSummary, usage);

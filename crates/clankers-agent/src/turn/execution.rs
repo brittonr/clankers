@@ -193,7 +193,7 @@ impl ToolExecutor for AgentSingleToolExecutor {
     }
 }
 
-fn tool_result_message_to_host_outcome(message: &ToolResultMessage) -> ToolHostOutcome {
+pub(super) fn tool_result_message_to_host_outcome(message: &ToolResultMessage) -> ToolHostOutcome {
     let details = message.details.clone().unwrap_or(Value::Null);
     if message.is_error {
         return ToolHostOutcome::ToolError {

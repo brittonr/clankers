@@ -138,6 +138,16 @@ pub enum EngineEvent {
     TurnFinished { stop_reason: StopReason },
 }
 
+impl EngineEvent {
+    #[must_use]
+    pub fn turn_finished_stop_reason(&self) -> Option<&StopReason> {
+        match self {
+            Self::TurnFinished { stop_reason } => Some(stop_reason),
+            Self::BusyChanged { .. } | Self::Notice { .. } => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub enum EngineEffect {
     RequestModel(EngineModelRequest),

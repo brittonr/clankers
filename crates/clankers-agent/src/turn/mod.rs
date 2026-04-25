@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use clankers_engine::EngineCorrelationId;
+#[cfg(test)]
 use clankers_engine::EngineEffect;
 use clankers_engine::EngineEvent;
 use clankers_engine::EngineInput;
@@ -17,12 +18,25 @@ use clankers_engine::EngineModelResponse;
 use clankers_engine::EngineOutcome;
 use clankers_engine::EngineState;
 use clankers_engine::EngineTerminalFailure;
+#[cfg(test)]
 use clankers_engine::EngineTurnPhase;
 use clankers_engine::reduce;
+use clankers_engine_host::CancellationSource;
+use clankers_engine_host::EngineEventSink;
+use clankers_engine_host::EngineRunReport;
+use clankers_engine_host::EngineRunSeed;
+use clankers_engine_host::HostAdapterError;
+use clankers_engine_host::HostAdapters;
+use clankers_engine_host::ModelHost;
+use clankers_engine_host::ModelHostOutcome;
+use clankers_engine_host::RetrySleeper;
+use clankers_engine_host::UsageObservation;
+use clankers_engine_host::UsageObservationKind;
+use clankers_engine_host::UsageObserver;
+use clankers_engine_host::run_engine_turn;
+#[cfg(test)]
 use clankers_engine_host::runtime::cancel_turn_input;
-use clankers_engine_host::runtime::model_completed_input;
-use clankers_engine_host::runtime::model_failed_input;
-use clankers_engine_host::runtime::retry_ready_input;
+#[cfg(test)]
 use clankers_engine_host::runtime::tool_feedback_input as host_tool_feedback_input;
 use clankers_model_selection::cost_tracker::CostTracker;
 use clankers_provider::Provider;
@@ -30,11 +44,15 @@ use clankers_provider::ThinkingConfig;
 use clankers_provider::Usage;
 use clankers_provider::message::*;
 use clankers_provider::streaming::*;
+use clankers_tool_host::ToolExecutor;
+use clankers_tool_host::ToolHostOutcome;
 use execution::completion_request_from_engine_request;
+use execution::create_error_result;
 use execution::engine_messages_from_agent_messages;
 use execution::execute_tools_parallel;
 use execution::stream_model_request;
 use execution::tool_definitions_from_tool_catalog;
+use execution::tool_result_message_to_host_outcome;
 use model_switch::check_model_switch;
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -67,6 +85,286 @@ pub(crate) struct CollectedResponse {
     model: String,
     usage: Usage,
     stop_reason: StopReason,
+}
+
+const TURN_CANCELLED_REASON: &str = "turn cancelled";
+const TURN_INDEX_INITIAL: u32 = 0;
+const TURN_INDEX_STEP: u32 = 1;
+
+struct TurnHostState<'a> {
+    messages: &'a mut Vec<AgentMessage>,
+    cumulative_usage: Usage,
+    active_model: String,
+    turn_index: u32,
+    turn_active: bool,
+    pending_tool_count: usize,
+    batch_tool_results: Vec<ToolResultMessage>,
+    last_assistant: Option<AssistantMessage>,
+}
+
+type SharedTurnHostState<'a> = Arc<parking_lot::Mutex<TurnHostState<'a>>>;
+
+struct AgentModelHost<'a> {
+    provider: &'a dyn Provider,
+    event_tx: &'a broadcast::Sender<AgentEvent>,
+    cancel: CancellationToken,
+    model_switch_slot: Option<&'a ModelSwitchSlot>,
+    state: SharedTurnHostState<'a>,
+}
+
+impl ModelHost for AgentModelHost<'_> {
+    async fn execute_model(&mut self, mut engine_request: EngineModelRequest) -> ModelHostOutcome {
+        {
+            let mut state = self.state.lock();
+            if !state.turn_active {
+                if let Err(error) = check_model_switch(&mut state.active_model, self.model_switch_slot, self.event_tx) {
+                    return ModelHostOutcome::Failed {
+                        failure: engine_failure_from_agent_error(&error),
+                    };
+                }
+                state.turn_active = true;
+                self.event_tx
+                    .send(AgentEvent::TurnStart {
+                        index: state.turn_index,
+                    })
+                    .ok();
+            }
+            engine_request.model.clone_from(&state.active_model);
+        }
+
+        let request = match completion_request_from_engine_request(&engine_request) {
+            Ok(request) => request,
+            Err(error) => {
+                return ModelHostOutcome::Failed {
+                    failure: engine_failure_from_agent_error(&error),
+                };
+            }
+        };
+
+        match stream_model_request(self.provider, request, self.event_tx, &self.cancel).await {
+            Ok(collected) => {
+                let response = EngineModelResponse {
+                    output: collected.content.clone(),
+                    stop_reason: collected.stop_reason.clone(),
+                };
+                let usage = collected.usage.clone();
+                let assistant = build_assistant_message(&collected);
+                let tool_count = tool_use_count(&collected.content);
+                {
+                    let mut state = self.state.lock();
+                    state.messages.push(AgentMessage::Assistant(assistant.clone()));
+                    state.last_assistant = Some(assistant);
+                    state.pending_tool_count = tool_count;
+                    state.batch_tool_results.clear();
+                }
+                ModelHostOutcome::Completed {
+                    response,
+                    usage: Some(usage),
+                }
+            }
+            Err(error) => ModelHostOutcome::Failed {
+                failure: engine_failure_from_agent_error(&error),
+            },
+        }
+    }
+}
+
+struct AgentToolHost<'a> {
+    controller_tools: &'a HashMap<String, Arc<dyn Tool>>,
+    event_tx: &'a broadcast::Sender<AgentEvent>,
+    cancel: CancellationToken,
+    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    session_id: &'a str,
+    db: Option<clankers_db::Db>,
+    capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
+    user_tool_filter: Option<Vec<String>>,
+    output_truncation: clanker_loop::OutputTruncationConfig,
+    state: SharedTurnHostState<'a>,
+}
+
+impl ToolExecutor for AgentToolHost<'_> {
+    async fn execute_tool(&mut self, call: clankers_engine::EngineToolCall) -> ToolHostOutcome {
+        let call_id = call.call_id.0.clone();
+        let tool_name = call.tool_name.clone();
+        let tool_calls = vec![(call_id, tool_name, call.input)];
+        let mut messages = execute_tools_parallel(
+            self.controller_tools,
+            &tool_calls,
+            self.event_tx,
+            self.cancel.clone(),
+            self.hook_pipeline.clone(),
+            self.session_id,
+            self.db.clone(),
+            self.capability_gate.clone(),
+            self.user_tool_filter.clone(),
+        )
+        .await;
+        let message = messages.pop().unwrap_or_else(|| {
+            create_error_result(
+                tool_calls[0].0.clone(),
+                tool_calls[0].1.clone(),
+                "tool host produced no result".to_string(),
+                self.event_tx,
+            )
+        });
+        let mut truncated = apply_output_truncation(vec![message], &self.output_truncation);
+        let message = truncated.remove(0);
+        let outcome = tool_result_message_to_host_outcome(&message);
+        let turn_end = self.record_tool_result(message);
+        if let Some(event) = turn_end {
+            self.event_tx.send(event).ok();
+        }
+        outcome
+    }
+}
+
+impl AgentToolHost<'_> {
+    fn record_tool_result(&mut self, message: ToolResultMessage) -> Option<AgentEvent> {
+        let mut state = self.state.lock();
+        state.messages.push(AgentMessage::ToolResult(message.clone()));
+        state.batch_tool_results.push(message);
+        if state.pending_tool_count == 0 || state.batch_tool_results.len() < state.pending_tool_count {
+            return None;
+        }
+
+        let assistant = state.last_assistant.clone()?;
+        let tool_results = state.batch_tool_results.clone();
+        state.batch_tool_results.clear();
+        state.last_assistant = None;
+        state.pending_tool_count = 0;
+        state.turn_active = false;
+        let turn_index = state.turn_index;
+        state.turn_index = state.turn_index.saturating_add(TURN_INDEX_STEP);
+        Some(AgentEvent::TurnEnd {
+            index: turn_index,
+            message: assistant,
+            tool_results,
+        })
+    }
+}
+
+struct AgentRetrySleeper {
+    cancel: CancellationToken,
+}
+
+impl RetrySleeper for AgentRetrySleeper {
+    async fn sleep_for_retry(
+        &mut self,
+        _request_id: EngineCorrelationId,
+        delay: std::time::Duration,
+    ) -> std::result::Result<(), HostAdapterError> {
+        tokio::select! {
+            () = self.cancel.cancelled() => Ok(()),
+            () = tokio::time::sleep(delay) => Ok(()),
+        }
+    }
+}
+
+struct AgentEngineEventSink<'a> {
+    event_tx: &'a broadcast::Sender<AgentEvent>,
+    state: SharedTurnHostState<'a>,
+}
+
+impl EngineEventSink for AgentEngineEventSink<'_> {
+    fn emit_engine_event(&mut self, event: &EngineEvent) -> std::result::Result<(), HostAdapterError> {
+        if event.turn_finished_stop_reason().is_some() {
+            if let Some(turn_end) = self.finish_active_turn_without_more_tools() {
+                self.event_tx.send(turn_end).ok();
+            }
+            return Ok(());
+        }
+
+        match event {
+            EngineEvent::Notice { message } => {
+                self.event_tx
+                    .send(AgentEvent::SystemMessage {
+                        message: message.clone(),
+                    })
+                    .ok();
+            }
+            EngineEvent::BusyChanged { .. } => {}
+            _ => {}
+        }
+        Ok(())
+    }
+}
+
+impl AgentEngineEventSink<'_> {
+    fn finish_active_turn_without_more_tools(&mut self) -> Option<AgentEvent> {
+        let mut state = self.state.lock();
+        if !state.turn_active || state.pending_tool_count != 0 {
+            state.turn_active = false;
+            return None;
+        }
+        let assistant = state.last_assistant.clone()?;
+        let turn_index = state.turn_index;
+        state.turn_active = false;
+        state.last_assistant = None;
+        state.batch_tool_results.clear();
+        state.turn_index = state.turn_index.saturating_add(TURN_INDEX_STEP);
+        Some(AgentEvent::TurnEnd {
+            index: turn_index,
+            message: assistant,
+            tool_results: Vec::new(),
+        })
+    }
+}
+
+struct AgentCancellationSource {
+    cancel: CancellationToken,
+}
+
+impl CancellationSource for AgentCancellationSource {
+    fn is_cancelled(&mut self) -> bool {
+        self.cancel.is_cancelled()
+    }
+
+    fn cancellation_reason(&mut self) -> String {
+        TURN_CANCELLED_REASON.to_string()
+    }
+}
+
+struct AgentUsageObserver<'a> {
+    cost_tracker: Option<&'a Arc<CostTracker>>,
+    event_tx: &'a broadcast::Sender<AgentEvent>,
+    state: SharedTurnHostState<'a>,
+}
+
+impl UsageObserver for AgentUsageObserver<'_> {
+    fn observe_usage(&mut self, observation: &UsageObservation) -> std::result::Result<(), HostAdapterError> {
+        if observation.kind != UsageObservationKind::FinalSummary {
+            return Ok(());
+        }
+        let mut state = self.state.lock();
+        let active_model = state.active_model.clone();
+        update_usage_tracking(
+            &mut state.cumulative_usage,
+            &observation.usage,
+            &active_model,
+            self.cost_tracker,
+            self.event_tx,
+        );
+        Ok(())
+    }
+}
+
+fn tool_use_count(content: &[Content]) -> usize {
+    content.iter().filter(|block| matches!(block, Content::ToolUse { .. })).count()
+}
+
+fn agent_error_from_report(report: &EngineRunReport) -> Option<AgentError> {
+    if let Some(failure) = &report.last_outcome.terminal_failure {
+        return Some(AgentError::ProviderStreaming {
+            message: failure.message.clone(),
+            status: failure.status,
+            retryable: failure.retryable,
+        });
+    }
+    report.last_outcome.rejection.as_ref().map(|rejection| AgentError::ProviderStreaming {
+        message: format!("engine rejected turn: {rejection:?}"),
+        status: None,
+        retryable: false,
+    })
 }
 
 fn parse_stop_reason(s: &str) -> StopReason {
@@ -177,11 +475,13 @@ impl ContentBlockBuilder {
 }
 
 #[derive(Debug)]
+#[cfg(test)]
 enum EngineModelDecision {
     ExecuteTools(Vec<(String, String, Value)>),
     Finish(StopReason),
 }
 
+#[cfg(test)]
 fn request_model_effect(outcome: &EngineOutcome) -> Result<EngineModelRequest> {
     let mut request_model = None;
 
@@ -207,6 +507,7 @@ fn request_model_effect(outcome: &EngineOutcome) -> Result<EngineModelRequest> {
     })
 }
 
+#[cfg(test)]
 fn schedule_retry_effect(outcome: &EngineOutcome) -> Result<Option<(EngineCorrelationId, std::time::Duration)>> {
     let mut scheduled_retry = None;
 
@@ -233,6 +534,7 @@ fn engine_failure_from_agent_error(error: &AgentError) -> EngineTerminalFailure 
     }
 }
 
+#[cfg(test)]
 fn decide_model_completion(outcome: &EngineOutcome) -> Result<EngineModelDecision> {
     let mut tool_calls = Vec::new();
     let mut turn_finished = None;
@@ -272,6 +574,7 @@ fn decide_model_completion(outcome: &EngineOutcome) -> Result<EngineModelDecisio
     }
 }
 
+#[cfg(test)]
 fn emit_engine_notice_effects(outcome: &EngineOutcome, event_tx: &broadcast::Sender<AgentEvent>) {
     for effect in &outcome.effects {
         if let EngineEffect::EmitEvent(EngineEvent::Notice { message }) = effect {
@@ -296,12 +599,14 @@ fn engine_outcome_or_error(engine_outcome: EngineOutcome, context: &str) -> Resu
     Ok(engine_outcome)
 }
 
+#[cfg(test)]
 fn update_engine_model(engine_state: &mut EngineState, active_model: &str) {
     if let Some(request_template) = engine_state.request_template.as_mut() {
         request_template.model = active_model.to_string();
     }
 }
 
+#[cfg(test)]
 fn tool_feedback_input(message: &ToolResultMessage) -> EngineInput {
     host_tool_feedback_input(
         clankers_engine::EngineCorrelationId(message.call_id.clone()),
@@ -333,20 +638,14 @@ pub async fn run_turn_loop(
     capability_gate: Option<&Arc<dyn crate::tool::CapabilityGate>>,
     user_tool_filter: Option<&Vec<String>>,
 ) -> Result<()> {
-    const TURN_CANCELLED_REASON: &str = "turn cancelled";
-    const TURN_INDEX_INITIAL: u32 = 0;
-    const TURN_INDEX_STEP: u32 = 1;
-
     let tool_defs = tool_definitions_from_tool_catalog(controller_tools);
-    let mut cumulative_usage = Usage::default();
-    let mut active_model = config.model.clone();
-    let mut engine_state = EngineState::new();
+    let state = EngineState::new();
     let submit_outcome = engine_outcome_or_error(
         reduce(
-            &engine_state,
+            &state,
             &EngineInput::submit_user_prompt(clankers_engine::EnginePromptSubmission {
                 messages: engine_messages_from_agent_messages(messages),
-                model: active_model.clone(),
+                model: config.model.clone(),
                 system_prompt: config.system_prompt.clone(),
                 max_tokens: config.max_tokens,
                 temperature: config.temperature,
@@ -360,188 +659,70 @@ pub async fn run_turn_loop(
         ),
         "prompt submission",
     )?;
-    emit_engine_notice_effects(&submit_outcome, event_tx);
-    engine_state = submit_outcome.next_state.clone();
-    let mut engine_outcome = submit_outcome;
-    let mut turn_index = TURN_INDEX_INITIAL;
 
-    loop {
-        check_model_switch(&mut active_model, model_switch_slot, event_tx)?;
-        update_engine_model(&mut engine_state, &active_model);
-        if cancel.is_cancelled() {
-            cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
-            return Err(AgentError::Cancelled);
-        }
+    let state = Arc::new(parking_lot::Mutex::new(TurnHostState {
+        messages,
+        cumulative_usage: Usage::default(),
+        active_model: config.model.clone(),
+        turn_index: TURN_INDEX_INITIAL,
+        turn_active: false,
+        pending_tool_count: 0,
+        batch_tool_results: Vec::new(),
+        last_assistant: None,
+    }));
 
-        let mut engine_request = request_model_effect(&engine_outcome)?;
-        // The pending request effect may have been minted before a per-turn model switch. Patch
-        // the extracted effect after synchronizing the template so the shell executes the current
-        // model without re-owning continuation policy.
-        engine_request.model = active_model.clone();
-        event_tx.send(AgentEvent::TurnStart { index: turn_index }).ok();
+    let mut model = AgentModelHost {
+        provider,
+        event_tx,
+        cancel: cancel.clone(),
+        model_switch_slot,
+        state: state.clone(),
+    };
+    let mut tools = AgentToolHost {
+        controller_tools,
+        event_tx,
+        cancel: cancel.clone(),
+        hook_pipeline,
+        session_id,
+        db,
+        capability_gate: capability_gate.cloned(),
+        user_tool_filter: user_tool_filter.cloned(),
+        output_truncation: config.output_truncation.clone(),
+        state: state.clone(),
+    };
+    let mut retry_sleeper = AgentRetrySleeper { cancel: cancel.clone() };
+    let mut event_sink = AgentEngineEventSink {
+        event_tx,
+        state: state.clone(),
+    };
+    let mut cancellation = AgentCancellationSource { cancel: cancel.clone() };
+    let mut usage_observer = AgentUsageObserver {
+        cost_tracker,
+        event_tx,
+        state,
+    };
 
-        let collected = loop {
-            let request = completion_request_from_engine_request(&engine_request)?;
-            match stream_model_request(provider, request, event_tx, &cancel).await {
-                Ok(response) => break response,
-                Err(AgentError::Cancelled) => {
-                    cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
-                    return Err(AgentError::Cancelled);
-                }
-                Err(error) => {
-                    let failure = engine_failure_from_agent_error(&error);
-                    let failure_outcome = engine_outcome_or_error(
-                        reduce(&engine_state, &model_failed_input(engine_request.request_id.clone(), failure)),
-                        "model failure",
-                    )?;
-                    emit_engine_notice_effects(&failure_outcome, event_tx);
+    let report = run_engine_turn(EngineRunSeed::new(EngineState::new(), submit_outcome), HostAdapters {
+        model: &mut model,
+        tools: &mut tools,
+        retry_sleeper: &mut retry_sleeper,
+        event_sink: &mut event_sink,
+        cancellation: &mut cancellation,
+        usage_observer: &mut usage_observer,
+    })
+    .await;
 
-                    let Some((retry_request_id, retry_delay)) = schedule_retry_effect(&failure_outcome)? else {
-                        return Err(error);
-                    };
-
-                    tracing::warn!(
-                        error = %error,
-                        ?retry_delay,
-                        "Engine scheduled retryable turn error backoff",
-                    );
-                    engine_state = failure_outcome.next_state.clone();
-                    tokio::select! {
-                        () = cancel.cancelled() => {
-                            cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
-                            return Err(AgentError::Cancelled);
-                        }
-                        () = tokio::time::sleep(retry_delay) => {}
-                    }
-
-                    let retry_ready_outcome = engine_outcome_or_error(
-                        reduce(&engine_state, &retry_ready_input(retry_request_id)),
-                        "retry ready",
-                    )?;
-                    emit_engine_notice_effects(&retry_ready_outcome, event_tx);
-                    engine_state = retry_ready_outcome.next_state.clone();
-                    engine_outcome = retry_ready_outcome;
-                    engine_request = request_model_effect(&engine_outcome)?;
-                    engine_request.model = active_model.clone();
-                }
-            }
-        };
-
-        let engine_response = EngineModelResponse {
-            output: collected.content.clone(),
-            stop_reason: collected.stop_reason.clone(),
-        };
-        let post_model_outcome = engine_outcome_or_error(
-            reduce(&engine_state, &model_completed_input(engine_request.request_id.clone(), engine_response)),
-            "model completion",
-        )?;
-        emit_engine_notice_effects(&post_model_outcome, event_tx);
-        engine_state = post_model_outcome.next_state.clone();
-        let engine_decision = decide_model_completion(&post_model_outcome)?;
-
-        update_usage_tracking(&mut cumulative_usage, &collected.usage, &active_model, cost_tracker, event_tx);
-
-        let assistant_msg = build_assistant_message(&collected);
-        messages.push(AgentMessage::Assistant(assistant_msg.clone()));
-
-        let planned_tool_call_count = match &engine_decision {
-            EngineModelDecision::ExecuteTools(tool_calls) => tool_calls.len(),
-            EngineModelDecision::Finish(_) => 0,
-        };
-        tracing::debug!(
-            turn = turn_index,
-            stop_reason = ?collected.stop_reason,
-            tool_calls = planned_tool_call_count,
-            content_blocks = collected.content.len(),
-            "turn collected",
-        );
-
-        match engine_decision {
-            EngineModelDecision::Finish(stop_reason) => {
-                tracing::debug!(turn = turn_index, ?stop_reason, "engine finished turn without tool execution");
-                event_tx
-                    .send(AgentEvent::TurnEnd {
-                        index: turn_index,
-                        message: assistant_msg,
-                        tool_results: vec![],
-                    })
-                    .ok();
-                break;
-            }
-            EngineModelDecision::ExecuteTools(tool_calls) => {
-                for (call_id, name, input) in &tool_calls {
-                    let input_keys: Vec<&str> =
-                        input.as_object().map(|map| map.keys().map(|key| key.as_str()).collect()).unwrap_or_default();
-                    tracing::debug!(
-                        call_id,
-                        tool = name,
-                        input_keys = ?input_keys,
-                        input_empty = input.as_object().is_none_or(|map| map.is_empty()),
-                        "engine requested tool call",
-                    );
-                }
-
-                if cancel.is_cancelled() {
-                    cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
-                    return Err(AgentError::Cancelled);
-                }
-
-                let tool_result_messages = execute_tools_parallel(
-                    controller_tools,
-                    &tool_calls,
-                    event_tx,
-                    cancel.clone(),
-                    hook_pipeline.clone(),
-                    session_id,
-                    db.clone(),
-                    capability_gate.cloned(),
-                    user_tool_filter.cloned(),
-                )
-                .await;
-                if cancel.is_cancelled() {
-                    cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
-                    return Err(AgentError::Cancelled);
-                }
-
-                let tool_result_messages = apply_output_truncation(tool_result_messages, &config.output_truncation);
-                let mut follow_up_outcome = None;
-                for message in &tool_result_messages {
-                    messages.push(AgentMessage::ToolResult(message.clone()));
-                    let next_outcome =
-                        engine_outcome_or_error(reduce(&engine_state, &tool_feedback_input(message)), "tool feedback")?;
-                    emit_engine_notice_effects(&next_outcome, event_tx);
-                    engine_state = next_outcome.next_state.clone();
-                    follow_up_outcome = Some(next_outcome);
-                }
-
-                event_tx
-                    .send(AgentEvent::TurnEnd {
-                        index: turn_index,
-                        message: assistant_msg,
-                        tool_results: tool_result_messages,
-                    })
-                    .ok();
-
-                let Some(next_outcome) = follow_up_outcome else {
-                    return Err(AgentError::ProviderStreaming {
-                        message: "engine requested tools but the runtime produced no tool feedback".to_string(),
-                        status: None,
-                        retryable: false,
-                    });
-                };
-                engine_outcome = next_outcome;
-                if engine_state.phase == EngineTurnPhase::Finished {
-                    break;
-                }
-            }
-        }
-
-        turn_index = turn_index.saturating_add(TURN_INDEX_STEP);
+    if cancel.is_cancelled() {
+        return Err(AgentError::Cancelled);
+    }
+    if let Some(error) = agent_error_from_report(&report) {
+        return Err(error);
     }
 
     Ok(())
 }
 
+#[cfg(test)]
 fn cancel_active_engine_turn(
     engine_state: &EngineState,
     event_tx: &broadcast::Sender<AgentEvent>,
