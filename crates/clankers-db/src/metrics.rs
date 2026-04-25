@@ -2,6 +2,7 @@
 
 pub mod fingerprint;
 pub mod query;
+pub mod reducer;
 pub mod storage;
 pub mod types;
 

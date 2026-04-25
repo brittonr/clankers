@@ -3,11 +3,11 @@
 - [x] 1.1 Add a `metrics` module in `crates/clankers-db` with summary, rollup, histogram, heavy-hitter, and recent-event types built from fixed-size data structures ✅ 12m (started: 2026-04-24T22:01Z → completed: 2026-04-24T22:02Z)
 - [x] 1.2 Add redb tables and a schema migration for session summaries, daily rollups, and bounded recent metric events ✅ 5m (started: 2026-04-24T22:03Z → completed: 2026-04-24T22:05Z)
 - [x] 1.3 Add BLAKE3 fingerprint helpers for normalized high-cardinality strings and tests for stable hashing, normalization, and redaction boundaries ✅ 3m (started: 2026-04-24T22:05Z → completed: 2026-04-24T22:06Z)
-- [~] 1.4 Add metrics query APIs for session summaries, daily rollups, and recent events without exposing raw digested payloads ⏱ started: 2026-04-24T22:06Z
+- [x] 1.4 Add metrics query APIs for session summaries, daily rollups, and recent events without exposing raw digested payloads ✅ 3m (started: 2026-04-24T22:06Z → completed: 2026-04-24T22:07Z)
 
 ## 2. Runtime capture
 
-- [ ] 2.1 Define a `MetricEvent` enum and pure reducer that folds session, turn, model, compaction, tool, token, plugin, and procmon events into summaries and rollups
+- [~] 2.1 Define a `MetricEvent` enum and pure reducer that folds session, turn, model, compaction, tool, token, plugin, and procmon events into summaries and rollups ⏱ started: 2026-04-24T22:07Z
 - [ ] 2.2 Instrument agent and controller seams to emit metric events for session lifecycle, turn lifecycle, model changes, compaction, cancellation, usage updates, and tool execution outcomes
 - [ ] 2.3 Instrument procmon seams to record optional process-monitoring metrics such as process spawn/sample/exit aggregates without failing sessions when procmon is disabled
 - [ ] 2.4 Instrument plugin dispatch and plugin-tool paths to record plugin load results, event dispatch counts, hook denials, UI actions, tool calls, and plugin errors
