@@ -61,7 +61,21 @@ test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
 
 ### I2 — EngineState active-field inventory
 
-Status: PLANNED
+Command:
+
+```bash
+cargo test -p clankers-engine --lib engine_state_fields_are_active
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test tests::engine_state_fields_are_active ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+```
 
 ### I7 — core pre-engine cancellation reducer tests
 

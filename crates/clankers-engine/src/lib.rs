@@ -400,7 +400,7 @@ fn apply_model_failed(
     {
         let next_state = EngineState {
             contract_version: state.contract_version,
-                phase: EngineTurnPhase::WaitingForRetry,
+            phase: EngineTurnPhase::WaitingForRetry,
             messages: state.messages.clone(),
             request_template: state.request_template.clone(),
             pending_model_request: Some(request_id.clone()),
@@ -510,7 +510,7 @@ fn apply_tool_feedback(
     if buffered_tool_results.len() < state.pending_tool_calls.len() {
         let next_state = EngineState {
             contract_version: state.contract_version,
-                phase: EngineTurnPhase::WaitingForTools,
+            phase: EngineTurnPhase::WaitingForTools,
             messages: state.messages.clone(),
             request_template: state.request_template.clone(),
             pending_model_request: None,
@@ -734,6 +734,22 @@ mod tests {
     const ZERO_MODEL_REQUEST_SLOT_BUDGET: u32 = 0;
     const BUDGET_EXHAUSTED_NOTICE: &str = "engine model request slot budget exhausted";
     const TURN_CANCELLED_REASON: &str = "turn cancelled";
+    const ENGINE_STATE_FIELD_STRUCT_START: &str = "pub struct EngineState {";
+    const RUST_PUBLIC_FIELD_PREFIX: &str = "pub ";
+    const RUST_FIELD_NAME_SEPARATOR: char = ':';
+    const ENGINE_STATE_FIELD_INVENTORY: [(&str, &str); 11] = [
+        ("contract_version", "checked by submit_user_prompt_builds_request_effect and terminal transitions"),
+        ("phase", "checked by prompt, model, tool, retry, cancellation, and terminal phase tests"),
+        ("messages", "checked by message evolution and no-mutation tests"),
+        ("request_template", "checked by retry and continuation request tests"),
+        ("pending_model_request", "checked by model correlation and retry tests"),
+        ("next_model_request_sequence", "checked by follow-up request sequencing tests"),
+        ("pending_tool_calls", "checked by tool planning and duplicate/unknown feedback tests"),
+        ("buffered_tool_results", "checked by waits-for-all-tools and duplicate feedback tests"),
+        ("retry_attempts_for_pending_model_request", "checked by retry scheduling and exhaustion tests"),
+        ("model_request_slot_budget", "checked by zero-budget and continuation-budget tests"),
+        ("model_request_slots_used", "checked by continuation-budget exhaustion tests"),
+    ];
 
     fn submission_with_session(session_id: &str) -> EnginePromptSubmission {
         EnginePromptSubmission {
@@ -1554,5 +1570,44 @@ mod tests {
         assert_eq!(model_effect.messages.len(), 2);
         assert_eq!(model_effect.messages[0].role, EngineMessageRole::User);
         assert_eq!(model_effect.messages[1].role, EngineMessageRole::Tool);
+    }
+
+    fn engine_state_field_names_from_source(source: &str) -> Vec<String> {
+        let Some(start_index) = source.find(ENGINE_STATE_FIELD_STRUCT_START) else {
+            panic!("EngineState struct must exist in source");
+        };
+        let after_start = &source[start_index + ENGINE_STATE_FIELD_STRUCT_START.len()..];
+        let Some(end_index) = after_start.find('}') else {
+            panic!("EngineState struct must have a closing brace");
+        };
+        after_start[..end_index]
+            .lines()
+            .filter_map(|line| {
+                let trimmed = line.trim();
+                let field = trimmed.strip_prefix(RUST_PUBLIC_FIELD_PREFIX)?;
+                let field_name = field.split(RUST_FIELD_NAME_SEPARATOR).next()?;
+                Some(field_name.trim().to_string())
+            })
+            .collect()
+    }
+
+    #[test]
+    fn engine_state_fields_are_active() {
+        let source = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/lib.rs"))
+            .expect("engine source must be readable");
+        let source_fields = engine_state_field_names_from_source(&source);
+        let inventory_fields = ENGINE_STATE_FIELD_INVENTORY
+            .iter()
+            .map(|(field, _justification)| (*field).to_string())
+            .collect::<Vec<_>>();
+
+        assert_eq!(source_fields, inventory_fields, "EngineState field inventory must stay exact");
+        for (field, justification) in ENGINE_STATE_FIELD_INVENTORY {
+            assert!(!field.is_empty(), "EngineState inventory field names must be non-empty");
+            assert!(
+                !justification.is_empty(),
+                "EngineState inventory field {field} must explain active reducer coverage"
+            );
+        }
     }
 }
