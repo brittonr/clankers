@@ -257,9 +257,25 @@ test core_engine_composition::tests::composition_positive_follow_up_sequence_ack
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 169 filtered out; finished in 0.00s
 ```
 
-### V3 — agent engine-feedback and accepted-prompt reduction
+### V3 — lifecycle failure and budget sequencing
 
-Status: PLANNED
+Commands:
+
+```bash
+cargo test -p clankers-controller --lib composition_lifecycle_failures
+cargo test -p clankers-controller --lib composition_terminal_engine_outcome
+cargo test -p clankers-controller --lib composition_follow_up_engine_failure
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test core_engine_composition::tests::composition_lifecycle_failures_and_budgets_stay_explicit ... ok
+test core_engine_composition::tests::composition_terminal_engine_outcome_waits_for_explicit_core_feedback ... ok
+test core_engine_composition::tests::composition_follow_up_engine_failure_maps_to_loop_follow_up_completed ... ok
+```
 
 ### V4 — engine/core source rail inventory
 

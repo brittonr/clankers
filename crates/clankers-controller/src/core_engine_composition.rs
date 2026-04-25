@@ -149,9 +149,11 @@ mod tests {
     use clankers_core::PostPromptEvaluation;
     use clankers_core::PromptCompleted;
     use clankers_core::PromptRequest;
+    use clankers_engine::EngineCorrelationId;
     use clankers_engine::EngineEffect;
     use clankers_engine::EngineMessageRole;
     use clankers_engine::EngineState;
+    use clankers_engine::EngineTerminalFailure;
 
     use super::*;
     use crate::core_effects::AcceptedEnginePrompt;
@@ -477,5 +479,186 @@ mod tests {
             };
             assert!(completed_follow_up_state.pending_follow_up_state.is_none());
         }
+    }
+
+    const NORMAL_TURN_MODEL_REQUEST_SLOT_BUDGET: u32 = 25;
+    const ORCHESTRATION_FOLLOW_UP_MODEL_REQUEST_SLOT_BUDGET: u32 = 10;
+    const TEST_FAILURE_STATUS: u16 = 500;
+
+    fn policy_with_budget(model_request_slot_budget: u32) -> EngineSubmissionPolicy {
+        EngineSubmissionPolicy {
+            model_request_slot_budget,
+            ..test_policy()
+        }
+    }
+
+    fn request_id_from_engine_outcome(outcome: &clankers_engine::EngineOutcome) -> EngineCorrelationId {
+        outcome
+            .effects
+            .iter()
+            .find_map(|effect| match effect {
+                EngineEffect::RequestModel(request) => Some(request.request_id.clone()),
+                EngineEffect::ExecuteTool(_) | EngineEffect::ScheduleRetry { .. } | EngineEffect::EmitEvent(_) => None,
+            })
+            .expect("engine submission must emit a model request")
+    }
+
+    fn terminal_model_failure() -> EngineTerminalFailure {
+        EngineTerminalFailure {
+            message: "provider failed".to_owned(),
+            status: Some(TEST_FAILURE_STATUS),
+            retryable: false,
+        }
+    }
+
+    #[test]
+    fn composition_lifecycle_failures_and_budgets_stay_explicit() {
+        let (pending_dispatch_state, prompt_start) = evaluate_for_follow_up(FollowUpSource::LoopContinuation);
+        let rejected_dispatch = clankers_core::reduce(
+            &pending_dispatch_state,
+            &CoreInput::FollowUpDispatchAcknowledged(FollowUpDispatchAcknowledged {
+                effect_id: prompt_start.core_effect_id,
+                dispatch_status: FollowUpDispatchStatus::Rejected(clankers_core::CoreFailure::Cancelled),
+            }),
+        );
+        assert!(matches!(
+            accepted_engine_prompt_from_core_outcome(&rejected_dispatch),
+            Err(crate::core_effects::CoreEffectGateRejection::MissingEnginePromptEffect)
+        ));
+
+        let user_plan = engine_submission_from_prompt_start(
+            &test_prompt_start(),
+            prior_messages(),
+            policy_with_budget(NORMAL_TURN_MODEL_REQUEST_SLOT_BUDGET),
+        );
+        match user_plan.engine_input {
+            EngineInput::SubmitUserPrompt { submission } => {
+                assert_eq!(submission.model_request_slot_budget, NORMAL_TURN_MODEL_REQUEST_SLOT_BUDGET);
+            }
+            other => panic!("expected submit user prompt, got {other:?}"),
+        }
+
+        let follow_up_plan = engine_submission_from_prompt_start(
+            &prompt_start,
+            prior_messages(),
+            policy_with_budget(ORCHESTRATION_FOLLOW_UP_MODEL_REQUEST_SLOT_BUDGET),
+        );
+        match follow_up_plan.engine_input {
+            EngineInput::SubmitUserPrompt { submission } => {
+                assert_eq!(submission.model_request_slot_budget, ORCHESTRATION_FOLLOW_UP_MODEL_REQUEST_SLOT_BUDGET);
+            }
+            other => panic!("expected submit follow-up prompt, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn composition_terminal_engine_outcome_waits_for_explicit_core_feedback() {
+        let prompt_outcome = clankers_core::reduce(
+            &CoreState::default(),
+            &CoreInput::PromptRequested(PromptRequest {
+                text: TEST_PROMPT.to_owned(),
+                image_count: TEST_IMAGE_COUNT,
+                originating_follow_up_effect_id: None,
+            }),
+        );
+        let accepted_prompt =
+            accepted_engine_prompt_from_core_outcome(&prompt_outcome).expect("user prompt must normalize");
+        let prompt_start = accepted_prompt.prompt_start().clone();
+        let CoreOutcome::Transitioned {
+            next_state: pending_core_state,
+            ..
+        } = prompt_outcome
+        else {
+            panic!("prompt request must transition");
+        };
+        let submit_plan = engine_submission_from_prompt_start(&prompt_start, prior_messages(), test_policy());
+        let CompositionStep::Engine(submit_outcome) = apply_composition_feedback_for_tests(
+            CompositionReducer::EngineTurn,
+            &pending_core_state,
+            &EngineState::new(),
+            CompositionFeedback::Engine(submit_plan.engine_input),
+        )
+        .expect("engine submit must route") else {
+            panic!("expected engine outcome");
+        };
+        let request_id = request_id_from_engine_outcome(&submit_outcome);
+        let failed_engine_outcome = clankers_engine::reduce(&submit_outcome.next_state, &EngineInput::ModelFailed {
+            request_id,
+            failure: terminal_model_failure(),
+        });
+        assert!(failed_engine_outcome.terminal_failure.is_some());
+        assert!(pending_core_state.pending_prompt.is_some());
+
+        let core_failure = clankers_core::reduce(
+            &pending_core_state,
+            &CoreInput::PromptCompleted(PromptCompleted {
+                effect_id: prompt_start.core_effect_id,
+                completion_status: CompletionStatus::Failed(clankers_core::CoreFailure::Message(
+                    "provider failed".to_owned(),
+                )),
+            }),
+        );
+        let CoreOutcome::Transitioned {
+            next_state: completed_core_state,
+            ..
+        } = core_failure
+        else {
+            panic!("explicit prompt completion failure must clear lifecycle state");
+        };
+        assert!(completed_core_state.pending_prompt.is_none());
+    }
+
+    #[test]
+    fn composition_follow_up_engine_failure_maps_to_loop_follow_up_completed() {
+        let (pending_dispatch_state, prompt_start) = evaluate_for_follow_up(FollowUpSource::AutoTest);
+        let ack_outcome = clankers_core::reduce(
+            &pending_dispatch_state,
+            &CoreInput::FollowUpDispatchAcknowledged(FollowUpDispatchAcknowledged {
+                effect_id: prompt_start.core_effect_id,
+                dispatch_status: FollowUpDispatchStatus::Accepted,
+            }),
+        );
+        let CoreOutcome::Transitioned {
+            next_state: pending_completion_state,
+            ..
+        } = ack_outcome
+        else {
+            panic!("follow-up dispatch ack must transition");
+        };
+        let submit_plan = engine_submission_from_prompt_start(&prompt_start, prior_messages(), test_policy());
+        let CompositionStep::Engine(submit_outcome) = apply_composition_feedback_for_tests(
+            CompositionReducer::EngineTurn,
+            &pending_completion_state,
+            &EngineState::new(),
+            CompositionFeedback::Engine(submit_plan.engine_input),
+        )
+        .expect("follow-up engine submit must route") else {
+            panic!("expected engine outcome");
+        };
+        let request_id = request_id_from_engine_outcome(&submit_outcome);
+        let failed_engine_outcome = clankers_engine::reduce(&submit_outcome.next_state, &EngineInput::ModelFailed {
+            request_id,
+            failure: terminal_model_failure(),
+        });
+        assert!(failed_engine_outcome.terminal_failure.is_some());
+        assert!(pending_completion_state.pending_follow_up_state.is_some());
+
+        let follow_up_failure = clankers_core::reduce(
+            &pending_completion_state,
+            &CoreInput::LoopFollowUpCompleted(LoopFollowUpCompleted {
+                effect_id: prompt_start.core_effect_id,
+                completion_status: CompletionStatus::Failed(clankers_core::CoreFailure::Message(
+                    "provider failed".to_owned(),
+                )),
+            }),
+        );
+        let CoreOutcome::Transitioned {
+            next_state: completed_follow_up_state,
+            ..
+        } = follow_up_failure
+        else {
+            panic!("explicit follow-up failure must clear lifecycle state");
+        };
+        assert!(completed_follow_up_state.pending_follow_up_state.is_none());
     }
 }
