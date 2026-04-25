@@ -368,9 +368,6 @@ test tests::model_completion_schedules_tool_effects_for_tool_use_stop ... ok
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
 ```
 
-### V8 — final acceptance bundle
-
-Status: PLANNED
 
 ### V9 — core/engine FCIS inventories
 
@@ -473,6 +470,7 @@ Command:
 ```bash
 bash -n scripts/check-llm-contract-boundary.sh
 ./scripts/check-llm-contract-boundary.sh
+openspec validate separate-engine-core-composition --strict
 ```
 
 Result: PASS
@@ -483,6 +481,7 @@ Output excerpt:
 ok: clankers-engine normal-edge tree excludes forbidden crates
 ok: clanker-message normal-edge tree excludes forbidden crates
 ok: crates/clankers-engine/src excludes forbidden source tokens
+Change 'separate-engine-core-composition' is valid
 ```
 
 
@@ -504,6 +503,7 @@ cargo test -p clankers-agent engine_feedback
 cargo test -p clankers-agent accepted_prompt_submission_reduces_engine
 cargo test -p clankers-controller --test fcis_shell_boundaries
 ./scripts/check-llm-contract-boundary.sh
+openspec validate separate-engine-core-composition --strict
 ```
 
 Result: PASS
@@ -536,5 +536,6 @@ test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; fin
 ok: clankers-engine normal-edge tree excludes forbidden crates
 ok: clanker-message normal-edge tree excludes forbidden crates
 ok: crates/clankers-engine/src excludes forbidden source tokens
+Change 'separate-engine-core-composition' is valid
 ```
 
