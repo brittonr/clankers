@@ -53,6 +53,34 @@ pub(super) async fn stream_model_request(
     collected
 }
 
+pub(super) fn engine_messages_from_agent_messages(messages: &[AgentMessage]) -> Vec<EngineMessage> {
+    messages
+        .iter()
+        .filter_map(|message| match message {
+            AgentMessage::User(user) => Some(EngineMessage {
+                role: EngineMessageRole::User,
+                content: user.content.clone(),
+            }),
+            AgentMessage::Assistant(assistant) => Some(EngineMessage {
+                role: EngineMessageRole::Assistant,
+                content: assistant.content.clone(),
+            }),
+            AgentMessage::ToolResult(tool_result) => Some(EngineMessage {
+                role: EngineMessageRole::Tool,
+                content: vec![Content::ToolResult {
+                    tool_use_id: tool_result.call_id.clone(),
+                    content: tool_result.content.clone(),
+                    is_error: if tool_result.is_error { Some(true) } else { None },
+                }],
+            }),
+            AgentMessage::BashExecution(_)
+            | AgentMessage::Custom(_)
+            | AgentMessage::BranchSummary(_)
+            | AgentMessage::CompactionSummary(_) => None,
+        })
+        .collect()
+}
+
 pub(super) fn completion_request_from_engine_request(engine_request: &EngineModelRequest) -> Result<CompletionRequest> {
     let messages = agent_messages_from_engine_messages(&engine_request.messages)?;
     Ok(CompletionRequest {

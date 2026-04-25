@@ -3,7 +3,6 @@
 
 use core::time::Duration;
 
-use clanker_message::AgentMessage;
 use clanker_message::Content;
 use clanker_message::StopReason;
 use clanker_message::ThinkingConfig;
@@ -204,7 +203,7 @@ pub struct EngineOutcome {
 
 #[derive(Debug, Clone)]
 pub struct EnginePromptSubmission {
-    pub messages: Vec<AgentMessage>,
+    pub messages: Vec<EngineMessage>,
     pub model: String,
     pub system_prompt: String,
     pub max_tokens: Option<usize>,
@@ -284,7 +283,7 @@ fn apply_submit_user_prompt(state: &EngineState, submission: &EnginePromptSubmis
         session_id: submission.session_id.clone(),
         retry_policy: EngineRetryPolicy::default(),
     };
-    let canonical_messages = canonical_messages_from_agent_messages(&submission.messages);
+    let canonical_messages = submission.messages.clone();
     let (request_id, next_model_request_sequence) = mint_model_request_id(state.next_model_request_sequence);
     let model_request = build_model_request(&request_template, &canonical_messages, request_id.clone());
 
@@ -671,34 +670,6 @@ fn rejected_outcome(state: &EngineState, rejection: EngineRejection) -> EngineOu
     }
 }
 
-fn canonical_messages_from_agent_messages(messages: &[AgentMessage]) -> Vec<EngineMessage> {
-    messages
-        .iter()
-        .filter_map(|message| match message {
-            AgentMessage::User(user) => Some(EngineMessage {
-                role: EngineMessageRole::User,
-                content: user.content.clone(),
-            }),
-            AgentMessage::Assistant(assistant) => Some(EngineMessage {
-                role: EngineMessageRole::Assistant,
-                content: assistant.content.clone(),
-            }),
-            AgentMessage::ToolResult(tool_result) => Some(EngineMessage {
-                role: EngineMessageRole::Tool,
-                content: vec![Content::ToolResult {
-                    tool_use_id: tool_result.call_id.clone(),
-                    content: tool_result.content.clone(),
-                    is_error: if tool_result.is_error { Some(true) } else { None },
-                }],
-            }),
-            AgentMessage::BashExecution(_)
-            | AgentMessage::Custom(_)
-            | AgentMessage::BranchSummary(_)
-            | AgentMessage::CompactionSummary(_) => None,
-        })
-        .collect()
-}
-
 fn build_model_request(
     request_template: &EngineRequestTemplate,
     messages: &[EngineMessage],
@@ -752,9 +723,6 @@ fn mint_model_request_id(sequence: u32) -> (EngineCorrelationId, u32) {
 
 #[cfg(test)]
 mod tests {
-    use clanker_message::MessageId;
-    use clanker_message::ToolResultMessage;
-    use clanker_message::UserMessage;
     use serde_json::json;
 
     use super::*;
@@ -777,19 +745,14 @@ mod tests {
     const BUDGET_EXHAUSTED_NOTICE: &str = "engine model request slot budget exhausted";
     const TURN_CANCELLED_REASON: &str = "turn cancelled";
 
-    fn test_timestamp() -> chrono::DateTime<chrono::Utc> {
-        chrono::Utc::now()
-    }
-
     fn submission_with_session(session_id: &str) -> EnginePromptSubmission {
         EnginePromptSubmission {
-            messages: vec![AgentMessage::User(UserMessage {
-                id: MessageId::new("user-1"),
+            messages: vec![EngineMessage {
+                role: EngineMessageRole::User,
                 content: vec![Content::Text {
                     text: "hello".to_string(),
                 }],
-                timestamp: test_timestamp(),
-            })],
+            }],
             model: "test-model".to_string(),
             system_prompt: "system".to_string(),
             max_tokens: Some(MAX_TOKENS),
@@ -1582,25 +1545,18 @@ mod tests {
     }
 
     #[test]
-    fn submit_user_prompt_strips_non_conversation_metadata_messages() {
+    fn submit_user_prompt_preserves_engine_native_transcript_messages() {
         let mut submission = submission_with_session("session-123");
-        submission.messages.push(AgentMessage::ToolResult(ToolResultMessage {
-            id: MessageId::new("tool-1"),
-            call_id: "call-1".to_string(),
-            tool_name: "read".to_string(),
-            content: vec![Content::Text {
-                text: "tool output".to_string(),
+        submission.messages.push(EngineMessage {
+            role: EngineMessageRole::Tool,
+            content: vec![Content::ToolResult {
+                tool_use_id: "call-1".to_string(),
+                content: vec![Content::Text {
+                    text: "tool output".to_string(),
+                }],
+                is_error: Some(false),
             }],
-            is_error: false,
-            details: None,
-            timestamp: test_timestamp(),
-        }));
-        submission.messages.push(AgentMessage::Custom(clanker_message::CustomMessage {
-            id: MessageId::new("custom-1"),
-            kind: "meta".to_string(),
-            data: json!({"ignored": true}),
-            timestamp: test_timestamp(),
-        }));
+        });
 
         let outcome = reduce(&EngineState::new(), &EngineInput::SubmitUserPrompt { submission });
 

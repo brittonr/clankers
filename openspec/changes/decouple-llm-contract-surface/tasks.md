@@ -13,7 +13,7 @@
 ## Phase 2: Engine surface cleanup
 
 - [x] I3 Remove direct `clanker-router` and `clankers-provider` dependencies from `clankers-engine`, using only `clanker-message`, `clankers-core`, and local engine-native data where needed. ✅ 1m (started: 2026-04-25T05:31:09Z → completed: 2026-04-25T05:31:47Z) [covers=embeddable-agent-engine.minimal-contract-dependencies,embeddable-agent-engine.engine-cargo-tree-clean]
-- [ ] I4 Change `EnginePromptSubmission` to accept `Vec<EngineMessage>` and move `AgentMessage` filtering/conversion into the Clankers agent adapter, explicitly excluding `BashExecution`, `Custom`, `BranchSummary`, and `CompactionSummary` before engine submission. [covers=embeddable-agent-engine.engine-native-submission,embeddable-agent-engine.no-agent-message-filtering,embeddable-agent-engine.adapter-transcript-conversion]
+- [x] I4 Change `EnginePromptSubmission` to accept `Vec<EngineMessage>` and move `AgentMessage` filtering/conversion into the Clankers agent adapter, explicitly excluding `BashExecution`, `Custom`, `BranchSummary`, and `CompactionSummary` before engine submission. ✅ 3m (started: 2026-04-25T05:33:02Z → completed: 2026-04-25T05:36:31Z) [covers=embeddable-agent-engine.engine-native-submission,embeddable-agent-engine.no-agent-message-filtering,embeddable-agent-engine.adapter-transcript-conversion]
 
 ## Phase 3: Adapter tests and boundary rails
 

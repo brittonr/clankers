@@ -26,6 +26,7 @@ use clankers_provider::Usage;
 use clankers_provider::message::*;
 use clankers_provider::streaming::*;
 use execution::completion_request_from_engine_request;
+use execution::engine_messages_from_agent_messages;
 use execution::execute_tools_parallel;
 use execution::stream_model_request;
 use model_switch::check_model_switch;
@@ -356,7 +357,7 @@ pub async fn run_turn_loop(
     let submit_outcome = engine_outcome_or_error(
         reduce(&engine_state, &EngineInput::SubmitUserPrompt {
             submission: clankers_engine::EnginePromptSubmission {
-                messages: messages.clone(),
+                messages: engine_messages_from_agent_messages(messages),
                 model: active_model.clone(),
                 system_prompt: config.system_prompt.clone(),
                 max_tokens: config.max_tokens,
