@@ -1902,6 +1902,410 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn run_turn_loop_applies_model_switch_and_emits_usage_updates() {
+        use std::sync::Mutex;
+
+        const EXPECTED_USAGE_INPUT: usize = 10;
+        const EXPECTED_USAGE_OUTPUT: usize = 2;
+
+        struct CapturingModelProvider {
+            models: Mutex<Vec<String>>,
+        }
+
+        #[async_trait]
+        impl clankers_provider::Provider for CapturingModelProvider {
+            async fn complete(
+                &self,
+                request: clankers_provider::CompletionRequest,
+                tx: mpsc::Sender<StreamEvent>,
+            ) -> clankers_provider::error::Result<()> {
+                self.models.lock().expect("model capture lock poisoned").push(request.model);
+                tx.send(StreamEvent::MessageStart {
+                    message: MessageMetadata {
+                        id: "model-switch-msg".into(),
+                        model: "switched-model".into(),
+                        role: "assistant".into(),
+                    },
+                })
+                .await
+                .ok();
+                tx.send(StreamEvent::ContentBlockStart {
+                    index: 0,
+                    content_block: Content::Text { text: String::new() },
+                })
+                .await
+                .ok();
+                tx.send(StreamEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: ContentDelta::TextDelta { text: "done".into() },
+                })
+                .await
+                .ok();
+                tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                tx.send(StreamEvent::MessageDelta {
+                    stop_reason: Some("end_turn".into()),
+                    usage: Usage {
+                        input_tokens: EXPECTED_USAGE_INPUT,
+                        output_tokens: EXPECTED_USAGE_OUTPUT,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0,
+                    },
+                })
+                .await
+                .ok();
+                tx.send(StreamEvent::MessageStop).await.ok();
+                Ok(())
+            }
+
+            fn models(&self) -> &[clankers_provider::Model] {
+                &[]
+            }
+
+            fn name(&self) -> &str {
+                "capturing-model"
+            }
+        }
+
+        let provider = CapturingModelProvider {
+            models: Mutex::new(Vec::new()),
+        };
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let mut messages = vec![make_user_message()];
+        let config = make_turn_config();
+        let (event_tx, mut event_rx) = broadcast::channel(256);
+        let switch_slot = crate::tool::model_switch_slot();
+        *switch_slot.lock() = Some("switched-model".to_string());
+
+        run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            Some(&switch_slot),
+            None,
+            "session-model-switch",
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("turn should succeed");
+
+        assert_eq!(provider.models.lock().expect("model capture lock poisoned").as_slice(), &[
+            "switched-model".to_string()
+        ]);
+        let mut saw_model_change = false;
+        let mut saw_usage_update = false;
+        loop {
+            match event_rx.try_recv() {
+                Ok(AgentEvent::ModelChange { from, to, .. }) => {
+                    saw_model_change = from == "test-model" && to == "switched-model";
+                }
+                Ok(AgentEvent::UsageUpdate {
+                    turn_usage,
+                    cumulative_usage,
+                }) => {
+                    saw_usage_update = turn_usage.input_tokens == EXPECTED_USAGE_INPUT
+                        && turn_usage.output_tokens == EXPECTED_USAGE_OUTPUT
+                        && cumulative_usage.input_tokens == EXPECTED_USAGE_INPUT
+                        && cumulative_usage.output_tokens == EXPECTED_USAGE_OUTPUT;
+                }
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+                | Err(tokio::sync::broadcast::error::TryRecvError::Closed) => break,
+                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
+            }
+        }
+        assert!(saw_model_change);
+        assert!(saw_usage_update);
+    }
+
+    #[tokio::test]
+    async fn run_turn_loop_preserves_capability_gate_denials_through_host_runner() {
+        use std::sync::Mutex;
+        use std::sync::atomic::Ordering;
+
+        struct DenyAllGate;
+
+        impl crate::tool::CapabilityGate for DenyAllGate {
+            fn check_tool_call(&self, tool_name: &str, _input: &Value) -> std::result::Result<(), String> {
+                Err(format!("blocked {tool_name}"))
+            }
+        }
+
+        struct CapabilityProvider {
+            call_count: AtomicUsize,
+            captured_requests: Mutex<Vec<clankers_provider::CompletionRequest>>,
+        }
+
+        #[async_trait]
+        impl clankers_provider::Provider for CapabilityProvider {
+            async fn complete(
+                &self,
+                request: clankers_provider::CompletionRequest,
+                tx: mpsc::Sender<StreamEvent>,
+            ) -> clankers_provider::error::Result<()> {
+                self.captured_requests.lock().expect("capture lock poisoned").push(request);
+                let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
+                tx.send(StreamEvent::MessageStart {
+                    message: MessageMetadata {
+                        id: format!("capability-{call_index}"),
+                        model: "test-model".into(),
+                        role: "assistant".into(),
+                    },
+                })
+                .await
+                .ok();
+                if call_index == 0 {
+                    tx.send(StreamEvent::ContentBlockStart {
+                        index: 0,
+                        content_block: Content::ToolUse {
+                            id: "call-1".into(),
+                            name: "direct_tool".into(),
+                            input: json!({}),
+                        },
+                    })
+                    .await
+                    .ok();
+                    tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                    tx.send(StreamEvent::MessageDelta {
+                        stop_reason: Some("tool_use".into()),
+                        usage: Usage::default(),
+                    })
+                    .await
+                    .ok();
+                } else {
+                    tx.send(StreamEvent::ContentBlockStart {
+                        index: 0,
+                        content_block: Content::Text { text: String::new() },
+                    })
+                    .await
+                    .ok();
+                    tx.send(StreamEvent::ContentBlockDelta {
+                        index: 0,
+                        delta: ContentDelta::TextDelta { text: "done".into() },
+                    })
+                    .await
+                    .ok();
+                    tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                    tx.send(StreamEvent::MessageDelta {
+                        stop_reason: Some("end_turn".into()),
+                        usage: Usage::default(),
+                    })
+                    .await
+                    .ok();
+                }
+                tx.send(StreamEvent::MessageStop).await.ok();
+                Ok(())
+            }
+
+            fn models(&self) -> &[clankers_provider::Model] {
+                &[]
+            }
+
+            fn name(&self) -> &str {
+                "capability-provider"
+            }
+        }
+
+        let provider = CapabilityProvider {
+            call_count: AtomicUsize::new(0),
+            captured_requests: Mutex::new(Vec::new()),
+        };
+        let tool: Arc<dyn Tool> = Arc::new(DirectResultTool::new());
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("direct_tool".to_string(), tool);
+        let mut messages = vec![make_user_message()];
+        let mut config = make_turn_config();
+        config.model_request_slot_budget = 2;
+        let (event_tx, _rx) = broadcast::channel(256);
+        let gate: Arc<dyn crate::tool::CapabilityGate> = Arc::new(DenyAllGate);
+
+        run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "session-capability",
+            None,
+            Some(&gate),
+            None,
+        )
+        .await
+        .expect("capability denial should be fed back to model");
+
+        assert_eq!(provider.call_count.load(Ordering::SeqCst), 2);
+        let AgentMessage::ToolResult(tool_result) = &messages[2] else {
+            panic!("expected denied tool result");
+        };
+        assert!(tool_result.is_error);
+        let Some(Content::Text { text }) = tool_result.content.first() else {
+            panic!("expected denial text");
+        };
+        assert!(text.contains("blocked direct_tool"));
+    }
+
+    #[tokio::test]
+    async fn run_turn_loop_dispatches_pre_tool_hooks_through_host_runner() {
+        use std::sync::Mutex;
+        use std::sync::atomic::Ordering;
+
+        struct RecordingDenyHook {
+            calls: Arc<Mutex<Vec<clankers_hooks::HookPoint>>>,
+        }
+
+        #[async_trait]
+        impl clankers_hooks::HookHandler for RecordingDenyHook {
+            fn name(&self) -> &str {
+                "recording-deny"
+            }
+
+            fn priority(&self) -> u32 {
+                clankers_hooks::dispatcher::PRIORITY_PLUGIN_HOOKS
+            }
+
+            fn subscribes_to(&self, point: clankers_hooks::HookPoint) -> bool {
+                matches!(point, clankers_hooks::HookPoint::PreTool)
+            }
+
+            async fn handle(
+                &self,
+                point: clankers_hooks::HookPoint,
+                _payload: &clankers_hooks::HookPayload,
+            ) -> clankers_hooks::HookVerdict {
+                self.calls.lock().expect("hook call lock poisoned").push(point);
+                clankers_hooks::HookVerdict::Deny {
+                    reason: "hook blocked".to_string(),
+                }
+            }
+        }
+
+        struct HookProvider {
+            call_count: AtomicUsize,
+        }
+
+        #[async_trait]
+        impl clankers_provider::Provider for HookProvider {
+            async fn complete(
+                &self,
+                _request: clankers_provider::CompletionRequest,
+                tx: mpsc::Sender<StreamEvent>,
+            ) -> clankers_provider::error::Result<()> {
+                let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
+                tx.send(StreamEvent::MessageStart {
+                    message: MessageMetadata {
+                        id: format!("hook-{call_index}"),
+                        model: "test-model".into(),
+                        role: "assistant".into(),
+                    },
+                })
+                .await
+                .ok();
+                if call_index == 0 {
+                    tx.send(StreamEvent::ContentBlockStart {
+                        index: 0,
+                        content_block: Content::ToolUse {
+                            id: "call-1".into(),
+                            name: "direct_tool".into(),
+                            input: json!({}),
+                        },
+                    })
+                    .await
+                    .ok();
+                    tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                    tx.send(StreamEvent::MessageDelta {
+                        stop_reason: Some("tool_use".into()),
+                        usage: Usage::default(),
+                    })
+                    .await
+                    .ok();
+                } else {
+                    tx.send(StreamEvent::ContentBlockStart {
+                        index: 0,
+                        content_block: Content::Text { text: String::new() },
+                    })
+                    .await
+                    .ok();
+                    tx.send(StreamEvent::ContentBlockDelta {
+                        index: 0,
+                        delta: ContentDelta::TextDelta { text: "done".into() },
+                    })
+                    .await
+                    .ok();
+                    tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                    tx.send(StreamEvent::MessageDelta {
+                        stop_reason: Some("end_turn".into()),
+                        usage: Usage::default(),
+                    })
+                    .await
+                    .ok();
+                }
+                tx.send(StreamEvent::MessageStop).await.ok();
+                Ok(())
+            }
+
+            fn models(&self) -> &[clankers_provider::Model] {
+                &[]
+            }
+
+            fn name(&self) -> &str {
+                "hook-provider"
+            }
+        }
+
+        let provider = HookProvider {
+            call_count: AtomicUsize::new(0),
+        };
+        let tool: Arc<dyn Tool> = Arc::new(DirectResultTool::new());
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("direct_tool".to_string(), tool);
+        let mut messages = vec![make_user_message()];
+        let mut config = make_turn_config();
+        config.model_request_slot_budget = 2;
+        let (event_tx, _rx) = broadcast::channel(256);
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let mut pipeline = clankers_hooks::HookPipeline::new();
+        pipeline.register(Arc::new(RecordingDenyHook { calls: calls.clone() }));
+
+        run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            Some(Arc::new(pipeline)),
+            "session-hook",
+            None,
+            None,
+            None,
+        )
+        .await
+        .expect("hook denial should be fed back to model");
+
+        assert_eq!(provider.call_count.load(Ordering::SeqCst), 2);
+        assert_eq!(calls.lock().expect("hook call lock poisoned").as_slice(), &[clankers_hooks::HookPoint::PreTool]);
+        let AgentMessage::ToolResult(tool_result) = &messages[2] else {
+            panic!("expected hook denied tool result");
+        };
+        assert!(tool_result.is_error);
+        let Some(Content::Text { text }) = tool_result.content.first() else {
+            panic!("expected hook text");
+        };
+        assert!(text.contains("hook blocked"));
+    }
+
+    #[tokio::test]
     async fn run_turn_loop_executes_engine_requested_tool_roundtrip() {
         use std::sync::atomic::Ordering;
 
