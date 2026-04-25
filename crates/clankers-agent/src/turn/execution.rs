@@ -829,6 +829,39 @@ mod tests {
         }
     }
 
+    struct SourceTool {
+        definition: crate::tool::ToolDefinition,
+        source: String,
+    }
+
+    impl SourceTool {
+        fn new(name: &str, source: &str) -> Self {
+            Self {
+                definition: crate::tool::ToolDefinition {
+                    name: name.to_string(),
+                    description: format!("{source} test tool"),
+                    input_schema: json!({"type": "object"}),
+                },
+                source: source.to_string(),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Tool for SourceTool {
+        fn definition(&self) -> &crate::tool::ToolDefinition {
+            &self.definition
+        }
+
+        async fn execute(&self, _ctx: &ToolContext, _params: Value) -> AgentToolResult {
+            AgentToolResult::text(format!("{}:{}", self.source, self.definition.name))
+        }
+
+        fn source(&self) -> &str {
+            &self.source
+        }
+    }
+
     #[async_trait]
     impl Tool for FakeTool {
         fn definition(&self) -> &crate::tool::ToolDefinition {
@@ -896,6 +929,40 @@ mod tests {
             cache_ttl: None,
             session_id: "session-1".to_string(),
         }
+    }
+
+    #[tokio::test]
+    async fn built_in_wasm_and_stdio_tools_share_executor_seam() {
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let sources = [
+            ("builtin_tool", "built-in"),
+            ("wasm_tool", "wasm-plugin"),
+            ("stdio_tool", "stdio-plugin"),
+        ];
+        for (name, source) in sources {
+            tools.insert(name.to_string(), Arc::new(SourceTool::new(name, source)));
+        }
+        let tool_calls: Vec<(String, String, Value)> = ["builtin_tool", "wasm_tool", "stdio_tool"]
+            .into_iter()
+            .map(|name| (format!("call-{name}"), name.to_string(), json!({})))
+            .collect();
+        let (event_tx, _rx) = broadcast::channel(16);
+        let cancel = CancellationToken::new();
+
+        let results =
+            execute_tools_parallel(&tools, &tool_calls, &event_tx, cancel, None, "session", None, None, None).await;
+
+        assert_eq!(results.len(), 3);
+        assert!(results.iter().all(|message| !message.is_error));
+        let rendered: Vec<String> = results
+            .iter()
+            .map(|message| first_text_block(&message.content).expect("tool output should be text"))
+            .collect();
+        assert_eq!(rendered, vec![
+            "built-in:builtin_tool",
+            "wasm-plugin:wasm_tool",
+            "stdio-plugin:stdio_tool"
+        ]);
     }
 
     #[test]
