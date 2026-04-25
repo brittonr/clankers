@@ -1,8 +1,8 @@
 ## 1. Metrics core and storage
 
 - [x] 1.1 Add a `metrics` module in `crates/clankers-db` with summary, rollup, histogram, heavy-hitter, and recent-event types built from fixed-size data structures ✅ 12m (started: 2026-04-24T22:01Z → completed: 2026-04-24T22:02Z)
-- [~] 1.2 Add redb tables and a schema migration for session summaries, daily rollups, and bounded recent metric events ⏱ started: 2026-04-24T22:03Z
-- [ ] 1.3 Add BLAKE3 fingerprint helpers for normalized high-cardinality strings and tests for stable hashing, normalization, and redaction boundaries
+- [x] 1.2 Add redb tables and a schema migration for session summaries, daily rollups, and bounded recent metric events ✅ 5m (started: 2026-04-24T22:03Z → completed: 2026-04-24T22:05Z)
+- [~] 1.3 Add BLAKE3 fingerprint helpers for normalized high-cardinality strings and tests for stable hashing, normalization, and redaction boundaries ⏱ started: 2026-04-24T22:05Z
 - [ ] 1.4 Add metrics query APIs for session summaries, daily rollups, and recent events without exposing raw digested payloads
 
 ## 2. Runtime capture

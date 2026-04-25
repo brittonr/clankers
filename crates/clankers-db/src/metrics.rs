@@ -1,5 +1,6 @@
 //! Unified session metrics: summaries, rollups, histograms, and heavy-hitters.
 
+pub mod fingerprint;
 pub mod storage;
 pub mod types;
 
