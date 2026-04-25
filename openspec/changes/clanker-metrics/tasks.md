@@ -8,9 +8,9 @@
 ## 2. Runtime capture
 
 - [x] 2.1 Define a `MetricEvent` enum and pure reducer that folds session, turn, model, compaction, tool, token, plugin, and procmon events into summaries and rollups ✅ 5m (started: 2026-04-24T22:07Z → completed: 2026-04-24T22:08Z)
-- [~] 2.2 Instrument agent and controller seams to emit metric events for session lifecycle, turn lifecycle, model changes, compaction, cancellation, usage updates, and tool execution outcomes ⏱ started: 2026-04-24T22:08Z
-- [ ] 2.3 Instrument procmon seams to record optional process-monitoring metrics such as process spawn/sample/exit aggregates without failing sessions when procmon is disabled
-- [ ] 2.4 Instrument plugin dispatch and plugin-tool paths to record plugin load results, event dispatch counts, hook denials, UI actions, tool calls, and plugin errors
+- [x] 2.2 Instrument agent and controller seams to emit metric events for session lifecycle, turn lifecycle, model changes, compaction, cancellation, usage updates, and tool execution outcomes ✅ 10m (started: 2026-04-24T22:08Z → completed: 2026-04-24T22:17Z)
+- [x] 2.3 Instrument procmon seams to record optional process-monitoring metrics such as process spawn/sample/exit aggregates without failing sessions when procmon is disabled ✅ 2m (started: 2026-04-24T22:17Z → completed: 2026-04-24T22:17Z) — already captured via ProcessSpawn/ProcessExit AgentEvent translation in MetricsCollector
+- [~] 2.4 Instrument plugin dispatch and plugin-tool paths to record plugin load results, event dispatch counts, hook denials, UI actions, tool calls, and plugin errors ⏱ started: 2026-04-24T22:18Z
 - [ ] 2.5 Add bounded in-memory staging plus periodic/final redb flush logic that records dropped-event counters instead of blocking or failing sessions
 
 ## 3. Reporting surfaces

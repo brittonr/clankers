@@ -408,6 +408,16 @@ impl SessionController {
         self.model = model;
     }
 
+    /// Mutable access to the metrics collector for plugin dispatch and other instrumenters.
+    pub fn metrics_mut(&mut self) -> &mut metrics_capture::MetricsCollector {
+        &mut self.metrics
+    }
+
+    /// Read access to the current session metrics summary.
+    pub fn metrics_summary(&self) -> &clankers_db::metrics::types::SessionMetricsSummary {
+        self.metrics.summary()
+    }
+
     /// Update auto-test settings from the TUI.
     pub fn set_auto_test(&mut self, enabled: bool, command: Option<String>) {
         self.auto_test_enabled = enabled;

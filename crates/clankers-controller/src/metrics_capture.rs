@@ -51,6 +51,46 @@ impl MetricsCollector {
         self.reducer.into_summary()
     }
 
+    // ── Direct plugin metric recording (no AgentEvent needed) ───
+
+    pub fn record_plugin_load(&mut self, plugin: &str, ok: bool) {
+        let event = MetricEvent::PluginLoad {
+            plugin: plugin.to_string(),
+            ok,
+            timestamp: Utc::now(),
+        };
+        let record = self.reducer.apply(&event);
+        self.pending_events.push(record);
+    }
+
+    pub fn record_plugin_event(&mut self, plugin: &str) {
+        let event = MetricEvent::PluginEvent {
+            plugin: plugin.to_string(),
+            timestamp: Utc::now(),
+        };
+        let record = self.reducer.apply(&event);
+        self.pending_events.push(record);
+    }
+
+    pub fn record_plugin_error(&mut self, plugin: &str) {
+        let event = MetricEvent::PluginError {
+            plugin: plugin.to_string(),
+            timestamp: Utc::now(),
+        };
+        let record = self.reducer.apply(&event);
+        self.pending_events.push(record);
+    }
+
+    pub fn record_plugin_hook_denial(&mut self, plugin: &str, hook: &str) {
+        let event = MetricEvent::PluginHookDenial {
+            plugin: plugin.to_string(),
+            hook: hook.to_string(),
+            timestamp: Utc::now(),
+        };
+        let record = self.reducer.apply(&event);
+        self.pending_events.push(record);
+    }
+
     fn translate(&mut self, event: &AgentEvent) -> Vec<MetricEvent> {
         let now = Utc::now();
         match event {
