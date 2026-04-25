@@ -13,6 +13,7 @@ use clankers_engine::{
     EngineOutcome, EngineState, EngineTerminalFailure, EngineToolCall,
 };
 use clankers_tool_host::{ToolExecutor, ToolHostOutcome};
+use stream::{HostStreamEvent, StreamAccumulator, StreamAccumulatorError};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -128,6 +129,9 @@ pub enum ModelHostOutcome {
     Completed {
         response: EngineModelResponse,
         usage: Option<Usage>,
+    },
+    Streamed {
+        events: Vec<HostStreamEvent>,
     },
     Failed {
         failure: EngineTerminalFailure,
@@ -265,7 +269,72 @@ where
             }
             EngineInput::ModelCompleted { request_id, response }
         }
+        ModelHostOutcome::Streamed { events } => stream_events_to_model_input(
+            report,
+            hosts.usage_observer,
+            request_id,
+            events,
+        ),
         ModelHostOutcome::Failed { failure } => EngineInput::ModelFailed { request_id, failure },
+    }
+}
+
+
+fn stream_events_to_model_input<U: UsageObserver>(
+    report: &mut EngineRunReport,
+    usage_observer: &mut U,
+    request_id: EngineCorrelationId,
+    events: Vec<HostStreamEvent>,
+) -> EngineInput {
+    let mut accumulator = StreamAccumulator::new();
+    for event in events {
+        if let HostStreamEvent::Usage { usage } = &event {
+            observe_usage(report, usage_observer, UsageObservationKind::StreamDelta, usage.clone());
+        }
+        if let Err(error) = accumulator.push(event) {
+            return EngineInput::ModelFailed {
+                request_id,
+                failure: stream_error_to_failure(error),
+            };
+        }
+    }
+
+    match accumulator.finish() {
+        Ok(folded) => {
+            if let Some(usage) = folded.usage {
+                observe_usage(report, usage_observer, UsageObservationKind::FinalSummary, usage);
+            }
+            EngineInput::ModelCompleted {
+                request_id,
+                response: EngineModelResponse {
+                    output: folded.content,
+                    stop_reason: folded.stop_reason.unwrap_or(clanker_message::StopReason::Stop),
+                },
+            }
+        }
+        Err(error) => EngineInput::ModelFailed {
+            request_id,
+            failure: stream_error_to_failure(error),
+        },
+    }
+}
+
+fn stream_error_to_failure(error: StreamAccumulatorError) -> EngineTerminalFailure {
+    match error {
+        StreamAccumulatorError::ProviderError {
+            message,
+            status,
+            retryable,
+        } => EngineTerminalFailure {
+            message,
+            status,
+            retryable,
+        },
+        other => EngineTerminalFailure {
+            message: other.to_string(),
+            status: None,
+            retryable: false,
+        },
     }
 }
 
@@ -632,6 +701,68 @@ mod tests {
             .observed_events
             .iter()
             .any(|event| matches!(event, EngineEvent::TurnFinished { stop_reason } if *stop_reason == StopReason::Stop)));
+    }
+
+
+    #[test]
+    fn streamed_model_events_fold_into_completion_and_usage_order() {
+        let mut model = FakeModel {
+            outcomes: vec![ModelHostOutcome::Streamed {
+                events: vec![
+                    HostStreamEvent::TextStart { index: 0 },
+                    HostStreamEvent::TextDelta { index: 0, text: "hi".to_string() },
+                    HostStreamEvent::Usage { usage: Usage { input_tokens: TEST_USAGE_INPUT, output_tokens: 0, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } },
+                    HostStreamEvent::MessageStop { model: Some(TEST_MODEL.to_string()), stop_reason: StopReason::Stop },
+                ],
+            }],
+        };
+        let mut tools = FakeTools::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = FakeCancel::default();
+        let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+        assert!(report.last_outcome.rejection.is_none());
+        assert_eq!(report.usage_observations.len(), 2);
+        assert_eq!(report.usage_observations[0].kind, UsageObservationKind::StreamDelta);
+        assert_eq!(report.usage_observations[1].kind, UsageObservationKind::FinalSummary);
+    }
+
+    #[test]
+    fn malformed_stream_maps_to_non_retryable_model_failure() {
+        let mut model = FakeModel {
+            outcomes: vec![ModelHostOutcome::Streamed {
+                events: vec![HostStreamEvent::ToolUseJsonDelta { index: 0, json: "{".to_string() }],
+            }],
+        };
+        let mut tools = FakeTools::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = FakeCancel::default();
+        let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+        let failure = report.last_outcome.terminal_failure.expect("stream error should terminalize through engine failure");
+        assert!(!failure.retryable);
+        assert!(failure.message.contains("missing content block start"));
+    }
+
+    #[test]
+    fn provider_stream_error_preserves_status_and_retryability() {
+        let mut model = FakeModel {
+            outcomes: vec![ModelHostOutcome::Streamed {
+                events: vec![HostStreamEvent::ProviderError {
+                    error: stream::ProviderStreamError {
+                        message: "rate limited".to_string(),
+                        status: Some(429),
+                        retryable: false,
+                    },
+                }],
+            }],
+        };
+        let mut tools = FakeTools::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = FakeCancel::default();
+        let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+        let failure = report.last_outcome.terminal_failure.expect("provider error should become engine failure");
+        assert_eq!(failure.status, Some(429));
+        assert!(!failure.retryable);
+        assert_eq!(failure.message, "rate limited");
     }
 
     #[test]
