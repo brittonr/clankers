@@ -152,6 +152,8 @@ mod tests {
     use clankers_engine::EngineCorrelationId;
     use clankers_engine::EngineEffect;
     use clankers_engine::EngineMessageRole;
+    use clankers_engine::EngineModelResponse;
+    use clankers_engine::EngineRejection;
     use clankers_engine::EngineState;
     use clankers_engine::EngineTerminalFailure;
 
@@ -160,6 +162,7 @@ mod tests {
     use crate::core_effects::accepted_engine_prompt_from_core_outcome;
 
     const TEST_EFFECT_ID: u64 = 42;
+    const SECOND_EFFECT_ID: u64 = 43;
     const TEST_IMAGE_COUNT: u32 = 0;
     const TEST_PROMPT: &str = "summarize core ownership";
     const FOLLOW_UP_PROMPT: &str = "continue loop";
@@ -660,5 +663,113 @@ mod tests {
             panic!("explicit follow-up failure must clear lifecycle state");
         };
         assert!(completed_follow_up_state.pending_follow_up_state.is_none());
+    }
+
+    #[test]
+    fn composition_negative_reducer_routing_rejects_wrong_targets_and_phases() {
+        let core_completion_without_prompt = clankers_core::reduce(
+            &CoreState::default(),
+            &CoreInput::PromptCompleted(PromptCompleted {
+                effect_id: CoreEffectId(1),
+                completion_status: CompletionStatus::Succeeded,
+            }),
+        );
+        assert!(matches!(core_completion_without_prompt, CoreOutcome::Rejected {
+            error: clankers_core::CoreError::PromptCompletionMismatch {
+                effect_id: CoreEffectId(1)
+            },
+            ..
+        }));
+
+        let prompt_outcome = clankers_core::reduce(
+            &CoreState::default(),
+            &CoreInput::PromptRequested(PromptRequest {
+                text: TEST_PROMPT.to_owned(),
+                image_count: TEST_IMAGE_COUNT,
+                originating_follow_up_effect_id: None,
+            }),
+        );
+        let CoreOutcome::Transitioned {
+            next_state: pending_prompt_state,
+            ..
+        } = prompt_outcome
+        else {
+            panic!("prompt setup must transition");
+        };
+        let mismatched_completion = clankers_core::reduce(
+            &pending_prompt_state,
+            &CoreInput::PromptCompleted(PromptCompleted {
+                effect_id: CoreEffectId(SECOND_EFFECT_ID),
+                completion_status: CompletionStatus::Succeeded,
+            }),
+        );
+        assert!(matches!(mismatched_completion, CoreOutcome::Rejected {
+            error: clankers_core::CoreError::PromptCompletionMismatch {
+                effect_id: CoreEffectId(SECOND_EFFECT_ID)
+            },
+            ..
+        }));
+
+        let wrong_phase_model = clankers_engine::reduce(&EngineState::new(), &EngineInput::ModelCompleted {
+            request_id: EngineCorrelationId("wrong-phase".to_owned()),
+            response: EngineModelResponse {
+                output: Vec::new(),
+                stop_reason: clanker_message::StopReason::Stop,
+            },
+        });
+        assert_eq!(wrong_phase_model.rejection, Some(EngineRejection::InvalidPhase));
+        assert!(wrong_phase_model.terminal_failure.is_none());
+
+        let wrong_phase_tool = clankers_engine::reduce(&EngineState::new(), &EngineInput::ToolCompleted {
+            call_id: EngineCorrelationId("wrong-tool-phase".to_owned()),
+            result: Vec::new(),
+        });
+        assert_eq!(wrong_phase_tool.rejection, Some(EngineRejection::InvalidPhase));
+        assert!(wrong_phase_tool.terminal_failure.is_none());
+
+        let submit_plan = engine_submission_from_prompt_start(&test_prompt_start(), prior_messages(), test_policy());
+        let CompositionStep::Engine(submit_outcome) = apply_composition_feedback_for_tests(
+            CompositionReducer::EngineTurn,
+            &pending_prompt_state,
+            &EngineState::new(),
+            CompositionFeedback::Engine(submit_plan.engine_input),
+        )
+        .expect("submit must route to engine") else {
+            panic!("expected engine submit outcome");
+        };
+        let request_id = request_id_from_engine_outcome(&submit_outcome);
+        let terminal_outcome = clankers_engine::reduce(&submit_outcome.next_state, &EngineInput::ModelFailed {
+            request_id: request_id.clone(),
+            failure: terminal_model_failure(),
+        });
+        assert!(terminal_outcome.terminal_failure.is_some());
+        let post_terminal_feedback =
+            clankers_engine::reduce(&terminal_outcome.next_state, &EngineInput::RetryReady { request_id });
+        assert_eq!(post_terminal_feedback.rejection, Some(EngineRejection::InvalidPhase));
+        assert!(post_terminal_feedback.terminal_failure.is_none());
+
+        let lifecycle_to_engine = apply_composition_feedback_for_tests(
+            CompositionReducer::EngineTurn,
+            &CoreState::default(),
+            &EngineState::new(),
+            CompositionFeedback::Core(CoreInput::PromptRequested(PromptRequest {
+                text: TEST_PROMPT.to_owned(),
+                image_count: TEST_IMAGE_COUNT,
+                originating_follow_up_effect_id: None,
+            })),
+        )
+        .expect_err("lifecycle feedback must not route to engine reducer");
+        assert_eq!(lifecycle_to_engine, CompositionRejection::LifecycleFeedbackSentToEngine);
+
+        let turn_to_core = apply_composition_feedback_for_tests(
+            CompositionReducer::CoreLifecycle,
+            &CoreState::default(),
+            &EngineState::new(),
+            CompositionFeedback::Engine(EngineInput::CancelTurn {
+                reason: "wrong reducer".to_owned(),
+            }),
+        )
+        .expect_err("turn feedback must not route to core reducer");
+        assert_eq!(turn_to_core, CompositionRejection::TurnFeedbackSentToCore);
     }
 }

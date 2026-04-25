@@ -296,9 +296,23 @@ test core_effects::accepted_engine_prompt_tests::accepted_engine_prompt_allows_m
 test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 167 filtered out; finished in 0.00s
 ```
 
-### V5 — adapter source rail inventory
+### V5 — negative reducer routing tests
 
-Status: PLANNED
+Command:
+
+```bash
+cargo test -p clankers-controller --lib composition_negative_reducer_routing
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test core_engine_composition::tests::composition_negative_reducer_routing_rejects_wrong_targets_and_phases ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 174 filtered out; finished in 0.00s
+```
 
 ### V6 — retry/backoff constant rail
 
