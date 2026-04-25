@@ -12,6 +12,12 @@ This change extracts a composable host layer and tool-host surface so other crat
 - Move deterministic stream accumulation into a reusable module with positive and negative tests.
 - Leave built-in Clankers tool bundles, system prompt assembly, session persistence policy, daemon protocol, and TUI behavior in Clankers shells.
 
+## Non-Goals
+
+- Do not move retry/backoff, continuation-budget, token-limit, tool-continuation, or terminal stop policy out of `clankers-engine`; the host runner only executes engine effects and reports correlated feedback.
+- Do not make `clankers-engine-host` or `clankers-tool-host` depend on daemon protocol, TUI rendering, session DB ownership, system-prompt assembly, built-in tool bundles, plugin runtime supervision, or Clankers-specific provider discovery.
+- Do not remove the existing `clankers-agent::Agent` public assembly; it remains the default Clankers wiring over the reusable host pieces.
+
 ## Capabilities
 
 ### Modified Capabilities
