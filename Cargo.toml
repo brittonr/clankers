@@ -15,6 +15,7 @@ members = [
     "crates/clankers-controller",
     "crates/clankers-db",
     "crates/clankers-engine",
+    "crates/clankers-engine-host",
     "crates/clankers-hooks",
     "crates/clankers-matrix",
     "crates/clankers-model-selection",
