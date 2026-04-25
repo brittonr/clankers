@@ -152,7 +152,24 @@ Note: agent acceptance behavior gets executable assertions in V7; I6 verificatio
 
 ### I7 — core pre-engine cancellation reducer tests
 
-Status: PLANNED
+Command:
+
+```bash
+cargo test -p clankers-core pre_engine_cancellation
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+running 3 tests
+test reducer::tests::pre_engine_cancellation_follow_up_before_engine_submission_clears_pending_follow_up ... ok
+test reducer::tests::pre_engine_cancellation_rejects_mismatched_and_wrong_stage_ids ... ok
+test reducer::tests::pre_engine_cancellation_prompt_before_engine_submission_clears_pending_prompt ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 38 filtered out; finished in 0.00s
+```
 
 ### I8 — controller pre-engine cancellation parity tests
 

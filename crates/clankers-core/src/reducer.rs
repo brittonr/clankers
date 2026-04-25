@@ -1291,4 +1291,89 @@ mod tests {
             effect_id: CoreEffectId(FIRST_EFFECT_ID),
         });
     }
+
+    #[test]
+    fn pre_engine_cancellation_prompt_before_engine_submission_clears_pending_prompt() {
+        let outcome = reduce(
+            &prompt_started_state(),
+            &CoreInput::PromptCompleted(PromptCompleted {
+                effect_id: CoreEffectId(FIRST_EFFECT_ID),
+                completion_status: CompletionStatus::Failed(CoreFailure::Cancelled),
+            }),
+        );
+
+        let CoreOutcome::Transitioned { next_state, effects } = outcome else {
+            panic!("prompt cancellation should transition");
+        };
+        assert!(!next_state.busy);
+        assert!(next_state.pending_prompt.is_none());
+        assert!(matches!(effects.as_slice(), [CoreEffect::EmitLogicalEvent(CoreLogicalEvent::BusyChanged {
+            busy: false
+        })]));
+    }
+
+    #[test]
+    fn pre_engine_cancellation_follow_up_before_engine_submission_clears_pending_follow_up() {
+        let outcome = reduce(
+            &pending_loop_follow_up_state(),
+            &CoreInput::LoopFollowUpCompleted(LoopFollowUpCompleted {
+                effect_id: CoreEffectId(FIRST_EFFECT_ID),
+                completion_status: CompletionStatus::Failed(CoreFailure::Cancelled),
+            }),
+        );
+
+        let CoreOutcome::Transitioned { next_state, effects } = outcome else {
+            panic!("follow-up cancellation should transition");
+        };
+        assert!(next_state.pending_follow_up_state.is_none());
+        assert!(next_state.active_loop_state.is_none());
+        assert!(matches!(effects.as_slice(), [CoreEffect::EmitLogicalEvent(CoreLogicalEvent::LoopStateChanged {
+            active_loop_state: None
+        })]));
+    }
+
+    #[test]
+    fn pre_engine_cancellation_rejects_mismatched_and_wrong_stage_ids() {
+        let mismatched_prompt = reduce(
+            &prompt_started_state(),
+            &CoreInput::PromptCompleted(PromptCompleted {
+                effect_id: CoreEffectId(SECOND_EFFECT_ID),
+                completion_status: CompletionStatus::Failed(CoreFailure::Cancelled),
+            }),
+        );
+        assert!(matches!(mismatched_prompt, CoreOutcome::Rejected {
+            error: CoreError::PromptCompletionMismatch {
+                effect_id: CoreEffectId(SECOND_EFFECT_ID)
+            },
+            ..
+        }));
+
+        let wrong_stage_follow_up = reduce(
+            &dispatch_pending_loop_follow_up_state(),
+            &CoreInput::LoopFollowUpCompleted(LoopFollowUpCompleted {
+                effect_id: CoreEffectId(FIRST_EFFECT_ID),
+                completion_status: CompletionStatus::Failed(CoreFailure::Cancelled),
+            }),
+        );
+        assert!(matches!(wrong_stage_follow_up, CoreOutcome::Rejected {
+            error: CoreError::WrongLifecycleStage {
+                effect_id: CoreEffectId(FIRST_EFFECT_ID)
+            },
+            ..
+        }));
+
+        let mismatched_follow_up = reduce(
+            &pending_loop_follow_up_state(),
+            &CoreInput::LoopFollowUpCompleted(LoopFollowUpCompleted {
+                effect_id: CoreEffectId(SECOND_EFFECT_ID),
+                completion_status: CompletionStatus::Failed(CoreFailure::Cancelled),
+            }),
+        );
+        assert!(matches!(mismatched_follow_up, CoreOutcome::Rejected {
+            error: CoreError::LoopFollowUpMismatch {
+                effect_id: CoreEffectId(SECOND_EFFECT_ID)
+            },
+            ..
+        }));
+    }
 }
