@@ -34,6 +34,7 @@ use execution::completion_request_from_engine_request;
 use execution::engine_messages_from_agent_messages;
 use execution::execute_tools_parallel;
 use execution::stream_model_request;
+use execution::tool_definitions_from_tool_catalog;
 use model_switch::check_model_switch;
 use serde_json::Value;
 use tokio::sync::broadcast;
@@ -66,12 +67,6 @@ pub(crate) struct CollectedResponse {
     model: String,
     usage: Usage,
     stop_reason: StopReason,
-}
-
-fn tool_definitions_from_controller_inventory(
-    controller_tools: &HashMap<String, Arc<dyn Tool>>,
-) -> Vec<crate::tool::ToolDefinition> {
-    controller_tools.values().map(|tool| tool.definition().clone()).collect()
 }
 
 fn parse_stop_reason(s: &str) -> StopReason {
@@ -342,7 +337,7 @@ pub async fn run_turn_loop(
     const TURN_INDEX_INITIAL: u32 = 0;
     const TURN_INDEX_STEP: u32 = 1;
 
-    let tool_defs = tool_definitions_from_controller_inventory(controller_tools);
+    let tool_defs = tool_definitions_from_tool_catalog(controller_tools);
     let mut cumulative_usage = Usage::default();
     let mut active_model = config.model.clone();
     let mut engine_state = EngineState::new();

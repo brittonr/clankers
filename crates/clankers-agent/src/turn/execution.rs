@@ -4,14 +4,20 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use clankers_engine::EngineCorrelationId;
 use clankers_engine::EngineMessage;
 use clankers_engine::EngineMessageRole;
 use clankers_engine::EngineModelRequest;
+use clankers_engine::EngineToolCall;
 use clankers_provider::CompletionRequest;
 use clankers_provider::Provider;
 use clankers_provider::Usage;
 use clankers_provider::message::*;
 use clankers_provider::streaming::*;
+use clankers_tool_host::ToolCatalog;
+use clankers_tool_host::ToolDescriptor;
+use clankers_tool_host::ToolExecutor;
+use clankers_tool_host::ToolHostOutcome;
 use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio::sync::mpsc;
@@ -29,6 +35,152 @@ use crate::tool::progress::ToolResultAccumulator;
 
 const ENGINE_REQUEST_ASSISTANT_MODEL: &str = "engine-assistant";
 const ENGINE_REQUEST_TOOL_NAME: &str = "engine-tool";
+
+pub(super) fn tool_definitions_from_tool_catalog(
+    controller_tools: &HashMap<String, Arc<dyn Tool>>,
+) -> Vec<crate::tool::ToolDefinition> {
+    AgentToolCatalog { controller_tools }.tool_definitions()
+}
+
+struct AgentToolCatalog<'a> {
+    controller_tools: &'a HashMap<String, Arc<dyn Tool>>,
+}
+
+impl AgentToolCatalog<'_> {
+    fn tool_definitions(&self) -> Vec<crate::tool::ToolDefinition> {
+        self.controller_tools.values().map(|tool| tool.definition().clone()).collect()
+    }
+}
+
+impl ToolCatalog for AgentToolCatalog<'_> {
+    fn describe_tools(&self) -> Vec<ToolDescriptor> {
+        self.controller_tools
+            .values()
+            .map(|tool| {
+                let definition = tool.definition();
+                ToolDescriptor {
+                    name: definition.name.clone(),
+                    description: definition.description.clone(),
+                }
+            })
+            .collect()
+    }
+
+    fn contains_tool(&self, name: &str) -> bool {
+        self.controller_tools.contains_key(name)
+    }
+}
+
+#[derive(Clone)]
+struct AgentSingleToolExecutor {
+    tool: Option<Arc<dyn Tool>>,
+    event_tx: broadcast::Sender<AgentEvent>,
+    cancel: CancellationToken,
+    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    session_id: String,
+    db: Option<clankers_db::Db>,
+    capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
+    user_tool_filter: Option<Vec<String>>,
+}
+
+impl ToolExecutor for AgentSingleToolExecutor {
+    async fn execute_tool(&mut self, call: EngineToolCall) -> ToolHostOutcome {
+        let message = execute_single_tool(
+            self.tool.clone(),
+            call.call_id.0.clone(),
+            call.tool_name.clone(),
+            call.input,
+            self.event_tx.clone(),
+            self.cancel.clone(),
+            self.hook_pipeline.clone(),
+            self.session_id.clone(),
+            self.db.clone(),
+            self.capability_gate.clone(),
+            self.user_tool_filter.clone(),
+        )
+        .await;
+        tool_result_message_to_host_outcome(&message)
+    }
+}
+
+fn tool_result_message_to_host_outcome(message: &ToolResultMessage) -> ToolHostOutcome {
+    let details = message.details.clone().unwrap_or(Value::Null);
+    if message.is_error {
+        return ToolHostOutcome::ToolError {
+            content: message.content.clone(),
+            details,
+            message: first_text_block(&message.content).unwrap_or_else(|| "tool execution failed".to_string()),
+        };
+    }
+
+    ToolHostOutcome::Succeeded {
+        content: message.content.clone(),
+        details,
+    }
+}
+
+fn tool_result_message_from_host_outcome(
+    call_id: String,
+    tool_name: String,
+    outcome: ToolHostOutcome,
+) -> ToolResultMessage {
+    match outcome {
+        ToolHostOutcome::Succeeded { content, details } => {
+            tool_result_message(call_id, tool_name, content, false, details)
+        }
+        ToolHostOutcome::ToolError {
+            content,
+            details,
+            message,
+        } => {
+            let content = if content.is_empty() {
+                vec![Content::Text { text: message }]
+            } else {
+                content
+            };
+            tool_result_message(call_id, tool_name, content, true, details)
+        }
+        ToolHostOutcome::MissingTool { name } => {
+            tool_result_error(call_id, tool_name, format!("Tool '{name}' not found"))
+        }
+        ToolHostOutcome::CapabilityDenied { name, reason } => {
+            tool_result_error(call_id, tool_name, format!("🔒 {name}: {reason}"))
+        }
+        ToolHostOutcome::Cancelled { name } => tool_result_error(call_id, tool_name, format!("tool cancelled: {name}")),
+        ToolHostOutcome::Truncated { content, metadata } => {
+            tool_result_message(call_id, tool_name, content, false, serde_json::json!({ "truncation": metadata }))
+        }
+    }
+}
+
+fn tool_result_message(
+    call_id: String,
+    tool_name: String,
+    content: Vec<Content>,
+    is_error: bool,
+    details: Value,
+) -> ToolResultMessage {
+    ToolResultMessage {
+        id: MessageId::generate(),
+        call_id,
+        tool_name,
+        content,
+        is_error,
+        details: Some(details).filter(|details| !details.is_null()),
+        timestamp: Utc::now(),
+    }
+}
+
+fn tool_result_error(call_id: String, tool_name: String, message: String) -> ToolResultMessage {
+    tool_result_message(call_id, tool_name, vec![Content::Text { text: message }], true, Value::Null)
+}
+
+fn first_text_block(content: &[Content]) -> Option<String> {
+    content.iter().find_map(|block| match block {
+        Content::Text { text } => Some(text.clone()),
+        Content::Image { .. } | Content::Thinking { .. } | Content::ToolUse { .. } | Content::ToolResult { .. } => None,
+    })
+}
 
 /// Execute a single engine-requested model call: stream response and collect results.
 pub(super) async fn stream_model_request(
@@ -268,19 +420,27 @@ pub(super) async fn execute_tools_parallel(
     let futures: Vec<BoxFuture<'static, ToolResultMessage>> = tool_calls
         .iter()
         .map(|(call_id, tool_name, input)| {
-            execute_single_tool(
-                controller_tools.get(tool_name).cloned(),
-                call_id.clone(),
-                tool_name.clone(),
-                input.clone(),
-                event_tx.clone(),
-                cancel.clone(),
-                hook_pipeline.clone(),
-                session_id.to_string(),
-                db.clone(),
-                capability_gate.clone(),
-                user_tool_filter.clone(),
-            )
+            let call = EngineToolCall {
+                call_id: EngineCorrelationId(call_id.clone()),
+                tool_name: tool_name.clone(),
+                input: input.clone(),
+            };
+            let mut executor = AgentSingleToolExecutor {
+                tool: controller_tools.get(tool_name).cloned(),
+                event_tx: event_tx.clone(),
+                cancel: cancel.clone(),
+                hook_pipeline: hook_pipeline.clone(),
+                session_id: session_id.to_string(),
+                db: db.clone(),
+                capability_gate: capability_gate.clone(),
+                user_tool_filter: user_tool_filter.clone(),
+            };
+            let call_id = call_id.clone();
+            let tool_name = tool_name.clone();
+            async move {
+                let outcome = executor.execute_tool(call).await;
+                tool_result_message_from_host_outcome(call_id, tool_name, outcome)
+            }
             .boxed()
         })
         .collect();
@@ -537,6 +697,7 @@ fn check_tool_paths(input: &Value) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
+    use async_trait::async_trait;
     use chrono::Utc;
     use clanker_message::AssistantMessage;
     use clanker_message::BashExecutionMessage;
@@ -551,10 +712,41 @@ mod tests {
     use serde_json::json;
 
     use super::*;
+    use crate::tool::ToolResult as AgentToolResult;
 
     const TEST_MAX_TOKENS: usize = 128;
     const TEST_THINKING_BUDGET: usize = 256;
     const TEST_TOKENS_SAVED: usize = 512;
+    const TEST_TOOL_NAME: &str = "test_tool";
+    const TEST_TOOL_DESCRIPTION: &str = "test description";
+    const TEST_CALL_ID: &str = "call-1";
+
+    struct FakeTool {
+        definition: crate::tool::ToolDefinition,
+    }
+
+    impl FakeTool {
+        fn new() -> Self {
+            Self {
+                definition: crate::tool::ToolDefinition {
+                    name: TEST_TOOL_NAME.to_string(),
+                    description: TEST_TOOL_DESCRIPTION.to_string(),
+                    input_schema: json!({"type": "object"}),
+                },
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Tool for FakeTool {
+        fn definition(&self) -> &crate::tool::ToolDefinition {
+            &self.definition
+        }
+
+        async fn execute(&self, _ctx: &ToolContext, _params: Value) -> AgentToolResult {
+            AgentToolResult::text("ok")
+        }
+    }
 
     fn timestamp() -> chrono::DateTime<chrono::Utc> {
         Utc::now()
@@ -612,6 +804,62 @@ mod tests {
             cache_ttl: None,
             session_id: "session-1".to_string(),
         }
+    }
+
+    #[test]
+    fn agent_tool_catalog_lists_metadata_and_contains_names() {
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert(TEST_TOOL_NAME.to_string(), Arc::new(FakeTool::new()));
+        let catalog = AgentToolCatalog {
+            controller_tools: &tools,
+        };
+
+        let descriptors = catalog.describe_tools();
+
+        assert_eq!(descriptors.len(), 1);
+        assert_eq!(descriptors[0].name, TEST_TOOL_NAME);
+        assert_eq!(descriptors[0].description, TEST_TOOL_DESCRIPTION);
+        assert!(catalog.contains_tool(TEST_TOOL_NAME));
+        assert!(!catalog.contains_tool("missing"));
+        assert_eq!(tool_definitions_from_tool_catalog(&tools).len(), 1);
+    }
+
+    #[test]
+    fn tool_host_outcome_round_trips_success_and_error_messages() {
+        let success_message = ToolResultMessage {
+            id: MessageId::new("tool-1"),
+            call_id: TEST_CALL_ID.to_string(),
+            tool_name: TEST_TOOL_NAME.to_string(),
+            content: text_content("ok"),
+            is_error: false,
+            details: Some(json!({"detail": true})),
+            timestamp: timestamp(),
+        };
+        let success_outcome = tool_result_message_to_host_outcome(&success_message);
+        let success_roundtrip = tool_result_message_from_host_outcome(
+            TEST_CALL_ID.to_string(),
+            TEST_TOOL_NAME.to_string(),
+            success_outcome,
+        );
+        assert!(!success_roundtrip.is_error);
+        assert_eq!(success_roundtrip.content.len(), 1);
+        assert_eq!(success_roundtrip.details, Some(json!({"detail": true})));
+
+        let error_message = ToolResultMessage {
+            id: MessageId::new("tool-2"),
+            call_id: TEST_CALL_ID.to_string(),
+            tool_name: TEST_TOOL_NAME.to_string(),
+            content: text_content("bad"),
+            is_error: true,
+            details: None,
+            timestamp: timestamp(),
+        };
+        let error_outcome = tool_result_message_to_host_outcome(&error_message);
+        let error_roundtrip =
+            tool_result_message_from_host_outcome(TEST_CALL_ID.to_string(), TEST_TOOL_NAME.to_string(), error_outcome);
+        assert!(error_roundtrip.is_error);
+        assert_eq!(error_roundtrip.content.len(), 1);
+        assert!(error_roundtrip.details.is_none());
     }
 
     #[test]

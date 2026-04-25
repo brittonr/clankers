@@ -1588,6 +1588,7 @@ dependencies = [
  "clankers-prompts",
  "clankers-provider",
  "clankers-skills",
+ "clankers-tool-host",
  "clankers-util",
  "dirs 6.0.0",
  "futures",

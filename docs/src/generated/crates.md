@@ -644,9 +644,9 @@ trait ProcessDataSource
 
 Agent core — turn loop, event bus, tool interface, context management
 
-**7531** lines of Rust · **138** tests
+**7753** lines of Rust · **140** tests
 
-**Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-router`, `clanker-tui-types`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-engine-host`, `clankers-hooks`, `clankers-model-selection`, `clankers-procmon`, `clankers-prompts`, `clankers-provider`, `clankers-skills`, `clankers-util`
+**Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-router`, `clanker-tui-types`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-engine-host`, `clankers-hooks`, `clankers-model-selection`, `clankers-procmon`, `clankers-prompts`, `clankers-provider`, `clankers-skills`, `clankers-tool-host`, `clankers-util`
 
 <details><summary>Public API</summary>
 

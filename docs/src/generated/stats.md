@@ -11,12 +11,12 @@
 | Metric | Count |
 |--------|------:|
 | Workspace crates | 31 |
-| Lines of Rust (crates/) | 105,505 |
+| Lines of Rust (crates/) | 105,727 |
 | Lines of Rust (src/) | 47,773 |
-| **Total lines of Rust** | **153,278** |
-| Tests (crates/) | 2,236 |
+| **Total lines of Rust** | **153,500** |
+| Tests (crates/) | 2,238 |
 | Tests (src/) | 730 |
-| **Total tests** | **2,966** |
+| **Total tests** | **2,968** |
 | Public API items | 2,086 |
 
 ## Crates by size
@@ -28,7 +28,7 @@
 | `clankers-tui` | 16,617 | 279 |
 | `clankers-controller` | 8,946 | 203 |
 | `clankers-provider` | 8,425 | 167 |
-| `clankers-agent` | 7,531 | 138 |
+| `clankers-agent` | 7,753 | 140 |
 | `clankers-db` | 6,698 | 206 |
 | `clankers-session` | 4,014 | 102 |
 | `clankers-plugin` | 3,725 | 39 |

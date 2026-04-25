@@ -28,6 +28,7 @@ graph TD
     agent --> prompts
     agent --> provider
     agent --> skills
+    agent --> tool-host
     agent --> util
     config --> clanker-router
     config --> clanker-tui-types
@@ -87,7 +88,7 @@ graph TD
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
 | `clanker-message` | 882 | 25 | Message types for LLM agent conversations |
-| `agent` | 7531 | 138 | Agent core — turn loop, event bus, tool interface, context management |
+| `agent` | 7753 | 140 | Agent core — turn loop, event bus, tool interface, context management |
 | `agent-defs` | 873 | 29 | Agent definition system (first-class) |
 | `core` | 1643 | 42 |  |
 | `engine` | 1472 | 29 | Host-facing reusable engine contracts for model/tool turn policy that compose alongside `clankers-core` through controller/agent adapter seams. |
