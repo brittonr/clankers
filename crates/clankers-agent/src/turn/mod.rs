@@ -2470,4 +2470,160 @@ mod tests {
         };
         assert_eq!(assistant.stop_reason, StopReason::MaxTokens);
     }
+
+    fn test_engine_prompt_submission(model_request_slot_budget: u32) -> clankers_engine::EnginePromptSubmission {
+        clankers_engine::EnginePromptSubmission {
+            messages: engine_messages_from_agent_messages(&[make_user_message()]),
+            model: "test-model".to_string(),
+            system_prompt: "You are a test assistant.".to_string(),
+            max_tokens: Some(100),
+            temperature: None,
+            thinking: None,
+            tools: Vec::new(),
+            no_cache: true,
+            cache_ttl: None,
+            session_id: "test-session".to_string(),
+            model_request_slot_budget,
+        }
+    }
+
+    fn submitted_engine_state() -> (EngineState, EngineCorrelationId) {
+        let outcome = clankers_engine::reduce(
+            &EngineState::new(),
+            &EngineInput::submit_user_prompt(test_engine_prompt_submission(2)),
+        );
+        let request_id = outcome
+            .effects
+            .iter()
+            .find_map(|effect| match effect {
+                EngineEffect::RequestModel(request) => Some(request.request_id.clone()),
+                EngineEffect::ExecuteTool(_) | EngineEffect::ScheduleRetry { .. } | EngineEffect::EmitEvent(_) => None,
+            })
+            .expect("submit prompt must emit model request");
+        (outcome.next_state, request_id)
+    }
+
+    fn tool_call_from_outcome(outcome: &EngineOutcome) -> clankers_engine::EngineToolCall {
+        outcome
+            .effects
+            .iter()
+            .find_map(|effect| match effect {
+                EngineEffect::ExecuteTool(tool_call) => Some(tool_call.clone()),
+                EngineEffect::RequestModel(_) | EngineEffect::ScheduleRetry { .. } | EngineEffect::EmitEvent(_) => None,
+            })
+            .expect("tool-use model response must emit tool execution")
+    }
+
+    #[test]
+    fn engine_feedback_model_tool_retry_and_cancel_reduce_through_engine() {
+        let (waiting_model_state, request_id) = submitted_engine_state();
+        let completed = clankers_engine::reduce(&waiting_model_state, &EngineInput::ModelCompleted {
+            request_id: request_id.clone(),
+            response: EngineModelResponse {
+                output: vec![Content::Text {
+                    text: "done".to_string(),
+                }],
+                stop_reason: StopReason::Stop,
+            },
+        });
+        assert!(completed.rejection.is_none());
+        assert!(matches!(completed.next_state.phase, EngineTurnPhase::Finished));
+        let post_terminal = clankers_engine::reduce(&completed.next_state, &EngineInput::ModelCompleted {
+            request_id: request_id.clone(),
+            response: EngineModelResponse {
+                output: Vec::new(),
+                stop_reason: StopReason::Stop,
+            },
+        });
+        assert!(post_terminal.rejection.is_some());
+        assert!(post_terminal.terminal_failure.is_none());
+
+        let (waiting_retry_model_state, retry_request_id) = submitted_engine_state();
+        let failed_retryable = clankers_engine::reduce(&waiting_retry_model_state, &EngineInput::ModelFailed {
+            request_id: retry_request_id.clone(),
+            failure: EngineTerminalFailure {
+                message: "try again".to_string(),
+                status: Some(500),
+                retryable: true,
+            },
+        });
+        let retry_ready_id = failed_retryable
+            .effects
+            .iter()
+            .find_map(|effect| match effect {
+                EngineEffect::ScheduleRetry { request_id, .. } => Some(request_id.clone()),
+                EngineEffect::RequestModel(_) | EngineEffect::ExecuteTool(_) | EngineEffect::EmitEvent(_) => None,
+            })
+            .expect("retryable model failure must schedule retry");
+        let retry_ready = clankers_engine::reduce(&failed_retryable.next_state, &EngineInput::RetryReady {
+            request_id: retry_ready_id,
+        });
+        assert!(retry_ready.rejection.is_none());
+        assert!(retry_ready.effects.iter().any(|effect| matches!(effect, EngineEffect::RequestModel(_))));
+
+        let (waiting_failed_model_state, failed_request_id) = submitted_engine_state();
+        let failed_terminal = clankers_engine::reduce(&waiting_failed_model_state, &EngineInput::ModelFailed {
+            request_id: failed_request_id,
+            failure: EngineTerminalFailure {
+                message: "stop".to_string(),
+                status: None,
+                retryable: false,
+            },
+        });
+        assert!(failed_terminal.terminal_failure.is_some());
+
+        let (waiting_tool_model_state, tool_request_id) = submitted_engine_state();
+        let tool_planned = clankers_engine::reduce(&waiting_tool_model_state, &EngineInput::ModelCompleted {
+            request_id: tool_request_id,
+            response: EngineModelResponse {
+                output: vec![Content::ToolUse {
+                    id: "call-1".to_string(),
+                    name: "read".to_string(),
+                    input: json!({"path":"README.md"}),
+                }],
+                stop_reason: StopReason::ToolUse,
+            },
+        });
+        let tool_call = tool_call_from_outcome(&tool_planned);
+        let tool_completed = clankers_engine::reduce(&tool_planned.next_state, &EngineInput::ToolCompleted {
+            call_id: tool_call.call_id.clone(),
+            result: vec![Content::Text { text: "ok".to_string() }],
+        });
+        assert!(tool_completed.rejection.is_none());
+
+        let (waiting_tool_fail_model_state, tool_fail_request_id) = submitted_engine_state();
+        let tool_fail_planned = clankers_engine::reduce(&waiting_tool_fail_model_state, &EngineInput::ModelCompleted {
+            request_id: tool_fail_request_id,
+            response: EngineModelResponse {
+                output: vec![Content::ToolUse {
+                    id: "call-2".to_string(),
+                    name: "read".to_string(),
+                    input: json!({"path":"missing"}),
+                }],
+                stop_reason: StopReason::ToolUse,
+            },
+        });
+        let failed_tool_call = tool_call_from_outcome(&tool_fail_planned);
+        let tool_failed = clankers_engine::reduce(&tool_fail_planned.next_state, &EngineInput::ToolFailed {
+            call_id: failed_tool_call.call_id,
+            error: "missing".to_string(),
+            result: vec![Content::Text {
+                text: "missing".to_string(),
+            }],
+        });
+        assert!(tool_failed.rejection.is_none());
+
+        let (waiting_cancel_state, _) = submitted_engine_state();
+        let cancelled = clankers_engine::reduce(&waiting_cancel_state, &EngineInput::CancelTurn {
+            reason: "cancelled".to_string(),
+        });
+        assert!(cancelled.terminal_failure.is_none());
+        assert!(matches!(cancelled.next_state.phase, EngineTurnPhase::Finished));
+        assert!(cancelled.effects.iter().any(|effect| matches!(
+            effect,
+            EngineEffect::EmitEvent(EngineEvent::TurnFinished {
+                stop_reason: StopReason::Stop
+            })
+        )));
+    }
 }

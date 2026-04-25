@@ -314,9 +314,23 @@ test core_engine_composition::tests::composition_negative_reducer_routing_reject
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 174 filtered out; finished in 0.00s
 ```
 
-### V6 — retry/backoff constant rail
+### V6 — agent engine feedback tests
 
-Status: PLANNED
+Command:
+
+```bash
+cargo test -p clankers-agent --lib engine_feedback
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test turn::tests::engine_feedback_model_tool_retry_and_cancel_reduce_through_engine ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 136 filtered out; finished in 0.00s
+```
 
 ### V7 — cargo-tree dependency rail
 
