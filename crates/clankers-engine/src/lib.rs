@@ -1,5 +1,17 @@
 //! Host-facing reusable engine contracts for model/tool turn policy that compose
 //! alongside `clankers-core` through controller/agent adapter seams.
+//!
+//! Ownership matrix:
+//!
+//! - `clankers-core` owns prompt lifecycle, queued prompt replay, loop/auto-test follow-up
+//!   dispatch/completion, thinking-level state, disabled-tool filters, and cancellation before
+//!   accepted work reaches the engine.
+//! - `clankers-engine` owns accepted model/tool turn policy: model request correlation, model
+//!   completion/failure, tool-call planning, tool feedback, retry scheduling, continuation budget,
+//!   cancellation during model/tool/retry phases, and terminal turn outcomes.
+//! - Adapters hold any core lifecycle correlation such as `CoreEffectId` and feed core completion
+//!   feedback back to `clankers-core`; engine state stays free of core reducer state and core
+//!   lifecycle IDs.
 
 use core::time::Duration;
 
