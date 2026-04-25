@@ -40,3 +40,8 @@ Record exact command output before marking V6 complete.
 
 - `cargo test -p clankers-engine-host --lib`: PASS (22 tests).
 - Coverage added: retryable model failure sleeps before `RetryReady`, stream malformed-input matrix maps to correlated non-retryable reducer model failures, event-sink and usage-observer failures are report diagnostics only, and all `ToolHostOutcome` variants map through correlated engine feedback/cancellation without reducer rejection.
+
+### V5 host feedback and policy rails
+
+- `cargo test -p clankers-controller --test fcis_shell_boundaries`: PASS (32 tests).
+- Coverage added: host feedback constructors are allowed only in `clankers-engine-host::runtime`, host crates reject shell-runtime source leakage, `clankers-tool-host` rejects reducer-internal source leakage, and `clankers-engine-host` rejects retry/backoff, continuation-budget, terminalization-helper, direct `EngineEvent::TurnFinished`, and direct `StopReason::{ToolUse,MaxTokens}` policy leakage outside tests.

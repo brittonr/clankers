@@ -423,6 +423,84 @@ const AGENT_TURN_ENGINE_REQUEST_PLANNING_FORBIDDEN_PATHS: [&str; 3] = [
     "clankers_engine::EngineState",
 ];
 
+const ENGINE_HOST_SOURCE_DIR: &str = "crates/clankers-engine-host/src";
+const ENGINE_HOST_RUNTIME_FEEDBACK_FILE: &str = "crates/clankers-engine-host/src/runtime.rs";
+const TOOL_HOST_SOURCE_DIR: &str = "crates/clankers-tool-host/src";
+const HOST_CRATE_SHELL_FORBIDDEN_SEGMENTS: [&str; 29] = [
+    "clankers_agent",
+    "clankers_provider",
+    "clanker_router",
+    "clankers_db",
+    "clankers_hooks",
+    "clankers_plugin",
+    "clankers_protocol",
+    "clanker_tui_types",
+    "clankers_tui",
+    "ratatui",
+    "crossterm",
+    "portable_pty",
+    "reqwest",
+    "hyper",
+    "h2",
+    "tower",
+    "axum",
+    "tokio",
+    "async_std",
+    "smol",
+    "actix_rt",
+    "reqwest_eventsource",
+    "eventsource_stream",
+    "chrono",
+    "uuid",
+    "ulid",
+    "AgentMessage",
+    "MessageId",
+    "Utc",
+];
+const TOOL_HOST_ENGINE_INTERNAL_FORBIDDEN_SEGMENTS: [&str; 20] = [
+    "EngineState",
+    "EngineInput",
+    "EngineEffect",
+    "EngineOutcome",
+    "reduce",
+    "EngineModelRequest",
+    "EngineModelResponse",
+    "EngineToolRequest",
+    "EngineToolResult",
+    "RetryReady",
+    "ScheduleRetry",
+    "CancelTurn",
+    "terminal_failure_outcome",
+    "terminal_state_with_messages",
+    "retry_attempt",
+    "model_request_slot_budget",
+    "continuation_budget",
+    "ToolUse",
+    "MaxTokens",
+    "ModelCompleted",
+];
+const ENGINE_HOST_RUNTIME_FEEDBACK_REQUIRED_PATHS: [&str; 6] = [
+    "EngineInput::ModelCompleted",
+    "EngineInput::ModelFailed",
+    "EngineInput::ToolCompleted",
+    "EngineInput::ToolFailed",
+    "EngineInput::RetryReady",
+    "EngineInput::CancelTurn",
+];
+const ENGINE_HOST_POLICY_FORBIDDEN_SEGMENTS: [&str; 11] = [
+    "RETRY_BACKOFF_BASE_SECONDS",
+    "RETRY_BACKOFF_EXPONENT_STEP",
+    "DEFAULT_MAX_MODEL_REQUESTS_PER_TURN",
+    "terminal_failure_outcome",
+    "terminal_state_with_messages",
+    "retry_attempt",
+    "model_request_slot_budget",
+    "continuation_budget",
+    "StopReason::ToolUse",
+    "StopReason::MaxTokens",
+    "should_continue",
+];
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct CfgEnvelope {
     can_be_true_without_test: bool,
@@ -1565,6 +1643,45 @@ fn clankers_engine_surface_stays_shell_native() {
         &ENGINE_SURFACE_REQUIRED_PATHS,
     );
     assert_segment_absent("crates/clankers-engine/src/lib.rs", &engine_root_paths, ENGINE_CRATE_NAME);
+}
+
+#[test]
+fn engine_host_feedback_constructors_stay_in_runtime_module() {
+    for relative_path in rust_source_files_under(ENGINE_HOST_SOURCE_DIR) {
+        let paths = collect_non_test_paths(&relative_path);
+        if relative_path == ENGINE_HOST_RUNTIME_FEEDBACK_FILE {
+            assert_required_paths_present(&relative_path, &paths, &ENGINE_HOST_RUNTIME_FEEDBACK_REQUIRED_PATHS);
+            continue;
+        }
+        assert_segments_absent(&relative_path, &paths, &ENGINE_INPUT_FEEDBACK_SEGMENTS);
+    }
+}
+
+#[test]
+fn host_crates_reject_shell_runtime_source_leakage() {
+    for source_dir in [ENGINE_HOST_SOURCE_DIR, TOOL_HOST_SOURCE_DIR] {
+        for relative_path in rust_source_files_under(source_dir) {
+            let paths = collect_non_test_paths(&relative_path);
+            assert_segments_absent(&relative_path, &paths, &HOST_CRATE_SHELL_FORBIDDEN_SEGMENTS);
+        }
+    }
+}
+
+#[test]
+fn tool_host_rejects_engine_reducer_internal_source_leakage() {
+    for relative_path in rust_source_files_under(TOOL_HOST_SOURCE_DIR) {
+        let paths = collect_non_test_paths(&relative_path);
+        assert_segments_absent(&relative_path, &paths, &TOOL_HOST_ENGINE_INTERNAL_FORBIDDEN_SEGMENTS);
+    }
+}
+
+#[test]
+fn engine_host_rejects_reducer_policy_source_leakage() {
+    for relative_path in rust_source_files_under(ENGINE_HOST_SOURCE_DIR) {
+        let paths = collect_non_test_paths(&relative_path);
+        assert_segments_absent(&relative_path, &paths, &ENGINE_HOST_POLICY_FORBIDDEN_SEGMENTS);
+        assert_exact_path_absent(&relative_path, &paths, "EngineEvent::TurnFinished");
+    }
 }
 
 #[test]
