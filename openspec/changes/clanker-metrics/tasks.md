@@ -16,8 +16,8 @@
 ## 3. Reporting surfaces
 
 - [x] 3.1 Add a standalone `/metrics` slash command that shows current-session summaries and historical rollups ✅ 5m (started: 2026-04-24T22:21Z → completed: 2026-04-24T22:23Z)
-- [ ] 3.2 Add attach/daemon reporting support so remote sessions expose the same current-session and historical metrics models as standalone mode
-- [ ] 3.3 Add machine-readable metrics serialization for JSON/reporting surfaces and stable versioned fields for tests and automation
+- [x] 3.2 Add attach/daemon reporting support so remote sessions expose the same current-session and historical metrics models as standalone mode ✅ 3m (started: 2026-04-24T22:23Z → completed: 2026-04-24T22:24Z) — /metrics routed as RegistryLocal in attach mode, reads from shared Db
+- [~] 3.3 Add machine-readable metrics serialization for JSON/reporting surfaces and stable versioned fields for tests and automation ⏱ started: 2026-04-24T22:24Z
 
 ## 4. Validation
 

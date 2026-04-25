@@ -305,6 +305,27 @@ impl SlashHandler for MetricsHandler {
         };
 
         let store = db.metrics();
+        let trimmed = args.trim();
+        let json_mode = trimmed == "json" || trimmed.starts_with("json ");
+        let days_str = if json_mode {
+            trimmed.strip_prefix("json").unwrap_or("").trim()
+        } else {
+            trimmed
+        };
+        let days: usize = days_str.parse().unwrap_or(7);
+
+        if json_mode {
+            let session_id = &ctx.app.session_id;
+            let current = store.current_session_report(session_id).ok().flatten();
+            let historical = store.historical_report(days).ok();
+            let json = serde_json::json!({
+                "current_session": current,
+                "historical": historical,
+            });
+            let output = serde_json::to_string_pretty(&json).unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"));
+            ctx.app.push_system(output, false);
+            return;
+        }
 
         // Current session report
         let session_id = &ctx.app.session_id;
@@ -315,7 +336,6 @@ impl SlashHandler for MetricsHandler {
         };
 
         // Historical report
-        let days: usize = args.trim().parse().unwrap_or(7);
         let historical = match store.historical_report(days) {
             Ok(report) if report.total_sessions > 0 => {
                 crate::db::metrics::format::format_historical(&report)
