@@ -32,4 +32,3 @@ tempfile = "3.8"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(dylint_lib, values("tigerstyle"))'] }
-

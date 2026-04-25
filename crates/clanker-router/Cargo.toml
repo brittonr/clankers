@@ -99,7 +99,3 @@ needless_borrowed_reference = "allow"
 unnecessary_literal_bound = "allow"
 elidable_lifetime_names = "allow"
 if_not_else = "allow"
-
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(dylint_lib, values("tigerstyle"))'] }

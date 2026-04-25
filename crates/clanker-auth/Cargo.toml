@@ -34,7 +34,3 @@ duration_suboptimal_units = "allow"
 return_self_not_must_use = "allow"
 redundant_closure_for_method_calls = "allow"
 uninlined_format_args = "allow"
-
-
-[lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(dylint_lib, values("tigerstyle"))'] }
