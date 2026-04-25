@@ -158,15 +158,27 @@ impl SessionController {
             effect_id: core_effect_id,
             completion_status: core_completion_status.clone(),
         });
-        if matches!(clankers_core::reduce(&self.core_state, &input), clankers_core::CoreOutcome::Rejected { .. }) {
-            self.emit(clankers_protocol::DaemonEvent::SystemMessage {
-                text: "Post-prompt follow-up completion rejected".to_string(),
-                is_error: true,
-            });
-            return;
-        }
+        let preflight = clankers_core::reduce(&self.core_state, &input);
+        let (follow_up_next_state, follow_up_effects) = match preflight {
+            clankers_core::CoreOutcome::Transitioned { next_state, effects } => (next_state, effects),
+            clankers_core::CoreOutcome::Rejected { .. } => {
+                self.emit(clankers_protocol::DaemonEvent::SystemMessage {
+                    text: "Post-prompt follow-up completion rejected".to_string(),
+                    is_error: true,
+                });
+                return;
+            }
+        };
 
         let Some(pending_prompt) = self.core_state.pending_prompt.clone() else {
+            if matches!(
+                core_completion_status,
+                clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Cancelled)
+            ) {
+                self.apply_core_state(follow_up_next_state);
+                self.execute_follow_up_completion_effects(follow_up_effects, &core_completion_status);
+                return;
+            }
             self.emit(clankers_protocol::DaemonEvent::SystemMessage {
                 text: "Post-prompt follow-up completion rejected".to_string(),
                 is_error: true,
@@ -731,6 +743,70 @@ mod tests {
             is_error: true,
             ..
         }]));
+    }
+
+    #[test]
+    fn pre_engine_cancellation_embedded_prompt_uses_core_completion_not_engine_cancel() {
+        let mut ctrl = make_test_controller();
+        assert!(ctrl.start_embedded_prompt("hello", 0));
+
+        ctrl.finish_embedded_prompt(ShellPromptCompletion::cancelled());
+
+        assert!(!ctrl.busy);
+        assert!(!ctrl.core_state.busy);
+        assert!(ctrl.core_state.pending_prompt.is_none());
+        assert!(ctrl.drain_events().is_empty());
+    }
+
+    #[test]
+    fn pre_engine_cancellation_dispatched_follow_up_completes_without_prompt_task() {
+        const LOOP_ITERATION_LIMIT: u32 = 2;
+
+        let mut ctrl = make_test_controller();
+        ctrl.start_loop(crate::loop_mode::LoopConfig {
+            name: "test-loop".to_string(),
+            prompt: Some("continue loop".to_string()),
+            max_iterations: LOOP_ITERATION_LIMIT,
+            break_text: None,
+        });
+        let effect_id = match ctrl.check_post_prompt(false) {
+            PostPromptAction::ContinueLoop { pending_work_id, .. } => pending_work_id,
+            other => panic!("expected ContinueLoop, got {other:?}"),
+        };
+        ctrl.ack_follow_up_dispatch(effect_id, ShellFollowUpDispatch::Accepted);
+        assert!(ctrl.core_state.pending_prompt.is_none());
+
+        ctrl.complete_dispatched_follow_up(effect_id, ShellPromptCompletion::cancelled());
+
+        assert!(ctrl.core_state.pending_follow_up_state.is_none());
+        assert!(ctrl.core_state.pending_prompt.is_none());
+        assert!(ctrl.core_state.active_loop_state.is_none());
+        assert!(!ctrl.has_active_loop());
+        assert!(matches!(
+            ctrl.drain_events().as_slice(),
+            [clankers_protocol::DaemonEvent::SystemMessage { text, is_error: false }]
+                if text.contains("failed (follow-up)")
+        ));
+    }
+
+    #[test]
+    fn pre_engine_cancellation_controller_paths_do_not_construct_engine_cancel_turn() {
+        const FORBIDDEN_PREFIX: &str = "EngineInput";
+        const FORBIDDEN_SUFFIX: &str = "::CancelTurn";
+        let forbidden = [FORBIDDEN_PREFIX, FORBIDDEN_SUFFIX].concat();
+        let controller_sources = [
+            include_str!("auto_test.rs"),
+            include_str!("command.rs"),
+            include_str!("core_effects.rs"),
+            include_str!("core_engine_composition.rs"),
+        ];
+
+        for source in controller_sources {
+            assert!(
+                !source.contains(&forbidden),
+                "controller pre-engine lifecycle paths must not construct engine cancellation feedback"
+            );
+        }
     }
 
     #[test]

@@ -72,10 +72,15 @@ impl PendingWorkId {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ShellPromptCompletion {
     Succeeded,
+    Cancelled,
     Failed { message: String },
 }
 
 impl ShellPromptCompletion {
+    pub fn cancelled() -> Self {
+        Self::Cancelled
+    }
+
     pub fn failed(message: impl Into<String>) -> Self {
         Self::Failed {
             message: message.into(),
@@ -85,6 +90,7 @@ impl ShellPromptCompletion {
     pub(crate) fn to_core(&self) -> clankers_core::CompletionStatus {
         match self {
             Self::Succeeded => clankers_core::CompletionStatus::Succeeded,
+            Self::Cancelled => clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Cancelled),
             Self::Failed { message } => {
                 clankers_core::CompletionStatus::Failed(clankers_core::CoreFailure::Message(message.clone()))
             }

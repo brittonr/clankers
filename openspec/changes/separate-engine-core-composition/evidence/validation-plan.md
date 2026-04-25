@@ -173,7 +173,29 @@ test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 38 filtered out; fin
 
 ### I8 — controller pre-engine cancellation parity tests
 
-Status: PLANNED
+Commands:
+
+```bash
+cargo test -p clankers-controller --lib pre_engine_cancellation
+cargo test -p clankers-controller --lib follow_up
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+running 3 tests
+test auto_test::tests::pre_engine_cancellation_controller_paths_do_not_construct_engine_cancel_turn ... ok
+test auto_test::tests::pre_engine_cancellation_embedded_prompt_uses_core_completion_not_engine_cancel ... ok
+test auto_test::tests::pre_engine_cancellation_dispatched_follow_up_completes_without_prompt_task ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 162 filtered out; finished in 0.00s
+
+running 14 tests
+... follow_up ... ok
+test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 151 filtered out; finished in 0.00s
+```
 
 ### I9 — thinking and disabled-tool ownership tests
 
