@@ -185,6 +185,35 @@ const ENGINE_SURFACE_REQUIRED_PATHS: [&str; 6] = [
     "EngineRejection::InvalidBudget",
     "EngineTerminalFailure",
 ];
+
+const MESSAGE_CONTRACT_SOURCE_FILES: [&str; 2] = [
+    "crates/clanker-message/src/contracts.rs",
+    "crates/clanker-message/src/streaming.rs",
+];
+const LLM_CONTRACT_SOURCE_FORBIDDEN_PATHS: [&str; 22] = [
+    "CompletionRequest",
+    "DaemonEvent",
+    "SessionCommand",
+    "ControlResponse",
+    "AttachResponse",
+    "clanker_tui_types",
+    "ratatui",
+    "crossterm",
+    "portable_pty",
+    "tokio",
+    "JoinHandle",
+    "mpsc",
+    "oneshot",
+    "chrono::Utc",
+    "chrono::DateTime",
+    "uuid::Uuid",
+    "MessageId",
+    "generate_id",
+    "AgentMessage",
+    "clankers_provider",
+    "clanker_router",
+    "clankers_agent",
+];
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 6] = [
     "clankers_engine::reduce",
@@ -1258,6 +1287,23 @@ fn agent_turn_runtime_reuses_engine_request_planning_contract() {
     );
     for forbidden_path in AGENT_TURN_ENGINE_REQUEST_PLANNING_FORBIDDEN_PATHS {
         assert_exact_path_absent(AGENT_TURN_ENGINE_REQUEST_PLANNING_FILE, &paths, forbidden_path);
+    }
+}
+
+#[test]
+fn llm_contract_sources_reject_shell_runtime_dependencies() {
+    for relative_path in rust_source_files_under(ENGINE_CRATE_SOURCE_DIR) {
+        let paths = collect_non_test_paths(&relative_path);
+        for forbidden_path in LLM_CONTRACT_SOURCE_FORBIDDEN_PATHS {
+            assert_engine_surface_path_absent(&relative_path, &paths, forbidden_path);
+        }
+    }
+
+    for relative_path in MESSAGE_CONTRACT_SOURCE_FILES {
+        let paths = collect_non_test_paths(relative_path);
+        for forbidden_path in LLM_CONTRACT_SOURCE_FORBIDDEN_PATHS {
+            assert_engine_surface_path_absent(relative_path, &paths, forbidden_path);
+        }
     }
 }
 

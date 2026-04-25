@@ -85,9 +85,30 @@ ok: clankers-engine normal-edge tree excludes forbidden crates
 ok: clanker-message normal-edge tree excludes forbidden crates
 ```
 
-### V4 — pending
+### V4 — source-inventory rail
 
-No command output captured yet.
+Commands:
+
+```bash
+cargo test -p clankers-controller --test fcis_shell_boundaries llm_contract_sources_reject_shell_runtime_dependencies
+cargo test -p clankers-controller --test fcis_shell_boundaries
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test llm_contract_sources_reject_shell_runtime_dependencies ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 23 filtered out; finished in 0.01s
+
+running 24 tests
+...
+test llm_contract_sources_reject_shell_runtime_dependencies ... ok
+...
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+```
 
 ### V5 — pending
 
