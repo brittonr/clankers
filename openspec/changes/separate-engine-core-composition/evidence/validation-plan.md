@@ -236,9 +236,26 @@ test core_engine_composition::tests::composition_positive_prompt_sequencing_runs
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 167 filtered out; finished in 0.00s
 ```
 
-### V2 — negative composition sequencing
+### V2 — positive follow-up sequencing
 
-Status: PLANNED
+Commands:
+
+```bash
+cargo test -p clankers-controller --lib composition_positive_queued_prompt_replay
+cargo test -p clankers-controller --lib composition_positive_follow_up_sequence
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test core_engine_composition::tests::composition_positive_queued_prompt_replay_requires_fresh_core_prompt ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 169 filtered out; finished in 0.00s
+
+test core_engine_composition::tests::composition_positive_follow_up_sequence_acknowledges_dispatch_before_engine_submission ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 169 filtered out; finished in 0.00s
+```
 
 ### V3 — agent engine-feedback and accepted-prompt reduction
 

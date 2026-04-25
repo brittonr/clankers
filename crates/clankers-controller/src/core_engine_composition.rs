@@ -136,9 +136,16 @@ pub(crate) fn apply_composition_feedback_for_tests(
 #[cfg(test)]
 mod tests {
     use clanker_message::Content;
+    use clankers_core::ActiveLoopState;
     use clankers_core::CompletionStatus;
+    use clankers_core::CoreEffectId;
     use clankers_core::CoreInput;
     use clankers_core::CoreOutcome;
+    use clankers_core::CoreState;
+    use clankers_core::FollowUpDispatchAcknowledged;
+    use clankers_core::FollowUpDispatchStatus;
+    use clankers_core::FollowUpSource;
+    use clankers_core::LoopFollowUpCompleted;
     use clankers_core::PostPromptEvaluation;
     use clankers_core::PromptCompleted;
     use clankers_core::PromptRequest;
@@ -153,6 +160,7 @@ mod tests {
     const TEST_EFFECT_ID: u64 = 42;
     const TEST_IMAGE_COUNT: u32 = 0;
     const TEST_PROMPT: &str = "summarize core ownership";
+    const FOLLOW_UP_PROMPT: &str = "continue loop";
     const TEST_SESSION_ID: &str = "session-1";
     const TEST_MODEL: &str = "test-model";
     const TEST_SYSTEM_PROMPT: &str = "you are precise";
@@ -348,5 +356,126 @@ mod tests {
         };
         assert_eq!(post_prompt_state, completed_core_state);
         assert!(post_prompt_effects.is_empty());
+    }
+
+    fn evaluate_for_follow_up(source: FollowUpSource) -> (CoreState, AcceptedPromptStart) {
+        const ACTIVE_LOOP_ITERATION: u32 = 1;
+        const FOLLOW_UP_ITERATION_LIMIT: u32 = 3;
+        let active_loop_state = ActiveLoopState {
+            loop_id: "loop-1".to_owned(),
+            prompt_text: FOLLOW_UP_PROMPT.to_owned(),
+            current_iteration: ACTIVE_LOOP_ITERATION,
+            max_iterations: FOLLOW_UP_ITERATION_LIMIT,
+            break_condition: None,
+        };
+        let evaluation = match source {
+            FollowUpSource::LoopContinuation => PostPromptEvaluation {
+                active_loop_state: Some(active_loop_state),
+                pending_follow_up_state: None,
+                auto_test_enabled: false,
+                auto_test_command: None,
+                auto_test_in_progress: false,
+                queued_prompt_present: false,
+            },
+            FollowUpSource::AutoTest => PostPromptEvaluation {
+                active_loop_state: None,
+                pending_follow_up_state: None,
+                auto_test_enabled: true,
+                auto_test_command: Some("cargo test".to_owned()),
+                auto_test_in_progress: false,
+                queued_prompt_present: false,
+            },
+        };
+        let outcome = clankers_core::reduce(&CoreState::default(), &CoreInput::EvaluatePostPrompt(evaluation));
+        let accepted = accepted_engine_prompt_from_core_outcome(&outcome)
+            .expect("follow-up evaluation must normalize to accepted engine prompt");
+        let AcceptedEnginePrompt::FollowUp(prompt_start) = accepted else {
+            panic!("expected follow-up prompt start");
+        };
+        assert_eq!(prompt_start.kind, AcceptedPromptKind::FollowUp(source));
+        let CoreOutcome::Transitioned { next_state, .. } = outcome else {
+            panic!("follow-up evaluation must transition core state");
+        };
+        (next_state, prompt_start)
+    }
+
+    #[test]
+    fn composition_positive_queued_prompt_replay_requires_fresh_core_prompt() {
+        let replay_outcome = clankers_core::reduce(
+            &CoreState::default(),
+            &CoreInput::EvaluatePostPrompt(PostPromptEvaluation {
+                active_loop_state: None,
+                pending_follow_up_state: None,
+                auto_test_enabled: false,
+                auto_test_command: None,
+                auto_test_in_progress: false,
+                queued_prompt_present: true,
+            }),
+        );
+        let replay_rejection = accepted_engine_prompt_from_core_outcome(&replay_outcome)
+            .expect_err("queued replay must not bypass fresh core prompt request");
+        assert_eq!(
+            replay_rejection,
+            crate::core_effects::CoreEffectGateRejection::ReplayQueuedPromptNeedsFreshCorePrompt
+        );
+
+        let fresh_prompt_outcome = clankers_core::reduce(
+            &CoreState::default(),
+            &CoreInput::PromptRequested(PromptRequest {
+                text: TEST_PROMPT.to_owned(),
+                image_count: TEST_IMAGE_COUNT,
+                originating_follow_up_effect_id: None,
+            }),
+        );
+        let fresh_prompt = accepted_engine_prompt_from_core_outcome(&fresh_prompt_outcome)
+            .expect("fresh queued prompt replay must pass through normal prompt gate");
+        assert!(matches!(fresh_prompt, AcceptedEnginePrompt::UserPrompt(_)));
+    }
+
+    #[test]
+    fn composition_positive_follow_up_sequence_acknowledges_dispatch_before_engine_submission() {
+        for source in [FollowUpSource::LoopContinuation, FollowUpSource::AutoTest] {
+            let (pending_dispatch_state, prompt_start) = evaluate_for_follow_up(source);
+            let ack_outcome = clankers_core::reduce(
+                &pending_dispatch_state,
+                &CoreInput::FollowUpDispatchAcknowledged(FollowUpDispatchAcknowledged {
+                    effect_id: prompt_start.core_effect_id,
+                    dispatch_status: FollowUpDispatchStatus::Accepted,
+                }),
+            );
+            let CoreOutcome::Transitioned {
+                next_state: pending_completion_state,
+                ..
+            } = ack_outcome
+            else {
+                panic!("accepted follow-up dispatch must transition core state");
+            };
+
+            let plan = engine_submission_from_prompt_start(&prompt_start, prior_messages(), test_policy());
+            let engine_step = apply_composition_feedback_for_tests(
+                CompositionReducer::EngineTurn,
+                &pending_completion_state,
+                &EngineState::new(),
+                CompositionFeedback::Engine(plan.engine_input),
+            )
+            .expect("accepted follow-up must submit to engine after dispatch ack");
+            assert!(matches!(engine_step, CompositionStep::Engine(_)));
+
+            let completion_outcome = clankers_core::reduce(
+                &pending_completion_state,
+                &CoreInput::LoopFollowUpCompleted(LoopFollowUpCompleted {
+                    effect_id: prompt_start.core_effect_id,
+                    completion_status: CompletionStatus::Succeeded,
+                }),
+            );
+            let CoreOutcome::Transitioned {
+                next_state: completed_follow_up_state,
+                ..
+            } = completion_outcome
+            else {
+                panic!("accepted follow-up completion must use LoopFollowUpCompleted");
+            };
+            assert!(completed_follow_up_state.pending_follow_up_state.is_none());
+        }
     }
 }
