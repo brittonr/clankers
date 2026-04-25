@@ -31,7 +31,7 @@ impl SessionController {
         match clankers_core::reduce(&self.core_state, &input) {
             clankers_core::CoreOutcome::Transitioned { next_state, effects } => {
                 self.apply_core_state(next_state);
-                let _effect_id = self.execute_prompt_request_effects(effects, prompt_text, image_count);
+                let _accepted_prompt = self.execute_prompt_request_effects(effects, prompt_text, image_count);
                 true
             }
             clankers_core::CoreOutcome::Rejected { .. } => {

@@ -109,8 +109,8 @@ impl SessionController {
         effects: Vec<CoreEffect>,
         requested_text: &str,
         requested_image_count: u32,
-    ) -> CoreEffectId {
-        let mut prompt_effect_id = None;
+    ) -> AcceptedEnginePrompt {
+        let mut accepted_prompt = None;
         let mut saw_busy_change = false;
 
         for effect in effects {
@@ -125,14 +125,19 @@ impl SessionController {
                 } => {
                     debug_assert_eq!(prompt_text, requested_text);
                     debug_assert_eq!(image_count, requested_image_count);
-                    prompt_effect_id = Some(effect_id);
+                    accepted_prompt = Some(AcceptedEnginePrompt::UserPrompt(AcceptedPromptStart {
+                        core_effect_id: effect_id,
+                        kind: AcceptedPromptKind::UserPrompt,
+                        prompt_text,
+                        image_count,
+                    }));
                 }
                 _ => {}
             }
         }
 
         debug_assert!(saw_busy_change, "prompt request must emit a busy logical event");
-        prompt_effect_id.expect("prompt request must yield a start effect")
+        accepted_prompt.expect("prompt request must yield a start effect")
     }
 
     pub(crate) fn execute_prompt_completion_effects(&mut self, effects: Vec<CoreEffect>) {

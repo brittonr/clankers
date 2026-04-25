@@ -355,8 +355,9 @@ pub async fn run_turn_loop(
     let mut active_model = config.model.clone();
     let mut engine_state = EngineState::new();
     let submit_outcome = engine_outcome_or_error(
-        reduce(&engine_state, &EngineInput::SubmitUserPrompt {
-            submission: clankers_engine::EnginePromptSubmission {
+        reduce(
+            &engine_state,
+            &EngineInput::submit_user_prompt(clankers_engine::EnginePromptSubmission {
                 messages: engine_messages_from_agent_messages(messages),
                 model: active_model.clone(),
                 system_prompt: config.system_prompt.clone(),
@@ -368,8 +369,8 @@ pub async fn run_turn_loop(
                 cache_ttl: config.cache_ttl.clone(),
                 session_id: session_id.to_string(),
                 model_request_slot_budget: config.model_request_slot_budget,
-            },
-        }),
+            }),
+        ),
         "prompt submission",
     )?;
     emit_engine_notice_effects(&submit_outcome, event_tx);

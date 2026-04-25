@@ -436,7 +436,7 @@ impl SessionController {
             originating_follow_up_effect_id: None,
         });
 
-        let prompt_effect_id = match clankers_core::reduce(&self.core_state, &prompt_input) {
+        let accepted_prompt = match clankers_core::reduce(&self.core_state, &prompt_input) {
             CoreOutcome::Transitioned { next_state, effects } => {
                 self.apply_core_state(next_state);
                 self.execute_prompt_request_effects(effects, &text, image_count)
@@ -453,6 +453,14 @@ impl SessionController {
             }
             CoreOutcome::Rejected { .. } => unreachable!("prompt request should only reject while busy"),
         };
+
+        let prompt_start = accepted_prompt.prompt_start();
+        let prompt_effect_id = prompt_start.core_effect_id;
+        let prompt_kind = prompt_start.kind.clone();
+        debug_assert!(
+            matches!(prompt_kind, crate::core_engine_composition::AcceptedPromptKind::UserPrompt),
+            "daemon prompt command must retain user-prompt lifecycle kind"
+        );
 
         self.outgoing.push(DaemonEvent::AgentStart);
 

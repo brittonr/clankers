@@ -180,6 +180,13 @@ pub enum EngineInput {
     },
 }
 
+impl EngineInput {
+    #[must_use]
+    pub fn submit_user_prompt(submission: EnginePromptSubmission) -> Self {
+        Self::SubmitUserPrompt { submission }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum EngineRejection {
     Busy,

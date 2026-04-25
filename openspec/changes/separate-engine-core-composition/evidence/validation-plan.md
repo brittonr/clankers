@@ -122,6 +122,34 @@ test core_effects::accepted_engine_prompt_tests::accepted_engine_prompt_rejects_
 test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 156 filtered out; finished in 0.00s
 ```
 
+### I6 — controller/agent handoff stays shell-native
+
+Commands:
+
+```bash
+cargo test -p clankers-engine --lib submit_user_prompt_builds_request_effect
+cargo test -p clankers-controller --lib accepted_engine_prompt
+cargo test -p clankers-agent --lib accepted_prompt_submission_reduces_engine
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test tests::submit_user_prompt_builds_request_effect ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; finished in 0.00s
+
+running 6 tests
+... accepted_engine_prompt ... ok
+test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 156 filtered out; finished in 0.00s
+
+running 0 tests
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 136 filtered out; finished in 0.00s
+```
+
+Note: agent acceptance behavior gets executable assertions in V7; I6 verification here confirms compile-time handoff wiring and no core lifecycle types crossing the agent boundary.
+
 ### I7 — core pre-engine cancellation reducer tests
 
 Status: PLANNED
