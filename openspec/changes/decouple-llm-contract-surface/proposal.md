@@ -7,10 +7,17 @@ This change cleans the lowest-level contract surface before extracting larger as
 ## What Changes
 
 - Move generic LLM contract ownership into `clanker-message` so router/provider code depends on the message contract rather than the message contract depending on router runtime crates.
-- Keep `clanker-router` and `clankers-provider` compatibility re-exports where downstream code expects those names, but make them wrappers around the canonical `clanker-message` definitions.
+- Keep `clanker-router` and `clankers-provider` compatibility aliases/re-exports where downstream code expects those names; they must resolve to the canonical `clanker-message` definitions, not wrapper/newtype identities.
 - Remove direct `clanker-router` and `clankers-provider` dependencies from `clankers-engine` by using engine/message-native request types.
-- Change engine prompt submission to accept `Vec<EngineMessage>` rather than `Vec<AgentMessage>`; move Clankers transcript filtering into adapter code.
+- Change engine prompt submission to accept `Vec<EngineMessage>` rather than `Vec<AgentMessage>`; move Clankers transcript filtering into the `clankers-agent::turn` adapter seam before engine submission.
 - Add cargo-tree and source-inventory rails that fail if engine or message contracts regain provider/router/runtime dependencies.
+
+## Non-Goals
+
+- Do not extract the async engine host runner, tool host, or stream accumulator in this change.
+- Do not move built-in tools, WASM/stdio plugin supervision, daemon protocol conversion, TUI rendering, session storage, or system-prompt assembly.
+- Do not introduce wrapper/newtype identities for moved router/provider compatibility types; compatibility names remain aliases/re-exports of canonical `clanker-message` types.
+- Do not intentionally change provider wire JSON shape while moving type ownership.
 
 ## Capabilities
 
@@ -22,5 +29,5 @@ This change cleans the lowest-level contract surface before extracting larger as
 
 - **Crates**: `clanker-message`, `clanker-router`, `clankers-provider`, `clankers-engine`, `clankers-agent`, boundary scripts/tests.
 - **APIs**: Canonical ownership for `Usage`, `ToolDefinition`, `ThinkingConfig`, stream metadata/deltas, and engine prompt submission changes.
-- **Compatibility**: Provider/router compatibility re-exports should preserve most call sites while type ownership moves.
-- **Testing**: New positive/negative contract tests plus dependency-boundary checks over `cargo tree` and non-test source imports.
+- **Compatibility**: All current workspace call sites using the existing router/provider public contract paths should continue to compile; compatibility paths are aliases/re-exports, not duplicate wrapper types.
+- **Testing**: New positive/negative contract tests plus dependency-boundary checks over `cargo tree` and non-test source imports. Compatibility tests pin inline golden JSON values for moved contracts and provider request shapes.
