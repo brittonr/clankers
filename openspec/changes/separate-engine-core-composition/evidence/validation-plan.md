@@ -1,11 +1,85 @@
 Evidence-ID: separate-engine-core-composition.validation-plan
-Task-ID: V1,V2,V3
-Artifact-Type: validation-plan
-Covers: embeddable-agent-engine.explicit-adapter-composition, embeddable-agent-engine.composition-tests, embeddable-agent-engine.core-engine-boundary-rails, embeddable-agent-engine.cross-reducer-source-rail, embeddable-agent-engine.no-dormant-core-state
+Task-ID: R2,I2,I7,I8,I9,V1,V2,V3,V4,V5,V6,V7,V8
+Artifact-Type: validation-log
+Covers: embeddable-agent-engine.engine-state-active-data, embeddable-agent-engine.composition-tests, embeddable-agent-engine.core-engine-boundary-rails, embeddable-agent-engine.cross-reducer-source-rail, embeddable-agent-engine.agent-core-type-rail, embeddable-agent-engine.engine-excludes-core-dependency, no.std.functional.core.pre.engine.cancellation
 Creator: pi
-Created: 2026-04-25T00:00:00Z
+Created: 2026-04-25T11:47:00Z
 Status: PLANNED
 
-## Plan
+## Validation Log
 
-Replace this plan with machine-produced validation logs after implementation. Expected commands include focused engine reducer tests, core reducer tests, explicit composition tests, and the FCIS shell-boundary suite.
+Implementation has not started. Replace each pending section with command, result, and output excerpt before marking the corresponding task complete.
+
+### R1 — readiness gates
+
+Command:
+
+```bash
+openspec validate separate-engine-core-composition --strict
+openspec_gate proposal separate-engine-core-composition
+openspec_gate design separate-engine-core-composition
+openspec_gate tasks separate-engine-core-composition
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+Change 'separate-engine-core-composition' is valid
+Proposal gate: PASS
+Design gate: PASS
+Tasks gate: PASS
+```
+
+### R2 — validation evidence setup
+
+Status: PLANNED
+
+### I2 — EngineState active-field inventory
+
+Status: PLANNED
+
+### I7 — core pre-engine cancellation reducer tests
+
+Status: PLANNED
+
+### I8 — controller pre-engine cancellation parity tests
+
+Status: PLANNED
+
+### I9 — thinking and disabled-tool ownership tests
+
+Status: PLANNED
+
+### V1 — positive composition sequencing
+
+Status: PLANNED
+
+### V2 — negative composition sequencing
+
+Status: PLANNED
+
+### V3 — agent engine-feedback and accepted-prompt reduction
+
+Status: PLANNED
+
+### V4 — engine/core source rail inventory
+
+Status: PLANNED
+
+### V5 — adapter source rail inventory
+
+Status: PLANNED
+
+### V6 — retry/backoff constant rail
+
+Status: PLANNED
+
+### V7 — cargo-tree dependency rail
+
+Status: PLANNED
+
+### V8 — final acceptance bundle
+
+Status: PLANNED

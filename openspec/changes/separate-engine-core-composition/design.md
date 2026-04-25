@@ -341,10 +341,35 @@ These tests must prove `execute_thinking_effects`, `execute_tool_filter_request_
 
 `fcis_shell_boundaries.rs` keeps and extends the existing `clankers_engine_surface_stays_shell_native` rail over every non-test file under `crates/clankers-engine/src/**`. In addition to the core-owned tokens above, engine source must reject shell/runtime/app protocol symbols: `clankers_protocol`, `DaemonEvent`, `SessionCommand`, `ControlResponse`, `AttachResponse`, `clanker_tui_types`, `ratatui`, `crossterm`, `portable_pty`, `clankers_provider`, `CompletionProvider`, `ToolRegistry`, `ToolExecutor`, `HookPipeline`, `tokio`, `mpsc`, `oneshot`, `JoinHandle`, `sleep`, `Sleep`, `reqwest`, `redb`, and `iroh`.
 
-Initial accepted prompt reduction remains in the agent turn host adapter. `core_engine_composition.rs` produces `EngineSubmissionPlan`; the production consumer is `crates/clankers-agent/src/turn/mod.rs::run_turn_loop`, via the existing engine turn entry path, which feeds `EngineInput::SubmitUserPrompt` to `clankers_engine::reduce` and owns resulting engine state/effects. Add a focused test:
+Initial accepted prompt reduction remains in the agent turn host adapter, but the controller consumes `EngineSubmissionPlan` first. `core_engine_composition.rs` produces `EngineSubmissionPlan`; `SessionController` retains `core_effect_id` and `prompt_kind` in controller state, then passes only the `engine_input`/shell-native prompt payload across the agent boundary. `crates/clankers-agent/src/turn/mod.rs::run_turn_loop` never receives `CoreEffectId` or `AcceptedPromptKind`; it receives engine/shell-native data only, feeds `EngineInput::SubmitUserPrompt` to `clankers_engine::reduce`, and owns resulting engine state/effects. Add a focused test:
 
 ```bash
 cargo test -p clankers-agent accepted_prompt_submission_reduces_engine
 ```
 
 That test must prove normalized core prompt data becomes an `EngineInput::SubmitUserPrompt`, is reduced through `clankers_engine::reduce`, and yields the expected pending model request effect before provider I/O starts.
+
+
+### Authoritative final acceptance bundle
+
+This list supersedes earlier partial validation snippets in this design. Tasks must wire every command below before marking the change complete:
+
+```bash
+cargo check -Zbuild-std=core,alloc --target thumbv7em-none-eabi -p clankers-core --no-default-features
+cargo test -p clankers-core pre_engine_cancellation
+cargo test -p clankers-engine --lib
+cargo test -p clankers-engine --lib engine_state_fields_are_active
+cargo test -p clankers-controller core_engine_composition
+cargo test -p clankers-controller pre_engine_cancellation
+cargo test -p clankers-controller accepted_engine_prompt
+cargo test -p clankers-controller thinking_effects_remain_core_owned
+cargo test -p clankers-controller disabled_tool_effects_remain_core_owned
+cargo test -p clankers-agent engine_feedback
+cargo test -p clankers-agent accepted_prompt_submission_reduces_engine
+cargo test -p clankers-controller --test fcis_shell_boundaries
+./scripts/check-llm-contract-boundary.sh
+```
+
+### Global retry/backoff constant rail
+
+`fcis_shell_boundaries.rs` must reject `RETRY_BACKOFF_BASE_SECONDS`, `RETRY_BACKOFF_EXPONENT_STEP`, and `DEFAULT_MAX_MODEL_REQUESTS_PER_TURN` in every non-test Rust file outside `crates/clankers-engine/src/**`. This is a repo-wide exact-token inventory tied to `r[embeddable-agent-engine.cross-reducer-source-rail]`, not an agent-only check.
