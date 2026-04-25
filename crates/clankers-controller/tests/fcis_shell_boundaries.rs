@@ -426,7 +426,7 @@ const AGENT_TURN_ENGINE_REQUEST_PLANNING_FORBIDDEN_PATHS: [&str; 3] = [
 const ENGINE_HOST_SOURCE_DIR: &str = "crates/clankers-engine-host/src";
 const ENGINE_HOST_RUNTIME_FEEDBACK_FILE: &str = "crates/clankers-engine-host/src/runtime.rs";
 const TOOL_HOST_SOURCE_DIR: &str = "crates/clankers-tool-host/src";
-const HOST_CRATE_SHELL_FORBIDDEN_SEGMENTS: [&str; 29] = [
+const HOST_CRATE_SHELL_FORBIDDEN_SEGMENTS: [&str; 37] = [
     "clankers_agent",
     "clankers_provider",
     "clanker_router",
@@ -456,8 +456,16 @@ const HOST_CRATE_SHELL_FORBIDDEN_SEGMENTS: [&str; 29] = [
     "AgentMessage",
     "MessageId",
     "Utc",
+    "CompletionRequest",
+    "CompletionResponse",
+    "ProviderResponse",
+    "StreamEvent",
+    "ContentDelta",
+    "reqwest::Client",
+    "tokio::runtime::Handle",
+    "tokio::task::JoinHandle",
 ];
-const TOOL_HOST_ENGINE_INTERNAL_FORBIDDEN_SEGMENTS: [&str; 20] = [
+const TOOL_HOST_ENGINE_INTERNAL_FORBIDDEN_SEGMENTS: [&str; 25] = [
     "EngineState",
     "EngineInput",
     "EngineEffect",
@@ -478,6 +486,25 @@ const TOOL_HOST_ENGINE_INTERNAL_FORBIDDEN_SEGMENTS: [&str; 20] = [
     "ToolUse",
     "MaxTokens",
     "ModelCompleted",
+    "clanker_loop::truncate_tool_output",
+    "clanker_loop::OutputTruncationConfig",
+    "clankers_util::truncation",
+    "truncate_head",
+    "truncate_tail",
+];
+const HOST_CRATE_BUILTIN_TOOL_FORBIDDEN_TEXT: [&str; 12] = [
+    "crate::tools::read",
+    "crate::tools::write",
+    "crate::tools::diff",
+    "crate::tools::web",
+    "crate::tools::nix",
+    "clankers::tools::",
+    "src/tools/read",
+    "src/tools/write",
+    "src/tools/diff",
+    "src/tools/web",
+    "clankers_agent::system_prompt",
+    "build_system_prompt",
 ];
 const ENGINE_HOST_RUNTIME_FEEDBACK_REQUIRED_PATHS: [&str; 6] = [
     "EngineInput::ModelCompleted",
@@ -1016,6 +1043,18 @@ fn assert_exact_path_absent(relative_path: &str, paths: &BTreeSet<String>, exact
         exact_path,
         offending_paths
     );
+}
+
+fn assert_source_text_absent(relative_path: &str, forbidden_text: &[&str]) {
+    let source = read_relative_file(relative_path);
+    for forbidden in forbidden_text {
+        assert!(
+            !source.contains(forbidden),
+            "{} crossed FCIS source-text boundary with forbidden token/path {:?}",
+            relative_path,
+            forbidden
+        );
+    }
 }
 
 fn assert_required_paths_present(relative_path: &str, paths: &BTreeSet<String>, required_paths: &[&str]) {
@@ -1658,11 +1697,23 @@ fn engine_host_feedback_constructors_stay_in_runtime_module() {
 }
 
 #[test]
+fn host_builtin_tool_path_text_inventory_allows_bare_tool_words() {
+    let harmless = "read write diff web nix";
+    for forbidden in HOST_CRATE_BUILTIN_TOOL_FORBIDDEN_TEXT {
+        assert!(
+            !harmless.contains(forbidden),
+            "bare tool words should not match anchored forbidden path {forbidden}"
+        );
+    }
+}
+
+#[test]
 fn host_crates_reject_shell_runtime_source_leakage() {
     for source_dir in [ENGINE_HOST_SOURCE_DIR, TOOL_HOST_SOURCE_DIR] {
         for relative_path in rust_source_files_under(source_dir) {
             let paths = collect_non_test_paths(&relative_path);
             assert_segments_absent(&relative_path, &paths, &HOST_CRATE_SHELL_FORBIDDEN_SEGMENTS);
+            assert_source_text_absent(&relative_path, &HOST_CRATE_BUILTIN_TOOL_FORBIDDEN_TEXT);
         }
     }
 }
