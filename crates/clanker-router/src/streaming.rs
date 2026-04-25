@@ -1,28 +1,30 @@
-//! Streaming response types for model completions
+//! Streaming response types for model completions.
 
+pub use clanker_message::streaming::ContentDelta;
+pub use clanker_message::streaming::MessageMetadata;
 use serde::Deserialize;
 use serde::Serialize;
 
-/// Events streamed during model completion
+/// Events streamed during model completion.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum StreamEvent {
-    /// Message stream started
+    /// Message stream started.
     MessageStart { message: MessageMetadata },
-    /// Content block started
+    /// Content block started.
     ContentBlockStart { index: usize, content_block: ContentBlock },
-    /// Content block delta (incremental update)
+    /// Content block delta (incremental update).
     ContentBlockDelta { index: usize, delta: ContentDelta },
-    /// Content block completed
+    /// Content block completed.
     ContentBlockStop { index: usize },
-    /// Message-level delta (stop reason + final usage)
+    /// Message-level delta (stop reason + final usage).
     MessageDelta {
         stop_reason: Option<String>,
         usage: crate::provider::Usage,
     },
-    /// Message stream completed
+    /// Message stream completed.
     MessageStop,
-    /// Error occurred during streaming
+    /// Error occurred during streaming.
     Error { error: String },
 }
 
@@ -58,22 +60,14 @@ impl TaggedStreamEvent {
     }
 }
 
-/// Metadata about a streaming message
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct MessageMetadata {
-    pub id: String,
-    pub model: String,
-    pub role: String,
-}
-
-/// A content block within a message
+/// A content block within a message.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ContentBlock {
-    /// Text content
+    /// Text content.
     #[serde(rename = "text")]
     Text { text: String },
-    /// Extended thinking content
+    /// Extended thinking content.
     #[serde(rename = "thinking")]
     Thinking {
         thinking: String,
@@ -81,7 +75,7 @@ pub enum ContentBlock {
         #[serde(default, skip_serializing_if = "String::is_empty")]
         signature: String,
     },
-    /// Tool use request
+    /// Tool use request.
     #[serde(rename = "tool_use")]
     ToolUse {
         id: String,
@@ -90,16 +84,80 @@ pub enum ContentBlock {
     },
 }
 
-/// Incremental delta for content blocks
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum ContentDelta {
-    /// Text delta
-    TextDelta { text: String },
-    /// Thinking delta
-    ThinkingDelta { thinking: String },
-    /// Input JSON delta for tool use
-    InputJsonDelta { partial_json: String },
-    /// Thinking signature delta (Anthropic; must be echoed back verbatim)
-    SignatureDelta { signature: String },
+/// Convert a router `ContentBlock` into a clanker message `Content`.
+impl From<ContentBlock> for clanker_message::Content {
+    fn from(block: ContentBlock) -> Self {
+        match block {
+            ContentBlock::Text { text } => clanker_message::Content::Text { text },
+            ContentBlock::Thinking { thinking, signature } => {
+                clanker_message::Content::Thinking { thinking, signature }
+            }
+            ContentBlock::ToolUse { id, name, input } => clanker_message::Content::ToolUse { id, name, input },
+        }
+    }
+}
+
+/// Convert clanker message `Content` back into a router `ContentBlock`.
+impl From<clanker_message::Content> for ContentBlock {
+    fn from(content: clanker_message::Content) -> Self {
+        match content {
+            clanker_message::Content::Text { text } => ContentBlock::Text { text },
+            clanker_message::Content::Thinking { thinking, signature } => {
+                ContentBlock::Thinking { thinking, signature }
+            }
+            clanker_message::Content::ToolUse { id, name, input } => ContentBlock::ToolUse { id, name, input },
+            // These variants only appear in user/tool messages, never in LLM responses.
+            clanker_message::Content::Image { .. } | clanker_message::Content::ToolResult { .. } => {
+                ContentBlock::Text { text: String::new() }
+            }
+        }
+    }
+}
+
+/// Convert a router `StreamEvent` into a clanker message `StreamEvent`.
+impl From<StreamEvent> for clanker_message::StreamEvent {
+    fn from(event: StreamEvent) -> Self {
+        match event {
+            StreamEvent::MessageStart { message } => clanker_message::StreamEvent::MessageStart { message },
+            StreamEvent::ContentBlockStart { index, content_block } => {
+                clanker_message::StreamEvent::ContentBlockStart {
+                    index,
+                    content_block: content_block.into(),
+                }
+            }
+            StreamEvent::ContentBlockDelta { index, delta } => {
+                clanker_message::StreamEvent::ContentBlockDelta { index, delta }
+            }
+            StreamEvent::ContentBlockStop { index } => clanker_message::StreamEvent::ContentBlockStop { index },
+            StreamEvent::MessageDelta { stop_reason, usage } => {
+                clanker_message::StreamEvent::MessageDelta { stop_reason, usage }
+            }
+            StreamEvent::MessageStop => clanker_message::StreamEvent::MessageStop,
+            StreamEvent::Error { error } => clanker_message::StreamEvent::Error { error },
+        }
+    }
+}
+
+/// Convert a clanker message `StreamEvent` into a router `StreamEvent`.
+impl From<clanker_message::StreamEvent> for StreamEvent {
+    fn from(event: clanker_message::StreamEvent) -> Self {
+        match event {
+            clanker_message::StreamEvent::MessageStart { message } => StreamEvent::MessageStart { message },
+            clanker_message::StreamEvent::ContentBlockStart { index, content_block } => {
+                StreamEvent::ContentBlockStart {
+                    index,
+                    content_block: content_block.into(),
+                }
+            }
+            clanker_message::StreamEvent::ContentBlockDelta { index, delta } => {
+                StreamEvent::ContentBlockDelta { index, delta }
+            }
+            clanker_message::StreamEvent::ContentBlockStop { index } => StreamEvent::ContentBlockStop { index },
+            clanker_message::StreamEvent::MessageDelta { stop_reason, usage } => {
+                StreamEvent::MessageDelta { stop_reason, usage }
+            }
+            clanker_message::StreamEvent::MessageStop => StreamEvent::MessageStop,
+            clanker_message::StreamEvent::Error { error } => StreamEvent::Error { error },
+        }
+    }
 }

@@ -1387,7 +1387,6 @@ name = "clanker-message"
 version = "0.1.0"
 dependencies = [
  "chrono",
- "clanker-router",
  "hex",
  "pretty_assertions",
  "rand 0.9.4",
@@ -1412,6 +1411,7 @@ dependencies = [
  "axum 0.8.9",
  "base64",
  "chrono",
+ "clanker-message",
  "clap",
  "crossterm",
  "dirs 6.0.0",

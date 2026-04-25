@@ -32,7 +32,8 @@ assert_eq!(message.role(), "user");
 - conversation message enums and structs (`AgentMessage`, `UserMessage`, `AssistantMessage`)
 - typed content blocks (`Content`, `ImageSource`, `StopReason`)
 - tool result payloads and accumulation helpers
-- richer streaming wrappers over `clanker-router` streaming events
+- router/provider-neutral streaming contracts and typed content events
+- shared LLM contract structs (`Usage`, `ToolDefinition`, `ThinkingConfig`)
 - shared message IDs and random ID generation helpers
 
 ## Development

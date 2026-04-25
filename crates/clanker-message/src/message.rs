@@ -6,10 +6,11 @@
 
 use chrono::DateTime;
 use chrono::Utc;
-use clanker_router::Usage;
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
+
+use crate::Usage;
 
 /// Unique identifier for a message (8-char hex string)
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
