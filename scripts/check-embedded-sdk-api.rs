@@ -1,8 +1,8 @@
 #!/usr/bin/env -S nix develop -c cargo -q -Zscript
-//! ```cargo
-//! [package]
-//! edition = "2024"
-//! ```
+---cargo
+[package]
+edition = "2024"
+---
 
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
