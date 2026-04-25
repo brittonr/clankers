@@ -644,7 +644,7 @@ trait ProcessDataSource
 
 Agent core — turn loop, event bus, tool interface, context management
 
-**7753** lines of Rust · **140** tests
+**8513** lines of Rust · **146** tests
 
 **Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-router`, `clanker-tui-types`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-engine-host`, `clankers-hooks`, `clankers-model-selection`, `clankers-procmon`, `clankers-prompts`, `clankers-provider`, `clankers-skills`, `clankers-tool-host`, `clankers-util`
 
@@ -915,7 +915,7 @@ struct ThemeDef
 
 Transport-agnostic session controller for agent orchestration.
 
-**8946** lines of Rust · **203** tests
+**9194** lines of Rust · **209** tests
 
 **Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-tui-types`, `clankers-agent`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-hooks`, `clankers-protocol`, `clankers-provider`, `clankers-session`
 
@@ -1287,7 +1287,7 @@ struct UsageTracker
 
 Host-facing reusable engine contracts for model/tool turn policy that compose alongside `clankers-core` through controller/agent adapter seams.
 
-**1472** lines of Rust · **29** tests
+**1481** lines of Rust · **29** tests
 
 **Workspace deps:** `clanker-message`
 
@@ -1328,7 +1328,7 @@ struct EngineToolCall
 
 Reusable async host runner for `clankers-engine` effects.
 
-**1171** lines of Rust · **18** tests
+**1713** lines of Rust · **26** tests
 
 **Workspace deps:** `clanker-message`, `clankers-engine`, `clankers-tool-host`
 
@@ -2041,7 +2041,7 @@ struct Skill
 
 Reusable tool execution contracts for engine-host runners.
 
-**222** lines of Rust · **5** tests
+**372** lines of Rust · **10** tests
 
 **Workspace deps:** `clanker-message`, `clankers-engine`
 

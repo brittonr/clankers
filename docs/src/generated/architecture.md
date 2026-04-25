@@ -88,11 +88,11 @@ graph TD
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
 | `clanker-message` | 882 | 25 | Message types for LLM agent conversations |
-| `agent` | 7753 | 140 | Agent core — turn loop, event bus, tool interface, context management |
+| `agent` | 8513 | 146 | Agent core — turn loop, event bus, tool interface, context management |
 | `agent-defs` | 873 | 29 | Agent definition system (first-class) |
 | `core` | 1643 | 42 |  |
-| `engine` | 1472 | 29 | Host-facing reusable engine contracts for model/tool turn policy that compose alongside `clankers-core` through controller/agent adapter seams. |
-| `controller` | 8946 | 203 | Transport-agnostic session controller for agent orchestration. |
+| `engine` | 1481 | 29 | Host-facing reusable engine contracts for model/tool turn policy that compose alongside `clankers-core` through controller/agent adapter seams. |
+| `controller` | 9194 | 209 | Transport-agnostic session controller for agent orchestration. |
 
 ### LLM routing
 
