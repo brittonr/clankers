@@ -110,6 +110,46 @@ test llm_contract_sources_reject_shell_runtime_dependencies ... ok
 test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
 ```
 
-### V5 — pending
+### V5 — final focused compatibility validation
 
-No command output captured yet.
+Command:
+
+```bash
+./scripts/check-llm-contract-boundary.sh && \
+  cargo test -p clanker-message --lib && \
+  cargo check -p clanker-router --tests && \
+  cargo test -p clankers-provider --lib tests:: && \
+  cargo test -p clankers-engine --lib && \
+  cargo test -p clankers-agent --lib engine_messages_from_agent_messages && \
+  cargo test -p clankers-agent --lib completion_request_from_engine_request && \
+  cargo test -p clankers-controller --test fcis_shell_boundaries
+```
+
+Result: PASS (`pueue` task 147)
+
+Output excerpt:
+
+```text
+ok: clankers-engine normal-edge tree excludes forbidden crates
+ok: clanker-message normal-edge tree excludes forbidden crates
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+Finished `dev` profile [optimized + debuginfo] target(s) in 9.70s
+
+test tests::moved_contract_json_shapes_match_inline_golden ... ok
+test tests::provider_request_shared_fields_match_inline_golden ... ok
+test tests::router_and_provider_contract_paths_resolve_to_message_types ... ok
+test tests::router_and_provider_do_not_define_independent_stream_delta ... ok
+test result: ok. 167 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 7.21s
+
+test result: ok. 28 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+test turn::execution::tests::engine_messages_from_agent_messages_excludes_shell_only_variants ... ok
+test turn::execution::tests::engine_messages_from_agent_messages_preserves_conversation_variants ... ok
+
+test turn::execution::tests::completion_request_from_engine_request_rejects_malformed_tool_message ... ok
+test turn::execution::tests::completion_request_from_engine_request_converts_native_provider_messages ... ok
+
+test result: ok. 24 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+```
