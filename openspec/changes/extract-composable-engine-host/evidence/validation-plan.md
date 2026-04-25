@@ -28,3 +28,10 @@ Artifact-Type: validation-plan
 ## Final acceptance
 
 Record exact command output before marking V6 complete.
+
+## Recorded focused results
+
+### V1 stream accumulator and provider-normalizer seam
+
+- `cargo test -p clankers-agent --lib turn:: && cargo test -p clankers-engine-host --lib`: PASS.
+- Coverage: host stream accumulator positive text/thinking/tool JSON/usage/model/stop cases; negative malformed JSON, non-object JSON, missing starts, duplicate indexes, late deltas, provider errors preserving status/retryability, usage-only and empty stops; provider stream normalizer feeds provider-native `StreamEvent` data into `HostStreamEvent` and `StreamAccumulator`.

@@ -9,6 +9,8 @@ use clankers_engine::EngineMessage;
 use clankers_engine::EngineMessageRole;
 use clankers_engine::EngineModelRequest;
 use clankers_engine::EngineToolCall;
+use clankers_engine_host::stream::HostStreamEvent;
+use clankers_engine_host::stream::ProviderStreamError;
 use clankers_provider::CompletionRequest;
 use clankers_provider::Provider;
 use clankers_provider::Usage;
@@ -35,6 +37,94 @@ use crate::tool::progress::ToolResultAccumulator;
 
 const ENGINE_REQUEST_ASSISTANT_MODEL: &str = "engine-assistant";
 const ENGINE_REQUEST_TOOL_NAME: &str = "engine-tool";
+
+pub(super) struct ProviderStreamNormalizer {
+    model: Option<String>,
+    stop_reason: StopReason,
+}
+
+impl ProviderStreamNormalizer {
+    #[must_use]
+    pub(super) fn new() -> Self {
+        Self {
+            model: None,
+            stop_reason: StopReason::Stop,
+        }
+    }
+
+    pub(super) fn push(&mut self, event: StreamEvent) -> Vec<HostStreamEvent> {
+        match event {
+            StreamEvent::MessageStart { message } => {
+                self.model = Some(message.model);
+                Vec::new()
+            }
+            StreamEvent::ContentBlockStart { index, content_block } => {
+                host_events_from_content_block_start(index, content_block)
+            }
+            StreamEvent::ContentBlockDelta { index, delta } => host_events_from_content_delta(index, delta),
+            StreamEvent::ContentBlockStop { index } => vec![HostStreamEvent::ContentBlockStop { index }],
+            StreamEvent::MessageDelta { stop_reason, usage } => {
+                if let Some(reason) = stop_reason {
+                    self.stop_reason = super::parse_stop_reason(&reason);
+                }
+                vec![HostStreamEvent::Usage { usage }]
+            }
+            StreamEvent::MessageStop => vec![HostStreamEvent::MessageStop {
+                model: self.model.clone(),
+                stop_reason: self.stop_reason.clone(),
+            }],
+            StreamEvent::Error { error } => vec![HostStreamEvent::ProviderError {
+                error: ProviderStreamError {
+                    message: error,
+                    status: None,
+                    retryable: false,
+                },
+            }],
+        }
+    }
+}
+
+fn host_events_from_content_block_start(index: usize, content_block: Content) -> Vec<HostStreamEvent> {
+    match content_block {
+        Content::Text { text } => {
+            let mut events = vec![HostStreamEvent::TextStart { index }];
+            if !text.is_empty() {
+                events.push(HostStreamEvent::TextDelta { index, text });
+            }
+            events
+        }
+        Content::Thinking { thinking, signature } => {
+            let mut events = vec![HostStreamEvent::ThinkingStart { index, signature }];
+            if !thinking.is_empty() {
+                events.push(HostStreamEvent::ThinkingDelta { index, thinking });
+            }
+            events
+        }
+        Content::ToolUse { id, name, input } => {
+            let mut events = vec![HostStreamEvent::ToolUseStart { index, id, name }];
+            if input.is_object() && input.as_object().is_some_and(|object| !object.is_empty()) {
+                events.push(HostStreamEvent::ToolUseJsonDelta {
+                    index,
+                    json: input.to_string(),
+                });
+            }
+            events
+        }
+        Content::Image { .. } | Content::ToolResult { .. } => Vec::new(),
+    }
+}
+
+fn host_events_from_content_delta(index: usize, delta: ContentDelta) -> Vec<HostStreamEvent> {
+    match delta {
+        ContentDelta::TextDelta { text } => vec![HostStreamEvent::TextDelta { index, text }],
+        ContentDelta::ThinkingDelta { thinking } => vec![HostStreamEvent::ThinkingDelta { index, thinking }],
+        ContentDelta::InputJsonDelta { partial_json } => vec![HostStreamEvent::ToolUseJsonDelta {
+            index,
+            json: partial_json,
+        }],
+        ContentDelta::SignatureDelta { .. } => Vec::new(),
+    }
+}
 
 pub(super) fn tool_definitions_from_tool_catalog(
     controller_tools: &HashMap<String, Arc<dyn Tool>>,
@@ -804,6 +894,54 @@ mod tests {
             cache_ttl: None,
             session_id: "session-1".to_string(),
         }
+    }
+
+    #[test]
+    fn provider_stream_normalizer_feeds_host_accumulator() {
+        let mut normalizer = ProviderStreamNormalizer::new();
+        let provider_events = vec![
+            StreamEvent::MessageStart {
+                message: MessageMetadata {
+                    id: "msg-1".to_string(),
+                    model: "test-model".to_string(),
+                    role: "assistant".to_string(),
+                },
+            },
+            StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: Content::Text { text: String::new() },
+            },
+            StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: ContentDelta::TextDelta {
+                    text: "hello".to_string(),
+                },
+            },
+            StreamEvent::ContentBlockStop { index: 0 },
+            StreamEvent::MessageDelta {
+                stop_reason: Some("stop".to_string()),
+                usage: Usage {
+                    input_tokens: 1,
+                    output_tokens: 2,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                },
+            },
+            StreamEvent::MessageStop,
+        ];
+        let mut accumulator = clankers_engine_host::stream::StreamAccumulator::new();
+
+        for provider_event in provider_events {
+            for host_event in normalizer.push(provider_event) {
+                accumulator.push(host_event).expect("host event should fold");
+            }
+        }
+        let folded = accumulator.finish().expect("stream should finish");
+
+        assert_eq!(folded.model.as_deref(), Some("test-model"));
+        assert_eq!(folded.stop_reason, Some(StopReason::Stop));
+        assert_eq!(folded.usage.expect("usage should exist").output_tokens, 2);
+        assert!(matches!(&folded.content[0], Content::Text { text } if text == "hello"));
     }
 
     #[test]
