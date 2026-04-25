@@ -7,8 +7,8 @@
     "path+file:///home/brittonr/git/clankers/crates/clanker-plugin-sdk#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clanker-router#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clanker-tui-types#0.1.0",
-    "path+file:///home/brittonr/git/clankers#clankers@0.1.0",
-    "path+file:///home/brittonr/git/clankers#clankers@0.1.0",
+    "path+file:///home/brittonr/git/clankers#0.1.0",
+    "path+file:///home/brittonr/git/clankers#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-agent#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-agent-defs#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-autoresearch#0.1.0",
@@ -17,6 +17,7 @@
     "path+file:///home/brittonr/git/clankers/crates/clankers-core#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-db#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-engine#0.1.0",
+    "path+file:///home/brittonr/git/clankers/crates/clankers-engine-host#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-hooks#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-matrix#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-model-selection#0.1.0",
@@ -28,6 +29,7 @@
     "path+file:///home/brittonr/git/clankers/crates/clankers-provider#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-session#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-skills#0.1.0",
+    "path+file:///home/brittonr/git/clankers/crates/clankers-tool-host#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-tts#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-tui#0.1.0",
     "path+file:///home/brittonr/git/clankers/crates/clankers-ucan#0.1.0",
@@ -42,7 +44,7 @@
     "clanker-plugin-sdk": "path+file:///home/brittonr/git/clankers/crates/clanker-plugin-sdk#0.1.0",
     "clanker-router": "path+file:///home/brittonr/git/clankers/crates/clanker-router#0.1.0",
     "clanker-tui-types": "path+file:///home/brittonr/git/clankers/crates/clanker-tui-types#0.1.0",
-    "clankers": "path+file:///home/brittonr/git/clankers#clankers@0.1.0",
+    "clankers": "path+file:///home/brittonr/git/clankers#0.1.0",
     "clankers-agent": "path+file:///home/brittonr/git/clankers/crates/clankers-agent#0.1.0",
     "clankers-agent-defs": "path+file:///home/brittonr/git/clankers/crates/clankers-agent-defs#0.1.0",
     "clankers-autoresearch": "path+file:///home/brittonr/git/clankers/crates/clankers-autoresearch#0.1.0",
@@ -51,6 +53,7 @@
     "clankers-core": "path+file:///home/brittonr/git/clankers/crates/clankers-core#0.1.0",
     "clankers-db": "path+file:///home/brittonr/git/clankers/crates/clankers-db#0.1.0",
     "clankers-engine": "path+file:///home/brittonr/git/clankers/crates/clankers-engine#0.1.0",
+    "clankers-engine-host": "path+file:///home/brittonr/git/clankers/crates/clankers-engine-host#0.1.0",
     "clankers-hooks": "path+file:///home/brittonr/git/clankers/crates/clankers-hooks#0.1.0",
     "clankers-matrix": "path+file:///home/brittonr/git/clankers/crates/clankers-matrix#0.1.0",
     "clankers-model-selection": "path+file:///home/brittonr/git/clankers/crates/clankers-model-selection#0.1.0",
@@ -62,6 +65,7 @@
     "clankers-provider": "path+file:///home/brittonr/git/clankers/crates/clankers-provider#0.1.0",
     "clankers-session": "path+file:///home/brittonr/git/clankers/crates/clankers-session#0.1.0",
     "clankers-skills": "path+file:///home/brittonr/git/clankers/crates/clankers-skills#0.1.0",
+    "clankers-tool-host": "path+file:///home/brittonr/git/clankers/crates/clankers-tool-host#0.1.0",
     "clankers-tts": "path+file:///home/brittonr/git/clankers/crates/clankers-tts#0.1.0",
     "clankers-tui": "path+file:///home/brittonr/git/clankers/crates/clankers-tui#0.1.0",
     "clankers-ucan": "path+file:///home/brittonr/git/clankers/crates/clankers-ucan#0.1.0",
@@ -69,8 +73,8 @@
     "clankers-zellij": "path+file:///home/brittonr/git/clankers/crates/clankers-zellij#0.1.0",
     "openspec": "path+file:///home/brittonr/git/clankers/vendor/openspec#0.1.0"
   },
-  "cargoLockHash": "a2e8d52f0cb4929f72d1bfa1dc064ce443fbb44f171c4846d16d01db02d8e549",
-  "inputsHash": "c06d45c4bea4db6cc8ec04ca2b33bf196c6b7dac95292370cd7b2f818df8bf76",
+  "cargoLockHash": "197f7c0f14e1f1d7a55a28d53575e4af6b549ec5a4cb405914429fd3f136d1a3",
+  "inputsHash": "c65906fd285c75f4f54b47b6e20d7f0684456f07dfbac03a1f35d8665db21c89",
   "crates": {
     "git+https://git.snix.dev/snix/snix.git?rev=8fe3bade2013befd5ca98aa42224fa2a23551559#nix-compat@0.1.0": {
       "crateName": "nix-compat",
@@ -841,7 +845,7 @@
       "description": "Pure-logic modules shared between meteorite and subwayrat",
       "license": "MIT"
     },
-    "path+file:///home/brittonr/git/clankers#clankers@0.1.0": {
+    "path+file:///home/brittonr/git/clankers#0.1.0": {
       "crateName": "clankers",
       "version": "0.1.0",
       "edition": "2024",
@@ -968,6 +972,10 @@
         {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-skills#0.1.0",
           "externCrateName": "clankers_skills"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-tool-host#0.1.0",
+          "externCrateName": "clankers_tool_host"
         },
         {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-tts#0.1.0",
@@ -1282,10 +1290,6 @@
           "externCrateName": "chrono"
         },
         {
-          "packageId": "path+file:///home/brittonr/git/clankers/crates/clanker-router#0.1.0",
-          "externCrateName": "clanker_router"
-        },
-        {
           "packageId": "registry+https://github.com/rust-lang/crates.io-index#hex@0.4.3",
           "externCrateName": "hex"
         },
@@ -1388,6 +1392,10 @@
         {
           "packageId": "registry+https://github.com/rust-lang/crates.io-index#chrono@0.4.44",
           "externCrateName": "chrono"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clanker-message#0.1.0",
+          "externCrateName": "clanker_message"
         },
         {
           "packageId": "registry+https://github.com/rust-lang/crates.io-index#dirs@6.0.0",
@@ -1933,6 +1941,10 @@
           "externCrateName": "clankers_db"
         },
         {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-engine#0.1.0",
+          "externCrateName": "clankers_engine"
+        },
+        {
           "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-hooks#0.1.0",
           "externCrateName": "clankers_hooks"
         },
@@ -2099,18 +2111,6 @@
           "externCrateName": "clanker_message"
         },
         {
-          "packageId": "path+file:///home/brittonr/git/clankers/crates/clanker-router#0.1.0",
-          "externCrateName": "clanker_router"
-        },
-        {
-          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-core#0.1.0",
-          "externCrateName": "clankers_core"
-        },
-        {
-          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-provider#0.1.0",
-          "externCrateName": "clankers_provider"
-        },
-        {
           "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
           "externCrateName": "serde_json"
         }
@@ -2132,6 +2132,54 @@
       "crateBin": [],
       "links": null,
       "description": "Host-facing reusable agent engine contracts for clankers",
+      "license": "AGPL-3.0-or-later"
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-engine-host#0.1.0": {
+      "crateName": "clankers-engine-host",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-engine-host"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clanker-message#0.1.0",
+          "externCrateName": "clanker_message"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-engine#0.1.0",
+          "externCrateName": "clankers_engine"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-tool-host#0.1.0",
+          "externCrateName": "clankers_tool_host"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
+          "externCrateName": "serde_json"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.18",
+          "externCrateName": "thiserror"
+        }
+      ],
+      "buildDependencies": [],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
       "license": "AGPL-3.0-or-later"
     },
     "path+file:///home/brittonr/git/clankers/crates/clankers-hooks#0.1.0": {
@@ -2773,6 +2821,50 @@
           "externCrateName": "tempfile"
         }
       ],
+      "procMacro": false,
+      "build": null,
+      "libPath": null,
+      "libName": null,
+      "libCrateTypes": [
+        "lib"
+      ],
+      "crateBin": [],
+      "links": null,
+      "license": "AGPL-3.0-or-later"
+    },
+    "path+file:///home/brittonr/git/clankers/crates/clankers-tool-host#0.1.0": {
+      "crateName": "clankers-tool-host",
+      "version": "0.1.0",
+      "edition": "2024",
+      "sha256": null,
+      "source": {
+        "type": "local",
+        "path": "crates/clankers-tool-host"
+      },
+      "features": [],
+      "dependencies": [
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clanker-message#0.1.0",
+          "externCrateName": "clanker_message"
+        },
+        {
+          "packageId": "path+file:///home/brittonr/git/clankers/crates/clankers-engine#0.1.0",
+          "externCrateName": "clankers_engine"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde@1.0.228",
+          "externCrateName": "serde"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#serde_json@1.0.149",
+          "externCrateName": "serde_json"
+        },
+        {
+          "packageId": "registry+https://github.com/rust-lang/crates.io-index#thiserror@2.0.18",
+          "externCrateName": "thiserror"
+        }
+      ],
+      "buildDependencies": [],
       "procMacro": false,
       "build": null,
       "libPath": null,

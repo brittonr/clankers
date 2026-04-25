@@ -73,15 +73,14 @@ trait RevocationStore
 
 Message types for LLM agent conversations
 
-**904** lines of Rust · **25** tests
-
-**Workspace deps:** `clanker-router`
+**882** lines of Rust · **25** tests
 
 <details><summary>Public API</summary>
 
 ```
 enum AgentMessage
 enum Content
+enum ContentDelta
 enum ImageSource
 enum StopReason
 enum StreamEvent
@@ -103,6 +102,7 @@ fn text
 fn timestamp
 fn total_bytes
 fn total_lines
+fn total_tokens
 fn with_config
 fn with_details
 fn with_sequence
@@ -112,11 +112,15 @@ struct BranchSummaryMessage
 struct CompactionSummaryMessage
 struct CustomMessage
 struct MessageId
+struct MessageMetadata
 struct ResultChunk
+struct ThinkingConfig
+struct ToolDefinition
 struct ToolResult
 struct ToolResultAccumulator
 struct ToolResultMessage
 struct TruncationConfig
+struct Usage
 struct UserMessage
 ```
 
@@ -169,7 +173,9 @@ trait Args
 
 clanker-router — Model router and auth gateway for LLM providers
 
-**22100** lines of Rust · **382** tests
+**22131** lines of Rust · **382** tests
+
+**Workspace deps:** `clanker-message`
 
 <details><summary>Public API</summary>
 
@@ -179,7 +185,6 @@ enum AuthScheme
 enum CircuitState
 enum ConsensusStrategy
 enum ContentBlock
-enum ContentDelta
 enum Credential
 enum EntitlementState
 enum Error
@@ -478,7 +483,6 @@ struct HubSibling
 struct IrohTunnel
 struct LegacyOAuthCredentials
 struct LogEntry
-struct MessageMetadata
 struct Model
 struct ModelAliases
 struct ModelCatalog
@@ -527,9 +531,6 @@ struct SourcedAccountInfo
 struct SseEvent
 struct SseLineReader
 struct TaggedStreamEvent
-struct ThinkingConfig
-struct ToolDefinition
-struct Usage
 struct UsageTracker
 trait Provider
 trait SseEventHandler
@@ -643,7 +644,7 @@ trait ProcessDataSource
 
 Agent core — turn loop, event bus, tool interface, context management
 
-**7187** lines of Rust · **132** tests
+**7551** lines of Rust · **138** tests
 
 **Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-router`, `clanker-tui-types`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-hooks`, `clankers-model-selection`, `clankers-procmon`, `clankers-prompts`, `clankers-provider`, `clankers-skills`, `clankers-util`
 
@@ -914,9 +915,9 @@ struct ThemeDef
 
 Transport-agnostic session controller for agent orchestration.
 
-**7575** lines of Rust · **176** tests
+**8946** lines of Rust · **203** tests
 
-**Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-tui-types`, `clankers-agent`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-hooks`, `clankers-protocol`, `clankers-provider`, `clankers-session`
+**Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-tui-types`, `clankers-agent`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-hooks`, `clankers-protocol`, `clankers-provider`, `clankers-session`
 
 <details><summary>Public API</summary>
 
@@ -932,6 +933,7 @@ fn attach_error
 fn attach_ok
 fn avg_duration_ms
 fn bind_session_socket
+fn cancelled
 fn check_post_prompt
 fn clamp_capabilities
 fn cleanup_socket_dir
@@ -1059,7 +1061,7 @@ trait ToolRebuilder
 
 ## clankers-core
 
-**1565** lines of Rust · **39** tests
+**1643** lines of Rust · **42** tests
 
 <details><summary>Public API</summary>
 
@@ -1283,11 +1285,11 @@ struct UsageTracker
 
 ## clankers-engine
 
-Host-facing reusable engine contracts that sit above `clankers-core` and below controller, agent-runtime, and UI/transport shells.
+Host-facing reusable engine contracts for model/tool turn policy that compose alongside `clankers-core` through controller/agent adapter seams.
 
-**1446** lines of Rust · **28** tests
+**1472** lines of Rust · **29** tests
 
-**Workspace deps:** `clanker-message`, `clanker-router`, `clankers-core`, `clankers-provider`
+**Workspace deps:** `clanker-message`
 
 <details><summary>Public API</summary>
 
@@ -1300,6 +1302,8 @@ enum EngineRejection
 enum EngineTurnPhase
 fn new
 fn reduce
+fn submit_user_prompt
+fn turn_finished_stop_reason
 struct EngineBufferedToolResult
 struct EngineCorrelationId
 struct EngineMessage
@@ -1317,6 +1321,50 @@ struct EngineToolCall
 </details>
 
 [Source](https://github.com/brittonr/clankers/tree/main/crates/clankers-engine/src/)
+
+---
+
+## clankers-engine-host
+
+Reusable async host runner for `clankers-engine` effects.
+
+**1089** lines of Rust · **16** tests
+
+**Workspace deps:** `clanker-message`, `clankers-engine`, `clankers-tool-host`
+
+<details><summary>Public API</summary>
+
+```
+enum HostAdapterComponent
+enum HostAdapterError
+enum HostStreamEvent
+enum ModelHostOutcome
+enum StreamAccumulatorError
+enum UsageObservationKind
+fn failed
+fn finish
+fn message
+fn new
+fn push
+fn run_engine_turn
+struct AdapterDiagnostic
+struct EngineRunReport
+struct EngineRunSeed
+struct HostAdapters
+struct ProviderStreamError
+struct StreamAccumulator
+struct StreamFoldResult
+struct UsageObservation
+trait CancellationSource
+trait EngineEventSink
+trait ModelHost
+trait RetrySleeper
+trait UsageObserver
+```
+
+</details>
+
+[Source](https://github.com/brittonr/clankers/tree/main/crates/clankers-engine-host/src/)
 
 ---
 
@@ -1750,7 +1798,7 @@ struct ToolInfo
 
 LLM provider abstraction
 
-**8200** lines of Rust · **163** tests
+**8425** lines of Rust · **167** tests
 
 **Workspace deps:** `clanker-message`, `clanker-router`, `clanker-tui-types`
 
@@ -1979,6 +2027,40 @@ struct Skill
 </details>
 
 [Source](https://github.com/brittonr/clankers/tree/main/crates/clankers-skills/src/)
+
+---
+
+## clankers-tool-host
+
+Reusable tool execution contracts for engine-host runners.
+
+**222** lines of Rust · **5** tests
+
+**Workspace deps:** `clanker-message`, `clankers-engine`
+
+<details><summary>Public API</summary>
+
+```
+enum CapabilityDecision
+enum ToolHostError
+enum ToolHostOutcome
+fn finish
+fn new
+fn push
+fn tool_call_id
+struct ToolDescriptor
+struct ToolOutputAccumulator
+struct ToolTruncationLimits
+struct ToolTruncationMetadata
+trait CapabilityChecker
+trait ToolCatalog
+trait ToolExecutor
+trait ToolHook
+```
+
+</details>
+
+[Source](https://github.com/brittonr/clankers/tree/main/crates/clankers-tool-host/src/)
 
 ---
 

@@ -10,25 +10,25 @@
 
 | Metric | Count |
 |--------|------:|
-| Workspace crates | 29 |
-| Lines of Rust (crates/) | 102,059 |
+| Workspace crates | 31 |
+| Lines of Rust (crates/) | 105,443 |
 | Lines of Rust (src/) | 47,773 |
-| **Total lines of Rust** | **149,832** |
-| Tests (crates/) | 2,172 |
+| **Total lines of Rust** | **153,216** |
+| Tests (crates/) | 2,234 |
 | Tests (src/) | 730 |
-| **Total tests** | **2,902** |
-| Public API items | 2,035 |
+| **Total tests** | **2,964** |
+| Public API items | 2,079 |
 
 ## Crates by size
 
 | Crate | Lines | Tests |
 |-------|------:|------:|
 | `src/ (binary)` | 47,773 | 730 |
-| `clanker-router` | 22,100 | 382 |
+| `clanker-router` | 22,131 | 382 |
 | `clankers-tui` | 16,617 | 279 |
-| `clankers-provider` | 8,200 | 163 |
-| `clankers-controller` | 7,575 | 176 |
-| `clankers-agent` | 7,187 | 132 |
+| `clankers-controller` | 8,946 | 203 |
+| `clankers-provider` | 8,425 | 167 |
+| `clankers-agent` | 7,551 | 138 |
 | `clankers-db` | 6,698 | 206 |
 | `clankers-session` | 4,014 | 102 |
 | `clankers-plugin` | 3,725 | 39 |
@@ -37,20 +37,22 @@
 | `clanker-tui-types` | 1,815 | 14 |
 | `clanker-auth` | 1,813 | 21 |
 | `clankers-config` | 1,702 | 43 |
-| `clankers-core` | 1,565 | 39 |
+| `clankers-core` | 1,643 | 42 |
 | `clankers-matrix` | 1,501 | 8 |
 | `clankers-model-selection` | 1,501 | 49 |
-| `clankers-engine` | 1,446 | 28 |
+| `clankers-engine` | 1,472 | 29 |
 | `clankers-ucan` | 1,436 | 52 |
 | `clankers-tts` | 1,277 | 49 |
 | `clankers-nix` | 1,262 | 61 |
 | `clankers-hooks` | 1,225 | 32 |
-| `clanker-message` | 904 | 25 |
+| `clankers-engine-host` | 1,089 | 16 |
 | `clankers-zellij` | 896 | 39 |
+| `clanker-message` | 882 | 25 |
 | `clankers-agent-defs` | 873 | 29 |
 | `clankers-skills` | 756 | 17 |
 | `clankers-autoresearch` | 628 | 19 |
 | `clanker-plugin-sdk` | 530 | 0 |
 | `clankers-procmon` | 468 | 5 |
+| `clankers-tool-host` | 222 | 5 |
 | `clankers-prompts` | 163 | 5 |
 

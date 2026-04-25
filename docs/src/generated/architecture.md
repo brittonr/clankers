@@ -12,7 +12,7 @@ Workspace crate dependencies (auto-extracted from Cargo.toml files).
 
 ```mermaid
 graph TD
-    clanker-message --> clanker-router
+    clanker-router --> clanker-message
     agent --> clanker-loop
     agent --> clanker-message
     agent --> clanker-router
@@ -42,14 +42,15 @@ graph TD
     controller --> config
     controller --> core
     controller --> db
+    controller --> engine
     controller --> hooks
     controller --> protocol
     controller --> provider
     controller --> session
     engine --> clanker-message
-    engine --> clanker-router
-    engine --> core
-    engine --> provider
+    engine-host --> clanker-message
+    engine-host --> engine
+    engine-host --> tool-host
     model-selection --> clanker-router
     model-selection --> clanker-tui-types
     plugin --> clanker-tui-types
@@ -59,6 +60,8 @@ graph TD
     provider --> clanker-router
     provider --> clanker-tui-types
     session --> clanker-message
+    tool-host --> clanker-message
+    tool-host --> engine
     tui --> clanker-tui-types
     tui --> autoresearch
     tui --> protocol
@@ -82,19 +85,19 @@ graph TD
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `clanker-message` | 904 | 25 | Message types for LLM agent conversations |
-| `agent` | 7187 | 132 | Agent core — turn loop, event bus, tool interface, context management |
+| `clanker-message` | 882 | 25 | Message types for LLM agent conversations |
+| `agent` | 7551 | 138 | Agent core — turn loop, event bus, tool interface, context management |
 | `agent-defs` | 873 | 29 | Agent definition system (first-class) |
-| `core` | 1565 | 39 |  |
-| `engine` | 1446 | 28 | Host-facing reusable engine contracts that sit above `clankers-core` and below controller, agent-runtime, and UI/transport shells. |
-| `controller` | 7575 | 176 | Transport-agnostic session controller for agent orchestration. |
+| `core` | 1643 | 42 |  |
+| `engine` | 1472 | 29 | Host-facing reusable engine contracts for model/tool turn policy that compose alongside `clankers-core` through controller/agent adapter seams. |
+| `controller` | 8946 | 203 | Transport-agnostic session controller for agent orchestration. |
 
 ### LLM routing
 
 | Crate | Lines | Tests | Description |
 |-------|------:|------:|-------------|
-| `clanker-router` | 22100 | 382 | clanker-router — Model router and auth gateway for LLM providers |
-| `provider` | 8200 | 163 | LLM provider abstraction |
+| `clanker-router` | 22131 | 382 | clanker-router — Model router and auth gateway for LLM providers |
+| `provider` | 8425 | 167 | LLM provider abstraction |
 | `model-selection` | 1501 | 49 | Multi-model routing policy |
 | `prompts` | 163 | 5 | Prompt templates Prompt template scanning and loading |
 

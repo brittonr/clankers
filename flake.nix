@@ -152,10 +152,13 @@
             clankers-agent-defs
             clankers-controller
             clankers-db
+            clankers-engine
+            clankers-engine-host
             clankers-matrix
             clankers-model-selection
             clankers-procmon
             clankers-protocol
+            clankers-tool-host
             clankers-tui
             clankers-zellij
             ;
