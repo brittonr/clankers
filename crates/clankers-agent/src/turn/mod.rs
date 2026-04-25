@@ -8,6 +8,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use clankers_engine::EngineCorrelationId;
 use clankers_engine::EngineEffect;
 use clankers_engine::EngineEvent;
 use clankers_engine::EngineInput;
@@ -15,6 +16,7 @@ use clankers_engine::EngineModelRequest;
 use clankers_engine::EngineModelResponse;
 use clankers_engine::EngineOutcome;
 use clankers_engine::EngineState;
+use clankers_engine::EngineTerminalFailure;
 use clankers_engine::EngineTurnPhase;
 use clankers_engine::reduce;
 use clankers_model_selection::cost_tracker::CostTracker;
@@ -45,7 +47,7 @@ pub struct TurnConfig {
     pub max_tokens: Option<usize>,
     pub temperature: Option<f64>,
     pub thinking: Option<ThinkingConfig>,
-    pub max_turns: u32,
+    pub model_request_slot_budget: u32,
     /// Output truncation config for tool results
     pub output_truncation: clanker_loop::OutputTruncationConfig,
     pub no_cache: bool,
@@ -193,7 +195,7 @@ fn request_model_effect(outcome: &EngineOutcome) -> Result<EngineModelRequest> {
                     });
                 }
             }
-            EngineEffect::ExecuteTool(_) | EngineEffect::EmitEvent(_) => {}
+            EngineEffect::ExecuteTool(_) | EngineEffect::ScheduleRetry { .. } | EngineEffect::EmitEvent(_) => {}
         }
     }
 
@@ -202,6 +204,32 @@ fn request_model_effect(outcome: &EngineOutcome) -> Result<EngineModelRequest> {
         status: None,
         retryable: false,
     })
+}
+
+fn schedule_retry_effect(outcome: &EngineOutcome) -> Result<Option<(EngineCorrelationId, std::time::Duration)>> {
+    let mut scheduled_retry = None;
+
+    for effect in &outcome.effects {
+        if let EngineEffect::ScheduleRetry { request_id, delay } = effect
+            && scheduled_retry.replace((request_id.clone(), *delay)).is_some()
+        {
+            return Err(AgentError::ProviderStreaming {
+                message: "engine emitted multiple retry-schedule effects".to_string(),
+                status: None,
+                retryable: false,
+            });
+        }
+    }
+
+    Ok(scheduled_retry)
+}
+
+fn engine_failure_from_agent_error(error: &AgentError) -> EngineTerminalFailure {
+    EngineTerminalFailure {
+        message: error.to_string(),
+        status: error.status_code(),
+        retryable: error.is_retryable(),
+    }
 }
 
 fn decide_model_completion(outcome: &EngineOutcome) -> Result<EngineModelDecision> {
@@ -222,7 +250,7 @@ fn decide_model_completion(outcome: &EngineOutcome) -> Result<EngineModelDecisio
                     });
                 }
             }
-            EngineEffect::RequestModel(_) | EngineEffect::EmitEvent(_) => {}
+            EngineEffect::RequestModel(_) | EngineEffect::ScheduleRetry { .. } | EngineEffect::EmitEvent(_) => {}
         }
     }
 
@@ -317,10 +345,9 @@ pub async fn run_turn_loop(
     capability_gate: Option<&Arc<dyn crate::tool::CapabilityGate>>,
     user_tool_filter: Option<&Vec<String>>,
 ) -> Result<()> {
-    const MAX_TURN_RETRIES: u32 = 2;
-    const RETRY_BACKOFF_BASE_SECONDS: u64 = 1;
-    const RETRY_BACKOFF_EXPONENT_STEP: u32 = 2;
     const TURN_CANCELLED_REASON: &str = "turn cancelled";
+    const TURN_INDEX_INITIAL: u32 = 0;
+    const TURN_INDEX_STEP: u32 = 1;
 
     let tool_defs = tool_definitions_from_controller_inventory(controller_tools);
     let mut cumulative_usage = Usage::default();
@@ -339,6 +366,7 @@ pub async fn run_turn_loop(
                 no_cache: config.no_cache,
                 cache_ttl: config.cache_ttl.clone(),
                 session_id: session_id.to_string(),
+                model_request_slot_budget: config.model_request_slot_budget,
             },
         }),
         "prompt submission",
@@ -346,8 +374,9 @@ pub async fn run_turn_loop(
     emit_engine_notice_effects(&submit_outcome, event_tx);
     engine_state = submit_outcome.next_state.clone();
     let mut engine_outcome = submit_outcome;
+    let mut turn_index = TURN_INDEX_INITIAL;
 
-    for turn_index in 0..config.max_turns {
+    loop {
         check_model_switch(&mut active_model, model_switch_slot, event_tx)?;
         update_engine_model(&mut engine_state, &active_model);
         if cancel.is_cancelled() {
@@ -356,78 +385,60 @@ pub async fn run_turn_loop(
         }
 
         let mut engine_request = request_model_effect(&engine_outcome)?;
-        // The pending request effect was minted before any per-turn model switch for this loop
-        // iteration. Patch the extracted effect after synchronizing the template so the shell
-        // executes the currently selected model without re-owning continuation policy.
+        // The pending request effect may have been minted before a per-turn model switch. Patch
+        // the extracted effect after synchronizing the template so the shell executes the current
+        // model without re-owning continuation policy.
         engine_request.model = active_model.clone();
         event_tx.send(AgentEvent::TurnStart { index: turn_index }).ok();
 
-        let collected = {
-            let mut last_err = None;
-            let mut collected_ok = None;
-            for attempt in 0..=MAX_TURN_RETRIES {
-                let request = completion_request_from_engine_request(&engine_request)?;
-                match stream_model_request(provider, request, event_tx, &cancel).await {
-                    Ok(response) => {
-                        collected_ok = Some(response);
-                        break;
-                    }
-                    Err(AgentError::Cancelled) => {
-                        cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
-                        return Err(AgentError::Cancelled);
-                    }
-                    Err(e) if e.is_retryable() && attempt < MAX_TURN_RETRIES => {
-                        let backoff = std::time::Duration::from_secs(
-                            RETRY_BACKOFF_BASE_SECONDS << (attempt * RETRY_BACKOFF_EXPONENT_STEP),
-                        );
-                        tracing::warn!(
-                            attempt = attempt + 1,
-                            max_retries = MAX_TURN_RETRIES,
-                            error = %e,
-                            ?backoff,
-                            "Retryable turn error, backing off before retry",
-                        );
-                        tokio::select! {
-                            () = cancel.cancelled() => {
-                                cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
-                                return Err(AgentError::Cancelled);
-                            }
-                            () = tokio::time::sleep(backoff) => {}
-                        }
-                        last_err = Some(e);
-                    }
-                    Err(e) => {
-                        let failure_outcome = engine_outcome_or_error(
-                            reduce(&engine_state, &EngineInput::ModelFailed {
-                                request_id: engine_request.request_id.clone(),
-                                error: e.to_string(),
-                            }),
-                            "model failure",
-                        )?;
-                        emit_engine_notice_effects(&failure_outcome, event_tx);
-                        return Err(e);
-                    }
+        let collected = loop {
+            let request = completion_request_from_engine_request(&engine_request)?;
+            match stream_model_request(provider, request, event_tx, &cancel).await {
+                Ok(response) => break response,
+                Err(AgentError::Cancelled) => {
+                    cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
+                    return Err(AgentError::Cancelled);
                 }
-            }
-            match (collected_ok, last_err) {
-                (Some(response), _) => response,
-                (None, Some(error)) => {
+                Err(error) => {
+                    let failure = engine_failure_from_agent_error(&error);
                     let failure_outcome = engine_outcome_or_error(
                         reduce(&engine_state, &EngineInput::ModelFailed {
                             request_id: engine_request.request_id.clone(),
-                            error: error.to_string(),
+                            failure,
                         }),
-                        "model failure after retries",
+                        "model failure",
                     )?;
                     emit_engine_notice_effects(&failure_outcome, event_tx);
-                    return Err(error);
-                }
-                (None, None) => {
-                    return Err(AgentError::ProviderStreaming {
-                        message: "turn retry loop ended without a response or terminal error".to_string(),
-                        status: None,
-                        retryable: false,
-                    });
+
+                    let Some((retry_request_id, retry_delay)) = schedule_retry_effect(&failure_outcome)? else {
+                        return Err(error);
+                    };
+
+                    tracing::warn!(
+                        error = %error,
+                        ?retry_delay,
+                        "Engine scheduled retryable turn error backoff",
+                    );
+                    engine_state = failure_outcome.next_state.clone();
+                    tokio::select! {
+                        () = cancel.cancelled() => {
+                            cancel_active_engine_turn(&engine_state, event_tx, TURN_CANCELLED_REASON)?;
+                            return Err(AgentError::Cancelled);
+                        }
+                        () = tokio::time::sleep(retry_delay) => {}
+                    }
+
+                    let retry_ready_outcome = engine_outcome_or_error(
+                        reduce(&engine_state, &EngineInput::RetryReady {
+                            request_id: retry_request_id,
+                        }),
+                        "retry ready",
+                    )?;
+                    emit_engine_notice_effects(&retry_ready_outcome, event_tx);
+                    engine_state = retry_ready_outcome.next_state.clone();
+                    engine_outcome = retry_ready_outcome;
+                    engine_request = request_model_effect(&engine_outcome)?;
+                    engine_request.model = active_model.clone();
                 }
             }
         };
@@ -538,14 +549,13 @@ pub async fn run_turn_loop(
                     });
                 };
                 engine_outcome = next_outcome;
-                // The current engine slice always continues back to a model request after the
-                // last tool result, but keep the defensive terminal check in case a later slice
-                // adds direct tool-feedback terminalization.
                 if engine_state.phase == EngineTurnPhase::Finished {
                     break;
                 }
             }
         }
+
+        turn_index = turn_index.saturating_add(TURN_INDEX_STEP);
     }
 
     Ok(())
@@ -1198,9 +1208,24 @@ mod tests {
 
     use tokio::sync::mpsc;
 
+    const RETRYABLE_PROVIDER_STATUS: u16 = 502;
+    const NON_RETRYABLE_PROVIDER_STATUS: u16 = 400;
+    const SINGLE_PROVIDER_FAILURE: usize = 1;
+    const ALWAYS_FAIL_PROVIDER_FAILURES: usize = usize::MAX;
+    const EXPECTED_USER_ONLY_MESSAGE_COUNT: usize = 1;
+    const EXPECTED_ASSISTANT_MESSAGE_COUNT: usize = 2;
+    const EXPECTED_TOOL_BUDGET_MESSAGE_COUNT: usize = 3;
+    const EXPECTED_SINGLE_PROVIDER_CALL: usize = 1;
+    const EXPECTED_RETRY_RECOVERY_PROVIDER_CALLS: usize = 2;
+    const EXPECTED_RETRY_EXHAUSTION_PROVIDER_CALLS: usize = 3;
+    const ZERO_MODEL_REQUEST_SLOT_BUDGET: u32 = 0;
+    const SINGLE_MODEL_REQUEST_SLOT_BUDGET: u32 = 1;
+    const RETRY_CANCELLATION_DELAY_MS: u64 = 100;
+
     /// Provider that fails N times with a retryable error, then succeeds.
     struct RetryableFailProvider {
         failures_remaining: AtomicUsize,
+        call_count: AtomicUsize,
         status: u16,
     }
 
@@ -1208,8 +1233,13 @@ mod tests {
         fn new(fail_count: usize, status: u16) -> Self {
             Self {
                 failures_remaining: AtomicUsize::new(fail_count),
+                call_count: AtomicUsize::new(0),
                 status,
             }
+        }
+
+        fn call_count(&self) -> usize {
+            self.call_count.load(Ordering::SeqCst)
         }
     }
 
@@ -1220,6 +1250,7 @@ mod tests {
             _request: clankers_provider::CompletionRequest,
             tx: mpsc::Sender<StreamEvent>,
         ) -> clankers_provider::error::Result<()> {
+            self.call_count.fetch_add(1, Ordering::SeqCst);
             let remaining = self.failures_remaining.fetch_sub(1, Ordering::SeqCst);
             if remaining > 0 {
                 return Err(clankers_provider::error::provider_err_with_status_for_provider(
@@ -1280,7 +1311,7 @@ mod tests {
             max_tokens: Some(100),
             temperature: None,
             thinking: None,
-            max_turns: 1,
+            model_request_slot_budget: 1,
             output_truncation: clanker_loop::OutputTruncationConfig::default(),
             no_cache: true,
             cache_ttl: None,
@@ -1637,6 +1668,7 @@ mod tests {
                 stop_reason: StopReason::Stop,
             })],
             rejection: None,
+            terminal_failure: None,
         };
 
         let decision = decide_model_completion(&outcome).expect("turn finish decision should be accepted");
@@ -1653,6 +1685,7 @@ mod tests {
                 input: json!({"path": "src/main.rs"}),
             })],
             rejection: None,
+            terminal_failure: None,
         };
 
         let decision = decide_model_completion(&outcome).expect("tool decision should be accepted");
@@ -1674,6 +1707,7 @@ mod tests {
                 }),
             ],
             rejection: None,
+            terminal_failure: None,
         };
 
         let error = decide_model_completion(&outcome).expect_err("ambiguous effects should fail closed");
@@ -1786,7 +1820,7 @@ mod tests {
         tools.insert("direct_tool".to_string(), tool);
         let mut messages = vec![make_user_message()];
         let mut config = make_turn_config();
-        config.max_turns = EXPECTED_PROVIDER_CALLS as u32;
+        config.model_request_slot_budget = EXPECTED_PROVIDER_CALLS as u32;
         let (event_tx, _rx) = broadcast::channel(256);
 
         run_turn_loop(
@@ -1933,7 +1967,7 @@ mod tests {
         tools.insert("failing_tool".to_string(), tool);
         let mut messages = vec![make_user_message()];
         let mut config = make_turn_config();
-        config.max_turns = EXPECTED_PROVIDER_CALLS as u32;
+        config.model_request_slot_budget = EXPECTED_PROVIDER_CALLS as u32;
         let (event_tx, _rx) = broadcast::channel(256);
 
         run_turn_loop(
@@ -2049,7 +2083,7 @@ mod tests {
         // Cancel shortly after first failure's backoff starts
         let cancel_clone = cancel.clone();
         tokio::spawn(async move {
-            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            tokio::time::sleep(std::time::Duration::from_millis(RETRY_CANCELLATION_DELAY_MS)).await;
             cancel_clone.cancel();
         });
 
@@ -2072,5 +2106,366 @@ mod tests {
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), AgentError::Cancelled));
+    }
+
+    fn drain_system_messages(rx: &mut broadcast::Receiver<AgentEvent>) -> Vec<String> {
+        let mut messages = Vec::new();
+        loop {
+            match rx.try_recv() {
+                Ok(AgentEvent::SystemMessage { message }) => messages.push(message),
+                Ok(_) => {}
+                Err(tokio::sync::broadcast::error::TryRecvError::Lagged(_)) => continue,
+                Err(tokio::sync::broadcast::error::TryRecvError::Empty)
+                | Err(tokio::sync::broadcast::error::TryRecvError::Closed) => break,
+            }
+        }
+        messages
+    }
+
+    struct ToolUseOnlyProvider {
+        call_count: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl clankers_provider::Provider for ToolUseOnlyProvider {
+        async fn complete(
+            &self,
+            _request: clankers_provider::CompletionRequest,
+            tx: mpsc::Sender<StreamEvent>,
+        ) -> clankers_provider::error::Result<()> {
+            let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
+            tx.send(StreamEvent::MessageStart {
+                message: MessageMetadata {
+                    id: format!("tool-use-only-{call_index}"),
+                    model: "test-model".into(),
+                    role: "assistant".into(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: Content::ToolUse {
+                    id: "call-1".into(),
+                    name: "direct_tool".into(),
+                    input: json!({}),
+                },
+            })
+            .await
+            .ok();
+            tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(StreamEvent::MessageDelta {
+                stop_reason: Some("tool_use".into()),
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 2,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                },
+            })
+            .await
+            .ok();
+            tx.send(StreamEvent::MessageStop).await.ok();
+            Ok(())
+        }
+
+        fn models(&self) -> &[clankers_provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "tool-use-only"
+        }
+    }
+
+    struct MaxTokensProvider {
+        call_count: AtomicUsize,
+    }
+
+    #[async_trait]
+    impl clankers_provider::Provider for MaxTokensProvider {
+        async fn complete(
+            &self,
+            _request: clankers_provider::CompletionRequest,
+            tx: mpsc::Sender<StreamEvent>,
+        ) -> clankers_provider::error::Result<()> {
+            let call_index = self.call_count.fetch_add(1, Ordering::SeqCst);
+            tx.send(StreamEvent::MessageStart {
+                message: MessageMetadata {
+                    id: format!("max-tokens-{call_index}"),
+                    model: "test-model".into(),
+                    role: "assistant".into(),
+                },
+            })
+            .await
+            .ok();
+            tx.send(StreamEvent::ContentBlockStart {
+                index: 0,
+                content_block: Content::Text { text: String::new() },
+            })
+            .await
+            .ok();
+            tx.send(StreamEvent::ContentBlockDelta {
+                index: 0,
+                delta: ContentDelta::TextDelta { text: "partial".into() },
+            })
+            .await
+            .ok();
+            tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+            tx.send(StreamEvent::MessageDelta {
+                stop_reason: Some("max_tokens".into()),
+                usage: Usage {
+                    input_tokens: 10,
+                    output_tokens: 2,
+                    cache_creation_input_tokens: 0,
+                    cache_read_input_tokens: 0,
+                },
+            })
+            .await
+            .ok();
+            tx.send(StreamEvent::MessageStop).await.ok();
+            Ok(())
+        }
+
+        fn models(&self) -> &[clankers_provider::Model] {
+            &[]
+        }
+
+        fn name(&self) -> &str {
+            "max-tokens"
+        }
+    }
+
+    #[tokio::test]
+    async fn engine_retry_stop_policy_retryable_recovery_uses_engine_retry_effect() {
+        let provider = RetryableFailProvider::new(SINGLE_PROVIDER_FAILURE, RETRYABLE_PROVIDER_STATUS);
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let mut messages = vec![make_user_message()];
+        let config = make_turn_config();
+        let (event_tx, _rx) = broadcast::channel(256);
+
+        let result = run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "engine-retry-stop-policy-recovery",
+            None,
+            None,
+            None,
+        )
+        .await;
+
+        assert!(result.is_ok(), "expected retry recovery, got: {:?}", result);
+        assert_eq!(provider.call_count(), EXPECTED_RETRY_RECOVERY_PROVIDER_CALLS);
+        assert_eq!(messages.len(), EXPECTED_ASSISTANT_MESSAGE_COUNT);
+    }
+
+    #[tokio::test]
+    async fn engine_retry_stop_policy_terminal_failures_preserve_original_error_and_messages() {
+        let non_retryable_provider =
+            RetryableFailProvider::new(ALWAYS_FAIL_PROVIDER_FAILURES, NON_RETRYABLE_PROVIDER_STATUS);
+        let retry_exhaustion_provider =
+            RetryableFailProvider::new(ALWAYS_FAIL_PROVIDER_FAILURES, RETRYABLE_PROVIDER_STATUS);
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let config = make_turn_config();
+
+        let mut non_retryable_messages = vec![make_user_message()];
+        let (non_retry_event_tx, _rx) = broadcast::channel(256);
+        let non_retryable_result = run_turn_loop(
+            &non_retryable_provider,
+            &tools,
+            &mut non_retryable_messages,
+            &config,
+            &non_retry_event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "engine-retry-stop-policy-non-retryable",
+            None,
+            None,
+            None,
+        )
+        .await;
+        let non_retryable_error = non_retryable_result.expect_err("non-retryable error should propagate");
+        assert_eq!(non_retryable_provider.call_count(), EXPECTED_SINGLE_PROVIDER_CALL);
+        assert_eq!(non_retryable_error.status_code(), Some(NON_RETRYABLE_PROVIDER_STATUS));
+        assert!(!non_retryable_error.is_retryable());
+        assert_eq!(non_retryable_messages.len(), EXPECTED_USER_ONLY_MESSAGE_COUNT);
+
+        let mut retry_exhaustion_messages = vec![make_user_message()];
+        let (retry_event_tx, _rx) = broadcast::channel(256);
+        let retry_exhaustion_result = run_turn_loop(
+            &retry_exhaustion_provider,
+            &tools,
+            &mut retry_exhaustion_messages,
+            &config,
+            &retry_event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "engine-retry-stop-policy-exhaustion",
+            None,
+            None,
+            None,
+        )
+        .await;
+        let retry_error = retry_exhaustion_result.expect_err("retry exhaustion should propagate original error");
+        assert_eq!(retry_exhaustion_provider.call_count(), EXPECTED_RETRY_EXHAUSTION_PROVIDER_CALLS);
+        assert_eq!(retry_error.status_code(), Some(RETRYABLE_PROVIDER_STATUS));
+        assert!(retry_error.is_retryable());
+        assert_eq!(retry_exhaustion_messages.len(), EXPECTED_USER_ONLY_MESSAGE_COUNT);
+    }
+
+    #[tokio::test]
+    async fn engine_retry_stop_policy_cancellation_during_retry_backoff_stops_retry_ready() {
+        let provider = RetryableFailProvider::new(ALWAYS_FAIL_PROVIDER_FAILURES, RETRYABLE_PROVIDER_STATUS);
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let mut messages = vec![make_user_message()];
+        let config = make_turn_config();
+        let (event_tx, _rx) = broadcast::channel(256);
+        let cancel = CancellationToken::new();
+        let cancel_clone = cancel.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(RETRY_CANCELLATION_DELAY_MS)).await;
+            cancel_clone.cancel();
+        });
+
+        let result = run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            cancel,
+            None,
+            None,
+            None,
+            "engine-retry-stop-policy-cancel",
+            None,
+            None,
+            None,
+        )
+        .await;
+
+        assert!(matches!(result, Err(AgentError::Cancelled)));
+        assert_eq!(provider.call_count(), EXPECTED_SINGLE_PROVIDER_CALL);
+        assert_eq!(messages.len(), EXPECTED_USER_ONLY_MESSAGE_COUNT);
+    }
+
+    #[tokio::test]
+    async fn engine_retry_stop_policy_zero_budget_rejects_before_provider_io() {
+        let provider = RetryableFailProvider::new(0, RETRYABLE_PROVIDER_STATUS);
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let mut messages = vec![make_user_message()];
+        let mut config = make_turn_config();
+        config.model_request_slot_budget = ZERO_MODEL_REQUEST_SLOT_BUDGET;
+        let (event_tx, _rx) = broadcast::channel(256);
+
+        let result = run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "engine-retry-stop-policy-zero-budget",
+            None,
+            None,
+            None,
+        )
+        .await;
+
+        let error = result.expect_err("zero budget should reject");
+        assert!(format!("{error}").contains("InvalidBudget"));
+        assert_eq!(provider.call_count(), 0);
+        assert_eq!(messages.len(), EXPECTED_USER_ONLY_MESSAGE_COUNT);
+    }
+
+    #[tokio::test]
+    async fn engine_retry_stop_policy_budget_exhaustion_accepts_tool_feedback_without_follow_up_model() {
+        let provider = ToolUseOnlyProvider {
+            call_count: AtomicUsize::new(0),
+        };
+        let tool: Arc<dyn Tool> = Arc::new(DirectResultTool::new());
+        let mut tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        tools.insert("direct_tool".to_string(), tool);
+        let mut messages = vec![make_user_message()];
+        let mut config = make_turn_config();
+        config.model_request_slot_budget = SINGLE_MODEL_REQUEST_SLOT_BUDGET;
+        let (event_tx, mut event_rx) = broadcast::channel(256);
+
+        let result = run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "engine-retry-stop-policy-budget",
+            None,
+            None,
+            None,
+        )
+        .await;
+
+        assert!(result.is_ok(), "budget exhaustion terminalizes successfully: {:?}", result);
+        assert_eq!(provider.call_count.load(Ordering::SeqCst), EXPECTED_SINGLE_PROVIDER_CALL);
+        assert_eq!(messages.len(), EXPECTED_TOOL_BUDGET_MESSAGE_COUNT);
+        assert!(matches!(messages.last(), Some(AgentMessage::ToolResult(_))));
+        assert!(
+            drain_system_messages(&mut event_rx)
+                .iter()
+                .any(|message| message == clankers_engine::ENGINE_BUDGET_EXHAUSTED_NOTICE)
+        );
+    }
+
+    #[tokio::test]
+    async fn engine_retry_stop_policy_max_tokens_terminalizes_without_follow_up_work() {
+        let provider = MaxTokensProvider {
+            call_count: AtomicUsize::new(0),
+        };
+        let tools: HashMap<String, Arc<dyn Tool>> = HashMap::new();
+        let mut messages = vec![make_user_message()];
+        let config = make_turn_config();
+        let (event_tx, _rx) = broadcast::channel(256);
+
+        let result = run_turn_loop(
+            &provider,
+            &tools,
+            &mut messages,
+            &config,
+            &event_tx,
+            CancellationToken::new(),
+            None,
+            None,
+            None,
+            "engine-retry-stop-policy-max-tokens",
+            None,
+            None,
+            None,
+        )
+        .await;
+
+        assert!(result.is_ok(), "max tokens should terminalize successfully: {:?}", result);
+        assert_eq!(provider.call_count.load(Ordering::SeqCst), EXPECTED_SINGLE_PROVIDER_CALL);
+        assert_eq!(messages.len(), EXPECTED_ASSISTANT_MESSAGE_COUNT);
+        let Some(AgentMessage::Assistant(assistant)) = messages.last() else {
+            panic!("expected assistant message");
+        };
+        assert_eq!(assistant.stop_reason, StopReason::MaxTokens);
     }
 }

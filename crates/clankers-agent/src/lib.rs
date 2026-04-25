@@ -44,6 +44,8 @@ use self::turn::TurnConfig;
 
 /// The main agent that manages the conversation loop
 const NO_SKILL_NUDGE_COUNT: usize = 0;
+const NORMAL_TURN_MODEL_REQUEST_SLOT_BUDGET: u32 = 25;
+const ORCHESTRATION_FOLLOW_UP_MODEL_REQUEST_SLOT_BUDGET: u32 = 10;
 const SKILL_MANAGE_TOOL_NAME: &str = "skill_manage";
 
 struct TurnToolUsage {
@@ -319,7 +321,7 @@ impl Agent {
             max_tokens: Some(self.settings.max_tokens),
             temperature: None,
             thinking: self.thinking.clone(),
-            max_turns: 25,
+            model_request_slot_budget: NORMAL_TURN_MODEL_REQUEST_SLOT_BUDGET,
             output_truncation: self.output_truncation_config(),
             no_cache: self.settings.no_cache,
             cache_ttl: self.settings.cache_ttl.clone(),
@@ -700,7 +702,11 @@ impl Agent {
                 max_tokens: Some(self.settings.max_tokens),
                 temperature: None,
                 thinking: self.thinking.clone(),
-                max_turns: if phase_idx == 0 { 25 } else { 10 },
+                model_request_slot_budget: if phase_idx == 0 {
+                    NORMAL_TURN_MODEL_REQUEST_SLOT_BUDGET
+                } else {
+                    ORCHESTRATION_FOLLOW_UP_MODEL_REQUEST_SLOT_BUDGET
+                },
                 output_truncation: self.output_truncation_config(),
                 no_cache: self.settings.no_cache,
                 cache_ttl: self.settings.cache_ttl.clone(),

@@ -162,9 +162,10 @@ const CONTROL_PROTOCOL_CONVERSION_REQUIRED_CONSTRUCTOR_PATHS: [&str; 12] = [
 ];
 const CONTROL_PROTOCOL_DAEMON_BRIDGE_FILES: [&str; 2] =
     ["src/modes/daemon/socket_bridge.rs", "src/modes/daemon/quic_bridge.rs"];
-const ENGINE_SURFACE_FORBIDDEN_PATHS: [&str; 12] = [
+const ENGINE_SURFACE_FORBIDDEN_PATHS: [&str; 13] = [
     "clankers_protocol::DaemonEvent",
     "clankers_protocol::SessionCommand",
+    "clankers_provider::CompletionRequest",
     "chrono",
     "crossterm",
     "iroh",
@@ -176,7 +177,14 @@ const ENGINE_SURFACE_FORBIDDEN_PATHS: [&str; 12] = [
     "tokio_util",
     "clankers_agent",
 ];
-const ENGINE_SURFACE_REQUIRED_PATHS: [&str; 2] = ["clankers_core::CoreState", "clanker_message::Content"];
+const ENGINE_SURFACE_REQUIRED_PATHS: [&str; 6] = [
+    "clankers_core::CoreState",
+    "clanker_message::Content",
+    "core::time::Duration",
+    "EngineInput::RetryReady",
+    "EngineRejection::InvalidBudget",
+    "EngineTerminalFailure",
+];
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 6] = [
     "clankers_engine::reduce",
@@ -185,6 +193,31 @@ const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 6] = [
     "EngineInput::ToolCompleted",
     "EngineInput::ToolFailed",
     "EngineEvent::TurnFinished",
+];
+const AGENT_TURN_ENGINE_RETRY_REQUIRED_PATHS: [&str; 5] = [
+    "EngineEffect::ScheduleRetry",
+    "EngineInput::ModelFailed",
+    "EngineInput::RetryReady",
+    "clankers_engine::EnginePromptSubmission",
+    "EngineTerminalFailure",
+];
+const AGENT_TURN_ENGINE_RETRY_FORBIDDEN_PATHS: [&str; 3] = [
+    "MAX_TURN_RETRIES",
+    "RETRY_BACKOFF_BASE_SECONDS",
+    "RETRY_BACKOFF_EXPONENT_STEP",
+];
+const AGENT_TURN_SHELL_CONCERN_REQUIRED_PATHS: [&str; 7] = [
+    "check_model_switch",
+    "update_usage_tracking",
+    "stream_model_request",
+    "execute_tools_parallel",
+    "clankers_hooks::HookPipeline",
+    "AgentEvent::TurnStart",
+    "AgentEvent::TurnEnd",
+];
+const AGENT_LIB_ENGINE_BUDGET_REQUIRED_PATHS: [&str; 2] = [
+    "NORMAL_TURN_MODEL_REQUEST_SLOT_BUDGET",
+    "ORCHESTRATION_FOLLOW_UP_MODEL_REQUEST_SLOT_BUDGET",
 ];
 const AGENT_TURN_ENGINE_REQUEST_PLANNING_FILE: &str = "crates/clankers-agent/src/turn/execution.rs";
 const AGENT_TURN_ENGINE_REQUEST_PLANNING_REQUIRED_PATHS: [&str; 3] = [
@@ -1187,6 +1220,31 @@ fn agent_turn_runtime_reuses_engine_model_completion_contract() {
         AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE,
         &paths,
         &AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS,
+    );
+}
+
+#[test]
+fn agent_turn_runtime_defers_retry_and_budget_policy_to_engine() {
+    let turn_paths = collect_non_test_paths(AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE);
+    assert_required_paths_present(
+        AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE,
+        &turn_paths,
+        &AGENT_TURN_ENGINE_RETRY_REQUIRED_PATHS,
+    );
+    assert_required_paths_present(
+        AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE,
+        &turn_paths,
+        &AGENT_TURN_SHELL_CONCERN_REQUIRED_PATHS,
+    );
+    for forbidden_path in AGENT_TURN_ENGINE_RETRY_FORBIDDEN_PATHS {
+        assert_exact_path_absent(AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE, &turn_paths, forbidden_path);
+    }
+
+    let agent_lib_paths = collect_non_test_paths("crates/clankers-agent/src/lib.rs");
+    assert_required_paths_present(
+        "crates/clankers-agent/src/lib.rs",
+        &agent_lib_paths,
+        &AGENT_LIB_ENGINE_BUDGET_REQUIRED_PATHS,
     );
 }
 
