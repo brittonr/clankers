@@ -11,11 +11,11 @@
 - [x] 2.2 Instrument agent and controller seams to emit metric events for session lifecycle, turn lifecycle, model changes, compaction, cancellation, usage updates, and tool execution outcomes ✅ 10m (started: 2026-04-24T22:08Z → completed: 2026-04-24T22:17Z)
 - [x] 2.3 Instrument procmon seams to record optional process-monitoring metrics such as process spawn/sample/exit aggregates without failing sessions when procmon is disabled ✅ 2m (started: 2026-04-24T22:17Z → completed: 2026-04-24T22:17Z) — already captured via ProcessSpawn/ProcessExit AgentEvent translation in MetricsCollector
 - [x] 2.4 Instrument plugin dispatch and plugin-tool paths to record plugin load results, event dispatch counts, hook denials, UI actions, tool calls, and plugin errors ✅ 3m (started: 2026-04-24T22:18Z → completed: 2026-04-24T22:19Z) — added direct recording API (record_plugin_load/event/error/hook_denial) + public controller accessors
-- [~] 2.5 Add bounded in-memory staging plus periodic/final redb flush logic that records dropped-event counters instead of blocking or failing sessions ⏱ started: 2026-04-24T22:19Z
+- [x] 2.5 Add bounded in-memory staging plus periodic/final redb flush logic that records dropped-event counters instead of blocking or failing sessions ✅ 5m (started: 2026-04-24T22:19Z → completed: 2026-04-24T22:20Z)
 
 ## 3. Reporting surfaces
 
-- [ ] 3.1 Add a standalone `/metrics` slash command that shows current-session summaries and historical rollups
+- [~] 3.1 Add a standalone `/metrics` slash command that shows current-session summaries and historical rollups ⏱ started: 2026-04-24T22:21Z
 - [ ] 3.2 Add attach/daemon reporting support so remote sessions expose the same current-session and historical metrics models as standalone mode
 - [ ] 3.3 Add machine-readable metrics serialization for JSON/reporting surfaces and stable versioned fields for tests and automation
 

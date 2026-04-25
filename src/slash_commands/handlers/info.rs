@@ -279,3 +279,56 @@ impl SlashHandler for ExportHandler {
         }
     }
 }
+
+pub struct MetricsHandler;
+
+impl SlashHandler for MetricsHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "metrics",
+            description: "Show session and historical metrics",
+            help: "Displays current-session and historical metrics summaries.\n\n\
+                   Usage: /metrics [days]\n\n\
+                   days  Number of days for historical report (default: 7)",
+            accepts_args: true,
+            subcommands: vec![],
+        }
+    }
+
+    fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
+        let db = match ctx.db {
+            Some(db) => db,
+            None => {
+                ctx.app.push_system("No database available.".to_string(), true);
+                return;
+            }
+        };
+
+        let store = db.metrics();
+
+        // Current session report
+        let session_id = &ctx.app.session_id;
+        let current = match store.current_session_report(session_id) {
+            Ok(Some(report)) => crate::db::metrics::format::format_current_session(&report),
+            Ok(None) => "No metrics recorded for this session yet.".to_string(),
+            Err(e) => format!("Failed to read session metrics: {e}"),
+        };
+
+        // Historical report
+        let days: usize = args.trim().parse().unwrap_or(7);
+        let historical = match store.historical_report(days) {
+            Ok(report) if report.total_sessions > 0 => {
+                crate::db::metrics::format::format_historical(&report)
+            }
+            Ok(_) => String::new(),
+            Err(e) => format!("Failed to read historical metrics: {e}"),
+        };
+
+        let output = if historical.is_empty() {
+            current
+        } else {
+            format!("{current}\n{historical}")
+        };
+        ctx.app.push_system(output, false);
+    }
+}
