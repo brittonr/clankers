@@ -570,6 +570,10 @@ mod tests {
     }
 
     fn seed() -> EngineRunSeed {
+        seed_with_budget(1)
+    }
+
+    fn seed_with_budget(model_request_slot_budget: u32) -> EngineRunSeed {
         let submission = EnginePromptSubmission {
             messages: vec![clankers_engine::EngineMessage {
                 role: clankers_engine::EngineMessageRole::User,
@@ -586,7 +590,7 @@ mod tests {
             no_cache: false,
             cache_ttl: None,
             session_id: TEST_SESSION.to_string(),
-            model_request_slot_budget: 1,
+            model_request_slot_budget,
         };
         let state = EngineState::new();
         let outcome = clankers_engine::reduce(&state, &EngineInput::submit_user_prompt(submission));
@@ -792,6 +796,63 @@ mod tests {
     }
 
     #[test]
+    fn retryable_model_failure_is_single_flight_and_retries_after_sleep() {
+        struct RecordingModel {
+            outcomes: Vec<ModelHostOutcome>,
+            calls: Vec<EngineCorrelationId>,
+        }
+
+        impl ModelHost for RecordingModel {
+            async fn execute_model(&mut self, request: EngineModelRequest) -> ModelHostOutcome {
+                self.calls.push(request.request_id);
+                self.outcomes.remove(0)
+            }
+        }
+
+        let mut model = RecordingModel {
+            outcomes: vec![
+                ModelHostOutcome::Failed {
+                    failure: EngineTerminalFailure {
+                        message: "temporary".to_string(),
+                        status: Some(TEST_PROVIDER_STATUS),
+                        retryable: true,
+                    },
+                },
+                ModelHostOutcome::Completed {
+                    response: EngineModelResponse {
+                        output: vec![Content::Text {
+                            text: "recovered".to_string(),
+                        }],
+                        stop_reason: StopReason::Stop,
+                    },
+                    usage: None,
+                },
+            ],
+            calls: Vec::new(),
+        };
+        let mut tools = FakeTools::default();
+        let mut sleeper = FakeSleeper::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = FakeCancel::default();
+        let mut usage = FakeUsage::default();
+
+        let report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
+            model: &mut model,
+            tools: &mut tools,
+            retry_sleeper: &mut sleeper,
+            event_sink: &mut events,
+            cancellation: &mut cancel,
+            usage_observer: &mut usage,
+        }));
+
+        assert!(report.last_outcome.terminal_failure.is_none());
+        assert_eq!(model.calls.len(), 2);
+        assert_eq!(sleeper.slept.len(), 1);
+        assert_eq!(sleeper.slept[0].0, model.calls[0]);
+        assert_eq!(model.calls[0], model.calls[1]);
+    }
+
+    #[test]
     fn retryable_model_failure_sleeps_before_retry_ready() {
         let mut model = FakeModel {
             outcomes: vec![
@@ -831,6 +892,87 @@ mod tests {
         assert_eq!(sleeper.slept.len(), 1);
         assert!(sleeper.slept[0].1.as_millis() >= TEST_RETRY_DELAY_MIN_MS);
         assert!(report.observed_events.iter().any(|event| matches!(event, EngineEvent::TurnFinished { .. })));
+    }
+
+    #[test]
+    fn sequential_tool_requests_execute_in_engine_order_before_followup_model() {
+        struct RecordingTools {
+            outcomes: Vec<ToolHostOutcome>,
+            calls: Vec<String>,
+        }
+
+        impl ToolExecutor for RecordingTools {
+            async fn execute_tool(&mut self, call: EngineToolCall) -> ToolHostOutcome {
+                self.calls.push(call.call_id.0.clone());
+                self.outcomes.remove(0)
+            }
+        }
+
+        let mut model = FakeModel {
+            outcomes: vec![
+                ModelHostOutcome::Completed {
+                    response: EngineModelResponse {
+                        output: vec![
+                            Content::ToolUse {
+                                id: "call-1".to_string(),
+                                name: TEST_TOOL.to_string(),
+                                input: json!({}),
+                            },
+                            Content::ToolUse {
+                                id: "call-2".to_string(),
+                                name: TEST_TOOL.to_string(),
+                                input: json!({}),
+                            },
+                        ],
+                        stop_reason: StopReason::ToolUse,
+                    },
+                    usage: None,
+                },
+                ModelHostOutcome::Completed {
+                    response: EngineModelResponse {
+                        output: vec![Content::Text {
+                            text: "done".to_string(),
+                        }],
+                        stop_reason: StopReason::Stop,
+                    },
+                    usage: None,
+                },
+            ],
+        };
+        let mut tools = RecordingTools {
+            outcomes: vec![
+                ToolHostOutcome::Succeeded {
+                    content: vec![Content::Text {
+                        text: "one".to_string(),
+                    }],
+                    details: json!({}),
+                },
+                ToolHostOutcome::Succeeded {
+                    content: vec![Content::Text {
+                        text: "two".to_string(),
+                    }],
+                    details: json!({}),
+                },
+            ],
+            calls: Vec::new(),
+        };
+        let mut sleeper = FakeSleeper::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = FakeCancel::default();
+        let mut usage = FakeUsage::default();
+
+        let report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
+            model: &mut model,
+            tools: &mut tools,
+            retry_sleeper: &mut sleeper,
+            event_sink: &mut events,
+            cancellation: &mut cancel,
+            usage_observer: &mut usage,
+        }));
+
+        assert!(report.last_outcome.terminal_failure.is_none());
+        assert_eq!(tools.calls, vec!["call-1".to_string(), "call-2".to_string()]);
+        assert!(model.outcomes.is_empty());
     }
 
     #[test]
@@ -953,6 +1095,221 @@ mod tests {
             assert_eq!(failure.status, None);
             assert!(failure.message.contains(message), "missing '{message}' in {}", failure.message);
         }
+    }
+
+    #[test]
+    fn usage_only_and_empty_stop_streams_complete_successfully() {
+        let cases = vec![
+            vec![
+                HostStreamEvent::Usage {
+                    usage: Usage {
+                        input_tokens: TEST_USAGE_INPUT,
+                        output_tokens: TEST_USAGE_OUTPUT,
+                        cache_creation_input_tokens: 0,
+                        cache_read_input_tokens: 0,
+                    },
+                },
+                HostStreamEvent::MessageStop {
+                    model: Some(TEST_MODEL.to_string()),
+                    stop_reason: StopReason::Stop,
+                },
+            ],
+            vec![HostStreamEvent::MessageStop {
+                model: Some(TEST_MODEL.to_string()),
+                stop_reason: StopReason::Stop,
+            }],
+        ];
+
+        for stream_events in cases {
+            let mut model = FakeModel {
+                outcomes: vec![ModelHostOutcome::Streamed { events: stream_events }],
+            };
+            let mut tools = FakeTools::default();
+            let mut events = FakeEvents::default();
+            let mut cancel = FakeCancel::default();
+            let report = block_on(run_with(&mut model, &mut tools, &mut events, &mut cancel));
+
+            assert!(report.last_outcome.rejection.is_none());
+            assert!(report.last_outcome.terminal_failure.is_none());
+            assert!(report.observed_events.iter().any(|event| matches!(event, EngineEvent::TurnFinished { .. })));
+        }
+    }
+
+    #[test]
+    fn cancellation_races_ignore_late_model_tool_and_retry_results() {
+        struct StepCancel {
+            checks: usize,
+            cancel_at: usize,
+        }
+
+        impl CancellationSource for StepCancel {
+            fn is_cancelled(&mut self) -> bool {
+                self.checks += 1;
+                self.checks >= self.cancel_at
+            }
+        }
+
+        let mut model_after_cancel = FakeModel {
+            outcomes: vec![ModelHostOutcome::Completed {
+                response: EngineModelResponse {
+                    output: vec![Content::Text {
+                        text: "late".to_string(),
+                    }],
+                    stop_reason: StopReason::Stop,
+                },
+                usage: None,
+            }],
+        };
+        let mut tools = FakeTools::default();
+        let mut sleeper = FakeSleeper::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = StepCancel {
+            checks: 0,
+            cancel_at: 2,
+        };
+        let mut usage = FakeUsage::default();
+        let model_report = block_on(run_engine_turn(seed(), HostAdapters {
+            model: &mut model_after_cancel,
+            tools: &mut tools,
+            retry_sleeper: &mut sleeper,
+            event_sink: &mut events,
+            cancellation: &mut cancel,
+            usage_observer: &mut usage,
+        }));
+        assert!(model_report.final_state.messages.len() <= 1);
+
+        let mut retry_model = FakeModel {
+            outcomes: vec![
+                ModelHostOutcome::Failed {
+                    failure: EngineTerminalFailure {
+                        message: "temporary".to_string(),
+                        status: Some(TEST_PROVIDER_STATUS),
+                        retryable: true,
+                    },
+                },
+                ModelHostOutcome::Completed {
+                    response: EngineModelResponse {
+                        output: vec![Content::Text {
+                            text: "late retry".to_string(),
+                        }],
+                        stop_reason: StopReason::Stop,
+                    },
+                    usage: None,
+                },
+            ],
+        };
+        let mut tools = FakeTools::default();
+        let mut sleeper = FakeSleeper::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = StepCancel {
+            checks: 0,
+            cancel_at: 4,
+        };
+        let mut usage = FakeUsage::default();
+        let retry_report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
+            model: &mut retry_model,
+            tools: &mut tools,
+            retry_sleeper: &mut sleeper,
+            event_sink: &mut events,
+            cancellation: &mut cancel,
+            usage_observer: &mut usage,
+        }));
+        assert_eq!(sleeper.slept.len(), 1);
+        assert_eq!(retry_model.outcomes.len(), 1);
+        assert!(retry_report.final_state.messages.len() <= 1);
+
+        let mut tool_model = FakeModel {
+            outcomes: vec![ModelHostOutcome::Completed {
+                response: EngineModelResponse {
+                    output: vec![Content::ToolUse {
+                        id: "call-1".to_string(),
+                        name: TEST_TOOL.to_string(),
+                        input: json!({}),
+                    }],
+                    stop_reason: StopReason::ToolUse,
+                },
+                usage: None,
+            }],
+        };
+        let mut tools = FakeTools {
+            outcomes: vec![ToolHostOutcome::Succeeded {
+                content: vec![Content::Text {
+                    text: "late tool".to_string(),
+                }],
+                details: json!({}),
+            }],
+        };
+        let mut sleeper = FakeSleeper::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = StepCancel {
+            checks: 0,
+            cancel_at: 4,
+        };
+        let mut usage = FakeUsage::default();
+        let tool_report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
+            model: &mut tool_model,
+            tools: &mut tools,
+            retry_sleeper: &mut sleeper,
+            event_sink: &mut events,
+            cancellation: &mut cancel,
+            usage_observer: &mut usage,
+        }));
+        assert!(tools.outcomes.is_empty());
+        assert!(tool_report.final_state.messages.len() <= 2);
+
+        let mut two_tool_model = FakeModel {
+            outcomes: vec![ModelHostOutcome::Completed {
+                response: EngineModelResponse {
+                    output: vec![
+                        Content::ToolUse {
+                            id: "call-1".to_string(),
+                            name: TEST_TOOL.to_string(),
+                            input: json!({}),
+                        },
+                        Content::ToolUse {
+                            id: "call-2".to_string(),
+                            name: TEST_TOOL.to_string(),
+                            input: json!({}),
+                        },
+                    ],
+                    stop_reason: StopReason::ToolUse,
+                },
+                usage: None,
+            }],
+        };
+        let mut tools = FakeTools {
+            outcomes: vec![
+                ToolHostOutcome::Succeeded {
+                    content: vec![Content::Text {
+                        text: "first".to_string(),
+                    }],
+                    details: json!({}),
+                },
+                ToolHostOutcome::Succeeded {
+                    content: vec![Content::Text {
+                        text: "late second".to_string(),
+                    }],
+                    details: json!({}),
+                },
+            ],
+        };
+        let mut sleeper = FakeSleeper::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = StepCancel {
+            checks: 0,
+            cancel_at: 5,
+        };
+        let mut usage = FakeUsage::default();
+        let next_tool_report = block_on(run_engine_turn(seed_with_budget(2), HostAdapters {
+            model: &mut two_tool_model,
+            tools: &mut tools,
+            retry_sleeper: &mut sleeper,
+            event_sink: &mut events,
+            cancellation: &mut cancel,
+            usage_observer: &mut usage,
+        }));
+        assert_eq!(tools.outcomes.len(), 1);
+        assert!(next_tool_report.final_state.messages.len() <= 2);
     }
 
     #[test]
