@@ -68,9 +68,22 @@ test turn::execution::tests::completion_request_from_engine_request_converts_nat
 test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 134 filtered out; finished in 0.00s
 ```
 
-### V3 — pending
+### V3 — normal-edge cargo-tree boundary rail
 
-No command output captured yet.
+Command:
+
+```bash
+./scripts/check-llm-contract-boundary.sh
+```
+
+Result: PASS
+
+Output:
+
+```text
+ok: clankers-engine normal-edge tree excludes forbidden crates
+ok: clanker-message normal-edge tree excludes forbidden crates
+```
 
 ### V4 — pending
 

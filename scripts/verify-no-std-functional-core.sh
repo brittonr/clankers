@@ -14,6 +14,7 @@ run_step() {
 run_step "No-std core bare-metal compile rail" ./scripts/check-clankers-core-nostd.sh
 run_step "No-std core dependency and API boundary rail" ./scripts/check-clankers-core-boundary.sh
 run_step "No-std core exported-surface rail" ./scripts/check-clankers-core-surface.sh
+run_step "LLM contract dependency boundary rail" ./scripts/check-llm-contract-boundary.sh
 run_step "No-std core reducer suite" cargo test -p clankers-core --lib
 run_step "No-std core determinism rail" cargo test -p clankers-core --test determinism
 run_step "Controller reducer, shell-boundary, input/output-translation, transport/client-boundary, and parity suites" cargo nextest run -p clankers-controller --tests
