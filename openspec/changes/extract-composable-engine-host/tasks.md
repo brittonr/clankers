@@ -52,7 +52,7 @@
 
 - `unit2nix --workspace --force --no-check -o build-plan.json`: PASS (`Wrote build-plan.json`).
 - `cargo xtask docs`: PASS (`docs built → docs/book/`).
-- Commit: `f65114d2` refreshed `flake.nix`, `build-plan.json`, and generated docs. Follow-up refresh after adding the agent dependency also passed `unit2nix --workspace --force --no-check -o build-plan.json` and `cargo xtask docs`.
+- Commit: `f65114d2` refreshed `flake.nix`, `build-plan.json`, and generated docs. Follow-up refresh after adding the agent/adapter dependencies also passed `unit2nix --workspace --force --no-check -o build-plan.json` and `cargo xtask docs`.
 
 ## Phase 4: Verification
 
