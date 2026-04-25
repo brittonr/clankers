@@ -145,6 +145,7 @@ fn format_duration(secs: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::metrics::query::DaySummary;
 
     #[test]
     fn format_current_session_basic() {

@@ -280,6 +280,77 @@ impl SlashHandler for ExportHandler {
     }
 }
 
+pub struct InsightsHandler;
+
+impl SlashHandler for InsightsHandler {
+    fn command(&self) -> super::super::SlashCommand {
+        super::super::SlashCommand {
+            name: "insights",
+            description: "Show aggregated usage insights",
+            help: "Aggregated usage insights across sessions: token breakdown by model,\n\
+                   top tools, daily activity chart, and top sessions.\n\n\
+                   Usage: /insights [days|json [days]]\n\n\
+                   days   Number of days to analyze (default: 30)\n\
+                   json   Output as machine-readable JSON",
+            accepts_args: true,
+            subcommands: vec![],
+        }
+    }
+
+    fn handle(&self, args: &str, ctx: &mut SlashContext<'_>) {
+        let db = match ctx.db {
+            Some(db) => db,
+            None => {
+                ctx.app.push_system("No database available.".to_string(), true);
+                return;
+            }
+        };
+
+        let trimmed = args.trim();
+        let json_mode = trimmed == "json" || trimmed.starts_with("json ");
+        let days_str = if json_mode {
+            trimmed.strip_prefix("json").unwrap_or("").trim()
+        } else {
+            trimmed
+        };
+        let days: u32 = days_str.parse().unwrap_or(30);
+
+        let report = match clankers_db::insights::generate_insights(db, days) {
+            Ok(r) => r,
+            Err(e) => {
+                ctx.app.push_system(format!("Failed to generate insights: {e}"), true);
+                return;
+            }
+        };
+
+        if json_mode {
+            let output = serde_json::to_string_pretty(&serde_json::json!({
+                "window_days": report.window_days,
+                "sessions": report.overview.sessions,
+                "total_input_tokens": report.overview.total_input_tokens,
+                "total_output_tokens": report.overview.total_output_tokens,
+                "total_requests": report.overview.total_requests,
+                "models": report.model_breakdown.iter().map(|m| serde_json::json!({
+                    "model": m.model,
+                    "input_tokens": m.input_tokens,
+                    "output_tokens": m.output_tokens,
+                    "requests": m.requests,
+                    "pct": m.pct_of_total,
+                })).collect::<Vec<_>>(),
+                "top_tools": report.tool_breakdown.iter().map(|t| serde_json::json!({
+                    "tool": t.tool,
+                    "calls": t.call_count,
+                })).collect::<Vec<_>>(),
+            }))
+            .unwrap_or_else(|e| format!("{{\"error\": \"{e}\"}}"));
+            ctx.app.push_system(output, false);
+            return;
+        }
+
+        ctx.app.push_system(clankers_db::insights::format_insights_terminal(&report), false);
+    }
+}
+
 pub struct MetricsHandler;
 
 impl SlashHandler for MetricsHandler {

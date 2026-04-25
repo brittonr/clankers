@@ -21,6 +21,7 @@ pub mod registry;
 
 pub use error::DbError;
 pub use error::db_err;
+pub mod insights;
 pub mod memory;
 pub mod metrics;
 pub mod schema;

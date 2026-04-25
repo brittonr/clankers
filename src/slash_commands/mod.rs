@@ -192,6 +192,7 @@ fn builtin_handlers() -> Vec<Box<dyn handlers::SlashHandler>> {
         Box::new(handlers::info::StatusHandler),
         Box::new(handlers::info::RouterHandler),
         Box::new(handlers::info::UsageHandler),
+        Box::new(handlers::info::InsightsHandler),
         Box::new(handlers::info::MetricsHandler),
         Box::new(handlers::info::VersionHandler),
         Box::new(handlers::info::QuitHandler),
