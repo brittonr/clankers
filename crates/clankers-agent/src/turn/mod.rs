@@ -2626,4 +2626,36 @@ mod tests {
             })
         )));
     }
+
+    #[test]
+    fn accepted_prompt_submission_reduces_engine() {
+        let submission = test_engine_prompt_submission(2);
+        let outcome = clankers_engine::reduce(&EngineState::new(), &EngineInput::submit_user_prompt(submission));
+
+        assert!(outcome.rejection.is_none());
+        assert!(outcome.next_state.pending_model_request.is_some());
+        let request = outcome
+            .effects
+            .iter()
+            .find_map(|effect| match effect {
+                EngineEffect::RequestModel(request) => Some(request),
+                EngineEffect::ExecuteTool(_) | EngineEffect::ScheduleRetry { .. } | EngineEffect::EmitEvent(_) => None,
+            })
+            .expect("accepted prompt submission must emit model request before provider IO");
+        assert_eq!(request.request_id.0, "model-request-1");
+        assert_eq!(request.model, "test-model");
+        assert_eq!(request.system_prompt, "You are a test assistant.");
+        assert_eq!(request.session_id, "test-session");
+        let user_text = request.messages.iter().find_map(|message| match message.role {
+            clankers_engine::EngineMessageRole::User => message.content.iter().find_map(|content| match content {
+                Content::Text { text } => Some(text.as_str()),
+                Content::Image { .. }
+                | Content::Thinking { .. }
+                | Content::ToolUse { .. }
+                | Content::ToolResult { .. } => None,
+            }),
+            clankers_engine::EngineMessageRole::Assistant | clankers_engine::EngineMessageRole::Tool => None,
+        });
+        assert_eq!(user_text, Some("hello"));
+    }
 }

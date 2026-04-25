@@ -332,9 +332,23 @@ test turn::tests::engine_feedback_model_tool_retry_and_cancel_reduce_through_eng
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 136 filtered out; finished in 0.00s
 ```
 
-### V7 — cargo-tree dependency rail
+### V7 — accepted prompt submission reduction
 
-Status: PLANNED
+Command:
+
+```bash
+cargo test -p clankers-agent --lib accepted_prompt_submission_reduces_engine
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test turn::tests::accepted_prompt_submission_reduces_engine ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 137 filtered out; finished in 0.00s
+```
 
 ### V8 — final acceptance bundle
 
