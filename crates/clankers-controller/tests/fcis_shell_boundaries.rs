@@ -380,17 +380,16 @@ const AGENT_ENGINE_FEEDBACK_FILES: [&str; 2] = [
     "crates/clankers-agent/src/turn/execution.rs",
 ];
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
-const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 5] = [
+const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 4] = [
     "clankers_engine::reduce",
     "clankers_engine::EngineInput",
     "clankers_engine::EngineModelResponse",
-    "EngineInput::ToolCompleted",
-    "EngineInput::ToolFailed",
+    "host_tool_feedback_input",
 ];
 const AGENT_TURN_ENGINE_RETRY_REQUIRED_PATHS: [&str; 5] = [
     "EngineEffect::ScheduleRetry",
-    "EngineInput::ModelFailed",
-    "EngineInput::RetryReady",
+    "model_failed_input",
+    "retry_ready_input",
     "clankers_engine::EnginePromptSubmission",
     "EngineTerminalFailure",
 ];

@@ -410,11 +410,13 @@ pub(super) async fn collect_stream_events(
     event_tx: &broadcast::Sender<AgentEvent>,
 ) -> Result<CollectedResponse> {
     let mut content_builders: Vec<ContentBlockBuilder> = Vec::new();
+    let mut host_stream_normalizer = ProviderStreamNormalizer::new();
     let mut model = String::new();
     let mut usage = Usage::default();
     let mut stop_reason = StopReason::Stop;
 
     while let Some(event) = stream_rx.recv().await {
+        let _host_stream_events = host_stream_normalizer.push(event.clone());
         match event {
             StreamEvent::MessageStart { message } => {
                 model.clone_from(&message.model);
