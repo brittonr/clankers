@@ -534,3 +534,179 @@ fn check_tool_paths(input: &Value) -> Option<String> {
 
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use chrono::Utc;
+    use clanker_message::AssistantMessage;
+    use clanker_message::BashExecutionMessage;
+    use clanker_message::BranchSummaryMessage;
+    use clanker_message::CompactionSummaryMessage;
+    use clanker_message::CustomMessage;
+    use clanker_message::MessageId;
+    use clanker_message::StopReason;
+    use clanker_message::ToolResultMessage;
+    use clanker_message::UserMessage;
+    use clankers_engine::EngineCorrelationId;
+    use serde_json::json;
+
+    use super::*;
+
+    const TEST_MAX_TOKENS: usize = 128;
+    const TEST_THINKING_BUDGET: usize = 256;
+    const TEST_TOKENS_SAVED: usize = 512;
+
+    fn timestamp() -> chrono::DateTime<chrono::Utc> {
+        Utc::now()
+    }
+
+    fn text_content(text: &str) -> Vec<Content> {
+        vec![Content::Text { text: text.to_string() }]
+    }
+
+    fn user_message() -> AgentMessage {
+        AgentMessage::User(UserMessage {
+            id: MessageId::new("user-1"),
+            content: text_content("hello"),
+            timestamp: timestamp(),
+        })
+    }
+
+    fn assistant_message() -> AgentMessage {
+        AgentMessage::Assistant(AssistantMessage {
+            id: MessageId::new("assistant-1"),
+            content: text_content("hi"),
+            model: "test-model".to_string(),
+            usage: Usage::default(),
+            stop_reason: StopReason::Stop,
+            timestamp: timestamp(),
+        })
+    }
+
+    fn tool_result_message() -> AgentMessage {
+        AgentMessage::ToolResult(ToolResultMessage {
+            id: MessageId::new("tool-1"),
+            call_id: "call-1".to_string(),
+            tool_name: "read".to_string(),
+            content: text_content("tool output"),
+            is_error: true,
+            details: None,
+            timestamp: timestamp(),
+        })
+    }
+
+    fn engine_model_request(messages: Vec<EngineMessage>) -> EngineModelRequest {
+        EngineModelRequest {
+            request_id: EngineCorrelationId("request-1".to_string()),
+            model: "test-model".to_string(),
+            messages,
+            system_prompt: "system".to_string(),
+            max_tokens: Some(TEST_MAX_TOKENS),
+            temperature: None,
+            thinking: Some(clanker_message::ThinkingConfig {
+                enabled: true,
+                budget_tokens: Some(TEST_THINKING_BUDGET),
+            }),
+            tools: Vec::new(),
+            no_cache: true,
+            cache_ttl: None,
+            session_id: "session-1".to_string(),
+        }
+    }
+
+    #[test]
+    fn engine_messages_from_agent_messages_preserves_conversation_variants() {
+        let converted =
+            engine_messages_from_agent_messages(&[user_message(), assistant_message(), tool_result_message()]);
+
+        assert_eq!(converted.len(), 3);
+        assert_eq!(converted[0].role, EngineMessageRole::User);
+        assert_eq!(converted[1].role, EngineMessageRole::Assistant);
+        assert_eq!(converted[2].role, EngineMessageRole::Tool);
+        assert!(matches!(
+            &converted[2].content[0],
+            Content::ToolResult {
+                tool_use_id,
+                is_error: Some(true),
+                ..
+            } if tool_use_id == "call-1"
+        ));
+    }
+
+    #[test]
+    fn engine_messages_from_agent_messages_excludes_shell_only_variants() {
+        let converted = engine_messages_from_agent_messages(&[
+            AgentMessage::BashExecution(BashExecutionMessage {
+                id: MessageId::new("bash-1"),
+                command: "echo hi".to_string(),
+                stdout: "hi".to_string(),
+                stderr: String::new(),
+                exit_code: Some(0),
+                timestamp: timestamp(),
+            }),
+            AgentMessage::Custom(CustomMessage {
+                id: MessageId::new("custom-1"),
+                kind: "meta".to_string(),
+                data: json!({"ignored": true}),
+                timestamp: timestamp(),
+            }),
+            AgentMessage::BranchSummary(BranchSummaryMessage {
+                id: MessageId::new("branch-1"),
+                from_id: MessageId::new("user-1"),
+                summary: "branch".to_string(),
+                timestamp: timestamp(),
+            }),
+            AgentMessage::CompactionSummary(CompactionSummaryMessage {
+                id: MessageId::new("compact-1"),
+                compacted_ids: vec![MessageId::new("user-1")],
+                summary: "compact".to_string(),
+                tokens_saved: TEST_TOKENS_SAVED,
+                timestamp: timestamp(),
+            }),
+        ]);
+
+        assert!(converted.is_empty());
+    }
+
+    #[test]
+    fn completion_request_from_engine_request_converts_native_provider_messages() {
+        let request = engine_model_request(vec![
+            EngineMessage {
+                role: EngineMessageRole::User,
+                content: text_content("hello"),
+            },
+            EngineMessage {
+                role: EngineMessageRole::Assistant,
+                content: text_content("hi"),
+            },
+            EngineMessage {
+                role: EngineMessageRole::Tool,
+                content: vec![Content::ToolResult {
+                    tool_use_id: "call-1".to_string(),
+                    content: text_content("tool output"),
+                    is_error: Some(false),
+                }],
+            },
+        ]);
+
+        let completion = completion_request_from_engine_request(&request).expect("request should convert");
+
+        assert_eq!(completion.messages.len(), 3);
+        assert!(matches!(completion.messages[0], AgentMessage::User(_)));
+        assert!(matches!(completion.messages[1], AgentMessage::Assistant(_)));
+        assert!(matches!(completion.messages[2], AgentMessage::ToolResult(_)));
+        assert_eq!(completion.extra_params.get("_session_id"), Some(&Value::String("session-1".to_string())));
+    }
+
+    #[test]
+    fn completion_request_from_engine_request_rejects_malformed_tool_message() {
+        let request = engine_model_request(vec![EngineMessage {
+            role: EngineMessageRole::Tool,
+            content: text_content("not a tool result"),
+        }]);
+
+        let error = completion_request_from_engine_request(&request).expect_err("malformed tool message should fail");
+
+        assert!(error.to_string().contains("tool-role message without a tool_result"));
+    }
+}

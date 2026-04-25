@@ -43,9 +43,30 @@ test tests::router_and_provider_do_not_define_independent_stream_delta ... ok
 test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 166 filtered out; finished in 0.00s
 ```
 
-### V2 — pending
+### V2 — adapter transcript conversion tests
 
-No command output captured yet.
+Command:
+
+```bash
+cargo test -p clankers-agent --lib engine_messages_from_agent_messages && \
+  cargo test -p clankers-agent --lib completion_request_from_engine_request
+```
+
+Result: PASS (`pueue` task 141)
+
+Output excerpt:
+
+```text
+test turn::execution::tests::engine_messages_from_agent_messages_excludes_shell_only_variants ... ok
+test turn::execution::tests::engine_messages_from_agent_messages_preserves_conversation_variants ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 134 filtered out; finished in 0.00s
+
+test turn::execution::tests::completion_request_from_engine_request_rejects_malformed_tool_message ... ok
+test turn::execution::tests::completion_request_from_engine_request_converts_native_provider_messages ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 134 filtered out; finished in 0.00s
+```
 
 ### V3 — pending
 
