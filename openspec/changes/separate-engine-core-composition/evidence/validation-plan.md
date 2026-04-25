@@ -371,3 +371,28 @@ test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 28 filtered out; fin
 ### V8 — final acceptance bundle
 
 Status: PLANNED
+
+### V9 — core/engine FCIS inventories
+
+Commands:
+
+```bash
+cargo test -p clankers-controller --test fcis_shell_boundaries core_and_engine_reducer_policy_inventories_stay_closed
+cargo test -p clankers-controller --test fcis_shell_boundaries
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test core_and_engine_reducer_policy_inventories_stay_closed ... ok
+
+running 25 tests
+...
+test clankers_engine_surface_stays_shell_native ... ok
+test core_and_engine_reducer_policy_inventories_stay_closed ... ok
+
+test result: ok. 25 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.04s
+```
+

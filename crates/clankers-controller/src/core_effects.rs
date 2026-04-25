@@ -1,6 +1,5 @@
 use clankers_core::CompletionStatus;
 use clankers_core::CoreEffect;
-use clankers_core::CoreEffectId;
 use clankers_core::CoreLogicalEvent;
 use clankers_core::CoreOutcome;
 use clankers_core::CoreThinkingLevel;
@@ -20,8 +19,10 @@ pub(crate) struct ThinkingEffectExecution {
     pub current: CoreThinkingLevel,
 }
 
+#[allow(dead_code)]
 const FOLLOW_UP_IMAGE_COUNT: u32 = 0;
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CoreEffectGateRejection {
     CoreRejected(clankers_core::CoreError),
@@ -33,6 +34,7 @@ pub(crate) enum CoreEffectGateRejection {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum AcceptedEnginePrompt {
     UserPrompt(AcceptedPromptStart),
+    #[allow(dead_code)]
     FollowUp(AcceptedPromptStart),
 }
 
@@ -45,6 +47,7 @@ impl AcceptedEnginePrompt {
     }
 }
 
+#[allow(dead_code)]
 pub(crate) fn accepted_engine_prompt_from_core_outcome(
     core_outcome: &CoreOutcome,
 ) -> Result<AcceptedEnginePrompt, CoreEffectGateRejection> {

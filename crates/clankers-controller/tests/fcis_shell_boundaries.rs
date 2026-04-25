@@ -177,8 +177,7 @@ const ENGINE_SURFACE_FORBIDDEN_PATHS: [&str; 13] = [
     "tokio_util",
     "clankers_agent",
 ];
-const ENGINE_SURFACE_REQUIRED_PATHS: [&str; 6] = [
-    "clankers_core::CoreState",
+const ENGINE_SURFACE_REQUIRED_PATHS: [&str; 5] = [
     "clanker_message::Content",
     "core::time::Duration",
     "EngineInput::RetryReady",
@@ -213,6 +212,108 @@ const LLM_CONTRACT_SOURCE_FORBIDDEN_PATHS: [&str; 22] = [
     "clankers_provider",
     "clanker_router",
     "clankers_agent",
+];
+
+const ENGINE_CORE_POLICY_FORBIDDEN_SEGMENTS: [&str; 27] = [
+    "core_state",
+    "clankers_core",
+    "CoreState",
+    "CoreInput",
+    "CoreEffect",
+    "CoreLogicalEvent",
+    "CoreEffectId",
+    "PendingPromptState",
+    "PendingFollowUpState",
+    "PendingToolFilterState",
+    "PromptRequested",
+    "PromptCompleted",
+    "ReplayQueuedPrompt",
+    "RunLoopFollowUp",
+    "LoopFollowUpCompleted",
+    "FollowUpDispatchAcknowledged",
+    "AutoTest",
+    "auto_test_enabled",
+    "auto_test_command",
+    "auto_test_in_progress",
+    "SetThinkingLevel",
+    "CycleThinkingLevel",
+    "SetDisabledTools",
+    "ToolFilterApplied",
+    "CompletionStatus",
+    "CoreFailure",
+    "Cancelled",
+];
+const ENGINE_SHELL_RUNTIME_FORBIDDEN_SEGMENTS: [&str; 29] = [
+    "clankers_protocol",
+    "DaemonEvent",
+    "SessionCommand",
+    "ControlResponse",
+    "AttachResponse",
+    "clanker_tui_types",
+    "ratatui",
+    "crossterm",
+    "portable_pty",
+    "clankers_provider",
+    "CompletionProvider",
+    "ToolRegistry",
+    "ToolExecutor",
+    "HookPipeline",
+    "tokio",
+    "mpsc",
+    "oneshot",
+    "JoinHandle",
+    "sleep",
+    "Sleep",
+    "reqwest",
+    "redb",
+    "iroh",
+    "Provider",
+    "Database",
+    "CacheDb",
+    "ToolCallExecutor",
+    "clankers_agent",
+    "clanker_tui_types",
+];
+const CORE_ENGINE_POLICY_FORBIDDEN_SEGMENTS: [&str; 39] = [
+    "clankers_engine",
+    "EngineState",
+    "EngineInput",
+    "EngineEffect",
+    "EngineModelRequest",
+    "EngineModelResponse",
+    "EngineToolRequest",
+    "EngineToolResult",
+    "EnginePromptSubmission",
+    "EngineCorrelationId",
+    "RetryReady",
+    "ScheduleRetry",
+    "CancelTurn",
+    "EngineTerminalFailure",
+    "TurnFinished",
+    "StopReason",
+    "terminal_failure",
+    "terminal_failure_outcome",
+    "retry_delay_for_attempt",
+    "retry_attempt",
+    "retry_attempts",
+    "retry_budget",
+    "backoff",
+    "pending_model_request",
+    "pending_tool_calls",
+    "model_request_budget",
+    "model_request_slot_budget",
+    "continuation_budget",
+    "tool_call",
+    "tool_calls",
+    "ToolUse",
+    "MaxTokens",
+    "ModelCompleted",
+    "ModelFailed",
+    "ToolCompleted",
+    "ToolFailed",
+    "EngineEvent",
+    "EngineRejection",
+    "EngineTurnPhase",
 ];
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
 const AGENT_TURN_ENGINE_MODEL_COMPLETION_REQUIRED_PATHS: [&str; 6] = [
@@ -839,6 +940,12 @@ fn file_uses_allowed_controller_input_translation_boundary(relative_path: &str) 
     CONTROLLER_INPUT_TRANSLATION_FILES.contains(&relative_path)
 }
 
+fn assert_segments_absent(relative_path: &str, paths: &BTreeSet<String>, forbidden_segments: &[&str]) {
+    for forbidden_segment in forbidden_segments {
+        assert_segment_absent(relative_path, paths, forbidden_segment);
+    }
+}
+
 fn assert_engine_surface_path_absent(relative_path: &str, paths: &BTreeSet<String>, forbidden_path: &str) {
     assert_exact_path_absent(relative_path, paths, forbidden_path);
     assert_segment_absent(relative_path, paths, forbidden_path);
@@ -1304,6 +1411,20 @@ fn llm_contract_sources_reject_shell_runtime_dependencies() {
         for forbidden_path in LLM_CONTRACT_SOURCE_FORBIDDEN_PATHS {
             assert_engine_surface_path_absent(relative_path, &paths, forbidden_path);
         }
+    }
+}
+
+#[test]
+fn core_and_engine_reducer_policy_inventories_stay_closed() {
+    for relative_path in rust_source_files_under(ENGINE_CRATE_SOURCE_DIR) {
+        let paths = collect_non_test_paths(&relative_path);
+        assert_segments_absent(&relative_path, &paths, &ENGINE_CORE_POLICY_FORBIDDEN_SEGMENTS);
+        assert_segments_absent(&relative_path, &paths, &ENGINE_SHELL_RUNTIME_FORBIDDEN_SEGMENTS);
+    }
+
+    for relative_path in rust_source_files_under("crates/clankers-core/src") {
+        let paths = collect_non_test_paths(&relative_path);
+        assert_segments_absent(&relative_path, &paths, &CORE_ENGINE_POLICY_FORBIDDEN_SEGMENTS);
     }
 }
 
