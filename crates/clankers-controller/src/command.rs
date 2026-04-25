@@ -1084,6 +1084,77 @@ mod tests {
         assert_eq!(agent.thinking_level(), ThinkingLevel::Max);
     }
 
+    fn assert_sources_do_not_contain_symbols(sources: &[&str], symbols: &[String]) {
+        for source in sources {
+            for symbol in symbols {
+                assert!(
+                    !source.contains(symbol),
+                    "engine/agent turn sources must not own core lifecycle policy symbol {symbol}"
+                );
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn thinking_effects_remain_core_owned() {
+        let mut ctrl = make_test_controller();
+        let thinking_symbols = [
+            ["Set", "ThinkingLevel"].concat(),
+            ["Cycle", "ThinkingLevel"].concat(),
+            ["Apply", "ThinkingLevel"].concat(),
+        ];
+        let engine_and_agent_turn_sources = [
+            include_str!("../../clankers-engine/src/lib.rs"),
+            include_str!("../../clankers-agent/src/turn/mod.rs"),
+            include_str!("../../clankers-agent/src/turn/execution.rs"),
+        ];
+
+        ctrl.handle_command(SessionCommand::SetThinkingLevel {
+            level: "high".to_string(),
+        })
+        .await;
+
+        assert_eq!(ctrl.core_state.thinking_level, clankers_core::CoreThinkingLevel::High);
+        let agent = ctrl.agent.as_ref().expect("controller should retain agent");
+        assert_eq!(agent.thinking_level(), ThinkingLevel::High);
+        assert!(matches!(
+            ctrl.drain_events().as_slice(),
+            [DaemonEvent::SystemMessage { text, is_error: false }] if text.contains("Thinking: off → high")
+        ));
+        assert_sources_do_not_contain_symbols(&engine_and_agent_turn_sources, &thinking_symbols);
+    }
+
+    #[tokio::test]
+    async fn disabled_tool_effects_remain_core_owned() {
+        let mut ctrl = make_test_controller();
+        let rebuilder = RecordingRebuilder::default();
+        ctrl.set_tool_rebuilder(Arc::new(rebuilder.clone()));
+        let tools = vec!["bash".to_string(), "read".to_string()];
+        let disabled_tool_symbols = [
+            ["Set", "DisabledTools"].concat(),
+            ["Apply", "ToolFilter"].concat(),
+            ["Tool", "FilterApplied"].concat(),
+        ];
+        let engine_and_agent_turn_sources = [
+            include_str!("../../clankers-engine/src/lib.rs"),
+            include_str!("../../clankers-agent/src/turn/mod.rs"),
+            include_str!("../../clankers-agent/src/turn/execution.rs"),
+        ];
+
+        ctrl.handle_command(SessionCommand::SetDisabledTools { tools: tools.clone() }).await;
+
+        assert_eq!(ctrl.core_state.disabled_tools, tools);
+        assert_eq!(rebuilder.take_calls(), vec![tools.clone()]);
+        assert!(matches!(
+            ctrl.drain_events().as_slice(),
+            [
+                DaemonEvent::DisabledToolsChanged { tools: changed_tools },
+                DaemonEvent::SystemMessage { text, is_error: false },
+            ] if changed_tools == &tools && text.contains("Disabled tools updated")
+        ));
+        assert_sources_do_not_contain_symbols(&engine_and_agent_turn_sources, &disabled_tool_symbols);
+    }
+
     #[tokio::test]
     async fn test_set_disabled_tools_consumes_reducer_effect_and_emits_change_before_ack() {
         let mut ctrl = make_test_controller();

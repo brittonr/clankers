@@ -199,7 +199,24 @@ test result: ok. 14 passed; 0 failed; 0 ignored; 0 measured; 151 filtered out; f
 
 ### I9 — thinking and disabled-tool ownership tests
 
-Status: PLANNED
+Commands:
+
+```bash
+cargo test -p clankers-controller --lib thinking_effects_remain_core_owned
+cargo test -p clankers-controller --lib disabled_tool_effects_remain_core_owned
+```
+
+Result: PASS
+
+Output excerpt:
+
+```text
+test command::tests::thinking_effects_remain_core_owned ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 166 filtered out; finished in 0.00s
+
+test command::tests::disabled_tool_effects_remain_core_owned ... ok
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 166 filtered out; finished in 0.00s
+```
 
 ### V1 — positive composition sequencing
 
