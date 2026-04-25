@@ -288,8 +288,13 @@ impl SlashHandler for MetricsHandler {
             name: "metrics",
             description: "Show session and historical metrics",
             help: "Displays current-session and historical metrics summaries.\n\n\
-                   Usage: /metrics [days]\n\n\
-                   days  Number of days for historical report (default: 7)",
+                   Usage: /metrics [days|json [days]]\n\n\
+                   days   Number of days for historical report (default: 7)\n\
+                   json   Output as machine-readable JSON\n\n\
+                   Metrics include turns, tokens, tool latency, model switches,\n\
+                   compaction, plugin activity, and process monitoring.\n\
+                   High-cardinality strings (paths, commands) are BLAKE3-fingerprinted.\n\
+                   Recent events are bounded per session (oldest evicted at cap).",
             accepts_args: true,
             subcommands: vec![],
         }
