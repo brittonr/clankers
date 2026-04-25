@@ -18,6 +18,7 @@ pub mod convert;
 pub mod core_effects;
 pub mod event_processing;
 pub mod loop_mode;
+pub mod metrics_capture;
 pub mod persistence;
 pub mod transport;
 pub mod transport_convert;
@@ -192,6 +193,8 @@ pub struct SessionController {
     pub(crate) disabled_tools: Vec<String>,
     /// Optional tool rebuilder for hot-reloading tools on toggle.
     pub(crate) tool_rebuilder: Option<Arc<dyn ToolRebuilder>>,
+    /// Metrics collector (aggregates session metrics from agent events).
+    pub(crate) metrics: metrics_capture::MetricsCollector,
 }
 
 /// Trait for rebuilding the filtered tool set when disabled tools change.
@@ -205,6 +208,7 @@ impl SessionController {
         agent.set_session_id(config.session_id.clone());
         let event_rx = agent.subscribe();
         let model = config.model.clone();
+        let metrics = metrics_capture::MetricsCollector::new(config.session_id.clone());
 
         Self {
             agent: Some(agent),
@@ -234,6 +238,7 @@ impl SessionController {
             model,
             disabled_tools: Vec::new(),
             tool_rebuilder: None,
+            metrics,
         }
     }
 
@@ -245,6 +250,7 @@ impl SessionController {
     /// `DaemonEvent`s.
     pub fn new_embedded(config: ControllerConfig) -> Self {
         let model = config.model.clone();
+        let metrics = metrics_capture::MetricsCollector::new(config.session_id.clone());
 
         Self {
             agent: None,
@@ -274,6 +280,7 @@ impl SessionController {
             model,
             disabled_tools: Vec::new(),
             tool_rebuilder: None,
+            metrics,
         }
     }
 

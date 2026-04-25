@@ -3,7 +3,6 @@
 use serde::Serialize;
 
 use super::storage::MetricsStore;
-use super::types::DailyMetricsRollup;
 use super::types::MetricEventKind;
 use super::types::MetricEventRecord;
 use super::types::SessionMetricsSummary;
@@ -193,6 +192,7 @@ fn event_to_report(e: &MetricEventRecord) -> RecentEvent {
 mod tests {
     use super::*;
     use crate::Db;
+    use crate::metrics::types::DailyMetricsRollup;
 
     fn test_db() -> Result<Db> {
         Db::in_memory()

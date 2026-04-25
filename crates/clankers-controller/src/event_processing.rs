@@ -60,6 +60,12 @@ impl SessionController {
         // 1. Audit tracking
         self.audit.process_event(event);
 
+        // 1b. Metrics capture
+        if let AgentEvent::ModelChange { to, .. } = event {
+            self.metrics.set_model(to.clone());
+        }
+        self.metrics.process(event);
+
         // 2. In embedded mode, seed prompt correlation from the real prompt-start event.
         if self.agent.is_none()
             && !self.core_state.busy
