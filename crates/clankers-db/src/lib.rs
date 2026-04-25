@@ -170,6 +170,11 @@ impl Db {
     pub fn registry(&self) -> registry::Registry<'_> {
         registry::Registry::new(self)
     }
+
+    /// Metrics store accessor.
+    pub fn metrics(&self) -> metrics::MetricsStore<'_> {
+        metrics::MetricsStore::new(self)
+    }
 }
 
 impl std::fmt::Debug for Db {

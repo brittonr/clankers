@@ -29,7 +29,7 @@ const META_TABLE: TableDefinition<&str, &[u8]> = TableDefinition::new("_meta");
 const VERSION_KEY: &str = "schema_version";
 
 /// Current schema version. Bump this when adding a migration.
-pub const CURRENT_VERSION: u32 = 5;
+pub const CURRENT_VERSION: u32 = 6;
 
 /// Each migration function advances the schema by one version.
 /// Index 0 = migration from v0→v1, index 1 = v1→v2, etc.
@@ -43,6 +43,7 @@ const MIGRATIONS: &[fn(&WriteTransaction) -> Result<()>] = &[
     migrate_2_to_3,
     migrate_3_to_4,
     migrate_4_to_5,
+    migrate_5_to_6,
 ];
 
 /// Run all pending migrations. Called from [`Db::open`] on every startup.
@@ -172,6 +173,15 @@ fn migrate_3_to_4(tx: &WriteTransaction) -> Result<()> {
 fn migrate_4_to_5(tx: &WriteTransaction) -> Result<()> {
     use crate::skill_usage;
     tx.open_table(skill_usage::TABLE).map_err(db_err)?;
+    Ok(())
+}
+
+/// v5 → v6: Add metrics tables (session summaries, daily rollups, recent events).
+fn migrate_5_to_6(tx: &WriteTransaction) -> Result<()> {
+    use crate::metrics::storage;
+    tx.open_table(storage::SESSION_SUMMARY_TABLE).map_err(db_err)?;
+    tx.open_table(storage::DAILY_ROLLUP_TABLE).map_err(db_err)?;
+    tx.open_table(storage::RECENT_EVENTS_TABLE).map_err(db_err)?;
     Ok(())
 }
 
