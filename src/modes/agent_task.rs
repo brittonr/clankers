@@ -386,6 +386,8 @@ mod tests {
     use async_trait::async_trait;
     use tokio::sync::mpsc;
 
+    use crate::agent::Agent;
+    use crate::modes::interactive::TaskResult;
     use crate::provider::CompletionRequest;
     use crate::provider::Model;
     use crate::provider::Provider;
@@ -468,6 +470,85 @@ mod tests {
         fn name(&self) -> &str {
             "empty"
         }
+    }
+
+    #[tokio::test]
+    async fn handle_prompt_routes_standalone_agent_through_prompt_path() {
+        use std::sync::atomic::AtomicUsize;
+        use std::sync::atomic::Ordering;
+
+        struct PromptProvider {
+            calls: AtomicUsize,
+        }
+
+        #[async_trait]
+        impl Provider for PromptProvider {
+            async fn complete(
+                &self,
+                _request: CompletionRequest,
+                tx: mpsc::Sender<StreamEvent>,
+            ) -> crate::provider::error::Result<()> {
+                self.calls.fetch_add(1, Ordering::SeqCst);
+                tx.send(StreamEvent::MessageStart {
+                    message: crate::provider::streaming::MessageMetadata {
+                        id: "standalone-msg".to_string(),
+                        model: "test-model".to_string(),
+                        role: "assistant".to_string(),
+                    },
+                })
+                .await
+                .ok();
+                tx.send(StreamEvent::ContentBlockStart {
+                    index: 0,
+                    content_block: clanker_message::Content::Text { text: String::new() },
+                })
+                .await
+                .ok();
+                tx.send(StreamEvent::ContentBlockDelta {
+                    index: 0,
+                    delta: ContentDelta::TextDelta { text: "ok".to_string() },
+                })
+                .await
+                .ok();
+                tx.send(StreamEvent::ContentBlockStop { index: 0 }).await.ok();
+                tx.send(StreamEvent::MessageDelta {
+                    stop_reason: Some("end_turn".to_string()),
+                    usage: clanker_message::Usage::default(),
+                })
+                .await
+                .ok();
+                tx.send(StreamEvent::MessageStop).await.ok();
+                Ok(())
+            }
+
+            fn models(&self) -> &[Model] {
+                &[]
+            }
+
+            fn name(&self) -> &str {
+                "prompt-provider"
+            }
+        }
+
+        let provider = Arc::new(PromptProvider {
+            calls: AtomicUsize::new(0),
+        });
+        let provider_dyn: Arc<dyn Provider> = provider.clone();
+        let mut agent = Agent::new(
+            provider_dyn,
+            Vec::new(),
+            crate::config::Settings::default(),
+            "test-model".to_string(),
+            "test system".to_string(),
+        );
+        let (_cmd_tx, mut cmd_rx) = tokio::sync::mpsc::unbounded_channel();
+        let (done_tx, mut done_rx) = tokio::sync::mpsc::unbounded_channel();
+
+        super::handle_prompt(&mut agent, &mut cmd_rx, &done_tx, "hello", None).await;
+
+        assert_eq!(provider.calls.load(Ordering::SeqCst), 1);
+        assert!(matches!(done_rx.try_recv(), Ok(TaskResult::PromptDone(None))));
+        assert_eq!(agent.messages().len(), 2);
     }
 
     #[tokio::test]

@@ -1900,9 +1900,9 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
     use crate::message::Content;
     use crate::message::MessageId;
     use crate::message::UserMessage;
+    use crate::provider::Usage;
     use crate::provider::streaming::MessageMetadata;
     use crate::provider::streaming::StreamEvent;
-    use crate::provider::streaming::Usage;
 
     struct ToolUseProvider {
         calls: AtomicUsize,
@@ -2076,9 +2076,9 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
     use crate::message::Content;
     use crate::message::MessageId;
     use crate::message::UserMessage;
+    use crate::provider::Usage;
     use crate::provider::streaming::MessageMetadata;
     use crate::provider::streaming::StreamEvent;
-    use crate::provider::streaming::Usage;
 
     struct ToolUseProvider {
         calls: AtomicUsize,

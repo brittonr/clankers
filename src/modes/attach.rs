@@ -2456,6 +2456,21 @@ mod tests {
     }
 
     #[test]
+    fn attach_regular_prompt_routes_to_daemon_session_prompt() {
+        let mut app = test_app();
+        let (client, mut cmd_rx) = capturing_client();
+        let registry = super::build_client_slash_registry();
+        let mut parity_tracker = super::AttachParityTracker::default();
+
+        super::submit_input_attach(&mut app, &client, "hello daemon", &registry, &mut parity_tracker);
+
+        assert!(matches!(
+            drain_session_commands(&mut cmd_rx).as_slice(),
+            [SessionCommand::Prompt { text, images }] if text == "hello daemon" && images.is_empty()
+        ));
+    }
+
+    #[test]
     fn route_attach_slash_keeps_safe_session_subcommands_local() {
         assert_eq!(super::route_attach_slash("session", ""), super::AttachSlashRoute::RegistryLocal);
         assert_eq!(super::route_attach_slash("session", "list 5"), super::AttachSlashRoute::RegistryLocal);
