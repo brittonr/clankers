@@ -58,6 +58,8 @@ use model_switch::check_model_switch;
 use serde_json::Value;
 use tokio::sync::broadcast;
 use tokio_util::sync::CancellationToken;
+use transcript::TurnTranscript;
+use transcript::TurnTranscriptWriter;
 use usage::update_usage_tracking;
 
 use crate::error::AgentError;
@@ -89,52 +91,30 @@ pub(crate) struct CollectedResponse {
 }
 
 const TURN_CANCELLED_REASON: &str = "turn cancelled";
-const TURN_INDEX_INITIAL: u32 = 0;
-const TURN_INDEX_STEP: u32 = 1;
-
-struct TurnHostState<'a> {
-    messages: &'a mut Vec<AgentMessage>,
-    cumulative_usage: Usage,
-    active_model: String,
-    turn_index: u32,
-    turn_active: bool,
-    pending_tool_count: usize,
-    batch_tool_results: Vec<ToolResultMessage>,
-    last_assistant: Option<AssistantMessage>,
-}
-
-type SharedTurnHostState<'a> = Arc<parking_lot::Mutex<TurnHostState<'a>>>;
 
 struct AgentModelHost<'a> {
     provider: &'a dyn Provider,
     event_tx: &'a broadcast::Sender<AgentEvent>,
     cancel: CancellationToken,
     model_switch_slot: Option<&'a ModelSwitchSlot>,
-    state: SharedTurnHostState<'a>,
+    transcript: TurnTranscriptWriter,
 }
 
 impl ModelHost for AgentModelHost<'_> {
     async fn execute_model(&mut self, mut engine_request: EngineModelRequest) -> ModelHostOutcome {
-        {
-            let mut state = self.state.lock();
-            if !state.turn_active {
-                if let Err(error) = check_model_switch(&mut state.active_model, self.model_switch_slot, self.event_tx) {
-                    return ModelHostOutcome::Failed {
-                        failure: engine_failure_from_agent_error(&error),
-                    };
-                }
-                state.turn_active = true;
-                self.event_tx
-                    .send(AgentEvent::TurnStart {
-                        index: state.turn_index,
-                    })
-                    .ok();
+        let mut active_model = self.transcript.active_model();
+        if self.transcript.mark_turn_start(self.event_tx) {
+            if let Err(error) = check_model_switch(&mut active_model, self.model_switch_slot, self.event_tx) {
+                return ModelHostOutcome::Failed {
+                    failure: engine_failure_from_agent_error(&error),
+                };
             }
-            engine_request.model.clone_from(&state.active_model);
+            self.transcript.set_active_model(active_model.clone());
         }
+        engine_request.model = active_model;
 
         let request = match completion_request_from_engine_request(&engine_request) {
-            Ok(request) => request,
+            Ok(r) => r,
             Err(error) => {
                 return ModelHostOutcome::Failed {
                     failure: engine_failure_from_agent_error(&error),
@@ -151,13 +131,7 @@ impl ModelHost for AgentModelHost<'_> {
                 let usage = collected.usage.clone();
                 let assistant = build_assistant_message(&collected);
                 let tool_count = tool_use_count(&collected.content);
-                {
-                    let mut state = self.state.lock();
-                    state.messages.push(AgentMessage::Assistant(assistant.clone()));
-                    state.last_assistant = Some(assistant);
-                    state.pending_tool_count = tool_count;
-                    state.batch_tool_results.clear();
-                }
+                self.transcript.append_assistant(assistant, tool_count);
                 ModelHostOutcome::Completed {
                     response,
                     usage: Some(usage),
@@ -180,7 +154,7 @@ struct AgentToolHost<'a> {
     capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
     user_tool_filter: Option<Vec<String>>,
     output_truncation: clanker_loop::OutputTruncationConfig,
-    state: SharedTurnHostState<'a>,
+    transcript: TurnTranscriptWriter,
 }
 
 impl ToolExecutor for AgentToolHost<'_> {
@@ -211,36 +185,8 @@ impl ToolExecutor for AgentToolHost<'_> {
         let mut truncated = apply_output_truncation(vec![message], &self.output_truncation);
         let message = truncated.remove(0);
         let outcome = tool_result_message_to_host_outcome(&message);
-        let turn_end = self.record_tool_result(message);
-        if let Some(event) = turn_end {
-            self.event_tx.send(event).ok();
-        }
+        self.transcript.append_tool_result(message, self.event_tx);
         outcome
-    }
-}
-
-impl AgentToolHost<'_> {
-    fn record_tool_result(&mut self, message: ToolResultMessage) -> Option<AgentEvent> {
-        let mut state = self.state.lock();
-        state.messages.push(AgentMessage::ToolResult(message.clone()));
-        state.batch_tool_results.push(message);
-        if state.pending_tool_count == 0 || state.batch_tool_results.len() < state.pending_tool_count {
-            return None;
-        }
-
-        let assistant = state.last_assistant.clone()?;
-        let tool_results = state.batch_tool_results.clone();
-        state.batch_tool_results.clear();
-        state.last_assistant = None;
-        state.pending_tool_count = 0;
-        state.turn_active = false;
-        let turn_index = state.turn_index;
-        state.turn_index = state.turn_index.saturating_add(TURN_INDEX_STEP);
-        Some(AgentEvent::TurnEnd {
-            index: turn_index,
-            message: assistant,
-            tool_results,
-        })
     }
 }
 
@@ -263,15 +209,13 @@ impl RetrySleeper for AgentRetrySleeper {
 
 struct AgentEngineEventSink<'a> {
     event_tx: &'a broadcast::Sender<AgentEvent>,
-    state: SharedTurnHostState<'a>,
+    transcript: TurnTranscriptWriter,
 }
 
 impl EngineEventSink for AgentEngineEventSink<'_> {
     fn emit_engine_event(&mut self, event: &EngineEvent) -> std::result::Result<(), HostAdapterError> {
         if event.turn_finished_stop_reason().is_some() {
-            if let Some(turn_end) = self.finish_active_turn_without_more_tools() {
-                self.event_tx.send(turn_end).ok();
-            }
+            self.transcript.finish_turn(self.event_tx);
             return Ok(());
         }
 
@@ -287,27 +231,6 @@ impl EngineEventSink for AgentEngineEventSink<'_> {
             _ => {}
         }
         Ok(())
-    }
-}
-
-impl AgentEngineEventSink<'_> {
-    fn finish_active_turn_without_more_tools(&mut self) -> Option<AgentEvent> {
-        let mut state = self.state.lock();
-        if !state.turn_active || state.pending_tool_count != 0 {
-            state.turn_active = false;
-            return None;
-        }
-        let assistant = state.last_assistant.clone()?;
-        let turn_index = state.turn_index;
-        state.turn_active = false;
-        state.last_assistant = None;
-        state.batch_tool_results.clear();
-        state.turn_index = state.turn_index.saturating_add(TURN_INDEX_STEP);
-        Some(AgentEvent::TurnEnd {
-            index: turn_index,
-            message: assistant,
-            tool_results: Vec::new(),
-        })
     }
 }
 
@@ -328,7 +251,7 @@ impl CancellationSource for AgentCancellationSource {
 struct AgentUsageObserver<'a> {
     cost_tracker: Option<&'a Arc<CostTracker>>,
     event_tx: &'a broadcast::Sender<AgentEvent>,
-    state: SharedTurnHostState<'a>,
+    transcript: TurnTranscriptWriter,
 }
 
 impl UsageObserver for AgentUsageObserver<'_> {
@@ -336,15 +259,16 @@ impl UsageObserver for AgentUsageObserver<'_> {
         if observation.kind != UsageObservationKind::FinalSummary {
             return Ok(());
         }
-        let mut state = self.state.lock();
-        let active_model = state.active_model.clone();
-        update_usage_tracking(
-            &mut state.cumulative_usage,
-            &observation.usage,
-            &active_model,
-            self.cost_tracker,
-            self.event_tx,
-        );
+        let active_model = self.transcript.active_model();
+        self.transcript.update_cumulative_usage(|cumulative| {
+            update_usage_tracking(
+                cumulative,
+                &observation.usage,
+                &active_model,
+                self.cost_tracker,
+                self.event_tx,
+            );
+        });
         Ok(())
     }
 }
@@ -616,34 +540,30 @@ fn tool_feedback_input(message: &ToolResultMessage) -> EngineInput {
     )
 }
 
-/// Run the agent turn loop.
-///
-/// 1. Build CompletionRequest from messages + config
-/// 2. Stream response from provider
-/// 3. Collect response, extract tool calls
-/// 4. If tool_use: execute tools in parallel, append results, loop
-/// 5. If stop/max_tokens: return
-#[allow(clippy::too_many_arguments)]
+pub struct TurnLoopContext<'a> {
+    pub provider: &'a dyn Provider,
+    pub controller_tools: &'a HashMap<String, Arc<dyn Tool>>,
+    pub event_tx: &'a broadcast::Sender<AgentEvent>,
+    pub cancel: CancellationToken,
+    pub cost_tracker: Option<&'a Arc<CostTracker>>,
+    pub model_switch_slot: Option<&'a ModelSwitchSlot>,
+    pub hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+    pub session_id: &'a str,
+    pub db: Option<clankers_db::Db>,
+    pub capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
+    pub user_tool_filter: Option<Vec<String>>,
+}
+
 pub async fn run_turn_loop(
-    provider: &dyn Provider,
-    controller_tools: &HashMap<String, Arc<dyn Tool>>,
-    messages: &mut Vec<AgentMessage>,
     config: &TurnConfig,
-    event_tx: &broadcast::Sender<AgentEvent>,
-    cancel: CancellationToken,
-    cost_tracker: Option<&Arc<CostTracker>>,
-    model_switch_slot: Option<&ModelSwitchSlot>,
-    hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
-    session_id: &str,
-    db: Option<clankers_db::Db>,
-    capability_gate: Option<&Arc<dyn crate::tool::CapabilityGate>>,
-    user_tool_filter: Option<&Vec<String>>,
+    ctx: TurnLoopContext<'_>,
+    messages: &mut Vec<AgentMessage>,
 ) -> Result<()> {
-    let tool_defs = tool_definitions_from_tool_catalog(controller_tools);
-    let state = EngineState::new();
+    let tool_defs = tool_definitions_from_tool_catalog(ctx.controller_tools);
+    let engine_state = EngineState::new();
     let submit_outcome = engine_outcome_or_error(
         reduce(
-            &state,
+            &engine_state,
             &EngineInput::submit_user_prompt(clankers_engine::EnginePromptSubmission {
                 messages: engine_messages_from_agent_messages(messages),
                 model: config.model.clone(),
@@ -654,58 +574,52 @@ pub async fn run_turn_loop(
                 tools: tool_defs,
                 no_cache: config.no_cache,
                 cache_ttl: config.cache_ttl.clone(),
-                session_id: session_id.to_string(),
+                session_id: ctx.session_id.to_string(),
                 model_request_slot_budget: config.model_request_slot_budget,
             }),
         ),
         "prompt submission",
     )?;
 
-    let state = Arc::new(parking_lot::Mutex::new(TurnHostState {
-        messages,
-        cumulative_usage: Usage::default(),
-        active_model: config.model.clone(),
-        turn_index: TURN_INDEX_INITIAL,
-        turn_active: false,
-        pending_tool_count: 0,
-        batch_tool_results: Vec::new(),
-        last_assistant: None,
-    }));
+    let transcript = TurnTranscript::new(
+        std::mem::take(messages),
+        config.model.clone(),
+    );
 
-    let mut model = AgentModelHost {
-        provider,
-        event_tx,
-        cancel: cancel.clone(),
-        model_switch_slot,
-        state: state.clone(),
+    let mut model_host = AgentModelHost {
+        provider: ctx.provider,
+        event_tx: ctx.event_tx,
+        cancel: ctx.cancel.clone(),
+        model_switch_slot: ctx.model_switch_slot,
+        transcript: transcript.writer(),
     };
-    let mut tools = AgentToolHost {
-        controller_tools,
-        event_tx,
-        cancel: cancel.clone(),
-        hook_pipeline,
-        session_id,
-        db,
-        capability_gate: capability_gate.cloned(),
-        user_tool_filter: user_tool_filter.cloned(),
+    let mut tool_host = AgentToolHost {
+        controller_tools: ctx.controller_tools,
+        event_tx: ctx.event_tx,
+        cancel: ctx.cancel.clone(),
+        hook_pipeline: ctx.hook_pipeline,
+        session_id: ctx.session_id,
+        db: ctx.db,
+        capability_gate: ctx.capability_gate,
+        user_tool_filter: ctx.user_tool_filter,
         output_truncation: config.output_truncation.clone(),
-        state: state.clone(),
+        transcript: transcript.writer(),
     };
-    let mut retry_sleeper = AgentRetrySleeper { cancel: cancel.clone() };
+    let mut retry_sleeper = AgentRetrySleeper { cancel: ctx.cancel.clone() };
     let mut event_sink = AgentEngineEventSink {
-        event_tx,
-        state: state.clone(),
+        event_tx: ctx.event_tx,
+        transcript: transcript.writer(),
     };
-    let mut cancellation = AgentCancellationSource { cancel: cancel.clone() };
+    let mut cancellation = AgentCancellationSource { cancel: ctx.cancel.clone() };
     let mut usage_observer = AgentUsageObserver {
-        cost_tracker,
-        event_tx,
-        state,
+        cost_tracker: ctx.cost_tracker,
+        event_tx: ctx.event_tx,
+        transcript: transcript.writer(),
     };
 
     let report = run_engine_turn(EngineRunSeed::new(EngineState::new(), submit_outcome), HostAdapters {
-        model: &mut model,
-        tools: &mut tools,
+        model: &mut model_host,
+        tools: &mut tool_host,
         retry_sleeper: &mut retry_sleeper,
         event_sink: &mut event_sink,
         cancellation: &mut cancellation,
@@ -713,7 +627,9 @@ pub async fn run_turn_loop(
     })
     .await;
 
-    if cancel.is_cancelled() {
+    *messages = transcript.into_messages();
+
+    if ctx.cancel.is_cancelled() {
         return Err(AgentError::Cancelled);
     }
     if let Some(error) = agent_error_from_report(&report) {
@@ -826,6 +742,42 @@ mod tests {
     use crate::tool::ToolDefinition;
     use crate::tool::ToolResult as ToolExecResult;
     use crate::tool::progress::ResultChunk;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn test_run_turn_loop(
+        provider: &dyn Provider,
+        tools: &HashMap<String, Arc<dyn Tool>>,
+        messages: &mut Vec<AgentMessage>,
+        config: &TurnConfig,
+        event_tx: &broadcast::Sender<AgentEvent>,
+        cancel: CancellationToken,
+        cost_tracker: Option<&Arc<CostTracker>>,
+        model_switch_slot: Option<&ModelSwitchSlot>,
+        hook_pipeline: Option<Arc<clankers_hooks::HookPipeline>>,
+        session_id: &str,
+        db: Option<clankers_db::Db>,
+        capability_gate: Option<Arc<dyn crate::tool::CapabilityGate>>,
+        user_tool_filter: Option<Vec<String>>,
+    ) -> Result<()> {
+        run_turn_loop(
+            config,
+            TurnLoopContext {
+                provider,
+                controller_tools: tools,
+                event_tx,
+                cancel,
+                cost_tracker,
+                model_switch_slot,
+                hook_pipeline,
+                session_id,
+                db,
+                capability_gate,
+                user_tool_filter,
+            },
+            messages,
+        )
+        .await
+    }
 
     // -----------------------------------------------------------------------
     // parse_stop_reason
@@ -1585,7 +1537,7 @@ mod tests {
         let (event_tx, _rx) = broadcast::channel(256);
         let cancel = CancellationToken::new();
 
-        run_turn_loop(
+        test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -1678,7 +1630,7 @@ mod tests {
         let config = make_turn_config();
         let (event_tx, _rx) = broadcast::channel(256);
 
-        run_turn_loop(
+        test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -1704,7 +1656,7 @@ mod tests {
             timestamp: Utc::now(),
         }));
 
-        run_turn_loop(
+        test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -1798,7 +1750,7 @@ mod tests {
         let (event_tx, _rx) = broadcast::channel(256);
         let mut before_resume_messages = vec![make_user_message()];
 
-        run_turn_loop(
+        test_run_turn_loop(
             &provider,
             &tools,
             &mut before_resume_messages,
@@ -1824,7 +1776,7 @@ mod tests {
             timestamp: Utc::now(),
         })];
 
-        run_turn_loop(
+        test_run_turn_loop(
             &provider,
             &tools,
             &mut resumed_messages,
@@ -1977,7 +1929,7 @@ mod tests {
         let switch_slot = crate::tool::model_switch_slot();
         *switch_slot.lock() = Some("switched-model".to_string());
 
-        run_turn_loop(
+        test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -2125,7 +2077,7 @@ mod tests {
         let (event_tx, _rx) = broadcast::channel(256);
         let gate: Arc<dyn crate::tool::CapabilityGate> = Arc::new(DenyAllGate);
 
-        run_turn_loop(
+        test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -2137,7 +2089,7 @@ mod tests {
             None,
             "session-capability",
             None,
-            Some(&gate),
+            Some(gate.clone()),
             None,
         )
         .await
@@ -2276,7 +2228,7 @@ mod tests {
         let mut pipeline = clankers_hooks::HookPipeline::new();
         pipeline.register(Arc::new(RecordingDenyHook { calls: calls.clone() }));
 
-        run_turn_loop(
+        test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -2415,7 +2367,7 @@ mod tests {
         config.model_request_slot_budget = EXPECTED_PROVIDER_CALLS as u32;
         let (event_tx, _rx) = broadcast::channel(256);
 
-        run_turn_loop(
+        test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -2562,7 +2514,7 @@ mod tests {
         config.model_request_slot_budget = EXPECTED_PROVIDER_CALLS as u32;
         let (event_tx, _rx) = broadcast::channel(256);
 
-        run_turn_loop(
+        test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -2606,7 +2558,7 @@ mod tests {
         let (event_tx, _rx) = broadcast::channel(256);
         let cancel = CancellationToken::new();
 
-        let result = run_turn_loop(
+        let result = test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -2638,7 +2590,7 @@ mod tests {
         let (event_tx, _rx) = broadcast::channel(256);
         let cancel = CancellationToken::new();
 
-        let result = run_turn_loop(
+        let result = test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -2679,7 +2631,7 @@ mod tests {
             cancel_clone.cancel();
         });
 
-        let result = run_turn_loop(
+        let result = test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -2836,7 +2788,7 @@ mod tests {
         let config = make_turn_config();
         let (event_tx, _rx) = broadcast::channel(256);
 
-        let result = run_turn_loop(
+        let result = test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -2869,7 +2821,7 @@ mod tests {
 
         let mut non_retryable_messages = vec![make_user_message()];
         let (non_retry_event_tx, _rx) = broadcast::channel(256);
-        let non_retryable_result = run_turn_loop(
+        let non_retryable_result = test_run_turn_loop(
             &non_retryable_provider,
             &tools,
             &mut non_retryable_messages,
@@ -2893,7 +2845,7 @@ mod tests {
 
         let mut retry_exhaustion_messages = vec![make_user_message()];
         let (retry_event_tx, _rx) = broadcast::channel(256);
-        let retry_exhaustion_result = run_turn_loop(
+        let retry_exhaustion_result = test_run_turn_loop(
             &retry_exhaustion_provider,
             &tools,
             &mut retry_exhaustion_messages,
@@ -2930,7 +2882,7 @@ mod tests {
             cancel_clone.cancel();
         });
 
-        let result = run_turn_loop(
+        let result = test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -2961,7 +2913,7 @@ mod tests {
         config.model_request_slot_budget = ZERO_MODEL_REQUEST_SLOT_BUDGET;
         let (event_tx, _rx) = broadcast::channel(256);
 
-        let result = run_turn_loop(
+        let result = test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -2997,7 +2949,7 @@ mod tests {
         config.model_request_slot_budget = SINGLE_MODEL_REQUEST_SLOT_BUDGET;
         let (event_tx, mut event_rx) = broadcast::channel(256);
 
-        let result = run_turn_loop(
+        let result = test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,
@@ -3035,7 +2987,7 @@ mod tests {
         let config = make_turn_config();
         let (event_tx, _rx) = broadcast::channel(256);
 
-        let result = run_turn_loop(
+        let result = test_run_turn_loop(
             &provider,
             &tools,
             &mut messages,

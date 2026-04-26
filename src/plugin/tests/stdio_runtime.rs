@@ -2027,21 +2027,23 @@ async fn capability_gate_blocks_stdio_tool_calls_in_turn_loop() {
         }]));
 
     crate::agent::turn::run_turn_loop(
-        &ToolUseProvider {
-            calls: AtomicUsize::new(0),
-        },
-        &tools,
-        &mut messages,
         &config,
-        &event_tx,
-        CancellationToken::new(),
-        None,
-        None,
-        None,
-        "session-stdio-capability",
-        None,
-        Some(&gate),
-        None,
+        crate::agent::turn::TurnLoopContext {
+            provider: &ToolUseProvider {
+                calls: AtomicUsize::new(0),
+            },
+            controller_tools: &tools,
+            event_tx: &event_tx,
+            cancel: CancellationToken::new(),
+            cost_tracker: None,
+            model_switch_slot: None,
+            hook_pipeline: None,
+            session_id: "session-stdio-capability",
+            db: None,
+            capability_gate: Some(gate.clone()),
+            user_tool_filter: None,
+        },
+        &mut messages,
     )
     .await
     .unwrap();
@@ -2203,21 +2205,23 @@ async fn capability_gate_allows_stdio_tool_calls_in_turn_loop() {
         }]));
 
     crate::agent::turn::run_turn_loop(
-        &ToolUseProvider {
-            calls: AtomicUsize::new(0),
-        },
-        &tools,
-        &mut messages,
         &config,
-        &event_tx,
-        CancellationToken::new(),
-        None,
-        None,
-        None,
-        "session-stdio-capability-allow",
-        None,
-        Some(&gate),
-        None,
+        crate::agent::turn::TurnLoopContext {
+            provider: &ToolUseProvider {
+                calls: AtomicUsize::new(0),
+            },
+            controller_tools: &tools,
+            event_tx: &event_tx,
+            cancel: CancellationToken::new(),
+            cost_tracker: None,
+            model_switch_slot: None,
+            hook_pipeline: None,
+            session_id: "session-stdio-capability-allow",
+            db: None,
+            capability_gate: Some(gate.clone()),
+            user_tool_filter: None,
+        },
+        &mut messages,
     )
     .await
     .unwrap();

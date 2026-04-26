@@ -328,19 +328,21 @@ impl Agent {
         };
 
         let result = turn::run_turn_loop(
-            self.provider.as_ref(),
-            &self.tools,
-            &mut self.messages,
             &config,
-            &self.event_tx,
-            self.cancel.clone(),
-            self.cost_tracker.as_ref(),
-            self.model_switch_slot.as_ref(),
-            self.hook_pipeline.clone(),
-            &self.session_id,
-            self.db.clone(),
-            self.capability_gate.as_ref(),
-            self.user_tool_filter.as_ref(),
+            turn::TurnLoopContext {
+                provider: self.provider.as_ref(),
+                controller_tools: &self.tools,
+                event_tx: &self.event_tx,
+                cancel: self.cancel.clone(),
+                cost_tracker: self.cost_tracker.as_ref(),
+                model_switch_slot: self.model_switch_slot.as_ref(),
+                hook_pipeline: self.hook_pipeline.clone(),
+                session_id: &self.session_id,
+                db: self.db.clone(),
+                capability_gate: self.capability_gate.clone(),
+                user_tool_filter: self.user_tool_filter.clone(),
+            },
+            &mut self.messages,
         )
         .await;
 
@@ -713,19 +715,21 @@ impl Agent {
             };
 
             let result = turn::run_turn_loop(
-                self.provider.as_ref(),
-                &self.tools,
-                &mut self.messages,
                 &config,
-                &self.event_tx,
-                self.cancel.clone(),
-                self.cost_tracker.as_ref(),
-                self.model_switch_slot.as_ref(),
-                self.hook_pipeline.clone(),
-                &self.session_id,
-                self.db.clone(),
-                self.capability_gate.as_ref(),
-                self.user_tool_filter.as_ref(),
+                turn::TurnLoopContext {
+                    provider: self.provider.as_ref(),
+                    controller_tools: &self.tools,
+                    event_tx: &self.event_tx,
+                    cancel: self.cancel.clone(),
+                    cost_tracker: self.cost_tracker.as_ref(),
+                    model_switch_slot: self.model_switch_slot.as_ref(),
+                    hook_pipeline: self.hook_pipeline.clone(),
+                    session_id: &self.session_id,
+                    db: self.db.clone(),
+                    capability_gate: self.capability_gate.clone(),
+                    user_tool_filter: self.user_tool_filter.clone(),
+                },
+                &mut self.messages,
             )
             .await;
 
