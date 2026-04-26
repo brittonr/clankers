@@ -1896,3 +1896,30 @@ fn control_protocol_construction_stays_in_pure_conversion_files() {
         &CONTROL_PROTOCOL_CONVERSION_REQUIRED_CONSTRUCTOR_PATHS,
     );
 }
+
+const AGENT_TURN_ADAPTER_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
+const AGENT_TURN_ADAPTER_SHARED_STATE_FORBIDDEN: [&str; 2] = [
+    "SharedTurnHostState",
+    "TurnHostState",
+];
+
+#[test]
+fn agent_turn_adapters_reject_shared_mutable_turn_state() {
+    let paths = collect_non_test_paths(AGENT_TURN_ADAPTER_FILE);
+
+    for forbidden in &AGENT_TURN_ADAPTER_SHARED_STATE_FORBIDDEN {
+        let matching: Vec<&String> = paths.iter().filter(|p| p.contains(forbidden)).collect();
+        assert!(
+            matching.is_empty(),
+            "{} adapter crossed thin-shell boundary: found {:?} referencing {:?}",
+            AGENT_TURN_ADAPTER_FILE,
+            matching,
+            forbidden
+        );
+    }
+
+    assert_source_text_absent(
+        AGENT_TURN_ADAPTER_FILE,
+        &["Arc<Mutex<TurnHostState>>", "Arc<parking_lot::Mutex<TurnHostState>>"],
+    );
+}

@@ -17,7 +17,7 @@
 
 ## 4. Boundary rails
 
-- [ ] I9 Add a boundary test in `crates/clankers-controller/tests/fcis_shell_boundaries.rs` (or `crates/clankers-agent/tests/`) that parses `impl ModelHost for` and `impl ToolExecutor for` blocks in `crates/clankers-agent/src/turn/mod.rs` and asserts they do not reference `CompletionRequest`, `stream_model_request`, `execute_tools_parallel`, `StreamEvent`, `Arc<Mutex<TurnHostState>>`, or `SharedTurnHostState`. [covers=thin-agent-shell.boundary-rails-enforce-adapter-purity,thin-agent-shell.fcis-rejects-provider-streaming-in-adapters,thin-agent-shell.fcis-rejects-inline-tool-execution-in-adapters]
+- [x] I9 Add a boundary test in `crates/clankers-controller/tests/fcis_shell_boundaries.rs` (or `crates/clankers-agent/tests/`) that parses `impl ModelHost for` and `impl ToolExecutor for` blocks in `crates/clankers-agent/src/turn/mod.rs` and asserts they do not reference `CompletionRequest`, `stream_model_request`, `execute_tools_parallel`, `StreamEvent`, `Arc<Mutex<TurnHostState>>`, or `SharedTurnHostState`. [covers=thin-agent-shell.boundary-rails-enforce-adapter-purity,thin-agent-shell.fcis-rejects-provider-streaming-in-adapters,thin-agent-shell.fcis-rejects-inline-tool-execution-in-adapters]
 
 ## 5. Test migration and verification
 
