@@ -20,7 +20,7 @@ r[embeddable-agent-engine.core-engine-explicit-layering]
 
 ### Requirement: The engine API MUST expose explicit host-driven execution contracts
 
-The engine MUST define explicit host-facing contracts for model execution requests, tool execution requests, host feedback, and semantic engine events after an adapter has accepted any core-owned prompt lifecycle transition.
+The engine MUST define explicit host-facing contracts for model execution requests, tool execution requests, host feedback, and semantic engine events after an adapter has accepted any core-owned prompt lifecycle transition. Host adapters MUST be pure delegation wrappers; the engine-host boundary MUST NOT require adapters to own provider-specific streaming, request construction, or shared mutable conversation state.
 r[embeddable-agent-engine.host-driven-contracts]
 
 #### Scenario: host submits an accepted prompt through engine input
@@ -52,6 +52,13 @@ r[embeddable-agent-engine.turn-events-lifecycle-events-separated]
 - **THEN** it emits engine-native semantic events for those turn concerns
 - **THEN** loop-state changes, queued-prompt replay, and session prompt-lifecycle busy changes remain core-owned lifecycle outputs translated by adapters outside the engine
 - **THEN** engine turn busy and terminal `BusyChanged` events for accepted model/tool/retry work remain engine-owned turn outputs
+
+#### Scenario: host adapters are pure delegation wrappers
+r[embeddable-agent-engine.host-adapters-pure-delegation]
+
+- **WHEN** a Clankers shell implements `ModelHost`, `ToolExecutor`, or other engine-host traits
+- **THEN** the adapter struct delegates to purpose-built modules for provider I/O, tool dispatch, and transcript recording
+- **THEN** the adapter struct does not contain inline streaming loops, request construction, capability gate checks, or shared mutable turn state
 
 ### Requirement: Turn orchestration MUST be engine-owned reusable policy
 
