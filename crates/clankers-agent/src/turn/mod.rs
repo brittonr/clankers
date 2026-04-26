@@ -2,6 +2,7 @@
 
 mod execution;
 mod model_switch;
+mod transcript;
 mod usage;
 
 use std::collections::HashMap;
