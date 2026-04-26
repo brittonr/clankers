@@ -1165,6 +1165,14 @@ enum AttachSlashRoute {
     ForwardToDaemon,
 }
 
+const ATTACH_CUSTOM_LOCAL_COMMANDS: &[&str] = &["quit", "q", "detach", "zoom", "help"];
+const ATTACH_REGISTRY_LOCAL_COMMANDS: &[&str] = &[
+    "status", "usage", "metrics", "insights", "version", "router", "cd", "shell", "export", "layout", "preview",
+    "editor", "todo", "tools", "think", "compact", "compress",
+];
+const ATTACH_REGISTRY_LOCAL_EMPTY_ARG_COMMANDS: &[&str] = &["model", "role"];
+const ATTACH_LOCAL_SESSION_SUBCOMMANDS: &[&str] = &["list", "ls", "delete", "rm", "purge"];
+
 #[derive(Debug, Default)]
 pub(crate) struct AttachParityTracker {
     thinking_ack_messages_to_suppress: usize,
@@ -1243,7 +1251,7 @@ fn is_thinking_ack_message(event: &DaemonEvent) -> bool {
 }
 
 fn route_attach_slash(command: &str, args: &str) -> AttachSlashRoute {
-    if matches!(command, "quit" | "q" | "detach" | "zoom" | "help") {
+    if ATTACH_CUSTOM_LOCAL_COMMANDS.contains(&command) {
         return AttachSlashRoute::CustomLocal;
     }
 
@@ -1251,30 +1259,11 @@ fn route_attach_slash(command: &str, args: &str) -> AttachSlashRoute {
         return AttachSlashRoute::GetPlugins;
     }
 
-    if matches!(
-        command,
-        "status"
-            | "usage"
-            | "metrics"
-            | "insights"
-            | "version"
-            | "router"
-            | "cd"
-            | "shell"
-            | "export"
-            | "layout"
-            | "preview"
-            | "editor"
-            | "todo"
-            | "tools"
-            | "think"
-            | "compact"
-            | "compress"
-    ) {
+    if ATTACH_REGISTRY_LOCAL_COMMANDS.contains(&command) {
         return AttachSlashRoute::RegistryLocal;
     }
 
-    if matches!(command, "model" | "role") && args.trim().is_empty() {
+    if ATTACH_REGISTRY_LOCAL_EMPTY_ARG_COMMANDS.contains(&command) && args.trim().is_empty() {
         return AttachSlashRoute::RegistryLocal;
     }
 
@@ -1292,7 +1281,7 @@ fn is_attach_local_session_command(args: &str) -> bool {
     }
 
     let subcommand = trimmed.split_whitespace().next().unwrap_or_default();
-    matches!(subcommand, "list" | "ls" | "delete" | "rm" | "purge")
+    ATTACH_LOCAL_SESSION_SUBCOMMANDS.contains(&subcommand)
 }
 
 /// Submit input in attach mode — some slash commands run locally,
@@ -1354,7 +1343,7 @@ fn handle_client_side_slash(app: &mut App, command: &str, args: &str) {
         "help" => {
             app.push_system("Attach mode — locally handled slash commands include:".to_string(), false);
             app.push_system(
-                "  /status /usage /version /router /model /role /session [list|delete|purge] /cd /shell /export"
+                "  /status /usage /version /router /model (no args) /role (no args) /session [list|delete|purge] /cd /shell /export"
                     .to_string(),
                 false,
             );
@@ -2477,11 +2466,53 @@ mod tests {
         assert_eq!(super::route_attach_slash("session", "delete abc"), super::AttachSlashRoute::RegistryLocal);
         assert_eq!(super::route_attach_slash("session", "resume abc"), super::AttachSlashRoute::ForwardToDaemon);
         assert_eq!(super::route_attach_slash("model", ""), super::AttachSlashRoute::RegistryLocal);
+        assert_eq!(super::route_attach_slash("model", "sonnet"), super::AttachSlashRoute::ForwardToDaemon);
         assert_eq!(super::route_attach_slash("role", ""), super::AttachSlashRoute::RegistryLocal);
+        assert_eq!(super::route_attach_slash("role", "planner"), super::AttachSlashRoute::ForwardToDaemon);
         assert_eq!(super::route_attach_slash("think", ""), super::AttachSlashRoute::RegistryLocal);
         assert_eq!(super::route_attach_slash("think", "high"), super::AttachSlashRoute::RegistryLocal);
         assert_eq!(super::route_attach_slash("compress", ""), super::AttachSlashRoute::RegistryLocal);
         assert_eq!(super::route_attach_slash("plugin", ""), super::AttachSlashRoute::GetPlugins);
+    }
+
+    #[test]
+    fn attach_help_advertised_local_commands_have_matching_routes() {
+        let advertised_routes = [
+            ("status", ""),
+            ("usage", ""),
+            ("version", ""),
+            ("router", ""),
+            ("model", ""),
+            ("role", ""),
+            ("session", "list"),
+            ("session", "delete missing-session"),
+            ("session", "purge"),
+            ("cd", ""),
+            ("shell", ""),
+            ("export", ""),
+            ("layout", ""),
+            ("preview", ""),
+            ("editor", ""),
+            ("todo", ""),
+            ("tools", ""),
+            ("think", "high"),
+            ("compact", ""),
+            ("compress", ""),
+            ("plugin", ""),
+            ("quit", ""),
+            ("detach", ""),
+            ("zoom", ""),
+        ];
+
+        for (command, args) in advertised_routes {
+            assert_ne!(
+                super::route_attach_slash(command, args),
+                super::AttachSlashRoute::ForwardToDaemon,
+                "advertised attach command /{command} {args} must stay local or use plugin inventory fetch"
+            );
+        }
+        assert_eq!(super::route_attach_slash("session", "resume abc"), super::AttachSlashRoute::ForwardToDaemon);
+        assert_eq!(super::route_attach_slash("unknown", ""), super::AttachSlashRoute::ForwardToDaemon);
     }
 
     #[test]
@@ -2559,8 +2590,8 @@ mod tests {
 
         let messages = system_texts(&app);
         assert!(messages.iter().any(|message| message.contains("locally handled slash commands include")));
-        assert!(messages.iter().any(|message| message.contains("/model")));
-        assert!(messages.iter().any(|message| message.contains("/role")));
+        assert!(messages.iter().any(|message| message.contains("/model (no args)")));
+        assert!(messages.iter().any(|message| message.contains("/role (no args)")));
         assert!(messages.iter().any(|message| message.contains("/think [level]")));
         assert!(messages.iter().any(|message| message.contains("/compress")));
         assert!(messages.iter().any(|message| message.contains("/plugin")));

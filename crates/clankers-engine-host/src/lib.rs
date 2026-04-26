@@ -465,6 +465,7 @@ mod tests {
     const TEST_USAGE_OUTPUT: usize = 5;
     const TEST_PROVIDER_STATUS: u16 = 429;
     const TEST_RETRY_DELAY_MIN_MS: u128 = 1;
+    const ZERO_MODEL_REQUEST_SLOT_BUDGET: u32 = 0;
 
     fn block_on<F: core::future::Future>(future: F) -> F::Output {
         use std::sync::Arc;
@@ -1357,6 +1358,36 @@ mod tests {
                 .iter()
                 .any(|diagnostic| diagnostic.component == HostAdapterComponent::UsageObserver)
         );
+    }
+
+    #[test]
+    fn invalid_budget_rejection_stops_before_host_adapters() {
+        let mut model = FakeModel::default();
+        let mut tools = FakeTools::default();
+        let mut sleeper = FakeSleeper::default();
+        let mut events = FakeEvents::default();
+        let mut cancel = FakeCancel::default();
+        let mut usage = FakeUsage::default();
+        let report = block_on(run_engine_turn(seed_with_budget(ZERO_MODEL_REQUEST_SLOT_BUDGET), HostAdapters {
+            model: &mut model,
+            tools: &mut tools,
+            retry_sleeper: &mut sleeper,
+            event_sink: &mut events,
+            cancellation: &mut cancel,
+            usage_observer: &mut usage,
+        }));
+
+        assert_eq!(report.last_outcome.rejection, Some(EngineRejection::InvalidBudget));
+        assert_eq!(report.final_state.phase, report.initial_state.phase);
+        assert_eq!(report.final_state.messages.len(), report.initial_state.messages.len());
+        assert!(report.final_state.pending_model_request.is_none());
+        assert!(report.final_state.pending_tool_calls.is_empty());
+        assert!(report.observed_events.is_empty());
+        assert!(report.usage_observations.is_empty());
+        assert!(report.adapter_diagnostics.is_empty());
+        assert!(sleeper.slept.is_empty());
+        assert!(events.events.is_empty());
+        assert!(usage.observations.is_empty());
     }
 
     #[test]

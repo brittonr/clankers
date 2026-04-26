@@ -481,7 +481,7 @@ mod tests {
             ("crates/clankers-agent/src/turn/execution.rs", 1usize),
             ("src/modes/agent_task.rs", 1usize),
             ("src/worktree/llm_resolver.rs", 1usize),
-            ("crates/clankers-provider/src/router.rs", 20usize),
+            ("crates/clankers-provider/src/router.rs", 21usize),
             ("crates/clankers-provider/src/rpc_provider.rs", 4usize),
         ];
 

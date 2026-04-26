@@ -118,6 +118,18 @@ fn content_to_router_json(content: &crate::message::Content) -> serde_json::Valu
     }
 }
 
+const BRANCH_SUMMARY_MESSAGE_PREFIX: &str = "Branch summary";
+const COMPACTION_SUMMARY_MESSAGE_PREFIX: &str = "Compaction summary";
+
+fn summary_to_router_json(prefix: &str, summary: &str) -> serde_json::Value {
+    use serde_json::json;
+
+    json!({
+        "role": "user",
+        "content": [{"type": "text", "text": format!("[{prefix}]\n{summary}")}],
+    })
+}
+
 fn messages_to_router_json(messages: &[crate::message::AgentMessage]) -> Vec<serde_json::Value> {
     use serde_json::json;
 
@@ -147,7 +159,13 @@ fn messages_to_router_json(messages: &[crate::message::AgentMessage]) -> Vec<ser
                 }
                 out.push(json!({"role": "user", "content": [block]}));
             }
-            _ => {}
+            AgentMessage::BranchSummary(summary) => {
+                out.push(summary_to_router_json(BRANCH_SUMMARY_MESSAGE_PREFIX, &summary.summary));
+            }
+            AgentMessage::CompactionSummary(summary) => {
+                out.push(summary_to_router_json(COMPACTION_SUMMARY_MESSAGE_PREFIX, &summary.summary));
+            }
+            AgentMessage::BashExecution(_) | AgentMessage::Custom(_) => {}
         }
     }
     out
@@ -651,6 +669,13 @@ mod tests {
 
     use super::*;
     use crate::streaming::StreamEvent;
+
+    const CAPTURING_MODEL_MAX_INPUT_TOKENS: usize = 200_000;
+    const CAPTURING_MODEL_MAX_OUTPUT_TOKENS: usize = 16_384;
+    const FIXED_MESSAGE_TIMESTAMP: &str = "2026-04-25T00:00:00Z";
+    const COMPACTION_TOKENS_SAVED: usize = 64;
+    const SUCCESS_EXIT_CODE: i32 = 0;
+    const TEST_STREAM_CHANNEL_CAPACITY: usize = 4;
 
     // Minimal mock provider for testing
     struct MockProvider {
@@ -1456,8 +1481,10 @@ mod tests {
         assert!(events.iter().any(|e| matches!(e, StreamEvent::MessageStop)));
     }
 
+    type CapturedRouterRequest = clanker_router::CompletionRequest;
+
     struct CapturingRouterProvider {
-        captured: Mutex<Option<clanker_router::CompletionRequest>>,
+        captured: Mutex<Option<CapturedRouterRequest>>,
         models_list: Vec<Model>,
     }
 
@@ -1482,26 +1509,131 @@ mod tests {
         }
     }
 
+    fn capturing_model(id: &str) -> Model {
+        Model {
+            id: id.to_string(),
+            name: id.to_string(),
+            provider: "capturing".to_string(),
+            max_input_tokens: CAPTURING_MODEL_MAX_INPUT_TOKENS,
+            max_output_tokens: CAPTURING_MODEL_MAX_OUTPUT_TOKENS,
+            supports_thinking: true,
+            supports_images: true,
+            supports_tools: true,
+            input_cost_per_mtok: None,
+            output_cost_per_mtok: None,
+        }
+    }
+
+    fn capturing_router_provider(model_id: &str) -> Arc<CapturingRouterProvider> {
+        Arc::new(CapturingRouterProvider {
+            captured: Mutex::new(None),
+            models_list: vec![capturing_model(model_id)],
+        })
+    }
+
+    fn take_captured_request(inner: &CapturingRouterProvider) -> CapturedRouterRequest {
+        inner
+            .captured
+            .lock()
+            .expect("capture lock poisoned")
+            .take()
+            .expect("router request should be captured")
+    }
+
+    fn fixed_message_timestamp() -> chrono::DateTime<chrono::Utc> {
+        chrono::DateTime::parse_from_rfc3339(FIXED_MESSAGE_TIMESTAMP)
+            .expect("fixed timestamp should parse")
+            .with_timezone(&chrono::Utc)
+    }
+
+    fn representative_router_adapter_history() -> Vec<clanker_message::message::AgentMessage> {
+        use clanker_message::message::*;
+
+        let timestamp = fixed_message_timestamp();
+        vec![
+            AgentMessage::User(UserMessage {
+                id: MessageId::new("user-1"),
+                content: vec![
+                    Content::Text {
+                        text: "hello".to_string(),
+                    },
+                    Content::Image {
+                        source: ImageSource::Base64 {
+                            media_type: "image/png".to_string(),
+                            data: "base64-image".to_string(),
+                        },
+                    },
+                ],
+                timestamp,
+            }),
+            AgentMessage::Assistant(AssistantMessage {
+                id: MessageId::new("assistant-1"),
+                content: vec![
+                    Content::Thinking {
+                        thinking: "private reasoning".to_string(),
+                        signature: "reasoning-signature".to_string(),
+                    },
+                    Content::ToolUse {
+                        id: "call-1".to_string(),
+                        name: "read".to_string(),
+                        input: json!({"path": "README.md"}),
+                    },
+                    Content::Text {
+                        text: "using read".to_string(),
+                    },
+                ],
+                model: "test-model".to_string(),
+                usage: clanker_message::Usage::default(),
+                stop_reason: StopReason::ToolUse,
+                timestamp,
+            }),
+            AgentMessage::ToolResult(ToolResultMessage {
+                id: MessageId::new("tool-1"),
+                call_id: "call-1".to_string(),
+                tool_name: "read".to_string(),
+                content: vec![Content::Text {
+                    text: "file contents".to_string(),
+                }],
+                is_error: false,
+                details: Some(json!({"source": "fixture"})),
+                timestamp,
+            }),
+            AgentMessage::BashExecution(BashExecutionMessage {
+                id: MessageId::new("bash-1"),
+                command: "echo shell-only".to_string(),
+                stdout: "shell-only output".to_string(),
+                stderr: String::new(),
+                exit_code: Some(SUCCESS_EXIT_CODE),
+                timestamp,
+            }),
+            AgentMessage::Custom(CustomMessage {
+                id: MessageId::new("custom-1"),
+                kind: "shell-only-kind".to_string(),
+                data: json!({"text": "shell-only custom"}),
+                timestamp,
+            }),
+            AgentMessage::BranchSummary(BranchSummaryMessage {
+                id: MessageId::new("branch-1"),
+                from_id: MessageId::new("user-1"),
+                summary: "alternate branch context".to_string(),
+                timestamp,
+            }),
+            AgentMessage::CompactionSummary(CompactionSummaryMessage {
+                id: MessageId::new("compaction-1"),
+                compacted_ids: vec![MessageId::new("user-1")],
+                summary: "compacted conversation context".to_string(),
+                tokens_saved: COMPACTION_TOKENS_SAVED,
+                timestamp,
+            }),
+        ]
+    }
+
     #[tokio::test]
     async fn test_compat_adapter_preserves_session_id_extra_param() {
-        let inner = Arc::new(CapturingRouterProvider {
-            captured: Mutex::new(None),
-            models_list: vec![Model {
-                id: "test-model".to_string(),
-                name: "test-model".to_string(),
-                provider: "capturing".to_string(),
-                max_input_tokens: 200_000,
-                max_output_tokens: 16_384,
-                supports_thinking: true,
-                supports_images: true,
-                supports_tools: true,
-                input_cost_per_mtok: None,
-                output_cost_per_mtok: None,
-            }],
-        });
+        let inner = capturing_router_provider("test-model");
         let adapter = RouterCompatAdapter::new(inner.clone());
 
-        let (tx, _rx) = mpsc::channel(4);
+        let (tx, _rx) = mpsc::channel(TEST_STREAM_CHANNEL_CAPACITY);
         let request = CompletionRequest {
             model: "test-model".to_string(),
             messages: vec![make_user_msg("Hello")],
@@ -1517,17 +1649,87 @@ mod tests {
 
         adapter.complete(request, tx).await.unwrap();
 
-        let captured = inner
-            .captured
-            .lock()
-            .expect("capture lock poisoned")
-            .take()
-            .expect("router request should be captured");
+        let captured = take_captured_request(&inner);
         assert_eq!(captured.extra_params.get("_session_id"), Some(&json!("session-local-1")));
         assert_eq!(captured.messages, vec![json!({
             "role": "user",
             "content": [{"type": "text", "text": "Hello"}],
         })]);
+    }
+
+    #[tokio::test]
+    async fn test_compat_adapter_uses_provider_native_message_json_for_representative_history() {
+        let inner = capturing_router_provider("test-model");
+        let adapter = RouterCompatAdapter::new(inner.clone());
+        let (tx, _rx) = mpsc::channel(TEST_STREAM_CHANNEL_CAPACITY);
+        let request = CompletionRequest {
+            model: "test-model".to_string(),
+            messages: representative_router_adapter_history(),
+            system_prompt: Some("Be helpful".into()),
+            max_tokens: None,
+            temperature: None,
+            tools: vec![],
+            thinking: None,
+            no_cache: false,
+            cache_ttl: None,
+            extra_params: HashMap::from([("_session_id".to_string(), json!("session-local-2"))]),
+        };
+
+        adapter.complete(request, tx).await.unwrap();
+
+        let captured = take_captured_request(&inner);
+        assert_eq!(captured.extra_params.get("_session_id"), Some(&json!("session-local-2")));
+        assert_eq!(captured.messages, vec![
+            json!({
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "hello"},
+                    {
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": "image/png",
+                            "data": "base64-image",
+                        },
+                    },
+                ],
+            }),
+            json!({
+                "role": "assistant",
+                "content": [
+                    {
+                        "type": "thinking",
+                        "thinking": "private reasoning",
+                        "signature": "reasoning-signature",
+                    },
+                    {
+                        "type": "tool_use",
+                        "id": "call-1",
+                        "name": "read",
+                        "input": {"path": "README.md"},
+                    },
+                    {"type": "text", "text": "using read"},
+                ],
+            }),
+            json!({
+                "role": "user",
+                "content": [{
+                    "type": "tool_result",
+                    "tool_use_id": "call-1",
+                    "content": [{"type": "text", "text": "file contents"}],
+                }],
+            }),
+            json!({
+                "role": "user",
+                "content": [{"type": "text", "text": "[Branch summary]\nalternate branch context"}],
+            }),
+            json!({
+                "role": "user",
+                "content": [{"type": "text", "text": "[Compaction summary]\ncompacted conversation context"}],
+            }),
+        ]);
+        let captured_messages = serde_json::to_string(&captured.messages).expect("captured messages serialize");
+        assert!(!captured_messages.contains("shell-only"));
     }
 
     #[derive(Debug)]
