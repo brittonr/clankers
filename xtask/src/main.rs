@@ -573,6 +573,7 @@ fn gen_architecture(_root: &Path, crates: &[CrateInfo]) -> String {
     assert!(!crates.is_empty());
     assert!(!layers.is_empty());
     out.push_str("# Architecture Map\n\n");
+    out.push_str("For the prompt/event/provider/session golden path, see [Request Lifecycle](../reference/request-lifecycle.md).\n\n");
     out.push_str("## Dependency graph\n\n");
     out.push_str("Workspace crate dependencies (auto-extracted from Cargo.toml files).\n\n");
     out.push_str("```mermaid\ngraph TD\n");

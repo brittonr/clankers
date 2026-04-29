@@ -11,35 +11,35 @@
 | Metric | Count |
 |--------|------:|
 | Workspace crates | 31 |
-| Lines of Rust (crates/) | 107,436 |
-| Lines of Rust (src/) | 47,858 |
-| **Total lines of Rust** | **155,294** |
-| Tests (crates/) | 2,263 |
-| Tests (src/) | 732 |
-| **Total tests** | **2,995** |
-| Public API items | 2,086 |
+| Lines of Rust (crates/) | 107,428 |
+| Lines of Rust (src/) | 47,890 |
+| **Total lines of Rust** | **155,318** |
+| Tests (crates/) | 2,267 |
+| Tests (src/) | 733 |
+| **Total tests** | **3,000** |
+| Public API items | 2,087 |
 
 ## Crates by size
 
 | Crate | Lines | Tests |
 |-------|------:|------:|
-| `src/ (binary)` | 47,858 | 732 |
-| `clanker-router` | 22,131 | 382 |
-| `clankers-tui` | 16,617 | 279 |
-| `clankers-controller` | 9,194 | 209 |
-| `clankers-agent` | 8,513 | 146 |
-| `clankers-provider` | 8,425 | 167 |
-| `clankers-db` | 6,698 | 206 |
+| `src/ (binary)` | 47,890 | 733 |
+| `clanker-router` | 21,649 | 382 |
+| `clankers-tui` | 16,619 | 279 |
+| `clankers-controller` | 9,244 | 210 |
+| `clankers-agent` | 8,618 | 146 |
+| `clankers-provider` | 8,613 | 168 |
+| `clankers-db` | 6,714 | 207 |
 | `clankers-session` | 4,014 | 102 |
 | `clankers-plugin` | 3,725 | 39 |
 | `clankers-protocol` | 2,240 | 79 |
 | `clankers-util` | 1,942 | 79 |
-| `clanker-tui-types` | 1,815 | 14 |
-| `clanker-auth` | 1,813 | 21 |
-| `clankers-engine-host` | 1,713 | 26 |
+| `clankers-engine-host` | 1,843 | 27 |
+| `clanker-tui-types` | 1,831 | 14 |
+| `clanker-auth` | 1,775 | 21 |
 | `clankers-config` | 1,702 | 43 |
 | `clankers-core` | 1,643 | 42 |
-| `clankers-matrix` | 1,501 | 8 |
+| `clankers-matrix` | 1,512 | 8 |
 | `clankers-model-selection` | 1,501 | 49 |
 | `clankers-engine` | 1,481 | 29 |
 | `clankers-ucan` | 1,436 | 52 |
@@ -51,7 +51,7 @@
 | `clankers-agent-defs` | 873 | 29 |
 | `clankers-skills` | 756 | 17 |
 | `clankers-autoresearch` | 628 | 19 |
-| `clanker-plugin-sdk` | 530 | 0 |
+| `clanker-plugin-sdk` | 524 | 0 |
 | `clankers-procmon` | 468 | 5 |
 | `clankers-tool-host` | 372 | 10 |
 | `clankers-prompts` | 163 | 5 |

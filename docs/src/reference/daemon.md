@@ -41,6 +41,8 @@ clankers daemon stop            # stop daemon
 - **`agent_process.rs`** — Wraps a `SessionController` as a named actor in the ProcessRegistry.
 - **`SessionController`** — Transport-agnostic agent driver. Owns the Agent and SessionManager, handles commands, feeds events.
 
+For the end-to-end prompt/event/provider/session path, see [Request Lifecycle](./request-lifecycle.md).
+
 ### Wire protocol
 
 4-byte big-endian length prefix + JSON over Unix sockets or QUIC streams.

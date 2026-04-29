@@ -12,7 +12,7 @@ Each crate in the `crates/` workspace directory.
 
 UCAN-inspired capability tokens over iroh Ed25519 identity.
 
-**1813** lines of Rust · **21** tests
+**1775** lines of Rust · **21** tests
 
 <details><summary>Public API</summary>
 
@@ -134,7 +134,7 @@ struct UserMessage
 
 SDK for building [clankers](https://github.com/brittonr/clankers) WASM plugins.
 
-**530** lines of Rust · **0** tests
+**524** lines of Rust · **0** tests
 
 <details><summary>Public API</summary>
 
@@ -173,7 +173,7 @@ trait Args
 
 clanker-router — Model router and auth gateway for LLM providers
 
-**22131** lines of Rust · **382** tests
+**21649** lines of Rust · **382** tests
 
 **Workspace deps:** `clanker-message`
 
@@ -546,7 +546,7 @@ trait SseEventHandler
 
 Shared types for terminal-agent TUI boundaries.
 
-**1815** lines of Rust · **14** tests
+**1831** lines of Rust · **14** tests
 
 <details><summary>Public API</summary>
 
@@ -644,7 +644,7 @@ trait ProcessDataSource
 
 Agent core — turn loop, event bus, tool interface, context management
 
-**8513** lines of Rust · **146** tests
+**8618** lines of Rust · **146** tests
 
 **Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-router`, `clanker-tui-types`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-engine-host`, `clankers-hooks`, `clankers-model-selection`, `clankers-procmon`, `clankers-prompts`, `clankers-provider`, `clankers-skills`, `clankers-tool-host`, `clankers-util`
 
@@ -755,6 +755,7 @@ struct TtsrEngine
 struct TtsrFiring
 struct TtsrRule
 struct TurnConfig
+struct TurnLoopContext
 trait CapabilityGate
 trait Tool
 ```
@@ -915,7 +916,7 @@ struct ThemeDef
 
 Transport-agnostic session controller for agent orchestration.
 
-**9194** lines of Rust · **209** tests
+**9244** lines of Rust · **210** tests
 
 **Workspace deps:** `clanker-loop`, `clanker-message`, `clanker-tui-types`, `clankers-agent`, `clankers-config`, `clankers-core`, `clankers-db`, `clankers-engine`, `clankers-hooks`, `clankers-protocol`, `clankers-provider`, `clankers-session`
 
@@ -1105,7 +1106,7 @@ struct ToolFilterApplied
 
 Embedded database (redb) for structured persistent storage.
 
-**6698** lines of Rust · **206** tests
+**6714** lines of Rust · **207** tests
 
 <details><summary>Public API</summary>
 
@@ -1328,7 +1329,7 @@ struct EngineToolCall
 
 Reusable async host runner for `clankers-engine` effects.
 
-**1713** lines of Rust · **26** tests
+**1843** lines of Rust · **27** tests
 
 **Workspace deps:** `clanker-message`, `clankers-engine`, `clankers-tool-host`
 
@@ -1424,7 +1425,7 @@ trait HookHandler
 
 ## clankers-matrix
 
-**1501** lines of Rust · **8** tests
+**1512** lines of Rust · **8** tests
 
 <details><summary>Public API</summary>
 
@@ -1805,7 +1806,7 @@ struct ToolInfo
 
 LLM provider abstraction
 
-**8425** lines of Rust · **167** tests
+**8613** lines of Rust · **168** tests
 
 **Workspace deps:** `clanker-message`, `clanker-router`, `clanker-tui-types`
 
@@ -2115,7 +2116,7 @@ trait TtsProvider
 
 Terminal UI (ratatui + crossterm)
 
-**16617** lines of Rust · **279** tests
+**16619** lines of Rust · **279** tests
 
 **Workspace deps:** `clanker-tui-types`, `clankers-autoresearch`, `clankers-protocol`
 

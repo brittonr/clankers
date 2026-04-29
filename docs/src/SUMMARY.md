@@ -14,6 +14,8 @@
 - [Multi-Model Routing](./reference/multi-model.md)
 - [Session Format](./reference/session-format.md)
 - [Daemon & Actors](./reference/daemon.md)
+- [Request Lifecycle](./reference/request-lifecycle.md)
+- [Provider Contracts](./reference/provider-contracts.md)
 - [Plugins](./reference/plugins.md)
 - [P2P & Networking](./reference/p2p.md)
 - [Configuration](./reference/config.md)

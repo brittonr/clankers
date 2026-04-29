@@ -260,39 +260,45 @@ Plugins add additional tools at runtime.
 
 ## Architecture
 
-30+ workspace crates under `crates/`:
+For the prompt/event/provider/session golden path, see [`docs/src/reference/request-lifecycle.md`](docs/src/reference/request-lifecycle.md).
+
+Workspace-local crates under `crates/`:
 
 | Crate | Purpose |
 |---|---|
-| [`clanker-actor`](https://github.com/brittonr/clanker-actor) | Erlang-style actor system (ProcessRegistry, signals, links) |
 | `clanker-auth` | Generic capability token infrastructure |
-| `clanker-message` | Message types and serialization |
-| `clanker-plugin-sdk` | Plugin development SDK |
-| `clanker-router` | Multi-provider routing, fallback, caching, proxy |
-| `clanker-tui-types` | Shared TUI type definitions |
-| `clankers-agent` | Agent loop, system prompt, tool dispatch |
+| `clanker-message` | Reusable conversation message/content/streaming types |
+| `clanker-plugin-sdk` | Extism guest SDK used by plugins |
+| `clanker-router` | Multi-provider routing, fallback, caching, OAuth, RPC |
+| `clanker-tui-types` | Shared TUI event/action/block/display types |
+| `clankers-agent` | Agent loop, prompt execution, tool dispatch |
 | `clankers-agent-defs` | Agent definition discovery and loading |
-| `clankers-config` | Settings, paths, keybindings |
+| `clankers-autoresearch` | Automated research workflows |
+| `clankers-config` | Settings, paths, keybindings, auth path materialization |
 | `clankers-controller` | SessionController (transport-agnostic agent driver) |
+| `clankers-core` | Functional-core state/effect contracts |
 | `clankers-db` | Embedded database (redb) |
+| `clankers-engine` | Shell-independent engine request/event surface |
+| `clankers-engine-host` | Runtime host for engine turns and streams |
 | `clankers-hooks` | Event hooks (pre-commit, session start, etc.) |
-| [`clanker-loop`](https://github.com/brittonr/clanker-loop) | Loop/retry engine |
 | `clankers-matrix` | Matrix protocol bridge |
-| [`graggle`](https://github.com/brittonr/graggle) | Order-independent merge algorithm |
 | `clankers-model-selection` | Complexity routing and cost tracking |
-| `clankers-plugin` | WASM plugin host (Extism) |
+| `clankers-nix` | Nix evaluation and integration helpers |
+| `clankers-plugin` | Plugin discovery, manifests, and host runtime |
 | `clankers-procmon` | Process monitor |
 | `clankers-prompts` | Prompt template system |
 | `clankers-protocol` | Daemon-client wire protocol (frames, events, commands) |
-| `clankers-provider` | LLM provider abstraction |
-| [`clanker-scheduler`](https://github.com/brittonr/clanker-scheduler) | Task scheduling |
-| `clankers-session` | JSONL session persistence |
+| `clankers-provider` | LLM provider abstraction and compatibility adapters |
+| `clankers-session` | JSONL session persistence and context rebuilds |
 | `clankers-skills` | Skill discovery and loading |
-| `clankers-specs` | OpenSpec integration |
+| `clankers-tool-host` | Shared tool catalog/executor host traits |
+| `clankers-tts` | Text-to-speech integration |
 | `clankers-tui` | Terminal UI (ratatui) |
 | `clankers-ucan` | Clankers-specific capability tokens over `clanker-auth` |
-| `clankers-util` | Shared utilities (logging, direnv, etc.) |
+| `clankers-util` | Shared utilities (logging, direnv, parsing, truncation, etc.) |
 | `clankers-zellij` | Zellij session sharing |
+
+Extracted first-party dependencies used by the workspace include [`clanker-actor`](https://github.com/brittonr/clanker-actor), [`clanker-loop`](https://github.com/brittonr/clanker-loop), [`clanker-scheduler`](https://github.com/brittonr/clanker-scheduler), and [`graggle`](https://github.com/brittonr/graggle).
 
 ## License
 
