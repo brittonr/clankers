@@ -248,7 +248,7 @@ clankers token revoke <hash>            # revoke a token
 
 ## Built-in Tools
 
-Core: `read`, `write`, `edit`, `bash`, `grep`, `find`, `ls`, `ask`, `commit`, `web`, `nix`
+Core: `read`, `write`, `edit`, `execute_code`, `bash`, `grep`, `find`, `ls`, `ask`, `commit`, `web`, `nix`
 
 Orchestration: `subagent`, `delegate_task`, `switch_model`, `loop`, `signal_loop_success`
 

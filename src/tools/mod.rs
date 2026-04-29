@@ -30,6 +30,7 @@ pub mod delegate;
 pub mod devtools;
 pub mod diff;
 pub mod edit;
+pub mod execute_code;
 pub mod find;
 pub mod git_ops;
 pub mod grep;

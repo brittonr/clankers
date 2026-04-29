@@ -268,6 +268,7 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         (ToolTier::Core, Arc::new(crate::tools::read::ReadTool::new())),
         (ToolTier::Core, Arc::new(crate::tools::write::WriteTool::new())),
         (ToolTier::Core, Arc::new(crate::tools::edit::EditTool::new())),
+        (ToolTier::Core, Arc::new(crate::tools::execute_code::ExecuteCodeTool::new())),
         (ToolTier::Core, Arc::new(bash_tool)),
         (ToolTier::Core, Arc::new(crate::tools::grep::GrepTool::new())),
         (ToolTier::Core, Arc::new(crate::tools::find::FindTool::new())),
