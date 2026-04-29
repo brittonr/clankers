@@ -298,28 +298,53 @@ impl<'a> EventLoopRunner<'a> {
 
     /// Drain fired schedule events and inject them as agent prompts.
     ///
-    /// When a schedule fires, extracts the `prompt` field from the
-    /// payload and sends it to the agent task. Shows a system message
-    /// in the TUI so the user knows a schedule triggered.
+    /// When a schedule fires, builds the scheduled prompt from payload metadata
+    /// and sends it to the agent task. Shows a system message in the TUI so the
+    /// user knows a schedule triggered.
     fn drain_schedule_events(&mut self) {
         loop {
             match self.schedule_rx.try_recv() {
                 Ok(event) => {
-                    let prompt = event.payload.get("prompt").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+                    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+                    let scheduled_prompt =
+                        match crate::modes::schedule_prompt::build_scheduled_prompt(&event.payload, &cwd) {
+                            Ok(Some(prompt)) => prompt,
+                            Ok(None) => {
+                                tracing::debug!(
+                                    "schedule '{}' fired but payload has no 'prompt' field",
+                                    event.schedule_name,
+                                );
+                                continue;
+                            }
+                            Err(err) => {
+                                tracing::warn!("schedule '{}' failed to prepare prompt: {err}", event.schedule_name);
+                                self.app
+                                    .push_system(format!("⏰ Schedule '{}' failed: {err}", event.schedule_name), true);
+                                continue;
+                            }
+                        };
 
-                    if prompt.is_empty() {
-                        tracing::debug!("schedule '{}' fired but payload has no 'prompt' field", event.schedule_name,);
-                        continue;
+                    let mut details = Vec::new();
+                    if !scheduled_prompt.loaded_skills.is_empty() {
+                        details.push(format!("{} skill(s)", scheduled_prompt.loaded_skills.len()));
                     }
+                    if scheduled_prompt.script_path.is_some() {
+                        details.push("script".to_string());
+                    }
+                    let detail_suffix = if details.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" with {}", details.join(" + "))
+                    };
 
                     self.app.push_system(
                         format!(
-                            "⏰ Schedule '{}' fired (#{}) — running prompt",
-                            event.schedule_name, event.fire_count,
+                            "⏰ Schedule '{}' fired (#{}) — running prompt{}",
+                            event.schedule_name, event.fire_count, detail_suffix,
                         ),
                         false,
                     );
-                    self.cmd_tx.send(AgentCommand::Prompt(prompt)).ok();
+                    self.cmd_tx.send(AgentCommand::Prompt(scheduled_prompt.text)).ok();
                 }
                 Err(tokio::sync::broadcast::error::TryRecvError::Lagged(n)) => {
                     tracing::warn!("Schedule event receiver lagged, skipped {n} events");

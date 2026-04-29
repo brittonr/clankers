@@ -319,11 +319,15 @@ pub async fn handle_schedule_event(
         result.plugin_messages = dispatch.messages;
     }
 
-    let prompt = sched_event.payload.get("prompt").and_then(|v| v.as_str()).unwrap_or_default().to_string();
-
-    if prompt.is_empty() {
-        return result;
-    }
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let scheduled_prompt = match crate::modes::schedule_prompt::build_scheduled_prompt(&sched_event.payload, &cwd) {
+        Ok(Some(prompt)) => prompt,
+        Ok(None) => return result,
+        Err(err) => {
+            warn!("schedule '{}' failed to prepare prompt: {err}", sched_event.schedule_name);
+            return result;
+        }
+    };
 
     let explicit_id = sched_event
         .payload
@@ -353,7 +357,7 @@ pub async fn handle_schedule_event(
         );
         cmd_tx
             .send(clankers_protocol::SessionCommand::Prompt {
-                text: prompt,
+                text: scheduled_prompt.text,
                 images: vec![],
             })
             .ok();
