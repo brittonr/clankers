@@ -404,9 +404,9 @@ mod tests {
 
     /// Build an SseLineReader from raw SSE text for testing.
     fn sse_reader_from_bytes(data: &[u8]) -> SseLineReader {
-        let stream: std::pin::Pin<Box<dyn tokio_stream::Stream<Item = std::result::Result<tokio_util::bytes::Bytes, std::io::Error>> + Send>> = Box::pin(
-            tokio_stream::once(Ok(tokio_util::bytes::Bytes::copy_from_slice(data)))
-        );
+        let stream: std::pin::Pin<
+            Box<dyn tokio_stream::Stream<Item = std::result::Result<tokio_util::bytes::Bytes, std::io::Error>> + Send>,
+        > = Box::pin(tokio_stream::once(Ok(tokio_util::bytes::Bytes::copy_from_slice(data))));
         let reader = tokio_util::io::StreamReader::new(stream);
         let lines = tokio::io::BufReader::new(reader).lines();
         SseLineReader { lines }
@@ -546,9 +546,9 @@ mod tests {
             Ok(tokio_util::bytes::Bytes::from(chunk3)),
         ];
 
-        let stream: std::pin::Pin<Box<dyn tokio_stream::Stream<Item = std::result::Result<tokio_util::bytes::Bytes, std::io::Error>> + Send>> = Box::pin(
-            tokio_stream::iter(chunks)
-        );
+        let stream: std::pin::Pin<
+            Box<dyn tokio_stream::Stream<Item = std::result::Result<tokio_util::bytes::Bytes, std::io::Error>> + Send>,
+        > = Box::pin(tokio_stream::iter(chunks));
         let reader_inner = tokio_util::io::StreamReader::new(stream);
         let lines = tokio::io::BufReader::new(reader_inner).lines();
         let mut reader = SseLineReader { lines };
@@ -627,10 +627,7 @@ mod tests {
     #[tokio::test]
     async fn test_sse_reader_openai_style_done() {
         // OpenAI-compatible streams end with data: [DONE]
-        let data = concat!(
-            "data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n",
-            "data: [DONE]\n\n",
-        );
+        let data = concat!("data: {\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n", "data: [DONE]\n\n",);
 
         let mut reader = sse_reader_from_bytes(data.as_bytes());
 
@@ -641,5 +638,4 @@ mod tests {
         let e2 = reader.next_event().await.unwrap().unwrap();
         assert!(e2.is_done());
     }
-
 }

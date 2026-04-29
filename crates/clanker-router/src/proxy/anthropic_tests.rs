@@ -1,12 +1,16 @@
-use axum::http::StatusCode;
-use serde_json::{Value, json};
 use std::sync::Arc;
+
+use axum::http::StatusCode;
+use serde_json::Value;
+use serde_json::json;
 use tokio::sync::mpsc;
 
 use super::anthropic::*;
 use super::*;
 use crate::model::Model;
-use crate::provider::{CompletionRequest, Provider, Usage};
+use crate::provider::CompletionRequest;
+use crate::provider::Provider;
+use crate::provider::Usage;
 use crate::router::Router;
 use crate::streaming::*;
 
@@ -104,21 +108,13 @@ fn make_authed_app() -> AxumRouter {
     build_app(state)
 }
 
-async fn request_raw(
-    app: &AxumRouter,
-    uri: &str,
-    body: Value,
-    auth: Option<&str>,
-) -> (StatusCode, String) {
+async fn request_raw(app: &AxumRouter, uri: &str, body: Value, auth: Option<&str>) -> (StatusCode, String) {
     use axum::body::Body;
     use axum::http::Request;
     use tower::ServiceExt;
 
     let body_bytes = serde_json::to_vec(&body).unwrap();
-    let mut req = Request::builder()
-        .method("POST")
-        .uri(uri)
-        .header("content-type", "application/json");
+    let mut req = Request::builder().method("POST").uri(uri).header("content-type", "application/json");
 
     if let Some(token) = auth {
         req = req.header("authorization", format!("Bearer {}", token));
@@ -170,9 +166,7 @@ fn convert_basic_request() {
         messages: vec![json!({"role": "user", "content": [{"type": "text", "text": "Hello"}]})],
         max_tokens: 1024,
         stream: Some(true),
-        system: Some(vec![
-            json!({"type": "text", "text": "Be helpful", "cache_control": {"type": "ephemeral"}}),
-        ]),
+        system: Some(vec![json!({"type": "text", "text": "Be helpful", "cache_control": {"type": "ephemeral"}})]),
         tools: Some(vec![AnthropicTool {
             name: "bash".into(),
             description: Some("Run a command".into()),
@@ -433,9 +427,9 @@ async fn anthropic_endpoint_full_stream() {
     assert_eq!(msg_start["message"]["role"], "assistant");
 
     // Check content contains our text
-    let has_text = events.iter().any(|(t, v)| {
-        t == "content_block_delta" && v["delta"]["text"].as_str() == Some("Hello from anthropic proxy!")
-    });
+    let has_text = events
+        .iter()
+        .any(|(t, v)| t == "content_block_delta" && v["delta"]["text"].as_str() == Some("Hello from anthropic proxy!"));
     assert!(has_text, "Should contain text delta");
 
     // Check message_delta has usage with cache tokens
@@ -644,8 +638,10 @@ fn raw_passthrough_preserves_full_body() {
     assert_eq!(body["stream"], true);
 
     // temperature must be stripped when thinking is enabled (Anthropic rejects it)
-    assert!(body.get("temperature").is_none() || body["temperature"].is_null(),
-        "temperature must be omitted when thinking is enabled");
+    assert!(
+        body.get("temperature").is_none() || body["temperature"].is_null(),
+        "temperature must be omitted when thinking is enabled"
+    );
 
     // System blocks with cache_control intact
     let system = body["system"].as_array().unwrap();
@@ -774,8 +770,7 @@ fn raw_passthrough_strips_temperature_when_thinking_enabled() {
     let body = build_request_body_for_test(&cr, false).unwrap();
 
     // Anthropic rejects temperature when thinking is enabled
-    assert!(body.get("temperature").is_none(),
-        "temperature must be stripped when thinking is enabled");
+    assert!(body.get("temperature").is_none(), "temperature must be stripped when thinking is enabled");
     // thinking itself is preserved
     assert_eq!(body["thinking"]["type"], "enabled");
     assert_eq!(body["thinking"]["budget_tokens"], 10000);

@@ -2,8 +2,11 @@
 
 use std::collections::BTreeMap;
 
-use clanker_message::{Content, StopReason, Usage};
-use serde::{Deserialize, Serialize};
+use clanker_message::Content;
+use clanker_message::StopReason;
+use clanker_message::Usage;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 use thiserror::Error;
 
@@ -18,16 +21,43 @@ pub struct ProviderStreamError {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum HostStreamEvent {
-    TextStart { index: usize },
-    TextDelta { index: usize, text: String },
-    ThinkingStart { index: usize, signature: String },
-    ThinkingDelta { index: usize, thinking: String },
-    ToolUseStart { index: usize, id: String, name: String },
-    ToolUseJsonDelta { index: usize, json: String },
-    ContentBlockStop { index: usize },
-    Usage { usage: Usage },
-    MessageStop { model: Option<String>, stop_reason: StopReason },
-    ProviderError { error: ProviderStreamError },
+    TextStart {
+        index: usize,
+    },
+    TextDelta {
+        index: usize,
+        text: String,
+    },
+    ThinkingStart {
+        index: usize,
+        signature: String,
+    },
+    ThinkingDelta {
+        index: usize,
+        thinking: String,
+    },
+    ToolUseStart {
+        index: usize,
+        id: String,
+        name: String,
+    },
+    ToolUseJsonDelta {
+        index: usize,
+        json: String,
+    },
+    ContentBlockStop {
+        index: usize,
+    },
+    Usage {
+        usage: Usage,
+    },
+    MessageStop {
+        model: Option<String>,
+        stop_reason: StopReason,
+    },
+    ProviderError {
+        error: ProviderStreamError,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -83,9 +113,14 @@ impl StreamAccumulator {
         match event {
             HostStreamEvent::TextStart { index } => self.insert_block(index, BlockState::Text(TextBlock::default())),
             HostStreamEvent::TextDelta { index, text } => self.push_text_delta(index, text),
-            HostStreamEvent::ThinkingStart { index, signature } => {
-                self.insert_block(index, BlockState::Thinking(ThinkingBlock { thinking: String::new(), signature, stopped: false }))
-            }
+            HostStreamEvent::ThinkingStart { index, signature } => self.insert_block(
+                index,
+                BlockState::Thinking(ThinkingBlock {
+                    thinking: String::new(),
+                    signature,
+                    stopped: false,
+                }),
+            ),
             HostStreamEvent::ThinkingDelta { index, thinking } => self.push_thinking_delta(index, thinking),
             HostStreamEvent::ToolUseStart { index, id, name } => self.insert_block(
                 index,
@@ -137,9 +172,7 @@ impl StreamAccumulator {
     }
 
     fn block_mut(&mut self, index: usize) -> Result<&mut BlockState, StreamAccumulatorError> {
-        self.blocks
-            .get_mut(&index)
-            .ok_or(StreamAccumulatorError::MissingContentBlockStart { index })
+        self.blocks.get_mut(&index).ok_or(StreamAccumulatorError::MissingContentBlockStart { index })
     }
 
     fn push_text_delta(&mut self, index: usize, text: String) -> Result<(), StreamAccumulatorError> {
@@ -240,7 +273,9 @@ fn ensure_not_stopped(index: usize, block: &BlockState) -> Result<(), StreamAccu
 
 fn block_to_content(index: usize, block: &BlockState) -> Result<Content, StreamAccumulatorError> {
     match block {
-        BlockState::Text(text) => Ok(Content::Text { text: text.text.clone() }),
+        BlockState::Text(text) => Ok(Content::Text {
+            text: text.text.clone(),
+        }),
         BlockState::Thinking(thinking) => Ok(Content::Thinking {
             thinking: thinking.thinking.clone(),
             signature: thinking.signature.clone(),
@@ -254,7 +289,11 @@ fn block_to_content(index: usize, block: &BlockState) -> Result<Content, StreamA
 }
 
 fn parse_tool_input(index: usize, json: &str) -> Result<Value, StreamAccumulatorError> {
-    let source = if json.trim().is_empty() { EMPTY_TOOL_INPUT_JSON } else { json };
+    let source = if json.trim().is_empty() {
+        EMPTY_TOOL_INPUT_JSON
+    } else {
+        json
+    };
     let value: Value = serde_json::from_str(source).map_err(|error| StreamAccumulatorError::MalformedToolJson {
         index,
         message: error.to_string(),
@@ -280,16 +319,49 @@ mod tests {
     fn folds_text_thinking_tool_usage_model_and_stop() {
         let mut acc = StreamAccumulator::new();
         acc.push(HostStreamEvent::TextStart { index: TEXT_INDEX }).unwrap();
-        acc.push(HostStreamEvent::TextDelta { index: TEXT_INDEX, text: "hel".to_string() }).unwrap();
-        acc.push(HostStreamEvent::TextDelta { index: TEXT_INDEX, text: "lo".to_string() }).unwrap();
+        acc.push(HostStreamEvent::TextDelta {
+            index: TEXT_INDEX,
+            text: "hel".to_string(),
+        })
+        .unwrap();
+        acc.push(HostStreamEvent::TextDelta {
+            index: TEXT_INDEX,
+            text: "lo".to_string(),
+        })
+        .unwrap();
         acc.push(HostStreamEvent::ContentBlockStop { index: TEXT_INDEX }).unwrap();
-        acc.push(HostStreamEvent::ThinkingStart { index: THINKING_INDEX, signature: "sig".to_string() }).unwrap();
-        acc.push(HostStreamEvent::ThinkingDelta { index: THINKING_INDEX, thinking: "think".to_string() }).unwrap();
-        acc.push(HostStreamEvent::ToolUseStart { index: TOOL_INDEX, id: "call".to_string(), name: "tool".to_string() }).unwrap();
-        acc.push(HostStreamEvent::ToolUseJsonDelta { index: TOOL_INDEX, json: "{\"x\":".to_string() }).unwrap();
-        acc.push(HostStreamEvent::ToolUseJsonDelta { index: TOOL_INDEX, json: "1}".to_string() }).unwrap();
+        acc.push(HostStreamEvent::ThinkingStart {
+            index: THINKING_INDEX,
+            signature: "sig".to_string(),
+        })
+        .unwrap();
+        acc.push(HostStreamEvent::ThinkingDelta {
+            index: THINKING_INDEX,
+            thinking: "think".to_string(),
+        })
+        .unwrap();
+        acc.push(HostStreamEvent::ToolUseStart {
+            index: TOOL_INDEX,
+            id: "call".to_string(),
+            name: "tool".to_string(),
+        })
+        .unwrap();
+        acc.push(HostStreamEvent::ToolUseJsonDelta {
+            index: TOOL_INDEX,
+            json: "{\"x\":".to_string(),
+        })
+        .unwrap();
+        acc.push(HostStreamEvent::ToolUseJsonDelta {
+            index: TOOL_INDEX,
+            json: "1}".to_string(),
+        })
+        .unwrap();
         acc.push(HostStreamEvent::Usage { usage: usage() }).unwrap();
-        acc.push(HostStreamEvent::MessageStop { model: Some("model".to_string()), stop_reason: StopReason::ToolUse }).unwrap();
+        acc.push(HostStreamEvent::MessageStop {
+            model: Some("model".to_string()),
+            stop_reason: StopReason::ToolUse,
+        })
+        .unwrap();
 
         let folded = acc.finish().unwrap();
         assert_eq!(folded.content.len(), 3);
@@ -303,7 +375,12 @@ mod tests {
     #[test]
     fn rejects_delta_before_start() {
         let mut acc = StreamAccumulator::new();
-        let err = acc.push(HostStreamEvent::TextDelta { index: TEXT_INDEX, text: "late".to_string() }).unwrap_err();
+        let err = acc
+            .push(HostStreamEvent::TextDelta {
+                index: TEXT_INDEX,
+                text: "late".to_string(),
+            })
+            .unwrap_err();
         assert_eq!(err, StreamAccumulatorError::MissingContentBlockStart { index: TEXT_INDEX });
     }
 
@@ -320,15 +397,29 @@ mod tests {
         let mut acc = StreamAccumulator::new();
         acc.push(HostStreamEvent::TextStart { index: TEXT_INDEX }).unwrap();
         acc.push(HostStreamEvent::ContentBlockStop { index: TEXT_INDEX }).unwrap();
-        let err = acc.push(HostStreamEvent::TextDelta { index: TEXT_INDEX, text: "late".to_string() }).unwrap_err();
+        let err = acc
+            .push(HostStreamEvent::TextDelta {
+                index: TEXT_INDEX,
+                text: "late".to_string(),
+            })
+            .unwrap_err();
         assert_eq!(err, StreamAccumulatorError::LateContentDelta { index: TEXT_INDEX });
     }
 
     #[test]
     fn rejects_malformed_tool_json() {
         let mut acc = StreamAccumulator::new();
-        acc.push(HostStreamEvent::ToolUseStart { index: TOOL_INDEX, id: "call".to_string(), name: "tool".to_string() }).unwrap();
-        acc.push(HostStreamEvent::ToolUseJsonDelta { index: TOOL_INDEX, json: "{".to_string() }).unwrap();
+        acc.push(HostStreamEvent::ToolUseStart {
+            index: TOOL_INDEX,
+            id: "call".to_string(),
+            name: "tool".to_string(),
+        })
+        .unwrap();
+        acc.push(HostStreamEvent::ToolUseJsonDelta {
+            index: TOOL_INDEX,
+            json: "{".to_string(),
+        })
+        .unwrap();
         let err = acc.finish().unwrap_err();
         assert!(matches!(err, StreamAccumulatorError::MalformedToolJson { index: TOOL_INDEX, .. }));
     }
@@ -336,8 +427,17 @@ mod tests {
     #[test]
     fn rejects_non_object_tool_json() {
         let mut acc = StreamAccumulator::new();
-        acc.push(HostStreamEvent::ToolUseStart { index: TOOL_INDEX, id: "call".to_string(), name: "tool".to_string() }).unwrap();
-        acc.push(HostStreamEvent::ToolUseJsonDelta { index: TOOL_INDEX, json: "[]".to_string() }).unwrap();
+        acc.push(HostStreamEvent::ToolUseStart {
+            index: TOOL_INDEX,
+            id: "call".to_string(),
+            name: "tool".to_string(),
+        })
+        .unwrap();
+        acc.push(HostStreamEvent::ToolUseJsonDelta {
+            index: TOOL_INDEX,
+            json: "[]".to_string(),
+        })
+        .unwrap();
         let err = acc.finish().unwrap_err();
         assert_eq!(err, StreamAccumulatorError::NonObjectToolJson { index: TOOL_INDEX });
     }
@@ -354,21 +454,22 @@ mod tests {
                 },
             })
             .unwrap_err();
-        assert_eq!(
-            err,
-            StreamAccumulatorError::ProviderError {
-                message: "rate limited".to_string(),
-                status: Some(STATUS_TOO_MANY_REQUESTS),
-                retryable: true,
-            }
-        );
+        assert_eq!(err, StreamAccumulatorError::ProviderError {
+            message: "rate limited".to_string(),
+            status: Some(STATUS_TOO_MANY_REQUESTS),
+            retryable: true,
+        });
     }
 
     #[test]
     fn usage_only_and_empty_stop_normalize() {
         let mut acc = StreamAccumulator::new();
         acc.push(HostStreamEvent::Usage { usage: usage() }).unwrap();
-        acc.push(HostStreamEvent::MessageStop { model: None, stop_reason: StopReason::Stop }).unwrap();
+        acc.push(HostStreamEvent::MessageStop {
+            model: None,
+            stop_reason: StopReason::Stop,
+        })
+        .unwrap();
         let folded = acc.finish().unwrap();
         assert!(folded.content.is_empty());
         assert_eq!(folded.usage.unwrap().output_tokens, OUTPUT_TOKENS);

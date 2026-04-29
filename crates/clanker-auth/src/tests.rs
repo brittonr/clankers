@@ -69,10 +69,7 @@ fn roundtrip_encode_decode() {
 #[test]
 fn base64_roundtrip() {
     let key = iroh::SecretKey::from([2u8; 32]);
-    let token = TokenBuilder::<TestCap>::new(key)
-        .with_capability(TestCap::Write)
-        .build()
-        .unwrap();
+    let token = TokenBuilder::<TestCap>::new(key).with_capability(TestCap::Write).build().unwrap();
 
     let b64 = token.to_base64().unwrap();
     let decoded = crate::CapabilityToken::<TestCap>::from_base64(&b64).unwrap();
@@ -82,10 +79,7 @@ fn base64_roundtrip() {
 #[test]
 fn verify_valid_token() {
     let key = iroh::SecretKey::from([3u8; 32]);
-    let token = TokenBuilder::<TestCap>::new(key)
-        .with_capability(TestCap::Read)
-        .build()
-        .unwrap();
+    let token = TokenBuilder::<TestCap>::new(key).with_capability(TestCap::Read).build().unwrap();
 
     let verifier = TokenVerifier::<TestCap>::new();
     verifier.verify(&token, None).unwrap();
@@ -94,10 +88,7 @@ fn verify_valid_token() {
 #[test]
 fn verify_rejects_tampered_signature() {
     let key = iroh::SecretKey::from([4u8; 32]);
-    let mut token = TokenBuilder::<TestCap>::new(key)
-        .with_capability(TestCap::Read)
-        .build()
-        .unwrap();
+    let mut token = TokenBuilder::<TestCap>::new(key).with_capability(TestCap::Read).build().unwrap();
 
     token.signature[0] ^= 0xff;
 
@@ -108,10 +99,7 @@ fn verify_rejects_tampered_signature() {
 #[test]
 fn authorize_read_op() {
     let key = iroh::SecretKey::from([5u8; 32]);
-    let token = TokenBuilder::<TestCap>::new(key)
-        .with_capability(TestCap::Read)
-        .build()
-        .unwrap();
+    let token = TokenBuilder::<TestCap>::new(key).with_capability(TestCap::Read).build().unwrap();
 
     let verifier = TokenVerifier::<TestCap>::new();
     verifier.authorize(&token, &TestOp::Read, None).unwrap();
@@ -121,10 +109,7 @@ fn authorize_read_op() {
 #[test]
 fn admin_authorizes_everything() {
     let key = iroh::SecretKey::from([6u8; 32]);
-    let token = TokenBuilder::<TestCap>::new(key)
-        .with_capability(TestCap::Admin)
-        .build()
-        .unwrap();
+    let token = TokenBuilder::<TestCap>::new(key).with_capability(TestCap::Admin).build().unwrap();
 
     let verifier = TokenVerifier::<TestCap>::new();
     verifier.authorize(&token, &TestOp::Read, None).unwrap();
@@ -168,8 +153,7 @@ fn delegation_two_level() {
 
     assert_eq!(child_token.delegation_depth, 1);
 
-    let verifier = TokenVerifier::<TestCap>::new()
-        .with_trusted_root(root_token.issuer);
+    let verifier = TokenVerifier::<TestCap>::new().with_trusted_root(root_token.issuer);
     verifier.register_parent_token(root_token).unwrap();
     verifier.verify(&child_token, None).unwrap();
     verifier.authorize(&child_token, &TestOp::Read, None).unwrap();
@@ -203,8 +187,7 @@ fn delegation_three_level() {
 
     assert_eq!(leaf.delegation_depth, 2);
 
-    let verifier = TokenVerifier::<TestCap>::new()
-        .with_trusted_root(root.issuer);
+    let verifier = TokenVerifier::<TestCap>::new().with_trusted_root(root.issuer);
     verifier.register_parent_token(root).unwrap();
     verifier.register_parent_token(mid).unwrap();
     verifier.verify(&leaf, None).unwrap();
@@ -236,10 +219,7 @@ fn delegation_without_delegate_cap_rejected() {
     let root_key = iroh::SecretKey::from([15u8; 32]);
     let child_key = iroh::SecretKey::from([16u8; 32]);
 
-    let root_token = TokenBuilder::<TestCap>::new(root_key)
-        .with_capability(TestCap::Read)
-        .build()
-        .unwrap();
+    let root_token = TokenBuilder::<TestCap>::new(root_key).with_capability(TestCap::Read).build().unwrap();
 
     let result = TokenBuilder::<TestCap>::new(child_key)
         .with_capability(TestCap::Read)
@@ -268,16 +248,10 @@ fn audience_enforcement() {
     verifier.verify(&token, Some(&audience_key.public())).unwrap();
 
     // Wrong audience
-    assert!(matches!(
-        verifier.verify(&token, Some(&wrong_key.public())),
-        Err(AuthError::WrongAudience { .. })
-    ));
+    assert!(matches!(verifier.verify(&token, Some(&wrong_key.public())), Err(AuthError::WrongAudience { .. })));
 
     // No audience provided
-    assert!(matches!(
-        verifier.verify(&token, None),
-        Err(AuthError::AudienceRequired)
-    ));
+    assert!(matches!(verifier.verify(&token, None), Err(AuthError::AudienceRequired)));
 }
 
 #[test]
@@ -285,18 +259,12 @@ fn trusted_root_enforcement() {
     let trusted_key = iroh::SecretKey::from([20u8; 32]);
     let untrusted_key = iroh::SecretKey::from([21u8; 32]);
 
-    let trusted_token = TokenBuilder::<TestCap>::new(trusted_key.clone())
-        .with_capability(TestCap::Read)
-        .build()
-        .unwrap();
+    let trusted_token =
+        TokenBuilder::<TestCap>::new(trusted_key.clone()).with_capability(TestCap::Read).build().unwrap();
 
-    let untrusted_token = TokenBuilder::<TestCap>::new(untrusted_key)
-        .with_capability(TestCap::Read)
-        .build()
-        .unwrap();
+    let untrusted_token = TokenBuilder::<TestCap>::new(untrusted_key).with_capability(TestCap::Read).build().unwrap();
 
-    let verifier = TokenVerifier::<TestCap>::new()
-        .with_trusted_root(trusted_key.public());
+    let verifier = TokenVerifier::<TestCap>::new().with_trusted_root(trusted_key.public());
 
     verifier.verify(&trusted_token, None).unwrap();
     assert!(matches!(verifier.verify(&untrusted_token, None), Err(AuthError::UntrustedRoot)));
@@ -320,8 +288,7 @@ fn verify_with_chain() {
         .build()
         .unwrap();
 
-    let verifier = TokenVerifier::<TestCap>::new()
-        .with_trusted_root(root_key.public());
+    let verifier = TokenVerifier::<TestCap>::new().with_trusted_root(root_key.public());
 
     // Without chain — fails (parent not cached)
     assert!(verifier.verify(&child, None).is_err());
@@ -353,10 +320,7 @@ fn credential_encode_decode_roundtrip() {
 #[test]
 fn credential_base64_roundtrip() {
     let sk = SecretKey::from([31u8; 32]);
-    let token = TokenBuilder::<TestCap>::new(sk)
-        .with_capability(TestCap::Write)
-        .build()
-        .unwrap();
+    let token = TokenBuilder::<TestCap>::new(sk).with_capability(TestCap::Write).build().unwrap();
 
     let cred = Credential::from_root(token);
     let b64 = cred.to_base64().unwrap();
@@ -383,14 +347,8 @@ fn credential_two_level_delegation() {
         .unwrap();
 
     let root_cred = Credential::from_root(root_token);
-    let child_cred = root_cred
-        .delegate(
-            &child_sk,
-            presenter_pk,
-            vec![TestCap::Read],
-            Duration::from_secs(1800),
-        )
-        .unwrap();
+    let child_cred =
+        root_cred.delegate(&child_sk, presenter_pk, vec![TestCap::Read], Duration::from_secs(1800)).unwrap();
 
     assert_eq!(child_cred.proofs.len(), 1);
     assert_eq!(child_cred.token.delegation_depth, 1);
@@ -419,22 +377,10 @@ fn credential_three_level_delegation() {
     let root_cred = Credential::from_root(root_token);
 
     let mid_cred = root_cred
-        .delegate(
-            &mid_sk,
-            leaf_pk,
-            vec![TestCap::Read, TestCap::Delegate],
-            Duration::from_secs(1800),
-        )
+        .delegate(&mid_sk, leaf_pk, vec![TestCap::Read, TestCap::Delegate], Duration::from_secs(1800))
         .unwrap();
 
-    let leaf_cred = mid_cred
-        .delegate(
-            &leaf_sk,
-            presenter_pk,
-            vec![TestCap::Read],
-            Duration::from_secs(900),
-        )
-        .unwrap();
+    let leaf_cred = mid_cred.delegate(&leaf_sk, presenter_pk, vec![TestCap::Read], Duration::from_secs(900)).unwrap();
 
     assert_eq!(leaf_cred.proofs.len(), 2);
     assert_eq!(leaf_cred.token.delegation_depth, 2);
@@ -484,9 +430,7 @@ fn credential_broken_chain_rejected() {
 // r[verify auth.build.depth-bound]
 #[test]
 fn credential_max_depth_enforced() {
-    let keys: Vec<SecretKey> = (0..=(MAX_DELEGATION_DEPTH + 2))
-        .map(|i| SecretKey::from([50 + i; 32]))
-        .collect();
+    let keys: Vec<SecretKey> = (0..=(MAX_DELEGATION_DEPTH + 2)).map(|i| SecretKey::from([50 + i; 32])).collect();
 
     let root_token = TokenBuilder::<TestCap>::new(keys[0].clone())
         .for_key(keys[1].public())
@@ -502,12 +446,7 @@ fn credential_max_depth_enforced() {
     for i in 1..=MAX_DELEGATION_DEPTH {
         let audience = keys[(i + 1) as usize].public();
         cred = cred
-            .delegate(
-                &keys[i as usize],
-                audience,
-                vec![TestCap::Admin, TestCap::Delegate],
-                Duration::from_secs(3600),
-            )
+            .delegate(&keys[i as usize], audience, vec![TestCap::Admin, TestCap::Delegate], Duration::from_secs(3600))
             .unwrap();
     }
 
@@ -520,12 +459,8 @@ fn credential_max_depth_enforced() {
 
     // One more delegation exceeds max depth
     let extra = keys[(MAX_DELEGATION_DEPTH + 2) as usize].public();
-    let result = cred.delegate(
-        &keys[(MAX_DELEGATION_DEPTH + 1) as usize],
-        extra,
-        vec![TestCap::Read],
-        Duration::from_secs(600),
-    );
+    let result =
+        cred.delegate(&keys[(MAX_DELEGATION_DEPTH + 1) as usize], extra, vec![TestCap::Read], Duration::from_secs(600));
     assert!(matches!(result, Err(AuthError::DelegationTooDeep { .. })));
 }
 
@@ -549,11 +484,6 @@ fn credential_escalation_rejected() {
 
     // Child tries to delegate Write (escalation)
     let grandchild_pk = SecretKey::from([62u8; 32]).public();
-    let result = root_cred.delegate(
-        &child_sk,
-        grandchild_pk,
-        vec![TestCap::Write],
-        Duration::from_secs(1800),
-    );
+    let result = root_cred.delegate(&child_sk, grandchild_pk, vec![TestCap::Write], Duration::from_secs(1800));
     assert!(matches!(result, Err(AuthError::CapabilityEscalation { .. })));
 }

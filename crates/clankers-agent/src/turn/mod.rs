@@ -261,13 +261,7 @@ impl UsageObserver for AgentUsageObserver<'_> {
         }
         let active_model = self.transcript.active_model();
         self.transcript.update_cumulative_usage(|cumulative| {
-            update_usage_tracking(
-                cumulative,
-                &observation.usage,
-                &active_model,
-                self.cost_tracker,
-                self.event_tx,
-            );
+            update_usage_tracking(cumulative, &observation.usage, &active_model, self.cost_tracker, self.event_tx);
         });
         Ok(())
     }
@@ -581,10 +575,7 @@ pub async fn run_turn_loop(
         "prompt submission",
     )?;
 
-    let transcript = TurnTranscript::new(
-        std::mem::take(messages),
-        config.model.clone(),
-    );
+    let transcript = TurnTranscript::new(std::mem::take(messages), config.model.clone());
 
     let mut model_host = AgentModelHost {
         provider: ctx.provider,
@@ -605,12 +596,16 @@ pub async fn run_turn_loop(
         output_truncation: config.output_truncation.clone(),
         transcript: transcript.writer(),
     };
-    let mut retry_sleeper = AgentRetrySleeper { cancel: ctx.cancel.clone() };
+    let mut retry_sleeper = AgentRetrySleeper {
+        cancel: ctx.cancel.clone(),
+    };
     let mut event_sink = AgentEngineEventSink {
         event_tx: ctx.event_tx,
         transcript: transcript.writer(),
     };
-    let mut cancellation = AgentCancellationSource { cancel: ctx.cancel.clone() };
+    let mut cancellation = AgentCancellationSource {
+        cancel: ctx.cancel.clone(),
+    };
     let mut usage_observer = AgentUsageObserver {
         cost_tracker: ctx.cost_tracker,
         event_tx: ctx.event_tx,

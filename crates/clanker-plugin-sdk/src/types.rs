@@ -3,7 +3,8 @@
 //! These types define the JSON wire format for tool calls, events,
 //! and plugin metadata. Every clankers plugin speaks this protocol.
 
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
+use serde::Serialize;
 
 // ── Tool call protocol ──────────────────────────────────────────────
 
@@ -144,12 +145,7 @@ impl PluginMeta {
     ///     ("my_tool", "Does something useful"),
     /// ], &[])
     /// ```
-    pub fn new(
-        name: impl Into<String>,
-        version: impl Into<String>,
-        tools: &[(&str, &str)],
-        commands: &[&str],
-    ) -> Self {
+    pub fn new(name: impl Into<String>, version: impl Into<String>, tools: &[(&str, &str)], commands: &[&str]) -> Self {
         Self {
             name: name.into(),
             version: version.into(),

@@ -37,18 +37,18 @@ mod token;
 pub mod utils;
 mod verifier;
 
+use std::fmt::Debug;
+
 pub use builder::TokenBuilder;
 pub use builder::bytes_to_sign;
 pub use credential::Credential;
 pub use credential::MAX_CREDENTIAL_SIZE;
 pub use error::AuthError;
+use serde::Serialize;
+use serde::de::DeserializeOwned;
 pub use token::Audience;
 pub use token::CapabilityToken;
 pub use verifier::TokenVerifier;
-
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-use std::fmt::Debug;
 
 /// Trait for capability types used in tokens.
 ///

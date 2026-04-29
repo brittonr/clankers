@@ -105,34 +105,32 @@ fn default_budget() -> usize {
 /// so the Anthropic backend can forward it as-is. We only extract the
 /// fields the router needs for model resolution, caching, and fallback.
 pub(crate) fn convert_raw_to_completion_request(raw: Value) -> CompletionRequest {
-    let model = raw
-        .get("model")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string();
+    let model = raw.get("model").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
     // Extract messages for cache key computation
-    let messages: Vec<Value> = raw
-        .get("messages")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
+    let messages: Vec<Value> = raw.get("messages").and_then(|v| v.as_array()).cloned().unwrap_or_default();
 
     // Extract plain-text system prompt for non-Anthropic fallback backends
     let system_prompt = raw.get("system").and_then(|s| {
-        s.as_array().and_then(|arr| {
-            let parts: Vec<&str> = arr
-                .iter()
-                .filter_map(|b| {
-                    if b.get("type").and_then(|t| t.as_str()) == Some("text") {
-                        b.get("text").and_then(|t| t.as_str())
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-            if parts.is_empty() { None } else { Some(parts.join("\n\n")) }
-        }).or_else(|| s.as_str().map(|s| s.to_string()))
+        s.as_array()
+            .and_then(|arr| {
+                let parts: Vec<&str> = arr
+                    .iter()
+                    .filter_map(|b| {
+                        if b.get("type").and_then(|t| t.as_str()) == Some("text") {
+                            b.get("text").and_then(|t| t.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect();
+                if parts.is_empty() {
+                    None
+                } else {
+                    Some(parts.join("\n\n"))
+                }
+            })
+            .or_else(|| s.as_str().map(|s| s.to_string()))
     });
 
     let mut extra_params = std::collections::HashMap::new();
@@ -402,11 +400,7 @@ fn check_auth_anthropic(state: &ProxyState, headers: &HeaderMap) -> Result<(), R
     }
 
     if !state.allowed_keys.iter().any(|k| k == token) {
-        return Err(anthropic_error_response(
-            StatusCode::FORBIDDEN,
-            "authentication_error",
-            "Invalid API key",
-        ));
+        return Err(anthropic_error_response(StatusCode::FORBIDDEN, "authentication_error", "Invalid API key"));
     }
 
     Ok(())

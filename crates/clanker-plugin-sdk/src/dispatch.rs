@@ -32,10 +32,13 @@
 //! }
 //! ```
 
-use extism_pdk::{Error, FnResult};
+use extism_pdk::Error;
+use extism_pdk::FnResult;
 use serde_json::Value;
 
-use crate::types::{EventResult, ToolCall, ToolResult};
+use crate::types::EventResult;
+use crate::types::ToolCall;
+use crate::types::ToolResult;
 
 /// Tool handler function signature.
 ///
@@ -70,8 +73,7 @@ pub type EventHandler = fn(&Value) -> String;
 /// }
 /// ```
 pub fn dispatch_tools(input: &str, handlers: &[(&str, ToolHandler)]) -> FnResult<String> {
-    let call: ToolCall = serde_json::from_str(input)
-        .map_err(|e| Error::msg(format!("Invalid JSON input: {e}")))?;
+    let call: ToolCall = serde_json::from_str(input).map_err(|e| Error::msg(format!("Invalid JSON input: {e}")))?;
 
     // Find matching handler
     for (name, handler) in handlers {
@@ -109,13 +111,9 @@ pub fn dispatch_tools(input: &str, handlers: &[(&str, ToolHandler)]) -> FnResult
 ///     ])
 /// }
 /// ```
-pub fn dispatch_events(
-    input: &str,
-    plugin_name: &str,
-    handlers: &[(&str, EventHandler)],
-) -> FnResult<String> {
-    let evt: crate::types::Event = serde_json::from_str(input)
-        .map_err(|e| Error::msg(format!("Invalid event JSON: {e}")))?;
+pub fn dispatch_events(input: &str, plugin_name: &str, handlers: &[(&str, EventHandler)]) -> FnResult<String> {
+    let evt: crate::types::Event =
+        serde_json::from_str(input).map_err(|e| Error::msg(format!("Invalid event JSON: {e}")))?;
 
     // Find matching handler
     for (name, handler) in handlers {

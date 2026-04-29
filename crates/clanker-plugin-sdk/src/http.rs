@@ -38,11 +38,7 @@ pub fn get(url: &str) -> Result<Response, String> {
 }
 
 /// Perform an HTTP POST request with headers and body.
-pub fn post(
-    url: &str,
-    headers: &BTreeMap<String, String>,
-    body: &str,
-) -> Result<Response, String> {
+pub fn post(url: &str, headers: &BTreeMap<String, String>, body: &str) -> Result<Response, String> {
     request("POST", url, headers, Some(body))
 }
 

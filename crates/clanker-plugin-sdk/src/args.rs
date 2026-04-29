@@ -73,8 +73,7 @@ impl Args for Value {
     }
 
     fn require_str(&self, key: &str) -> Result<&str, String> {
-        self.get_str(key)
-            .ok_or_else(|| format!("missing required parameter: {key}"))
+        self.get_str(key).ok_or_else(|| format!("missing required parameter: {key}"))
     }
 
     fn get_u64(&self, key: &str) -> Option<u64> {
@@ -111,11 +110,7 @@ impl Args for Value {
 
     fn get_str_array(&self, key: &str) -> Vec<String> {
         self.get_array(key)
-            .map(|arr| {
-                arr.iter()
-                    .filter_map(|v| v.as_str().map(String::from))
-                    .collect()
-            })
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
             .unwrap_or_default()
     }
 

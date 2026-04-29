@@ -1898,10 +1898,7 @@ fn control_protocol_construction_stays_in_pure_conversion_files() {
 }
 
 const AGENT_TURN_ADAPTER_FILE: &str = "crates/clankers-agent/src/turn/mod.rs";
-const AGENT_TURN_ADAPTER_SHARED_STATE_FORBIDDEN: [&str; 2] = [
-    "SharedTurnHostState",
-    "TurnHostState",
-];
+const AGENT_TURN_ADAPTER_SHARED_STATE_FORBIDDEN: [&str; 2] = ["SharedTurnHostState", "TurnHostState"];
 
 #[test]
 fn agent_turn_adapters_reject_shared_mutable_turn_state() {
@@ -1918,8 +1915,8 @@ fn agent_turn_adapters_reject_shared_mutable_turn_state() {
         );
     }
 
-    assert_source_text_absent(
-        AGENT_TURN_ADAPTER_FILE,
-        &["Arc<Mutex<TurnHostState>>", "Arc<parking_lot::Mutex<TurnHostState>>"],
-    );
+    assert_source_text_absent(AGENT_TURN_ADAPTER_FILE, &[
+        "Arc<Mutex<TurnHostState>>",
+        "Arc<parking_lot::Mutex<TurnHostState>>",
+    ]);
 }

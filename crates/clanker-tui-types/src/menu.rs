@@ -1,11 +1,11 @@
 //! Leader menu types — thin aliases over `rat_leaderkey` parameterized with
 //! this crate's [`Action`] type.
 
-use crate::actions::Action;
-
 // Re-export non-generic types directly.
 pub use rat_leaderkey::HiddenSet;
 pub use rat_leaderkey::MenuPlacement;
+
+use crate::actions::Action;
 
 // Concrete type aliases for the generic rat-leaderkey types.
 pub type LeaderAction = rat_leaderkey::LeaderAction<Action>;

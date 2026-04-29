@@ -60,8 +60,8 @@
 //!
 //! ## Modules
 //!
-//! - [`types`] — Protocol types: [`ToolCall`], [`ToolResult`], [`Event`],
-//!   [`EventResult`], [`PluginMeta`], [`ToolMeta`]
+//! - [`types`] — Protocol types: [`ToolCall`], [`ToolResult`], [`Event`], [`EventResult`],
+//!   [`PluginMeta`], [`ToolMeta`]
 //! - [`args`] — Argument extraction trait [`Args`] on `serde_json::Value`
 //! - [`dispatch`] — [`dispatch_tools`] and [`dispatch_events`] helpers
 //! - [`prelude`] — Convenient re-exports of everything you need
@@ -81,7 +81,8 @@ pub mod http;
 /// ```
 ///
 /// This gives you:
-/// - All protocol types (`ToolCall`, `ToolResult`, `Event`, `EventResult`, `PluginMeta`, `ToolMeta`)
+/// - All protocol types (`ToolCall`, `ToolResult`, `Event`, `EventResult`, `PluginMeta`,
+///   `ToolMeta`)
 /// - Arg extraction trait (`Args`)
 /// - Dispatch functions (`dispatch_tools`, `dispatch_events`)
 /// - Extism PDK essentials (`plugin_fn`, `FnResult`, `Error`, `Json`)
@@ -89,20 +90,25 @@ pub mod http;
 /// - `serde_json::Value`
 pub mod prelude {
     // Protocol types
-    pub use crate::types::{Event, EventResult, PluginMeta, ToolCall, ToolMeta, ToolResult};
-
-    // Arg extraction
-    pub use crate::args::Args;
-
-    // Dispatch helpers
-    pub use crate::dispatch::{dispatch_events, dispatch_tools};
-
     // Extism PDK essentials
-    pub use extism_pdk::{plugin_fn, Error, FnResult, Json};
-
+    pub use extism_pdk::plugin_fn;
+    pub use extism_pdk::Error;
+    pub use extism_pdk::FnResult;
+    pub use extism_pdk::Json;
     // Serde (plugins almost always need these)
     pub use serde::{Deserialize, Serialize};
     pub use serde_json::Value;
+
+    // Arg extraction
+    pub use crate::args::Args;
+    // Dispatch helpers
+    pub use crate::dispatch::{dispatch_events, dispatch_tools};
+    pub use crate::types::Event;
+    pub use crate::types::EventResult;
+    pub use crate::types::PluginMeta;
+    pub use crate::types::ToolCall;
+    pub use crate::types::ToolMeta;
+    pub use crate::types::ToolResult;
 }
 
 // Re-export extism_pdk so plugins can use `clanker_plugin_sdk::extism_pdk`
