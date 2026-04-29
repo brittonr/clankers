@@ -41,6 +41,7 @@ pub mod matrix;
 pub mod memory;
 pub mod nix;
 pub mod plugin_tool;
+pub mod process;
 pub mod procmon;
 pub mod read;
 pub mod review;

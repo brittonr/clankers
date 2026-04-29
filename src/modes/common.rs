@@ -71,7 +71,8 @@ pub fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) {
 /// Only active tiers are sent to the API, reducing schema token cost.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ToolTier {
-    /// Core file/shell tools — always active (read, write, edit, bash, grep, find, ls)
+    /// Core file/shell tools — always active (read, write, edit, execute_code, process, bash, grep,
+    /// find, ls)
     Core,
     /// Orchestration tools — subagent, delegate, signal_loop, procmon
     Orchestration,
@@ -263,12 +264,18 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         procmon_tool = procmon_tool.with_monitor(pm.clone());
     }
 
+    let mut process_tool = crate::tools::process::ProcessTool::new();
+    if let Some(ref pm) = process_monitor {
+        process_tool = process_tool.with_process_monitor(pm.clone());
+    }
+
     let mut tools: Vec<(ToolTier, Arc<dyn Tool>)> = vec![
         // ── Core (always active) ────────────────────────────────────
         (ToolTier::Core, Arc::new(crate::tools::read::ReadTool::new())),
         (ToolTier::Core, Arc::new(crate::tools::write::WriteTool::new())),
         (ToolTier::Core, Arc::new(crate::tools::edit::EditTool::new())),
         (ToolTier::Core, Arc::new(crate::tools::execute_code::ExecuteCodeTool::new())),
+        (ToolTier::Core, Arc::new(process_tool)),
         (ToolTier::Core, Arc::new(bash_tool)),
         (ToolTier::Core, Arc::new(crate::tools::grep::GrepTool::new())),
         (ToolTier::Core, Arc::new(crate::tools::find::FindTool::new())),
