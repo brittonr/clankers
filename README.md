@@ -252,7 +252,7 @@ Core: `read`, `write`, `edit`, `patch`, `execute_code`, `process`, `bash`, `grep
 
 Orchestration: `subagent`, `delegate_task`, `switch_model`, `loop`, `signal_loop_success`
 
-Specialty: `review`, `todo`, `cost`, `schedule`, `image_gen`, `procmon`, `validate_tui`
+Specialty: `review`, `todo`, `cost`, `schedule`, `image_gen`, `procmon`, `skills_list`, `skill_view`, `validate_tui`
 
 Matrix: `matrix_send`, `matrix_read`, `matrix_rooms`, `matrix_peers`, `matrix_join`, `matrix_rpc`
 

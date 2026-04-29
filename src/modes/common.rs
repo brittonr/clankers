@@ -310,6 +310,20 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         ),
         (
             ToolTier::Specialty,
+            Arc::new(crate::tools::skill_view::SkillsListTool::new(
+                crate::config::ClankersPaths::get().global_skills_dir.clone(),
+                crate::tools::skill_view::project_skills_dir_from_cwd(),
+            )),
+        ),
+        (
+            ToolTier::Specialty,
+            Arc::new(crate::tools::skill_view::SkillViewTool::new(
+                crate::config::ClankersPaths::get().global_skills_dir.clone(),
+                crate::tools::skill_view::project_skills_dir_from_cwd(),
+            )),
+        ),
+        (
+            ToolTier::Specialty,
             Arc::new(crate::tools::session_search::SessionSearchTool::new(
                 crate::config::ClankersPaths::get().global_sessions_dir.clone(),
                 100,

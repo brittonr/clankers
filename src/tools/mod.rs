@@ -51,6 +51,7 @@ pub mod schedule;
 pub mod session_search;
 pub mod signal_loop;
 pub mod skill_manage;
+pub mod skill_view;
 pub mod subagent;
 pub mod switch_model;
 pub mod todo;
