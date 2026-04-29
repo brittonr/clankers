@@ -135,9 +135,10 @@ impl ProcessTool {
             definition: ToolDefinition {
                 name: "process".to_string(),
                 description: concat!(
-                    "Manage background shell processes by session ID. Use for servers, watchers, ",
+                    "Manage background processes by session ID. Use for servers, watchers, ",
                     "long-running tests/builds, and commands that need stdin. Actions: start, list, ",
-                    "poll, log, wait, kill, write, submit, close. Prefer this over shell-level &, ",
+                    "poll, log, wait, kill, write, submit, close. Start with either `command` ",
+                    "(shell mode) or `program` + `args` (direct exec mode). Prefer this over shell-level &, ",
                     "nohup, disown, or foreground bash for long-lived processes."
                 )
                 .to_string(),
@@ -151,7 +152,16 @@ impl ProcessTool {
                         },
                         "command": {
                             "type": "string",
-                            "description": "Shell command to start (required for start)"
+                            "description": "Shell command to start in bash -c mode (start requires command or program)"
+                        },
+                        "program": {
+                            "type": "string",
+                            "description": "Executable to start directly without a shell (start requires command or program)"
+                        },
+                        "args": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Arguments for direct exec mode"
                         },
                         "session_id": {
                             "type": "string",
@@ -216,13 +226,26 @@ impl ProcessTool {
             .ok_or_else(|| ToolResult::error("Missing required parameter: session_id"))
     }
 
-    fn spawn_command(command: &str) -> Result<tokio::process::Child, ToolResult> {
-        let clean_env = crate::tools::sandbox::sanitized_env();
-        let mut cmd = Command::new("bash");
-        cmd.arg("-c")
-            .arg(command)
-            .env_clear()
-            .envs(clean_env)
+    fn parse_args(params: &Value) -> Result<Vec<String>, ToolResult> {
+        let Some(value) = params.get("args") else {
+            return Ok(Vec::new());
+        };
+        let Some(values) = value.as_array() else {
+            return Err(ToolResult::error("Parameter 'args' must be an array of strings."));
+        };
+        let mut args = Vec::with_capacity(values.len());
+        for value in values {
+            let Some(arg) = value.as_str() else {
+                return Err(ToolResult::error("Parameter 'args' must be an array of strings."));
+            };
+            args.push(arg.to_string());
+        }
+        Ok(args)
+    }
+
+    fn configure_child(cmd: &mut Command) {
+        cmd.env_clear()
+            .envs(crate::tools::sandbox::sanitized_env())
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::piped());
@@ -232,9 +255,9 @@ impl ProcessTool {
             let cwd_for_landlock = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
             unsafe {
                 cmd.pre_exec(move || {
-                    // Put the shell and all descendants into a dedicated process
+                    // Put the process and all descendants into a dedicated process
                     // group so `process.kill` can clean up servers/watchers that
-                    // spawn child processes instead of killing only the shell.
+                    // spawn child processes instead of killing only the launcher.
                     if libc::setpgid(0, 0) != 0 {
                         return Err(std::io::Error::last_os_error());
                     }
@@ -245,24 +268,49 @@ impl ProcessTool {
                 });
             }
         }
+    }
 
-        cmd.spawn().map_err(|e| ToolResult::error(format!("Failed to spawn background process: {e}")))
+    fn spawn_shell_command(command: &str) -> Result<tokio::process::Child, ToolResult> {
+        let mut cmd = Command::new("bash");
+        cmd.arg("-c").arg(command);
+        Self::configure_child(&mut cmd);
+        cmd.spawn().map_err(|e| ToolResult::error(format!("Failed to spawn shell background process: {e}")))
+    }
+
+    fn spawn_direct(program: &str, args: &[String]) -> Result<tokio::process::Child, ToolResult> {
+        let mut cmd = Command::new(program);
+        cmd.args(args);
+        Self::configure_child(&mut cmd);
+        cmd.spawn()
+            .map_err(|e| ToolResult::error(format!("Failed to spawn direct background process: {e}")))
+    }
+
+    fn start_spec(params: &Value) -> Result<(String, tokio::process::Child), ToolResult> {
+        let command = params.get("command").and_then(|v| v.as_str()).filter(|s| !s.trim().is_empty());
+        let program = params.get("program").and_then(|v| v.as_str()).filter(|s| !s.trim().is_empty());
+        match (command, program) {
+            (Some(_), Some(_)) => Err(ToolResult::error("Provide either 'command' or 'program', not both.")),
+            (Some(command), None) => {
+                if let Some(reason) = crate::tools::bash::check_dangerous(command) {
+                    return Err(ToolResult::error(format!(
+                        "Dangerous command blocked ({reason}): {command}\nUse foreground bash with interactive confirmation or ask the user for guidance."
+                    )));
+                }
+                let child = Self::spawn_shell_command(command)?;
+                Ok((command.to_string(), child))
+            }
+            (None, Some(program)) => {
+                let args = Self::parse_args(params)?;
+                let child = Self::spawn_direct(program, &args)?;
+                Ok((format_direct_command(program, &args), child))
+            }
+            (None, None) => Err(ToolResult::error("Missing required parameter: command or program")),
+        }
     }
 
     fn handle_start(&self, ctx: &ToolContext, params: &Value) -> ToolResult {
-        let command = match params.get("command").and_then(|v| v.as_str()) {
-            Some(command) if !command.trim().is_empty() => command,
-            _ => return ToolResult::error("Missing required parameter: command"),
-        };
-
-        if let Some(reason) = crate::tools::bash::check_dangerous(command) {
-            return ToolResult::error(format!(
-                "Dangerous command blocked ({reason}): {command}\nUse foreground bash with interactive confirmation or ask the user for guidance."
-            ));
-        }
-
-        let mut child = match Self::spawn_command(command) {
-            Ok(child) => child,
+        let (display_command, mut child) = match Self::start_spec(params) {
+            Ok(spec) => spec,
             Err(result) => return result,
         };
         let pid = child.id();
@@ -277,13 +325,13 @@ impl ProcessTool {
         };
         let (kill_tx, kill_rx) = oneshot::channel();
         let id = Self::next_id();
-        let entry = Arc::new(ProcessEntry::new(id.clone(), command.to_string(), stdin, kill_tx));
+        let entry = Arc::new(ProcessEntry::new(id.clone(), display_command.clone(), stdin, kill_tx));
         Self::insert(entry.clone());
 
         if let Some(ref monitor) = self.process_monitor
             && let Some(pid) = pid
         {
-            let command_preview: String = command.chars().take(MAX_COMMAND_PREVIEW_LEN).collect();
+            let command_preview: String = display_command.chars().take(MAX_COMMAND_PREVIEW_LEN).collect();
             monitor.register(pid, crate::procmon::ProcessMeta {
                 tool_name: "process".to_string(),
                 command: command_preview,
@@ -562,6 +610,21 @@ async fn terminate_process_group(pid: Option<u32>, child: &mut tokio::process::C
     let _ = child.wait().await;
 }
 
+fn format_direct_command(program: &str, args: &[String]) -> String {
+    std::iter::once(program.to_string())
+        .chain(args.iter().map(|arg| shell_display_quote(arg)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn shell_display_quote(value: &str) -> String {
+    if value.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '.' | '/' | ':')) {
+        value.to_string()
+    } else {
+        format!("'{}'", value.replace('\'', "'\\''"))
+    }
+}
+
 fn format_duration(duration: Duration) -> String {
     let total = duration.as_secs();
     let minutes = total / 60;
@@ -609,6 +672,40 @@ mod tests {
         let waited = tool.execute(&make_ctx(), json!({"action": "wait", "session_id": id, "timeout": 2})).await;
         assert!(!waited.is_error, "{waited:?}");
         assert!(text(&waited).contains("hello"), "{}", text(&waited));
+    }
+
+    #[tokio::test]
+    async fn starts_direct_program_with_args() {
+        let tool = ProcessTool::new();
+        let started = tool
+            .execute(&make_ctx(), json!({"action": "start", "program": "printf", "args": ["direct:%s", "ok"]}))
+            .await;
+        assert!(!started.is_error, "{started:?}");
+        let id = extract_process_id(&started);
+        let waited = tool.execute(&make_ctx(), json!({"action": "wait", "session_id": id, "timeout": 2})).await;
+        assert!(!waited.is_error, "{waited:?}");
+        assert!(text(&waited).contains("direct:ok"), "{}", text(&waited));
+    }
+
+    #[tokio::test]
+    async fn start_rejects_command_and_program_together() {
+        let tool = ProcessTool::new();
+        let result = tool
+            .execute(
+                &make_ctx(),
+                json!({"action": "start", "command": "printf shell", "program": "printf", "args": ["direct"]}),
+            )
+            .await;
+        assert!(result.is_error);
+        assert!(text(&result).contains("either 'command' or 'program'"), "{}", text(&result));
+    }
+
+    #[tokio::test]
+    async fn direct_args_must_be_strings() {
+        let tool = ProcessTool::new();
+        let result = tool.execute(&make_ctx(), json!({"action": "start", "program": "printf", "args": [1]})).await;
+        assert!(result.is_error);
+        assert!(text(&result).contains("array of strings"), "{}", text(&result));
     }
 
     #[tokio::test]
