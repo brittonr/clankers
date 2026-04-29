@@ -40,6 +40,7 @@ pub mod ls;
 pub mod matrix;
 pub mod memory;
 pub mod nix;
+pub mod patch;
 pub mod plugin_tool;
 pub mod process;
 pub mod procmon;

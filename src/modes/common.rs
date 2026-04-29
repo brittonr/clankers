@@ -71,8 +71,8 @@ pub fn restore_terminal(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) {
 /// Only active tiers are sent to the API, reducing schema token cost.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ToolTier {
-    /// Core file/shell tools — always active (read, write, edit, execute_code, process, bash, grep,
-    /// find, ls)
+    /// Core file/shell tools — always active (read, write, edit, patch, execute_code, process,
+    /// bash, grep, find, ls)
     Core,
     /// Orchestration tools — subagent, delegate, signal_loop, procmon
     Orchestration,
@@ -274,6 +274,7 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         (ToolTier::Core, Arc::new(crate::tools::read::ReadTool::new())),
         (ToolTier::Core, Arc::new(crate::tools::write::WriteTool::new())),
         (ToolTier::Core, Arc::new(crate::tools::edit::EditTool::new())),
+        (ToolTier::Core, Arc::new(crate::tools::patch::PatchTool::new())),
         (ToolTier::Core, Arc::new(crate::tools::execute_code::ExecuteCodeTool::new())),
         (ToolTier::Core, Arc::new(process_tool)),
         (ToolTier::Core, Arc::new(bash_tool)),
