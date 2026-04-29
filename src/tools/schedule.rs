@@ -11,6 +11,7 @@ use chrono::Utc;
 use clanker_scheduler::ScheduleEngine;
 use clanker_scheduler::ScheduleId;
 use clanker_scheduler::schedule::Schedule;
+use serde_json::Map;
 use serde_json::Value;
 use serde_json::json;
 
@@ -30,15 +31,19 @@ impl ScheduleTool {
             definition: ToolDefinition {
                 name: "schedule".to_string(),
                 description: concat!(
-                    "Create, list, pause, resume, or delete scheduled tasks. ",
+                    "Create, list, update, pause, resume, run, or delete scheduled tasks. ",
                     "Schedules fire at specified times and produce events that ",
-                    "the agent processes (run a prompt, execute a command, etc.).\n\n",
+                    "the agent processes (run a prompt, execute a command, etc.). Also accepts ",
+                    "Hermes cronjob-style prompts via `prompt`, `schedule`, `repeat`, `skills`, ",
+                    "`model`, `script`, and `enabled_toolsets`.\n\n",
                     "Actions:\n",
                     "  create  — Create a new schedule (once, interval, or cron)\n",
                     "  list    — List all active schedules\n",
+                    "  update  — Replace an existing schedule with a new definition (new id)\n",
                     "  pause   — Pause a schedule by ID\n",
                     "  resume  — Resume a paused schedule\n",
-                    "  delete  — Remove a schedule by ID\n",
+                    "  delete/remove — Remove a schedule by ID\n",
+                    "  run     — Queue an existing schedule to run once as soon as the scheduler ticks\n",
                     "  info    — Get details about a specific schedule",
                 )
                 .to_string(),
@@ -47,8 +52,12 @@ impl ScheduleTool {
                     "properties": {
                         "action": {
                             "type": "string",
-                            "enum": ["create", "list", "pause", "resume", "delete", "info"],
+                            "enum": ["create", "list", "update", "pause", "resume", "delete", "remove", "run", "info"],
                             "description": "Action to perform"
+                        },
+                        "schedule": {
+                            "type": "string",
+                            "description": "Hermes-style schedule string: '30m', 'every 2h', ISO datetime, or cron pattern"
                         },
                         "name": {
                             "type": "string",
@@ -75,13 +84,43 @@ impl ScheduleTool {
                             "type": "object",
                             "description": "Payload for the schedule (e.g., {\"prompt\": \"check status\"})"
                         },
+                        "prompt": {
+                            "type": "string",
+                            "description": "Self-contained prompt to run when the schedule fires"
+                        },
+                        "repeat": {
+                            "type": "integer",
+                            "description": "Hermes alias for max_fires"
+                        },
+                        "skills": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Skill names to load/use when the scheduled prompt runs (stored in payload metadata)"
+                        },
+                        "model": {
+                            "type": "object",
+                            "description": "Model override metadata stored in payload"
+                        },
+                        "script": {
+                            "type": "string",
+                            "description": "Pre-run script path metadata stored in payload"
+                        },
+                        "enabled_toolsets": {
+                            "type": "array",
+                            "items": { "type": "string" },
+                            "description": "Toolset restriction metadata stored in payload"
+                        },
                         "max_fires": {
                             "type": "integer",
                             "description": "Maximum times to fire before auto-expiring (optional)"
                         },
                         "id": {
                             "type": "string",
-                            "description": "Schedule ID (for pause/resume/delete/info)"
+                            "description": "Schedule ID (for pause/resume/delete/remove/run/update/info)"
+                        },
+                        "job_id": {
+                            "type": "string",
+                            "description": "Hermes cronjob-compatible alias for id"
                         }
                     },
                     "required": ["action"]
@@ -93,56 +132,14 @@ impl ScheduleTool {
 
     fn handle_create(&self, params: &Value, session_id: &str) -> ToolResult {
         let name = params.get("name").and_then(|v| v.as_str()).unwrap_or("unnamed");
-        let kind = params.get("kind").and_then(|v| v.as_str()).unwrap_or("interval");
-        let payload = params.get("payload").cloned().unwrap_or_else(|| json!({}));
+        let payload = build_payload(params, session_id);
 
-        // Inject session_id into payload so the schedule event consumer
-        // can route the fired event to the correct session (daemon mode).
-        let mut payload = payload;
-        if let Some(obj) = payload.as_object_mut()
-            && !session_id.is_empty()
-        {
-            obj.insert("_session_id".to_string(), json!(session_id));
-        }
-
-        let mut schedule = match kind {
-            "once" => {
-                let at_str = match params.get("at").and_then(|v| v.as_str()) {
-                    Some(s) => s,
-                    None => return ToolResult::error("'once' schedule requires 'at' parameter"),
-                };
-                let at = match parse_datetime(at_str) {
-                    Ok(dt) => dt,
-                    Err(e) => return ToolResult::error(format!("invalid 'at': {e}")),
-                };
-                Schedule::once(name, at, payload)
-            }
-            "interval" => {
-                let interval_str = match params.get("interval").and_then(|v| v.as_str()) {
-                    Some(s) => s,
-                    None => return ToolResult::error("'interval' schedule requires 'interval' parameter"),
-                };
-                let secs = match parse_duration_secs(interval_str) {
-                    Ok(s) => s,
-                    Err(e) => return ToolResult::error(format!("invalid interval: {e}")),
-                };
-                Schedule::interval(name, secs, payload)
-            }
-            "cron" => {
-                let pattern_str = match params.get("cron").and_then(|v| v.as_str()) {
-                    Some(s) => s,
-                    None => return ToolResult::error("'cron' schedule requires 'cron' parameter"),
-                };
-                let pattern = match clanker_scheduler::cron::CronPattern::parse(pattern_str) {
-                    Ok(p) => p,
-                    Err(e) => return ToolResult::error(format!("invalid cron pattern: {e}")),
-                };
-                Schedule::cron(name, pattern, payload)
-            }
-            other => return ToolResult::error(format!("unknown schedule kind: {other}")),
+        let mut schedule = match build_schedule_from_params(name, params, payload) {
+            Ok(schedule) => schedule,
+            Err(err) => return ToolResult::error(err),
         };
 
-        if let Some(max) = params.get("max_fires").and_then(|v| v.as_u64()) {
+        if let Some(max) = max_fires_from_params(params) {
             schedule.max_fires = Some(max);
         }
 
@@ -175,11 +172,12 @@ impl ScheduleTool {
         ToolResult::text(format!("{} schedule(s):\n{}", schedules.len(), lines.join("\n")))
     }
 
-    fn handle_action_by_id(&self, params: &Value, action: &str) -> ToolResult {
-        let id_str = match params.get("id").and_then(|v| v.as_str()) {
-            Some(s) => s,
-            None => return ToolResult::error(format!("'{action}' requires 'id' parameter")),
-        };
+    fn handle_action_by_id(&self, params: &Value, action: &str, session_id: &str) -> ToolResult {
+        let id_str =
+            match params.get("id").and_then(|v| v.as_str()).or_else(|| params.get("job_id").and_then(|v| v.as_str())) {
+                Some(s) => s,
+                None => return ToolResult::error(format!("'{action}' requires 'id' or 'job_id' parameter")),
+            };
         let id = ScheduleId(id_str.to_string());
 
         match action {
@@ -197,12 +195,41 @@ impl ScheduleTool {
                     ToolResult::error(format!("Schedule {id} not found or not paused."))
                 }
             }
-            "delete" => {
+            "delete" | "remove" => {
                 if let Some(s) = self.engine.remove(&id) {
                     ToolResult::text(format!("Schedule '{}' ({id}) deleted.", s.name))
                 } else {
                     ToolResult::error(format!("Schedule {id} not found."))
                 }
+            }
+            "run" => {
+                let Some(existing) = self.engine.get(&id) else {
+                    return ToolResult::error(format!("Schedule {id} not found."));
+                };
+                let mut schedule =
+                    Schedule::once(format!("{} (manual run)", existing.name), Utc::now(), existing.payload.clone());
+                schedule.max_fires = Some(1);
+                let new_id = self.engine.add(schedule);
+                ToolResult::text(format!("Queued schedule '{}' to run once (id: {new_id}).", existing.name))
+            }
+            "update" => {
+                let Some(old) = self.engine.remove(&id) else {
+                    return ToolResult::error(format!("Schedule {id} not found."));
+                };
+                let name = params.get("name").and_then(|v| v.as_str()).unwrap_or(&old.name);
+                let payload = build_payload_with_base(params, session_id, Some(old.payload.clone()));
+                let mut schedule = match build_schedule_from_params(name, params, payload) {
+                    Ok(schedule) => schedule,
+                    Err(err) => {
+                        self.engine.add(old);
+                        return ToolResult::error(err);
+                    }
+                };
+                if let Some(max) = max_fires_from_params(params) {
+                    schedule.max_fires = Some(max);
+                }
+                let new_id = self.engine.add(schedule);
+                ToolResult::text(format!("Schedule {id} updated as new id {new_id}."))
             }
             "info" => {
                 if let Some(s) = self.engine.get(&id) {
@@ -232,10 +259,120 @@ impl Tool for ScheduleTool {
         match action.as_str() {
             "create" => self.handle_create(&params, ctx.session_id()),
             "list" => self.handle_list(),
-            "pause" | "resume" | "delete" | "info" => self.handle_action_by_id(&params, &action),
+            "pause" | "resume" | "delete" | "remove" | "run" | "update" | "info" => {
+                self.handle_action_by_id(&params, &action, ctx.session_id())
+            }
             other => ToolResult::error(format!("Unknown action: {other}")),
         }
     }
+}
+
+fn build_payload(params: &Value, session_id: &str) -> Value {
+    build_payload_with_base(params, session_id, None)
+}
+
+fn build_payload_with_base(params: &Value, session_id: &str, base: Option<Value>) -> Value {
+    let mut payload = params.get("payload").cloned().or(base).unwrap_or_else(|| json!({}));
+
+    if !payload.is_object() {
+        payload = json!({ "payload": payload });
+    }
+
+    let Some(obj) = payload.as_object_mut() else {
+        return payload;
+    };
+
+    insert_if_present(obj, params, "prompt");
+    insert_if_present(obj, params, "skills");
+    insert_if_present(obj, params, "model");
+    insert_if_present(obj, params, "script");
+    insert_if_present(obj, params, "enabled_toolsets");
+
+    if !session_id.is_empty() {
+        obj.insert("_session_id".to_string(), json!(session_id));
+    }
+
+    payload
+}
+
+fn insert_if_present(obj: &mut Map<String, Value>, params: &Value, key: &str) {
+    if let Some(value) = params.get(key) {
+        obj.insert(key.to_string(), value.clone());
+    }
+}
+
+fn build_schedule_from_params(name: &str, params: &Value, payload: Value) -> Result<Schedule, String> {
+    if let Some(schedule) = params.get("schedule").and_then(|v| v.as_str()) {
+        return build_schedule_from_string(name, schedule, payload);
+    }
+
+    let kind = params.get("kind").and_then(|v| v.as_str()).unwrap_or("interval");
+    match kind {
+        "once" => {
+            let at_str = params
+                .get("at")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "'once' schedule requires 'at' parameter".to_string())?;
+            let at = parse_datetime(at_str).map_err(|e| format!("invalid 'at': {e}"))?;
+            Ok(Schedule::once(name, at, payload))
+        }
+        "interval" => {
+            let interval_str = params
+                .get("interval")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "'interval' schedule requires 'interval' parameter".to_string())?;
+            let secs = parse_duration_secs(interval_str).map_err(|e| format!("invalid interval: {e}"))?;
+            Ok(Schedule::interval(name, secs, payload))
+        }
+        "cron" => {
+            let pattern_str = params
+                .get("cron")
+                .and_then(|v| v.as_str())
+                .ok_or_else(|| "'cron' schedule requires 'cron' parameter".to_string())?;
+            let pattern = clanker_scheduler::cron::CronPattern::parse(pattern_str)
+                .map_err(|e| format!("invalid cron pattern: {e}"))?;
+            Ok(Schedule::cron(name, pattern, payload))
+        }
+        other => Err(format!("unknown schedule kind: {other}")),
+    }
+}
+
+fn build_schedule_from_string(name: &str, schedule: &str, payload: Value) -> Result<Schedule, String> {
+    let schedule = schedule.trim();
+    if schedule.is_empty() {
+        return Err("empty schedule".to_string());
+    }
+
+    if let Some(interval) = schedule.strip_prefix("every ") {
+        let secs = parse_duration_secs(interval.trim()).map_err(|e| format!("invalid schedule interval: {e}"))?;
+        return Ok(Schedule::interval(name, secs, payload));
+    }
+
+    if looks_like_duration(schedule) {
+        let secs = parse_duration_secs(schedule).map_err(|e| format!("invalid schedule interval: {e}"))?;
+        return Ok(Schedule::interval(name, secs, payload));
+    }
+
+    if schedule.contains(char::is_whitespace) {
+        let pattern =
+            clanker_scheduler::cron::CronPattern::parse(schedule).map_err(|e| format!("invalid cron schedule: {e}"))?;
+        return Ok(Schedule::cron(name, pattern, payload));
+    }
+
+    let at = parse_datetime(schedule).map_err(|e| format!("invalid schedule datetime: {e}"))?;
+    Ok(Schedule::once(name, at, payload))
+}
+
+fn looks_like_duration(s: &str) -> bool {
+    let s = s.trim();
+    !s.is_empty() && s.chars().all(|c| c.is_ascii_digit() || matches!(c, 's' | 'm' | 'h' | 'd'))
+}
+
+fn max_fires_from_params(params: &Value) -> Option<u64> {
+    params
+        .get("max_fires")
+        .and_then(|v| v.as_u64())
+        .or_else(|| params.get("repeat").and_then(|v| v.as_u64()))
 }
 
 /// Parse a relative or ISO datetime string.
@@ -390,5 +527,114 @@ mod tests {
 
         let list_result = tool.execute(&ctx, json!({"action": "list"})).await;
         assert!(!list_result.is_error);
+    }
+
+    #[tokio::test]
+    async fn create_accepts_hermes_schedule_prompt_and_metadata() {
+        let engine = Arc::new(ScheduleEngine::new());
+        let tool = ScheduleTool::new(engine.clone());
+
+        let result = tool.handle_create(
+            &json!({
+                "action": "create",
+                "name": "cronjob-style",
+                "schedule": "every 30m",
+                "prompt": "summarize repo status",
+                "repeat": 3,
+                "skills": ["repo-state"],
+                "model": {"provider": "anthropic", "model": "claude-sonnet"},
+                "script": "scripts/preflight.rs",
+                "enabled_toolsets": ["terminal", "file"]
+            }),
+            "session-123",
+        );
+
+        assert!(!result.is_error);
+        let schedules = engine.list();
+        assert_eq!(schedules.len(), 1);
+        let schedule = &schedules[0];
+        assert_eq!(schedule.name, "cronjob-style");
+        assert_eq!(schedule.max_fires, Some(3));
+        assert_eq!(schedule.payload["prompt"], "summarize repo status");
+        assert_eq!(schedule.payload["_session_id"], "session-123");
+        assert_eq!(schedule.payload["skills"], json!(["repo-state"]));
+        assert_eq!(schedule.payload["enabled_toolsets"], json!(["terminal", "file"]));
+
+        match &schedule.kind {
+            clanker_scheduler::ScheduleKind::Interval { interval_secs } => assert_eq!(*interval_secs, 1800),
+            other => panic!("expected interval schedule, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn job_id_alias_remove_and_run_work() {
+        let engine = Arc::new(ScheduleEngine::new());
+        let tool = ScheduleTool::new(engine.clone());
+        let ctx = ToolContext::new("test".into(), CancellationToken::default(), None);
+
+        let create = tool
+            .execute(
+                &ctx,
+                json!({
+                    "action": "create",
+                    "name": "manual",
+                    "schedule": "15m",
+                    "prompt": "ping"
+                }),
+            )
+            .await;
+        assert!(!create.is_error);
+        let original_id = engine.list()[0].id.clone();
+
+        let run = tool.execute(&ctx, json!({"action": "run", "job_id": original_id.0})).await;
+        assert!(!run.is_error);
+        assert_eq!(engine.list().len(), 2);
+
+        let remove = tool.execute(&ctx, json!({"action": "remove", "job_id": original_id.0})).await;
+        assert!(!remove.is_error);
+        assert_eq!(engine.list().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn update_preserves_existing_payload_when_prompt_omitted() {
+        let engine = Arc::new(ScheduleEngine::new());
+        let tool = ScheduleTool::new(engine.clone());
+        let ctx = ToolContext::new("test".into(), CancellationToken::default(), None);
+
+        let create = tool
+            .execute(
+                &ctx,
+                json!({
+                    "action": "create",
+                    "name": "old",
+                    "schedule": "10m",
+                    "prompt": "keep me"
+                }),
+            )
+            .await;
+        assert!(!create.is_error);
+        let old_id = engine.list()[0].id.clone();
+
+        let update = tool
+            .execute(
+                &ctx,
+                json!({
+                    "action": "update",
+                    "job_id": old_id.0,
+                    "name": "new",
+                    "schedule": "20m"
+                }),
+            )
+            .await;
+        assert!(!update.is_error);
+
+        let schedules = engine.list();
+        assert_eq!(schedules.len(), 1);
+        assert_eq!(schedules[0].name, "new");
+        assert_eq!(schedules[0].payload["prompt"], "keep me");
+        match &schedules[0].kind {
+            clanker_scheduler::ScheduleKind::Interval { interval_secs } => assert_eq!(*interval_secs, 1200),
+            other => panic!("expected interval schedule, got {other:?}"),
+        }
     }
 }
