@@ -53,6 +53,7 @@ pub(crate) fn build_agent_with_tools(
         process_monitor: Some(process_monitor),
         actor_ctx: None,
         schedule_engine,
+        mcp_registry: None,
     };
     let tiered_tools = crate::modes::common::build_all_tiered_tools(&tool_env, plugin_manager);
 

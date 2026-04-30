@@ -708,6 +708,7 @@ mod tests {
                 process_monitor: None,
                 actor_ctx: None,
                 schedule_engine: None,
+                mcp_registry: None,
             },
             None,
         );

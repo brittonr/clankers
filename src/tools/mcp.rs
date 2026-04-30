@@ -39,11 +39,15 @@ pub trait McpRuntime: Send + Sync {
     async fn call_tool(&self, server: &str, tool: &str, args: Value) -> Result<Value, String>;
 }
 
+pub trait McpRuntimeRegistry: McpRuntime {
+    fn registered_tools(&self, server: &str) -> Vec<McpRegisteredTool>;
+}
+
 pub struct McpTool {
     definition: ToolDefinition,
     server_name: String,
     mcp_tool_name: String,
-    runtime: Arc<dyn McpRuntime>,
+    runtime: Arc<dyn McpRuntimeRegistry>,
 }
 
 impl McpTool {
@@ -51,7 +55,7 @@ impl McpTool {
         server_name: impl Into<String>,
         mcp_tool_name: impl Into<String>,
         definition: ToolDefinition,
-        runtime: Arc<dyn McpRuntime>,
+        runtime: Arc<dyn McpRuntimeRegistry>,
     ) -> Self {
         Self {
             definition,
@@ -88,7 +92,7 @@ pub fn build_tools_for_server(
     config: &McpServerConfig,
     registered_tools: &[McpRegisteredTool],
     seen_names: &mut HashSet<String>,
-    runtime: Arc<dyn McpRuntime>,
+    runtime: Arc<dyn McpRuntimeRegistry>,
 ) -> Vec<Arc<dyn Tool>> {
     if !config.enabled {
         return Vec::new();
@@ -125,6 +129,23 @@ pub fn build_tools_for_server(
             definition,
             Arc::clone(&runtime),
         )));
+    }
+    tools
+}
+
+pub fn build_tools_from_settings(
+    settings: &clankers_config::McpSettings,
+    seen_names: &mut HashSet<String>,
+    registry: Arc<dyn McpRuntimeRegistry>,
+) -> Vec<Arc<dyn Tool>> {
+    let mut tools = Vec::new();
+    for (server_name, config) in &settings.servers {
+        if let Err(error) = config.validate() {
+            tracing::warn!(server = server_name, error = %error, "skipping invalid MCP server configuration");
+            continue;
+        }
+        let registered = registry.registered_tools(server_name);
+        tools.extend(build_tools_for_server(server_name, config, &registered, seen_names, Arc::clone(&registry)));
     }
     tools
 }
@@ -172,6 +193,16 @@ mod tests {
         async fn call_tool(&self, server: &str, tool: &str, args: Value) -> Result<Value, String> {
             self.calls.lock().await.push((server.to_string(), tool.to_string(), args));
             Ok(self.result.clone())
+        }
+    }
+
+    impl McpRuntimeRegistry for FakeRuntime {
+        fn registered_tools(&self, _server: &str) -> Vec<McpRegisteredTool> {
+            vec![McpRegisteredTool::new(
+                "read_file",
+                "Read a file",
+                json!({"type":"object"}),
+            )]
         }
     }
 

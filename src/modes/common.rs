@@ -197,6 +197,8 @@ pub struct ToolEnv {
     /// schedules survive session restarts. In standalone mode a per-process
     /// engine is created.
     pub schedule_engine: Option<Arc<clanker_scheduler::ScheduleEngine>>,
+    /// Shared MCP runtime registry for configured MCP servers.
+    pub mcp_registry: Option<Arc<dyn crate::tools::mcp::McpRuntimeRegistry>>,
 }
 
 /// Build all tools with tier assignments, wiring up channels from a [`ToolEnv`].
@@ -615,6 +617,16 @@ pub fn build_all_tiered_tools(
             tiered.push((ToolTier::Specialty, tool));
         }
     }
+    if let (Some(settings), Some(registry)) = (&env.settings, &env.mcp_registry)
+        && !settings.mcp.servers.is_empty()
+    {
+        let mut seen_names: HashSet<String> = tiered.iter().map(|(_, tool)| tool.definition().name.clone()).collect();
+        let mcp_tools =
+            crate::tools::mcp::build_tools_from_settings(&settings.mcp, &mut seen_names, Arc::clone(registry));
+        for tool in mcp_tools {
+            tiered.push((ToolTier::Specialty, tool));
+        }
+    }
     tiered
 }
 
@@ -788,6 +800,82 @@ mod tests {
 
     fn tool_names(tools: &[Arc<dyn crate::tools::Tool>]) -> Vec<String> {
         tools.iter().map(|t| t.definition().name.clone()).collect()
+    }
+
+    struct FakeMcpRegistry;
+
+    #[async_trait::async_trait]
+    impl crate::tools::mcp::McpRuntime for FakeMcpRegistry {
+        async fn call_tool(
+            &self,
+            _server: &str,
+            _tool: &str,
+            _args: serde_json::Value,
+        ) -> Result<serde_json::Value, String> {
+            Ok(serde_json::json!({"content": [{"type": "text", "text": "ok"}]}))
+        }
+    }
+
+    impl crate::tools::mcp::McpRuntimeRegistry for FakeMcpRegistry {
+        fn registered_tools(&self, server: &str) -> Vec<crate::tools::mcp::McpRegisteredTool> {
+            match server {
+                "filesystem" => vec![crate::tools::mcp::McpRegisteredTool::new(
+                    "read_file",
+                    "Read a file",
+                    serde_json::json!({"type": "object"}),
+                )],
+                "colliding" => vec![crate::tools::mcp::McpRegisteredTool::new(
+                    "read_file",
+                    "Also reads a file",
+                    serde_json::json!({"type": "object"}),
+                )],
+                _ => Vec::new(),
+            }
+        }
+    }
+
+    #[test]
+    fn build_all_tiered_tools_adds_mcp_specialty_tools_from_settings() {
+        let mut settings = crate::config::settings::Settings::default();
+        settings.mcp = serde_json::from_value(serde_json::json!({
+            "servers": {
+                "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}
+            }
+        }))
+        .unwrap();
+        let env = ToolEnv {
+            settings: Some(settings),
+            mcp_registry: Some(Arc::new(FakeMcpRegistry)),
+            ..Default::default()
+        };
+
+        let tiered = build_all_tiered_tools(&env, None);
+        let tool_set = ToolSet::new(tiered, [ToolTier::Specialty]);
+        let names = tool_names(&tool_set.active_tools());
+
+        assert!(names.contains(&"fs_read_file".to_string()));
+    }
+
+    #[test]
+    fn build_all_tiered_tools_skips_mcp_tools_that_collide_with_builtins() {
+        let mut settings = crate::config::settings::Settings::default();
+        settings.mcp = serde_json::from_value(serde_json::json!({
+            "servers": {
+                "filesystem": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"},
+                "colliding": {"transport": "stdio", "command": "fake-mcp", "toolPrefix": "fs"}
+            }
+        }))
+        .unwrap();
+        let env = ToolEnv {
+            settings: Some(settings),
+            mcp_registry: Some(Arc::new(FakeMcpRegistry)),
+            ..Default::default()
+        };
+
+        let tiered = build_all_tiered_tools(&env, None);
+        let names: Vec<String> = tiered.iter().map(|(_, tool)| tool.definition().name.clone()).collect();
+
+        assert_eq!(names.iter().filter(|name| name.as_str() == "fs_read_file").count(), 1);
     }
 
     #[test]
