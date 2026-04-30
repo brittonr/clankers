@@ -14,4 +14,4 @@
 
 - [x] Add integration tests for the primary successful path and at least one failure path. ✅ 1m7s (started: 2026-04-30T22:44:46Z → completed: 2026-04-30T22:45:53Z) [evidence=`CARGO_TARGET_DIR=target cargo nextest run -p clankers --test mcp_integration --no-fail-fast`]
 - [x] Update README/docs and any relevant built-in tool or command lists. ✅ 43s (started: 2026-04-30T22:46:52Z → completed: 2026-04-30T22:47:35Z) [evidence=README.md, docs/src/reference/config.md]
-- [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
+- [x] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`. ✅ 36s (started: 2026-04-30T22:48:23Z → completed: 2026-04-30T22:48:59Z) [evidence=`cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers-config mcp_ --no-fail-fast`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers mcp --no-fail-fast`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test mcp_integration --no-fail-fast`, `CARGO_TARGET_DIR=target cargo check --tests -p clankers-config -p clankers`, `git diff --check`]
