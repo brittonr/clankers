@@ -10,4 +10,8 @@ pub mod theme;
 
 pub use paths::ClankersPaths;
 pub use paths::ProjectPaths;
+pub use settings::McpServerConfig;
+pub use settings::McpServerConfigError;
+pub use settings::McpSettings;
+pub use settings::McpTransport;
 pub use settings::Settings;

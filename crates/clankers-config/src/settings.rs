@@ -1,5 +1,6 @@
 //! Settings loading (global + project JSON)
 
+use std::collections::BTreeMap;
 use std::path::Path;
 
 use clanker_tui_types::MenuPlacement;
@@ -111,6 +112,10 @@ pub struct Settings {
     #[serde(default)]
     pub disabled_tools: Vec<String>,
 
+    /// Model Context Protocol server configuration.
+    #[serde(default)]
+    pub mcp: McpSettings,
+
     /// Hook system configuration.
     #[serde(default)]
     pub hooks: clankers_hooks::HooksConfig,
@@ -169,6 +174,132 @@ pub struct Settings {
     /// are still constrained by their UCAN token capabilities.
     #[serde(default)]
     pub default_capabilities: Option<Vec<clankers_ucan::Capability>>,
+}
+
+/// Model Context Protocol settings.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpSettings {
+    /// Named MCP servers. Global and project settings deep-merge by server name.
+    #[serde(default)]
+    pub servers: BTreeMap<String, McpServerConfig>,
+}
+
+/// One MCP server entry.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpServerConfig {
+    /// Disable without deleting the server entry.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    /// Server transport.
+    pub transport: McpTransport,
+    /// Stdio executable. Required when `transport = "stdio"`.
+    #[serde(default)]
+    pub command: Option<String>,
+    /// Stdio arguments.
+    #[serde(default)]
+    pub args: Vec<String>,
+    /// HTTP endpoint. Required when `transport = "http"`.
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Environment variables forwarded to stdio servers.
+    #[serde(default)]
+    pub env_allowlist: Vec<String>,
+    /// HTTP header names mapped to environment variables containing values.
+    #[serde(default)]
+    pub header_env: BTreeMap<String, String>,
+    /// Allow only these MCP tool names before publication. Empty means all.
+    #[serde(default)]
+    pub include_tools: Vec<String>,
+    /// Exclude these MCP tool names after include filtering.
+    #[serde(default)]
+    pub exclude_tools: Vec<String>,
+    /// Optional visible tool-name prefix. Defaults to `mcp_<server>`.
+    #[serde(default)]
+    pub tool_prefix: Option<String>,
+    /// Request timeout in milliseconds.
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum McpTransport {
+    Stdio,
+    Http,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum McpServerConfigError {
+    MissingStdioCommand,
+    BlankStdioCommand,
+    UnexpectedStdioCommand,
+    MissingHttpUrl,
+    BlankHttpUrl,
+    HeaderWithoutEnvName { header: String },
+    BlankEnvAllowlistEntry,
+}
+
+impl std::fmt::Display for McpServerConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingStdioCommand => f.write_str("stdio MCP servers must declare `command`"),
+            Self::BlankStdioCommand => f.write_str("stdio MCP server `command` cannot be blank"),
+            Self::UnexpectedStdioCommand => f.write_str("HTTP MCP servers cannot declare `command`"),
+            Self::MissingHttpUrl => f.write_str("HTTP MCP servers must declare `url`"),
+            Self::BlankHttpUrl => f.write_str("HTTP MCP server `url` cannot be blank"),
+            Self::HeaderWithoutEnvName { header } => {
+                write!(f, "HTTP MCP header `{header}` must map to a non-empty environment variable name")
+            }
+            Self::BlankEnvAllowlistEntry => f.write_str("MCP `envAllowlist` entries cannot be blank"),
+        }
+    }
+}
+
+impl std::error::Error for McpServerConfigError {}
+
+impl McpServerConfig {
+    pub fn validate(&self) -> Result<(), McpServerConfigError> {
+        if self.env_allowlist.iter().any(|entry| entry.trim().is_empty()) {
+            return Err(McpServerConfigError::BlankEnvAllowlistEntry);
+        }
+
+        for (header, env_name) in &self.header_env {
+            if header.trim().is_empty() || env_name.trim().is_empty() {
+                return Err(McpServerConfigError::HeaderWithoutEnvName { header: header.clone() });
+            }
+        }
+
+        match self.transport {
+            McpTransport::Stdio => match self.command.as_deref() {
+                Some(command) if !command.trim().is_empty() => Ok(()),
+                Some(_) => Err(McpServerConfigError::BlankStdioCommand),
+                None => Err(McpServerConfigError::MissingStdioCommand),
+            },
+            McpTransport::Http => {
+                if self.command.is_some() {
+                    return Err(McpServerConfigError::UnexpectedStdioCommand);
+                }
+                match self.url.as_deref() {
+                    Some(url) if !url.trim().is_empty() => Ok(()),
+                    Some(_) => Err(McpServerConfigError::BlankHttpUrl),
+                    None => Err(McpServerConfigError::MissingHttpUrl),
+                }
+            }
+        }
+    }
+
+    pub fn publishes_tool(&self, tool_name: &str) -> bool {
+        let included = self.include_tools.is_empty() || self.include_tools.iter().any(|tool| tool == tool_name);
+        let excluded = self.exclude_tools.iter().any(|tool| tool == tool_name);
+        included && !excluded
+    }
+
+    pub fn published_tool_name(&self, server_name: &str, tool_name: &str) -> String {
+        let prefix = self.tool_prefix.as_deref().map(str::to_owned).unwrap_or_else(|| format!("mcp_{server_name}"));
+        format!("{prefix}_{tool_name}")
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -413,6 +544,7 @@ impl Default for Settings {
             cost_tracking: None,
             max_subagent_panes: default_max_subagent_panes(),
             disabled_tools: Vec::new(),
+            mcp: McpSettings::default(),
             hooks: clankers_hooks::HooksConfig::default(),
             auto_test_command: None,
             no_cache: false,
@@ -558,6 +690,153 @@ mod tests {
         let json = r#"{}"#;
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert!(settings.disabled_tools.is_empty());
+    }
+
+    #[test]
+    fn mcp_stdio_server_from_json() {
+        let json = r#"{
+            "mcp": {
+                "servers": {
+                    "filesystem": {
+                        "transport": "stdio",
+                        "command": "npx",
+                        "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp"],
+                        "envAllowlist": ["MCP_TOKEN"],
+                        "includeTools": ["read_file", "write_file"],
+                        "excludeTools": ["write_file"],
+                        "toolPrefix": "fs",
+                        "timeoutMs": 30000
+                    }
+                }
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        let server = settings.mcp.servers.get("filesystem").expect("server loaded");
+        assert!(server.enabled);
+        assert_eq!(server.transport, McpTransport::Stdio);
+        assert_eq!(server.command.as_deref(), Some("npx"));
+        assert_eq!(server.args.len(), 3);
+        assert_eq!(server.env_allowlist, vec!["MCP_TOKEN".to_string()]);
+        assert_eq!(server.timeout_ms, Some(30000));
+        server.validate().expect("stdio server config valid");
+        assert!(server.publishes_tool("read_file"));
+        assert!(!server.publishes_tool("write_file"));
+        assert_eq!(server.published_tool_name("filesystem", "read_file"), "fs_read_file");
+    }
+
+    #[test]
+    fn mcp_http_server_from_json() {
+        let json = r#"{
+            "mcp": {
+                "servers": {
+                    "search": {
+                        "transport": "http",
+                        "url": "https://mcp.example.test/rpc",
+                        "headerEnv": {"Authorization": "MCP_AUTH_HEADER"}
+                    }
+                }
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        let server = settings.mcp.servers.get("search").expect("server loaded");
+        assert_eq!(server.transport, McpTransport::Http);
+        assert_eq!(server.url.as_deref(), Some("https://mcp.example.test/rpc"));
+        assert_eq!(server.header_env.get("Authorization").map(String::as_str), Some("MCP_AUTH_HEADER"));
+        server.validate().expect("http server config valid");
+        assert_eq!(server.published_tool_name("search", "query"), "mcp_search_query");
+    }
+
+    #[test]
+    fn mcp_config_deep_merges_servers_by_name() {
+        let global = serde_json::json!({
+            "mcp": {
+                "servers": {
+                    "filesystem": {
+                        "transport": "stdio",
+                        "command": "npx",
+                        "includeTools": ["read_file"]
+                    }
+                }
+            }
+        });
+        let project = serde_json::json!({
+            "mcp": {
+                "servers": {
+                    "filesystem": {
+                        "toolPrefix": "fs"
+                    },
+                    "search": {
+                        "transport": "http",
+                        "url": "https://mcp.example.test/rpc"
+                    }
+                }
+            }
+        });
+        let settings = Settings::merge_layers(None, Some(global), Some(project));
+        let filesystem = settings.mcp.servers.get("filesystem").expect("filesystem server loaded");
+        assert_eq!(filesystem.command.as_deref(), Some("npx"));
+        assert_eq!(filesystem.tool_prefix.as_deref(), Some("fs"));
+        assert!(settings.mcp.servers.contains_key("search"));
+    }
+
+    #[test]
+    fn mcp_validation_rejects_missing_stdio_command() {
+        let json = r#"{"mcp":{"servers":{"bad":{"transport":"stdio"}}}}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        let server = settings.mcp.servers.get("bad").expect("server loaded");
+        assert_eq!(server.validate(), Err(McpServerConfigError::MissingStdioCommand));
+    }
+
+    #[test]
+    fn mcp_validation_rejects_blank_header_env() {
+        let json = r#"{
+            "mcp": {
+                "servers": {
+                    "bad": {
+                        "transport": "http",
+                        "command": "mcp-server",
+                        "url": "https://mcp.example.test/rpc",
+                        "headerEnv": {"Authorization": ""}
+                    }
+                }
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        let server = settings.mcp.servers.get("bad").expect("server loaded");
+        assert_eq!(
+            server.validate(),
+            Err(McpServerConfigError::HeaderWithoutEnvName {
+                header: "Authorization".to_string()
+            })
+        );
+    }
+
+    #[test]
+    fn mcp_validation_rejects_blank_env_allowlist_entry() {
+        let json = r#"{
+            "mcp": {
+                "servers": {
+                    "bad": {"transport": "stdio", "command": "server", "envAllowlist": [""]}
+                }
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        let server = settings.mcp.servers.get("bad").expect("server loaded");
+        assert_eq!(server.validate(), Err(McpServerConfigError::BlankEnvAllowlistEntry));
+    }
+
+    #[test]
+    fn mcp_validation_rejects_http_command() {
+        let json = r#"{
+            "mcp": {
+                "servers": {
+                    "bad": {"transport": "http", "command": "server", "url": "https://mcp.example.test/rpc"}
+                }
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        let server = settings.mcp.servers.get("bad").expect("server loaded");
+        assert_eq!(server.validate(), Err(McpServerConfigError::UnexpectedStdioCommand));
     }
 
     #[test]

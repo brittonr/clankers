@@ -2,7 +2,7 @@
 
 - [x] Inventory existing clankers modules that should own MCP Integration. ✅ 52s (started: 2026-04-30T22:21:54Z → completed: 2026-04-30T22:22:46Z) [evidence=evidence/mcp-module-inventory.md]
 - [x] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases. ✅ 1m21s (started: 2026-04-30T22:23:40Z → completed: 2026-04-30T22:25:01Z) [evidence=design.md, specs/integrations-mcp/spec.md]
-- [ ] Add focused tests for parsing, configuration, and policy boundaries.
+- [x] Add focused tests for parsing, configuration, and policy boundaries. ✅ 2m6s (started: 2026-04-30T22:28:04Z → completed: 2026-04-30T22:30:10Z) [evidence=`CARGO_TARGET_DIR=target cargo nextest run -p clankers-config mcp_ --no-fail-fast`, `CARGO_TARGET_DIR=target cargo check --tests -p clankers-config`]
 
 ## Phase 2: Implementation
 
