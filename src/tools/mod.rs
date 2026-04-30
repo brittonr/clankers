@@ -23,6 +23,7 @@ pub mod progress {
 pub mod ask;
 pub mod autoresearch;
 pub mod bash;
+pub mod browser;
 pub mod commit;
 pub mod compress;
 pub mod cost;

@@ -10,6 +10,9 @@ pub mod theme;
 
 pub use paths::ClankersPaths;
 pub use paths::ProjectPaths;
+pub use settings::BrowserAutomationBackend;
+pub use settings::BrowserAutomationConfigError;
+pub use settings::BrowserAutomationSettings;
 pub use settings::McpServerConfig;
 pub use settings::McpServerConfigError;
 pub use settings::McpSettings;

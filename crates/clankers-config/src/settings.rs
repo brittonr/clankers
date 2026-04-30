@@ -116,6 +116,10 @@ pub struct Settings {
     #[serde(default)]
     pub mcp: McpSettings,
 
+    /// Stateful browser automation configuration.
+    #[serde(default, rename = "browserAutomation", alias = "browser_automation")]
+    pub browser_automation: BrowserAutomationSettings,
+
     /// Hook system configuration.
     #[serde(default)]
     pub hooks: clankers_hooks::HooksConfig,
@@ -300,6 +304,140 @@ impl McpServerConfig {
         let prefix = self.tool_prefix.as_deref().map(str::to_owned).unwrap_or_else(|| format!("mcp_{server_name}"));
         format!("{prefix}_{tool_name}")
     }
+}
+
+/// Stateful browser automation settings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BrowserAutomationSettings {
+    /// Publish and enable the browser tool.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Browser backend. First supported backend is local Chrome/Chromium CDP.
+    #[serde(default)]
+    pub backend: BrowserAutomationBackend,
+    /// Existing CDP endpoint, for example `http://127.0.0.1:9222`.
+    #[serde(default)]
+    pub cdp_url: Option<String>,
+    /// Browser executable to launch when no CDP URL is supplied.
+    #[serde(default)]
+    pub browser_binary: Option<String>,
+    /// Optional browser profile directory.
+    #[serde(default)]
+    pub user_data_dir: Option<String>,
+    /// Launch browser headless when clankers owns the browser process.
+    #[serde(default = "default_true")]
+    pub headless: bool,
+    /// Allow JavaScript evaluation actions.
+    #[serde(default)]
+    pub allow_evaluate: bool,
+    /// Allow screenshot actions.
+    #[serde(default = "default_true")]
+    pub allow_screenshots: bool,
+    /// Request/action timeout in milliseconds.
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+    /// Optional URL origin allowlist. Empty means all origins are allowed.
+    #[serde(default)]
+    pub allowed_origins: Vec<String>,
+}
+
+impl Default for BrowserAutomationSettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            backend: BrowserAutomationBackend::default(),
+            cdp_url: None,
+            browser_binary: None,
+            user_data_dir: None,
+            headless: true,
+            allow_evaluate: false,
+            allow_screenshots: true,
+            timeout_ms: None,
+            allowed_origins: Vec::new(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum BrowserAutomationBackend {
+    #[default]
+    Cdp,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BrowserAutomationConfigError {
+    MissingCdpEndpointOrBrowserBinary,
+    BlankCdpUrl,
+    BlankBrowserBinary,
+    BlankUserDataDir,
+    NonPositiveTimeout,
+    BlankAllowedOrigin,
+}
+
+impl std::fmt::Display for BrowserAutomationConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::MissingCdpEndpointOrBrowserBinary => {
+                f.write_str("enabled browser automation requires `cdpUrl` or `browserBinary`")
+            }
+            Self::BlankCdpUrl => f.write_str("browser automation `cdpUrl` cannot be blank"),
+            Self::BlankBrowserBinary => f.write_str("browser automation `browserBinary` cannot be blank"),
+            Self::BlankUserDataDir => f.write_str("browser automation `userDataDir` cannot be blank"),
+            Self::NonPositiveTimeout => f.write_str("browser automation `timeoutMs` must be greater than zero"),
+            Self::BlankAllowedOrigin => f.write_str("browser automation `allowedOrigins` entries cannot be blank"),
+        }
+    }
+}
+
+impl std::error::Error for BrowserAutomationConfigError {}
+
+impl BrowserAutomationSettings {
+    pub fn validate(&self) -> Result<(), BrowserAutomationConfigError> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        if matches!(self.timeout_ms, Some(0)) {
+            return Err(BrowserAutomationConfigError::NonPositiveTimeout);
+        }
+        if self.allowed_origins.iter().any(|origin| origin.trim().is_empty()) {
+            return Err(BrowserAutomationConfigError::BlankAllowedOrigin);
+        }
+        if matches!(self.cdp_url.as_deref(), Some(url) if url.trim().is_empty()) {
+            return Err(BrowserAutomationConfigError::BlankCdpUrl);
+        }
+        if matches!(self.browser_binary.as_deref(), Some(binary) if binary.trim().is_empty()) {
+            return Err(BrowserAutomationConfigError::BlankBrowserBinary);
+        }
+        if matches!(self.user_data_dir.as_deref(), Some(dir) if dir.trim().is_empty()) {
+            return Err(BrowserAutomationConfigError::BlankUserDataDir);
+        }
+
+        match self.backend {
+            BrowserAutomationBackend::Cdp => {
+                if self.cdp_url.is_none() && self.browser_binary.is_none() {
+                    return Err(BrowserAutomationConfigError::MissingCdpEndpointOrBrowserBinary);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub fn permits_origin(&self, origin: &str) -> bool {
+        self.allowed_origins.is_empty() || self.allowed_origins.iter().any(|allowed| origin_matches(allowed, origin))
+    }
+}
+
+fn origin_matches(pattern: &str, origin: &str) -> bool {
+    if pattern == "*" || pattern == origin {
+        return true;
+    }
+    if let Some(prefix) = pattern.strip_suffix("*") {
+        return origin.starts_with(prefix);
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -545,6 +683,7 @@ impl Default for Settings {
             max_subagent_panes: default_max_subagent_panes(),
             disabled_tools: Vec::new(),
             mcp: McpSettings::default(),
+            browser_automation: BrowserAutomationSettings::default(),
             hooks: clankers_hooks::HooksConfig::default(),
             auto_test_command: None,
             no_cache: false,
@@ -690,6 +829,88 @@ mod tests {
         let json = r#"{}"#;
         let settings: Settings = serde_json::from_str(json).unwrap();
         assert!(settings.disabled_tools.is_empty());
+    }
+
+    #[test]
+    fn browser_automation_from_json() {
+        let json = r#"{
+            "browserAutomation": {
+                "enabled": true,
+                "backend": "cdp",
+                "cdpUrl": "http://127.0.0.1:9222",
+                "headless": false,
+                "allowEvaluate": true,
+                "allowScreenshots": false,
+                "timeoutMs": 15000,
+                "allowedOrigins": ["https://example.test", "http://localhost:*"]
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        let browser = settings.browser_automation;
+        assert!(browser.enabled);
+        assert_eq!(browser.backend, BrowserAutomationBackend::Cdp);
+        assert_eq!(browser.cdp_url.as_deref(), Some("http://127.0.0.1:9222"));
+        assert!(!browser.headless);
+        assert!(browser.allow_evaluate);
+        assert!(!browser.allow_screenshots);
+        assert_eq!(browser.timeout_ms, Some(15000));
+        browser.validate().expect("browser automation config valid");
+        assert!(browser.permits_origin("https://example.test"));
+        assert!(browser.permits_origin("http://localhost:3000"));
+        assert!(!browser.permits_origin("https://evil.test"));
+    }
+
+    #[test]
+    fn browser_automation_snake_case_alias_from_json() {
+        let settings: Settings =
+            serde_json::from_str(r#"{"browser_automation":{"enabled":true,"cdpUrl":"http://127.0.0.1:9222"}}"#)
+                .unwrap();
+        assert!(settings.browser_automation.enabled);
+        assert_eq!(settings.browser_automation.cdp_url.as_deref(), Some("http://127.0.0.1:9222"));
+    }
+
+    #[test]
+    fn browser_automation_defaults_disabled() {
+        let settings: Settings = serde_json::from_str("{}").unwrap();
+        assert!(!settings.browser_automation.enabled);
+        assert_eq!(settings.browser_automation.backend, BrowserAutomationBackend::Cdp);
+        assert!(settings.browser_automation.headless);
+        assert!(!settings.browser_automation.allow_evaluate);
+        assert!(settings.browser_automation.allow_screenshots);
+        settings.browser_automation.validate().expect("disabled config is valid");
+    }
+
+    #[test]
+    fn browser_automation_validation_rejects_enabled_without_endpoint() {
+        let settings: Settings = serde_json::from_str(r#"{"browserAutomation":{"enabled":true}}"#).unwrap();
+        assert_eq!(
+            settings.browser_automation.validate(),
+            Err(BrowserAutomationConfigError::MissingCdpEndpointOrBrowserBinary)
+        );
+    }
+
+    #[test]
+    fn browser_automation_config_deep_merges() {
+        let global = serde_json::json!({
+            "browserAutomation": {
+                "enabled": true,
+                "cdpUrl": "http://127.0.0.1:9222",
+                "allowEvaluate": true,
+                "allowedOrigins": ["https://example.test"]
+            }
+        });
+        let project = serde_json::json!({
+            "browserAutomation": {
+                "timeoutMs": 20000,
+                "allowedOrigins": ["https://project.test"]
+            }
+        });
+        let settings = Settings::merge_layers(None, Some(global), Some(project));
+        assert!(settings.browser_automation.enabled);
+        assert_eq!(settings.browser_automation.cdp_url.as_deref(), Some("http://127.0.0.1:9222"));
+        assert!(settings.browser_automation.allow_evaluate);
+        assert_eq!(settings.browser_automation.timeout_ms, Some(20000));
+        assert_eq!(settings.browser_automation.allowed_origins, vec!["https://project.test".to_string()]);
     }
 
     #[test]

@@ -2,7 +2,7 @@
 
 - [x] Inventory existing clankers modules that should own Browser Automation. ⏱ started: 2026-04-30T22:53:03Z, completed: 2026-04-30T22:56:27Z, elapsed: 3m24s. Evidence: `evidence/browser-module-inventory.md`.
 - [x] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases. ⏱ started: 2026-04-30T22:56:58Z, completed: 2026-04-30T22:57:53Z, elapsed: 55s. Evidence: `design.md`, `specs/browser-automation/spec.md`.
-- [ ] Add focused tests for parsing, configuration, and policy boundaries.
+- [x] Add focused tests for parsing, configuration, and policy boundaries. ⏱ started: 2026-04-30T22:58:25Z, completed: 2026-04-30T23:06:03Z, elapsed: 7m38s. Evidence: `cargo fmt`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers-config browser_automation --no-fail-fast`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers browser --no-fail-fast`; `CARGO_TARGET_DIR=target cargo check --tests -p clankers-config -p clankers`.
 
 ## Phase 2: Implementation
 
