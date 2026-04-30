@@ -256,7 +256,7 @@ Specialty: `review`, `todo`, `cost`, `schedule`, `image_gen`, `procmon`, `skills
 
 Matrix: `matrix_send`, `matrix_read`, `matrix_rooms`, `matrix_peers`, `matrix_join`, `matrix_rpc`
 
-Plugins add additional tools at runtime.
+Plugins and configured MCP servers add additional tools at runtime. MCP tools are published as Specialty tools using a source-identifying prefix such as `mcp_filesystem_read_file` or a configured `toolPrefix`.
 
 ## Architecture
 
