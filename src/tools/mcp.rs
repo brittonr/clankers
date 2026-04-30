@@ -64,6 +64,15 @@ impl McpTool {
             runtime,
         }
     }
+
+    fn result_details(&self) -> Value {
+        serde_json::json!({
+            "source": "mcp",
+            "server": self.server_name,
+            "mcp_tool": self.mcp_tool_name,
+            "visible_tool": self.definition.name,
+        })
+    }
 }
 
 #[async_trait]
@@ -78,10 +87,12 @@ impl Tool for McpTool {
 
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
         ctx.emit_progress(&format!("mcp: {}::{}", self.server_name, self.mcp_tool_name));
+        let details = self.result_details();
         match self.runtime.call_tool(&self.server_name, &self.mcp_tool_name, params).await {
-            Ok(result) => mcp_result_to_tool_result(result),
+            Ok(result) => mcp_result_to_tool_result(result).with_details(details),
             Err(error) => {
                 ToolResult::error(format!("MCP tool error ({}::{}): {error}", self.server_name, self.mcp_tool_name))
+                    .with_details(details)
             }
         }
     }
@@ -145,6 +156,12 @@ pub fn build_tools_from_settings(
             continue;
         }
         let registered = registry.registered_tools(server_name);
+        tracing::info!(
+            server = server_name,
+            registered_tools = registered.len(),
+            transport = ?config.transport,
+            "discovered MCP server tools"
+        );
         tools.extend(build_tools_for_server(server_name, config, &registered, seen_names, Arc::clone(&registry)));
     }
     tools
@@ -275,6 +292,14 @@ mod tests {
         let result = tool.execute(&ctx, json!({"path": "README.md"})).await;
 
         assert!(!result.is_error);
+        assert_eq!(
+            result.details.as_ref().and_then(|details| details.get("source")).and_then(Value::as_str),
+            Some("mcp")
+        );
+        assert_eq!(
+            result.details.as_ref().and_then(|details| details.get("server")).and_then(Value::as_str),
+            Some("filesystem")
+        );
         assert_eq!(runtime.calls.lock().await[0].0, "filesystem");
         assert_eq!(runtime.calls.lock().await[0].1, "read_file");
         match &result.content[0] {
