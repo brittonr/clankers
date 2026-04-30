@@ -38,6 +38,7 @@ pub mod image_gen;
 pub mod loop_tool;
 pub mod ls;
 pub mod matrix;
+pub mod mcp;
 pub mod memory;
 pub mod nix;
 pub mod patch;

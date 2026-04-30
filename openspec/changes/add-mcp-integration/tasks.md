@@ -6,7 +6,7 @@
 
 ## Phase 2: Implementation
 
-- [ ] Implement the minimal backend or adapter for MCP Integration.
+- [x] Implement the minimal backend or adapter for MCP Integration. ✅ 3m59s (started: 2026-04-30T22:30:10Z → completed: 2026-04-30T22:34:09Z) [evidence=`CARGO_TARGET_DIR=target cargo nextest run -p clankers mcp --no-fail-fast`]
 - [ ] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable.
 - [ ] Persist or log session metadata needed for replay and debugging.
 
