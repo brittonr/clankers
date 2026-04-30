@@ -1,7 +1,7 @@
 ## Phase 1: Discovery and API Shape
 
 - [x] Inventory existing clankers modules that should own Browser Automation. ⏱ started: 2026-04-30T22:53:03Z, completed: 2026-04-30T22:56:27Z, elapsed: 3m24s. Evidence: `evidence/browser-module-inventory.md`.
-- [ ] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases.
+- [x] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases. ⏱ started: 2026-04-30T22:56:58Z, completed: 2026-04-30T22:57:53Z, elapsed: 55s. Evidence: `design.md`, `specs/browser-automation/spec.md`.
 - [ ] Add focused tests for parsing, configuration, and policy boundaries.
 
 ## Phase 2: Implementation
