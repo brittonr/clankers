@@ -419,10 +419,15 @@ pub fn resolve_provider_credential_with_fallback(
     let store = AuthStore::load(auth_store_path);
     let fallback = fallback_auth_path.map(AuthStore::load);
 
-    if let Some(acct) = account
-        && let Some(cred) = store.credential_for(provider, acct)
-    {
-        return Some(cred.clone());
+    if let Some(acct) = account {
+        if let Some(cred) = store.credential_for(provider, acct) {
+            return Some(cred.clone());
+        }
+        if let Some(fallback_store) = fallback.as_ref()
+            && let Some(cred) = fallback_store.credential_for(provider, acct)
+        {
+            return Some(cred.clone());
+        }
     }
 
     clanker_router::auth::resolve_credential(provider, runtime_override, &store, fallback.as_ref())
@@ -497,6 +502,37 @@ mod tests {
             label: None,
         };
         assert!(expired_oauth.is_expired());
+    }
+
+    #[test]
+    fn explicit_account_resolution_checks_fallback_store() {
+        let dir = tempfile::TempDir::new().unwrap();
+        let primary_path = dir.path().join("primary-auth.json");
+        let fallback_path = dir.path().join("fallback-auth.json");
+
+        let mut primary = AuthStore::default();
+        primary.set_credential("openrouter", "default", StoredCredential::ApiKey {
+            api_key: "primary-key".into(),
+            label: None,
+        });
+        primary.save(&primary_path).unwrap();
+
+        let mut fallback = AuthStore::default();
+        fallback.set_credential("openrouter", "backup", StoredCredential::ApiKey {
+            api_key: "fallback-backup-key".into(),
+            label: None,
+        });
+        fallback.save(&fallback_path).unwrap();
+
+        let resolved = resolve_provider_credential_with_fallback(
+            "openrouter",
+            None,
+            &primary_path,
+            Some(&fallback_path),
+            Some("backup"),
+        )
+        .expect("fallback account should resolve");
+        assert_eq!(resolved.token(), "fallback-backup-key");
     }
 
     fn fake_openai_codex_jwt(account_id: &str) -> String {

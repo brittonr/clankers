@@ -265,9 +265,12 @@ pub async fn run(ctx: &CommandContext, action: AuthAction) -> Result<()> {
         AuthAction::Accounts => handle_accounts(ctx),
         AuthAction::Export { provider, account } => handle_export(ctx, &provider, account.as_deref()),
         AuthAction::Import { input } => handle_import(ctx, &input),
-        _ => Err(crate::error::Error::ProviderAuth {
-            message: "This auth command is not yet implemented.".to_string(),
-        }),
+        AuthAction::SetKey {
+            provider,
+            account,
+            credential_type,
+            key,
+        } => handle_set_key(ctx, &provider, account.as_deref(), credential_type.as_deref(), key.as_deref()),
     }
 }
 
@@ -470,6 +473,56 @@ fn handle_export(ctx: &CommandContext, provider: &str, account: Option<&str>) ->
         })?;
 
     println!("{}", serde_json::to_string_pretty(&record).expect("auth export should serialize"));
+    Ok(())
+}
+
+fn handle_set_key(
+    ctx: &CommandContext,
+    provider: &str,
+    account: Option<&str>,
+    credential_type: Option<&str>,
+    key: Option<&str>,
+) -> Result<()> {
+    if let Some(kind) = credential_type {
+        let normalized = kind.replace('_', "-").to_ascii_lowercase();
+        if normalized == "oauth" {
+            return Err(crate::error::Error::ProviderAuth {
+                message: format!("Use `clankers auth login --provider {provider}` to add OAuth credentials."),
+            });
+        }
+        if normalized != "api-key" && normalized != "apikey" {
+            return Err(crate::error::Error::ProviderAuth {
+                message: format!("Unsupported credential type '{kind}'. Expected `api-key` or `oauth`."),
+            });
+        }
+    }
+
+    let api_key = match key {
+        Some(value) if !value.trim().is_empty() => value.trim().to_string(),
+        _ => {
+            return Err(crate::error::Error::ProviderAuth {
+                message: "Missing API key. Pass --api-key <key> or --key <key>.".to_string(),
+            });
+        }
+    };
+    let account_name = account.unwrap_or("default");
+    let mut store = crate::provider::auth::AuthStore::load(&ctx.paths.global_auth);
+    let was_empty = store.active_credential(provider).is_none();
+    store.set_credential(provider, account_name, crate::provider::auth::StoredCredential::ApiKey {
+        api_key,
+        label: Some(account_name.to_string()),
+    });
+    if was_empty {
+        store.switch_provider_account(provider, account_name);
+    }
+    store.save(&ctx.paths.global_auth)?;
+    crate::provider::openai_codex::reset_entitlement(provider, None);
+    println!(
+        "Stored API key for provider '{}' account '{}' in {}.",
+        provider,
+        account_name,
+        ctx.paths.global_auth.display()
+    );
     Ok(())
 }
 

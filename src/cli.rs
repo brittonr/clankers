@@ -630,6 +630,7 @@ pub enum AuthAction {
     },
     /// Show current auth status
     #[command(
+        visible_alias = "list",
         long_about = "Show provider-scoped auth status.\n\nWithout --provider or --all, clankers keeps the Anthropic default summary.\nUse --provider openai-codex or --all to inspect Codex subscription accounts, including entitled, authenticated-but-not-entitled, and entitlement-check-failed states. API-key openai remains a separate provider path."
     )]
     Status {
@@ -641,6 +642,7 @@ pub enum AuthAction {
         all: bool,
     },
     /// Remove stored credentials
+    #[command(visible_alias = "remove")]
     Logout {
         /// Provider name (`anthropic`, `openai`, `openai-codex`, etc.)
         #[arg(long)]
@@ -677,11 +679,19 @@ pub enum AuthAction {
         input: String,
     },
     /// Set API key directly
+    #[command(visible_alias = "add")]
     SetKey {
         /// Provider name
         provider: String,
-        /// API key (will prompt if not provided)
-        #[arg(long, value_name = "KEY")]
+        /// Account name (defaults to "default")
+        #[arg(long, value_name = "NAME")]
+        account: Option<String>,
+        /// Credential type. Only `api-key` is accepted here; use `login --provider <provider>` for
+        /// OAuth.
+        #[arg(long = "type", value_name = "TYPE")]
+        credential_type: Option<String>,
+        /// API key
+        #[arg(long, alias = "api-key", value_name = "KEY")]
         key: Option<String>,
     },
 }

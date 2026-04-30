@@ -64,10 +64,23 @@ impl AnthropicProvider {
         pool: CredentialPool,
         base_url: Option<String>,
     ) -> Self {
+        Self::with_optional_credential_pool(Some(credential_manager), pool, base_url)
+    }
+
+    /// Create a provider with a credential pool and no OAuth refresh manager.
+    pub fn with_credential_pool_only(pool: CredentialPool, base_url: Option<String>) -> Self {
+        Self::with_optional_credential_pool(None, pool, base_url)
+    }
+
+    fn with_optional_credential_pool(
+        credential_manager: Option<Arc<CredentialManager>>,
+        pool: CredentialPool,
+        base_url: Option<String>,
+    ) -> Self {
         Self {
             client: api::AnthropicClient::new(base_url),
             credential: None,
-            credential_manager: Some(credential_manager),
+            credential_manager,
             credential_pool: Some(pool),
             models: clanker_router::backends::anthropic::default_models(),
         }
@@ -150,6 +163,23 @@ impl Provider for AnthropicProvider {
                             lease.report_failure(status).await;
                             last_status = status;
                             last_error = msg;
+
+                            // Hermes-compatible behavior: treat a single 429 as a
+                            // transient blip and retry the same credential once before
+                            // rotating through the pool.
+                            if status == 429 {
+                                match self.try_with_credential(&request, &cred, &tx).await {
+                                    Ok(()) => {
+                                        lease.report_success().await;
+                                        return Ok(());
+                                    }
+                                    Err((retry_status, retry_msg)) => {
+                                        lease.report_failure(retry_status).await;
+                                        last_status = retry_status;
+                                        last_error = retry_msg;
+                                    }
+                                }
+                            }
 
                             let mut refresh_attempted = false;
                             // 401 on OAuth → try refreshing before moving to next credential
@@ -631,9 +661,9 @@ mod tests {
     #[tokio::test]
     async fn pool_all_exhausted() {
         // send_streaming retries retryable errors 3 times (4 attempts total).
-        // With 2 pool credentials, need 4+4 = 8 responses.
+        // 429 gets one same-credential retry before rotating, then backup fails too.
         let mut responses = Vec::new();
-        for _ in 0..4 {
+        for _ in 0..8 {
             responses.push(MockResponse::error(429, "rate limited"));
         }
         for _ in 0..4 {
@@ -679,8 +709,10 @@ mod tests {
     async fn pool_exhausted_falls_through_to_single_cred() {
         // Pre-exhaust the pool by putting all slots in cooldown
         let pool = CredentialPool::new(vec![("primary".into(), api_key("key-1"))], SelectionStrategy::Failover);
-        // Report failures to put slot in cooldown
+        // Report two consecutive 429s to put slot in cooldown
         {
+            let lease = pool.select().await.unwrap();
+            lease.report_failure(429).await;
             let lease = pool.select().await.unwrap();
             lease.report_failure(429).await;
         }
@@ -758,10 +790,12 @@ mod tests {
             SelectionStrategy::Failover,
         );
 
-        // Exhaust both slots
-        {
+        // Exhaust both slots; 429 needs two consecutive failures per slot.
+        for _ in 0..2 {
             let lease = pool.select().await.unwrap();
             lease.report_failure(429).await;
+        }
+        for _ in 0..2 {
             let lease = pool.select().await.unwrap();
             lease.report_failure(429).await;
         }

@@ -301,8 +301,13 @@ impl OpenAICompatProvider {
                 Err(e) => {
                     let status = e.status_code().unwrap_or(0);
                     lease.report_failure(status).await;
+                    if status == 429 {
+                        // do_request_with_retry already exhausted same-credential 429 retries,
+                        // so record a second 429 to enter the pool's 1h cooldown now.
+                        lease.report_failure(status).await;
+                    }
 
-                    if e.is_retryable() {
+                    if status == 402 || e.is_retryable() {
                         warn!(
                             "{} account '{}' returned {} — trying next credential",
                             self.config.name,

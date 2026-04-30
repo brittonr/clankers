@@ -58,12 +58,15 @@ async fn test_failover_switches_on_rate_limit() {
         SelectionStrategy::Failover,
     );
 
-    // Primary gets rate-limited
+    // First 429 is treated as a transient blip and keeps the primary available.
+    let lease = pool.select().await.unwrap();
+    assert_eq!(lease.token(), "key-1");
+    lease.report_failure(429).await;
     let lease = pool.select().await.unwrap();
     assert_eq!(lease.token(), "key-1");
     lease.report_failure(429).await;
 
-    // Should now use backup
+    // Second consecutive 429 cools down the primary, so backup is used.
     let lease = pool.select().await.unwrap();
     assert_eq!(lease.token(), "key-2");
     assert_eq!(lease.account(), "backup");
@@ -126,11 +129,15 @@ async fn test_all_exhausted_returns_none() {
         SelectionStrategy::Failover,
     );
 
-    // Exhaust both
-    let lease = pool.select().await.unwrap();
-    lease.report_failure(429).await;
-    let lease = pool.select().await.unwrap();
-    lease.report_failure(429).await;
+    // Exhaust both; a 429 needs to happen twice consecutively to enter cooldown.
+    for _ in 0..2 {
+        let lease = pool.select().await.unwrap();
+        lease.report_failure(429).await;
+    }
+    for _ in 0..2 {
+        let lease = pool.select().await.unwrap();
+        lease.report_failure(429).await;
+    }
 
     // Now both are in cooldown
     assert!(pool.select().await.is_none());
@@ -152,7 +159,8 @@ async fn test_select_all_available() {
         let lease = pool.select().await.unwrap();
         lease.report_success().await;
     }
-    // Directly report failure on slot 1 (b)
+    // Directly report two failures on slot 1 (b)
+    pool.slots[1].health.write().await.record_failure(429);
     pool.slots[1].health.write().await.record_failure(429);
 
     let available = pool.select_all_available().await;
@@ -165,14 +173,19 @@ async fn test_select_all_available() {
 async fn test_consecutive_errors_increase_cooldown() {
     let pool = CredentialPool::single("default".into(), api_key("sk-test"));
 
-    // First failure: 2^1 = 2s cooldown
+    // First 429 is a transient blip; second consecutive 429 creates a 1h cooldown.
     let lease = pool.select().await.unwrap();
     lease.report_failure(429).await;
-
     let summaries = pool.slot_summaries().await;
     assert_eq!(summaries[0].consecutive_errors, 1);
+    assert!(!summaries[0].in_cooldown);
+
+    let lease = pool.select().await.unwrap();
+    lease.report_failure(429).await;
+    let summaries = pool.slot_summaries().await;
+    assert_eq!(summaries[0].consecutive_errors, 2);
     assert!(summaries[0].in_cooldown);
-    assert!(summaries[0].cooldown_remaining_secs <= 2);
+    assert!(summaries[0].cooldown_remaining_secs <= 60 * 60);
 }
 
 #[tokio::test]
@@ -209,6 +222,36 @@ async fn test_reset_health() {
     let summaries = pool.slot_summaries().await;
     assert!(summaries[0].is_available);
     assert!(summaries[1].is_available);
+}
+
+#[tokio::test]
+async fn test_billing_error_immediate_long_cooldown() {
+    let pool = CredentialPool::single("default".into(), api_key("sk-test"));
+
+    let lease = pool.select().await.unwrap();
+    lease.report_failure(402).await;
+
+    let summaries = pool.slot_summaries().await;
+    assert!(summaries[0].in_cooldown);
+    assert!(summaries[0].cooldown_remaining_secs > 23 * 60 * 60);
+}
+
+#[tokio::test]
+async fn test_429_cooldown_requires_consecutive_429s() {
+    let pool = CredentialPool::single("default".into(), api_key("sk-test"));
+
+    {
+        let mut health = pool.slots[0].health.write().await;
+        health.record_failure(500);
+        health.in_cooldown = false;
+        health.cooldown_until = None;
+    }
+    let lease = pool.select().await.unwrap();
+    lease.report_failure(429).await;
+
+    let summaries = pool.slot_summaries().await;
+    assert_eq!(summaries[0].consecutive_errors, 2);
+    assert!(!summaries[0].in_cooldown);
 }
 
 #[tokio::test]

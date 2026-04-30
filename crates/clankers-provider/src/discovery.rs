@@ -94,6 +94,23 @@ fn select_codex_store_and_account<'a>(
     )
 }
 
+fn credential_pool_strategy_for(provider: &str) -> clanker_router::credential_pool::SelectionStrategy {
+    let provider_env = format!("CLANKERS_CREDENTIAL_POOL_STRATEGY_{}", provider.replace('-', "_").to_ascii_uppercase());
+    let value = std::env::var(provider_env).ok().or_else(|| std::env::var("CLANKERS_CREDENTIAL_POOL_STRATEGY").ok());
+    match value.as_deref().map(str::trim).map(str::to_ascii_lowercase).as_deref() {
+        Some("round_robin") | Some("round-robin") => clanker_router::credential_pool::SelectionStrategy::RoundRobin,
+        Some("least_used") | Some("least-used") => clanker_router::credential_pool::SelectionStrategy::LeastUsed,
+        Some("random") => clanker_router::credential_pool::SelectionStrategy::Random,
+        Some("fill_first") | Some("fill-first") | Some("failover") | None => {
+            clanker_router::credential_pool::SelectionStrategy::FillFirst
+        }
+        Some(other) => {
+            tracing::warn!(provider, strategy = other, "unknown credential pool strategy, using fill_first");
+            clanker_router::credential_pool::SelectionStrategy::FillFirst
+        }
+    }
+}
+
 /// Build in-process (no RPC). Used as fallback when daemon is unavailable.
 #[cfg_attr(
     dylint_lib = "tigerstyle",
@@ -124,33 +141,50 @@ pub fn build_router(
         auth::resolve_credential_with_fallback(api_key_override, auth_store_path, fallback_auth_path, account);
 
     if let Some(credential) = anthropic_cred {
-        // Check for additional accounts in the auth store
+        // Check for additional accounts in the auth stores.
         let store = clanker_router::auth::AuthStore::load(auth_store_path);
-        let all_creds = store.all_credentials("anthropic");
+        let fallback_store = fallback_auth_path.map(AuthStore::load);
+        let mut all_creds = store.all_credentials("anthropic");
+        if let Some(fallback) = fallback_store.as_ref() {
+            for (account_name, cred) in fallback.all_credentials("anthropic") {
+                if !all_creds.iter().any(|(_, existing)| existing.token() == cred.token()) {
+                    all_creds.push((account_name, cred));
+                }
+            }
+        }
+        if let Some(pos) = all_creds.iter().position(|(_, cred)| cred.token() == credential.token()) {
+            let selected = all_creds.remove(pos);
+            all_creds.insert(0, selected);
+        } else {
+            let account_name = account.unwrap_or("runtime").to_string();
+            all_creds.insert(0, (account_name, credential.clone()));
+        }
 
-        let provider: Arc<dyn Provider> =
+        let provider: Arc<dyn Provider> = if all_creds.len() > 1 {
+            let pool_creds: Vec<(String, clanker_router::auth::StoredCredential)> = all_creds;
+            let strategy = credential_pool_strategy_for("anthropic");
+            info!("Anthropic: {} account(s) available, enabling credential pool {:?}", pool_creds.len(), strategy);
+            let pool = clanker_router::credential_pool::CredentialPool::new(pool_creds, strategy);
             if credential.is_oauth() || clanker_router::auth::is_oauth_token(credential.token()) {
                 let cm = CredentialManager::new(
                     credential,
                     auth_store_path.to_path_buf(),
                     fallback_auth_path.map(|p| p.to_path_buf()),
                 );
-
-                if all_creds.len() > 1 {
-                    // Multi-account: build a credential pool for failover
-                    let pool_creds: Vec<(String, clanker_router::auth::StoredCredential)> = all_creds;
-                    info!("Anthropic: {} account(s) available, enabling credential pool failover", pool_creds.len());
-                    let pool = clanker_router::credential_pool::CredentialPool::new(
-                        pool_creds,
-                        clanker_router::credential_pool::SelectionStrategy::Failover,
-                    );
-                    Arc::new(AnthropicProvider::with_credential_pool(cm, pool, base_url))
-                } else {
-                    Arc::new(AnthropicProvider::with_credential_manager(cm, base_url))
-                }
+                Arc::new(AnthropicProvider::with_credential_pool(cm, pool, base_url))
             } else {
-                Arc::new(AnthropicProvider::new(credential, base_url))
-            };
+                Arc::new(AnthropicProvider::with_credential_pool_only(pool, base_url))
+            }
+        } else if credential.is_oauth() || clanker_router::auth::is_oauth_token(credential.token()) {
+            let cm = CredentialManager::new(
+                credential,
+                auth_store_path.to_path_buf(),
+                fallback_auth_path.map(|p| p.to_path_buf()),
+            );
+            Arc::new(AnthropicProvider::with_credential_manager(cm, base_url))
+        } else {
+            Arc::new(AnthropicProvider::new(credential, base_url))
+        };
         backends.push(("anthropic".to_string(), provider));
     }
 
@@ -193,18 +227,62 @@ pub fn build_router(
         ("XAI_API_KEY", OpenAICompatConfig::xai),
     ];
 
+    let primary_store = AuthStore::load(auth_store_path);
+    let fallback_store = fallback_auth_path.map(AuthStore::load);
     for (env_var, config_fn) in compat_providers {
-        if let Ok(key) = std::env::var(env_var)
-            && !key.is_empty()
-        {
-            let config = config_fn(key);
-            let name = config.name.clone();
-            if !backends.iter().any(|(n, _)| n == &name) {
-                info!("Discovered {} provider from {}", name, env_var);
-                let compat = OpenAICompatProvider::new(config);
-                let adapted: Arc<dyn Provider> = Arc::new(RouterCompatAdapter::new(compat));
-                backends.push((name, adapted));
+        let env_key = std::env::var(env_var).ok().filter(|key| !key.is_empty());
+        let probe_config = config_fn(env_key.clone().unwrap_or_default());
+        let name = probe_config.name.clone();
+        if backends.iter().any(|(n, _)| n == &name) {
+            continue;
+        }
+
+        let Some(credential) = auth::resolve_provider_credential_with_fallback(
+            &name,
+            env_key.as_deref(),
+            auth_store_path,
+            fallback_auth_path,
+            account,
+        ) else {
+            continue;
+        };
+
+        let mut pool_creds = primary_store.all_credentials(&name);
+        if let Some(fallback) = fallback_store.as_ref() {
+            for (account, cred) in fallback.all_credentials(&name) {
+                if !pool_creds.iter().any(|(_, existing)| existing.token() == cred.token()) {
+                    pool_creds.push((account, cred));
+                }
             }
+        }
+        if let Some(pos) = pool_creds.iter().position(|(_, cred)| cred.token() == credential.token()) {
+            let selected = pool_creds.remove(pos);
+            pool_creds.insert(0, selected);
+        } else {
+            let account_name = account.or_else(|| env_key.as_ref().map(|_| *env_var)).unwrap_or("runtime").to_string();
+            pool_creds.insert(0, (account_name, credential.clone()));
+        }
+
+        let config = config_fn(credential.token().to_string());
+        let source = if env_key.is_some() { *env_var } else { "auth store" };
+        if pool_creds.len() > 1 {
+            let strategy = credential_pool_strategy_for(&name);
+            info!(
+                "Discovered {} provider from {} with {} credential(s), enabling credential pool {:?}",
+                name,
+                source,
+                pool_creds.len(),
+                strategy
+            );
+            let pool = clanker_router::credential_pool::CredentialPool::new(pool_creds, strategy);
+            let compat = OpenAICompatProvider::with_pool(config, pool);
+            let adapted: Arc<dyn Provider> = Arc::new(RouterCompatAdapter::new(compat));
+            backends.push((name, adapted));
+        } else {
+            info!("Discovered {} provider from {}", name, source);
+            let compat = OpenAICompatProvider::new(config);
+            let adapted: Arc<dyn Provider> = Arc::new(RouterCompatAdapter::new(compat));
+            backends.push((name, adapted));
         }
     }
 
@@ -453,6 +531,18 @@ mod tests {
                 previous,
             }
         }
+
+        fn unset(key: &'static str) -> Self {
+            let guard = env_lock().lock().unwrap_or_else(|poison| poison.into_inner());
+            let previous = std::env::var(key).ok();
+            // SAFETY: same serialized test-only env mutation contract as set().
+            unsafe { std::env::remove_var(key) };
+            Self {
+                _guard: guard,
+                key,
+                previous,
+            }
+        }
     }
 
     impl Drop for EnvVarGuard {
@@ -464,6 +554,29 @@ mod tests {
                 None => unsafe { std::env::remove_var(self.key) },
             }
         }
+    }
+
+    #[test]
+    fn build_router_discovers_openrouter_from_auth_store() {
+        let _env = EnvVarGuard::unset("OPENROUTER_API_KEY");
+        let dir = tempfile::TempDir::new().expect("tempdir should exist");
+        let auth_path = dir.path().join("auth.json");
+        let mut store = crate::auth::AuthStore::default();
+        store.set_credential("openrouter", "backup", crate::auth::StoredCredential::ApiKey {
+            api_key: "sk-or-test".to_string(),
+            label: Some("backup".to_string()),
+        });
+        store.save(&auth_path).expect("auth store should save");
+
+        let runtime = tokio::runtime::Runtime::new().expect("runtime should build");
+        let provider = runtime
+            .block_on(async { build_router(None, None, &auth_path, None, None) })
+            .expect("router should build");
+        assert!(
+            provider.models().iter().any(|model| model.provider == "openrouter"),
+            "models: {:?}",
+            provider.models().iter().map(|model| (&model.provider, &model.id)).collect::<Vec<_>>()
+        );
     }
 
     #[test]

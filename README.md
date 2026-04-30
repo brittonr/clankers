@@ -35,7 +35,7 @@ clankers auth status --all                        # grouped provider status
 Unsupported `openai-codex` plans stay authenticated but unavailable for Codex use, and explicit Codex
 requests fail closed instead of falling back to API-key `openai`.
 
-Supports multiple accounts (`--account work`, `clankers auth switch --provider openai-codex work`).
+Supports multiple accounts and same-provider credential pools (`--account work`, `clankers auth add anthropic --api-key ... --account backup`, `clankers auth add openrouter --api-key ... --account backup`, `clankers auth switch --provider openai-codex work`). A single 429 is retried before rotation, repeated 429s rotate for 1 hour, and 402 quota errors rotate for 24 hours.
 
 When using Anthropic OAuth, clankers now prepends a Claude Code
 billing-header system block and rewrites clankers-specific markers in outbound

@@ -6,14 +6,17 @@
 //!
 //! # Strategies
 //!
+//! - **FillFirst** — Use the first healthy credential until it is exhausted. (Default)
 //! - **RoundRobin** — Rotate through credentials evenly on each request.
-//! - **Failover** — Use the primary credential until it fails, then switch to the next healthy one.
-//!   (Default)
+//! - **LeastUsed** — Prefer the credential with the fewest successful requests.
+//! - **Random** — Pick a healthy credential at random.
 //!
 //! # Per-credential health tracking
 //!
 //! Each credential slot has its own miniature circuit breaker:
-//! - On 429/5xx errors, the slot enters cooldown with exponential backoff
+//! - A single 429 is treated as transient; a second consecutive 429 enters cooldown.
+//! - 402 quota/billing errors enter a 24-hour cooldown immediately.
+//! - 5xx errors enter a short exponential cooldown.
 //! - Cooldown-expired slots move to half-open (one probe allowed)
 //! - A successful probe resets the slot to healthy
 //!
@@ -44,6 +47,8 @@ use std::sync::atomic::Ordering;
 use std::time::Duration;
 use std::time::Instant;
 
+use serde::Deserialize;
+use serde::Serialize;
 use tokio::sync::RwLock;
 use tracing::debug;
 use tracing::info;
@@ -54,14 +59,22 @@ use crate::auth::StoredCredential;
 // ── Selection strategy ──────────────────────────────────────────────────
 
 /// Strategy for selecting which credential to use next.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum SelectionStrategy {
-    /// Rotate through credentials evenly. Spreads load across all accounts.
-    RoundRobin,
-    /// Use the primary (first) credential until it fails, then switch.
+    /// Use the first healthy credential until it is exhausted, then switch.
     /// Best for "use my main account, fall back to backup". This is the default.
     #[default]
+    FillFirst,
+    /// Backwards-compatible alias for FillFirst.
+    #[serde(alias = "failover")]
     Failover,
+    /// Rotate through credentials evenly. Spreads load across all accounts.
+    RoundRobin,
+    /// Always select the available credential with the lowest success count.
+    LeastUsed,
+    /// Pick a random available credential.
+    Random,
 }
 
 // ── Slot health ─────────────────────────────────────────────────────────
@@ -108,17 +121,29 @@ impl SlotHealth {
 
     /// Record a failed request with the given HTTP status code.
     fn record_failure(&mut self, status: u16) {
+        let previous_error_status = self.last_error_status;
         self.consecutive_errors += 1;
         self.last_error_status = Some(status);
         self.failure_count += 1;
         self.last_used = Some(Instant::now());
 
-        // Only enter cooldown for rate-limit / server errors
-        if crate::retry::is_retryable_status(status) {
+        let cooldown = match status {
+            // Billing/quota exhaustion should move off this credential for a long time.
+            402 => Some(Duration::from_secs(24 * 60 * 60)),
+            // Hermes-compatible behavior: tolerate one transient 429, then rotate.
+            429 if previous_error_status == Some(429) => Some(Duration::from_secs(60 * 60)),
+            429 => None,
+            // Other retryable provider/server failures use short exponential backoff.
+            status if crate::retry::is_retryable_status(status) => {
+                let backoff_secs = 2u64.pow(self.consecutive_errors.min(8)).min(300);
+                Some(Duration::from_secs(backoff_secs))
+            }
+            _ => None,
+        };
+
+        if let Some(duration) = cooldown {
             self.in_cooldown = true;
-            // Exponential backoff: 2^errors seconds, capped at 5 minutes
-            let backoff_secs = 2u64.pow(self.consecutive_errors.min(8)).min(300);
-            self.cooldown_until = Some(Instant::now() + Duration::from_secs(backoff_secs));
+            self.cooldown_until = Some(Instant::now() + duration);
         }
     }
 
@@ -258,7 +283,7 @@ impl CredentialPool {
 
     /// Create a pool with a single credential (backwards compatible).
     pub fn single(account: String, credential: StoredCredential) -> Self {
-        Self::new(vec![(account, credential)], SelectionStrategy::Failover)
+        Self::new(vec![(account, credential)], SelectionStrategy::FillFirst)
     }
 
     /// Number of credentials in the pool.
@@ -287,7 +312,9 @@ impl CredentialPool {
 
         match self.strategy {
             SelectionStrategy::RoundRobin => self.select_round_robin().await,
-            SelectionStrategy::Failover => self.select_failover().await,
+            SelectionStrategy::FillFirst | SelectionStrategy::Failover => self.select_fill_first().await,
+            SelectionStrategy::LeastUsed => self.select_least_used().await,
+            SelectionStrategy::Random => self.select_random().await,
         }
     }
 
@@ -311,14 +338,38 @@ impl CredentialPool {
                     }
                 }
             }
-            SelectionStrategy::Failover => {
+            SelectionStrategy::FillFirst | SelectionStrategy::Failover | SelectionStrategy::Random => {
+                let mut candidates = Vec::new();
                 for (idx, slot) in self.slots.iter().enumerate() {
                     if slot.is_selectable().await {
-                        leases.push(CredentialLease {
-                            pool: self,
-                            slot_index: idx,
-                        });
+                        candidates.push(idx);
                     }
+                }
+                if matches!(self.strategy, SelectionStrategy::Random) && !candidates.is_empty() {
+                    let start = rand::random::<u64>() as usize % candidates.len();
+                    candidates.rotate_left(start);
+                }
+                for idx in candidates {
+                    leases.push(CredentialLease {
+                        pool: self,
+                        slot_index: idx,
+                    });
+                }
+            }
+            SelectionStrategy::LeastUsed => {
+                let mut candidates = Vec::new();
+                for (idx, slot) in self.slots.iter().enumerate() {
+                    if slot.is_selectable().await {
+                        let success_count = slot.health.read().await.success_count;
+                        candidates.push((idx, success_count));
+                    }
+                }
+                candidates.sort_by_key(|(_, success_count)| *success_count);
+                for (idx, _) in candidates {
+                    leases.push(CredentialLease {
+                        pool: self,
+                        slot_index: idx,
+                    });
                 }
             }
         }
@@ -408,7 +459,7 @@ impl CredentialPool {
         None
     }
 
-    async fn select_failover(&self) -> Option<CredentialLease<'_>> {
+    async fn select_fill_first(&self) -> Option<CredentialLease<'_>> {
         // Try the primary (index 0) first, then fall through
         for (idx, slot) in self.slots.iter().enumerate() {
             if slot.is_selectable().await {
@@ -433,6 +484,44 @@ impl CredentialPool {
             warn!("all {} credential(s) in cooldown", self.slots.len());
         }
         None
+    }
+
+    async fn select_least_used(&self) -> Option<CredentialLease<'_>> {
+        let mut best: Option<(usize, u64)> = None;
+        for (idx, slot) in self.slots.iter().enumerate() {
+            if slot.is_selectable().await {
+                let success_count = slot.health.read().await.success_count;
+                if best.is_none_or(|(_, count)| success_count < count) {
+                    best = Some((idx, success_count));
+                }
+            }
+        }
+        best.map(|(idx, _)| CredentialLease {
+            pool: self,
+            slot_index: idx,
+        })
+        .or_else(|| {
+            warn!("all {} credential(s) unavailable", self.slots.len());
+            None
+        })
+    }
+
+    async fn select_random(&self) -> Option<CredentialLease<'_>> {
+        let mut candidates = Vec::new();
+        for (idx, slot) in self.slots.iter().enumerate() {
+            if slot.is_selectable().await {
+                candidates.push(idx);
+            }
+        }
+        if candidates.is_empty() {
+            warn!("all {} credential(s) unavailable", self.slots.len());
+            return None;
+        }
+        let idx = candidates[rand::random::<u64>() as usize % candidates.len()];
+        Some(CredentialLease {
+            pool: self,
+            slot_index: idx,
+        })
     }
 }
 
