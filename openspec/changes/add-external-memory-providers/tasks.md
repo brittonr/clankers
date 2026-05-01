@@ -9,7 +9,8 @@
 
 ## Phase 2: Implementation
 
-- [ ] Implement the minimal backend or adapter for External Memory Providers.
+- [x] Implement the minimal backend or adapter for External Memory Providers. ✅ completed: 2026-05-01T02:44:55Z
+  - Evidence: added `src/tools/external_memory.rs` with disabled-by-default publication gating, local-provider search/status actions, bounded result handling, safe provider metadata, remote-provider unsupported errors before contact, and unit tests. Verified with `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers external_memory --no-fail-fast`, `CARGO_TARGET_DIR=target cargo check --tests -p clankers`, and `git diff --check`.
 - [ ] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable.
 - [ ] Persist or log session metadata needed for replay and debugging.
 

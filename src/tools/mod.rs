@@ -32,6 +32,7 @@ pub mod devtools;
 pub mod diff;
 pub mod edit;
 pub mod execute_code;
+pub mod external_memory;
 pub mod find;
 pub mod git_ops;
 pub mod grep;
