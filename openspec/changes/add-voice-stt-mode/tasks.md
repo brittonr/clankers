@@ -20,5 +20,6 @@
 
 - [x] Add integration tests for the primary successful path and at least one failure path. ✅ completed: 2026-05-01T23:51:48Z
   - Evidence: added `tests/voice_mode.rs` covering supported local file validation without preserving private paths, first-pass microphone rejection, and `VoiceModeTool` success/failure `ToolResult::details`; verification passed `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test voice_mode --no-fail-fast` (3 passed), and `CARGO_TARGET_DIR=target cargo nextest run -p clankers voice --no-fail-fast` (10 passed).
-- [ ] Update README/docs and any relevant built-in tool or command lists.
+- [x] Update README/docs and any relevant built-in tool or command lists. ✅ completed: 2026-05-01T23:54:00Z
+  - Evidence: updated `README.md` Specialty tool list with `voice_mode` and documented `clankers voice status|validate`; updated `docs/src/reference/config.md` with first-pass no-config voice/STT validation boundaries and replay-safe metadata exclusions. Verification passed `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers voice --no-fail-fast` (10 passed), and `git diff --check`.
 - [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
