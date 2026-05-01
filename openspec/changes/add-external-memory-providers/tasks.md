@@ -1,6 +1,7 @@
 ## Phase 1: Discovery and API Shape
 
-- [ ] Inventory existing clankers modules that should own External Memory Providers.
+- [x] Inventory existing clankers modules that should own External Memory Providers. ✅ completed: 2026-05-01T02:30:24Z
+  - Evidence: `openspec/changes/add-external-memory-providers/evidence/module-inventory.md` maps existing local memory, config, tool publication, prompt/session integration, metadata, and test ownership boundaries.
 - [ ] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases.
 - [ ] Add focused tests for parsing, configuration, and policy boundaries.
 
