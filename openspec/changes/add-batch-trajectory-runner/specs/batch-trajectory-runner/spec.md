@@ -1,17 +1,17 @@
 ## ADDED Requirements
 
 ### Requirement: Batch Processing and Trajectory Export Capability [r[batch-trajectory-runner.capability]]
-The system MUST provide Run many prompts concurrently and export structured trajectories for evaluation and training.
+The system MUST provide a documented foreground local batch runner that reads many prompt jobs from a local input file with bounded concurrency and exports structured local trajectories for evaluation or training preparation.
 
 #### Scenario: Primary path succeeds [r[batch-trajectory-runner.scenario.primary-path]]
-- GIVEN clankers is configured for the capability
-- WHEN the user or agent invokes the documented primary path
-- THEN clankers performs the operation and returns a structured, user-visible result
+- GIVEN the user invokes `clankers batch run` with a valid local JSONL prompt file and output directory
+- WHEN the runner processes the jobs within the configured concurrency limit
+- THEN clankers writes structured result metadata and trajectory output files and returns a user-visible run summary
 
 #### Scenario: Unsupported configuration is explicit [r[batch-trajectory-runner.scenario.unsupported-config]]
-- GIVEN the user invokes the capability without required configuration or platform support
-- WHEN clankers cannot safely proceed
-- THEN clankers MUST return an actionable error instead of silently falling back or dropping work
+- GIVEN the user invokes a remote dataset, detached daemon execution, unsupported export target, or unbounded concurrency
+- WHEN clankers cannot safely proceed in the first-pass implementation
+- THEN clankers MUST return an actionable unsupported error instead of silently falling back or dropping work
 
 ### Requirement: Batch Processing and Trajectory Export Session Observability [r[batch-trajectory-runner.observability]]
 The system MUST record enough normalized metadata for audit, replay, and troubleshooting without leaking secrets.
