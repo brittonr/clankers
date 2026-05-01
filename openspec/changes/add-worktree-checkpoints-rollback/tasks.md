@@ -9,7 +9,8 @@
 
 ## Phase 2: Implementation
 
-- [ ] Implement the minimal backend or adapter for Working Directory Checkpoints and Rollback.
+- [x] Implement the minimal backend or adapter for Working Directory Checkpoints and Rollback. ✅ completed: 2026-05-01T22:48:41Z
+  - Evidence: `src/checkpoints.rs` implements local git-backed create/list/rollback using `.git/clankers-checkpoints`; `src/commands/checkpoint.rs` wires CLI actions to the backend. Verification passed `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers checkpoint --no-fail-fast` (11 passed).
 - [ ] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable.
 - [ ] Persist or log session metadata needed for replay and debugging.
 
