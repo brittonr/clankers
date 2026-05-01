@@ -1298,6 +1298,16 @@ fn submit_input_attach(
     } else {
         // Regular prompt — expand @file/context references, then send text plus any image blocks.
         let expanded = crate::util::at_file::expand_at_refs_with_images(text, &app.cwd);
+        if !expanded.references.is_empty() {
+            tracing::info!(
+                metadata = %serde_json::json!({
+                    "source": "context_references",
+                    "cwd": app.cwd,
+                    "references": expanded.references,
+                }),
+                "context references expanded before daemon prompt submission"
+            );
+        }
         let images = expanded
             .images
             .into_iter()

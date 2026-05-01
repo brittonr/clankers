@@ -8,7 +8,7 @@
 
 - [x] Implement the minimal backend or adapter for Context References. ✅ completed: 2026-05-01T00:51:02Z; evidence: `clankers-util::at_file` now returns expanded text, image blocks, and per-reference metadata with explicit unsupported/error states; verified by `CARGO_TARGET_DIR=target cargo nextest run -p clankers-util at_file --no-fail-fast`.
 - [x] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable. ✅ completed: 2026-05-01T00:54:26Z; evidence: prompt/print/json/inline now expand context references before dispatch; attach forwards expanded image references via daemon protocol; `cargo fmt`, `CARGO_TARGET_DIR=target cargo check -p clankers-controller -p clankers-util`, and `CARGO_TARGET_DIR=target cargo check --lib -p clankers` passed.
-- [ ] Persist or log session metadata needed for replay and debugging.
+- [x] Persist or log session metadata needed for replay and debugging. ✅ completed: 2026-05-01T00:57:52Z; evidence: `SessionManager::record_custom` records `context_references` metadata for persisted TUI sessions and attach logs equivalent metadata before daemon submission; `CARGO_TARGET_DIR=target cargo nextest run -p clankers-session custom --no-fail-fast`, `cargo check -p clankers-session -p clankers-controller`, and `cargo check --lib -p clankers` passed.
 
 ## Phase 3: Verification and Documentation
 

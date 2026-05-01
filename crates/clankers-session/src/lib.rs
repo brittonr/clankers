@@ -282,6 +282,20 @@ impl SessionManager {
         Ok(())
     }
 
+    /// Record a custom audit/replay annotation.
+    pub fn record_custom(&mut self, kind: impl Into<String>, data: serde_json::Value) -> Result<()> {
+        let annotation = AnnotationEntry::Custom(CustomEntry {
+            id: MessageId::generate(),
+            kind: kind.into(),
+            data,
+            timestamp: Utc::now(),
+        });
+
+        automerge_store::put_annotation(&mut self.doc, &annotation)?;
+        automerge_store::save_incremental(&mut self.doc, &self.file_path)?;
+        Ok(())
+    }
+
     pub fn latest_compaction_summary(&self) -> Option<&str> {
         self.latest_compaction_summary.as_deref()
     }

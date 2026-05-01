@@ -441,6 +441,20 @@ pub(crate) fn handle_input_with_plugins(
         let mut pending_images = app.take_pending_images();
 
         let expanded = crate::util::at_file::expand_at_refs_with_images(text, &app.cwd);
+        if !expanded.references.is_empty() {
+            let data = serde_json::json!({
+                "source": "context_references",
+                "cwd": app.cwd,
+                "references": expanded.references,
+            });
+            if let Some(manager) = session_manager.as_mut() {
+                if let Err(error) = manager.record_custom("context_references", data.clone()) {
+                    tracing::warn!(%error, "failed to record context reference metadata");
+                }
+            } else {
+                tracing::info!(metadata = %data, "context references expanded without session persistence");
+            }
+        }
         let prompt_text = expanded.text;
 
         let at_file_images: Vec<crate::tui::app::PendingImage> = expanded
