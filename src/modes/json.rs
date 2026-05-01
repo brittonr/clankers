@@ -62,7 +62,9 @@ pub async fn run_json_with_options(
         }
     });
 
-    agent.prompt(prompt).await?;
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let expanded = crate::util::at_file::expand_at_refs_with_images(prompt, &cwd.to_string_lossy());
+    agent.prompt_with_images(&expanded.text, expanded.images).await?;
     json_handle.await.ok();
     Ok(())
 }

@@ -145,7 +145,12 @@ impl ClientAdapter {
 
     /// Send a prompt to the daemon.
     pub fn prompt(&self, text: String) {
-        self.send(SessionCommand::Prompt { text, images: vec![] });
+        self.prompt_with_images(text, vec![]);
+    }
+
+    /// Send a prompt with image content blocks to the daemon.
+    pub fn prompt_with_images(&self, text: String, images: Vec<clankers_protocol::ImageData>) {
+        self.send(SessionCommand::Prompt { text, images });
     }
 
     /// Request history replay.

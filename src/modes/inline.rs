@@ -333,8 +333,11 @@ pub async fn run_inline_with_options(
 
     // Spawn the agent on a Send-compatible task; render on the current
     // thread because InlineRenderer contains non-Send dyn trait objects.
-    let prompt_owned = prompt.to_string();
-    let agent_handle = tokio::spawn(async move { agent.prompt(&prompt_owned).await });
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let expanded = crate::util::at_file::expand_at_refs_with_images(prompt, &cwd.to_string_lossy());
+    let prompt_owned = expanded.text;
+    let images = expanded.images;
+    let agent_handle = tokio::spawn(async move { agent.prompt_with_images(&prompt_owned, images).await });
 
     // Detect terminal width, fall back to 80
     let width = crossterm::terminal::size().map(|(w, _)| w).unwrap_or(80);

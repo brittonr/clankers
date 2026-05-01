@@ -1296,9 +1296,19 @@ fn submit_input_attach(
     if let Some((command, args)) = slash_commands::parse_command(text) {
         dispatch_attach_slash(app, client, &command, &args, slash_registry, parity_tracker);
     } else {
-        // Regular prompt — expand @file references, then send
+        // Regular prompt — expand @file/context references, then send text plus any image blocks.
         let expanded = crate::util::at_file::expand_at_refs_with_images(text, &app.cwd);
-        client.prompt(expanded.text);
+        let images = expanded
+            .images
+            .into_iter()
+            .filter_map(|content| match content {
+                crate::provider::message::Content::Image {
+                    source: crate::provider::message::ImageSource::Base64 { media_type, data },
+                } => Some(clankers_protocol::ImageData { data, media_type }),
+                _ => None,
+            })
+            .collect();
+        client.prompt_with_images(expanded.text, images);
     }
 }
 

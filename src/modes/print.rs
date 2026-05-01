@@ -183,7 +183,9 @@ pub async fn run_print_with_options(
         writer.flush().ok();
     });
 
-    agent.prompt(prompt).await?;
+    let cwd = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let expanded = crate::util::at_file::expand_at_refs_with_images(prompt, &cwd.to_string_lossy());
+    agent.prompt_with_images(&expanded.text, expanded.images).await?;
     print_handle.await.ok();
     Ok(())
 }
