@@ -229,6 +229,35 @@ pub fn results_jsonl(results: &[BatchJobResult]) -> Result<String, serde_json::E
     Ok(output)
 }
 
+pub fn render_trajectory_results(
+    format: TrajectoryFormat,
+    results: &[BatchJobResult],
+) -> Result<String, serde_json::Error> {
+    match format {
+        TrajectoryFormat::Jsonl => results_jsonl(results),
+        TrajectoryFormat::Sharegpt => serde_json::to_string_pretty(
+            &results
+                .iter()
+                .map(|result| {
+                    json!({
+                        "id": result.id,
+                        "status": result.status,
+                        "conversations": [
+                            {"from": "assistant", "value": result.response.clone().unwrap_or_default()}
+                        ],
+                        "metadata": result.metadata,
+                        "error": result.error,
+                    })
+                })
+                .collect::<Vec<_>>(),
+        )
+        .map(|mut rendered| {
+            rendered.push('\n');
+            rendered
+        }),
+    }
+}
+
 fn normalized_job_metadata(job: &BatchJob) -> Value {
     json!({
         "source": "batch_trajectory_runner",
@@ -340,5 +369,20 @@ mod tests {
         let rendered = results_jsonl(&[result]).unwrap();
         assert!(rendered.contains(r#""id":"a""#));
         assert!(rendered.ends_with('\n'));
+    }
+
+    #[test]
+    fn renders_sharegpt_export() {
+        let result = BatchJobResult {
+            id: "a".to_string(),
+            status: BatchJobStatus::Succeeded,
+            response: Some("ok".to_string()),
+            error: None,
+            metadata: None,
+        };
+        let rendered = render_trajectory_results(TrajectoryFormat::Sharegpt, &[result]).unwrap();
+        assert!(rendered.contains(r#""conversations""#));
+        assert!(rendered.contains(r#""from": "assistant""#));
+        assert!(rendered.contains(r#""value": "ok""#));
     }
 }

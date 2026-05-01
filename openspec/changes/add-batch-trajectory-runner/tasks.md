@@ -7,7 +7,7 @@
 ## Phase 2: Implementation
 
 - [x] Implement the minimal backend or adapter for Batch Processing and Trajectory Export. ✅ completed: 2026-05-01T02:36:51Z; evidence: `src/modes/batch.rs` adds bounded job execution via `BatchJobExecutor`, stable result ordering, JSONL trajectory rendering, and safe metadata; `cargo fmt`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers batch --no-fail-fast` passed (11 tests); `CARGO_TARGET_DIR=target cargo check --tests -p clankers` passed.
-- [ ] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable.
+- [x] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable. ✅ completed: 2026-05-01T02:45:33Z; evidence: `clankers batch run` now reads local JSONL, dispatches bounded foreground prompt jobs via the existing headless prompt path, writes JSONL/ShareGPT trajectories, and prints a safe summary; TUI/daemon integration is explicitly not applicable for this first-pass foreground CLI surface; `cargo fmt`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers batch --no-fail-fast` passed (12 tests); `CARGO_TARGET_DIR=target cargo check --tests -p clankers` passed.
 - [ ] Persist or log session metadata needed for replay and debugging.
 
 ## Phase 3: Verification and Documentation
