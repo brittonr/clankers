@@ -12,6 +12,6 @@
 
 ## Phase 3: Verification and Documentation
 
-- [ ] Add integration tests for the primary successful path and at least one failure path.
+- [x] Add integration tests for the primary successful path and at least one failure path. ✅ completed: 2026-05-01T03:05:33Z; evidence: `tests/batch_trajectory_runner.rs` covers successful JSONL trajectory export, failed-job recording, and unsupported remote input; `cargo fmt`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test batch_trajectory_runner --no-fail-fast` passed (3 tests); `CARGO_TARGET_DIR=target cargo nextest run -p clankers batch --no-fail-fast` passed (16 tests); `CARGO_TARGET_DIR=target cargo check --tests -p clankers` passed.
 - [ ] Update README/docs and any relevant built-in tool or command lists.
 - [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
