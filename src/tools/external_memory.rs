@@ -343,6 +343,31 @@ mod tests {
         );
     }
 
+    #[tokio::test]
+    async fn local_search_metadata_is_safe_for_replay() {
+        let db = Db::in_memory().unwrap();
+        db.memory().save(&MemoryEntry::new("project token handling notes", MemoryScope::Global)).unwrap();
+        let tool = ExternalMemoryTool::new(enabled_settings());
+        let result = tool.execute(&make_ctx(&db), json!({"action": "search", "query": "token", "limit": 2})).await;
+
+        assert!(!result.is_error);
+        let details = result.details.as_ref().expect("external memory stores details");
+        assert_eq!(details.get("source").and_then(Value::as_str), Some(SOURCE));
+        assert_eq!(details.get("providerKind").and_then(Value::as_str), Some("local"));
+        assert_eq!(details.get("action").and_then(Value::as_str), Some("search"));
+        assert_eq!(details.get("status").and_then(Value::as_str), Some("ok"));
+        assert_eq!(details.get("resultCount").and_then(Value::as_u64), Some(1));
+        assert!(details.get("query").is_none(), "metadata must not persist raw queries");
+        assert!(details.get("results").is_none(), "metadata must not persist memory text");
+        assert!(details.get("credentialEnv").is_none(), "metadata must not persist env-var values");
+    }
+
+    #[test]
+    fn secret_like_errors_are_redacted_in_metadata() {
+        assert_eq!(redact_error("bearer token leaked"), "[REDACTED]");
+        assert_eq!(redact_error("plain provider unavailable"), "plain provider unavailable");
+    }
+
     #[test]
     fn disabled_or_invalid_config_is_not_published() {
         assert!(build_external_memory_tool_from_settings(&ExternalMemorySettings::default()).is_none());

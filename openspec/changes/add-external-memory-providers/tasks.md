@@ -13,10 +13,12 @@
   - Evidence: added `src/tools/external_memory.rs` with disabled-by-default publication gating, local-provider search/status actions, bounded result handling, safe provider metadata, remote-provider unsupported errors before contact, and unit tests. Verified with `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers external_memory --no-fail-fast`, `CARGO_TARGET_DIR=target cargo check --tests -p clankers`, and `git diff --check`.
 - [x] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable. ✅ completed: 2026-05-01T02:47:00Z
   - Evidence: `src/modes/common.rs` publishes `external_memory` as a Specialty tool only when `settings.externalMemory.enabled` validates. This shared `ToolEnv` path is used by standalone prompt, interactive TUI rebuilds, and daemon/session tool construction; tests prove disabled, enabled, and invalid-config publication behavior.
-- [ ] Persist or log session metadata needed for replay and debugging.
+- [x] Persist or log session metadata needed for replay and debugging. ✅ completed: 2026-05-01T02:49:08Z
+  - Evidence: `external_memory` results attach safe `ToolResult.details` metadata (`source`, provider kind/name, action, status, elapsed time, result count, inject flag/error kind) which existing `ToolResultMessage.details` session persistence and tool-host outcomes carry through replay/debug paths. Added tests proving metadata omits raw queries, result text, credential env values, and redacts secret-like errors.
 
 ## Phase 3: Verification and Documentation
 
-- [ ] Add integration tests for the primary successful path and at least one failure path.
+- [x] Add integration tests for the primary successful path and at least one failure path. ✅ completed: 2026-05-01T22:21:50Z
+  - Evidence: added `tests/external_memory.rs` integration coverage for enabled local-provider search through shared Specialty publication, missing runtime database failure details, and disabled-config non-publication. Verified with `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test external_memory --no-fail-fast`.
 - [ ] Update README/docs and any relevant built-in tool or command lists.
 - [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
