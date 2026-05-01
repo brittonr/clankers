@@ -1,7 +1,7 @@
 ## Phase 1: Discovery and API Shape
 
 - [x] Inventory existing clankers modules that should own ACP IDE Integration. ✅ completed: 2026-05-01T01:12:36Z; evidence: `openspec/changes/add-acp-ide-integration/evidence/acp-module-inventory.md` plus delegated read-only inspection.
-- [ ] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases.
+- [x] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases. ✅ completed: 2026-05-01T01:18:44Z; evidence: `openspec/changes/add-acp-ide-integration/evidence/api-surface.md`, design decisions 3-4, and narrowed delta spec capability wording.
 - [ ] Add focused tests for parsing, configuration, and policy boundaries.
 
 ## Phase 2: Implementation

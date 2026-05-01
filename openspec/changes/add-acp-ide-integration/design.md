@@ -33,6 +33,20 @@ This change tracks Hermes feature-parity work for ACP IDE Integration. Clankers 
 
 **Alternative:** Optimize only for a happy-path demo. Rejected because these are agent autonomy features and failures must be recoverable.
 
+### 3. Start with a foreground stdio ACP adapter
+
+**Choice:** The first user-facing surface is `clankers acp serve`, a foreground stdio adapter for one clankers session. ACP remains an editor transport, not a model-callable built-in tool.
+
+**Rationale:** ACP-compatible editors can launch foreground stdio commands, and clankers already owns session construction, prompt dispatch, tool policy, and persistence. Stdio keeps the first pass local and avoids network listener policy before the protocol seam is proven.
+
+**Alternative:** Add a background daemon listener or a durable config section first. Rejected for the first pass because listener lifecycle, authentication, and multi-session routing would expand the security surface before the adapter is tested.
+
+### 4. Return explicit unsupported ACP errors
+
+**Choice:** Methods outside the first supported prompt/session subset MUST return structured unsupported errors rather than silently succeeding or dropping editor requests.
+
+**Rationale:** IDE integrations are hard to debug when terminal, diff, cancellation, or media operations are ignored. Explicit errors preserve user trust and make follow-up OpenSpec slices easier to define.
+
 ## Risks / Trade-offs
 
 **Scope creep** → Start with a minimal backend/API and document additional backends as future tasks.
