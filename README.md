@@ -114,6 +114,17 @@ clankers session show <id>          # inspect a session
 clankers session export <id>        # export to file
 ```
 
+## Context References
+
+Use `@` references in prompts to inline local context before a turn runs:
+
+- `@path/to/file` includes a text file.
+- `@path/to/file:10-20` includes a line range.
+- `@path/to/dir/` includes a sorted directory listing.
+- `@path/to/image.png` attaches an image when the prompt path supports image blocks.
+
+Local context references work in the TUI, attach, and one-shot prompt modes. URL, git-diff, remote, and session-artifact references are intentionally reported as unsupported in this first pass rather than silently fetched or dropped.
+
 ## Branching
 
 Fork conversations to explore alternatives without losing your work. Use `/fork` to try different approaches, `/switch` to navigate between branches, `/branches` to list them, and `/merge` to combine the best parts. See [`docs/tutorials/branching.md`](docs/tutorials/branching.md) for a walkthrough.

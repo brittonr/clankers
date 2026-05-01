@@ -33,7 +33,7 @@ client input
 
 Standalone TUI/headless mode runs the agent in-process and renders agent events directly.
 
-1. The event loop receives user input and starts an agent prompt.
+1. The event loop receives user input, expands local `@` context references into prompt text/image blocks, records expansion metadata for replay/debugging when a session store is present, and starts an agent prompt.
 2. `EventLoopRunner::process_agent_event` handles each `AgentEvent` in this order:
    - translate to a TUI event for real-time rendering,
    - feed the same event to `SessionController::feed_event`,
@@ -47,7 +47,7 @@ Standalone TUI/headless mode runs the agent in-process and renders agent events 
 
 Daemon mode wraps a `SessionController` in an actor process.
 
-1. A client sends a framed `SessionCommand::Prompt` over the Unix-socket or QUIC bridge.
+1. A client expands local `@` context references relative to its current working directory, sends expanded prompt text/image blocks in `SessionCommand::Prompt`, and logs context-reference metadata for debugging.
 2. `run_agent_actor` receives the command and calls `SessionController::handle_command`.
 3. `handle_command` validates controller state, starts prompt work, and drives the owned `Agent`.
 4. The agent broadcasts `AgentEvent` values while the turn runs.
