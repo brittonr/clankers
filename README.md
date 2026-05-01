@@ -269,6 +269,17 @@ clankers token list                     # list issued tokens
 clankers token revoke <hash>            # revoke a token
 ```
 
+## Batch Trajectory Runs
+
+Run bounded local prompt batches and export trajectories for evaluation, review, or RL data preparation:
+
+```bash
+clankers batch run prompts.jsonl --output results.jsonl
+clankers batch run prompts.jsonl --output sharegpt.json --format sharegpt --concurrency 2
+```
+
+Input is local JSONL: each line is an object with a non-empty `prompt`, optional string `id`, and optional object `metadata`. Outputs are local JSONL or ShareGPT-style files. The first pass is a foreground CLI workflow only: remote `http://`, `https://`, or `s3://` inputs/outputs are rejected, concurrency is bounded, result ordering is stable, and replay/debug metadata records counts and prompt sizes rather than raw prompts.
+
 ## Built-in Tools
 
 Core: `read`, `write`, `edit`, `patch`, `execute_code`, `process`, `bash`, `grep`, `find`, `ls`, `ask`, `commit`, `web`, `nix`

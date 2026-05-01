@@ -47,6 +47,12 @@ Standalone TUI/headless mode runs the agent in-process and renders agent events 
 
 `clankers acp serve` is a foreground stdio transport for ACP-compatible editors. It accepts JSON request lines, maps first-pass initialize/session prompt methods through the ACP adapter seam, emits normalized request metadata without params, and returns explicit unsupported-method errors for terminal/workspace/tool surfaces that are outside the first slice.
 
+## Batch trajectory path
+
+`clankers batch run` is a foreground CLI workflow for local JSONL prompt batches. The command parses one prompt job per input line, validates local-only input/output paths and bounded concurrency, runs jobs through the existing headless prompt path, restores result ordering after concurrent execution, and renders JSONL or ShareGPT-style trajectories.
+
+Batch replay/debug metadata is intentionally safe: run-level logs include `source=batch_trajectory_runner`, status/counts, concurrency, format, and output filename; per-job metadata records prompt character counts and whether user metadata existed. Raw prompts, provider payloads, API keys, and remote destinations are not stored in metadata. TUI and daemon/session routing are not part of the first-pass batch surface.
+
 ## Daemon prompt path
 
 Daemon mode wraps a `SessionController` in an actor process.

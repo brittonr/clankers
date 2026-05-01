@@ -31,6 +31,17 @@ clankers daemon kill <id>       # kill a session
 clankers daemon stop            # stop daemon
 ```
 
+## Batch trajectory runs
+
+Run local JSONL prompt batches and export deterministic trajectories for evaluation or review:
+
+```bash
+clankers batch run prompts.jsonl --output results.jsonl
+clankers batch run prompts.jsonl --output sharegpt.json --format sharegpt --concurrency 2
+```
+
+Each input line is a JSON object with a non-empty `prompt`, optional string `id`, and optional object `metadata`. The first pass is foreground-only, accepts local paths only, bounds concurrency, preserves result order, and writes safe JSONL or ShareGPT-style output without logging raw prompts in replay metadata.
+
 ## ACP IDE integration
 
 Expose a clankers session to ACP-compatible editors over foreground stdio:
