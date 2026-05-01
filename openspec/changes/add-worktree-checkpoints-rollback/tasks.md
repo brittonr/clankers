@@ -22,4 +22,5 @@
   - Evidence: added `tests/checkpoint.rs` covering create/list/rollback round trip and rollback-without-confirmation failure. Verification passed `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test checkpoint --no-fail-fast` (2 passed), and `CARGO_TARGET_DIR=target cargo nextest run -p clankers checkpoint --no-fail-fast` (14 passed).
 - [x] Update README/docs and any relevant built-in tool or command lists. ✅ completed: 2026-05-01T23:02:00Z
   - Evidence: updated `README.md` built-in tool/command documentation for `clankers checkpoint ...` and the Specialty `checkpoint` tool; updated `docs/src/reference/config.md` to document the no-new-config first pass, local `.git/clankers-checkpoints` backend, unsupported remote/submodule cases, confirmation requirement, and replay-safe metadata boundary.
-- [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
+- [x] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`. ✅ completed: 2026-05-01T23:05:00Z
+  - Evidence: passed `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers checkpoint --no-fail-fast` (14 passed), `CARGO_TARGET_DIR=target cargo check --tests -p clankers`, and `git diff --check`.
