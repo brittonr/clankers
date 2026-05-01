@@ -43,6 +43,10 @@ Standalone TUI/headless mode runs the agent in-process and renders agent events 
 3. `SessionController::feed_event` uses the same processing pipeline as daemon draining: audit, metrics, embedded prompt correlation, loop output accumulation, session persistence, `DaemonEvent` translation, and lifecycle hooks.
 4. The standalone TUI should treat controller-produced daemon events as shell/control output, not as a second source of assistant transcript rendering.
 
+## ACP editor path
+
+`clankers acp serve` is a foreground stdio transport for ACP-compatible editors. It accepts JSON request lines, maps first-pass initialize/session prompt methods through the ACP adapter seam, emits normalized request metadata without params, and returns explicit unsupported-method errors for terminal/workspace/tool surfaces that are outside the first slice.
+
 ## Daemon prompt path
 
 Daemon mode wraps a `SessionController` in an actor process.

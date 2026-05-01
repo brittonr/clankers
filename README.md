@@ -65,6 +65,18 @@ clankers daemon kill <id>       # kill a session
 clankers daemon stop            # stop the daemon
 ```
 
+### ACP IDE Integration
+
+Expose a clankers session to ACP-compatible editors over stdio:
+
+```
+clankers acp serve                         # serve a new foreground ACP session
+clankers acp serve --session <id>          # resume a known clankers session id
+clankers acp serve --new --model <model>   # force a new session and optional model
+```
+
+The first pass supports initialization and session prompt/update messages over a foreground stdio adapter. Terminal creation, remote workspaces, arbitrary tool listing/calls, and editor push notifications are intentionally returned as unsupported until dedicated follow-up work lands.
+
 ### Headless
 
 No TUI required. Pipe prompts in, get results out.

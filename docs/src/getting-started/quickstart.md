@@ -31,6 +31,18 @@ clankers daemon kill <id>       # kill a session
 clankers daemon stop            # stop daemon
 ```
 
+## ACP IDE integration
+
+Expose a clankers session to ACP-compatible editors over foreground stdio:
+
+```bash
+clankers acp serve                         # serve a new ACP session
+clankers acp serve --session <id>          # resume a known session id
+clankers acp serve --new --model <model>   # force a fresh session and optional model
+```
+
+The first pass supports ACP initialization and session prompt/update request handling. Terminal creation, remote workspaces, arbitrary tool listing/calls, and editor push notifications return explicit unsupported-method errors.
+
 ## Sessions
 
 Conversations persist as JSONL. Resume where you left off:

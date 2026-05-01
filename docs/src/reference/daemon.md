@@ -16,6 +16,18 @@ clankers daemon kill <id>       # kill a session
 clankers daemon stop            # stop daemon
 ```
 
+## ACP editor sessions
+
+`clankers acp serve` runs a foreground stdio adapter for ACP-compatible editors. It is separate from the daemon socket/QUIC transport: editors launch the command, speak JSON request lines over stdin/stdout, and receive explicit unsupported-method errors for first-pass gaps.
+
+```bash
+clankers acp serve
+clankers acp serve --session <id>
+clankers acp serve --new --model <model>
+```
+
+The adapter logs normalized request metadata (`source`, `transport`, `method`, `status`) without request params so replay/debugging does not leak prompt content or editor secrets.
+
 ## Architecture
 
 ```
