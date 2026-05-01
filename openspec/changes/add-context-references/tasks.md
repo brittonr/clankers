@@ -6,7 +6,7 @@
 
 ## Phase 2: Implementation
 
-- [ ] Implement the minimal backend or adapter for Context References.
+- [x] Implement the minimal backend or adapter for Context References. ✅ completed: 2026-05-01T00:51:02Z; evidence: `clankers-util::at_file` now returns expanded text, image blocks, and per-reference metadata with explicit unsupported/error states; verified by `CARGO_TARGET_DIR=target cargo nextest run -p clankers-util at_file --no-fail-fast`.
 - [ ] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable.
 - [ ] Persist or log session metadata needed for replay and debugging.
 
