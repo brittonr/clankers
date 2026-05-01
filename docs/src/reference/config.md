@@ -66,6 +66,13 @@ Main configuration file. Place in `~/.clankers/settings.json` or `.clankers/sett
     "allowScreenshots": true,
     "timeoutMs": 30000,
     "allowedOrigins": ["http://localhost:*", "https://example.test"]
+  },
+  "externalMemory": {
+    "enabled": true,
+    "provider": "local",
+    "name": "project-memory",
+    "maxResults": 8,
+    "injectIntoPrompt": false
   }
 }
 ```
@@ -73,6 +80,8 @@ Main configuration file. Place in `~/.clankers/settings.json` or `.clankers/sett
 MCP server entries are merged by name across global/project settings. Stdio servers use `command` and optional `args`; HTTP servers use `url` and optional `headerEnv` mappings whose values are read from environment variables. Clankers only forwards explicitly allowlisted environment variables or header values. MCP tool publication applies `includeTools` before `excludeTools`, skips collisions with existing tools, and prefixes visible tool names with `mcp_<server>_` unless `toolPrefix` is set.
 
 Browser automation is disabled by default. Set `browserAutomation.enabled = true` with either `cdpUrl` for an existing local Chrome/Chromium DevTools endpoint or `browserBinary` to let clankers launch a local browser. The first backend is CDP HTTP: it supports `navigate`, `snapshot`/`current_url`, and `close`; selector clicks, fills, screenshots, and JavaScript evaluation require a later CDP WebSocket command backend and return explicit unsupported-action errors in this slice. `allowedOrigins` gates navigation before any backend call, `allowEvaluate` and `allowScreenshots` enforce policy, and tool results include replay/debug metadata such as source, action, status, elapsed time, session id, backend, URL/origin, and safe error details.
+
+External memory providers are disabled by default. Set `externalMemory.enabled = true` to publish the Specialty `external_memory` tool. The first pass supports the local provider, which searches the existing clankers memory database with `search` and reports configuration with `status`; HTTP providers validate their endpoint/credential settings but return an explicit unsupported-provider error before network contact. `maxResults` bounds returned memories, `name` is a safe label for output/metadata, and `injectIntoPrompt` is stored for future prompt-injection support but does not yet add provider context automatically. Tool result metadata is replay/debug safe: it records provider kind/name, action, status, elapsed time, result count, and sanitized error details, but never raw queries, result text, headers, tokens, or credential environment values.
 
 See [Multi-Model Routing](./multi-model.md) for the full routing configuration reference.
 

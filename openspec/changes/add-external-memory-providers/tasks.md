@@ -20,5 +20,6 @@
 
 - [x] Add integration tests for the primary successful path and at least one failure path. ✅ completed: 2026-05-01T22:21:50Z
   - Evidence: added `tests/external_memory.rs` integration coverage for enabled local-provider search through shared Specialty publication, missing runtime database failure details, and disabled-config non-publication. Verified with `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test external_memory --no-fail-fast`.
-- [ ] Update README/docs and any relevant built-in tool or command lists.
+- [x] Update README/docs and any relevant built-in tool or command lists. ✅ completed: 2026-05-01T22:30:00Z
+  - Evidence: README Specialty tool list documents `external_memory` publication behind `externalMemory.enabled`; `docs/src/reference/config.md` includes an `externalMemory` settings example and first-pass local/HTTP/metadata behavior notes.
 - [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
