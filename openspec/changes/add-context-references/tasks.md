@@ -1,6 +1,6 @@
 ## Phase 1: Discovery and API Shape
 
-- [ ] Inventory existing clankers modules that should own Context References.
+- [x] Inventory existing clankers modules that should own Context References. ✅ completed: 2026-05-01T00:42:15Z; elapsed: 2m28s; evidence: `openspec/changes/add-context-references/evidence/module-inventory.md` plus delegated read-only inspection.
 - [ ] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases.
 - [ ] Add focused tests for parsing, configuration, and policy boundaries.
 
