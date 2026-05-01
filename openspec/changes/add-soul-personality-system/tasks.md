@@ -1,6 +1,7 @@
 ## Phase 1: Discovery and API Shape
 
-- [ ] Inventory existing clankers modules that should own SOUL Personality System.
+- [x] Inventory existing clankers modules that should own SOUL Personality System. ✅ completed: 2026-05-01T23:59:00Z
+  - Evidence: `openspec/changes/add-soul-personality-system/evidence/module-inventory.md` maps prompt assembly ownership (`crates/clankers-agent/src/system_prompt.rs`), runtime prompt mutation seams, CLI/tool surfaces, daemon/TUI/session paths, config paths, and safe metadata boundaries for a first-pass local policy module.
 - [ ] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases.
 - [ ] Add focused tests for parsing, configuration, and policy boundaries.
 
