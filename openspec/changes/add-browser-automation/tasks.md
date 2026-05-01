@@ -13,5 +13,5 @@
 ## Phase 3: Verification and Documentation
 
 - [x] Add integration tests for the primary successful path and at least one failure path. ⏱ started: 2026-05-01T00:23:52Z, completed: 2026-05-01T00:24:41Z, elapsed: 49s. Evidence: `cargo fmt`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test browser_automation --no-fail-fast`.
-- [ ] Update README/docs and any relevant built-in tool or command lists.
+- [x] Update README/docs and any relevant built-in tool or command lists. ⏱ started: 2026-05-01T00:25:09Z, completed: 2026-05-01T00:26:03Z, elapsed: 54s. Evidence: `git diff --check -- README.md docs/src/reference/config.md openspec/changes/add-browser-automation/tasks.md openspec/changes/.drain-state.md`.
 - [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
