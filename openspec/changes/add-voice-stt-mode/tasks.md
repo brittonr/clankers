@@ -18,6 +18,7 @@
 
 ## Phase 3: Verification and Documentation
 
-- [ ] Add integration tests for the primary successful path and at least one failure path.
+- [x] Add integration tests for the primary successful path and at least one failure path. ✅ completed: 2026-05-01T23:51:48Z
+  - Evidence: added `tests/voice_mode.rs` covering supported local file validation without preserving private paths, first-pass microphone rejection, and `VoiceModeTool` success/failure `ToolResult::details`; verification passed `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test voice_mode --no-fail-fast` (3 passed), and `CARGO_TARGET_DIR=target cargo nextest run -p clankers voice --no-fail-fast` (10 passed).
 - [ ] Update README/docs and any relevant built-in tool or command lists.
 - [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
