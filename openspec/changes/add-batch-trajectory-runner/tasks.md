@@ -1,6 +1,6 @@
 ## Phase 1: Discovery and API Shape
 
-- [ ] Inventory existing clankers modules that should own Batch Processing and Trajectory Export.
+- [x] Inventory existing clankers modules that should own Batch Processing and Trajectory Export. ✅ completed: 2026-05-01T02:09:31Z; evidence: `openspec/changes/add-batch-trajectory-runner/evidence/module-inventory.md` plus delegated read-only inspection.
 - [ ] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases.
 - [ ] Add focused tests for parsing, configuration, and policy boundaries.
 
