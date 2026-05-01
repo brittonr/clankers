@@ -2,7 +2,8 @@
 
 - [x] Inventory existing clankers modules that should own External Memory Providers. ✅ completed: 2026-05-01T02:30:24Z
   - Evidence: `openspec/changes/add-external-memory-providers/evidence/module-inventory.md` maps existing local memory, config, tool publication, prompt/session integration, metadata, and test ownership boundaries.
-- [ ] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases.
+- [x] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases. ✅ completed: 2026-05-01T02:31:39Z
+  - Evidence: `openspec/changes/add-external-memory-providers/evidence/api-surface.md` defines disabled-by-default `externalMemory` config, `external_memory` tool actions, TUI/slash UX, metadata contract, and unsupported cases.
 - [ ] Add focused tests for parsing, configuration, and policy boundaries.
 
 ## Phase 2: Implementation
