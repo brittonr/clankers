@@ -367,6 +367,16 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         tools.push((ToolTier::Specialty, tool));
     }
 
+    // Register external memory providers when enabled in settings. The tool uses the
+    // shared ToolContext database at execution time, so every mode using ToolEnv settings
+    // gets the same publication gate while retaining per-session DB wiring.
+    if let Some(settings) = env.settings.as_ref()
+        && let Some(tool) =
+            crate::tools::external_memory::build_external_memory_tool_from_settings(&settings.external_memory)
+    {
+        tools.push((ToolTier::Specialty, tool));
+    }
+
     // Register nix_eval only when nix is on PATH
     if std::process::Command::new("nix")
         .arg("--version")
@@ -865,6 +875,45 @@ mod tests {
                 .iter()
                 .any(|(tier, tool)| *tier == ToolTier::Specialty && tool.definition().name == "browser")
         );
+    }
+
+    #[test]
+    fn build_tiered_tools_publishes_external_memory_only_when_enabled() {
+        let default_env = ToolEnv::default();
+        let default_names: Vec<String> = build_tiered_tools(&default_env)
+            .into_iter()
+            .map(|(_, tool)| tool.definition().name.clone())
+            .collect();
+        assert!(!default_names.iter().any(|name| name == "external_memory"));
+
+        let mut settings = crate::config::settings::Settings::default();
+        settings.external_memory.enabled = true;
+        let env = ToolEnv {
+            settings: Some(settings),
+            ..Default::default()
+        };
+        let tiered = build_tiered_tools(&env);
+
+        assert!(
+            tiered
+                .iter()
+                .any(|(tier, tool)| *tier == ToolTier::Specialty && tool.definition().name == "external_memory")
+        );
+    }
+
+    #[test]
+    fn build_tiered_tools_skips_invalid_external_memory_config() {
+        let mut settings = crate::config::settings::Settings::default();
+        settings.external_memory.enabled = true;
+        settings.external_memory.max_results = 0;
+        let env = ToolEnv {
+            settings: Some(settings),
+            ..Default::default()
+        };
+        let names: Vec<String> =
+            build_tiered_tools(&env).into_iter().map(|(_, tool)| tool.definition().name.clone()).collect();
+
+        assert!(!names.iter().any(|name| name == "external_memory"));
     }
 
     #[test]
