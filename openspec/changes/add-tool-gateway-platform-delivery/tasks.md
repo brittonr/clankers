@@ -20,5 +20,6 @@
 
 - [x] Add integration tests for the primary successful path and at least one failure path. ✅ completed: 2026-05-01T23:18:03Z
   - Evidence: added `tests/gateway.rs` covering library validation and `ToolGatewayTool` execution for supported local/session delivery plus unsupported remote/webhook failure paths with safe metadata. Verification passed `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test gateway --no-fail-fast`, and `CARGO_TARGET_DIR=target cargo nextest run -p clankers gateway --no-fail-fast` (11 passed).
-- [ ] Update README/docs and any relevant built-in tool or command lists.
+- [x] Update README/docs and any relevant built-in tool or command lists. ✅ completed: 2026-05-01T23:19:00Z
+  - Evidence: updated `README.md` Specialty tool list with `tool_gateway` and documented `clankers gateway status|validate`; updated `docs/src/reference/config.md` to document no-config first-pass gateway behavior, supported local/session validation, explicit unsupported platform targets, and safe replay/debug metadata. Verification passed `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers gateway --no-fail-fast`, and `git diff --check`.
 - [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.

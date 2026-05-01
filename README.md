@@ -286,9 +286,11 @@ Core: `read`, `write`, `edit`, `patch`, `execute_code`, `process`, `bash`, `grep
 
 Orchestration: `subagent`, `delegate_task`, `switch_model`, `loop`, `signal_loop_success`
 
-Specialty: `review`, `todo`, `cost`, `schedule`, `browser` (when `browserAutomation.enabled`), `external_memory` (when `externalMemory.enabled`), `image_gen`, `procmon`, `skills_list`, `skill_view`, `validate_tui`
+Specialty: `review`, `todo`, `cost`, `schedule`, `browser` (when `browserAutomation.enabled`), `external_memory` (when `externalMemory.enabled`), `checkpoint`, `tool_gateway`, `image_gen`, `procmon`, `skills_list`, `skill_view`, `validate_tui`
 
 Working-directory checkpoints: `clankers checkpoint create [--label <LABEL>]`, `clankers checkpoint list`, and `clankers checkpoint rollback <CHECKPOINT_ID> --yes` snapshot and restore local git checkout files using `.git/clankers-checkpoints`. Agents can use the Specialty `checkpoint` tool for the same local git-backed create/list/rollback surface. The first pass is local-only: non-git directories, remote checkpoint stores, submodule recursion, and rollback without explicit confirmation return actionable errors. Replay/debug metadata records action/status/backend/repo/checkpoint id/counts and sanitized errors, not raw diffs or file contents.
+
+Tool gateway validation: `clankers gateway status [--json]` reports the first-pass local gateway boundary, and `clankers gateway validate --toolsets <LIST> [--deliver <TARGET>] [--json]` validates local/session delivery and toolset names. Agents can use the Specialty `tool_gateway` tool for the same status/validate surface. Remote/platform delivery, Matrix delivery outside an active bridge, webhooks, cloud storage targets, and credential/header delivery return explicit unsupported errors. Replay/debug metadata records normalized toolsets, delivery target kind, backend, status, and sanitized error class/message; it never records webhook URLs, credentials, headers, or raw platform payloads.
 
 Matrix: `matrix_send`, `matrix_read`, `matrix_rooms`, `matrix_peers`, `matrix_join`, `matrix_rpc`
 
