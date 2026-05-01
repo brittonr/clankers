@@ -13,7 +13,8 @@
   - Evidence: `src/checkpoints.rs` implements local git-backed create/list/rollback using `.git/clankers-checkpoints`; `src/commands/checkpoint.rs` wires CLI actions to the backend. Verification passed `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers checkpoint --no-fail-fast` (11 passed).
 - [x] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable. ✅ completed: 2026-05-01T22:52:07Z
   - Evidence: added the `checkpoint` specialty tool and registered it in `build_tiered_tools`, making it available through shared prompt/TUI/daemon tool construction; CLI was already wired through `clankers checkpoint`. Verification passed `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers checkpoint --no-fail-fast` (12 passed).
-- [ ] Persist or log session metadata needed for replay and debugging.
+- [x] Persist or log session metadata needed for replay and debugging. ✅ completed: 2026-05-01T22:54:00Z
+  - Evidence: `src/tools/checkpoint.rs` attaches normalized `CheckpointMetadata` via `ToolResult::with_details`; `openspec/changes/add-worktree-checkpoints-rollback/evidence/session-metadata.md` documents replay-safe fields and redaction boundaries. Verification passed `CARGO_TARGET_DIR=target cargo nextest run -p clankers checkpoint --no-fail-fast` (12 passed).
 
 ## Phase 3: Verification and Documentation
 
