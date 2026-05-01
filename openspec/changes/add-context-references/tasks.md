@@ -12,6 +12,6 @@
 
 ## Phase 3: Verification and Documentation
 
-- [ ] Add integration tests for the primary successful path and at least one failure path.
+- [x] Add integration tests for the primary successful path and at least one failure path. ✅ completed: 2026-05-01T01:00:11Z; evidence: `tests/context_references.rs`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test context_references --no-fail-fast` passed (2 tests).
 - [ ] Update README/docs and any relevant built-in tool or command lists.
 - [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
