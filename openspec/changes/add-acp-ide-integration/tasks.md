@@ -12,6 +12,6 @@
 
 ## Phase 3: Verification and Documentation
 
-- [ ] Add integration tests for the primary successful path and at least one failure path.
+- [x] Add integration tests for the primary successful path and at least one failure path. ✅ completed: 2026-05-01T01:43:08Z; evidence: `tests/acp_ide_integration.rs`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test acp_ide_integration --no-fail-fast` passed (2 tests); `CARGO_TARGET_DIR=target cargo nextest run -p clankers acp --no-fail-fast` passed (11 tests).
 - [ ] Update README/docs and any relevant built-in tool or command lists.
 - [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
