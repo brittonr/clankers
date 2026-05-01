@@ -2,7 +2,7 @@
 
 - [x] Inventory existing clankers modules that should own Batch Processing and Trajectory Export. ✅ completed: 2026-05-01T02:09:31Z; evidence: `openspec/changes/add-batch-trajectory-runner/evidence/module-inventory.md` plus delegated read-only inspection.
 - [x] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases. ✅ completed: 2026-05-01T02:15:42Z; evidence: `openspec/changes/add-batch-trajectory-runner/evidence/api-surface.md` plus design/spec updates scoping the first pass to foreground local `clankers batch run`.
-- [ ] Add focused tests for parsing, configuration, and policy boundaries.
+- [x] Add focused tests for parsing, configuration, and policy boundaries. ✅ completed: 2026-05-01T02:23:41Z; evidence: `src/modes/batch.rs` covers JSONL parsing, metadata validation, local path policy, and bounded concurrency; CLI tests cover `clankers batch run`; `cargo fmt`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers batch --no-fail-fast` passed (9 tests); `CARGO_TARGET_DIR=target cargo check --tests -p clankers` passed.
 
 ## Phase 2: Implementation
 

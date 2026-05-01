@@ -7,6 +7,7 @@ pub(crate) mod agent_task;
 pub mod attach;
 pub(crate) mod attach_remote;
 pub(crate) mod auto_daemon;
+pub mod batch;
 pub mod common;
 pub(crate) mod core_actions;
 pub mod daemon;

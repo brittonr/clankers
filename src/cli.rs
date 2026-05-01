@@ -368,6 +368,11 @@ pub enum Commands {
         #[arg(long, value_delimiter = ',')]
         capabilities: Vec<String>,
     },
+    /// Run local prompt batches and export trajectories
+    Batch {
+        #[command(subcommand)]
+        action: BatchAction,
+    },
     /// Expose a clankers session over Agent Client Protocol (ACP)
     Acp {
         #[command(subcommand)]
@@ -379,6 +384,34 @@ pub enum Commands {
         #[arg(short, long)]
         all: bool,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum BatchAction {
+    /// Run a local JSONL prompt batch and export trajectories
+    Run {
+        /// Local JSONL input file containing prompt jobs
+        #[arg(long, value_name = "FILE")]
+        input: std::path::PathBuf,
+        /// Local output directory for results and trajectories
+        #[arg(long, value_name = "DIR")]
+        output: std::path::PathBuf,
+        /// Maximum number of jobs to run concurrently
+        #[arg(long, default_value_t = 4)]
+        concurrency: usize,
+        /// Output trajectory format
+        #[arg(long, value_enum, default_value_t = TrajectoryFormatArg::Jsonl)]
+        format: TrajectoryFormatArg,
+        /// Resume by skipping already completed job ids in the output directory
+        #[arg(long)]
+        resume: bool,
+    },
+}
+
+#[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
+pub enum TrajectoryFormatArg {
+    Jsonl,
+    Sharegpt,
 }
 
 #[derive(Subcommand, Debug)]
@@ -989,5 +1022,50 @@ mod tests {
         let help = Cli::command().render_help().to_string();
         assert!(help.contains("acp"));
         assert!(help.contains("Agent Client Protocol"));
+    }
+
+    #[test]
+    fn batch_run_cli_parses_local_options() {
+        let cli = Cli::parse_from([
+            "clankers",
+            "batch",
+            "run",
+            "--input",
+            "prompts.jsonl",
+            "--output",
+            "out",
+            "--concurrency",
+            "8",
+            "--format",
+            "sharegpt",
+            "--resume",
+        ]);
+
+        match cli.command.expect("command should parse") {
+            Commands::Batch {
+                action:
+                    BatchAction::Run {
+                        input,
+                        output,
+                        concurrency,
+                        format,
+                        resume,
+                    },
+            } => {
+                assert_eq!(input, std::path::PathBuf::from("prompts.jsonl"));
+                assert_eq!(output, std::path::PathBuf::from("out"));
+                assert_eq!(concurrency, 8);
+                assert_eq!(format, TrajectoryFormatArg::Sharegpt);
+                assert!(resume);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn batch_command_is_visible_in_help() {
+        let help = Cli::command().render_help().to_string();
+        assert!(help.contains("batch"));
+        assert!(help.contains("trajectories"));
     }
 }
