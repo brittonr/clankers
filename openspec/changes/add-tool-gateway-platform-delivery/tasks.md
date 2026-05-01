@@ -13,7 +13,8 @@
   - Evidence: added `src/tools/tool_gateway.rs` as the first-pass validation adapter for `status` and `validate`, returning safe `ToolResult::details` metadata for supported local/session delivery and explicit unsupported remote/Matrix-outside-bridge cases. Verification passed `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers tool_gateway --no-fail-fast` (7 passed).
 - [x] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable. ✅ completed: 2026-05-01T23:17:00Z
   - Evidence: `src/tools/mod.rs` exports the `tool_gateway` adapter and `src/modes/common.rs` registers `ToolGatewayTool` as a Specialty tool in `build_tiered_tools`, the shared tool-construction path used by standalone prompts, interactive TUI, and daemon/session construction. `modes::common::tests::build_tiered_tools_publishes_tool_gateway_specialty_tool` passed in `CARGO_TARGET_DIR=target cargo nextest run -p clankers tool_gateway --no-fail-fast`.
-- [ ] Persist or log session metadata needed for replay and debugging.
+- [x] Persist or log session metadata needed for replay and debugging. ✅ completed: 2026-05-01T23:18:00Z
+  - Evidence: `src/tools/tool_gateway.rs` attaches serialized `GatewayValidation` to `ToolResult::details`; `openspec/changes/add-tool-gateway-platform-delivery/evidence/session-metadata.md` documents the safe metadata boundary and excluded secrets/platform payloads. Focused tests verify supported local metadata and unsupported remote metadata redaction.
 
 ## Phase 3: Verification and Documentation
 
