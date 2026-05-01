@@ -6,7 +6,7 @@
 
 ## Phase 2: Implementation
 
-- [ ] Implement the minimal backend or adapter for ACP IDE Integration.
+- [x] Implement the minimal backend or adapter for ACP IDE Integration. ✅ completed: 2026-05-01T01:31:17Z; evidence: `clankers acp serve` dispatches to a foreground stdio adapter; `src/modes/acp.rs` handles JSON request lines, initialize/session method responses, normalized metadata, and explicit unsupported-method errors; `CARGO_TARGET_DIR=target cargo nextest run -p clankers acp --no-fail-fast` passed (8 tests); `CARGO_TARGET_DIR=target cargo check --tests -p clankers` passed.
 - [ ] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable.
 - [ ] Persist or log session metadata needed for replay and debugging.
 

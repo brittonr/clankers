@@ -238,6 +238,9 @@ async fn dispatch(
         Some(Commands::Plugin { action }) => {
             clankers::commands::plugin::run(&ctx, action)?;
         }
+        Some(Commands::Acp { action }) => {
+            clankers::commands::acp::run(&ctx, action).await?;
+        }
         Some(Commands::Attach {
             session_id,
             new,

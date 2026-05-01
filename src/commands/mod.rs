@@ -4,6 +4,7 @@
 //! [`CommandContext`] bundles resolved paths, settings, and model
 //! configuration so handlers don't need to re-resolve them.
 
+pub mod acp;
 pub mod auth;
 pub mod config;
 pub mod daemon;
