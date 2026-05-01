@@ -6,7 +6,7 @@
 
 ## Phase 2: Implementation
 
-- [ ] Implement the minimal backend or adapter for Batch Processing and Trajectory Export.
+- [x] Implement the minimal backend or adapter for Batch Processing and Trajectory Export. ✅ completed: 2026-05-01T02:36:51Z; evidence: `src/modes/batch.rs` adds bounded job execution via `BatchJobExecutor`, stable result ordering, JSONL trajectory rendering, and safe metadata; `cargo fmt`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers batch --no-fail-fast` passed (11 tests); `CARGO_TARGET_DIR=target cargo check --tests -p clankers` passed.
 - [ ] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable.
 - [ ] Persist or log session metadata needed for replay and debugging.
 
