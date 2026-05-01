@@ -9,7 +9,8 @@
 
 ## Phase 2: Implementation
 
-- [ ] Implement the minimal backend or adapter for Tool Gateway and Platform Delivery.
+- [x] Implement the minimal backend or adapter for Tool Gateway and Platform Delivery. ✅ completed: 2026-05-01T23:16:13Z
+  - Evidence: added `src/tools/tool_gateway.rs` as the first-pass validation adapter for `status` and `validate`, returning safe `ToolResult::details` metadata for supported local/session delivery and explicit unsupported remote/Matrix-outside-bridge cases. Verification passed `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers tool_gateway --no-fail-fast` (7 passed).
 - [ ] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable.
 - [ ] Persist or log session metadata needed for replay and debugging.
 
