@@ -2,7 +2,8 @@
 
 - [x] Inventory existing clankers modules that should own Working Directory Checkpoints and Rollback. ✅ completed: 2026-05-01T22:31:40Z
   - Evidence: `openspec/changes/add-worktree-checkpoints-rollback/evidence/module-inventory.md` maps existing owners (`src/worktree/`, `src/tools/git_ops/`, mutating tools, CLI/commands, session persistence, and config), identifies gaps, and recommends the first-pass git-only checkpoint boundary.
-- [ ] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases.
+- [x] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases. ✅ completed: 2026-05-01T22:31:40Z
+  - Evidence: `openspec/changes/add-worktree-checkpoints-rollback/evidence/api-surface.md` defines the first-pass CLI, future-safe agent tool/TUI wrappers, no-new-config stance, unsupported cases, and metadata policy boundaries.
 - [ ] Add focused tests for parsing, configuration, and policy boundaries.
 
 ## Phase 2: Implementation
