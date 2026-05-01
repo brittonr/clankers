@@ -359,6 +359,14 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         tools.push((ToolTier::Specialty, Arc::new(crate::tools::schedule::ScheduleTool::new(Arc::clone(engine)))));
     }
 
+    // Register browser automation when enabled in settings. The runtime is lazy so tool-list
+    // construction stays synchronous for prompt, TUI, and daemon/session paths.
+    if let Some(settings) = env.settings.as_ref()
+        && let Some(tool) = crate::tools::browser::build_browser_tool_from_settings(&settings.browser_automation)
+    {
+        tools.push((ToolTier::Specialty, tool));
+    }
+
     // Register nix_eval only when nix is on PATH
     if std::process::Command::new("nix")
         .arg("--version")
@@ -832,6 +840,31 @@ mod tests {
                 _ => Vec::new(),
             }
         }
+    }
+
+    #[test]
+    fn build_tiered_tools_publishes_browser_only_when_enabled() {
+        let default_env = ToolEnv::default();
+        let default_names: Vec<String> = build_tiered_tools(&default_env)
+            .into_iter()
+            .map(|(_, tool)| tool.definition().name.clone())
+            .collect();
+        assert!(!default_names.iter().any(|name| name == "browser"));
+
+        let mut settings = crate::config::settings::Settings::default();
+        settings.browser_automation.enabled = true;
+        settings.browser_automation.cdp_url = Some("http://127.0.0.1:9222".to_string());
+        let env = ToolEnv {
+            settings: Some(settings),
+            ..Default::default()
+        };
+        let tiered = build_tiered_tools(&env);
+
+        assert!(
+            tiered
+                .iter()
+                .any(|(tier, tool)| *tier == ToolTier::Specialty && tool.definition().name == "browser")
+        );
     }
 
     #[test]

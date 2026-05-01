@@ -17,6 +17,7 @@ use serde_json::Value;
 use tokio::process::Child;
 use tokio::process::Command;
 use tokio::sync::Mutex;
+use tokio::sync::OnceCell;
 use url::Url;
 
 use super::Tool;
@@ -302,6 +303,31 @@ pub async fn browser_runtime_from_settings(
         .map(|runtime| Arc::new(runtime) as Arc<dyn BrowserRuntime>)
 }
 
+pub struct LazyBrowserRuntime {
+    settings: BrowserAutomationSettings,
+    runtime: OnceCell<Arc<dyn BrowserRuntime>>,
+}
+
+impl LazyBrowserRuntime {
+    pub fn new(settings: BrowserAutomationSettings) -> Self {
+        Self {
+            settings,
+            runtime: OnceCell::new(),
+        }
+    }
+
+    async fn runtime(&self) -> Result<&Arc<dyn BrowserRuntime>, String> {
+        self.runtime.get_or_try_init(|| async { browser_runtime_from_settings(&self.settings).await }).await
+    }
+}
+
+#[async_trait]
+impl BrowserRuntime for LazyBrowserRuntime {
+    async fn perform(&self, request: BrowserRequest) -> Result<Value, String> {
+        self.runtime().await?.perform(request).await
+    }
+}
+
 pub struct BrowserTool {
     definition: ToolDefinition,
     settings: BrowserAutomationSettings,
@@ -361,6 +387,18 @@ pub fn build_browser_tool(
         return None;
     }
     let runtime = runtime?;
+    Some(Arc::new(BrowserTool::new(settings.clone(), runtime)))
+}
+
+pub fn build_browser_tool_from_settings(settings: &BrowserAutomationSettings) -> Option<Arc<dyn Tool>> {
+    if !settings.enabled {
+        return None;
+    }
+    if let Err(error) = settings.validate() {
+        tracing::warn!(error = %error, "skipping invalid browser automation configuration");
+        return None;
+    }
+    let runtime = Arc::new(LazyBrowserRuntime::new(settings.clone()));
     Some(Arc::new(BrowserTool::new(settings.clone(), runtime)))
 }
 
@@ -528,6 +566,8 @@ mod tests {
             result: serde_json::json!({"ok": true}),
         });
         assert!(build_browser_tool(&enabled_settings(), Some(runtime)).is_some());
+        assert!(build_browser_tool_from_settings(&BrowserAutomationSettings::default()).is_none());
+        assert!(build_browser_tool_from_settings(&enabled_settings()).is_some());
     }
 
     #[tokio::test]

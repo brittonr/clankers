@@ -7,7 +7,7 @@
 ## Phase 2: Implementation
 
 - [x] Implement the minimal backend or adapter for Browser Automation. ⏱ started: 2026-05-01T00:11:33Z, completed: 2026-05-01T00:16:27Z, elapsed: 4m54s. Evidence: `cargo fmt`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers browser --no-fail-fast`.
-- [ ] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable.
+- [x] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable. ⏱ started: 2026-05-01T00:17:07Z, completed: 2026-05-01T00:20:42Z, elapsed: 3m35s. Evidence: `cargo fmt`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers browser build_tiered_tools --no-fail-fast`.
 - [ ] Persist or log session metadata needed for replay and debugging.
 
 ## Phase 3: Verification and Documentation
