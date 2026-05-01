@@ -132,8 +132,17 @@ pub fn handle_request(request: AcpRequest) -> AcpResponse {
 }
 
 pub fn handle_json_line(line: &str) -> Result<String, serde_json::Error> {
+    let (response, _) = handle_json_line_with_metadata(line)?;
+    Ok(response)
+}
+
+pub fn handle_json_line_with_metadata(line: &str) -> Result<(String, Value), serde_json::Error> {
     let request: AcpRequest = serde_json::from_str(line)?;
-    serde_json::to_string(&handle_request(request))
+    let method = request.method.clone();
+    let response = handle_request(request);
+    let status = if response.error.is_some() { "error" } else { "ok" };
+    let metadata = metadata_for_method(&method, status);
+    Ok((serde_json::to_string(&response)?, metadata))
 }
 
 #[cfg(test)]
@@ -187,5 +196,16 @@ mod tests {
         assert_eq!(value["error"]["code"], -32004);
         assert_eq!(value["error"]["data"]["status"], "unsupported");
         assert_eq!(value["error"]["data"]["method"], "terminal/create");
+    }
+
+    #[test]
+    fn acp_json_line_returns_loggable_metadata_without_params() {
+        let line = r#"{"id":8,"method":"session/prompt","params":{"prompt":"secret-ish text"}}"#;
+        let (_response, metadata) = handle_json_line_with_metadata(line).expect("metadata response");
+        assert_eq!(metadata["source"], "acp_ide_integration");
+        assert_eq!(metadata["method"], "session/prompt");
+        assert_eq!(metadata["status"], "ok");
+        assert!(metadata.get("params").is_none());
+        assert!(!metadata.to_string().contains("secret-ish"));
     }
 }

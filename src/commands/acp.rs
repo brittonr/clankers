@@ -20,8 +20,15 @@ fn run_serve(_session: Option<String>, _new: bool, _model: Option<String>) -> Re
         if line.trim().is_empty() {
             continue;
         }
-        let response =
-            crate::modes::acp::handle_json_line(&line).map_err(|source| crate::error::Error::Json { source })?;
+        let (response, metadata) = crate::modes::acp::handle_json_line_with_metadata(&line)
+            .map_err(|source| crate::error::Error::Json { source })?;
+        tracing::info!(
+            source = "acp_ide_integration",
+            method = metadata["method"].as_str().unwrap_or("unknown"),
+            status = metadata["status"].as_str().unwrap_or("unknown"),
+            transport = "stdio",
+            "processed ACP request"
+        );
         writeln!(stdout, "{response}").map_err(|source| crate::error::Error::Io { source })?;
         stdout.flush().map_err(|source| crate::error::Error::Io { source })?;
     }

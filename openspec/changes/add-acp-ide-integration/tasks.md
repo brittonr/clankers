@@ -8,7 +8,7 @@
 
 - [x] Implement the minimal backend or adapter for ACP IDE Integration. ✅ completed: 2026-05-01T01:31:17Z; evidence: `clankers acp serve` dispatches to a foreground stdio adapter; `src/modes/acp.rs` handles JSON request lines, initialize/session method responses, normalized metadata, and explicit unsupported-method errors; `CARGO_TARGET_DIR=target cargo nextest run -p clankers acp --no-fail-fast` passed (8 tests); `CARGO_TARGET_DIR=target cargo check --tests -p clankers` passed.
 - [x] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable. ✅ completed: 2026-05-01T01:35:02Z; evidence: ACP is wired as an explicit top-level `clankers acp serve` command through `src/cli.rs`, `src/main.rs`, and `src/commands/acp.rs`; the first pass intentionally does not add a model-callable tool or TUI slash command because ACP is an external editor transport; `CARGO_TARGET_DIR=target cargo nextest run -p clankers acp --no-fail-fast` and `CARGO_TARGET_DIR=target cargo check --tests -p clankers` passed.
-- [ ] Persist or log session metadata needed for replay and debugging.
+- [x] Persist or log session metadata needed for replay and debugging. ✅ completed: 2026-05-01T01:39:42Z; evidence: ACP stdio command logs normalized request metadata (`source`, `method`, `status`, `transport`) without request params; `handle_json_line_with_metadata` is covered by `acp_json_line_returns_loggable_metadata_without_params`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers acp --no-fail-fast` passed (9 tests); `CARGO_TARGET_DIR=target cargo check --tests -p clankers` passed.
 
 ## Phase 3: Verification and Documentation
 
