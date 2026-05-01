@@ -18,6 +18,7 @@
 
 ## Phase 3: Verification and Documentation
 
-- [ ] Add integration tests for the primary successful path and at least one failure path.
+- [x] Add integration tests for the primary successful path and at least one failure path. ✅ completed: 2026-05-01T22:53:35Z
+  - Evidence: added `tests/checkpoint.rs` covering create/list/rollback round trip and rollback-without-confirmation failure. Verification passed `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test checkpoint --no-fail-fast` (2 passed), and `CARGO_TARGET_DIR=target cargo nextest run -p clankers checkpoint --no-fail-fast` (14 passed).
 - [ ] Update README/docs and any relevant built-in tool or command lists.
 - [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
