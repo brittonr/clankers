@@ -1,9 +1,9 @@
 ## Phase 1: Discovery and API Shape
 
 - [x] Inventory existing clankers modules that should own External Memory Providers. ✅ completed: 2026-05-01T02:30:24Z
-  - Evidence: `openspec/changes/add-external-memory-providers/evidence/module-inventory.md` maps existing local memory, config, tool publication, prompt/session integration, metadata, and test ownership boundaries.
+  - Evidence: `openspec/changes/archive/2026-05-01-add-external-memory-providers/evidence/module-inventory.md` maps existing local memory, config, tool publication, prompt/session integration, metadata, and test ownership boundaries.
 - [x] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases. ✅ completed: 2026-05-01T02:31:39Z
-  - Evidence: `openspec/changes/add-external-memory-providers/evidence/api-surface.md` defines disabled-by-default `externalMemory` config, `external_memory` tool actions, TUI/slash UX, metadata contract, and unsupported cases.
+  - Evidence: `openspec/changes/archive/2026-05-01-add-external-memory-providers/evidence/api-surface.md` defines disabled-by-default `externalMemory` config, `external_memory` tool actions, TUI/slash UX, metadata contract, and unsupported cases.
 - [x] Add focused tests for parsing, configuration, and policy boundaries. ✅ completed: 2026-05-01T02:35:11Z
   - Evidence: added `ExternalMemorySettings` parsing/validation tests covering disabled defaults, valid local config, blank policy fields, explicit HTTP unsupported errors, and deep-merge behavior. Verified with `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers-config external_memory --no-fail-fast`, `CARGO_TARGET_DIR=target cargo check --tests -p clankers-config`, and `git diff --check`.
 
@@ -22,4 +22,5 @@
   - Evidence: added `tests/external_memory.rs` integration coverage for enabled local-provider search through shared Specialty publication, missing runtime database failure details, and disabled-config non-publication. Verified with `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test external_memory --no-fail-fast`.
 - [x] Update README/docs and any relevant built-in tool or command lists. ✅ completed: 2026-05-01T22:30:00Z
   - Evidence: README Specialty tool list documents `external_memory` publication behind `externalMemory.enabled`; `docs/src/reference/config.md` includes an `externalMemory` settings example and first-pass local/HTTP/metadata behavior notes.
-- [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
+- [x] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`. ✅ completed: 2026-05-01T22:40:00Z
+  - Evidence: final verification passed `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers-config external_memory --no-fail-fast` (5 passed), `CARGO_TARGET_DIR=target cargo nextest run -p clankers external_memory --no-fail-fast` (10 passed), `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test external_memory --no-fail-fast` (3 passed), `CARGO_TARGET_DIR=target cargo check --tests -p clankers-config -p clankers`, and `git diff --check`; helper verification was rerun after marking this task complete.
