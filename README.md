@@ -288,6 +288,8 @@ Orchestration: `subagent`, `delegate_task`, `switch_model`, `loop`, `signal_loop
 
 Specialty: `review`, `todo`, `cost`, `schedule`, `browser` (when `browserAutomation.enabled`), `external_memory` (when `externalMemory.enabled`), `image_gen`, `procmon`, `skills_list`, `skill_view`, `validate_tui`
 
+Working-directory checkpoints: `clankers checkpoint create [--label <LABEL>]`, `clankers checkpoint list`, and `clankers checkpoint rollback <CHECKPOINT_ID> --yes` snapshot and restore local git checkout files using `.git/clankers-checkpoints`. Agents can use the Specialty `checkpoint` tool for the same local git-backed create/list/rollback surface. The first pass is local-only: non-git directories, remote checkpoint stores, submodule recursion, and rollback without explicit confirmation return actionable errors. Replay/debug metadata records action/status/backend/repo/checkpoint id/counts and sanitized errors, not raw diffs or file contents.
+
 Matrix: `matrix_send`, `matrix_read`, `matrix_rooms`, `matrix_peers`, `matrix_join`, `matrix_rpc`
 
 Plugins and configured MCP servers add additional tools at runtime. MCP tools are published as Specialty tools using a source-identifying prefix such as `mcp_filesystem_read_file` or a configured `toolPrefix`.

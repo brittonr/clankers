@@ -83,6 +83,8 @@ Browser automation is disabled by default. Set `browserAutomation.enabled = true
 
 External memory providers are disabled by default. Set `externalMemory.enabled = true` to publish the Specialty `external_memory` tool. The first pass supports the local provider, which searches the existing clankers memory database with `search` and reports configuration with `status`; HTTP providers validate their endpoint/credential settings but return an explicit unsupported-provider error before network contact. `maxResults` bounds returned memories, `name` is a safe label for output/metadata, and `injectIntoPrompt` is stored for future prompt-injection support but does not yet add provider context automatically. Tool result metadata is replay/debug safe: it records provider kind/name, action, status, elapsed time, result count, and sanitized error details, but never raw queries, result text, headers, tokens, or credential environment values.
 
+Working-directory checkpoints need no configuration in the first pass. Use `clankers checkpoint create`, `clankers checkpoint list`, and `clankers checkpoint rollback <CHECKPOINT_ID> --yes` in a git checkout, or the Specialty `checkpoint` tool from prompt/TUI/daemon tool paths. The local git backend stores snapshots in `.git/clankers-checkpoints`, restores only clankers-owned checkpoint ids, and rejects non-git directories, remote stores, submodule recursion, and rollback without explicit confirmation. Session/replay metadata records action/status/backend/repo root/checkpoint id/file counts and sanitized errors; it does not persist raw diffs, file contents, environment variables, or credentials.
+
 See [Multi-Model Routing](./multi-model.md) for the full routing configuration reference.
 
 ## pricing.json
