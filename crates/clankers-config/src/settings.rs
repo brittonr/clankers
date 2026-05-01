@@ -120,6 +120,10 @@ pub struct Settings {
     #[serde(default, rename = "browserAutomation", alias = "browser_automation")]
     pub browser_automation: BrowserAutomationSettings,
 
+    /// External memory/personalization provider configuration.
+    #[serde(default, rename = "externalMemory", alias = "external_memory")]
+    pub external_memory: ExternalMemorySettings,
+
     /// Hook system configuration.
     #[serde(default)]
     pub hooks: clankers_hooks::HooksConfig,
@@ -441,6 +445,138 @@ fn origin_matches(pattern: &str, origin: &str) -> bool {
 }
 
 // ---------------------------------------------------------------------------
+// External memory provider settings
+// ---------------------------------------------------------------------------
+
+/// External memory/personalization provider settings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExternalMemorySettings {
+    /// Publish and enable the external_memory tool.
+    #[serde(default)]
+    pub enabled: bool,
+    /// Provider kind. First-pass supported provider is local.
+    #[serde(default)]
+    pub provider: ExternalMemoryProvider,
+    /// Safe provider label for user-visible output and metadata.
+    #[serde(default)]
+    pub name: Option<String>,
+    /// Provider endpoint when required by a provider kind.
+    #[serde(default)]
+    pub endpoint: Option<String>,
+    /// Environment variable name containing credentials. Values are never serialized in metadata.
+    #[serde(default)]
+    pub credential_env: Option<String>,
+    /// Request timeout in milliseconds.
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
+    /// Maximum result count returned to the agent.
+    #[serde(default = "default_external_memory_max_results")]
+    pub max_results: usize,
+    /// Inject provider context into prompts before model contact.
+    #[serde(default)]
+    pub inject_into_prompt: bool,
+}
+
+impl Default for ExternalMemorySettings {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: ExternalMemoryProvider::default(),
+            name: None,
+            endpoint: None,
+            credential_env: None,
+            timeout_ms: None,
+            max_results: default_external_memory_max_results(),
+            inject_into_prompt: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExternalMemoryProvider {
+    #[default]
+    Local,
+    Http,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ExternalMemoryConfigError {
+    BlankName,
+    MissingHttpEndpoint,
+    BlankEndpoint,
+    BlankCredentialEnv,
+    NonPositiveTimeout,
+    NonPositiveMaxResults,
+    HttpUnsupported,
+}
+
+impl std::fmt::Display for ExternalMemoryConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::BlankName => f.write_str("external memory `name` cannot be blank"),
+            Self::MissingHttpEndpoint => f.write_str("enabled HTTP external memory requires `endpoint`"),
+            Self::BlankEndpoint => f.write_str("external memory `endpoint` cannot be blank"),
+            Self::BlankCredentialEnv => f.write_str("external memory `credentialEnv` cannot be blank"),
+            Self::NonPositiveTimeout => f.write_str("external memory `timeoutMs` must be greater than zero"),
+            Self::NonPositiveMaxResults => f.write_str("external memory `maxResults` must be greater than zero"),
+            Self::HttpUnsupported => {
+                f.write_str("HTTP external memory providers are not implemented in this first pass")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ExternalMemoryConfigError {}
+
+impl ExternalMemorySettings {
+    pub fn validate(&self) -> Result<(), ExternalMemoryConfigError> {
+        if !self.enabled {
+            return Ok(());
+        }
+
+        if matches!(self.name.as_deref(), Some(name) if name.trim().is_empty()) {
+            return Err(ExternalMemoryConfigError::BlankName);
+        }
+        if matches!(self.endpoint.as_deref(), Some(endpoint) if endpoint.trim().is_empty()) {
+            return Err(ExternalMemoryConfigError::BlankEndpoint);
+        }
+        if matches!(self.credential_env.as_deref(), Some(env) if env.trim().is_empty()) {
+            return Err(ExternalMemoryConfigError::BlankCredentialEnv);
+        }
+        if matches!(self.timeout_ms, Some(0)) {
+            return Err(ExternalMemoryConfigError::NonPositiveTimeout);
+        }
+        if self.max_results == 0 {
+            return Err(ExternalMemoryConfigError::NonPositiveMaxResults);
+        }
+
+        match self.provider {
+            ExternalMemoryProvider::Local => Ok(()),
+            ExternalMemoryProvider::Http => {
+                if self.endpoint.is_none() {
+                    Err(ExternalMemoryConfigError::MissingHttpEndpoint)
+                } else {
+                    Err(ExternalMemoryConfigError::HttpUnsupported)
+                }
+            }
+        }
+    }
+
+    pub fn safe_provider_name(&self) -> &str {
+        self.name.as_deref().unwrap_or(match self.provider {
+            ExternalMemoryProvider::Local => "local",
+            ExternalMemoryProvider::Http => "http",
+        })
+    }
+}
+
+fn default_external_memory_max_results() -> usize {
+    8
+}
+
+// ---------------------------------------------------------------------------
 // Leader menu user config
 // ---------------------------------------------------------------------------
 
@@ -684,6 +820,7 @@ impl Default for Settings {
             disabled_tools: Vec::new(),
             mcp: McpSettings::default(),
             browser_automation: BrowserAutomationSettings::default(),
+            external_memory: ExternalMemorySettings::default(),
             hooks: clankers_hooks::HooksConfig::default(),
             auto_test_command: None,
             no_cache: false,
@@ -911,6 +1048,97 @@ mod tests {
         assert!(settings.browser_automation.allow_evaluate);
         assert_eq!(settings.browser_automation.timeout_ms, Some(20000));
         assert_eq!(settings.browser_automation.allowed_origins, vec!["https://project.test".to_string()]);
+    }
+
+    #[test]
+    fn external_memory_defaults_disabled() {
+        let settings: Settings = serde_json::from_str(r#"{}"#).unwrap();
+        assert!(!settings.external_memory.enabled);
+        assert_eq!(settings.external_memory.provider, ExternalMemoryProvider::Local);
+        assert_eq!(settings.external_memory.max_results, 8);
+        assert!(!settings.external_memory.inject_into_prompt);
+        settings.external_memory.validate().expect("disabled config is valid");
+    }
+
+    #[test]
+    fn external_memory_local_provider_from_json() {
+        let json = r#"{
+            "externalMemory": {
+                "enabled": true,
+                "provider": "local",
+                "name": "project-memory",
+                "timeoutMs": 30000,
+                "maxResults": 5,
+                "injectIntoPrompt": true
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert!(settings.external_memory.enabled);
+        assert_eq!(settings.external_memory.provider, ExternalMemoryProvider::Local);
+        assert_eq!(settings.external_memory.safe_provider_name(), "project-memory");
+        assert_eq!(settings.external_memory.timeout_ms, Some(30000));
+        assert_eq!(settings.external_memory.max_results, 5);
+        assert!(settings.external_memory.inject_into_prompt);
+        settings.external_memory.validate().expect("local external memory config valid");
+    }
+
+    #[test]
+    fn external_memory_validation_rejects_blank_policy_fields() {
+        let json = r#"{
+            "externalMemory": {
+                "enabled": true,
+                "name": " ",
+                "credentialEnv": "EXTERNAL_MEMORY_TOKEN"
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.external_memory.validate(), Err(ExternalMemoryConfigError::BlankName));
+
+        let json = r#"{"externalMemory":{"enabled":true,"credentialEnv":""}}"#;
+        let settings: Settings = serde_json::from_str(json).unwrap();
+        assert_eq!(settings.external_memory.validate(), Err(ExternalMemoryConfigError::BlankCredentialEnv));
+    }
+
+    #[test]
+    fn external_memory_http_is_explicitly_unsupported_first_pass() {
+        let missing_endpoint = r#"{"externalMemory":{"enabled":true,"provider":"http"}}"#;
+        let settings: Settings = serde_json::from_str(missing_endpoint).unwrap();
+        assert_eq!(settings.external_memory.validate(), Err(ExternalMemoryConfigError::MissingHttpEndpoint));
+
+        let configured = r#"{
+            "externalMemory": {
+                "enabled": true,
+                "provider": "http",
+                "endpoint": "https://memory.example.test/search",
+                "credentialEnv": "EXTERNAL_MEMORY_TOKEN"
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(configured).unwrap();
+        assert_eq!(settings.external_memory.validate(), Err(ExternalMemoryConfigError::HttpUnsupported));
+    }
+
+    #[test]
+    fn external_memory_project_deep_merges_global_config() {
+        let global = serde_json::json!({
+            "externalMemory": {
+                "enabled": true,
+                "provider": "local",
+                "name": "global-memory",
+                "maxResults": 8
+            }
+        });
+        let project = serde_json::json!({
+            "externalMemory": {
+                "name": "project-memory",
+                "injectIntoPrompt": true
+            }
+        });
+        let settings = Settings::merge_layers(None, Some(global), Some(project));
+        assert!(settings.external_memory.enabled);
+        assert_eq!(settings.external_memory.provider, ExternalMemoryProvider::Local);
+        assert_eq!(settings.external_memory.safe_provider_name(), "project-memory");
+        assert_eq!(settings.external_memory.max_results, 8);
+        assert!(settings.external_memory.inject_into_prompt);
     }
 
     #[test]
