@@ -17,6 +17,8 @@ use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use clanker_message::message::Content;
 use clanker_message::message::ImageSource;
+use serde::Deserialize;
+use serde::Serialize;
 
 /// A detected @file reference in the prompt text
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +60,90 @@ fn image_media_type(path: &str) -> String {
     .to_string()
 }
 
+/// Kind of context reference that was resolved or rejected.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextReferenceKind {
+    File,
+    Directory,
+    Image,
+    Unsupported,
+    Error,
+}
+
+/// Resolution status for a context reference.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextReferenceStatus {
+    Expanded,
+    Unsupported,
+    Error,
+}
+
+/// Safe metadata for one context-reference expansion.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextReferenceMetadata {
+    pub source: String,
+    pub raw: String,
+    pub kind: ContextReferenceKind,
+    pub status: ContextReferenceStatus,
+    pub target: String,
+    pub line_range: Option<(usize, usize)>,
+    pub line_count: Option<usize>,
+    pub byte_count: Option<usize>,
+    pub message: Option<String>,
+}
+
+impl ContextReferenceMetadata {
+    fn expanded(
+        at_ref: &AtFileRef,
+        kind: ContextReferenceKind,
+        target: String,
+        line_count: Option<usize>,
+        byte_count: Option<usize>,
+    ) -> Self {
+        Self {
+            source: "context_references".to_string(),
+            raw: at_ref.raw.clone(),
+            kind,
+            status: ContextReferenceStatus::Expanded,
+            target,
+            line_range: at_ref.line_range,
+            line_count,
+            byte_count,
+            message: None,
+        }
+    }
+
+    fn unsupported(at_ref: &AtFileRef, message: impl Into<String>) -> Self {
+        Self {
+            source: "context_references".to_string(),
+            raw: at_ref.raw.clone(),
+            kind: ContextReferenceKind::Unsupported,
+            status: ContextReferenceStatus::Unsupported,
+            target: unsupported_target(&at_ref.path),
+            line_range: at_ref.line_range,
+            line_count: None,
+            byte_count: None,
+            message: Some(message.into()),
+        }
+    }
+
+    fn error(at_ref: &AtFileRef, target: String, message: impl Into<String>) -> Self {
+        Self {
+            source: "context_references".to_string(),
+            raw: at_ref.raw.clone(),
+            kind: ContextReferenceKind::Error,
+            status: ContextReferenceStatus::Error,
+            target,
+            line_range: at_ref.line_range,
+            line_count: None,
+            byte_count: None,
+            message: Some(message.into()),
+        }
+    }
+}
+
 /// Result of expanding `@file` references — text plus any image content blocks
 #[derive(Debug, Clone)]
 pub struct ExpandedContent {
@@ -65,6 +151,8 @@ pub struct ExpandedContent {
     pub text: String,
     /// Image content blocks extracted from `@ref`'d image files
     pub images: Vec<Content>,
+    /// Safe metadata for each context reference encountered.
+    pub references: Vec<ContextReferenceMetadata>,
 }
 
 /// Find all @file references in a prompt string
@@ -108,12 +196,18 @@ pub fn find_at_refs(text: &str) -> Vec<AtFileRef> {
                 continue;
             }
 
-            // Parse line range if present (path:10-20)
-            let (path, line_range) = if let Some(colon_pos) = candidate.find(':') {
+            // Parse line range if present (path:10-20). Only treat a colon as a
+            // range separator when the suffix is a valid range so URL-like
+            // references such as https://example.com stay intact for explicit
+            // unsupported-reference handling.
+            let (path, line_range) = if let Some(colon_pos) = candidate.rfind(':') {
                 let path_part = &candidate[..colon_pos];
                 let range_part = &candidate[colon_pos + 1..];
-                let range = parse_line_range(range_part);
-                (path_part.to_string(), range)
+                if let Some(range) = parse_line_range(range_part) {
+                    (path_part.to_string(), Some(range))
+                } else {
+                    (candidate.clone(), None)
+                }
             } else {
                 (candidate.clone(), None)
             };
@@ -158,18 +252,29 @@ pub fn expand_at_refs_with_images(text: &str, cwd: &str) -> ExpandedContent {
         return ExpandedContent {
             text: text.to_string(),
             images: Vec::new(),
+            references: Vec::new(),
         };
     }
 
     let mut result = text.to_string();
     let mut images = Vec::new();
+    let mut references = Vec::new();
 
     // Process in reverse order so indices stay valid
     let mut sorted_refs = refs;
     sorted_refs.sort_by_key(|r| Reverse(r.start));
 
     for at_ref in sorted_refs {
+        if is_unsupported_reference(&at_ref.path) {
+            let message = unsupported_message(&at_ref.path);
+            let replacement = format!("[Unsupported context reference {}: {}]", at_ref.raw, message);
+            replace_raw(&mut result, &at_ref, &replacement);
+            references.push(ContextReferenceMetadata::unsupported(&at_ref, message));
+            continue;
+        }
+
         let resolved = resolve_path(&at_ref.path, cwd);
+        let target = display_target(&resolved);
 
         if is_image_extension(&at_ref.path) {
             // Read as binary image, encode to base64
@@ -182,28 +287,47 @@ pub fn expand_at_refs_with_images(text: &str, cwd: &str) -> ExpandedContent {
                     });
                     // Replace the @ref with a short label in the text
                     let label = format!("[image: {}]", at_ref.path);
-                    if let Some(pos) = result.find(&at_ref.raw) {
-                        result.replace_range(pos..pos + at_ref.raw.len(), &label);
-                    }
+                    replace_raw(&mut result, &at_ref, &label);
+                    references.push(ContextReferenceMetadata::expanded(
+                        &at_ref,
+                        ContextReferenceKind::Image,
+                        target.clone(),
+                        None,
+                        Some(bytes.len()),
+                    ));
                 }
                 Err(e) => {
+                    let message = format!("Error reading image: {}", e);
                     let replacement = format!("[Error reading image {}: {}]", at_ref.path, e);
-                    if let Some(pos) = result.find(&at_ref.raw) {
-                        result.replace_range(pos..pos + at_ref.raw.len(), &replacement);
-                    }
+                    replace_raw(&mut result, &at_ref, &replacement);
+                    references.push(ContextReferenceMetadata::error(&at_ref, target.clone(), message));
                 }
             }
         } else {
             // Existing text file handling
-            let content = read_file_content(&resolved, at_ref.line_range);
-            let replacement = format_replacement(&at_ref.path, &content);
-            if let Some(pos) = result.find(&at_ref.raw) {
-                result.replace_range(pos..pos + at_ref.raw.len(), &replacement);
-            }
+            let read = read_file_content(&resolved, at_ref.line_range);
+            let replacement = format_replacement(&at_ref.path, &read.content);
+            replace_raw(&mut result, &at_ref, &replacement);
+            references.push(match read.error {
+                Some(message) => ContextReferenceMetadata::error(&at_ref, target.clone(), message),
+                None => ContextReferenceMetadata::expanded(
+                    &at_ref,
+                    read.kind,
+                    target.clone(),
+                    read.line_count,
+                    read.byte_count,
+                ),
+            });
         }
     }
 
-    ExpandedContent { text: result, images }
+    references.sort_by_key(|m| sorted_position(text, &m.raw));
+
+    ExpandedContent {
+        text: result,
+        images,
+        references,
+    }
 }
 
 /// Get completion suggestions for a partial @path
@@ -216,7 +340,16 @@ fn resolve_path(path: &str, cwd: &str) -> std::path::PathBuf {
     }
 }
 
-fn read_file_content(path: &Path, line_range: Option<(usize, usize)>) -> String {
+#[derive(Debug)]
+struct ReadContent {
+    content: String,
+    kind: ContextReferenceKind,
+    line_count: Option<usize>,
+    byte_count: Option<usize>,
+    error: Option<String>,
+}
+
+fn read_file_content(path: &Path, line_range: Option<(usize, usize)>) -> ReadContent {
     if path.is_dir() {
         // List directory contents
         match std::fs::read_dir(path) {
@@ -230,18 +363,38 @@ fn read_file_content(path: &Path, line_range: Option<(usize, usize)>) -> String 
                     })
                     .collect();
                 items.sort();
-                items.join("\n")
+                let content = items.join("\n");
+                ReadContent {
+                    byte_count: Some(content.len()),
+                    line_count: Some(items.len()),
+                    content,
+                    kind: ContextReferenceKind::Directory,
+                    error: None,
+                }
             }
-            Err(e) => format!("[Error listing directory: {}]", e),
+            Err(e) => {
+                let message = format!("Error listing directory: {}", e);
+                ReadContent {
+                    content: format!("[{}]", message),
+                    kind: ContextReferenceKind::Error,
+                    line_count: None,
+                    byte_count: None,
+                    error: Some(message),
+                }
+            }
         }
     } else {
         match std::fs::read_to_string(path) {
             Ok(content) => {
-                if let Some((start, end)) = line_range {
+                let selected = if let Some((start, end)) = line_range {
                     let lines: Vec<&str> = content.lines().collect();
                     let start = start.saturating_sub(1); // Convert to 0-indexed
                     let end = end.min(lines.len());
-                    lines[start..end].join("\n")
+                    if start >= end {
+                        String::new()
+                    } else {
+                        lines[start..end].join("\n")
+                    }
                 } else {
                     // Limit to 500 lines to avoid blowing context
                     let lines: Vec<&str> = content.lines().collect();
@@ -251,10 +404,70 @@ fn read_file_content(path: &Path, line_range: Option<(usize, usize)>) -> String 
                     } else {
                         content
                     }
+                };
+                ReadContent {
+                    byte_count: Some(selected.len()),
+                    line_count: Some(selected.lines().count()),
+                    content: selected,
+                    kind: ContextReferenceKind::File,
+                    error: None,
                 }
             }
-            Err(e) => format!("[Error reading file: {}]", e),
+            Err(e) => {
+                let message = format!("Error reading file: {}", e);
+                ReadContent {
+                    content: format!("[{}]", message),
+                    kind: ContextReferenceKind::Error,
+                    line_count: None,
+                    byte_count: None,
+                    error: Some(message),
+                }
+            }
         }
+    }
+}
+
+fn replace_raw(result: &mut String, at_ref: &AtFileRef, replacement: &str) {
+    if let Some(pos) = result.find(&at_ref.raw) {
+        result.replace_range(pos..pos + at_ref.raw.len(), replacement);
+    }
+}
+
+fn display_target(path: &Path) -> String {
+    path.display().to_string()
+}
+
+fn sorted_position(text: &str, raw: &str) -> usize {
+    text.find(raw).unwrap_or(usize::MAX)
+}
+
+fn is_unsupported_reference(path: &str) -> bool {
+    path.starts_with("http://")
+        || path.starts_with("https://")
+        || path.starts_with("session:")
+        || path.starts_with("artifact:")
+        || path.starts_with("git:")
+        || path == "diff"
+        || path.starts_with("diff:")
+}
+
+fn unsupported_target(path: &str) -> String {
+    if let Some((scheme, _)) = path.split_once(':') {
+        format!("{}:", scheme)
+    } else {
+        path.to_string()
+    }
+}
+
+fn unsupported_message(path: &str) -> &'static str {
+    if path.starts_with("http://") || path.starts_with("https://") {
+        "URL references are not supported yet"
+    } else if path.starts_with("session:") || path.starts_with("artifact:") {
+        "session artifact references are not supported yet"
+    } else if path.starts_with("git:") || path == "diff" || path.starts_with("diff:") {
+        "git diff references are not supported yet"
+    } else {
+        "reference kind is not supported yet"
     }
 }
 
@@ -383,5 +596,66 @@ mod tests {
         }
 
         std::fs::remove_file(&img_path).ok();
+    }
+
+    #[test]
+    fn test_expand_records_file_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("notes.rs");
+        std::fs::write(&file, "one\ntwo\nthree\n").unwrap();
+
+        let result = expand_at_refs_with_images("read @notes.rs:2-3", dir.path().to_str().unwrap());
+
+        assert!(result.text.contains("two\nthree"));
+        assert_eq!(result.references.len(), 1);
+        let reference = &result.references[0];
+        assert_eq!(reference.source, "context_references");
+        assert_eq!(reference.raw, "@notes.rs:2-3");
+        assert_eq!(reference.kind, ContextReferenceKind::File);
+        assert_eq!(reference.status, ContextReferenceStatus::Expanded);
+        assert_eq!(reference.line_range, Some((2, 3)));
+        assert_eq!(reference.line_count, Some(2));
+        assert_eq!(reference.message, None);
+    }
+
+    #[test]
+    fn test_expand_records_directory_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join("a.txt"), "a").unwrap();
+        std::fs::create_dir(dir.path().join("nested")).unwrap();
+
+        let result = expand_at_refs_with_images("list @./", dir.path().to_str().unwrap());
+
+        assert!(result.text.contains("a.txt"));
+        assert!(result.text.contains("nested/"));
+        assert_eq!(result.references.len(), 1);
+        assert_eq!(result.references[0].kind, ContextReferenceKind::Directory);
+        assert_eq!(result.references[0].status, ContextReferenceStatus::Expanded);
+        assert_eq!(result.references[0].line_count, Some(2));
+    }
+
+    #[test]
+    fn test_unsupported_url_is_explicit() {
+        let result = expand_at_refs_with_images("fetch @https://example.com/path", "/tmp");
+
+        assert!(result.images.is_empty());
+        assert!(result.text.contains("Unsupported context reference @https://example.com/path"));
+        assert!(result.text.contains("URL references are not supported yet"));
+        assert_eq!(result.references.len(), 1);
+        assert_eq!(result.references[0].raw, "@https://example.com/path");
+        assert_eq!(result.references[0].kind, ContextReferenceKind::Unsupported);
+        assert_eq!(result.references[0].status, ContextReferenceStatus::Unsupported);
+        assert_eq!(result.references[0].target, "https:");
+    }
+
+    #[test]
+    fn test_missing_file_records_error_metadata() {
+        let result = expand_at_refs_with_images("look at @missing.rs", "/tmp");
+
+        assert!(result.text.contains("Error reading file"));
+        assert_eq!(result.references.len(), 1);
+        assert_eq!(result.references[0].kind, ContextReferenceKind::Error);
+        assert_eq!(result.references[0].status, ContextReferenceStatus::Error);
+        assert!(result.references[0].message.as_deref().unwrap_or_default().contains("Error reading file"));
     }
 }
