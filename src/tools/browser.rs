@@ -4,11 +4,19 @@
 //! transport-specific CDP backend can implement `BrowserRuntime` without changing
 //! the model-visible tool schema or safety boundaries.
 
+use std::net::TcpListener;
+use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 
 use async_trait::async_trait;
+use clankers_config::BrowserAutomationBackend;
 use clankers_config::BrowserAutomationSettings;
 use serde_json::Value;
+use tokio::process::Child;
+use tokio::process::Command;
+use tokio::sync::Mutex;
 use url::Url;
 
 use super::Tool;
@@ -23,6 +31,7 @@ pub struct BrowserRequest {
     pub selector: Option<String>,
     pub text: Option<String>,
     pub script: Option<String>,
+    pub session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -30,6 +39,7 @@ pub enum BrowserAction {
     Navigate,
     Click,
     Type,
+    Snapshot,
     Evaluate,
     Screenshot,
     CurrentUrl,
@@ -41,7 +51,8 @@ impl BrowserAction {
         match value {
             "navigate" => Some(Self::Navigate),
             "click" => Some(Self::Click),
-            "type" => Some(Self::Type),
+            "type" | "fill" => Some(Self::Type),
+            "snapshot" => Some(Self::Snapshot),
             "evaluate" => Some(Self::Evaluate),
             "screenshot" => Some(Self::Screenshot),
             "current_url" => Some(Self::CurrentUrl),
@@ -54,7 +65,8 @@ impl BrowserAction {
         match self {
             Self::Navigate => "navigate",
             Self::Click => "click",
-            Self::Type => "type",
+            Self::Type => "fill",
+            Self::Snapshot => "snapshot",
             Self::Evaluate => "evaluate",
             Self::Screenshot => "screenshot",
             Self::CurrentUrl => "current_url",
@@ -66,6 +78,228 @@ impl BrowserAction {
 #[async_trait]
 pub trait BrowserRuntime: Send + Sync {
     async fn perform(&self, request: BrowserRequest) -> Result<Value, String>;
+}
+
+#[derive(Debug)]
+pub struct CdpBrowserRuntime {
+    client: reqwest::Client,
+    endpoint: String,
+    backend: &'static str,
+    _owned_browser: Option<Mutex<Child>>,
+}
+
+impl CdpBrowserRuntime {
+    pub async fn from_settings(settings: &BrowserAutomationSettings) -> Result<Self, String> {
+        if settings.backend != BrowserAutomationBackend::Cdp {
+            return Err("only the `cdp` browser automation backend is supported".to_string());
+        }
+        let timeout = Duration::from_millis(settings.timeout_ms.unwrap_or(30_000));
+        let client = reqwest::Client::builder()
+            .timeout(timeout)
+            .build()
+            .map_err(|error| format!("failed to build browser HTTP client: {error}"))?;
+
+        if let Some(cdp_url) = settings.cdp_url.as_deref().filter(|url| !url.trim().is_empty()) {
+            let endpoint = cdp_url.trim().trim_end_matches('/').to_string();
+            wait_for_cdp(&client, &endpoint, timeout).await?;
+            return Ok(Self {
+                client,
+                endpoint,
+                backend: "cdp",
+                _owned_browser: None,
+            });
+        }
+
+        let binary = settings
+            .browser_binary
+            .as_deref()
+            .filter(|binary| !binary.trim().is_empty())
+            .ok_or_else(|| "browserAutomation requires `cdpUrl` or `browserBinary`".to_string())?;
+        let port = reserve_local_port()?;
+        let endpoint = format!("http://127.0.0.1:{port}");
+        let user_data_dir = settings
+            .user_data_dir
+            .as_ref()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| std::env::temp_dir().join(format!("clankers-browser-{}", uuid::Uuid::new_v4())));
+
+        let mut command = Command::new(binary.trim());
+        command
+            .arg(format!("--remote-debugging-port={port}"))
+            .arg(format!("--user-data-dir={}", user_data_dir.display()))
+            .arg("--no-first-run")
+            .arg("--no-default-browser-check")
+            .arg("--disable-background-networking")
+            .arg("about:blank")
+            .env_clear()
+            .envs(crate::tools::sandbox::sanitized_env())
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        if settings.headless {
+            command.arg("--headless=new").arg("--disable-gpu");
+        }
+        let child =
+            command.spawn().map_err(|error| format!("failed to launch browser `{}`: {error}", binary.trim()))?;
+        wait_for_cdp(&client, &endpoint, timeout).await?;
+        Ok(Self {
+            client,
+            endpoint,
+            backend: "cdp-launched",
+            _owned_browser: Some(Mutex::new(child)),
+        })
+    }
+
+    async fn list_targets(&self) -> Result<Vec<CdpTarget>, String> {
+        let url = format!("{}/json/list", self.endpoint);
+        self.client
+            .get(url)
+            .send()
+            .await
+            .map_err(|error| format!("failed to list CDP targets: {error}"))?
+            .error_for_status()
+            .map_err(|error| format!("CDP target list failed: {error}"))?
+            .json::<Vec<CdpTarget>>()
+            .await
+            .map_err(|error| format!("failed to decode CDP target list: {error}"))
+    }
+
+    async fn open_target(&self, url: &str) -> Result<CdpTarget, String> {
+        let escaped = url_encode(url);
+        let endpoint = format!("{}/json/new?{escaped}", self.endpoint);
+        let response = match self.client.put(&endpoint).send().await {
+            Ok(response) if response.status().is_success() => response,
+            _ => self
+                .client
+                .get(&endpoint)
+                .send()
+                .await
+                .map_err(|error| format!("failed to create CDP target: {error}"))?
+                .error_for_status()
+                .map_err(|error| format!("CDP target create failed: {error}"))?,
+        };
+        response
+            .json::<CdpTarget>()
+            .await
+            .map_err(|error| format!("failed to decode created CDP target: {error}"))
+    }
+
+    async fn close_target(&self, id: &str) -> Result<Value, String> {
+        let endpoint = format!("{}/json/close/{}", self.endpoint, url_encode(id));
+        let text = self
+            .client
+            .get(endpoint)
+            .send()
+            .await
+            .map_err(|error| format!("failed to close CDP target `{id}`: {error}"))?
+            .error_for_status()
+            .map_err(|error| format!("CDP target close failed for `{id}`: {error}"))?
+            .text()
+            .await
+            .map_err(|error| format!("failed to read CDP close response: {error}"))?;
+        Ok(serde_json::json!({"sessionId": id, "closed": true, "response": text}))
+    }
+
+    fn normalize_target(&self, target: CdpTarget, action: BrowserAction) -> Value {
+        serde_json::json!({
+            "backend": self.backend,
+            "action": action.as_str(),
+            "status": "ok",
+            "sessionId": target.id,
+            "url": target.url,
+            "title": target.title.unwrap_or_default(),
+            "targetType": target.kind.unwrap_or_default()
+        })
+    }
+}
+
+#[async_trait]
+impl BrowserRuntime for CdpBrowserRuntime {
+    async fn perform(&self, request: BrowserRequest) -> Result<Value, String> {
+        match request.action {
+            BrowserAction::Navigate => {
+                let url = request.url.as_deref().ok_or_else(|| "browser navigate requires `url`".to_string())?;
+                let target = self.open_target(url).await?;
+                Ok(self.normalize_target(target, request.action))
+            }
+            BrowserAction::Snapshot | BrowserAction::CurrentUrl => {
+                let targets = self.list_targets().await?;
+                let target = select_target(targets, request.session_id.as_deref())?;
+                Ok(self.normalize_target(target, request.action))
+            }
+            BrowserAction::Close => {
+                let id = request
+                    .session_id
+                    .as_deref()
+                    .ok_or_else(|| "browser close requires `sessionId` for the CDP HTTP backend".to_string())?;
+                self.close_target(id).await
+            }
+            BrowserAction::Click | BrowserAction::Type | BrowserAction::Evaluate | BrowserAction::Screenshot => {
+                Err(format!(
+                    "browser action `{}` requires the CDP WebSocket command backend, which is not implemented in this slice; use navigate/snapshot/current_url/close or configure a follow-up backend",
+                    request.action.as_str()
+                ))
+            }
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct CdpTarget {
+    id: String,
+    #[serde(default)]
+    title: Option<String>,
+    #[serde(default)]
+    url: String,
+    #[serde(default, rename = "type")]
+    kind: Option<String>,
+}
+
+fn select_target(targets: Vec<CdpTarget>, session_id: Option<&str>) -> Result<CdpTarget, String> {
+    if let Some(id) = session_id {
+        return targets
+            .into_iter()
+            .find(|target| target.id == id)
+            .ok_or_else(|| format!("browser session `{id}` was not found"));
+    }
+    targets
+        .into_iter()
+        .find(|target| target.kind.as_deref() == Some("page"))
+        .ok_or_else(|| "CDP backend has no open page targets; call browser navigate first".to_string())
+}
+
+async fn wait_for_cdp(client: &reqwest::Client, endpoint: &str, timeout: Duration) -> Result<(), String> {
+    let start = Instant::now();
+    let version_url = format!("{}/json/version", endpoint);
+    loop {
+        match client.get(&version_url).send().await {
+            Ok(response) if response.status().is_success() => return Ok(()),
+            _ if start.elapsed() >= timeout => {
+                return Err(format!("CDP endpoint `{endpoint}` did not become ready within {}ms", timeout.as_millis()));
+            }
+            _ => tokio::time::sleep(Duration::from_millis(100)).await,
+        }
+    }
+}
+
+fn reserve_local_port() -> Result<u16, String> {
+    let listener = TcpListener::bind(("127.0.0.1", 0))
+        .map_err(|error| format!("failed to reserve browser debug port: {error}"))?;
+    let port = listener.local_addr().map_err(|error| format!("failed to read browser debug port: {error}"))?.port();
+    drop(listener);
+    Ok(port)
+}
+
+fn url_encode(value: &str) -> String {
+    url::form_urlencoded::byte_serialize(value.as_bytes()).collect()
+}
+
+pub async fn browser_runtime_from_settings(
+    settings: &BrowserAutomationSettings,
+) -> Result<Arc<dyn BrowserRuntime>, String> {
+    CdpBrowserRuntime::from_settings(settings)
+        .await
+        .map(|runtime| Arc::new(runtime) as Arc<dyn BrowserRuntime>)
 }
 
 pub struct BrowserTool {
@@ -108,9 +342,9 @@ impl Tool for BrowserTool {
         let action = request.action.as_str();
         match self.runtime.perform(request).await {
             Ok(value) => ToolResult::text(serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()))
-                .with_details(serde_json::json!({"source":"browser", "action": action})),
+                .with_details(serde_json::json!({"source":"browser_automation", "action": action})),
             Err(error) => ToolResult::error(format!("browser automation error: {error}"))
-                .with_details(serde_json::json!({"source":"browser", "action": action})),
+                .with_details(serde_json::json!({"source":"browser_automation", "action": action})),
         }
     }
 }
@@ -140,12 +374,13 @@ pub fn browser_tool_definition() -> ToolDefinition {
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["navigate", "click", "type", "evaluate", "screenshot", "current_url", "close"]
+                    "enum": ["navigate", "snapshot", "click", "fill", "type", "evaluate", "screenshot", "current_url", "close"]
                 },
                 "url": {"type": "string", "description": "URL for navigate actions"},
-                "selector": {"type": "string", "description": "CSS selector for click/type actions"},
-                "text": {"type": "string", "description": "Text for type actions"},
-                "script": {"type": "string", "description": "JavaScript for evaluate actions when allowEvaluate is enabled"}
+                "selector": {"type": "string", "description": "CSS selector for click/fill actions"},
+                "text": {"type": "string", "description": "Text for fill/type actions"},
+                "script": {"type": "string", "description": "JavaScript for evaluate actions when allowEvaluate is enabled"},
+                "sessionId": {"type": "string", "description": "Browser session/target id returned by navigate or snapshot"}
             },
             "additionalProperties": false
         }),
@@ -155,7 +390,7 @@ pub fn browser_tool_definition() -> ToolDefinition {
 pub fn parse_browser_request(params: &Value) -> Result<BrowserRequest, String> {
     let object = params.as_object().ok_or_else(|| "browser params must be a JSON object".to_string())?;
     let action = object.get("action").and_then(Value::as_str).and_then(BrowserAction::parse).ok_or_else(|| {
-        "browser `action` must be one of navigate, click, type, evaluate, screenshot, current_url, close".to_string()
+        "browser `action` must be one of navigate, snapshot, click, fill, type, evaluate, screenshot, current_url, close".to_string()
     })?;
 
     let get_string = |key: &str| -> Result<Option<String>, String> {
@@ -173,6 +408,7 @@ pub fn parse_browser_request(params: &Value) -> Result<BrowserRequest, String> {
         selector: get_string("selector")?,
         text: get_string("text")?,
         script: get_string("script")?,
+        session_id: get_string("sessionId")?,
     };
 
     match request.action {
@@ -309,7 +545,95 @@ mod tests {
         assert_eq!(runtime.calls.lock().await.len(), 1);
         assert_eq!(
             result.details.as_ref().and_then(|details| details.get("source")).and_then(Value::as_str),
-            Some("browser")
+            Some("browser_automation")
         );
+    }
+
+    #[tokio::test]
+    async fn cdp_runtime_uses_http_endpoint_for_navigate_and_snapshot() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let endpoint = format!("http://{}", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move {
+            for _ in 0..3 {
+                let (mut stream, _) = listener.accept().await.unwrap();
+                tokio::spawn(async move {
+                    use tokio::io::AsyncReadExt;
+                    use tokio::io::AsyncWriteExt;
+
+                    let mut buffer = [0_u8; 2048];
+                    let size = stream.read(&mut buffer).await.unwrap();
+                    let request = String::from_utf8_lossy(&buffer[..size]);
+                    let body = if request.starts_with("GET /json/version") {
+                        serde_json::json!({"Browser":"fake"}).to_string()
+                    } else if request.starts_with("PUT /json/new") || request.starts_with("GET /json/new") {
+                        serde_json::json!({"id":"target-1","type":"page","url":"https://example.test/","title":"Example"}).to_string()
+                    } else if request.starts_with("GET /json/list") {
+                        serde_json::json!([{ "id":"target-1", "type":"page", "url":"https://example.test/", "title":"Example" }]).to_string()
+                    } else {
+                        serde_json::json!({"error":"unexpected request", "request": request.lines().next().unwrap_or("")}).to_string()
+                    };
+                    let response = format!(
+                        "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+                        body.len(),
+                        body
+                    );
+                    stream.write_all(response.as_bytes()).await.unwrap();
+                });
+            }
+        });
+
+        let mut settings = enabled_settings();
+        settings.cdp_url = Some(endpoint);
+        settings.allowed_origins.clear();
+        let runtime = CdpBrowserRuntime::from_settings(&settings).await.unwrap();
+
+        let navigate = runtime
+            .perform(BrowserRequest {
+                action: BrowserAction::Navigate,
+                url: Some("https://example.test/".to_string()),
+                selector: None,
+                text: None,
+                script: None,
+                session_id: None,
+            })
+            .await
+            .unwrap();
+        assert_eq!(navigate.get("sessionId").and_then(Value::as_str), Some("target-1"));
+
+        let snapshot = runtime
+            .perform(BrowserRequest {
+                action: BrowserAction::Snapshot,
+                url: None,
+                selector: None,
+                text: None,
+                script: None,
+                session_id: Some("target-1".to_string()),
+            })
+            .await
+            .unwrap();
+        assert_eq!(snapshot.get("title").and_then(Value::as_str), Some("Example"));
+        server.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn cdp_runtime_reports_unsupported_websocket_actions() {
+        let runtime = CdpBrowserRuntime {
+            client: reqwest::Client::new(),
+            endpoint: "http://127.0.0.1:9".to_string(),
+            backend: "cdp",
+            _owned_browser: None,
+        };
+        let error = runtime
+            .perform(BrowserRequest {
+                action: BrowserAction::Click,
+                url: None,
+                selector: Some("button".to_string()),
+                text: None,
+                script: None,
+                session_id: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(error.contains("CDP WebSocket command backend"));
     }
 }
