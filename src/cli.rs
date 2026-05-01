@@ -265,6 +265,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: SessionAction,
     },
+    /// Create, list, and restore working-directory checkpoints
+    Checkpoint {
+        #[command(subcommand)]
+        action: CheckpointAction,
+    },
     /// Manage configuration
     Config {
         #[command(subcommand)]
@@ -405,6 +410,36 @@ pub enum BatchAction {
         /// Resume by skipping already completed job ids in the output directory
         #[arg(long)]
         resume: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum CheckpointAction {
+    /// Snapshot the current git working directory
+    Create {
+        /// Optional human-readable label for the checkpoint
+        #[arg(long, value_name = "LABEL")]
+        label: Option<String>,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// List clankers checkpoints for the current repository
+    List {
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Restore the working directory to a clankers checkpoint
+    Rollback {
+        /// Checkpoint id or ref returned by `checkpoint create`
+        checkpoint_id: String,
+        /// Confirm destructive rollback without an interactive prompt
+        #[arg(long)]
+        yes: bool,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -1067,5 +1102,66 @@ mod tests {
         let help = Cli::command().render_help().to_string();
         assert!(help.contains("batch"));
         assert!(help.contains("trajectories"));
+    }
+
+    #[test]
+    fn checkpoint_create_cli_parses_label_and_json() {
+        let cli = Cli::parse_from([
+            "clankers",
+            "checkpoint",
+            "create",
+            "--label",
+            "before-refactor",
+            "--json",
+        ]);
+
+        match cli.command.expect("command should parse") {
+            Commands::Checkpoint {
+                action: CheckpointAction::Create { label, json },
+            } => {
+                assert_eq!(label.as_deref(), Some("before-refactor"));
+                assert!(json);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn checkpoint_rollback_cli_requires_id_and_parses_confirmation() {
+        let missing_id = Cli::try_parse_from(["clankers", "checkpoint", "rollback", "--yes"])
+            .expect_err("rollback requires checkpoint id");
+        assert_eq!(missing_id.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+
+        let cli = Cli::parse_from([
+            "clankers",
+            "checkpoint",
+            "rollback",
+            "refs/clankers/checkpoints/abc123",
+            "--yes",
+            "--json",
+        ]);
+
+        match cli.command.expect("command should parse") {
+            Commands::Checkpoint {
+                action:
+                    CheckpointAction::Rollback {
+                        checkpoint_id,
+                        yes,
+                        json,
+                    },
+            } => {
+                assert_eq!(checkpoint_id, "refs/clankers/checkpoints/abc123");
+                assert!(yes);
+                assert!(json);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn checkpoint_command_is_visible_in_help() {
+        let help = Cli::command().render_help().to_string();
+        assert!(help.contains("checkpoint"));
+        assert!(help.contains("working-directory checkpoints"));
     }
 }

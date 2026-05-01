@@ -7,6 +7,7 @@
 pub mod acp;
 pub mod auth;
 pub mod batch;
+pub mod checkpoint;
 pub mod config;
 pub mod daemon;
 

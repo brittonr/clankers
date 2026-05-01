@@ -4,7 +4,8 @@
   - Evidence: `openspec/changes/add-worktree-checkpoints-rollback/evidence/module-inventory.md` maps existing owners (`src/worktree/`, `src/tools/git_ops/`, mutating tools, CLI/commands, session persistence, and config), identifies gaps, and recommends the first-pass git-only checkpoint boundary.
 - [x] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases. ✅ completed: 2026-05-01T22:31:40Z
   - Evidence: `openspec/changes/add-worktree-checkpoints-rollback/evidence/api-surface.md` defines the first-pass CLI, future-safe agent tool/TUI wrappers, no-new-config stance, unsupported cases, and metadata policy boundaries.
-- [ ] Add focused tests for parsing, configuration, and policy boundaries.
+- [x] Add focused tests for parsing, configuration, and policy boundaries. ✅ completed: 2026-05-01T22:42:48Z
+  - Evidence: added `src/checkpoints.rs` policy/metadata helpers and tests for namespace validation, replay-safe metadata, and sanitized errors; added `checkpoint` CLI parser/action tests for create and rollback confirmation boundaries. Verification passed `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers checkpoint --no-fail-fast` (9 passed).
 
 ## Phase 2: Implementation
 
