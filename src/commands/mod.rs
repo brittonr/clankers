@@ -10,6 +10,7 @@ pub mod batch;
 pub mod checkpoint;
 pub mod config;
 pub mod daemon;
+pub mod gateway;
 
 pub mod plugin;
 pub mod rpc;

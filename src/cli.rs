@@ -270,6 +270,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: CheckpointAction,
     },
+    /// Inspect and validate tool gateway delivery policy
+    Gateway {
+        #[command(subcommand)]
+        action: GatewayAction,
+    },
     /// Manage configuration
     Config {
         #[command(subcommand)]
@@ -437,6 +442,28 @@ pub enum CheckpointAction {
         /// Confirm destructive rollback without an interactive prompt
         #[arg(long)]
         yes: bool,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum GatewayAction {
+    /// Show supported first-pass gateway toolsets and delivery targets
+    Status {
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate toolsets and an optional delivery target without sending data
+    Validate {
+        /// Comma-separated toolset names: core, orchestration, specialty, matrix
+        #[arg(long)]
+        toolsets: String,
+        /// Delivery target: local, session, matrix, or an unsupported platform target
+        #[arg(long)]
+        deliver: Option<String>,
         /// Emit machine-readable JSON
         #[arg(long)]
         json: bool,
@@ -1163,5 +1190,42 @@ mod tests {
         let help = Cli::command().render_help().to_string();
         assert!(help.contains("checkpoint"));
         assert!(help.contains("working-directory checkpoints"));
+    }
+
+    #[test]
+    fn gateway_validate_cli_parses_toolsets_delivery_and_json() {
+        let cli = Cli::parse_from([
+            "clankers",
+            "gateway",
+            "validate",
+            "--toolsets",
+            "core,specialty",
+            "--deliver",
+            "local",
+            "--json",
+        ]);
+
+        match cli.command.expect("command should parse") {
+            Commands::Gateway {
+                action:
+                    GatewayAction::Validate {
+                        toolsets,
+                        deliver,
+                        json,
+                    },
+            } => {
+                assert_eq!(toolsets, "core,specialty");
+                assert_eq!(deliver.as_deref(), Some("local"));
+                assert!(json);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn gateway_command_is_visible_in_help() {
+        let help = Cli::command().render_help().to_string();
+        assert!(help.contains("gateway"));
+        assert!(help.contains("tool gateway delivery policy"));
     }
 }
