@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Context References Capability [r[context-references.capability]]
-The system MUST provide Expand @-references in prompts into files, directories, git diffs, URLs, and session artifacts.
+The system MUST expand documented local `@` references in prompts into files, directories, and image attachments, and MUST return explicit unsupported-reference output for URL, git-diff, remote, or session-artifact references until those reference kinds are implemented.
 
 #### Scenario: Primary path succeeds [r[context-references.scenario.primary-path]]
 - GIVEN clankers is configured for the capability

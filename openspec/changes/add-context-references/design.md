@@ -33,6 +33,14 @@ This change tracks Hermes feature-parity work for Context References. Clankers a
 
 **Alternative:** Optimize only for a happy-path demo. Rejected because these are agent autonomy features and failures must be recoverable.
 
+### 3. Keep the first pass local and explicit
+
+**Choice:** Treat context references as prompt syntax, not a separate tool. The first pass supports local files, line ranges, directories, and image references through a shared resolver. URL, git-diff, remote, and session-artifact references must return explicit unsupported-reference results until later slices add policy and storage support.
+
+**Rationale:** Clankers already has local `@path` expansion in `clankers-util::at_file`; extending it preserves existing behavior while creating a clearer seam for metadata and future reference kinds.
+
+**Alternative:** Add remote URL/session/git expansion immediately. Rejected for this change because those cases require separate privacy, credential, fetch, and replay policies.
+
 ## Risks / Trade-offs
 
 **Scope creep** → Start with a minimal backend/API and document additional backends as future tasks.
