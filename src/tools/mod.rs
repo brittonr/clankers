@@ -62,6 +62,7 @@ pub mod todo;
 pub mod tool_gateway;
 pub mod tts;
 pub mod validator_tool;
+pub mod voice_mode;
 pub mod watchdog;
 pub mod web;
 pub mod write;

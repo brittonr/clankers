@@ -9,8 +9,10 @@
 
 ## Phase 2: Implementation
 
-- [ ] Implement the minimal backend or adapter for Voice and Speech-to-Text Mode.
-- [ ] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable.
+- [x] Implement the minimal backend or adapter for Voice and Speech-to-Text Mode. ✅ completed: 2026-05-01T23:50:27Z
+  - Evidence: added `src/commands/voice.rs` for `clankers voice status|validate` and `src/tools/voice_mode.rs` for the Specialty `voice_mode` validation adapter; verification passed `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers voice --no-fail-fast` (9 passed).
+- [x] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable. ✅ completed: 2026-05-01T23:50:27Z
+  - Evidence: wired `Commands::Voice` in `src/cli.rs`, main command dispatch in `src/main.rs`, tool exports in `src/tools/mod.rs`, and Specialty tool publication in `src/modes/common.rs`; shared tool construction covers standalone prompt, TUI, and daemon/session agent paths.
 - [ ] Persist or log session metadata needed for replay and debugging.
 
 ## Phase 3: Verification and Documentation

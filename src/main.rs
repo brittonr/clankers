@@ -221,6 +221,9 @@ async fn dispatch(
         Some(Commands::Gateway { action }) => {
             clankers::commands::gateway::run(&ctx, action)?;
         }
+        Some(Commands::Voice { action }) => {
+            clankers::commands::voice::run(&ctx, action)?;
+        }
         #[cfg(feature = "zellij-share")]
         Some(Commands::Share { read_only }) => {
             clankers::commands::share::run_share(&ctx, read_only).await?;

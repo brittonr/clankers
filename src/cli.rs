@@ -275,6 +275,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: GatewayAction,
     },
+    /// Inspect and validate voice and speech-to-text policy
+    Voice {
+        #[command(subcommand)]
+        action: VoiceAction,
+    },
     /// Manage configuration
     Config {
         #[command(subcommand)]
@@ -464,6 +469,29 @@ pub enum GatewayAction {
         /// Delivery target: local, session, matrix, or an unsupported platform target
         #[arg(long)]
         deliver: Option<String>,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum VoiceAction {
+    /// Show first-pass voice/STT support boundaries
+    Status {
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate a voice input source and reply mode without recording or transcribing audio
+    Validate {
+        /// Input source: local path, file:<PATH>, microphone, matrix, remote:*, http(s)://*, or
+        /// cloud:*
+        #[arg(long)]
+        input: String,
+        /// Reply mode: text, tts, or none
+        #[arg(long)]
+        reply: Option<String>,
         /// Emit machine-readable JSON
         #[arg(long)]
         json: bool,
