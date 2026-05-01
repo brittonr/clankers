@@ -12,6 +12,6 @@
 
 ## Phase 3: Verification and Documentation
 
-- [ ] Add integration tests for the primary successful path and at least one failure path.
+- [x] Add integration tests for the primary successful path and at least one failure path. ⏱ started: 2026-05-01T00:23:52Z, completed: 2026-05-01T00:24:41Z, elapsed: 49s. Evidence: `cargo fmt`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test browser_automation --no-fail-fast`.
 - [ ] Update README/docs and any relevant built-in tool or command lists.
 - [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
