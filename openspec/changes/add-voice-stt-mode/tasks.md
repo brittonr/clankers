@@ -4,7 +4,8 @@
   - Evidence: `openspec/changes/add-voice-stt-mode/evidence/module-inventory.md` maps TTS ownership (`src/tools/tts.rs`, `crates/clankers-tts`), shared tool publication (`src/modes/common.rs`), CLI command surfaces, TUI/daemon/session paths, Matrix media boundaries, and safe `ToolResult::details` replay metadata; it recommends a small first-pass policy module before real microphone/cloud transcription backends.
 - [x] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases. ✅ completed: 2026-05-01T23:26:00Z
   - Evidence: `openspec/changes/add-voice-stt-mode/evidence/api-surface.md` defines `clankers voice status|validate`, a Specialty `voice_mode` status/validate tool, no required first-pass config, text/TTS/none reply-mode validation, and explicit unsupported cases for microphone loops, STT provider execution, remote/cloud audio, Matrix/platform audio outside a dedicated bridge, raw audio persistence, credential/header handling, and automatic spoken reply loops.
-- [ ] Add focused tests for parsing, configuration, and policy boundaries.
+- [x] Add focused tests for parsing, configuration, and policy boundaries. ✅ completed: 2026-05-01T23:41:22Z
+  - Evidence: added `src/voice_mode.rs` first-pass policy helpers and tests for local file input parsing, safe remote kind parsing, reply mode parsing, unsupported microphone policy, and replay-safe remote error metadata. Verification passed `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers voice_mode --no-fail-fast` (5 passed).
 
 ## Phase 2: Implementation
 

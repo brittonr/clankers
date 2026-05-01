@@ -21,6 +21,7 @@ pub mod tool_gateway;
 #[cfg(feature = "openspec")]
 pub use openspec as specs;
 pub mod tools;
+pub mod voice_mode;
 pub use clankers_tui as tui;
 pub mod util;
 pub mod worktree;
