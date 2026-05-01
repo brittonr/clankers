@@ -10,6 +10,7 @@ use crate::modes::batch::BatchJob;
 use crate::modes::batch::BatchJobExecutor;
 use crate::modes::batch::BatchRunConfig;
 use crate::modes::batch::TrajectoryFormat;
+use crate::modes::batch::batch_run_metadata;
 use crate::modes::batch::parse_jsonl_jobs;
 use crate::modes::batch::render_trajectory_results;
 
@@ -41,6 +42,8 @@ pub async fn run(ctx: &CommandContext, action: BatchAction) -> Result<()> {
                 })?;
             let rendered = render_trajectory_results(format, &results).map_err(|source| Error::Json { source })?;
             write_output(&output, &rendered, resume).await?;
+            let metadata = batch_run_metadata(&summary, &output);
+            tracing::info!(target: "clankers::batch", %metadata, "batch trajectory run complete");
             println!(
                 "batch complete: total={} succeeded={} failed={} output={}",
                 summary.total,

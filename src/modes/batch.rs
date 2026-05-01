@@ -258,6 +258,19 @@ pub fn render_trajectory_results(
     }
 }
 
+pub fn batch_run_metadata(summary: &BatchRunSummary, output: &Path) -> Value {
+    json!({
+        "source": "batch_trajectory_runner",
+        "status": summary.status,
+        "total": summary.total,
+        "succeeded": summary.succeeded,
+        "failed": summary.failed,
+        "concurrency": summary.concurrency,
+        "format": summary.format,
+        "output_file": output.file_name().and_then(|name| name.to_str()),
+    })
+}
+
 fn normalized_job_metadata(job: &BatchJob) -> Value {
     json!({
         "source": "batch_trajectory_runner",
@@ -384,5 +397,23 @@ mod tests {
         assert!(rendered.contains(r#""conversations""#));
         assert!(rendered.contains(r#""from": "assistant""#));
         assert!(rendered.contains(r#""value": "ok""#));
+    }
+
+    #[test]
+    fn run_metadata_is_safe_and_structured() {
+        let summary = BatchRunSummary {
+            source: "batch_trajectory_runner",
+            status: "ok",
+            total: 2,
+            succeeded: 2,
+            failed: 0,
+            concurrency: 2,
+            format: TrajectoryFormat::Jsonl,
+        };
+        let metadata = batch_run_metadata(&summary, Path::new("/tmp/secret/prompts-output.jsonl"));
+        assert_eq!(metadata["source"], "batch_trajectory_runner");
+        assert_eq!(metadata["total"], 2);
+        assert_eq!(metadata["output_file"], "prompts-output.jsonl");
+        assert!(!metadata.to_string().contains("/tmp/secret"));
     }
 }
