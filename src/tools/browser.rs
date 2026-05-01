@@ -365,12 +365,17 @@ impl Tool for BrowserTool {
         }
 
         ctx.emit_progress(&format!("browser: {}", request.action.as_str()));
-        let action = request.action.as_str();
-        match self.runtime.perform(request).await {
-            Ok(value) => ToolResult::text(serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()))
-                .with_details(serde_json::json!({"source":"browser_automation", "action": action})),
-            Err(error) => ToolResult::error(format!("browser automation error: {error}"))
-                .with_details(serde_json::json!({"source":"browser_automation", "action": action})),
+        let started = Instant::now();
+        match self.runtime.perform(request.clone()).await {
+            Ok(value) => {
+                let details = browser_result_details(&request, Some(&value), "ok", started.elapsed(), None);
+                ToolResult::text(serde_json::to_string_pretty(&value).unwrap_or_else(|_| value.to_string()))
+                    .with_details(details)
+            }
+            Err(error) => {
+                let details = browser_result_details(&request, None, "error", started.elapsed(), Some(&error));
+                ToolResult::error(format!("browser automation error: {error}")).with_details(details)
+            }
         }
     }
 }
@@ -423,6 +428,60 @@ pub fn browser_tool_definition() -> ToolDefinition {
             "additionalProperties": false
         }),
     }
+}
+
+fn browser_result_details(
+    request: &BrowserRequest,
+    value: Option<&Value>,
+    status: &str,
+    elapsed: Duration,
+    error: Option<&str>,
+) -> Value {
+    let mut details = serde_json::Map::new();
+    details.insert("source".to_string(), serde_json::json!("browser_automation"));
+    details.insert("action".to_string(), serde_json::json!(request.action.as_str()));
+    details.insert("status".to_string(), serde_json::json!(status));
+    details.insert("elapsedMs".to_string(), serde_json::json!(elapsed.as_millis()));
+    if let Some(session_id) = request.session_id.as_deref().filter(|value| !value.is_empty()) {
+        details.insert("sessionId".to_string(), serde_json::json!(session_id));
+    }
+    if let Some(url) = request.url.as_deref() {
+        details.insert("url".to_string(), serde_json::json!(url));
+        if let Ok(origin) = origin_from_url(url) {
+            details.insert("origin".to_string(), serde_json::json!(origin));
+        }
+    }
+    if let Some(value) = value.and_then(Value::as_object) {
+        copy_detail(value, &mut details, "backend");
+        copy_detail(value, &mut details, "sessionId");
+        copy_detail(value, &mut details, "url");
+        copy_detail(value, &mut details, "title");
+        copy_detail(value, &mut details, "targetType");
+    }
+    if let Some(error) = error {
+        details.insert("error".to_string(), serde_json::json!(redact_browser_error(error)));
+    }
+    Value::Object(details)
+}
+
+fn copy_detail(source: &serde_json::Map<String, Value>, details: &mut serde_json::Map<String, Value>, key: &str) {
+    if let Some(value) = source.get(key) {
+        details.insert(key.to_string(), value.clone());
+    }
+}
+
+fn redact_browser_error(error: &str) -> String {
+    let mut redacted = String::with_capacity(error.len());
+    for part in error.split_whitespace() {
+        let lower = part.to_ascii_lowercase();
+        if lower.contains("token=") || lower.contains("access_token") || lower.contains("authorization") {
+            redacted.push_str("[redacted]");
+        } else {
+            redacted.push_str(part);
+        }
+        redacted.push(' ');
+    }
+    redacted.trim_end().to_string()
 }
 
 pub fn parse_browser_request(params: &Value) -> Result<BrowserRequest, String> {
@@ -583,10 +642,11 @@ mod tests {
 
         assert!(!result.is_error);
         assert_eq!(runtime.calls.lock().await.len(), 1);
-        assert_eq!(
-            result.details.as_ref().and_then(|details| details.get("source")).and_then(Value::as_str),
-            Some("browser_automation")
-        );
+        let details = result.details.as_ref().unwrap();
+        assert_eq!(details.get("source").and_then(Value::as_str), Some("browser_automation"));
+        assert_eq!(details.get("status").and_then(Value::as_str), Some("ok"));
+        assert!(details.get("elapsedMs").and_then(Value::as_u64).is_some());
+        assert_eq!(details.get("url").and_then(Value::as_str), Some("https://example.test/"));
     }
 
     #[tokio::test]
