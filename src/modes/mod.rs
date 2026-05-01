@@ -1,5 +1,6 @@
 //! Run modes
 
+pub mod acp;
 pub(crate) mod agent_commands;
 pub(crate) mod agent_setup;
 pub(crate) mod agent_task;

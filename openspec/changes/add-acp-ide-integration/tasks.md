@@ -2,7 +2,7 @@
 
 - [x] Inventory existing clankers modules that should own ACP IDE Integration. ✅ completed: 2026-05-01T01:12:36Z; evidence: `openspec/changes/add-acp-ide-integration/evidence/acp-module-inventory.md` plus delegated read-only inspection.
 - [x] Define the user-facing CLI/TUI/tool/config surface and document unsupported first-pass cases. ✅ completed: 2026-05-01T01:18:44Z; evidence: `openspec/changes/add-acp-ide-integration/evidence/api-surface.md`, design decisions 3-4, and narrowed delta spec capability wording.
-- [ ] Add focused tests for parsing, configuration, and policy boundaries.
+- [x] Add focused tests for parsing, configuration, and policy boundaries. ✅ completed: 2026-05-01T01:24:31Z; evidence: `cargo fmt`; `CARGO_TARGET_DIR=target cargo nextest run -p clankers acp --no-fail-fast` passed (6 tests); `CARGO_TARGET_DIR=target cargo nextest run -p clankers cli::tests --no-fail-fast` passed (3 tests); `CARGO_TARGET_DIR=target cargo check --tests -p clankers` passed.
 
 ## Phase 2: Implementation
 

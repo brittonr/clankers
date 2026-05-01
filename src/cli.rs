@@ -368,11 +368,32 @@ pub enum Commands {
         #[arg(long, value_delimiter = ',')]
         capabilities: Vec<String>,
     },
+    /// Expose a clankers session over Agent Client Protocol (ACP)
+    Acp {
+        #[command(subcommand)]
+        action: AcpAction,
+    },
     /// List daemon sessions (shorthand for `daemon sessions`)
     Ps {
         /// Show all details including socket paths
         #[arg(short, long)]
         all: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AcpAction {
+    /// Serve one ACP-compatible editor session over stdio
+    Serve {
+        /// Existing clankers session id to resume
+        #[arg(long, value_name = "SESSION_ID", conflicts_with = "new")]
+        session: Option<String>,
+        /// Force creation of a new session
+        #[arg(long)]
+        new: bool,
+        /// Override model for a new session
+        #[arg(long, value_name = "MODEL")]
+        model: Option<String>,
     },
 }
 
@@ -923,4 +944,50 @@ pub enum DaemonAction {
         #[arg(short, long, default_value_t = 50)]
         lines: usize,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use clap::CommandFactory;
+    use clap::Parser;
+
+    use super::*;
+
+    #[test]
+    fn acp_serve_cli_parses_stdio_session_options() {
+        let cli = Cli::parse_from([
+            "clankers",
+            "acp",
+            "serve",
+            "--session",
+            "sess-1",
+            "--model",
+            "test-model",
+        ]);
+
+        match cli.command.expect("command should parse") {
+            Commands::Acp {
+                action: AcpAction::Serve { session, new, model },
+            } => {
+                assert_eq!(session.as_deref(), Some("sess-1"));
+                assert!(!new);
+                assert_eq!(model.as_deref(), Some("test-model"));
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn acp_serve_rejects_session_and_new_conflict() {
+        let err = Cli::try_parse_from(["clankers", "acp", "serve", "--session", "sess-1", "--new"])
+            .expect_err("--session and --new should conflict");
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
+    }
+
+    #[test]
+    fn acp_command_is_visible_in_help() {
+        let help = Cli::command().render_help().to_string();
+        assert!(help.contains("acp"));
+        assert!(help.contains("Agent Client Protocol"));
+    }
 }
