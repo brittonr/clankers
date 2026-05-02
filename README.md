@@ -13,7 +13,7 @@ cargo build --release
 ./scripts/test-harness.sh ci           # exact nix flake check gate
 ```
 
-The harness writes machine-readable results to `target/test-harness/results.json`, a Markdown summary to `target/test-harness/summary.md`, and per-step logs under `target/test-harness/logs/`. Use `CLANKERS_TEST_DRY_RUN=1` to inspect a tier without running it.
+The harness writes machine-readable results to `target/test-harness/results.json`, a Markdown summary to `target/test-harness/summary.md`, JUnit XML for CI collectors to `target/test-harness/junit.xml`, and per-step logs under `target/test-harness/logs/`. Use `CLANKERS_TEST_DRY_RUN=1` to inspect a tier without running it, or `CLANKERS_TEST_RESULT_DIR=path/to/results` to redirect all harness reports.
 
 Useful focused tiers:
 
