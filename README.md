@@ -4,13 +4,23 @@
 
 A terminal coding agent in Rust. Inspired by [pi](https://pi.dev), built to be hacked on.
 
-## Build
+## Build and test
 
 ```
 cargo build --release
-cargo nextest run                      # run tests
-cargo clippy -- -D warnings            # lint
-./scripts/verify.sh                    # repo validation rails
+./scripts/test-harness.sh quick        # check + workspace tests
+./scripts/test-harness.sh full         # fmt, tests, clippy, repo rails, tigerstyle
+./scripts/test-harness.sh ci           # exact nix flake check gate
+```
+
+The harness writes machine-readable results to `target/test-harness/results.json`, a Markdown summary to `target/test-harness/summary.md`, and per-step logs under `target/test-harness/logs/`. Use `CLANKERS_TEST_DRY_RUN=1` to inspect a tier without running it.
+
+Useful focused tiers:
+
+```
+./scripts/test-harness.sh package clankers-provider discovery
+./scripts/test-harness.sh e2e fast
+./scripts/test-harness.sh vm vm-remote-daemon
 ```
 
 ## Auth
