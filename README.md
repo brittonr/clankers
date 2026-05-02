@@ -20,7 +20,9 @@ Useful focused tiers:
 
 ```
 ./scripts/test-harness.sh package clankers-provider discovery
-./scripts/test-harness.sh e2e fast
+./scripts/test-harness.sh e2e                  # default fake-provider deterministic e2e
+./scripts/test-harness.sh e2e api              # fake-provider prompt/tool/json checks
+./scripts/test-harness.sh e2e fast             # local CLI/config/auth checks
 ./scripts/test-harness.sh vm smoke             # vm-smoke only
 ./scripts/test-harness.sh vm core              # smoke, remote daemon, session recovery
 ./scripts/test-harness.sh vm module            # daemon/router/integration NixOS module VMs

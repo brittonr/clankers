@@ -42,6 +42,10 @@ pub async fn build_router_with_rpc(
 ) -> Result<Arc<dyn Provider>> {
     use super::rpc_provider::RpcProvider;
 
+    if crate::fake::fake_provider_enabled() {
+        return Ok(Arc::new(crate::fake::FakeProvider::new()));
+    }
+
     // Skip RPC if CLANKERS_NO_DAEMON is set (useful for testing/debugging).
     // The extracted clanker-router now owns the Codex backend too, so
     // service and local daemon paths can share the same routed provider set.
@@ -129,6 +133,10 @@ pub fn build_router(
 
     use super::router::RouterCompatAdapter;
     use super::router::RouterProvider;
+
+    if crate::fake::fake_provider_enabled() {
+        return Ok(Arc::new(crate::fake::FakeProvider::new()));
+    }
 
     let mut backends: Vec<(String, Arc<dyn Provider>)> = Vec::new();
 

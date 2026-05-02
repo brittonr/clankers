@@ -25,6 +25,7 @@ pub mod auth;
 pub mod credential_manager;
 pub mod discovery;
 pub mod error_classifier;
+pub mod fake;
 pub mod message;
 pub mod openai_codex;
 /// Model registry — re-exported from `clanker-router`.
