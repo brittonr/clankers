@@ -17,6 +17,7 @@ pub mod provider;
 pub use clankers_session;
 pub mod session;
 pub mod slash_commands;
+pub mod soul_personality;
 pub mod tool_gateway;
 #[cfg(feature = "openspec")]
 pub use openspec as specs;
