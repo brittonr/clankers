@@ -49,6 +49,13 @@
 
         rustToolchain = pkgs.rust-bin.fromRustupToolchainFile ./rust-toolchain.toml;
         isX86Linux = system == "x86_64-linux";
+        liveChecksEnabled = builtins.getEnv "CLANKERS_ENABLE_LIVE_CHECKS" == "1";
+        liveRatsDir = builtins.getEnv "CLANKERS_LIVE_RATS_DIR";
+        liveRepoDir = builtins.getEnv "PWD";
+        liveRatsSrc = builtins.path {
+          path = if liveRatsDir != "" then liveRatsDir else liveRepoDir + "/../rats";
+          name = "clankers-live-rats-src";
+        };
 
         # ── Main workspace (unit2nix auto mode) ─────────────────────────
         ws = unit2nix.lib.${system}.buildFromUnitGraphAuto {
@@ -277,6 +284,100 @@
             fi
 
             touch $out
+          '';
+        }
+        // pkgs.lib.optionalAttrs liveChecksEnabled {
+          live-aspen2-qwen36 = pkgs.runCommandLocal "clankers-live-aspen2-qwen36" {
+            nativeBuildInputs = [
+              rustToolchain
+              pkgs.bash
+              pkgs.cacert
+              pkgs.coreutils
+              pkgs.cargo-nextest
+              pkgs.clang
+              pkgs.findutils
+              pkgs.git
+              pkgs.gnugrep
+              pkgs.mold
+              pkgs.openssh
+              pkgs.pkg-config
+              pkgs.python3
+            ];
+            buildInputs = [
+              pkgs.openssl
+              pkgs.sqlite
+              pkgs.libgit2
+              pkgs.libssh2
+              pkgs.zlib
+              pkgs.zstd
+            ];
+            # This check is intentionally opt-in and local/live. It may need
+            # evaluator impurity plus unsandboxed network access to contact
+            # aspen2; the test itself still self-skips when unavailable.
+            __noChroot = true;
+            src = ./.;
+          } ''
+            export HOME="$TMPDIR/home"
+            export XDG_CONFIG_HOME="$TMPDIR/xdg-config"
+            export XDG_CACHE_HOME="$TMPDIR/xdg-cache"
+            export XDG_DATA_HOME="$TMPDIR/xdg-data"
+            export XDG_RUNTIME_DIR="$TMPDIR/run"
+            export CLANKERS_NO_DAEMON=1
+            export SSL_CERT_FILE=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+            export GIT_SSL_CAINFO=${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt
+            export CARGO_TARGET_DIR="$TMPDIR/cargo-target"
+            export CLANKERS_TEST_RESULT_DIR="$TMPDIR/test-harness-live"
+
+            mkdir -p \
+              "$HOME" \
+              "$XDG_CONFIG_HOME" \
+              "$XDG_CACHE_HOME" \
+              "$XDG_DATA_HOME" \
+              "$XDG_RUNTIME_DIR" \
+              "$CARGO_TARGET_DIR"
+
+            cp -R $src "$TMPDIR/source"
+            cp -R ${liveRatsSrc}/subwayrat "$TMPDIR/subwayrat"
+            git clone https://github.com/brittonr/ratcore "$TMPDIR/ratcore"
+            git -C "$TMPDIR/ratcore" checkout 16333a505696b324637f021b657c474600a9b838
+            chmod -R u+w "$TMPDIR/source" "$TMPDIR/subwayrat" "$TMPDIR/ratcore"
+
+            python3 - <<'PY'
+            import os
+            from pathlib import Path
+            tmpdir = Path(os.environ["TMPDIR"])
+            source = tmpdir / "source"
+            subwayrat = tmpdir / "subwayrat"
+            ratcore = tmpdir / "ratcore"
+
+            cargo_toml = source / "Cargo.toml"
+            text = cargo_toml.read_text()
+            text = text.replace(
+                '[patch."ssh://git@github.com/brittonr/ratcore.git"]\n'
+                'ratcore = { git = "ssh://git@github.com:22/brittonr/ratcore.git", rev = "16333a505696b324637f021b657c474600a9b838" }',
+                '[patch."ssh://git@github.com/brittonr/ratcore.git"]\n'
+                f'ratcore = {{ path = "{ratcore}" }}\n\n'
+                '[patch."ssh://git@github.com:22/brittonr/ratcore.git"]\n'
+                f'ratcore = {{ path = "{ratcore}" }}',
+            )
+            text += f"""
+
+            [patch.\"ssh://git@github.com/brittonr/subwayrat.git\"]
+            rat-branches = {{ path = \"{subwayrat}/crates/rat-branches\" }}
+            rat-keymap = {{ path = \"{subwayrat}/crates/rat-keymap\" }}
+            rat-leaderkey = {{ path = \"{subwayrat}/crates/rat-leaderkey\" }}
+            rat-inline = {{ path = \"{subwayrat}/crates/rat-inline\" }}
+            rat-markdown = {{ path = \"{subwayrat}/crates/rat-markdown\" }}
+            rat-spinner = {{ path = \"{subwayrat}/crates/rat-spinner\" }}
+            rat-widgets = {{ path = \"{subwayrat}/crates/rat-widgets\" }}
+            """
+            cargo_toml.write_text(text)
+            PY
+
+            cd "$TMPDIR/source"
+            ./scripts/test-harness.sh live aspen2-qwen36
+
+            touch "$out"
           '';
         }
         // pkgs.lib.optionalAttrs isX86Linux {

@@ -15,7 +15,7 @@ cargo build --release
 ./scripts/test-harness.sh ci           # exact nix flake check gate
 ```
 
-The harness writes machine-readable results to `target/test-harness/results.json`, a Markdown summary to `target/test-harness/summary.md`, JUnit XML for CI collectors to `target/test-harness/junit.xml`, and per-step logs under `target/test-harness/logs/`. Use `CLANKERS_TEST_DRY_RUN=1` to inspect a tier without running it, or `CLANKERS_TEST_RESULT_DIR=path/to/results` to redirect all harness reports. `nix flake check` includes the credential-free `e2e-fake` check, which runs the deterministic fake-provider e2e tier through the packaged `clankers` binary.
+The harness writes machine-readable results to `target/test-harness/results.json`, a Markdown summary to `target/test-harness/summary.md`, JUnit XML for CI collectors to `target/test-harness/junit.xml`, and per-step logs under `target/test-harness/logs/`. Use `CLANKERS_TEST_DRY_RUN=1` to inspect a tier without running it, or `CLANKERS_TEST_RESULT_DIR=path/to/results` to redirect all harness reports. `nix flake check` includes the credential-free `e2e-fake` check, which runs the deterministic fake-provider e2e tier through the packaged `clankers` binary. The optional live aspen2 check is not part of normal pure evaluation; from the repo root run `CLANKERS_ENABLE_LIVE_CHECKS=1 nix build --impure --no-link .#checks.$(nix eval --raw --impure --expr builtins.currentSystem).live-aspen2-qwen36 --option sandbox false -L`. It expects the sibling rats checkout at `../rats` by default; set `CLANKERS_LIVE_RATS_DIR=/path/to/rats` to override. The test self-skips when the aspen2 endpoint/model is unavailable.
 
 Useful focused tiers:
 
