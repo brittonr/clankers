@@ -280,6 +280,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: VoiceAction,
     },
+    /// Inspect and validate SOUL/personality policy
+    Soul {
+        #[command(subcommand)]
+        action: SoulAction,
+    },
     /// Manage configuration
     Config {
         #[command(subcommand)]
@@ -492,6 +497,28 @@ pub enum VoiceAction {
         /// Reply mode: text, tts, or none
         #[arg(long)]
         reply: Option<String>,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum SoulAction {
+    /// Show first-pass SOUL/personality support boundaries
+    Status {
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Validate a SOUL source and optional personality preset without mutating the active prompt
+    Validate {
+        /// SOUL source: local path, file:<PATH>, discover, http(s)://*, cloud:*, or command marker
+        #[arg(long)]
+        soul: Option<String>,
+        /// Safe personality preset name
+        #[arg(long)]
+        personality: Option<String>,
         /// Emit machine-readable JSON
         #[arg(long)]
         json: bool,

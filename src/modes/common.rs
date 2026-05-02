@@ -295,6 +295,7 @@ pub fn build_tiered_tools(env: &ToolEnv) -> Vec<(ToolTier, Arc<dyn Tool>)> {
         (ToolTier::Specialty, Arc::new(crate::tools::checkpoint::CheckpointTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::tool_gateway::ToolGatewayTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::voice_mode::VoiceModeTool::new())),
+        (ToolTier::Specialty, Arc::new(crate::tools::soul_personality::SoulPersonalityTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::commit::CommitTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::review::ReviewTool::new())),
         (ToolTier::Specialty, Arc::new(crate::tools::ask::AskTool::new())),
@@ -885,6 +886,17 @@ mod tests {
             tiered
                 .iter()
                 .any(|(tier, tool)| *tier == ToolTier::Specialty && tool.definition().name == "voice_mode")
+        );
+    }
+
+    #[test]
+    fn build_tiered_tools_publishes_soul_personality_specialty_tool() {
+        let tiered = build_tiered_tools(&ToolEnv::default());
+
+        assert!(
+            tiered
+                .iter()
+                .any(|(tier, tool)| *tier == ToolTier::Specialty && tool.definition().name == "soul_personality")
         );
     }
 
