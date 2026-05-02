@@ -20,5 +20,6 @@
 
 - [x] Add integration tests for the primary successful path and at least one failure path. ✅ completed: 2026-05-02T00:31:33Z
   - Evidence: added `tests/soul_personality.rs` covering supported local SOUL validation without preserving full paths, command-source rejection, and `SoulPersonalityTool` success/failure details metadata. Verification passed `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers --test soul_personality --no-fail-fast` (3 passed), and `CARGO_TARGET_DIR=target cargo nextest run -p clankers soul --no-fail-fast` (9 passed).
-- [ ] Update README/docs and any relevant built-in tool or command lists.
+- [x] Update README/docs and any relevant built-in tool or command lists. ✅ completed: 2026-05-02T00:32:32Z
+  - Evidence: updated `README.md` Specialty tool list with `soul_personality`, documented `clankers soul status|validate`, and added first-pass safe/unsupported SOUL boundaries to `docs/src/reference/config.md`. Verification passed `cargo fmt`, `CARGO_TARGET_DIR=target cargo nextest run -p clankers soul --no-fail-fast` (9 passed), and `git diff --check`.
 - [ ] Run `cargo fmt`, targeted `cargo nextest`, `cargo check --tests`, and `git diff --check`.
