@@ -22,6 +22,7 @@ fi
 RESULT_DIR="${CLANKERS_TEST_RESULT_DIR:-target/test-harness}"
 SUMMARY_MD="$RESULT_DIR/summary.md"
 RESULTS_JSON="$RESULT_DIR/results.json"
+JUNIT_XML="$RESULT_DIR/junit.xml"
 LOG_DIR="$RESULT_DIR/logs"
 DRY_RUN="${CLANKERS_TEST_DRY_RUN:-0}"
 
@@ -32,6 +33,11 @@ PASS_COUNT=0
 FAIL_COUNT=0
 SKIP_COUNT=0
 RESULT_ITEMS=()
+RESULT_NAMES=()
+RESULT_STATUSES=()
+RESULT_EXIT_CODES=()
+RESULT_LOGS=()
+RESULT_COMMANDS=()
 
 # Keep cargo output and runtime state predictable for agent/CI runs.
 export CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-target}"
@@ -54,6 +60,16 @@ json_escape() {
     python3 -c 'import json,sys; print(json.dumps(sys.stdin.read()))'
 }
 
+xml_escape() {
+    local value="$1"
+    value="${value//&/&amp;}"
+    value="${value//</&lt;}"
+    value="${value//>/&gt;}"
+    value="${value//\"/&quot;}"
+    value="${value//\'/&apos;}"
+    printf '%s' "$value"
+}
+
 append_result() {
     local name="$1"
     local status="$2"
@@ -64,6 +80,11 @@ append_result() {
     command_json="$(printf '%s' "$command_text" | json_escape)"
     log_json="$(printf '%s' "$log_file" | json_escape)"
     RESULT_ITEMS+=("{\"name\":\"$name\",\"status\":\"$status\",\"exit_code\":$exit_code,\"command\":$command_json,\"log\":$log_json}")
+    RESULT_NAMES+=("$name")
+    RESULT_STATUSES+=("$status")
+    RESULT_EXIT_CODES+=("$exit_code")
+    RESULT_LOGS+=("$log_file")
+    RESULT_COMMANDS+=("$command_text")
 }
 
 run_step() {
@@ -146,8 +167,46 @@ PY
         done
     } > "$SUMMARY_MD"
 
+    {
+        local total_count
+        total_count="${#RESULT_NAMES[@]}"
+        printf '<testsuites>\n'
+        printf '  <testsuite name="%s" tests="%s" failures="%s" skipped="%s" timestamp="%s">\n' \
+            "$(xml_escape "clankers test-harness $MODE")" \
+            "$total_count" \
+            "$FAIL_COUNT" \
+            "$SKIP_COUNT" \
+            "$(xml_escape "$STARTED_AT")"
+        local index
+        for index in "${!RESULT_NAMES[@]}"; do
+            local name status exit_code log_file command_text
+            name="${RESULT_NAMES[$index]}"
+            status="${RESULT_STATUSES[$index]}"
+            exit_code="${RESULT_EXIT_CODES[$index]}"
+            log_file="${RESULT_LOGS[$index]}"
+            command_text="${RESULT_COMMANDS[$index]}"
+            printf '    <testcase classname="%s" name="%s">\n' \
+                "$(xml_escape "test-harness.$MODE")" \
+                "$(xml_escape "$name")"
+            if [[ "$status" == "failed" ]]; then
+                printf '      <failure message="%s">command: %s&#10;log: %s&#10;exit_code: %s</failure>\n' \
+                    "$(xml_escape "exit code $exit_code")" \
+                    "$(xml_escape "$command_text")" \
+                    "$(xml_escape "$log_file")" \
+                    "$(xml_escape "$exit_code")"
+            elif [[ "$status" == "skipped" ]]; then
+                printf '      <skipped message="%s"/>\n' \
+                    "$(xml_escape "dry run")"
+            fi
+            printf '    </testcase>\n'
+        done
+        printf '  </testsuite>\n'
+        printf '</testsuites>\n'
+    } > "$JUNIT_XML"
+
     echo "summary: $SUMMARY_MD"
     echo "json:    $RESULTS_JSON"
+    echo "junit:   $JUNIT_XML"
 }
 
 main() {
