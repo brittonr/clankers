@@ -9,6 +9,7 @@ A terminal coding agent in Rust. Inspired by [pi](https://pi.dev), built to be h
 ```
 cargo build --release
 ./scripts/test-harness.sh quick        # check + workspace tests
+./scripts/test-harness.sh live         # optional live/local-model tests such as aspen2 Qwen
 ./scripts/test-harness.sh full         # fmt, tests, clippy, repo rails, tigerstyle
 ./scripts/test-harness.sh vm           # all Linux Nix VM checks
 ./scripts/test-harness.sh ci           # exact nix flake check gate
@@ -23,6 +24,8 @@ Useful focused tiers:
 ./scripts/test-harness.sh e2e                  # default fake-provider deterministic e2e
 ./scripts/test-harness.sh e2e api              # fake-provider prompt/tool/json checks
 ./scripts/test-harness.sh e2e fast             # local CLI/config/auth checks
+./scripts/test-harness.sh live local-model     # optional live local-model checks, self-skips when unavailable
+./scripts/test-harness.sh live aspen2-qwen36   # aspen2 Qwen 3.6 OpenAI-compatible streaming check
 ./scripts/test-harness.sh vm smoke             # vm-smoke only
 ./scripts/test-harness.sh vm core              # smoke, remote daemon, session recovery
 ./scripts/test-harness.sh vm module            # daemon/router/integration NixOS module VMs

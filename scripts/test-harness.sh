@@ -6,6 +6,7 @@
 #   ./scripts/test-harness.sh package <crate> [filter...]
 #   ./scripts/test-harness.sh full
 #   ./scripts/test-harness.sh e2e [fake|deterministic|fast|api|all|test-name]
+#   ./scripts/test-harness.sh live [local-model|aspen2-qwen36|all]
 #   ./scripts/test-harness.sh vm [all|core|module|smoke|check-name]
 #   ./scripts/test-harness.sh ci [extra nix args...]
 #
@@ -183,6 +184,21 @@ run_vm_selector() {
     done
 }
 
+run_live_selector() {
+    local selector="${1:-local-model}"
+
+    case "$selector" in
+        all|local-model|aspen2-qwen36)
+            run_step "live aspen2 qwen36" cargo nextest run -p clankers --test aspen2_qwen36_integration --no-fail-fast
+            ;;
+        *)
+            echo "error: unknown live selector: $selector" >&2
+            echo "known live selectors: local-model, aspen2-qwen36, all" >&2
+            return 2
+            ;;
+    esac
+}
+
 write_reports() {
     local finished_at items_json
     finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -300,6 +316,9 @@ main() {
         e2e)
             local selector="${1:-fake}"
             run_step "e2e $selector" ./tests/e2e/run-tests.sh "$selector"
+            ;;
+        live)
+            run_live_selector "${1:-local-model}"
             ;;
         vm)
             run_vm_selector "${1:-all}"
