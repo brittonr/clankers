@@ -10,6 +10,7 @@ A terminal coding agent in Rust. Inspired by [pi](https://pi.dev), built to be h
 cargo build --release
 ./scripts/test-harness.sh quick        # check + workspace tests
 ./scripts/test-harness.sh full         # fmt, tests, clippy, repo rails, tigerstyle
+./scripts/test-harness.sh vm           # all Linux Nix VM checks
 ./scripts/test-harness.sh ci           # exact nix flake check gate
 ```
 
@@ -20,7 +21,10 @@ Useful focused tiers:
 ```
 ./scripts/test-harness.sh package clankers-provider discovery
 ./scripts/test-harness.sh e2e fast
-./scripts/test-harness.sh vm vm-remote-daemon
+./scripts/test-harness.sh vm smoke             # vm-smoke only
+./scripts/test-harness.sh vm core              # smoke, remote daemon, session recovery
+./scripts/test-harness.sh vm module            # daemon/router/integration NixOS module VMs
+./scripts/test-harness.sh vm vm-remote-daemon  # one explicit VM check
 ```
 
 ## Auth
