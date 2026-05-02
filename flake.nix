@@ -126,6 +126,29 @@
               ;;
           esac
         '';
+
+        # The e2e harness invokes `cargo run -- ...` so local development keeps
+        # exercising the same path. In Nix checks, run the already-built package
+        # instead of rebuilding/fetching through Cargo inside the sandbox.
+        cargo-run-clankers-shim = pkgs.writeShellScriptBin "cargo" ''
+          if [ "''${1:-}" = "run" ]; then
+            shift
+            while [ "$#" -gt 0 ]; do
+              case "$1" in
+                --)
+                  shift
+                  break
+                  ;;
+                *)
+                  shift
+                  ;;
+              esac
+            done
+            exec ${clankersPkg}/bin/clankers "$@"
+          fi
+
+          exec ${rustToolchain}/bin/cargo "$@"
+        '';
       in
       {
         packages = {
@@ -175,6 +198,40 @@
           '';
 
           docs = clankers-docs;
+
+          e2e-fake = pkgs.runCommand "clankers-e2e-fake" {
+            nativeBuildInputs = [
+              cargo-run-clankers-shim
+              pkgs.bash
+              pkgs.coreutils
+              pkgs.findutils
+              pkgs.gnugrep
+              pkgs.python3
+            ];
+          } ''
+            export HOME="$TMPDIR/home"
+            export XDG_CONFIG_HOME="$TMPDIR/xdg-config"
+            export XDG_CACHE_HOME="$TMPDIR/xdg-cache"
+            export XDG_DATA_HOME="$TMPDIR/xdg-data"
+            export XDG_RUNTIME_DIR="$TMPDIR/run"
+            export CLANKERS_NO_DAEMON=1
+            export CLANKERS_FAKE_PROVIDER=1
+            export CARGO_TARGET_DIR="$TMPDIR/cargo-target"
+            export CLANKERS_TEST_RESULT_DIR="$TMPDIR/test-harness"
+
+            mkdir -p \
+              "$HOME" \
+              "$XDG_CONFIG_HOME" \
+              "$XDG_CACHE_HOME" \
+              "$XDG_DATA_HOME" \
+              "$XDG_RUNTIME_DIR" \
+              "$CARGO_TARGET_DIR"
+
+            cd ${./.}
+            ./scripts/test-harness.sh e2e fake
+
+            touch "$out"
+          '';
 
           plugin-wasm-fresh = pkgs.runCommand "plugin-wasm-fresh" {
             nativeBuildInputs = [ pkgs.diffutils ];
