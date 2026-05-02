@@ -5,7 +5,7 @@
 #   ./scripts/test-harness.sh quick
 #   ./scripts/test-harness.sh package <crate> [filter...]
 #   ./scripts/test-harness.sh full
-#   ./scripts/test-harness.sh e2e [fast|api|all|test-name]
+#   ./scripts/test-harness.sh e2e [fake|deterministic|fast|api|all|test-name]
 #   ./scripts/test-harness.sh vm [all|core|module|smoke|check-name]
 #   ./scripts/test-harness.sh ci [extra nix args...]
 #
@@ -298,7 +298,7 @@ main() {
             run_step "tigerstyle" ./xtask/tigerstyle.sh
             ;;
         e2e)
-            local selector="${1:-all}"
+            local selector="${1:-fake}"
             run_step "e2e $selector" ./tests/e2e/run-tests.sh "$selector"
             ;;
         vm)
