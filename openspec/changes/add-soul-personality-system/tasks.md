@@ -13,7 +13,8 @@
   - Evidence: added `clankers soul status|validate` CLI handling in `src/commands/soul.rs`, top-level CLI/main dispatch, and the validation-only `soul_personality` Specialty tool in `src/tools/soul_personality.rs`. Verification passed `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers soul --no-fail-fast` (7 passed).
 - [x] Wire the capability through standalone prompt, interactive TUI, and daemon/session paths where applicable. ✅ completed: 2026-05-02T00:30:06Z
   - Evidence: exported `src/tools/soul_personality.rs` from `src/tools/mod.rs`, registered `SoulPersonalityTool` as `ToolTier::Specialty` in shared `build_tiered_tools()`, and added a publication regression for `soul_personality`; this shared registry is used by standalone, TUI, and daemon/session tool construction. Verification passed `cargo fmt` and `CARGO_TARGET_DIR=target cargo nextest run -p clankers soul --no-fail-fast`.
-- [ ] Persist or log session metadata needed for replay and debugging.
+- [x] Persist or log session metadata needed for replay and debugging. ✅ completed: 2026-05-02T00:30:42Z
+  - Evidence: `openspec/changes/add-soul-personality-system/evidence/session-metadata.md` documents the safe `SoulValidation` / `ToolResult::details` boundary: source class, file-label-only local display, optional validated personality name, support flag, and safe error category/message only; it excludes raw SOUL/personality prompt contents, full paths, URLs, commands, headers, credentials, and provider payloads.
 
 ## Phase 3: Verification and Documentation
 
