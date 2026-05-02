@@ -6,7 +6,7 @@
 #   ./scripts/test-harness.sh package <crate> [filter...]
 #   ./scripts/test-harness.sh full
 #   ./scripts/test-harness.sh e2e [fast|api|all|test-name]
-#   ./scripts/test-harness.sh vm [check-name]
+#   ./scripts/test-harness.sh vm [all|core|module|smoke|check-name]
 #   ./scripts/test-harness.sh ci [extra nix args...]
 #
 # Set CLANKERS_TEST_DRY_RUN=1 to print the selected commands without running them.
@@ -122,6 +122,65 @@ run_shell_step() {
     local name="$1"
     shift
     run_step "$name" bash -lc "$*"
+}
+
+run_vm_check() {
+    local check="$1"
+    local system="$2"
+    local label="${check#vm-}"
+    run_step "nix vm $label" nix build ".#checks.$system.$check" --no-link -L
+}
+
+run_vm_selector() {
+    local selector="${1:-all}"
+    local system
+    local checks=()
+
+    system="$(nix eval --raw --impure --expr 'builtins.currentSystem')"
+
+    case "$selector" in
+        all)
+            checks=(
+                vm-smoke
+                vm-remote-daemon
+                vm-session-recovery
+                vm-module-daemon
+                vm-module-router
+                vm-module-integration
+            )
+            ;;
+        core)
+            checks=(
+                vm-smoke
+                vm-remote-daemon
+                vm-session-recovery
+            )
+            ;;
+        module)
+            checks=(
+                vm-module-daemon
+                vm-module-router
+                vm-module-integration
+            )
+            ;;
+        smoke)
+            checks=(vm-smoke)
+            ;;
+        vm-*)
+            checks=("$selector")
+            ;;
+        *)
+            echo "error: unknown vm selector/check: $selector" >&2
+            echo "known vm selectors: all, core, module, smoke" >&2
+            echo "known vm checks: vm-smoke, vm-remote-daemon, vm-session-recovery, vm-module-daemon, vm-module-router, vm-module-integration" >&2
+            return 2
+            ;;
+    esac
+
+    local check
+    for check in "${checks[@]}"; do
+        run_vm_check "$check" "$system"
+    done
 }
 
 write_reports() {
@@ -243,14 +302,7 @@ main() {
             run_step "e2e $selector" ./tests/e2e/run-tests.sh "$selector"
             ;;
         vm)
-            local check="${1:-}"
-            if [[ -n "$check" ]]; then
-                run_step "nix vm $check" nix build ".#checks.$(nix eval --raw --impure --expr 'builtins.currentSystem').$check" --no-link -L
-            else
-                run_step "nix vm smoke" nix build ".#checks.$(nix eval --raw --impure --expr 'builtins.currentSystem').vm-smoke" --no-link -L
-                run_step "nix vm remote daemon" nix build ".#checks.$(nix eval --raw --impure --expr 'builtins.currentSystem').vm-remote-daemon" --no-link -L
-                run_step "nix vm session recovery" nix build ".#checks.$(nix eval --raw --impure --expr 'builtins.currentSystem').vm-session-recovery" --no-link -L
-            fi
+            run_vm_selector "${1:-all}"
             ;;
         ci)
             run_step "nix flake check" nix flake check "$@"
