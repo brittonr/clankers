@@ -714,6 +714,98 @@ mod tests {
     }
 
     #[test]
+    fn mcp_invalid_confirmation_and_capability_requests_do_not_dispatch() {
+        let cases = [
+            r#"{"id":21,"method":"tools/call","params":{"name":"approve_confirmation","arguments":{}}}"#,
+            r#"{"id":22,"method":"tools/call","params":{"name":"deny_confirmation","arguments":{"request_id":""}}}"#,
+            r#"{"id":23,"method":"tools/call","params":{"name":"set_capabilities","arguments":{"capabilities":"all"}}}"#,
+            r#"{"id":24,"method":"tools/call","params":{"name":"set_capabilities","arguments":{"capabilities":["read",7]}}}"#,
+        ];
+
+        for line in cases {
+            let mut dispatch_called = false;
+            let mut dispatch = |_cmd: SessionCommand| {
+                dispatch_called = true;
+                true
+            };
+            let response = handle_json_line_with_dispatch(line, Some("sess-1"), &mut dispatch).expect("json response");
+            let value: Value = serde_json::from_str(&response).expect("response json");
+
+            assert_eq!(value["error"]["code"], -32600);
+            assert!(!dispatch_called, "invalid request must be rejected before session command dispatch: {line}");
+        }
+    }
+
+    #[test]
+    fn mcp_unsupported_methods_and_private_tools_do_not_dispatch() {
+        let cases = [
+            r#"{"id":31,"method":"private/mutate_app","params":{}}"#,
+            r#"{"id":32,"method":"tools/call","params":{"name":"mutate_tui_app","arguments":{}}}"#,
+        ];
+
+        for line in cases {
+            let mut dispatch_called = false;
+            let mut dispatch = |_cmd: SessionCommand| {
+                dispatch_called = true;
+                true
+            };
+            let response = handle_json_line_with_dispatch(line, Some("sess-1"), &mut dispatch).expect("json response");
+            let value: Value = serde_json::from_str(&response).expect("response json");
+
+            assert!(value.get("error").is_some());
+            assert!(!dispatch_called, "unsupported/private request must not reach session dispatch: {line}");
+        }
+    }
+
+    #[test]
+    fn mcp_daemon_event_summary_omits_raw_system_tool_and_confirmation_text() {
+        let events = [
+            DaemonEvent::SystemPromptResponse {
+                prompt: "raw system prompt secret".to_string(),
+            },
+            DaemonEvent::ToolOutput {
+                call_id: "call-1".to_string(),
+                text: "tool output token secret".to_string(),
+                images: Vec::new(),
+            },
+            DaemonEvent::ToolDone {
+                call_id: "call-2".to_string(),
+                text: "tool done password secret".to_string(),
+                images: Vec::new(),
+                is_error: true,
+            },
+            DaemonEvent::ConfirmRequest {
+                request_id: "req-1".to_string(),
+                command: "dangerous command with secret".to_string(),
+                working_dir: "/tmp/safe-cwd".into(),
+            },
+            DaemonEvent::SystemMessage {
+                text: "daemon status with bearer token".to_string(),
+                is_error: true,
+            },
+        ];
+        let joined = events
+            .iter()
+            .map(summarize_daemon_event)
+            .map(|value| value.to_string())
+            .collect::<Vec<_>>()
+            .join("\n");
+
+        for raw in [
+            "raw system prompt secret",
+            "tool output token secret",
+            "tool done password secret",
+            "dangerous command with secret",
+            "daemon status with bearer token",
+        ] {
+            assert!(!joined.contains(raw), "summary leaked raw event text: {raw}");
+        }
+        assert!(joined.contains("prompt_len"));
+        assert!(joined.contains("command_len"));
+        assert!(joined.contains("text_len"));
+    }
+
+    #[test]
     fn initializes_and_lists_tools() {
         let init = handle_request(
             McpControlRequest {

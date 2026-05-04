@@ -1,5 +1,6 @@
 use std::io::BufRead;
 use std::io::Write;
+use std::path::PathBuf;
 use std::time::Duration;
 use std::time::Instant;
 
@@ -73,24 +74,41 @@ fn drain_session_events(client: &mut ClientAdapter) -> Vec<serde_json::Value> {
     events
 }
 
+fn session_socket_path_from_attach_response(session_id: &str, response: ControlResponse) -> Result<PathBuf> {
+    match response {
+        ControlResponse::Attached { socket_path } => Ok(socket_path.into()),
+        ControlResponse::Error { message } => Err(crate::error::Error::Provider {
+            message: format!("Failed to attach MCP session-control bridge to session {session_id}: {message}"),
+        }),
+        other => Err(crate::error::Error::Provider {
+            message: format!("Unexpected daemon attach response for MCP session-control bridge: {other:?}"),
+        }),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mcp_missing_session_attach_response_is_actionable() {
+        let err = session_socket_path_from_attach_response("missing-session", ControlResponse::Error {
+            message: "session not found".to_string(),
+        })
+        .expect_err("missing session must be rejected");
+        let message = err.to_string();
+
+        assert!(message.contains("Failed to attach MCP session-control bridge to session missing-session"));
+        assert!(message.contains("session not found"));
+    }
+}
+
 async fn connect_session(session_id: &str) -> Result<ClientAdapter> {
     let response = crate::modes::attach::send_control(ControlCommand::AttachSession {
         session_id: session_id.to_string(),
     })
     .await?;
-    let socket_path = match response {
-        ControlResponse::Attached { socket_path } => socket_path,
-        ControlResponse::Error { message } => {
-            return Err(crate::error::Error::Provider {
-                message: format!("Failed to attach MCP session-control bridge to session {session_id}: {message}"),
-            });
-        }
-        other => {
-            return Err(crate::error::Error::Provider {
-                message: format!("Unexpected daemon attach response for MCP session-control bridge: {other:?}"),
-            });
-        }
-    };
+    let socket_path = session_socket_path_from_attach_response(session_id, response)?;
     let stream = UnixStream::connect(&socket_path).await.map_err(|source| crate::error::Error::Io { source })?;
     ClientAdapter::connect(stream, "clankers-mcp-session-control", None, Some(session_id.to_string()))
         .await
