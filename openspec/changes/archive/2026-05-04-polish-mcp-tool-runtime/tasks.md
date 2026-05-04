@@ -16,4 +16,4 @@
 - [x] Run targeted package/integration checks for the touched modules.
 - [x] Run `cargo check --tests` for affected crates.
 - [x] Run `git diff --check`.
-- [ ] Sync the delta spec into the canonical `integrations-mcp` spec and archive the change after implementation tasks complete.
+- [x] Sync the delta spec into the canonical `integrations-mcp` spec and archive the change after implementation tasks complete.
