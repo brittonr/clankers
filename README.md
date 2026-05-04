@@ -122,6 +122,20 @@ clankers self-evolution run \
 
 The dry-run executor writes `candidate.txt` and `receipt.json` under a run-scoped output directory. It treats unchanged candidates as evaluation noise, never promotes automatically, and always reports `human_approval_required=true` before any install/merge/replacement can happen.
 
+If a run recommends a changed candidate, record explicit human approval through the same session-control confirmation surface before any future install/merge step:
+
+```
+clankers self-evolution approve \
+  --receipt target/self-evolution/<run-id>/receipt.json \
+  --session <id> \
+  --confirmation-id <confirmation-id> \
+  --approver <human-label> \
+  --dry-run \
+  --json
+```
+
+The approval step writes `approval.json` next to the run receipt, submits a fake `approve_confirmation` receipt plus history observation evidence, and still does not copy, merge, or replace the active target artifact. Candidate application remains a separate human-gated future path.
+
 ### Headless
 
 No TUI required. Pipe prompts in, get results out.

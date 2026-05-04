@@ -461,6 +461,27 @@ pub enum SelfEvolutionAction {
         #[arg(long)]
         json: bool,
     },
+    /// Record explicit human approval for a recommended candidate without applying it
+    Approve {
+        /// Run-scoped receipt.json produced by `self-evolution run`
+        #[arg(long, value_name = "PATH")]
+        receipt: std::path::PathBuf,
+        /// Existing clankers session id for the approval confirmation receipt
+        #[arg(long, value_name = "SESSION_ID")]
+        session: String,
+        /// Confirmation id to approve through the normal session path
+        #[arg(long, value_name = "CONFIRMATION_ID")]
+        confirmation_id: String,
+        /// Human approver label to record in the approval receipt
+        #[arg(long, value_name = "LABEL")]
+        approver: String,
+        /// Required safety gate; approval is recorded but candidate application remains disabled
+        #[arg(long)]
+        dry_run: bool,
+        /// Emit machine-readable JSON approval receipt
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
@@ -1292,6 +1313,47 @@ mod tests {
                 assert_eq!(baseline_command, "cargo test self_eval");
                 assert_eq!(candidate_output, std::path::PathBuf::from("target/self-evolution"));
                 assert_eq!(session.as_deref(), Some("sess-1"));
+                assert!(dry_run);
+                assert!(json);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn self_evolution_approve_cli_parses_confirmation_gate_options() {
+        let cli = Cli::parse_from([
+            "clankers",
+            "self-evolution",
+            "approve",
+            "--receipt",
+            "target/self-evolution/run/receipt.json",
+            "--session",
+            "sess-1",
+            "--confirmation-id",
+            "confirm-1",
+            "--approver",
+            "human-reviewer",
+            "--dry-run",
+            "--json",
+        ]);
+
+        match cli.command.expect("command should parse") {
+            Commands::SelfEvolution {
+                action:
+                    SelfEvolutionAction::Approve {
+                        receipt,
+                        session,
+                        confirmation_id,
+                        approver,
+                        dry_run,
+                        json,
+                    },
+            } => {
+                assert_eq!(receipt, std::path::PathBuf::from("target/self-evolution/run/receipt.json"));
+                assert_eq!(session, "sess-1");
+                assert_eq!(confirmation_id, "confirm-1");
+                assert_eq!(approver, "human-reviewer");
                 assert!(dry_run);
                 assert!(json);
             }

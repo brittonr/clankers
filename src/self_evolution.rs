@@ -43,6 +43,39 @@ pub struct SelfEvolutionRunReceipt {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct SelfEvolutionApprovalOptions {
+    pub receipt_path: PathBuf,
+    pub session_id: String,
+    pub confirmation_id: String,
+    pub approver: String,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SelfEvolutionApprovalReceipt {
+    pub source: String,
+    pub run_id: String,
+    pub status: String,
+    pub dry_run: bool,
+    pub approver: String,
+    pub confirmation_id: String,
+    pub target_path: String,
+    pub candidate_path: String,
+    pub approval: PromotionApprovalRecord,
+    pub mcp_receipts: Vec<McpOrchestrationReceipt>,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PromotionApprovalRecord {
+    pub approved: bool,
+    pub human_approval_required: bool,
+    pub applied: bool,
+    pub promotion_status: String,
+    pub evidence: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ArtifactIdentity {
     pub path: String,
@@ -206,6 +239,65 @@ pub fn run_self_evolution_dry_run(
     Ok(receipt)
 }
 
+pub fn approve_self_evolution_promotion(
+    options: &SelfEvolutionApprovalOptions,
+    executor: &mut impl SelfEvolutionExecutor,
+) -> std::result::Result<SelfEvolutionApprovalReceipt, String> {
+    validate_approval_options(options)?;
+    let receipt_body = fs::read_to_string(&options.receipt_path)
+        .map_err(|err| format!("failed to read self-evolution receipt: {err}"))?;
+    let run_receipt: SelfEvolutionRunReceipt =
+        serde_json::from_str(&receipt_body).map_err(|err| format!("failed to parse self-evolution receipt: {err}"))?;
+    validate_promotable_receipt(&run_receipt)?;
+    let candidate_path = Path::new(&run_receipt.candidate.artifact_path);
+    if !candidate_path.exists() {
+        return Err("candidate artifact from receipt does not exist; promotion approval cannot be recorded".to_string());
+    }
+
+    let approval_receipt = executor.submit_tool(
+        Some(&options.session_id),
+        "approve_confirmation",
+        json!({
+            "confirmation_id": options.confirmation_id,
+            "purpose": "self_evolution_promotion_approval",
+        }),
+    );
+    let history_receipt = executor.submit_tool(
+        Some(&options.session_id),
+        "session_history",
+        json!({ "purpose": "self_evolution_approval_evidence" }),
+    );
+
+    let approval = PromotionApprovalRecord {
+        approved: true,
+        human_approval_required: true,
+        applied: false,
+        promotion_status: "approval_recorded_not_applied".to_string(),
+        evidence: vec![
+            "human approval was recorded through the session-control confirmation path".to_string(),
+            "candidate was not installed, merged, or copied over the active target by this approval step".to_string(),
+        ],
+    };
+    let receipt = SelfEvolutionApprovalReceipt {
+        source: "self_evolution_promotion_gate".to_string(),
+        run_id: run_receipt.run_id,
+        status: "approval_recorded".to_string(),
+        dry_run: true,
+        approver: options.approver.clone(),
+        confirmation_id: options.confirmation_id.clone(),
+        target_path: run_receipt.target.path,
+        candidate_path: run_receipt.candidate.artifact_path,
+        approval,
+        mcp_receipts: vec![approval_receipt, history_receipt],
+        created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+    };
+
+    let approval_path = approval_receipt_path(&options.receipt_path);
+    let approval_json = serde_json::to_string_pretty(&receipt).map_err(|err| err.to_string())?;
+    fs::write(&approval_path, approval_json).map_err(|err| format!("failed to write approval receipt: {err}"))?;
+    Ok(receipt)
+}
+
 pub fn validate_run_options(options: &SelfEvolutionRunOptions) -> std::result::Result<(), String> {
     if !options.dry_run {
         return Err(
@@ -220,6 +312,42 @@ pub fn validate_run_options(options: &SelfEvolutionRunOptions) -> std::result::R
         return Err("candidate output path must be non-empty".to_string());
     }
     reject_in_place_candidate(&options.target, &options.candidate_output)
+}
+
+pub fn approval_receipt_path(run_receipt_path: &Path) -> PathBuf {
+    run_receipt_path.with_file_name("approval.json")
+}
+
+fn validate_approval_options(options: &SelfEvolutionApprovalOptions) -> std::result::Result<(), String> {
+    if !options.dry_run {
+        return Err(
+            "promotion is disabled by default; rerun with --dry-run to record approval without applying the candidate"
+                .to_string(),
+        );
+    }
+    if options.session_id.trim().is_empty() {
+        return Err("approval requires a session id so the confirmation path is auditable".to_string());
+    }
+    if options.confirmation_id.trim().is_empty() {
+        return Err("approval requires a non-empty confirmation id".to_string());
+    }
+    if options.approver.trim().is_empty() {
+        return Err("approval requires a non-empty approver label".to_string());
+    }
+    Ok(())
+}
+
+fn validate_promotable_receipt(receipt: &SelfEvolutionRunReceipt) -> std::result::Result<(), String> {
+    if !receipt.recommendation.human_approval_required {
+        return Err("receipt does not require human approval; refusing ambiguous promotion state".to_string());
+    }
+    if !receipt.recommendation.recommended {
+        return Err("candidate is not recommended; approval receipt will not be recorded".to_string());
+    }
+    if receipt.recommendation.promotion_status != "awaiting_human_approval" {
+        return Err("candidate is not awaiting human approval".to_string());
+    }
+    Ok(())
 }
 
 fn reject_in_place_candidate(target: &Path, candidate_output: &Path) -> std::result::Result<(), String> {
@@ -380,5 +508,94 @@ mod tests {
             candidate_body: None,
         };
         assert!(validate_run_options(&in_place).unwrap_err().contains("live target directory"));
+    }
+
+    #[test]
+    fn self_evolution_approval_records_confirmation_receipt_without_applying() {
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("tool.md");
+        fs::write(&target, "baseline\n").unwrap();
+        let options = SelfEvolutionRunOptions {
+            target: target.clone(),
+            baseline_command: "eval".to_string(),
+            candidate_output: tmp.path().join("out"),
+            session_id: Some("sess-1".to_string()),
+            dry_run: true,
+            candidate_body: Some("candidate\n".to_string()),
+        };
+        let mut executor = FakeMcpExecutor::default();
+        let run_receipt = run_self_evolution_dry_run(&options, &mut executor).unwrap();
+        let run_receipt_path = Path::new(&run_receipt.candidate.output_dir).join("receipt.json");
+        let approval_options = SelfEvolutionApprovalOptions {
+            receipt_path: run_receipt_path.clone(),
+            session_id: "sess-1".to_string(),
+            confirmation_id: "confirm-1".to_string(),
+            approver: "human-reviewer".to_string(),
+            dry_run: true,
+        };
+        let mut approval_executor = FakeMcpExecutor::default();
+
+        let approval = approve_self_evolution_promotion(&approval_options, &mut approval_executor).unwrap();
+
+        assert_eq!(approval.source, "self_evolution_promotion_gate");
+        assert_eq!(approval.status, "approval_recorded");
+        assert!(approval.approval.approved);
+        assert!(!approval.approval.applied);
+        assert_eq!(approval.approval.promotion_status, "approval_recorded_not_applied");
+        assert_eq!(approval_executor.calls.len(), 2);
+        assert_eq!(approval_executor.calls[0].tool, "approve_confirmation");
+        assert_eq!(approval_executor.calls[1].tool, "session_history");
+        assert!(approval_receipt_path(&run_receipt_path).exists());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "baseline\n");
+    }
+
+    #[test]
+    fn self_evolution_approval_rejects_unrecommended_or_ungated_candidates() {
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("prompt.md");
+        fs::write(&target, "same\n").unwrap();
+        let options = SelfEvolutionRunOptions {
+            target,
+            baseline_command: "eval".to_string(),
+            candidate_output: tmp.path().join("out"),
+            session_id: Some("sess-1".to_string()),
+            dry_run: true,
+            candidate_body: None,
+        };
+        let mut executor = FakeMcpExecutor::default();
+        let run_receipt = run_self_evolution_dry_run(&options, &mut executor).unwrap();
+        let run_receipt_path = Path::new(&run_receipt.candidate.output_dir).join("receipt.json");
+        let approval_options = SelfEvolutionApprovalOptions {
+            receipt_path: run_receipt_path,
+            session_id: "sess-1".to_string(),
+            confirmation_id: "confirm-1".to_string(),
+            approver: "reviewer".to_string(),
+            dry_run: true,
+        };
+        let mut approval_executor = FakeMcpExecutor::default();
+
+        let err = approve_self_evolution_promotion(&approval_options, &mut approval_executor).unwrap_err();
+
+        assert!(err.contains("not recommended"));
+        assert!(approval_executor.calls.is_empty());
+    }
+
+    #[test]
+    fn self_evolution_approval_requires_dry_run_and_confirmation_context() {
+        let options = SelfEvolutionApprovalOptions {
+            receipt_path: PathBuf::from("receipt.json"),
+            session_id: "".to_string(),
+            confirmation_id: "confirm-1".to_string(),
+            approver: "reviewer".to_string(),
+            dry_run: true,
+        };
+        assert!(validate_approval_options(&options).unwrap_err().contains("session id"));
+
+        let non_dry = SelfEvolutionApprovalOptions {
+            dry_run: false,
+            session_id: "sess-1".to_string(),
+            ..options
+        };
+        assert!(validate_approval_options(&non_dry).unwrap_err().contains("disabled by default"));
     }
 }
