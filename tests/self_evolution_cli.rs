@@ -26,6 +26,17 @@ fn run_clankers_json(args: &[String]) -> Value {
     serde_json::from_slice(&output.stdout).expect("stdout should be JSON")
 }
 
+fn run_clankers_failure(args: &[String]) -> Output {
+    let output = run_clankers(args);
+    assert!(
+        !output.status.success(),
+        "clankers command unexpectedly succeeded\nargs: {args:?}\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    output
+}
+
 fn string_field<'a>(value: &'a Value, path: &[&str]) -> &'a str {
     let mut current = value;
     for key in path {
@@ -154,4 +165,91 @@ fn self_evolution_cli_runs_approve_preflight_and_live_apply_with_temp_files() {
     assert_eq!(string_field(&application, &["status"]), "applied");
     assert_eq!(string_field(&application, &["rollback", "backup_path"]), planned_backup.display().to_string());
     assert_eq!(application["rollback"]["instructions"].as_array().expect("rollback instructions").len(), 2);
+}
+
+#[test]
+fn self_evolution_cli_rejects_stale_target_live_apply_before_mutation() {
+    let tmp = tempfile::TempDir::new().expect("tempdir should exist");
+    let target = tmp.path().join("target.txt");
+    let candidate_source = tmp.path().join("candidate-source.txt");
+    let candidate_output = tmp.path().join("candidates");
+
+    std::fs::write(&target, "initial target artifact\n").expect("write target");
+    std::fs::write(&candidate_source, "initial target artifact\nimproved candidate line\n").expect("write candidate");
+    std::fs::create_dir(&candidate_output).expect("create candidate output root");
+
+    let run = run_clankers_json(&[
+        "self-evolution".into(),
+        "run".into(),
+        "--target".into(),
+        target.display().to_string(),
+        "--baseline-command".into(),
+        format!("test -s {}", target.display()),
+        "--candidate-output".into(),
+        candidate_output.display().to_string(),
+        "--candidate-file".into(),
+        candidate_source.display().to_string(),
+        "--session".into(),
+        "cli-stale-session".into(),
+        "--dry-run".into(),
+        "--json".into(),
+    ]);
+    assert_eq!(run["recommendation"]["recommended"], true);
+
+    let run_dir = PathBuf::from(string_field(&run, &["candidate", "output_dir"]));
+    let receipt_path = run_dir.join("receipt.json");
+    let approval_path = run_dir.join("approval.json");
+    let application_path = run_dir.join("application.json");
+
+    let approval = run_clankers_json(&[
+        "self-evolution".into(),
+        "approve".into(),
+        "--receipt".into(),
+        receipt_path.display().to_string(),
+        "--session".into(),
+        "cli-stale-session".into(),
+        "--confirmation-id".into(),
+        "cli-stale-confirmation".into(),
+        "--approver".into(),
+        "cli-stale-human".into(),
+        "--dry-run".into(),
+        "--json".into(),
+    ]);
+    assert_eq!(approval["approval"]["approved"], true);
+
+    std::fs::write(&target, "operator changed target before apply\n").expect("mutate target after approval");
+
+    let verify_command = format!("grep -q 'improved candidate line' {}", target.display());
+    let failed_apply = run_clankers_failure(&[
+        "self-evolution".into(),
+        "apply".into(),
+        "--receipt".into(),
+        receipt_path.display().to_string(),
+        "--approval".into(),
+        approval_path.display().to_string(),
+        "--mode".into(),
+        "replace-file".into(),
+        "--verify-command".into(),
+        verify_command,
+        "--live-apply".into(),
+        "--json".into(),
+    ]);
+
+    let stderr = String::from_utf8_lossy(&failed_apply.stderr);
+    assert!(
+        stderr.contains("target artifact changed"),
+        "stale-target error should be actionable, got stderr:\n{stderr}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&target).expect("target after rejected live apply"),
+        "operator changed target before apply\n"
+    );
+    assert!(!application_path.exists(), "rejected live apply must not persist application receipt");
+    assert!(
+        std::fs::read_dir(&run_dir)
+            .expect("read run dir")
+            .filter_map(std::result::Result::ok)
+            .all(|entry| !entry.file_name().to_string_lossy().contains("backup")),
+        "stale-target rejection should happen before backup creation"
+    );
 }
