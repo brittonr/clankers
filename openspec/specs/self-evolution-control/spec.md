@@ -12,7 +12,7 @@ The system MUST model self-evolution as an auditable offline run with explicit t
 #### Scenario: Run records baseline and candidate [r[self-evolution-control.run-model.scenario.baseline-candidate]]
 - GIVEN a self-evolution run targets a skill, prompt, tool description, or code path
 - WHEN the run starts
-- THEN it MUST record the baseline artifact identity, evaluation command or dataset, candidate output location, run id, and safe metadata before recommending any promotion
+- THEN it MUST record the baseline artifact identity, evaluation command or dataset, candidate output location, run id, optional operator-supplied candidate source, and safe metadata before recommending any promotion
 
 #### Scenario: Unchanged candidate is not promoted on noisy score [r[self-evolution-control.run-model.scenario.unchanged-noise]]
 - GIVEN a candidate artifact is byte-for-byte or semantically unchanged from the baseline

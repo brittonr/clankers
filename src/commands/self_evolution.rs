@@ -1,5 +1,7 @@
 //! Self-evolution CLI handlers.
 
+use std::path::PathBuf;
+
 use crate::cli::SelfEvolutionAction;
 use crate::commands::CommandContext;
 use crate::error::Error;
@@ -22,17 +24,20 @@ pub fn run(_ctx: &CommandContext, action: SelfEvolutionAction) -> Result<()> {
             baseline_command,
             candidate_output,
             session,
+            candidate_body,
+            candidate_file,
             dry_run,
             simulate_eval_failure,
             json,
         } => {
+            let candidate_body = load_candidate_body(candidate_body, candidate_file)?;
             let options = SelfEvolutionRunOptions {
                 target,
                 baseline_command,
                 candidate_output,
                 session_id: session,
                 dry_run,
-                candidate_body: None,
+                candidate_body,
                 simulate_eval_failure,
             };
             let mut executor = FakeMcpExecutor::default();
@@ -81,6 +86,17 @@ pub fn run(_ctx: &CommandContext, action: SelfEvolutionAction) -> Result<()> {
         }
     }
     Ok(())
+}
+
+fn load_candidate_body(candidate_body: Option<String>, candidate_file: Option<PathBuf>) -> Result<Option<String>> {
+    if let Some(body) = candidate_body {
+        return Ok(Some(body));
+    }
+    if let Some(path) = candidate_file {
+        let body = std::fs::read_to_string(&path).map_err(|source| Error::Io { source })?;
+        return Ok(Some(body));
+    }
+    Ok(None)
 }
 
 fn print_run_receipt(receipt: &SelfEvolutionRunReceipt, json: bool) -> Result<()> {

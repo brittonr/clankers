@@ -454,6 +454,12 @@ pub enum SelfEvolutionAction {
         /// Existing clankers session id that the fake MCP executor should reference
         #[arg(long, value_name = "SESSION_ID")]
         session: Option<String>,
+        /// Candidate body to write into the isolated run artifact instead of copying the target
+        #[arg(long, value_name = "TEXT", conflicts_with = "candidate_file")]
+        candidate_body: Option<String>,
+        /// Candidate file to copy into the isolated run artifact instead of copying the target
+        #[arg(long, value_name = "PATH", conflicts_with = "candidate_body")]
+        candidate_file: Option<std::path::PathBuf>,
         /// Required safety gate for the first pass; no live executor is enabled yet
         #[arg(long)]
         dry_run: bool,
@@ -1321,6 +1327,8 @@ mod tests {
             "target/self-evolution",
             "--session",
             "sess-1",
+            "--candidate-file",
+            "target/self-evolution/candidate.txt",
             "--dry-run",
             "--simulate-eval-failure",
             "--json",
@@ -1334,6 +1342,8 @@ mod tests {
                         baseline_command,
                         candidate_output,
                         session,
+                        candidate_body,
+                        candidate_file,
                         dry_run,
                         simulate_eval_failure,
                         json,
@@ -1343,12 +1353,36 @@ mod tests {
                 assert_eq!(baseline_command, "cargo test self_eval");
                 assert_eq!(candidate_output, std::path::PathBuf::from("target/self-evolution"));
                 assert_eq!(session.as_deref(), Some("sess-1"));
+                assert_eq!(candidate_body, None);
+                assert_eq!(candidate_file, Some(std::path::PathBuf::from("target/self-evolution/candidate.txt")));
                 assert!(dry_run);
                 assert!(simulate_eval_failure);
                 assert!(json);
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn self_evolution_run_rejects_candidate_body_and_file_conflict() {
+        let err = Cli::try_parse_from([
+            "clankers",
+            "self-evolution",
+            "run",
+            "--target",
+            "target.txt",
+            "--baseline-command",
+            "true",
+            "--candidate-output",
+            "target/self-evolution",
+            "--candidate-body",
+            "changed",
+            "--candidate-file",
+            "candidate.txt",
+            "--dry-run",
+        ])
+        .expect_err("candidate body and file should conflict");
+        assert_eq!(err.kind(), clap::error::ErrorKind::ArgumentConflict);
     }
 
     #[test]
