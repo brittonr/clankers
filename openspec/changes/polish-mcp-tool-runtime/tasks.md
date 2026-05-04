@@ -5,15 +5,15 @@
 
 ## Phase 2: Implementation
 
-- [ ] Inventory current `integrations-mcp` code/docs seams and record the exact files to touch.
-- [ ] Add typed policy/config/request/receipt models with unit tests.
-- [ ] Implement the first runtime/adapter slice behind deterministic fake tests.
-- [ ] Wire the feature through the shared clankers surface without bypassing daemon/session/tool policy.
-- [ ] Update README and relevant docs for supported behavior, non-goals, and safety policy.
+- [x] Inventory current `integrations-mcp` code/docs seams and record the exact files to touch.
+- [x] Add typed policy/config/request/receipt models with unit tests.
+- [x] Implement the first runtime/adapter slice behind deterministic fake tests.
+- [x] Wire the feature through the shared clankers surface without bypassing daemon/session/tool policy.
+- [x] Update README and relevant docs for supported behavior, non-goals, and safety policy.
 
 ## Phase 3: Verification and Closeout
 
-- [ ] Run targeted package/integration checks for the touched modules.
-- [ ] Run `cargo check --tests` for affected crates.
-- [ ] Run `git diff --check`.
+- [x] Run targeted package/integration checks for the touched modules.
+- [x] Run `cargo check --tests` for affected crates.
+- [x] Run `git diff --check`.
 - [ ] Sync the delta spec into the canonical `integrations-mcp` spec and archive the change after implementation tasks complete.

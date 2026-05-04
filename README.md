@@ -400,7 +400,7 @@ SOUL/personality validation: `clankers soul status [--json]` reports first-pass 
 
 Matrix: `matrix_send`, `matrix_read`, `matrix_rooms`, `matrix_peers`, `matrix_join`, `matrix_rpc`
 
-Plugins and configured MCP servers add additional tools at runtime. MCP tools are published as Specialty tools using a source-identifying prefix such as `mcp_filesystem_read_file` or a configured `toolPrefix`.
+Plugins and configured MCP servers add additional tools at runtime. MCP tools are published as Specialty tools using a source-identifying prefix such as `mcp_filesystem_read_file` or a configured `toolPrefix`. Runtime MCP calls return safe receipts and reject unavailable runtimes, cancellation, timeout, and schema-drift cases before leaking raw arguments or credentials into replay metadata.
 
 ## Architecture
 

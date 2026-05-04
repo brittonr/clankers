@@ -7,10 +7,13 @@
 
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 
 use async_trait::async_trait;
 use clankers_config::McpServerConfig;
 use serde_json::Value;
+use tokio::time::timeout;
 
 use super::Tool;
 use super::ToolContext;
@@ -34,6 +37,91 @@ impl McpRegisteredTool {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum McpRuntimeState {
+    Healthy,
+    Unavailable,
+}
+
+impl McpRuntimeState {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Healthy => "healthy",
+            Self::Unavailable => "unavailable",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpRuntimeStatus {
+    pub state: McpRuntimeState,
+    pub message: Option<String>,
+}
+
+impl McpRuntimeStatus {
+    pub fn healthy() -> Self {
+        Self {
+            state: McpRuntimeState::Healthy,
+            message: None,
+        }
+    }
+
+    pub fn unavailable(message: impl Into<String>) -> Self {
+        Self {
+            state: McpRuntimeState::Unavailable,
+            message: Some(message.into()),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct McpCallReceipt {
+    pub server: String,
+    pub visible_tool: String,
+    pub mcp_tool: String,
+    pub status: String,
+    pub duration_ms: u128,
+    pub error_class: Option<String>,
+}
+
+impl McpCallReceipt {
+    fn new(
+        server: &str,
+        visible_tool: &str,
+        mcp_tool: &str,
+        status: impl Into<String>,
+        duration_ms: u128,
+        error_class: Option<&str>,
+    ) -> Self {
+        Self {
+            server: server.to_string(),
+            visible_tool: visible_tool.to_string(),
+            mcp_tool: mcp_tool.to_string(),
+            status: status.into(),
+            duration_ms,
+            error_class: error_class.map(str::to_string),
+        }
+    }
+
+    fn to_details(&self, runtime_state: McpRuntimeState) -> Value {
+        serde_json::json!({
+            "source": "mcp",
+            "server": self.server,
+            "mcp_tool": self.mcp_tool,
+            "visible_tool": self.visible_tool,
+            "runtime_state": runtime_state.as_str(),
+            "receipt": {
+                "server": self.server,
+                "visible_tool": self.visible_tool,
+                "mcp_tool": self.mcp_tool,
+                "status": self.status,
+                "duration_ms": self.duration_ms,
+                "error_class": self.error_class,
+            }
+        })
+    }
+}
+
 #[async_trait]
 pub trait McpRuntime: Send + Sync {
     async fn call_tool(&self, server: &str, tool: &str, args: Value) -> Result<Value, String>;
@@ -41,12 +129,17 @@ pub trait McpRuntime: Send + Sync {
 
 pub trait McpRuntimeRegistry: McpRuntime {
     fn registered_tools(&self, server: &str) -> Vec<McpRegisteredTool>;
+
+    fn runtime_status(&self, _server: &str) -> McpRuntimeStatus {
+        McpRuntimeStatus::healthy()
+    }
 }
 
 pub struct McpTool {
     definition: ToolDefinition,
     server_name: String,
     mcp_tool_name: String,
+    timeout_ms: Option<u64>,
     runtime: Arc<dyn McpRuntimeRegistry>,
 }
 
@@ -55,23 +148,35 @@ impl McpTool {
         server_name: impl Into<String>,
         mcp_tool_name: impl Into<String>,
         definition: ToolDefinition,
+        timeout_ms: Option<u64>,
         runtime: Arc<dyn McpRuntimeRegistry>,
     ) -> Self {
         Self {
             definition,
             server_name: server_name.into(),
             mcp_tool_name: mcp_tool_name.into(),
+            timeout_ms,
             runtime,
         }
     }
 
-    fn result_details(&self) -> Value {
-        serde_json::json!({
-            "source": "mcp",
-            "server": self.server_name,
-            "mcp_tool": self.mcp_tool_name,
-            "visible_tool": self.definition.name,
-        })
+    fn receipt(&self, status: impl Into<String>, started_at: Instant, error_class: Option<&str>) -> McpCallReceipt {
+        McpCallReceipt::new(
+            &self.server_name,
+            &self.definition.name,
+            &self.mcp_tool_name,
+            status,
+            started_at.elapsed().as_millis(),
+            error_class,
+        )
+    }
+
+    fn schema_is_current(&self) -> bool {
+        self.runtime
+            .registered_tools(&self.server_name)
+            .into_iter()
+            .find(|registered| registered.name == self.mcp_tool_name)
+            .is_some_and(|registered| registered.input_schema == self.definition.input_schema)
     }
 }
 
@@ -87,12 +192,48 @@ impl Tool for McpTool {
 
     async fn execute(&self, ctx: &ToolContext, params: Value) -> ToolResult {
         ctx.emit_progress(&format!("mcp: {}::{}", self.server_name, self.mcp_tool_name));
-        let details = self.result_details();
-        match self.runtime.call_tool(&self.server_name, &self.mcp_tool_name, params).await {
-            Ok(result) => mcp_result_to_tool_result(result).with_details(details),
+        let started_at = Instant::now();
+        let runtime_status = self.runtime.runtime_status(&self.server_name);
+        if runtime_status.state != McpRuntimeState::Healthy {
+            let details = self.receipt("runtime_unavailable", started_at, Some("runtime_unavailable"));
+            let message = runtime_status.message.unwrap_or_else(|| "runtime unavailable".to_string());
+            return ToolResult::error(format!("MCP runtime unavailable ({}): {message}", self.server_name))
+                .with_details(details.to_details(runtime_status.state));
+        }
+        if !self.schema_is_current() {
+            let details = self.receipt("schema_drift", started_at, Some("schema_drift"));
+            return ToolResult::error(format!(
+                "MCP schema drift ({}::{}): published tool schema changed; refresh the tool catalog before retrying",
+                self.server_name, self.mcp_tool_name
+            ))
+            .with_details(details.to_details(runtime_status.state));
+        }
+
+        let call = self.runtime.call_tool(&self.server_name, &self.mcp_tool_name, params);
+        let outcome = if let Some(timeout_ms) = self.timeout_ms {
+            tokio::select! {
+                () = ctx.signal.cancelled() => Err("cancelled".to_string()),
+                result = timeout(Duration::from_millis(timeout_ms), call) => {
+                    result.unwrap_or_else(|_| Err("timeout".to_string()))
+                }
+            }
+        } else {
+            tokio::select! {
+                () = ctx.signal.cancelled() => Err("cancelled".to_string()),
+                result = call => result,
+            }
+        };
+
+        match outcome {
+            Ok(result) => {
+                let details = self.receipt("ok", started_at, None);
+                mcp_result_to_tool_result(result).with_details(details.to_details(runtime_status.state))
+            }
             Err(error) => {
+                let error_class = classify_mcp_error(&error);
+                let details = self.receipt(error_class, started_at, Some(error_class));
                 ToolResult::error(format!("MCP tool error ({}::{}): {error}", self.server_name, self.mcp_tool_name))
-                    .with_details(details)
+                    .with_details(details.to_details(runtime_status.state))
             }
         }
     }
@@ -138,6 +279,7 @@ pub fn build_tools_for_server(
             server_name.to_string(),
             registered.name.clone(),
             definition,
+            config.timeout_ms,
             Arc::clone(&runtime),
         )));
     }
@@ -165,6 +307,14 @@ pub fn build_tools_from_settings(
         tools.extend(build_tools_for_server(server_name, config, &registered, seen_names, Arc::clone(&registry)));
     }
     tools
+}
+
+fn classify_mcp_error(error: &str) -> &'static str {
+    match error {
+        "cancelled" => "cancelled",
+        "timeout" => "timeout",
+        _ => "runtime_error",
+    }
 }
 
 fn mcp_result_to_tool_result(result: Value) -> ToolResult {
@@ -196,6 +346,7 @@ fn extract_mcp_text(result: &Value) -> Option<String> {
 mod tests {
     use serde_json::json;
     use tokio::sync::Mutex;
+    use tokio::time::sleep;
 
     use super::*;
     use crate::tools::ToolResultContent;
@@ -203,6 +354,23 @@ mod tests {
     struct FakeRuntime {
         calls: Mutex<Vec<(String, String, Value)>>,
         result: Value,
+        tools: Vec<McpRegisteredTool>,
+        status: McpRuntimeStatus,
+    }
+
+    impl FakeRuntime {
+        fn healthy(result: Value) -> Self {
+            Self {
+                calls: Mutex::new(Vec::new()),
+                result,
+                tools: vec![McpRegisteredTool::new(
+                    "read_file",
+                    "Read a file",
+                    json!({"type":"object"}),
+                )],
+                status: McpRuntimeStatus::healthy(),
+            }
+        }
     }
 
     #[async_trait]
@@ -214,6 +382,26 @@ mod tests {
     }
 
     impl McpRuntimeRegistry for FakeRuntime {
+        fn registered_tools(&self, _server: &str) -> Vec<McpRegisteredTool> {
+            self.tools.clone()
+        }
+
+        fn runtime_status(&self, _server: &str) -> McpRuntimeStatus {
+            self.status.clone()
+        }
+    }
+
+    struct SlowRuntime;
+
+    #[async_trait]
+    impl McpRuntime for SlowRuntime {
+        async fn call_tool(&self, _server: &str, _tool: &str, _args: Value) -> Result<Value, String> {
+            sleep(Duration::from_millis(50)).await;
+            Ok(json!({"content": [{"type": "text", "text": "late"}]}))
+        }
+    }
+
+    impl McpRuntimeRegistry for SlowRuntime {
         fn registered_tools(&self, _server: &str) -> Vec<McpRegisteredTool> {
             vec![McpRegisteredTool::new(
                 "read_file",
@@ -242,10 +430,7 @@ mod tests {
             McpRegisteredTool::new("write_file", "Write a file", json!({"type":"object"})),
             McpRegisteredTool::new("delete_file", "Delete a file", json!({"type":"object"})),
         ];
-        let runtime = Arc::new(FakeRuntime {
-            calls: Mutex::new(Vec::new()),
-            result: json!({"content": []}),
-        });
+        let runtime = Arc::new(FakeRuntime::healthy(json!({"content": []})));
         let mut seen = HashSet::from(["fs_delete_file".to_string()]);
 
         let tools = build_tools_for_server("filesystem", &config, &registered, &mut seen, runtime);
@@ -260,10 +445,7 @@ mod tests {
     fn disabled_server_publishes_no_tools() {
         let mut config = stdio_config();
         config.enabled = false;
-        let runtime = Arc::new(FakeRuntime {
-            calls: Mutex::new(Vec::new()),
-            result: json!({"content": []}),
-        });
+        let runtime = Arc::new(FakeRuntime::healthy(json!({"content": []})));
         let mut seen = HashSet::new();
         let tools = build_tools_for_server(
             "filesystem",
@@ -277,16 +459,13 @@ mod tests {
 
     #[tokio::test]
     async fn mcp_tool_executes_original_tool_name() {
-        let runtime = Arc::new(FakeRuntime {
-            calls: Mutex::new(Vec::new()),
-            result: json!({"content": [{"type": "text", "text": "ok"}]}),
-        });
+        let runtime = Arc::new(FakeRuntime::healthy(json!({"content": [{"type": "text", "text": "ok"}]})));
         let definition = ToolDefinition {
             name: "fs_read_file".to_string(),
             description: "Read".to_string(),
             input_schema: json!({"type":"object"}),
         };
-        let tool = McpTool::new("filesystem", "read_file", definition, runtime.clone());
+        let tool = McpTool::new("filesystem", "read_file", definition, None, runtime.clone());
         let ctx = ToolContext::new("call-1".to_string(), tokio_util::sync::CancellationToken::new(), None);
 
         let result = tool.execute(&ctx, json!({"path": "README.md"})).await;
@@ -306,6 +485,121 @@ mod tests {
             ToolResultContent::Text { text } => assert_eq!(text, "ok"),
             ToolResultContent::Image { .. } => panic!("expected text"),
         }
+    }
+
+    #[tokio::test]
+    async fn mcp_receipt_excludes_arguments_and_secrets() {
+        let runtime = Arc::new(FakeRuntime::healthy(json!({"content": [{"type": "text", "text": "ok"}]})));
+        let definition = ToolDefinition {
+            name: "fs_read_file".to_string(),
+            description: "Read".to_string(),
+            input_schema: json!({"type":"object"}),
+        };
+        let tool = McpTool::new("filesystem", "read_file", definition, None, runtime.clone());
+        let ctx = ToolContext::new("call-secret".to_string(), tokio_util::sync::CancellationToken::new(), None);
+
+        let result = tool.execute(&ctx, json!({"token": "***", "path": "README.md"})).await;
+
+        let details = result.details.as_ref().expect("receipt details");
+        assert_eq!(details["receipt"]["status"], "ok");
+        assert_eq!(details["receipt"]["server"], "filesystem");
+        assert_eq!(details["receipt"]["mcp_tool"], "read_file");
+        let details_text = details.to_string();
+        assert!(!details_text.contains("s3cr3t-value"));
+        assert!(!details_text.contains("README.md"));
+    }
+
+    #[tokio::test]
+    async fn unavailable_runtime_is_isolated_before_call() {
+        let runtime = Arc::new(FakeRuntime {
+            status: McpRuntimeStatus::unavailable("spawn failed"),
+            ..FakeRuntime::healthy(json!({"content": []}))
+        });
+        let definition = ToolDefinition {
+            name: "fs_read_file".to_string(),
+            description: "Read".to_string(),
+            input_schema: json!({"type":"object"}),
+        };
+        let tool = McpTool::new("filesystem", "read_file", definition, None, runtime.clone());
+        let ctx = ToolContext::new("call-unavailable".to_string(), tokio_util::sync::CancellationToken::new(), None);
+
+        let result = tool.execute(&ctx, json!({"path": "README.md"})).await;
+
+        assert!(result.is_error);
+        assert!(runtime.calls.lock().await.is_empty());
+        let details = result.details.as_ref().expect("receipt details");
+        assert_eq!(details["runtime_state"], "unavailable");
+        assert_eq!(details["receipt"]["status"], "runtime_unavailable");
+        assert_eq!(details["receipt"]["error_class"], "runtime_unavailable");
+    }
+
+    #[tokio::test]
+    async fn schema_drift_rejects_before_calling_runtime() {
+        let runtime = Arc::new(FakeRuntime {
+            tools: vec![McpRegisteredTool::new(
+                "read_file",
+                "Read a file",
+                json!({"type":"object", "required": ["path"]}),
+            )],
+            ..FakeRuntime::healthy(json!({"content": []}))
+        });
+        let definition = ToolDefinition {
+            name: "fs_read_file".to_string(),
+            description: "Read".to_string(),
+            input_schema: json!({"type":"object"}),
+        };
+        let tool = McpTool::new("filesystem", "read_file", definition, None, runtime.clone());
+        let ctx = ToolContext::new("call-drift".to_string(), tokio_util::sync::CancellationToken::new(), None);
+
+        let result = tool.execute(&ctx, json!({"path": "README.md"})).await;
+
+        assert!(result.is_error);
+        assert!(runtime.calls.lock().await.is_empty());
+        let details = result.details.as_ref().expect("receipt details");
+        assert_eq!(details["receipt"]["status"], "schema_drift");
+        assert_eq!(details["receipt"]["error_class"], "schema_drift");
+    }
+
+    #[tokio::test]
+    async fn timeout_is_reported_as_safe_receipt_error() {
+        let runtime = Arc::new(SlowRuntime);
+        let definition = ToolDefinition {
+            name: "fs_read_file".to_string(),
+            description: "Read".to_string(),
+            input_schema: json!({"type":"object"}),
+        };
+        let tool = McpTool::new("filesystem", "read_file", definition, Some(1), runtime);
+        let ctx = ToolContext::new("call-timeout".to_string(), tokio_util::sync::CancellationToken::new(), None);
+
+        let result = tool.execute(&ctx, json!({"path": "README.md"})).await;
+
+        assert!(result.is_error);
+        let details = result.details.as_ref().expect("receipt details");
+        assert_eq!(details["receipt"]["status"], "timeout");
+        assert_eq!(details["receipt"]["error_class"], "timeout");
+        assert!(!details.to_string().contains("README.md"));
+    }
+
+    #[tokio::test]
+    async fn cancellation_is_reported_as_safe_receipt_error() {
+        let runtime = Arc::new(SlowRuntime);
+        let definition = ToolDefinition {
+            name: "fs_read_file".to_string(),
+            description: "Read".to_string(),
+            input_schema: json!({"type":"object"}),
+        };
+        let tool = McpTool::new("filesystem", "read_file", definition, None, runtime);
+        let signal = tokio_util::sync::CancellationToken::new();
+        signal.cancel();
+        let ctx = ToolContext::new("call-cancel".to_string(), signal, None);
+
+        let result = tool.execute(&ctx, json!({"path": "README.md"})).await;
+
+        assert!(result.is_error);
+        let details = result.details.as_ref().expect("receipt details");
+        assert_eq!(details["receipt"]["status"], "cancelled");
+        assert_eq!(details["receipt"]["error_class"], "cancelled");
+        assert!(!details.to_string().contains("README.md"));
     }
 
     #[test]
