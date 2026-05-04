@@ -393,6 +393,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: BatchAction,
     },
+    /// Run disabled-by-default self-evolution dry-run experiments
+    SelfEvolution {
+        #[command(subcommand)]
+        action: SelfEvolutionAction,
+    },
     /// Expose clankers session control over local MCP stdio
     Mcp {
         #[command(subcommand)]
@@ -430,6 +435,31 @@ pub enum BatchAction {
         /// Resume by skipping already completed job ids in the output directory
         #[arg(long)]
         resume: bool,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum SelfEvolutionAction {
+    /// Run a deterministic offline self-evolution experiment without promotion
+    Run {
+        /// Target skill, prompt, tool description, or code artifact to evaluate
+        #[arg(long, value_name = "PATH")]
+        target: std::path::PathBuf,
+        /// Baseline evaluation command or dataset label to record
+        #[arg(long, value_name = "COMMAND")]
+        baseline_command: String,
+        /// Isolated output directory for run-scoped candidate artifacts and receipts
+        #[arg(long, value_name = "DIR")]
+        candidate_output: std::path::PathBuf,
+        /// Existing clankers session id that the fake MCP executor should reference
+        #[arg(long, value_name = "SESSION_ID")]
+        session: Option<String>,
+        /// Required safety gate for the first pass; no live executor is enabled yet
+        #[arg(long)]
+        dry_run: bool,
+        /// Emit machine-readable JSON receipt
+        #[arg(long)]
+        json: bool,
     },
 }
 
@@ -1226,6 +1256,54 @@ mod tests {
         let help = Cli::command().render_help().to_string();
         assert!(help.contains("batch"));
         assert!(help.contains("trajectories"));
+    }
+
+    #[test]
+    fn self_evolution_run_cli_parses_dry_run_options() {
+        let cli = Cli::parse_from([
+            "clankers",
+            "self-evolution",
+            "run",
+            "--target",
+            "skills/foo/SKILL.md",
+            "--baseline-command",
+            "cargo test self_eval",
+            "--candidate-output",
+            "target/self-evolution",
+            "--session",
+            "sess-1",
+            "--dry-run",
+            "--json",
+        ]);
+
+        match cli.command.expect("command should parse") {
+            Commands::SelfEvolution {
+                action:
+                    SelfEvolutionAction::Run {
+                        target,
+                        baseline_command,
+                        candidate_output,
+                        session,
+                        dry_run,
+                        json,
+                    },
+            } => {
+                assert_eq!(target, std::path::PathBuf::from("skills/foo/SKILL.md"));
+                assert_eq!(baseline_command, "cargo test self_eval");
+                assert_eq!(candidate_output, std::path::PathBuf::from("target/self-evolution"));
+                assert_eq!(session.as_deref(), Some("sess-1"));
+                assert!(dry_run);
+                assert!(json);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn self_evolution_command_is_visible_in_help() {
+        let help = Cli::command().render_help().to_string();
+        assert!(help.contains("self-evolution"));
+        assert!(help.contains("dry-run"));
     }
 
     #[test]

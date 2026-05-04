@@ -12,6 +12,7 @@ pub mod config;
 pub mod daemon;
 pub mod gateway;
 pub mod mcp;
+pub mod self_evolution;
 pub mod soul;
 pub mod voice;
 

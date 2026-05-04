@@ -106,6 +106,22 @@ clankers mcp serve --session <id>          # control an existing daemon session 
 
 The MCP adapter publishes allowlisted tools such as `send_prompt`, `interrupt`, `set_thinking_level`, `set_disabled_tools`, `set_capabilities`, confirmation approval/denial, compaction, `session_status`, and `session_history`. Tool calls are translated into normal `SessionCommand` values and returned with structured receipts; mutation receipts include summarized daemon events already observed on the session stream when available. Evidence summaries intentionally report safe metadata such as event type, identifiers, counts, and text lengths instead of raw prompt/history text. MCP does not mutate TUI state directly, inject raw terminal input, or call private controller APIs.
 
+### Self-Evolution Dry Runs
+
+Self-evolution is disabled by default. The first safe path is a deterministic dry run that records the target artifact, baseline command/eval label, isolated candidate output directory, fake MCP/session-control receipts, metrics, and promotion recommendation without changing the active target:
+
+```
+clankers self-evolution run \
+  --target path/to/SKILL.md \
+  --baseline-command "cargo test self_eval" \
+  --candidate-output target/self-evolution \
+  --session <id> \
+  --dry-run \
+  --json
+```
+
+The dry-run executor writes `candidate.txt` and `receipt.json` under a run-scoped output directory. It treats unchanged candidates as evaluation noise, never promotes automatically, and always reports `human_approval_required=true` before any install/merge/replacement can happen.
+
 ### Headless
 
 No TUI required. Pipe prompts in, get results out.

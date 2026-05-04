@@ -15,6 +15,7 @@ pub mod plugin;
 pub use clankers_procmon as procmon;
 pub mod provider;
 pub use clankers_session;
+pub mod self_evolution;
 pub mod session;
 pub mod slash_commands;
 pub mod soul_personality;
