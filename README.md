@@ -104,7 +104,7 @@ Expose local MCP tools that map to the same daemon/session command substrate use
 clankers mcp serve --session <id>          # control an existing daemon session over MCP stdio
 ```
 
-The first slice publishes a local stdio MCP adapter with allowlisted tools such as `send_prompt`, `interrupt`, `set_thinking_level`, `set_disabled_tools`, `set_capabilities`, confirmation approval/denial, compaction, and `session_status`. Tool calls are translated into normal `SessionCommand` values and returned with structured receipts; MCP does not mutate TUI state directly, inject raw terminal input, or call private controller APIs.
+The MCP adapter publishes allowlisted tools such as `send_prompt`, `interrupt`, `set_thinking_level`, `set_disabled_tools`, `set_capabilities`, confirmation approval/denial, compaction, `session_status`, and `session_history`. Tool calls are translated into normal `SessionCommand` values and returned with structured receipts; mutation receipts include summarized daemon events already observed on the session stream when available. Evidence summaries intentionally report safe metadata such as event type, identifiers, counts, and text lengths instead of raw prompt/history text. MCP does not mutate TUI state directly, inject raw terminal input, or call private controller APIs.
 
 ### Headless
 

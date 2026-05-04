@@ -7,8 +7,8 @@
 
 - [x] Add local stdio MCP bridge command surface, for example `clankers mcp serve`, with explicit local-only transport and actionable unsupported errors. [covers=mcp-session-control-plane.bridge]
 - [x] Add an MCP session-action model and mapping layer that converts supported MCP operations into ordinary `SessionCommand` variants. [covers=mcp-session-control-plane.command-parity]
-- [ ] Expose initial MCP tools for prompt submission, abort/interrupt, thinking level, disabled tools/capabilities, confirmation response, compaction, and status/history reads. [covers=mcp-session-control-plane.tool-surface]
-- [ ] Add structured mutation receipts backed by accepted command submission and correlated daemon event/state evidence when available. [covers=mcp-session-control-plane.receipts]
+- [x] Expose initial MCP tools for prompt submission, abort/interrupt, thinking level, disabled tools/capabilities, confirmation response, compaction, and status/history reads. [covers=mcp-session-control-plane.tool-surface]
+- [x] Add structured mutation receipts backed by accepted command submission and correlated daemon event/state evidence when available. [covers=mcp-session-control-plane.receipts]
 - [x] Ensure MCP cannot access TUI internals, private controller calls, raw PTY/input injection, or privileged tool/session mutations outside the daemon/session protocol. [covers=mcp-session-control-plane.no-bypass]
 
 ## Phase 2: Parity and safety verification

@@ -18,7 +18,7 @@ pub async fn run(_ctx: &CommandContext, action: McpAction) -> Result<()> {
 }
 
 async fn run_serve(session: String) -> Result<()> {
-    let client = connect_session(&session).await?;
+    let mut client = connect_session(&session).await?;
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout();
 
@@ -27,10 +27,22 @@ async fn run_serve(session: String) -> Result<()> {
         if line.trim().is_empty() {
             continue;
         }
-        let mut dispatch = |cmd: SessionCommand| client.send(cmd);
-        let response =
-            crate::modes::mcp_control::handle_json_line_with_dispatch(&line, Some(session.as_str()), &mut dispatch)
-                .map_err(|source| crate::error::Error::Json { source })?;
+        let mut dispatch = |cmd: SessionCommand| {
+            let submitted = client.send(cmd);
+            let events = drain_session_events(&mut client);
+            let disconnected = client.is_disconnected();
+            crate::modes::mcp_control::McpDispatchEvidence {
+                submitted,
+                events,
+                disconnected,
+            }
+        };
+        let response = crate::modes::mcp_control::handle_json_line_with_evidence_dispatch(
+            &line,
+            Some(session.as_str()),
+            &mut dispatch,
+        )
+        .map_err(|source| crate::error::Error::Json { source })?;
         tracing::info!(
             source = "mcp_session_control",
             transport = "stdio",
@@ -42,6 +54,14 @@ async fn run_serve(session: String) -> Result<()> {
     }
 
     Ok(())
+}
+
+fn drain_session_events(client: &mut ClientAdapter) -> Vec<serde_json::Value> {
+    let mut events = Vec::new();
+    while let Some(event) = client.try_recv() {
+        events.push(crate::modes::mcp_control::summarize_daemon_event(&event));
+    }
+    events
 }
 
 async fn connect_session(session_id: &str) -> Result<ClientAdapter> {
