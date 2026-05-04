@@ -13,6 +13,8 @@ use std::time::Instant;
 use async_trait::async_trait;
 use clankers_config::BrowserAutomationBackend;
 use clankers_config::BrowserAutomationSettings;
+use futures::SinkExt;
+use futures::StreamExt;
 use serde_json::Value;
 use tokio::process::Child;
 use tokio::process::Command;
@@ -201,6 +203,48 @@ impl CdpBrowserRuntime {
         Ok(serde_json::json!({"sessionId": id, "closed": true, "response": text}))
     }
 
+    async fn target_for_session(&self, session_id: Option<&str>) -> Result<CdpTarget, String> {
+        let targets = self.list_targets().await?;
+        select_target(targets, session_id)
+    }
+
+    async fn call_cdp_method(&self, target: &CdpTarget, method: &str, params: Value) -> Result<Value, String> {
+        let ws_url = target
+            .web_socket_debugger_url
+            .as_deref()
+            .ok_or_else(|| format!("CDP target `{}` does not expose a WebSocket debugger URL", target.id))?;
+        let (mut socket, _) = tokio_tungstenite::connect_async(ws_url)
+            .await
+            .map_err(|error| format!("failed to connect to CDP WebSocket for `{}`: {error}", target.id))?;
+        let request = serde_json::json!({
+            "id": 1,
+            "method": method,
+            "params": params,
+        });
+        socket
+            .send(tokio_tungstenite::tungstenite::Message::Text(request.to_string().into()))
+            .await
+            .map_err(|error| format!("failed to send CDP command `{method}`: {error}"))?;
+        while let Some(message) = socket.next().await {
+            let message =
+                message.map_err(|error| format!("failed to receive CDP command `{method}` response: {error}"))?;
+            if !message.is_text() {
+                continue;
+            }
+            let text = message.to_text().map_err(|error| format!("invalid CDP text frame: {error}"))?;
+            let response: Value =
+                serde_json::from_str(text).map_err(|error| format!("failed to decode CDP response: {error}"))?;
+            if response.get("id").and_then(Value::as_i64) != Some(1) {
+                continue;
+            }
+            if let Some(error) = response.get("error") {
+                return Err(format!("CDP command `{method}` failed: {error}"));
+            }
+            return Ok(response);
+        }
+        Err(format!("CDP command `{method}` ended before a response was received"))
+    }
+
     fn normalize_target(&self, target: CdpTarget, action: BrowserAction) -> Value {
         serde_json::json!({
             "backend": self.backend,
@@ -235,11 +279,78 @@ impl BrowserRuntime for CdpBrowserRuntime {
                     .ok_or_else(|| "browser close requires `sessionId` for the CDP HTTP backend".to_string())?;
                 self.close_target(id).await
             }
-            BrowserAction::Click | BrowserAction::Type | BrowserAction::Evaluate | BrowserAction::Screenshot => {
-                Err(format!(
-                    "browser action `{}` requires the CDP WebSocket command backend, which is not implemented in this slice; use navigate/snapshot/current_url/close or configure a follow-up backend",
-                    request.action.as_str()
-                ))
+            BrowserAction::Click => {
+                let selector =
+                    request.selector.as_deref().ok_or_else(|| "browser click requires `selector`".to_string())?;
+                let target = self.target_for_session(request.session_id.as_deref()).await?;
+                let expression = format!(
+                    "(() => {{ const el = document.querySelector({}); if (!el) throw new Error('selector not found'); el.click(); return true; }})()",
+                    serde_json::to_string(selector).map_err(|error| format!("failed to encode selector: {error}"))?
+                );
+                self.call_cdp_method(
+                    &target,
+                    "Runtime.evaluate",
+                    serde_json::json!({"expression": expression, "awaitPromise": true}),
+                )
+                .await?;
+                Ok(self.normalize_target(target, request.action))
+            }
+            BrowserAction::Type => {
+                let selector =
+                    request.selector.as_deref().ok_or_else(|| "browser type requires `selector`".to_string())?;
+                let text = request.text.as_deref().ok_or_else(|| "browser type requires `text`".to_string())?;
+                let target = self.target_for_session(request.session_id.as_deref()).await?;
+                let expression = format!(
+                    "(() => {{ const el = document.querySelector({}); if (!el) throw new Error('selector not found'); el.focus(); el.value = {}; el.dispatchEvent(new Event('input', {{ bubbles: true }})); el.dispatchEvent(new Event('change', {{ bubbles: true }})); return true; }})()",
+                    serde_json::to_string(selector).map_err(|error| format!("failed to encode selector: {error}"))?,
+                    serde_json::to_string(text).map_err(|error| format!("failed to encode text: {error}"))?
+                );
+                self.call_cdp_method(
+                    &target,
+                    "Runtime.evaluate",
+                    serde_json::json!({"expression": expression, "awaitPromise": true}),
+                )
+                .await?;
+                Ok(self.normalize_target(target, request.action))
+            }
+            BrowserAction::Evaluate => {
+                let script =
+                    request.script.as_deref().ok_or_else(|| "browser evaluate requires `script`".to_string())?;
+                let target = self.target_for_session(request.session_id.as_deref()).await?;
+                let response = self
+                    .call_cdp_method(
+                        &target,
+                        "Runtime.evaluate",
+                        serde_json::json!({"expression": script, "awaitPromise": true, "returnByValue": true}),
+                    )
+                    .await?;
+                Ok(serde_json::json!({
+                    "backend": self.backend,
+                    "action": request.action.as_str(),
+                    "status": "ok",
+                    "sessionId": target.id,
+                    "url": target.url,
+                    "title": target.title.unwrap_or_default(),
+                    "targetType": target.kind.unwrap_or_default(),
+                    "result": response.get("result").and_then(|value| value.get("result")).cloned().unwrap_or(Value::Null)
+                }))
+            }
+            BrowserAction::Screenshot => {
+                let target = self.target_for_session(request.session_id.as_deref()).await?;
+                let response = self
+                    .call_cdp_method(&target, "Page.captureScreenshot", serde_json::json!({"format": "png"}))
+                    .await?;
+                Ok(serde_json::json!({
+                    "backend": self.backend,
+                    "action": request.action.as_str(),
+                    "status": "ok",
+                    "sessionId": target.id,
+                    "url": target.url,
+                    "title": target.title.unwrap_or_default(),
+                    "targetType": target.kind.unwrap_or_default(),
+                    "mimeType": "image/png",
+                    "data": response.get("result").and_then(|value| value.get("data")).and_then(Value::as_str).unwrap_or_default()
+                }))
             }
         }
     }
@@ -254,6 +365,8 @@ struct CdpTarget {
     url: String,
     #[serde(default, rename = "type")]
     kind: Option<String>,
+    #[serde(default, rename = "webSocketDebuggerUrl")]
+    web_socket_debugger_url: Option<String>,
 }
 
 fn select_target(targets: Vec<CdpTarget>, session_id: Option<&str>) -> Result<CdpTarget, String> {
@@ -651,11 +764,13 @@ mod tests {
 
     #[tokio::test]
     async fn cdp_runtime_uses_http_endpoint_for_navigate_and_snapshot() {
+        let ws_url = spawn_fake_cdp_ws_server(2).await;
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let endpoint = format!("http://{}", listener.local_addr().unwrap());
         let server = tokio::spawn(async move {
-            for _ in 0..3 {
+            for _ in 0..5 {
                 let (mut stream, _) = listener.accept().await.unwrap();
+                let ws_url = ws_url.clone();
                 tokio::spawn(async move {
                     use tokio::io::AsyncReadExt;
                     use tokio::io::AsyncWriteExt;
@@ -666,9 +781,9 @@ mod tests {
                     let body = if request.starts_with("GET /json/version") {
                         serde_json::json!({"Browser":"fake"}).to_string()
                     } else if request.starts_with("PUT /json/new") || request.starts_with("GET /json/new") {
-                        serde_json::json!({"id":"target-1","type":"page","url":"https://example.test/","title":"Example"}).to_string()
+                        serde_json::json!({"id":"target-1","type":"page","url":"https://example.test/","title":"Example","webSocketDebuggerUrl":ws_url}).to_string()
                     } else if request.starts_with("GET /json/list") {
-                        serde_json::json!([{ "id":"target-1", "type":"page", "url":"https://example.test/", "title":"Example" }]).to_string()
+                        serde_json::json!([{ "id":"target-1", "type":"page", "url":"https://example.test/", "title":"Example", "webSocketDebuggerUrl": ws_url }]).to_string()
                     } else {
                         serde_json::json!({"error":"unexpected request", "request": request.lines().next().unwrap_or("")}).to_string()
                     };
@@ -712,28 +827,118 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(snapshot.get("title").and_then(Value::as_str), Some("Example"));
-        server.await.unwrap();
-    }
 
-    #[tokio::test]
-    async fn cdp_runtime_reports_unsupported_websocket_actions() {
-        let runtime = CdpBrowserRuntime {
-            client: reqwest::Client::new(),
-            endpoint: "http://127.0.0.1:9".to_string(),
-            backend: "cdp",
-            _owned_browser: None,
-        };
-        let error = runtime
+        let click = runtime
             .perform(BrowserRequest {
                 action: BrowserAction::Click,
                 url: None,
                 selector: Some("button".to_string()),
                 text: None,
                 script: None,
-                session_id: None,
+                session_id: Some("target-1".to_string()),
             })
             .await
+            .unwrap();
+        assert_eq!(click.get("action").and_then(Value::as_str), Some("click"));
+
+        let screenshot = runtime
+            .perform(BrowserRequest {
+                action: BrowserAction::Screenshot,
+                url: None,
+                selector: None,
+                text: None,
+                script: None,
+                session_id: Some("target-1".to_string()),
+            })
+            .await
+            .unwrap();
+        assert_eq!(screenshot.get("mimeType").and_then(Value::as_str), Some("image/png"));
+        server.await.unwrap();
+    }
+
+    async fn spawn_fake_cdp_ws_server(expected: usize) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("ws://{}", listener.local_addr().unwrap());
+        tokio::spawn(async move {
+            for _ in 0..expected {
+                let (stream, _) = listener.accept().await.unwrap();
+                tokio::spawn(async move {
+                    let mut ws = tokio_tungstenite::accept_async(stream).await.unwrap();
+                    if let Some(message) = ws.next().await {
+                        let message = message.unwrap();
+                        let request: Value = serde_json::from_str(message.to_text().unwrap()).unwrap();
+                        let method = request.get("method").and_then(Value::as_str).unwrap_or("");
+                        let result = match method {
+                            "Runtime.evaluate" => {
+                                serde_json::json!({"result":{"result":{"type":"boolean","value":true}}})
+                            }
+                            "Page.captureScreenshot" => serde_json::json!({"result":{"data":"ZmFrZS1wbmc="}}),
+                            _ => serde_json::json!({"error":{"message":"unexpected method"}}),
+                        };
+                        let mut response = result;
+                        response["id"] = request.get("id").cloned().unwrap_or(serde_json::json!(1));
+                        ws.send(tokio_tungstenite::tungstenite::Message::Text(response.to_string().into()))
+                            .await
+                            .unwrap();
+                    }
+                });
+            }
+        });
+        url
+    }
+
+    #[tokio::test]
+    async fn cdp_runtime_executes_websocket_actions() {
+        let ws_url = spawn_fake_cdp_ws_server(4).await;
+        let runtime = CdpBrowserRuntime {
+            client: reqwest::Client::new(),
+            endpoint: "http://127.0.0.1:9".to_string(),
+            backend: "cdp",
+            _owned_browser: None,
+        };
+        let target = CdpTarget {
+            id: "target-1".to_string(),
+            title: Some("Example".to_string()),
+            url: "https://example.test/".to_string(),
+            kind: Some("page".to_string()),
+            web_socket_debugger_url: Some(ws_url),
+        };
+
+        let click = runtime
+            .call_cdp_method(&target, "Runtime.evaluate", serde_json::json!({"expression":"true"}))
+            .await
+            .unwrap();
+        assert_eq!(click.get("id").and_then(Value::as_i64), Some(1));
+
+        let screenshot = runtime
+            .call_cdp_method(&target, "Page.captureScreenshot", serde_json::json!({"format":"png"}))
+            .await
+            .unwrap();
+        assert_eq!(
+            screenshot.get("result").and_then(|value| value.get("data")).and_then(Value::as_str),
+            Some("ZmFrZS1wbmc=")
+        );
+    }
+
+    #[tokio::test]
+    async fn cdp_runtime_errors_when_target_lacks_websocket_url() {
+        let runtime = CdpBrowserRuntime {
+            client: reqwest::Client::new(),
+            endpoint: "http://127.0.0.1:9".to_string(),
+            backend: "cdp",
+            _owned_browser: None,
+        };
+        let target = CdpTarget {
+            id: "target-1".to_string(),
+            title: None,
+            url: "https://example.test/".to_string(),
+            kind: Some("page".to_string()),
+            web_socket_debugger_url: None,
+        };
+        let error = runtime
+            .call_cdp_method(&target, "Runtime.evaluate", serde_json::json!({"expression":"true"}))
+            .await
             .unwrap_err();
-        assert!(error.contains("CDP WebSocket command backend"));
+        assert!(error.contains("WebSocket debugger URL"));
     }
 }

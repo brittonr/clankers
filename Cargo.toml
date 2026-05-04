@@ -121,6 +121,7 @@ clanker-tui-types = { workspace = true }
 clankers-util = { version = "0.1.0", path = "crates/clankers-util" }
 tokio = { workspace = true }
 tokio-util = { version = "0.7", features = ["codec"] }
+tokio-tungstenite = "0.28"
 futures = "0.3"
 async-trait = "0.1"
 serde = { workspace = true, features = ["rc"] }
