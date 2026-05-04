@@ -11,6 +11,7 @@ pub mod checkpoint;
 pub mod config;
 pub mod daemon;
 pub mod gateway;
+pub mod mcp;
 pub mod soul;
 pub mod voice;
 

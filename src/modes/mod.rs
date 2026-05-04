@@ -18,6 +18,7 @@ pub mod inline;
 pub mod interactive;
 pub mod json;
 pub(crate) mod matrix_bridge;
+pub mod mcp_control;
 pub(crate) mod peers_background;
 pub mod plan;
 pub(crate) mod plugin_dispatch;

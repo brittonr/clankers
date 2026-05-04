@@ -253,6 +253,9 @@ async fn dispatch(
         Some(Commands::Batch { action }) => {
             clankers::commands::batch::run(&ctx, action).await?;
         }
+        Some(Commands::Mcp { action }) => {
+            clankers::commands::mcp::run(&ctx, action).await?;
+        }
         Some(Commands::Acp { action }) => {
             clankers::commands::acp::run(&ctx, action).await?;
         }

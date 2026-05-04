@@ -96,6 +96,16 @@ clankers acp serve --new --model <model>   # force a new session and optional mo
 
 The first pass supports initialization and session prompt/update messages over a foreground stdio adapter. Terminal creation, remote workspaces, arbitrary tool listing/calls, and editor push notifications are intentionally returned as unsupported until dedicated follow-up work lands.
 
+### MCP Session Control
+
+Expose local MCP tools that map to the same daemon/session command substrate used by attached TUI clients:
+
+```
+clankers mcp serve --session <id>          # control an existing daemon session over MCP stdio
+```
+
+The first slice publishes a local stdio MCP adapter with allowlisted tools such as `send_prompt`, `interrupt`, `set_thinking_level`, `set_disabled_tools`, `set_capabilities`, confirmation approval/denial, compaction, and `session_status`. Tool calls are translated into normal `SessionCommand` values and returned with structured receipts; MCP does not mutate TUI state directly, inject raw terminal input, or call private controller APIs.
+
 ### Headless
 
 No TUI required. Pipe prompts in, get results out.

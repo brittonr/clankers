@@ -5,18 +5,18 @@
 
 ## Phase 1: MCP session-control substrate
 
-- [ ] Add local stdio MCP bridge command surface, for example `clankers mcp serve`, with explicit local-only transport and actionable unsupported errors. [covers=mcp-session-control-plane.bridge]
-- [ ] Add an MCP session-action model and mapping layer that converts supported MCP operations into ordinary `SessionCommand` variants. [covers=mcp-session-control-plane.command-parity]
+- [x] Add local stdio MCP bridge command surface, for example `clankers mcp serve`, with explicit local-only transport and actionable unsupported errors. [covers=mcp-session-control-plane.bridge]
+- [x] Add an MCP session-action model and mapping layer that converts supported MCP operations into ordinary `SessionCommand` variants. [covers=mcp-session-control-plane.command-parity]
 - [ ] Expose initial MCP tools for prompt submission, abort/interrupt, thinking level, disabled tools/capabilities, confirmation response, compaction, and status/history reads. [covers=mcp-session-control-plane.tool-surface]
 - [ ] Add structured mutation receipts backed by accepted command submission and correlated daemon event/state evidence when available. [covers=mcp-session-control-plane.receipts]
-- [ ] Ensure MCP cannot access TUI internals, private controller calls, raw PTY/input injection, or privileged tool/session mutations outside the daemon/session protocol. [covers=mcp-session-control-plane.no-bypass]
+- [x] Ensure MCP cannot access TUI internals, private controller calls, raw PTY/input injection, or privileged tool/session mutations outside the daemon/session protocol. [covers=mcp-session-control-plane.no-bypass]
 
 ## Phase 2: Parity and safety verification
 
 - [ ] Add command-equivalence tests for MCP vs TUI/attach paths for prompt, abort, thinking level, disabled tools/capabilities, confirmation approval/denial, and compaction. [covers=mcp-session-control-plane.parity-tests]
 - [ ] Add fake-daemon or temp-socket integration tests for MCP bridge request/response behavior, daemon event streaming, history/status observation, and error propagation. [covers=mcp-session-control-plane.bridge]
 - [ ] Add negative tests for unsupported methods, missing sessions, capability-ceiling violations, confirmation bypass attempts, and unsafe history/metadata leakage. [covers=mcp-session-control-plane.no-bypass]
-- [ ] Document MCP session-control setup, supported operations, safety model, and receipts in README/docs. [covers=mcp-session-control-plane.documentation]
+- [x] Document MCP session-control setup, supported operations, safety model, and receipts in README/docs. [covers=mcp-session-control-plane.documentation]
 
 ## Phase 3: Self-evolution outer loop
 

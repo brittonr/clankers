@@ -393,6 +393,11 @@ pub enum Commands {
         #[command(subcommand)]
         action: BatchAction,
     },
+    /// Expose clankers session control over local MCP stdio
+    Mcp {
+        #[command(subcommand)]
+        action: McpAction,
+    },
     /// Expose a clankers session over Agent Client Protocol (ACP)
     Acp {
         #[command(subcommand)]
@@ -544,6 +549,16 @@ pub enum AcpAction {
         /// Override model for a new session
         #[arg(long, value_name = "MODEL")]
         model: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
+pub enum McpAction {
+    /// Serve local MCP session-control tools over stdio
+    Serve {
+        /// Existing clankers session id to control
+        #[arg(long, value_name = "SESSION_ID")]
+        session: String,
     },
 }
 
@@ -1139,6 +1154,33 @@ mod tests {
         let help = Cli::command().render_help().to_string();
         assert!(help.contains("acp"));
         assert!(help.contains("Agent Client Protocol"));
+    }
+
+    #[test]
+    fn mcp_serve_cli_parses_session_option() {
+        let cli = Cli::parse_from(["clankers", "mcp", "serve", "--session", "sess-1"]);
+
+        match cli.command.expect("command should parse") {
+            Commands::Mcp {
+                action: McpAction::Serve { session },
+            } => {
+                assert_eq!(session, "sess-1");
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn mcp_serve_requires_session_option() {
+        let err = Cli::try_parse_from(["clankers", "mcp", "serve"]).expect_err("--session is required");
+        assert_eq!(err.kind(), clap::error::ErrorKind::MissingRequiredArgument);
+    }
+
+    #[test]
+    fn mcp_command_is_visible_in_help() {
+        let help = Cli::command().render_help().to_string();
+        assert!(help.contains("mcp"));
+        assert!(help.contains("session control"));
     }
 
     #[test]
