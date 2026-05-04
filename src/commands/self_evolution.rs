@@ -5,10 +5,13 @@ use crate::commands::CommandContext;
 use crate::error::Error;
 use crate::error::Result;
 use crate::self_evolution::FakeMcpExecutor;
+use crate::self_evolution::SelfEvolutionApplicationOptions;
+use crate::self_evolution::SelfEvolutionApplicationReceipt;
 use crate::self_evolution::SelfEvolutionApprovalOptions;
 use crate::self_evolution::SelfEvolutionApprovalReceipt;
 use crate::self_evolution::SelfEvolutionRunOptions;
 use crate::self_evolution::SelfEvolutionRunReceipt;
+use crate::self_evolution::apply_self_evolution_candidate;
 use crate::self_evolution::approve_self_evolution_promotion;
 use crate::self_evolution::run_self_evolution_dry_run;
 
@@ -57,6 +60,25 @@ pub fn run(_ctx: &CommandContext, action: SelfEvolutionAction) -> Result<()> {
                 .map_err(|message| Error::Config { message })?;
             print_approval_receipt(&approval, json)?;
         }
+        SelfEvolutionAction::Apply {
+            receipt,
+            approval,
+            mode,
+            verify_command,
+            dry_run,
+            live_apply,
+            json,
+        } => {
+            let options = SelfEvolutionApplicationOptions {
+                receipt_path: receipt,
+                approval_path: approval,
+                apply_mode: mode,
+                verification_command: verify_command,
+                dry_run: dry_run || !live_apply,
+            };
+            let application = apply_self_evolution_candidate(&options).map_err(|message| Error::Config { message })?;
+            print_application_receipt(&application, json)?;
+        }
     }
     Ok(())
 }
@@ -90,5 +112,25 @@ fn print_approval_receipt(receipt: &SelfEvolutionApprovalReceipt, json: bool) ->
         receipt.run_id, receipt.target_path, receipt.candidate_path, receipt.approval.promotion_status
     );
     println!("approval receipt: approval.json next to the run receipt");
+    Ok(())
+}
+
+fn print_application_receipt(receipt: &SelfEvolutionApplicationReceipt, json: bool) -> Result<()> {
+    if json {
+        println!("{}", serde_json::to_string_pretty(receipt).map_err(|source| Error::Json { source })?);
+        return Ok(());
+    }
+
+    println!(
+        "self-evolution application: run_id={} target={} candidate={} status={} applied={} verification={}",
+        receipt.run_id,
+        receipt.target_path,
+        receipt.candidate_path,
+        receipt.status,
+        receipt.applied,
+        receipt.verification.status
+    );
+    println!("application receipt: application.json next to the run receipt when live apply is used");
+    println!("backup path: {}", receipt.planned_backup_path);
     Ok(())
 }

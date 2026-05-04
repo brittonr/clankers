@@ -485,6 +485,31 @@ pub enum SelfEvolutionAction {
         #[arg(long)]
         json: bool,
     },
+    /// Apply an approved candidate through explicit dry-run or live replace-file mode
+    Apply {
+        /// Run-scoped receipt.json produced by `self-evolution run`
+        #[arg(long, value_name = "PATH")]
+        receipt: std::path::PathBuf,
+        /// approval.json produced by `self-evolution approve`
+        #[arg(long, value_name = "PATH")]
+        approval: std::path::PathBuf,
+        /// Application mode; first pass supports only replace-file
+        #[arg(long, value_name = "MODE", default_value = "replace-file")]
+        mode: String,
+        /// Verification command to run after live apply or record during dry-run
+        #[arg(long = "verify-command", value_name = "COMMAND")]
+        verify_command: String,
+        /// Validate and print the application plan without writing the target or application
+        /// receipt
+        #[arg(long, conflicts_with = "live_apply")]
+        dry_run: bool,
+        /// Explicit opt-in for live target replacement
+        #[arg(long, conflicts_with = "dry_run")]
+        live_apply: bool,
+        /// Emit machine-readable JSON application receipt
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
@@ -1365,6 +1390,64 @@ mod tests {
             }
             other => panic!("unexpected command: {other:?}"),
         }
+    }
+
+    #[test]
+    fn self_evolution_apply_cli_parses_dry_run_and_live_options() {
+        let cli = Cli::parse_from([
+            "clankers",
+            "self-evolution",
+            "apply",
+            "--receipt",
+            "target/self-evolution/run/receipt.json",
+            "--approval",
+            "target/self-evolution/run/approval.json",
+            "--mode",
+            "replace-file",
+            "--verify-command",
+            "cargo test self_evolution",
+            "--live-apply",
+            "--json",
+        ]);
+
+        match cli.command.expect("command should parse") {
+            Commands::SelfEvolution {
+                action:
+                    SelfEvolutionAction::Apply {
+                        receipt,
+                        approval,
+                        mode,
+                        verify_command,
+                        dry_run,
+                        live_apply,
+                        json,
+                    },
+            } => {
+                assert_eq!(receipt, std::path::PathBuf::from("target/self-evolution/run/receipt.json"));
+                assert_eq!(approval, std::path::PathBuf::from("target/self-evolution/run/approval.json"));
+                assert_eq!(mode, "replace-file");
+                assert_eq!(verify_command, "cargo test self_evolution");
+                assert!(!dry_run);
+                assert!(live_apply);
+                assert!(json);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let conflict = Cli::try_parse_from([
+            "clankers",
+            "self-evolution",
+            "apply",
+            "--receipt",
+            "receipt.json",
+            "--approval",
+            "approval.json",
+            "--verify-command",
+            "true",
+            "--dry-run",
+            "--live-apply",
+        ]);
+        assert!(conflict.is_err());
     }
 
     #[test]

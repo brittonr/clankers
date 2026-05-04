@@ -136,7 +136,33 @@ clankers self-evolution approve \
   --json
 ```
 
-The approval step writes `approval.json` next to the run receipt, submits a fake `approve_confirmation` receipt plus history observation evidence, and still does not copy, merge, or replace the active target artifact. Candidate application remains a separate human-gated future path.
+The approval step writes `approval.json` next to the run receipt, submits a fake `approve_confirmation` receipt plus history observation evidence, and still does not copy, merge, or replace the active target artifact.
+
+After reviewing both `receipt.json` and `approval.json`, run an application preflight. Preflight reuses the live validation path, checks that the target hash still matches the original run receipt, validates the candidate hash and approval chain, reports the planned backup path and hash transition, and does not write `application.json`, create a backup, or change target bytes:
+
+```
+clankers self-evolution apply \
+  --receipt target/self-evolution/<run-id>/receipt.json \
+  --approval target/self-evolution/<run-id>/approval.json \
+  --mode replace-file \
+  --verify-command "cargo test self_evolution" \
+  --dry-run \
+  --json
+```
+
+Live application is a separate opt-in step. The first implementation supports only local `replace-file`: it creates a run-scoped backup under `<run>/backup/`, copies the isolated candidate over the target, runs the verification command, and writes `application.json` next to the run receipt:
+
+```
+clankers self-evolution apply \
+  --receipt target/self-evolution/<run-id>/receipt.json \
+  --approval target/self-evolution/<run-id>/approval.json \
+  --mode replace-file \
+  --verify-command "cargo test self_evolution" \
+  --live-apply \
+  --json
+```
+
+Review `application.json` after live apply. `status=applied` means the target was replaced and verification exited successfully. `status=applied_verification_failed` means target bytes changed but verification failed; use the receipt's rollback instructions to copy the recorded backup path back over the target before further promotion. Unsupported modes such as patch, branch merge, multi-file apply, and remote application are rejected in this first pass.
 
 ### Headless
 
