@@ -1,5 +1,7 @@
 use std::io::BufRead;
 use std::io::Write;
+use std::time::Duration;
+use std::time::Instant;
 
 use clankers_controller::client::ClientAdapter;
 use clankers_protocol::ControlCommand;
@@ -27,22 +29,7 @@ async fn run_serve(session: String) -> Result<()> {
         if line.trim().is_empty() {
             continue;
         }
-        let mut dispatch = |cmd: SessionCommand| {
-            let submitted = client.send(cmd);
-            let events = drain_session_events(&mut client);
-            let disconnected = client.is_disconnected();
-            crate::modes::mcp_control::McpDispatchEvidence {
-                submitted,
-                events,
-                disconnected,
-            }
-        };
-        let response = crate::modes::mcp_control::handle_json_line_with_evidence_dispatch(
-            &line,
-            Some(session.as_str()),
-            &mut dispatch,
-        )
-        .map_err(|source| crate::error::Error::Json { source })?;
+        let response = handle_json_line_for_client(&line, Some(session.as_str()), &mut client)?;
         tracing::info!(
             source = "mcp_session_control",
             transport = "stdio",
@@ -56,10 +43,32 @@ async fn run_serve(session: String) -> Result<()> {
     Ok(())
 }
 
+pub fn handle_json_line_for_client(line: &str, session_id: Option<&str>, client: &mut ClientAdapter) -> Result<String> {
+    let mut dispatch = |cmd: SessionCommand| {
+        let submitted = client.send(cmd);
+        let events = drain_session_events(client);
+        let disconnected = client.is_disconnected();
+        crate::modes::mcp_control::McpDispatchEvidence {
+            submitted,
+            events,
+            disconnected,
+        }
+    };
+    crate::modes::mcp_control::handle_json_line_with_evidence_dispatch(line, session_id, &mut dispatch)
+        .map_err(|source| crate::error::Error::Json { source })
+}
+
 fn drain_session_events(client: &mut ClientAdapter) -> Vec<serde_json::Value> {
+    let deadline = Instant::now() + Duration::from_millis(25);
     let mut events = Vec::new();
-    while let Some(event) = client.try_recv() {
-        events.push(crate::modes::mcp_control::summarize_daemon_event(&event));
+    loop {
+        while let Some(event) = client.try_recv() {
+            events.push(crate::modes::mcp_control::summarize_daemon_event(&event));
+        }
+        if !events.is_empty() || client.is_disconnected() || Instant::now() >= deadline {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
     }
     events
 }

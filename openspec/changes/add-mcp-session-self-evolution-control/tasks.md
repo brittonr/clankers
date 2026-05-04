@@ -14,7 +14,7 @@
 ## Phase 2: Parity and safety verification
 
 - [ ] Add command-equivalence tests for MCP vs TUI/attach paths for prompt, abort, thinking level, disabled tools/capabilities, confirmation approval/denial, and compaction. [covers=mcp-session-control-plane.parity-tests]
-- [ ] Add fake-daemon or temp-socket integration tests for MCP bridge request/response behavior, daemon event streaming, history/status observation, and error propagation. [covers=mcp-session-control-plane.bridge]
+- [x] Add fake-daemon or temp-socket integration tests for MCP bridge request/response behavior, daemon event streaming, history/status observation, and error propagation. [covers=mcp-session-control-plane.bridge]
 - [ ] Add negative tests for unsupported methods, missing sessions, capability-ceiling violations, confirmation bypass attempts, and unsafe history/metadata leakage. [covers=mcp-session-control-plane.no-bypass]
 - [x] Document MCP session-control setup, supported operations, safety model, and receipts in README/docs. [covers=mcp-session-control-plane.documentation]
 
