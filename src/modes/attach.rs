@@ -1023,29 +1023,20 @@ fn handle_key_event(
             KeyCode::Char('y' | 'Y') => {
                 let request_id = confirm.request_id.clone();
                 app.overlays.confirm_dialog = None;
-                client.send(SessionCommand::ConfirmBash {
-                    request_id,
-                    approved: true,
-                });
+                client.send(confirm_bash_command(request_id, true));
                 app.push_system("✅ Command approved.".to_string(), false);
             }
             KeyCode::Char('n' | 'N') | KeyCode::Esc => {
                 let request_id = confirm.request_id.clone();
                 app.overlays.confirm_dialog = None;
-                client.send(SessionCommand::ConfirmBash {
-                    request_id,
-                    approved: false,
-                });
+                client.send(confirm_bash_command(request_id, false));
                 app.push_system("❌ Command denied.".to_string(), true);
             }
             KeyCode::Enter => {
                 let request_id = confirm.request_id.clone();
                 let is_approved = confirm.approved;
                 app.overlays.confirm_dialog = None;
-                client.send(SessionCommand::ConfirmBash {
-                    request_id,
-                    approved: is_approved,
-                });
+                client.send(confirm_bash_command(request_id, is_approved));
                 if is_approved {
                     app.push_system("✅ Command approved.".to_string(), false);
                 } else {
@@ -1490,6 +1481,10 @@ fn format_attach_thinking_message(level: crate::provider::ThinkingLevel) -> Stri
         Some(tokens) => format!("Thinking: {} ({} tokens)", level.label(), tokens),
         None => "Thinking: off".to_string(),
     }
+}
+
+fn confirm_bash_command(request_id: String, approved: bool) -> SessionCommand {
+    SessionCommand::ConfirmBash { request_id, approved }
 }
 
 fn translate_attach_agent_command(agent_cmd: crate::modes::interactive::AgentCommand) -> Option<SessionCommand> {
@@ -2220,6 +2215,15 @@ mod tests {
         commands
     }
 
+    fn mcp_session_command(tool_name: &str, arguments: serde_json::Value) -> SessionCommand {
+        match crate::modes::mcp_control::effect_for_tool_call(tool_name, &arguments).expect("MCP tool maps to effect") {
+            crate::modes::mcp_control::McpSessionEffect::Command(command) => command,
+            crate::modes::mcp_control::McpSessionEffect::ReadOnly { action } => {
+                panic!("expected session command for MCP tool {tool_name}, got read-only action {action}")
+            }
+        }
+    }
+
     #[derive(Debug, Clone, PartialEq, Eq)]
     struct LayoutSnapshot {
         pane_kinds: Vec<String>,
@@ -2477,6 +2481,93 @@ mod tests {
             drain_session_commands(&mut cmd_rx).as_slice(),
             [SessionCommand::Prompt { text, images }] if text == "hello daemon" && images.is_empty()
         ));
+    }
+
+    #[test]
+    fn mcp_prompt_command_matches_attach_prompt_command() {
+        let mut app = test_app();
+        let (client, mut cmd_rx) = capturing_client();
+        let registry = super::build_client_slash_registry();
+        let mut parity_tracker = super::AttachParityTracker::default();
+
+        super::submit_input_attach(&mut app, &client, "hello daemon", &registry, &mut parity_tracker);
+
+        assert_eq!(drain_session_commands(&mut cmd_rx), vec![mcp_session_command(
+            "send_prompt",
+            serde_json::json!({"text": "hello daemon"})
+        )]);
+    }
+
+    #[test]
+    fn mcp_interrupt_command_matches_attach_cancel_command() {
+        let (client, mut cmd_rx) = capturing_client();
+
+        client.abort();
+
+        assert_eq!(drain_session_commands(&mut cmd_rx), vec![mcp_session_command("interrupt", serde_json::json!({}))]);
+    }
+
+    #[test]
+    fn mcp_thinking_level_command_matches_attach_think_command() {
+        let mut attached = test_app();
+        let attach_commands = run_attach_slash_locally(&mut attached, "/think high");
+
+        assert_eq!(attach_commands, vec![mcp_session_command(
+            "set_thinking_level",
+            serde_json::json!({"level": "high"})
+        )]);
+    }
+
+    #[test]
+    fn mcp_disabled_tools_command_matches_attach_tools_command() {
+        let mut attached = test_app();
+        attached.tool_info = vec![
+            ("bash".to_string(), "Run shell commands".to_string(), "built-in".to_string()),
+            ("read".to_string(), "Read a file".to_string(), "built-in".to_string()),
+        ];
+        let attach_commands = run_attach_slash_locally(&mut attached, "/tools disable bash");
+
+        assert_eq!(attach_commands, vec![mcp_session_command(
+            "set_disabled_tools",
+            serde_json::json!({"tools": ["bash"]})
+        )]);
+    }
+
+    #[test]
+    fn mcp_confirmation_commands_match_attach_confirmation_commands() {
+        assert_eq!(
+            mcp_session_command("approve_confirmation", serde_json::json!({"request_id": "req-1"})),
+            super::confirm_bash_command("req-1".to_string(), true)
+        );
+        assert_eq!(
+            mcp_session_command("deny_confirmation", serde_json::json!({"request_id": "req-1"})),
+            super::confirm_bash_command("req-1".to_string(), false)
+        );
+    }
+
+    #[test]
+    fn mcp_compaction_command_matches_attach_compaction_commands() {
+        for slash in ["/compact", "/compress"] {
+            let mut attached = test_app();
+            assert_eq!(run_attach_slash_locally(&mut attached, slash), vec![mcp_session_command(
+                "compact_history",
+                serde_json::json!({})
+            )]);
+        }
+    }
+
+    #[test]
+    fn mcp_capability_update_stays_on_session_command_substrate() {
+        assert_eq!(
+            mcp_session_command("set_capabilities", serde_json::json!({"capabilities": ["read", "write"]})),
+            SessionCommand::SetCapabilities {
+                capabilities: Some(vec!["read".to_string(), "write".to_string()]),
+            }
+        );
+        assert_eq!(
+            mcp_session_command("set_capabilities", serde_json::json!({"capabilities": null})),
+            SessionCommand::SetCapabilities { capabilities: None }
+        );
     }
 
     #[test]
