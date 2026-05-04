@@ -457,6 +457,9 @@ pub enum SelfEvolutionAction {
         /// Required safety gate for the first pass; no live executor is enabled yet
         #[arg(long)]
         dry_run: bool,
+        /// Deterministically mark the fake baseline-vs-candidate evaluation as failed
+        #[arg(long)]
+        simulate_eval_failure: bool,
         /// Emit machine-readable JSON receipt
         #[arg(long)]
         json: bool,
@@ -1294,6 +1297,7 @@ mod tests {
             "--session",
             "sess-1",
             "--dry-run",
+            "--simulate-eval-failure",
             "--json",
         ]);
 
@@ -1306,6 +1310,7 @@ mod tests {
                         candidate_output,
                         session,
                         dry_run,
+                        simulate_eval_failure,
                         json,
                     },
             } => {
@@ -1314,6 +1319,7 @@ mod tests {
                 assert_eq!(candidate_output, std::path::PathBuf::from("target/self-evolution"));
                 assert_eq!(session.as_deref(), Some("sess-1"));
                 assert!(dry_run);
+                assert!(simulate_eval_failure);
                 assert!(json);
             }
             other => panic!("unexpected command: {other:?}"),

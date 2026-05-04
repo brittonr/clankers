@@ -120,7 +120,7 @@ clankers self-evolution run \
   --json
 ```
 
-The dry-run executor writes `candidate.txt` and `receipt.json` under a run-scoped output directory. It treats unchanged candidates as evaluation noise, never promotes automatically, and always reports `human_approval_required=true` before any install/merge/replacement can happen.
+The dry-run executor writes `candidate.txt` and `receipt.json` under a run-scoped output directory. It treats unchanged candidates as evaluation noise, records simulated evaluation failures as non-promotable receipts (`--simulate-eval-failure`), never promotes automatically, and always reports `human_approval_required=true` before any install/merge/replacement can happen.
 
 If a run recommends a changed candidate, record explicit human approval through the same session-control confirmation surface before any future install/merge step:
 

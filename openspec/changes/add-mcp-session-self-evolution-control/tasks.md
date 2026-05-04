@@ -24,7 +24,7 @@
 - [x] Implement a dry-run/fake-executor path that drives clankers through the MCP session-control bridge without requiring live provider credentials. [covers=self-evolution-control.mcp-orchestration]
 - [x] Enforce isolated candidate writes and reject live in-place mutation of installed skills, prompts, tools, or code during a run. [covers=self-evolution-control.isolation]
 - [x] Require explicit human approval before promotion/install/merge of any self-evolved candidate and record the approval as a normal confirmation/session event. [covers=self-evolution-control.promotion-gate]
-- [ ] Add tests for baseline-vs-candidate scoring, failed eval handling, unchanged-candidate/noise detection, human approval gating, and receipt generation. [covers=self-evolution-control.verification]
+- [x] Add tests for baseline-vs-candidate scoring, failed eval handling, unchanged-candidate/noise detection, human approval gating, and receipt generation. [covers=self-evolution-control.verification]
 - [ ] Document the self-evolution workflow, safety constraints, expected receipts, and suggested first local targets. [covers=self-evolution-control.documentation]
 
 ## Phase 4: Final verification

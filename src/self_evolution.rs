@@ -27,6 +27,7 @@ pub struct SelfEvolutionRunOptions {
     pub session_id: Option<String>,
     pub dry_run: bool,
     pub candidate_body: Option<String>,
+    pub simulate_eval_failure: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -166,8 +167,7 @@ pub fn run_self_evolution_dry_run(
     let candidate_hash = sha256_hex(candidate_body.as_bytes());
     let baseline_hash = baseline_body.as_deref().map(|body| sha256_hex(body.as_bytes()));
     let changed = baseline_hash.as_deref() != Some(candidate_hash.as_str());
-    let baseline_score = 1.0;
-    let candidate_score = if changed { 1.1 } else { 1.0 };
+    let eval = deterministic_evaluation(changed, options.simulate_eval_failure);
 
     let prompt_receipt = executor.submit_tool(
         options.session_id.as_deref(),
@@ -183,7 +183,14 @@ pub fn run_self_evolution_dry_run(
         json!({ "purpose": "self_evolution_receipt_evidence" }),
     );
 
-    let recommendation = if !changed {
+    let recommendation = if eval.failed {
+        PromotionRecommendation {
+            recommended: false,
+            reason: "baseline-vs-candidate evaluation failed; candidate is not eligible for promotion".to_string(),
+            human_approval_required: true,
+            promotion_status: "not_promoted_eval_failed".to_string(),
+        }
+    } else if !changed {
         PromotionRecommendation {
             recommended: false,
             reason: "candidate artifact is unchanged from baseline; score deltas would be treated as evaluation noise"
@@ -206,26 +213,31 @@ pub fn run_self_evolution_dry_run(
         sha256: candidate_hash,
         bytes: candidate_body.len() as u64,
         changed_from_baseline: changed,
-        score: candidate_score,
-        status: "isolated_candidate_written".to_string(),
-        evidence: vec![
-            "candidate was written under the run-scoped output directory".to_string(),
-            "active target artifact was not overwritten".to_string(),
-        ],
+        score: eval.candidate_score,
+        status: eval.candidate_status.clone(),
+        evidence: candidate_evidence(eval.failed),
+    };
+
+    let baseline = EvaluationRecord {
+        command: options.baseline_command.clone(),
+        score: eval.baseline_score,
+        status: eval.baseline_status,
+        evidence: baseline_evidence(eval.failed),
+    };
+
+    let receipt_status = if eval.failed {
+        "completed_with_failed_evaluation"
+    } else {
+        "completed"
     };
 
     let receipt = SelfEvolutionRunReceipt {
         source: "self_evolution_dry_run".to_string(),
         run_id,
-        status: "completed".to_string(),
+        status: receipt_status.to_string(),
         dry_run: true,
         target,
-        baseline: EvaluationRecord {
-            command: options.baseline_command.clone(),
-            score: baseline_score,
-            status: "recorded_not_executed_fake_eval".to_string(),
-            evidence: vec!["baseline command recorded for deterministic dry-run evaluation".to_string()],
-        },
+        baseline,
         candidate,
         mcp_receipts: vec![prompt_receipt, history_receipt],
         recommendation,
@@ -237,6 +249,61 @@ pub fn run_self_evolution_dry_run(
     fs::write(&receipt_path, receipt_json).map_err(|err| format!("failed to write receipt: {err}"))?;
 
     Ok(receipt)
+}
+
+#[derive(Debug, Clone)]
+struct DeterministicEvaluation {
+    baseline_score: f64,
+    candidate_score: f64,
+    baseline_status: String,
+    candidate_status: String,
+    failed: bool,
+}
+
+fn deterministic_evaluation(changed: bool, simulate_eval_failure: bool) -> DeterministicEvaluation {
+    if simulate_eval_failure {
+        return DeterministicEvaluation {
+            baseline_score: 0.0,
+            candidate_score: 0.0,
+            baseline_status: "failed_fake_eval".to_string(),
+            candidate_status: "failed_fake_eval".to_string(),
+            failed: true,
+        };
+    }
+
+    DeterministicEvaluation {
+        baseline_score: 1.0,
+        candidate_score: if changed { 1.1 } else { 1.0 },
+        baseline_status: "recorded_not_executed_fake_eval".to_string(),
+        candidate_status: "isolated_candidate_written".to_string(),
+        failed: false,
+    }
+}
+
+fn baseline_evidence(failed: bool) -> Vec<String> {
+    if failed {
+        return vec![
+            "baseline command recorded for deterministic dry-run evaluation".to_string(),
+            "fake evaluation was configured to fail; no candidate may be promoted from this run".to_string(),
+        ];
+    }
+
+    vec!["baseline command recorded for deterministic dry-run evaluation".to_string()]
+}
+
+fn candidate_evidence(failed: bool) -> Vec<String> {
+    if failed {
+        return vec![
+            "candidate was written under the run-scoped output directory".to_string(),
+            "active target artifact was not overwritten".to_string(),
+            "candidate evaluation failed in the deterministic fake evaluator".to_string(),
+        ];
+    }
+
+    vec![
+        "candidate was written under the run-scoped output directory".to_string(),
+        "active target artifact was not overwritten".to_string(),
+    ]
 }
 
 pub fn approve_self_evolution_promotion(
@@ -443,6 +510,7 @@ mod tests {
             candidate_output: output,
             session_id: Some("sess-1".to_string()),
             dry_run: true,
+            simulate_eval_failure: false,
             candidate_body: Some("baseline skill\nimproved\n".to_string()),
         };
         let mut executor = FakeMcpExecutor::default();
@@ -473,6 +541,7 @@ mod tests {
             candidate_output: tmp.path().join("out"),
             session_id: None,
             dry_run: true,
+            simulate_eval_failure: false,
             candidate_body: None,
         };
         let mut executor = FakeMcpExecutor::default();
@@ -482,6 +551,40 @@ mod tests {
         assert!(!receipt.candidate.changed_from_baseline);
         assert!(!receipt.recommendation.recommended);
         assert!(receipt.recommendation.reason.contains("evaluation noise"));
+        let receipt_path = Path::new(&receipt.candidate.output_dir).join("receipt.json");
+        let saved: SelfEvolutionRunReceipt = serde_json::from_str(&fs::read_to_string(receipt_path).unwrap()).unwrap();
+        assert!(!saved.recommendation.recommended);
+        assert_eq!(saved.recommendation.promotion_status, "not_promoted");
+        assert!(saved.recommendation.human_approval_required);
+    }
+
+    #[test]
+    fn self_evolution_failed_eval_records_non_promotable_receipt() {
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("prompt.md");
+        fs::write(&target, "baseline\n").unwrap();
+        let options = SelfEvolutionRunOptions {
+            target,
+            baseline_command: "eval --fixture failure".to_string(),
+            candidate_output: tmp.path().join("out"),
+            session_id: Some("sess-1".to_string()),
+            dry_run: true,
+            simulate_eval_failure: true,
+            candidate_body: Some("candidate\n".to_string()),
+        };
+        let mut executor = FakeMcpExecutor::default();
+
+        let receipt = run_self_evolution_dry_run(&options, &mut executor).unwrap();
+
+        assert_eq!(receipt.status, "completed_with_failed_evaluation");
+        assert_eq!(receipt.baseline.status, "failed_fake_eval");
+        assert_eq!(receipt.candidate.status, "failed_fake_eval");
+        assert!(receipt.candidate.changed_from_baseline);
+        assert!(!receipt.recommendation.recommended);
+        assert_eq!(receipt.recommendation.promotion_status, "not_promoted_eval_failed");
+        assert!(receipt.recommendation.reason.contains("evaluation failed"));
+        assert!(receipt.baseline.evidence.iter().any(|entry| entry.contains("fail")));
+        assert_eq!(executor.calls.len(), 2);
     }
 
     #[test]
@@ -495,6 +598,7 @@ mod tests {
             candidate_output: tmp.path().join("out"),
             session_id: None,
             dry_run: false,
+            simulate_eval_failure: false,
             candidate_body: None,
         };
         assert!(validate_run_options(&non_dry).unwrap_err().contains("disabled by default"));
@@ -505,6 +609,7 @@ mod tests {
             candidate_output: target.join("candidate"),
             session_id: None,
             dry_run: true,
+            simulate_eval_failure: false,
             candidate_body: None,
         };
         assert!(validate_run_options(&in_place).unwrap_err().contains("live target directory"));
@@ -521,6 +626,7 @@ mod tests {
             candidate_output: tmp.path().join("out"),
             session_id: Some("sess-1".to_string()),
             dry_run: true,
+            simulate_eval_failure: false,
             candidate_body: Some("candidate\n".to_string()),
         };
         let mut executor = FakeMcpExecutor::default();
@@ -560,6 +666,7 @@ mod tests {
             candidate_output: tmp.path().join("out"),
             session_id: Some("sess-1".to_string()),
             dry_run: true,
+            simulate_eval_failure: false,
             candidate_body: None,
         };
         let mut executor = FakeMcpExecutor::default();

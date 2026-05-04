@@ -20,6 +20,7 @@ pub fn run(_ctx: &CommandContext, action: SelfEvolutionAction) -> Result<()> {
             candidate_output,
             session,
             dry_run,
+            simulate_eval_failure,
             json,
         } => {
             let options = SelfEvolutionRunOptions {
@@ -29,6 +30,7 @@ pub fn run(_ctx: &CommandContext, action: SelfEvolutionAction) -> Result<()> {
                 session_id: session,
                 dry_run,
                 candidate_body: None,
+                simulate_eval_failure,
             };
             let mut executor = FakeMcpExecutor::default();
             let receipt =
