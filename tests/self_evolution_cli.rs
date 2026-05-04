@@ -165,6 +165,36 @@ fn self_evolution_cli_runs_approve_preflight_and_live_apply_with_temp_files() {
     assert_eq!(string_field(&application, &["status"]), "applied");
     assert_eq!(string_field(&application, &["rollback", "backup_path"]), planned_backup.display().to_string());
     assert_eq!(application["rollback"]["instructions"].as_array().expect("rollback instructions").len(), 2);
+
+    let rollback_preflight = run_clankers_json(&[
+        "self-evolution".into(),
+        "rollback".into(),
+        "--application".into(),
+        application_path.display().to_string(),
+        "--dry-run".into(),
+        "--json".into(),
+    ]);
+    assert_eq!(string_field(&rollback_preflight, &["status"]), "rollback_preflight_validated");
+    assert_eq!(rollback_preflight["restored"], false);
+    assert_eq!(
+        std::fs::read_to_string(&target).expect("target after rollback preflight"),
+        "initial target artifact\nimproved candidate line\n"
+    );
+    let rollback_path = run_dir.join("rollback.json");
+    assert!(!rollback_path.exists(), "dry-run rollback must not write rollback receipt");
+
+    let rollback = run_clankers_json(&[
+        "self-evolution".into(),
+        "rollback".into(),
+        "--application".into(),
+        application_path.display().to_string(),
+        "--yes".into(),
+        "--json".into(),
+    ]);
+    assert_eq!(string_field(&rollback, &["status"]), "rolled_back");
+    assert_eq!(rollback["restored"], true);
+    assert_eq!(std::fs::read_to_string(&target).expect("target after rollback"), "initial target artifact\n");
+    assert!(rollback_path.is_file(), "live rollback should persist rollback receipt");
 }
 
 #[test]

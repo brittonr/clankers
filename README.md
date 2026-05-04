@@ -163,7 +163,21 @@ clankers self-evolution apply \
   --json
 ```
 
-Review `application.json` after live apply. `status=applied` means the target was replaced and verification exited successfully. `status=applied_verification_failed` means target bytes changed but verification failed; use the receipt's rollback instructions to copy the recorded backup path back over the target before further promotion. Unsupported modes such as patch, branch merge, multi-file apply, and remote application are rejected in this first pass.
+Review `application.json` after live apply. `status=applied` means the target was replaced and verification exited successfully. `status=applied_verification_failed` means target bytes changed but verification failed. Rollback is also an explicit guarded action: it consumes `application.json`, checks the current target still matches the recorded post-apply hash, checks the backup still matches the recorded backup hash, and either preflights or restores the backup and writes `rollback.json`:
+
+```
+clankers self-evolution rollback \
+  --application target/self-evolution/<run-id>/application.json \
+  --dry-run \
+  --json
+
+clankers self-evolution rollback \
+  --application target/self-evolution/<run-id>/application.json \
+  --yes \
+  --json
+```
+
+If the target changed after application, rollback fails before mutation so operator edits are not overwritten. Unsupported apply modes such as patch, branch merge, multi-file apply, and remote application are rejected in this first pass.
 
 ### Headless
 

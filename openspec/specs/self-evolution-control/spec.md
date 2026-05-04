@@ -125,6 +125,16 @@ The first implementation MUST support only local file replacement from an isolat
 - WHEN the application receipt is written
 - THEN it MUST mark the status as verification failed, preserve backup metadata, and include rollback instructions rather than reporting success
 
+#### Scenario: Rollback restores guarded backup [r[self-evolution-control.application-execution.scenario.rollback]]
+- GIVEN a live application receipt recorded a target post-apply hash and backup hash
+- WHEN rollback is requested with live confirmation
+- THEN clankers MUST verify the current target hash still matches the post-apply hash, verify the backup hash, restore backup bytes to the target, and write `rollback.json`
+
+#### Scenario: Rollback rejects operator edits [r[self-evolution-control.application-execution.scenario.rollback-stale-target]]
+- GIVEN the target artifact changed after live application
+- WHEN rollback is requested
+- THEN clankers MUST reject rollback before writing so operator edits are not overwritten
+
 ### Requirement: Self-Evolution Application CLI [r[self-evolution-control.application-cli]]
 The system MUST expose application through an explicit CLI action with required receipt, approval, mode, and verification arguments.
 
@@ -137,6 +147,11 @@ The system MUST expose application through an explicit CLI action with required 
 - GIVEN a user invokes the apply command without an explicit live-apply flag or equivalent confirmation
 - WHEN the command would mutate a target
 - THEN clankers MUST default to dry-run or reject the request rather than writing by surprise
+
+#### Scenario: Rollback command parses application receipt and confirmation [r[self-evolution-control.application-cli.scenario.rollback-parse]]
+- GIVEN a user invokes `clankers self-evolution rollback` with an application receipt and either dry-run or live confirmation
+- WHEN CLI parsing succeeds
+- THEN clankers MUST construct a rollback request without inferring hidden receipts or overwriting by surprise
 
 ### Requirement: Self-Evolution Documentation [r[self-evolution-control.documentation]]
 The implementation MUST document how to run self-evolution safely, what artifacts are generated, how metrics are interpreted, and how promotion is gated.

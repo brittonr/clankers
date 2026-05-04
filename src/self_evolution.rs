@@ -100,6 +100,29 @@ pub struct SelfEvolutionApplicationReceipt {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct SelfEvolutionRollbackOptions {
+    pub application_path: PathBuf,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SelfEvolutionRollbackReceipt {
+    pub source: String,
+    pub run_id: String,
+    pub status: String,
+    pub dry_run: bool,
+    pub application_receipt_path: String,
+    pub target_path: String,
+    pub backup_path: String,
+    pub pre_rollback_sha256: String,
+    pub backup_sha256: String,
+    pub post_rollback_sha256: Option<String>,
+    pub restored: bool,
+    pub evidence: Vec<String>,
+    pub created_at: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ApplicationVerificationRecord {
     pub command: String,
@@ -485,6 +508,102 @@ pub fn apply_self_evolution_candidate(
     Ok(receipt)
 }
 
+pub fn rollback_self_evolution_application(
+    options: &SelfEvolutionRollbackOptions,
+) -> std::result::Result<SelfEvolutionRollbackReceipt, String> {
+    let application = read_application_receipt(&options.application_path)?;
+    let target_path = Path::new(&application.target_path);
+    let backup_path = Path::new(&application.rollback.backup_path);
+    if application.source != "self_evolution_candidate_application" {
+        return Err("application receipt has an unexpected source".to_string());
+    }
+    if !application.applied {
+        return Err("application receipt was not applied; nothing to roll back".to_string());
+    }
+    if !target_path.is_file() {
+        return Err("rollback requires an existing target file".to_string());
+    }
+    if !backup_path.is_file() {
+        return Err("rollback backup file from application receipt does not exist".to_string());
+    }
+
+    let current_target_bytes = fs::read(target_path).map_err(|err| format!("failed to read rollback target: {err}"))?;
+    let pre_rollback_sha256 = sha256_hex(&current_target_bytes);
+    let expected_current = application
+        .post_apply_sha256
+        .as_deref()
+        .ok_or_else(|| "application receipt does not contain a post-apply target hash".to_string())?;
+    if pre_rollback_sha256 != expected_current {
+        return Err(format!(
+            "target artifact changed since application; expected {expected_current}, found {pre_rollback_sha256}"
+        ));
+    }
+
+    let backup_bytes = fs::read(backup_path).map_err(|err| format!("failed to read rollback backup: {err}"))?;
+    let backup_sha256 = sha256_hex(&backup_bytes);
+    let expected_backup = application
+        .backup_sha256
+        .as_deref()
+        .ok_or_else(|| "application receipt does not contain a backup hash".to_string())?;
+    if backup_sha256 != expected_backup {
+        return Err(format!(
+            "rollback backup hash does not match application receipt; expected {expected_backup}, found {backup_sha256}"
+        ));
+    }
+
+    if options.dry_run {
+        return Ok(SelfEvolutionRollbackReceipt {
+            source: "self_evolution_application_rollback".to_string(),
+            run_id: application.run_id,
+            status: "rollback_preflight_validated".to_string(),
+            dry_run: true,
+            application_receipt_path: options.application_path.display().to_string(),
+            target_path: target_path.display().to_string(),
+            backup_path: backup_path.display().to_string(),
+            pre_rollback_sha256,
+            backup_sha256,
+            post_rollback_sha256: Some(expected_backup.to_string()),
+            restored: false,
+            evidence: vec![
+                "rollback request validated without mutating the target".to_string(),
+                "target and backup hashes match application receipt guards".to_string(),
+            ],
+            created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+        });
+    }
+
+    fs::copy(backup_path, target_path).map_err(|err| format!("failed to restore rollback backup: {err}"))?;
+    let restored_bytes = fs::read(target_path).map_err(|err| format!("failed to read target after rollback: {err}"))?;
+    let post_rollback_sha256 = sha256_hex(&restored_bytes);
+    if post_rollback_sha256 != backup_sha256 {
+        return Err("rollback restore completed but target hash does not match backup hash".to_string());
+    }
+
+    let receipt = SelfEvolutionRollbackReceipt {
+        source: "self_evolution_application_rollback".to_string(),
+        run_id: application.run_id,
+        status: "rolled_back".to_string(),
+        dry_run: false,
+        application_receipt_path: options.application_path.display().to_string(),
+        target_path: target_path.display().to_string(),
+        backup_path: backup_path.display().to_string(),
+        pre_rollback_sha256,
+        backup_sha256,
+        post_rollback_sha256: Some(post_rollback_sha256),
+        restored: true,
+        evidence: vec![
+            "target matched post-apply hash before rollback".to_string(),
+            "backup hash matched application receipt before restore".to_string(),
+            "backup bytes restored to target".to_string(),
+        ],
+        created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+    };
+    let rollback_path = rollback_receipt_path(&options.application_path);
+    let rollback_json = serde_json::to_string_pretty(&receipt).map_err(|err| err.to_string())?;
+    fs::write(&rollback_path, rollback_json).map_err(|err| format!("failed to write rollback receipt: {err}"))?;
+    Ok(receipt)
+}
+
 fn build_dry_run_application_receipt(
     options: &SelfEvolutionApplicationOptions,
     plan: ApplicationPlan,
@@ -571,6 +690,10 @@ pub fn application_receipt_path(run_receipt_path: &Path) -> PathBuf {
     run_receipt_path.with_file_name("application.json")
 }
 
+pub fn rollback_receipt_path(application_receipt_path: &Path) -> PathBuf {
+    application_receipt_path.with_file_name("rollback.json")
+}
+
 pub fn validate_application_options(options: &SelfEvolutionApplicationOptions) -> std::result::Result<(), String> {
     if options.apply_mode.trim() != "replace-file" {
         return Err("unsupported self-evolution apply mode; only replace-file is available".to_string());
@@ -644,6 +767,11 @@ fn read_run_receipt(path: &Path) -> std::result::Result<SelfEvolutionRunReceipt,
 fn read_approval_receipt(path: &Path) -> std::result::Result<SelfEvolutionApprovalReceipt, String> {
     let body = fs::read_to_string(path).map_err(|err| format!("failed to read approval receipt: {err}"))?;
     serde_json::from_str(&body).map_err(|err| format!("failed to parse approval receipt: {err}"))
+}
+
+fn read_application_receipt(path: &Path) -> std::result::Result<SelfEvolutionApplicationReceipt, String> {
+    let body = fs::read_to_string(path).map_err(|err| format!("failed to read application receipt: {err}"))?;
+    serde_json::from_str(&body).map_err(|err| format!("failed to parse application receipt: {err}"))
 }
 
 fn validate_matching_approval(
@@ -1192,6 +1320,65 @@ mod tests {
         assert_eq!(fs::read_to_string(&receipt.planned_backup_path).unwrap(), "baseline\n");
         assert!(application_receipt_path(&run_receipt_path).exists());
         assert!(receipt.rollback.instructions.iter().any(|step| step.contains("restore")));
+    }
+
+    #[test]
+    fn self_evolution_rollback_preflights_and_restores_backup_with_hash_guard() {
+        let (_tmp, target, run_receipt_path, approval_path) = approved_candidate_fixture();
+        let apply = apply_self_evolution_candidate(&SelfEvolutionApplicationOptions {
+            receipt_path: run_receipt_path.clone(),
+            approval_path,
+            apply_mode: "replace-file".to_string(),
+            verification_command: "true".to_string(),
+            dry_run: false,
+        })
+        .unwrap();
+        let application_path = application_receipt_path(&run_receipt_path);
+
+        let preflight = rollback_self_evolution_application(&SelfEvolutionRollbackOptions {
+            application_path: application_path.clone(),
+            dry_run: true,
+        })
+        .unwrap();
+        assert_eq!(preflight.status, "rollback_preflight_validated");
+        assert!(!preflight.restored);
+        assert_eq!(fs::read_to_string(&target).unwrap(), "candidate\n");
+        assert!(!rollback_receipt_path(&application_path).exists());
+
+        let rollback = rollback_self_evolution_application(&SelfEvolutionRollbackOptions {
+            application_path: application_path.clone(),
+            dry_run: false,
+        })
+        .unwrap();
+        assert_eq!(rollback.status, "rolled_back");
+        assert!(rollback.restored);
+        assert_eq!(rollback.backup_sha256, apply.pre_apply_sha256);
+        assert_eq!(fs::read_to_string(&target).unwrap(), "baseline\n");
+        assert!(rollback_receipt_path(&application_path).exists());
+    }
+
+    #[test]
+    fn self_evolution_rollback_rejects_target_changed_after_application() {
+        let (_tmp, target, run_receipt_path, approval_path) = approved_candidate_fixture();
+        apply_self_evolution_candidate(&SelfEvolutionApplicationOptions {
+            receipt_path: run_receipt_path.clone(),
+            approval_path,
+            apply_mode: "replace-file".to_string(),
+            verification_command: "true".to_string(),
+            dry_run: false,
+        })
+        .unwrap();
+        let application_path = application_receipt_path(&run_receipt_path);
+        fs::write(&target, "operator changed applied target\n").unwrap();
+
+        let err = rollback_self_evolution_application(&SelfEvolutionRollbackOptions {
+            application_path,
+            dry_run: false,
+        })
+        .unwrap_err();
+
+        assert!(err.contains("target artifact changed since application"));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "operator changed applied target\n");
     }
 
     fn approved_candidate_fixture() -> (TempDir, PathBuf, PathBuf, PathBuf) {

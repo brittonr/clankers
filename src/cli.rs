@@ -516,6 +516,21 @@ pub enum SelfEvolutionAction {
         #[arg(long)]
         json: bool,
     },
+    /// Roll back a live application by restoring its recorded backup with a target hash guard
+    Rollback {
+        /// application.json produced by a live `self-evolution apply --live-apply`
+        #[arg(long, value_name = "PATH")]
+        application: std::path::PathBuf,
+        /// Validate rollback guards without restoring target bytes or writing rollback.json
+        #[arg(long, conflicts_with = "yes")]
+        dry_run: bool,
+        /// Explicit opt-in for live target restoration
+        #[arg(long, conflicts_with = "dry_run")]
+        yes: bool,
+        /// Emit machine-readable JSON rollback receipt
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
@@ -1480,6 +1495,48 @@ mod tests {
             "true",
             "--dry-run",
             "--live-apply",
+        ]);
+        assert!(conflict.is_err());
+    }
+
+    #[test]
+    fn self_evolution_rollback_cli_parses_dry_run_and_yes_options() {
+        let cli = Cli::parse_from([
+            "clankers",
+            "self-evolution",
+            "rollback",
+            "--application",
+            "target/self-evolution/run/application.json",
+            "--yes",
+            "--json",
+        ]);
+
+        match cli.command.expect("command should parse") {
+            Commands::SelfEvolution {
+                action:
+                    SelfEvolutionAction::Rollback {
+                        application,
+                        dry_run,
+                        yes,
+                        json,
+                    },
+            } => {
+                assert_eq!(application, std::path::PathBuf::from("target/self-evolution/run/application.json"));
+                assert!(!dry_run);
+                assert!(yes);
+                assert!(json);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
+
+        let conflict = Cli::try_parse_from([
+            "clankers",
+            "self-evolution",
+            "rollback",
+            "--application",
+            "application.json",
+            "--dry-run",
+            "--yes",
         ]);
         assert!(conflict.is_err());
     }
