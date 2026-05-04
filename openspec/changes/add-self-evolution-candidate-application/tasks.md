@@ -5,9 +5,9 @@
 
 ## Phase 1: Application model and validation
 
-- [ ] Add self-evolution application options and receipt models for run receipt path, approval receipt path, apply mode, target/candidate identity, backup path, verification command, dry-run state, and outcome. [covers=self-evolution-control.application-model]
-- [ ] Implement receipt-chain validation that rejects mismatched run/approval receipts, non-recommended candidates, failed evaluations, missing candidates, stale target hashes, already-applied approval states, and unsupported apply modes before mutation. [covers=self-evolution-control.application-validation]
-- [ ] Add deterministic unit tests for validation failures and safe dry-run preflight. [covers=self-evolution-control.application-validation]
+- [x] Add self-evolution application options and receipt models for run receipt path, approval receipt path, apply mode, target/candidate identity, backup path, verification command, dry-run state, and outcome. [covers=self-evolution-control.application-model]
+- [x] Implement receipt-chain validation that rejects mismatched run/approval receipts, non-recommended candidates, failed evaluations, missing candidates, stale target hashes, already-applied approval states, and unsupported apply modes before mutation. [covers=self-evolution-control.application-validation]
+- [x] Add deterministic unit tests for validation failures and safe dry-run preflight. [covers=self-evolution-control.application-validation]
 
 ## Phase 2: Local file application
 

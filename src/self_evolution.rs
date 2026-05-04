@@ -68,6 +68,50 @@ pub struct SelfEvolutionApprovalReceipt {
     pub created_at: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct SelfEvolutionApplicationOptions {
+    pub receipt_path: PathBuf,
+    pub approval_path: PathBuf,
+    pub apply_mode: String,
+    pub verification_command: String,
+    pub dry_run: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SelfEvolutionApplicationReceipt {
+    pub source: String,
+    pub run_id: String,
+    pub status: String,
+    pub dry_run: bool,
+    pub apply_mode: String,
+    pub run_receipt_path: String,
+    pub approval_receipt_path: String,
+    pub target_path: String,
+    pub candidate_path: String,
+    pub pre_apply_sha256: String,
+    pub candidate_sha256: String,
+    pub post_apply_sha256: Option<String>,
+    pub planned_backup_path: String,
+    pub backup_sha256: Option<String>,
+    pub verification: ApplicationVerificationRecord,
+    pub applied: bool,
+    pub rollback: ApplicationRollbackRecord,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ApplicationVerificationRecord {
+    pub command: String,
+    pub status: String,
+    pub evidence: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ApplicationRollbackRecord {
+    pub backup_path: String,
+    pub instructions: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PromotionApprovalRecord {
     pub approved: bool,
@@ -365,6 +409,46 @@ pub fn approve_self_evolution_promotion(
     Ok(receipt)
 }
 
+pub fn preflight_self_evolution_application(
+    options: &SelfEvolutionApplicationOptions,
+) -> std::result::Result<SelfEvolutionApplicationReceipt, String> {
+    validate_application_options(options)?;
+    let plan = validate_application_receipt_chain(options)?;
+    Ok(SelfEvolutionApplicationReceipt {
+        source: "self_evolution_candidate_application".to_string(),
+        run_id: plan.run_receipt.run_id,
+        status: "preflight_validated".to_string(),
+        dry_run: true,
+        apply_mode: options.apply_mode.clone(),
+        run_receipt_path: options.receipt_path.display().to_string(),
+        approval_receipt_path: options.approval_path.display().to_string(),
+        target_path: plan.run_receipt.target.path,
+        candidate_path: plan.run_receipt.candidate.artifact_path,
+        pre_apply_sha256: plan.current_target_sha256.clone(),
+        candidate_sha256: plan.candidate_sha256,
+        post_apply_sha256: Some(plan.post_apply_sha256),
+        planned_backup_path: plan.planned_backup_path.display().to_string(),
+        backup_sha256: Some(plan.current_target_sha256),
+        verification: ApplicationVerificationRecord {
+            command: options.verification_command.clone(),
+            status: "recorded_not_executed_dry_run".to_string(),
+            evidence: vec![
+                "application request validated without mutating the target".to_string(),
+                "verification command was recorded for the later live apply step".to_string(),
+            ],
+        },
+        applied: false,
+        rollback: ApplicationRollbackRecord {
+            backup_path: plan.planned_backup_path.display().to_string(),
+            instructions: vec![
+                "dry-run preflight did not create a live backup".to_string(),
+                "run live apply only after reviewing receipt, approval, candidate, and planned backup path".to_string(),
+            ],
+        },
+        created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+    })
+}
+
 pub fn validate_run_options(options: &SelfEvolutionRunOptions) -> std::result::Result<(), String> {
     if !options.dry_run {
         return Err(
@@ -383,6 +467,128 @@ pub fn validate_run_options(options: &SelfEvolutionRunOptions) -> std::result::R
 
 pub fn approval_receipt_path(run_receipt_path: &Path) -> PathBuf {
     run_receipt_path.with_file_name("approval.json")
+}
+
+pub fn application_receipt_path(run_receipt_path: &Path) -> PathBuf {
+    run_receipt_path.with_file_name("application.json")
+}
+
+pub fn validate_application_options(options: &SelfEvolutionApplicationOptions) -> std::result::Result<(), String> {
+    if !options.dry_run {
+        return Err(
+            "candidate application requires an explicit live apply implementation; rerun with --dry-run for preflight"
+                .to_string(),
+        );
+    }
+    if options.apply_mode.trim() != "replace-file" {
+        return Err("unsupported self-evolution apply mode; only replace-file is available".to_string());
+    }
+    if options.verification_command.trim().is_empty() {
+        return Err("application requires a non-empty verification command".to_string());
+    }
+    Ok(())
+}
+
+struct ApplicationPlan {
+    run_receipt: SelfEvolutionRunReceipt,
+    current_target_sha256: String,
+    candidate_sha256: String,
+    post_apply_sha256: String,
+    planned_backup_path: PathBuf,
+}
+
+fn validate_application_receipt_chain(
+    options: &SelfEvolutionApplicationOptions,
+) -> std::result::Result<ApplicationPlan, String> {
+    let run_receipt = read_run_receipt(&options.receipt_path)?;
+    let approval_receipt = read_approval_receipt(&options.approval_path)?;
+    validate_promotable_receipt(&run_receipt)
+        .map_err(|err| format!("candidate is not eligible for application: {err}"))?;
+    validate_matching_approval(&run_receipt, &approval_receipt)?;
+
+    let target_path = Path::new(&run_receipt.target.path);
+    if !target_path.is_file() {
+        return Err("replace-file application requires an existing file target".to_string());
+    }
+    let candidate_path = Path::new(&run_receipt.candidate.artifact_path);
+    if !candidate_path.is_file() {
+        return Err("candidate artifact from receipt does not exist".to_string());
+    }
+
+    let target_bytes = fs::read(target_path).map_err(|err| format!("failed to read target artifact: {err}"))?;
+    let current_target_sha256 = sha256_hex(&target_bytes);
+    let expected_target_sha256 = run_receipt
+        .target
+        .sha256
+        .as_deref()
+        .ok_or_else(|| "run receipt does not contain a target baseline hash".to_string())?;
+    if current_target_sha256 != expected_target_sha256 {
+        return Err(format!(
+            "target artifact changed since the run receipt was created; expected {expected_target_sha256}, found {current_target_sha256}"
+        ));
+    }
+
+    let candidate_bytes =
+        fs::read(candidate_path).map_err(|err| format!("failed to read candidate artifact: {err}"))?;
+    let candidate_sha256 = sha256_hex(&candidate_bytes);
+    if candidate_sha256 != run_receipt.candidate.sha256 {
+        return Err("candidate artifact hash does not match the run receipt".to_string());
+    }
+    let planned_backup_path = planned_application_backup_path(&run_receipt, target_path, &current_target_sha256);
+    Ok(ApplicationPlan {
+        run_receipt,
+        current_target_sha256,
+        candidate_sha256: candidate_sha256.clone(),
+        post_apply_sha256: candidate_sha256,
+        planned_backup_path,
+    })
+}
+
+fn read_run_receipt(path: &Path) -> std::result::Result<SelfEvolutionRunReceipt, String> {
+    let body = fs::read_to_string(path).map_err(|err| format!("failed to read self-evolution receipt: {err}"))?;
+    serde_json::from_str(&body).map_err(|err| format!("failed to parse self-evolution receipt: {err}"))
+}
+
+fn read_approval_receipt(path: &Path) -> std::result::Result<SelfEvolutionApprovalReceipt, String> {
+    let body = fs::read_to_string(path).map_err(|err| format!("failed to read approval receipt: {err}"))?;
+    serde_json::from_str(&body).map_err(|err| format!("failed to parse approval receipt: {err}"))
+}
+
+fn validate_matching_approval(
+    run_receipt: &SelfEvolutionRunReceipt,
+    approval_receipt: &SelfEvolutionApprovalReceipt,
+) -> std::result::Result<(), String> {
+    if approval_receipt.run_id != run_receipt.run_id {
+        return Err("approval receipt run id does not match the run receipt".to_string());
+    }
+    if approval_receipt.target_path != run_receipt.target.path {
+        return Err("approval receipt target path does not match the run receipt".to_string());
+    }
+    if approval_receipt.candidate_path != run_receipt.candidate.artifact_path {
+        return Err("approval receipt candidate path does not match the run receipt".to_string());
+    }
+    if !approval_receipt.approval.approved {
+        return Err("approval receipt is not approved".to_string());
+    }
+    if approval_receipt.approval.applied {
+        return Err("approval receipt is already marked applied".to_string());
+    }
+    if approval_receipt.approval.promotion_status != "approval_recorded_not_applied" {
+        return Err("approval receipt is not in an apply-ready state".to_string());
+    }
+    Ok(())
+}
+
+fn planned_application_backup_path(
+    run_receipt: &SelfEvolutionRunReceipt,
+    target_path: &Path,
+    target_sha256: &str,
+) -> PathBuf {
+    let target_name = target_path.file_name().and_then(|name| name.to_str()).unwrap_or("target");
+    let short_hash = target_sha256.get(..12).unwrap_or(target_sha256);
+    Path::new(&run_receipt.candidate.output_dir)
+        .join("backup")
+        .join(format!("{target_name}.{short_hash}.bak"))
 }
 
 fn validate_approval_options(options: &SelfEvolutionApprovalOptions) -> std::result::Result<(), String> {
@@ -494,6 +700,7 @@ fn absolutize_lossy(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    use tempfile::TempDir;
     use tempfile::tempdir;
 
     use super::*;
@@ -704,5 +911,174 @@ mod tests {
             ..options
         };
         assert!(validate_approval_options(&non_dry).unwrap_err().contains("disabled by default"));
+    }
+
+    #[test]
+    fn self_evolution_application_preflight_validates_without_mutation() {
+        let (_tmp, target, run_receipt_path, approval_path) = approved_candidate_fixture();
+        let original_target = fs::read_to_string(&target).unwrap();
+        let options = SelfEvolutionApplicationOptions {
+            receipt_path: run_receipt_path.clone(),
+            approval_path: approval_path.clone(),
+            apply_mode: "replace-file".to_string(),
+            verification_command: "cargo test self_evolution".to_string(),
+            dry_run: true,
+        };
+
+        let receipt = preflight_self_evolution_application(&options).unwrap();
+
+        assert_eq!(receipt.source, "self_evolution_candidate_application");
+        assert_eq!(receipt.status, "preflight_validated");
+        assert!(receipt.dry_run);
+        assert!(!receipt.applied);
+        assert_eq!(receipt.apply_mode, "replace-file");
+        assert_eq!(receipt.verification.status, "recorded_not_executed_dry_run");
+        assert_eq!(fs::read_to_string(&target).unwrap(), original_target);
+        assert!(!Path::new(&receipt.planned_backup_path).exists());
+        assert!(!application_receipt_path(&run_receipt_path).exists());
+        assert_eq!(receipt.approval_receipt_path, approval_path.display().to_string());
+    }
+
+    #[test]
+    fn self_evolution_application_rejects_stale_target_before_mutation() {
+        let (_tmp, target, run_receipt_path, approval_path) = approved_candidate_fixture();
+        fs::write(&target, "changed after receipt\n").unwrap();
+        let options = SelfEvolutionApplicationOptions {
+            receipt_path: run_receipt_path,
+            approval_path,
+            apply_mode: "replace-file".to_string(),
+            verification_command: "cargo test self_evolution".to_string(),
+            dry_run: true,
+        };
+
+        let err = preflight_self_evolution_application(&options).unwrap_err();
+
+        assert!(err.contains("target artifact changed"));
+        assert_eq!(fs::read_to_string(&target).unwrap(), "changed after receipt\n");
+    }
+
+    #[test]
+    fn self_evolution_application_rejects_mismatched_or_applied_approval() {
+        let (_tmp, target, run_receipt_path, approval_path) = approved_candidate_fixture();
+        let mut approval: SelfEvolutionApprovalReceipt =
+            serde_json::from_str(&fs::read_to_string(&approval_path).unwrap()).unwrap();
+        approval.candidate_path = target.display().to_string();
+        fs::write(&approval_path, serde_json::to_string_pretty(&approval).unwrap()).unwrap();
+        let options = SelfEvolutionApplicationOptions {
+            receipt_path: run_receipt_path.clone(),
+            approval_path: approval_path.clone(),
+            apply_mode: "replace-file".to_string(),
+            verification_command: "cargo test self_evolution".to_string(),
+            dry_run: true,
+        };
+
+        let err = preflight_self_evolution_application(&options).unwrap_err();
+
+        assert!(err.contains("candidate path does not match"));
+        approval.candidate_path = read_run_receipt(&run_receipt_path).unwrap().candidate.artifact_path;
+        approval.approval.applied = true;
+        fs::write(&approval_path, serde_json::to_string_pretty(&approval).unwrap()).unwrap();
+        let err = preflight_self_evolution_application(&options).unwrap_err();
+        assert!(err.contains("already marked applied"));
+    }
+
+    #[test]
+    fn self_evolution_application_rejects_non_promotable_missing_candidate_and_unsupported_mode() {
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("prompt.md");
+        fs::write(&target, "same\n").unwrap();
+        let options = SelfEvolutionRunOptions {
+            target: target.clone(),
+            baseline_command: "eval".to_string(),
+            candidate_output: tmp.path().join("out"),
+            session_id: Some("sess-1".to_string()),
+            dry_run: true,
+            simulate_eval_failure: false,
+            candidate_body: None,
+        };
+        let mut executor = FakeMcpExecutor::default();
+        let run_receipt = run_self_evolution_dry_run(&options, &mut executor).unwrap();
+        let run_receipt_path = Path::new(&run_receipt.candidate.output_dir).join("receipt.json");
+        let approval = SelfEvolutionApprovalReceipt {
+            source: "test".to_string(),
+            run_id: run_receipt.run_id.clone(),
+            status: "approval_recorded".to_string(),
+            dry_run: true,
+            approver: "reviewer".to_string(),
+            confirmation_id: "confirm-1".to_string(),
+            target_path: run_receipt.target.path.clone(),
+            candidate_path: run_receipt.candidate.artifact_path.clone(),
+            approval: PromotionApprovalRecord {
+                approved: true,
+                human_approval_required: true,
+                applied: false,
+                promotion_status: "approval_recorded_not_applied".to_string(),
+                evidence: Vec::new(),
+            },
+            mcp_receipts: Vec::new(),
+            created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+        };
+        let approval_path = approval_receipt_path(&run_receipt_path);
+        fs::write(&approval_path, serde_json::to_string_pretty(&approval).unwrap()).unwrap();
+        let preflight = SelfEvolutionApplicationOptions {
+            receipt_path: run_receipt_path.clone(),
+            approval_path: approval_path.clone(),
+            apply_mode: "replace-file".to_string(),
+            verification_command: "cargo test self_evolution".to_string(),
+            dry_run: true,
+        };
+        let err = preflight_self_evolution_application(&preflight).unwrap_err();
+        assert!(err.contains("not eligible"));
+
+        let (_tmp, _target, run_receipt_path, approval_path) = approved_candidate_fixture();
+        let run_receipt = read_run_receipt(&run_receipt_path).unwrap();
+        fs::remove_file(&run_receipt.candidate.artifact_path).unwrap();
+        let err = preflight_self_evolution_application(&SelfEvolutionApplicationOptions {
+            receipt_path: run_receipt_path,
+            approval_path,
+            apply_mode: "replace-file".to_string(),
+            verification_command: "cargo test self_evolution".to_string(),
+            dry_run: true,
+        })
+        .unwrap_err();
+        assert!(err.contains("candidate artifact"));
+
+        let unsupported = SelfEvolutionApplicationOptions {
+            receipt_path: PathBuf::from("receipt.json"),
+            approval_path: PathBuf::from("approval.json"),
+            apply_mode: "patch".to_string(),
+            verification_command: "cargo test self_evolution".to_string(),
+            dry_run: true,
+        };
+        assert!(validate_application_options(&unsupported).unwrap_err().contains("unsupported"));
+    }
+
+    fn approved_candidate_fixture() -> (TempDir, PathBuf, PathBuf, PathBuf) {
+        let tmp = tempdir().unwrap();
+        let target = tmp.path().join("tool.md");
+        fs::write(&target, "baseline\n").unwrap();
+        let options = SelfEvolutionRunOptions {
+            target: target.clone(),
+            baseline_command: "eval".to_string(),
+            candidate_output: tmp.path().join("out"),
+            session_id: Some("sess-1".to_string()),
+            dry_run: true,
+            simulate_eval_failure: false,
+            candidate_body: Some("candidate\n".to_string()),
+        };
+        let mut executor = FakeMcpExecutor::default();
+        let run_receipt = run_self_evolution_dry_run(&options, &mut executor).unwrap();
+        let run_receipt_path = Path::new(&run_receipt.candidate.output_dir).join("receipt.json");
+        let approval_options = SelfEvolutionApprovalOptions {
+            receipt_path: run_receipt_path.clone(),
+            session_id: "sess-1".to_string(),
+            confirmation_id: "confirm-1".to_string(),
+            approver: "reviewer".to_string(),
+            dry_run: true,
+        };
+        let mut approval_executor = FakeMcpExecutor::default();
+        approve_self_evolution_promotion(&approval_options, &mut approval_executor).unwrap();
+        let approval_path = approval_receipt_path(&run_receipt_path);
+        (tmp, target, run_receipt_path, approval_path)
     }
 }
