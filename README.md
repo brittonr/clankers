@@ -122,6 +122,8 @@ clankers self-evolution run \
 
 The dry-run executor writes `candidate.txt` and `receipt.json` under a run-scoped output directory. It treats unchanged candidates as evaluation noise, records simulated evaluation failures as non-promotable receipts (`--simulate-eval-failure`), never promotes automatically, and always reports `human_approval_required=true` before any install/merge/replacement can happen.
 
+Review `receipt.json` before trusting a run. The important fields are the target path and baseline hash, the isolated candidate path, baseline/candidate evaluation status, changed-vs-unchanged evidence, `recommended`, `promotion_status`, and the fake MCP/session-control receipts that show the run used the normal session substrate. A good first local target is a non-production prompt, README section, or disposable skill copy under `target/self-evolution/`; avoid installed skills, active prompts, and production code until a human has reviewed the receipt and candidate diff.
+
 If a run recommends a changed candidate, record explicit human approval through the same session-control confirmation surface before any future install/merge step:
 
 ```
