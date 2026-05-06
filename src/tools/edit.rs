@@ -85,6 +85,11 @@ impl Tool for EditTool {
             return ToolResult::error(format!("Not a file: {}", path_str));
         }
 
+        let checkpoint_details = match super::protect_file_mutation("edit", path_str) {
+            Ok(details) => details,
+            Err(error) => return ToolResult::error(error),
+        };
+
         // Read the file
         let content = match fs::read_to_string(path).await {
             Ok(c) => c,
@@ -123,7 +128,7 @@ impl Tool for EditTool {
         }
 
         let stat = super::diff::diff_stat(path_str, &content, &new_content);
-        ToolResult::text(format!("Successfully edited {}\n{}", path_str, stat))
+        ToolResult::text(format!("Successfully edited {}\n{}", path_str, stat)).with_details(checkpoint_details)
     }
 }
 

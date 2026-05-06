@@ -146,6 +146,10 @@ async fn apply_replacement(
     if !path.is_file() {
         return ToolResult::error(format!("Not a file: {path_str}"));
     }
+    let checkpoint_details = match super::protect_file_mutation("patch", path_str) {
+        Ok(details) => details,
+        Err(error) => return ToolResult::error(error),
+    };
     let content = match fs::read_to_string(path).await {
         Ok(content) => content,
         Err(err) => return ToolResult::error(format!("Failed to read file: {err}")),
@@ -169,7 +173,7 @@ async fn apply_replacement(
         return ToolResult::error(format!("Failed to write file: {err}"));
     }
     let stat = super::diff::diff_stat(path_str, &content, &new_content);
-    ToolResult::text(format!("Patched {path_str}\n{stat}"))
+    ToolResult::text(format!("Patched {path_str}\n{stat}")).with_details(checkpoint_details)
 }
 
 fn replace_content(content: &str, old_string: &str, new_string: &str, replace_all: bool) -> Result<String, String> {

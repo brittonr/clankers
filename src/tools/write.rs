@@ -66,6 +66,10 @@ impl Tool for WriteTool {
         };
 
         let path = Path::new(path_str);
+        let checkpoint_details = match super::protect_file_mutation("write", path_str) {
+            Ok(details) => details,
+            Err(error) => return ToolResult::error(error),
+        };
 
         // Create parent directories if they don't exist
         if let Some(parent) = path.parent()
@@ -93,9 +97,11 @@ impl Tool for WriteTool {
                 let byte_count = content.len();
                 if old_content.is_empty() {
                     ToolResult::text(format!("Created {} ({} bytes)", path_str, byte_count))
+                        .with_details(checkpoint_details)
                 } else {
                     let stat = super::diff::diff_stat(path_str, &old_content, content);
                     ToolResult::text(format!("Wrote {} ({} bytes)\n{}", path_str, byte_count, stat))
+                        .with_details(checkpoint_details)
                 }
             }
             Err(e) => ToolResult::error(format!("Failed to write file: {}", e)),

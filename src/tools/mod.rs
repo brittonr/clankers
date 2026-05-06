@@ -15,6 +15,40 @@ pub use clankers_agent::tool::model_switch_slot;
 /// Output truncation utilities — re-exported from `crate::util::truncation`.
 pub use crate::util::truncation;
 
+fn protect_file_mutation(tool_name: &str, path_str: &str) -> Result<serde_json::Value, String> {
+    let path = std::path::Path::new(path_str);
+    let cwd = mutation_checkpoint_cwd(path);
+    let request = crate::checkpoints::AutoCheckpointRequest::new(tool_name, path_str);
+    let policy = if is_git_checkout(&cwd) {
+        crate::checkpoints::AutoCheckpointPolicy::default()
+    } else {
+        crate::checkpoints::AutoCheckpointPolicy::disabled()
+    };
+    crate::checkpoints::ensure_pre_mutation_checkpoint(&cwd, &policy, request)
+        .map(|receipt| serde_json::json!({ "auto_checkpoint": receipt }))
+        .map_err(|error| error.to_string())
+}
+
+fn mutation_checkpoint_cwd(path: &std::path::Path) -> std::path::PathBuf {
+    if path.is_absolute()
+        && let Some(parent) = path.parent()
+        && parent.exists()
+    {
+        return parent.to_path_buf();
+    }
+    std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."))
+}
+
+fn is_git_checkout(cwd: &std::path::Path) -> bool {
+    std::process::Command::new("git")
+        .arg("-C")
+        .arg(cwd)
+        .args(["rev-parse", "--is-inside-work-tree"])
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
 pub mod progress {
     //! Progress and result streaming types — re-exported from `clankers-agent`.
     pub use clankers_agent::tool::progress::*;

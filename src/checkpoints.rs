@@ -41,6 +41,122 @@ pub enum CheckpointOperation {
     Rollback { checkpoint_id: String, confirmed: bool },
 }
 
+/// Policy for automatic checkpoints before file-mutating tools.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AutoCheckpointPolicy {
+    pub enabled: bool,
+    pub failure_mode: AutoCheckpointFailureMode,
+    pub label_prefix: String,
+}
+
+impl AutoCheckpointPolicy {
+    pub fn strict_enabled() -> Self {
+        Self {
+            enabled: true,
+            failure_mode: AutoCheckpointFailureMode::Strict,
+            label_prefix: "auto".to_string(),
+        }
+    }
+
+    pub fn disabled() -> Self {
+        Self {
+            enabled: false,
+            failure_mode: AutoCheckpointFailureMode::Strict,
+            label_prefix: "auto".to_string(),
+        }
+    }
+}
+
+impl Default for AutoCheckpointPolicy {
+    fn default() -> Self {
+        Self::strict_enabled()
+    }
+}
+
+/// Whether checkpoint failures block the protected mutation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AutoCheckpointFailureMode {
+    Strict,
+    BestEffort,
+}
+
+/// Safe request metadata for a pre-mutation checkpoint.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AutoCheckpointRequest {
+    pub tool_name: String,
+    pub target_path: String,
+    pub session_id: Option<String>,
+}
+
+impl AutoCheckpointRequest {
+    pub fn new(tool_name: impl Into<String>, target_path: impl Into<String>) -> Self {
+        Self {
+            tool_name: tool_name.into(),
+            target_path: target_path.into(),
+            session_id: None,
+        }
+    }
+}
+
+/// Replay-safe receipt for an automatic pre-mutation checkpoint attempt.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AutoCheckpointReceipt {
+    pub action: String,
+    pub status: String,
+    pub tool_name: String,
+    pub target_path: String,
+    pub backend: String,
+    pub checkpoint_id: Option<String>,
+    pub changed_file_count: usize,
+    pub error_code: Option<String>,
+    pub error_message: Option<String>,
+}
+
+impl AutoCheckpointReceipt {
+    fn skipped(request: &AutoCheckpointRequest) -> Self {
+        Self {
+            action: "auto_pre_mutation_checkpoint".to_string(),
+            status: "skipped".to_string(),
+            tool_name: request.tool_name.clone(),
+            target_path: request.target_path.clone(),
+            backend: CheckpointBackend::Git.as_str().to_string(),
+            checkpoint_id: None,
+            changed_file_count: 0,
+            error_code: None,
+            error_message: None,
+        }
+    }
+
+    fn created(request: &AutoCheckpointRequest, record: &CheckpointRecord) -> Self {
+        Self {
+            action: "auto_pre_mutation_checkpoint".to_string(),
+            status: "created".to_string(),
+            tool_name: request.tool_name.clone(),
+            target_path: request.target_path.clone(),
+            backend: record.backend.clone(),
+            checkpoint_id: Some(record.id.clone()),
+            changed_file_count: record.changed_file_count,
+            error_code: None,
+            error_message: None,
+        }
+    }
+
+    fn failed(request: &AutoCheckpointRequest, error_message: &str) -> Self {
+        Self {
+            action: "auto_pre_mutation_checkpoint".to_string(),
+            status: "failed".to_string(),
+            tool_name: request.tool_name.clone(),
+            target_path: request.target_path.clone(),
+            backend: CheckpointBackend::Git.as_str().to_string(),
+            checkpoint_id: None,
+            changed_file_count: 0,
+            error_code: Some("checkpoint_error".to_string()),
+            error_message: Some(sanitize_error_message(error_message)),
+        }
+    }
+}
+
 /// Durable checkpoint record stored beside the local git metadata.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CheckpointRecord {
@@ -176,6 +292,35 @@ pub fn list_checkpoints(cwd: &Path) -> Result<CheckpointOutcome> {
         records,
         details: CheckpointMetadata::success("list", repo_root.display().to_string(), None, 0),
     })
+}
+
+/// Create a policy-controlled checkpoint before a protected file mutation.
+pub fn ensure_pre_mutation_checkpoint(
+    cwd: &Path,
+    policy: &AutoCheckpointPolicy,
+    request: AutoCheckpointRequest,
+) -> Result<AutoCheckpointReceipt> {
+    if !policy.enabled {
+        return Ok(AutoCheckpointReceipt::skipped(&request));
+    }
+
+    let label = Some(format!("{}:{}:{}", policy.label_prefix, request.tool_name, request.target_path));
+    match create_checkpoint(cwd, label) {
+        Ok(outcome) => {
+            let Some(record) = outcome.record else {
+                return Err(Error::Worktree {
+                    message: "checkpoint creation returned no record".to_string(),
+                });
+            };
+            Ok(AutoCheckpointReceipt::created(&request, &record))
+        }
+        Err(error) if policy.failure_mode == AutoCheckpointFailureMode::BestEffort => {
+            Ok(AutoCheckpointReceipt::failed(&request, &error.to_string()))
+        }
+        Err(error) => Err(Error::Worktree {
+            message: format!("automatic checkpoint failed before mutation: {error}"),
+        }),
+    }
 }
 
 /// Restore files from a local clankers checkpoint.
@@ -344,6 +489,72 @@ mod tests {
         let message = error.error_message.expect("error message");
         assert!(!message.contains('\n'));
         assert!(message.chars().count() <= 241);
+    }
+
+    #[test]
+    fn auto_checkpoint_policy_models_serialize_safe_receipts() {
+        let request = AutoCheckpointRequest::new("write", "src/lib.rs");
+        let skipped =
+            ensure_pre_mutation_checkpoint(Path::new("."), &AutoCheckpointPolicy::disabled(), request.clone())
+                .expect("disabled policy skips");
+        assert_eq!(skipped.status, "skipped");
+        assert_eq!(skipped.tool_name, "write");
+        assert_eq!(skipped.target_path, "src/lib.rs");
+        assert!(skipped.checkpoint_id.is_none());
+
+        let json = serde_json::to_value(&skipped).expect("serialize receipt");
+        assert!(json.get("content").is_none());
+        assert!(json.get("prompt").is_none());
+        assert!(json.get("env").is_none());
+    }
+
+    #[test]
+    fn strict_auto_checkpoint_blocks_when_checkpoint_creation_fails() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let request = AutoCheckpointRequest::new("write", "note.txt");
+        let error = ensure_pre_mutation_checkpoint(tmp.path(), &AutoCheckpointPolicy::strict_enabled(), request)
+            .expect_err("strict policy should block non-git mutation");
+        assert!(error.to_string().contains("automatic checkpoint failed before mutation"));
+    }
+
+    #[test]
+    fn best_effort_auto_checkpoint_records_failure_without_blocking() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let policy = AutoCheckpointPolicy {
+            enabled: true,
+            failure_mode: AutoCheckpointFailureMode::BestEffort,
+            label_prefix: "auto".to_string(),
+        };
+        let receipt =
+            ensure_pre_mutation_checkpoint(tmp.path(), &policy, AutoCheckpointRequest::new("write", "note.txt"))
+                .expect("best effort returns receipt");
+        assert_eq!(receipt.status, "failed");
+        assert_eq!(receipt.error_code.as_deref(), Some("checkpoint_error"));
+        assert!(receipt.error_message.expect("error message").contains("not a git repository"));
+    }
+
+    #[test]
+    fn auto_checkpoint_creates_namespaced_record_before_mutation() {
+        let tmp = tempfile::tempdir().expect("tempdir");
+        run_git(tmp.path(), &["init"]);
+        fs::write(tmp.path().join("note.txt"), "before").expect("write fixture");
+        run_git(tmp.path(), &["add", "note.txt"]);
+
+        let receipt = ensure_pre_mutation_checkpoint(
+            tmp.path(),
+            &AutoCheckpointPolicy::strict_enabled(),
+            AutoCheckpointRequest::new("write", "note.txt"),
+        )
+        .expect("auto checkpoint");
+
+        assert_eq!(receipt.status, "created");
+        assert!(receipt.checkpoint_id.as_deref().unwrap_or_default().starts_with("clankers-checkpoint-"));
+        assert_eq!(receipt.changed_file_count, 1);
+
+        fs::write(tmp.path().join("note.txt"), "after").expect("mutate fixture");
+        rollback_checkpoint(tmp.path(), receipt.checkpoint_id.as_deref().expect("checkpoint id"), true)
+            .expect("rollback checkpoint");
+        assert_eq!(fs::read_to_string(tmp.path().join("note.txt")).expect("read restored"), "before");
     }
 
     #[test]
