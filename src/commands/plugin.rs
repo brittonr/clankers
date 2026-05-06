@@ -1,26 +1,149 @@
 //! Plugin command handlers for managing WASM plugins.
 
 use std::sync::Arc;
+use std::time::Duration;
+use std::time::Instant;
 
 use snafu::ResultExt;
 
 use crate::cli::PluginAction;
 use crate::commands::CommandContext;
 use crate::error::Result;
+use crate::tools::Tool;
+use crate::tools::ToolContext;
 
 /// Run the plugin subcommand.
-pub fn run(ctx: &CommandContext, action: PluginAction) -> Result<()> {
+pub async fn run(ctx: &CommandContext, action: PluginAction) -> Result<()> {
     let plugin_manager = crate::modes::common::init_plugin_manager(
         &ctx.paths.global_plugins_dir,
         Some(&ctx.project_paths.plugins_dir),
         &[&ctx.project_paths.plugins_root_dir],
     );
 
-    match action {
+    let result = match action {
         PluginAction::List { verbose } => handle_list(ctx, &plugin_manager, verbose),
         PluginAction::Show { name } => handle_show(&plugin_manager, &name),
+        PluginAction::Call { plugin, tool, args } => handle_call(&plugin_manager, &plugin, &tool, &args).await,
         PluginAction::Install { source, project } => handle_install(ctx, &source, project),
         PluginAction::Uninstall { name, project } => handle_uninstall(ctx, &name, project),
+    };
+
+    crate::plugin::shutdown_plugin_runtime(&plugin_manager, "plugin command complete").await;
+    result
+}
+
+async fn handle_call(
+    pm: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    plugin_name: &str,
+    tool_name: &str,
+    args: &str,
+) -> Result<()> {
+    let params = serde_json::from_str::<serde_json::Value>(args).context(crate::error::JsonSnafu)?;
+    if let Some(output) = call_wasm_plugin_direct(pm, plugin_name, tool_name, &params)? {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "is_error": false,
+                "content": [{ "type": "text", "text": output }]
+            }))
+            .context(crate::error::JsonSnafu)?
+        );
+        return Ok(());
+    }
+    let tool = wait_for_plugin_tool(pm, plugin_name, tool_name)?;
+    let result = tool
+        .execute(
+            &ToolContext::new(
+                format!("plugin-cli-{plugin_name}-{tool_name}"),
+                tokio_util::sync::CancellationToken::new(),
+                None,
+            ),
+            params,
+        )
+        .await;
+
+    println!("{}", serde_json::to_string_pretty(&result).context(crate::error::JsonSnafu)?);
+    if result.is_error {
+        return Err(crate::error::Error::Tool {
+            tool_name: tool_name.to_string(),
+            message: "plugin tool returned an error".to_string(),
+        });
+    }
+    Ok(())
+}
+
+fn call_wasm_plugin_direct(
+    pm: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    plugin_name: &str,
+    tool_name: &str,
+    params: &serde_json::Value,
+) -> Result<Option<String>> {
+    let manager = pm.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Some(plugin) = manager.get(plugin_name) else {
+        return Ok(None);
+    };
+    if !plugin.manifest.kind.uses_wasm_runtime() {
+        return Ok(None);
+    }
+    let handler = plugin
+        .manifest
+        .tool_definitions
+        .iter()
+        .find(|tool| tool.name == tool_name)
+        .map(|tool| tool.handler.as_str())
+        .or_else(|| plugin.manifest.tools.iter().find(|tool| tool.as_str() == tool_name).map(String::as_str))
+        .ok_or_else(|| crate::error::Error::Plugin {
+            plugin_name: plugin_name.to_string(),
+            message: format!("tool '{tool_name}' is not declared by plugin"),
+        })?;
+    let input = serde_json::to_string(&serde_json::json!({
+        "tool": tool_name,
+        "args": params,
+    }))
+    .context(crate::error::JsonSnafu)?;
+    let output = manager.call_plugin(plugin_name, handler, &input).map_err(|message| crate::error::Error::Plugin {
+        plugin_name: plugin_name.to_string(),
+        message,
+    })?;
+    Ok(Some(output))
+}
+
+fn wait_for_plugin_tool(
+    pm: &Arc<std::sync::Mutex<crate::plugin::PluginManager>>,
+    plugin_name: &str,
+    tool_name: &str,
+) -> Result<Arc<dyn Tool>> {
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        let mut tools = crate::modes::common::build_plugin_tools(&[], pm, None);
+        if let Some(index) =
+            tools.iter().position(|tool| tool.source() == plugin_name && tool.definition().name == tool_name)
+        {
+            return Ok(tools.swap_remove(index));
+        }
+        if Instant::now() >= deadline {
+            let known = tools
+                .iter()
+                .map(|tool| format!("{}::{}", tool.source(), tool.definition().name))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let plugin_states = {
+                let manager = pm.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+                manager
+                    .list()
+                    .iter()
+                    .map(|plugin| format!("{}={:?}", plugin.name, plugin.state))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            return Err(crate::error::Error::Plugin {
+                plugin_name: plugin_name.to_string(),
+                message: format!(
+                    "tool '{tool_name}' did not become available; known plugin tools: {known}; plugin states: {plugin_states}"
+                ),
+            });
+        }
+        std::thread::sleep(Duration::from_millis(50));
     }
 }
 

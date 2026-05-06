@@ -1072,6 +1072,16 @@ pub enum PluginAction {
         /// Plugin name
         name: String,
     },
+    /// Invoke a plugin-provided tool with JSON arguments
+    Call {
+        /// Plugin name
+        plugin: String,
+        /// Tool name registered by the plugin
+        tool: String,
+        /// JSON object arguments to pass to the tool
+        #[arg(default_value = "{}")]
+        args: String,
+    },
     /// Install a plugin from a path
     Install {
         /// Path to plugin directory (must contain plugin.json)

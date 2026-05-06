@@ -145,6 +145,7 @@ run_vm_selector() {
                 vm-smoke
                 vm-remote-daemon
                 vm-session-recovery
+                vm-plugin-runtime
                 vm-module-daemon
                 vm-module-router
                 vm-module-integration
@@ -173,7 +174,7 @@ run_vm_selector() {
         *)
             echo "error: unknown vm selector/check: $selector" >&2
             echo "known vm selectors: all, core, module, smoke" >&2
-            echo "known vm checks: vm-smoke, vm-remote-daemon, vm-session-recovery, vm-module-daemon, vm-module-router, vm-module-integration" >&2
+            echo "known vm checks: vm-smoke, vm-remote-daemon, vm-session-recovery, vm-plugin-runtime, vm-module-daemon, vm-module-router, vm-module-integration" >&2
             return 2
             ;;
     esac

@@ -394,6 +394,10 @@
           vm-smoke = import ./nix/vm-tests/smoke.nix { inherit pkgs clankersPkg; };
           vm-remote-daemon = import ./nix/vm-tests/remote-daemon.nix { inherit pkgs clankersPkg; };
           vm-session-recovery = import ./nix/vm-tests/session-recovery.nix { inherit pkgs clankersPkg; };
+          vm-plugin-runtime = import ./nix/vm-tests/plugin-runtime.nix {
+            inherit pkgs clankersPkg clankers-plugins;
+            src = ./.;
+          };
           vm-module-daemon = import ./nix/vm-tests/module-daemon.nix {
             inherit pkgs clankersPkg;
             clankersDaemonModule = self.nixosModules.clankers-daemon;

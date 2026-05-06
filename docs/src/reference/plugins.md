@@ -164,6 +164,16 @@ Migration checklist:
 
 calendar, email, github, hash, self-validate, text-stats.
 
+## Runtime VM coverage
+
+Packaged plugin runtime coverage is available through the NixOS VM rail:
+
+```bash
+./scripts/test-harness.sh vm vm-plugin-runtime
+```
+
+That check boots the packaged `clankers` binary, copies packaged plugin artifacts into a writable project plugin root, verifies Extism discovery and `clankers-hash` tool invocation, starts stdio fixture plugins, and checks restricted-sandbox enforcement or fail-closed behavior.
+
 ## Listing plugins
 
 ```

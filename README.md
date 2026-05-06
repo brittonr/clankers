@@ -29,6 +29,7 @@ Useful focused tiers:
 ./scripts/test-harness.sh vm smoke             # vm-smoke only
 ./scripts/test-harness.sh vm core              # smoke, remote daemon, session recovery
 ./scripts/test-harness.sh vm module            # daemon/router/integration NixOS module VMs
+./scripts/test-harness.sh vm vm-plugin-runtime # plugin discovery + tool runtime VM smoke
 ./scripts/test-harness.sh vm vm-remote-daemon  # one explicit VM check
 ```
 

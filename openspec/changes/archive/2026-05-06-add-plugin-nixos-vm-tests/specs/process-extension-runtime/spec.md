@@ -1,24 +1,4 @@
-# process-extension-runtime Specification
-
-## Purpose
-
-Defines process-backed plugin runtime behavior, including manifest discovery, supervised stdio lifecycle, tool registration, and runtime availability across standalone and daemon modes.
-## Requirements
-### Requirement: Process-backed plugin manifests
-
-The system SHALL support plugin manifests with `kind: "stdio"` in the same global and project plugin directories as existing Extism plugins. A stdio plugin manifest SHALL declare the launch command, optional arguments, and optional launch metadata without requiring a WASM module.
-
-#### Scenario: Mixed plugin kinds discovered
-
-- **WHEN** the host discovers one Extism plugin and one `kind: "stdio"` plugin in the configured plugin directories
-- **THEN** both plugins appear in the discovered plugin set
-- **THEN** the Extism plugin is loaded through the existing WASM path and the stdio plugin is prepared for process startup
-
-#### Scenario: Invalid stdio manifest rejected
-
-- **WHEN** a `kind: "stdio"` plugin manifest omits its required launch command
-- **THEN** the plugin is marked `error`
-- **THEN** all other valid plugins continue loading normally
+## MODIFIED Requirements
 
 ### Requirement: Supervised stdio plugin lifecycle
 Enabled stdio plugins SHALL be launched during plugin initialization in both standalone and daemon modes, SHALL complete a ready handshake before entering the `active` state, and SHALL be restarted after unexpected exit using the fixed backoff sequence `1s`, `2s`, `4s`, `8s`, `16s`. After 5 consecutive failed startups or crash loops without a successful ready state, the plugin SHALL enter `error`. Manual disable and normal host shutdown SHALL stop the plugin without scheduling a restart. The packaged stdio lifecycle SHALL also be covered by the `vm-plugin-runtime` NixOS VM check using a deterministic reference fixture.
