@@ -36,7 +36,6 @@ pub struct SearchHit {
 pub struct SearchIndex {
     index: Index,
     reader: IndexReader,
-    schema: Schema,
     path: PathBuf,
     // Field handles
     f_session_id: Field,
@@ -77,7 +76,6 @@ impl SearchIndex {
         Ok(Self {
             index,
             reader,
-            schema,
             path: path.to_path_buf(),
             f_session_id,
             f_message_id,

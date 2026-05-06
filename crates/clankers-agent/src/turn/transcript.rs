@@ -159,10 +159,6 @@ impl TurnTranscriptWriter {
         self.inner.lock().active_model = model;
     }
 
-    pub(super) fn cumulative_usage(&self) -> Usage {
-        self.inner.lock().cumulative_usage.clone()
-    }
-
     pub(super) fn update_cumulative_usage(&self, f: impl FnOnce(&mut Usage)) {
         let mut state = self.inner.lock();
         f(&mut state.cumulative_usage);

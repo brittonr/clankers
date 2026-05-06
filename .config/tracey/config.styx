@@ -11,6 +11,7 @@ specs (
           crates/clankers-session/src/**/*.rs
           crates/clankers-protocol/src/**/*.rs
           crates/clankers-plugin/src/**/*.rs
+          docs/tracey/**/*.rs
           crates/clankers-ucan/src/capability.rs
           crates/clankers-ucan/src/lib.rs
           src/capability_gate.rs

@@ -98,14 +98,7 @@ fn handle_login_start(ctx: &mut SlashContext<'_>, provider_name: &str, account_n
         return;
     }
 
-    // Try to auto-open the browser (detached so it doesn't block the TUI)
-    let was_browser_opened = open::that_detached(&url).is_ok();
-
-    let browser_msg = if was_browser_opened {
-        "Opening browser automatically..."
-    } else {
-        "Could not open browser automatically."
-    };
+    let browser_msg = "Browser auto-open is disabled; open the URL manually if you intend to authenticate.";
 
     ctx.app.push_system(
         format!(

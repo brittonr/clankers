@@ -180,11 +180,14 @@ fn slash_plugin_then_status() {
 fn slash_tools_lists_builtin_tools() {
     let mut h = TuiTestHarness::spawn(80, 200);
     run_slash(&mut h, "/tools");
-    h.wait_for_text("built-in", TIMEOUT);
-    assert!(h.screen_contains("read"), "Should list read tool.\nScreen:\n{}", h.screen_text());
-    assert!(h.screen_contains("bash"), "Should list bash tool.\nScreen:\n{}", h.screen_text());
-    assert!(h.screen_contains("edit"), "Should list edit tool.\nScreen:\n{}", h.screen_text());
-    assert!(h.screen_contains("built-in"), "Should show built-in source.\nScreen:\n{}", h.screen_text());
+    h.wait_for_text("core", TIMEOUT);
+    assert!(h.screen_contains("write"), "Should list write tool.\nScreen:\n{}", h.screen_text());
+    assert!(h.screen_contains("web"), "Should list web tool.\nScreen:\n{}", h.screen_text());
+    assert!(
+        h.screen_contains("orchestration"),
+        "Should show orchestration source.\nScreen:\n{}",
+        h.screen_text()
+    );
     h.quit();
 }
 
@@ -194,7 +197,7 @@ fn slash_tools_lists_builtin_tools() {
 fn slash_tools_lists_plugin_tools() {
     let mut h = TuiTestHarness::spawn(80, 200);
     run_slash(&mut h, "/tools");
-    h.wait_for_text("built-in", TIMEOUT);
+    h.wait_for_text("plugin", TIMEOUT);
     assert!(h.screen_contains("test_echo"), "Should list test_echo plugin tool.\nScreen:\n{}", h.screen_text());
     assert!(
         h.screen_contains("test_reverse"),

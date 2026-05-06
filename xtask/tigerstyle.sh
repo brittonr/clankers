@@ -22,6 +22,14 @@ RUNNER_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/.cargo-target}/cargo-tigerstyle/$TI
 RUNNER_BIN="$RUNNER_TARGET_DIR/release/cargo-tigerstyle"
 LINT_LINK="$LINT_BUILD_DIR/libtigerstyle@${TOOLCHAIN}.so"
 
+prefer_tigerstyle_toolchain() {
+    local pinned_bin
+    pinned_bin="$(find /nix/store -maxdepth 1 -type d -name '*rust-default-1.97.0-nightly-2026-04-16' -print -quit 2>/dev/null)/bin"
+    if [[ -x "$pinned_bin/rustc" && -x "$pinned_bin/cargo" ]]; then
+        export PATH="$pinned_bin:$PATH"
+    fi
+}
+
 sync_tigerstyle() {
     mkdir -p "$(dirname "$TIGERSTYLE_CACHE_DIR")"
     if [[ ! -d "$TIGERSTYLE_CACHE_DIR/.git" ]]; then
@@ -87,6 +95,19 @@ case "${1:-} ${2:-}" in
     "which cargo")
         command -v cargo
         ;;
+    "run "*)
+        shift
+        if [[ ${1:-} == +* || ${1:-} == *-unknown-linux-gnu ]]; then
+            shift
+        fi
+        exec "$@"
+        ;;
+    "rustc "*)
+        exec "$@"
+        ;;
+    "cargo "*)
+        exec "$@"
+        ;;
     *)
         echo "xtask rustup shim: unsupported command: $*" >&2
         exit 1
@@ -98,6 +119,7 @@ EOF
     trap 'rm -rf "$shim_dir"' EXIT
 }
 
+prefer_tigerstyle_toolchain
 sync_tigerstyle
 build_tigerstyle
 build_runner
@@ -112,5 +134,6 @@ fi
 export TIGERSTYLE_TOOLCHAIN="$TOOLCHAIN"
 export TIGERSTYLE_DYLINT_REV="$TIGERSTYLE_DYLINT_REV"
 export TIGERSTYLE_LINT_LIB="$LINT_LINK"
+export RUSTC="$(command -v rustc)"
 
 exec "$RUNNER_BIN" check "$@"

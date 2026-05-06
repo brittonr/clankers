@@ -397,15 +397,15 @@ const AGENT_TURN_ENGINE_RETRY_FORBIDDEN_PATHS: [&str; 3] = [
     "RETRY_BACKOFF_BASE_SECONDS",
     "RETRY_BACKOFF_EXPONENT_STEP",
 ];
-const AGENT_TURN_SHELL_CONCERN_REQUIRED_PATHS: [&str; 7] = [
+const AGENT_TURN_SHELL_CONCERN_REQUIRED_PATHS: [&str; 5] = [
     "check_model_switch",
     "update_usage_tracking",
     "stream_model_request",
     "execute_tools_parallel",
     "clankers_hooks::HookPipeline",
-    "AgentEvent::TurnStart",
-    "AgentEvent::TurnEnd",
 ];
+const AGENT_TURN_TRANSCRIPT_FILE: &str = "crates/clankers-agent/src/turn/transcript.rs";
+const AGENT_TURN_TRANSCRIPT_REQUIRED_PATHS: [&str; 2] = ["AgentEvent::TurnStart", "AgentEvent::TurnEnd"];
 const AGENT_LIB_ENGINE_BUDGET_REQUIRED_PATHS: [&str; 2] = [
     "NORMAL_TURN_MODEL_REQUEST_SLOT_BUDGET",
     "ORCHESTRATION_FOLLOW_UP_MODEL_REQUEST_SLOT_BUDGET",
@@ -1676,6 +1676,8 @@ fn agent_turn_runtime_defers_retry_and_budget_policy_to_engine() {
         &turn_paths,
         &AGENT_TURN_SHELL_CONCERN_REQUIRED_PATHS,
     );
+    let transcript_paths = collect_non_test_paths(AGENT_TURN_TRANSCRIPT_FILE);
+    assert_required_paths_present(AGENT_TURN_TRANSCRIPT_FILE, &transcript_paths, &AGENT_TURN_TRANSCRIPT_REQUIRED_PATHS);
     for forbidden_path in AGENT_TURN_ENGINE_RETRY_FORBIDDEN_PATHS {
         assert_exact_path_absent(AGENT_TURN_ENGINE_MODEL_COMPLETION_FILE, &turn_paths, forbidden_path);
     }

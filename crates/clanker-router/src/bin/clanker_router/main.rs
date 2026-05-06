@@ -1162,11 +1162,7 @@ async fn run_auth_login(auth_paths: &AuthStorePaths, provider: Option<&str>, acc
         pending.save(&verifier_path).expect("failed to persist pending login");
 
         println!("Logging in to provider '{}' as account '{}'.", provider_name, account);
-        if open::that_detached(&url).is_ok() {
-            println!("Opening browser automatically...\n");
-        } else {
-            println!("Could not open browser automatically.\n");
-        }
+        println!("Browser auto-open is disabled; open the URL manually if you intend to authenticate.\n");
         println!("Ctrl+Click or open this URL in your browser:\n\n  \x1b]8;;{}\x1b\\{}\x1b]8;;\x1b\\\n", url, url);
         println!(
             "After authorizing, paste the code or callback URL.\n\

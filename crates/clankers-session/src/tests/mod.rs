@@ -9,7 +9,6 @@ use clanker_message::Usage;
 use clanker_message::UserMessage;
 
 use super::automerge_store;
-use super::entry;
 use super::entry::SessionEntry;
 use super::store;
 use super::*;

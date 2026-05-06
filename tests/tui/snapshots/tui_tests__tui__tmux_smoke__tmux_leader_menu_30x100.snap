@@ -1,6 +1,6 @@
 ---
 source: tests/tui/tmux_smoke.rs
-assertion_line: 123
+assertion_line: 122
 expression: normalized
 ---
 ┌ Todo (0/0)───────┐┌────────────────────────── h/l:panels j/k:panes ┐┌ Subagents (0/0)────────────┐
@@ -9,16 +9,17 @@ expression: normalized
 │or the todo tool. │││press i to sta│  ?  help                │     │││                            │
 │                  │││              │  A  auto-test           │     │││                            │
 │                  │││              │  C  compact             │     │││                            │
+│                  │││              │  E  experiments         │     │││                            │
 │                  │││              │  G  GitHub              │     │││                            │
 │                  │││              │  I  prompt improve      │     │││                            │
 │                  │││              │  L  loop…               │     │││                            │
 │                  │││              │  M  model/thinking…     │     │││                            │
 │                  │││              │  P  plan mode           │     │││                            │
-│                  │││              │  R  code review         │     │││                            │
-└──────────────────┘││              │  S  system/memory…      │     ││└────────────────────────────┘
-┌ Files (0, 0 ops)─┐││              │  T  show/hide thinking  │     ││┌ Peers (0/0)────────────────┐
-│No files touched  │││              │  `  toggle panel        │     │││No peers known. /peers add  │
-│yet.              │││              │  a  account             │     │││<id> <name>                 │
+└──────────────────┘││              │  R  code review         │     ││└────────────────────────────┘
+┌ Files (0, 0 ops)─┐││              │  S  system/memory…      │     ││┌ Peers (0/0)────────────────┐
+│No files touched  │││              │  T  show/hide thinking  │     │││No peers known. /peers add  │
+│yet.              │││              │  `  toggle panel        │     │││<id> <name>                 │
+│                  │││              │  a  account             │     │││                            │
 │                  │││              │  b  branch…             │     │││                            │
 │                  │││              │  c  cancel/abort        │     │││                            │
 │                  │││              │  d  debug…              │     │││                            │
@@ -26,10 +27,9 @@ expression: normalized
 │                  │││              │  f  search output       │     │││                            │
 │                  │││              │  i  info…               │     │││                            │
 │                  │││              │  l  layout…             │     │││                            │
-│                  │││              │  m  model               │     │││                            │
-│                  ││└──────────────│  o  external editor     │─────┘││                            │
-└──────────────────┘└───────────────│  p  pane…               │──────┘└────────────────────────────┘
-┌Input──────────────────────────────│  q  quit                │────────────────────────────────────┐
+│                  ││└──────────────│  m  model               │─────┘││                            │
+└──────────────────┘└───────────────│  o  external editor     │──────┘└────────────────────────────┘
+┌Input──────────────────────────────│  p  pane…               │────────────────────────────────────┐
 │                                   └─────────────────────────┘                                    │
 └──────────────────────────────────────────────────────────────────────────────────────────────────┘
  NORMAL  👤 default  ░░░░░░░░N/N.Nk   main  idle | MODEL

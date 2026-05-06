@@ -148,7 +148,12 @@ impl SessionManager {
             })
             .last();
         let tree = SessionTree::build(entries);
-        let active_leaf_id = tree.find_latest_leaf(None).or_else(|| tree.latest_message()).map(|m| m.id.clone());
+        let active_leaf_id = tree
+            .find_all_leaves()
+            .into_iter()
+            .max_by_key(|message| message.timestamp)
+            .or_else(|| tree.find_latest_leaf(None))
+            .map(|message| message.id.clone());
 
         Ok(Self {
             session_id: header.session_id,
