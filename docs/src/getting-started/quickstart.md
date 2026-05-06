@@ -36,11 +36,12 @@ clankers daemon stop            # stop daemon
 Run local JSONL prompt batches and export deterministic trajectories for evaluation or review:
 
 ```bash
-clankers batch run prompts.jsonl --output results.jsonl
-clankers batch run prompts.jsonl --output sharegpt.json --format sharegpt --concurrency 2
+clankers batch run --input prompts.jsonl --output results.jsonl
+clankers batch run --input prompts.jsonl --output sharegpt.json --format sharegpt --concurrency 2
+clankers batch run --input prompts.jsonl --output eval.jsonl --format eval-jsonl --execution daemon --run-id smoke --resume
 ```
 
-Each input line is a JSON object with a non-empty `prompt`, optional string `id`, and optional object `metadata`. The first pass is foreground-only, accepts local paths only, bounds concurrency, preserves result order, and writes safe JSONL or ShareGPT-style output without logging raw prompts in replay metadata.
+Each input line is a JSON object with a non-empty `prompt`, optional string `id`, and optional object `metadata`. Batch runs accept local paths only, bound concurrency, preserve result order, and write safe JSONL, ShareGPT, or eval JSONL output. Daemon execution records deterministic per-job session ids and resumes each prompt through normal session persistence; `--resume` reads the sidecar manifest and skips completed job ids. Replay metadata records counts, prompt sizes, session/model handles, redaction status, and optional objective receipts without logging raw prompts or credentials.
 
 ## ACP IDE integration
 

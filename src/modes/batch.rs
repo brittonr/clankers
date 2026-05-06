@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -6,6 +7,8 @@ use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
 use serde_json::json;
+use sha2::Digest;
+use sha2::Sha256;
 
 pub const DEFAULT_BATCH_CONCURRENCY: usize = 4;
 pub const MAX_BATCH_CONCURRENCY: usize = 32;
@@ -15,6 +18,14 @@ pub const MAX_BATCH_CONCURRENCY: usize = 32;
 pub enum TrajectoryFormat {
     Jsonl,
     Sharegpt,
+    EvalJsonl,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchExecutionMode {
+    Local,
+    Daemon,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -24,6 +35,8 @@ pub struct BatchRunConfig {
     pub concurrency: usize,
     pub format: TrajectoryFormat,
     pub resume: bool,
+    pub execution: BatchExecutionMode,
+    pub run_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -40,32 +53,84 @@ pub struct BatchJob {
 pub enum BatchJobStatus {
     Succeeded,
     Failed,
+    Skipped,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BatchJobResult {
     pub id: String,
     pub status: BatchJobStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
     pub response: Option<String>,
     pub error: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub objective: Option<ObjectiveReceipt>,
     #[serde(default)]
     pub metadata: Option<Value>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ObjectiveReceipt {
+    pub status: String,
+    pub score: Option<f64>,
+    pub metric: String,
+    pub redaction: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct BatchRunSummary {
-    pub source: &'static str,
-    pub status: &'static str,
+    pub source: String,
+    pub status: String,
+    pub run_id: String,
     pub total: usize,
     pub succeeded: usize,
     pub failed: usize,
+    pub skipped: usize,
     pub concurrency: usize,
     pub format: TrajectoryFormat,
+    pub execution: BatchExecutionMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct BatchRunManifest {
+    pub source: String,
+    pub run_id: String,
+    pub status: String,
+    pub execution: BatchExecutionMode,
+    pub total: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub skipped: usize,
+    pub completed_job_ids: Vec<String>,
+    pub failed_job_ids: Vec<String>,
+    pub session_ids: Vec<String>,
+    pub redaction: String,
 }
 
 #[async_trait::async_trait]
 pub trait BatchJobExecutor: Send + Sync {
     async fn execute(&self, job: &BatchJob) -> Result<String, String>;
+
+    async fn execute_batch_job(
+        &self,
+        _run_id: &str,
+        _job_id: &str,
+        _session_id: Option<&str>,
+        job: &BatchJob,
+    ) -> Result<String, String> {
+        self.execute(job).await
+    }
+
+    fn model_label(&self) -> Option<&str> {
+        None
+    }
+
+    fn session_id_for(&self, _run_id: &str, _job_id: &str, _job: &BatchJob) -> Option<String> {
+        None
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -77,6 +142,7 @@ pub enum BatchPolicyError {
     ZeroConcurrency,
     ConcurrencyTooHigh { max: usize },
     InvalidMetadata,
+    InvalidRunId,
     JsonLine { line: usize, message: String },
 }
 
@@ -92,6 +158,7 @@ impl std::fmt::Display for BatchPolicyError {
             Self::ZeroConcurrency => write!(f, "batch concurrency must be greater than zero"),
             Self::ConcurrencyTooHigh { max } => write!(f, "batch concurrency exceeds first-pass maximum of {max}"),
             Self::InvalidMetadata => write!(f, "batch job metadata must be a JSON object when provided"),
+            Self::InvalidRunId => write!(f, "batch run id must contain only ASCII letters, digits, '.', '_', or '-'"),
             Self::JsonLine { line, message } => write!(f, "invalid batch JSONL at line {line}: {message}"),
         }
     }
@@ -113,12 +180,27 @@ impl BatchRunConfig {
             concurrency,
             format,
             resume,
+            execution: BatchExecutionMode::Local,
+            run_id: None,
         }
+    }
+
+    pub fn with_execution(mut self, execution: BatchExecutionMode) -> Self {
+        self.execution = execution;
+        self
+    }
+
+    pub fn with_run_id(mut self, run_id: Option<String>) -> Self {
+        self.run_id = run_id;
+        self
     }
 
     pub fn validate(&self) -> Result<(), BatchPolicyError> {
         validate_local_path(&self.input, BatchPolicyError::RemoteInputUnsupported)?;
         validate_local_path(&self.output, BatchPolicyError::RemoteOutputUnsupported)?;
+        if self.run_id.as_ref().is_some_and(|run_id| !is_safe_id(run_id)) {
+            return Err(BatchPolicyError::InvalidRunId);
+        }
         match self.concurrency {
             0 => Err(BatchPolicyError::ZeroConcurrency),
             n if n > MAX_BATCH_CONCURRENCY => Err(BatchPolicyError::ConcurrencyTooHigh {
@@ -126,6 +208,10 @@ impl BatchRunConfig {
             }),
             _ => Ok(()),
         }
+    }
+
+    pub fn effective_run_id(&self) -> String {
+        self.run_id.clone().unwrap_or_else(|| stable_run_id(&self.input, &self.output))
     }
 }
 
@@ -166,6 +252,20 @@ pub fn validate_job(job: &BatchJob) -> Result<(), BatchPolicyError> {
     Ok(())
 }
 
+pub fn filter_resume_jobs(jobs: Vec<BatchJob>, manifest: Option<&BatchRunManifest>) -> Vec<BatchJob> {
+    let Some(manifest) = manifest else {
+        return jobs;
+    };
+    let completed: BTreeSet<&str> = manifest.completed_job_ids.iter().map(String::as_str).collect();
+    jobs.into_iter()
+        .enumerate()
+        .filter_map(|(index, job)| {
+            let id = job_id(index, &job);
+            (!completed.contains(id.as_str())).then_some(job)
+        })
+        .collect()
+}
+
 pub async fn run_batch_jobs(
     config: &BatchRunConfig,
     jobs: Vec<BatchJob>,
@@ -179,27 +279,65 @@ pub async fn run_batch_jobs(
         validate_job(job)?;
     }
 
+    let run_id = config.effective_run_id();
+    let execution = config.execution;
+    let model_label = executor.model_label().map(ToOwned::to_owned);
     let mut indexed = futures::stream::iter(jobs.into_iter().enumerate())
-        .map(|(index, job)| async move {
-            let id = job.id.clone().unwrap_or_else(|| format!("line-{}", index + 1));
-            let metadata = normalized_job_metadata(&job);
-            let result = match executor.execute(&job).await {
-                Ok(response) => BatchJobResult {
-                    id,
-                    status: BatchJobStatus::Succeeded,
-                    response: Some(response),
-                    error: None,
-                    metadata: Some(metadata),
-                },
-                Err(error) => BatchJobResult {
-                    id,
-                    status: BatchJobStatus::Failed,
-                    response: None,
-                    error: Some(error),
-                    metadata: Some(metadata),
-                },
-            };
-            (index, result)
+        .map(|(index, job)| {
+            let run_id = run_id.clone();
+            let model_label = model_label.clone();
+            async move {
+                let id = job_id(index, &job);
+                let session_id = match execution {
+                    BatchExecutionMode::Local => None,
+                    BatchExecutionMode::Daemon => executor
+                        .session_id_for(&run_id, &id, &job)
+                        .or_else(|| Some(default_daemon_session_id(&run_id, &id))),
+                };
+                let objective = objective_receipt(&job, None);
+                let metadata = normalized_job_metadata(
+                    &run_id,
+                    execution,
+                    session_id.as_deref(),
+                    model_label.as_deref(),
+                    &job,
+                    &objective,
+                );
+                let result = match executor.execute_batch_job(&run_id, &id, session_id.as_deref(), &job).await {
+                    Ok(response) => {
+                        let objective = objective_receipt(&job, Some(&response));
+                        let metadata = normalized_job_metadata(
+                            &run_id,
+                            execution,
+                            session_id.as_deref(),
+                            model_label.as_deref(),
+                            &job,
+                            &objective,
+                        );
+                        BatchJobResult {
+                            id,
+                            status: BatchJobStatus::Succeeded,
+                            prompt: Some(job.prompt),
+                            response: Some(response),
+                            error: None,
+                            session_id,
+                            objective: Some(objective),
+                            metadata: Some(metadata),
+                        }
+                    }
+                    Err(error) => BatchJobResult {
+                        id,
+                        status: BatchJobStatus::Failed,
+                        prompt: Some(job.prompt),
+                        response: None,
+                        error: Some(sanitize_error(&error)),
+                        session_id,
+                        objective: Some(objective),
+                        metadata: Some(metadata),
+                    },
+                };
+                (index, result)
+            }
         })
         .buffer_unordered(config.concurrency)
         .collect::<Vec<_>>()
@@ -207,15 +345,19 @@ pub async fn run_batch_jobs(
     indexed.sort_by_key(|(index, _)| *index);
     let results: Vec<_> = indexed.into_iter().map(|(_, result)| result).collect();
     let succeeded = results.iter().filter(|result| result.status == BatchJobStatus::Succeeded).count();
-    let failed = results.len() - succeeded;
+    let failed = results.iter().filter(|result| result.status == BatchJobStatus::Failed).count();
+    let skipped = results.iter().filter(|result| result.status == BatchJobStatus::Skipped).count();
     let summary = BatchRunSummary {
-        source: "batch_trajectory_runner",
-        status: if failed == 0 { "ok" } else { "partial" },
+        source: "batch_trajectory_runner".to_string(),
+        status: (if failed == 0 { "ok" } else { "partial" }).to_string(),
+        run_id,
         total: results.len(),
         succeeded,
         failed,
+        skipped,
         concurrency: config.concurrency,
         format: config.format,
+        execution,
     };
     Ok((summary, results))
 }
@@ -243,6 +385,7 @@ pub fn render_trajectory_results(
                         "id": result.id,
                         "status": result.status,
                         "conversations": [
+                            {"from": "human", "value": result.prompt.clone().unwrap_or_default()},
                             {"from": "assistant", "value": result.response.clone().unwrap_or_default()}
                         ],
                         "metadata": result.metadata,
@@ -255,28 +398,115 @@ pub fn render_trajectory_results(
             rendered.push('\n');
             rendered
         }),
+        TrajectoryFormat::EvalJsonl => eval_results_jsonl(results),
     }
+}
+
+pub fn eval_results_jsonl(results: &[BatchJobResult]) -> Result<String, serde_json::Error> {
+    let mut output = String::new();
+    for result in results {
+        let metadata = result.metadata.as_ref();
+        let record = json!({
+            "run_id": metadata.and_then(|value| value.get("run_id")).cloned(),
+            "job_id": result.id,
+            "status": result.status,
+            "prompt": result.prompt,
+            "response": result.response,
+            "session_id": result.session_id,
+            "model": metadata.and_then(|value| value.get("model")).cloned(),
+            "execution": metadata.and_then(|value| value.get("execution")).cloned(),
+            "redaction": metadata.and_then(|value| value.get("redaction")).cloned(),
+            "objective": result.objective,
+            "error": result.error,
+        });
+        output.push_str(&serde_json::to_string(&record)?);
+        output.push('\n');
+    }
+    Ok(output)
 }
 
 pub fn batch_run_metadata(summary: &BatchRunSummary, output: &Path) -> Value {
     json!({
         "source": "batch_trajectory_runner",
         "status": summary.status,
+        "run_id": summary.run_id,
         "total": summary.total,
         "succeeded": summary.succeeded,
         "failed": summary.failed,
+        "skipped": summary.skipped,
         "concurrency": summary.concurrency,
         "format": summary.format,
+        "execution": summary.execution,
         "output_file": output.file_name().and_then(|name| name.to_str()),
+        "redaction": "safe_metadata_only",
     })
 }
 
-fn normalized_job_metadata(job: &BatchJob) -> Value {
+pub fn build_run_manifest(summary: &BatchRunSummary, results: &[BatchJobResult]) -> BatchRunManifest {
+    BatchRunManifest {
+        source: "batch_trajectory_runner".to_string(),
+        run_id: summary.run_id.clone(),
+        status: summary.status.clone(),
+        execution: summary.execution,
+        total: summary.total,
+        succeeded: summary.succeeded,
+        failed: summary.failed,
+        skipped: summary.skipped,
+        completed_job_ids: results
+            .iter()
+            .filter(|result| result.status == BatchJobStatus::Succeeded)
+            .map(|result| result.id.clone())
+            .collect(),
+        failed_job_ids: results
+            .iter()
+            .filter(|result| result.status == BatchJobStatus::Failed)
+            .map(|result| result.id.clone())
+            .collect(),
+        session_ids: results.iter().filter_map(|result| result.session_id.clone()).collect(),
+        redaction: "safe_metadata_only".to_string(),
+    }
+}
+
+fn normalized_job_metadata(
+    run_id: &str,
+    execution: BatchExecutionMode,
+    session_id: Option<&str>,
+    model_label: Option<&str>,
+    job: &BatchJob,
+    objective: &ObjectiveReceipt,
+) -> Value {
     json!({
         "source": "batch_trajectory_runner",
+        "run_id": run_id,
+        "execution": execution,
+        "session_id": session_id,
+        "model": model_label,
         "has_metadata": job.metadata.is_some(),
         "prompt_chars": job.prompt.chars().count(),
+        "objective_status": objective.status,
+        "objective_metric": objective.metric,
+        "redaction": "safe_metadata_only",
     })
+}
+
+fn objective_receipt(job: &BatchJob, response: Option<&str>) -> ObjectiveReceipt {
+    let Some(expected) =
+        job.metadata.as_ref().and_then(|metadata| metadata.get("expected_contains")).and_then(Value::as_str)
+    else {
+        return ObjectiveReceipt {
+            status: "not_configured".to_string(),
+            score: None,
+            metric: "expected_contains".to_string(),
+            redaction: "objective_label_only".to_string(),
+        };
+    };
+    let score = response.map(|body| if body.contains(expected) { 1.0 } else { 0.0 });
+    ObjectiveReceipt {
+        status: (if score.is_some() { "scored" } else { "pending" }).to_string(),
+        score,
+        metric: "expected_contains".to_string(),
+        redaction: "objective_label_only".to_string(),
+    }
 }
 
 fn validate_local_path(path: &Path, err: BatchPolicyError) -> Result<(), BatchPolicyError> {
@@ -285,6 +515,47 @@ fn validate_local_path(path: &Path, err: BatchPolicyError) -> Result<(), BatchPo
         return Err(err);
     }
     Ok(())
+}
+
+fn job_id(index: usize, job: &BatchJob) -> String {
+    job.id.clone().unwrap_or_else(|| format!("line-{}", index + 1))
+}
+
+fn default_daemon_session_id(run_id: &str, job_id: &str) -> String {
+    format!("batch-{run_id}-{}", sanitize_id_component(job_id))
+}
+
+fn stable_run_id(input: &Path, output: &Path) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(input.to_string_lossy().as_bytes());
+    hasher.update(b"\0");
+    hasher.update(output.to_string_lossy().as_bytes());
+    let digest = hasher.finalize();
+    format!("run-{}", hex::encode(&digest[..6]))
+}
+
+fn is_safe_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 80
+        && value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+}
+
+fn sanitize_id_component(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || matches!(ch, '.' | '_' | '-') {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .take(80)
+        .collect()
+}
+
+fn sanitize_error(error: &str) -> String {
+    error.lines().next().unwrap_or_default().chars().take(240).collect()
 }
 
 #[cfg(test)]
@@ -350,6 +621,10 @@ mod tests {
         async fn execute(&self, job: &BatchJob) -> Result<String, String> {
             Ok(format!("echo: {}", job.prompt))
         }
+
+        fn model_label(&self) -> Option<&str> {
+            Some("fake-model")
+        }
     }
 
     #[tokio::test]
@@ -370,13 +645,61 @@ mod tests {
         assert!(!results[0].metadata.as_ref().unwrap().to_string().contains("secret prompt"));
     }
 
+    #[tokio::test]
+    async fn daemon_mode_records_session_ids_and_manifest() {
+        let cfg = BatchRunConfig::new("prompts.jsonl", "out", 2, TrajectoryFormat::EvalJsonl, false)
+            .with_execution(BatchExecutionMode::Daemon)
+            .with_run_id(Some("eval-run".to_string()));
+        let jobs = parse_jsonl_jobs(r#"{"id":"a","prompt":"hello","metadata":{"expected_contains":"hello"}}"#).unwrap();
+        let (summary, results) = run_batch_jobs(&cfg, jobs, &EchoExecutor).await.unwrap();
+        let manifest = build_run_manifest(&summary, &results);
+
+        assert_eq!(summary.execution, BatchExecutionMode::Daemon);
+        assert_eq!(results[0].session_id.as_deref(), Some("batch-eval-run-a"));
+        assert_eq!(results[0].objective.as_ref().unwrap().status, "scored");
+        assert_eq!(results[0].objective.as_ref().unwrap().score, Some(1.0));
+        assert_eq!(manifest.completed_job_ids, vec!["a"]);
+        assert_eq!(manifest.session_ids, vec!["batch-eval-run-a"]);
+        assert!(!serde_json::to_string(&manifest).unwrap().contains("hello"));
+    }
+
+    #[test]
+    fn resume_filter_skips_completed_manifest_jobs() {
+        let jobs = parse_jsonl_jobs(
+            r#"{"id":"done","prompt":"one"}
+{"id":"retry","prompt":"two"}"#,
+        )
+        .unwrap();
+        let manifest = BatchRunManifest {
+            source: "batch_trajectory_runner".to_string(),
+            run_id: "run".to_string(),
+            status: "partial".to_string(),
+            execution: BatchExecutionMode::Daemon,
+            total: 2,
+            succeeded: 1,
+            failed: 1,
+            skipped: 0,
+            completed_job_ids: vec!["done".to_string()],
+            failed_job_ids: vec!["retry".to_string()],
+            session_ids: vec!["batch-run-done".to_string()],
+            redaction: "safe_metadata_only".to_string(),
+        };
+
+        let remaining = filter_resume_jobs(jobs, Some(&manifest));
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].id.as_deref(), Some("retry"));
+    }
+
     #[test]
     fn renders_result_jsonl() {
         let result = BatchJobResult {
             id: "a".to_string(),
             status: BatchJobStatus::Succeeded,
+            prompt: Some("prompt".to_string()),
             response: Some("ok".to_string()),
             error: None,
+            session_id: None,
+            objective: None,
             metadata: None,
         };
         let rendered = results_jsonl(&[result]).unwrap();
@@ -389,12 +712,17 @@ mod tests {
         let result = BatchJobResult {
             id: "a".to_string(),
             status: BatchJobStatus::Succeeded,
+            prompt: Some("ask".to_string()),
             response: Some("ok".to_string()),
             error: None,
+            session_id: None,
+            objective: None,
             metadata: None,
         };
         let rendered = render_trajectory_results(TrajectoryFormat::Sharegpt, &[result]).unwrap();
         assert!(rendered.contains(r#""conversations""#));
+        assert!(rendered.contains(r#""from": "human""#));
+        assert!(rendered.contains(r#""value": "ask""#));
         assert!(rendered.contains(r#""from": "assistant""#));
         assert!(rendered.contains(r#""value": "ok""#));
     }
@@ -402,13 +730,16 @@ mod tests {
     #[test]
     fn run_metadata_is_safe_and_structured() {
         let summary = BatchRunSummary {
-            source: "batch_trajectory_runner",
-            status: "ok",
+            source: "batch_trajectory_runner".to_string(),
+            status: "ok".to_string(),
+            run_id: "safe-run".to_string(),
             total: 2,
             succeeded: 2,
             failed: 0,
+            skipped: 0,
             concurrency: 2,
             format: TrajectoryFormat::Jsonl,
+            execution: BatchExecutionMode::Local,
         };
         let metadata = batch_run_metadata(&summary, Path::new("/tmp/secret/prompts-output.jsonl"));
         assert_eq!(metadata["source"], "batch_trajectory_runner");

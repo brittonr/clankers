@@ -432,6 +432,12 @@ pub enum BatchAction {
         /// Output trajectory format
         #[arg(long, value_enum, default_value_t = TrajectoryFormatArg::Jsonl)]
         format: TrajectoryFormatArg,
+        /// Execution substrate for jobs
+        #[arg(long, value_enum, default_value_t = BatchExecutionArg::Local)]
+        execution: BatchExecutionArg,
+        /// Stable run id for manifests and trajectory provenance
+        #[arg(long, value_name = "RUN_ID")]
+        run_id: Option<String>,
         /// Resume by skipping already completed job ids in the output directory
         #[arg(long)]
         resume: bool,
@@ -676,6 +682,13 @@ pub enum SoulAction {
 pub enum TrajectoryFormatArg {
     Jsonl,
     Sharegpt,
+    EvalJsonl,
+}
+
+#[derive(ValueEnum, Clone, Debug, PartialEq, Eq)]
+pub enum BatchExecutionArg {
+    Local,
+    Daemon,
 }
 
 #[derive(Subcommand, Debug)]
@@ -1349,6 +1362,10 @@ mod tests {
             "8",
             "--format",
             "sharegpt",
+            "--execution",
+            "daemon",
+            "--run-id",
+            "smoke-run",
             "--resume",
         ]);
 
@@ -1360,6 +1377,8 @@ mod tests {
                         output,
                         concurrency,
                         format,
+                        execution,
+                        run_id,
                         resume,
                     },
             } => {
@@ -1367,6 +1386,8 @@ mod tests {
                 assert_eq!(output, std::path::PathBuf::from("out"));
                 assert_eq!(concurrency, 8);
                 assert_eq!(format, TrajectoryFormatArg::Sharegpt);
+                assert_eq!(execution, BatchExecutionArg::Daemon);
+                assert_eq!(run_id.as_deref(), Some("smoke-run"));
                 assert!(resume);
             }
             other => panic!("unexpected command: {other:?}"),

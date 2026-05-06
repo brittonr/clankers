@@ -50,9 +50,11 @@ Standalone TUI/headless mode runs the agent in-process and renders agent events 
 
 ## Batch trajectory path
 
-`clankers batch run` is a foreground CLI workflow for local JSONL prompt batches. The command parses one prompt job per input line, validates local-only input/output paths and bounded concurrency, runs jobs through the existing headless prompt path, restores result ordering after concurrent execution, and renders JSONL or ShareGPT-style trajectories.
+`clankers batch run` is a foreground CLI workflow for local JSONL prompt batches. The command parses one prompt job per input line, validates local-only input/output paths and bounded concurrency, runs jobs through the existing headless prompt path, restores result ordering after concurrent execution, and renders JSONL, ShareGPT-style, or eval JSONL trajectories.
 
-Batch replay/debug metadata is intentionally safe: run-level logs include `source=batch_trajectory_runner`, status/counts, concurrency, format, and output filename; per-job metadata records prompt character counts and whether user metadata existed. Raw prompts, provider payloads, API keys, and remote destinations are not stored in metadata. TUI and daemon/session routing are not part of the first-pass batch surface.
+With `--execution daemon`, the runner derives deterministic per-job session ids and invokes each prompt with the normal session resume path, preserving session/controller persistence semantics for follow-up inspection while still keeping the batch command foreground and bounded. Each run writes a sidecar manifest next to the output; `--resume` reads that manifest and skips completed job ids while retrying failed or missing jobs.
+
+Batch replay/debug metadata is intentionally safe: run-level logs include `source=batch_trajectory_runner`, status/counts, concurrency, format, execution mode, and output filename; per-job metadata records prompt character counts, model/session handles, redaction status, objective receipt status, and whether user metadata existed. Eval JSONL adds run id, job id, model/session provenance, redaction status, and simple objective scores from supported metadata such as `expected_contains`. Raw prompts, provider payloads, API keys, and remote destinations are not stored in metadata.
 
 ## Daemon prompt path
 
