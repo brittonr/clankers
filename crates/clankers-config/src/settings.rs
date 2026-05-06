@@ -505,11 +505,11 @@ pub enum ExternalMemoryProvider {
 pub enum ExternalMemoryConfigError {
     BlankName,
     MissingHttpEndpoint,
+    MissingCredentialEnv,
     BlankEndpoint,
     BlankCredentialEnv,
     NonPositiveTimeout,
     NonPositiveMaxResults,
-    HttpUnsupported,
 }
 
 impl std::fmt::Display for ExternalMemoryConfigError {
@@ -517,13 +517,11 @@ impl std::fmt::Display for ExternalMemoryConfigError {
         match self {
             Self::BlankName => f.write_str("external memory `name` cannot be blank"),
             Self::MissingHttpEndpoint => f.write_str("enabled HTTP external memory requires `endpoint`"),
+            Self::MissingCredentialEnv => f.write_str("enabled HTTP external memory requires `credentialEnv`"),
             Self::BlankEndpoint => f.write_str("external memory `endpoint` cannot be blank"),
             Self::BlankCredentialEnv => f.write_str("external memory `credentialEnv` cannot be blank"),
             Self::NonPositiveTimeout => f.write_str("external memory `timeoutMs` must be greater than zero"),
             Self::NonPositiveMaxResults => f.write_str("external memory `maxResults` must be greater than zero"),
-            Self::HttpUnsupported => {
-                f.write_str("HTTP external memory providers are not implemented in this first pass")
-            }
         }
     }
 }
@@ -557,8 +555,10 @@ impl ExternalMemorySettings {
             ExternalMemoryProvider::Http => {
                 if self.endpoint.is_none() {
                     Err(ExternalMemoryConfigError::MissingHttpEndpoint)
+                } else if self.credential_env.is_none() {
+                    Err(ExternalMemoryConfigError::MissingCredentialEnv)
                 } else {
-                    Err(ExternalMemoryConfigError::HttpUnsupported)
+                    Ok(())
                 }
             }
         }
@@ -1100,10 +1100,20 @@ mod tests {
     }
 
     #[test]
-    fn external_memory_http_is_explicitly_unsupported_first_pass() {
+    fn external_memory_http_requires_endpoint_and_credential_env() {
         let missing_endpoint = r#"{"externalMemory":{"enabled":true,"provider":"http"}}"#;
         let settings: Settings = serde_json::from_str(missing_endpoint).unwrap();
         assert_eq!(settings.external_memory.validate(), Err(ExternalMemoryConfigError::MissingHttpEndpoint));
+
+        let missing_credential = r#"{
+            "externalMemory": {
+                "enabled": true,
+                "provider": "http",
+                "endpoint": "https://memory.example.test/search"
+            }
+        }"#;
+        let settings: Settings = serde_json::from_str(missing_credential).unwrap();
+        assert_eq!(settings.external_memory.validate(), Err(ExternalMemoryConfigError::MissingCredentialEnv));
 
         let configured = r#"{
             "externalMemory": {
@@ -1114,7 +1124,10 @@ mod tests {
             }
         }"#;
         let settings: Settings = serde_json::from_str(configured).unwrap();
-        assert_eq!(settings.external_memory.validate(), Err(ExternalMemoryConfigError::HttpUnsupported));
+        settings
+            .external_memory
+            .validate()
+            .expect("HTTP config shape is valid before runtime credential lookup");
     }
 
     #[test]

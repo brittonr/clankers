@@ -1,10 +1,11 @@
 //! External memory provider tool adapter.
 //!
-//! First pass keeps external memory disabled by default and exposes a small,
-//! deterministic local provider seam. Remote provider kinds return explicit
-//! unsupported/configuration errors before contact.
+//! External memory stays disabled by default. Local provider search uses the
+//! repo-local memory database, while HTTP providers require explicit endpoint,
+//! credential, timeout, and result-limit policy before any network contact.
 
 use std::fmt::Write;
+use std::time::Duration;
 use std::time::Instant;
 
 use async_trait::async_trait;
@@ -13,6 +14,8 @@ use clankers_config::ExternalMemoryProvider;
 use clankers_config::ExternalMemorySettings;
 use clankers_db::memory::MemoryEntry;
 use clankers_db::memory::MemoryScope;
+use serde::Deserialize;
+use serde::Serialize;
 use serde_json::Value;
 use serde_json::json;
 
@@ -37,8 +40,8 @@ impl ExternalMemoryTool {
                 name: "external_memory".to_string(),
                 description: concat!(
                     "Query a configured external memory/personalization provider. ",
-                    "First pass supports status and local-provider search. ",
-                    "Remote providers return explicit unsupported/configuration errors until implemented."
+                    "Supports status plus disabled-by-default local and HTTP search providers. ",
+                    "HTTP providers require endpoint and credentialEnv and attach replay-safe metadata."
                 )
                 .to_string(),
                 input_schema: json!({
@@ -106,6 +109,122 @@ impl ExternalMemoryTool {
         writeln!(out, "- maxResults: {}", self.settings.max_results).ok();
         writeln!(out, "- injectIntoPrompt: {}", self.settings.inject_into_prompt).ok();
         ToolResult::text(out).with_details(self.status_details("status", elapsed_ms, 0))
+    }
+
+    async fn http_search(&self, params: &Value, started: Instant) -> ToolResult {
+        let query = match params.get("query").and_then(|value| value.as_str()).map(str::trim) {
+            Some(query) if !query.is_empty() => query,
+            _ => {
+                let elapsed_ms = started.elapsed().as_millis();
+                return ToolResult::error("external_memory search requires a non-empty `query` parameter")
+                    .with_details(self.error_details(
+                        "search",
+                        elapsed_ms,
+                        "missing_query",
+                        "missing non-empty query",
+                    ));
+            }
+        };
+
+        let credential_env = self.settings.credential_env.as_deref().unwrap_or_default().trim();
+        let credential = match std::env::var(credential_env) {
+            Ok(value) if !value.trim().is_empty() => value,
+            _ => {
+                let elapsed_ms = started.elapsed().as_millis();
+                return ToolResult::error(format!(
+                    "external_memory HTTP provider credential is unavailable: set `{credential_env}`"
+                ))
+                .with_details(self.error_details(
+                    "search",
+                    elapsed_ms,
+                    "missing_credential",
+                    "credential environment variable missing or blank",
+                ));
+            }
+        };
+
+        let limit = bounded_limit(params.get("limit"), self.settings.max_results);
+        let endpoint = self.settings.endpoint.as_deref().unwrap_or_default().trim();
+        let timeout_ms = self.settings.timeout_ms.unwrap_or(10_000);
+        let request = RemoteSearchRequest { query, limit };
+        let client = match reqwest::Client::builder().timeout(Duration::from_millis(timeout_ms)).build() {
+            Ok(client) => client,
+            Err(error) => {
+                let elapsed_ms = started.elapsed().as_millis();
+                return ToolResult::error(format!(
+                    "external_memory HTTP client setup failed: {}",
+                    redact_error(&error.to_string())
+                ))
+                .with_details(self.error_details(
+                    "search",
+                    elapsed_ms,
+                    "client_error",
+                    &error.to_string(),
+                ));
+            }
+        };
+
+        let response = match client.post(endpoint).bearer_auth(credential).json(&request).send().await {
+            Ok(response) => response,
+            Err(error) => {
+                let elapsed_ms = started.elapsed().as_millis();
+                return ToolResult::error(format!(
+                    "external_memory HTTP request failed: {}",
+                    redact_error(&error.to_string())
+                ))
+                .with_details(self.error_details(
+                    "search",
+                    elapsed_ms,
+                    "provider_error",
+                    &error.to_string(),
+                ));
+            }
+        };
+
+        let status = response.status();
+        if !status.is_success() {
+            let elapsed_ms = started.elapsed().as_millis();
+            return ToolResult::error(format!("external_memory HTTP provider returned status {status}"))
+                .with_details(self.error_details("search", elapsed_ms, "provider_status", &status.to_string()));
+        }
+
+        let payload = match response.json::<RemoteSearchResponse>().await {
+            Ok(payload) => payload,
+            Err(error) => {
+                let elapsed_ms = started.elapsed().as_millis();
+                return ToolResult::error(format!(
+                    "external_memory HTTP response was invalid: {}",
+                    redact_error(&error.to_string())
+                ))
+                .with_details(self.error_details(
+                    "search",
+                    elapsed_ms,
+                    "invalid_response",
+                    &error.to_string(),
+                ));
+            }
+        };
+        let results = payload.results.into_iter().take(limit).collect::<Vec<_>>();
+        let elapsed_ms = started.elapsed().as_millis();
+        let mut out = format!(
+            "Found {} external memor{} for '{query}':\n",
+            results.len(),
+            if results.len() == 1 { "y" } else { "ies" }
+        );
+        for result in &results {
+            let label = result.id.as_deref().unwrap_or("remote");
+            writeln!(out, "- [{label}] (remote) {}", result.text).ok();
+        }
+        ToolResult::text(out).with_details(json!({
+            "source": SOURCE,
+            "providerKind": provider_kind(self.settings.provider),
+            "providerName": self.settings.safe_provider_name(),
+            "action": "search",
+            "status": "ok",
+            "elapsedMs": elapsed_ms,
+            "resultCount": results.len(),
+            "injectIntoPrompt": self.settings.inject_into_prompt,
+        }))
     }
 
     fn local_search(&self, ctx: &ToolContext, params: &Value, started: Instant) -> ToolResult {
@@ -197,16 +316,7 @@ impl Tool for ExternalMemoryTool {
             "status" => self.status(started),
             "search" => match self.settings.provider {
                 ExternalMemoryProvider::Local => self.local_search(ctx, &params, started),
-                ExternalMemoryProvider::Http => {
-                    let elapsed_ms = started.elapsed().as_millis();
-                    ToolResult::error("HTTP external memory providers are not implemented in this first pass")
-                        .with_details(self.error_details(
-                            "search",
-                            elapsed_ms,
-                            "unsupported_provider",
-                            "HTTP external memory unsupported",
-                        ))
-                }
+                ExternalMemoryProvider::Http => self.http_search(&params, started).await,
             },
             other => {
                 let elapsed_ms = started.elapsed().as_millis();
@@ -215,6 +325,25 @@ impl Tool for ExternalMemoryTool {
             }
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+struct RemoteSearchRequest<'a> {
+    query: &'a str,
+    limit: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteSearchResponse {
+    #[serde(default)]
+    results: Vec<RemoteSearchResult>,
+}
+
+#[derive(Debug, Deserialize)]
+struct RemoteSearchResult {
+    #[serde(default)]
+    id: Option<String>,
+    text: String,
 }
 
 pub fn build_external_memory_tool_from_settings(settings: &ExternalMemorySettings) -> Option<std::sync::Arc<dyn Tool>> {
@@ -255,11 +384,11 @@ fn config_error_kind(error: &ExternalMemoryConfigError) -> &'static str {
     match error {
         ExternalMemoryConfigError::BlankName => "blank_name",
         ExternalMemoryConfigError::MissingHttpEndpoint => "missing_endpoint",
+        ExternalMemoryConfigError::MissingCredentialEnv => "missing_credential_env",
         ExternalMemoryConfigError::BlankEndpoint => "blank_endpoint",
         ExternalMemoryConfigError::BlankCredentialEnv => "blank_credential_env",
         ExternalMemoryConfigError::NonPositiveTimeout => "non_positive_timeout",
         ExternalMemoryConfigError::NonPositiveMaxResults => "non_positive_max_results",
-        ExternalMemoryConfigError::HttpUnsupported => "unsupported_provider",
     }
 }
 
@@ -284,6 +413,11 @@ fn redact_error(error: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    use std::io::Read;
+    use std::io::Write;
+    use std::net::TcpListener;
+    use std::time::Duration;
+
     use clankers_db::Db;
     use tokio_util::sync::CancellationToken;
 
@@ -311,6 +445,97 @@ mod tests {
             name: Some("test-memory".to_string()),
             ..ExternalMemorySettings::default()
         }
+    }
+
+    fn spawn_memory_server() -> String {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind fake memory server");
+        let addr = listener.local_addr().expect("fake server address");
+        std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().expect("accept fake request");
+            stream.set_read_timeout(Some(Duration::from_secs(5))).expect("set read timeout");
+            let mut buffer = [0_u8; 4096];
+            let bytes = stream.read(&mut buffer).expect("read request");
+            let request = String::from_utf8_lossy(&buffer[..bytes]);
+            assert!(request.contains("POST /memory HTTP/1.1"), "unexpected request: {request}");
+            assert!(
+                request.contains("authorization: Bearer test-token")
+                    || request.contains("Authorization: Bearer test-token")
+            );
+            assert!(request.contains(r#""query":"Rust""#));
+            assert!(request.contains(r#""limit":1"#));
+            let body = r#"{"results":[{"id":"r1","text":"Rust remote memory"},{"id":"r2","text":"extra memory"}]}"#;
+            let response = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
+                body.len(),
+                body
+            );
+            stream.write_all(response.as_bytes()).expect("write response");
+        });
+        format!("http://{addr}/memory")
+    }
+
+    fn http_settings(endpoint: String, credential_env: &str) -> ExternalMemorySettings {
+        ExternalMemorySettings {
+            enabled: true,
+            provider: ExternalMemoryProvider::Http,
+            name: Some("remote-memory".to_string()),
+            endpoint: Some(endpoint),
+            credential_env: Some(credential_env.to_string()),
+            timeout_ms: Some(5_000),
+            max_results: 1,
+            inject_into_prompt: false,
+        }
+    }
+
+    #[tokio::test]
+    async fn http_search_returns_bounded_replay_safe_results() {
+        let endpoint = spawn_memory_server();
+        let env_name = "CLANKERS_TEST_EXTERNAL_MEMORY_TOKEN_HTTP_SEARCH";
+        unsafe {
+            std::env::set_var(env_name, "test-token");
+        }
+        let tool = ExternalMemoryTool::new(http_settings(endpoint, env_name));
+        let result = tool
+            .execute(
+                &ToolContext::new("test".to_string(), CancellationToken::new(), None),
+                json!({"action": "search", "query": "Rust", "limit": 5}),
+            )
+            .await;
+
+        assert!(!result.is_error, "expected HTTP search to succeed: {}", result_text(&result));
+        assert!(result_text(&result).contains("Rust remote memory"));
+        assert!(!result_text(&result).contains("extra memory"), "HTTP results are bounded by configured maxResults");
+        let details = result.details.as_ref().expect("HTTP search attaches details");
+        assert_eq!(details.get("providerKind").and_then(Value::as_str), Some("http"));
+        assert_eq!(details.get("providerName").and_then(Value::as_str), Some("remote-memory"));
+        assert_eq!(details.get("resultCount").and_then(Value::as_u64), Some(1));
+        assert!(details.get("query").is_none());
+        assert!(details.get("results").is_none());
+        assert!(details.get("credentialEnv").is_none());
+    }
+
+    #[tokio::test]
+    async fn http_search_fails_closed_when_credential_missing() {
+        let tool = ExternalMemoryTool::new(http_settings(
+            "http://127.0.0.1:9/memory".to_string(),
+            "CLANKERS_TEST_EXTERNAL_MEMORY_TOKEN_MISSING",
+        ));
+        unsafe {
+            std::env::remove_var("CLANKERS_TEST_EXTERNAL_MEMORY_TOKEN_MISSING");
+        }
+        let result = tool
+            .execute(
+                &ToolContext::new("test".to_string(), CancellationToken::new(), None),
+                json!({"action": "search", "query": "Rust"}),
+            )
+            .await;
+
+        assert!(result.is_error);
+        assert!(result_text(&result).contains("credential is unavailable"));
+        assert_eq!(
+            result.details.as_ref().and_then(|details| details.get("errorKind")).and_then(Value::as_str),
+            Some("missing_credential")
+        );
     }
 
     #[tokio::test]
