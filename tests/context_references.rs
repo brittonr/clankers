@@ -1,8 +1,16 @@
+use std::io::Read;
+use std::io::Write;
+use std::net::TcpListener;
+use std::process::Command;
+use std::thread;
+
 use clankers::clankers_session::SessionManager;
 use clankers::clankers_session::entry::SessionEntry;
 use clankers::util::at_file::ContextReferenceKind;
+use clankers::util::at_file::ContextReferencePolicy;
 use clankers::util::at_file::ContextReferenceStatus;
 use clankers::util::at_file::expand_at_refs_with_images;
+use clankers::util::at_file::expand_at_refs_with_policy;
 
 #[test]
 fn context_reference_primary_path_expands_file_and_persists_metadata() {
@@ -51,9 +59,72 @@ fn context_reference_unsupported_url_is_actionable_failure() {
 
     assert!(expanded.images.is_empty());
     assert!(expanded.text.contains("Unsupported context reference @https://example.com/private"));
-    assert!(expanded.text.contains("URL references are not supported yet"));
+    assert!(expanded.text.contains("URL references are disabled by policy"));
     assert_eq!(expanded.references.len(), 1);
     assert_eq!(expanded.references[0].kind, ContextReferenceKind::Unsupported);
     assert_eq!(expanded.references[0].status, ContextReferenceStatus::Unsupported);
     assert_eq!(expanded.references[0].target, "https:");
+}
+
+#[test]
+fn context_reference_git_diff_expands_and_records_metadata() {
+    let tmp = tempfile::tempdir().unwrap();
+    let status = Command::new("git").current_dir(tmp.path()).args(["init"]).status().unwrap();
+    assert!(status.success());
+    let file = tmp.path().join("notes.txt");
+    std::fs::write(&file, "alpha\n").unwrap();
+    assert!(Command::new("git").current_dir(tmp.path()).args(["add", "notes.txt"]).status().unwrap().success());
+    assert!(
+        Command::new("git")
+            .current_dir(tmp.path())
+            .args([
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-m",
+                "init"
+            ])
+            .status()
+            .unwrap()
+            .success()
+    );
+    std::fs::write(&file, "alpha\nbeta\n").unwrap();
+
+    let expanded = expand_at_refs_with_images("review @diff", tmp.path().to_str().unwrap());
+
+    assert!(expanded.text.contains("+beta"));
+    assert_eq!(expanded.references.len(), 1);
+    assert_eq!(expanded.references[0].kind, ContextReferenceKind::GitDiff);
+    assert_eq!(expanded.references[0].status, ContextReferenceStatus::Expanded);
+    assert_eq!(expanded.references[0].target, "git:diff");
+}
+
+#[test]
+fn context_reference_url_fetch_expands_when_policy_allows() {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let handle = thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut buf = [0_u8; 512];
+        let _ = stream.read(&mut buf);
+        stream
+            .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 12\r\nConnection: close\r\n\r\nurl content!")
+            .unwrap();
+    });
+    let policy = ContextReferencePolicy {
+        allow_url_fetch: true,
+        ..ContextReferencePolicy::default()
+    };
+    let prompt = format!("fetch @http://{addr}/note");
+
+    let expanded = expand_at_refs_with_policy(&prompt, "/tmp", &policy);
+    handle.join().unwrap();
+
+    assert!(expanded.text.contains("url content!"));
+    assert_eq!(expanded.references.len(), 1);
+    assert_eq!(expanded.references[0].kind, ContextReferenceKind::Url);
+    assert_eq!(expanded.references[0].status, ContextReferenceStatus::Expanded);
+    assert_eq!(expanded.references[0].target, "http:");
 }

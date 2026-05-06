@@ -231,14 +231,16 @@ clankers session export <id>        # export to file
 
 ## Context References
 
-Use `@` references in prompts to inline local context before a turn runs:
+Use `@` references in prompts to inline bounded context before a turn runs:
 
 - `@path/to/file` includes a text file.
 - `@path/to/file:10-20` includes a line range.
 - `@path/to/dir/` includes a sorted directory listing.
 - `@path/to/image.png` attaches an image when the prompt path supports image blocks.
+- `@diff`, `@diff:staged`, and `@diff:path/to/file` include bounded `git diff --no-ext-diff --no-color` output.
+- `@http://...` / `@https://...` fetch bounded text only when URL fetching is enabled by context-reference policy; the default is fail-closed with an explicit unsupported receipt.
 
-Local context references work in the TUI, attach, and one-shot prompt modes. URL, git-diff, remote, and session-artifact references are intentionally reported as unsupported in this first pass rather than silently fetched or dropped.
+Context references work in the TUI, attach, and one-shot prompt modes. Each expansion records safe metadata (`source`, sanitized raw reference, kind, status, target, line/byte counts, optional line range, and error class) without persisting expanded content or URL credentials. Session/artifact references are still explicit unsupported outcomes rather than silent drops.
 
 ## Branching
 

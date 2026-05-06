@@ -12,6 +12,8 @@
 
 use std::cmp::Reverse;
 use std::path::Path;
+use std::process::Command;
+use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
@@ -67,6 +69,8 @@ pub enum ContextReferenceKind {
     File,
     Directory,
     Image,
+    GitDiff,
+    Url,
     Unsupported,
     Error,
 }
@@ -104,7 +108,7 @@ impl ContextReferenceMetadata {
     ) -> Self {
         Self {
             source: "context_references".to_string(),
-            raw: at_ref.raw.clone(),
+            raw: sanitize_reference_raw(&at_ref.raw),
             kind,
             status: ContextReferenceStatus::Expanded,
             target,
@@ -118,7 +122,7 @@ impl ContextReferenceMetadata {
     fn unsupported(at_ref: &AtFileRef, message: impl Into<String>) -> Self {
         Self {
             source: "context_references".to_string(),
-            raw: at_ref.raw.clone(),
+            raw: sanitize_reference_raw(&at_ref.raw),
             kind: ContextReferenceKind::Unsupported,
             status: ContextReferenceStatus::Unsupported,
             target: unsupported_target(&at_ref.path),
@@ -132,7 +136,7 @@ impl ContextReferenceMetadata {
     fn error(at_ref: &AtFileRef, target: String, message: impl Into<String>) -> Self {
         Self {
             source: "context_references".to_string(),
-            raw: at_ref.raw.clone(),
+            raw: sanitize_reference_raw(&at_ref.raw),
             kind: ContextReferenceKind::Error,
             status: ContextReferenceStatus::Error,
             target,
@@ -140,6 +144,24 @@ impl ContextReferenceMetadata {
             line_count: None,
             byte_count: None,
             message: Some(message.into()),
+        }
+    }
+}
+
+/// Policy limits for context-reference expansion.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextReferencePolicy {
+    pub max_reference_bytes: usize,
+    pub allow_url_fetch: bool,
+    pub url_timeout_ms: u64,
+}
+
+impl Default for ContextReferencePolicy {
+    fn default() -> Self {
+        Self {
+            max_reference_bytes: 64 * 1024,
+            allow_url_fetch: false,
+            url_timeout_ms: 2_000,
         }
     }
 }
@@ -180,7 +202,7 @@ pub fn find_at_refs(text: &str) -> Vec<AtFileRef> {
             let path_start = i;
 
             // Consume path characters: alphanumeric, _, ., /, -
-            while i < len && (chars[i].is_alphanumeric() || "_./-:".contains(chars[i])) {
+            while i < len && (chars[i].is_alphanumeric() || "_./-:@".contains(chars[i])) {
                 i += 1;
             }
 
@@ -190,9 +212,10 @@ pub fn find_at_refs(text: &str) -> Vec<AtFileRef> {
 
             let candidate: String = chars[path_start..i].iter().collect();
 
-            // Must contain / or a file extension (.) to be a file reference
-            // This avoids matching @mentions like @user
-            if !candidate.contains('/') && !candidate.contains('.') {
+            // Must be a local file-ish reference or one of the documented
+            // non-file context reference prefixes. This avoids matching
+            // ordinary @mentions while still accepting @diff.
+            if !is_context_reference_candidate(&candidate) {
                 continue;
             }
 
@@ -247,6 +270,11 @@ fn parse_line_range(s: &str) -> Option<(usize, usize)> {
 /// Image files (`.jpg`, `.png`, `.gif`, `.webp`) are base64-encoded as
 /// `Content::Image` blocks. Text files are inlined as before.
 pub fn expand_at_refs_with_images(text: &str, cwd: &str) -> ExpandedContent {
+    expand_at_refs_with_policy(text, cwd, &ContextReferencePolicy::default())
+}
+
+/// Expand context references with explicit policy controls for bounded diffs and URL fetches.
+pub fn expand_at_refs_with_policy(text: &str, cwd: &str, policy: &ContextReferencePolicy) -> ExpandedContent {
     let refs = find_at_refs(text);
     if refs.is_empty() {
         return ExpandedContent {
@@ -265,6 +293,50 @@ pub fn expand_at_refs_with_images(text: &str, cwd: &str) -> ExpandedContent {
     sorted_refs.sort_by_key(|r| Reverse(r.start));
 
     for at_ref in sorted_refs {
+        if is_git_diff_reference(&at_ref.path) {
+            let diff = read_git_diff_reference(&at_ref.path, cwd, policy.max_reference_bytes);
+            let replacement = format_replacement(&at_ref.raw, &diff.content);
+            replace_raw(&mut result, &at_ref, &replacement);
+            references.push(match diff.error {
+                Some(message) => ContextReferenceMetadata::error(&at_ref, diff.target, message),
+                None => ContextReferenceMetadata::expanded(
+                    &at_ref,
+                    ContextReferenceKind::GitDiff,
+                    diff.target,
+                    diff.line_count,
+                    diff.byte_count,
+                ),
+            });
+            continue;
+        }
+
+        if is_url_reference(&at_ref.path) {
+            let fetched = read_url_reference(&at_ref.path, policy);
+            let replacement = if fetched.error.is_some() && !policy.allow_url_fetch {
+                format!(
+                    "[Unsupported context reference {}: URL references are disabled by policy]",
+                    sanitize_reference_raw(&at_ref.raw)
+                )
+            } else {
+                format_replacement(&sanitize_reference_raw(&at_ref.raw), &fetched.content)
+            };
+            replace_raw(&mut result, &at_ref, &replacement);
+            references.push(match fetched.error {
+                Some(message) if policy.allow_url_fetch => {
+                    ContextReferenceMetadata::error(&at_ref, fetched.target, message)
+                }
+                Some(message) => ContextReferenceMetadata::unsupported(&at_ref, message),
+                None => ContextReferenceMetadata::expanded(
+                    &at_ref,
+                    ContextReferenceKind::Url,
+                    fetched.target,
+                    fetched.line_count,
+                    fetched.byte_count,
+                ),
+            });
+            continue;
+        }
+
         if is_unsupported_reference(&at_ref.path) {
             let message = unsupported_message(&at_ref.path);
             let replacement = format!("[Unsupported context reference {}: {}]", at_ref.raw, message);
@@ -346,6 +418,7 @@ struct ReadContent {
     kind: ContextReferenceKind,
     line_count: Option<usize>,
     byte_count: Option<usize>,
+    target: String,
     error: Option<String>,
 }
 
@@ -369,6 +442,7 @@ fn read_file_content(path: &Path, line_range: Option<(usize, usize)>) -> ReadCon
                     line_count: Some(items.len()),
                     content,
                     kind: ContextReferenceKind::Directory,
+                    target: String::new(),
                     error: None,
                 }
             }
@@ -379,6 +453,7 @@ fn read_file_content(path: &Path, line_range: Option<(usize, usize)>) -> ReadCon
                     kind: ContextReferenceKind::Error,
                     line_count: None,
                     byte_count: None,
+                    target: String::new(),
                     error: Some(message),
                 }
             }
@@ -410,6 +485,7 @@ fn read_file_content(path: &Path, line_range: Option<(usize, usize)>) -> ReadCon
                     line_count: Some(selected.lines().count()),
                     content: selected,
                     kind: ContextReferenceKind::File,
+                    target: String::new(),
                     error: None,
                 }
             }
@@ -420,6 +496,7 @@ fn read_file_content(path: &Path, line_range: Option<(usize, usize)>) -> ReadCon
                     kind: ContextReferenceKind::Error,
                     line_count: None,
                     byte_count: None,
+                    target: String::new(),
                     error: Some(message),
                 }
             }
@@ -439,6 +516,157 @@ fn display_target(path: &Path) -> String {
 
 fn sorted_position(text: &str, raw: &str) -> usize {
     text.find(raw).unwrap_or(usize::MAX)
+}
+
+fn is_context_reference_candidate(candidate: &str) -> bool {
+    candidate.contains('/')
+        || candidate.contains('.')
+        || is_git_diff_reference(candidate)
+        || candidate.starts_with("session:")
+        || candidate.starts_with("artifact:")
+}
+
+fn is_url_reference(path: &str) -> bool {
+    path.starts_with("http://") || path.starts_with("https://")
+}
+
+fn is_git_diff_reference(path: &str) -> bool {
+    path == "diff" || path.starts_with("diff:") || path == "git:diff" || path.starts_with("git:diff:")
+}
+
+fn read_git_diff_reference(path: &str, cwd: &str, max_bytes: usize) -> ReadContent {
+    let target = if path == "diff" || path == "git:diff" {
+        "git:diff".to_string()
+    } else {
+        format!("git:{}", path)
+    };
+    let mut command = Command::new("git");
+    command.current_dir(cwd).args(["diff", "--no-ext-diff", "--no-color"]);
+    if path == "diff:staged" || path == "git:diff:staged" {
+        command.arg("--cached");
+    } else if let Some(scope) = path.strip_prefix("diff:").or_else(|| path.strip_prefix("git:diff:")) {
+        if !scope.is_empty() && scope != "unstaged" {
+            command.arg("--").arg(scope);
+        }
+    }
+    match command.output() {
+        Ok(output) if output.status.success() => bounded_content(
+            String::from_utf8_lossy(&output.stdout).into_owned(),
+            ContextReferenceKind::GitDiff,
+            target,
+            max_bytes,
+            "git diff reference exceeded configured byte limit",
+        ),
+        Ok(output) => ReadContent {
+            content: format!("[Error expanding git diff reference: git exited with status {}]", output.status),
+            kind: ContextReferenceKind::Error,
+            line_count: None,
+            byte_count: None,
+            target,
+            error: Some("git diff reference failed".to_string()),
+        },
+        Err(error) => ReadContent {
+            content: format!("[Error expanding git diff reference: {}]", error),
+            kind: ContextReferenceKind::Error,
+            line_count: None,
+            byte_count: None,
+            target,
+            error: Some("git diff reference failed".to_string()),
+        },
+    }
+}
+
+fn read_url_reference(path: &str, policy: &ContextReferencePolicy) -> ReadContent {
+    let target = unsupported_target(path);
+    if !policy.allow_url_fetch {
+        return ReadContent {
+            content: "[Unsupported context reference: URL fetching is disabled by policy]".to_string(),
+            kind: ContextReferenceKind::Unsupported,
+            line_count: None,
+            byte_count: None,
+            target,
+            error: Some("URL references are disabled by policy".to_string()),
+        };
+    }
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(Duration::from_millis(policy.url_timeout_ms))
+        .redirect(reqwest::redirect::Policy::limited(3))
+        .build()
+    {
+        Ok(client) => client,
+        Err(_) => {
+            return ReadContent {
+                content: "[Error fetching URL reference: client setup failed]".to_string(),
+                kind: ContextReferenceKind::Error,
+                line_count: None,
+                byte_count: None,
+                target,
+                error: Some("URL fetch failed".to_string()),
+            };
+        }
+    };
+    match client
+        .get(path)
+        .send()
+        .and_then(|response| response.error_for_status())
+        .and_then(|response| response.text())
+    {
+        Ok(content) => bounded_content(
+            content,
+            ContextReferenceKind::Url,
+            target,
+            policy.max_reference_bytes,
+            "URL reference exceeded configured byte limit",
+        ),
+        Err(_) => ReadContent {
+            content: "[Error fetching URL reference]".to_string(),
+            kind: ContextReferenceKind::Error,
+            line_count: None,
+            byte_count: None,
+            target,
+            error: Some("URL fetch failed".to_string()),
+        },
+    }
+}
+
+fn bounded_content(
+    content: String,
+    kind: ContextReferenceKind,
+    target: String,
+    max_bytes: usize,
+    limit_message: &'static str,
+) -> ReadContent {
+    if content.len() > max_bytes {
+        return ReadContent {
+            content: format!("[{}: {} > {} bytes]", limit_message, content.len(), max_bytes),
+            kind: ContextReferenceKind::Error,
+            line_count: None,
+            byte_count: Some(content.len()),
+            target,
+            error: Some(limit_message.to_string()),
+        };
+    }
+    ReadContent {
+        line_count: Some(content.lines().count()),
+        byte_count: Some(content.len()),
+        content,
+        kind,
+        target,
+        error: None,
+    }
+}
+
+fn sanitize_reference_raw(raw: &str) -> String {
+    if let Some(scheme_pos) = raw.find("://") {
+        let authority_start = scheme_pos + 3;
+        let authority_end = raw[authority_start..].find('/').map(|idx| authority_start + idx).unwrap_or(raw.len());
+        let authority = &raw[authority_start..authority_end];
+        if let Some(at_pos) = authority.rfind('@') {
+            let host = &authority[at_pos + 1..];
+            return format!("{}://[redacted]@{}{}", &raw[..scheme_pos], host, &raw[authority_end..]);
+        }
+    }
+    raw.to_string()
 }
 
 fn is_unsupported_reference(path: &str) -> bool {
@@ -640,12 +868,92 @@ mod tests {
 
         assert!(result.images.is_empty());
         assert!(result.text.contains("Unsupported context reference @https://example.com/path"));
-        assert!(result.text.contains("URL references are not supported yet"));
+        assert!(result.text.contains("URL references are disabled by policy"));
         assert_eq!(result.references.len(), 1);
         assert_eq!(result.references[0].raw, "@https://example.com/path");
         assert_eq!(result.references[0].kind, ContextReferenceKind::Unsupported);
         assert_eq!(result.references[0].status, ContextReferenceStatus::Unsupported);
         assert_eq!(result.references[0].target, "https:");
+    }
+
+    #[test]
+    fn test_git_diff_reference_expands_bounded_metadata() {
+        let dir = tempfile::tempdir().unwrap();
+        let status = Command::new("git").current_dir(dir.path()).args(["init"]).status().unwrap();
+        assert!(status.success());
+        let file = dir.path().join("notes.txt");
+        std::fs::write(&file, "one\n").unwrap();
+        Command::new("git").current_dir(dir.path()).args(["add", "notes.txt"]).status().unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args([
+                "-c",
+                "user.name=Test",
+                "-c",
+                "user.email=test@example.com",
+                "commit",
+                "-m",
+                "init",
+            ])
+            .status()
+            .unwrap();
+        std::fs::write(&file, "one\ntwo\n").unwrap();
+
+        let result = expand_at_refs_with_policy(
+            "review @diff",
+            dir.path().to_str().unwrap(),
+            &ContextReferencePolicy::default(),
+        );
+
+        assert!(result.text.contains("+two"));
+        assert_eq!(result.references.len(), 1);
+        assert_eq!(result.references[0].kind, ContextReferenceKind::GitDiff);
+        assert_eq!(result.references[0].status, ContextReferenceStatus::Expanded);
+        assert_eq!(result.references[0].target, "git:diff");
+        assert!(result.references[0].byte_count.unwrap_or_default() > 0);
+    }
+
+    #[test]
+    fn test_url_reference_fetches_when_policy_allows() {
+        use std::io::Read;
+        use std::io::Write;
+        use std::net::TcpListener;
+        use std::thread;
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut buf = [0_u8; 512];
+            let _ = stream.read(&mut buf);
+            stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 13\r\nConnection: close\r\n\r\nhello url ref")
+                .unwrap();
+        });
+        let policy = ContextReferencePolicy {
+            allow_url_fetch: true,
+            ..ContextReferencePolicy::default()
+        };
+        let prompt = format!("read @http://{addr}/note");
+
+        let result = expand_at_refs_with_policy(&prompt, "/tmp", &policy);
+        handle.join().unwrap();
+
+        assert!(result.text.contains("hello url ref"));
+        assert_eq!(result.references.len(), 1);
+        assert_eq!(result.references[0].kind, ContextReferenceKind::Url);
+        assert_eq!(result.references[0].status, ContextReferenceStatus::Expanded);
+        assert_eq!(result.references[0].target, "http:");
+    }
+
+    #[test]
+    fn test_url_reference_metadata_redacts_userinfo() {
+        let result = expand_at_refs_with_images("fetch @https://token@example.com/private", "/tmp");
+
+        let rendered = serde_json::to_string(&result.references).unwrap();
+        assert!(!rendered.contains("token@example.com"));
+        assert!(rendered.contains("[redacted]@example.com"));
+        assert!(result.text.contains("[redacted]@example.com"));
     }
 
     #[test]

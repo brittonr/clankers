@@ -13,6 +13,7 @@ base64 = "0.22"
 hex = "0.4"
 ignore = "0.4"
 rand = { workspace = true }
+reqwest = { workspace = true, features = ["blocking"] }
 ratatui = "0.30"
 serde = { workspace = true }
 serde_json = { workspace = true }

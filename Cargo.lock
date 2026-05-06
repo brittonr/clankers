@@ -1954,6 +1954,7 @@ dependencies = [
  "ignore",
  "rand 0.9.4",
  "ratatui",
+ "reqwest 0.12.28",
  "serde",
  "serde_json",
  "syntect",
