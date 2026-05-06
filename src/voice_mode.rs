@@ -5,6 +5,7 @@
 
 use std::path::Path;
 
+use serde::Deserialize;
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -71,6 +72,82 @@ pub struct VoiceValidation {
     pub error_kind: Option<&'static str>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SttProviderPolicy {
+    LocalFake,
+    CloudDisabled,
+}
+
+impl SttProviderPolicy {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SttProviderPolicy::LocalFake => "local-fake",
+            SttProviderPolicy::CloudDisabled => "cloud-disabled",
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct VoiceCapturePolicy {
+    pub enabled: bool,
+    pub provider: SttProviderPolicy,
+    pub retain_audio: bool,
+    pub auto_submit: bool,
+}
+
+impl Default for VoiceCapturePolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            provider: SttProviderPolicy::LocalFake,
+            retain_audio: false,
+            auto_submit: false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct VoiceCaptureRequest {
+    pub session_id: Option<String>,
+    pub source: VoiceInputSource,
+    pub reply_mode: VoiceReplyMode,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct VoiceCaptureReceipt {
+    pub source: &'static str,
+    pub action: &'static str,
+    pub status: &'static str,
+    pub backend: &'static str,
+    pub input_kind: String,
+    pub input_label: String,
+    pub reply_mode: &'static str,
+    pub capture_active: bool,
+    pub raw_audio_retained: bool,
+    pub auto_submit: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_request: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_kind: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_message: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct VoiceSessionPrompt {
+    pub source: &'static str,
+    pub action: &'static str,
+    pub status: &'static str,
+    pub prompt: String,
+    pub reply_mode: &'static str,
+    pub auto_submit: bool,
+    pub transcript_chars: usize,
+    pub transcript_digest: String,
 }
 
 pub fn parse_input_source(input: &str) -> VoiceInputSource {
@@ -157,6 +234,107 @@ pub fn status_summary() -> VoiceValidation {
     validate(&VoiceInputSource::File { extension: None }, VoiceReplyMode::Text, false)
 }
 
+pub fn start_capture(policy: &VoiceCapturePolicy, request: VoiceCaptureRequest) -> VoiceCaptureReceipt {
+    let mut receipt = base_capture_receipt("start_capture", policy, &request, false);
+    if !policy.enabled {
+        return unsupported_capture(
+            receipt,
+            "voice_disabled",
+            "live voice capture is disabled; pass explicit enablement before opening a capture stream",
+        );
+    }
+    if matches!(policy.provider, SttProviderPolicy::CloudDisabled) {
+        return unsupported_capture(
+            receipt,
+            "provider_disabled",
+            "cloud speech-to-text providers are disabled by policy",
+        );
+    }
+    if !matches!(request.source, VoiceInputSource::Microphone | VoiceInputSource::File { .. }) {
+        return unsupported_capture(
+            receipt,
+            "unsupported_input",
+            "live capture supports only microphone or local file sources",
+        );
+    }
+    receipt.status = "active";
+    receipt.capture_active = true;
+    receipt.provider_request = Some("open");
+    receipt
+}
+
+pub fn stop_capture(policy: &VoiceCapturePolicy, request: VoiceCaptureRequest) -> VoiceCaptureReceipt {
+    let mut receipt = base_capture_receipt("stop_capture", policy, &request, false);
+    receipt.status = "stopped";
+    receipt.provider_request = Some("closed");
+    receipt
+}
+
+pub fn session_prompt_from_transcript(
+    transcript: &str,
+    reply_mode: VoiceReplyMode,
+    auto_submit: bool,
+) -> Result<VoiceSessionPrompt, String> {
+    let normalized = transcript.trim();
+    if normalized.is_empty() {
+        return Err("voice transcript is empty".to_string());
+    }
+    if normalized.len() > 16 * 1024 {
+        return Err("voice transcript exceeds prompt handoff limit".to_string());
+    }
+    Ok(VoiceSessionPrompt {
+        source: "voice_mode",
+        action: "submit_transcript",
+        status: if auto_submit { "submitted" } else { "prepared" },
+        prompt: normalized.to_string(),
+        reply_mode: reply_mode.as_str(),
+        auto_submit,
+        transcript_chars: normalized.chars().count(),
+        transcript_digest: transcript_digest(normalized),
+    })
+}
+
+fn base_capture_receipt(
+    action: &'static str,
+    policy: &VoiceCapturePolicy,
+    request: &VoiceCaptureRequest,
+    active: bool,
+) -> VoiceCaptureReceipt {
+    VoiceCaptureReceipt {
+        source: "voice_mode",
+        action,
+        status: "success",
+        backend: policy.provider.as_str(),
+        input_kind: request.source.kind().to_string(),
+        input_label: request.source.label(),
+        reply_mode: request.reply_mode.as_str(),
+        capture_active: active,
+        raw_audio_retained: policy.retain_audio,
+        auto_submit: policy.auto_submit,
+        session_id: request.session_id.clone().map(|value| sanitize_error_message(&value)),
+        provider_request: None,
+        error_kind: None,
+        error_message: None,
+    }
+}
+
+fn unsupported_capture(mut receipt: VoiceCaptureReceipt, kind: &'static str, message: &str) -> VoiceCaptureReceipt {
+    receipt.status = "unsupported";
+    receipt.capture_active = false;
+    receipt.error_kind = Some(kind);
+    receipt.error_message = Some(sanitize_error_message(message));
+    receipt
+}
+
+fn transcript_digest(transcript: &str) -> String {
+    let mut state: u64 = 0xcbf29ce484222325;
+    for byte in transcript.as_bytes() {
+        state ^= u64::from(*byte);
+        state = state.wrapping_mul(0x100000001b3);
+    }
+    format!("fnv64:{state:016x}")
+}
+
 fn unsupported(mut validation: VoiceValidation, kind: &'static str, message: &str) -> VoiceValidation {
     validation.status = "unsupported";
     validation.supported = false;
@@ -222,5 +400,47 @@ mod tests {
         let message = remote.error_message.expect("message");
         assert!(!message.contains('\n'));
         assert!(!message.contains("token@example.test"));
+    }
+
+    #[test]
+    fn live_capture_requires_explicit_enablement_and_returns_safe_receipts() {
+        let request = VoiceCaptureRequest {
+            session_id: Some("session\nsecret".to_string()),
+            source: VoiceInputSource::Microphone,
+            reply_mode: VoiceReplyMode::Text,
+        };
+        let disabled = start_capture(&VoiceCapturePolicy::default(), request.clone());
+        assert_eq!(disabled.status, "unsupported");
+        assert_eq!(disabled.error_kind, Some("voice_disabled"));
+        assert!(!disabled.capture_active);
+        assert!(!disabled.session_id.expect("session id").contains('\n'));
+
+        let policy = VoiceCapturePolicy {
+            enabled: true,
+            provider: SttProviderPolicy::LocalFake,
+            retain_audio: false,
+            auto_submit: true,
+        };
+        let active = start_capture(&policy, request.clone());
+        assert_eq!(active.status, "active");
+        assert!(active.capture_active);
+        assert_eq!(active.provider_request, Some("open"));
+        assert!(!active.raw_audio_retained);
+
+        let stopped = stop_capture(&policy, request);
+        assert_eq!(stopped.status, "stopped");
+        assert!(!stopped.capture_active);
+        assert_eq!(stopped.provider_request, Some("closed"));
+    }
+
+    #[test]
+    fn transcript_prompt_flow_preserves_prompt_but_receipts_use_digest() {
+        let prompt = session_prompt_from_transcript("  hello from voice  ", VoiceReplyMode::Tts, false).unwrap();
+        assert_eq!(prompt.prompt, "hello from voice");
+        assert_eq!(prompt.status, "prepared");
+        assert_eq!(prompt.reply_mode, "tts");
+        assert_eq!(prompt.transcript_chars, 16);
+        assert!(prompt.transcript_digest.starts_with("fnv64:"));
+        assert!(session_prompt_from_transcript("   ", VoiceReplyMode::Text, false).is_err());
     }
 }

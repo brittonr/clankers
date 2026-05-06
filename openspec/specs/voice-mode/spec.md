@@ -1,8 +1,6 @@
 ## Purpose
 Define the first-pass voice and speech-to-text validation capability on top of the existing TTS surface, including local file policy validation, explicit unsupported microphone/remote/provider cases, safe replay metadata, CLI/tool surfaces, tests, and documentation.
-
 ## Requirements
-
 ### Requirement: Voice and Speech-to-Text Mode Capability [r[voice-mode.capability]]
 The system MUST provide a documented first-pass voice/STT validation surface without recording microphone input, reading raw audio bytes, or contacting transcription providers.
 
@@ -31,3 +29,24 @@ The implementation MUST include automated tests and documentation for the suppor
 - GIVEN the feature is implemented
 - WHEN the targeted test suite runs
 - THEN tests cover at least one successful local file validation and one policy/configuration failure, including replay-safe metadata boundaries
+
+### Requirement: Explicit Live Voice Capture [r[voice.live-capture]]
+The system MUST provide an explicit start/stop voice capture flow with visible status and no background microphone capture by default.
+
+#### Scenario: Start capture [r[voice.live-capture.scenario.start-capture]]
+- GIVEN voice mode is enabled and the user starts capture
+- WHEN audio capture begins
+- THEN clankers shows active capture status and records safe source/session metadata
+
+#### Scenario: Stop capture [r[voice.live-capture.scenario.stop-capture]]
+- GIVEN capture is active
+- WHEN the user stops capture
+- THEN clankers stops the device stream and closes any provider request handles
+
+### Requirement: STT to Session Prompt Flow [r[voice.stt-session]]
+The system MUST route accepted transcripts into ordinary clankers prompt/session paths with configurable reply policy.
+
+#### Scenario: Transcript prompt [r[voice.stt-session.scenario.transcript-prompt]]
+- GIVEN STT produces a transcript and the user accepts or policy auto-submits it
+- WHEN the transcript is submitted
+- THEN clankers sends it as a normal user prompt and optionally emits TTS according to reply policy

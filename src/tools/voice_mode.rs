@@ -29,7 +29,7 @@ impl VoiceModeTool {
                     "properties": {
                         "action": {
                             "type": "string",
-                            "enum": ["status", "validate"],
+                            "enum": ["status", "validate", "start_capture", "stop_capture", "submit_transcript"],
                             "description": "Voice/STT action to perform"
                         },
                         "input": {
@@ -44,7 +44,10 @@ impl VoiceModeTool {
                         "matrix_active": {
                             "type": "boolean",
                             "description": "True only inside an active Matrix voice bridge context"
-                        }
+                        },
+                        "enabled": {"type": "boolean", "description": "Explicitly enable live capture for start_capture"},
+                        "auto_submit": {"type": "boolean", "description": "Route accepted transcript into the session prompt path automatically"},
+                        "transcript": {"type": "string", "description": "Accepted STT transcript for submit_transcript"}
                     },
                     "required": ["action"]
                 }),
@@ -69,6 +72,9 @@ impl Tool for VoiceModeTool {
         match params.get("action").and_then(|value| value.as_str()) {
             Some("status") => validation_result(voice_mode::status_summary()),
             Some("validate") => validate_params(&params),
+            Some("start_capture") => capture_params(&params, true),
+            Some("stop_capture") => capture_params(&params, false),
+            Some("submit_transcript") => transcript_params(&params),
             Some(other) => ToolResult::error(format!("Unknown voice_mode action: {other}")),
             None => ToolResult::error("Missing required parameter: action"),
         }
@@ -87,6 +93,47 @@ fn validate_params(params: &Value) -> ToolResult {
     let source = voice_mode::parse_input_source(input);
     let matrix_active = params.get("matrix_active").and_then(|value| value.as_bool()).unwrap_or(false);
     validation_result(voice_mode::validate(&source, reply, matrix_active))
+}
+
+fn capture_params(params: &Value, start: bool) -> ToolResult {
+    let input = params.get("input").and_then(|value| value.as_str()).unwrap_or("microphone");
+    let reply = match voice_mode::parse_reply_mode(params.get("reply").and_then(|value| value.as_str())) {
+        Ok(mode) => mode,
+        Err(message) => return ToolResult::error(message),
+    };
+    let policy = voice_mode::VoiceCapturePolicy {
+        enabled: params.get("enabled").and_then(|value| value.as_bool()).unwrap_or(false),
+        provider: voice_mode::SttProviderPolicy::LocalFake,
+        retain_audio: false,
+        auto_submit: params.get("auto_submit").and_then(|value| value.as_bool()).unwrap_or(false),
+    };
+    let request = voice_mode::VoiceCaptureRequest {
+        session_id: params.get("session_id").and_then(|value| value.as_str()).map(ToOwned::to_owned),
+        source: voice_mode::parse_input_source(input),
+        reply_mode: reply,
+    };
+    let receipt = if start {
+        voice_mode::start_capture(&policy, request)
+    } else {
+        voice_mode::stop_capture(&policy, request)
+    };
+    capture_result(receipt)
+}
+
+fn transcript_params(params: &Value) -> ToolResult {
+    let transcript = match params.get("transcript").and_then(|value| value.as_str()) {
+        Some(value) => value,
+        None => return ToolResult::error("Missing required parameter for submit_transcript: transcript"),
+    };
+    let reply = match voice_mode::parse_reply_mode(params.get("reply").and_then(|value| value.as_str())) {
+        Ok(mode) => mode,
+        Err(message) => return ToolResult::error(message),
+    };
+    let auto_submit = params.get("auto_submit").and_then(|value| value.as_bool()).unwrap_or(false);
+    match voice_mode::session_prompt_from_transcript(transcript, reply, auto_submit) {
+        Ok(prompt) => prompt_result(prompt),
+        Err(message) => ToolResult::error(message),
+    }
 }
 
 fn validation_result(validation: voice_mode::VoiceValidation) -> ToolResult {
@@ -109,6 +156,34 @@ fn validation_result(validation: voice_mode::VoiceValidation) -> ToolResult {
         ToolResult::error(text)
     };
     result.with_details(details)
+}
+
+fn capture_result(receipt: voice_mode::VoiceCaptureReceipt) -> ToolResult {
+    let details = serde_json::to_value(&receipt).unwrap_or_else(|_| json!({"source": "voice_mode"}));
+    let text = format!("Voice capture {}: {} input via {}", receipt.status, receipt.input_label, receipt.backend);
+    let result = if receipt.error_kind.is_some() {
+        ToolResult::error(text)
+    } else {
+        ToolResult::text(text)
+    };
+    result.with_details(details)
+}
+
+fn prompt_result(prompt: voice_mode::VoiceSessionPrompt) -> ToolResult {
+    let details = json!({
+        "source": prompt.source,
+        "action": prompt.action,
+        "status": prompt.status,
+        "reply_mode": prompt.reply_mode,
+        "auto_submit": prompt.auto_submit,
+        "transcript_chars": prompt.transcript_chars,
+        "transcript_digest": prompt.transcript_digest,
+    });
+    ToolResult::text(format!(
+        "Voice transcript {} for session prompt ({} chars, reply: {})",
+        prompt.status, prompt.transcript_chars, prompt.reply_mode
+    ))
+    .with_details(details)
 }
 
 #[cfg(test)]
@@ -163,5 +238,46 @@ mod tests {
         assert_eq!(details["input_label"], "https");
         assert_eq!(details["supported"], false);
         assert_eq!(details["error_kind"], "unsupported_input");
+    }
+
+    #[tokio::test]
+    async fn live_capture_actions_return_normalized_receipts() {
+        let tool = VoiceModeTool::new();
+        let denied = tool.execute(&ctx(), json!({"action": "start_capture", "input": "microphone"})).await;
+        assert!(denied.is_error);
+        let details = denied.details.expect("denied details");
+        assert_eq!(details["status"], "unsupported");
+        assert_eq!(details["error_kind"], "voice_disabled");
+
+        let active = tool
+            .execute(
+                &ctx(),
+                json!({"action": "start_capture", "input": "microphone", "enabled": true, "auto_submit": true}),
+            )
+            .await;
+        assert!(!active.is_error);
+        let details = active.details.expect("active details");
+        assert_eq!(details["status"], "active");
+        assert_eq!(details["capture_active"], true);
+        assert_eq!(details["auto_submit"], true);
+        assert!(details.get("transcript").is_none());
+
+        let stopped = tool.execute(&ctx(), json!({"action": "stop_capture", "input": "microphone"})).await;
+        assert!(!stopped.is_error);
+        assert_eq!(stopped.details.expect("stop details")["provider_request"], "closed");
+    }
+
+    #[tokio::test]
+    async fn transcript_action_prepares_session_prompt_without_replay_transcript() {
+        let tool = VoiceModeTool::new();
+        let result = tool
+            .execute(&ctx(), json!({"action": "submit_transcript", "transcript": "hello from voice", "reply": "text"}))
+            .await;
+        assert!(!result.is_error);
+        let details = result.details.expect("prompt details");
+        assert_eq!(details["status"], "prepared");
+        assert_eq!(details["transcript_chars"], 16);
+        assert!(details["transcript_digest"].as_str().unwrap().starts_with("fnv64:"));
+        assert!(details.get("transcript").is_none());
     }
 }

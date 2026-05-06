@@ -606,6 +606,48 @@ pub enum VoiceAction {
         #[arg(long)]
         json: bool,
     },
+    /// Start an explicitly enabled live capture receipt without retaining raw audio
+    Start {
+        /// Input source: microphone or local file path
+        #[arg(long, default_value = "microphone")]
+        input: String,
+        /// Reply mode: text, tts, or none
+        #[arg(long)]
+        reply: Option<String>,
+        /// Explicitly enable capture for this command
+        #[arg(long)]
+        enable: bool,
+        /// Auto-submit accepted transcripts to the normal prompt path
+        #[arg(long)]
+        auto_submit: bool,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Stop a live capture and close provider handles
+    Stop {
+        /// Input source label to close
+        #[arg(long, default_value = "microphone")]
+        input: String,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
+    /// Prepare an accepted transcript for ordinary session prompt submission
+    SubmitTranscript {
+        /// Accepted transcript text
+        #[arg(long)]
+        transcript: String,
+        /// Reply mode: text, tts, or none
+        #[arg(long)]
+        reply: Option<String>,
+        /// Auto-submit accepted transcript to the normal prompt path
+        #[arg(long)]
+        auto_submit: bool,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]

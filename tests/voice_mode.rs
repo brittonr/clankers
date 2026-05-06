@@ -66,3 +66,42 @@ async fn voice_mode_tool_returns_safe_details_for_success_and_failure() {
     assert_eq!(details["supported"], false);
     assert_eq!(details["error_kind"], "unsupported_input");
 }
+
+#[test]
+fn live_capture_policy_receipts_cover_start_stop() {
+    let policy = clankers::voice_mode::VoiceCapturePolicy {
+        enabled: true,
+        provider: clankers::voice_mode::SttProviderPolicy::LocalFake,
+        retain_audio: false,
+        auto_submit: true,
+    };
+    let request = clankers::voice_mode::VoiceCaptureRequest {
+        session_id: Some("session-1".to_string()),
+        source: clankers::voice_mode::VoiceInputSource::Microphone,
+        reply_mode: clankers::voice_mode::VoiceReplyMode::Text,
+    };
+
+    let active = clankers::voice_mode::start_capture(&policy, request.clone());
+    assert_eq!(active.status, "active");
+    assert_eq!(active.input_label, "microphone");
+    assert!(active.capture_active);
+    assert!(!active.raw_audio_retained);
+
+    let stopped = clankers::voice_mode::stop_capture(&policy, request);
+    assert_eq!(stopped.status, "stopped");
+    assert_eq!(stopped.provider_request, Some("closed"));
+}
+
+#[tokio::test]
+async fn voice_mode_tool_prepares_transcript_prompt_metadata() {
+    let tool = VoiceModeTool::new();
+    let result = tool
+        .execute(&ctx(), json!({"action": "submit_transcript", "transcript": "hello from voice", "reply": "none"}))
+        .await;
+    assert!(!result.is_error);
+    assert!(text(&result).contains("session prompt"));
+    let details = result.details.expect("details");
+    assert_eq!(details["status"], "prepared");
+    assert_eq!(details["reply_mode"], "none");
+    assert!(details.get("transcript").is_none());
+}
