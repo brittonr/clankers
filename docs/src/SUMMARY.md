@@ -16,6 +16,7 @@
 - [Daemon & Actors](./reference/daemon.md)
 - [Request Lifecycle](./reference/request-lifecycle.md)
 - [Provider Contracts](./reference/provider-contracts.md)
+- [Release Readiness](./reference/release-readiness.md)
 - [Plugins](./reference/plugins.md)
 - [P2P & Networking](./reference/p2p.md)
 - [Configuration](./reference/config.md)
