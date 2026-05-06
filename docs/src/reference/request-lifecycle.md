@@ -33,15 +33,16 @@ client input
 
 Standalone TUI/headless mode runs the agent in-process and renders agent events directly.
 
-1. The event loop receives user input, expands bounded `@` context references into prompt text/image blocks, records safe expansion metadata for replay/debugging when a session store is present, and starts an agent prompt. Supported references include local files/directories/images, `@diff`/scoped git diffs, and policy-enabled HTTP(S) fetches; URL fetch is disabled by default and session/artifact references remain explicit unsupported receipts.
-2. `EventLoopRunner::process_agent_event` handles each `AgentEvent` in this order:
+1. System-prompt discovery builds the prompt from settings prefix, SYSTEM/APPEND_SYSTEM, optional local SOUL/personality sections, AGENTS.md/CLAUDE.md, context files, specs, skills, learning guidance, and settings suffix. SOUL/personality metadata records kind/status/precedence/path hash/preset id/byte count without raw persona text or full paths, and `CLANKERS_DISABLE_SOUL_PERSONALITY=1` removes those sections entirely.
+2. The event loop receives user input, expands bounded `@` context references into prompt text/image blocks, records safe expansion metadata for replay/debugging when a session store is present, and starts an agent prompt. Supported references include local files/directories/images, `@diff`/scoped git diffs, and policy-enabled HTTP(S) fetches; URL fetch is disabled by default and session/artifact references remain explicit unsupported receipts.
+3. `EventLoopRunner::process_agent_event` handles each `AgentEvent` in this order:
    - translate to a TUI event for real-time rendering,
    - feed the same event to `SessionController::feed_event`,
    - record usage,
    - dispatch plugin events,
    - persist tool-result side data.
-3. `SessionController::feed_event` uses the same processing pipeline as daemon draining: audit, metrics, embedded prompt correlation, loop output accumulation, session persistence, `DaemonEvent` translation, and lifecycle hooks.
-4. The standalone TUI should treat controller-produced daemon events as shell/control output, not as a second source of assistant transcript rendering.
+4. `SessionController::feed_event` uses the same processing pipeline as daemon draining: audit, metrics, embedded prompt correlation, loop output accumulation, session persistence, `DaemonEvent` translation, and lifecycle hooks.
+5. The standalone TUI should treat controller-produced daemon events as shell/control output, not as a second source of assistant transcript rendering.
 
 ## ACP editor path
 

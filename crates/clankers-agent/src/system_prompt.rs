@@ -7,7 +7,10 @@
 //! - Each context file is labeled with its path in the prompt
 
 use std::collections::HashSet;
+use std::collections::hash_map::DefaultHasher;
 use std::fmt::Write as _;
+use std::hash::Hash;
+use std::hash::Hasher;
 use std::path::Path;
 use std::path::PathBuf;
 
@@ -19,10 +22,51 @@ use clankers_skills as skills;
 use openspec::SpecEngine;
 
 /// A context file with its source path and content
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ContextFile {
     pub path: PathBuf,
     pub content: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SoulPromptSourceKind {
+    LocalSoul,
+    PersonalityPreset,
+    Disabled,
+    Unsupported,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SoulPromptStatus {
+    Included,
+    Disabled,
+    Unsupported,
+    Error,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+pub struct SoulPromptMetadata {
+    pub source: &'static str,
+    pub kind: SoulPromptSourceKind,
+    pub status: SoulPromptStatus,
+    pub precedence: u8,
+    pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub preset_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub path_hash: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub byte_count: Option<usize>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_kind: Option<&'static str>,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct SoulPromptAssembly {
+    pub sections: Vec<ContextFile>,
+    pub metadata: Vec<SoulPromptMetadata>,
 }
 
 /// All discovered context resources
@@ -32,6 +76,8 @@ pub struct PromptResources {
     pub context_files: Vec<String>,
     /// AGENTS.md / CLAUDE.md files (global + walk up from cwd)
     pub agents_files: Vec<ContextFile>,
+    /// SOUL.md and configured personality preset prompt sections.
+    pub soul_personality: SoulPromptAssembly,
     pub spec_context: String,
     /// Custom system prompt from SYSTEM.md (replaces base prompt if present)
     pub system_prompt_override: Option<String>,
@@ -47,6 +93,7 @@ pub fn discover_resources(global: &ClankersPaths, project: &ProjectPaths) -> Pro
     let prompts = prompts::discover_prompts(&global.global_prompts_dir, Some(&project.prompts_dir));
     let context_files = load_context_files(project);
     let agents_files = load_agents_files(&global.global_config_dir, &project.root);
+    let soul_personality = load_soul_personality(&global.global_config_dir, project);
     let spec_context = load_spec_context(&project.root);
     let system_prompt_override = load_system_md(&global.global_config_dir, &project.config_dir);
     let append_system_prompt = load_append_system_md(&global.global_config_dir, &project.config_dir);
@@ -56,6 +103,7 @@ pub fn discover_resources(global: &ClankersPaths, project: &ProjectPaths) -> Pro
         prompts,
         context_files,
         agents_files,
+        soul_personality,
         spec_context,
         system_prompt_override,
         append_system_prompt,
@@ -78,11 +126,12 @@ fn format_agents_section(agents_files: &[ContextFile]) -> String {
 /// Matches pi's assembly order:
 /// 1. SYSTEM.md replaces base prompt (if present), otherwise use base_prompt
 /// 2. APPEND_SYSTEM.md appended
-/// 3. AGENTS.md / CLAUDE.md files (labeled with path)
-/// 4. Context files (.clankers/context.md, .clankers/context/*.md)
-/// 5. Spec context (from openspec/ if present)
-/// 6. Skills listing
-/// 7. Settings prefix/suffix
+/// 3. SOUL.md / personality preset sections (if enabled and local)
+/// 4. AGENTS.md / CLAUDE.md files (labeled with path)
+/// 5. Context files (.clankers/context.md, .clankers/context/*.md)
+/// 6. Spec context (from openspec/ if present)
+/// 7. Skills listing
+/// 8. Settings prefix/suffix
 pub fn assemble_system_prompt(
     base_prompt: &str,
     resources: &PromptResources,
@@ -108,6 +157,12 @@ pub fn assemble_system_prompt(
     // APPEND_SYSTEM.md
     if let Some(ref append) = resources.append_system_prompt {
         parts.push(append.clone());
+    }
+
+    // SOUL.md / personality preset identity layer. Kept before project context so
+    // AGENTS.md/CLAUDE.md can still add project-specific operating rules.
+    if !resources.soul_personality.sections.is_empty() {
+        parts.push(format_soul_personality_section(&resources.soul_personality.sections));
     }
 
     // AGENTS.md / CLAUDE.md files (with path headers, like pi does)
@@ -170,6 +225,15 @@ fn load_md_files_from_dir(dir: &Path) -> Vec<String> {
 }
 
 /// Load context files from .clankers/context.md and .clankers/context/*.md
+fn format_soul_personality_section(sections: &[ContextFile]) -> String {
+    let mut section = String::from("# SOUL / Personality Context\n\nLocal identity and personality context:\n");
+    for ctx_file in sections {
+        writeln!(&mut section, "\n## {}\n", ctx_file.path.display()).ok();
+        writeln!(&mut section, "{}", ctx_file.content).ok();
+    }
+    section
+}
+
 fn load_context_files(project: &ProjectPaths) -> Vec<String> {
     let mut files = Vec::new();
 
@@ -271,6 +335,195 @@ fn load_agents_files(global_config_dir: &Path, cwd: &Path) -> Vec<ContextFile> {
 
     // 3. Deduplicate by canonical path
     deduplicate_context_files(files)
+}
+
+fn load_soul_personality(global_config_dir: &Path, project: &ProjectPaths) -> SoulPromptAssembly {
+    let mut assembly = SoulPromptAssembly::default();
+    if soul_disabled() {
+        assembly.metadata.push(SoulPromptMetadata {
+            source: "soul_personality",
+            kind: SoulPromptSourceKind::Disabled,
+            status: SoulPromptStatus::Disabled,
+            precedence: 30,
+            label: "SOUL/personality disabled".to_string(),
+            preset_id: None,
+            path_hash: None,
+            byte_count: None,
+            error_kind: None,
+        });
+        return assembly;
+    }
+
+    let soul_candidates = [
+        project.config_dir.join("SOUL.md"),
+        project.root.join("SOUL.md"),
+        global_config_dir.join("SOUL.md"),
+    ];
+    if let Some(path) = soul_candidates.iter().find(|path| path.is_file()) {
+        match read_persona_file(path) {
+            Ok(ctx) => {
+                assembly.metadata.push(included_metadata(
+                    SoulPromptSourceKind::LocalSoul,
+                    30,
+                    "SOUL.md".to_string(),
+                    None,
+                    path,
+                    ctx.content.len(),
+                ));
+                assembly.sections.push(ctx);
+            }
+            Err(error_kind) => assembly.metadata.push(error_metadata(
+                SoulPromptSourceKind::LocalSoul,
+                30,
+                "SOUL.md".to_string(),
+                None,
+                Some(path),
+                error_kind,
+            )),
+        }
+    }
+
+    if let Some(preset_id) = personality_preset_id() {
+        if !is_safe_personality_id(&preset_id) {
+            assembly.metadata.push(error_metadata(
+                SoulPromptSourceKind::PersonalityPreset,
+                31,
+                "personality preset".to_string(),
+                Some(sanitize_persona_label(&preset_id)),
+                None,
+                "invalid_preset_id",
+            ));
+            return assembly;
+        }
+        let preset_path = [
+            project.config_dir.join("personality").join(format!("{preset_id}.md")),
+            global_config_dir.join("personality").join(format!("{preset_id}.md")),
+        ]
+        .into_iter()
+        .find(|path| path.is_file());
+        match preset_path {
+            Some(path) => match read_persona_file(&path) {
+                Ok(ctx) => {
+                    assembly.metadata.push(included_metadata(
+                        SoulPromptSourceKind::PersonalityPreset,
+                        31,
+                        "personality preset".to_string(),
+                        Some(preset_id),
+                        &path,
+                        ctx.content.len(),
+                    ));
+                    assembly.sections.push(ctx);
+                }
+                Err(error_kind) => assembly.metadata.push(error_metadata(
+                    SoulPromptSourceKind::PersonalityPreset,
+                    31,
+                    "personality preset".to_string(),
+                    Some(preset_id),
+                    Some(&path),
+                    error_kind,
+                )),
+            },
+            None => assembly.metadata.push(error_metadata(
+                SoulPromptSourceKind::PersonalityPreset,
+                31,
+                "personality preset".to_string(),
+                Some(preset_id),
+                None,
+                "missing_preset",
+            )),
+        }
+    }
+
+    assembly
+}
+
+fn soul_disabled() -> bool {
+    std::env::var("CLANKERS_DISABLE_SOUL_PERSONALITY")
+        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false)
+}
+
+fn personality_preset_id() -> Option<String> {
+    std::env::var("CLANKERS_PERSONALITY_PRESET")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty() && !value.eq_ignore_ascii_case("none"))
+}
+
+fn is_safe_personality_id(value: &str) -> bool {
+    value.len() <= 64 && value.chars().all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+}
+
+fn read_persona_file(path: &Path) -> Result<ContextFile, &'static str> {
+    const MAX_PERSONA_BYTES: usize = 64 * 1024;
+    let bytes = std::fs::read(path).map_err(|_| "read_failed")?;
+    if bytes.len() > MAX_PERSONA_BYTES {
+        return Err("too_large");
+    }
+    let content = String::from_utf8(bytes).map_err(|_| "invalid_utf8")?;
+    if content.trim().is_empty() {
+        return Err("empty");
+    }
+    Ok(ContextFile {
+        path: path.to_path_buf(),
+        content,
+    })
+}
+
+fn included_metadata(
+    kind: SoulPromptSourceKind,
+    precedence: u8,
+    label: String,
+    preset_id: Option<String>,
+    path: &Path,
+    byte_count: usize,
+) -> SoulPromptMetadata {
+    SoulPromptMetadata {
+        source: "soul_personality",
+        kind,
+        status: SoulPromptStatus::Included,
+        precedence,
+        label,
+        preset_id,
+        path_hash: Some(path_hash(path)),
+        byte_count: Some(byte_count),
+        error_kind: None,
+    }
+}
+
+fn error_metadata(
+    kind: SoulPromptSourceKind,
+    precedence: u8,
+    label: String,
+    preset_id: Option<String>,
+    path: Option<&Path>,
+    error_kind: &'static str,
+) -> SoulPromptMetadata {
+    SoulPromptMetadata {
+        source: "soul_personality",
+        kind,
+        status: SoulPromptStatus::Error,
+        precedence,
+        label,
+        preset_id,
+        path_hash: path.map(path_hash),
+        byte_count: None,
+        error_kind: Some(error_kind),
+    }
+}
+
+fn path_hash(path: &Path) -> String {
+    let mut hasher = DefaultHasher::new();
+    path.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
+}
+
+fn sanitize_persona_label(value: &str) -> String {
+    value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '-' | '_' | '.'))
+        .take(64)
+        .collect::<String>()
 }
 
 /// Load a configuration file, with project-level overriding global
@@ -480,9 +733,13 @@ If a skill stops matching reality, revise it immediately instead of working arou
 
 #[cfg(test)]
 mod tests {
+    use std::sync::Mutex;
+
     use tempfile::TempDir;
 
     use super::*;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn make_test_resources() -> PromptResources {
         PromptResources {
@@ -490,10 +747,45 @@ mod tests {
             prompts: vec![],
             context_files: vec![],
             agents_files: vec![],
+            soul_personality: SoulPromptAssembly::default(),
             spec_context: String::new(),
             system_prompt_override: None,
             append_system_prompt: None,
             include_learning_guidance: false,
+        }
+    }
+
+    struct EnvGuard {
+        key: &'static str,
+        previous: Option<String>,
+    }
+
+    impl EnvGuard {
+        fn set(key: &'static str, value: &str) -> Self {
+            let previous = std::env::var(key).ok();
+            unsafe {
+                std::env::set_var(key, value);
+            }
+            Self { key, previous }
+        }
+
+        fn remove(key: &'static str) -> Self {
+            let previous = std::env::var(key).ok();
+            unsafe {
+                std::env::remove_var(key);
+            }
+            Self { key, previous }
+        }
+    }
+
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                match &self.previous {
+                    Some(value) => std::env::set_var(self.key, value),
+                    None => std::env::remove_var(self.key),
+                }
+            }
         }
     }
 
@@ -574,6 +866,122 @@ mod tests {
         assert!(agents_pos < context_pos);
         assert!(context_pos < spec_pos);
         assert!(spec_pos < suffix_pos);
+    }
+
+    #[test]
+    fn test_assemble_with_soul_personality_precedes_agents() {
+        let mut resources = make_test_resources();
+        resources.soul_personality.sections = vec![ContextFile {
+            path: PathBuf::from("/project/SOUL.md"),
+            content: "SOUL_CONTENT".to_string(),
+        }];
+        resources.agents_files = vec![ContextFile {
+            path: PathBuf::from("/project/AGENTS.md"),
+            content: "AGENTS_CONTENT".to_string(),
+        }];
+
+        let result = assemble_system_prompt("BASE", &resources, None, None);
+
+        let soul_pos = result.find("SOUL_CONTENT").expect("soul content");
+        let agents_pos = result.find("AGENTS_CONTENT").expect("agents content");
+        assert!(soul_pos < agents_pos);
+        assert!(result.contains("# SOUL / Personality Context"));
+    }
+
+    #[test]
+    fn test_soul_discovery_includes_local_soul_and_safe_metadata() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let _disabled = EnvGuard::remove("CLANKERS_DISABLE_SOUL_PERSONALITY");
+        let _preset = EnvGuard::remove("CLANKERS_PERSONALITY_PRESET");
+        let temp = TempDir::new().expect("temp dir");
+        let global = temp.path().join("global");
+        std::fs::create_dir_all(&global).expect("global dir");
+        std::fs::write(temp.path().join("SOUL.md"), "Private soul prompt").expect("SOUL.md");
+        let project = ProjectPaths::resolve(temp.path());
+
+        let assembly = load_soul_personality(&global, &project);
+
+        assert_eq!(assembly.sections.len(), 1);
+        assert_eq!(assembly.metadata.len(), 1);
+        let metadata = &assembly.metadata[0];
+        assert_eq!(metadata.kind, SoulPromptSourceKind::LocalSoul);
+        assert_eq!(metadata.status, SoulPromptStatus::Included);
+        assert_eq!(metadata.precedence, 30);
+        assert_eq!(metadata.label, "SOUL.md");
+        assert!(metadata.path_hash.is_some());
+        assert_eq!(metadata.byte_count, Some("Private soul prompt".len()));
+        let details = serde_json::to_string(metadata).expect("metadata json");
+        assert!(!details.contains("Private soul prompt"));
+        assert!(!details.contains(temp.path().to_str().expect("path")));
+    }
+
+    #[test]
+    fn test_soul_disabled_means_absent() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let _disabled = EnvGuard::set("CLANKERS_DISABLE_SOUL_PERSONALITY", "1");
+        let _preset = EnvGuard::remove("CLANKERS_PERSONALITY_PRESET");
+        let temp = TempDir::new().expect("temp dir");
+        let global = temp.path().join("global");
+        std::fs::create_dir_all(&global).expect("global dir");
+        std::fs::write(temp.path().join("SOUL.md"), "disabled soul").expect("SOUL.md");
+        let project = ProjectPaths::resolve(temp.path());
+
+        let assembly = load_soul_personality(&global, &project);
+
+        assert!(assembly.sections.is_empty());
+        assert_eq!(assembly.metadata.len(), 1);
+        assert_eq!(assembly.metadata[0].kind, SoulPromptSourceKind::Disabled);
+        assert_eq!(assembly.metadata[0].status, SoulPromptStatus::Disabled);
+    }
+
+    #[test]
+    fn test_personality_preset_includes_safe_local_prompt() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let _disabled = EnvGuard::remove("CLANKERS_DISABLE_SOUL_PERSONALITY");
+        let _preset = EnvGuard::set("CLANKERS_PERSONALITY_PRESET", "mentor.v1");
+        let temp = TempDir::new().expect("temp dir");
+        let global = temp.path().join("global");
+        let personality_dir = temp.path().join(".clankers/personality");
+        std::fs::create_dir_all(&global).expect("global dir");
+        std::fs::create_dir_all(&personality_dir).expect("personality dir");
+        std::fs::write(personality_dir.join("mentor.v1.md"), "Use concise mentoring.").expect("preset");
+        let project = ProjectPaths::resolve(temp.path());
+
+        let assembly = load_soul_personality(&global, &project);
+
+        assert_eq!(assembly.sections.len(), 1);
+        let metadata = assembly
+            .metadata
+            .iter()
+            .find(|metadata| metadata.kind == SoulPromptSourceKind::PersonalityPreset)
+            .expect("preset metadata");
+        assert_eq!(metadata.status, SoulPromptStatus::Included);
+        assert_eq!(metadata.precedence, 31);
+        assert_eq!(metadata.preset_id.as_deref(), Some("mentor.v1"));
+        let details = serde_json::to_string(metadata).expect("metadata json");
+        assert!(!details.contains("Use concise mentoring."));
+    }
+
+    #[test]
+    fn test_invalid_personality_records_safe_error_metadata() {
+        let _lock = ENV_LOCK.lock().expect("env lock");
+        let _disabled = EnvGuard::remove("CLANKERS_DISABLE_SOUL_PERSONALITY");
+        let _preset = EnvGuard::set("CLANKERS_PERSONALITY_PRESET", "../secret-token");
+        let temp = TempDir::new().expect("temp dir");
+        let global = temp.path().join("global");
+        std::fs::create_dir_all(&global).expect("global dir");
+        let project = ProjectPaths::resolve(temp.path());
+
+        let assembly = load_soul_personality(&global, &project);
+
+        assert!(assembly.sections.is_empty());
+        assert_eq!(assembly.metadata.len(), 1);
+        let metadata = &assembly.metadata[0];
+        assert_eq!(metadata.kind, SoulPromptSourceKind::PersonalityPreset);
+        assert_eq!(metadata.status, SoulPromptStatus::Error);
+        assert_eq!(metadata.error_kind, Some("invalid_preset_id"));
+        let details = serde_json::to_string(metadata).expect("metadata json");
+        assert!(!details.contains("../secret-token"));
     }
 
     #[test]
