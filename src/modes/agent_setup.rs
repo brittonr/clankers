@@ -57,12 +57,8 @@ pub(crate) fn build_agent_with_tools(
     };
     let tiered_tools = crate::modes::common::build_all_tiered_tools(&tool_env, plugin_manager);
 
-    // Interactive mode: Core + Specialty + Orchestration (no Matrix)
-    let tool_set = crate::modes::common::ToolSet::new(tiered_tools, [
-        crate::modes::common::ToolTier::Core,
-        crate::modes::common::ToolTier::Specialty,
-        crate::modes::common::ToolTier::Orchestration,
-    ]);
+    let active_tiers = crate::tool_gateway::standalone_toolsets();
+    let tool_set = crate::modes::common::ToolSet::new(tiered_tools.clone(), active_tiers);
 
     // tool_info shows ALL tools (for toggle menu); active_tools only sends active tiers to agent
     let all_tools = tool_set.all_tools();
@@ -76,11 +72,7 @@ pub(crate) fn build_agent_with_tools(
     }
 
     // Filter out disabled tools from the active tier set
-    let active_tools: Vec<Arc<dyn crate::tools::Tool>> = tool_set
-        .active_tools()
-        .into_iter()
-        .filter(|t| !app.disabled_tools.contains(&t.definition().name))
-        .collect();
+    let active_tools = crate::tool_gateway::allowed_tools_for_policy(&tiered_tools, &active_tiers, &app.disabled_tools);
 
     // Build the final agent with tools, db, routing, and cost tracking
     let mut agent_builder = crate::agent::builder::AgentBuilder::new(provider, settings.clone(), model, system_prompt)

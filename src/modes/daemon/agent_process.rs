@@ -780,11 +780,25 @@ struct DaemonToolRebuilder {
 
 impl clankers_controller::ToolRebuilder for DaemonToolRebuilder {
     fn rebuild_filtered(&self, disabled: &[String]) -> Vec<Arc<dyn crate::tools::Tool>> {
-        let disabled_set: std::collections::HashSet<&str> = disabled.iter().map(|s| s.as_str()).collect();
+        let disabled_set: std::collections::HashSet<String> = disabled.iter().cloned().collect();
         // Build a fresh panel_tx (events go nowhere — we only need the tool list)
         let (panel_tx, _) = tokio::sync::mpsc::unbounded_channel();
-        let all_tools = self.factory.build_tools_with_panel_tx(panel_tx, None);
-        all_tools.into_iter().filter(|t| !disabled_set.contains(t.definition().name.as_str())).collect()
+        let child_factory = self.factory.child_actor_factory();
+        let actor_ctx = self.factory.registry.as_ref().zip(child_factory).map(|(registry, factory)| {
+            crate::tools::subagent::ActorContext {
+                registry: registry.clone(),
+                factory,
+            }
+        });
+        let env = crate::modes::common::ToolEnv {
+            settings: Some(self.factory.settings.clone()),
+            panel_tx: Some(panel_tx),
+            actor_ctx,
+            schedule_engine: self.factory.schedule_engine.clone(),
+            ..Default::default()
+        };
+        let tiered = crate::modes::common::build_all_tiered_tools(&env, self.factory.plugin_manager.as_ref());
+        crate::tool_gateway::allowed_tools_for_policy(&tiered, &crate::tool_gateway::daemon_toolsets(), &disabled_set)
     }
 }
 

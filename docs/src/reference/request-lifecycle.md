@@ -121,6 +121,8 @@ Add or update tests around these seams when touching them:
 - `_session_id` propagation into routed `CompletionRequest.extra_params` after session resume or slash-driven session swaps.
 - Daemon attach replay ordering, conversation block metadata, and `HistoryEnd` finalization.
 - Attach slash command parity for thinking level, disabled tools, model/role, and plugin fetches.
+- Tool gateway policy helpers for active toolsets plus disabled-tool filtering; standalone and daemon rebuild paths should not fork this logic.
+- Platform delivery receipts should record artifact kind, safe basename/handle, status, target kind, and error class only; never raw destinations, tokens, headers, or full paths.
 - Provider request-shape parity between `clankers-provider` and `clanker-router`.
 - Runtime SSE/parser entrypoints, not only helper-level stream state machines.
 

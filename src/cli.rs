@@ -589,6 +589,21 @@ pub enum GatewayAction {
         #[arg(long)]
         json: bool,
     },
+    /// Build a safe local/platform delivery receipt without sending data
+    DeliverReceipt {
+        /// Artifact type: file, media, or scheduled-output
+        #[arg(long)]
+        artifact_type: String,
+        /// Optional artifact path; only the basename is recorded
+        #[arg(long)]
+        path: Option<String>,
+        /// Delivery target: local, session, matrix, or an unsupported platform target
+        #[arg(long)]
+        deliver: Option<String>,
+        /// Emit machine-readable JSON
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Subcommand, Debug, Clone, PartialEq, Eq)]
@@ -1717,5 +1732,39 @@ mod tests {
         let help = Cli::command().render_help().to_string();
         assert!(help.contains("gateway"));
         assert!(help.contains("tool gateway delivery policy"));
+    }
+
+    #[test]
+    fn gateway_deliver_receipt_cli_parses_artifact_delivery_and_json() {
+        let cli = Cli::parse_from([
+            "clankers",
+            "gateway",
+            "deliver-receipt",
+            "--artifact-type",
+            "media",
+            "--path",
+            "/tmp/out.mp3",
+            "--deliver",
+            "session",
+            "--json",
+        ]);
+
+        match cli.command.expect("command should parse") {
+            Commands::Gateway {
+                action:
+                    GatewayAction::DeliverReceipt {
+                        artifact_type,
+                        path,
+                        deliver,
+                        json,
+                    },
+            } => {
+                assert_eq!(artifact_type, "media");
+                assert_eq!(path.as_deref(), Some("/tmp/out.mp3"));
+                assert_eq!(deliver.as_deref(), Some("session"));
+                assert!(json);
+            }
+            other => panic!("unexpected command: {other:?}"),
+        }
     }
 }

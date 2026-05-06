@@ -57,6 +57,47 @@ async fn gateway_tool_returns_replay_safe_success_and_failure_details() {
     assert_eq!(failure_details["error_kind"], "unsupported_target");
 }
 
+#[test]
+fn gateway_delivery_receipts_are_platform_safe() {
+    let receipt = clankers::tool_gateway::local_delivery_receipt(
+        clankers::tool_gateway::ArtifactKind::ScheduledOutput,
+        Some(std::path::Path::new("/tmp/token/schedule-result.json")),
+        &clankers::tool_gateway::parse_delivery_target(Some("local")),
+    );
+    assert_eq!(receipt.status, "success");
+    assert_eq!(receipt.artifact_type, "scheduled_output");
+    assert_eq!(receipt.safe_path.as_deref(), Some("schedule-result.json"));
+    assert!(!serde_json::to_string(&receipt).expect("serialize").contains("token"));
+
+    let unsupported = clankers::tool_gateway::local_delivery_receipt(
+        clankers::tool_gateway::ArtifactKind::File,
+        Some(std::path::Path::new("/tmp/secret.txt")),
+        &clankers::tool_gateway::parse_delivery_target(Some("webhook://secret-host/path")),
+    );
+    assert_eq!(unsupported.status, "unsupported");
+    assert_eq!(unsupported.target_kind, "webhook");
+    assert!(unsupported.safe_path.is_none());
+    assert!(!serde_json::to_string(&unsupported).expect("serialize").contains("secret-host"));
+}
+
+#[tokio::test]
+async fn gateway_tool_deliver_receipt_returns_safe_details() {
+    let tool = ToolGatewayTool::new();
+    let ctx = ToolContext::new("gateway-delivery".to_string(), CancellationToken::new(), None);
+    let result = tool
+        .execute(
+            &ctx,
+            json!({"action": "deliver_receipt", "artifact_type": "media", "path": "/tmp/secret/out.mp3", "deliver": "session"}),
+        )
+        .await;
+
+    assert!(!result.is_error);
+    let details = result.details.expect("delivery details");
+    assert_eq!(details["artifact_type"], "media");
+    assert_eq!(details["safe_path"], "out.mp3");
+    assert!(!serde_json::to_string(&details).expect("serialize").contains("secret"));
+}
+
 fn text(result: &clankers::tools::ToolResult) -> &str {
     match result.content.first().expect("tool result content") {
         ToolResultContent::Text { text } => text,

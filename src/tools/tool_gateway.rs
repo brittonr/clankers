@@ -1,6 +1,6 @@
 //! Tool gateway validation tool.
 //!
-//! First-pass gateway support is intentionally validation-only: local/session
+//! Gateway support is intentionally validation/receipt-first: local/session
 //! delivery is accepted, Matrix is accepted only when the caller explicitly
 //! reports an active bridge context, and remote/webhook/cloud/credential targets
 //! return safe unsupported metadata.
@@ -24,13 +24,13 @@ impl ToolGatewayTool {
         Self {
             definition: ToolDefinition {
                 name: "tool_gateway".to_string(),
-                description: "Inspect and validate first-pass tool gateway delivery policy.".to_string(),
+                description: "Inspect and validate tool gateway delivery policy and safe receipts.".to_string(),
                 input_schema: json!({
                     "type": "object",
                     "properties": {
                         "action": {
                             "type": "string",
-                            "enum": ["status", "validate"],
+                            "enum": ["status", "validate", "deliver_receipt"],
                             "description": "Gateway action to perform"
                         },
                         "toolsets": {
@@ -44,6 +44,14 @@ impl ToolGatewayTool {
                         "matrix_active": {
                             "type": "boolean",
                             "description": "True only inside an active Matrix bridge delivery context"
+                        },
+                        "artifact_type": {
+                            "type": "string",
+                            "description": "Artifact type for deliver_receipt: file, media, or scheduled-output"
+                        },
+                        "path": {
+                            "type": "string",
+                            "description": "Optional artifact path; only the basename is recorded in receipts"
                         }
                     },
                     "required": ["action"]
@@ -69,6 +77,7 @@ impl Tool for ToolGatewayTool {
         match params.get("action").and_then(|value| value.as_str()) {
             Some("status") => validation_result(tool_gateway::status_summary()),
             Some("validate") => validate_params(&params),
+            Some("deliver_receipt") => delivery_params(&params),
             Some(other) => ToolResult::error(format!("Unknown tool_gateway action: {other}")),
             None => ToolResult::error("Missing required parameter: action"),
         }
@@ -89,6 +98,19 @@ fn validate_params(params: &Value) -> ToolResult {
     validation_result(tool_gateway::validate(&toolsets, &target, matrix_active))
 }
 
+fn delivery_params(params: &Value) -> ToolResult {
+    let artifact_type = match params.get("artifact_type").and_then(|value| value.as_str()) {
+        Some("file") => tool_gateway::ArtifactKind::File,
+        Some("media") => tool_gateway::ArtifactKind::Media,
+        Some("scheduled-output" | "scheduled_output" | "scheduled") => tool_gateway::ArtifactKind::ScheduledOutput,
+        Some(other) => return ToolResult::error(format!("unknown artifact type '{other}'")),
+        None => return ToolResult::error("Missing required parameter for deliver_receipt: artifact_type"),
+    };
+    let target = tool_gateway::parse_delivery_target(params.get("deliver").and_then(|value| value.as_str()));
+    let path = params.get("path").and_then(|value| value.as_str()).map(std::path::Path::new);
+    delivery_result(tool_gateway::local_delivery_receipt(artifact_type, path, &target))
+}
+
 fn validation_result(validation: tool_gateway::GatewayValidation) -> ToolResult {
     let details = serde_json::to_value(&validation).unwrap_or_else(|_| json!({"source": "tool_gateway"}));
     let text = if validation.supported {
@@ -106,6 +128,28 @@ fn validation_result(validation: tool_gateway::GatewayValidation) -> ToolResult 
         )
     };
     let result = if validation.supported {
+        ToolResult::text(text)
+    } else {
+        ToolResult::error(text)
+    };
+    result.with_details(details)
+}
+
+fn delivery_result(receipt: tool_gateway::PlatformDeliveryReceipt) -> ToolResult {
+    let details = serde_json::to_value(&receipt).unwrap_or_else(|_| json!({"source": "tool_gateway"}));
+    let text = if receipt.status == "success" {
+        format!(
+            "Tool gateway delivery receipt: {} via {} ({})",
+            receipt.artifact_type, receipt.backend, receipt.target_kind
+        )
+    } else {
+        format!(
+            "Tool gateway delivery unsupported: {} ({})",
+            receipt.target_kind,
+            receipt.error_message.as_deref().unwrap_or("unsupported target")
+        )
+    };
+    let result = if receipt.status == "success" {
         ToolResult::text(text)
     } else {
         ToolResult::error(text)
@@ -165,5 +209,22 @@ mod tests {
         assert_eq!(details["delivery_target"], "https");
         assert_eq!(details["supported"], false);
         assert_eq!(details["error_kind"], "unsupported_target");
+    }
+
+    #[tokio::test]
+    async fn deliver_receipt_returns_safe_artifact_metadata() {
+        let tool = ToolGatewayTool::new();
+        let result = tool
+            .execute(
+                &ctx(),
+                json!({"action": "deliver_receipt", "artifact_type": "media", "path": "/tmp/secret/out.mp3", "deliver": "session"}),
+            )
+            .await;
+
+        assert!(!result.is_error);
+        let details = result.details.expect("details");
+        assert_eq!(details["artifact_type"], "media");
+        assert_eq!(details["safe_path"], "out.mp3");
+        assert!(!serde_json::to_string(&details).expect("serialize").contains("secret"));
     }
 }

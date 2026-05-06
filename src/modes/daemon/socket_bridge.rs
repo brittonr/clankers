@@ -56,7 +56,7 @@ pub struct SessionFactory {
 }
 
 impl SessionFactory {
-    fn child_actor_factory(&self) -> Option<Arc<Self>> {
+    pub(crate) fn child_actor_factory(&self) -> Option<Arc<Self>> {
         self.registry.as_ref().map(|_| {
             Arc::new(Self {
                 provider: Arc::clone(&self.provider),
@@ -100,13 +100,11 @@ impl SessionFactory {
             ..Default::default()
         };
         let tiered = crate::modes::common::build_all_tiered_tools(&env, self.plugin_manager.as_ref());
-        let tool_set = crate::modes::common::ToolSet::new(tiered, [
-            crate::modes::common::ToolTier::Core,
-            crate::modes::common::ToolTier::Orchestration,
-            crate::modes::common::ToolTier::Specialty,
-            crate::modes::common::ToolTier::Matrix,
-        ]);
-        tool_set.active_tools()
+        crate::tool_gateway::allowed_tools_for_policy(
+            &tiered,
+            &crate::tool_gateway::daemon_toolsets(),
+            &std::collections::HashSet::new(),
+        )
     }
 }
 

@@ -8,7 +8,6 @@ use std::sync::Arc;
 use super::interactive::AgentCommand;
 use super::interactive::TaskResult;
 use crate::agent::Agent;
-use crate::tools::Tool;
 
 /// Spawn the background agent task that processes commands.
 ///
@@ -105,20 +104,13 @@ pub(crate) fn spawn_agent_task(
                     agent.provider().reload_credentials().await;
                 }
                 AgentCommand::SetDisabledTools(disabled) => {
-                    use crate::modes::common::ToolTier;
                     let tiered =
                         crate::modes::common::build_all_tiered_tools(&tool_env_for_rebuild, plugin_manager.as_ref());
-                    // Interactive agent task: Core + Specialty + Orchestration
-                    let tool_set = crate::modes::common::ToolSet::new(tiered, [
-                        ToolTier::Core,
-                        ToolTier::Specialty,
-                        ToolTier::Orchestration,
-                    ]);
-                    let filtered: Vec<Arc<dyn Tool>> = tool_set
-                        .active_tools()
-                        .into_iter()
-                        .filter(|t| !disabled.contains(&t.definition().name))
-                        .collect();
+                    let filtered = crate::tool_gateway::allowed_tools_for_policy(
+                        &tiered,
+                        &crate::tool_gateway::standalone_toolsets(),
+                        &disabled,
+                    );
                     agent = agent.with_tools(filtered);
                 }
                 AgentCommand::CompressContext => {
