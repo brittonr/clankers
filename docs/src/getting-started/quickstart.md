@@ -52,7 +52,7 @@ clankers acp serve --session <id>          # resume a known session id
 clankers acp serve --new --model <model>   # force a fresh session and optional model
 ```
 
-The first pass supports ACP initialization and session prompt/update request handling. Terminal creation, remote workspaces, arbitrary tool listing/calls, and editor push notifications return explicit unsupported-method errors.
+The current adapter supports ACP initialization, `session/new` binding, and `session/prompt` prompt acceptance with safe receipts. Prompt receipts record session id, byte count, and prompt hash rather than raw prompt text. Terminal creation, remote workspaces, diffs, arbitrary tool listing/calls, and editor push notifications return explicit unsupported-method errors.
 
 ## Sessions
 

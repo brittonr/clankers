@@ -1,11 +1,17 @@
 use serde::Deserialize;
 use serde::Serialize;
 use serde_json::Value;
+use uuid::Uuid;
+
+const ACP_SOURCE: &str = "acp_ide_integration";
+const ACP_TRANSPORT: &str = "stdio";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AcpAdapterErrorKind {
     UnsupportedMethod,
     InvalidRequest,
+    MissingSession,
+    MissingPrompt,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -20,7 +26,34 @@ impl AcpAdapterError {
         let method = method.into();
         Self {
             kind: AcpAdapterErrorKind::UnsupportedMethod,
-            message: format!("ACP method '{method}' is not supported by this first-pass adapter"),
+            message: format!("ACP method '{method}' is not supported by this adapter"),
+            method,
+        }
+    }
+
+    pub fn invalid_request(method: impl Into<String>, message: impl Into<String>) -> Self {
+        Self {
+            kind: AcpAdapterErrorKind::InvalidRequest,
+            method: method.into(),
+            message: message.into(),
+        }
+    }
+
+    pub fn missing_session(method: impl Into<String>) -> Self {
+        let method = method.into();
+        Self {
+            kind: AcpAdapterErrorKind::MissingSession,
+            message: "ACP prompt requests require a session_id created by session/new or supplied by the editor"
+                .to_string(),
+            method,
+        }
+    }
+
+    pub fn missing_prompt(method: impl Into<String>) -> Self {
+        let method = method.into();
+        Self {
+            kind: AcpAdapterErrorKind::MissingPrompt,
+            message: "ACP prompt requests require a non-empty prompt".to_string(),
             method,
         }
     }
@@ -35,11 +68,82 @@ pub fn validate_method(method: &str) -> Result<(), AcpAdapterError> {
 
 pub fn metadata_for_method(method: &str, status: &str) -> Value {
     serde_json::json!({
-        "source": "acp_ide_integration",
-        "transport": "stdio",
+        "source": ACP_SOURCE,
+        "transport": ACP_TRANSPORT,
         "method": method,
         "status": status,
     })
+}
+
+pub fn bind_session(params: &Value) -> Result<AcpSessionReceipt, AcpAdapterError> {
+    let mode = if params.get("attach").and_then(Value::as_bool).unwrap_or(false)
+        || params.get("session_id").and_then(Value::as_str).is_some()
+    {
+        AcpSessionMode::Attach
+    } else {
+        AcpSessionMode::New
+    };
+    let model = params
+        .get("model")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|model| !model.is_empty())
+        .map(ToOwned::to_owned);
+    let session_id = match mode {
+        AcpSessionMode::New => params
+            .get("session_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(ToOwned::to_owned)
+            .unwrap_or_else(|| format!("acp-{}", Uuid::new_v4())),
+        AcpSessionMode::Attach => params
+            .get("session_id")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(ToOwned::to_owned)
+            .ok_or_else(|| AcpAdapterError::invalid_request("session/new", "attach mode requires session_id"))?,
+    };
+    Ok(AcpSessionReceipt {
+        source: ACP_SOURCE,
+        transport: ACP_TRANSPORT,
+        session_id,
+        status: "bound",
+        mode,
+        model,
+    })
+}
+
+pub fn accept_prompt(params: &Value) -> Result<AcpPromptReceipt, AcpAdapterError> {
+    let session_id = params
+        .get("session_id")
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .ok_or_else(|| AcpAdapterError::missing_session("session/prompt"))?;
+    let prompt = params
+        .get("prompt")
+        .or_else(|| params.get("text"))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|prompt| !prompt.is_empty())
+        .ok_or_else(|| AcpAdapterError::missing_prompt("session/prompt"))?;
+    Ok(AcpPromptReceipt {
+        source: ACP_SOURCE,
+        transport: ACP_TRANSPORT,
+        session_id: session_id.to_string(),
+        status: "accepted",
+        prompt_bytes: prompt.len(),
+        prompt_sha256: sha256_hex(prompt.as_bytes()),
+    })
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::Digest;
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(bytes);
+    format!("{:x}", hasher.finalize())
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq)]
@@ -48,6 +152,70 @@ pub struct AcpRequest {
     pub method: String,
     #[serde(default)]
     pub params: Value,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcpSessionMode {
+    New,
+    Attach,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcpSessionBindingRequest {
+    pub mode: AcpSessionMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AcpSessionReceipt {
+    pub source: &'static str,
+    pub transport: &'static str,
+    pub session_id: String,
+    pub status: &'static str,
+    pub mode: AcpSessionMode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AcpPromptReceipt {
+    pub source: &'static str,
+    pub transport: &'static str,
+    pub session_id: String,
+    pub status: &'static str,
+    pub prompt_bytes: usize,
+    pub prompt_sha256: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct AcpEditorCapabilities {
+    pub sessions: bool,
+    pub prompts: bool,
+    pub cancellation: bool,
+    pub history_replay: bool,
+    pub terminals: bool,
+    pub diffs: bool,
+    pub multi_workspace: bool,
+    pub tool_activity: bool,
+}
+
+impl Default for AcpEditorCapabilities {
+    fn default() -> Self {
+        Self {
+            sessions: true,
+            prompts: true,
+            cancellation: false,
+            history_replay: false,
+            terminals: false,
+            diffs: false,
+            multi_workspace: false,
+            tool_activity: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -79,6 +247,8 @@ impl AcpResponse {
         let code = match err.kind {
             AcpAdapterErrorKind::UnsupportedMethod => -32004,
             AcpAdapterErrorKind::InvalidRequest => -32600,
+            AcpAdapterErrorKind::MissingSession => -32010,
+            AcpAdapterErrorKind::MissingPrompt => -32602,
         };
         Self {
             id,
@@ -87,7 +257,7 @@ impl AcpResponse {
                 code,
                 message: err.message,
                 data: serde_json::json!({
-                    "source": "acp_ide_integration",
+                    "source": ACP_SOURCE,
                     "method": err.method,
                     "status": "unsupported",
                 }),
@@ -105,26 +275,28 @@ pub fn handle_request(request: AcpRequest) -> AcpResponse {
         "initialize" => serde_json::json!({
             "protocol": "acp",
             "server": "clankers",
-            "capabilities": {
-                "sessions": true,
-                "prompts": true,
-                "terminals": false,
-                "diffs": false,
-                "multiWorkspace": false,
-            },
+            "capabilities": AcpEditorCapabilities::default(),
             "metadata": metadata_for_method("initialize", "ok"),
         }),
-        "session/new" => serde_json::json!({
-            "session": {
-                "id": request.params.get("session_id").cloned().unwrap_or(Value::Null),
-                "status": "accepted",
-            },
-            "metadata": metadata_for_method("session/new", "ok"),
-        }),
-        "session/prompt" => serde_json::json!({
-            "accepted": true,
-            "metadata": metadata_for_method("session/prompt", "accepted"),
-        }),
+        "session/new" => match bind_session(&request.params) {
+            Ok(receipt) => serde_json::json!({
+                "session": {
+                    "id": receipt.session_id,
+                    "status": receipt.status,
+                    "mode": receipt.mode,
+                },
+                "metadata": receipt,
+            }),
+            Err(err) => return AcpResponse::error(request.id, err),
+        },
+        "session/prompt" => match accept_prompt(&request.params) {
+            Ok(receipt) => serde_json::json!({
+                "accepted": true,
+                "session": { "id": receipt.session_id },
+                "metadata": receipt,
+            }),
+            Err(err) => return AcpResponse::error(request.id, err),
+        },
         _ => unreachable!("method was validated"),
     };
 
@@ -199,13 +371,37 @@ mod tests {
     }
 
     #[test]
-    fn acp_json_line_returns_loggable_metadata_without_params() {
-        let line = r#"{"id":8,"method":"session/prompt","params":{"prompt":"secret-ish text"}}"#;
-        let (_response, metadata) = handle_json_line_with_metadata(line).expect("metadata response");
-        assert_eq!(metadata["source"], "acp_ide_integration");
-        assert_eq!(metadata["method"], "session/prompt");
-        assert_eq!(metadata["status"], "ok");
-        assert!(metadata.get("params").is_none());
-        assert!(!metadata.to_string().contains("secret-ish"));
+    fn acp_session_binding_receipt_uses_safe_metadata() {
+        let receipt =
+            bind_session(&serde_json::json!({"session_id":"known-session","model":"test-model","prompt":"secret"}))
+                .expect("attach existing session");
+        assert_eq!(receipt.session_id, "known-session");
+        assert_eq!(receipt.mode, AcpSessionMode::Attach);
+        assert_eq!(receipt.model.as_deref(), Some("test-model"));
+        let serialized = serde_json::to_string(&receipt).expect("receipt json");
+        assert!(!serialized.contains("secret"));
+    }
+
+    #[test]
+    fn acp_prompt_receipt_hashes_prompt_without_raw_text() {
+        let receipt =
+            accept_prompt(&serde_json::json!({"session_id":"s1","prompt":"secret prompt"})).expect("prompt accepted");
+        assert_eq!(receipt.session_id, "s1");
+        assert_eq!(receipt.prompt_bytes, "secret prompt".len());
+        assert_eq!(receipt.prompt_sha256.len(), 64);
+        let serialized = serde_json::to_string(&receipt).expect("prompt receipt json");
+        assert!(!serialized.contains("secret prompt"));
+    }
+
+    #[test]
+    fn acp_prompt_requires_session_before_acceptance() {
+        let response = handle_request(AcpRequest {
+            id: serde_json::json!(9),
+            method: "session/prompt".to_string(),
+            params: serde_json::json!({"prompt":"hello"}),
+        });
+        let error = response.error.expect("missing session is an error");
+        assert_eq!(error.code, -32010);
+        assert!(!error.data.to_string().contains("hello"));
     }
 }

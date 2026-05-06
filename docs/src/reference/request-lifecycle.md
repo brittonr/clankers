@@ -45,7 +45,7 @@ Standalone TUI/headless mode runs the agent in-process and renders agent events 
 
 ## ACP editor path
 
-`clankers acp serve` is a foreground stdio transport for ACP-compatible editors. It accepts JSON request lines, maps first-pass initialize/session prompt methods through the ACP adapter seam, emits normalized request metadata without params, and returns explicit unsupported-method errors for terminal/workspace/tool surfaces that are outside the first slice.
+`clankers acp serve` is a foreground stdio transport for ACP-compatible editors. It accepts JSON request lines, maps initialize, explicit `session/new` binding, and `session/prompt` prompt acceptance through the ACP adapter seam, emits normalized request metadata without params, and returns explicit unsupported-method errors for terminal/workspace/tool/diff surfaces that are outside this slice. Prompt receipts include session id, byte count, and prompt hash, not raw prompt text.
 
 ## Batch trajectory path
 

@@ -95,7 +95,7 @@ clankers acp serve --session <id>          # resume a known clankers session id
 clankers acp serve --new --model <model>   # force a new session and optional model
 ```
 
-The first pass supports initialization and session prompt/update messages over a foreground stdio adapter. Terminal creation, remote workspaces, arbitrary tool listing/calls, and editor push notifications are intentionally returned as unsupported until dedicated follow-up work lands.
+The current foreground stdio adapter supports initialization, explicit session binding (`session/new`), and bounded prompt acceptance (`session/prompt`) with normalized receipts. Prompt receipts record session id, byte count, and prompt hash rather than raw prompt text; unsupported editor capabilities such as terminal creation, remote workspaces, arbitrary tool listing/calls, diffs, and editor push notifications return structured unsupported errors without spawning side effects. The adapter remains a safe bridge over normal clankers session/tool-policy concepts; editor requests do not bypass confirmation, disabled-tool, or persistence policy.
 
 ### MCP Session Control
 
