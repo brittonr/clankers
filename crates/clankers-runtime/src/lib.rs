@@ -1297,8 +1297,12 @@ pub enum ExtensionRuntimeKind {
 pub struct ExtensionRuntimeRequest {
     pub kind: ExtensionRuntimeKind,
     pub action: String,
+    pub extension_name: Option<String>,
     pub visible_tool_name: Option<String>,
     pub original_tool_name: Option<String>,
+    pub runtime_entrypoint: Option<String>,
+    #[serde(default)]
+    pub arguments: Value,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -1327,6 +1331,12 @@ impl ExtensionToolDescriptor {
             prerequisites: Vec::new(),
             metadata: EventMetadata::empty().with("source", format!("{source:?}")),
         }
+    }
+
+    #[must_use]
+    pub fn with_metadata(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.metadata = self.metadata.with(key, value);
+        self
     }
 }
 
@@ -1800,8 +1810,11 @@ mod tests {
             .execute(ExtensionRuntimeRequest {
                 kind: ExtensionRuntimeKind::Plugin,
                 action: "call".to_string(),
+                extension_name: Some("plugin_secret_token_runtime".to_string()),
                 visible_tool_name: Some("plugin_secret_token_tool".to_string()),
                 original_tool_name: Some("raw".to_string()),
+                runtime_entrypoint: Some("handle_tool_call".to_string()),
+                arguments: json!({"secret_token": "abc123"}),
             })
             .unwrap_err();
         assert_eq!(runtime_error, RuntimeError::ExtensionUnavailable("extension runtime disabled".to_string()));
