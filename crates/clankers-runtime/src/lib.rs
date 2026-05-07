@@ -180,6 +180,7 @@ impl Runtime {
             session_id: session_id.clone(),
             created_at: Utc::now(),
             last_prompt: None,
+            prompts: Vec::new(),
         })?;
         Ok(SessionHandle {
             runtime: Arc::clone(&self.inner),
@@ -281,10 +282,22 @@ impl SessionHandle {
                 for event in response.events {
                     self.emit(event.with_session_metadata(session_id.clone(), prompt_id.clone())).await?;
                 }
+                let mut record = self
+                    .runtime
+                    .services
+                    .sessions
+                    .load(&session_id)?
+                    .unwrap_or_else(|| SessionRecord::new(session_id.clone()));
+                record.last_prompt = Some(prompt_id.clone());
+                record.prompts.push(PromptReplayEntry {
+                    prompt_id: prompt_id.clone(),
+                    user_prompt: assembled.user_prompt.clone(),
+                    assembled_prompt: assembled.clone(),
+                    completed_at: Utc::now(),
+                });
                 self.runtime.services.sessions.save(SessionRecord {
                     session_id: session_id.clone(),
-                    created_at: Utc::now(),
-                    last_prompt: Some(prompt_id.clone()),
+                    ..record
                 })?;
                 self.emit(SessionEvent::Completed {
                     prompt_id: prompt_id.clone(),
@@ -1155,11 +1168,37 @@ pub trait SessionStore: Send + Sync {
     fn load(&self, session_id: &SessionId) -> Result<Option<SessionRecord>, RuntimeError>;
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SessionRecord {
     pub session_id: SessionId,
     pub created_at: DateTime<Utc>,
     pub last_prompt: Option<PromptId>,
+    pub prompts: Vec<PromptReplayEntry>,
+}
+
+impl SessionRecord {
+    #[must_use]
+    pub fn new(session_id: SessionId) -> Self {
+        Self {
+            session_id,
+            created_at: Utc::now(),
+            last_prompt: None,
+            prompts: Vec::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn replay_context(&self) -> Vec<PromptReplayEntry> {
+        self.prompts.clone()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct PromptReplayEntry {
+    pub prompt_id: PromptId,
+    pub user_prompt: String,
+    pub assembled_prompt: AssembledPrompt,
+    pub completed_at: DateTime<Utc>,
 }
 
 pub struct NoopService;
@@ -1594,7 +1633,13 @@ mod tests {
             .await
             .unwrap();
         session.submit_prompt(PromptInput::new("persist me")).await.unwrap();
+        session.submit_prompt(PromptInput::new("persist me too")).await.unwrap();
         let record = store.load(&session_id).unwrap().unwrap();
         assert!(record.last_prompt.is_some());
+        let replay = record.replay_context();
+        assert_eq!(replay.len(), 2);
+        assert_eq!(replay[0].user_prompt, "persist me");
+        assert_eq!(replay[1].user_prompt, "persist me too");
+        assert_eq!(replay[0].assembled_prompt.user_prompt, "persist me");
     }
 }
